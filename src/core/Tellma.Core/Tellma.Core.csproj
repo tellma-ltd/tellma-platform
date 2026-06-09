@@ -1,0 +1,5 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Tellma.Core.Abstractions\Tellma.Core.Abstractions.csproj" />
+  </ItemGroup>
+</Project>

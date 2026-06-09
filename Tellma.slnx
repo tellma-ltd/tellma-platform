@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path=".gitattributes" />
+    <File Path=".gitignore" />
+    <File Path="AGENTS.md" />
+    <File Path="ARCHITECTURE.md" />
+    <File Path="CLA.md" />
+    <File Path="CONTRIBUTING.md" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+    <File Path="LICENSE" />
+    <File Path="README.md" />
+    <File Path="SECURITY.md" />
+  </Folder>
+  <Project Path="src/core/Tellma.Core.Abstractions/Tellma.Core.Abstractions.csproj" Id="a8c5c375-60d1-4415-9377-aa1254091b00" />
+  <Project Path="src/core/Tellma.Core/Tellma.Core.csproj" Id="139b300f-8e04-4fcf-92db-45127fb3c7a4" />
+</Solution>
