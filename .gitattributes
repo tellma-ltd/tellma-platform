@@ -1,0 +1,87 @@
+# Normalize text files
+* text=auto eol=lf
+
+# Windows-specific scripts
+*.ps1               text eol=crlf
+*.bat               text eol=crlf
+*.cmd               text eol=crlf
+
+# Images and media
+*.png               binary
+*.jpg               binary
+*.jpeg              binary
+*.gif               binary
+*.ico               binary
+*.webp              binary
+*.bmp               binary
+*.tiff              binary
+*.mp4               binary
+*.webm              binary
+*.mov               binary
+
+# Fonts
+*.woff              binary
+*.woff2             binary
+*.ttf               binary
+*.eot               binary
+*.otf               binary
+
+# Archive files
+*.zip               binary
+*.gz                binary
+*.7z                binary
+*.tar               binary
+*.bz2               binary
+*.xz                binary
+*.rar               binary
+
+# .NET / signing / packages
+*.exe               binary
+*.dll               binary
+*.snk               binary
+*.pfx               binary
+*.p12               binary
+*.nupkg             binary
+*.pdb               binary
+*.dylib             binary
+*.lib               binary
+*.so                binary
+
+# Documents
+*.pdf               binary
+*.docx              binary
+*.xlsx              binary
+
+
+# Specialized git diff drivers
+*.cs                diff=csharp
+*.py                diff=python
+# No built-in diff driver for JS/TS; Java is close enough
+*.ts                diff=java
+*.js                diff=java
+*.css               diff=css
+*.scss              diff=css
+*.sass              diff=css
+*.html              diff=html
+*.cshtml            diff=html
+*.csproj            diff=xml
+*.props             diff=xml
+*.targets           diff=xml
+*.md                diff=markdown
+
+# GitHub: Don't count generated/vendored code in language stats
+*.min.js            linguist-vendored
+*.min.css           linguist-vendored
+**/wwwroot/lib/**   linguist-vendored
+
+# GitHub: Collapse generated files in PR diffs
+**/Migrations/*.cs  linguist-generated=true
+*.g.cs              linguist-generated=true
+*.Designer.cs       linguist-generated=true
+
+# GitHub: Keep docs from skewing the language bar
+docs/**             linguist-documentation
+
+# Append only files
+CHANGELOG.md        merge=union
+.gitignore          merge=union
