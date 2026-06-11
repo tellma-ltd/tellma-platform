@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Design-time companion of Tellma.Core.EntityFrameworkCore: the C# migration operation generator and IDesignTimeServices registration, discovered by EF tooling through an MSBuild-injected [assembly: DesignTimeServicesReference]. Referenced only by migrator projects.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Like Microsoft.EntityFrameworkCore.Design itself, this package is a design-time-only
+         dependency: it must never flow transitively into a runtime host's dependency graph. -->
+    <DevelopmentDependency>true</DevelopmentDependency>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tellma.Core.EntityFrameworkCore\Tellma.Core.EntityFrameworkCore.csproj" />
+    <!-- Microsoft.EntityFrameworkCore.Design is developmentDependency=true, so NuGet applies
+         PrivateAssets=all here by default. Consequence (intended, and identical to EF's own
+         guidance): a migrator project referencing this package must also reference
+         Microsoft.EntityFrameworkCore.Design directly. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- MSBuild targets that inject [assembly: DesignTimeServicesReference] into consuming
+         projects at build time. EF tooling only scans the startup and migrations assemblies
+         for that attribute (never referenced libraries), so the attribute must end up on the
+         migrator's own assembly — this is the same mechanism EF's own extension packages
+         (e.g. SqlServer.HierarchyId) use. -->
+    <None Include="build\**" Pack="true" PackagePath="build;buildTransitive" />
+  </ItemGroup>
+
+</Project>

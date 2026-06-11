@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TellmaTestAsset>true</TellmaTestAsset>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Web-host stand-in for the publish boundary check (spec Rule 3): references the runtime
+         library ONLY. CI publishes this project and asserts the output contains no assembly
+         from the EF Design dependency tree (Roslyn, templating, Humanizer, ...). -->
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.EntityFrameworkCore\Tellma.Core.EntityFrameworkCore.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TellmaTestAsset>true</TellmaTestAsset>
+    <RootNamespace>Tellma.Core.EntityFrameworkCore.MigrationsHost</RootNamespace>
+    <!-- This variant consumes Tellma.Core.EntityFrameworkCore(.Design) as PACKAGES from a local
+         feed produced by `dotnet pack` — covering the published-package flow of the
+         DesignTimeServicesReference discovery (the sibling MigrationsHost covers the Phase-1
+         ProjectReference flow). It is deliberately NOT in Tellma.slnx: the CI design-e2e job
+         packs the libraries first and restores this project with
+         -p:RestoreAdditionalProjectSources=<local feed>. Versions are explicit because the
+         Tellma packages are not pinned in Directory.Packages.props. -->
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The same model/context sources as the ProjectReference-flow host; Migrations/ is
+         excluded so `dotnet ef migrations add` scaffolds a full initial migration here. -->
+    <Compile Include="..\Tellma.Core.EntityFrameworkCore.MigrationsHost\**\*.cs"
+             Exclude="..\Tellma.Core.EntityFrameworkCore.MigrationsHost\obj\**;..\Tellma.Core.EntityFrameworkCore.MigrationsHost\bin\**;..\Tellma.Core.EntityFrameworkCore.MigrationsHost\Migrations\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Tellma.Core.EntityFrameworkCore" Version="1.0.0" />
+    <PackageReference Include="Tellma.Core.EntityFrameworkCore.Design" Version="1.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9">
+      <PrivateAssets>none</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

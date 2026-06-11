@@ -8,12 +8,27 @@
     <File Path="CLA.md" />
     <File Path="CONTRIBUTING.md" />
     <File Path="Directory.Build.props" />
+    <File Path="Directory.Build.targets" />
     <File Path="Directory.Packages.props" />
     <File Path="global.json" />
     <File Path="LICENSE" />
     <File Path="README.md" />
     <File Path="SECURITY.md" />
   </Folder>
-  <Project Path="src/core/Tellma.Core.Abstractions/Tellma.Core.Abstractions.csproj" Id="a8c5c375-60d1-4415-9377-aa1254091b00" />
-  <Project Path="src/core/Tellma.Core/Tellma.Core.csproj" Id="139b300f-8e04-4fcf-92db-45127fb3c7a4" />
+  <Folder Name="/src/">
+    <Project Path="src/core/Tellma.Core.Abstractions/Tellma.Core.Abstractions.csproj" Id="a8c5c375-60d1-4415-9377-aa1254091b00" />
+    <Project Path="src/core/Tellma.Core/Tellma.Core.csproj" Id="139b300f-8e04-4fcf-92db-45127fb3c7a4" />
+    <Project Path="src/core/Tellma.Core.EntityFrameworkCore/Tellma.Core.EntityFrameworkCore.csproj" />
+    <Project Path="src/core/Tellma.Core.EntityFrameworkCore.Design/Tellma.Core.EntityFrameworkCore.Design.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <File Path="test/Directory.Build.props" />
+    <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Tests/Tellma.Core.EntityFrameworkCore.Tests.csproj" />
+    <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Design.Tests/Tellma.Core.EntityFrameworkCore.Design.Tests.csproj" />
+    <Project Path="test/core/Tellma.Core.EntityFrameworkCore.IntegrationTests/Tellma.Core.EntityFrameworkCore.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/test/assets/">
+    <Project Path="test/core/assets/Tellma.Core.EntityFrameworkCore.BoundaryHost/Tellma.Core.EntityFrameworkCore.BoundaryHost.csproj" />
+    <Project Path="test/core/assets/Tellma.Core.EntityFrameworkCore.MigrationsHost/Tellma.Core.EntityFrameworkCore.MigrationsHost.csproj" />
+  </Folder>
 </Solution>
