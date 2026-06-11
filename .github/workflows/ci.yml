@@ -50,6 +50,8 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet tool restore
+      # dotnet-ef builds the target project without an implicit NuGet restore.
+      - run: dotnet restore "$HOST"
 
       # --- ProjectReference flow ---
       - name: Regenerate migration (ProjectReference flow)
