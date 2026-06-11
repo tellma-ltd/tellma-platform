@@ -27,10 +27,12 @@ separate DTO model — and creates/keeps it in sync through the same migrations 
    types, facets, nullability, mirrored PK — and serializes it as **canonical JSON** into one
    model annotation per type (`Tellma:TableTypeDefinition:<schema>.<name>`). Canonical JSON
    makes string equality equivalent to definition equality.
-3. **Diffing**: the annotations round-trip through the model snapshot untouched, so the differ
+3. **Diffing**: the annotations round-trip through the model snapshot, so the differ
    ([TableTypeDiffer](TableTypes/TableTypeDiffer.cs), spliced in by the quarantined
    [adapter](TableTypes/Internal/EfCoreInternalsAdapter.cs)) compares them verbatim — never
-   re-deriving from the snapshot side. SQL Server has no `ALTER TYPE`, so every definitional
+   re-deriving from the snapshot side. In snapshot files each definition is rendered as a
+   readable `HasTableTypeDefinition(...)` call (one line per column in PR diffs) whose replay
+   rebuilds the annotation byte-for-byte. SQL Server has no `ALTER TYPE`, so every definitional
    change emits drop + create within the same migration.
 4. **SQL**: [TableTypesSqlServerMigrationsSqlGenerator](TableTypes/TableTypesSqlServerMigrationsSqlGenerator.cs)
    renders `CREATE TYPE ... AS TABLE`, the In-Memory OLTP pre-flight (error 53101), the

@@ -6,6 +6,7 @@
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.EntityFrameworkCore.Migrations.Design;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Tellma.Core.EntityFrameworkCore.Design
 {
@@ -30,6 +31,14 @@ namespace Tellma.Core.EntityFrameworkCore.Design
 
             serviceCollection.AddSingleton<ICSharpMigrationOperationGenerator, TableTypesCSharpMigrationOperationGenerator>();
             serviceCollection.AddSingleton<IMigrationsCodeGenerator, TableTypesCSharpMigrationsGenerator>();
+            // These two work as a pair: the snapshot generator renders definitions as readable
+            // HasTableTypeDefinition(...) calls, and the annotation generator excludes the raw
+            // JSON annotations from the generic HasAnnotation output. Replace (not Add) so the
+            // pairing holds regardless of who registered an IAnnotationCodeGenerator first.
+            serviceCollection.AddSingleton<ICSharpSnapshotGenerator, TableTypesCSharpSnapshotGenerator>();
+            serviceCollection.Replace(ServiceDescriptor.Singleton<
+                Microsoft.EntityFrameworkCore.Design.IAnnotationCodeGenerator,
+                TableTypesSqlServerAnnotationCodeGenerator>());
         }
     }
 }

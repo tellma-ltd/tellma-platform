@@ -5,13 +5,14 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Tellma.Core.EntityFrameworkCore.MigrationsHost;
+using Tellma.Core.EntityFrameworkCore.TableTypes;
 
 #nullable disable
 
 namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
 {
     [DbContext(typeof(MigrationsHostContext))]
-    [Migration("20260611230053_Initial")]
+    [Migration("20260611233921_Initial")]
     partial class Initial
     {
         /// <inheritdoc />
@@ -22,14 +23,6 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
                 .HasAnnotation("ProductVersion", "10.0.9")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128)
                 .HasAnnotation("Tellma:TableType:BuiltIn", "{\"types\":15,\"schema\":\"dbo\",\"grants\":[\"public\"]}")
-                .HasAnnotation("Tellma:TableTypeDefinition:.DocumentStatesList", "{\"name\":\"DocumentStatesList\",\"isMemoryOptimized\":false,\"grants\":[\"public\"],\"primaryKey\":[\"Id\"],\"columns\":[{\"name\":\"Id\",\"storeType\":\"int\",\"isNullable\":false,\"isRowVersion\":false},{\"name\":\"State\",\"storeType\":\"smallint\",\"isNullable\":false,\"isRowVersion\":false}]}")
-                .HasAnnotation("Tellma:TableTypeDefinition:crm.CustomersList", "{\"name\":\"CustomersList\",\"schema\":\"crm\",\"tableName\":\"Customers\",\"tableSchema\":\"crm\",\"isMemoryOptimized\":false,\"grants\":[\"public\"],\"primaryKey\":[\"Id\"],\"columns\":[{\"name\":\"Id\",\"storeType\":\"int\",\"isNullable\":false,\"isRowVersion\":false},{\"name\":\"LoyaltyPoints\",\"storeType\":\"int\",\"isNullable\":false,\"isRowVersion\":false},{\"name\":\"Name\",\"storeType\":\"nvarchar(255)\",\"isNullable\":false,\"maxLength\":255,\"isRowVersion\":false}]}")
-                .HasAnnotation("Tellma:TableTypeDefinition:dbo.BigIdList", "{\"name\":\"BigIdList\",\"schema\":\"dbo\",\"isMemoryOptimized\":false,\"grants\":[\"public\"],\"primaryKey\":[\"Id\"],\"columns\":[{\"name\":\"Id\",\"storeType\":\"bigint\",\"isNullable\":false,\"isRowVersion\":false}]}")
-                .HasAnnotation("Tellma:TableTypeDefinition:dbo.GuidList", "{\"name\":\"GuidList\",\"schema\":\"dbo\",\"isMemoryOptimized\":false,\"grants\":[\"public\"],\"primaryKey\":[\"Id\"],\"columns\":[{\"name\":\"Id\",\"storeType\":\"uniqueidentifier\",\"isNullable\":false,\"isRowVersion\":false}]}")
-                .HasAnnotation("Tellma:TableTypeDefinition:dbo.IdList", "{\"name\":\"IdList\",\"schema\":\"dbo\",\"isMemoryOptimized\":false,\"grants\":[\"public\"],\"primaryKey\":[\"Id\"],\"columns\":[{\"name\":\"Id\",\"storeType\":\"int\",\"isNullable\":false,\"isRowVersion\":false}]}")
-                .HasAnnotation("Tellma:TableTypeDefinition:dbo.StringList", "{\"name\":\"StringList\",\"schema\":\"dbo\",\"isMemoryOptimized\":false,\"grants\":[\"public\"],\"primaryKey\":[\"Id\"],\"columns\":[{\"name\":\"Id\",\"storeType\":\"nvarchar(450)\",\"isNullable\":false,\"maxLength\":450,\"isRowVersion\":false}]}")
-                .HasAnnotation("Tellma:TableTypeDefinition:gl.InvoiceLinesList", "{\"name\":\"InvoiceLinesList\",\"schema\":\"gl\",\"tableName\":\"InvoiceLines\",\"tableSchema\":\"gl\",\"isMemoryOptimized\":false,\"grants\":[\"public\"],\"primaryKey\":[\"Id\"],\"columns\":[{\"name\":\"Id\",\"storeType\":\"int\",\"isNullable\":false,\"isRowVersion\":false},{\"name\":\"InvoiceId\",\"storeType\":\"int\",\"isNullable\":false,\"isRowVersion\":false},{\"name\":\"Description\",\"storeType\":\"nvarchar(500)\",\"isNullable\":false,\"maxLength\":500,\"isRowVersion\":false},{\"name\":\"Quantity\",\"storeType\":\"decimal(19,4)\",\"isNullable\":false,\"isRowVersion\":false}]}")
-                .HasAnnotation("Tellma:TableTypeDefinition:gl.InvoicesList", "{\"name\":\"InvoicesList\",\"schema\":\"gl\",\"tableName\":\"Invoices\",\"tableSchema\":\"gl\",\"isMemoryOptimized\":false,\"grants\":[\"public\"],\"primaryKey\":[\"Id\"],\"columns\":[{\"name\":\"Id\",\"storeType\":\"int\",\"isNullable\":false,\"isRowVersion\":false},{\"name\":\"CustomerId\",\"storeType\":\"int\",\"isNullable\":false,\"isRowVersion\":false},{\"name\":\"Memo\",\"storeType\":\"nvarchar(255)\",\"isNullable\":true,\"maxLength\":255,\"isRowVersion\":false},{\"name\":\"Total\",\"storeType\":\"decimal(19,4)\",\"isNullable\":false,\"isRowVersion\":false},{\"name\":\"RowVersion\",\"storeType\":\"binary(8)\",\"isNullable\":true,\"maxLength\":8,\"isRowVersion\":true}]}")
                 .HasAnnotation("Tellma:TableTypeStandalone:.DocumentStatesList", "{\"name\":\"DocumentStatesList\",\"isMemoryOptimized\":false,\"grants\":[\"public\"],\"key\":[\"Id\"],\"columns\":[{\"name\":\"Id\",\"clrTypeName\":\"System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e\",\"isNullable\":false},{\"name\":\"State\",\"clrTypeName\":\"System.Int16, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e\",\"isNullable\":false}]}");
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -174,6 +167,59 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
                 {
                     b.Navigation("Lines");
                 });
+
+            modelBuilder.HasTableTypeDefinition("DocumentStatesList", null, type => type
+                .Column(name: "Id", storeType: "int")
+                .Column(name: "State", storeType: "smallint")
+                .HasKey("Id")
+                .HasGrants("public"));
+
+            modelBuilder.HasTableTypeDefinition("CustomersList", "crm", type => type
+                .ForTable("Customers", "crm")
+                .Column(name: "Id", storeType: "int")
+                .Column(name: "LoyaltyPoints", storeType: "int")
+                .Column(name: "Name", storeType: "nvarchar(255)", maxLength: 255)
+                .HasKey("Id")
+                .HasGrants("public"));
+
+            modelBuilder.HasTableTypeDefinition("BigIdList", "dbo", type => type
+                .Column(name: "Id", storeType: "bigint")
+                .HasKey("Id")
+                .HasGrants("public"));
+
+            modelBuilder.HasTableTypeDefinition("GuidList", "dbo", type => type
+                .Column(name: "Id", storeType: "uniqueidentifier")
+                .HasKey("Id")
+                .HasGrants("public"));
+
+            modelBuilder.HasTableTypeDefinition("IdList", "dbo", type => type
+                .Column(name: "Id", storeType: "int")
+                .HasKey("Id")
+                .HasGrants("public"));
+
+            modelBuilder.HasTableTypeDefinition("StringList", "dbo", type => type
+                .Column(name: "Id", storeType: "nvarchar(450)", maxLength: 450)
+                .HasKey("Id")
+                .HasGrants("public"));
+
+            modelBuilder.HasTableTypeDefinition("InvoiceLinesList", "gl", type => type
+                .ForTable("InvoiceLines", "gl")
+                .Column(name: "Id", storeType: "int")
+                .Column(name: "InvoiceId", storeType: "int")
+                .Column(name: "Description", storeType: "nvarchar(500)", maxLength: 500)
+                .Column(name: "Quantity", storeType: "decimal(19,4)")
+                .HasKey("Id")
+                .HasGrants("public"));
+
+            modelBuilder.HasTableTypeDefinition("InvoicesList", "gl", type => type
+                .ForTable("Invoices", "gl")
+                .Column(name: "Id", storeType: "int")
+                .Column(name: "CustomerId", storeType: "int")
+                .Column(name: "Memo", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
+                .Column(name: "Total", storeType: "decimal(19,4)")
+                .Column(name: "RowVersion", storeType: "binary(8)", nullable: true, maxLength: 8, rowVersion: true)
+                .HasKey("Id")
+                .HasGrants("public"));
 #pragma warning restore 612, 618
         }
     }

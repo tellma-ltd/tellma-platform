@@ -3,8 +3,10 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations.Design;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using Tellma.Core.EntityFrameworkCore.TableTypes;
 using Tellma.Core.EntityFrameworkCore.TableTypes.Operations;
 
 namespace Tellma.Core.EntityFrameworkCore.Design
@@ -44,6 +46,23 @@ namespace Tellma.Core.EntityFrameworkCore.Design
             IEnumerable<string> namespaces = base.GetNamespaces(materialized);
             return materialized.Any(o => o is CreateTableTypeOperation or DropTableTypeOperation)
                 ? namespaces.Concat(TableTypeNamespaces)
+                : namespaces;
+        }
+
+        /// <summary>
+        ///     Adds the namespace of <c>HasTableTypeDefinition(...)</c> and its builder to snapshot
+        ///     (and migration-metadata) files when the model carries table-type definitions, which
+        ///     the snapshot generator renders as fluent calls.
+        /// </summary>
+        /// <param name="model">The model the snapshot is generated for.</param>
+        /// <returns>The namespaces the generated code requires.</returns>
+        protected override IEnumerable<string> GetNamespaces(IModel model)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+
+            IEnumerable<string> namespaces = base.GetNamespaces(model);
+            return model.GetAnnotations().Any(a => a.Name.StartsWith(TableTypeAnnotationNames.DefinitionPrefix, StringComparison.Ordinal))
+                ? namespaces.Concat([TableTypeNamespaces[0]])
                 : namespaces;
         }
     }

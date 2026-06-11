@@ -11,6 +11,12 @@ that reference the `Microsoft.EntityFrameworkCore.Design` package and its depend
 - [TableTypesCSharpMigrationsGenerator](TableTypesCSharpMigrationsGenerator.cs) — adds the
   Tellma namespaces to a migration file's `using` directives when table-type operations are
   present (EF's own namespace collection never covers custom operations).
+- [TableTypesCSharpSnapshotGenerator](TableTypesCSharpSnapshotGenerator.cs) +
+  [TableTypesSqlServerAnnotationCodeGenerator](TableTypesSqlServerAnnotationCodeGenerator.cs) —
+  render each table-type definition in model snapshots as a readable, multi-line
+  `HasTableTypeDefinition(...)` fluent call instead of a raw JSON `HasAnnotation` string
+  (per-line column diffs in PRs); the pair is registered together so a definition is never
+  silently dropped.
 - [TableTypesDesignTimeServices](TableTypesDesignTimeServices.cs) — the `IDesignTimeServices`
   registration EF tooling loads.
 

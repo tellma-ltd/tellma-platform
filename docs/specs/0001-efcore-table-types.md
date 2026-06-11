@@ -134,7 +134,10 @@ The UDTT is a **derived row image** of the table:
   `MigrationBuilder` extension methods (`CreateTableType`, `DropTableType`) so the
   operations can also be authored manually.
 - **Diffing**: table-type definitions are stored as model annotations (the way sequences
-  are) and therefore round-trip through the model snapshot. The differ emits operations when:
+  are) and therefore round-trip through the model snapshot. In snapshot files each definition
+  is rendered as a readable, multi-line `HasTableTypeDefinition(...)` fluent call (one line
+  per column, so definition changes appear as per-line diffs in review), and replaying the
+  call rebuilds the annotation exactly. The differ emits operations when:
   - a table opts in / out of having a type (Create / Drop);
   - any aspect of the derived definition changes — column added/removed/renamed/retyped,
     facet change, order change, PK change, exclusion-list change, memory-optimized or grant

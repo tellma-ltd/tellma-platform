@@ -79,6 +79,38 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
             return AddStandalone(modelBuilder, builder.Build(name, attribute?.Schema));
         }
 
+        /// <summary>
+        ///     Declares a complete, already-resolved table-type definition — the vocabulary model
+        ///     snapshots are written in. The snapshot generator renders every derived definition as
+        ///     one of these calls, and replaying it rebuilds the definition annotation byte-for-byte
+        ///     so the differ's verbatim comparison works. Application code normally never calls
+        ///     this; use <c>HasTableType()</c> on the entity (table-derived) or
+        ///     <see cref="HasTableType(ModelBuilder, string, string?, Action{TableTypeBuilder})" />
+        ///     (standalone) instead.
+        /// </summary>
+        /// <param name="modelBuilder">The model builder.</param>
+        /// <param name="name">The table type's name.</param>
+        /// <param name="schema">The table type's schema, or <see langword="null" /> for the database default.</param>
+        /// <param name="buildAction">Supplies the resolved columns, key, grants and options.</param>
+        /// <returns>The same builder instance so that multiple calls can be chained.</returns>
+        public static ModelBuilder HasTableTypeDefinition(
+            this ModelBuilder modelBuilder,
+            string name,
+            string? schema,
+            Action<TableTypeDefinitionBuilder> buildAction)
+        {
+            ArgumentNullException.ThrowIfNull(modelBuilder);
+            ArgumentException.ThrowIfNullOrEmpty(name);
+            ArgumentNullException.ThrowIfNull(buildAction);
+
+            TableTypeDefinitionBuilder builder = new();
+            buildAction(builder);
+            TableTypeDefinition definition = builder.Build(name, schema);
+            string key = TableTypeAnnotationNames.DefinitionPrefix + (schema ?? string.Empty) + "." + name;
+            modelBuilder.HasAnnotation(key, TableTypeJson.Serialize(definition));
+            return modelBuilder;
+        }
+
         /// <summary>Writes the standalone configuration as a model annotation for the finalizing convention.</summary>
         private static ModelBuilder AddStandalone(ModelBuilder modelBuilder, StandaloneTableTypeConfiguration configuration)
         {
