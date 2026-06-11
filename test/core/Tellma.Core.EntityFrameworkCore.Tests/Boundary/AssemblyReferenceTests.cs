@@ -9,7 +9,7 @@ using Tellma.Core.EntityFrameworkCore.TableTypes;
 namespace Tellma.Core.EntityFrameworkCore.Tests.Boundary
 {
     /// <summary>
-    ///     The hard runtime/design boundary (spec Rule 3) and the internal-API quarantine (Rule 1),
+    ///     The hard runtime/design boundary (spec 0001 Rule 3) and the internal-API quarantine (Rule 1),
     ///     enforced mechanically. The publish-output half of Rule 3 runs in CI against the
     ///     BoundaryHost asset (<c>eng/check-publish-boundary.ps1</c>).
     /// </summary>

@@ -13,7 +13,7 @@ using Tellma.Core.EntityFrameworkCore.Tests.Infrastructure;
 namespace Tellma.Core.EntityFrameworkCore.Tests.BuiltIn
 {
     /// <summary>
-    ///     The built-in primitive table types (spec §5): hand-defined single-column types outside
+    ///     The built-in primitive table types (spec 0001 §5): hand-defined single-column types outside
     ///     the 0-or-1-per-table rule, flowing through the same annotations, differ, operations and
     ///     SQL as table-derived types.
     /// </summary>

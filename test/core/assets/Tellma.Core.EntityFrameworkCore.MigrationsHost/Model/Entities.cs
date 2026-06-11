@@ -85,6 +85,21 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Model
         public decimal Quantity { get; set; }
     }
 
+    /// <summary>
+    ///     A standalone table-type shape (spec 0001 §5): paired with no table, used for bulk state
+    ///     updates, and doubling as the DTO for the rows bound into the TVP at runtime.
+    /// </summary>
+    [TableType(Name = "DocumentStatesList")]
+    public class DocumentState
+    {
+        /// <summary>The targeted document.</summary>
+        [System.ComponentModel.DataAnnotations.Key]
+        public int Id { get; set; }
+
+        /// <summary>The new workflow state.</summary>
+        public short State { get; set; }
+    }
+
     /// <summary>A table with no table type, proving the opt-in is per table.</summary>
     public class AppSetting
     {

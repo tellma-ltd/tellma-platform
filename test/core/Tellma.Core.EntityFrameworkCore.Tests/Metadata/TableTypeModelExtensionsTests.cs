@@ -11,7 +11,7 @@ using Tellma.Core.EntityFrameworkCore.Tests.Infrastructure;
 namespace Tellma.Core.EntityFrameworkCore.Tests.Metadata
 {
     /// <summary>
-    ///     The metadata API (spec §6): every aspect of the generated types is queryable from the
+    ///     The metadata API (spec 0001 §6): every aspect of the generated types is queryable from the
     ///     model — names, ordered columns with store types and facets, PK, rowversion flag,
     ///     memory-optimized flag, grants. Also pins the column-ordering rule that runtime TVP
     ///     binding depends on.

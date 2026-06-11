@@ -15,7 +15,7 @@ using Tellma.Core.EntityFrameworkCore.TableTypes;
 namespace Tellma.Core.EntityFrameworkCore.Design.Tests.Guards
 {
     /// <summary>
-    ///     The fast static tripwire of spec Rule 5 (layer 3): reflect over the migrations assembly,
+    ///     The fast static tripwire of spec 0001 Rule 5 (layer 3): reflect over the migrations assembly,
     ///     enumerate every <see cref="SqlOperation" /> across all migrations' <c>UpOperations</c>,
     ///     and flag any generated table-type name appearing inside a
     ///     <c>CREATE/ALTER PROCEDURE|FUNCTION</c> batch. (Layer 1 is the drop-time guard; layer 2

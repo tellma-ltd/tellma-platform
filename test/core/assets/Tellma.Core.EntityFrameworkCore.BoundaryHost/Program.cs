@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-// Web-host stand-in for the publish boundary check (spec Rule 3). CI publishes this project and
+// Web-host stand-in for the publish boundary check (spec 0001 Rule 3). CI publishes this project and
 // asserts the output contains no assembly from the EF Design dependency tree (Roslyn,
 // templating, Humanizer) — see eng/check-publish-boundary.ps1. The code exercises the runtime
 // library the way a host would (options wired, model built, metadata API queried) without

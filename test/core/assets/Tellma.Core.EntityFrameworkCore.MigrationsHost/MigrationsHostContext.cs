@@ -41,6 +41,10 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost
         {
             modelBuilder.HasBuiltInTableTypes(BuiltInTableTypes.All, schema: "dbo", "public");
 
+            // A standalone table type (spec 0001 §5) derived from a plain class: bulk state updates
+            // without a paired table.
+            modelBuilder.HasTableType<DocumentState>(type => type.HasGrants("public"));
+
             modelBuilder.Entity<Customer>(entity =>
             {
                 entity.ToTable("Customers", "crm");
@@ -52,7 +56,7 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost
                 entity.HasTableTypeGrants("public");
             });
 
-            // Per-table ID sequences per the platform convention (spec §4: plain EF sequences;
+            // Per-table ID sequences per the platform convention (spec 0001 §4: plain EF sequences;
             // the table-types library ships no sequence support). Sequences start above the
             // reserved seed band so well-known seeded IDs stay deterministic.
             modelBuilder.HasSequence<int>("sq_Customers", "crm").StartsAt(SeedBandMax + 1);

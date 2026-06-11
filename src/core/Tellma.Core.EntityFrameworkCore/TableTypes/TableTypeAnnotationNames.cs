@@ -86,6 +86,13 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         public const string BuiltIn = "Tellma:TableType:BuiltIn";
 
         /// <summary>
+        ///     Prefix of the model-level standalone-type configuration annotations (spec 0001 §5). The
+        ///     full annotation name is <c>Tellma:TableTypeStandalone:&lt;schema&gt;.&lt;name&gt;</c> and the value is
+        ///     the canonical JSON of the <see cref="StandaloneTableTypeConfiguration" />.
+        /// </summary>
+        public const string StandalonePrefix = "Tellma:TableTypeStandalone:";
+
+        /// <summary>
         ///     Prefix of the model-level derived definition annotations. The full annotation name is
         ///     <c>Tellma:TableTypeDefinition:&lt;schema&gt;.&lt;name&gt;</c> (empty schema when the type has none) and the
         ///     value is the canonical JSON of the <see cref="TableTypeDefinition" />.

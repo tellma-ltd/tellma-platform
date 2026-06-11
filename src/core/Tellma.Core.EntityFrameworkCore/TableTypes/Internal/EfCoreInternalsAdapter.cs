@@ -4,7 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 // ---------------------------------------------------------------------------------------------
-// INTERNAL-API QUARANTINE (spec Rule 1). This file is the ONLY place in the library allowed to
+// INTERNAL-API QUARANTINE (spec 0001 Rule 1). This file is the ONLY place in the library allowed to
 // reference EF Core internal (".Internal"-namespace) APIs. Everything here is pinned by tests
 // that fail loudly when an EF upgrade changes the internal surface, and the central package pin
 // in Directory.Packages.props is the only way the EF version moves.

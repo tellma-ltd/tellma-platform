@@ -15,7 +15,7 @@ using Tellma.Core.EntityFrameworkCore.TableTypes.Operations;
 namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
 {
     /// <summary>
-    ///     The drop-time dependency guard (spec Rule 5 layer 1): dropping a type referenced by a
+    ///     The drop-time dependency guard (spec 0001 Rule 5 layer 1): dropping a type referenced by a
     ///     persisted module fails with error <see cref="TableTypeErrorNumbers.DroppedTypeHasDependents" />
     ///     naming the module; with no dependents the drop (and a recreate) succeeds.
     /// </summary>

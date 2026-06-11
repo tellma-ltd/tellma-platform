@@ -17,7 +17,7 @@ using Tellma.Core.EntityFrameworkCore.Tests.Infrastructure;
 namespace Tellma.Core.EntityFrameworkCore.Tests.Internal
 {
     /// <summary>
-    ///     Pins every internal EF Core API the quarantined adapter depends on (spec Rule 1). When
+    ///     Pins every internal EF Core API the quarantined adapter depends on (spec 0001 Rule 1). When
     ///     an EF upgrade changes this surface, these tests fail loudly and point at the single file
     ///     that needs to change: <c>TableTypes/Internal/EfCoreInternalsAdapter.cs</c>.
     /// </summary>

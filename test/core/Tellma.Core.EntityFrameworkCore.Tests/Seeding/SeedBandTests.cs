@@ -11,7 +11,7 @@ using Xunit.Sdk;
 namespace Tellma.Core.EntityFrameworkCore.Tests.Seeding
 {
     /// <summary>
-    ///     Asserts the platform seed convention (spec §4): <c>HasData</c> is restricted to
+    ///     Asserts the platform seed convention (spec 0001 §4): <c>HasData</c> is restricted to
     ///     well-known rows whose IDs code references, confined to a reserved band disjoint from
     ///     sequence output — a low band with every <c>sq_*</c> sequence starting above it, or
     ///     negative IDs. Distributions reuse this helper against their own models.

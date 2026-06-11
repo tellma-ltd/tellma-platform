@@ -40,9 +40,13 @@ separate DTO model — and creates/keeps it in sync through the same migrations 
    `model.GetTableTypes()`, `entityType.GetTableType()` — ordered columns with store types and
    facets, PK, grants. Runtime TVP binding MUST be driven by this API, never hard-coded
    ordinals: column order is the contract.
-6. **Built-in primitive types** (`modelBuilder.HasBuiltInTableTypes(...)`): `[IdList]`,
-   `[BigIdList]`, `[GuidList]`, `[StringList]` for bulk delete / bulk lookup, outside the
-   0-or-1-per-table rule.
+6. **Standalone types** (spec 0001 §5), paired with no table, for operation-specific shapes
+   (bulk state updates, bulk assignments): ad hoc via
+   `modelBuilder.HasTableType("IdStateList", "dbo", t => t.Column<int>("Id")...)` or derived
+   from a plain `[TableType]`-annotated class via `modelBuilder.HasTableType<T>()` — the class
+   then doubles as the TVP row DTO. The built-in primitives
+   (`modelBuilder.HasBuiltInTableTypes(...)`: `[IdList]`, `[BigIdList]`, `[GuidList]`,
+   `[StringList]`) are predefined standalone types for bulk delete / bulk lookup.
 
 ## Rules this project lives by
 

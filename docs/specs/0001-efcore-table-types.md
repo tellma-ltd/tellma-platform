@@ -116,6 +116,17 @@ The UDTT is a **derived row image** of the table:
   type's contract**, because TVP binding (`SqlDataRecord`/`DataTable`) is ordinal. The
   resolved order MUST be captured in the model snapshot so that a pure reorder produces a
   diff (see §3). Explicit ordering via EF's `HasColumnOrder()` flows through.
+- **TPT mirrors the tables.** Under TPT inheritance each mapped entity type's table gets its
+  own row-image type: the base table's type carries the shared columns, each leaf table's
+  type carries the PK plus the leaf's own columns. A flattened (TPC-style) leaf type was
+  considered and rejected: the per-table `INSERT … SELECT FROM @tvp` pipeline needs per-table
+  row sets under TPT regardless, a flattened type would force every consumer to split one TVP
+  across multiple tables, and it would break the 1:1 type↔table semantics the derivation,
+  metadata API and concurrency story (the base table owns the rowversion) rest on. The costs
+  of mirroring are one extra TVP per save and repeated base-column *declarations* across leaf
+  types — no data is duplicated, since TVPs carry data only transiently. TPT is rare in the
+  architecture (Core's abstract `Document` root); revisit only if the save pipeline surfaces
+  a concrete need.
 
 ### 3. Migrations pipeline behavior
 
@@ -163,12 +174,56 @@ migrator and therefore draws IDs from the allocator, keeping sequences consisten
 construction. The allocator's self-healing makes band violations non-fatal, but the band
 remains required so well-known IDs stay deterministic.
 
-### 5. Built-in primitive types
+### 5. Standalone table types (built-in and custom)
 
-The "0 or 1 per table" rule blocks per-operation shapes, so the library itself ships a small
-set of hand-defined generic types outside that rule for bulk delete / bulk lookup scenarios —
+The "0 or 1 per table" rule applies to *table-derived* types only. Operation-specific shapes —
+bulk delete by ID, bulk state updates, bulk assignment of a handful of targeted columns — need
+types paired with **no** table. These **standalone table types** flow through the exact same
+annotations, differ, operations, SQL generation and metadata API as table-derived types; only
+their definition source differs.
+
+Two authoring routes:
+
+- **Ad-hoc fluent**, for one-off shapes declared inline:
+
+  ```csharp
+  modelBuilder.HasTableType("IdStateList", schema: "dbo", type => type
+      .Column<int>("Id")
+      .Column<short>("State")
+      .HasKey("Id")
+      .HasGrants("tellma_app"));
+  ```
+
+- **Class-derived**, for shapes worth a named C# type: a plain class (NOT an entity) annotated
+  with `[TableType]`, registered with `modelBuilder.HasTableType<T>()`. Columns derive from the
+  class's public read-write properties in declaration order, honoring the standard annotations
+  (`[Key]` incl. composite, `[MaxLength]`/`[StringLength]`, `[Unicode]`, `[Precision]`,
+  `[Column(TypeName = ...)]`, `[Required]`, `[NotMapped]`, `[ExcludeFromTableType]`) and
+  nullable reference types. The class then doubles as the natural DTO for the rows bound into
+  the TVP at runtime. The type name defaults to the class name (no `List` suffix is appended).
+
+  ```csharp
+  [TableType(Name = "DocumentAssignmentsList")]
+  public class DocumentAssignment
+  {
+      [Key] public int DocumentId { get; set; }
+      public int AssigneeId { get; set; }
+  }
+  ```
+
+Store types resolve through the provider's type mapping (facets honored); explicit store types
+override. Grants and memory-optimization are configured through the fluent builder (deployment
+concerns stay out of attributes). Standalone definitions participate in the same global
+name-uniqueness check as table-derived types.
+
+**Guardrail**: standalone types exist for operation-specific shapes. They are NOT a backdoor to
+hand-maintained alternates of table row images — that is the rejected `ForSave` pattern (see
+Alternatives), with the same silent drift/truncation failure mode. If the shape is "this
+table's writable columns", derive it from the table.
+
+The library itself ships four predefined standalone types for bulk delete / bulk lookup —
 `[IdList]` (`[Id] int`), `[BigIdList]` (`[Id] bigint`), `[GuidList]` (`[Id] uniqueidentifier`),
-and `[StringList]` (`[Id] nvarchar(450)`) — created and dropped by the same operations.
+and `[StringList]` (`[Id] nvarchar(450)`) — opted into via `HasBuiltInTableTypes(...)`.
 
 ### 6. Metadata API
 
@@ -208,7 +263,7 @@ surface the dynamic SQL generator, the drop guard, and tests consume):
 4. **Design-time efficiency.** Migration/design-path code must not be unnecessarily
    inefficient: the finalizing convention makes one pass over the entity types, derived
    definitions are serialized once and diffed as strings, and parsed definitions are cached by
-   content. (A timed CI guard was considered and deliberately dropped — not worth its keep.)
+   content. Automated performance testing is out of scope.
 5. **No persisted modules may reference generated UDTTs.** All consumers are dynamic SQL.
    Enforced in three layers: the drop-time guard (§3), a CI integration test asserting zero
    rows in the `sys.sql_expression_dependencies` query after applying all migrations to a

@@ -65,6 +65,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
             }
 
             ExpandBuiltInTypes(modelBuilder, definitions);
+            ExpandStandaloneTypes(modelBuilder, definitions);
 
             foreach ((string key, (string json, _)) in definitions)
             {
@@ -403,6 +404,103 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
                 };
                 AddDefinition(definitions, definition, $"built-in table type '{name}'");
             }
+        }
+
+        /// <summary>
+        ///     Expands the model's standalone table types (spec 0001 §5,
+        ///     <see cref="TableTypeAnnotationNames.StandalonePrefix" /> annotations) into definition
+        ///     annotations, resolving store types from CLR types and facets through the provider's
+        ///     type mapping unless a store type is explicit.
+        /// </summary>
+        private void ExpandStandaloneTypes(
+            IConventionModelBuilder modelBuilder,
+            Dictionary<string, (string Json, string Source)> definitions)
+        {
+            foreach (IConventionAnnotation annotation in modelBuilder.Metadata.GetAnnotations()
+                .Where(a => a.Name.StartsWith(TableTypeAnnotationNames.StandalonePrefix, StringComparison.Ordinal))
+                .OrderBy(a => a.Name, StringComparer.Ordinal))
+            {
+                if (annotation.Value is not string configJson)
+                {
+                    continue;
+                }
+
+                StandaloneTableTypeConfiguration config = TableTypeJson.DeserializeStandalone(configJson);
+                string source = $"standalone table type '{config.Name}'";
+
+                if (config.Columns.Count == 0)
+                {
+                    throw new InvalidOperationException(
+                        $"Standalone table type '{config.Name}' has no columns. Add at least one column via the " +
+                        "TableTypeBuilder, or public read-write properties on the registered class.");
+                }
+
+                if (config.Columns.GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
+                {
+                    throw new InvalidOperationException(
+                        $"Standalone table type '{config.Name}' declares duplicate column names.");
+                }
+
+                foreach (string keyColumn in config.Key)
+                {
+                    if (!config.Columns.Any(c => c.Name == keyColumn))
+                    {
+                        throw new InvalidOperationException(
+                            $"Standalone table type '{config.Name}' declares key column '{keyColumn}' which is not " +
+                            "among its columns.");
+                    }
+                }
+
+                TableTypeDefinition definition = new()
+                {
+                    Name = config.Name,
+                    Schema = config.Schema,
+                    IsMemoryOptimized = config.IsMemoryOptimized,
+                    Grants = config.Grants,
+                    PrimaryKey = config.Key,
+                    Columns = [.. config.Columns.Select(c => ResolveStandaloneColumn(config, c))],
+                };
+                AddDefinition(definitions, definition, source);
+            }
+        }
+
+        /// <summary>Resolves one standalone column's store type (explicit, or CLR type + facets through the type mapping).</summary>
+        private TableTypeColumnDefinition ResolveStandaloneColumn(
+            StandaloneTableTypeConfiguration config,
+            StandaloneColumnConfiguration column)
+        {
+            string? storeType = column.StoreType;
+            if (storeType is null)
+            {
+                // The CLR type was recorded by the fluent/class route in the same app domain, so
+                // resolving it here (at model finalization, still inside the app) is safe.
+                Type clrType = Type.GetType(column.ClrTypeName!, throwOnError: true)!;
+                storeType = _typeMappingSource.FindMapping(
+                        clrType,
+                        storeTypeName: null,
+                        keyOrIndex: false,
+                        unicode: column.IsUnicode,
+                        size: column.MaxLength,
+                        rowVersion: null,
+                        fixedLength: column.IsFixedLength,
+                        precision: column.Precision,
+                        scale: column.Scale)?.StoreType
+                    ?? throw new InvalidOperationException(
+                        $"Cannot resolve a SQL Server store type for column '{column.Name}' of standalone table type " +
+                        $"'{config.Name}' from CLR type '{clrType.Name}'. Specify an explicit store type.");
+            }
+
+            return new TableTypeColumnDefinition
+            {
+                Name = column.Name,
+                StoreType = storeType,
+                IsNullable = column.IsNullable,
+                MaxLength = column.MaxLength,
+                Precision = column.Precision,
+                Scale = column.Scale,
+                Collation = column.Collation,
+                IsRowVersion = false,
+            };
         }
 
         /// <summary>Adds a derived definition, failing with both contributors named on a duplicate type name.</summary>

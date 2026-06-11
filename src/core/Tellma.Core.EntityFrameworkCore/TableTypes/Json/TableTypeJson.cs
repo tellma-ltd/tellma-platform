@@ -50,6 +50,23 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Json
                 ?? throw new InvalidOperationException($"Cannot deserialize a built-in table-types configuration from '{json}'.");
         }
 
+        /// <summary>Serializes a standalone table-type configuration to its canonical JSON form.</summary>
+        /// <param name="configuration">The configuration to serialize.</param>
+        /// <returns>The canonical JSON string.</returns>
+        public static string Serialize(StandaloneTableTypeConfiguration configuration)
+        {
+            return JsonSerializer.Serialize(configuration, TableTypeJsonContext.Default.StandaloneTableTypeConfiguration);
+        }
+
+        /// <summary>Deserializes a standalone table-type configuration from its canonical JSON form.</summary>
+        /// <param name="json">The canonical JSON produced by <see cref="Serialize(StandaloneTableTypeConfiguration)" />.</param>
+        /// <returns>The deserialized configuration.</returns>
+        public static StandaloneTableTypeConfiguration DeserializeStandalone(string json)
+        {
+            return JsonSerializer.Deserialize(json, TableTypeJsonContext.Default.StandaloneTableTypeConfiguration)
+                ?? throw new InvalidOperationException($"Cannot deserialize a standalone table-type configuration from '{json}'.");
+        }
+
         /// <summary>Serializes a list of grant principals to its canonical JSON form.</summary>
         /// <param name="principals">The database principals.</param>
         /// <returns>The canonical JSON string.</returns>
@@ -79,6 +96,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Json
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonSerializable(typeof(TableTypeDefinition))]
     [JsonSerializable(typeof(BuiltInTableTypesConfiguration))]
+    [JsonSerializable(typeof(StandaloneTableTypeConfiguration))]
     [JsonSerializable(typeof(IReadOnlyList<string>))]
     internal sealed partial class TableTypeJsonContext : JsonSerializerContext
     {

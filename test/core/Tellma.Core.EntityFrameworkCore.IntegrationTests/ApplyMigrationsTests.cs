@@ -12,7 +12,7 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
     /// <summary>
     ///     Applies the MigrationsHost's committed migration chain to a fresh database and asserts
     ///     the deployed table types — existence, columns in order, primary keys, grants, the
-    ///     no-persisted-dependents invariant (spec Rule 5 layer 2), and UDTT/table column-order
+    ///     no-persisted-dependents invariant (spec 0001 Rule 5 layer 2), and UDTT/table column-order
     ///     parity (the contract behind ordinal TVP binding).
     /// </summary>
     /// <param name="fixture">The shared SQL Server.</param>
@@ -28,7 +28,7 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
                 await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
             }
 
-            // All seven types exist (three table-derived + four built-ins).
+            // All eight types exist (three table-derived + four built-ins + one standalone).
             List<string> types = await IntegrationHelpers.ColumnAsync(
                 connectionString,
                 "SELECT SCHEMA_NAME([schema_id]) + N'.' + [name] FROM [sys].[table_types] ORDER BY 1");
@@ -36,6 +36,7 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
                 [
                     "crm.CustomersList",
                     "dbo.BigIdList",
+                    "dbo.DocumentStatesList",
                     "dbo.GuidList",
                     "dbo.IdList",
                     "dbo.StringList",
@@ -87,7 +88,7 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
                 WHERE p.[class_desc] = N'TYPE' AND p.[permission_name] = N'EXECUTE' AND p.[state] = N'G'
                   AND USER_NAME(p.[grantee_principal_id]) = N'public'
                 """);
-            Assert.Equal(7, grantCount);
+            Assert.Equal(8, grantCount);
 
             // Rule 5 layer 2: nothing persisted references any type after the full chain.
             int dependents = await IntegrationHelpers.ScalarAsync<int>(
@@ -141,7 +142,7 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
 
             int typeCount = await IntegrationHelpers.ScalarAsync<int>(
                 connectionString, "SELECT COUNT(*) FROM [sys].[table_types]");
-            Assert.Equal(7, typeCount);
+            Assert.Equal(8, typeCount);
         }
 
         [Fact]
@@ -155,7 +156,7 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
 
             int typeCount = await IntegrationHelpers.ScalarAsync<int>(
                 connectionString, "SELECT COUNT(*) FROM [sys].[table_types]");
-            Assert.Equal(7, typeCount);
+            Assert.Equal(8, typeCount);
         }
     }
 }

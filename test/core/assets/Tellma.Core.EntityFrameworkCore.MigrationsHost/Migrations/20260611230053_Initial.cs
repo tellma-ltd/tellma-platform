@@ -128,6 +128,17 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
                 column: "InvoiceId");
 
             migrationBuilder.CreateTableType(
+                name: "DocumentStatesList",
+                schema: null,
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "State", StoreType = "smallint" },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "public" });
+
+            migrationBuilder.CreateTableType(
                 name: "CustomersList",
                 schema: "crm",
                 columns: new[]
@@ -210,6 +221,8 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTableType(name: "DocumentStatesList");
+
             migrationBuilder.DropTableType(name: "CustomersList", schema: "crm");
 
             migrationBuilder.DropTableType(name: "BigIdList", schema: "dbo");
