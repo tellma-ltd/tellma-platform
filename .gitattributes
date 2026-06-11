@@ -52,7 +52,6 @@
 *.docx              binary
 *.xlsx              binary
 
-
 # Specialized git diff drivers
 *.cs                diff=csharp
 *.py                diff=python
@@ -75,9 +74,9 @@
 **/wwwroot/lib/**   linguist-vendored
 
 # GitHub: Collapse generated files in PR diffs
-**/Migrations/*.cs  linguist-generated=true
-*.g.cs              linguist-generated=true
-*.Designer.cs       linguist-generated=true
+**/Migrations/**.cs linguist-generated=true
+**/*.g.cs           linguist-generated=true
+**/*.Designer.cs    linguist-generated=true
 
 # GitHub: Keep docs from skewing the language bar
 docs/**             linguist-documentation

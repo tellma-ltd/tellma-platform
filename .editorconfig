@@ -146,8 +146,8 @@ csharp_style_prefer_range_operator = true
 csharp_style_prefer_tuple_swap = true
 csharp_style_prefer_utf8_string_literals = true
 csharp_style_throw_expression = true
-csharp_style_unused_value_assignment_preference = discard_variable
-csharp_style_unused_value_expression_statement_preference = discard_variable
+csharp_style_unused_value_assignment_preference = discard_variable:none
+csharp_style_unused_value_expression_statement_preference = discard_variable:none
 
 # 'using' directive preferences
 csharp_using_directive_placement = outside_namespace
@@ -238,3 +238,12 @@ dotnet_naming_rule.types_should_be_pascal_case.style = pascal_case
 dotnet_naming_rule.non_field_members_should_be_pascal_case.severity = warning
 dotnet_naming_rule.non_field_members_should_be_pascal_case.symbols = non_field_members
 dotnet_naming_rule.non_field_members_should_be_pascal_case.style = pascal_case
+
+# Auto-generated files
+[**/Migrations/**.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.category-Style.severity = none
+
+[**/*.{g,Designer}.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.category-Style.severity = none
