@@ -79,8 +79,3 @@ jobs:
           dotnet build "$PKG_HOST"
           dotnet ef migrations add PackageProbe --project "$PKG_HOST" --startup-project "$PKG_HOST" --no-build
           grep -q "CreateTableType" "$PKG_HOST"/Migrations/*_PackageProbe.cs
-
-# The runtime/design publish boundary (spec 0001 Rule 3) is enforced by unit tests in
-# Tellma.Core.EntityFrameworkCore.Tests/Boundary (dependency-closure walk + output-directory
-# scan), which run in build-test on every OS. When a real web host exists, its pipeline should
-# additionally assert the literal publish output.
