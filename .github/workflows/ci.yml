@@ -70,6 +70,7 @@ jobs:
       # --- Package flow ---
       - name: Pack the libraries
         run: |
+          dotnet pack src/core/Tellma.Core.Abstractions -c Release -o artifacts/pkg
           dotnet pack src/core/Tellma.Core.EntityFrameworkCore -c Release -o artifacts/pkg
           dotnet pack src/core/Tellma.Core.EntityFrameworkCore.Design -c Release -o artifacts/pkg
       - name: Scaffold against the packages (package flow)

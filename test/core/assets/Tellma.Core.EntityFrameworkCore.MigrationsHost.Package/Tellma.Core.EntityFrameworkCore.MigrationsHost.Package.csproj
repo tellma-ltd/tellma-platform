@@ -22,6 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Tellma.Core.Abstractions" Version="1.0.0" />
     <PackageReference Include="Tellma.Core.EntityFrameworkCore" Version="1.0.0" />
     <PackageReference Include="Tellma.Core.EntityFrameworkCore.Design" Version="1.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9">
