@@ -17,12 +17,28 @@ using Tellma.Core.EntityFrameworkCore.TableTypes;
 namespace Tellma.Core.EntityFrameworkCore.Design
 {
     /// <summary>
-    ///     The SQL Server annotation code generator, additionally excluding the table-type
-    ///     definition annotations from generic <c>HasAnnotation</c> output — they are rendered as
-    ///     readable <c>HasTableTypeDefinition(...)</c> fluent calls by
-    ///     <see cref="TableTypesCSharpSnapshotGenerator" /> instead. The two services are
-    ///     registered together by <see cref="TableTypesDesignTimeServices" />, so a definition is
-    ///     never silently dropped from a snapshot.
+    ///     The SQL Server annotation code generator, additionally excluding two groups of
+    ///     table-type annotations from generic <c>HasAnnotation</c> output:
+    ///     <list type="bullet">
+    ///         <item>
+    ///             <description>
+    ///                 <b>Definitions</b> — rendered as readable <c>HasTableTypeDefinition(...)</c>
+    ///                 fluent calls by <see cref="TableTypesCSharpSnapshotGenerator" /> instead. The
+    ///                 two services are registered together by
+    ///                 <see cref="TableTypesDesignTimeServices" />, so a definition is never
+    ///                 silently dropped from a snapshot.
+    ///             </description>
+    ///         </item>
+    ///         <item>
+    ///             <description>
+    ///                 <b>Standalone configurations</b> — the raw registration input the finalizing
+    ///                 convention derives definitions from. Snapshots carry the contract (the
+    ///                 definitions); the raw input is live-model-only — nothing reads it on the
+    ///                 snapshot side (conventions never run there), and its JSON embeds versioned
+    ///                 assembly-qualified CLR type names that would churn snapshots on retargeting.
+    ///             </description>
+    ///         </item>
+    ///     </list>
     /// </summary>
     /// <param name="dependencies">The dependencies; pass through to the provider's generator.</param>
     public class TableTypesSqlServerAnnotationCodeGenerator(AnnotationCodeGeneratorDependencies dependencies)
@@ -32,7 +48,8 @@ namespace Tellma.Core.EntityFrameworkCore.Design
         public override IEnumerable<IAnnotation> FilterIgnoredAnnotations(IEnumerable<IAnnotation> annotations)
         {
             return base.FilterIgnoredAnnotations(annotations)
-                .Where(a => !a.Name.StartsWith(TableTypeAnnotationNames.DefinitionPrefix, StringComparison.Ordinal));
+                .Where(a => !a.Name.StartsWith(TableTypeAnnotationNames.DefinitionPrefix, StringComparison.Ordinal)
+                    && !a.Name.StartsWith(TableTypeAnnotationNames.StandalonePrefix, StringComparison.Ordinal));
         }
     }
 }

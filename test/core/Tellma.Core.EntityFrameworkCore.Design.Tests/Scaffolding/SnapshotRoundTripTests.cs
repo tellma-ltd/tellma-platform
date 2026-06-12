@@ -55,10 +55,13 @@ namespace Tellma.Core.EntityFrameworkCore.Design.Tests.Scaffolding
 
             // Definitions appear as readable fluent calls (one line per column in diffs), never as
             // raw JSON HasAnnotation strings; replaying them rebuilds the definition annotations
-            // byte-for-byte (the diff contract), which the empty diff below proves.
+            // byte-for-byte (the diff contract), which the empty diff below proves. Standalone
+            // CONFIG annotations (raw registration input) are live-model-only and stay out of
+            // snapshots entirely — the definition is the contract.
             Assert.Contains(".HasTableTypeDefinition(", snapshotCode, StringComparison.Ordinal);
             Assert.DoesNotContain(
                 $"HasAnnotation(\"{TableTypeAnnotationNames.DefinitionPrefix}", snapshotCode, StringComparison.Ordinal);
+            Assert.DoesNotContain(TableTypeAnnotationNames.StandalonePrefix, snapshotCode, StringComparison.Ordinal);
 
             Assembly assembly = DesignTestHelpers.Compile(snapshotCode, "RoundTripSnapshot");
             Type snapshotType = assembly.GetType("RoundTrip.Migrations.RoundTripModelSnapshot")!;
