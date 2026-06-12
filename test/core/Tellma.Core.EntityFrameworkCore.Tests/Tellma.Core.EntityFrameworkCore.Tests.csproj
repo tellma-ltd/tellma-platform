@@ -8,6 +8,8 @@
          register through the standalone route, playing the distribution's role. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Abstractions\Tellma.Core.Abstractions.csproj" />
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.EntityFrameworkCore\Tellma.Core.EntityFrameworkCore.csproj" />
+    <!-- DependencyContext, for the publish-boundary closure test. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyModel" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />

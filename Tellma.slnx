@@ -28,7 +28,6 @@
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.IntegrationTests/Tellma.Core.EntityFrameworkCore.IntegrationTests.csproj" />
   </Folder>
   <Folder Name="/test/assets/">
-    <Project Path="test/core/assets/Tellma.Core.EntityFrameworkCore.BoundaryHost/Tellma.Core.EntityFrameworkCore.BoundaryHost.csproj" />
     <Project Path="test/core/assets/Tellma.Core.EntityFrameworkCore.MigrationsHost/Tellma.Core.EntityFrameworkCore.MigrationsHost.csproj" />
   </Folder>
 </Solution>

@@ -26,8 +26,8 @@ that reference the `Microsoft.EntityFrameworkCore.Design` package and its depend
 design-time target and owns the scaffolded `Migrations/` folder. Never the web host: a runtime
 assembly containing these types would carry IL references to the Design tree, which either drags
 Roslyn into the web server's publish output or plants a latent `ReflectionTypeLoadException`.
-CI publishes a representative host and asserts no Design-tree assembly is present
-(`eng/check-publish-boundary.ps1`).
+Unit tests assert the runtime library's transitive dependency closure is free of the Design
+tree — which is exactly what a host's publish output ships.
 
 Because `Microsoft.EntityFrameworkCore.Design` is `developmentDependency=true`, NuGet applies
 `PrivateAssets=all` to our reference to it — so a migrator referencing this package must also

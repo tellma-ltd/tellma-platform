@@ -13,7 +13,7 @@ design-time package.
 | `SqlGeneration/` | Golden SQL for create/drop: PK, collation, grants, memory-optimized pre-flight (53101), drop guard (53102), idempotent-option pass-through |
 | `Standalone/` | Standalone types (spec 0001 §5): the ad-hoc fluent and class-derived routes, incl. the platform bulk shapes from `Tellma.Core.Abstractions` |
 | `Internal/` | Pinning tests for the internal-API quarantine (spec Rule 1): EF version band, differ ctor signature, service replacement |
-| `Boundary/` | Rule 3 mechanics: no Design references, no Tellma app references, internal-API usage confined to the quarantine namespace |
+| `Boundary/` | Rule 3 mechanics: no Design assembly references, a Design-free transitive dependency closure (the publish-output guarantee), a ground-truth output-directory scan, no Tellma app references, internal-API usage confined to the quarantine namespace |
 | `Seeding/` | The seed-band convention (spec §4) + the reusable `SeedBandAssert` helper distributions can copy |
 
 Test models live in `Infrastructure/TestModel.cs`; contexts are built with

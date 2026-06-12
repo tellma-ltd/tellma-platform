@@ -4,14 +4,18 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Reflection;
+using Microsoft.Extensions.DependencyModel;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
 
 namespace Tellma.Core.EntityFrameworkCore.Tests.Boundary
 {
     /// <summary>
-    ///     The hard runtime/design boundary (spec 0001 Rule 3) and the internal-API quarantine (Rule 1),
-    ///     enforced mechanically. The publish-output half of Rule 3 runs in CI against the
-    ///     BoundaryHost asset (<c>eng/check-publish-boundary.ps1</c>).
+    ///     The hard runtime/design boundary (spec 0001 Rule 3) and the internal-API quarantine
+    ///     (Rule 1), enforced mechanically: assembly-reference checks, a transitive
+    ///     dependency-closure check (the publish-output guarantee — a host referencing the runtime
+    ///     library can never end up with Design-tree assemblies in its output), and a ground-truth
+    ///     scan of this very test app's output directory. (When a real web host exists, its CI
+    ///     pipeline should additionally assert the literal publish output.)
     /// </summary>
     public class AssemblyReferenceTests
     {
@@ -20,15 +24,85 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Boundary
         /// <summary>The one namespace allowed to touch EF internal APIs.</summary>
         private const string QuarantineNamespace = "Tellma.Core.EntityFrameworkCore.TableTypes.Internal";
 
+        /// <summary>
+        ///     The EF Design dependency tree that must never reach a runtime host (the deny list of
+        ///     spec 0001 Rule 3): the Design package itself, Roslyn, templating, Humanizer, and
+        ///     Tellma's own design-time companion.
+        /// </summary>
+        private static readonly string[] DenyListPrefixes =
+        [
+            "Microsoft.EntityFrameworkCore.Design",
+            "Microsoft.CodeAnalysis",
+            "Mono.TextTemplating",
+            "Humanizer",
+            "Tellma.Core.EntityFrameworkCore.Design",
+        ];
+
+        private static bool IsDenied(string name)
+        {
+            return DenyListPrefixes.Any(prefix => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+        }
+
         [Fact]
         public void Runtime_assembly_references_no_design_assemblies()
         {
             string[] referenced = [.. RuntimeAssembly.GetReferencedAssemblies().Select(a => a.Name!)];
 
-            Assert.DoesNotContain("Microsoft.EntityFrameworkCore.Design", referenced);
-            Assert.DoesNotContain(referenced, name => name.StartsWith("Microsoft.CodeAnalysis", StringComparison.Ordinal));
-            Assert.DoesNotContain(referenced, name => name.StartsWith("Mono.TextTemplating", StringComparison.Ordinal));
-            Assert.DoesNotContain(referenced, name => name.StartsWith("Humanizer", StringComparison.Ordinal));
+            Assert.DoesNotContain(referenced, IsDenied);
+        }
+
+        [Fact]
+        public void Runtime_librarys_transitive_dependency_closure_contains_no_design_packages()
+        {
+            // The publish-output guarantee, asserted at its source: a framework-dependent publish
+            // ships exactly the app's dependency closure, so a host referencing only the runtime
+            // library can never receive Design-tree assemblies. Walks this test app's deps.json
+            // starting from the runtime library node (the test project deliberately references
+            // nothing Tellma but the runtime library and Abstractions).
+            DependencyContext context = DependencyContext.Default!;
+            var libraries = context.RuntimeLibraries.ToDictionary(l => l.Name, StringComparer.OrdinalIgnoreCase);
+
+            HashSet<string> closure = new(StringComparer.OrdinalIgnoreCase);
+            Queue<string> pending = new(["Tellma.Core.EntityFrameworkCore"]);
+            while (pending.Count > 0)
+            {
+                string name = pending.Dequeue();
+                if (!closure.Add(name) || !libraries.TryGetValue(name, out RuntimeLibrary? library))
+                {
+                    continue;
+                }
+
+                foreach (Dependency dependency in library.Dependencies)
+                {
+                    pending.Enqueue(dependency.Name);
+                }
+            }
+
+            // Sanity: the walk found the real graph (otherwise it asserted nothing).
+            Assert.Contains("Microsoft.EntityFrameworkCore.SqlServer", closure);
+
+            List<string> violations = [.. closure.Where(IsDenied)];
+            Assert.True(
+                violations.Count == 0,
+                "The runtime library's dependency closure must not contain Design-tree packages, but found: "
+                    + string.Join(", ", violations) + ". A runtime host referencing the library would ship them.");
+        }
+
+        [Fact]
+        public void Test_apps_output_directory_contains_no_design_assemblies()
+        {
+            // Ground truth on disk: this test app's output directory is what any host referencing
+            // the runtime library gets (plus test-host bits, which are themselves Design-free).
+            List<string> violations = [.. Directory.EnumerateFiles(AppContext.BaseDirectory, "*.dll")
+                .Select(file => Path.GetFileNameWithoutExtension(file)!)
+                .Where(IsDenied)];
+
+            Assert.True(
+                File.Exists(Path.Combine(AppContext.BaseDirectory, "Tellma.Core.EntityFrameworkCore.dll")),
+                "Sanity check failed: the runtime library is not in the test output.");
+            Assert.True(
+                violations.Count == 0,
+                "Design-tree assemblies found in the output directory: " + string.Join(", ", violations));
         }
 
         [Fact]

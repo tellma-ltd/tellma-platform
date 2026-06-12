@@ -30,6 +30,6 @@ libraries as **packages** from a local feed (`dotnet pack` → `artifacts/pkg`) 
 published-package discovery flow. It is intentionally excluded from `Tellma.slnx`; CI builds it
 explicitly after packing.
 
-The other asset, `...BoundaryHost`, is the web-host stand-in for the publish boundary check:
-it references the runtime library only, and CI asserts its publish output contains no
-Design-tree assemblies (`eng/check-publish-boundary.ps1`).
+(The runtime/design publish boundary — no Design-tree assemblies in a host's output — is
+enforced by unit tests in `Tellma.Core.EntityFrameworkCore.Tests/Boundary`, which walk the
+runtime library's transitive dependency closure and scan a Design-free app's output.)

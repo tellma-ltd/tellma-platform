@@ -53,7 +53,9 @@ separate DTO model — and creates/keeps it in sync through the same migrations 
 ## Rules this project lives by
 
 - **Never references `Microsoft.EntityFrameworkCore.Design`** (directly or transitively) and
-  never references Tellma application projects. Enforced by tests and a CI publish check.
+  never references Tellma application projects. Enforced by unit tests three ways: assembly
+  references, the transitive dependency closure (what a host's publish output ships), and a
+  ground-truth scan of a Design-free app's output directory.
 - **Internal EF APIs are quarantined** in a single file,
   [TableTypes/Internal/EfCoreInternalsAdapter.cs](TableTypes/Internal/EfCoreInternalsAdapter.cs),
   pinned by tests that fail loudly on EF upgrades. The EF version is pinned centrally in

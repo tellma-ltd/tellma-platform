@@ -264,8 +264,10 @@ surface the dynamic SQL generator, the drop guard, and tests consume):
    boundary is enforced mechanically: `Tellma.Core.EntityFrameworkCore` MUST NOT reference
    `Microsoft.EntityFrameworkCore.Design` (directly or transitively), and only the
    distribution's migrator project references `Tellma.Core.EntityFrameworkCore.Design`. The web server's
-   published output must contain no Design-package assemblies (Roslyn, templating); a CI
-   check asserts this.
+   published output must contain no Design-package assemblies (Roslyn, templating) — enforced
+   by unit tests asserting the runtime library's transitive dependency closure is free of the
+   Design tree (a framework-dependent publish ships exactly that closure); once a real web
+   host exists, its pipeline additionally asserts the literal publish output.
 4. **Design-time efficiency.** Migration/design-path code must not be unnecessarily
    inefficient: the finalizing convention makes one pass over the entity types, derived
    definitions are serialized once and diffed as strings, and parsed definitions are cached by
@@ -295,10 +297,11 @@ surface the dynamic SQL generator, the drop guard, and tests consume):
   assert the dependency guard fires when a proc referencing a type is planted.
 - **Seed-band test**: enumerate `IEntityType.GetSeedData()` across the model and assert all
   seeded key values fall inside the reserved band.
-- **Dependency-boundary check** per Rule 3: assert `Tellma.Core.EntityFrameworkCore` has no reference
-  to `Microsoft.EntityFrameworkCore.Design`, and that a representative publish of the web
-  server contains no Design-package assemblies. (Until a web host exists — Phase 1 — a minimal
-  host test asset referencing only the runtime library stands in for the publish check.)
+- **Dependency-boundary check** per Rule 3: assert `Tellma.Core.EntityFrameworkCore` has no
+  assembly reference to `Microsoft.EntityFrameworkCore.Design`, that its transitive dependency
+  closure (walked from the test app's `deps.json`) contains no Design-tree package, and that a
+  Design-free host's output directory carries no Design-tree assembly. (The literal
+  publish-output check moves to the real web host's pipeline once one exists.)
 - **Internal-API adapter tests** pinning behavior per Rule 1.
 
 ## Out of scope (decided elsewhere, recorded for traceability)

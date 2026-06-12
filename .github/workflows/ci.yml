@@ -80,14 +80,7 @@ jobs:
           dotnet ef migrations add PackageProbe --project "$PKG_HOST" --startup-project "$PKG_HOST" --no-build
           grep -q "CreateTableType" "$PKG_HOST"/Migrations/*_PackageProbe.cs
 
-  # Publish the web-host stand-in and assert the output carries no EF Design-tree assemblies
-  # (Roslyn, templating, Humanizer, Tellma's Design companion) — spec Rule 3.
-  boundary-publish:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-      - run: dotnet publish test/core/assets/Tellma.Core.EntityFrameworkCore.BoundaryHost -c Release -o artifacts/publish
-      - run: pwsh eng/check-publish-boundary.ps1 -PublishDirectory artifacts/publish
+# The runtime/design publish boundary (spec 0001 Rule 3) is enforced by unit tests in
+# Tellma.Core.EntityFrameworkCore.Tests/Boundary (dependency-closure walk + output-directory
+# scan), which run in build-test on every OS. When a real web host exists, its pipeline should
+# additionally assert the literal publish output.
