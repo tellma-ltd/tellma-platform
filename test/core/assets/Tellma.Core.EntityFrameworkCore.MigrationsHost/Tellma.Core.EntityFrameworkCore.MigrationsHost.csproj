@@ -10,6 +10,7 @@
          references the runtime + Design libraries and the EF Design package directly, owns the
          scaffolded Migrations/ folder, and serves as the dotnet-ef design-time target for the
          end-to-end CI leg. -->
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.Abstractions\Tellma.Core.Abstractions.csproj" />
     <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.EntityFrameworkCore\Tellma.Core.EntityFrameworkCore.csproj" />
     <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.EntityFrameworkCore.Design\Tellma.Core.EntityFrameworkCore.Design.csproj" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">

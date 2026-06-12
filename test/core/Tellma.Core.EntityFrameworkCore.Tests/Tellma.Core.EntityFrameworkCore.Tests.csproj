@@ -1,9 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <!-- Deliberately references the runtime project ONLY — no Microsoft.EntityFrameworkCore.Design.
-         This doubles as a standing proof that the runtime API surface (operations, differ, SQL
-         generation, metadata) is complete and usable without any design-time package. -->
+    <!-- Deliberately NO Microsoft.EntityFrameworkCore.Design reference. This doubles as a
+         standing proof that the runtime API surface (operations, differ, SQL generation,
+         metadata) is complete and usable without any design-time package. Abstractions is
+         referenced only for the platform's bulk shape classes (IdList, ...) that the tests
+         register through the standalone route, playing the distribution's role. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Abstractions\Tellma.Core.Abstractions.csproj" />
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.EntityFrameworkCore\Tellma.Core.EntityFrameworkCore.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />

@@ -80,12 +80,6 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         public const string Excluded = "Tellma:TableType:Excluded";
 
         /// <summary>
-        ///     Model annotation (<see cref="string" />): canonical JSON describing which built-in primitive table
-        ///     types (<see cref="BuiltInTableTypes" />) the model opted into, with their schema and grants.
-        /// </summary>
-        public const string BuiltIn = "Tellma:TableType:BuiltIn";
-
-        /// <summary>
         ///     Prefix of the model-level standalone-type configuration annotations (spec 0001 §5). The
         ///     full annotation name is <c>Tellma:TableTypeStandalone:&lt;schema&gt;.&lt;name&gt;</c> and the value is
         ///     the canonical JSON of the <see cref="StandaloneTableTypeConfiguration" />.

@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.EntityFrameworkCore;
+using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.EntityFrameworkCore.MigrationsHost.Model;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
 
@@ -12,8 +13,9 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost
     /// <summary>
     ///     The migrator-shaped host's context: a representative model exercising the table-types
     ///     feature surface — fluent and attribute opt-ins, pack→leaf attribute inheritance, column
-    ///     exclusion, rowversion, computed-column exclusion, grants, built-in primitive types,
-    ///     per-table ID sequences, and reserved-band seed data.
+    ///     exclusion, rowversion, computed-column exclusion, grants, standalone types (the
+    ///     platform's bulk shapes from Tellma.Core.Abstractions plus a custom one), per-table ID
+    ///     sequences, and reserved-band seed data.
     /// </summary>
     /// <param name="options">The context options.</param>
     public class MigrationsHostContext(DbContextOptions<MigrationsHostContext> options) : DbContext(options)
@@ -39,11 +41,17 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost
         /// <inheritdoc />
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            modelBuilder.HasBuiltInTableTypes(BuiltInTableTypes.All, schema: "dbo", "public");
+            // The platform's canonical bulk shapes (plain classes in Tellma.Core.Abstractions),
+            // registered through the same standalone route as any custom shape — the composition
+            // does this once per distribution.
+            modelBuilder.HasTableType<IdList>(schema: "dbo", buildAction: type => type.HasGrants("public"));
+            modelBuilder.HasTableType<BigIdList>(schema: "dbo", buildAction: type => type.HasGrants("public"));
+            modelBuilder.HasTableType<GuidList>(schema: "dbo", buildAction: type => type.HasGrants("public"));
+            modelBuilder.HasTableType<StringList>(schema: "dbo", buildAction: type => type.HasGrants("public"));
 
-            // A standalone table type (spec 0001 §5) derived from a plain class: bulk state updates
-            // without a paired table.
-            modelBuilder.HasTableType<DocumentState>(type => type.HasGrants("public"));
+            // A custom standalone table type (spec 0001 §5) derived from a plain class: bulk state
+            // updates without a paired table.
+            modelBuilder.HasTableType<DocumentState>(buildAction: type => type.HasGrants("public"));
 
             modelBuilder.Entity<Customer>(entity =>
             {

@@ -9,9 +9,9 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
 {
     /// <summary>
     ///     The complete derived definition of a SQL Server table type (UDTT): the row image of the
-    ///     paired table (or a hand-defined shape for the built-in primitive types). This is both
-    ///     the diffing contract — serialized as canonical JSON into a model annotation — and the
-    ///     runtime metadata surface consumed by dynamic SQL generation and TVP binding.
+    ///     paired table, or the resolved shape of a standalone type. This is both the diffing
+    ///     contract — serialized as canonical JSON into a model annotation — and the runtime
+    ///     metadata surface consumed by dynamic SQL generation and TVP binding.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -36,8 +36,8 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         public string? Schema { get; init; }
 
         /// <summary>
-        ///     The name of the table this type is derived from, or <see langword="null" /> for the
-        ///     built-in primitive types, which pair with no table.
+        ///     The name of the table this type is derived from, or <see langword="null" /> for
+        ///     standalone types, which pair with no table.
         /// </summary>
         public string? TableName { get; init; }
 

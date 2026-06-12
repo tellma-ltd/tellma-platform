@@ -35,7 +35,7 @@ namespace Tellma.Core.EntityFrameworkCore.BoundaryHost
         /// <inheritdoc />
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            modelBuilder.HasBuiltInTableTypes(BuiltInTableTypes.IdList);
+            modelBuilder.HasTableType("IdList", schema: "dbo", type => type.Column<int>("Id").HasKey("Id"));
             modelBuilder.Entity<Widget>(entity =>
             {
                 entity.ToTable("Widgets", "app");

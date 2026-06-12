@@ -39,7 +39,6 @@ namespace Tellma.Core.EntityFrameworkCore.Design.Tests.Scaffolding
                 });
                 mb.Entity<Product>(e => e.ToTable("Products", "inv"));
                 mb.Entity<Plain>(e => e.ToTable("Plains", "dbo"));
-                mb.HasBuiltInTableTypes(BuiltInTableTypes.All, schema: "dbo", "tellma_app");
                 mb.HasTableType("IdStateList", schema: "dbo", type => type
                     .Column<int>("Id")
                     .Column<short>("State")

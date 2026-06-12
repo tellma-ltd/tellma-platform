@@ -80,7 +80,7 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Standalone
             using ModelTestContext context = TestModel.CreateContext(mb =>
             {
                 mb.Entity<Plain>();
-                mb.HasTableType<DocumentAssignment>(type => type.HasGrants("tellma_app"));
+                mb.HasTableType<DocumentAssignment>(buildAction: type => type.HasGrants("tellma_app"));
             });
 
             TableTypeDefinition definition = Assert.Single(TestModel.GetFinalizedModel(context).GetTableTypes());
@@ -126,7 +126,7 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Standalone
             using ModelTestContext context = TestModel.CreateContext(mb =>
             {
                 mb.Entity<Plain>();
-                mb.HasTableType<DocumentAssignment>(type => type.HasKey("DocumentId", "AssigneeId"));
+                mb.HasTableType<DocumentAssignment>(buildAction: type => type.HasKey("DocumentId", "AssigneeId"));
             });
 
             TableTypeDefinition definition = Assert.Single(TestModel.GetFinalizedModel(context).GetTableTypes());
@@ -168,6 +168,39 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Standalone
 
                 """,
                 command.CommandText.Replace("\r\n", "\n", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void The_platform_bulk_shapes_register_through_the_standalone_route()
+        {
+            // The canonical bulk shapes are plain classes in Tellma.Core.Abstractions (no EF
+            // dependency, BCL DataAnnotations only) — registered like any standalone type; this
+            // is what a distribution's composition does once.
+            using ModelTestContext context = TestModel.CreateContext(mb =>
+            {
+                mb.Entity<Plain>();
+                mb.HasTableType<Tellma.Core.Abstractions.TableTypes.IdList>(schema: "dbo");
+                mb.HasTableType<Tellma.Core.Abstractions.TableTypes.BigIdList>(schema: "dbo");
+                mb.HasTableType<Tellma.Core.Abstractions.TableTypes.GuidList>(schema: "dbo");
+                mb.HasTableType<Tellma.Core.Abstractions.TableTypes.StringList>(schema: "dbo");
+            });
+
+            IReadOnlyList<TableTypeDefinition> types = TestModel.GetFinalizedModel(context).GetTableTypes();
+
+            Assert.Equal(["BigIdList", "GuidList", "IdList", "StringList"], types.Select(t => t.Name));
+            Assert.All(types, t =>
+            {
+                Assert.Equal("dbo", t.Schema);
+                Assert.Null(t.TableName);
+                Assert.Equal(["Id"], t.PrimaryKey);
+                TableTypeColumnDefinition column = Assert.Single(t.Columns);
+                Assert.Equal("Id", column.Name);
+                Assert.False(column.IsNullable);
+            });
+            Assert.Equal("int", types.Single(t => t.Name == "IdList").Columns[0].StoreType);
+            Assert.Equal("bigint", types.Single(t => t.Name == "BigIdList").Columns[0].StoreType);
+            Assert.Equal("uniqueidentifier", types.Single(t => t.Name == "GuidList").Columns[0].StoreType);
+            Assert.Equal("nvarchar(450)", types.Single(t => t.Name == "StringList").Columns[0].StoreType);
         }
 
         [Fact]

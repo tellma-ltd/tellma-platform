@@ -53,19 +53,32 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         /// </summary>
         /// <typeparam name="T">The class describing the type's shape.</typeparam>
         /// <param name="modelBuilder">The model builder.</param>
+        /// <param name="name">Overrides the type's name (default: <c>[TableType]</c>, else the class name).</param>
+        /// <param name="schema">Overrides the type's schema (default: <c>[TableType]</c>, else the database default).</param>
         /// <param name="buildAction">Optionally adds grants, memory-optimization, a key override, or extra columns.</param>
         /// <returns>The same builder instance so that multiple calls can be chained.</returns>
-        public static ModelBuilder HasTableType<T>(this ModelBuilder modelBuilder, Action<TableTypeBuilder>? buildAction = null)
+        public static ModelBuilder HasTableType<T>(
+            this ModelBuilder modelBuilder,
+            string? name = null,
+            string? schema = null,
+            Action<TableTypeBuilder>? buildAction = null)
             where T : class
         {
-            return HasTableType(modelBuilder, typeof(T), buildAction);
+            return HasTableType(modelBuilder, typeof(T), name, schema, buildAction);
         }
 
-        /// <inheritdoc cref="HasTableType{T}(ModelBuilder, Action{TableTypeBuilder}?)" />
+        /// <inheritdoc cref="HasTableType{T}(ModelBuilder, string?, string?, Action{TableTypeBuilder}?)" />
         /// <param name="modelBuilder">The model builder.</param>
         /// <param name="clrType">The class describing the type's shape.</param>
+        /// <param name="name">Overrides the type's name (default: <c>[TableType]</c>, else the class name).</param>
+        /// <param name="schema">Overrides the type's schema (default: <c>[TableType]</c>, else the database default).</param>
         /// <param name="buildAction">Optionally adds grants, memory-optimization, a key override, or extra columns.</param>
-        public static ModelBuilder HasTableType(this ModelBuilder modelBuilder, Type clrType, Action<TableTypeBuilder>? buildAction = null)
+        public static ModelBuilder HasTableType(
+            this ModelBuilder modelBuilder,
+            Type clrType,
+            string? name = null,
+            string? schema = null,
+            Action<TableTypeBuilder>? buildAction = null)
         {
             ArgumentNullException.ThrowIfNull(modelBuilder);
             ArgumentNullException.ThrowIfNull(clrType);
@@ -74,9 +87,14 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
             AddClassColumns(builder, clrType);
             buildAction?.Invoke(builder);
 
+            // Explicit arguments win over the class's [TableType] attribute, which wins over the
+            // class-name/default-schema fallbacks — letting attribute-free classes (e.g. shapes
+            // declared in EF-free assemblies such as Tellma.Core.Abstractions) pin a schema at
+            // registration.
             TableTypeAttribute? attribute = clrType.GetCustomAttribute<TableTypeAttribute>(inherit: true);
-            string name = attribute?.Name ?? clrType.Name;
-            return AddStandalone(modelBuilder, builder.Build(name, attribute?.Schema));
+            return AddStandalone(modelBuilder, builder.Build(
+                name ?? attribute?.Name ?? clrType.Name,
+                schema ?? attribute?.Schema));
         }
 
         /// <summary>
@@ -184,41 +202,6 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
                     }
                 }
             }
-        }
-
-        /// <summary>
-        ///     Opts the model into the library's built-in primitive table types for bulk delete /
-        ///     bulk lookup scenarios: <c>[IdList]</c> (<c>int</c>), <c>[BigIdList]</c> (<c>bigint</c>),
-        ///     <c>[GuidList]</c> (<c>uniqueidentifier</c>) and <c>[StringList]</c> (<c>nvarchar(450)</c>),
-        ///     each with a single <c>[Id]</c> primary-key column. They flow through the same
-        ///     annotations, differ, operations and SQL as table-derived types.
-        /// </summary>
-        /// <param name="modelBuilder">The model builder.</param>
-        /// <param name="types">Which built-in types to create.</param>
-        /// <param name="schema">The schema to create the types in; defaults to <c>dbo</c>.</param>
-        /// <param name="grants">
-        ///     Database principals that receive <c>GRANT EXECUTE ON TYPE</c> on each built-in type
-        ///     after every create/recreate.
-        /// </param>
-        /// <returns>The same builder instance so that multiple calls can be chained.</returns>
-        public static ModelBuilder HasBuiltInTableTypes(
-            this ModelBuilder modelBuilder,
-            BuiltInTableTypes types = BuiltInTableTypes.All,
-            string schema = "dbo",
-            params string[] grants)
-        {
-            ArgumentNullException.ThrowIfNull(modelBuilder);
-            ArgumentException.ThrowIfNullOrEmpty(schema);
-            ArgumentNullException.ThrowIfNull(grants);
-
-            BuiltInTableTypesConfiguration configuration = new()
-            {
-                Types = types,
-                Schema = schema,
-                Grants = grants,
-            };
-            modelBuilder.HasAnnotation(TableTypeAnnotationNames.BuiltIn, TableTypeJson.Serialize(configuration));
-            return modelBuilder;
         }
     }
 }

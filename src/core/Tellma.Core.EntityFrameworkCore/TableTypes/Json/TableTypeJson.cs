@@ -33,23 +33,6 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Json
                 ?? throw new InvalidOperationException($"Cannot deserialize a table-type definition from '{json}'.");
         }
 
-        /// <summary>Serializes the built-in table types configuration to its canonical JSON form.</summary>
-        /// <param name="configuration">The configuration to serialize.</param>
-        /// <returns>The canonical JSON string.</returns>
-        public static string Serialize(BuiltInTableTypesConfiguration configuration)
-        {
-            return JsonSerializer.Serialize(configuration, TableTypeJsonContext.Default.BuiltInTableTypesConfiguration);
-        }
-
-        /// <summary>Deserializes the built-in table types configuration from its canonical JSON form.</summary>
-        /// <param name="json">The canonical JSON produced by <see cref="Serialize(BuiltInTableTypesConfiguration)" />.</param>
-        /// <returns>The deserialized configuration.</returns>
-        public static BuiltInTableTypesConfiguration DeserializeBuiltIn(string json)
-        {
-            return JsonSerializer.Deserialize(json, TableTypeJsonContext.Default.BuiltInTableTypesConfiguration)
-                ?? throw new InvalidOperationException($"Cannot deserialize a built-in table-types configuration from '{json}'.");
-        }
-
         /// <summary>Serializes a standalone table-type configuration to its canonical JSON form.</summary>
         /// <param name="configuration">The configuration to serialize.</param>
         /// <returns>The canonical JSON string.</returns>
@@ -95,7 +78,6 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Json
         PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonSerializable(typeof(TableTypeDefinition))]
-    [JsonSerializable(typeof(BuiltInTableTypesConfiguration))]
     [JsonSerializable(typeof(StandaloneTableTypeConfiguration))]
     [JsonSerializable(typeof(IReadOnlyList<string>))]
     internal sealed partial class TableTypeJsonContext : JsonSerializerContext

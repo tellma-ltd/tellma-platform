@@ -27,7 +27,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         private static readonly ConcurrentDictionary<string, TableTypeDefinition> Cache = new(StringComparer.Ordinal);
 
         /// <summary>
-        ///     Returns all table types of the model — table-derived and built-in — sorted by schema
+        ///     Returns all table types of the model — table-derived and standalone — sorted by schema
         ///     then name.
         /// </summary>
         /// <param name="model">The model.</param>

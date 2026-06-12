@@ -64,7 +64,6 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
                 AddDefinition(definitions, definition, $"entity type '{entityType.DisplayName()}'");
             }
 
-            ExpandBuiltInTypes(modelBuilder, definitions);
             ExpandStandaloneTypes(modelBuilder, definitions);
 
             foreach ((string key, (string json, _)) in definitions)
@@ -354,56 +353,6 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
             // Explicit HasColumnOrder() trumps the structural layout, exactly as it does for the
             // table: ordered columns first (stable ascending), the rest keep the layout order.
             return [.. layout.Where(c => c.Order.HasValue).OrderBy(c => c.Order), .. layout.Where(c => !c.Order.HasValue)];
-        }
-
-        /// <summary>
-        ///     Expands the model's built-in primitive types opt-in
-        ///     (<see cref="TableTypeAnnotationNames.BuiltIn" />) into ordinary definition annotations
-        ///     so they flow through the same differ, operations and SQL as table-derived types.
-        /// </summary>
-        private static void ExpandBuiltInTypes(
-            IConventionModelBuilder modelBuilder,
-            Dictionary<string, (string Json, string Source)> definitions)
-        {
-            if (modelBuilder.Metadata.FindAnnotation(TableTypeAnnotationNames.BuiltIn)?.Value is not string configJson)
-            {
-                return;
-            }
-
-            BuiltInTableTypesConfiguration config = TableTypeJson.DeserializeBuiltIn(configJson);
-            foreach ((BuiltInTableTypes flag, string name, string storeType, int? maxLength) in new[]
-            {
-                (BuiltInTableTypes.IdList, "IdList", "int", (int?)null),
-                (BuiltInTableTypes.BigIdList, "BigIdList", "bigint", null),
-                (BuiltInTableTypes.GuidList, "GuidList", "uniqueidentifier", null),
-                (BuiltInTableTypes.StringList, "StringList", "nvarchar(450)", 450),
-            })
-            {
-                if (!config.Types.HasFlag(flag))
-                {
-                    continue;
-                }
-
-                TableTypeDefinition definition = new()
-                {
-                    Name = name,
-                    Schema = config.Schema,
-                    IsMemoryOptimized = false,
-                    Grants = config.Grants,
-                    PrimaryKey = ["Id"],
-                    Columns =
-                    [
-                        new TableTypeColumnDefinition
-                        {
-                            Name = "Id",
-                            StoreType = storeType,
-                            IsNullable = false,
-                            MaxLength = maxLength,
-                        },
-                    ],
-                };
-                AddDefinition(definitions, definition, $"built-in table type '{name}'");
-            }
         }
 
         /// <summary>

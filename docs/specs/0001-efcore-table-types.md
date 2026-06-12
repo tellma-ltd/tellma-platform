@@ -224,9 +224,12 @@ hand-maintained alternates of table row images — that is the rejected `ForSave
 Alternatives), with the same silent drift/truncation failure mode. If the shape is "this
 table's writable columns", derive it from the table.
 
-The library itself ships four predefined standalone types for bulk delete / bulk lookup —
-`[IdList]` (`[Id] int`), `[BigIdList]` (`[Id] bigint`), `[GuidList]` (`[Id] uniqueidentifier`),
-and `[StringList]` (`[Id] nvarchar(450)`) — opted into via `HasBuiltInTableTypes(...)`.
+The platform's four canonical bulk shapes — `[IdList]` (`[Id] int`), `[BigIdList]`
+(`[Id] bigint`), `[GuidList]` (`[Id] uniqueidentifier`), and `[StringList]`
+(`[Id] nvarchar(450)`) — are plain classes in `Tellma.Core.Abstractions` (BCL DataAnnotations
+only; that assembly stays EF-free), registered by each distribution's composition through the
+class-derived route like any other standalone type: there is deliberately **one mechanism, no
+special handling**, and the classes double as the TVP row DTOs.
 
 ### 6. Metadata API
 

@@ -12,7 +12,7 @@ using Tellma.Core.EntityFrameworkCore.TableTypes;
 namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
 {
     [DbContext(typeof(MigrationsHostContext))]
-    [Migration("20260611233921_Initial")]
+    [Migration("20260612001050_Initial")]
     partial class Initial
     {
         /// <inheritdoc />
@@ -22,8 +22,11 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
             modelBuilder
                 .HasAnnotation("ProductVersion", "10.0.9")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128)
-                .HasAnnotation("Tellma:TableType:BuiltIn", "{\"types\":15,\"schema\":\"dbo\",\"grants\":[\"public\"]}")
-                .HasAnnotation("Tellma:TableTypeStandalone:.DocumentStatesList", "{\"name\":\"DocumentStatesList\",\"isMemoryOptimized\":false,\"grants\":[\"public\"],\"key\":[\"Id\"],\"columns\":[{\"name\":\"Id\",\"clrTypeName\":\"System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e\",\"isNullable\":false},{\"name\":\"State\",\"clrTypeName\":\"System.Int16, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e\",\"isNullable\":false}]}");
+                .HasAnnotation("Tellma:TableTypeStandalone:.DocumentStatesList", "{\"name\":\"DocumentStatesList\",\"isMemoryOptimized\":false,\"grants\":[\"public\"],\"key\":[\"Id\"],\"columns\":[{\"name\":\"Id\",\"clrTypeName\":\"System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e\",\"isNullable\":false},{\"name\":\"State\",\"clrTypeName\":\"System.Int16, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e\",\"isNullable\":false}]}")
+                .HasAnnotation("Tellma:TableTypeStandalone:dbo.BigIdList", "{\"name\":\"BigIdList\",\"schema\":\"dbo\",\"isMemoryOptimized\":false,\"grants\":[\"public\"],\"key\":[\"Id\"],\"columns\":[{\"name\":\"Id\",\"clrTypeName\":\"System.Int64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e\",\"isNullable\":false}]}")
+                .HasAnnotation("Tellma:TableTypeStandalone:dbo.GuidList", "{\"name\":\"GuidList\",\"schema\":\"dbo\",\"isMemoryOptimized\":false,\"grants\":[\"public\"],\"key\":[\"Id\"],\"columns\":[{\"name\":\"Id\",\"clrTypeName\":\"System.Guid, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e\",\"isNullable\":false}]}")
+                .HasAnnotation("Tellma:TableTypeStandalone:dbo.IdList", "{\"name\":\"IdList\",\"schema\":\"dbo\",\"isMemoryOptimized\":false,\"grants\":[\"public\"],\"key\":[\"Id\"],\"columns\":[{\"name\":\"Id\",\"clrTypeName\":\"System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e\",\"isNullable\":false}]}")
+                .HasAnnotation("Tellma:TableTypeStandalone:dbo.StringList", "{\"name\":\"StringList\",\"schema\":\"dbo\",\"isMemoryOptimized\":false,\"grants\":[\"public\"],\"key\":[\"Id\"],\"columns\":[{\"name\":\"Id\",\"clrTypeName\":\"System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e\",\"isNullable\":false,\"maxLength\":450}]}");
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
