@@ -24,6 +24,13 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         /// <summary>Whether the type is created with <c>MEMORY_OPTIMIZED = ON</c>.</summary>
         public bool IsMemoryOptimized { get; init; }
 
+        /// <summary>
+        ///     Whether this context declares the type for runtime binding but does not own it: another
+        ///     context creates and sweeps the physical type (spec 0001 §3 → scoping). The type stays in
+        ///     the metadata API; the differ emits no create and the sweep ignores it.
+        /// </summary>
+        public bool ExcludeFromMigrations { get; init; }
+
         /// <summary>Database principals granted <c>EXECUTE</c> on the type after every (re)create.</summary>
         public IReadOnlyList<string> Grants { get; init; } = [];
 

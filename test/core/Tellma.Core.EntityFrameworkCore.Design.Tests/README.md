@@ -3,9 +3,9 @@
 Design-time tests — the suites that need the EF Design package and Roslyn:
 
 - `Scaffolding/OperationScaffoldingTests` — golden C# for the scaffolded
-  `CreateTableType`/`DropTableType` calls, plus the full round-trip: generated migration code is
-  compiled in memory with Roslyn, executed against a `MigrationBuilder`, and the rebuilt
-  operations compared with the originals.
+  `CreateTableType`/`DropTableType`/`CleanupTableTypes` calls, plus the full round-trip: generated
+  migration code is compiled in memory with Roslyn, executed against a `MigrationBuilder`, and the
+  rebuilt operations compared with the originals.
 - `Scaffolding/SnapshotRoundTripTests` — the standard EF technique: model → snapshot C# →
   compile → diff against the live model must be **empty**. Proves the table-type annotations
   (including column order) survive model snapshots with stock snapshot code generation.

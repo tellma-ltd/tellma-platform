@@ -21,6 +21,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         private readonly List<string> _key = [];
         private readonly List<string> _grants = [];
         private bool _memoryOptimized;
+        private bool _excludeFromMigrations;
 
         /// <summary>
         ///     Adds a column whose store type is resolved from <typeparamref name="T" /> and the
@@ -142,6 +143,21 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
             return this;
         }
 
+        /// <summary>
+        ///     Declares this type for runtime binding without this context owning it: another context
+        ///     creates and sweeps the physical type (spec 0001 §3 → scoping). Use when two contexts
+        ///     share one database and both need the same shape (e.g. <c>IdList</c>) — one owns it, the
+        ///     others exclude it. The type stays in the metadata API; the differ emits no create for it
+        ///     and the sweep ignores it.
+        /// </summary>
+        /// <param name="excluded">Whether the type is excluded from this context's migrations.</param>
+        /// <returns>The same builder instance so that multiple calls can be chained.</returns>
+        public virtual TableTypeBuilder ExcludeFromMigrations(bool excluded = true)
+        {
+            _excludeFromMigrations = excluded;
+            return this;
+        }
+
         /// <summary>Adds an already-shaped column (used by the class-derivation route).</summary>
         internal void AddColumn(StandaloneColumnConfiguration column)
         {
@@ -165,6 +181,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
                 Name = name,
                 Schema = schema,
                 IsMemoryOptimized = _memoryOptimized,
+                ExcludeFromMigrations = _excludeFromMigrations,
                 Grants = [.. _grants],
                 Key = [.. _key],
                 Columns = [.. _columns],

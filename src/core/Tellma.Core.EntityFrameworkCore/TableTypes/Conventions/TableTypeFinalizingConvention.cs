@@ -52,6 +52,10 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
             // actionable message naming both contributors.
             Dictionary<string, (string Json, string Source)> definitions = [];
 
+            // Definition keys this context declares but does not own (ExcludeFromMigrations): the
+            // differ skips creating and keeping them; the metadata API still exposes them.
+            HashSet<string> excludedKeys = [];
+
             foreach (IConventionEntityType entityType in modelBuilder.Metadata.GetEntityTypes().OrderBy(e => e.Name, StringComparer.Ordinal))
             {
                 TableTypeConfig? config = ResolveConfig(entityType);
@@ -61,14 +65,27 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
                 }
 
                 TableTypeDefinition definition = DeriveDefinition(entityType, config);
-                AddDefinition(definitions, definition, $"entity type '{entityType.DisplayName()}'");
+                string key = AddDefinition(definitions, definition, $"entity type '{entityType.DisplayName()}'");
+                if (config.ExcludeFromMigrations)
+                {
+                    excludedKeys.Add(key);
+                }
             }
 
-            ExpandStandaloneTypes(modelBuilder, definitions);
+            ExpandStandaloneTypes(modelBuilder, definitions, excludedKeys);
 
             foreach ((string key, (string json, _)) in definitions)
             {
                 modelBuilder.HasAnnotation(key, json);
+            }
+
+            // Record the excluded keys for the differ. Live-model only — filtered from snapshots,
+            // since the source side never needs it.
+            if (excludedKeys.Count > 0)
+            {
+                modelBuilder.HasAnnotation(
+                    TableTypeAnnotationNames.ExcludedKeys,
+                    TableTypeJson.SerializeGrants([.. excludedKeys.OrderBy(k => k, StringComparer.Ordinal)]));
             }
         }
 
@@ -127,24 +144,48 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
             string? schema = entityType.FindAnnotation(TableTypeAnnotationNames.Schema)?.Value as string ?? attribute?.Schema;
             bool excludeRowVersion = entityType.FindAnnotation(TableTypeAnnotationNames.ExcludeRowVersion)?.Value as bool? ?? false;
             bool memoryOptimized = entityType.FindAnnotation(TableTypeAnnotationNames.MemoryOptimized)?.Value as bool? ?? false;
+            bool excludeFromMigrations = entityType.FindAnnotation(TableTypeAnnotationNames.ExcludeFromMigrations)?.Value as bool? ?? false;
             IReadOnlyList<string> grants = entityType.FindAnnotation(TableTypeAnnotationNames.Grants)?.Value is string grantsJson
                 ? TableTypeJson.DeserializeGrants(grantsJson)
                 : [];
 
+            string resolvedName = name ?? (tableName + "List");
+            ValidateLogicalNameLength(resolvedName, $"entity type '{entityType.DisplayName()}'");
+
             return new TableTypeConfig(
-                Name: name ?? (tableName + "List"),
+                Name: resolvedName,
                 Schema: schema ?? entityType.GetSchema(),
                 TableName: tableName,
                 TableSchema: entityType.GetSchema(),
                 ExcludeRowVersion: excludeRowVersion,
                 MemoryOptimized: memoryOptimized,
+                ExcludeFromMigrations: excludeFromMigrations,
                 Grants: grants);
+        }
+
+        /// <summary>
+        ///     Validates that a logical name fits the content-addressed physical-name budget
+        ///     (<see cref="TableTypeNaming.MaxLogicalNameLength" />), since the physical name appends a
+        ///     hash suffix and must fit SQL Server's 128-character identifier limit.
+        /// </summary>
+        private static void ValidateLogicalNameLength(string name, string source)
+        {
+            if (name.Length > TableTypeNaming.MaxLogicalNameLength)
+            {
+                throw new InvalidOperationException(
+                    $"Table type name '{name}' from {source} is {name.Length} characters; the maximum is " +
+                    $"{TableTypeNaming.MaxLogicalNameLength} so that the content-hash-versioned physical name fits SQL " +
+                    "Server's 128-character identifier limit. Shorten the name with HasTableType(name, ...) or [TableType].");
+            }
         }
 
         /// <summary>Derives the full definition (columns, order, PK, facets) for one opted-in entity type.</summary>
         private TableTypeDefinition DeriveDefinition(IConventionEntityType entityType, TableTypeConfig config)
         {
             var storeObject = StoreObjectIdentifier.Table(config.TableName, config.TableSchema);
+
+            ValidateNoHiddenColumns(entityType, config, storeObject);
+            ValidateNoTphDerivedColumns(entityType, storeObject);
 
             IConventionKey primaryKey = entityType.FindPrimaryKey()
                 ?? throw new InvalidOperationException(
@@ -178,6 +219,78 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
                 PrimaryKey = primaryKeyColumns,
                 Columns = [.. ordered.Select(c => c.Column)],
             };
+        }
+
+        /// <summary>
+        ///     Rejects opt-ins whose mapped table carries columns the derivation cannot see — complex
+        ///     types, owned types mapped into the owner's table, and <c>ToJson()</c> mappings. A row
+        ///     image missing columns its table has is the silent drift/truncation failure mode that
+        ///     killed <c>ForSave</c> (spec 0001 §2), so it is made an impossible state, not a hazard.
+        /// </summary>
+        private static void ValidateNoHiddenColumns(
+            IConventionEntityType entityType,
+            TableTypeConfig config,
+            in StoreObjectIdentifier storeObject)
+        {
+            if (entityType.GetComplexProperties().Any())
+            {
+                string names = string.Join(", ", entityType.GetComplexProperties().Select(p => $"'{p.Name}'"));
+                throw new InvalidOperationException(
+                    $"Entity type '{entityType.DisplayName()}' opted into a table type but maps complex propert(y/ies) " +
+                    $"({names}) whose columns the table-type derivation cannot see. The row image would silently omit " +
+                    "them. Remove the opt-in, or model these without a complex type.");
+            }
+
+            foreach (IConventionNavigation navigation in entityType.GetNavigations())
+            {
+                IConventionEntityType target = navigation.TargetEntityType;
+                if (!target.IsOwned())
+                {
+                    continue;
+                }
+
+                if (target.IsMappedToJson())
+                {
+                    throw new InvalidOperationException(
+                        $"Entity type '{entityType.DisplayName()}' opted into a table type but navigation " +
+                        $"'{navigation.Name}' is mapped to JSON (ToJson). Its column is not part of the derived row " +
+                        "image; remove the opt-in or the JSON mapping.");
+                }
+
+                if (target.GetTableName() == config.TableName && target.GetSchema() == config.TableSchema)
+                {
+                    throw new InvalidOperationException(
+                        $"Entity type '{entityType.DisplayName()}' opted into a table type but owned navigation " +
+                        $"'{navigation.Name}' maps into the same table. Its columns are not part of the derived row " +
+                        "image; map the owned type to its own table or remove the opt-in.");
+                }
+            }
+        }
+
+        /// <summary>
+        ///     Rejects a TPH root opt-in when any derived type declares a mapped scalar column on the
+        ///     shared table — the root's image would silently miss it (spec 0001 §2). A
+        ///     pure-discriminator hierarchy (no derived-declared columns) passes, since its image is
+        ///     complete. TPT is unaffected: derived types map to their own tables, so no derived
+        ///     property maps to this store object.
+        /// </summary>
+        private static void ValidateNoTphDerivedColumns(IConventionEntityType entityType, in StoreObjectIdentifier storeObject)
+        {
+            StoreObjectIdentifier local = storeObject;
+            foreach (IConventionEntityType derived in entityType.GetDerivedTypes())
+            {
+                foreach (IConventionProperty property in derived.GetDeclaredProperties())
+                {
+                    if (property.GetColumnName(local) is not null)
+                    {
+                        throw new InvalidOperationException(
+                            $"Entity type '{entityType.DisplayName()}' is the root of a table-per-hierarchy (TPH) " +
+                            $"mapping and opted into a table type, but derived type '{derived.DisplayName()}' declares " +
+                            $"mapped column '{property.GetColumnName(local)}'. The root's row image would silently omit " +
+                            "it. Use leaf-only mapping (with TPT for a shared root) for UDTT-saved aggregates, or opt out.");
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -363,7 +476,8 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
         /// </summary>
         private void ExpandStandaloneTypes(
             IConventionModelBuilder modelBuilder,
-            Dictionary<string, (string Json, string Source)> definitions)
+            Dictionary<string, (string Json, string Source)> definitions,
+            HashSet<string> excludedKeys)
         {
             foreach (IConventionAnnotation annotation in modelBuilder.Metadata.GetAnnotations()
                 .Where(a => a.Name.StartsWith(TableTypeAnnotationNames.StandalonePrefix, StringComparison.Ordinal))
@@ -376,6 +490,8 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
 
                 StandaloneTableTypeConfiguration config = TableTypeJson.DeserializeStandalone(configJson);
                 string source = $"standalone table type '{config.Name}'";
+
+                ValidateLogicalNameLength(config.Name, source);
 
                 if (config.Columns.Count == 0)
                 {
@@ -409,7 +525,11 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
                     PrimaryKey = config.Key,
                     Columns = [.. config.Columns.Select(c => ResolveStandaloneColumn(config, c))],
                 };
-                AddDefinition(definitions, definition, source);
+                string key = AddDefinition(definitions, definition, source);
+                if (config.ExcludeFromMigrations)
+                {
+                    excludedKeys.Add(key);
+                }
             }
         }
 
@@ -452,8 +572,11 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
             };
         }
 
-        /// <summary>Adds a derived definition, failing with both contributors named on a duplicate type name.</summary>
-        private static void AddDefinition(
+        /// <summary>
+        ///     Adds a derived definition, failing with both contributors named on a duplicate type
+        ///     name, and returns its definition-annotation key.
+        /// </summary>
+        private static string AddDefinition(
             Dictionary<string, (string Json, string Source)> definitions,
             TableTypeDefinition definition,
             string source)
@@ -467,6 +590,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
             }
 
             definitions.Add(key, (TableTypeJson.Serialize(definition), source));
+            return key;
         }
 
         /// <summary>The resolved per-entity configuration input of the derivation.</summary>
@@ -477,6 +601,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
             string? TableSchema,
             bool ExcludeRowVersion,
             bool MemoryOptimized,
+            bool ExcludeFromMigrations,
             IReadOnlyList<string> Grants);
 
         /// <summary>A column included in the type, with the inputs the ordering rule needs.</summary>

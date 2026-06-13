@@ -89,7 +89,7 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Internal
         public void UseTableTypes_without_UseSqlServer_fails_validation()
         {
             DbContextOptionsBuilder optionsBuilder = new();
-            optionsBuilder.UseTableTypes().EnableServiceProviderCaching(false);
+            optionsBuilder.UseTableTypes("TestScope").EnableServiceProviderCaching(false);
 
             // Extension validation runs eagerly in the DbContext constructor.
             InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>

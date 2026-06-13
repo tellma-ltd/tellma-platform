@@ -20,14 +20,45 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
     /// </summary>
     public sealed class TableTypesOptionsExtension : IDbContextOptionsExtension
     {
-        /// <summary>Creates a new <see cref="TableTypesOptionsExtension" />.</summary>
-        public TableTypesOptionsExtension()
+        /// <summary>Creates a new <see cref="TableTypesOptionsExtension" /> with the given sweep scope.</summary>
+        /// <param name="sweepScope">
+        ///     The required sweep scope — a stable string naming which types this context owns
+        ///     (spec 0001 §3 → scoping). It has no default: deriving it from the context type name
+        ///     would silently change ownership on a class rename.
+        /// </param>
+        public TableTypesOptionsExtension(string sweepScope)
         {
+            ArgumentException.ThrowIfNullOrWhiteSpace(sweepScope);
+            SweepScope = sweepScope;
             Info = new ExtensionInfo(this);
         }
 
+        /// <summary>
+        ///     The sweep scope of this context — stamped on every created type and used both to scope
+        ///     the cleanup sweep to this context's own types and to reject a same-named type owned by
+        ///     another scope. See spec 0001 §3 → scoping.
+        /// </summary>
+        public string SweepScope { get; }
+
         /// <inheritdoc />
         public DbContextOptionsExtensionInfo Info { get; }
+
+        /// <summary>
+        ///     Reads the configured sweep scope from the context options. Callers are reached only
+        ///     when <c>UseTableTypes</c> ran (our services are registered only then), so the extension
+        ///     is always present.
+        /// </summary>
+        /// <param name="options">The context options.</param>
+        /// <returns>The configured sweep scope.</returns>
+        public static string GetSweepScope(IDbContextOptions options)
+        {
+            ArgumentNullException.ThrowIfNull(options);
+
+            return (options.FindExtension<TableTypesOptionsExtension>()
+                    ?? throw new InvalidOperationException(
+                        "The table-types extension is not configured on these options. Call UseTableTypes(sweepScope)."))
+                .SweepScope;
+        }
 
         /// <summary>
         ///     Installs the table-types services. <c>Replace</c> keeps the result independent of

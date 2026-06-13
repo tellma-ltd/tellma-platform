@@ -18,6 +18,13 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Diffing
     ///     real <see cref="IMigrationsModelDiffer" /> resolved from the context (i.e. including the
     ///     service replacement installed by <c>UseTableTypes()</c>).
     /// </summary>
+    /// <remarks>
+    ///     The differ emits <b>creates only</b> plus one trailing
+    ///     <see cref="CleanupTableTypesOperation" /> (spec 0001 §3): a definitional change yields a
+    ///     new content-addressed version created alongside the old, and the cleanup carries the
+    ///     complete keep-list of current physical names. It never emits a
+    ///     <see cref="DropTableTypeOperation" />.
+    /// </remarks>
     public class TableTypeDifferTests
     {
         /// <summary>Runs the full differ between the models of two contexts.</summary>
@@ -25,6 +32,16 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Diffing
         {
             IMigrationsModelDiffer differ = target.GetService<IMigrationsModelDiffer>();
             return differ.GetDifferences(TestModel.GetRelationalModel(source), TestModel.GetRelationalModel(target));
+        }
+
+        private static IReadOnlyList<CreateTableTypeOperation> Creates(IReadOnlyList<MigrationOperation> ops)
+        {
+            return [.. ops.OfType<CreateTableTypeOperation>()];
+        }
+
+        private static CleanupTableTypesOperation? Cleanup(IReadOnlyList<MigrationOperation> ops)
+        {
+            return ops.OfType<CleanupTableTypesOperation>().SingleOrDefault();
         }
 
         private static ModelTestContext OrdersContext(bool withType, Action<ModelBuilder>? extra = null)
@@ -45,31 +62,41 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Diffing
         }
 
         [Fact]
-        public void Opt_in_emits_a_create_after_all_base_operations()
+        public void Opt_in_emits_a_create_after_base_operations_and_a_trailing_cleanup()
         {
             using ModelTestContext source = OrdersContext(withType: false);
             using ModelTestContext target = OrdersContext(withType: true);
 
             IReadOnlyList<MigrationOperation> operations = Diff(source, target);
 
-            CreateTableTypeOperation create = Assert.IsType<CreateTableTypeOperation>(Assert.Single(operations));
+            Assert.DoesNotContain(operations, o => o is DropTableTypeOperation);
+            CreateTableTypeOperation create = Assert.Single(Creates(operations));
             Assert.Equal("OrdersList", create.Name);
             Assert.Equal("gl", create.Schema);
+            Assert.Equal("TestScope", create.Scope);
+            Assert.StartsWith("OrdersList_", create.PhysicalName);
             Assert.Equal(["Id"], create.PrimaryKey);
             Assert.Equal(["Id", "CustomerId", "Memo", "Total"], create.Columns.Select(c => c.Name));
+
+            // The cleanup is the last operation and keeps exactly the current version.
+            CleanupTableTypesOperation cleanup = Assert.IsType<CleanupTableTypesOperation>(operations[^1]);
+            Assert.Equal("TestScope", cleanup.Scope);
+            Assert.Equal([create.PhysicalName], cleanup.KeepList!);
+            Assert.Equal(CleanupTableTypesOperation.DefaultGracePeriodHours, cleanup.GracePeriodHours);
         }
 
         [Fact]
-        public void Opt_out_emits_a_drop_before_all_base_operations()
+        public void Opt_out_emits_no_drop_just_a_cleanup_dropping_the_name_from_the_keep_list()
         {
             using ModelTestContext source = OrdersContext(withType: true);
             using ModelTestContext target = OrdersContext(withType: false);
 
             IReadOnlyList<MigrationOperation> operations = Diff(source, target);
 
-            DropTableTypeOperation drop = Assert.IsType<DropTableTypeOperation>(Assert.Single(operations));
-            Assert.Equal("OrdersList", drop.Name);
-            Assert.Equal("gl", drop.Schema);
+            Assert.DoesNotContain(operations, o => o is DropTableTypeOperation);
+            Assert.Empty(Creates(operations));
+            CleanupTableTypesOperation cleanup = Assert.IsType<CleanupTableTypesOperation>(Assert.Single(operations));
+            Assert.Empty(cleanup.KeepList!);
         }
 
         [Fact]
@@ -82,7 +109,7 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Diffing
         }
 
         [Fact]
-        public void Initial_create_from_empty_database_emits_table_then_type()
+        public void Initial_create_from_empty_database_emits_table_then_type_then_cleanup()
         {
             using ModelTestContext target = OrdersContext(withType: true);
 
@@ -90,22 +117,23 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Diffing
             IReadOnlyList<MigrationOperation> operations =
                 differ.GetDifferences(null, TestModel.GetRelationalModel(target));
 
-            // Creates are appended after all base operations (tables, indexes, ...).
-            Assert.IsType<CreateTableTypeOperation>(operations[^1]);
+            // The cleanup sweep is the very last operation; the create precedes it but follows the table.
+            Assert.IsType<CleanupTableTypesOperation>(operations[^1]);
             Assert.Contains(operations, o => o is CreateTableOperation);
+            List<MigrationOperation> list = [.. operations];
             Assert.True(
-                operations.ToList().FindIndex(o => o is CreateTableOperation)
-                    < operations.ToList().FindIndex(o => o is CreateTableTypeOperation),
+                list.FindIndex(o => o is CreateTableOperation) < list.FindIndex(o => o is CreateTableTypeOperation),
                 "CreateTableType must come after CreateTable.");
+            Assert.True(
+                list.FindIndex(o => o is CreateTableTypeOperation) < list.FindIndex(o => o is CleanupTableTypesOperation),
+                "CleanupTableTypes must be the trailing operation.");
         }
 
         [Fact]
-        public void Column_add_remove_rename_and_retype_each_recreate_the_type()
+        public void Column_change_creates_a_new_version_without_a_drop()
         {
             using ModelTestContext source = OrdersContext(withType: true);
 
-            // Added column (Plain entity adds nothing to Orders; use a property exclusion toggle
-            // to add/remove a column from the type without touching the table).
             using ModelTestContext addedColumn = TestModel.CreateContext(mb =>
                 mb.Entity<Order>(e =>
                 {
@@ -117,12 +145,12 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Diffing
 
             IReadOnlyList<MigrationOperation> operations = Diff(source, addedColumn);
 
-            Assert.Equal(2, operations.Count);
-            Assert.IsType<DropTableTypeOperation>(operations[0]);
-            CreateTableTypeOperation create = Assert.IsType<CreateTableTypeOperation>(operations[1]);
+            Assert.DoesNotContain(operations, o => o is DropTableTypeOperation);
+            CreateTableTypeOperation create = Assert.Single(Creates(operations));
             Assert.DoesNotContain(create.Columns, c => c.Name == "Memo");
+            Assert.Equal([create.PhysicalName], Cleanup(operations)!.KeepList!);
 
-            // Retype: a facet change on a column flows into the type definition.
+            // Retype: a facet change flows into the definition and so into a new physical name.
             using ModelTestContext retyped = TestModel.CreateContext(mb =>
                 mb.Entity<Order>(e =>
                 {
@@ -134,16 +162,17 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Diffing
 
             operations = Diff(source, retyped);
 
-            // The base differ also emits an AlterColumn for the table; ours adds Drop+Create
-            // around it (drop first, create last).
-            Assert.IsType<DropTableTypeOperation>(operations[0]);
-            CreateTableTypeOperation retypedCreate = Assert.IsType<CreateTableTypeOperation>(operations[^1]);
+            Assert.DoesNotContain(operations, o => o is DropTableTypeOperation);
+            CreateTableTypeOperation retypedCreate = Assert.Single(Creates(operations));
             Assert.Equal("nvarchar(500)", retypedCreate.Columns.Single(c => c.Name == "Memo").StoreType);
             Assert.Contains(operations, o => o is AlterColumnOperation);
+            // The new physical name differs from the source version's (content-addressed).
+            CreateTableTypeOperation sourceVersion = Assert.Single(Creates(Diff(OrdersContext(withType: false), source)));
+            Assert.NotEqual(sourceVersion.PhysicalName, retypedCreate.PhysicalName);
         }
 
         [Fact]
-        public void Pure_reorder_recreates_the_type()
+        public void Pure_reorder_creates_a_new_version()
         {
             using ModelTestContext source = OrdersContext(withType: true);
             using ModelTestContext reordered = TestModel.CreateContext(mb =>
@@ -157,17 +186,16 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Diffing
 
             IReadOnlyList<MigrationOperation> operations = Diff(source, reordered);
 
-            Assert.Contains(operations, o => o is DropTableTypeOperation);
-            CreateTableTypeOperation create = operations.OfType<CreateTableTypeOperation>().Single();
+            Assert.DoesNotContain(operations, o => o is DropTableTypeOperation);
+            CreateTableTypeOperation create = Assert.Single(Creates(operations));
             Assert.Equal("Memo", create.Columns[0].Name);
         }
 
         [Fact]
-        public void Config_changes_recreate_the_type()
+        public void Config_changes_create_new_versions_without_drops()
         {
             using ModelTestContext source = OrdersContext(withType: true);
 
-            // Grants change.
             using ModelTestContext granted = TestModel.CreateContext(mb =>
                 mb.Entity<Order>(e =>
                 {
@@ -178,10 +206,9 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Diffing
                 }));
 
             IReadOnlyList<MigrationOperation> operations = Diff(source, granted);
-            Assert.Equal(2, operations.Count);
-            Assert.Equal(["tellma_app"], operations.OfType<CreateTableTypeOperation>().Single().Grants);
+            Assert.DoesNotContain(operations, o => o is DropTableTypeOperation);
+            Assert.Equal(["tellma_app"], Assert.Single(Creates(operations)).Grants);
 
-            // Memory-optimized change.
             using ModelTestContext memoryOptimized = TestModel.CreateContext(mb =>
                 mb.Entity<Order>(e =>
                 {
@@ -192,10 +219,10 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Diffing
                 }));
 
             operations = Diff(source, memoryOptimized);
-            Assert.Equal(2, operations.Count);
-            Assert.True(operations.OfType<CreateTableTypeOperation>().Single().IsMemoryOptimized);
+            Assert.DoesNotContain(operations, o => o is DropTableTypeOperation);
+            Assert.True(Assert.Single(Creates(operations)).IsMemoryOptimized);
 
-            // Rename (definitional: drop old name, create new name).
+            // Rename: a new version under the new name; the old name is simply not in the keep-list.
             using ModelTestContext renamed = TestModel.CreateContext(mb =>
                 mb.Entity<Order>(e =>
                 {
@@ -205,8 +232,10 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Diffing
                 }));
 
             operations = Diff(source, renamed);
-            Assert.Equal("OrdersList", operations.OfType<DropTableTypeOperation>().Single().Name);
-            Assert.Equal("OrderRows", operations.OfType<CreateTableTypeOperation>().Single().Name);
+            Assert.DoesNotContain(operations, o => o is DropTableTypeOperation);
+            CreateTableTypeOperation renamedCreate = Assert.Single(Creates(operations));
+            Assert.Equal("OrderRows", renamedCreate.Name);
+            Assert.Equal([renamedCreate.PhysicalName], Cleanup(operations)!.KeepList!);
         }
 
         [Fact]
@@ -229,8 +258,7 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Diffing
                 mb.Entity<Product>(e => e.ToTable("Products", "gl"));
             });
 
-            IReadOnlyList<MigrationOperation> operations = Diff(source, target);
-            List<CreateTableTypeOperation> creates = [.. operations.OfType<CreateTableTypeOperation>()];
+            List<CreateTableTypeOperation> creates = [.. Creates(Diff(source, target))];
 
             Assert.Equal(["aa.PlainsList", "gl.OrdersList", "gl.ProductsList"], creates.Select(c => $"{c.Schema}.{c.Name}"));
         }

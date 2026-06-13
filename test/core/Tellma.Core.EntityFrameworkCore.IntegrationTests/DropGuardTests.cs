@@ -37,13 +37,16 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
             await using MigrationsHostContext context = IntegrationHelpers.CreateMigrationsHostContext(connectionString);
             await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
+            // Resolve the deployed physical name (it carries a content-hash suffix).
+            string physical = (await IntegrationHelpers.GetPhysicalNameAsync(connectionString, "gl", "InvoicesList"))!;
+
             // Plant a persisted module that references a generated type (forbidden by the
             // architecture — exactly what the guard exists to catch).
             await IntegrationHelpers.ExecuteAsync(
                 connectionString,
-                "CREATE PROCEDURE [dbo].[UsesInvoicesList] @rows [gl].[InvoicesList] READONLY AS SELECT COUNT(*) FROM @rows");
+                $"CREATE PROCEDURE [dbo].[UsesInvoicesList] @rows [gl].[{physical}] READONLY AS SELECT COUNT(*) FROM @rows");
 
-            string dropSql = GenerateSql(context, new DropTableTypeOperation { Name = "InvoicesList", Schema = "gl" });
+            string dropSql = GenerateSql(context, new DropTableTypeOperation { Name = physical, Schema = "gl" });
 
             SqlException exception = await Assert.ThrowsAsync<SqlException>(
                 () => IntegrationHelpers.ExecuteAsync(connectionString, dropSql));
@@ -53,17 +56,19 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
 
             // The type survived the failed drop.
             int count = await IntegrationHelpers.ScalarAsync<int>(
-                connectionString, "SELECT COUNT(*) FROM [sys].[table_types] WHERE [name] = N'InvoicesList'");
+                connectionString, $"SELECT COUNT(*) FROM [sys].[table_types] WHERE [name] = N'{physical}'");
             Assert.Equal(1, count);
 
-            // Remove the offender; the same drop now succeeds, and the type can be recreated
-            // (drop + create is how every definitional change deploys).
+            // Remove the offender; the same drop now succeeds, and the type can be recreated.
             await IntegrationHelpers.ExecuteAsync(connectionString, "DROP PROCEDURE [dbo].[UsesInvoicesList]", dropSql);
 
             CreateTableTypeOperation recreate = new()
             {
                 Name = "InvoicesList",
+                PhysicalName = physical,
                 Schema = "gl",
+                Scope = nameof(MigrationsHostContext),
+                DefinitionHash = new string('0', 64),
                 PrimaryKey = ["Id"],
                 Grants = ["public"],
             };
@@ -71,7 +76,7 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
             await IntegrationHelpers.ExecuteAsync(connectionString, GenerateSql(context, recreate));
 
             count = await IntegrationHelpers.ScalarAsync<int>(
-                connectionString, "SELECT COUNT(*) FROM [sys].[table_types] WHERE [name] = N'InvoicesList'");
+                connectionString, $"SELECT COUNT(*) FROM [sys].[table_types] WHERE [name] = N'{physical}'");
             Assert.Equal(1, count);
         }
     }

@@ -152,22 +152,20 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Standalone
             IReadOnlyList<MigrationOperation> operations = differ.GetDifferences(
                 TestModel.GetRelationalModel(source), TestModel.GetRelationalModel(target));
 
-            CreateTableTypeOperation create = Assert.IsType<CreateTableTypeOperation>(Assert.Single(operations));
+            // Like any other type: a content-addressed create plus the trailing cleanup, no drop.
+            Assert.DoesNotContain(operations, o => o is DropTableTypeOperation);
+            CreateTableTypeOperation create = Assert.Single(operations.OfType<CreateTableTypeOperation>());
+            Assert.StartsWith("IdStateList_", create.PhysicalName);
+            Assert.IsType<CleanupTableTypesOperation>(operations[^1]);
 
             IMigrationsSqlGenerator generator = target.GetService<IMigrationsSqlGenerator>();
-            MigrationCommand command = Assert.Single(generator.Generate([create]));
+            string sql = Assert.Single(generator.Generate([create])).CommandText.Replace("\r\n", "\n", StringComparison.Ordinal);
 
-            Assert.Equal(
-                """
-                CREATE TYPE [dbo].[IdStateList] AS TABLE (
-                    [Id] int NOT NULL,
-                    [State] smallint NOT NULL,
-                    PRIMARY KEY CLUSTERED ([Id])
-                );
-                GRANT EXECUTE ON TYPE::[dbo].[IdStateList] TO [tellma_app];
-
-                """,
-                command.CommandText.Replace("\r\n", "\n", StringComparison.Ordinal));
+            Assert.Contains($"CREATE TYPE [dbo].[{create.PhysicalName}] AS TABLE (", sql, StringComparison.Ordinal);
+            Assert.Contains("[Id] int NOT NULL,", sql, StringComparison.Ordinal);
+            Assert.Contains("[State] smallint NOT NULL,", sql, StringComparison.Ordinal);
+            Assert.Contains("PRIMARY KEY CLUSTERED ([Id])", sql, StringComparison.Ordinal);
+            Assert.Contains($"GRANT EXECUTE ON TYPE::[dbo].[{create.PhysicalName}] TO [tellma_app];", sql, StringComparison.Ordinal);
         }
 
         [Fact]

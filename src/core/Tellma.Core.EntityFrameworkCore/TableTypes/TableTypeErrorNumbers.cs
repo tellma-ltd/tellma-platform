@@ -19,9 +19,30 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         public const int MemoryOptimizedNotSupported = 53101;
 
         /// <summary>
-        ///     Thrown by the drop-time dependency guard when a persisted SQL module references the
-        ///     type being dropped (per the architecture, all UDTT consumers must be dynamic SQL).
+        ///     Thrown by the drop-time dependency guard of an explicitly authored <c>DropTableType</c>
+        ///     when a persisted SQL module references the type being dropped (per the architecture,
+        ///     all UDTT consumers must be dynamic SQL). The cleanup sweep runs the same check but
+        ///     skips and surfaces instead of throwing — see spec 0001 §3 → Drop safety.
         /// </summary>
         public const int DroppedTypeHasDependents = 53102;
+
+        /// <summary>
+        ///     Thrown by the idempotent <c>CREATE TYPE</c> when a type already exists at the
+        ///     content-addressed physical name but its stamped definition hash does not match — i.e.
+        ///     the bytes at that name are not the shape this app would bind. An <b>integrity</b>
+        ///     failure: an astronomically unlikely truncated-hash collision, or an out-of-band type
+        ///     squatting on the name. Distinct from
+        ///     <see cref="TableTypeOwnedByAnotherScope" />, where the data is safe.
+        /// </summary>
+        public const int TableTypeContentMismatch = 53103;
+
+        /// <summary>
+        ///     Thrown by the idempotent <c>CREATE TYPE</c> when a type already exists at the physical
+        ///     name with a <b>matching</b> hash but a foreign owning scope — i.e. two contexts both
+        ///     try to own one physical type. An <b>ownership</b> error (the data is safe): one context
+        ///     must own it and the others declare <c>ExcludeFromMigrations()</c>. Distinct from the
+        ///     content-integrity <see cref="TableTypeContentMismatch" />.
+        /// </summary>
+        public const int TableTypeOwnedByAnotherScope = 53104;
     }
 }

@@ -26,7 +26,7 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost
             DbContextOptionsBuilder<MigrationsHostContext> optionsBuilder = new();
             optionsBuilder
                 .UseSqlServer(connectionString)
-                .UseTableTypes();
+                .UseTableTypes(sweepScope: nameof(MigrationsHostContext));
             return new MigrationsHostContext(optionsBuilder.Options);
         }
     }

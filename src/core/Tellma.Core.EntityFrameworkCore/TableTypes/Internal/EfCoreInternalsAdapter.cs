@@ -49,12 +49,14 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Internal
     /// <param name="relationalAnnotationProvider">The relational annotation provider; passes through to the base differ.</param>
     /// <param name="rowIdentityMapFactory">The row identity map factory; passes through to the base differ.</param>
     /// <param name="commandBatchPreparerDependencies">The command batch preparer dependencies; pass through to the base differ.</param>
+    /// <param name="contextOptions">The context options, used only to read the configured sweep scope.</param>
     public class TableTypesMigrationsModelDiffer(
         IRelationalTypeMappingSource typeMappingSource,
         IMigrationsAnnotationProvider migrationsAnnotationProvider,
         IRelationalAnnotationProvider relationalAnnotationProvider,
         IRowIdentityMapFactory rowIdentityMapFactory,
-        CommandBatchPreparerDependencies commandBatchPreparerDependencies)
+        CommandBatchPreparerDependencies commandBatchPreparerDependencies,
+        IDbContextOptions contextOptions)
         : MigrationsModelDiffer(
             typeMappingSource,
             migrationsAnnotationProvider,
@@ -62,16 +64,22 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Internal
             rowIdentityMapFactory,
             commandBatchPreparerDependencies)
     {
+        private readonly IDbContextOptions _contextOptions = contextOptions;
+
         /// <inheritdoc />
         public override IReadOnlyList<MigrationOperation> GetDifferences(IRelationalModel? source, IRelationalModel? target)
         {
             IReadOnlyList<MigrationOperation> operations = base.GetDifferences(source, target);
 
-            (IReadOnlyList<DropTableTypeOperation> drops, IReadOnlyList<CreateTableTypeOperation> creates) =
-                TableTypeDiffer.Diff(source?.Model, target?.Model);
-            return drops.Count == 0 && creates.Count == 0
-                ? operations
-                : [.. drops, .. operations, .. creates];
+            string scope = TableTypesOptionsExtension.GetSweepScope(_contextOptions);
+            (IReadOnlyList<CreateTableTypeOperation> creates, CleanupTableTypesOperation? cleanup) =
+                TableTypeDiffer.Diff(source?.Model, target?.Model, scope);
+
+            // Creates after all table operations (types depend on nothing); the cleanup sweep is the
+            // migration's last command (spec 0001 §3 — it must run non-transactionally at the end).
+            return (creates.Count == 0 && cleanup is null) ? operations
+                : cleanup is null ? [.. operations, .. creates]
+                : [.. operations, .. creates, cleanup];
         }
 
         /// <inheritdoc />

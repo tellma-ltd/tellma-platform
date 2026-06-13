@@ -7,7 +7,8 @@ that reference the `Microsoft.EntityFrameworkCore.Design` package and its depend
 (Roslyn, templating):
 
 - [TableTypesCSharpMigrationOperationGenerator](TableTypesCSharpMigrationOperationGenerator.cs) —
-  scaffolds `migrationBuilder.CreateTableType(...)` / `.DropTableType(...)` into migration files.
+  scaffolds `migrationBuilder.CreateTableType(...)` / `.DropTableType(...)` /
+  `.CleanupTableTypes(...)` into migration files.
 - [TableTypesCSharpMigrationsGenerator](TableTypesCSharpMigrationsGenerator.cs) — adds the
   Tellma namespaces to a migration file's `using` directives when table-type operations are
   present (EF's own namespace collection never covers custom operations).

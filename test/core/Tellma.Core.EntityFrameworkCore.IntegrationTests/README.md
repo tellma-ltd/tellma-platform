@@ -4,13 +4,15 @@ Containerized SQL Server tests (`Category=Integration`): the committed Migration
 chain is applied to a fresh database, then the deployed types are asserted through the catalog
 views.
 
-- `ApplyMigrationsTests` — types exist with correct columns **in order**, primary keys, grants;
-  zero `sys.sql_expression_dependencies` rows (spec Rule 5 layer 2); UDTT/table **column-order
-  parity** (pins the library's public-API ordering rule against EF's private CREATE TABLE
-  sorting); `Migrate()` re-run no-op; the `--idempotent` script runs twice cleanly;
-  `EnsureCreated()` creates types too.
-- `DropGuardTests` — a planted procedure referencing a type makes the drop fail with error
-  53102 naming the procedure; after removing it, drop + recreate succeed.
+- `ApplyMigrationsTests` — types exist (resolved by their logical-name stamp; physical names
+  carry a content-hash suffix) with correct columns **in order**, primary keys, grants, and scope
+  stamps; zero `sys.sql_expression_dependencies` rows (spec Rule 5 layer 2); UDTT/table
+  **column-order parity** (pins the library's public-API ordering rule against EF's private CREATE
+  TABLE sorting); a definitional change creates a **new version alongside** the old, which a
+  zero-grace sweep then collects; `Migrate()` re-run no-op; the `--idempotent` script runs twice
+  cleanly; `EnsureCreated()` creates types too.
+- `DropGuardTests` — a planted procedure referencing a type makes a manual `DropTableType` fail
+  with error 53102 naming the procedure; after removing it, the drop and a recreate succeed.
 - `MemoryOptimizedTests` — a memory-optimized type deploys with `is_memory_optimized = 1` on
   XTP-capable hosts (skipped otherwise, e.g. LocalDB).
 

@@ -15,11 +15,14 @@ separate DTO model — and creates/keeps it in sync through the same migrations 
 
 ## How it works
 
-1. **Opt-in**: `optionsBuilder.UseSqlServer(...).UseTableTypes()` activates the extension
-   ([TableTypesOptionsExtension](TableTypes/TableTypesOptionsExtension.cs)). Tables opt in via
+1. **Opt-in**: `optionsBuilder.UseSqlServer(...).UseTableTypes(sweepScope)` activates the
+   extension ([TableTypesOptionsExtension](TableTypes/TableTypesOptionsExtension.cs)). The sweep
+   scope is required (a stable string naming which types this context owns — no default, so a
+   context rename never changes ownership). Tables opt in via
    `entity.HasTableType(name?, schema?)` or `[TableType]` on the entity class (inherited by
    leaf classes; fluent wins over attributes). Per-table knobs: column exclusions, rowversion
-   exclusion, `MEMORY_OPTIMIZED = ON`, and `GRANT EXECUTE` principals
+   exclusion, `MEMORY_OPTIMIZED = ON`, `GRANT EXECUTE` principals, and `ExcludeFromMigrations()`
+   (declare a type for binding without this context owning it, when two contexts share a database)
    ([TableTypeBuilderExtensions](TableTypes/TableTypeBuilderExtensions.cs)).
 2. **Derivation**: at model-finalizing time,
    [TableTypeFinalizingConvention](TableTypes/Conventions/TableTypeFinalizingConvention.cs)
@@ -32,15 +35,24 @@ separate DTO model — and creates/keeps it in sync through the same migrations 
    [adapter](TableTypes/Internal/EfCoreInternalsAdapter.cs)) compares them verbatim — never
    re-deriving from the snapshot side. In snapshot files each definition is rendered as a
    readable `HasTableTypeDefinition(...)` call (one line per column in PR diffs) whose replay
-   rebuilds the annotation byte-for-byte. SQL Server has no `ALTER TYPE`, so every definitional
-   change emits drop + create within the same migration.
+   rebuilds the annotation byte-for-byte. The differ emits **creates only** (each under a
+   content-addressed physical name `<logical>_<hash8>`) plus one trailing
+   `CleanupTableTypes` sweep carrying the keep-list — never drops. A definitional change is a
+   new version created alongside the old one, which the sweep retires after a grace period; an
+   N−1 app keeps binding the version it was compiled against (spec 0001 §3 → Versioning).
 4. **SQL**: [TableTypesSqlServerMigrationsSqlGenerator](TableTypes/TableTypesSqlServerMigrationsSqlGenerator.cs)
-   renders `CREATE TYPE ... AS TABLE`, the In-Memory OLTP pre-flight (error 53101), the
-   drop-time dependency guard over `sys.sql_expression_dependencies` (error 53102, naming the
-   offending modules), and `GRANT EXECUTE ON TYPE` after every (re)create.
+   renders the idempotent `CREATE TYPE ... AS TABLE` (keyed on the physical name; completes the
+   stamps of an aborted prior create, else throws 53103 on a content mismatch or 53104 on a
+   foreign-scope conflict), the extended-property stamps (logical name, scope, definition hash),
+   the In-Memory OLTP pre-flight (error 53101), the cleanup sweep (mark/clear/collect, with the
+   dependency guard skipping-and-surfacing), the manual-drop dependency guard (error 53102,
+   naming the offending modules), and `GRANT EXECUTE ON TYPE` with every version create. Values
+   are escaped and identifiers delimited — no command parameters (the idempotent script is a
+   static file).
 5. **Metadata API** ([TableTypeModelExtensions](TableTypes/TableTypeModelExtensions.cs)):
-   `model.GetTableTypes()`, `entityType.GetTableType()` — ordered columns with store types and
-   facets, PK, grants. Runtime TVP binding MUST be driven by this API, never hard-coded
+   `model.GetTableTypes()`, `entityType.GetTableType()` — logical and physical (versioned) name,
+   ordered columns with store types and facets, PK, grants. Runtime TVP binding MUST be driven by
+   this API, addressing each type by its physical name from the app's own model, never hard-coded
    ordinals: column order is the contract.
 6. **Standalone types** (spec 0001 §5), paired with no table, for operation-specific shapes
    (bulk state updates, bulk assignments): ad hoc via

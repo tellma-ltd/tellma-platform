@@ -46,7 +46,10 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
             CreateTableTypeOperation operation = new()
             {
                 Name = "HotIdList",
+                PhysicalName = "HotIdList_0badf00d",
                 Schema = "dbo",
+                Scope = nameof(MigrationsHostContext),
+                DefinitionHash = new string('0', 64),
                 PrimaryKey = ["Id"],
                 IsMemoryOptimized = true,
             };
@@ -58,7 +61,7 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
 
             int isMemoryOptimized = await IntegrationHelpers.ScalarAsync<int>(
                 connectionString,
-                "SELECT CAST([is_memory_optimized] AS int) FROM [sys].[table_types] WHERE [name] = N'HotIdList'");
+                "SELECT CAST([is_memory_optimized] AS int) FROM [sys].[table_types] WHERE [name] = N'HotIdList_0badf00d'");
             Assert.Equal(1, isMemoryOptimized);
         }
     }

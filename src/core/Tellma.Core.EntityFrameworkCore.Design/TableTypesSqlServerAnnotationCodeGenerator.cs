@@ -49,7 +49,8 @@ namespace Tellma.Core.EntityFrameworkCore.Design
         {
             return base.FilterIgnoredAnnotations(annotations)
                 .Where(a => !a.Name.StartsWith(TableTypeAnnotationNames.DefinitionPrefix, StringComparison.Ordinal)
-                    && !a.Name.StartsWith(TableTypeAnnotationNames.StandalonePrefix, StringComparison.Ordinal));
+                    && !a.Name.StartsWith(TableTypeAnnotationNames.StandalonePrefix, StringComparison.Ordinal)
+                    && a.Name != TableTypeAnnotationNames.ExcludedKeys);
         }
     }
 }

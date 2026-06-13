@@ -135,6 +135,35 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         }
 
         /// <summary>
+        ///     Declares the entity's table type for runtime binding without this context owning it:
+        ///     another context creates and sweeps the physical type (spec 0001 §3 → scoping). Use when
+        ///     two contexts share one database and both map the same table. The type stays in the
+        ///     metadata API; the differ emits no create for it and the sweep ignores it.
+        /// </summary>
+        /// <param name="entityTypeBuilder">The entity type builder.</param>
+        /// <param name="excluded">Whether the table type is excluded from this context's migrations.</param>
+        /// <returns>The same builder instance so that multiple calls can be chained.</returns>
+        public static EntityTypeBuilder ExcludeTableTypeFromMigrations(
+            this EntityTypeBuilder entityTypeBuilder,
+            bool excluded = true)
+        {
+            ArgumentNullException.ThrowIfNull(entityTypeBuilder);
+
+            entityTypeBuilder.HasAnnotation(TableTypeAnnotationNames.ExcludeFromMigrations, excluded);
+            return entityTypeBuilder;
+        }
+
+        /// <inheritdoc cref="ExcludeTableTypeFromMigrations(EntityTypeBuilder, bool)" />
+        /// <typeparam name="TEntity">The entity type being configured.</typeparam>
+        public static EntityTypeBuilder<TEntity> ExcludeTableTypeFromMigrations<TEntity>(
+            this EntityTypeBuilder<TEntity> entityTypeBuilder,
+            bool excluded = true)
+            where TEntity : class
+        {
+            return (EntityTypeBuilder<TEntity>)ExcludeTableTypeFromMigrations((EntityTypeBuilder)entityTypeBuilder, excluded);
+        }
+
+        /// <summary>
         ///     Excludes the table's rowversion/concurrency-token column from the table type. By
         ///     default it is included as a nullable <c>binary(8)</c> column (nullable because insert
         ///     rows carry no value; present so bulk UPDATEs can perform optimistic-concurrency checks).

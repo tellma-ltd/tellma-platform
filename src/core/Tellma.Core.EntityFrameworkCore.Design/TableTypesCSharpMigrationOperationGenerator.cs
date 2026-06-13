@@ -46,6 +46,9 @@ namespace Tellma.Core.EntityFrameworkCore.Design
                 case DropTableTypeOperation dropTableType:
                     Generate(dropTableType, builder);
                     break;
+                case CleanupTableTypesOperation cleanup:
+                    Generate(cleanup, builder);
+                    break;
                 default:
                     base.Generate(operation, builder);
                     break;
@@ -69,8 +72,23 @@ namespace Tellma.Core.EntityFrameworkCore.Design
                     .AppendLine(",");
 
                 builder
+                    .Append("physicalName: ")
+                    .Append(Code.Literal(operation.PhysicalName))
+                    .AppendLine(",");
+
+                builder
                     .Append("schema: ")
                     .Append(operation.Schema is null ? "null" : Code.Literal(operation.Schema))
+                    .AppendLine(",");
+
+                builder
+                    .Append("scope: ")
+                    .Append(Code.Literal(operation.Scope))
+                    .AppendLine(",");
+
+                builder
+                    .Append("definitionHash: ")
+                    .Append(Code.Literal(operation.DefinitionHash))
                     .AppendLine(",");
 
                 builder.AppendLine("columns: new[]");
@@ -132,6 +150,31 @@ namespace Tellma.Core.EntityFrameworkCore.Design
             if (operation.IsMemoryOptimized)
             {
                 builder.Append(", memoryOptimized: true");
+            }
+
+            builder.Append(")");
+
+            Annotations(operation.GetAnnotations(), builder);
+        }
+
+        /// <summary>Scaffolds a <c>.CleanupTableTypes(...)</c> call with the frozen keep-list and grace period.</summary>
+        /// <param name="operation">The cleanup operation.</param>
+        /// <param name="builder">The builder the generated code is appended to.</param>
+        protected virtual void Generate(CleanupTableTypesOperation operation, IndentedStringBuilder builder)
+        {
+            ArgumentNullException.ThrowIfNull(operation);
+            ArgumentNullException.ThrowIfNull(builder);
+
+            builder
+                .Append(".CleanupTableTypes(")
+                .Append("scope: ")
+                .Append(Code.Literal(operation.Scope))
+                .Append(", keepList: ")
+                .Append(Code.Literal(operation.KeepList ?? []));
+
+            if (operation.GracePeriodHours != CleanupTableTypesOperation.DefaultGracePeriodHours)
+            {
+                builder.Append(", gracePeriodHours: ").Append(Code.Literal(operation.GracePeriodHours));
             }
 
             builder.Append(")");

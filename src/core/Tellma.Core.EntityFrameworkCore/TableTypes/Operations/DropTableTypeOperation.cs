@@ -8,18 +8,29 @@ using Microsoft.EntityFrameworkCore.Migrations.Operations;
 namespace Tellma.Core.EntityFrameworkCore.TableTypes.Operations
 {
     /// <summary>
-    ///     A <see cref="MigrationOperation" /> that drops a SQL Server table type (UDTT), preceded
-    ///     by a guard that fails with error <see cref="TableTypeErrorNumbers.DroppedTypeHasDependents" />
-    ///     — naming the offending modules — if any persisted SQL module references the type.
+    ///     A <see cref="MigrationOperation" /> that drops one SQL Server table type (UDTT) by its
+    ///     <b>physical</b> name, preceded by a guard that fails with error
+    ///     <see cref="TableTypeErrorNumbers.DroppedTypeHasDependents" /> — naming the offending
+    ///     modules — if any persisted SQL module references the type.
     /// </summary>
     /// <remarks>
-    ///     <see cref="MigrationOperation.IsDestructiveChange" /> stays <see langword="false" />:
-    ///     dropping a type is pure DDL metadata with no data loss, and every definitional change
-    ///     scaffolds a drop + create pair, so a destructive warning would be constant noise.
+    ///     <para>
+    ///         The differ never emits this operation: routine retirement is the cleanup sweep's job
+    ///         (<see cref="CleanupTableTypesOperation" />). It exists for <b>manual authoring</b> —
+    ///         an immediate, deliberate removal — and therefore keeps the hard dependency THROW,
+    ///         where the operator's intent is "this must go now" (spec 0001 §3 → Drop safety).
+    ///     </para>
+    ///     <para>
+    ///         <see cref="MigrationOperation.IsDestructiveChange" /> stays <see langword="false" />:
+    ///         dropping a type is pure DDL metadata with no data loss.
+    ///     </para>
     /// </remarks>
     public class DropTableTypeOperation : MigrationOperation
     {
-        /// <summary>The table type's name, e.g. <c>InvoicesList</c>.</summary>
+        /// <summary>
+        ///     The table type's <b>physical</b> name (<c>&lt;logical&gt;_&lt;hash8&gt;</c>) — a drop
+        ///     targets exactly one deployed version.
+        /// </summary>
         public string Name { get; set; } = null!;
 
         /// <summary>

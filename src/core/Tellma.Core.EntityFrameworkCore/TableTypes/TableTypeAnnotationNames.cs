@@ -92,5 +92,25 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         ///     value is the canonical JSON of the <see cref="TableTypeDefinition" />.
         /// </summary>
         public const string DefinitionPrefix = "Tellma:TableTypeDefinition:";
+
+        /// <summary>
+        ///     Entity-type or standalone-config flag (<see cref="bool" />): when <see langword="true" />,
+        ///     the type stays in the model and metadata API (so the context binds it at runtime) but is
+        ///     <b>not</b> created or swept by this context's migrations — another context owns the
+        ///     physical type (spec 0001 §3 → scoping; mirrors EF Core's table-level
+        ///     <c>ExcludeFromMigrations</c>). For standalone types this rides on the
+        ///     <see cref="StandaloneTableTypeConfiguration" />; for table-derived types it is this
+        ///     entity-type annotation.
+        /// </summary>
+        public const string ExcludeFromMigrations = "Tellma:TableType:ExcludeFromMigrations";
+
+        /// <summary>
+        ///     Model-level annotation (<see cref="string" />): JSON array of the definition keys
+        ///     (<c>&lt;schema&gt;.&lt;name&gt;</c>) the convention resolved as excluded from this context's
+        ///     migrations. The differ reads it to skip those creates and omit them from the cleanup
+        ///     keep-list; the metadata API ignores it (the definitions remain bindable). Live-model
+        ///     only — filtered from snapshots, since the source side never needs it.
+        /// </summary>
+        public const string ExcludedKeys = "Tellma:TableTypes:ExcludedKeys";
     }
 }

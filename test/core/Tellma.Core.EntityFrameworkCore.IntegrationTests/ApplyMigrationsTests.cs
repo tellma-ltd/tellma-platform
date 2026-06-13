@@ -4,8 +4,11 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Tellma.Core.EntityFrameworkCore.IntegrationTests.Infrastructure;
 using Tellma.Core.EntityFrameworkCore.MigrationsHost;
+using Tellma.Core.EntityFrameworkCore.TableTypes;
+using Tellma.Core.EntityFrameworkCore.TableTypes.Operations;
 
 namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
 {
@@ -28,10 +31,17 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
                 await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
             }
 
-            // All eight types exist (three table-derived + four built-ins + one standalone).
+            // All eight types exist (three table-derived + four built-ins + one standalone),
+            // listed by their logical names (physical names carry a content-hash suffix).
             List<string> types = await IntegrationHelpers.ColumnAsync(
                 connectionString,
-                "SELECT SCHEMA_NAME([schema_id]) + N'.' + [name] FROM [sys].[table_types] ORDER BY 1");
+                """
+                SELECT SCHEMA_NAME(tt.[schema_id]) + N'.' + CONVERT(nvarchar(max), ep.[value])
+                FROM [sys].[table_types] tt
+                INNER JOIN [sys].[extended_properties] ep ON ep.[class] = 6 AND ep.[major_id] = tt.[user_type_id]
+                    AND ep.[name] = N'Tellma:TableType:LogicalName'
+                ORDER BY 1
+                """);
             Assert.Equal(
                 [
                     "crm.CustomersList",
@@ -54,26 +64,27 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
                 ["Id", "CustomerId", "Memo", "Total", "RowVersion"],
                 await IntegrationHelpers.GetTypeColumnsAsync(connectionString, "gl", "InvoicesList"));
 
+            string invoicesPhysical = (await IntegrationHelpers.GetPhysicalNameAsync(connectionString, "gl", "InvoicesList"))!;
             string? rowVersionType = await IntegrationHelpers.ScalarAsync<string>(
                 connectionString,
-                """
+                $"""
                 SELECT TYPE_NAME(c.[system_type_id]) + N'(' + CAST(c.[max_length] AS nvarchar(10)) + N')'
                 FROM [sys].[table_types] tt
                 INNER JOIN [sys].[columns] c ON c.[object_id] = tt.[type_table_object_id]
-                WHERE tt.[name] = N'InvoicesList' AND c.[name] = N'RowVersion'
+                WHERE tt.[name] = N'{invoicesPhysical}' AND c.[name] = N'RowVersion'
                 """);
             Assert.Equal("binary(8)", rowVersionType);
 
             // The primary key mirrors the table's.
             List<string> pkColumns = await IntegrationHelpers.ColumnAsync(
                 connectionString,
-                """
+                $"""
                 SELECT c.[name]
                 FROM [sys].[table_types] tt
                 INNER JOIN [sys].[indexes] i ON i.[object_id] = tt.[type_table_object_id] AND i.[is_primary_key] = 1
                 INNER JOIN [sys].[index_columns] ic ON ic.[object_id] = i.[object_id] AND ic.[index_id] = i.[index_id]
                 INNER JOIN [sys].[columns] c ON c.[object_id] = ic.[object_id] AND c.[column_id] = ic.[column_id]
-                WHERE tt.[name] = N'InvoicesList'
+                WHERE tt.[name] = N'{invoicesPhysical}'
                 ORDER BY ic.[key_ordinal]
                 """);
             Assert.Equal(["Id"], pkColumns);
@@ -90,11 +101,85 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
                 """);
             Assert.Equal(8, grantCount);
 
+            // Every type is stamped with its owning scope (spec 0001 §3 → Versioning).
+            int scopeStamps = await IntegrationHelpers.ScalarAsync<int>(
+                connectionString,
+                """
+                SELECT COUNT(*) FROM [sys].[extended_properties]
+                WHERE [class] = 6 AND [name] = N'Tellma:TableType:Scope'
+                  AND CONVERT(nvarchar(max), [value]) = N'MigrationsHostContext'
+                """);
+            Assert.Equal(8, scopeStamps);
+
             // Rule 5 layer 2: nothing persisted references any type after the full chain.
             int dependents = await IntegrationHelpers.ScalarAsync<int>(
                 connectionString,
                 "SELECT COUNT(*) FROM [sys].[sql_expression_dependencies] WHERE [referenced_class] = 6");
             Assert.Equal(0, dependents);
+        }
+
+        [Fact]
+        public async Task A_new_version_coexists_and_the_sweep_collects_the_old_one()
+        {
+            string connectionString = await fixture.CreateDatabaseAsync("versioning");
+            await using MigrationsHostContext context = IntegrationHelpers.CreateMigrationsHostContext(connectionString);
+            await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
+
+            string v1 = (await IntegrationHelpers.GetPhysicalNameAsync(connectionString, "gl", "InvoicesList"))!;
+
+            // Deploy a second version of InvoicesList under a different physical name — exactly what a
+            // definitional change scaffolds (create-alongside, never an in-place recreate).
+            Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator generator =
+                context.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator>();
+            CreateTableTypeOperation v2 = new()
+            {
+                Name = "InvoicesList",
+                PhysicalName = "InvoicesList_v2c0ffee",
+                Schema = "gl",
+                Scope = nameof(MigrationsHostContext),
+                DefinitionHash = new string('a', 64),
+                PrimaryKey = ["Id"],
+                Grants = ["public"],
+            };
+            v2.Columns.Add(new TableTypeColumnDefinition { Name = "Id", StoreType = "int" });
+            await IntegrationHelpers.ExecuteAsync(connectionString, Assert.Single(generator.Generate([v2])).CommandText);
+
+            // Both versions coexist (the N−1 app keeps binding v1 through the deployment window).
+            int invoicesVersions = await IntegrationHelpers.ScalarAsync<int>(
+                connectionString,
+                """
+                SELECT COUNT(*) FROM [sys].[table_types] tt
+                INNER JOIN [sys].[extended_properties] ep ON ep.[class] = 6 AND ep.[major_id] = tt.[user_type_id]
+                    AND ep.[name] = N'Tellma:TableType:LogicalName' AND CONVERT(nvarchar(max), ep.[value]) = N'InvoicesList'
+                """);
+            Assert.Equal(2, invoicesVersions);
+
+            // The keep-list is every current physical name except v1. A zero-grace sweep marks v1
+            // (first pass) then collects it (second pass) — the immediate-collection path.
+            List<string> keep = await IntegrationHelpers.ColumnAsync(
+                connectionString,
+                $"""
+                SELECT tt.[name] FROM [sys].[table_types] tt
+                INNER JOIN [sys].[extended_properties] ep ON ep.[class] = 6 AND ep.[major_id] = tt.[user_type_id]
+                    AND ep.[name] = N'Tellma:TableType:Scope' AND CONVERT(nvarchar(max), ep.[value]) = N'{nameof(MigrationsHostContext)}'
+                WHERE tt.[name] <> N'{v1}'
+                """);
+            CleanupTableTypesOperation sweep = new()
+            {
+                Scope = nameof(MigrationsHostContext),
+                KeepList = [.. keep],
+                GracePeriodHours = 0,
+            };
+            string sweepSql = Assert.Single(generator.Generate([sweep])).CommandText;
+            await IntegrationHelpers.ExecuteAsync(connectionString, sweepSql); // marks v1 orphaned
+            await IntegrationHelpers.ExecuteAsync(connectionString, sweepSql); // collects v1 (grace elapsed)
+
+            int v1Remaining = await IntegrationHelpers.ScalarAsync<int>(
+                connectionString, $"SELECT COUNT(*) FROM [sys].[table_types] WHERE [name] = N'{v1}'");
+            Assert.Equal(0, v1Remaining);
+            int v2Remaining = await IntegrationHelpers.ScalarAsync<int>(
+                connectionString, "SELECT COUNT(*) FROM [sys].[table_types] WHERE [name] = N'InvoicesList_v2c0ffee'");
+            Assert.Equal(1, v2Remaining);
         }
 
         [Fact]

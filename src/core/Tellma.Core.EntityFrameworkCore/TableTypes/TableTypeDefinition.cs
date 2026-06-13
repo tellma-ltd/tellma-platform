@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Text.Json.Serialization;
+using Tellma.Core.EntityFrameworkCore.TableTypes.Json;
 
 namespace Tellma.Core.EntityFrameworkCore.TableTypes
 {
@@ -74,9 +75,19 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
 
         /// <summary>
         ///     The schema-qualified, bracket-delimited display name of the type, e.g.
-        ///     <c>[gl].[InvoicesList]</c>, for diagnostics and error messages.
+        ///     <c>[gl].[InvoicesList]</c>, for diagnostics and error messages. Uses the logical
+        ///     <see cref="Name" />.
         /// </summary>
         [JsonIgnore]
         public string DisplayName => Schema is null ? $"[{Name}]" : $"[{Schema}].[{Name}]";
+
+        /// <summary>
+        ///     The deployed <b>physical</b> name (<c>&lt;Name&gt;_&lt;hash8&gt;</c>) — the content-addressed
+        ///     name the type is created under and that runtime TVP binding must address (spec 0001 §3
+        ///     → Versioning). Derived from the canonical JSON of this definition, so it matches the
+        ///     name the differ computed. Not part of the canonical JSON (it is derived from it).
+        /// </summary>
+        [JsonIgnore]
+        public string PhysicalName => TableTypeNaming.PhysicalName(Name, TableTypeNaming.ComputeHash(TableTypeJson.Serialize(this)));
     }
 }

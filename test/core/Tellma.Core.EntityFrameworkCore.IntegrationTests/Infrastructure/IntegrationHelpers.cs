@@ -19,7 +19,7 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests.Infrastructure
             DbContextOptionsBuilder<MigrationsHostContext> optionsBuilder = new();
             optionsBuilder
                 .UseSqlServer(connectionString)
-                .UseTableTypes();
+                .UseTableTypes(sweepScope: nameof(MigrationsHostContext));
             return new MigrationsHostContext(optionsBuilder.Options);
         }
 
@@ -71,17 +71,37 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests.Infrastructure
             await ExecuteAsync(connectionString, [.. batches.Where(b => !string.IsNullOrWhiteSpace(b))]);
         }
 
-        /// <summary>The ordered column names of a table type, from the catalog views.</summary>
-        public static Task<List<string>> GetTypeColumnsAsync(string connectionString, string schema, string name)
+        /// <summary>
+        ///     The ordered column names of a table type, resolved by its <b>logical</b> name (the
+        ///     deployed physical name carries a content-hash suffix; the logical name is read from the
+        ///     <c>Tellma:TableType:LogicalName</c> extended-property stamp).
+        /// </summary>
+        public static Task<List<string>> GetTypeColumnsAsync(string connectionString, string schema, string logicalName)
         {
             return ColumnAsync(
                 connectionString,
                 $"""
                 SELECT c.[name]
                 FROM [sys].[table_types] tt
+                INNER JOIN [sys].[extended_properties] ep ON ep.[class] = 6 AND ep.[major_id] = tt.[user_type_id]
+                    AND ep.[name] = N'Tellma:TableType:LogicalName' AND CONVERT(nvarchar(max), ep.[value]) = N'{logicalName}'
                 INNER JOIN [sys].[columns] c ON c.[object_id] = tt.[type_table_object_id]
-                WHERE tt.[name] = N'{name}' AND SCHEMA_NAME(tt.[schema_id]) = N'{schema}'
+                WHERE SCHEMA_NAME(tt.[schema_id]) = N'{schema}'
                 ORDER BY c.[column_id]
+                """);
+        }
+
+        /// <summary>The physical (content-hash-suffixed) name of a table type, by its logical name.</summary>
+        public static Task<string?> GetPhysicalNameAsync(string connectionString, string schema, string logicalName)
+        {
+            return ScalarAsync<string>(
+                connectionString,
+                $"""
+                SELECT tt.[name]
+                FROM [sys].[table_types] tt
+                INNER JOIN [sys].[extended_properties] ep ON ep.[class] = 6 AND ep.[major_id] = tt.[user_type_id]
+                    AND ep.[name] = N'Tellma:TableType:LogicalName' AND CONVERT(nvarchar(max), ep.[value]) = N'{logicalName}'
+                WHERE SCHEMA_NAME(tt.[schema_id]) = N'{schema}'
                 """);
         }
 

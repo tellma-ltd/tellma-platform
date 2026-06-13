@@ -30,7 +30,10 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Infrastructure
         ///     Creates a context with <c>UseSqlServer().UseTableTypes()</c> and the given model.
         ///     Nothing connects: tests only read the model and generate SQL text.
         /// </summary>
-        public static ModelTestContext CreateContext(Action<ModelBuilder> configureModel, bool useTableTypes = true)
+        public static ModelTestContext CreateContext(
+            Action<ModelBuilder> configureModel,
+            bool useTableTypes = true,
+            string sweepScope = DefaultSweepScope)
         {
             DbContextOptionsBuilder optionsBuilder = new();
             optionsBuilder
@@ -38,11 +41,14 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Infrastructure
                 .EnableServiceProviderCaching(false);
             if (useTableTypes)
             {
-                optionsBuilder.UseTableTypes();
+                optionsBuilder.UseTableTypes(sweepScope);
             }
 
             return new ModelTestContext(optionsBuilder.Options, configureModel);
         }
+
+        /// <summary>The default sweep scope used by tests that do not exercise scoping specifically.</summary>
+        public const string DefaultSweepScope = "TestScope";
 
         /// <summary>The finalized design-time model (the one migrations work from).</summary>
         public static IModel GetFinalizedModel(DbContext context)
