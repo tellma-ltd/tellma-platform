@@ -98,17 +98,29 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
             string typeName = Dependencies.SqlGenerationHelper.DelimitIdentifier(operation.PhysicalName, operation.Schema);
             string terminator = Dependencies.SqlGenerationHelper.StatementTerminator;
 
+            // T-SQL variables are batch-scoped, and an idempotent script concatenates the
+            // (non-suppressed) create commands into one batch — so the variable names must be unique
+            // per type. The content hash (unique per physical name) is the suffix.
+            string sfx = operation.DefinitionHash.Length >= TableTypeNaming.HashSuffixLength
+                ? operation.DefinitionHash[..TableTypeNaming.HashSuffixLength]
+                : operation.DefinitionHash;
+            string vSchema = $"@schema_{sfx}";
+            string vPhysical = $"@physical_{sfx}";
+            string vFq = $"@fq_{sfx}";
+            string vHash = $"@existingHash_{sfx}";
+            string vScope = $"@existingScope_{sfx}";
+
             // Resolve the schema and physical name into variables so the extended-property stamps work
             // whether the schema is explicit or the database user's default (SCHEMA_NAME()).
             builder
-                .Append("DECLARE @schema sysname = ")
+                .Append($"DECLARE {vSchema} sysname = ")
                 .Append(operation.Schema is null ? "SCHEMA_NAME()" : SqlLiteral(operation.Schema))
                 .AppendLine(terminator)
-                .Append("DECLARE @physical sysname = ")
+                .Append($"DECLARE {vPhysical} sysname = ")
                 .Append(SqlLiteral(operation.PhysicalName))
                 .AppendLine(terminator)
-                .AppendLine("DECLARE @fq nvarchar(520) = QUOTENAME(@schema) + N'.' + QUOTENAME(@physical)" + terminator)
-                .AppendLine("IF TYPE_ID(@fq) IS NULL")
+                .AppendLine($"DECLARE {vFq} nvarchar(520) = QUOTENAME({vSchema}) + N'.' + QUOTENAME({vPhysical})" + terminator)
+                .AppendLine($"IF TYPE_ID({vFq}) IS NULL")
                 .AppendLine("BEGIN");
 
             if (operation.IsMemoryOptimized)
@@ -118,29 +130,29 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
 
             AppendCreateType(operation, typeName, builder);
             AppendGrants(operation.Grants, typeName, builder);
-            AppendStampUpsert(builder, TableTypeStampNames.LogicalName, SqlLiteral(operation.Name));
-            AppendStampUpsert(builder, TableTypeStampNames.Scope, SqlLiteral(operation.Scope));
-            AppendStampUpsert(builder, TableTypeStampNames.DefinitionHash, SqlLiteral(operation.DefinitionHash));
+            AppendStampUpsert(builder, TableTypeStampNames.LogicalName, SqlLiteral(operation.Name), vFq, vSchema, vPhysical);
+            AppendStampUpsert(builder, TableTypeStampNames.Scope, SqlLiteral(operation.Scope), vFq, vSchema, vPhysical);
+            AppendStampUpsert(builder, TableTypeStampNames.DefinitionHash, SqlLiteral(operation.DefinitionHash), vFq, vSchema, vPhysical);
 
             builder
                 .AppendLine("END")
                 .AppendLine("ELSE")
                 .AppendLine("BEGIN")
-                .AppendLine("    DECLARE @existingHash nvarchar(max) = CONVERT(nvarchar(max), (")
-                .Append("        SELECT [value] FROM [sys].[extended_properties] WHERE [class] = 6 AND [major_id] = TYPE_ID(@fq) AND [name] = ")
+                .AppendLine($"    DECLARE {vHash} nvarchar(max) = CONVERT(nvarchar(max), (")
+                .Append($"        SELECT [value] FROM [sys].[extended_properties] WHERE [class] = 6 AND [major_id] = TYPE_ID({vFq}) AND [name] = ")
                 .Append(SqlLiteral(TableTypeStampNames.DefinitionHash))
                 .AppendLine("))" + terminator)
-                .AppendLine("    DECLARE @existingScope nvarchar(max) = CONVERT(nvarchar(max), (")
-                .Append("        SELECT [value] FROM [sys].[extended_properties] WHERE [class] = 6 AND [major_id] = TYPE_ID(@fq) AND [name] = ")
+                .AppendLine($"    DECLARE {vScope} nvarchar(max) = CONVERT(nvarchar(max), (")
+                .Append($"        SELECT [value] FROM [sys].[extended_properties] WHERE [class] = 6 AND [major_id] = TYPE_ID({vFq}) AND [name] = ")
                 .Append(SqlLiteral(TableTypeStampNames.Scope))
                 .AppendLine("))" + terminator)
-                .AppendLine("    IF @existingHash IS NULL")
+                .AppendLine($"    IF {vHash} IS NULL")
                 .AppendLine("    BEGIN")
                 .AppendLine("        -- Aborted prior create (e.g. the non-transactional memory-optimized path committed")
                 .AppendLine("        -- CREATE TYPE but not the stamps): complete the stamps and converge.");
-            AppendStampUpsert(builder, TableTypeStampNames.LogicalName, SqlLiteral(operation.Name), indent: "        ");
-            AppendStampUpsert(builder, TableTypeStampNames.Scope, SqlLiteral(operation.Scope), indent: "        ");
-            AppendStampUpsert(builder, TableTypeStampNames.DefinitionHash, SqlLiteral(operation.DefinitionHash), indent: "        ");
+            AppendStampUpsert(builder, TableTypeStampNames.LogicalName, SqlLiteral(operation.Name), vFq, vSchema, vPhysical, indent: "        ");
+            AppendStampUpsert(builder, TableTypeStampNames.Scope, SqlLiteral(operation.Scope), vFq, vSchema, vPhysical, indent: "        ");
+            AppendStampUpsert(builder, TableTypeStampNames.DefinitionHash, SqlLiteral(operation.DefinitionHash), vFq, vSchema, vPhysical, indent: "        ");
 
             string contentMismatch = SqlLiteral(
                 $"Table type {DisplayName(operation.PhysicalName, operation.Schema)} already exists with a different " +
@@ -153,7 +165,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
 
             builder
                 .AppendLine("    END")
-                .Append("    ELSE IF @existingHash <> ")
+                .Append($"    ELSE IF {vHash} <> ")
                 .Append(SqlLiteral(operation.DefinitionHash))
                 .AppendLine()
                 .Append("        THROW ")
@@ -161,7 +173,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
                 .Append(", ")
                 .Append(contentMismatch)
                 .AppendLine(", 1" + terminator)
-                .Append("    ELSE IF @existingScope IS NULL OR @existingScope <> ")
+                .Append($"    ELSE IF {vScope} IS NULL OR {vScope} <> ")
                 .Append(SqlLiteral(operation.Scope))
                 .AppendLine()
                 .Append("        THROW ")
@@ -410,16 +422,25 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
 
         /// <summary>
         ///     Appends an idempotent add-or-update of one extended-property stamp on the type named by
-        ///     the <c>@schema</c>/<c>@physical</c>/<c>@fq</c> variables declared by the create. The
-        ///     upsert form makes stamping safe to re-enter after a partial (non-transactional) create.
+        ///     the given <paramref name="fqVar" />/<paramref name="schemaVar" />/<paramref name="physicalVar" />
+        ///     variables declared by the create. The upsert form makes stamping safe to re-enter after
+        ///     a partial (non-transactional) create.
         /// </summary>
-        private void AppendStampUpsert(MigrationCommandListBuilder builder, string stampName, string valueSql, string indent = "    ")
+        private void AppendStampUpsert(
+            MigrationCommandListBuilder builder,
+            string stampName,
+            string valueSql,
+            string fqVar,
+            string schemaVar,
+            string physicalVar,
+            string indent = "    ")
         {
             string nameLiteral = SqlLiteral(stampName);
             string terminator = Dependencies.SqlGenerationHelper.StatementTerminator;
+            string level = $", @level0type = N'SCHEMA', @level0name = {schemaVar}, @level1type = N'TYPE', @level1name = {physicalVar}";
             builder
                 .Append(indent)
-                .Append("IF NOT EXISTS (SELECT 1 FROM [sys].[extended_properties] WHERE [class] = 6 AND [major_id] = TYPE_ID(@fq) AND [name] = ")
+                .Append($"IF NOT EXISTS (SELECT 1 FROM [sys].[extended_properties] WHERE [class] = 6 AND [major_id] = TYPE_ID({fqVar}) AND [name] = ")
                 .Append(nameLiteral)
                 .AppendLine(")")
                 .Append(indent)
@@ -427,7 +448,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
                 .Append(nameLiteral)
                 .Append(", @value = ")
                 .Append(valueSql)
-                .AppendLine(", @level0type = N'SCHEMA', @level0name = @schema, @level1type = N'TYPE', @level1name = @physical" + terminator)
+                .AppendLine(level + terminator)
                 .Append(indent)
                 .AppendLine("ELSE")
                 .Append(indent)
@@ -435,7 +456,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
                 .Append(nameLiteral)
                 .Append(", @value = ")
                 .Append(valueSql)
-                .AppendLine(", @level0type = N'SCHEMA', @level0name = @schema, @level1type = N'TYPE', @level1name = @physical" + terminator);
+                .AppendLine(level + terminator);
         }
 
         /// <summary>

@@ -62,7 +62,7 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.SqlGeneration
         {
             string sql = Text(Generate(CreateOrdersListOperation()));
 
-            Assert.Contains("IF TYPE_ID(@fq) IS NULL", sql, StringComparison.Ordinal);
+            Assert.Contains("IF TYPE_ID(@fq_abc12345) IS NULL", sql, StringComparison.Ordinal);
             Assert.Contains("CREATE TYPE [gl].[OrdersList_abc12345] AS TABLE (", sql, StringComparison.Ordinal);
             Assert.Contains("[Id] int NOT NULL,", sql, StringComparison.Ordinal);
             Assert.Contains("[Memo] nvarchar(255) NULL,", sql, StringComparison.Ordinal);
@@ -89,7 +89,7 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.SqlGeneration
             string sql = Text(Generate(CreateOrdersListOperation()));
 
             // Aborted-create repair, then the two distinct THROWs.
-            Assert.Contains("IF @existingHash IS NULL", sql, StringComparison.Ordinal);
+            Assert.Contains("IF @existingHash_abc12345 IS NULL", sql, StringComparison.Ordinal);
             Assert.Contains("sp_updateextendedproperty", sql, StringComparison.Ordinal);
             Assert.Contains("THROW 53103", sql, StringComparison.Ordinal);
             Assert.Contains("THROW 53104", sql, StringComparison.Ordinal);
@@ -127,7 +127,7 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.SqlGeneration
             Assert.Contains("[Name] nvarchar(100) COLLATE Latin1_General_100_CI_AS NULL", sql, StringComparison.Ordinal);
             Assert.Contains("PRIMARY KEY CLUSTERED ([TenantId], [Id])", sql, StringComparison.Ordinal);
             // Null schema resolves to the database default for both create and stamps.
-            Assert.Contains("DECLARE @schema sysname = SCHEMA_NAME()", sql, StringComparison.Ordinal);
+            Assert.Contains("sysname = SCHEMA_NAME()", sql, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -255,10 +255,10 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.SqlGeneration
             CreateTableTypeOperation operation = new()
             {
                 Name = "List",
-                PhysicalName = "List_0",
+                PhysicalName = "List_00000000",
                 Schema = "gl",
                 Scope = "weird' scope--",
-                DefinitionHash = "0",
+                DefinitionHash = "00000000",
                 PrimaryKey = ["Id"],
                 Grants = ["odd]principal"],
             };
