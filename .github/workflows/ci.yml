@@ -14,8 +14,8 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
       - run: dotnet restore Tellma.slnx
@@ -28,8 +28,8 @@ jobs:
   integration:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
       - run: dotnet test test/core/Tellma.Core.EntityFrameworkCore.IntegrationTests -c Release --filter "Category=Integration"
@@ -45,8 +45,8 @@ jobs:
       HOST: test/core/assets/Tellma.Core.EntityFrameworkCore.MigrationsHost
       PKG_HOST: test/core/assets/Tellma.Core.EntityFrameworkCore.MigrationsHost.Package
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
       - run: dotnet tool restore
