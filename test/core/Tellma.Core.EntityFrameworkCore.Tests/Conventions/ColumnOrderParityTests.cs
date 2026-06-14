@@ -85,9 +85,42 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Conventions
             Assert.Equal(DeployedTableColumnOrder(context, "JsonOrders"), typeColumns);
         }
 
+        [Fact]
+        public void Primitive_collection_keeps_its_natural_position_like_the_table()
+        {
+            // A primitive collection maps to one column (a JSON array), but — unlike a ToJson()
+            // container column — EF treats it as an ordinary column at the property's natural
+            // position, NOT a tail-appended JsonColumn. The oracle (the deployed table order) settles
+            // it: if the convention wrongly tail-appended it, the orders would diverge here.
+            using ModelTestContext context = TestModel.CreateContext(mb => mb.Entity<ItemWithTags>(e =>
+            {
+                e.ToTable("ItemsWithTags", "gl");
+                e.HasTableType();
+                e.Property(i => i.Id).ValueGeneratedNever();
+            }));
+
+            List<string> typeColumns =
+                [.. TestModel.GetFinalizedModel(context).GetTableTypes().Single().Columns.Select(c => c.Name)];
+
+            // Natural position: between Id and Note, NOT after Note in a JSON tail.
+            Assert.Equal(["Id", "Tags", "Note"], typeColumns);
+            Assert.Equal(DeployedTableColumnOrder(context, "ItemsWithTags"), typeColumns);
+        }
+
         private sealed class OrderParent
         {
             public int Id { get; set; }
+        }
+
+        private sealed class ItemWithTags
+        {
+            public int Id { get; set; }
+
+            // Primitive collection declared in the middle: maps to one column ("Tags"), and the
+            // table places it at this declaration position, not in the JSON tail.
+            public List<int> Tags { get; set; } = [];
+
+            public string Note { get; set; } = string.Empty;
         }
 
         private sealed class JsonOrder

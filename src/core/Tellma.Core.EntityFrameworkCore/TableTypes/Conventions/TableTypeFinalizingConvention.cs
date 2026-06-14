@@ -44,11 +44,19 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
         /// <summary>SQL Server's native JSON store type (2025), as EF's type mapping reports it.</summary>
         private const string JsonStoreType = "json";
 
-        /// <summary>The UDTT wire form of a JSON column (see <see cref="NormalizeJsonColumn" />).</summary>
+        /// <summary>The on-disk UDTT wire form of a JSON column (see <see cref="NormalizeJsonColumn" />).</summary>
         private const string JsonColumnStoreType = "varchar(max)";
 
         /// <summary>
-        ///     The native <c>json</c> type's own UTF-8 collation, carried on the UDTT's
+        ///     The memory-optimized UDTT wire form of a JSON column. A UTF-8 collation is rejected on
+        ///     memory-optimized table types (SQL Server error 12356), as is the native <c>json</c> type
+        ///     (10794), so the on-disk <c>varchar(max)</c> UTF-8 form cannot be used; <c>nvarchar(max)</c>
+        ///     (UTF-16) keeps non-Latin text lossless and creates cleanly. Confirmed on SQL Server 2025.
+        /// </summary>
+        private const string JsonColumnStoreTypeMemoryOptimized = "nvarchar(max)";
+
+        /// <summary>
+        ///     The native <c>json</c> type's own UTF-8 collation, carried on an on-disk UDTT's
         ///     <c>varchar(max)</c> JSON columns so non-Latin text round-trips losslessly.
         /// </summary>
         private const string JsonColumnCollation = "Latin1_General_100_BIN2_UTF8";
@@ -222,7 +230,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
             // navigation's position), so the UDTT mirrors that tail to keep ordinal parity with the
             // table. Ordinal ordering (vs EF's culture-default) keeps the canonical JSON locale-stable;
             // the two agree for identifier names, and the column-order parity test pins any divergence.
-            List<TableTypeColumnDefinition> jsonColumns = DeriveJsonContainerColumns(entityType);
+            List<TableTypeColumnDefinition> jsonColumns = DeriveJsonContainerColumns(entityType, config.MemoryOptimized);
 
             // The PK *constraint* lists columns in key declaration order (matching the table's
             // PRIMARY KEY clause), independent of the column layout order above.
@@ -412,8 +420,9 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
                     "while deriving its table type. Configure an explicit column type with HasColumnType().");
 
             // A native json column (e.g. a primitive collection or an explicit HasColumnType("json"))
-            // is carried as varchar(max) UTF-8 on the UDTT — the type's binding wire form (see remarks).
-            (string columnStoreType, string? collation) = NormalizeJsonColumn(storeType, property.GetCollation(storeObject));
+            // is carried as the UDTT's JSON wire form and flagged IsJson (see remarks).
+            (string columnStoreType, string? collation, bool isJson) =
+                NormalizeJsonColumn(storeType, property.GetCollation(storeObject), config.MemoryOptimized);
 
             return new IncludedColumn(
                 property,
@@ -427,6 +436,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
                     Scale = property.GetScale(storeObject),
                     Collation = collation,
                     IsRowVersion = false,
+                    IsJson = isJson,
                 },
                 property.GetColumnOrder(storeObject),
                 isPrimaryKey);
@@ -441,9 +451,12 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
         ///     mirrors EF's container-column rule. De-duplicated by name, since table splitting could
         ///     in principle route two mappings to one container column.
         /// </summary>
-        private static List<TableTypeColumnDefinition> DeriveJsonContainerColumns(IConventionEntityType entityType)
+        private static List<TableTypeColumnDefinition> DeriveJsonContainerColumns(
+            IConventionEntityType entityType,
+            bool memoryOptimized)
         {
             Dictionary<string, TableTypeColumnDefinition> byName = new(StringComparer.OrdinalIgnoreCase);
+            (string storeType, string? collation) = JsonColumnWireForm(memoryOptimized);
 
             void Add(string? name, bool isNullable)
             {
@@ -452,10 +465,11 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
                     byName[name] = new TableTypeColumnDefinition
                     {
                         Name = name,
-                        StoreType = JsonColumnStoreType,
+                        StoreType = storeType,
                         IsNullable = isNullable,
-                        Collation = JsonColumnCollation,
+                        Collation = collation,
                         IsRowVersion = false,
+                        IsJson = true,
                     };
                 }
             }
@@ -490,20 +504,39 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
 
         /// <summary>
         ///     Rewrites SQL Server's native <c>json</c> store type to the form the bulk-save pipeline
-        ///     actually transmits: <c>varchar(max)</c> with the json type's own UTF-8 collation
-        ///     (<see cref="JsonColumnCollation" />). The native <c>json</c> type cannot be bound as a
-        ///     table-valued-parameter column by the client driver (Microsoft.Data.SqlClient's
-        ///     <c>SqlMetaData</c> has no json entry), and a UDTT is a transient parameter that gains
-        ///     nothing from native-json storage. The UTF-8 collation keeps non-Latin text lossless, and
-        ///     SQL Server implicitly converts the <c>varchar(max)</c> back to the table's <c>json</c>
-        ///     (or <c>nvarchar(max)</c>) column on the <c>INSERT … SELECT FROM @tvp</c> (spec 0001 §2).
-        ///     Non-JSON store types pass through unchanged.
+        ///     actually transmits (see <see cref="JsonColumnWireForm" />) and reports that the column is
+        ///     JSON. The native <c>json</c> type cannot be bound as a table-valued-parameter column by
+        ///     the client driver (Microsoft.Data.SqlClient's <c>SqlMetaData</c> has no json entry), and
+        ///     a UDTT is a transient parameter that gains nothing from native-json storage; SQL Server
+        ///     implicitly converts the wire form back to the table's <c>json</c> (or <c>nvarchar(max)</c>)
+        ///     column on the <c>INSERT … SELECT FROM @tvp</c> (spec 0001 §2). Non-JSON store types pass
+        ///     through unchanged with <c>IsJson = false</c>.
         /// </summary>
-        private static (string StoreType, string? Collation) NormalizeJsonColumn(string storeType, string? collation)
+        private static (string StoreType, string? Collation, bool IsJson) NormalizeJsonColumn(
+            string storeType,
+            string? collation,
+            bool memoryOptimized)
         {
-            return string.Equals(storeType, JsonStoreType, StringComparison.OrdinalIgnoreCase)
-                ? (JsonColumnStoreType, JsonColumnCollation)
-                : (storeType, collation);
+            if (!string.Equals(storeType, JsonStoreType, StringComparison.OrdinalIgnoreCase))
+            {
+                return (storeType, collation, false);
+            }
+
+            (string jsonStoreType, string? jsonCollation) = JsonColumnWireForm(memoryOptimized);
+            return (jsonStoreType, jsonCollation, true);
+        }
+
+        /// <summary>
+        ///     The store type and collation a JSON column takes in the UDTT: <c>varchar(max)</c> with the
+        ///     json type's UTF-8 collation on-disk, or <c>nvarchar(max)</c> (no collation) on a
+        ///     memory-optimized type, where UTF-8 collations are unsupported
+        ///     (<see cref="JsonColumnStoreTypeMemoryOptimized" />). Both keep non-Latin text lossless.
+        /// </summary>
+        private static (string StoreType, string? Collation) JsonColumnWireForm(bool memoryOptimized)
+        {
+            return memoryOptimized
+                ? (JsonColumnStoreTypeMemoryOptimized, null)
+                : (JsonColumnStoreType, JsonColumnCollation);
         }
 
         /// <summary>
@@ -736,8 +769,9 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
                         $"'{config.Name}' from CLR type '{clrType.Name}'. Specify an explicit store type.");
             }
 
-            // A standalone column typed json is carried as varchar(max) UTF-8, like a derived one.
-            (string columnStoreType, string? collation) = NormalizeJsonColumn(storeType, column.Collation);
+            // A standalone column typed json is carried as the JSON wire form, like a derived one.
+            (string columnStoreType, string? collation, bool isJson) =
+                NormalizeJsonColumn(storeType, column.Collation, config.IsMemoryOptimized);
 
             return new TableTypeColumnDefinition
             {
@@ -749,6 +783,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
                 Scale = column.Scale,
                 Collation = collation,
                 IsRowVersion = false,
+                IsJson = isJson,
             };
         }
 

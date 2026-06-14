@@ -100,7 +100,10 @@ scans the assembly in environments where `Design.dll` is absent — i.e., produc
     generated SQL pre-flights support (`DATABASEPROPERTYEX(DB_NAME(), 'IsXTPSupported')`) and
     THROWs an actionable error on unsupported tiers. Deliberately **no silent fallback** to an
     on-disk type: the two declarations differ structurally (index kinds), so a fallback would
-    create cross-environment schema drift.
+    create cross-environment schema drift. One column-level adaptation does apply: a JSON column
+    on a memory-optimized type is emitted as `nvarchar(max)` rather than the on-disk
+    `varchar(max)` UTF-8 form, because a UTF-8 collation and the native `json` type are both
+    unsupported on memory-optimized tables (see **JSON columns**).
   - **Grants**: a configurable set of database principals for which the migration emits
     `GRANT EXECUTE ON TYPE::<type> TO <principal>` with every version create.
 
@@ -123,29 +126,56 @@ The UDTT is a **derived row image** of the table:
   single container column the derivation *can* see and materialize (see **JSON columns**
   below), so the image stays complete and the opt-in is allowed. Column names, store types,
   max length, precision, scale, nullability, and collation are taken from the relational
-  model EF already built for the table — never re-declared.
-- **JSON columns**: SQL Server 2025's native `json` type is a first-class column type in the
-  platform, and a UDTT-saved entity may carry one — from a `ToJson()` owned navigation or
-  complex property (one container column on the owner's table), a primitive collection, or an
-  explicit `HasColumnType("json")`. The derivation does **not** carry it as `json`, for two
-  reasons: the client driver cannot bind a native-`json` column in a table-valued parameter
-  (`Microsoft.Data.SqlClient`'s `SqlMetaData` has no json entry, so a `json` UDTT column is not
-  constructible at TVP-bind time), and a UDTT is a transient parameter that gains none of native
-  json's storage/indexing benefits. Each json column is carried instead as **`varchar(max)` with
-  the json type's own UTF-8 collation** (`Latin1_General_100_BIN2_UTF8`). The C# layer serializes
-  the document to a string client-side and the TVP carries that string — a TVP column is always a
-  scalar, so there is no structured wire form for a json value either way — and SQL Server
-  implicitly converts the `varchar(max)` back to the table's `json` (or `nvarchar(max)`) column on
-  the `INSERT … SELECT FROM @tvp`. The UTF-8 collation makes non-Latin text lossless (a plain
-  `varchar` codepage would corrupt it) and matches the native json type's own collation, so the
-  implicit convert is collation-clean. **Ordering**: EF appends JSON container columns after every
-  other column, ordered by name (`MigrationsModelDiffer.GetSortedColumns`, EF issue #28539 — they
-  are not injected at the navigation's position), so the UDTT mirrors that tail; a native-`json`
-  *scalar* keeps its natural position (EF treats it as an ordinary column, not a `JsonColumn`).
-  Ordering is by ordinal name comparison for locale-stable canonical JSON — identical to EF's order
-  for identifier names, pinned by the column-order parity test. Standalone types get the same
-  `json` → `varchar(max)` UTF-8 normalization. The bulk-save binder's JSON serializer must match
-  EF's read-back contract (property names, value converters) so round-trips stay faithful.
+  model EF already built for the table — never re-declared, with the lone exception of a JSON
+  column's store type and collation, which are re-declared per the **JSON columns** bullet below.
+- **JSON columns** are first-class in the platform. SQL Server 2025's native `json` type may
+  appear on a UDTT-saved entity — from a `ToJson()` owned navigation or complex property (one
+  container column on the owner's table), a primitive collection, or an explicit
+  `HasColumnType("json")` — and the derivation supports it, but does **not** carry it as `json`.
+  The **durable reason** is that a UDTT is a *transient parameter*: populated, streamed to the
+  server, and discarded within one call, it gains none of native json's benefits (compact binary
+  storage, `JSON_VALUE` indexing, in-place sub-document updates), which are all properties of
+  *persisted* data — and the value is serialized client-side to a scalar string regardless,
+  because a TVP column is always a scalar (there is no structured wire form for a json value
+  either way). Native `json` would add cost and fragility for zero transient-parameter gain.
+  **Secondarily**, the pinned driver cannot bind it anyway: **Microsoft.Data.SqlClient 6.1.1**
+  (the version EF Core 10.0.9 resolves) rejects the json type as a `SqlMetaData` column — the
+  metadata a TVP / `SqlDataRecord` column is constructed from — so a native-`json` UDTT column is
+  not bindable at TVP-build time. This is a moving target (M.D.S is adding SS2025 native-json
+  support; `SqlDbTypeExtensions.Json` already exists), so a unit test pins the limitation against
+  the resolved driver and **fails loudly** if a future bump makes json bindable — at which point
+  the design still stands on the transient-parameter reason, which does not expire.
+- **JSON wire form**: on an on-disk type each json column is carried as **`varchar(max)` with the
+  json type's own UTF-8 collation** (`Latin1_General_100_BIN2_UTF8`). The C# layer serializes the
+  document to a string client-side; SQL Server implicitly converts the `varchar(max)` back to the
+  table's `json` (or `nvarchar(max)`) column on the `INSERT … SELECT FROM @tvp`. The UTF-8
+  collation keeps non-Latin text lossless (a plain `varchar` codepage would corrupt it) and
+  matches the native json type's own collation, so the implicit convert is collation-clean.
+  **Memory-optimized exception**: a UTF-8 collation is rejected on memory-optimized table types
+  (SQL Server error 12356), as is the native `json` type (error 10794) — both confirmed
+  empirically on SQL Server 2025 (17.0.1115.1). A json column on a memory-optimized type is
+  therefore carried as **`nvarchar(max)`** (UTF-16, still non-Latin safe — verified to create
+  cleanly), trading the UTF-8 wire saving (content-dependent, ~zero for Arabic/CJK) for
+  memory-optimized compatibility.
+- **JSON metadata flag**: the metadata API marks each column as JSON-or-not (alongside the
+  rowversion flag), so the bulk-save binder knows to **serialize the object graph to a JSON
+  string** for a json column rather than bind a plain `varchar(max)`/`nvarchar(max)` string
+  directly — it could not otherwise distinguish a json column from an ordinary text column of the
+  same store type. The flag is part of the canonical definition (a column gaining or losing
+  JSON-ness is a definitional change → a new physical version, which is correct). The binder's
+  JSON serializer must match EF's read-back contract (property names, value converters) so
+  round-trips stay faithful.
+- **JSON ordering** depends on the *kind* of json column. Only **`ToJson()` container columns**
+  (owned or complex) are tail-appended: EF emits them after every other column, ordered by name
+  (`MigrationsModelDiffer.GetSortedColumns`, EF issue #28539 — they are not injected at the
+  navigation's position), and the UDTT mirrors that tail (ordinal name comparison, for
+  locale-stable canonical JSON — identical to EF's order for identifier names). A native-`json`
+  **scalar** and a **primitive collection**, by contrast, are ordinary columns at their property's
+  natural position — EF does not model them as `JsonColumn`s — and the convention orders them
+  through the normal property sort, not the tail. Both the container-column tail and the
+  primitive-collection natural position are pinned against the live table order by the
+  column-order parity test. Standalone types get the same `json` → `varchar(max)`/`nvarchar(max)`
+  UTF-8/UTF-16 normalization.
 - **Normalization**: the type never carries IDENTITY (moot given sequences, but enforce it),
   defaults, FK constraints, or named constraints.
 - **Primary key**: the type's PK mirrors the table's PK columns. (IDs are app-assigned and
@@ -156,6 +186,22 @@ The UDTT is a **derived row image** of the table:
   type's contract**, because TVP binding (`SqlDataRecord`/`DataTable`) is ordinal. The
   resolved order MUST be captured in the model snapshot so that a pure reorder produces a
   diff (see §3). Explicit ordering via EF's `HasColumnOrder()` flows through.
+- **Why the order is re-derived, not read from `ITable.Columns`.** EF's relational model —
+  whose `ITable.Columns` is already sorted by `GetSortedColumns` — is the obvious oracle, and
+  reading it would make the order correct by construction rather than by re-implemented sorting
+  logic. It is, however, unreachable at the only point the definition can be authored. The
+  definition is written as a design-time **model annotation** during the model-*finalizing*
+  convention — the last phase the model is mutable, so the annotation serializes into the
+  snapshot and round-trips for diffing. EF builds the relational model only *afterward*, as a
+  **runtime annotation** (`RelationalModelRuntimeInitializer` → `RelationalModel.Create`) on the
+  now-read-only model, and runtime annotations are not in the snapshot. So at finalizing time
+  `ITable` does not exist yet, and by the time it does the model can no longer carry a
+  snapshot-bound annotation. The derivation must also serve **standalone** types, which have no
+  `ITable` at all. The convention therefore reconstructs EF's ordering from the entity's
+  properties (duplicated logic, but the only option at that phase); the reconstruction is held to
+  EF's actual order by the **column-order parity test**, which uses the live relational model as
+  the oracle. Strengthening confidence means widening that test's edge-case coverage, not
+  removing the duplication.
 - **TPT mirrors the tables.** Under TPT inheritance each mapped entity type's table gets its
   own row-image type: the base table's type carries the shared columns, each leaf table's
   type carries the PK plus the leaf's own columns. A flattened (TPC-style) leaf type was
@@ -549,8 +595,10 @@ surface the dynamic SQL generator, the drop guard, and tests consume):
 
 - `model.GetTableTypes()` → all generated types (logical **and physical** name + schema;
   the physical name is the content-hash-versioned deployed name per §3 → Versioning).
-- Per entity type: type names/schema, included columns **in order** with store types and
-  nullability, PK columns, rowversion inclusion, memory-optimized flag, grant principals.
+- Per entity type: type names/schema, included columns **in order** with store types,
+  nullability, and a per-column **JSON flag** (so the runtime binder serializes a json column's
+  object graph to a string instead of binding a plain `varchar(max)`/`nvarchar(max)`); PK columns,
+  rowversion inclusion, memory-optimized flag, grant principals.
 - Runtime TVP binding (`SqlDataRecord`/`DataTable`) MUST be driven by this metadata API,
   addressing each type by the **physical name from the app's own model** (never a name
   discovered from the database), and never by hard-coded ordinals — a pack adding a column in a base class legitimately reorders
@@ -634,7 +682,23 @@ surface the dynamic SQL generator, the drop guard, and tests consume):
   shared-table fluent opt-ins, keyless entities, logical names exceeding the physical-name
   length budget (> 119 characters). A `ToJson()` mapping (owned or complex), a primitive
   collection, and an explicit `json` store type are instead **accepted** and carried as
-  `varchar(max)` UTF-8, ordered to match the table — covered by the JSON-column tests.
+  `varchar(max)` UTF-8 (on-disk) or `nvarchar(max)` (memory-optimized), ordered to match the
+  table, and flagged as JSON in the metadata API — covered by the JSON-column tests, including
+  the memory-optimized encoding switch.
+- **Driver capability pin**: a unit test asserts that the resolved Microsoft.Data.SqlClient
+  (6.1.1) cannot construct a `SqlMetaData` for the native `json` type — the load-bearing
+  premise for carrying json columns as `varchar(max)`/`nvarchar(max)`. It fails loudly if a
+  driver bump makes json bindable, prompting a re-read of the JSON-columns decision (which still
+  holds on the transient-parameter rationale).
+- **JSON wire form & flag**: SQL-generation tests assert the emitted store type switches by
+  target — `varchar(max) COLLATE Latin1_General_100_BIN2_UTF8` on-disk vs `nvarchar(max)` on a
+  memory-optimized type — and an integration test confirms a memory-optimized type carrying a
+  JSON column actually creates on SQL Server (the on-disk UTF-8 form and the native `json` type
+  are both rejected there, errors 12356 / 10794 — the reason for the fallback). A differ/snapshot
+  test pins the **JSON flag**: it round-trips through the snapshot, and toggling a column's
+  JSON-ness changes the canonical hash → a new physical version. The **ordering distinction** is
+  pinned by the column-order parity test: a `ToJson()` container column tail-appends by name,
+  while a native-`json` scalar and a primitive collection keep their property's natural position.
 - **Snapshot round-trip**: model → snapshot code → compile → diff against the live model
   must be empty (the standard EF technique), proving annotations survive snapshots.
 - **Scaffolding**: design-time tests asserting the C# emitted into migration files for the

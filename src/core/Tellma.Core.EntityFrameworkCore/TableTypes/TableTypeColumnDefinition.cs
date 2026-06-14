@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Text.Json.Serialization;
+
 namespace Tellma.Core.EntityFrameworkCore.TableTypes
 {
     /// <summary>
@@ -53,5 +55,16 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         ///     UPDATE payloads carry the original value for optimistic-concurrency checks.
         /// </summary>
         public bool IsRowVersion { get; init; }
+
+        /// <summary>
+        ///     Whether this column holds a JSON document. JSON columns are carried in the type as
+        ///     <c>varchar(max)</c> (UTF-8 collation, on-disk) or <c>nvarchar(max)</c>
+        ///     (memory-optimized) rather than the native <c>json</c> type (see <see cref="StoreType" />);
+        ///     the flag lets the runtime TVP binder serialize the object graph to a JSON string instead
+        ///     of binding a plain string. Omitted from the canonical JSON when <see langword="false" />
+        ///     so adding this flag leaves non-JSON columns' definition hashes unchanged.
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool IsJson { get; init; }
     }
 }

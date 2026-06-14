@@ -226,6 +226,11 @@ namespace Tellma.Core.EntityFrameworkCore.Design
                 builder.Append(", IsRowVersion = true");
             }
 
+            if (column.IsJson)
+            {
+                builder.Append(", IsJson = true");
+            }
+
             builder.AppendLine(" },");
         }
     }

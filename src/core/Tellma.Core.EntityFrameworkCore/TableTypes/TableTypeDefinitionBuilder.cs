@@ -48,6 +48,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         /// <param name="scale">The scale facet.</param>
         /// <param name="collation">The explicit collation, when one is configured.</param>
         /// <param name="rowVersion">Whether the column mirrors the table's rowversion column.</param>
+        /// <param name="json">Whether the column holds a JSON document.</param>
         /// <returns>The same builder instance so that multiple calls can be chained.</returns>
         public virtual TableTypeDefinitionBuilder Column(
             string name,
@@ -57,7 +58,8 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
             int? precision = null,
             int? scale = null,
             string? collation = null,
-            bool rowVersion = false)
+            bool rowVersion = false,
+            bool json = false)
         {
             ArgumentException.ThrowIfNullOrEmpty(name);
             ArgumentException.ThrowIfNullOrEmpty(storeType);
@@ -72,6 +74,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
                 Scale = scale,
                 Collation = collation,
                 IsRowVersion = rowVersion,
+                IsJson = json,
             });
             return this;
         }

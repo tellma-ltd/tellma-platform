@@ -4,7 +4,11 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
+using Tellma.Core.EntityFrameworkCore.TableTypes.Json;
+using Tellma.Core.EntityFrameworkCore.TableTypes.Operations;
 using Tellma.Core.EntityFrameworkCore.Tests.Infrastructure;
 
 namespace Tellma.Core.EntityFrameworkCore.Tests.Conventions
@@ -13,9 +17,11 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Conventions
     ///     JSON column support (spec 0001 §2). A <c>ToJson()</c> owned navigation or complex property,
     ///     and a native <c>json</c> scalar, each map to a single column — a complete row image — so the
     ///     opt-in is allowed (unlike a flattened complex type). The column is carried in the UDTT as
-    ///     <c>varchar(max)</c> with the json type's own UTF-8 collation: the wire form the bulk-save TVP
-    ///     pipeline binds (the native <c>json</c> type is not a bindable <c>SqlMetaData</c> column type)
-    ///     and non-Latin safe, implicitly converted back to the table's column type on insert.
+    ///     <c>varchar(max)</c> with the json type's own UTF-8 collation (on-disk) or <c>nvarchar(max)</c>
+    ///     (memory-optimized, where UTF-8 collations are unsupported): the wire form the bulk-save TVP
+    ///     pipeline binds (the native <c>json</c> type is not a bindable <c>SqlMetaData</c> column type),
+    ///     non-Latin safe, implicitly converted back to the table's column type on insert, and flagged
+    ///     <see cref="TableTypeColumnDefinition.IsJson" /> so the binder serializes the object graph.
     /// </summary>
     public class JsonColumnTests
     {
@@ -41,6 +47,7 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Conventions
             TableTypeColumnDefinition doc = Column(context, "Doc");
             Assert.Equal(JsonStoreType, doc.StoreType);
             Assert.Equal(JsonCollation, doc.Collation);
+            Assert.True(doc.IsJson);
             Assert.True(doc.IsNullable); // an optional reference by default
         }
 
@@ -71,6 +78,7 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Conventions
             TableTypeColumnDefinition lines = Column(context, "Lines");
             Assert.Equal(JsonStoreType, lines.StoreType);
             Assert.Equal(JsonCollation, lines.Collation);
+            Assert.True(lines.IsJson);
             Assert.True(lines.IsNullable); // a collection container column is nullable
         }
 
@@ -87,6 +95,7 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Conventions
             TableTypeColumnDefinition payload = Column(context, "Payload");
             Assert.Equal(JsonStoreType, payload.StoreType);
             Assert.Equal(JsonCollation, payload.Collation);
+            Assert.True(payload.IsJson);
         }
 
         [Fact]
@@ -104,7 +113,77 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Conventions
             TableTypeColumnDefinition payload = Column(context, "Payload");
             Assert.Equal(JsonStoreType, payload.StoreType);
             Assert.Equal(JsonCollation, payload.Collation);
+            Assert.True(payload.IsJson);
             Assert.True(payload.IsNullable);
+        }
+
+        [Fact]
+        public void Memory_optimized_json_column_is_nvarchar_max_without_a_utf8_collation()
+        {
+            // A UTF-8 collation is rejected on memory-optimized table types (SQL Server error 12356),
+            // so a JSON column there is carried as nvarchar(max) (UTF-16, still non-Latin safe).
+            using ModelTestContext context = TestModel.CreateContext(mb => mb.Entity<DocHolder>(e =>
+            {
+                e.ToTable("DocHolders", "x");
+                e.HasTableType();
+                e.IsMemoryOptimizedTableType();
+                e.OwnsOne(h => h.Doc, b => b.ToJson());
+            }));
+
+            TableTypeColumnDefinition doc = Column(context, "Doc");
+            Assert.Equal("nvarchar(max)", doc.StoreType);
+            Assert.Null(doc.Collation);
+            Assert.True(doc.IsJson);
+        }
+
+        [Fact]
+        public void Generated_sql_json_store_type_switches_by_target()
+        {
+            Assert.Contains(
+                "varchar(max) COLLATE Latin1_General_100_BIN2_UTF8", GenerateCreateSql(memoryOptimized: false), StringComparison.Ordinal);
+
+            string memoryOptimized = GenerateCreateSql(memoryOptimized: true);
+            Assert.Contains("nvarchar(max)", memoryOptimized, StringComparison.Ordinal);
+            Assert.DoesNotContain("Latin1_General_100_BIN2_UTF8", memoryOptimized, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Json_flag_is_part_of_canonical_json_and_omitted_when_false()
+        {
+            TableTypeColumnDefinition plain = new() { Name = "Data", StoreType = "varchar(max)", IsNullable = true };
+            TableTypeColumnDefinition asJson = plain with { IsJson = true };
+
+            TableTypeDefinition withPlain = new() { Name = "Thing", Columns = [plain] };
+            TableTypeDefinition withJson = new() { Name = "Thing", Columns = [asJson] };
+
+            // Omitted when false, so adding the flag leaves existing (non-JSON) definition hashes unchanged.
+            Assert.DoesNotContain("isJson", TableTypeJson.Serialize(withPlain), StringComparison.Ordinal);
+            Assert.Contains("\"isJson\":true", TableTypeJson.Serialize(withJson), StringComparison.Ordinal);
+            // Toggling JSON-ness is a definitional change → a new physical version.
+            Assert.NotEqual(withPlain.PhysicalName, withJson.PhysicalName);
+        }
+
+        private static string GenerateCreateSql(bool memoryOptimized)
+        {
+            using ModelTestContext context = TestModel.CreateContext(mb => mb.Entity<DocHolder>(e =>
+            {
+                e.ToTable("DocHolders", "x");
+                e.HasTableType();
+                if (memoryOptimized)
+                {
+                    e.IsMemoryOptimizedTableType();
+                }
+
+                e.OwnsOne(h => h.Doc, b => b.ToJson());
+            }));
+
+            IMigrationsModelDiffer differ = context.GetService<IMigrationsModelDiffer>();
+            CreateTableTypeOperation create = differ
+                .GetDifferences(null, TestModel.GetRelationalModel(context))
+                .OfType<CreateTableTypeOperation>()
+                .Single();
+            IMigrationsSqlGenerator generator = context.GetService<IMigrationsSqlGenerator>();
+            return Assert.Single(generator.Generate([create])).CommandText;
         }
 
         private sealed class DocHolder

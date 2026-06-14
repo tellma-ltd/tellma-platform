@@ -145,6 +145,11 @@ namespace Tellma.Core.EntityFrameworkCore.Design
                 arguments.Add("rowVersion: true");
             }
 
+            if (column.IsJson)
+            {
+                arguments.Add("json: true");
+            }
+
             return $".Column({string.Join(", ", arguments)})";
         }
     }
