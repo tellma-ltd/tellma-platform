@@ -19,14 +19,22 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet restore Tellma.slnx
-      # Enforce the full IDE code-style surface (whitespace, imports, IDE00xx) that the compiler
-      # build does not run even with EnforceCodeStyleInBuild. Same analyzers and .editorconfig the
-      # IDE uses — no per-rule enumeration. Ubuntu only: formatting is OS-independent.
-      - name: Verify formatting (dotnet format)
-        if: matrix.os == 'ubuntu-latest'
-        run: dotnet format Tellma.slnx --verify-no-changes --no-restore
       - run: dotnet build Tellma.slnx -c Release --no-restore
       - run: dotnet test Tellma.slnx -c Release --no-build --filter "Category!=Integration"
+
+  # Code style and formatting: the full IDE code-style surface (whitespace, imports, IDE00xx) that
+  # the compiler build does not run even with EnforceCodeStyleInBuild. Same analyzers and
+  # .editorconfig the IDE uses — no per-rule enumeration. A dedicated job so a style failure reads
+  # as a style failure, not an OS-specific one.
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet restore Tellma.slnx
+      - run: dotnet format Tellma.slnx --verify-no-changes --no-restore
 
   # Containerized SQL Server (Testcontainers manages the container; Docker is preinstalled on
   # ubuntu runners). Covers apply/verify, drop guard, grants, column-order parity, idempotent
