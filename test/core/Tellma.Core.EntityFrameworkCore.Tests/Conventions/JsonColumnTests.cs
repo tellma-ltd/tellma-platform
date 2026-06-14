@@ -148,7 +148,7 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Conventions
         }
 
         [Fact]
-        public void Json_flag_is_part_of_canonical_json_and_omitted_when_false()
+        public void Json_flag_is_part_of_canonical_json()
         {
             TableTypeColumnDefinition plain = new() { Name = "Data", StoreType = "varchar(max)", IsNullable = true };
             TableTypeColumnDefinition asJson = plain with { IsJson = true };
@@ -156,8 +156,8 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Conventions
             TableTypeDefinition withPlain = new() { Name = "Thing", Columns = [plain] };
             TableTypeDefinition withJson = new() { Name = "Thing", Columns = [asJson] };
 
-            // Omitted when false, so adding the flag leaves existing (non-JSON) definition hashes unchanged.
-            Assert.DoesNotContain("isJson", TableTypeJson.Serialize(withPlain), StringComparison.Ordinal);
+            // Always serialized (like IsNullable/IsRowVersion), so the flag is in the canonical form.
+            Assert.Contains("\"isJson\":false", TableTypeJson.Serialize(withPlain), StringComparison.Ordinal);
             Assert.Contains("\"isJson\":true", TableTypeJson.Serialize(withJson), StringComparison.Ordinal);
             // Toggling JSON-ness is a definitional change → a new physical version.
             Assert.NotEqual(withPlain.PhysicalName, withJson.PhysicalName);

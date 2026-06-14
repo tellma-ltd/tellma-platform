@@ -129,10 +129,10 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
 
             migrationBuilder.CreateTableType(
                 name: "DocumentStatesList",
-                physicalName: "DocumentStatesList_8e9d8d41",
+                physicalName: "DocumentStatesList_7600ec35",
                 schema: null,
                 scope: "MigrationsHostContext",
-                definitionHash: "8e9d8d41c17c7aee1facb98bd205b4eb7ef59bf93aeba0e19c7f2f755f3c0079",
+                definitionHash: "7600ec3548ec8d1ba9662fda9294420466ae6580253cbcf7efe577f8e059ee5e",
                 columns: new[]
                 {
                     new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
@@ -143,10 +143,10 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
 
             migrationBuilder.CreateTableType(
                 name: "CustomersList",
-                physicalName: "CustomersList_5ab7e59b",
+                physicalName: "CustomersList_5ae18c00",
                 schema: "crm",
                 scope: "MigrationsHostContext",
-                definitionHash: "5ab7e59b3eb671b3e6cad740defc3ce355a5fcbd641115b2b32020d48db052db",
+                definitionHash: "5ae18c0009af8bef8ff834e27eb7ba1211fb3e7bdf1af1ff4a9745e2757993b2",
                 columns: new[]
                 {
                     new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
@@ -158,10 +158,10 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
 
             migrationBuilder.CreateTableType(
                 name: "BigIdList",
-                physicalName: "BigIdList_4d89c60e",
+                physicalName: "BigIdList_ffa129cb",
                 schema: "dbo",
                 scope: "MigrationsHostContext",
-                definitionHash: "4d89c60e1e47ace0ea8aca8651218c9c2ccbf936dbf7d4815e25fcf59879c5cc",
+                definitionHash: "ffa129cb156492ae0a1d1d56a5a81239b1782ef8b18ddc7408247dc7ee59a974",
                 columns: new[]
                 {
                     new TableTypeColumnDefinition { Name = "Id", StoreType = "bigint" },
@@ -171,10 +171,10 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
 
             migrationBuilder.CreateTableType(
                 name: "GuidList",
-                physicalName: "GuidList_4b95d3ae",
+                physicalName: "GuidList_fff8df33",
                 schema: "dbo",
                 scope: "MigrationsHostContext",
-                definitionHash: "4b95d3aeb947e024a9647b7d2bc25e3ffe300c5cf9d945c5d8407904eda636ea",
+                definitionHash: "fff8df33a9184a1fd362397f08f12f66766f883f04aea0e2dd686b4fec8c57dd",
                 columns: new[]
                 {
                     new TableTypeColumnDefinition { Name = "Id", StoreType = "uniqueidentifier" },
@@ -184,10 +184,10 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
 
             migrationBuilder.CreateTableType(
                 name: "IdList",
-                physicalName: "IdList_971d1576",
+                physicalName: "IdList_8a916c20",
                 schema: "dbo",
                 scope: "MigrationsHostContext",
-                definitionHash: "971d15765cdb0fd63dd2ed32fc32d1dc1f983d2bc80c13ce308655f75b3c6c83",
+                definitionHash: "8a916c20188fa76072d0d90dcf2a4816cdc0a61ed6ecfa0187401b76ff02bbfb",
                 columns: new[]
                 {
                     new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
@@ -197,10 +197,10 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
 
             migrationBuilder.CreateTableType(
                 name: "StringList",
-                physicalName: "StringList_d9623f56",
+                physicalName: "StringList_8ef5389c",
                 schema: "dbo",
                 scope: "MigrationsHostContext",
-                definitionHash: "d9623f56321dc9c15532f9a1e24ff30bbf97481499bff53207f3b83dc97d3e3d",
+                definitionHash: "8ef5389cbe76668deefbf5094c7c20c108d49bc46dd827223af8a2d127ea105e",
                 columns: new[]
                 {
                     new TableTypeColumnDefinition { Name = "Id", StoreType = "nvarchar(450)", MaxLength = 450 },
@@ -210,10 +210,10 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
 
             migrationBuilder.CreateTableType(
                 name: "InvoiceLinesList",
-                physicalName: "InvoiceLinesList_ec178301",
+                physicalName: "InvoiceLinesList_70705451",
                 schema: "gl",
                 scope: "MigrationsHostContext",
-                definitionHash: "ec1783012518b1430d517460e0465820f00eb440c53e9a93c430e9a7bf5d0bbb",
+                definitionHash: "70705451df4b770921d9f9b6b8634200ed7e35765e77a413042e4a1762e6db48",
                 columns: new[]
                 {
                     new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
@@ -226,10 +226,10 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
 
             migrationBuilder.CreateTableType(
                 name: "InvoicesList",
-                physicalName: "InvoicesList_0bebc395",
+                physicalName: "InvoicesList_982c9e85",
                 schema: "gl",
                 scope: "MigrationsHostContext",
-                definitionHash: "0bebc395d6ae75468d5e80a65fe616d0e44aa0efdf63c08c996b6f82dcdad4ff",
+                definitionHash: "982c9e852587b852abbfff3f5e354609733147594db49063bffc6048d4f33a8e",
                 columns: new[]
                 {
                     new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
@@ -241,7 +241,7 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
                 primaryKey: new[] { "Id" },
                 grants: new[] { "public" });
 
-            migrationBuilder.CleanupTableTypes(scope: "MigrationsHostContext", keepList: new[] { "DocumentStatesList_8e9d8d41", "CustomersList_5ab7e59b", "BigIdList_4d89c60e", "GuidList_4b95d3ae", "IdList_971d1576", "StringList_d9623f56", "InvoiceLinesList_ec178301", "InvoicesList_0bebc395" });
+            migrationBuilder.CleanupTableTypes(scope: "MigrationsHostContext", keepList: new[] { "DocumentStatesList_7600ec35", "CustomersList_5ae18c00", "BigIdList_ffa129cb", "GuidList_fff8df33", "IdList_8a916c20", "StringList_8ef5389c", "InvoiceLinesList_70705451", "InvoicesList_982c9e85" });
         }
 
         /// <inheritdoc />
