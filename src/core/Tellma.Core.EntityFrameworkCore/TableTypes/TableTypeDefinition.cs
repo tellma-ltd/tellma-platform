@@ -22,7 +22,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
     ///     </para>
     ///     <para>
     ///         JSON property order follows declaration order and is part of the canonical-JSON
-    ///         contract — do not reorder members (see <see cref="Json.TableTypeJson" />).
+    ///         contract — do not reorder members (see <see cref="TableTypeJson" />).
     ///     </para>
     /// </remarks>
     public sealed record TableTypeDefinition
