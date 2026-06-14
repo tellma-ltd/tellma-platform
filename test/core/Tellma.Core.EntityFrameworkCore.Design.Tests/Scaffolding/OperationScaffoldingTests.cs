@@ -3,12 +3,12 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-using System.Reflection;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Design;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Microsoft.Extensions.DependencyInjection;
+using System.Reflection;
 using Tellma.Core.EntityFrameworkCore.Design.Tests.Infrastructure;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
 using Tellma.Core.EntityFrameworkCore.TableTypes.Operations;

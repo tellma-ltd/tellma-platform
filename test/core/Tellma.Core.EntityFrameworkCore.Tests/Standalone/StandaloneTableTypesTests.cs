@@ -3,12 +3,12 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
 using Tellma.Core.EntityFrameworkCore.TableTypes.Operations;
 using Tellma.Core.EntityFrameworkCore.Tests.Infrastructure;
@@ -177,10 +177,10 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Standalone
             using ModelTestContext context = TestModel.CreateContext(mb =>
             {
                 mb.Entity<Plain>();
-                mb.HasTableType<Tellma.Core.Abstractions.TableTypes.IdList>(schema: "dbo");
-                mb.HasTableType<Tellma.Core.Abstractions.TableTypes.BigIdList>(schema: "dbo");
-                mb.HasTableType<Tellma.Core.Abstractions.TableTypes.GuidList>(schema: "dbo");
-                mb.HasTableType<Tellma.Core.Abstractions.TableTypes.StringList>(schema: "dbo");
+                mb.HasTableType<Abstractions.TableTypes.IdList>(schema: "dbo");
+                mb.HasTableType<Abstractions.TableTypes.BigIdList>(schema: "dbo");
+                mb.HasTableType<Abstractions.TableTypes.GuidList>(schema: "dbo");
+                mb.HasTableType<Abstractions.TableTypes.StringList>(schema: "dbo");
             });
 
             IReadOnlyList<TableTypeDefinition> types = TestModel.GetFinalizedModel(context).GetTableTypes();

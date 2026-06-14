@@ -3,12 +3,12 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-using System.Reflection;
-using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using System.Reflection;
+using System.Text.RegularExpressions;
 using Tellma.Core.EntityFrameworkCore.MigrationsHost;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
 

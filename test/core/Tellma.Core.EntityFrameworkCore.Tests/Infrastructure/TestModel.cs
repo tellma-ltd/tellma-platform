@@ -3,10 +3,10 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using System.ComponentModel.DataAnnotations;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
 
 namespace Tellma.Core.EntityFrameworkCore.Tests.Infrastructure

@@ -93,7 +93,7 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Model
     public class DocumentState
     {
         /// <summary>The targeted document.</summary>
-        [System.ComponentModel.DataAnnotations.Key]
+        [Key]
         public int Id { get; set; }
 
         /// <summary>The new workflow state.</summary>

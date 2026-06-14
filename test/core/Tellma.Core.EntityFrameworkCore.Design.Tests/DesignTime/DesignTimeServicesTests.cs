@@ -3,8 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-using System.Reflection;
 using Microsoft.EntityFrameworkCore.Design;
+using System.Reflection;
 using Tellma.Core.EntityFrameworkCore.MigrationsHost;
 
 namespace Tellma.Core.EntityFrameworkCore.Design.Tests.DesignTime

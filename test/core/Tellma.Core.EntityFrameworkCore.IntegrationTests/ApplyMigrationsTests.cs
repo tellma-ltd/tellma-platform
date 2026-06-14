@@ -220,7 +220,7 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
 
             // The full idempotent script also runs cleanly against the migrated database.
             Microsoft.EntityFrameworkCore.Migrations.IMigrator migrator =
-                Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>(context);
+                AccessorExtensions.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>(context);
             string script = migrator.GenerateScript(
                 options: Microsoft.EntityFrameworkCore.Migrations.MigrationsSqlGenerationOptions.Idempotent);
             await IntegrationHelpers.ExecuteScriptAsync(connectionString, script);

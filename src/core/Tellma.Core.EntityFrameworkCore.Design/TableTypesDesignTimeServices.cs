@@ -37,7 +37,7 @@ namespace Tellma.Core.EntityFrameworkCore.Design
             // pairing holds regardless of who registered an IAnnotationCodeGenerator first.
             serviceCollection.AddSingleton<ICSharpSnapshotGenerator, TableTypesCSharpSnapshotGenerator>();
             serviceCollection.Replace(ServiceDescriptor.Singleton<
-                Microsoft.EntityFrameworkCore.Design.IAnnotationCodeGenerator,
+                IAnnotationCodeGenerator,
                 TableTypesSqlServerAnnotationCodeGenerator>());
         }
     }

@@ -6,10 +6,10 @@
 // The whole point of this file is to pin the internal EF Core surface the adapter relies on.
 #pragma warning disable EF1001 // Internal EF Core API usage
 
-using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using System.Reflection;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
 using Tellma.Core.EntityFrameworkCore.TableTypes.Internal;
 using Tellma.Core.EntityFrameworkCore.Tests.Infrastructure;
@@ -79,7 +79,7 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Internal
         public void SqlServerOptionsExtension_still_exists_at_the_probed_identity()
         {
             // Validate() type-checks against this internal type to detect UseSqlServer().
-            Type? type = typeof(Microsoft.EntityFrameworkCore.SqlServerDbContextOptionsExtensions).Assembly
+            Type? type = typeof(SqlServerDbContextOptionsExtensions).Assembly
                 .GetType("Microsoft.EntityFrameworkCore.SqlServer.Infrastructure.Internal.SqlServerOptionsExtension");
 
             Assert.NotNull(type);

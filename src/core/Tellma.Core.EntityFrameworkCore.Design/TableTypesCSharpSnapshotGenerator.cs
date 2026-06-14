@@ -38,7 +38,7 @@ namespace Tellma.Core.EntityFrameworkCore.Design
         {
             base.Generate(modelBuilderName, model, stringBuilder);
 
-            foreach (Microsoft.EntityFrameworkCore.Infrastructure.IAnnotation annotation in model.GetAnnotations()
+            foreach (IAnnotation annotation in model.GetAnnotations()
                 .Where(a => a.Name.StartsWith(TableTypeAnnotationNames.DefinitionPrefix, StringComparison.Ordinal)
                     && a.Value is string)
                 .OrderBy(a => a.Name, StringComparer.Ordinal))

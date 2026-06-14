@@ -3,12 +3,12 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 using Microsoft.EntityFrameworkCore.Storage;
+using System.Reflection;
 using Tellma.Core.EntityFrameworkCore.TableTypes.Json;
 
 namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
@@ -184,7 +184,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
         {
             var storeObject = StoreObjectIdentifier.Table(config.TableName, config.TableSchema);
 
-            ValidateNoHiddenColumns(entityType, config, storeObject);
+            ValidateNoHiddenColumns(entityType, config);
             ValidateNoTphDerivedColumns(entityType, storeObject);
 
             IConventionKey primaryKey = entityType.FindPrimaryKey()
@@ -227,10 +227,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
         ///     image missing columns its table has is the silent drift/truncation failure mode that
         ///     killed <c>ForSave</c> (spec 0001 §2), so it is made an impossible state, not a hazard.
         /// </summary>
-        private static void ValidateNoHiddenColumns(
-            IConventionEntityType entityType,
-            TableTypeConfig config,
-            in StoreObjectIdentifier storeObject)
+        private static void ValidateNoHiddenColumns(IConventionEntityType entityType, TableTypeConfig config)
         {
             if (entityType.GetComplexProperties().Any())
             {

@@ -3,9 +3,9 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
+using System.Collections.Concurrent;
 using Tellma.Core.EntityFrameworkCore.TableTypes.Json;
 
 namespace Tellma.Core.EntityFrameworkCore.TableTypes

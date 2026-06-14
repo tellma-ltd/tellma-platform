@@ -19,6 +19,12 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet restore Tellma.slnx
+      # Enforce the full IDE code-style surface (whitespace, imports, IDE00xx) that the compiler
+      # build does not run even with EnforceCodeStyleInBuild. Same analyzers and .editorconfig the
+      # IDE uses — no per-rule enumeration. Ubuntu only: formatting is OS-independent.
+      - name: Verify formatting (dotnet format)
+        if: matrix.os == 'ubuntu-latest'
+        run: dotnet format Tellma.slnx --verify-no-changes --no-restore
       - run: dotnet build Tellma.slnx -c Release --no-restore
       - run: dotnet test Tellma.slnx -c Release --no-build --filter "Category!=Integration"
 
