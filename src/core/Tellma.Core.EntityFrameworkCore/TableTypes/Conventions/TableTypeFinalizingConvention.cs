@@ -41,6 +41,18 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
     {
         private readonly IRelationalTypeMappingSource _typeMappingSource = typeMappingSource;
 
+        /// <summary>SQL Server's native JSON store type (2025), as EF's type mapping reports it.</summary>
+        private const string JsonStoreType = "json";
+
+        /// <summary>The UDTT wire form of a JSON column (see <see cref="NormalizeJsonColumn" />).</summary>
+        private const string JsonColumnStoreType = "varchar(max)";
+
+        /// <summary>
+        ///     The native <c>json</c> type's own UTF-8 collation, carried on the UDTT's
+        ///     <c>varchar(max)</c> JSON columns so non-Latin text round-trips losslessly.
+        /// </summary>
+        private const string JsonColumnCollation = "Latin1_General_100_BIN2_UTF8";
+
         /// <inheritdoc />
         public virtual void ProcessModelFinalizing(
             IConventionModelBuilder modelBuilder,
@@ -204,6 +216,14 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
 
             List<IncludedColumn> ordered = SortColumns(entityType, included);
 
+            // JSON container columns (ToJson() owned navigations / complex properties) are not
+            // reachable through GetProperties(). EF appends them after every other column, ordered by
+            // name (MigrationsModelDiffer.GetSortedColumns, issue #28539 — they are not injected at the
+            // navigation's position), so the UDTT mirrors that tail to keep ordinal parity with the
+            // table. Ordinal ordering (vs EF's culture-default) keeps the canonical JSON locale-stable;
+            // the two agree for identifier names, and the column-order parity test pins any divergence.
+            List<TableTypeColumnDefinition> jsonColumns = DeriveJsonContainerColumns(entityType);
+
             // The PK *constraint* lists columns in key declaration order (matching the table's
             // PRIMARY KEY clause), independent of the column layout order above.
             string[] primaryKeyColumns = [.. primaryKey.Properties.Select(p => p.GetColumnName(storeObject)!)];
@@ -217,41 +237,43 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
                 IsMemoryOptimized = config.MemoryOptimized,
                 Grants = config.Grants,
                 PrimaryKey = primaryKeyColumns,
-                Columns = [.. ordered.Select(c => c.Column)],
+                Columns = [.. ordered.Select(c => c.Column), .. jsonColumns.OrderBy(c => c.Name, StringComparer.Ordinal)],
             };
         }
 
         /// <summary>
-        ///     Rejects opt-ins whose mapped table carries columns the derivation cannot see — complex
-        ///     types, owned types mapped into the owner's table, and <c>ToJson()</c> mappings. A row
+        ///     Rejects opt-ins whose mapped table carries columns the derivation cannot see —
+        ///     <em>flattened</em> complex types and owned types mapped into the owner's table. A row
         ///     image missing columns its table has is the silent drift/truncation failure mode that
         ///     killed <c>ForSave</c> (spec 0001 §2), so it is made an impossible state, not a hazard.
+        ///     A <c>ToJson()</c> mapping (owned or complex) is the exception: it contributes a single
+        ///     container column that the derivation <em>does</em> materialize
+        ///     (<see cref="DeriveJsonContainerColumns" />), so the image stays complete and it is allowed.
         /// </summary>
         private static void ValidateNoHiddenColumns(IConventionEntityType entityType, TableTypeConfig config)
         {
-            if (entityType.GetComplexProperties().Any())
+            // Flattened complex types spread scalar columns the derivation cannot reach; a JSON-mapped
+            // complex type contributes only its (materialized) container column, so it is exempt.
+            List<IConventionComplexProperty> hiddenComplex =
+                [.. entityType.GetComplexProperties().Where(p => !p.ComplexType.IsMappedToJson())];
+            if (hiddenComplex.Count > 0)
             {
-                string names = string.Join(", ", entityType.GetComplexProperties().Select(p => $"'{p.Name}'"));
+                string names = string.Join(", ", hiddenComplex.Select(p => $"'{p.Name}'"));
                 throw new InvalidOperationException(
                     $"Entity type '{entityType.DisplayName()}' opted into a table type but maps complex propert(y/ies) " +
                     $"({names}) whose columns the table-type derivation cannot see. The row image would silently omit " +
-                    "them. Remove the opt-in, or model these without a complex type.");
+                    "them. Remove the opt-in, model these without a complex type, or map them to JSON with ToJson().");
             }
 
             foreach (IConventionNavigation navigation in entityType.GetNavigations())
             {
                 IConventionEntityType target = navigation.TargetEntityType;
-                if (!target.IsOwned())
+
+                // ToJson() owned navigations are materialized as a container column; non-owned
+                // navigations and own-table owned types are handled below.
+                if (!target.IsOwned() || target.IsMappedToJson())
                 {
                     continue;
-                }
-
-                if (target.IsMappedToJson())
-                {
-                    throw new InvalidOperationException(
-                        $"Entity type '{entityType.DisplayName()}' opted into a table type but navigation " +
-                        $"'{navigation.Name}' is mapped to JSON (ToJson). Its column is not part of the derived row " +
-                        "image; remove the opt-in or the JSON mapping.");
                 }
 
                 if (target.GetTableName() == config.TableName && target.GetSchema() == config.TableSchema)
@@ -259,7 +281,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
                     throw new InvalidOperationException(
                         $"Entity type '{entityType.DisplayName()}' opted into a table type but owned navigation " +
                         $"'{navigation.Name}' maps into the same table. Its columns are not part of the derived row " +
-                        "image; map the owned type to its own table or remove the opt-in.");
+                        "image; map the owned type to its own table, map it to JSON with ToJson(), or remove the opt-in.");
                 }
             }
         }
@@ -293,9 +315,11 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
                     }
                 }
 
-                // Complex types and owned types mapped into the shared table by a derived type
-                // contribute columns the root's row image cannot see — the same hole
-                // ValidateNoHiddenColumns closes for the root itself.
+                // A column a *derived* type declares on the shared table is invisible to the root's
+                // property walk — the same hole ValidateNoHiddenColumns closes for the root itself.
+                // This holds even for a JSON container column: a root-declared ToJson() mapping the
+                // derivation does materialize, but a derived-declared one it never reaches, so derived
+                // complex/owned mappings are rejected regardless of whether they map to JSON.
                 if (derived.GetDeclaredComplexProperties().FirstOrDefault() is IConventionComplexProperty complex)
                 {
                     throw Reject(entityType, derived, $"complex property '{complex.Name}'");
@@ -387,21 +411,99 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
                     $"Cannot resolve a SQL Server store type for property '{entityType.DisplayName()}.{property.Name}' " +
                     "while deriving its table type. Configure an explicit column type with HasColumnType().");
 
+            // A native json column (e.g. a primitive collection or an explicit HasColumnType("json"))
+            // is carried as varchar(max) UTF-8 on the UDTT — the type's binding wire form (see remarks).
+            (string columnStoreType, string? collation) = NormalizeJsonColumn(storeType, property.GetCollation(storeObject));
+
             return new IncludedColumn(
                 property,
                 new TableTypeColumnDefinition
                 {
                     Name = columnName,
-                    StoreType = storeType,
+                    StoreType = columnStoreType,
                     IsNullable = property.IsColumnNullable(storeObject),
                     MaxLength = property.GetMaxLength(storeObject),
                     Precision = property.GetPrecision(storeObject),
                     Scale = property.GetScale(storeObject),
-                    Collation = property.GetCollation(storeObject),
+                    Collation = collation,
                     IsRowVersion = false,
                 },
                 property.GetColumnOrder(storeObject),
                 isPrimaryKey);
+        }
+
+        /// <summary>
+        ///     Materializes the JSON container columns of an entity's <c>ToJson()</c> owned navigations
+        ///     and complex properties. EF maps each such mapping to a single container column on the
+        ///     owner's table (the <c>Relational:ContainerColumnName</c> annotation) that the property
+        ///     walk in <see cref="DeriveColumn" /> cannot reach. Each is carried as one
+        ///     <c>varchar(max)</c> UTF-8 column (see <see cref="NormalizeJsonColumn" />); nullability
+        ///     mirrors EF's container-column rule. De-duplicated by name, since table splitting could
+        ///     in principle route two mappings to one container column.
+        /// </summary>
+        private static List<TableTypeColumnDefinition> DeriveJsonContainerColumns(IConventionEntityType entityType)
+        {
+            Dictionary<string, TableTypeColumnDefinition> byName = new(StringComparer.OrdinalIgnoreCase);
+
+            void Add(string? name, bool isNullable)
+            {
+                if (!string.IsNullOrEmpty(name) && !byName.ContainsKey(name))
+                {
+                    byName[name] = new TableTypeColumnDefinition
+                    {
+                        Name = name,
+                        StoreType = JsonColumnStoreType,
+                        IsNullable = isNullable,
+                        Collation = JsonColumnCollation,
+                        IsRowVersion = false,
+                    };
+                }
+            }
+
+            foreach (IConventionNavigation navigation in entityType.GetNavigations())
+            {
+                IConventionEntityType target = navigation.TargetEntityType;
+                if (target.IsOwned() && target.IsMappedToJson())
+                {
+                    // EF makes the container column nullable unless the owned type is a required,
+                    // unique (single-reference) dependent declared on a root type
+                    // (RelationalModel.CreateContainerColumn).
+                    IConventionForeignKey ownership = navigation.ForeignKey;
+                    bool isNullable = !ownership.IsRequiredDependent
+                        || !ownership.IsUnique
+                        || navigation.DeclaringEntityType.BaseType is not null;
+                    Add(target.GetContainerColumnName(), isNullable);
+                }
+            }
+
+            foreach (IConventionComplexProperty complex in entityType.GetComplexProperties())
+            {
+                if (complex.ComplexType.IsMappedToJson())
+                {
+                    bool isNullable = complex.IsNullable || entityType.BaseType is not null;
+                    Add(complex.ComplexType.GetContainerColumnName(), isNullable);
+                }
+            }
+
+            return [.. byName.Values];
+        }
+
+        /// <summary>
+        ///     Rewrites SQL Server's native <c>json</c> store type to the form the bulk-save pipeline
+        ///     actually transmits: <c>varchar(max)</c> with the json type's own UTF-8 collation
+        ///     (<see cref="JsonColumnCollation" />). The native <c>json</c> type cannot be bound as a
+        ///     table-valued-parameter column by the client driver (Microsoft.Data.SqlClient's
+        ///     <c>SqlMetaData</c> has no json entry), and a UDTT is a transient parameter that gains
+        ///     nothing from native-json storage. The UTF-8 collation keeps non-Latin text lossless, and
+        ///     SQL Server implicitly converts the <c>varchar(max)</c> back to the table's <c>json</c>
+        ///     (or <c>nvarchar(max)</c>) column on the <c>INSERT … SELECT FROM @tvp</c> (spec 0001 §2).
+        ///     Non-JSON store types pass through unchanged.
+        /// </summary>
+        private static (string StoreType, string? Collation) NormalizeJsonColumn(string storeType, string? collation)
+        {
+            return string.Equals(storeType, JsonStoreType, StringComparison.OrdinalIgnoreCase)
+                ? (JsonColumnStoreType, JsonColumnCollation)
+                : (storeType, collation);
         }
 
         /// <summary>
@@ -634,15 +736,18 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
                         $"'{config.Name}' from CLR type '{clrType.Name}'. Specify an explicit store type.");
             }
 
+            // A standalone column typed json is carried as varchar(max) UTF-8, like a derived one.
+            (string columnStoreType, string? collation) = NormalizeJsonColumn(storeType, column.Collation);
+
             return new TableTypeColumnDefinition
             {
                 Name = column.Name,
-                StoreType = storeType,
+                StoreType = columnStoreType,
                 IsNullable = column.IsNullable,
                 MaxLength = column.MaxLength,
                 Precision = column.Precision,
                 Scale = column.Scale,
-                Collation = column.Collation,
+                Collation = collation,
                 IsRowVersion = false,
             };
         }

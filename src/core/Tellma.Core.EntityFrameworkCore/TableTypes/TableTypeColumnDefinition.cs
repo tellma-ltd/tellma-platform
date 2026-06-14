@@ -23,8 +23,12 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
 
         /// <summary>
         ///     The full SQL Server store type including facets, e.g. <c>nvarchar(255)</c> or
-        ///     <c>decimal(19,4)</c>, byte-for-byte identical to the table column's store type
-        ///     (except rowversion columns, which become <c>binary(8)</c> in the type).
+        ///     <c>decimal(19,4)</c>, byte-for-byte identical to the table column's store type — with two
+        ///     exceptions: a rowversion column becomes <c>binary(8)</c>, and a native <c>json</c> column
+        ///     becomes <c>varchar(max)</c> (carrying the json type's UTF-8 collation on
+        ///     <see cref="Collation" />), the wire form the bulk-save TVP pipeline binds — the native
+        ///     <c>json</c> type is not a bindable <c>SqlMetaData</c> column type — implicitly converted
+        ///     back to the table's column type on the <c>INSERT … SELECT FROM @tvp</c>.
         /// </summary>
         public required string StoreType { get; init; }
 

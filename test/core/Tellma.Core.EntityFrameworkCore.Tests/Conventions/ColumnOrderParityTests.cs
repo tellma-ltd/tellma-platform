@@ -64,9 +64,46 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Conventions
             Assert.Equal(DeployedTableColumnOrder(context, "Children"), typeColumns);
         }
 
+        [Fact]
+        public void Json_container_column_orders_last_like_the_table()
+        {
+            // EF appends JSON container columns after every scalar column, ordered by name
+            // (GetSortedColumns, issue #28539). The UDTT must mirror that, so the derived column order
+            // stays equal to the deployed table order even with a ToJson() mapping in the middle.
+            using ModelTestContext context = TestModel.CreateContext(mb => mb.Entity<JsonOrder>(e =>
+            {
+                e.ToTable("JsonOrders", "gl");
+                e.HasTableType();
+                e.Property(o => o.Id).ValueGeneratedNever();
+                e.OwnsOne(o => o.Meta, b => b.ToJson());
+            }));
+
+            List<string> typeColumns =
+                [.. TestModel.GetFinalizedModel(context).GetTableTypes().Single().Columns.Select(c => c.Name)];
+
+            Assert.Equal("Meta", typeColumns[^1]); // the JSON column is last, after Id and Name
+            Assert.Equal(DeployedTableColumnOrder(context, "JsonOrders"), typeColumns);
+        }
+
         private sealed class OrderParent
         {
             public int Id { get; set; }
+        }
+
+        private sealed class JsonOrder
+        {
+            public int Id { get; set; }
+
+            public string Name { get; set; } = string.Empty;
+
+            public JsonMeta? Meta { get; set; }
+        }
+
+        private sealed class JsonMeta
+        {
+            public string Source { get; set; } = string.Empty;
+
+            public int Revision { get; set; }
         }
 
         private sealed class ChildWithNav

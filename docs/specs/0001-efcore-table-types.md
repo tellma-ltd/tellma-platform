@@ -113,15 +113,39 @@ The UDTT is a **derived row image** of the table:
   convention-created shadow FK column is included like any other mapped scalar column, at
   the table's resolved position for it (UDTT order mirrors the table for shadow columns
   exactly as for CLR-declared ones). Computed columns are always excluded. Columns
-  contributed by complex types, by owned entity types mapped into the owner's table, or by
-  `ToJson()` document mappings are outside the derivation's reach (it walks the entity's
-  own properties only) — and a row image missing columns its table has is the same silent
+  contributed by a **flattened** complex type, or by an owned entity type mapped into the
+  owner's table, are outside the derivation's reach (it walks the entity's own properties
+  only) — and a row image missing columns its table has is the same silent
   drift/truncation failure mode that killed `ForSave`. The finalizing convention therefore
   **rejects the opt-in** of an entity whose mapped table carries any such columns, with an
   actionable error naming them: the partial row image is an impossible state, not a
-  documented hazard. (Tellma's models use none of these mappings today.) Column names,
-  store types, max length, precision, scale, nullability, and collation are taken from the
-  relational model EF already built for the table — never re-declared.
+  documented hazard. A `ToJson()` mapping is the deliberate exception — it contributes a
+  single container column the derivation *can* see and materialize (see **JSON columns**
+  below), so the image stays complete and the opt-in is allowed. Column names, store types,
+  max length, precision, scale, nullability, and collation are taken from the relational
+  model EF already built for the table — never re-declared.
+- **JSON columns**: SQL Server 2025's native `json` type is a first-class column type in the
+  platform, and a UDTT-saved entity may carry one — from a `ToJson()` owned navigation or
+  complex property (one container column on the owner's table), a primitive collection, or an
+  explicit `HasColumnType("json")`. The derivation does **not** carry it as `json`, for two
+  reasons: the client driver cannot bind a native-`json` column in a table-valued parameter
+  (`Microsoft.Data.SqlClient`'s `SqlMetaData` has no json entry, so a `json` UDTT column is not
+  constructible at TVP-bind time), and a UDTT is a transient parameter that gains none of native
+  json's storage/indexing benefits. Each json column is carried instead as **`varchar(max)` with
+  the json type's own UTF-8 collation** (`Latin1_General_100_BIN2_UTF8`). The C# layer serializes
+  the document to a string client-side and the TVP carries that string — a TVP column is always a
+  scalar, so there is no structured wire form for a json value either way — and SQL Server
+  implicitly converts the `varchar(max)` back to the table's `json` (or `nvarchar(max)`) column on
+  the `INSERT … SELECT FROM @tvp`. The UTF-8 collation makes non-Latin text lossless (a plain
+  `varchar` codepage would corrupt it) and matches the native json type's own collation, so the
+  implicit convert is collation-clean. **Ordering**: EF appends JSON container columns after every
+  other column, ordered by name (`MigrationsModelDiffer.GetSortedColumns`, EF issue #28539 — they
+  are not injected at the navigation's position), so the UDTT mirrors that tail; a native-`json`
+  *scalar* keeps its natural position (EF treats it as an ordinary column, not a `JsonColumn`).
+  Ordering is by ordinal name comparison for locale-stable canonical JSON — identical to EF's order
+  for identifier names, pinned by the column-order parity test. Standalone types get the same
+  `json` → `varchar(max)` UTF-8 normalization. The bulk-save binder's JSON serializer must match
+  EF's read-back contract (property names, value converters) so round-trips stay faithful.
 - **Normalization**: the type never carries IDENTITY (moot given sequences, but enforce it),
   defaults, FK constraints, or named constraints.
 - **Primary key**: the type's PK mirrors the table's PK columns. (IDs are app-assigned and
@@ -159,8 +183,9 @@ The UDTT is a **derived row image** of the table:
   global uniqueness check — explicit names are required, and the resulting types are
   slices, not full row images. (Slices do not violate the partial-row-image rejection
   above; the principle differs: a slice omits only columns that belong to the *other*
-  sharing entity's save unit — the union of the slices covers the table — whereas
-  complex/owned/JSON omissions would silently drop columns of *this* entity's own save.)
+  sharing entity's save unit — the union of the slices covers the table — whereas a
+  flattened-complex or owned-into-owner-table omission would silently drop columns of
+  *this* entity's own save.)
 
 ### 3. Migrations pipeline behavior
 
@@ -604,10 +629,12 @@ surface the dynamic SQL generator, the drop guard, and tests consume):
   same-shaped type THROW 53104 on the second create; a content mismatch at a name still
   THROWs 53103 (kept distinct from 53104).
 - **Derivation validations**: actionable finalizing-time errors for opt-ins the derivation
-  cannot honor — complex/owned/`ToJson` columns on the mapped table, a TPH root whose
-  derived types declare mapped scalar columns (a pure-discriminator hierarchy passes),
+  cannot honor — a flattened complex type or an owned type mapped into the owner's table, a
+  TPH root whose derived types declare mapped columns (a pure-discriminator hierarchy passes),
   shared-table fluent opt-ins, keyless entities, logical names exceeding the physical-name
-  length budget (> 119 characters).
+  length budget (> 119 characters). A `ToJson()` mapping (owned or complex), a primitive
+  collection, and an explicit `json` store type are instead **accepted** and carried as
+  `varchar(max)` UTF-8, ordered to match the table — covered by the JSON-column tests.
 - **Snapshot round-trip**: model → snapshot code → compile → diff against the live model
   must be empty (the standard EF technique), proving annotations survive snapshots.
 - **Scaffolding**: design-time tests asserting the C# emitted into migration files for the
