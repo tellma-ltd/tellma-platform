@@ -1,0 +1,18 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove(Directory.Build.props, $(MSBuildThisFileDirectory)..))" />
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- XML doc coverage (CS1591) is enforced on the src libraries only. CA1707 (underscores)
+         conflicts with the standard xunit test naming convention, and CA1720 (type names as
+         identifiers) conflicts with test models that deliberately enumerate column types. -->
+    <NoWarn>$(NoWarn);CS1591;CA1707;CA1720</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Test assets (console hosts under assets/) set TellmaTestAsset=true and are not xunit
+         projects. Item conditions evaluate after the full property pass, so the project-body
+         property is visible here. -->
+    <Using Include="Xunit" Condition="'$(TellmaTestAsset)' != 'true'" />
+  </ItemGroup>
+</Project>
