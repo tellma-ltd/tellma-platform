@@ -14,8 +14,11 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
 {
     /// <summary>
     ///     Memory-optimized table types: the pre-flight passes on XTP-capable hosts and the type
-    ///     deploys with <c>is_memory_optimized = 1</c>. (The THROW path on unsupported tiers is
-    ///     covered by the golden SQL unit tests; a supporting server cannot exercise it.)
+    ///     deploys with <c>is_memory_optimized = 1</c>, including a JSON column carried as
+    ///     <c>nvarchar(max)</c> (the on-disk <c>varchar(max)</c> UTF-8 form and the native <c>json</c>
+    ///     type are both rejected on memory-optimized tables — spec 0001 §2). (The THROW path on
+    ///     unsupported tiers is covered by the golden SQL unit tests; a supporting server cannot
+    ///     exercise it.)
     /// </summary>
     /// <param name="fixture">The shared SQL Server.</param>
     [Trait("Category", "Integration")]
@@ -54,6 +57,16 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
                 IsMemoryOptimized = true,
             };
             operation.Columns.Add(new TableTypeColumnDefinition { Name = "Id", StoreType = "int" });
+            // A JSON column on a memory-optimized type: nvarchar(max), since UTF-8 collations (12356)
+            // and the native json type (10794) are both rejected there. If that were wrong, the
+            // CREATE TYPE below would throw and fail this test.
+            operation.Columns.Add(new TableTypeColumnDefinition
+            {
+                Name = "Payload",
+                StoreType = "nvarchar(max)",
+                IsNullable = true,
+                IsJson = true,
+            });
 
             IMigrationsSqlGenerator generator = context.GetService<IMigrationsSqlGenerator>();
             string sql = Assert.Single(generator.Generate([operation])).CommandText;
@@ -63,6 +76,15 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
                 connectionString,
                 "SELECT CAST([is_memory_optimized] AS int) FROM [sys].[table_types] WHERE [name] = N'HotIdList_0badf00d'");
             Assert.Equal(1, isMemoryOptimized);
+
+            // The JSON column deployed as nvarchar(max) (max_length -1 for the (max) LOB form).
+            string payloadType = await IntegrationHelpers.ScalarAsync<string>(
+                connectionString,
+                "SELECT ty.[name] FROM [sys].[table_types] tt "
+                + "JOIN [sys].[columns] c ON c.[object_id] = tt.[type_table_object_id] "
+                + "JOIN [sys].[types] ty ON ty.[user_type_id] = c.[user_type_id] "
+                + "WHERE tt.[name] = N'HotIdList_0badf00d' AND c.[name] = N'Payload'") ?? string.Empty;
+            Assert.Equal("nvarchar", payloadType);
         }
     }
 }
