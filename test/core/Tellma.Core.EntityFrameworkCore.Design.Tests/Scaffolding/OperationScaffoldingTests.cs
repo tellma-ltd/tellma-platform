@@ -132,6 +132,17 @@ namespace Tellma.Core.EntityFrameworkCore.Design.Tests.Scaffolding
         }
 
         [Fact]
+        public void CleanupTableTypes_with_empty_keep_list_scaffolds_golden_csharp()
+        {
+            // The common Down()/opt-out shape: an empty keep-list orphans everything in scope.
+            string code = GenerateCode(new CleanupTableTypesOperation { Scope = "TestScope", KeepList = [] });
+
+            Assert.Equal(
+                """migrationBuilder.CleanupTableTypes(scope: "TestScope", keepList: new string[0]);""",
+                code);
+        }
+
+        [Fact]
         public void DropTableType_scaffolds_golden_csharp()
         {
             string code = GenerateCode(new DropTableTypeOperation { Name = "OrdersList", Schema = "gl", IsMemoryOptimized = true });

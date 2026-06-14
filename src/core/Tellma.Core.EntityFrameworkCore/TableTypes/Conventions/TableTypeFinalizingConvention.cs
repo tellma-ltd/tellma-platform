@@ -279,15 +279,39 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
             StoreObjectIdentifier local = storeObject;
             foreach (IConventionEntityType derived in entityType.GetDerivedTypes())
             {
+                static InvalidOperationException Reject(IConventionEntityType root, IConventionEntityType derived, string column)
+                {
+                    return new InvalidOperationException(
+                        $"Entity type '{root.DisplayName()}' is the root of a table-per-hierarchy (TPH) mapping and opted " +
+                        $"into a table type, but derived type '{derived.DisplayName()}' declares mapped column '{column}'. " +
+                        "The root's row image would silently omit it. Use leaf-only mapping (with TPT for a shared root) " +
+                        "for UDTT-saved aggregates, or opt out.");
+                }
+
                 foreach (IConventionProperty property in derived.GetDeclaredProperties())
                 {
-                    if (property.GetColumnName(local) is not null)
+                    if (property.GetColumnName(local) is string scalar)
                     {
-                        throw new InvalidOperationException(
-                            $"Entity type '{entityType.DisplayName()}' is the root of a table-per-hierarchy (TPH) " +
-                            $"mapping and opted into a table type, but derived type '{derived.DisplayName()}' declares " +
-                            $"mapped column '{property.GetColumnName(local)}'. The root's row image would silently omit " +
-                            "it. Use leaf-only mapping (with TPT for a shared root) for UDTT-saved aggregates, or opt out.");
+                        throw Reject(entityType, derived, scalar);
+                    }
+                }
+
+                // Complex types and owned types mapped into the shared table by a derived type
+                // contribute columns the root's row image cannot see — the same hole
+                // ValidateNoHiddenColumns closes for the root itself.
+                if (derived.GetDeclaredComplexProperties().FirstOrDefault() is IConventionComplexProperty complex)
+                {
+                    throw Reject(entityType, derived, $"complex property '{complex.Name}'");
+                }
+
+                foreach (IConventionNavigation navigation in derived.GetDeclaredNavigations())
+                {
+                    IConventionEntityType target = navigation.TargetEntityType;
+                    if (target.IsOwned()
+                        && (target.IsMappedToJson()
+                            || (target.GetTableName() == local.Name && target.GetSchema() == local.Schema)))
+                    {
+                        throw Reject(entityType, derived, $"owned navigation '{navigation.Name}'");
                     }
                 }
             }
@@ -440,27 +464,79 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
                 return int.MaxValue;
             }
 
-            List<IncludedColumn> clrColumns = [.. included
-                .Where(c => c.Property.PropertyInfo is not null)
+            // The ordering PropertyInfo of a non-PK column. EF groups a *shadow* foreign-key column
+            // under its dependent-to-principal navigation's property (ordered among CLR columns at
+            // the navigation's declaration position, then by the column's index within the FK), and
+            // only a non-FK shadow column lands in the true-shadow tail
+            // (MigrationsModelDiffer.GetSortedProperties). A column with its own PropertyInfo uses
+            // that. PK classification, in contrast, uses the raw PropertyInfo (a shadow PK — FK or
+            // not — is a least-priority PK in EF), so this is consulted for non-PK columns only.
+            static (PropertyInfo? Info, int FkIndex) OrderingProperty(IConventionProperty property)
+            {
+                if (property.PropertyInfo is not null)
+                {
+                    return (property.PropertyInfo, 0);
+                }
+
+                foreach (IConventionForeignKey foreignKey in property.GetContainingForeignKeys())
+                {
+                    PropertyInfo? navigation = foreignKey.DependentToPrincipal?.PropertyInfo;
+                    if (navigation is not null)
+                    {
+                        int fkIndex = 0;
+                        foreach (IConventionProperty fkProperty in foreignKey.Properties)
+                        {
+                            if (fkProperty == property)
+                            {
+                                break;
+                            }
+
+                            fkIndex++;
+                        }
+
+                        return (navigation, fkIndex);
+                    }
+                }
+
+                return (null, 0);
+            }
+
+            // Non-PK columns grouped by their ordering PropertyInfo (CLR-declared or navigation-backed
+            // shadow FK), ordered base-most type first then by declaration order, mirroring EF.
+            List<IncludedColumn> clrNonPk = [.. included
+                .Where(c => !c.IsPrimaryKey && OrderingProperty(c.Property).Info is not null)
+                .OrderBy(c => ChainIndex(OrderingProperty(c.Property).Info!.DeclaringType!))
+                .ThenBy(c => OrderingProperty(c.Property).Info!.DeclaringType!.FullName, StringComparer.Ordinal)
+                .ThenBy(c => DeclarationIndex(OrderingProperty(c.Property).Info!))
+                .ThenBy(c => OrderingProperty(c.Property).FkIndex)];
+
+            // Primary-key columns: CLR-declared first (by declaration order), then shadow PKs —
+            // EF's least-priority PK group, which holds shadow PKs regardless of FK membership.
+            List<IncludedColumn> clrPk = [.. included
+                .Where(c => c.IsPrimaryKey && c.Property.PropertyInfo is not null)
                 .OrderBy(c => ChainIndex(c.Property.PropertyInfo!.DeclaringType!))
                 .ThenBy(c => c.Property.PropertyInfo!.DeclaringType!.FullName, StringComparer.Ordinal)
                 .ThenBy(c => DeclarationIndex(c.Property.PropertyInfo!))];
-            List<IncludedColumn> shadowColumns = [.. included.Where(c => c.Property.PropertyInfo is null)];
+            List<IncludedColumn> shadowPk = [.. included.Where(c => c.IsPrimaryKey && c.Property.PropertyInfo is null)];
 
-            // "Own" = declared on the entity's CLR type itself (or, theoretically, a type derived
-            // from it); base-class declarations go to the tail, exactly like EF's table ordering.
+            // The true-shadow tail: non-PK shadow columns that are not navigation-backed FK columns.
+            List<IncludedColumn> trueShadowNonPk =
+                [.. included.Where(c => !c.IsPrimaryKey && OrderingProperty(c.Property).Info is null)];
+
+            // "Own" = declared on the entity's CLR type itself (or a type derived from it); base-class
+            // declarations go to the tail, exactly like EF's table ordering.
             bool IsOwnDeclaration(IncludedColumn column)
             {
-                return entityType.ClrType.IsAssignableFrom(column.Property.PropertyInfo!.DeclaringType!);
+                return entityType.ClrType.IsAssignableFrom(OrderingProperty(column.Property).Info!.DeclaringType!);
             }
 
             List<IncludedColumn> layout =
             [
-                .. clrColumns.Where(c => c.IsPrimaryKey),
-                .. shadowColumns.Where(c => c.IsPrimaryKey),
-                .. clrColumns.Where(c => !c.IsPrimaryKey && IsOwnDeclaration(c)),
-                .. shadowColumns.Where(c => !c.IsPrimaryKey),
-                .. clrColumns.Where(c => !c.IsPrimaryKey && !IsOwnDeclaration(c)),
+                .. clrPk,
+                .. shadowPk,
+                .. clrNonPk.Where(IsOwnDeclaration),
+                .. trueShadowNonPk,
+                .. clrNonPk.Where(c => !IsOwnDeclaration(c)),
             ];
 
             // Explicit HasColumnOrder() trumps the structural layout, exactly as it does for the
@@ -508,7 +584,9 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
 
                 foreach (string keyColumn in config.Key)
                 {
-                    if (!config.Columns.Any(c => c.Name == keyColumn))
+                    // Case-insensitive, matching the duplicate-column check and SQL Server's default
+                    // identifier collation.
+                    if (!config.Columns.Any(c => string.Equals(c.Name, keyColumn, StringComparison.OrdinalIgnoreCase)))
                     {
                         throw new InvalidOperationException(
                             $"Standalone table type '{config.Name}' declares key column '{keyColumn}' which is not " +

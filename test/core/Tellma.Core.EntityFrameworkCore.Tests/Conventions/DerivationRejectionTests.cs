@@ -68,6 +68,24 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Conventions
         }
 
         [Fact]
+        public void Tph_root_with_a_derived_complex_property_is_rejected()
+        {
+            // A complex property declared on a TPH-derived type maps columns into the shared table
+            // that the root's row image cannot see — the same hole as derived scalar columns.
+            InvalidOperationException ex = Reject(mb =>
+            {
+                mb.Entity<Animal>(e =>
+                {
+                    e.ToTable("Animals", "zoo");
+                    e.HasTableType();
+                });
+                mb.Entity<Tagged>(e => e.ComplexProperty(t => t.Tag));
+            });
+
+            Assert.Contains("Tag", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void Pure_discriminator_tph_hierarchy_is_allowed()
         {
             using ModelTestContext context = TestModel.CreateContext(mb =>
@@ -128,6 +146,16 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Conventions
 
         private sealed class Cat : Animal
         {
+        }
+
+        private sealed class Tagged : Animal
+        {
+            public Tag Tag { get; set; } = new();
+        }
+
+        private sealed class Tag
+        {
+            public string Color { get; set; } = string.Empty;
         }
     }
 }

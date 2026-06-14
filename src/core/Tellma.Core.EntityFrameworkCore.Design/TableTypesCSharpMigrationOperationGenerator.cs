@@ -18,10 +18,12 @@ namespace Tellma.Core.EntityFrameworkCore.Design
     ///     <c>.DropTableType(...)</c> calls. All other operations fall through to EF's generator.
     /// </summary>
     /// <remarks>
-    ///     EF dispatches operations via <c>dynamic</c> against its own overload set, so overloads
-    ///     added in a derived class are never picked up — the unknown-operation fallback
-    ///     (<see cref="Generate(MigrationOperation, IndentedStringBuilder)" />) is the supported
-    ///     extension point and the one overridden here.
+    ///     EF dispatches operations via <c>Generate((dynamic)operation, builder)</c> from base-class
+    ///     code, so the overload set considered is the one accessible at that (base-class) call site —
+    ///     derived-class overloads are not picked up. The unknown-operation fallback
+    ///     (<see cref="Generate(MigrationOperation, IndentedStringBuilder)" />) is the supported,
+    ///     documented extension point; overriding it and dispatching explicitly is correct regardless
+    ///     of the dynamic-binding details.
     /// </remarks>
     /// <param name="dependencies">The dependencies; pass through to EF's generator.</param>
     public class TableTypesCSharpMigrationOperationGenerator(CSharpMigrationOperationGeneratorDependencies dependencies)

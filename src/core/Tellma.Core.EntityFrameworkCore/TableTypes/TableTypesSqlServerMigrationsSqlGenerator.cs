@@ -100,10 +100,12 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
 
             // T-SQL variables are batch-scoped, and an idempotent script concatenates the
             // (non-suppressed) create commands into one batch — so the variable names must be unique
-            // per type. The content hash (unique per physical name) is the suffix.
-            string sfx = operation.DefinitionHash.Length >= TableTypeNaming.HashSuffixLength
-                ? operation.DefinitionHash[..TableTypeNaming.HashSuffixLength]
-                : operation.DefinitionHash;
+            // per create. The suffix is the FULL definition hash (not the 8-char physical-name
+            // suffix): its name space is then as wide as the content space, so even two creates that
+            // collide on the 8-char prefix get distinct variables (a clean THROW 53103 at apply time,
+            // never a "variable already declared" parse error). 64 hex chars keeps the name well
+            // under SQL Server's 128-character identifier limit.
+            string sfx = operation.DefinitionHash;
             string vSchema = $"@schema_{sfx}";
             string vPhysical = $"@physical_{sfx}";
             string vFq = $"@fq_{sfx}";
@@ -362,6 +364,10 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
             for (int i = 0; i < operation.Columns.Count; i++)
             {
                 TableTypeColumnDefinition column = operation.Columns[i];
+
+                // Column names are identifiers → delimited. StoreType and Collation are SQL fragments
+                // taken from the model (the same trust boundary as HasColumnType()/UseCollation()),
+                // emitted verbatim by design — not user-input values, so not literal-escaped.
                 builder
                     .Append("        ")
                     .Append(Dependencies.SqlGenerationHelper.DelimitIdentifier(column.Name))

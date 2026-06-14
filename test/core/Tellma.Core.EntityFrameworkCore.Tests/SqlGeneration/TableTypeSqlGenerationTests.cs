@@ -62,7 +62,7 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.SqlGeneration
         {
             string sql = Text(Generate(CreateOrdersListOperation()));
 
-            Assert.Contains("IF TYPE_ID(@fq_abc12345) IS NULL", sql, StringComparison.Ordinal);
+            Assert.Contains("IF TYPE_ID(@fq_abc12345def67890) IS NULL", sql, StringComparison.Ordinal);
             Assert.Contains("CREATE TYPE [gl].[OrdersList_abc12345] AS TABLE (", sql, StringComparison.Ordinal);
             Assert.Contains("[Id] int NOT NULL,", sql, StringComparison.Ordinal);
             Assert.Contains("[Memo] nvarchar(255) NULL,", sql, StringComparison.Ordinal);
@@ -89,7 +89,7 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.SqlGeneration
             string sql = Text(Generate(CreateOrdersListOperation()));
 
             // Aborted-create repair, then the two distinct THROWs.
-            Assert.Contains("IF @existingHash_abc12345 IS NULL", sql, StringComparison.Ordinal);
+            Assert.Contains("IF @existingHash_abc12345def67890 IS NULL", sql, StringComparison.Ordinal);
             Assert.Contains("sp_updateextendedproperty", sql, StringComparison.Ordinal);
             Assert.Contains("THROW 53103", sql, StringComparison.Ordinal);
             Assert.Contains("THROW 53104", sql, StringComparison.Ordinal);

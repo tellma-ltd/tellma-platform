@@ -57,10 +57,10 @@
     </PropertyGroup>
     <ItemGroup Condition="'$(_TellmaInjectDesignTimeServices)' == 'true'">
       <TellmaEfCoreDesignTimeServices Include="Microsoft.EntityFrameworkCore.Design.DesignTimeServicesReferenceAttribute">
-        <_Parameter1>
-          Tellma.Core.EntityFrameworkCore.Design.TableTypesDesignTimeServices,
-          Tellma.Core.EntityFrameworkCore.Design
-        </_Parameter1>
+        <!-- Keep the assembly-qualified name on a single line: WriteCodeFragment emits the element
+             value verbatim, so a wrapped value would embed a newline + indentation into the attribute
+             literal (EF's Type.GetType resolution tolerates it, but EF's own targets keep it inline). -->
+        <_Parameter1>Tellma.Core.EntityFrameworkCore.Design.TableTypesDesignTimeServices, Tellma.Core.EntityFrameworkCore.Design</_Parameter1>
         <_Parameter2>Microsoft.EntityFrameworkCore.SqlServer</_Parameter2>
       </TellmaEfCoreDesignTimeServices>
     </ItemGroup>
