@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.EntityFrameworkCore\Tellma.Core.EntityFrameworkCore.csproj" />
+    <!-- The migrator-shaped asset whose committed migration chain is applied to the fresh
+         containerized database. -->
+    <ProjectReference Include="..\assets\Tellma.Core.EntityFrameworkCore.MigrationsHost\Tellma.Core.EntityFrameworkCore.MigrationsHost.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Testcontainers.MsSql" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,8 @@
+<Project>
+  <!-- Phase-1 in-repo flow of the DesignTimeServicesReference injection: NuGet imports the
+       Design package's build/ targets only under PackageReference, so for in-repo
+       ProjectReference consumers (distribution migrator projects, test hosts) the same file is
+       imported here. Its target self-gates on a ProjectReference to
+       Tellma.Core.EntityFrameworkCore.Design, so it is a no-op for every other project. -->
+  <Import Project="$(MSBuildThisFileDirectory)src\core\Tellma.Core.EntityFrameworkCore.Design\build\net10.0\Tellma.Core.EntityFrameworkCore.Design.targets" />
+</Project>

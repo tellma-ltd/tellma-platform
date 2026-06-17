@@ -1,0 +1,10 @@
+<Project>
+  <!-- Imported by NuGet only (build/ folder of the package). Marks that the consuming project
+       references Tellma.Core.EntityFrameworkCore.Design as a package, which gates the
+       DesignTimeServicesReference injection target in the sibling .targets file. In the Phase-1
+       in-repo flow the .targets is imported by the repository's Directory.Build.targets instead,
+       and the target gates on a ProjectReference to the Design project. -->
+  <PropertyGroup>
+    <_TellmaEfCoreDesignViaPackage>true</_TellmaEfCoreDesignViaPackage>
+  </PropertyGroup>
+</Project>

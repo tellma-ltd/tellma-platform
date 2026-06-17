@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Tellma's EF Core extensions (runtime): SQL Server table-type (UDTT) configuration, migration operations, migrations SQL generation, and the table-type metadata API. Never references the EF Design package.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Transitively brings Microsoft.EntityFrameworkCore + .Relational + .Abstractions.
+         Rule 3 (spec): this project MUST NOT reference Microsoft.EntityFrameworkCore.Design,
+         directly or transitively, and never references Tellma application projects. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+  </ItemGroup>
+
+</Project>

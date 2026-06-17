@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Build everything and run the unit suites (integration excluded) on both OSes.
+  build-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet restore Tellma.slnx
+      - run: dotnet build Tellma.slnx -c Release --no-restore
+      - run: dotnet test Tellma.slnx -c Release --no-build --filter "Category!=Integration"
+
+  # Code style and formatting: the full IDE code-style surface (whitespace, imports, IDE00xx) that
+  # the compiler build does not run even with EnforceCodeStyleInBuild. Same analyzers and
+  # .editorconfig the IDE uses — no per-rule enumeration. A dedicated job so a style failure reads
+  # as a style failure, not an OS-specific one.
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet restore Tellma.slnx
+      - run: dotnet format Tellma.slnx --verify-no-changes --no-restore
+
+  # Containerized SQL Server (Testcontainers manages the container; Docker is preinstalled on
+  # ubuntu runners). Covers apply/verify, drop guard, grants, column-order parity, idempotent
+  # script run-twice, and the zero-persisted-dependents invariant.
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet test test/core/Tellma.Core.EntityFrameworkCore.IntegrationTests -c Release --filter "Category=Integration"
+
+  # Real `dotnet ef` end to end, in both DesignTimeServicesReference discovery flows:
+  #   1. ProjectReference flow (Phase-1 in-repo): regenerate the MigrationsHost migration and
+  #      assert table-type operations scaffold, script and bundle.
+  #   2. Package flow: pack both libraries to a local feed and repeat against the
+  #      PackageReference variant of the host.
+  design-e2e:
+    runs-on: ubuntu-latest
+    env:
+      HOST: test/core/assets/Tellma.Core.EntityFrameworkCore.MigrationsHost
+      PKG_HOST: test/core/assets/Tellma.Core.EntityFrameworkCore.MigrationsHost.Package
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet tool restore
+      # dotnet-ef builds the target project without an implicit NuGet restore.
+      - run: dotnet restore "$HOST"
+
+      # --- ProjectReference flow ---
+      - name: Regenerate migration (ProjectReference flow)
+        run: |
+          rm -rf "$HOST/Migrations"
+          dotnet ef migrations add CiProbe --project "$HOST" --startup-project "$HOST"
+          grep -q "CreateTableType" "$HOST"/Migrations/*_CiProbe.cs
+          grep -q "using Tellma.Core.EntityFrameworkCore.TableTypes.Operations;" "$HOST"/Migrations/*_CiProbe.cs
+      - name: Idempotent script (ProjectReference flow)
+        run: |
+          dotnet ef migrations script --idempotent --project "$HOST" --startup-project "$HOST" -o artifacts/migrate.sql
+          grep -q "CREATE TYPE" artifacts/migrate.sql
+      - name: Migration bundle (ProjectReference flow)
+        run: dotnet ef migrations bundle --project "$HOST" --startup-project "$HOST" -o artifacts/efbundle
+
+      # --- Package flow ---
+      - name: Pack the libraries
+        run: |
+          dotnet pack src/core/Tellma.Core.Abstractions -c Release -o artifacts/pkg
+          dotnet pack src/core/Tellma.Core.EntityFrameworkCore -c Release -o artifacts/pkg
+          dotnet pack src/core/Tellma.Core.EntityFrameworkCore.Design -c Release -o artifacts/pkg
+      - name: Scaffold against the packages (package flow)
+        # The variant's own nuget.config routes Tellma.* to artifacts/pkg.
+        run: |
+          dotnet build "$PKG_HOST"
+          dotnet ef migrations add PackageProbe --project "$PKG_HOST" --startup-project "$PKG_HOST" --no-build
+          grep -q "CreateTableType" "$PKG_HOST"/Migrations/*_PackageProbe.cs
+
+  # PR merge gate: the single status check required by branch protection. It fails if any job
+  # below did not succeed, without making any individual job a required check (which would couple
+  # branch protection to job names / the OS matrix).
+  all-checks-passed:
+    if: ${{ !cancelled() }}
+    # Include all required job in this list — a job missing here is NOT gated.
+    # Branch protection must require THIS job only.
+    needs: [build-test, format, integration, design-e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any dependency did not succeed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: exit 1

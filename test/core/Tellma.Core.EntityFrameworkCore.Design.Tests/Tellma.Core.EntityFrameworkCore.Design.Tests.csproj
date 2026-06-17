@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.EntityFrameworkCore\Tellma.Core.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.EntityFrameworkCore.Design\Tellma.Core.EntityFrameworkCore.Design.csproj" />
+    <!-- Reused test models/helpers (this project additionally covers the design-time surface). -->
+    <ProjectReference Include="..\Tellma.Core.EntityFrameworkCore.Tests\Tellma.Core.EntityFrameworkCore.Tests.csproj" />
+    <!-- The migrator-shaped asset: its assembly carries the MSBuild-injected
+         DesignTimeServicesReference attribute and the committed Migrations/ chain that the
+         static tripwire scans. -->
+    <ProjectReference Include="..\assets\Tellma.Core.EntityFrameworkCore.MigrationsHost\Tellma.Core.EntityFrameworkCore.MigrationsHost.csproj" />
+    <!-- The EF Design package is developmentDependency=true (PrivateAssets=all on the project
+         reference above), so this test project references it directly — exactly like a real
+         migrator project would. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>none</PrivateAssets>
+    </PackageReference>
+    <!-- Roslyn, for compiling scaffolded migrations / model snapshots in-memory. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>

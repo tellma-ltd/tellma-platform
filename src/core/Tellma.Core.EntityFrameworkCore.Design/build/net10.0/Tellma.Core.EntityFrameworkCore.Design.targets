@@ -1,0 +1,75 @@
+<Project>
+  <!--
+    Injects
+      [assembly: DesignTimeServicesReference(
+          "Tellma.Core.EntityFrameworkCore.Design.TableTypesDesignTimeServices, Tellma.Core.EntityFrameworkCore.Design",
+          "Microsoft.EntityFrameworkCore.SqlServer")]
+    into the consuming project at build time (the same mechanism EF's own extension packages use,
+    e.g. Microsoft.EntityFrameworkCore.SqlServer.HierarchyId).
+
+    Why: EF tooling scans ONLY the startup assembly and the migrations assembly for
+    DesignTimeServicesReference attributes - never referenced libraries - so the attribute must
+    end up on the migrator project's own assembly. Injecting it from MSBuild keeps the promise
+    that referencing the Tellma EF Core libraries is sufficient, with no manual wiring.
+
+    The target runs in two flows:
+      - Package flow: NuGet imports this file (and the sibling .props, which sets
+        _TellmaEfCoreDesignViaPackage=true) for direct consumers of the package.
+      - Phase-1 in-repo flow: the repository's Directory.Build.targets imports this file for
+        every project; the target then gates on a ProjectReference to the Design project.
+  -->
+  <PropertyGroup>
+    <MSBuildAllProjects>$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <TellmaEfCoreDesignTimeServicesFile>$(IntermediateOutputPath)TellmaEfCoreDesignTimeServicesReference$(DefaultLanguageSourceExtension)</TellmaEfCoreDesignTimeServicesFile>
+  </PropertyGroup>
+  <Choose>
+    <!-- F# executables need generated code fragments compiled before Program.fs; mirrored from
+         EF's own injection targets. -->
+    <When Condition="'$(Language)' == 'F#'">
+      <Choose>
+        <When Condition="'$(OutputType)' == 'Exe' OR '$(OutputType)' == 'WinExe'">
+          <PropertyGroup>
+            <TellmaCodeFragmentItemGroup>CompileBefore</TellmaCodeFragmentItemGroup>
+          </PropertyGroup>
+        </When>
+        <Otherwise>
+          <PropertyGroup>
+            <TellmaCodeFragmentItemGroup>CompileAfter</TellmaCodeFragmentItemGroup>
+          </PropertyGroup>
+        </Otherwise>
+      </Choose>
+    </When>
+    <Otherwise>
+      <PropertyGroup>
+        <TellmaCodeFragmentItemGroup>Compile</TellmaCodeFragmentItemGroup>
+      </PropertyGroup>
+    </Otherwise>
+  </Choose>
+  <Target Name="AddTellmaEfCoreDesignTimeServicesReference"
+          BeforeTargets="CoreCompile"
+          DependsOnTargets="PrepareForBuild"
+          Condition="'$(DesignTimeBuild)' != 'True' AND '$(TellmaEfCoreDesignTimeServicesReferenceDisabled)' != 'true'"
+          Inputs="$(MSBuildAllProjects)"
+          Outputs="$(TellmaEfCoreDesignTimeServicesFile)">
+    <PropertyGroup>
+      <_TellmaInjectDesignTimeServices>$(_TellmaEfCoreDesignViaPackage)</_TellmaInjectDesignTimeServices>
+      <_TellmaInjectDesignTimeServices Condition="'$(_TellmaInjectDesignTimeServices)' != 'true' AND '@(ProjectReference->AnyHaveMetadataValue(`Filename`, `Tellma.Core.EntityFrameworkCore.Design`))' == 'true'">true</_TellmaInjectDesignTimeServices>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(_TellmaInjectDesignTimeServices)' == 'true'">
+      <TellmaEfCoreDesignTimeServices Include="Microsoft.EntityFrameworkCore.Design.DesignTimeServicesReferenceAttribute">
+        <!-- Keep the assembly-qualified name on a single line: WriteCodeFragment emits the element
+             value verbatim, so a wrapped value would embed a newline + indentation into the attribute
+             literal (EF's Type.GetType resolution tolerates it, but EF's own targets keep it inline). -->
+        <_Parameter1>Tellma.Core.EntityFrameworkCore.Design.TableTypesDesignTimeServices, Tellma.Core.EntityFrameworkCore.Design</_Parameter1>
+        <_Parameter2>Microsoft.EntityFrameworkCore.SqlServer</_Parameter2>
+      </TellmaEfCoreDesignTimeServices>
+    </ItemGroup>
+    <WriteCodeFragment Condition="'$(_TellmaInjectDesignTimeServices)' == 'true'"
+                       AssemblyAttributes="@(TellmaEfCoreDesignTimeServices)"
+                       Language="$(Language)"
+                       OutputFile="$(TellmaEfCoreDesignTimeServicesFile)">
+      <Output TaskParameter="OutputFile" ItemName="$(TellmaCodeFragmentItemGroup)" />
+      <Output TaskParameter="OutputFile" ItemName="FileWrites" />
+    </WriteCodeFragment>
+  </Target>
+</Project>
