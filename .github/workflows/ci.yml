@@ -93,3 +93,17 @@ jobs:
           dotnet build "$PKG_HOST"
           dotnet ef migrations add PackageProbe --project "$PKG_HOST" --startup-project "$PKG_HOST" --no-build
           grep -q "CreateTableType" "$PKG_HOST"/Migrations/*_PackageProbe.cs
+
+  # PR merge gate: the single status check required by branch protection. It fails if any job
+  # below did not succeed, without making any individual job a required check (which would couple
+  # branch protection to job names / the OS matrix).
+  all-checks-passed:
+    if: ${{ !cancelled() }}
+    # Include all required job in this list — a job missing here is NOT gated.
+    # Branch protection must require THIS job only.
+    needs: [build-test, format, integration, design-e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any dependency did not succeed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: exit 1
