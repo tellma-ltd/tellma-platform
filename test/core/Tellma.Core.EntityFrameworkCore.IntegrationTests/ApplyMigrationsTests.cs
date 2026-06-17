@@ -104,10 +104,10 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
             // Every type is stamped with its owning scope (spec 0001 §3 → Versioning).
             int scopeStamps = await IntegrationHelpers.ScalarAsync<int>(
                 connectionString,
-                """
+                $"""
                 SELECT COUNT(*) FROM [sys].[extended_properties]
                 WHERE [class] = 6 AND [name] = N'Tellma:TableType:Scope'
-                  AND CONVERT(nvarchar(max), [value]) = N'MigrationsHostContext'
+                  AND CONVERT(nvarchar(max), [value]) = N'{MigrationsHostContext.SweepScope}'
                 """);
             Assert.Equal(8, scopeStamps);
 
