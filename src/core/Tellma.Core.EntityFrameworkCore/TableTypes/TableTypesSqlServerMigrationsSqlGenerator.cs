@@ -477,7 +477,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
             }
 
             HashSet<string> excluded = model.FindAnnotation(TableTypeAnnotationNames.ExcludedKeys)?.Value is string json
-                ? [.. TableTypeJson.DeserializeGrants(json)]
+                ? [.. TableTypeJson.DeserializeStringList(json)]
                 : [];
 
             List<string> keep = [];

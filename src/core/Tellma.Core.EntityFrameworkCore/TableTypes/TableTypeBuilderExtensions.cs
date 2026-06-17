@@ -120,7 +120,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
             ArgumentNullException.ThrowIfNull(entityTypeBuilder);
             ArgumentNullException.ThrowIfNull(principals);
 
-            entityTypeBuilder.HasAnnotation(TableTypeAnnotationNames.Grants, TableTypeJson.SerializeGrants(principals));
+            entityTypeBuilder.HasAnnotation(TableTypeAnnotationNames.Grants, TableTypeJson.SerializeStringList(principals));
             return entityTypeBuilder;
         }
 

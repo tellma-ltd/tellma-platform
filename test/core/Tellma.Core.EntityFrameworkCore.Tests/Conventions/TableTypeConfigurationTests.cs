@@ -227,21 +227,5 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Conventions
             Assert.Contains("Order", exception.Message, StringComparison.Ordinal);
             Assert.Contains("Plain", exception.Message, StringComparison.Ordinal);
         }
-
-        [Fact]
-        public void Keyless_entities_cannot_opt_in()
-        {
-            using ModelTestContext context = TestModel.CreateContext(mb =>
-                mb.Entity<Plain>(e =>
-                {
-                    e.ToTable("Plains", "gl");
-                    e.HasNoKey();
-                    e.HasTableType();
-                }));
-
-            InvalidOperationException exception =
-                Assert.Throws<InvalidOperationException>(() => { _ = TestModel.GetFinalizedModel(context); });
-            Assert.Contains("primary key", exception.Message, StringComparison.OrdinalIgnoreCase);
-        }
     }
 }

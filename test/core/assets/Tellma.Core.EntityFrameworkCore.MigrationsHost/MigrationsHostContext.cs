@@ -26,6 +26,14 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost
         /// </summary>
         public const int SeedBandMax = 9_999;
 
+        /// <summary>
+        ///     The sweep scope for this context's table types. A stable, opaque constant rather than
+        ///     <c>nameof(MigrationsHostContext)</c>: a class rename must not silently change the scope
+        ///     and orphan already-deployed types from their sweep. Distributions should fix their scope
+        ///     this way — pick once, never derive it from a renamable symbol.
+        /// </summary>
+        public const string SweepScope = "k4Rm9Tq2Xv7Bp3N";
+
         /// <summary>The customers (pack→leaf inheritance sample).</summary>
         public DbSet<Customer> Customers => Set<Customer>();
 

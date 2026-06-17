@@ -67,7 +67,7 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
                 Name = "InvoicesList",
                 PhysicalName = physical,
                 Schema = "gl",
-                Scope = nameof(MigrationsHostContext),
+                Scope = MigrationsHostContext.SweepScope,
                 DefinitionHash = new string('0', 64),
                 PrimaryKey = ["Id"],
                 Grants = ["public"],

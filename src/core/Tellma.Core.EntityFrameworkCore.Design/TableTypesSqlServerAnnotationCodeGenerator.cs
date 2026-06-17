@@ -6,7 +6,10 @@
 // SqlServerAnnotationCodeGenerator lives in an ".Internal" namespace. Deriving it is the only
 // way to keep the SQL Server provider's annotation rendering while filtering ours, and this
 // project exists precisely to absorb design-time coupling (it never ships in a runtime host).
-// The design-time test suite fails loudly if an EF upgrade moves this surface.
+// The coupling surface — base type, constructor, and the FilterIgnoredAnnotations override — is
+// compiler-enforced (any EF move is a build break here), and DesignInternalsPinningTests pins the
+// base type for a clear diagnostic. Unlike the runtime differ (Rule 1's hard quarantine), a
+// design-time-only subclass needs no separate adapter indirection.
 #pragma warning disable EF1001 // Internal EF Core API usage.
 
 using Microsoft.EntityFrameworkCore.Design;

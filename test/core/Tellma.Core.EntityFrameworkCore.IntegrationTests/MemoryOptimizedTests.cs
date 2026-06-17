@@ -51,7 +51,7 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
                 Name = "HotIdList",
                 PhysicalName = "HotIdList_0badf00d",
                 Schema = "dbo",
-                Scope = nameof(MigrationsHostContext),
+                Scope = MigrationsHostContext.SweepScope,
                 DefinitionHash = new string('0', 64),
                 PrimaryKey = ["Id"],
                 IsMemoryOptimized = true,

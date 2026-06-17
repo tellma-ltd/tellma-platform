@@ -6,9 +6,11 @@
 namespace Tellma.Core.EntityFrameworkCore.TableTypes
 {
     /// <summary>
-    ///     Names of the model annotations used by the table-types extension. All values are
-    ///     strings or booleans so that the stock EF Core model-snapshot generator round-trips
-    ///     them as <c>.HasAnnotation(...)</c> literals with no custom snapshot code.
+    ///     Names of the model annotations used by the table-types extension. The configuration-level
+    ///     values are strings or booleans so the stock EF Core snapshot generator round-trips them as
+    ///     <c>.HasAnnotation(...)</c> literals; the derived <em>definition</em> annotations are instead
+    ///     rendered as readable <c>HasTableTypeDefinition(...)</c> calls by
+    ///     <c>TableTypesCSharpSnapshotGenerator</c> and filtered out of the generic annotation output.
     /// </summary>
     /// <remarks>
     ///     Two layers of annotations exist:

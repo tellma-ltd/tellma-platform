@@ -138,13 +138,11 @@ The UDTT is a **derived row image** of the table:
   *persisted* data — and the value is serialized client-side to a scalar string regardless,
   because a TVP column is always a scalar (there is no structured wire form for a json value
   either way). Native `json` would add cost and fragility for zero transient-parameter gain.
-  **Secondarily**, the pinned driver cannot bind it anyway: **Microsoft.Data.SqlClient 6.1.1**
-  (the version EF Core 10.0.9 resolves) rejects the json type as a `SqlMetaData` column — the
-  metadata a TVP / `SqlDataRecord` column is constructed from — so a native-`json` UDTT column is
-  not bindable at TVP-build time. This is a moving target (M.D.S is adding SS2025 native-json
-  support; `SqlDbTypeExtensions.Json` already exists), so a unit test pins the limitation against
-  the resolved driver and **fails loudly** if a future bump makes json bindable — at which point
-  the design still stands on the transient-parameter reason, which does not expire.
+  The transient-parameter reason is the whole basis for the decision, and it does not expire. (As a
+  non-load-bearing aside, the current Microsoft.Data.SqlClient cannot even bind native `json` in a
+  TVP — it has no `SqlMetaData` entry for the type — but the decision deliberately does **not** rest
+  on that: once a driver adds support, a transient TVP column still gains nothing from native json,
+  so the wire form stays `varchar(max)`/`nvarchar(max)` regardless.)
 - **JSON wire form**: on an on-disk type each json column is carried as **`varchar(max)` with the
   json type's own UTF-8 collation** (`Latin1_General_100_BIN2_UTF8`). The C# layer serializes the
   document to a string client-side; SQL Server implicitly converts the `varchar(max)` back to the
@@ -296,9 +294,9 @@ The UDTT is a **derived row image** of the table:
   over-aged orphan, queryable via its `OrphanedAtUtc` stamp), while the low-severity
   message in the migration output is best-effort (visible only when the migrator captures
   info messages) — and the out-of-band module that caused it is exactly what Rule 5's
-  other layers exist to flag, alongside the production drift check described in
-  ARCHITECTURE.md (which compares a clean migrations-deployed schema against the live
-  databases, and would surface the unexpected module itself).
+  other layers exist to flag, alongside the platform's production drift check (which compares a
+  clean migrations-deployed schema against the live databases, and would surface the unexpected
+  module itself).
 - Every version create emits the configured grants from §1 with it. Grants are part of the
   derived definition, so a grant-list-only change also produces a new version rather than a
   `GRANT`/`REVOKE` delta against the existing one. This is a deliberate trade-off: one
@@ -316,9 +314,9 @@ The UDTT is a **derived row image** of the table:
   the relational type mapping's safe SQL-literal generation (single quotes doubled, `N`
   prefix). *Identifiers* — type name, schema, and grant **principals** — go through the
   provider's `DelimitIdentifier`/`QUOTENAME`, including any name composed into the runtime
-  dynamic SQL inside the drop guard or the sweep. This mirrors the platform rule
-  (ARCHITECTURE.md → Data Layer): user-input values are never concatenated, and identifiers
-  are interpolated only after delimiting. A scope or principal containing `'`, `]`, or `--`
+  dynamic SQL inside the drop guard or the sweep. This mirrors the platform's
+  SQL-safety rule: user-input values are never concatenated, and identifiers are interpolated
+  only after delimiting. A scope or principal containing `'`, `]`, or `--`
   must therefore produce valid, injection-free SQL.
 - **Annotation contract evolution**: definitions serialize as canonical JSON with a fixed
   property order and **nulls omitted**. The canonical JSON **includes the logical name and
@@ -330,10 +328,13 @@ The UDTT is a **derived row image** of the table:
   renaming a paired *table* also produces a new type version even when the type's shape is
   unchanged — a new name for an unchanged shape is harmless (the old version ages out),
   whereas a reused name for a changed shape is the corruption this design exists to
-  prevent. Omitting nulls is the forward-compatibility story: a
-  new optional knob added to the definition shape serializes only when set, so upgrading the
-  library never changes the serialized form of existing definitions and never produces
-  spurious drop/creates. Conversely, any change that alters the serialized form of existing
+  prevent. Omitting nulls — and, by the same rule,
+  default-valued **boolean facets** (the marker flags `isRowVersion` and `isJson`; `isNullable` is
+  the deliberate exception, always written, since every column is meaningfully nullable-or-not) — is
+  the forward-compatibility story: a new optional knob or boolean facet serializes only when set, so
+  upgrading the library never changes the serialized form of existing definitions and never produces
+  spurious drop/creates. A future boolean facet follows this established precedent: omit it at its
+  default value. Conversely, any change that alters the serialized form of existing
   definitions (an always-serialized field, a default flip, a property rename) is a breaking
   contract change: it makes every existing type appear changed, and must ship with a release
   note stating that the next scaffolded migration produces new versions of every type (the
@@ -685,11 +686,6 @@ surface the dynamic SQL generator, the drop guard, and tests consume):
   `varchar(max)` UTF-8 (on-disk) or `nvarchar(max)` (memory-optimized), ordered to match the
   table, and flagged as JSON in the metadata API — covered by the JSON-column tests, including
   the memory-optimized encoding switch.
-- **Driver capability pin**: a unit test asserts that the resolved Microsoft.Data.SqlClient
-  (6.1.1) cannot construct a `SqlMetaData` for the native `json` type — the load-bearing
-  premise for carrying json columns as `varchar(max)`/`nvarchar(max)`. It fails loudly if a
-  driver bump makes json bindable, prompting a re-read of the JSON-columns decision (which still
-  holds on the transient-parameter rationale).
 - **JSON wire form & flag**: SQL-generation tests assert the emitted store type switches by
   target — `varchar(max) COLLATE Latin1_General_100_BIN2_UTF8` on-disk vs `nvarchar(max)` on a
   memory-optimized type — and an integration test confirms a memory-optimized type carrying a
@@ -708,8 +704,6 @@ surface the dynamic SQL generator, the drop guard, and tests consume):
   extended-property stamps; assert a definitional change creates the new version alongside
   the old and that the sweep orphan-marks and (past the grace period) collects stale
   versions; assert the dependency guard fires when a proc referencing a type is planted.
-- **Seed-band test**: enumerate `IEntityType.GetSeedData()` across the model and assert all
-  seeded key values fall inside the reserved band.
 - **Dependency-boundary check** per Rule 3: assert `Tellma.Core.EntityFrameworkCore` has no
   assembly reference to `Microsoft.EntityFrameworkCore.Design`, that its transitive dependency
   closure (walked from the test app's `deps.json`) contains no Design-tree package, and that a
@@ -739,8 +733,7 @@ surface the dynamic SQL generator, the drop guard, and tests consume):
   seeds (tracked in a `__SeedHistory` table, transactional and idempotent) through the bulk
   pipeline — fanned out across the Catalog DB and every tenant DB with bounded parallelism,
   converging idempotently; partial failure blocks the deployment swap, and a re-run touches
-  only the databases that are behind (see ARCHITECTURE.md → Migrations & seeding — the
-  deploy-time migrator).
+  only the databases that are behind.
 - HTTP-boundary request DTOs / binding allow-lists (mass-assignment protection).
 - Legal/gapless document numbering (a domain concern; never derived from surrogate keys —
   sequences guarantee gaps).

@@ -136,7 +136,7 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
                 Name = "InvoicesList",
                 PhysicalName = "InvoicesList_v2c0ffee",
                 Schema = "gl",
-                Scope = nameof(MigrationsHostContext),
+                Scope = MigrationsHostContext.SweepScope,
                 DefinitionHash = new string('a', 64),
                 PrimaryKey = ["Id"],
                 Grants = ["public"],
@@ -161,12 +161,12 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests
                 $"""
                 SELECT tt.[name] FROM [sys].[table_types] tt
                 INNER JOIN [sys].[extended_properties] ep ON ep.[class] = 6 AND ep.[major_id] = tt.[user_type_id]
-                    AND ep.[name] = N'Tellma:TableType:Scope' AND CONVERT(nvarchar(max), ep.[value]) = N'{nameof(MigrationsHostContext)}'
+                    AND ep.[name] = N'Tellma:TableType:Scope' AND CONVERT(nvarchar(max), ep.[value]) = N'{MigrationsHostContext.SweepScope}'
                 WHERE tt.[name] <> N'{v1}'
                 """);
             CleanupTableTypesOperation sweep = new()
             {
-                Scope = nameof(MigrationsHostContext),
+                Scope = MigrationsHostContext.SweepScope,
                 KeepList = [.. keep],
                 GracePeriodHours = 0,
             };

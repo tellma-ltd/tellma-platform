@@ -12,7 +12,7 @@ using Tellma.Core.EntityFrameworkCore.TableTypes;
 namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
 {
     [DbContext(typeof(MigrationsHostContext))]
-    [Migration("20260614134832_Initial")]
+    [Migration("20260617015412_Initial")]
     partial class Initial
     {
         /// <inheritdoc />

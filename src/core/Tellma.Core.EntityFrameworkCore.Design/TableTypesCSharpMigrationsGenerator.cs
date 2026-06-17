@@ -42,6 +42,9 @@ namespace Tellma.Core.EntityFrameworkCore.Design
         {
             ArgumentNullException.ThrowIfNull(operations);
 
+            // Materialize once: base.GetNamespaces enumerates the sequence and we enumerate it again
+            // with Any(); a lazy/one-shot operations enumerable would otherwise be re-evaluated or
+            // already consumed on the second pass.
             List<MigrationOperation> materialized = [.. operations];
             IEnumerable<string> namespaces = base.GetNamespaces(materialized);
             return materialized.Any(o => o is CreateTableTypeOperation or DropTableTypeOperation)

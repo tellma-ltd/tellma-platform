@@ -156,8 +156,8 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Conventions
             TableTypeDefinition withPlain = new() { Name = "Thing", Columns = [plain] };
             TableTypeDefinition withJson = new() { Name = "Thing", Columns = [asJson] };
 
-            // Always serialized (like IsNullable/IsRowVersion), so the flag is in the canonical form.
-            Assert.Contains("\"isJson\":false", TableTypeJson.Serialize(withPlain), StringComparison.Ordinal);
+            // Omitted at its default so non-JSON columns' hashes are unchanged; present when set.
+            Assert.DoesNotContain("isJson", TableTypeJson.Serialize(withPlain), StringComparison.Ordinal);
             Assert.Contains("\"isJson\":true", TableTypeJson.Serialize(withJson), StringComparison.Ordinal);
             // Toggling JSON-ness is a definitional change → a new physical version.
             Assert.NotEqual(withPlain.PhysicalName, withJson.PhysicalName);

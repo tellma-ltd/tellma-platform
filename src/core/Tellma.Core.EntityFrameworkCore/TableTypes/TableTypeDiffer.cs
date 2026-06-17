@@ -129,7 +129,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         private static HashSet<string> GetExcludedKeys(IReadOnlyModel? model)
         {
             return model?.FindAnnotation(TableTypeAnnotationNames.ExcludedKeys)?.Value is string json
-                ? [.. TableTypeJson.DeserializeGrants(json)]
+                ? [.. TableTypeJson.DeserializeStringList(json)]
                 : [];
         }
     }

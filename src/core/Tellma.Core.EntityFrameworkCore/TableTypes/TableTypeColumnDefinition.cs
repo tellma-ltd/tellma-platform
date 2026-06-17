@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Text.Json.Serialization;
+
 namespace Tellma.Core.EntityFrameworkCore.TableTypes
 {
     /// <summary>
@@ -32,7 +34,12 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         /// </summary>
         public required string StoreType { get; init; }
 
-        /// <summary>Whether the column is nullable in the table type.</summary>
+        /// <summary>
+        ///     Whether the column is nullable in the table type. <b>Always</b> serialized into the
+        ///     canonical JSON — the one boolean facet that is, since every column is meaningfully
+        ///     nullable-or-not. The marker facets (<see cref="IsRowVersion" />, <see cref="IsJson" />)
+        ///     are omitted at their default instead (see their remarks).
+        /// </summary>
         public bool IsNullable { get; init; }
 
         /// <summary>The maximum length facet, when the store type carries one.</summary>
@@ -50,8 +57,11 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         /// <summary>
         ///     Whether this column mirrors the table's rowversion/concurrency-token column. In the
         ///     table type it is a nullable <c>binary(8)</c>: insert rows carry no value, while bulk
-        ///     UPDATE payloads carry the original value for optimistic-concurrency checks.
+        ///     UPDATE payloads carry the original value for optimistic-concurrency checks. Omitted from
+        ///     the canonical JSON when <see langword="false" /> (the marker-facet convention — see
+        ///     <see cref="IsNullable" />).
         /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public bool IsRowVersion { get; init; }
 
         /// <summary>
@@ -59,9 +69,11 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         ///     <c>varchar(max)</c> (UTF-8 collation, on-disk) or <c>nvarchar(max)</c>
         ///     (memory-optimized) rather than the native <c>json</c> type (see <see cref="StoreType" />);
         ///     the flag lets the runtime TVP binder serialize the object graph to a JSON string instead
-        ///     of binding a plain string. Always serialized — like <see cref="IsNullable" /> and
-        ///     <see cref="IsRowVersion" /> — so it is part of the canonical-JSON definition contract.
+        ///     of binding a plain string. Omitted from the canonical JSON when <see langword="false" />
+        ///     (the marker-facet convention — see <see cref="IsNullable" />), so adding it left existing
+        ///     non-JSON columns' definition hashes unchanged.
         /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public bool IsJson { get; init; }
     }
 }

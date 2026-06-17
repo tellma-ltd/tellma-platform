@@ -75,11 +75,31 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Internal
             (IReadOnlyList<CreateTableTypeOperation> creates, CleanupTableTypesOperation? cleanup) =
                 TableTypeDiffer.Diff(source?.Model, target?.Model, scope);
 
-            // Creates after all table operations (types depend on nothing); the cleanup sweep is the
-            // migration's last command (spec 0001 §3 — it must run non-transactionally at the end).
-            return (creates.Count == 0 && cleanup is null) ? operations
-                : cleanup is null ? [.. operations, .. creates]
-                : [.. operations, .. creates, cleanup];
+            if (creates.Count == 0 && cleanup is null)
+            {
+                return operations;
+            }
+
+            // A table type may live in a schema that no table or sequence uses (e.g. a standalone type
+            // in its own schema). EF's differ only ensures schemas its relational model references, so
+            // a CREATE TYPE there would target a missing schema. Ensure any create schema the base
+            // operations did not already cover; idempotent, so a redundant one (e.g. dbo) is harmless.
+            HashSet<string> ensuredSchemas = [.. operations.OfType<EnsureSchemaOperation>().Select(o => o.Name)];
+            List<EnsureSchemaOperation> schemaOperations = [];
+            foreach (CreateTableTypeOperation create in creates)
+            {
+                if (create.Schema is string schema && ensuredSchemas.Add(schema))
+                {
+                    schemaOperations.Add(new EnsureSchemaOperation { Name = schema });
+                }
+            }
+
+            // Schema-ensures then creates after all table operations (types depend on nothing); the
+            // cleanup sweep is the migration's last command (spec 0001 §3 — it must run
+            // non-transactionally at the end).
+            return cleanup is null
+                ? [.. operations, .. schemaOperations, .. creates]
+                : [.. operations, .. schemaOperations, .. creates, cleanup];
         }
 
         /// <inheritdoc />

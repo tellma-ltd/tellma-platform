@@ -50,21 +50,24 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Json
                 ?? throw new InvalidOperationException($"Cannot deserialize a standalone table-type configuration from '{json}'.");
         }
 
-        /// <summary>Serializes a list of grant principals to its canonical JSON form.</summary>
-        /// <param name="principals">The database principals.</param>
+        /// <summary>
+        ///     Serializes a list of strings to its canonical JSON form. Used for both grant principals
+        ///     and the excluded-definition-key list — any ordered string list the model carries.
+        /// </summary>
+        /// <param name="values">The strings to serialize.</param>
         /// <returns>The canonical JSON string.</returns>
-        public static string SerializeGrants(IReadOnlyList<string> principals)
+        public static string SerializeStringList(IReadOnlyList<string> values)
         {
-            return JsonSerializer.Serialize(principals, TableTypeJsonContext.Default.IReadOnlyListString);
+            return JsonSerializer.Serialize(values, TableTypeJsonContext.Default.IReadOnlyListString);
         }
 
-        /// <summary>Deserializes a list of grant principals from its canonical JSON form.</summary>
-        /// <param name="json">The canonical JSON produced by <see cref="SerializeGrants" />.</param>
-        /// <returns>The deserialized principals.</returns>
-        public static IReadOnlyList<string> DeserializeGrants(string json)
+        /// <summary>Deserializes a list of strings from its canonical JSON form.</summary>
+        /// <param name="json">The canonical JSON produced by <see cref="SerializeStringList" />.</param>
+        /// <returns>The deserialized strings.</returns>
+        public static IReadOnlyList<string> DeserializeStringList(string json)
         {
             return JsonSerializer.Deserialize(json, TableTypeJsonContext.Default.IReadOnlyListString)
-                ?? throw new InvalidOperationException($"Cannot deserialize grant principals from '{json}'.");
+                ?? throw new InvalidOperationException($"Cannot deserialize a string list from '{json}'.");
         }
     }
 

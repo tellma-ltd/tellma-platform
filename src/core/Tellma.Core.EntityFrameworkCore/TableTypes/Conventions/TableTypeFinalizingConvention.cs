@@ -105,7 +105,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
             {
                 modelBuilder.HasAnnotation(
                     TableTypeAnnotationNames.ExcludedKeys,
-                    TableTypeJson.SerializeGrants([.. excludedKeys.OrderBy(k => k, StringComparer.Ordinal)]));
+                    TableTypeJson.SerializeStringList([.. excludedKeys.OrderBy(k => k, StringComparer.Ordinal)]));
             }
         }
 
@@ -166,7 +166,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
             bool memoryOptimized = entityType.FindAnnotation(TableTypeAnnotationNames.MemoryOptimized)?.Value as bool? ?? false;
             bool excludeFromMigrations = entityType.FindAnnotation(TableTypeAnnotationNames.ExcludeFromMigrations)?.Value as bool? ?? false;
             IReadOnlyList<string> grants = entityType.FindAnnotation(TableTypeAnnotationNames.Grants)?.Value is string grantsJson
-                ? TableTypeJson.DeserializeGrants(grantsJson)
+                ? TableTypeJson.DeserializeStringList(grantsJson)
                 : [];
 
             string resolvedName = name ?? (tableName + "List");
