@@ -262,6 +262,12 @@ The UDTT is a **derived row image** of the table:
     keep-list, appended whenever the two definition sets differ at all — including pure
     removals, which emit no other operation.
 
+  Independently, the adapter that splices these into EF's operation list prepends an
+  `EnsureSchema` for any created type whose schema no table or sequence uses (e.g. a standalone
+  type in its own schema). EF ensures only the schemas its relational model references, so without
+  this a `CREATE TYPE` in a type-only schema would target a missing schema. It is idempotent and
+  deduplicated against EF's own ensures, so a schema a table already uses is ensured once.
+
   Old versions, renamed types, and removed types are never dropped by the migration that
   obsoleted them; retirement is exclusively the sweep's job. Because this rule is
   **direction-agnostic** — creates for whatever the target side has, keep-list from the
@@ -306,6 +312,24 @@ The UDTT is a **derived row image** of the table:
   grace-period-delayed, consistent with the N−1 window in which the old app legitimately
   still executes against it). Acceptable because grant changes are rare and a version
   create is pure metadata DDL — no data motion.
+- **Why per-type grants rather than schema-level.** `GRANT EXECUTE ON SCHEMA::<schema>` is a
+  tempting alternative: one grant covers every type in the schema — *including future content-hash
+  versions* — which would dissolve the per-version re-emit above (verified empirically: a type
+  created after the schema grant is immediately usable, and a low-privilege user can then
+  `DECLARE`/use it). It is not the default for one reason: `EXECUTE ON SCHEMA` cascades to **every**
+  executable securable the schema holds — procedures, functions, and types — and to any added
+  later, so its true scope is "whatever the schema contains." In the architecture today that is
+  effectively just the table types (CRUD and reports are runtime C# SQL, so these schemas carry no
+  persisted procedures/functions), which makes a schema grant *least-privilege-equivalent* — but
+  the equivalence rests on that invariant, whereas a per-type grant is scoped explicitly regardless
+  of what else lands in the schema, and can target different principals per type. A distribution
+  that isolates its table types in a dedicated, procedure-free schema may legitimately prefer a
+  one-time schema-level `GRANT EXECUTE` and omit the per-type list. It is also the one grant form
+  that survives recreate churn for free: **EF Core models no permissions of its own** — any object
+  it drops and recreates loses its grants, with no re-grant step (SQLite migrations rebuild whole
+  tables; SQL Server drops and re-adds columns it cannot `ALTER` in place) — which is exactly why
+  per-type grants are re-emitted on every version, and why a schema grant (attached to the schema,
+  not the versioned object) sidesteps the problem entirely.
 - **Values are escaped; identifiers are delimited — never concatenated raw.**
   `dotnet ef migrations script` emits a static `.sql` file, so the generator uses **no
   command parameters**; every caller-supplied string is made safe inline instead. *Values*

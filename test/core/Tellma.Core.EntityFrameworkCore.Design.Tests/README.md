@@ -16,6 +16,10 @@ Design-time tests — the suites that need the EF Design package and Roslyn:
 - `Guards/PersistedModuleTripwireTests` — spec Rule 5 layer 3: scans every `SqlOperation`
   across the MigrationsHost migrations for `CREATE/ALTER PROCEDURE|FUNCTION` batches that
   mention a generated type name.
+- `Internal/DesignInternalsPinningTests` — pins the internal EF Core Design surface the
+  companion derives from (the design-time analogue of the runtime library's
+  `EfInternalsPinningTests`): the annotation code generator's base type. A clear diagnostic if
+  an EF upgrade relocates it.
 
 `Infrastructure/DesignTestHelpers` builds the design-time service provider the way EF tooling
 does (referenced services first, then the SQL Server provider's design services, then EF's

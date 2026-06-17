@@ -39,10 +39,10 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Internal
     /// </summary>
     /// <remarks>
     ///     The actual comparison is pure public-API code in <see cref="TableTypeDiffer" />; this
-    ///     subclass only splices its results around the base differ's (already sorted) operations:
-    ///     drops are prepended before all base operations and creates appended after them — always
-    ///     safe, because table types depend on no tables and (per the architecture) nothing
-    ///     persisted may depend on table types.
+    ///     subclass only splices its results after the base differ's (already sorted) operations: an
+    ///     <c>EnsureSchema</c> for any type-only schema, then the creates, then the cleanup sweep
+    ///     last — all appended after the table operations, which is always safe because table types
+    ///     depend on no tables and (per the architecture) nothing persisted may depend on them.
     /// </remarks>
     /// <param name="typeMappingSource">The relational type mapping source; passes through to the base differ.</param>
     /// <param name="migrationsAnnotationProvider">The migrations annotation provider; passes through to the base differ.</param>

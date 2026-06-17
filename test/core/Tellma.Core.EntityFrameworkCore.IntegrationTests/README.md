@@ -14,7 +14,9 @@ views.
 - `DropGuardTests` — a planted procedure referencing a type makes a manual `DropTableType` fail
   with error 53102 naming the procedure; after removing it, the drop and a recreate succeed.
 - `MemoryOptimizedTests` — a memory-optimized type deploys with `is_memory_optimized = 1` on
-  XTP-capable hosts (skipped otherwise, e.g. LocalDB).
+  XTP-capable hosts (skipped otherwise, e.g. LocalDB), including a JSON column carried as
+  `nvarchar(max)` (UTF-8 collations and the native `json` type are both unsupported on
+  memory-optimized tables).
 
 ## Running
 
