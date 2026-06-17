@@ -74,9 +74,12 @@
 **/wwwroot/lib/**   linguist-vendored
 
 # GitHub: Collapse generated files in PR diffs
-**/Migrations/**.cs linguist-generated=true
 **/*.g.cs           linguist-generated=true
 **/*.Designer.cs    linguist-generated=true
+
+# GitHub: Keep migrations expanded in PR diffs (they need review), but
+# exclude them from language stats
+**/Migrations/**.cs -linguist-generated linguist-detectable=false
 
 # GitHub: Keep docs from skewing the language bar
 docs/**             linguist-documentation
