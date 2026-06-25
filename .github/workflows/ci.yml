@@ -4,10 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
   # Build everything and run the unit suites (integration excluded) on both OSes.
   build-test:
+    if: ${{ !github.event.pull_request.draft }}
     strategy:
       fail-fast: false
       matrix:
@@ -27,6 +29,7 @@ jobs:
   # .editorconfig the IDE uses — no per-rule enumeration. A dedicated job so a style failure reads
   # as a style failure, not an OS-specific one.
   format:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -40,6 +43,7 @@ jobs:
   # ubuntu runners). Covers apply/verify, drop guard, grants, column-order parity, idempotent
   # script run-twice, and the zero-persisted-dependents invariant.
   integration:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -54,6 +58,7 @@ jobs:
   #   2. Package flow: pack both libraries to a local feed and repeat against the
   #      PackageReference variant of the host.
   design-e2e:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     env:
       HOST: test/core/assets/Tellma.Core.EntityFrameworkCore.MigrationsHost
@@ -98,7 +103,7 @@ jobs:
   # below did not succeed, without making any individual job a required check (which would couple
   # branch protection to job names / the OS matrix).
   all-checks-passed:
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && !github.event.pull_request.draft }}
     # Include all required job in this list — a job missing here is NOT gated.
     # Branch protection must require THIS job only.
     needs: [build-test, format, integration, design-e2e]
