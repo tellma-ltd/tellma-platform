@@ -77,8 +77,9 @@ These are acceptance constraints, not aspirations. Every component below is chec
    hierarchy; minimal DOM per control; zoneless + OnPush (the v22 default); overlays created lazily;
    no per-keystroke layout thrash.
 2. **Accessibility to WCAG 2.1 AA.** Verified by axe-core in CI, not by inspection.
-3. **Fluent on mobile and touch.** ≥44×44 CSS px touch targets (with a visually smaller control
-   where the brand calls for it), no hover-only affordances, no `:hover` traps.
+3. **Fluent on mobile and touch.** Adequately sized touch targets (the conformance rule is the
+   WCAG-2.2 AA **24×24** minimum, *not* 44px — see [§6](#6-accessibility)); no hover-only
+   affordances, no `:hover` traps.
 4. **Native LTR and RTL.** CSS logical properties only; direction from CDK `Directionality`;
    overlay positions are authored RTL-aware and tested (not assumed); no per-component `rtl` flag.
 5. **Unit and e2e testable.** Component harnesses shipped from day one; deterministic, framework-
@@ -236,14 +237,13 @@ component, directive, or service** — no template, no DI, no host bindings, no 
 unit-testable without `TestBed` and drivable by any host (an Angular adapter today; a data-grid cell
 later). This is the same shape `@angular/aria`'s own `*Pattern` classes take.
 
-**Reactivity (corrects the earlier over-statement).** The pattern *does* use Angular's standalone
-**signal primitives** (`signal`/`computed`/`linkedSignal` from `@angular/core`) for its derived
-state — these are framework-agnostic reactivity, usable and testable outside any component, and are
-exactly what `@angular/aria` patterns use. What the pattern must *not* touch is the Angular
-*component/DI/template* layer. So "no `@angular/core` dependency" was wrong; the accurate rule is
-**no Angular component/DI/template machinery; reactive state via signal primitives; all inputs typed
-`SignalLike`** (so a plain getter or an Angular `signal`/`input`/`model` both satisfy them). The
-import-boundary test in [§10](#10-testing-tellmacore-ui-testing) enforces this.
+**Reactivity.** The pattern uses Angular's standalone **signal primitives**
+(`signal`/`computed`/`linkedSignal` from `@angular/core`) for its derived state — framework-agnostic
+reactivity, usable and testable outside any component, exactly what `@angular/aria` patterns use. The
+pattern must *not* touch the Angular *component/DI/template* layer. The rule is therefore **no Angular
+component/DI/template machinery; reactive state via signal primitives; all inputs typed `SignalLike`**
+(so a plain getter or an Angular `signal`/`input`/`model` both satisfy them). The import-boundary test
+in [§10](#10-testing-tellmacore-ui-testing) enforces this.
 
 **No `effect()` inside a pattern.** `effect()` requires an injection context, which a pattern
 (no DI) does not have — so it is **not** on the allowlist. Any reactive *side-effect* is either
@@ -263,10 +263,11 @@ export interface WritableSignalLike<T> extends SignalLike<T> {  // read + write 
 
 **Who owns the value.** Signal Forms requires the bound `value`/`checked` `model()` to live **on the
 control component** (that is what `[formField]` binds to — [§5](#5-forms-integration-signal-forms)).
-So the writable value signal is created by the *styled adapter* and passed into the pattern as a
+So the writable value signal is created by the **host** (the styled adapter in form usage; a grid cell
+in grid usage — [§9](#9-data-grid-forward-compatibility-contract)) and passed into the pattern as a
 `WritableSignalLike<T>`; the pattern reads and writes it through that channel and keeps its own
-private `lastCommitted` signal for revert. This is the write channel that makes `commit()`/`cancel()`
-implementable (corrects the read-only `TmCellEditor.value`).
+private `lastCommitted` signal for revert. This write channel is what makes `commit()`/`cancel()`
+implementable.
 
 Each pattern exposes derived state as `SignalLike` computeds plus imperative event entry points the
 host forwards DOM events to (`onKeydown`, `onInput`, `onFocus`, `onBlur`, …). It never touches the
@@ -331,14 +332,18 @@ In every case the writable value is the adapter's `model()` passed in as a `Writ
   indeterminate. Implements `TmCellEditor<boolean>` and `TmCellDisplay<boolean>` (readonly = a styled
   box glyph, no input). Note the value channel is `checked`, never `value` (Signal Forms forbids a
   `value` on a checkbox control — [§3.3](#33-checkbox--tm-checkbox)).
-- **`TmSelectPattern`** — the load-bearing one. State: `value` (the adapter's `WritableSignalLike<T>`,
-  single selection), `open`, active-option index, the option collection (`SignalLike`, so a grid can
-  feed per-cell options), and derived `empty`/`disabled`/`invalid`. Behavior: open/close, selection,
-  keyboard navigation (Up/Down/Home/End/typeahead, Enter/Space select, Esc close, Alt+Down open), and
-  active-descendant tracking. Built on **`@angular/aria`'s listbox/combobox** behavior (stable in
-  v22). Implements `TmCellEditor<T>` (Esc closes the panel first, then cancels the edit — the Excel
-  dropdown-cell behavior). Its `TmCellDisplay<T>.formatValue` delegates to the same value→label
-  resolution the standalone trigger uses ([§3.4](#34-select--tm-select)) — one resolver, two surfaces.
+- **`TmSelectPattern`** — deliberately the *thin* one, because the keyboard model is **not** its job.
+  In v22 the keyboard navigation, typeahead, active-descendant, selection mode, and `aria-*` state are
+  owned by `@angular/aria`'s **directives** — `ngCombobox` / `ngComboboxPopup` / `ngComboboxWidget` /
+  `ngListbox` / `ngOption` — which live in the styled component's template, not in this class
+  ([§3.4](#34-select--tm-select)). `TmSelectPattern` owns only the Tellma-specific, framework-agnostic
+  concerns that aria does not: the typed `value` (the host's `WritableSignalLike<T>`), value→label
+  resolution for the trigger, `compareWith` equality, placeholder/empty state, and the grid
+  `TmCellEditor<T>` commit/cancel semantics (Esc closes the panel first, then cancels the edit). Its
+  `TmCellDisplay<T>.formatValue` reuses the same value→label resolver as the trigger. **The exact seam
+  between `TmSelectPattern` and the aria directives — and the DI tension that aria directives create
+  for a non-DI pattern — is a spike (S1/S2, [§14](#14-spikes--open-technical-risks)).** Text and
+  checkbox have no aria-directive equivalent, so their pure-pattern model is unaffected.
 
 ## 3. The styled layer (`@tellma/core-ui`)
 
@@ -380,12 +385,14 @@ The shared label / required-marker / hint / error scaffold (brand `FormField`), 
 `--field-*` token group. It queries its **projected control** (content child) through the
 `TmFormFieldControl` contract ([§2.1](#21-shared-contracts)) and reads the field state the control
 surfaces from `[formField]` ([§5](#5-forms-integration-signal-forms)) — `errors`/`touched`/`dirty`/
-`invalid`/`pending`/`required`. It generates and wires ids (`<label for>` ↔ `controlId`; hint/error
-ids fed back via `setDescribedByIds` → the control's `aria-describedby`), applies the display policy
-to render the (already-localized) **error or hint, never both**, and mirrors `required`. Logical-
-property layout mirrors in RTL. Inputs: `label`, `hint`, `size` (`sm | md | lg`). It does **not** take
-an `error` string for form-bound controls (errors come from the field); a plain `error` input remains
-for non-form usage.
+`invalid`/`pending`/`required`. It generates and wires ids (`<label for>` ↔ `controlId`; hint and
+error ids fed back via `setDescribedByIds` → the control's `aria-describedby`) and mirrors `required`.
+The hint and error are **separate persistent elements** (the error element is the persistent
+`aria-live="polite"` region per [§6](#6-accessibility)); the display policy toggles their *visibility*
+(at most one shown — error when invalid-and-displayed, else hint) rather than swapping text inside a
+single node, so announcements are clean. Logical-property layout mirrors in RTL. Inputs: `label`,
+`hint`, `size` (`sm | md | lg`); it does **not** take an `error` string for form-bound controls
+(errors come from the field), though a plain `error` input remains for non-form usage.
 
 ### 3.2 Text input — `tmInput`
 
@@ -415,26 +422,42 @@ for non-form usage.
   (non-form usage only — field-authoritative when bound). Implements `FormCheckboxControl` +
   `TmFormFieldControl`, plus the optional Signal Forms state inputs.
 - **No `value` property.** Signal Forms is explicit: *a `FormCheckboxControl` must not have a `value`
-  property* (the value channel is `checked`) — so the earlier "`value` for groups later" is removed.
+  property* — the value channel is `checked`.
   Multi-checkbox selection is a future **`tm-checkbox-group`** component that owns the array value and
   maps each child's identity; the individual `tm-checkbox` stays a pure boolean control.
 - **Rendering:** visually-hidden native checkbox for semantics + the styled box (teal when
   checked/indeterminate, `--radius-xs`, check polyline / indeterminate bar), `aria-checked="mixed"`
   for indeterminate, space-to-toggle, focus ring.
-- **Touch (≥44px mechanism, #13):** the visible box stays at the brand 18px, but the **clickable
-  region is the whole `<label>`**, padded so its hit box is ≥44×44 CSS px; where a bare checkbox has
-  no adjacent label text, a transparent `::before` pseudo-element on the control expands the pointer
-  target to ≥44px while the box renders at 18px. Pointer/click events bind to the enlarged region,
-  not the glyph. (Same technique applies to the `sm` 30px input: vertical tap-area padding extends
-  the hit box to 44px without changing the 30px visual height.)
+- **Touch-target mechanism:** the visible box stays at the brand 18px, but the **clickable region is
+  the whole `<label>`**, padded so its hit box clears the target-size rule; where a bare checkbox has
+  no adjacent label, a transparent `::before` pseudo-element expands the pointer target while the box
+  renders at 18px. Pointer/click events bind to the enlarged region, not the glyph. The hit-box target
+  is the [§6](#6-accessibility) sizing rule (≥24px to conform; ≈44px on standalone touch-primary
+  controls where layout allows), not a fixed 44px — so the same control is conformant in a dense grid
+  and comfortable on a touch form.
 
 ### 3.4 Select — `tm-select`
 
 - **Selectors:** `tm-select` (trigger + value display) with projected `tm-option` children.
 - **API:** `value = model<T>()` (single-select); `placeholder`, `disabled`, `required`,
-  `compareWith` (identity fn for object values), `size`. `tm-option`: `value` + projected label
-  content; outputs `selectionChange`/`opened`/`closed`. Implements `FormValueControl<T>` +
-  `TmFormFieldControl`.
+  `compareWith`, `size`. `tm-option`: `value` + projected label content; outputs
+  `selectionChange`/`opened`/`closed`. Implements `FormValueControl<T>` + `TmFormFieldControl`.
+- **`compareWith` is not redundant with signals.** Signal equality is *referential* by default, so
+  two option objects describing the same entity (e.g. the model's `{id:7,…}` from the server vs. a
+  freshly-fetched `{id:7,…}` in the options list) are unequal and selection would fail to highlight.
+  `compareWith: (a, b) => a.id === b.id` defines **domain equality** for matching the model value to an
+  option — orthogonal to signal change-detection. (Primitive-id values, the common ERP shape, don't
+  need it.)
+- **Built on the aria Select directives.** The implementation composes v22's `@angular/aria` Select:
+  `ngCombobox` (the trigger, `[(expanded)]`), `ngComboboxPopup` + `cdkConnectedOverlay`
+  (`usePopover:'inline'`, `matchWidth:true`) for the panel, and `ngListbox` + `ngComboboxWidget` +
+  `ngOption` with `focusMode="activedescendant"` and `selectionMode="explicit"`. These directives —
+  not `TmSelectPattern` — own keyboard navigation, typeahead, `activeDescendant()`, and
+  `scrollActiveItemIntoView()`. `tm-select` adds the brand chrome, the form-control glue, label
+  resolution, and the grid commit/cancel. The non-editable **select (readonly combobox) mode** is what
+  `tm-select` uses; the **editable combobox mode** is what a later autocomplete/details-picker reuses
+  (see below). The precise pattern↔directive seam is spike **S1/S2**
+  ([§14](#14-spikes--open-technical-risks)).
 - **Display one property, capture another — yes.** `tm-option`'s **`value`** is what lands in the
   model, its **projected content** is what the user sees:
   `<tm-option [value]="record.id">{{ record.label }}</tm-option>` captures the id, displays the label.
@@ -457,20 +480,28 @@ for non-form usage.
   explicit `{originX/Y, overlayX/Y}` pairs; `Directionality` flips how `start`/`end` resolve, but we
   still **author an RTL-aware position set and test it** — the "mirrors automatically" framing is
   dropped. The RTL spec in the DoD covers exactly this.
-- **Keyboard & a11y:** `@angular/aria` combobox/listbox roles + `aria-expanded`/`aria-selected`/
-  `aria-activedescendant`. Because the listbox is **portaled outside the trigger's DOM subtree**, the
-  trigger references it with **`aria-controls`** (and `aria-activedescendant` points at option ids
-  inside that portaled panel); a Playwright AT-relationship test asserts the trigger→listbox→active-
-  option id chain resolves ([§6](#6-accessibility)/[§10](#10-testing-tellmacore-ui-testing)). Full
-  keyboard model + typeahead from `TmSelectPattern`.
-- **Forward-compat (not in Phase 1, not precluded):** multi-select (value → array, option
-  checkboxes), option groups, and **virtual scroll** (`cdk/scrolling` replaces the static `@for`
-  without an API change).
-- **Touch:** ≥44px trigger and option rows; full-width-friendly panel on narrow viewports.
+- **Keyboard & a11y:** the aria directives supply the combobox/listbox roles +
+  `aria-expanded`/`aria-selected`/`aria-activedescendant` and the keyboard model + typeahead. Because
+  the listbox is **portaled outside the trigger's DOM subtree**, the trigger references it with
+  **`aria-controls`** (and `aria-activedescendant` points at option ids inside that portaled panel); a
+  Playwright AT-relationship test asserts the trigger→listbox→active-option id chain resolves
+  ([§6](#6-accessibility)/[§10](#10-testing-tellmacore-ui-testing)).
+- **Not the entity/details picker.** `tm-select` is for in-memory/simple option lists. Selecting a
+  related entity on an ERP screen — e.g. **Supplier** on a purchase invoice — needs server-side search
+  on the typed string with complex filtering, an inline "create new" affordance in the overlay, and a
+  "launch advanced-search modal" escape. That is a **distinct future component** (`tm-entity-picker` /
+  details picker) built on aria's **editable combobox** mode + the same overlay infra `tm-select`
+  proves, **not** bolted onto `tm-select`. Keeping them separate avoids overloading the simple control;
+  the shared aria/overlay foundation is the reuse.
+- **Forward-compat (not in Phase 1, not precluded):** multi-select (aria multiselect mode, value →
+  array), option groups, and **virtual scroll** (`cdk/scrolling` replaces the static `@for` without an
+  API change).
+- **Touch:** option rows sized for comfortable pointer/touch use; full-width-friendly panel on narrow
+  viewports (target sizing per the WCAG-2.2 rule in [§6](#6-accessibility)).
 
 ## 4. Tokens & theming (`@tellma/core-ui-tokens`)
 
-Per **D6** (as amended above), theming is a typed TS/JSON token model in three tiers (primitive →
+Theming is a typed TS/JSON token model in three tiers (primitive →
 semantic → component), emitted to CSS variables. Phase 1 builds the contract and the emitter and
 ships **one default preset reproducing `tellma-brand/design-system`** — same hexes, same `--field-*`
 / `--focus-ring` / spacing / type tokens, same `[data-theme=dark]` inversion.
@@ -483,10 +514,16 @@ runtime currency — the TS layer sits *above* them and buys what raw CSS cannot
   it **and** run a WCAG-contrast check (both light and dark) so a preset that breaks contrast or
   references a missing token **fails the build**. Thresholds are the **fixed WCAG 2.1 AA** ratios (not
   TBD): **4.5:1** for normal text, **3:1** for large text (≥24px, or ≥18.66px bold), and **3:1** for
-  UI-component boundaries and focus indicators. The check enumerates the foreground/background token
-  pairs (text-on-surface, text-on-fill, border-on-surface, focus-ring-on-field) and asserts each
-  meets its threshold. This is what makes the brand's own rules enforceable (action-teal = teal-600
-  for text-on-fill clears 4.5:1; focus-ring = teal-500 clears 3:1).
+  UI-component boundaries and focus indicators. This makes the brand's own rules enforceable
+  (action-teal = teal-600 for text-on-fill clears 4.5:1; focus-ring = teal-500 clears 3:1).
+  **Keeping the pair list complete as components grow.** The contrast pairs are **not** a hand-curated
+  side list that silently rots. Each component's token group **declares its own foreground/background
+  pairings as typed metadata** in the contract (a `contrastPairs` field naming `{ fg, bg, kind }`
+  where `kind ∈ text | largeText | uiComponent`). The contrast gate derives the full check from those
+  declarations, and a **completeness lint fails the build** if a component token group introduces a
+  foreground token (text/icon/border) without declaring the background it sits on. So adding a
+  component forces its pairs to be declared — the check grows with the contract by construction rather
+  than by remembering to update a list.
 - **One source, many outputs** — the same contract emits the CSS variables, the JSON Schema, the
   docs/MCP metadata, and (later) a Figma sync.
 - **Safe composition** — presets extend a base by typed merge, not copy-paste.
@@ -597,17 +634,33 @@ signal through DI to descendant `tm-form-field`s; the display policy reads it wh
 ships the field-scoped default and the `[tmForm]` provider hook; richer cross-field policy is deferred.
 
 **`disabled` / `required` precedence.** Stated rule: **when a control is bound via `[formField]`,
-the field/schema is the single source of truth** for `disabled`, `readonly`, and `required` — the
-directive sets those inputs, and the control's own same-named inputs are ignored. The component-level
-`disabled`/`readonly`/`required` inputs exist **only for non-form (unbound) usage** — e.g. the
-standalone search input that is not part of a `form()`. There is no merge/union and thus no
-ambiguity: bound ⇒ field wins; unbound ⇒ component inputs apply. (`disabledReasons` from the schema
-are surfaced for tooltips.)
+the field/schema is the single source of truth** for `disabled`, `readonly`, and `required`; the
+component-level `disabled`/`readonly`/`required` inputs apply **only in non-form (unbound) usage** —
+e.g. the standalone search input not part of a `form()`. Bound ⇒ field wins; unbound ⇒ component
+inputs apply. No merge/union, no ambiguity. (`disabledReasons` from the schema feed tooltips.)
 
-**Async / pending validation.** ERP forms have server-side/async validators. The control exposes
-the field's `pending` signal; while `pending()` is true the control sets `aria-busy="true"` and shows
-a small inline spinner, `tm-form-field` suppresses a stale "valid" affirmation, and the display policy
-holds errors until validation resolves. The DoD includes a pending-state test.
+**Mechanism (candidate — to be confirmed by spike S3).** The rule needs a concrete mechanism because
+the field-driven `disabled` and the author's `disabled` input would otherwise both try to drive one
+signal. Candidate: the control keeps two private sources — `fieldDisabled` (set by the `[formField]`
+binding via the optional state input) and the public `disabled` input — and an effective
+`disabled = computed(() => boundToField() ? fieldDisabled() : disabledInput())`. **`boundToField()`**
+is the crux: the control detects field binding by **optionally injecting the `FormField` directive
+instance** present on its host (`inject(FormField, { optional: true })`), which is non-null exactly
+when `[formField]` is applied. Same shape for `required`/`readonly`. Spike **S3**
+([§14](#14-spikes--open-technical-risks)) confirms this against the real Signal Forms API (whether the
+directive is injectable, and whether the optional state inputs already make the author inputs
+unreachable so the detection is even needed).
+
+**Async / pending validation — and who debounces.** ERP forms have server-side/async validators. The
+control exposes the field's `pending` signal; while `pending()` is true the control sets
+`aria-busy="true"` and shows a small inline spinner, `tm-form-field` suppresses a stale "valid"
+affirmation, and the display policy holds errors until validation resolves (DoD covers this).
+**Debouncing the server call is the consumer's concern, not the library's:** the async validator and
+its cadence are defined in the consumer's form schema, where Signal Forms' **`debounce()`** rule (and
+`debounce('blur')`) controls how often the model — and therefore the validator — fires. The library's
+job is only to **cooperate** with that: the control emits its **`touch`** output on blur (so
+`debounce('blur')` works) and does not push value updates faster than the user types. So the control
+never bakes in a hardcoded server-call debounce; it gives the schema the hooks to do it.
 
 **Numeric (Phase 2)** will use the stable **`transformedValue`** utility (`@angular/forms/signals`)
 for the string↔number parse/format with automatic parse-error reporting — which is why numeric is a
@@ -623,6 +676,12 @@ provider:
   **key** (`required`, `minlength`, …) to a **localized** default via the i18n runtime
   ([§7](#7-rtl-i18n--l10n)). So inline message → else key-resolved default; the control surfaces the
   resolved string through `errors` ([§2.1](#21-shared-contracts)).
+  **Param interpolation + ICU:** validators carry params (`minlength` → `{requiredLength, actualLength}`,
+  `min`/`max` → the bound, etc.). The resolver passes those params to the translate call, so the
+  translation string interpolates them (`"At least {requiredLength} characters"`), and **plurals/gender
+  use ICU MessageFormat** via Transloco's MessageFormat plugin (`@jsverse/transloco-messageformat`) —
+  i.e. ICU lives in the translation layer, not in our resolver. The default English/Arabic presets ship
+  ICU-formatted strings for the built-in validator keys.
 - **`provideTellmaUi()`** — the umbrella a distribution actually calls: composes
   `provideTellmaForms()` **+** the default Transloco-backed `TM_UI_TRANSLATE` **+** any UI-wide
   defaults. A distribution on the defaults calls `provideTellmaUi()` once and writes **zero** other
@@ -641,7 +700,16 @@ Real assistive-technology verification (NVDA/JAWS/VoiceOver) is a **manual pass,
 the automated suite asserts the mechanism that *should* drive that speech.
 
 - Text input: native semantics, `aria-invalid`/`aria-required`/`aria-describedby`, label association.
-  Error region referenced by `aria-describedby` (consider `aria-live="polite"`).
+- **Live-region decisions (error/hint announcements).** Concrete, to avoid the swap-content
+  double-announce/missed-announce trap: the **hint and the error are separate elements**, not swapped
+  content in one node. The **error element is a persistent live region** — `aria-live="polite"`,
+  `aria-atomic="true"` — that exists in the DOM whether or not it currently holds text, so a
+  transition from empty→message (or message→different message) is announced once; it is **never**
+  reused to host the hint. The hint is **not** a live region (it is referenced by `aria-describedby`
+  for on-demand reading). Politeness: **`polite`** for inline field validation (don't interrupt
+  typing); on a blocked submit the form may escalate its summary to **`assertive`**/`role="alert"`,
+  but per-field errors stay `polite`. Both hint and error ids are wired into the control's
+  `aria-describedby` so a screen reader reads them when the field is focused.
 - Checkbox: native checkbox semantics, `aria-checked="mixed"`, space-to-toggle, clickable label.
 - Select: `@angular/aria` combobox/listbox roles, `aria-expanded`/`aria-selected`/
   `aria-activedescendant`, full keyboard model, focus returned to the trigger on close. No focus
@@ -658,10 +726,23 @@ the automated suite asserts the mechanism that *should* drive that speech.
   navigation invisible) unless we provide an equally-visible substitute indicator. This satisfies
   **WCAG 2.4.7 Focus Visible** and is enforced by the axe gate plus a lint check against bare
   `outline: none`.
-- Forced-colors / high-contrast respected (`@media (forced-colors: active)`); `prefers-reduced-motion`
-  respected (transitions are 120–280ms fades, no transforms/bounce).
-- Touch targets ≥44×44 CSS px. CDK a11y utilities (`FocusMonitor`, `LiveAnnouncer`, `Directionality`)
-  reused, not reinvented.
+- **Forced-colors and reduced-motion are gated, not just asserted.** `@media (forced-colors: active)`
+  and `prefers-reduced-motion` are honored (the latter disables the 120–280ms fades), and both are
+  **tested in Playwright** via `page.emulateMedia({ forcedColors: 'active' })` and
+  `{ reducedMotion: 'reduce' }`, asserting the computed result (borders/focus ring remain visible
+  under forced-colors; transition durations collapse under reduced-motion). They move off the
+  manual-pass list because Playwright can emulate both media features.
+- **Target size — WCAG 2.2 AA, not 44px.** The conformance criterion is
+  **2.5.8 Target Size (Minimum) = 24×24 CSS px** (WCAG 2.2, level AA), with its standard exceptions
+  (sufficient **spacing**, an **equivalent** control elsewhere, **inline** targets, **essential**
+  presentation). 44×44 is **2.5.5 Target Size (Enhanced), which is AAA** (and the Apple-HIG comfort
+  figure) — a target we aim for on **standalone, touch-primary** controls where layout allows, not a
+  conformance floor. **Dense ERP contexts are explicitly fine (resolves the 32px-grid-row tension):**
+  a 32px grid row, or a compact `sm` field, conforms via the 24px minimum and the spacing/essential
+  exceptions — dense tabular data is essential presentation and the grid is primarily
+  keyboard/pointer-driven. So there is no conflict between "≈44px comfortable touch targets" (forms,
+  touch) and "32px dense rows" (grid, desktop); they are different contexts under the same 24px rule.
+- CDK a11y utilities (`FocusMonitor`, `LiveAnnouncer`, `Directionality`) reused, not reinvented.
 
 ## 7. RTL, i18n & l10n
 
@@ -671,6 +752,15 @@ the automated suite asserts the mechanism that *should* drive that speech.
   RTL-aware and tested** — `Directionality` flips `start`/`end`, but we still write and verify the
   position set ([§3.4](#34-select--tm-select)), not assume it. Arabic type uses `--font-arabic`
   and the larger Arabic leading from the brand tokens.
+- **Bidi text inside fields (mixed Arabic/English).** Form values routinely mix scripts (an Arabic
+  name with a Latin code, a phone number in an RTL paragraph). The browser's Unicode Bidi Algorithm
+  handles the *display* ordering, but the field's base direction still has to be right or punctuation
+  and Latin runs land in the wrong place. So text inputs set **`dir="auto"`**, which makes each field
+  pick its base direction from its **own content's first strong character** — independent of the
+  page/app direction — so a Latin-first value reads LTR and an Arabic-first value reads RTL even within
+  the same RTL form. This is the standard fix and needs no per-field JS. Known rough edges (caret
+  jumps, neutral-character placement at run boundaries) are covered by mixed-content tests in both LTR
+  and RTL roots; we do not hand-roll a bidi algorithm.
 - **Runtime i18n/l10n via Transloco.** The library's own labels (required-field
   announcement, select placeholder default, validation messages) are translated through a **runtime**
   i18n library. **Decision: standardize on Transloco** as the platform i18n runtime, consumed behind
@@ -791,13 +881,21 @@ visible.
   golden; **if they differ, CI fails**. To land an intended API change, a maintainer runs the
   `approve-api` script to regenerate and commit the golden, making every public-API change an
   explicit, reviewed act rather than an accident.
-- **Unit tests** per component (zoneless test env): value flow via Signal Forms, validity/touched,
-  **pending/async-validation state**, **prepopulated-value trigger label via `displayWith`**,
-  **disabled/required field-vs-input precedence**, indeterminate, and — for Select — open/close,
-  keyboard nav, typeahead, selection, `compareWith`, Esc/outside-click close.
+- **A shared `form()` test fixture.** Behavioral tests for `[formField]` binding, the disabled/required
+  precedence, pending state, and message resolution all need a live Signal Form. So the testing package
+  ships a tiny **host harness** (a Storybook decorator + a TestBed helper) that wraps the control under
+  test in a host exposing a `form()` with a configurable schema (validators, async validators,
+  `debounce`, inline messages) and binds `[formField]` to the chosen field. Stories that exercise form
+  behavior render through this decorator; the same fixture backs the unit and Playwright specs, so
+  there is one way to stand up a form context.
+- **Unit tests** per component (zoneless test env), using that fixture: value flow via Signal Forms,
+  validity/touched, **pending/async-validation state**, **prepopulated-value trigger label via
+  `displayWith`**, **disabled/required field-vs-input precedence**, **message precedence + ICU/param
+  interpolation**, indeterminate, and — for Select — open/close, keyboard nav, typeahead, selection,
+  `compareWith`, Esc/outside-click close.
 - **axe-core** specs per component (including the open Select panel) as the **static floor** —
   necessary, not sufficient.
-- **Behavioral a11y specs (Playwright, the real gate — #12):** keyboard navigation (arrows/Home/End/
+- **Behavioral a11y specs (Playwright, the real gate):** keyboard navigation (arrows/Home/End/
   typeahead), **focus return to the trigger on close**, **`aria-activedescendant` tracking** across the
   portal, the **two-stage Esc** (close panel → cancel edit), the **trigger→listbox `aria-controls`
   AT-relationship** chain, and the **announcement *mechanism*** (error `aria-live` region updates,
@@ -839,6 +937,42 @@ scope for now.
 - `components.json` feeds: the Storybook showcase, `llms.txt`, the scoped **`@tellma/core-ui-mcp`**
   server (Phase 1: `list` / `describe` / `example` tools), and the API goldens.
 - The federated `dotnet tellma mcp` umbrella is not in Phase 1.
+
+**`components.json` schema (defined here because it feeds everything else).** It is a generated,
+versioned JSON document validated against its own JSON Schema in CI (so the MCP server, `llms.txt`,
+Storybook, and goldens consume a stable shape). Phase-1 shape:
+
+```ts
+interface ComponentsJson {
+  schemaVersion: string;            // semver of THIS schema; consumers pin/validate it
+  libraryVersion: string;           // @tellma/core-ui version it was generated from
+  components: ComponentDoc[];
+}
+interface ComponentDoc {
+  name: string;                     // 'tm-select'
+  kind: 'component' | 'directive';
+  selector: string;                 // 'tm-select' | 'input[tmInput]'
+  entryPoint: string;               // '@tellma/core-ui/select'
+  formControl?: 'FormValueControl' | 'FormCheckboxControl' | null;
+  summary: string;                  // from the JSDoc
+  inputs:  PropDoc[];               // name, type, default, required, jsDoc, signal: 'input'|'model'
+  outputs: PropDoc[];
+  slots:   SlotDoc[];               // ng-content / typed ng-template contexts
+  tokens:  string[];                // CSS custom properties the component reads
+  a11y:    { roles: string[]; keyboard: string[]; notes: string };
+  examples: ExampleDoc[];           // title, code, from the stories
+  harness: string;                  // 'TmSelectHarness'
+  status:  'stable' | 'experimental' | 'deprecated';
+  deprecation?: { since: string; replacement?: string };  // pairs with @breaking-change
+}
+interface PropDoc { name: string; type: string; default?: string; required: boolean; jsDoc: string; signal?: 'input'|'model'|'output'; }
+interface SlotDoc { name: string; selector: string; contextType?: string; jsDoc: string; }
+interface ExampleDoc { title: string; code: string; }
+```
+
+The extractor derives every field from typed source (signal `input()`/`model()`/`output()`, JSDoc,
+the harness, and co-located stories); nothing is hand-authored, so docs can't drift from code, and the
+schema is the contract the MCP/goldens/showcase build against.
 
 ## 12. Phase-1 directory layout
 
@@ -908,14 +1042,50 @@ Storybook config lives in the workspace (free-port launch per [§1.3](#13-worktr
     subsetting + `font-display: swap`, the `TM_FONT_SUBSETS` manifest, and `fontPreloadLinks()` — no
     CDN reference; tests assert an unconfigured script contributes no eager download. (Runtime
     per-tenant preload injection is distribution-shell scope, not tested here.)
-12. `components.json` is generated; the scoped MCP server answers `list`/`describe`/`example`;
-    `llms.txt` and a Storybook showcase render. API goldens committed; `approve-api` gate active.
-13. All tooling (Storybook, tests, MCP server) runs on OS-assigned free ports — two worktrees in
+12. `components.json` is generated and **validated against its JSON Schema** ([§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp));
+    the scoped MCP server answers `list`/`describe`/`example`; `llms.txt` and a Storybook showcase
+    render. API goldens committed; `approve-api` gate active.
+13. Forced-colors and reduced-motion are **Playwright-gated** (`emulateMedia`); bidi `dir="auto"`
+    fields verified with mixed AR/EN content in both LTR and RTL roots; message precedence + ICU/param
+    interpolation tested via the shared `form()` fixture.
+14. All tooling (Storybook, tests, MCP server) runs on OS-assigned free ports — two worktrees in
     parallel, no collision.
+15. **Spikes S1–S3 ([§14](#14-spikes--open-technical-risks)) are resolved and their outcomes folded
+    in** before the Select and the disabled/required-precedence implementations are accepted.
+
+## 14. Spikes / open technical risks
+
+These are time-boxed investigations to run **before** committing the corresponding implementation;
+each has a candidate direction above. They are gates on the affected component, not on the whole spec.
+
+- **S1 — Select keyboard ownership / pattern↔aria seam.** v22's `@angular/aria` ships the Select as
+  composable directives (`ngCombobox`/`ngComboboxPopup`/`ngComboboxWidget`/`ngListbox`/`ngOption`,
+  with `focusMode`/`selectionMode`, `activeDescendant()`, `scrollActiveItemIntoView()`). Confirm the
+  division of labor: `TmSelectPattern` does **not** reimplement keyboard/typeahead/active-descendant
+  but delegates to these directives, retaining only value/label resolution, `compareWith`, placeholder,
+  and the grid commit/cancel. Output: the exact list of what stays in the pattern vs. the template, and
+  how `commit()`/`cancel()` (incl. two-stage Esc) hook the directives' events.
+- **S2 — aria directives need DI vs. the non-DI pattern rule.** aria's behaviors are **Angular
+  directives** (injection context required), so they cannot live inside a plain non-DI `Tm*Pattern`.
+  Confirm the resolution: for Select the aria behavior lives in the **styled component's template**
+  (directives on elements), and `TmSelectPattern` shrinks to the framework-agnostic remainder — i.e.
+  Select's headless/styled split is legitimately different from text/checkbox. Output: confirmation
+  that this composes with the grid-embedding contract (S1) and the import-boundary rule, and any
+  adjustment to [§2](#2-the-headless-pattern-layer-tellmacore-ui-primitives)/[§9](#9-data-grid-forward-compatibility-contract).
+- **S3 — disabled/required precedence mechanism.** Validate the candidate in [§5](#5-forms-integration-signal-forms):
+  detect `[formField]` binding via `inject(FormField, { optional: true })` and gate the effective
+  `disabled`/`readonly`/`required` on it. Confirm against the real API whether the `FormField` directive
+  is injectable and whether the optional state inputs already shadow the author inputs (making explicit
+  detection unnecessary). Output: the final precedence wiring.
+
+The grid hosting model also rests on S1/S2: for **text and checkbox** a grid cell can drive the bare
+`Tm*Pattern` directly (pure, no aria, no DI); for **select**, because the behavior is aria *directives*,
+a grid edit-cell embeds the styled component (or a thin editor) rather than a bare pattern. Either way
+the **host owns the writable value channel** ([§2](#2-the-headless-pattern-layer-tellmacore-ui-primitives)).
 
 ## Decisions confirmed
 
-The earlier open questions are now settled:
+The earlier open questions are settled:
 
 1. **Repo home** — the UI family lives in `client/projects/core/` in `tellma-platform`.
 2. **Build tooling** — pnpm + Angular CLI for Phase 1; nx revisited later if the in-repo project
@@ -927,5 +1097,6 @@ The earlier open questions are now settled:
 5. **Showcase** — Storybook only; sample distribution and any showcase app are out of scope for now.
 6. **Templates** — inline for these small components (v22 best practice supersedes D5 here).
 
-No open questions remain for Phase 1. Implementation can proceed against this spec.
-```
+The remaining technical unknowns are the **spikes in [§14](#14-spikes--open-technical-risks)** (Select's
+pattern↔aria seam, the aria-DI reconciliation, and the precedence mechanism); each is resolved before
+its component's implementation lands.
