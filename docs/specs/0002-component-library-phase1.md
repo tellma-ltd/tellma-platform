@@ -152,7 +152,7 @@ Phase 1 puts real contents in four and a stub-but-wired version in the fifth (`-
 
 | Package | Phase-1 contents |
 |---|---|
-| `@tellma/core-ui-primitives` | `SignalLike`; base pattern utilities; `TmTextFieldPattern`, `TmCheckboxPattern`, `TmSelectPattern`; the `TmFormFieldControl`, `TmCellEditor`, and `TmCellDisplay` contract interfaces. No `@angular/core` import. |
+| `@tellma/core-ui-primitives` | `SignalLike`/`WritableSignalLike`; base pattern utilities; `TmTextFieldPattern`, `TmCheckboxPattern`, `TmSelectPattern`; the `TmFormFieldControl`, `TmCellEditor`, and `TmCellDisplay` contract interfaces. Imports **only** the `@angular/core` signal primitives (`signal`/`computed`/`linkedSignal`/`untracked`/`isSignal`) — never the component/DI/template layer ([§2](#2-the-headless-pattern-layer-tellmacore-ui-primitives)). |
 | `@tellma/core-ui` | `tmInput` directive; `tm-checkbox`; `tm-select` + `tm-option` (overlay panel via CDK Overlay, listbox via `@angular/aria`); `tm-form-field`; `provideTellmaForms()`; the static base CSS; the self-hosted default fonts + `@font-face` ([§7.1](#71-fonts--web-font-loading)). The primary import. |
 | `@tellma/core-ui-tokens` | `TmTokens` TS contract; the brand default preset; the `tokens → CSS variables` emitter; generated JSON Schema; build-time schema + WCAG-contrast validation. |
 | `@tellma/core-ui-testing` | `TmInputHarness`, `TmCheckboxHarness`, `TmSelectHarness` (+ `TmOptionHarness`), `TmFormFieldHarness`. |
@@ -175,7 +175,10 @@ Phase 1 puts real contents in four and a stub-but-wired version in the fifth (`-
   [angular.dev/guide/aria](https://angular.dev/guide/aria/listbox) and
   [angular.dev/guide/forms/signals](https://angular.dev/guide/forms/signals/custom-controls). The
   Angular CLI MCP's `get_best_practices` (v22) likewise lists Signal Forms as stable and OnPush as the
-  default.
+  default. **Version pinning (#8):** `@angular/aria` ships in lockstep with the Angular framework, so it
+  is **pinned to the platform's Angular minor** (they move together — `@angular/aria 22.x` with
+  `@angular/core 22.x`), and the platform tracks **only the latest stable release** of both Angular and
+  aria — no preview/next tags.
 - ESLint flat config + Prettier + commitlint; a custom ESLint selector rule enforcing the `tm-` /
   `Tm…` prefix (D3).
 - **API goldens** per entry point via Microsoft API Extractor + an `approve-api` CI gate (D11) — see
@@ -239,6 +242,14 @@ exactly what `@angular/aria` patterns use. What the pattern must *not* touch is 
 **no Angular component/DI/template machinery; reactive state via signal primitives; all inputs typed
 `SignalLike`** (so a plain getter or an Angular `signal`/`input`/`model` both satisfy them). The
 import-boundary test in [§10](#10-testing-tellmacore-ui-testing) enforces this.
+
+**No `effect()` inside a pattern (#4).** `effect()` requires an injection context, which a pattern
+(no DI) does not have — so it is **not** on the allowlist. Any reactive *side-effect* is either
+implemented **imperatively** within the pattern's event entry points, or **lifted to the adapter**,
+which has an injection context and can run an `effect()` that observes the pattern's `SignalLike`
+state. Example: "reset `activeIndex` to the selected option when `open` flips to `false`" is done in
+the pattern's `close()`/keydown handler imperatively (not via an `effect` watching `open`), or by an
+adapter `effect`. Patterns stay pure-derived (`computed`) + imperative; effects live one layer up.
 
 ```ts
 export type SignalLike<T> = () => T;                       // read channel; an Angular signal is one
@@ -603,9 +614,13 @@ cheap follow-up rather than skeleton-worthy.
 **Providers — split, not bundled (#16A).** Two functions, so i18n/fonts don't hide inside a *forms*
 provider:
 
-- **`provideTellmaForms()`** — forms only: the error-display policy, the validator-key →
-  **localized** message resolver (via the i18n runtime, [§7](#7-rtl-i18n--l10n)), and form-field
-  defaults (`size`, required-marker).
+- **`provideTellmaForms()`** — forms only: the error-display policy, the validation-message
+  resolver, and form-field defaults (`size`, required-marker). **Message precedence (#5):** a
+  schema-inline message (the `{message: …}` passed to a validator in the form schema) **wins when
+  present**; only when a validator produces an error with no inline message does the resolver map its
+  **key** (`required`, `minlength`, …) to a **localized** default via the i18n runtime
+  ([§7](#7-rtl-i18n--l10n)). So inline message → else key-resolved default; the control surfaces the
+  resolved string through `errors` ([§2.1](#21-shared-contracts)).
 - **`provideTellmaUi()`** — the umbrella a distribution actually calls: composes
   `provideTellmaForms()` **+** the default Transloco-backed `TM_UI_TRANSLATE` **+** any UI-wide
   defaults. A distribution on the defaults calls `provideTellmaUi()` once and writes **zero** other
@@ -617,7 +632,11 @@ Target **WCAG 2.1 AA**. **axe-core is necessary but nowhere near sufficient (#12
 static violations (missing roles, contrast, names) but **cannot** verify keyboard navigation, focus
 return on close, `aria-activedescendant` tracking, the two-stage Esc, or screen-reader announcements —
 which is precisely where Select's compliance is hard. Those are gated by **behavioral Playwright
-tests** ([§10](#10-testing-tellmacore-ui-testing)), with axe as the static floor.
+tests** ([§10](#10-testing-tellmacore-ui-testing)), with axe as the static floor. **Caveat (#7):**
+Playwright verifies the **DOM/ARIA mechanism** (roles, `aria-live` region updates, focus moves,
+id-relationship chains) — it **cannot verify that a screen reader actually speaks** the right thing.
+Real assistive-technology verification (NVDA/JAWS/VoiceOver) is a **manual pass, out of DoD scope**;
+the automated suite asserts the mechanism that *should* drive that speech.
 
 - Text input: native semantics, `aria-invalid`/`aria-required`/`aria-describedby`, label association.
   Error region referenced by `aria-describedby` (consider `aria-live="polite"`).
@@ -720,8 +739,12 @@ loading all of them**:
   Angular/CDK already in the app): `tmInput` ≤ 4 KB, `tm-checkbox` ≤ 4 KB, `tm-form-field` ≤ 3 KB,
   `tm-select` ≤ 12 KB (it carries the Overlay/listbox wiring), `@tellma/core-ui-tokens` runtime ≤ 2 KB.
   These are **ratchets**: CI fails on regression and we tighten them as builds land, never loosen
-  silently. `sideEffects:false` + per-component entry points keep tree-shaking honest; CDK Overlay is
-  pulled in only by the `select` entry point, so text/checkbox-only apps don't pay for it.
+  silently. The ceilings measure each component's **own weight on top of an assumed Angular + CDK
+  baseline** — because that baseline is a *given* (#6): any real distribution ships components that
+  pull in CDK, so counting CDK against `tm-select` would double-count a cost the app already pays.
+  `sideEffects:false` + per-component entry points keep tree-shaking honest, and the fact that CDK
+  Overlay enters only via the `select` entry point (so a text/checkbox-only app avoids it) is a
+  genuine but **secondary** nicety — not the basis for the budgets.
 - Static, build-time token/base CSS — no runtime style generation ([§4](#4-tokens--theming-tellmacore-ui-tokens)).
 
 ## 9. Data-grid forward-compatibility contract
@@ -775,16 +798,24 @@ visible.
 - **Behavioral a11y specs (Playwright, the real gate — #12):** keyboard navigation (arrows/Home/End/
   typeahead), **focus return to the trigger on close**, **`aria-activedescendant` tracking** across the
   portal, the **two-stage Esc** (close panel → cancel edit), the **trigger→listbox `aria-controls`
-  AT-relationship** chain, and screen-reader **announcements** (error/`aria-live`, `aria-busy` while
-  pending). These cover exactly what axe cannot.
+  AT-relationship** chain, and the **announcement *mechanism*** (error `aria-live` region updates,
+  `aria-busy` while pending). These cover exactly what axe cannot — but they assert the DOM/ARIA
+  mechanism, **not** that a screen reader speaks it (#7); real AT verification is a manual pass
+  outside the DoD.
 - **RTL specs:** mirrored layout, checkbox side, and the **authored** Select overlay positions under
   `dir="rtl"` (positions are tested, not assumed — [§3.4](#34-select--tm-select)/#15).
-- **Import-boundary / token-boundary test (#10):** an automated dependency-boundary check (ESLint
-  `no-restricted-imports` / dependency-cruiser) fails CI if `@tellma/core-ui-primitives` imports the
-  Angular **component/DI/template** layer or the styled layer, if any package imports outside its
-  declared deps, or if a component writes bare `outline: none`. This is what keeps the headless rule
-  ([§2](#2-the-headless-pattern-layer-tellmacore-ui-primitives)) and layering honest rather than
-  aspirational.
+- **Import-boundary / token-boundary test (#10) — must be symbol-level, not module-level.** The
+  forbidden and allowed `@angular/core` symbols share the *same module specifier*: `Component`,
+  `Directive`, `inject`, `effect`, `ViewChild`, lifecycle hooks, etc. live in `@angular/core`
+  alongside the permitted `signal`/`computed`/`linkedSignal`. So a module-level "don't import
+  `@angular/core`" rule is both wrong (it bans the primitives we allow) and insufficient. The check is
+  an **allowlist on named imports**: in `@tellma/core-ui-primitives`, permit **exactly**
+  `{ signal, computed, linkedSignal, untracked, isSignal }` from `@angular/core` and **fail CI on
+  any other named import** from it (and on any import of the styled layer). Implemented with ESLint
+  `no-restricted-imports`' `importNames` allow/deny (or a custom rule) — not dependency-cruiser, which
+  resolves at module granularity. The same job also fails on cross-package leakage and bare
+  `outline: none`. This keeps the headless rule
+  ([§2](#2-the-headless-pattern-layer-tellmacore-ui-primitives)) honest rather than aspirational.
 - **e2e:** the behavioral specs above run against Storybook stories on a real browser (Storybook is the
   only showcase surface — [§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp)).
 - **Changed-test selection (your Q27).** CI runs only the tests whose code changed: on PRs, the test
