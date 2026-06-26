@@ -1,31 +1,33 @@
 # Spec: UI Component Library — Phase 1 (Forms Walking Skeleton)
 
-**Status:** Draft — for discussion. Nothing here is locked until we agree to it and the
-[ARCHITECTURE.md](../../ARCHITECTURE.md) Frontend section is updated to match.
+**Status:** Phase-1 specification — the frozen, authoritative description of the work. The research
+analysis that preceded it is superseded by this document.
 
-**Architecture deltas** (applied to ARCHITECTURE.md's Frontend section alongside this spec):
+**Departures from the research analysis's locked decisions** (this spec supersedes them where they
+conflict):
 - **D9 → Signal Forms only.** Drop the `ControlValueAccessor` dual-compat requirement. Signal Forms
   is stable in Angular v22 and every consumer is greenfield v22+, so the CVA fallback buys nothing.
 - **D6 → CSS-variable theming, no builder.** No theme-builder UI is planned, ever. Themes are the
   emitted CSS custom properties; overrides are authored as CSS (or set at runtime on a scope). Drop
   the `dt()`/typed-passthrough framing.
-- **`@angular/aria` is stable in v22** (graduated from developer preview) — the open "aria maturity"
-  question in ARCHITECTURE.md is resolved; we build on it.
+- **`@angular/aria` is stable in v22** (graduated from developer preview) — the analysis's open
+  "aria maturity" question is resolved; we build on it.
 - **Inline templates for small components.** The Angular CLI MCP's `get_best_practices` is the
-  source of truth for framework conventions and takes precedence over the research doc, so D5's
+  source of truth for framework conventions and takes precedence over the research analysis, so D5's
   external-template preference is superseded: small components (all of Phase 1) use inline templates;
   external `.html` is reserved for larger components with rich named slots.
 
 ## Context
 
-[ARCHITECTURE.md → Frontend → UI component library](../../ARCHITECTURE.md) commits the platform
-to a greenfield Angular component library, shipped as a `core-*` package family every
-distribution references, built on `@angular/cdk` + `@angular/aria`, signal-first, `tm-`-prefixed.
-The rationale and the Material/PrimeNG comparison behind every decision live in
+The platform builds a greenfield Angular component library, shipped as a `core-*` package family
+every distribution references, built on `@angular/cdk` + `@angular/aria`, signal-first,
+`tm-`-prefixed. The rationale and the Material/PrimeNG comparison that preceded this spec live in
+the research analysis at
 [`docs/research/angular-component-library-analysis.md`](../research/angular-component-library-analysis.md)
-(decisions **D1–D13**). The default look — colors, type, spacing, the shared form-field token
-group, focus ring, dark mode, RTL/Arabic posture — is fixed by the Tellma design system
-(`tellma-brand/design-system`, especially `tokens/*.css` and the `forms/` reference components).
+(its locked decisions are cited below as **D1–D13**), now superseded by this document. The default
+look — colors, type, spacing, the shared form-field token group, focus ring, dark mode, RTL/Arabic
+posture — is fixed by the Tellma design system (`tellma-brand/design-system`, especially
+`tokens/*.css` and the `forms/` reference components).
 
 This spec covers **Phase 1**: a *walking skeleton* — the thinnest end-to-end slice that stands
 up the whole architecture (all five packages, the headless/styled split, the token emitter, the
@@ -147,8 +149,8 @@ There is **no theme-builder UI**, now or later. Theming is done by authoring CSS
 
 ## 1. Package & build skeleton
 
-All five packages are created under `client/projects/core/` exactly as ARCHITECTURE.md lays out.
-Phase 1 puts real contents in four and a stub-but-wired version in the fifth (`-mcp`).
+All five packages are created under `client/projects/core/`. Phase 1 puts real contents in four and
+a stub-but-wired version in the fifth (`-mcp`).
 
 | Package | Phase-1 contents |
 |---|---|
@@ -175,7 +177,7 @@ Phase 1 puts real contents in four and a stub-but-wired version in the fifth (`-
   [angular.dev/guide/aria](https://angular.dev/guide/aria/listbox) and
   [angular.dev/guide/forms/signals](https://angular.dev/guide/forms/signals/custom-controls). The
   Angular CLI MCP's `get_best_practices` (v22) likewise lists Signal Forms as stable and OnPush as the
-  default. **Version pinning (#8):** `@angular/aria` ships in lockstep with the Angular framework, so it
+  default. **Version pinning:** `@angular/aria` ships in lockstep with the Angular framework, so it
   is **pinned to the platform's Angular minor** (they move together — `@angular/aria 22.x` with
   `@angular/core 22.x`), and the platform tracks **only the latest stable release** of both Angular and
   aria — no preview/next tags.
@@ -184,7 +186,7 @@ Phase 1 puts real contents in four and a stub-but-wired version in the fifth (`-
 - **API goldens** per entry point via Microsoft API Extractor + an `approve-api` CI gate (D11) — see
   [§10](#10-testing-tellmacore-ui-testing).
 - CI gates: unit + harness tests, **axe-core**, **bundle-size budget**, API golden, lint. Tests
-  always on. (No SSR gate — distributions are client-rendered, per ARCHITECTURE.md Frontend.)
+  always on. (No SSR gate — distributions are client-rendered.)
 
 > **Note — inline templates.** Per the v22 best-practices guide (the authoritative source for
 > framework conventions, which takes precedence over the research doc), small components use
@@ -216,9 +218,9 @@ boundaries are nx-ready regardless, so adoption later is additive.
 
 ### 1.3 Worktree-isolated, port-free tooling
 
-Per ARCHITECTURE.md *Parallel Local Development*, every build/test/run path and any hosted tool must
-run in parallel across isolated git worktrees with **no hardcoded localhost ports** and no shared
-mutable global state:
+The platform's parallel-local-development rule applies: every build/test/run path and any hosted
+tool must run in parallel across isolated git worktrees with **no hardcoded localhost ports** and no
+shared mutable global state:
 
 - Storybook, the test runner, the MCP server, and any dev/preview server bind to an
   OS-assigned free port (or read the worktree's `.dev-ports.local`), never a literal port.
@@ -243,7 +245,7 @@ exactly what `@angular/aria` patterns use. What the pattern must *not* touch is 
 `SignalLike`** (so a plain getter or an Angular `signal`/`input`/`model` both satisfy them). The
 import-boundary test in [§10](#10-testing-tellmacore-ui-testing) enforces this.
 
-**No `effect()` inside a pattern (#4).** `effect()` requires an injection context, which a pattern
+**No `effect()` inside a pattern.** `effect()` requires an injection context, which a pattern
 (no DI) does not have — so it is **not** on the allowlist. Any reactive *side-effect* is either
 implemented **imperatively** within the pattern's event entry points, or **lifted to the adapter**,
 which has an injection context and can run an `effect()` that observes the pattern's `SignalLike`
@@ -288,15 +290,15 @@ export interface TmFormFieldControl {
   readonly touched: SignalLike<boolean>;
   readonly dirty: SignalLike<boolean>;
   readonly invalid: SignalLike<boolean>;
-  readonly pending: SignalLike<boolean>;                    // async validation in progress (#9)
-  readonly errors: SignalLike<readonly TmFieldError[]>;     // already-localized messages (#4)
+  readonly pending: SignalLike<boolean>;                    // async validation in progress
+  readonly errors: SignalLike<readonly TmFieldError[]>;     // already-localized messages
   onContainerClick?(): void;
 }
 export interface TmFieldError { readonly kind: string; readonly message: string; }
 
 // Every grid-embeddable control's pattern implements this, so the grid drives them uniformly.
 export interface TmCellEditor<T> {
-  readonly value: WritableSignalLike<T>;  // read + WRITE channel — how commit/cancel mutate (#2)
+  readonly value: WritableSignalLike<T>;  // read + WRITE channel — how commit/cancel mutate
   commit(): void;                  // accept the edit (Enter/Tab in a grid; blur standalone)
   cancel(): void;                  // revert to last committed (Esc)
   focus(): void;
@@ -436,7 +438,7 @@ for non-form usage.
 - **Display one property, capture another — yes.** `tm-option`'s **`value`** is what lands in the
   model, its **projected content** is what the user sees:
   `<tm-option [value]="record.id">{{ record.label }}</tm-option>` captures the id, displays the label.
-- **Trigger label resolution — and the prepopulated-value problem (#7).** Caching the projected
+- **Trigger label resolution — and the prepopulated-value problem.** Caching the projected
   option's label only works once that option has rendered. A form frequently arrives with `value`
   **already set before any `tm-option` exists** (an edit screen; an async/virtualized list). So the
   trigger resolves its label in this order: (1) if a **`displayWith: (value) => string`** input is
@@ -451,7 +453,7 @@ for non-form usage.
 - **Overlay:** the panel mounts through **CDK Overlay + Portal** with a flexible connected position
   strategy anchored to the trigger — opens below, flips above when tight, repositions on scroll.
   Created lazily on first open; backdrop/outside-click and Esc close it; focus returns to the trigger.
-- **RTL positioning is authored and tested, not free (#15).** CDK connected-position strategies are
+- **RTL positioning is authored and tested, not free.** CDK connected-position strategies are
   explicit `{originX/Y, overlayX/Y}` pairs; `Directionality` flips how `start`/`end` resolve, but we
   still **author an RTL-aware position set and test it** — the "mirrors automatically" framing is
   dropped. The RTL spec in the DoD covers exactly this.
@@ -473,7 +475,7 @@ semantic → component), emitted to CSS variables. Phase 1 builds the contract a
 ships **one default preset reproducing `tellma-brand/design-system`** — same hexes, same `--field-*`
 / `--focus-ring` / spacing / type tokens, same `[data-theme=dark]` inversion.
 
-**Why TS/JSON tokens rather than hand-written CSS** (your OQ4): the CSS variables are still the
+**Why TS/JSON tokens rather than hand-written CSS**: the CSS variables are still the
 runtime currency — the TS layer sits *above* them and buys what raw CSS cannot:
 
 - **Type safety** — autocomplete, and a reference to a missing token won't compile.
@@ -490,7 +492,7 @@ runtime currency — the TS layer sits *above* them and buys what raw CSS cannot
 - **Safe composition** — presets extend a base by typed merge, not copy-paste.
 - **Agent-authorability** — an agent emits a typed object that is validated at build, not free CSS.
 
-**Runtime theme switching (your OQ4) — yes, supported, with no rebuild.** Because tokens emit to CSS
+**Runtime theme switching — yes, supported, with no rebuild.** Because tokens emit to CSS
 custom properties, a distribution's settings screen (e.g. a color picker) sets the relevant
 variable(s) on a scope at runtime — `document.documentElement.style.setProperty('--color-primary', …)`
 or a scoped `<style>` — and every component restyles instantly. The TS contract is the *build-time
@@ -507,9 +509,9 @@ fetches a static sheet. A distribution's override deltas are likewise emitted at
 sheet baked into its `index.html`. Runtime overrides ([above](#4-tokens--theming-tellmacore-ui-tokens))
 are the one exception and are a few CSS-variable writes, not style generation.
 
-**Cascade ordering — three override sources, made explicit (#11).** The earlier draft dropped
-ARCHITECTURE.md's `@layer` strategy; here it is. There are exactly three places a token value can come
-from, and they must compose deterministically regardless of stylesheet load order:
+**Cascade ordering — three override sources, made explicit.** A `@layer` strategy governs the
+cascade. There are exactly three places a token value can come from, and they must compose
+deterministically regardless of stylesheet load order:
 
 1. **Library base** — the default preset, emitted into a named layer `@layer tm.base`.
 2. **Distribution build-time delta** — a distribution's overrides, emitted into `@layer tm.theme`.
@@ -523,7 +525,7 @@ inline-style runtime writes beat any layered stylesheet by the normal cascade. D
 variables from outside these layers (or in a later `tm.components` layer) so it never accidentally
 out-ranks a theme override.
 
-**A slice of `TmTokens` (#14)** — the most-reused artifact, so it is concrete here (Phase-1 subset;
+**A slice of `TmTokens`** — the most-reused artifact, so it is concrete here (Phase-1 subset;
 full lists are design-in-progress). Primitive ramps → semantic roles via typed refs → the shared
 `formField` group every input inherits:
 
@@ -553,7 +555,7 @@ export interface TmTokens {
 interface SchemeColors { textStrong: Ref; textBody: Ref; surfacePage: Ref; surfaceCard: Ref; border: Ref; /* … */ }
 ```
 
-**Brand source of truth (your OQ4, decided):** the **TS `TmTokens` contract is canonical** for the
+**Brand source of truth:** the **TS `TmTokens` contract is canonical** for the
 platform; the brand CSS is a starting import. A conformance test asserting the emitted CSS matches
 `tellma-brand` anchors is **deferred** (the brand is still in flux — keep it flexible for now). The
 schema + WCAG-contrast gates ship in Phase 1 regardless (they don't depend on the brand).
@@ -586,7 +588,7 @@ and binds:
   `errors`/`touched`/`dirty`/`invalid`/`pending`/`required` to render. This is the Material
   `MatFormFieldControl` shape adapted to Signal Forms.
 
-**Error-display policy (field-scoped) and the submit question (#4).** The default policy is
+**Error-display policy (field-scoped) and the submit question.** The default policy is
 **field-scoped**: show errors when `invalid() && (touched() || dirty())` — every signal it needs is on
 the field-control contract, so no form-level plumbing is required. *"After a submit attempt"* is
 **form-scoped** state that the per-field `[formField]` binding does not carry. To honor it, a distro
@@ -594,7 +596,7 @@ opts into an optional **`[tmForm]` directive on the `<form>`** that provides the
 signal through DI to descendant `tm-form-field`s; the display policy reads it when present. Phase 1
 ships the field-scoped default and the `[tmForm]` provider hook; richer cross-field policy is deferred.
 
-**`disabled` / `required` precedence (#8).** Stated rule: **when a control is bound via `[formField]`,
+**`disabled` / `required` precedence.** Stated rule: **when a control is bound via `[formField]`,
 the field/schema is the single source of truth** for `disabled`, `readonly`, and `required` — the
 directive sets those inputs, and the control's own same-named inputs are ignored. The component-level
 `disabled`/`readonly`/`required` inputs exist **only for non-form (unbound) usage** — e.g. the
@@ -602,7 +604,7 @@ standalone search input that is not part of a `form()`. There is no merge/union 
 ambiguity: bound ⇒ field wins; unbound ⇒ component inputs apply. (`disabledReasons` from the schema
 are surfaced for tooltips.)
 
-**Async / pending validation (#9).** ERP forms have server-side/async validators. The control exposes
+**Async / pending validation.** ERP forms have server-side/async validators. The control exposes
 the field's `pending` signal; while `pending()` is true the control sets `aria-busy="true"` and shows
 a small inline spinner, `tm-form-field` suppresses a stale "valid" affirmation, and the display policy
 holds errors until validation resolves. The DoD includes a pending-state test.
@@ -611,11 +613,11 @@ holds errors until validation resolves. The DoD includes a pending-state test.
 for the string↔number parse/format with automatic parse-error reporting — which is why numeric is a
 cheap follow-up rather than skeleton-worthy.
 
-**Providers — split, not bundled (#16A).** Two functions, so i18n/fonts don't hide inside a *forms*
+**Providers — split, not bundled.** Two functions, so i18n/fonts don't hide inside a *forms*
 provider:
 
 - **`provideTellmaForms()`** — forms only: the error-display policy, the validation-message
-  resolver, and form-field defaults (`size`, required-marker). **Message precedence (#5):** a
+  resolver, and form-field defaults (`size`, required-marker). **Message precedence:** a
   schema-inline message (the `{message: …}` passed to a validator in the form schema) **wins when
   present**; only when a validator produces an error with no inline message does the resolver map its
   **key** (`required`, `minlength`, …) to a **localized** default via the i18n runtime
@@ -628,11 +630,11 @@ provider:
 
 ## 6. Accessibility
 
-Target **WCAG 2.1 AA**. **axe-core is necessary but nowhere near sufficient (#12):** it catches
+Target **WCAG 2.1 AA**. **axe-core is necessary but nowhere near sufficient:** it catches
 static violations (missing roles, contrast, names) but **cannot** verify keyboard navigation, focus
 return on close, `aria-activedescendant` tracking, the two-stage Esc, or screen-reader announcements —
 which is precisely where Select's compliance is hard. Those are gated by **behavioral Playwright
-tests** ([§10](#10-testing-tellmacore-ui-testing)), with axe as the static floor. **Caveat (#7):**
+tests** ([§10](#10-testing-tellmacore-ui-testing)), with axe as the static floor. **Caveat:**
 Playwright verifies the **DOM/ARIA mechanism** (roles, `aria-live` region updates, focus moves,
 id-relationship chains) — it **cannot verify that a screen reader actually speaks** the right thing.
 Real assistive-technology verification (NVDA/JAWS/VoiceOver) is a **manual pass, out of DoD scope**;
@@ -644,12 +646,12 @@ the automated suite asserts the mechanism that *should* drive that speech.
 - Select: `@angular/aria` combobox/listbox roles, `aria-expanded`/`aria-selected`/
   `aria-activedescendant`, full keyboard model, focus returned to the trigger on close. No focus
   trap (the combobox+activedescendant model keeps focus on the trigger). **Portaled-overlay sharp
-  edge (#12):** because the listbox renders in a CDK overlay *outside* the trigger's subtree, the
+  edge:** because the listbox renders in a CDK overlay *outside* the trigger's subtree, the
   trigger must reference it with **`aria-controls`** for the active-descendant relationship to be
   exposed to assistive tech; a Playwright test asserts the trigger→listbox→active-option id chain
   resolves across the portal boundary (`aria-owns` is the fallback if a tested AT needs the implicit
   containment).
-- **Focus ring — "the brand teal halo, never removed without replacement"** (your Q18): the focus
+- **Focus ring — "the brand teal halo, never removed without replacement"**: the focus
   ring is the visible indicator shown when an element holds keyboard focus — here the brand's teal
   halo with a white gap (`--focus-ring`), applied on `:focus-visible`. "Never removed without
   replacement" means we never write `outline: none` (the common a11y regression that makes keyboard
@@ -667,9 +669,9 @@ the automated suite asserts the mechanism that *should* drive that speech.
   (auto-detected), never a per-component `rtl` flag. Adornment order, checkbox box side, and label
   alignment mirror via logical properties; the **Select overlay's connected position** is **authored
   RTL-aware and tested** — `Directionality` flips `start`/`end`, but we still write and verify the
-  position set ([§3.4](#34-select--tm-select)/#15), not assume it. Arabic type uses `--font-arabic`
+  position set ([§3.4](#34-select--tm-select)), not assume it. Arabic type uses `--font-arabic`
   and the larger Arabic leading from the brand tokens.
-- **Runtime i18n/l10n via Transloco (your Q15/Q23).** The library's own labels (required-field
+- **Runtime i18n/l10n via Transloco.** The library's own labels (required-field
   announcement, select placeholder default, validation messages) are translated through a **runtime**
   i18n library. **Decision: standardize on Transloco** as the platform i18n runtime, consumed behind
   a *thin* one-function seam rather than the full multi-backend adapter of D8 — see the pros/cons in
@@ -704,7 +706,7 @@ loading all of them**:
 - **`font-display: swap`** so text paints immediately in a fallback and swaps when the web font
   arrives (fast TTI; no invisible-text delay).
 - **Preload is resolved at runtime from per-tenant locale config** — and the **library/shell split
-  matters (#16C)**. A distribution may support any number of locales; each tenant configures up to
+  matters**. A distribution may support any number of locales; each tenant configures up to
   three and switches at runtime, so two tenants in the *same* distribution may run English+Arabic vs.
   English+Amharic. **Latin is always preloaded** (the universal fallback); the additional subsets to
   preload are exactly those the resolved tenant locales need. The responsibility boundary:
@@ -723,7 +725,7 @@ loading all of them**:
   distribution-owned runtime injection.
 - **Variable fonts** where available, to cut file count/weight (one file spans weights).
 - **Long-cache immutable** (content-hashed filenames, `Cache-Control: immutable, max-age=1y`) plus
-  the PWA service-worker cache, so repeat loads are instant (ARCHITECTURE.md *Performance*).
+  the PWA service-worker cache, so repeat loads are instant.
 
 ## 8. Performance budget
 
@@ -734,13 +736,13 @@ loading all of them**:
   first open** and torn down on close — closed selects cost nothing.
 - **Long option lists:** `@for` + `track` now; `cdk/scrolling` virtual scroll drops in later without
   an API change.
-- **Bundle budget** per entry point in CI — with **concrete initial ceilings, not "TBD" (#16D)**, so
+- **Bundle budget** per entry point in CI — with **concrete initial ceilings, not "TBD"**, so
   the DoD's "within budget" is not circular. Starting ceilings (gzipped, self-weight excluding shared
   Angular/CDK already in the app): `tmInput` ≤ 4 KB, `tm-checkbox` ≤ 4 KB, `tm-form-field` ≤ 3 KB,
   `tm-select` ≤ 12 KB (it carries the Overlay/listbox wiring), `@tellma/core-ui-tokens` runtime ≤ 2 KB.
   These are **ratchets**: CI fails on regression and we tighten them as builds land, never loosen
   silently. The ceilings measure each component's **own weight on top of an assumed Angular + CDK
-  baseline** — because that baseline is a *given* (#6): any real distribution ships components that
+  baseline** — because that baseline is a *given*: any real distribution ships components that
   pull in CDK, so counting CDK against `tm-select` would double-count a cost the app already pays.
   `sideEffects:false` + per-component entry points keep tree-shaking honest, and the fact that CDK
   Overlay enters only via the `select` entry point (so a text/checkbox-only app avoids it) is a
@@ -753,7 +755,7 @@ The editable Excel-like data grid is out of scope, but Phase 1 must not foreclos
 codified contracts make every Phase-1 control grid-ready:
 
 - **`TmCellEditor<T>`** ([§2.1](#21-shared-contracts)) — the *edit* path. Defined as a TS interface
-  (your Q25) so every grid-able control's pattern implements commit/cancel/focus/keydown **uniformly**.
+  so every grid-able control's pattern implements commit/cancel/focus/keydown **uniformly**.
   Guarantees: external value ownership (the grid owns the model), **no self-owned focus trap or
   document-level listeners** (the grid owns Tab/Enter/Esc/arrow navigation and forwards only what the
   cell editor consumes), and explicit `commit()`/`cancel()` (Enter/Tab commit, Esc cancels; for
@@ -761,7 +763,7 @@ codified contracts make every Phase-1 control grid-ready:
   overlay anchors to an arbitrary element (a cell rect) via the same connected-position strategy a
   grid dropdown editor needs.
 - **`TmCellDisplay<T>`** ([§2.1](#21-shared-contracts)) — the *readonly* path, enabling the
-  optimization you describe (your Q26): a virtualized grid renders **every non-edited cell as plain,
+  optimization you describe: a virtualized grid renders **every non-edited cell as plain,
   non-interactive DOM** (a formatted value in a `<span>`, a token-styled checkbox-glyph instead of a
   real checkbox) and instantiates the full interactive control **only for the one cell being
   edited**. This is a standard, very worthwhile technique (ag-Grid/Excel), and it is **cleanly
@@ -781,17 +783,17 @@ visible.
   options, read the active option) and `TmFormFieldHarness`. Built on the CDK harness infrastructure
   (and `@angular/aria`'s shipped harnesses for the listbox). This is the template every later
   component copies.
-- **API goldens (your Q14)** — for each entry point, **API Extractor** emits a `*.api.md` "golden": a
+- **API goldens** — for each entry point, **API Extractor** emits a `*.api.md` "golden": a
   human-readable, diff-able snapshot of the complete public API surface (every export, signature, and
   type), committed to the repo. A PR that changes the public API shows up as a golden diff in review,
   so drift is never silent — which matters when agent-generated code depends on a stable surface.
-- **`approve-api` CI gate (your Q13)** — CI re-extracts the API and compares it to the committed
+- **`approve-api` CI gate** — CI re-extracts the API and compares it to the committed
   golden; **if they differ, CI fails**. To land an intended API change, a maintainer runs the
   `approve-api` script to regenerate and commit the golden, making every public-API change an
   explicit, reviewed act rather than an accident.
 - **Unit tests** per component (zoneless test env): value flow via Signal Forms, validity/touched,
-  **pending/async-validation state** (#9), **prepopulated-value trigger label via `displayWith`** (#7),
-  **disabled/required field-vs-input precedence** (#8), indeterminate, and — for Select — open/close,
+  **pending/async-validation state**, **prepopulated-value trigger label via `displayWith`**,
+  **disabled/required field-vs-input precedence**, indeterminate, and — for Select — open/close,
   keyboard nav, typeahead, selection, `compareWith`, Esc/outside-click close.
 - **axe-core** specs per component (including the open Select panel) as the **static floor** —
   necessary, not sufficient.
@@ -800,11 +802,11 @@ visible.
   portal, the **two-stage Esc** (close panel → cancel edit), the **trigger→listbox `aria-controls`
   AT-relationship** chain, and the **announcement *mechanism*** (error `aria-live` region updates,
   `aria-busy` while pending). These cover exactly what axe cannot — but they assert the DOM/ARIA
-  mechanism, **not** that a screen reader speaks it (#7); real AT verification is a manual pass
+  mechanism, **not** that a screen reader speaks it; real AT verification is a manual pass
   outside the DoD.
 - **RTL specs:** mirrored layout, checkbox side, and the **authored** Select overlay positions under
-  `dir="rtl"` (positions are tested, not assumed — [§3.4](#34-select--tm-select)/#15).
-- **Import-boundary / token-boundary test (#10) — must be symbol-level, not module-level.** The
+  `dir="rtl"` (positions are tested, not assumed — [§3.4](#34-select--tm-select)).
+- **Import-boundary / token-boundary test — must be symbol-level, not module-level.** The
   forbidden and allowed `@angular/core` symbols share the *same module specifier*: `Component`,
   `Directive`, `inject`, `effect`, `ViewChild`, lifecycle hooks, etc. live in `@angular/core`
   alongside the permitted `signal`/`computed`/`linkedSignal`. So a module-level "don't import
@@ -818,7 +820,7 @@ visible.
   ([§2](#2-the-headless-pattern-layer-tellmacore-ui-primitives)) honest rather than aspirational.
 - **e2e:** the behavioral specs above run against Storybook stories on a real browser (Storybook is the
   only showcase surface — [§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp)).
-- **Changed-test selection (your Q27).** CI runs only the tests whose code changed: on PRs, the test
+- **Changed-test selection.** CI runs only the tests whose code changed: on PRs, the test
   runner's `--changed`-against-merge-base filtering (per package), **plus** the direct consumers of
   any changed package (so a primitives change re-tests the styled layer); on `main`/release, the full
   suite always runs (changed-only can miss cross-package breakage). This is the pnpm + Angular CLI
@@ -829,7 +831,7 @@ visible.
 ## 11. Docs & MCP pipeline (`@tellma/core-ui-mcp`)
 
 Per **D12/D13**, docs are generated from source as a single source of truth. The Phase-1 showcase is
-**Storybook only** (your OQ5) — no dedicated showcase app, and the sample distribution is out of
+**Storybook only** — no dedicated showcase app, and the sample distribution is out of
 scope for now.
 
 - Co-located `*.stories.ts` per component (runnable demos + interaction tests) + a short narrative `*.md`.

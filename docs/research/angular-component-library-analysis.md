@@ -1,5 +1,12 @@
 # Angular Component-Library Analysis — Material/CDK vs PrimeNG
 
+> **Superseded.** This is a research/rationale document. The Phase-1 component-library work it informed
+> is now specified in [`docs/specs/0002-component-library-phase1.md`](../specs/0002-component-library-phase1.md),
+> which is the authoritative source and supersedes this analysis where they differ (e.g. the three-
+> component skeleton, Signal-Forms-only, stable `@angular/aria`, inline templates). This doc is kept
+> for the comparative analysis and the reasoning behind the locked decisions (D1–D13); it is not
+> maintained as decisions evolve.
+
 **Purpose:** Mine the two most widely-used Angular component libraries for patterns to replicate (and pitfalls to avoid) in Tellma's greenfield, **agent-first** ERP component library (built in `tellma-platform`, consumed by distributions, targeting Angular 22).
 
 **Status:** Decisions taken (see Part 3) and folded into `ARCHITECTURE.md` → *Frontend → UI component library*. This doc retains the comparative analysis and the rationale; `ARCHITECTURE.md` carries the committed *what*. Remaining open items are in Part 4.
