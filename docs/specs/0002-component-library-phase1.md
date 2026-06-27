@@ -30,7 +30,7 @@ posture — is fixed by the Tellma design system (`tellma-brand/design-system`, 
 `tokens/*.css` and the `forms/` reference components).
 
 This spec covers **Phase 1**: a *walking skeleton* — the thinnest end-to-end slice that stands
-up the whole architecture (all five packages, the headless/styled split, the token emitter, the
+up the whole architecture (all four packages, the `@angular/aria` behavior layer, the token emitter, the
 forms contract, harnesses, the a11y/RTL/perf gates, the docs/MCP pipeline) while shipping only
 **three production components**:
 
@@ -64,9 +64,9 @@ breadth. Each of the three pierces a seam the others do not:
   overlay anchored to a cell, with Esc/commit/Tab interplay against grid navigation, is the case
   that actually shapes the cell-editor design.
 
-The point of Phase 1 is **not** breadth. It is to prove the spine — pattern class → styled adapter
-→ tokens → Signal Forms → harness → axe/RTL/bundle gates → generated docs — works once, across both
-a flat control *and* an overlay/collection control, so every later component is a fill-in-the-blank
+The point of Phase 1 is **not** breadth. It is to prove the spine — component (+ `@angular/aria` where
+needed) → tokens → Signal Forms → harness → axe/RTL/bundle gates → generated docs — works once, across
+both a flat control *and* an overlay/collection control, so every later component is a fill-in-the-blank
 exercise against an established template.
 
 ### Guiding rules (from the task brief)
@@ -109,15 +109,14 @@ Two facts about the consumer set let us delete complexity the general-purpose li
 
 **Goals**
 
-- Stand up all five `@tellma/core-ui*` packages with real (if small) contents and working build,
+- Stand up all four `@tellma/core-ui*` packages with real (if small) contents and working build,
   test, lint, and docs pipelines.
 - Ship `tmInput`, `tm-checkbox`, `tm-select`, and `tm-form-field` to production quality:
   a11y-complete, RTL-complete, themed from the brand tokens, Signal-Forms-native.
 - Prove the shared overlay/positioning + aria-listbox + keyboard-navigation infrastructure once,
   via Select, so later overlay/collection components reuse it.
-- Establish the canonical `Tm*Pattern` headless template, the styled-adapter template, the harness
-  template, and the `*.stories.ts` → `components.json` docs template that every later component
-  copies.
+- Establish the canonical component template, the harness template, and the
+  `*.stories.ts` → `components.json` docs template that every later component copies.
 - Encode the brand design tokens into the typed `TmTokens` contract + emitter, with one default
   preset that reproduces `tellma-brand/design-system` and a build-time WCAG-contrast gate.
 
@@ -126,7 +125,7 @@ Two facts about the consumer set let us delete complexity the general-purpose li
 - All other components (numeric, currency, textarea, **date picker**, details picker, data grid,
   radio, toggle, multi-select, autocomplete, buttons, layouts, nav, modal, menu, popover, etc.).
 - Multi-select, option groups, and virtual scroll for long option lists. Phase-1 Select is
-  single-select with a flat option list; the pattern is shaped not to preclude these.
+  single-select with a flat option list; the component is shaped not to preclude these.
 - The `TmNumberAdapter`/`TmDateAdapter` and the components that need them (numeric, date picker). A
   **date picker is its own future component** — a dropdown-calendar overlay built on the same
   CDK-Overlay + aria infra Select establishes; the `TmDateAdapter` is the multi-calendar
@@ -150,16 +149,15 @@ There is **no theme-builder UI**, now or later. Theming is done by authoring CSS
 
 ## 1. Package & build skeleton
 
-All five packages are created under `client/projects/core/`. Phase 1 puts real contents in four and
-a stub-but-wired version in the fifth (`-mcp`).
+All four packages are created under `client/projects/core/`. Phase 1 puts real contents in three and
+a stub-but-wired version in the fourth (`-mcp`).
 
 | Package | Phase-1 contents |
 |---|---|
-| `@tellma/core-ui-primitives` | `SignalLike`/`WritableSignalLike`; base pattern utilities; `TmTextFieldPattern`, `TmCheckboxPattern`, `TmSelectPattern`; the `TmFormFieldControl`, `TmCellEditor`, and `TmCellDisplay` contract interfaces. Imports **only** the `@angular/core` signal primitives (`signal`/`computed`/`linkedSignal`/`untracked`/`isSignal`) — never the component/DI/template layer ([§2](#2-the-headless-pattern-layer-tellmacore-ui-primitives)). |
-| `@tellma/core-ui` | `tmInput` directive; `tm-checkbox`; `tm-select` + `tm-option` (overlay panel via CDK Overlay, listbox via `@angular/aria`); `tm-form-field`; `provideTellmaForms()`; the static base CSS; the self-hosted default fonts + `@font-face` ([§7.1](#71-fonts--web-font-loading)). The primary import. |
+| `@tellma/core-ui` | The components — `tmInput` directive; `tm-checkbox`; `tm-select` + `tm-option` (overlay panel via CDK Overlay, listbox via `@angular/aria`); `tm-form-field`; `provideTellmaForms()`/`provideTellmaUi()`; the static base CSS; the self-hosted default fonts + `@font-face` ([§7.1](#71-fonts--web-font-loading)). Plus a **`@tellma/core-ui/contracts`** secondary entry point holding the `SignalLike`/`WritableSignalLike` boundary types and the `TmFormFieldControl`/`TmCellEditor`/`TmCellDisplay` interfaces ([§2.1](#21-shared-contracts)). The primary import. |
 | `@tellma/core-ui-tokens` | `TmTokens` TS contract; the brand default preset; the `tokens → CSS variables` emitter; generated JSON Schema; build-time schema + WCAG-contrast validation. |
 | `@tellma/core-ui-testing` | `TmInputHarness`, `TmCheckboxHarness`, `TmSelectHarness` (+ `TmOptionHarness`), `TmFormFieldHarness`. |
-| `@tellma/core-ui-mcp` | Generated `components.json` for the four; a minimal MCP server exposing `list/describe/example` tools over it. Wired into the build; tool breadth is later. |
+| `@tellma/core-ui-mcp` | Generated `components.json` for the components; a minimal MCP server exposing `list/describe/example` tools over it. Wired into the build; tool breadth is later. |
 
 **Build & tooling (shared, established once):**
 
@@ -207,9 +205,9 @@ best-practices output is the source of truth for framework conventions; this spe
 
 Phase 1 uses **pnpm workspaces + the Angular CLI + ng-packagr** — no nx. The reason is structural, not
 just "small now": **nx's headline wins (project-graph caching, `affected`, distributed cache) scale
-with the number of *projects*, and the UI library's project count is essentially fixed at five — it
+with the number of *projects*, and the UI library's project count is essentially fixed at four — it
 does not grow as the component library fills out.** What *does* grow with every new component lives
-*inside* those five packages — more components, tokens, harnesses, tests, stories, and `components.json`
+*inside* those four packages — more components, tokens, harnesses, tests, stories, and `components.json`
 entries — and that intra-package growth is served by the **test runner's own incremental/changed-file
 selection**, not by a cross-project task graph. So nx would optimize the axis that stays constant while
 adding onboarding and tooling-sprawl cost (the same low-onboarding argument that rejected Bazel in D1;
@@ -230,28 +228,35 @@ shared mutable global state:
 - The MCP server and Storybook are launched by scripts that follow the same free-port discovery the
   platform's `dotnet tellma setup-worktree` flow uses; nothing assumes a singleton instance.
 
-## 2. The headless pattern layer (`@tellma/core-ui-primitives`)
+## 2. Behavior layer and shared contracts
 
-Per **D4**, each component's behavior lives in a `Tm*Pattern` class that is **not an Angular
-component, directive, or service** — no template, no DI, no host bindings, no lifecycle. It is
-unit-testable without `TestBed` and drivable by any host (an Angular adapter today; a data-grid cell
-later). This is the same shape `@angular/aria`'s own `*Pattern` classes take.
+**There is no per-component headless "pattern" layer.** `@angular/aria` (stable in v22) *is* the
+headless behavior layer for everything with a non-trivial keyboard/selection model — listbox,
+combobox, menu, grid, tree — and each styled `tm-*` control owns the rest of its own logic **directly,
+as an ordinary Angular component/directive** (signals, `effect()`, DI, lifecycle — all available and
+used normally). Genuinely-shared, framework-agnostic helpers (value→key mapping, value formatters) are
+plain exported functions, not a class per control.
 
-**Reactivity.** The pattern uses Angular's standalone **signal primitives**
-(`signal`/`computed`/`linkedSignal` from `@angular/core`) for its derived state — framework-agnostic
-reactivity, usable and testable outside any component, exactly what `@angular/aria` patterns use. The
-pattern must *not* touch the Angular *component/DI/template* layer. The rule is therefore **no Angular
-component/DI/template machinery; reactive state via signal primitives; all inputs typed `SignalLike`**
-(so a plain getter or an Angular `signal`/`input`/`model` both satisfy them). The import-boundary test
-in [§10](#10-testing-tellmacore-ui-testing) enforces this.
+A separate `Tm*Pattern` class per control (the earlier D4 split) was **dropped**: with aria providing
+the real behavior layer, the leftover per-control logic is too thin to justify a second layer plus the
+`SignalLike` indirection and the no-`effect()` constraint a non-DI class would impose. The
+headless-engine approach is **reserved for the future editable data grid** — a substantial,
+aria-uncovered state machine (tab/enter/arrow nav, range selection, virtual scroll, clipboard,
+undo/redo) where an isolated, separately-tested core genuinely earns its keep; it would ship in its
+own package when built, driven by a real second consumer rather than speculatively now.
 
-**No `effect()` inside a pattern.** `effect()` requires an injection context, which a pattern
-(no DI) does not have — so it is **not** on the allowlist. Any reactive *side-effect* is either
-implemented **imperatively** within the pattern's event entry points, or **lifted to the adapter**,
-which has an injection context and can run an `effect()` that observes the pattern's `SignalLike`
-state. Example: "reset `activeIndex` to the selected option when `open` flips to `false`" is done in
-the pattern's `close()`/keydown handler imperatively (not via an `effect` watching `open`), or by an
-adapter `effect`. Patterns stay pure-derived (`computed`) + imperative; effects live one layer up.
+### 2.1 Shared contracts
+
+The cross-cutting contracts live in a **secondary entry point of `@tellma/core-ui`**
+(`@tellma/core-ui/contracts`), **not a separate package** — they are zero-/low-runtime types plus a
+couple of pure helpers, and the only thing that needs them besides the components is the future grid,
+which depends one-directionally on `@tellma/core-ui` anyway (no cycle to break). A lint keeps this
+entry point free of component/DI imports so the grid can import the contracts without pulling in the
+components.
+
+`SignalLike`/`WritableSignalLike` are the **boundary types a host uses to drive a control it owns** —
+in particular the grid, which owns a cell's value and passes it to the editor through the write
+channel:
 
 ```ts
 export type SignalLike<T> = () => T;                       // read channel; an Angular signal is one
@@ -259,23 +264,7 @@ export interface WritableSignalLike<T> extends SignalLike<T> {  // read + write 
   set(value: T): void;
   update(fn: (prev: T) => T): void;
 }
-```
 
-**Who owns the value.** Signal Forms requires the bound `value`/`checked` `model()` to live **on the
-control component** (that is what `[formField]` binds to — [§5](#5-forms-integration-signal-forms)).
-So the writable value signal is created by the **host** (the styled adapter in form usage; a grid cell
-in grid usage — [§9](#9-data-grid-forward-compatibility-contract)) and passed into the pattern as a
-`WritableSignalLike<T>`; the pattern reads and writes it through that channel and keeps its own
-private `lastCommitted` signal for revert. This write channel is what makes `commit()`/`cancel()`
-implementable.
-
-Each pattern exposes derived state as `SignalLike` computeds plus imperative event entry points the
-host forwards DOM events to (`onKeydown`, `onInput`, `onFocus`, `onBlur`, …). It never touches the
-DOM and never assumes it owns focus.
-
-### 2.1 Shared contracts
-
-```ts
 // What tm-form-field needs to do its job. The control re-surfaces the Signal Forms field state it
 // receives via [formField] (see §5) so the wrapper can apply the display policy and render the
 // localized error text — it carries the FULL state set, not just `invalid`.
@@ -297,9 +286,10 @@ export interface TmFormFieldControl {
 }
 export interface TmFieldError { readonly kind: string; readonly message: string; }
 
-// Every grid-embeddable control's pattern implements this, so the grid drives them uniformly.
+// Every grid-embeddable control implements this, so the grid drives them uniformly. The control
+// itself implements it (no separate pattern class); commit/cancel mutate through the write channel.
 export interface TmCellEditor<T> {
-  readonly value: WritableSignalLike<T>;  // read + WRITE channel — how commit/cancel mutate
+  readonly value: WritableSignalLike<T>;  // host (grid) owns this; commit/cancel write through it
   commit(): void;                  // accept the edit (Enter/Tab in a grid; blur standalone)
   cancel(): void;                  // revert to last committed (Esc)
   focus(): void;
@@ -317,48 +307,22 @@ export interface TmCellDisplay<T> {
 
 The control populates `errors` with **already-localized** messages (resolved through the message
 resolver, [§5](#5-forms-integration-signal-forms)) so `tm-form-field` only decides *whether* to show
-them, never *how to translate* them.
+them, never *how to translate* them. **Value ownership:** Signal Forms requires the bound
+`value`/`checked` `model()` to live on the control ([§5](#5-forms-integration-signal-forms)); in a
+form, the control owns it; in a grid, the host owns it and passes it to the control through
+`TmCellEditor.value` (the `WritableSignalLike` write channel), and the control keeps a private
+`lastCommitted` for revert. The per-control specifics (what each control owns vs. delegates to aria)
+are in [§3](#3-the-styled-layer-tellmacore-ui).
 
-### 2.2 The three patterns
+## 3. The components (`@tellma/core-ui`)
 
-In every case the writable value is the adapter's `model()` passed in as a `WritableSignalLike`
-(above) — the pattern never creates the bound value itself.
-
-- **`TmTextFieldPattern`** — value (the adapter's `WritableSignalLike<string>`), empty/dirty/touched,
-  disabled, readonly; implements `TmCellEditor<string>` and `TmCellDisplay<string>`. Keyboard is
-  mostly native; `onKeydown`/`onInput` passthroughs let a grid host intercept Enter/Esc/Tab/arrows.
-- **`TmCheckboxPattern`** — `checked` (the adapter's `WritableSignalLike<boolean>`), `indeterminate`,
-  derived `aria-checked` (`true`/`false`/`mixed`), `toggle()`, disabled, required; toggling clears
-  indeterminate. Implements `TmCellEditor<boolean>` and `TmCellDisplay<boolean>` (readonly = a styled
-  box glyph, no input). Note the value channel is `checked`, never `value` (Signal Forms forbids a
-  `value` on a checkbox control — [§3.3](#33-checkbox--tm-checkbox)).
-- **`TmSelectPattern`** — deliberately the *thin* one. Verified against `@angular/aria@22`: the
-  keyboard navigation, typeahead, active-descendant, selection mode, open/close, single-Escape, and all
-  `aria-*` are owned by aria's **directives** (`ngCombobox` / `ngComboboxPopup` / `ngComboboxWidget` /
-  `ngListbox` / `ngOption`), which are real `@Directive`s with DI and therefore live in the styled
-  component's template, **not** in this non-DI class ([§3.4](#34-select--tm-select)). `TmSelectPattern`
-  owns only what aria does not:
-  - **Scalar↔array bridge.** aria's `ngListbox` value model is **always `V[]`** (even single-select);
-    `TmSelectPattern` exposes the single `T` to `FormValueControl<T>` and bridges to/from the
-    one-element array.
-  - **Value↔option-key mapping (our `compareWith`).** aria has **no `compareWith`** — its selection is
-    strict `===` on whatever is bound to `ngOption [value]`. So `TmSelectPattern` maps a domain value
-    `T` to a stable primitive key handed to aria, and back, which is where `tm-select`'s `compareWith`
-    actually lives.
-  - **Trigger label/placeholder resolution** (value → display label/template), incl. the
-    prepopulated-value path; reused by `TmCellDisplay<T>.formatValue`.
-  - **Grid edit lifecycle:** `committedValue`/`pendingValue` signals and the `TmCellEditor<T>`
-    `commit()`/`cancel()` transitions (two-stage Escape, Enter/Tab commit).
-
-  Text and checkbox have no aria-directive equivalent, so their pure-pattern model is unaffected.
-
-## 3. The styled layer (`@tellma/core-ui`)
-
-The styled component/directive is a thin adapter: it declares the Angular public API, constructs the
-pattern (passing its signals straight in), binds ARIA + classes out via the `host` object, renders an
-**inline template** with `@if`/`@for`/`@let` (small components, per the v22 best practice), and
-implements the relevant **Signal Forms custom-control interface**
-([§5](#5-forms-integration-signal-forms)). No business logic here.
+Each `tm-*` control is an ordinary Angular component/directive that owns its own logic: it declares
+the Angular public API (`input()`/`model()`/`output()`), holds its state in signals, binds ARIA +
+classes out via the `host` object, renders an **inline template** with `@if`/`@for`/`@let` (small
+components, per the v22 best practice), implements the relevant **Signal Forms custom-control
+interface** ([§5](#5-forms-integration-signal-forms)), and — where the behavior is non-trivial —
+composes `@angular/aria` directives in its template for keyboard/selection/a11y. There is no separate
+pattern object to wire to.
 
 ### Host shape — directive on native input vs. component
 
@@ -460,13 +424,14 @@ single node, so announcements are clean. Logical-property layout mirrors in RTL.
   Select: `ngCombobox` (the trigger, `[(expanded)]`) on a **non-`<input>` host**, `ngComboboxPopup`
   inside a `cdkConnectedOverlay`, and the panel's `ngListbox` + `ngComboboxWidget` + `ngOption` with
   `focusMode="activedescendant"`, `selectionMode="explicit"`, `[(value)]` (an **array** model), and
-  `[activeDescendant]="listbox.activeDescendant()"`. These directives — not `TmSelectPattern` — own
+  `[activeDescendant]="listbox.activeDescendant()"`. These directives — not hand-written code — own
   keyboard navigation, typeahead, `activeDescendant()`, `scrollActiveItemIntoView()`, single-Escape,
   and all `aria-*`. **Editable vs select mode is chosen by the host element tag, not a config flag:**
   aria derives `isEditable` from `tagName === 'input'`, so `tm-select` (non-editable) puts `ngCombobox`
   on a `<div>`/`<button>`; the future editable details-picker (below) puts it on an `<input>`.
-  `tm-select` adds the brand chrome, the form-control glue, label resolution, and the grid
-  commit/cancel.
+  `tm-select` itself owns the brand chrome, the form-control glue, the **scalar↔array bridge** (it
+  exposes a single `T` to `FormValueControl<T>` over aria's array-valued listbox model), label
+  resolution, and the grid commit/cancel.
 - **Display one property, capture another — yes.** `tm-option`'s **`value`** is what lands in the
   model, its **projected content** is what the user sees:
   `<tm-option [value]="record.id">{{ record.label }}</tm-option>` captures the id, displays the label.
@@ -480,7 +445,7 @@ single node, so announcements are clean. Logical-property layout mirrors in RTL.
   static option lists (the projected option is in the DOM immediately), but it is **required in
   practice for async/virtualized or prepopulated-without-static-options cases**, and the docs say so;
   the DoD tests the prepopulated path. This trigger logic is the control's own concern; the
-  `TmCellDisplay.formatValue` grid surface ([§2.2](#22-the-three-patterns)) *delegates to the same
+  `TmCellDisplay.formatValue` grid surface ([§2.1](#21-shared-contracts)) *delegates to the same
   resolver* but the standalone trigger does **not** depend on the grid-facing interface.
 - **Overlay:** the panel mounts through **CDK Overlay + Portal** with a flexible connected position
   strategy anchored to the trigger — opens below, flips above when tight, repositions on scroll.
@@ -490,8 +455,8 @@ single node, so announcements are clean. Logical-property layout mirrors in RTL.
   (`expanded = false`) on option click / `keydown.enter` / `keydown.space` / `valueChange`, returns
   focus to the trigger (`combobox.element.focus()` or the CDK overlay's `restoreFocus`) when `expanded`
   flips false, and commits the value. Esc has **two stages**: aria handles stage 1 (Esc closes the open
-  panel); `tm-select` adds stage 2 (a second Esc, panel already closed, calls
-  `TmSelectPattern.cancel()` to revert `pendingValue` and, in a grid, exit edit mode). Implementation
+  panel); `tm-select` adds stage 2 (a second Esc, panel already closed, calls the control's `cancel()`
+  — it implements `TmCellEditor` — to revert `pendingValue` and, in a grid, exit edit mode). Implementation
   note: CDK overlays can intercept Esc, so the stage-2 handler must be placed to still receive it; and
   Tab is not relayed to the listbox, so "commit on Tab" (if wanted) is wired explicitly rather than
   assumed.
@@ -789,8 +754,8 @@ the automated suite asserts the mechanism that *should* drive that speech.
   `(key: string, params?) => Signal<string>`, with the default implementation in `@tellma/core-ui`
   backed by Transloco (scoped/lazy-loaded library strings). **A distribution on the default Transloco
   path writes zero config code** — `provideTellmaUi()` ([§5](#5-forms-integration-signal-forms)) wires
-  the Transloco-backed default itself; the token only needs supplying to override it. The headless
-  primitives never import Transloco (they stay framework/library-decoupled); only the styled layer's
+  the Transloco-backed default itself; the token only needs supplying to override it. The
+  `contracts` entry point never imports Transloco (it stays dependency-free); only the components'
   default provider does. This keeps one mechanism for the whole platform while leaving a clean swap
   point if ever needed. English + Arabic library-string presets ship in-package.
 - **Adapters declared, none implemented in Phase 1.** `TmNumberAdapter` / `TmCurrencyAdapter` /
@@ -883,13 +848,14 @@ codified contracts make every Phase-1 control grid-ready:
   controls; no grid-specific code ships.
 
 **What the edit-cell hosts (verified, and it differs by control).** The host always owns the writable
-value channel ([§2](#2-the-headless-pattern-layer-tellmacore-ui-primitives)). For **text and checkbox**,
-the behavior is a pure non-DI `Tm*Pattern`, so a grid edit-cell can drive the bare pattern (or the bare
-`<input tmInput>` directive) directly. For **select**, the behavior is delivered as `@angular/aria`
-*directives* that require an Angular injection/template context — there is no way to instantiate the
-combobox/listbox behavior from a bare class — so a grid edit-cell **hosts the full styled `tm-select`
-component** and listens for its `commit()`/`cancel()` to write back or discard. A short "embedding a
-control in a cell" note goes in each component's docs to keep this visible.
+value channel ([§2.1](#21-shared-contracts)) and drives the editor through the `TmCellEditor<T>`
+interface the control implements. For **text and checkbox** the behavior is simple and DOM-native, so a
+grid edit-cell can mount the bare `<input tmInput>` / `tm-checkbox` directly and drive it via
+`TmCellEditor`. For **select**, the behavior is delivered as `@angular/aria` *directives* that require
+an Angular injection/template context — there is no way to instantiate the combobox/listbox behavior
+outside a component — so a grid edit-cell **mounts the full `tm-select` component** and listens for its
+`commit()`/`cancel()` to write back or discard. A short "embedding a control in a cell" note goes in each
+component's docs to keep this visible.
 
 ## 10. Testing (`@tellma/core-ui-testing`)
 
@@ -929,23 +895,19 @@ control in a cell" note goes in each component's docs to keep this visible.
   outside the DoD.
 - **RTL specs:** mirrored layout, checkbox side, and the **authored** Select overlay positions under
   `dir="rtl"` (positions are tested, not assumed — [§3.4](#34-select--tm-select)).
-- **Import-boundary / token-boundary test — must be symbol-level, not module-level.** The
-  forbidden and allowed `@angular/core` symbols share the *same module specifier*: `Component`,
-  `Directive`, `inject`, `effect`, `ViewChild`, lifecycle hooks, etc. live in `@angular/core`
-  alongside the permitted `signal`/`computed`/`linkedSignal`. So a module-level "don't import
-  `@angular/core`" rule is both wrong (it bans the primitives we allow) and insufficient. The check is
-  an **allowlist on named imports**: in `@tellma/core-ui-primitives`, permit **exactly**
-  `{ signal, computed, linkedSignal, untracked, isSignal }` from `@angular/core` and **fail CI on
-  any other named import** from it (and on any import of the styled layer). Implemented with ESLint
-  `no-restricted-imports`' `importNames` allow/deny (or a custom rule) — not dependency-cruiser, which
-  resolves at module granularity. The same job also fails on cross-package leakage and bare
-  `outline: none`. This keeps the headless rule
-  ([§2](#2-the-headless-pattern-layer-tellmacore-ui-primitives)) honest rather than aspirational.
+- **Contracts entry-point boundary + lint hygiene.** The `@tellma/core-ui/contracts` entry point
+  ([§2.1](#21-shared-contracts)) must stay importable by the future grid without dragging in the
+  components, so a lint **fails CI if `contracts` imports anything from `@angular/core` or the
+  component modules** — it is types (`SignalLike`/the interfaces) plus pure helpers only. (No
+  signal-primitive allowlist is needed anymore: with the pattern layer collapsed, the components are
+  ordinary Angular code that may use the full framework; only the `contracts` surface is constrained.)
+  The same lint job also fails on cross-package leakage and on bare `outline: none`
+  ([§6](#6-accessibility)).
 - **e2e:** the behavioral specs above run against Storybook stories on a real browser (Storybook is the
   only showcase surface — [§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp)).
 - **Changed-test selection.** CI runs only the tests whose code changed: on PRs, the test
   runner's `--changed`-against-merge-base filtering (per package), **plus** the direct consumers of
-  any changed package (so a primitives change re-tests the styled layer); on `main`/release, the full
+  any changed package (so a `contracts` or tokens change re-tests the components); on `main`/release, the full
   suite always runs (changed-only can miss cross-package breakage). This is the pnpm + Angular CLI
   path; if it proves insufficient as the repo grows, nx `affected` is the upgrade
   ([§1.2](#12-build-tooling--pnpm--angular-cli-nx-deferred)).
@@ -1003,22 +965,18 @@ schema is the contract the MCP/goldens/showcase build against.
 
 ```
 client/projects/core/
-├── tellma-core-ui-primitives/
-│   └── src/lib/
-│       ├── signal-like.ts
-│       ├── contracts/         # TmFormFieldControl, TmCellEditor, TmCellDisplay
-│       ├── text-field/tm-text-field.pattern.ts
-│       ├── checkbox/tm-checkbox.pattern.ts
-│       └── select/tm-select.pattern.ts        # on @angular/aria listbox/combobox
 ├── tellma-core-ui/
+│   ├── contracts/             # @tellma/core-ui/contracts secondary entry point:
+│   │   └── src/               #   SignalLike/WritableSignalLike, TmFormFieldControl, TmCellEditor, TmCellDisplay (+ ng-package.json)
 │   └── src/lib/
 │       ├── form-field/        # tm-form-field (inline template; .css if styles externalized)
 │       ├── input/             # tmInput directive
 │       ├── checkbox/          # tm-checkbox (inline template)
-│       ├── select/            # tm-select + tm-option (inline template; CDK Overlay panel)
+│       ├── select/            # tm-select + tm-option (inline template; @angular/aria + CDK Overlay)
 │       ├── forms/             # provideTellmaForms(), tmForm directive, field-state helpers, message resolver
 │       ├── providers/         # provideTellmaUi() umbrella
 │       ├── i18n/              # TM_UI_TRANSLATE token + Transloco-backed default
+│       ├── shared/            # pure helpers (value→key mapping, formatters)
 │       └── fonts/             # @font-face + self-hosted woff2; TM_FONT_SUBSETS manifest + fontPreloadLinks()
 ├── tellma-core-ui-tokens/
 │   └── src/lib/
@@ -1036,8 +994,8 @@ Storybook config lives in the workspace (free-port launch per [§1.3](#13-worktr
 
 ## 13. Definition of done
 
-1. All five packages build, lint (incl. the `tm-` selector rule), and are consumable by an in-repo
-   app via workspace path mappings.
+1. All four packages build, lint (incl. the `tm-` selector rule), and are consumable by an in-repo
+   app via workspace path mappings; `@tellma/core-ui/contracts` resolves as a secondary entry point.
 2. `tmInput`, `tm-checkbox`, `tm-select`, `tm-form-field` work bound via `[formField]` in a **Signal
    Form** (each implementing the correct interface — `tm-checkbox` via `FormCheckboxControl` with
    **no `value` property**, enforced by lint/API golden), themed from the brand preset, in light and
@@ -1057,8 +1015,8 @@ Storybook config lives in the workspace (free-port launch per [§1.3](#13-worktr
    token preset passes the schema + fixed-WCAG-AA-contrast gate in both schemes; runtime CSS-variable
    override demonstrated (`setProperty` changes `--color-primary` live); the `@layer tm.base, tm.theme`
    precedence is verified (a `tm.theme` delta overrides base regardless of load order).
-9. The **import-boundary test** passes: primitives import no Angular component/DI/template or styled
-   layer; no cross-package leakage; no bare `outline: none`.
+9. The **contracts-boundary lint** passes: `@tellma/core-ui/contracts` imports nothing from
+   `@angular/core` or the component modules; no cross-package leakage; no bare `outline: none`.
 10. The grid contracts are demonstrated by tests: a bare `<input tmInput>` mounts with no
     `tm-form-field`, driven via `TmCellEditor.commit()`/`cancel()` (write channel) with no
     document-level listeners; a `tm-select` panel anchors to an arbitrary element with two-stage Esc;
@@ -1091,9 +1049,10 @@ The earlier open questions are settled:
 6. **Templates** — inline for these small components (v22 best practice supersedes D5 here).
 
 The Select-architecture and forms-precedence questions were investigated directly against
-`@angular/aria@22` and `@angular/forms@22` source and are resolved in [§2.2](#22-the-three-patterns),
-[§3.4](#34-select--tm-select), [§5](#5-forms-integration-signal-forms), and
-[§9](#9-data-grid-forward-compatibility-contract): aria owns Select's keyboard/typeahead/active-descendant/
-open-close as DI directives (so `TmSelectPattern` shrinks to the scalar↔array bridge, value→key mapping,
-label resolution, and grid commit/cancel), and Signal-Forms field state writes into the control's single
-input signal so "field wins when bound" is automatic. Implementation can proceed against this spec.
+`@angular/aria@22` and `@angular/forms@22` source and are resolved in
+[§2](#2-behavior-layer-and-shared-contracts), [§3.4](#34-select--tm-select),
+[§5](#5-forms-integration-signal-forms), and [§9](#9-data-grid-forward-compatibility-contract): aria
+owns Select's keyboard/typeahead/active-descendant/open-close as DI directives (so `tm-select` owns only
+the scalar↔array bridge, value→key mapping, label resolution, and grid commit/cancel — no separate
+pattern class), and Signal-Forms field state writes into the control's single input signal so "field
+wins when bound" is automatic. Implementation can proceed against this spec.
