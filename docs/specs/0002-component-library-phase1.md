@@ -332,18 +332,25 @@ In every case the writable value is the adapter's `model()` passed in as a `Writ
   indeterminate. Implements `TmCellEditor<boolean>` and `TmCellDisplay<boolean>` (readonly = a styled
   box glyph, no input). Note the value channel is `checked`, never `value` (Signal Forms forbids a
   `value` on a checkbox control — [§3.3](#33-checkbox--tm-checkbox)).
-- **`TmSelectPattern`** — deliberately the *thin* one, because the keyboard model is **not** its job.
-  In v22 the keyboard navigation, typeahead, active-descendant, selection mode, and `aria-*` state are
-  owned by `@angular/aria`'s **directives** — `ngCombobox` / `ngComboboxPopup` / `ngComboboxWidget` /
-  `ngListbox` / `ngOption` — which live in the styled component's template, not in this class
-  ([§3.4](#34-select--tm-select)). `TmSelectPattern` owns only the Tellma-specific, framework-agnostic
-  concerns that aria does not: the typed `value` (the host's `WritableSignalLike<T>`), value→label
-  resolution for the trigger, `compareWith` equality, placeholder/empty state, and the grid
-  `TmCellEditor<T>` commit/cancel semantics (Esc closes the panel first, then cancels the edit). Its
-  `TmCellDisplay<T>.formatValue` reuses the same value→label resolver as the trigger. **The exact seam
-  between `TmSelectPattern` and the aria directives — and the DI tension that aria directives create
-  for a non-DI pattern — is a spike (S1/S2, [§14](#14-spikes--open-technical-risks)).** Text and
-  checkbox have no aria-directive equivalent, so their pure-pattern model is unaffected.
+- **`TmSelectPattern`** — deliberately the *thin* one. Verified against `@angular/aria@22`: the
+  keyboard navigation, typeahead, active-descendant, selection mode, open/close, single-Escape, and all
+  `aria-*` are owned by aria's **directives** (`ngCombobox` / `ngComboboxPopup` / `ngComboboxWidget` /
+  `ngListbox` / `ngOption`), which are real `@Directive`s with DI and therefore live in the styled
+  component's template, **not** in this non-DI class ([§3.4](#34-select--tm-select)). `TmSelectPattern`
+  owns only what aria does not:
+  - **Scalar↔array bridge.** aria's `ngListbox` value model is **always `V[]`** (even single-select);
+    `TmSelectPattern` exposes the single `T` to `FormValueControl<T>` and bridges to/from the
+    one-element array.
+  - **Value↔option-key mapping (our `compareWith`).** aria has **no `compareWith`** — its selection is
+    strict `===` on whatever is bound to `ngOption [value]`. So `TmSelectPattern` maps a domain value
+    `T` to a stable primitive key handed to aria, and back, which is where `tm-select`'s `compareWith`
+    actually lives.
+  - **Trigger label/placeholder resolution** (value → display label/template), incl. the
+    prepopulated-value path; reused by `TmCellDisplay<T>.formatValue`.
+  - **Grid edit lifecycle:** `committedValue`/`pendingValue` signals and the `TmCellEditor<T>`
+    `commit()`/`cancel()` transitions (two-stage Escape, Enter/Tab commit).
+
+  Text and checkbox have no aria-directive equivalent, so their pure-pattern model is unaffected.
 
 ## 3. The styled layer (`@tellma/core-ui`)
 
@@ -442,22 +449,24 @@ single node, so announcements are clean. Logical-property layout mirrors in RTL.
 - **API:** `value = model<T>()` (single-select); `placeholder`, `disabled`, `required`,
   `compareWith`, `size`. `tm-option`: `value` + projected label content; outputs
   `selectionChange`/`opened`/`closed`. Implements `FormValueControl<T>` + `TmFormFieldControl`.
-- **`compareWith` is not redundant with signals.** Signal equality is *referential* by default, so
-  two option objects describing the same entity (e.g. the model's `{id:7,…}` from the server vs. a
-  freshly-fetched `{id:7,…}` in the options list) are unequal and selection would fail to highlight.
-  `compareWith: (a, b) => a.id === b.id` defines **domain equality** for matching the model value to an
-  option — orthogonal to signal change-detection. (Primitive-id values, the common ERP shape, don't
-  need it.)
-- **Built on the aria Select directives.** The implementation composes v22's `@angular/aria` Select:
-  `ngCombobox` (the trigger, `[(expanded)]`), `ngComboboxPopup` + `cdkConnectedOverlay`
-  (`usePopover:'inline'`, `matchWidth:true`) for the panel, and `ngListbox` + `ngComboboxWidget` +
-  `ngOption` with `focusMode="activedescendant"` and `selectionMode="explicit"`. These directives —
-  not `TmSelectPattern` — own keyboard navigation, typeahead, `activeDescendant()`, and
-  `scrollActiveItemIntoView()`. `tm-select` adds the brand chrome, the form-control glue, label
-  resolution, and the grid commit/cancel. The non-editable **select (readonly combobox) mode** is what
-  `tm-select` uses; the **editable combobox mode** is what a later autocomplete/details-picker reuses
-  (see below). The precise pattern↔directive seam is spike **S1/S2**
-  ([§14](#14-spikes--open-technical-risks)).
+- **`compareWith` is ours, not aria's, and not redundant with signals.** Signal equality is
+  *referential* by default, so two option objects describing the same entity (the model's `{id:7,…}`
+  vs. a freshly-fetched `{id:7,…}`) are unequal and selection would fail to highlight. Verified:
+  `@angular/aria` provides **no `compareWith`** — its listbox selection is strict `===` on whatever is
+  bound to `ngOption [value]`. So `tm-select.compareWith` is implemented in our adapter by mapping each
+  domain value to a **stable primitive key** before handing it to aria (and back for display) — that
+  key-mapping *is* the `compareWith`. (Primitive-id values, the common ERP shape, need nothing.)
+- **Built on the aria Select directives (verified API).** The template composes v22's `@angular/aria`
+  Select: `ngCombobox` (the trigger, `[(expanded)]`) on a **non-`<input>` host**, `ngComboboxPopup`
+  inside a `cdkConnectedOverlay`, and the panel's `ngListbox` + `ngComboboxWidget` + `ngOption` with
+  `focusMode="activedescendant"`, `selectionMode="explicit"`, `[(value)]` (an **array** model), and
+  `[activeDescendant]="listbox.activeDescendant()"`. These directives — not `TmSelectPattern` — own
+  keyboard navigation, typeahead, `activeDescendant()`, `scrollActiveItemIntoView()`, single-Escape,
+  and all `aria-*`. **Editable vs select mode is chosen by the host element tag, not a config flag:**
+  aria derives `isEditable` from `tagName === 'input'`, so `tm-select` (non-editable) puts `ngCombobox`
+  on a `<div>`/`<button>`; the future editable details-picker (below) puts it on an `<input>`.
+  `tm-select` adds the brand chrome, the form-control glue, label resolution, and the grid
+  commit/cancel.
 - **Display one property, capture another — yes.** `tm-option`'s **`value`** is what lands in the
   model, its **projected content** is what the user sees:
   `<tm-option [value]="record.id">{{ record.label }}</tm-option>` captures the id, displays the label.
@@ -475,7 +484,17 @@ single node, so announcements are clean. Logical-property layout mirrors in RTL.
   resolver* but the standalone trigger does **not** depend on the grid-facing interface.
 - **Overlay:** the panel mounts through **CDK Overlay + Portal** with a flexible connected position
   strategy anchored to the trigger — opens below, flips above when tight, repositions on scroll.
-  Created lazily on first open; backdrop/outside-click and Esc close it; focus returns to the trigger.
+  Created lazily on first open; backdrop/outside-click and Esc close it.
+- **Commit, close, and focus return are host-wired (aria does neither).** Verified: aria does **not**
+  auto-close on selection and ships **no** focus-restore helper. So `tm-select` closes the panel
+  (`expanded = false`) on option click / `keydown.enter` / `keydown.space` / `valueChange`, returns
+  focus to the trigger (`combobox.element.focus()` or the CDK overlay's `restoreFocus`) when `expanded`
+  flips false, and commits the value. Esc has **two stages**: aria handles stage 1 (Esc closes the open
+  panel); `tm-select` adds stage 2 (a second Esc, panel already closed, calls
+  `TmSelectPattern.cancel()` to revert `pendingValue` and, in a grid, exit edit mode). Implementation
+  note: CDK overlays can intercept Esc, so the stage-2 handler must be placed to still receive it; and
+  Tab is not relayed to the listbox, so "commit on Tab" (if wanted) is wired explicitly rather than
+  assumed.
 - **RTL positioning is authored and tested, not free.** CDK connected-position strategies are
   explicit `{originX/Y, overlayX/Y}` pairs; `Directionality` flips how `start`/`end` resolve, but we
   still **author an RTL-aware position set and test it** — the "mirrors automatically" framing is
@@ -490,9 +509,9 @@ single node, so announcements are clean. Logical-property layout mirrors in RTL.
   related entity on an ERP screen — e.g. **Supplier** on a purchase invoice — needs server-side search
   on the typed string with complex filtering, an inline "create new" affordance in the overlay, and a
   "launch advanced-search modal" escape. That is a **distinct future component** (`tm-entity-picker` /
-  details picker) built on aria's **editable combobox** mode + the same overlay infra `tm-select`
-  proves, **not** bolted onto `tm-select`. Keeping them separate avoids overloading the simple control;
-  the shared aria/overlay foundation is the reuse.
+  details picker) built on aria's **editable combobox** mode (`ngCombobox` on an `<input>`) + the same
+  overlay infra `tm-select` proves, **not** bolted onto `tm-select`. Keeping them separate avoids
+  overloading the simple control; the shared aria/overlay foundation is the reuse.
 - **Forward-compat (not in Phase 1, not precluded):** multi-select (aria multiselect mode, value →
   array), option groups, and **virtual scroll** (`cdk/scrolling` replaces the static `@for` without an
   API change).
@@ -633,23 +652,23 @@ opts into an optional **`[tmForm]` directive on the `<form>`** that provides the
 signal through DI to descendant `tm-form-field`s; the display policy reads it when present. Phase 1
 ships the field-scoped default and the `[tmForm]` provider hook; richer cross-field policy is deferred.
 
-**`disabled` / `required` precedence.** Stated rule: **when a control is bound via `[formField]`,
-the field/schema is the single source of truth** for `disabled`, `readonly`, and `required`; the
-component-level `disabled`/`readonly`/`required` inputs apply **only in non-form (unbound) usage** —
-e.g. the standalone search input not part of a `form()`. Bound ⇒ field wins; unbound ⇒ component
-inputs apply. No merge/union, no ambiguity. (`disabledReasons` from the schema feed tooltips.)
-
-**Mechanism (candidate — to be confirmed by spike S3).** The rule needs a concrete mechanism because
-the field-driven `disabled` and the author's `disabled` input would otherwise both try to drive one
-signal. Candidate: the control keeps two private sources — `fieldDisabled` (set by the `[formField]`
-binding via the optional state input) and the public `disabled` input — and an effective
-`disabled = computed(() => boundToField() ? fieldDisabled() : disabledInput())`. **`boundToField()`**
-is the crux: the control detects field binding by **optionally injecting the `FormField` directive
-instance** present on its host (`inject(FormField, { optional: true })`), which is non-null exactly
-when `[formField]` is applied. Same shape for `required`/`readonly`. Spike **S3**
-([§14](#14-spikes--open-technical-risks)) confirms this against the real Signal Forms API (whether the
-directive is injectable, and whether the optional state inputs already make the author inputs
-unreachable so the detection is even needed).
+**`disabled` / `readonly` / `required` precedence — mechanism (verified against `@angular/forms@22`).**
+The rule is **field wins when bound; the control's own input applies when unbound** — and this is the
+framework's *automatic* behavior, not something we hand-build. There is exactly **one** `disabled`
+input on the control (declared as the optional `FormUiControl` state input `disabled = input(false)`,
+likewise `readonly`/`required`/`disabledReasons`). When `[formField]` is present, Angular's
+control-directive host protocol (`ɵɵControlFeature` → `setInputOnDirectives` → `writeToDirectiveInput`)
+runs a per-change-detection update that reads `field().disabled()`/`readonly()`/`required()` and
+**writes them straight into those same input signal nodes**, after ordinary element bindings — so the
+field is the last writer each cycle and wins. When the control is **unbound** (no `[formField]`), no
+control directive is attached, that update closure never runs, and the input keeps the author-provided
+value or its default. So we simply declare the contract inputs and read `disabled()`/`readonly()`/
+`required()` directly — **no `computed` merge, no detection needed** for precedence (and `disabled()`
+populates both `disabled` and `disabledReasons`; the latter feeds tooltips). Authors must **not** also
+template-bind these inputs on a field-bound control. The `FormField` directive *does* provide an
+injectable **`FORM_FIELD`** token, so a control **may** `inject(FORM_FIELD, { optional: true })` — but
+**only** to branch *other* behavior on bound-vs-unbound (e.g. dropping a standalone-search default), never
+to choose between two disabled values.
 
 **Async / pending validation — and who debounces.** ERP forms have server-side/async validators. The
 control exposes the field's `pending` signal; while `pending()` is true the control sets
@@ -764,8 +783,9 @@ the automated suite asserts the mechanism that *should* drive that speech.
 - **Runtime i18n/l10n via Transloco.** The library's own labels (required-field
   announcement, select placeholder default, validation messages) are translated through a **runtime**
   i18n library. **Decision: standardize on Transloco** as the platform i18n runtime, consumed behind
-  a *thin* one-function seam rather than the full multi-backend adapter of D8 — see the pros/cons in
-  the chat discussion. Concretely: an injection token `TM_UI_TRANSLATE` resolving to
+  a *thin* one-function seam rather than the full multi-backend adapter of D8 (a thin seam keeps one
+  mechanism for the whole platform while leaving a clean swap point, without the cost of a full
+  abstraction). Concretely: an injection token `TM_UI_TRANSLATE` resolving to
   `(key: string, params?) => Signal<string>`, with the default implementation in `@tellma/core-ui`
   backed by Transloco (scoped/lazy-loaded library strings). **A distribution on the default Transloco
   path writes zero config code** — `provideTellmaUi()` ([§5](#5-forms-integration-signal-forms)) wires
@@ -852,19 +872,24 @@ codified contracts make every Phase-1 control grid-ready:
   Select, Esc closes the panel first, then cancels — the Excel dropdown-cell behavior). The Select
   overlay anchors to an arbitrary element (a cell rect) via the same connected-position strategy a
   grid dropdown editor needs.
-- **`TmCellDisplay<T>`** ([§2.1](#21-shared-contracts)) — the *readonly* path, enabling the
-  optimization you describe: a virtualized grid renders **every non-edited cell as plain,
-  non-interactive DOM** (a formatted value in a `<span>`, a token-styled checkbox-glyph instead of a
-  real checkbox) and instantiates the full interactive control **only for the one cell being
-  edited**. This is a standard, very worthwhile technique (ag-Grid/Excel), and it is **cleanly
-  supportable** because each control already separates a *pure display formatter* (`formatValue`, and
-  an optional token-driven `readonlyClass` for non-text glyphs) from its interactive behavior. The
-  grid calls `formatValue` to paint thousands of cells with zero component instances, then swaps in
-  the live editor on entering edit mode. Phase 1 ships and tests these interfaces on all three
+- **`TmCellDisplay<T>`** ([§2.1](#21-shared-contracts)) — the *readonly* path: a virtualized grid
+  renders **every non-edited cell as plain, non-interactive DOM** (a formatted value in a `<span>`, a
+  token-styled checkbox-glyph instead of a real checkbox) and instantiates the full interactive control
+  **only for the one cell being edited**. This is a standard, very worthwhile technique (ag-Grid/Excel),
+  and it is **cleanly supportable** because each control already separates a *pure display formatter*
+  (`formatValue`, and an optional token-driven `readonlyClass` for non-text glyphs) from its interactive
+  behavior. The grid calls `formatValue` to paint thousands of cells with zero component instances, then
+  swaps in the live editor on entering edit mode. Phase 1 ships and tests these interfaces on all three
   controls; no grid-specific code ships.
 
-A short "embedding a control in a cell" note goes in each component's docs to keep the contract
-visible.
+**What the edit-cell hosts (verified, and it differs by control).** The host always owns the writable
+value channel ([§2](#2-the-headless-pattern-layer-tellmacore-ui-primitives)). For **text and checkbox**,
+the behavior is a pure non-DI `Tm*Pattern`, so a grid edit-cell can drive the bare pattern (or the bare
+`<input tmInput>` directive) directly. For **select**, the behavior is delivered as `@angular/aria`
+*directives* that require an Angular injection/template context — there is no way to instantiate the
+combobox/listbox behavior from a bare class — so a grid edit-cell **hosts the full styled `tm-select`
+component** and listens for its `commit()`/`cancel()` to write back or discard. A short "embedding a
+control in a cell" note goes in each component's docs to keep this visible.
 
 ## 10. Testing (`@tellma/core-ui-testing`)
 
@@ -1050,38 +1075,6 @@ Storybook config lives in the workspace (free-port launch per [§1.3](#13-worktr
     interpolation tested via the shared `form()` fixture.
 14. All tooling (Storybook, tests, MCP server) runs on OS-assigned free ports — two worktrees in
     parallel, no collision.
-15. **Spikes S1–S3 ([§14](#14-spikes--open-technical-risks)) are resolved and their outcomes folded
-    in** before the Select and the disabled/required-precedence implementations are accepted.
-
-## 14. Spikes / open technical risks
-
-These are time-boxed investigations to run **before** committing the corresponding implementation;
-each has a candidate direction above. They are gates on the affected component, not on the whole spec.
-
-- **S1 — Select keyboard ownership / pattern↔aria seam.** v22's `@angular/aria` ships the Select as
-  composable directives (`ngCombobox`/`ngComboboxPopup`/`ngComboboxWidget`/`ngListbox`/`ngOption`,
-  with `focusMode`/`selectionMode`, `activeDescendant()`, `scrollActiveItemIntoView()`). Confirm the
-  division of labor: `TmSelectPattern` does **not** reimplement keyboard/typeahead/active-descendant
-  but delegates to these directives, retaining only value/label resolution, `compareWith`, placeholder,
-  and the grid commit/cancel. Output: the exact list of what stays in the pattern vs. the template, and
-  how `commit()`/`cancel()` (incl. two-stage Esc) hook the directives' events.
-- **S2 — aria directives need DI vs. the non-DI pattern rule.** aria's behaviors are **Angular
-  directives** (injection context required), so they cannot live inside a plain non-DI `Tm*Pattern`.
-  Confirm the resolution: for Select the aria behavior lives in the **styled component's template**
-  (directives on elements), and `TmSelectPattern` shrinks to the framework-agnostic remainder — i.e.
-  Select's headless/styled split is legitimately different from text/checkbox. Output: confirmation
-  that this composes with the grid-embedding contract (S1) and the import-boundary rule, and any
-  adjustment to [§2](#2-the-headless-pattern-layer-tellmacore-ui-primitives)/[§9](#9-data-grid-forward-compatibility-contract).
-- **S3 — disabled/required precedence mechanism.** Validate the candidate in [§5](#5-forms-integration-signal-forms):
-  detect `[formField]` binding via `inject(FormField, { optional: true })` and gate the effective
-  `disabled`/`readonly`/`required` on it. Confirm against the real API whether the `FormField` directive
-  is injectable and whether the optional state inputs already shadow the author inputs (making explicit
-  detection unnecessary). Output: the final precedence wiring.
-
-The grid hosting model also rests on S1/S2: for **text and checkbox** a grid cell can drive the bare
-`Tm*Pattern` directly (pure, no aria, no DI); for **select**, because the behavior is aria *directives*,
-a grid edit-cell embeds the styled component (or a thin editor) rather than a bare pattern. Either way
-the **host owns the writable value channel** ([§2](#2-the-headless-pattern-layer-tellmacore-ui-primitives)).
 
 ## Decisions confirmed
 
@@ -1097,6 +1090,10 @@ The earlier open questions are settled:
 5. **Showcase** — Storybook only; sample distribution and any showcase app are out of scope for now.
 6. **Templates** — inline for these small components (v22 best practice supersedes D5 here).
 
-The remaining technical unknowns are the **spikes in [§14](#14-spikes--open-technical-risks)** (Select's
-pattern↔aria seam, the aria-DI reconciliation, and the precedence mechanism); each is resolved before
-its component's implementation lands.
+The Select-architecture and forms-precedence questions were investigated directly against
+`@angular/aria@22` and `@angular/forms@22` source and are resolved in [§2.2](#22-the-three-patterns),
+[§3.4](#34-select--tm-select), [§5](#5-forms-integration-signal-forms), and
+[§9](#9-data-grid-forward-compatibility-contract): aria owns Select's keyboard/typeahead/active-descendant/
+open-close as DI directives (so `TmSelectPattern` shrinks to the scalar↔array bridge, value→key mapping,
+label resolution, and grid commit/cancel), and Signal-Forms field state writes into the control's single
+input signal so "field wins when bound" is automatic. Implementation can proceed against this spec.
