@@ -55,11 +55,13 @@ breadth. Each of the three pierces a seam the others do not:
 - **Checkbox** — a *custom-rendered binary control* (hidden native input + styled box), distinct in
   DOM shape from text, owning tri-state ARIA (`aria-checked="mixed"`). It is the template for a
   whole family — radio, toggle/switch — at near-zero marginal cost.
-- **Select** — the high-leverage seam the flat controls miss entirely: **CDK Overlay + portal +
-  flexible RTL-aware positioning**, **`@angular/aria` listbox/combobox** (which validates the central
+- **Select** — the high-leverage seam the flat controls miss entirely: **CDK-Overlay connected
+  positioning composed with aria's inline-deferred popup** (the single biggest unproven Phase-1 seam —
+  see [§3.4](#34-select--tm-select)), **`@angular/aria` listbox/combobox** (which validates the central
   build-on-aria decision of D1/D4), **keyboard navigation + typeahead + active-descendant a11y**, and
   a *collection* harness rather than a single-value one. This infra is reused by autocomplete, date
-  picker, details picker, menu, popover, and **every dropdown editor in the future data grid**.
+  picker, details picker, menu, popover, and **every dropdown editor in the future data grid** — which
+  is exactly why proving it once, now, matters.
   Select also stress-tests the grid-embedding contract (rule 6) harder than any flat control: an
   overlay anchored to a cell, with Esc/commit/Tab interplay against grid navigation, is the case
   that actually shapes the cell-editor design.
@@ -421,17 +423,27 @@ single node, so announcements are clean. Logical-property layout mirrors in RTL.
   domain value to a **stable primitive key** before handing it to aria (and back for display) — that
   key-mapping *is* the `compareWith`. (Primitive-id values, the common ERP shape, need nothing.)
 - **Built on the aria Select directives (verified API).** The template composes v22's `@angular/aria`
-  Select: `ngCombobox` (the trigger, `[(expanded)]`) on a **non-`<input>` host**, `ngComboboxPopup`
-  inside a `cdkConnectedOverlay`, and the panel's `ngListbox` + `ngComboboxWidget` + `ngOption` with
+  Select: `ngCombobox` (the trigger, `[(expanded)]`) on a **non-`<input>` host**, the
+  `ngComboboxPopup` widget, and `ngListbox` + `ngComboboxWidget` + `ngOption` with
   `focusMode="activedescendant"`, `selectionMode="explicit"`, `[(value)]` (an **array** model), and
   `[activeDescendant]="listbox.activeDescendant()"`. These directives — not hand-written code — own
   keyboard navigation, typeahead, `activeDescendant()`, `scrollActiveItemIntoView()`, single-Escape,
   and all `aria-*`. **Editable vs select mode is chosen by the host element tag, not a config flag:**
   aria derives `isEditable` from `tagName === 'input'`, so `tm-select` (non-editable) puts `ngCombobox`
   on a `<div>`/`<button>`; the future editable details-picker (below) puts it on an `<input>`.
-  `tm-select` itself owns the brand chrome, the form-control glue, the **scalar↔array bridge** (it
-  exposes a single `T` to `FormValueControl<T>` over aria's array-valued listbox model), label
+  `tm-select` itself owns the brand chrome, the form-control glue, the scalar↔array bridge, label
   resolution, and the grid commit/cancel.
+- **Value source of truth, and aria's auto-prune (load-bearing direction of the bridge).** Verified:
+  `@angular/aria`'s listbox runs an `afterRenderEffect` that **drops any selected value not matching a
+  currently-rendered option** (`value.set(value.filter(v => options.some(o => o.value() === v)))`).
+  That bites the prepopulated/async case directly: if the scalar↔array bridge wrote a prepopulated
+  domain key into aria's listbox `value` before its `ngOption` existed, aria would **silently discard
+  it**. So the bridge is **one-directional by requirement**: `tm-select`'s own `FormValueControl<T>`
+  `value = model<T>()` is the source of truth; it is *mirrored into* aria's listbox value (mapped to
+  the stable key) and **re-applied when options arrive**, and aria's listbox value is **never** treated
+  as authoritative for a value whose option may not be materialized yet. (This is separate from the
+  trigger *label* path below, which `displayWith` already covers — here it is the selected *value*
+  itself that must survive.) The DoD tests that a prepopulated value survives until its option renders.
 - **Display one property, capture another — yes.** `tm-option`'s **`value`** is what lands in the
   model, its **projected content** is what the user sees:
   `<tm-option [value]="record.id">{{ record.label }}</tm-option>` captures the id, displays the label.
@@ -447,9 +459,22 @@ single node, so announcements are clean. Logical-property layout mirrors in RTL.
   the DoD tests the prepopulated path. This trigger logic is the control's own concern; the
   `TmCellDisplay.formatValue` grid surface ([§2.1](#21-shared-contracts)) *delegates to the same
   resolver* but the standalone trigger does **not** depend on the grid-facing interface.
-- **Overlay:** the panel mounts through **CDK Overlay + Portal** with a flexible connected position
-  strategy anchored to the trigger — opens below, flips above when tight, repositions on scroll.
-  Created lazily on first open; backdrop/outside-click and Esc close it.
+- **Popup positioning — the highest-risk Phase-1 seam; prove this first.** This is *not* a settled
+  one-liner. aria's popup model does **no positioning**: `ngComboboxPopup` is a structural directive
+  (`ng-template[ngComboboxPopup]`, `hostDirectives: [DeferredContent]`) that renders its content
+  **inline** via `viewContainerRef.createEmbeddedView(...)` when the combobox's `expanded`/`contentVisible`
+  flips true. We still want CDK-Overlay connected-positioning (flip-above-when-tight,
+  reposition-on-scroll, viewport clipping, the RTL position set) — so Phase 1 must **reconcile two
+  rendering/visibility mechanisms gated on the same `expanded` signal** (aria's `DeferredContent` and
+  CDK's overlay) while keeping the `aria-controls`/`aria-activedescendant` id chain resolving across
+  the overlay's DOM relocation. **Decision to validate:** drive a **`TemplatePortal` of the widget into
+  a `cdkConnectedOverlay` off the `expanded` signal** (CDK owns placement + positioning; aria continues
+  to own popup/listbox semantics and the id wiring), and confirm aria's `ngComboboxPopup` deferred-content
+  registration (`_registerWidget`/`controlTarget`/`popupId`) still fires when the content lives in the
+  overlay container. **Fallback if the two deferral mechanisms fight:** bypass `ngComboboxPopup`'s own
+  `DeferredContent` and place `ngListbox` + `ngComboboxWidget` directly in the overlay, wiring
+  `aria-controls`/`activeDescendant` by hand. Either way the overlay is created lazily on first open;
+  backdrop/outside-click and Esc close it. A spike to settle this composition is the first Select task.
 - **Commit, close, and focus return are host-wired (aria does neither).** Verified: aria does **not**
   auto-close on selection and ships **no** focus-restore helper. So `tm-select` closes the panel
   (`expanded = false`) on option click / `keydown.enter` / `keydown.space` / `valueChange`, returns
@@ -586,7 +611,7 @@ schema + WCAG-contrast gates ship in Phase 1 regardless (they don't depend on th
 Signal Forms is **stable in Angular v22** and is the only forms mechanism the library supports — no
 `ControlValueAccessor`, no dual path (every consumer is greenfield v22+).
 
-**How the field state actually reaches the control and the wrapper (the wiring #4 said was missing).**
+**How the field state actually reaches the control and the wrapper.**
 In Signal Forms, `[formField]` is applied to the **control element**, and the authoritative state
 lives in the `Field` (`myForm.email`). The directive detects which interface the control implements
 and binds:
@@ -836,7 +861,8 @@ codified contracts make every Phase-1 control grid-ready:
   cell editor consumes), and explicit `commit()`/`cancel()` (Enter/Tab commit, Esc cancels; for
   Select, Esc closes the panel first, then cancels — the Excel dropdown-cell behavior). The Select
   overlay anchors to an arbitrary element (a cell rect) via the same connected-position strategy a
-  grid dropdown editor needs.
+  grid dropdown editor needs — once the aria-popup-vs-CDK-overlay composition is settled
+  ([§3.4](#34-select--tm-select)), which the grid then inherits.
 - **`TmCellDisplay<T>`** ([§2.1](#21-shared-contracts)) — the *readonly* path: a virtualized grid
   renders **every non-edited cell as plain, non-interactive DOM** (a formatted value in a `<span>`, a
   token-styled checkbox-glyph instead of a real checkbox) and instantiates the full interactive control
@@ -1007,31 +1033,37 @@ Storybook config lives in the workspace (free-port launch per [§1.3](#13-worktr
    Playwright a11y specs green** — keyboard nav, focus return, `aria-activedescendant` + `aria-controls`
    across the portal, two-stage Esc, `aria-live`/`aria-busy` announcements.
 5. **RTL spec green** with the **authored** Select overlay positions verified under `dir="rtl"`.
-6. Select: CDK Overlay opens/flips/repositions; lazy overlay; `@angular/aria` listbox keyboard model +
-   typeahead; captures `tm-option.value` (e.g. a record id) while displaying projected label; and the
-   **prepopulated-value trigger label resolves via `displayWith`** before any option renders.
-7. Pending/async-validation state shows `aria-busy` + spinner and suppresses stale "valid".
-8. Every entry point is **within its concrete bundle ceiling** ([§8](#8-performance-budget)); the
+6. Select: the **aria-popup-vs-CDK-overlay composition is proven first** — the widget renders in a
+   connected-positioned overlay (opens/flips/repositions, RTL position set) with aria's popup
+   registration and the `aria-controls`/`aria-activedescendant` id chain still resolving across the
+   overlay relocation; lazy overlay; `@angular/aria` listbox keyboard model + typeahead; captures
+   `tm-option.value` (e.g. a record id) while displaying projected label.
+7. Select prepopulated/async value integrity: a **prepopulated value survives until its `ngOption`
+   renders** (not just its label) — i.e. the `FormValueControl<T>` model stays source-of-truth and is
+   re-applied to aria's listbox when options arrive, defeating aria's unmatched-value auto-prune; the
+   **trigger label resolves via `displayWith`** before any option renders.
+8. Pending/async-validation state shows `aria-busy` + spinner and suppresses stale "valid".
+9. Every entry point is **within its concrete bundle ceiling** ([§8](#8-performance-budget)); the
    token preset passes the schema + fixed-WCAG-AA-contrast gate in both schemes; runtime CSS-variable
    override demonstrated (`setProperty` changes `--color-primary` live); the `@layer tm.base, tm.theme`
    precedence is verified (a `tm.theme` delta overrides base regardless of load order).
-9. The **contracts-boundary lint** passes: `@tellma/core-ui/contracts` imports nothing from
-   `@angular/core` or the component modules; no cross-package leakage; no bare `outline: none`.
-10. The grid contracts are demonstrated by tests: a bare `<input tmInput>` mounts with no
+10. The **contracts-boundary lint** passes: `@tellma/core-ui/contracts` imports nothing from
+    `@angular/core` or the component modules; no cross-package leakage; no bare `outline: none`.
+11. The grid contracts are demonstrated by tests: a bare `<input tmInput>` mounts with no
     `tm-form-field`, driven via `TmCellEditor.commit()`/`cancel()` (write channel) with no
     document-level listeners; a `tm-select` panel anchors to an arbitrary element with two-stage Esc;
     and `TmCellDisplay.formatValue` renders a readonly cell for each control with no component instance.
-11. The library's font piece is in place: self-hosted woff2, `@font-face` with `unicode-range`
+12. The library's font piece is in place: self-hosted woff2, `@font-face` with `unicode-range`
     subsetting + `font-display: swap`, the `TM_FONT_SUBSETS` manifest, and `fontPreloadLinks()` — no
     CDN reference; tests assert an unconfigured script contributes no eager download. (Runtime
     per-tenant preload injection is distribution-shell scope, not tested here.)
-12. `components.json` is generated and **validated against its JSON Schema** ([§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp));
+13. `components.json` is generated and **validated against its JSON Schema** ([§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp));
     the scoped MCP server answers `list`/`describe`/`example`; `llms.txt` and a Storybook showcase
     render. API goldens committed; `approve-api` gate active.
-13. Forced-colors and reduced-motion are **Playwright-gated** (`emulateMedia`); bidi `dir="auto"`
+14. Forced-colors and reduced-motion are **Playwright-gated** (`emulateMedia`); bidi `dir="auto"`
     fields verified with mixed AR/EN content in both LTR and RTL roots; message precedence + ICU/param
     interpolation tested via the shared `form()` fixture.
-14. All tooling (Storybook, tests, MCP server) runs on OS-assigned free ports — two worktrees in
+15. All tooling (Storybook, tests, MCP server) runs on OS-assigned free ports — two worktrees in
     parallel, no collision.
 
 ## Decisions confirmed
@@ -1049,10 +1081,12 @@ The earlier open questions are settled:
 6. **Templates** — inline for these small components (v22 best practice supersedes D5 here).
 
 The Select-architecture and forms-precedence questions were investigated directly against
-`@angular/aria@22` and `@angular/forms@22` source and are resolved in
+`@angular/aria@22` and `@angular/forms@22` source and are settled in
 [§2](#2-behavior-layer-and-shared-contracts), [§3.4](#34-select--tm-select),
 [§5](#5-forms-integration-signal-forms), and [§9](#9-data-grid-forward-compatibility-contract): aria
 owns Select's keyboard/typeahead/active-descendant/open-close as DI directives (so `tm-select` owns only
 the scalar↔array bridge, value→key mapping, label resolution, and grid commit/cancel — no separate
 pattern class), and Signal-Forms field state writes into the control's single input signal so "field
-wins when bound" is automatic. Implementation can proceed against this spec.
+wins when bound" is automatic. **One Select sub-question remains a genuine spike, to settle before the
+rest of Select is built: composing aria's inline-deferred popup with CDK-Overlay connected positioning
+([§3.4](#34-select--tm-select)).** With that flagged, implementation can proceed against this spec.
