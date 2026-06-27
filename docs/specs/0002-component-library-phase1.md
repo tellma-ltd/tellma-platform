@@ -56,12 +56,13 @@ breadth. Each of the three pierces a seam the others do not:
   DOM shape from text, owning tri-state ARIA (`aria-checked="mixed"`). It is the template for a
   whole family — radio, toggle/switch — at near-zero marginal cost.
 - **Select** — the high-leverage seam the flat controls miss entirely: **CDK-Overlay connected
-  positioning composed with aria's inline-deferred popup** (the single biggest unproven Phase-1 seam —
-  see [§3.4](#34-select--tm-select)), **`@angular/aria` listbox/combobox** (which validates the central
-  build-on-aria decision of D1/D4), **keyboard navigation + typeahead + active-descendant a11y**, and
-  a *collection* harness rather than a single-value one. This infra is reused by autocomplete, date
-  picker, details picker, menu, popover, and **every dropdown editor in the future data grid** — which
-  is exactly why proving it once, now, matters.
+  positioning composed with aria's inline-deferred popup** (the riskiest Phase-1 seam — now
+  **validated by a running spike**, see [§3.4](#34-select--tm-select)), **`@angular/aria`
+  listbox/combobox** (which validates the central build-on-aria decision of D1/D4), **keyboard
+  navigation + typeahead + active-descendant a11y**, and a *collection* harness rather than a
+  single-value one. This infra is reused by autocomplete, date picker, details picker, menu, popover,
+  and **every dropdown editor in the future data grid** — which is exactly why proving it once, now,
+  matters.
   Select also stress-tests the grid-embedding contract (rule 6) harder than any flat control: an
   overlay anchored to a cell, with Esc/commit/Tab interplay against grid navigation, is the case
   that actually shapes the cell-editor design.
@@ -459,32 +460,43 @@ single node, so announcements are clean. Logical-property layout mirrors in RTL.
   the DoD tests the prepopulated path. This trigger logic is the control's own concern; the
   `TmCellDisplay.formatValue` grid surface ([§2.1](#21-shared-contracts)) *delegates to the same
   resolver* but the standalone trigger does **not** depend on the grid-facing interface.
-- **Popup positioning — the highest-risk Phase-1 seam; prove this first.** This is *not* a settled
-  one-liner. aria's popup model does **no positioning**: `ngComboboxPopup` is a structural directive
-  (`ng-template[ngComboboxPopup]`, `hostDirectives: [DeferredContent]`) that renders its content
-  **inline** via `viewContainerRef.createEmbeddedView(...)` when the combobox's `expanded`/`contentVisible`
-  flips true. We still want CDK-Overlay connected-positioning (flip-above-when-tight,
-  reposition-on-scroll, viewport clipping, the RTL position set) — so Phase 1 must **reconcile two
-  rendering/visibility mechanisms gated on the same `expanded` signal** (aria's `DeferredContent` and
-  CDK's overlay) while keeping the `aria-controls`/`aria-activedescendant` id chain resolving across
-  the overlay's DOM relocation. **Decision to validate:** drive a **`TemplatePortal` of the widget into
-  a `cdkConnectedOverlay` off the `expanded` signal** (CDK owns placement + positioning; aria continues
-  to own popup/listbox semantics and the id wiring), and confirm aria's `ngComboboxPopup` deferred-content
-  registration (`_registerWidget`/`controlTarget`/`popupId`) still fires when the content lives in the
-  overlay container. **Fallback if the two deferral mechanisms fight:** bypass `ngComboboxPopup`'s own
-  `DeferredContent` and place `ngListbox` + `ngComboboxWidget` directly in the overlay, wiring
-  `aria-controls`/`activeDescendant` by hand. Either way the overlay is created lazily on first open;
-  backdrop/outside-click and Esc close it. A spike to settle this composition is the first Select task.
-- **Commit, close, and focus return are host-wired (aria does neither).** Verified: aria does **not**
-  auto-close on selection and ships **no** focus-restore helper. So `tm-select` closes the panel
-  (`expanded = false`) on option click / `keydown.enter` / `keydown.space` / `valueChange`, returns
-  focus to the trigger (`combobox.element.focus()` or the CDK overlay's `restoreFocus`) when `expanded`
-  flips false, and commits the value. Esc has **two stages**: aria handles stage 1 (Esc closes the open
-  panel); `tm-select` adds stage 2 (a second Esc, panel already closed, calls the control's `cancel()`
-  — it implements `TmCellEditor` — to revert `pendingValue` and, in a grid, exit edit mode). Implementation
-  note: CDK overlays can intercept Esc, so the stage-2 handler must be placed to still receive it; and
-  Tab is not relayed to the listbox, so "commit on Tab" (if wanted) is wired explicitly rather than
-  assumed.
+- **Popup positioning — settled by a running spike (Angular 22 + Playwright, 36/36).** aria's popup
+  does **no positioning**: `ngComboboxPopup` is a structural directive (`ng-template[ngComboboxPopup]`,
+  `hostDirectives: [DeferredContent]`) that renders its content **inline** via `createEmbeddedView`
+  when `expanded` flips true. We need CDK-Overlay positioning + clipping-escape on top. **Decision: the
+  official nested pattern** — a `cdkConnectedOverlay` wraps `<ng-template ngComboboxPopup [combobox]="cb">`
+  wraps the `ngListbox ngComboboxWidget` panel, with CDK-open and aria's `DeferredContent` both gated on
+  the same `expanded` signal. The single-renderer alternative (drop `ngComboboxPopup`, drive the overlay
+  alone) was **tested and rejected**: the combobox's keyboard relay, `aria-controls`, and
+  `aria-activedescendant` all derive from the popup that `ngComboboxPopup` registers
+  (`combobox._registerPopup` / `popup._registerWidget`), so removing it silently kills keyboard
+  navigation and the ARIA id chain unless you hand-rebuild that plumbing. Required wiring, confirmed in
+  the spike:
+  - overlay config `{ origin, usePopover: 'inline', matchWidth: true }` — **`usePopover: 'inline'`
+    renders the panel into a native top-layer `[popover]` host, which is what escapes `overflow:hidden`
+    clipping** (verified: panel exits a clipping container); `matchWidth` sizes it to the trigger.
+  - a `[bottom-start, top-start]` position set for flip; and — because `DeferredContent` inserts the
+    panel one render pass *after* CDK attaches and measures — the component **must call
+    `overlayRef.updatePosition()` on `(attach)` via a macrotask** (`afterNextRender`/microtask fire too
+    early), or flip measures a zero-height panel and never flips up.
+  - listbox **`focusMode="activedescendant"`** (mandatory — the `roving` default moves real DOM focus
+    into the panel and nulls `aria-activedescendant`) and **`selectionMode="explicit"`** (the `follow`
+    default commits on every arrow); bind `ngComboboxWidget [activeDescendant]` from the listbox.
+  - the combobox `value` (a string model for editable comboboxes) is left **unbound** — the listbox
+    owns the value; only the scalar↔array bridge above touches it.
+  The overlay is created lazily on first open; outside-click and Esc close it. **Residual (tracked in
+  the DoD):** under `dir="rtl"` the spike saw the panel left-align and `matchWidth` not apply, so
+  `tm-select` needs an explicit RTL-mirrored position set and an RTL `matchWidth` re-check.
+- **Commit and close are host-wired; focus and Esc are aria's.** Verified in the spike: aria does
+  **not** auto-close on selection, so `tm-select` closes the panel (`expanded = false`) on the
+  listbox's `valueChange` (and option click), and commits the value via the scalar↔array effect.
+  **Focus never leaves the trigger** (the `activedescendant` model), so no focus-restore is needed.
+  Esc is owned by aria and is **not** swallowed by the overlay (confirmed), giving stage 1 (Esc closes
+  the open panel); `tm-select` adds stage 2 (a second Esc, panel already closed, calls the control's
+  `cancel()` — it implements `TmCellEditor` — to revert `pendingValue` and, in a grid, exit edit mode).
+  Notes: re-selecting the **same** value emits no `valueChange`, so close-on-commit needs an explicit
+  close-on-activate for that case; and Tab is not relayed to the listbox, so "commit on Tab" (if wanted)
+  is wired explicitly.
 - **RTL positioning is authored and tested, not free.** CDK connected-position strategies are
   explicit `{originX/Y, overlayX/Y}` pairs; `Directionality` flips how `start`/`end` resolve, but we
   still **author an RTL-aware position set and test it** — the "mirrors automatically" framing is
@@ -860,9 +872,8 @@ codified contracts make every Phase-1 control grid-ready:
   document-level listeners** (the grid owns Tab/Enter/Esc/arrow navigation and forwards only what the
   cell editor consumes), and explicit `commit()`/`cancel()` (Enter/Tab commit, Esc cancels; for
   Select, Esc closes the panel first, then cancels — the Excel dropdown-cell behavior). The Select
-  overlay anchors to an arbitrary element (a cell rect) via the same connected-position strategy a
-  grid dropdown editor needs — once the aria-popup-vs-CDK-overlay composition is settled
-  ([§3.4](#34-select--tm-select)), which the grid then inherits.
+  overlay anchors to an arbitrary element (a cell rect) via the same `cdkConnectedOverlay` +
+  `usePopover:'inline'` composition proven in [§3.4](#34-select--tm-select), which the grid inherits.
 - **`TmCellDisplay<T>`** ([§2.1](#21-shared-contracts)) — the *readonly* path: a virtualized grid
   renders **every non-edited cell as plain, non-interactive DOM** (a formatted value in a `<span>`, a
   token-styled checkbox-glyph instead of a real checkbox) and instantiates the full interactive control
@@ -1033,11 +1044,14 @@ Storybook config lives in the workspace (free-port launch per [§1.3](#13-worktr
    Playwright a11y specs green** — keyboard nav, focus return, `aria-activedescendant` + `aria-controls`
    across the portal, two-stage Esc, `aria-live`/`aria-busy` announcements.
 5. **RTL spec green** with the **authored** Select overlay positions verified under `dir="rtl"`.
-6. Select: the **aria-popup-vs-CDK-overlay composition is proven first** — the widget renders in a
-   connected-positioned overlay (opens/flips/repositions, RTL position set) with aria's popup
-   registration and the `aria-controls`/`aria-activedescendant` id chain still resolving across the
-   overlay relocation; lazy overlay; `@angular/aria` listbox keyboard model + typeahead; captures
-   `tm-option.value` (e.g. a record id) while displaying projected label.
+6. Select: the settled **nested `cdkConnectedOverlay` + `ngComboboxPopup` composition**
+   ([§3.4](#34-select--tm-select)) works — `usePopover:'inline'` panel escapes an `overflow:hidden`
+   clipping ancestor; flip-up works (with the `updatePosition()`-on-`(attach)` macrotask fix); aria's
+   popup registration and the `aria-controls`/`aria-activedescendant` id chain resolve across the
+   overlay relocation; `focusMode="activedescendant"` + `selectionMode="explicit"`; lazy overlay;
+   captures `tm-option.value` (e.g. a record id) while displaying projected label. **RTL residual from
+   the spike is closed:** an RTL-mirrored position set is authored and `matchWidth` verified under
+   `dir="rtl"` (the spike saw both fail by default).
 7. Select prepopulated/async value integrity: a **prepopulated value survives until its `ngOption`
    renders** (not just its label) — i.e. the `FormValueControl<T>` model stays source-of-truth and is
    re-applied to aria's listbox when options arrive, defeating aria's unmatched-value auto-prune; the
@@ -1087,6 +1101,8 @@ The Select-architecture and forms-precedence questions were investigated directl
 owns Select's keyboard/typeahead/active-descendant/open-close as DI directives (so `tm-select` owns only
 the scalar↔array bridge, value→key mapping, label resolution, and grid commit/cancel — no separate
 pattern class), and Signal-Forms field state writes into the control's single input signal so "field
-wins when bound" is automatic. **One Select sub-question remains a genuine spike, to settle before the
-rest of Select is built: composing aria's inline-deferred popup with CDK-Overlay connected positioning
-([§3.4](#34-select--tm-select)).** With that flagged, implementation can proceed against this spec.
+wins when bound" is automatic. The riskiest piece — composing aria's inline-deferred popup with
+CDK-Overlay connected positioning — was **settled by a running Angular-22 + Playwright spike** (the
+nested `cdkConnectedOverlay` + `ngComboboxPopup` pattern with `usePopover:'inline'`;
+[§3.4](#34-select--tm-select)), leaving only an RTL position-mirroring detail tracked in the DoD.
+Implementation can proceed against this spec.
