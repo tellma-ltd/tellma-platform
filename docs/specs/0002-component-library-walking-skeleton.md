@@ -1117,11 +1117,6 @@ client/projects/core/
   Select's CDK-Overlay/aria weight — the basis for the per-entry-point [§8](#8-performance-budget)
   budgets), and a natural unit for the **API golden** per surface. The cost is one small
   `ng-package.json` per component, which `ng generate` scaffolds.
-- **Why no double `src/`.** The CLI's *primary* entry point convention is `src/lib/` (kept here);
-  *secondary* entry points do **not** need a nested `src/` — the conventional ng-packagr shape is the
-  entry-point folder holding `ng-package.json` + `public-api.ts` + its sources directly (the Material
-  layout). So `contracts/` (and each component) is a flat folder, not `contracts/src/` — removing the
-  confusing `src`-at-two-levels of the earlier draft.
 - **Why `provideTellmaForms()` and `provideTellmaUi()` sit in different folders.**
   `provideTellmaForms()` is a **forms-domain** artifact (it configures the error-display policy and
   message resolver that the rest of `forms/` implements), so it lives **with its domain** in `forms/`.
