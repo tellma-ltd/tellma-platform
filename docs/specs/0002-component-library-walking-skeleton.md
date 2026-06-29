@@ -1,6 +1,6 @@
-# Spec: UI Component Library — Phase 1 (Forms Walking Skeleton)
+# Spec: UI Component Library — Forms Walking Skeleton
 
-**Status:** Phase-1 specification — the frozen, authoritative description of the work. The research
+**Status:** Walking-skeleton specification — the frozen, authoritative description of the work. The research
 analysis that preceded it is superseded by this document.
 
 **Departures from the research analysis's locked decisions** (this spec supersedes them where they
@@ -60,9 +60,16 @@ breadth. Each of the three pierces a seam the others do not:
   **validated by a running spike**, see [§3.4](#34-select--tm-select)), **`@angular/aria`
   listbox/combobox** (which validates the central build-on-aria decision of D1/D4), **keyboard
   navigation + typeahead + active-descendant a11y**, and a *collection* harness rather than a
-  single-value one. This infra is reused by autocomplete, date picker, details picker, menu, popover,
+  single-value one. This infra is reused by autocomplete, date picker, entity picker, menu, popover,
   and **every dropdown editor in the future data grid** — which is exactly why proving it once, now,
-  matters.
+  matters. *"Reused" here means concrete code reuse, not just shared concepts:* the overlay/aria
+  composition wiring of [§3.4](#34-select--tm-select) (the `cdkConnectedOverlay` + `ngComboboxPopup`
+  nesting, the `usePopover:'inline'` clipping-escape, the `updatePosition()`-on-`(attach)` fix) and
+  the pure value→key / label-resolution helpers ([§2.1](#21-shared-contracts)) are extracted as shared
+  functions/directives those later components import directly. What is *not* shared code is each
+  component's own public API, template, and chrome — those follow the established **template/pattern**
+  but are written per component. So the reuse is both: shared plumbing as code, plus a proven shape to
+  copy for the rest.
   Select also stress-tests the grid-embedding contract (rule 6) harder than any flat control: an
   overlay anchored to a cell, with Esc/commit/Tab interplay against grid navigation, is the case
   that actually shapes the cell-editor design.
@@ -125,7 +132,7 @@ Two facts about the consumer set let us delete complexity the general-purpose li
 
 **Non-goals (explicitly deferred)**
 
-- All other components (numeric, currency, textarea, **date picker**, details picker, data grid,
+- All other components (numeric, currency, textarea, **date picker**, entity picker, data grid,
   radio, toggle, multi-select, autocomplete, buttons, layouts, nav, modal, menu, popover, etc.).
 - Multi-select, option groups, and virtual scroll for long option lists. Phase-1 Select is
   single-select with a flat option list; the component is shaped not to preclude these.
@@ -157,7 +164,7 @@ a stub-but-wired version in the fourth (`-mcp`).
 
 | Package | Phase-1 contents |
 |---|---|
-| `@tellma/core-ui` | The components — `tmInput` directive; `tm-checkbox`; `tm-select` + `tm-option` (overlay panel via CDK Overlay, listbox via `@angular/aria`); `tm-form-field`; `provideTellmaForms()`/`provideTellmaUi()`; the static base CSS; the self-hosted default fonts + `@font-face` ([§7.1](#71-fonts--web-font-loading)). Plus a **`@tellma/core-ui/contracts`** secondary entry point holding the `SignalLike`/`WritableSignalLike` boundary types and the `TmFormFieldControl`/`TmCellEditor`/`TmCellDisplay` interfaces ([§2.1](#21-shared-contracts)). The primary import. |
+| `@tellma/core-ui` | The components — `tmInput` directive; `tm-checkbox`; `tm-select` + `tm-option` (overlay panel via CDK Overlay, listbox via `@angular/aria`); `tm-form-field`; `provideTellmaForms()`/`provideTellmaUi()`; the static base CSS; the self-hosted default fonts + `@font-face` ([§7.1](#71-fonts--web-font-loading)). Plus a **`@tellma/core-ui/contracts`** secondary entry point holding the `SignalLike`/`WritableSignalLike` boundary types and the `TmFormFieldControl`/`TmCellEditor`/`TmCellDisplay` interfaces ([§2.1](#21-shared-contracts)). Each component is its own secondary entry point (`@tellma/core-ui/input`, `/checkbox`, `/select`, `/form-field`); the primary `@tellma/core-ui` entry point carries the providers, i18n, fonts, and forms infrastructure ([§12](#12-directory-layout)). |
 | `@tellma/core-ui-tokens` | `TmTokens` TS contract; the brand default preset; the `tokens → CSS variables` emitter; generated JSON Schema; build-time schema + WCAG-contrast validation. |
 | `@tellma/core-ui-testing` | `TmInputHarness`, `TmCheckboxHarness`, `TmSelectHarness` (+ `TmOptionHarness`), `TmFormFieldHarness`. |
 | `@tellma/core-ui-mcp` | Generated `components.json` for the components; a minimal MCP server exposing `list/describe/example` tools over it. Wired into the build; tool breadth is later. |
@@ -183,8 +190,11 @@ a stub-but-wired version in the fourth (`-mcp`).
   is **pinned to the platform's Angular minor** (they move together — `@angular/aria 22.x` with
   `@angular/core 22.x`), and the platform tracks **only the latest stable release** of both Angular and
   aria — no preview/next tags.
-- ESLint flat config + Prettier + commitlint; a custom ESLint selector rule enforcing the `tm-` /
-  `Tm…` prefix (D3).
+- ESLint flat config + Prettier. A custom ESLint selector rule enforces the `tm-` / `Tm…` prefix on
+  component selectors and exported symbols (D3); a **stylelint rule enforces a `tm-` prefix on every
+  CSS class name** the library authors, so no library class can collide with a distribution's own
+  styles. (Commit-message linting — conventional commits, `commitlint` — is a **repo-wide** concern
+  configured once at the platform root, not specific to this library, so it is out of scope here.)
 - **API goldens** per entry point via Microsoft API Extractor + an `approve-api` CI gate (D11) — see
   [§10](#10-testing-tellmacore-ui-testing).
 - CI gates: unit + harness tests, **axe-core**, **bundle-size budget**, API golden, lint. Tests
@@ -272,10 +282,14 @@ export interface WritableSignalLike<T> extends SignalLike<T> {  // read + write 
 // receives via [formField] (see §5) so the wrapper can apply the display policy and render the
 // localized error text — it carries the FULL state set, not just `invalid`.
 export interface TmFormFieldControl {
-  readonly controlId: SignalLike<string>;
-  readonly empty: SignalLike<boolean>;
-  readonly describedByIds: SignalLike<string[]>;
-  setDescribedByIds(ids: string[]): void;
+  readonly controlId: SignalLike<string>;        // id of the actual control element (the <input>),
+                                                 //   so <label for> targets it and aria wiring resolves
+  readonly empty: SignalLike<boolean>;           // control currently holds no value — drives the field's
+                                                 //   empty/placeholder styling and "show hint vs error" logic
+  readonly describedByIds: SignalLike<string[]>; // ids the control currently exposes via aria-describedby
+                                                 //   (read so the field can merge, not clobber, existing ones)
+  setDescribedByIds(ids: string[]): void;        // field pushes its hint/error element ids; control writes
+                                                 //   them into aria-describedby (the MatFormFieldControl seam)
   // Field state, mirrored from the bound Field (all read-only to the wrapper):
   readonly required: SignalLike<boolean>;
   readonly disabled: SignalLike<boolean>;
@@ -285,10 +299,21 @@ export interface TmFormFieldControl {
   readonly invalid: SignalLike<boolean>;
   readonly pending: SignalLike<boolean>;                    // async validation in progress
   readonly errors: SignalLike<readonly TmFieldError[]>;     // already-localized messages
-  onContainerClick?(): void;
+  onContainerClick?(): void;  // optional: field calls this when the user clicks the container chrome
+                              //   (padding/border, not the input itself) so the control focuses itself
 }
-export interface TmFieldError { readonly kind: string; readonly message: string; }
+// `key` is the validator key that produced the error — 'required', 'minlength', 'email', … — the same
+// key §5's message resolver maps to a localized default. It is the machine-readable category, distinct
+// from `message` (the human-readable, already-localized text); consumers branch styling/logic on `key`.
+export interface TmFieldError { readonly key: string; readonly message: string; }
 
+// DRAFT / STUB — TmCellEditor and TmCellDisplay below are forward-compat placeholders, not a
+// finished design. They exist only to keep rule 6 (grid-embeddability) from being foreclosed and to
+// shape the controls' internal separation of edit-path vs. display-path. They are *properly designed
+// and hardened when the actual data grid is built* (its real requirements will reshape them); the
+// implementation carries the same note as a code comment on each interface. Phase 1 does not
+// test-harden them (see §9).
+//
 // Every grid-embeddable control implements this, so the grid drives them uniformly. The control
 // itself implements it (no separate pattern class); commit/cancel mutate through the write channel.
 export interface TmCellEditor<T> {
@@ -507,11 +532,11 @@ single node, so announcements are clean. Logical-property layout mirrors in RTL.
   **`aria-controls`** (and `aria-activedescendant` points at option ids inside that portaled panel); a
   Playwright AT-relationship test asserts the trigger→listbox→active-option id chain resolves
   ([§6](#6-accessibility)/[§10](#10-testing-tellmacore-ui-testing)).
-- **Not the entity/details picker.** `tm-select` is for in-memory/simple option lists. Selecting a
+- **Not the entity picker.** `tm-select` is for in-memory/simple option lists. Selecting a
   related entity on an ERP screen — e.g. **Supplier** on a purchase invoice — needs server-side search
   on the typed string with complex filtering, an inline "create new" affordance in the overlay, and a
-  "launch advanced-search modal" escape. That is a **distinct future component** (`tm-entity-picker` /
-  details picker) built on aria's **editable combobox** mode (`ngCombobox` on an `<input>`) + the same
+  "launch advanced-search modal" escape. That is a **distinct future component** (`tm-entity-picker`)
+  built on aria's **editable combobox** mode (`ngCombobox` on an `<input>`) + the same
   overlay infra `tm-select` proves, **not** bolted onto `tm-select`. Keeping them separate avoids
   overloading the simple control; the shared aria/overlay foundation is the reuse.
 - **Forward-compat (not in Phase 1, not precluded):** multi-select (aria multiselect mode, value →
@@ -578,10 +603,20 @@ deterministically regardless of stylesheet load order:
 
 Precedence is **runtime > distribution > base**, achieved by declaring the layer order once —
 `@layer tm.base, tm.theme;` — so `tm.theme` always wins over `tm.base` no matter the link order, and
-inline-style runtime writes beat any layered stylesheet by the normal cascade. Dark mode is a
-`tm.theme`-level (or scoped) variable set, not a fourth mechanism. Component CSS consumes the
-variables from outside these layers (or in a later `tm.components` layer) so it never accidentally
-out-ranks a theme override.
+inline-style runtime writes beat any layered stylesheet by the normal cascade.
+
+**Dark mode and the layers — the default dark scheme is `tm.base`, not `tm.theme`.** A scheme is a
+variable set *scoped by a selector* (`[data-theme=dark]`); the layer it lives in is orthogonal to that
+selector. The library's default **light *and* dark** schemes both ship in `@tellma/core-ui-tokens` and
+both belong to **`tm.base`** — they are library defaults, one scoped to `:root`/`[data-theme=light]`,
+the other to `[data-theme=dark]`. Only a **distribution's** overrides (whether of the light scheme, the
+dark scheme, or both) ride `tm.theme`, and runtime `setProperty` writes ride inline. Because layer order
+is independent of selector specificity, a distribution/runtime override correctly wins **within whichever
+scheme is active** — override a color and it beats the library default in light and in dark alike. So
+dark mode is **not** a fourth mechanism and is **not** inherently `tm.theme`-level: it is a second base
+scheme, with the same three override sources stacked on top. Component CSS consumes the variables from
+outside these layers (or in a later `tm.components` layer) so it never accidentally out-ranks a theme
+override.
 
 **A slice of `TmTokens`** — the most-reused artifact, so it is concrete here (Phase-1 subset;
 full lists are design-in-progress). Primitive ramps → semantic roles via typed refs → the shared
@@ -683,7 +718,7 @@ job is only to **cooperate** with that: the control emits its **`touch`** output
 `debounce('blur')` works) and does not push value updates faster than the user types. So the control
 never bakes in a hardcoded server-call debounce; it gives the schema the hooks to do it.
 
-**Numeric (Phase 2)** will use the stable **`transformedValue`** utility (`@angular/forms/signals`)
+**Numeric (a later phase)** will use the stable **`transformedValue`** utility (`@angular/forms/signals`)
 for the string↔number parse/format with automatic parse-error reporting — which is why numeric is a
 cheap follow-up rather than skeleton-worthy.
 
@@ -713,10 +748,16 @@ provider:
 Target **WCAG 2.1 AA**. **axe-core is necessary but nowhere near sufficient:** it catches
 static violations (missing roles, contrast, names) but **cannot** verify keyboard navigation, focus
 return on close, `aria-activedescendant` tracking, the two-stage Esc, or screen-reader announcements —
-which is precisely where Select's compliance is hard. Those are gated by **behavioral Playwright
-tests** ([§10](#10-testing-tellmacore-ui-testing)), with axe as the static floor. **Caveat:**
-Playwright verifies the **DOM/ARIA mechanism** (roles, `aria-live` region updates, focus moves,
-id-relationship chains) — it **cannot verify that a screen reader actually speaks** the right thing.
+which is precisely where Select's compliance is hard. Those are gated by **behavioral, real-browser
+tests** ([§10](#10-testing-tellmacore-ui-testing)), with axe as the static floor. **The load-bearing
+requirement is a real browser engine, not a specific runner:** these assertions depend on real focus
+semantics, `:focus-visible`, layout/measurement, the CDK overlay portal's positioning, and
+`emulateMedia` (forced-colors/reduced-motion) — none of which `jsdom`/`happy-dom` implement faithfully.
+So they may be written as **Playwright specs *or* as Vitest browser-mode component tests** (Vitest's
+browser mode is itself Playwright/WebDriver-backed); the choice is a tooling preference. What they
+**cannot** be is plain jsdom unit tests. **Caveat:** either way the test verifies the **DOM/ARIA
+mechanism** (roles, `aria-live` region updates, focus moves, id-relationship chains) — it **cannot
+verify that a screen reader actually speaks** the right thing.
 Real assistive-technology verification (NVDA/JAWS/VoiceOver) is a **manual pass, out of DoD scope**;
 the automated suite asserts the mechanism that *should* drive that speech.
 
@@ -749,10 +790,10 @@ the automated suite asserts the mechanism that *should* drive that speech.
   `outline: none`.
 - **Forced-colors and reduced-motion are gated, not just asserted.** `@media (forced-colors: active)`
   and `prefers-reduced-motion` are honored (the latter disables the 120–280ms fades), and both are
-  **tested in Playwright** via `page.emulateMedia({ forcedColors: 'active' })` and
+  **tested in a real browser** via `emulateMedia({ forcedColors: 'active' })` and
   `{ reducedMotion: 'reduce' }`, asserting the computed result (borders/focus ring remain visible
   under forced-colors; transition durations collapse under reduced-motion). They move off the
-  manual-pass list because Playwright can emulate both media features.
+  manual-pass list because the browser can emulate both media features.
 - **Target size — WCAG 2.2 AA, not 44px.** The conformance criterion is
   **2.5.8 Target Size (Minimum) = 24×24 CSS px** (WCAG 2.2, level AA), with its standard exceptions
   (sufficient **spacing**, an **equivalent** control elsewhere, **inline** targets, **essential**
@@ -779,9 +820,13 @@ the automated suite asserts the mechanism that *should* drive that speech.
   and Latin runs land in the wrong place. So text inputs set **`dir="auto"`**, which makes each field
   pick its base direction from its **own content's first strong character** — independent of the
   page/app direction — so a Latin-first value reads LTR and an Arabic-first value reads RTL even within
-  the same RTL form. This is the standard fix and needs no per-field JS. Known rough edges (caret
-  jumps, neutral-character placement at run boundaries) are covered by mixed-content tests in both LTR
-  and RTL roots; we do not hand-roll a bidi algorithm.
+  the same RTL form. This is the standard fix and needs no per-field JS. **Alignment follows that
+  auto-detected base direction** (`text-align: start` resolves against the field's own `dir`), so —
+  to answer the common case directly — **a field holding only English text is left-aligned with an
+  LTR caret even inside an RTL (Arabic) form**, while an Arabic-first field in the same form is
+  right-aligned; the surrounding label, required marker, and field chrome still mirror to RTL via
+  logical properties. Known rough edges (caret jumps, neutral-character placement at run boundaries)
+  are covered by mixed-content tests in both LTR and RTL roots; we do not hand-roll a bidi algorithm.
 - **Runtime i18n/l10n via Transloco.** The library's own labels (required-field
   announcement, select placeholder default, validation messages) are translated through a **runtime**
   i18n library. **Decision: standardize on Transloco** as the platform i18n runtime, consumed behind
@@ -795,9 +840,11 @@ the automated suite asserts the mechanism that *should* drive that speech.
   `contracts` entry point never imports Transloco (it stays dependency-free); only the components'
   default provider does. This keeps one mechanism for the whole platform while leaving a clean swap
   point if ever needed. English + Arabic library-string presets ship in-package.
-- **Adapters declared, none implemented in Phase 1.** `TmNumberAdapter` / `TmCurrencyAdapter` /
-  `TmDateAdapter` (D8) are the locale/calendar seams for *later* components (numeric, currency, date
-  picker — e.g. a Hijri calendar from a Locale pack). None is needed by text/checkbox/select.
+- **Adapters named as future seams, not shipped in Phase 1.** `TmNumberAdapter` / `TmCurrencyAdapter` /
+  `TmDateAdapter` (D8) are the locale/calendar seams *later* components will need (numeric, currency,
+  date picker — e.g. a Hijri calendar from a Locale pack). **None of the three Phase-1 controls needs
+  any of them, so Phase 1 neither declares nor implements them** — they appear here only as roadmap
+  context, recording where that seam lands when the component that needs it arrives.
 
 ### 7.1 Fonts & web-font loading
 
@@ -850,10 +897,11 @@ loading all of them**:
   an API change.
 - **Bundle budget** per entry point in CI — with **concrete initial ceilings, not "TBD"**, so
   the DoD's "within budget" is not circular. Starting ceilings (gzipped, self-weight excluding shared
-  Angular/CDK already in the app): `tmInput` ≤ 4 KB, `tm-checkbox` ≤ 4 KB, `tm-form-field` ≤ 3 KB,
-  `tm-select` ≤ 12 KB (it carries the Overlay/listbox wiring), `@tellma/core-ui-tokens` runtime ≤ 2 KB.
-  These are **ratchets**: CI fails on regression and we tighten them as builds land, never loosen
-  silently. The ceilings measure each component's **own weight on top of an assumed Angular + CDK
+  Angular/CDK already in the app): `tmInput` ≤ 40 KB, `tm-checkbox` ≤ 40 KB, `tm-form-field` ≤ 30 KB,
+  `tm-select` ≤ 120 KB (it carries the Overlay/listbox wiring), `@tellma/core-ui-tokens` runtime ≤ 20 KB.
+  These are **deliberately generous starting ceilings** — set to catch gross regressions now, to be
+  **inspected and tightened** once real builds land. They are **ratchets**: CI fails on regression and
+  we tighten them as builds land, never loosen silently. The ceilings measure each component's **own weight on top of an assumed Angular + CDK
   baseline** — because that baseline is a *given*: any real distribution ships components that
   pull in CDK, so counting CDK against `tm-select` would double-count a cost the app already pays.
   `sideEffects:false` + per-component entry points keep tree-shaking honest, and the fact that CDK
@@ -864,7 +912,11 @@ loading all of them**:
 ## 9. Data-grid forward-compatibility contract
 
 The editable Excel-like data grid is out of scope, but Phase 1 must not foreclose it (rule 6). Two
-codified contracts make every Phase-1 control grid-ready:
+**draft** contracts shape every Phase-1 control to be grid-ready. **They are stubs:** `TmCellEditor`
+and `TmCellDisplay` are deliberately minimal forward-compat placeholders, **to be properly designed
+and hardened when the grid is actually built** — the grid's real requirements (range selection,
+clipboard, virtual scroll) will reshape them. Phase 1 declares them and shapes the controls around
+them, but does **not** test-harden them or treat them as a frozen surface.
 
 - **`TmCellEditor<T>`** ([§2.1](#21-shared-contracts)) — the *edit* path. Defined as a TS interface
   so every grid-able control's pattern implements commit/cancel/focus/keydown **uniformly**.
@@ -881,8 +933,9 @@ codified contracts make every Phase-1 control grid-ready:
   and it is **cleanly supportable** because each control already separates a *pure display formatter*
   (`formatValue`, and an optional token-driven `readonlyClass` for non-text glyphs) from its interactive
   behavior. The grid calls `formatValue` to paint thousands of cells with zero component instances, then
-  swaps in the live editor on entering edit mode. Phase 1 ships and tests these interfaces on all three
-  controls; no grid-specific code ships.
+  swaps in the live editor on entering edit mode. Phase 1 shapes all three controls around this
+  edit-path/display-path split so the draft interfaces *can* be implemented later; it does not ship
+  grid-specific code, and — because the interfaces are stubs — does not lock them in with tests.
 
 **What the edit-cell hosts (verified, and it differs by control).** The host always owns the writable
 value channel ([§2.1](#21-shared-contracts)) and drives the editor through the `TmCellEditor<T>`
@@ -923,11 +976,13 @@ component's docs to keep this visible.
   `compareWith`, Esc/outside-click close.
 - **axe-core** specs per component (including the open Select panel) as the **static floor** —
   necessary, not sufficient.
-- **Behavioral a11y specs (Playwright, the real gate):** keyboard navigation (arrows/Home/End/
-  typeahead), **focus return to the trigger on close**, **`aria-activedescendant` tracking** across the
-  portal, the **two-stage Esc** (close panel → cancel edit), the **trigger→listbox `aria-controls`
-  AT-relationship** chain, and the **announcement *mechanism*** (error `aria-live` region updates,
-  `aria-busy` while pending). These cover exactly what axe cannot — but they assert the DOM/ARIA
+- **Behavioral a11y specs (real-browser, the real gate — Playwright or Vitest browser mode):** keyboard
+  navigation (arrows/Home/End/typeahead), **focus return to the trigger on close**,
+  **`aria-activedescendant` tracking** across the portal, the **two-stage Esc** (close panel → cancel
+  edit), the **trigger→listbox `aria-controls` AT-relationship** chain, and the **announcement
+  *mechanism*** (error `aria-live` region updates, `aria-busy` while pending). These need a real browser
+  engine (focus, layout, the overlay portal) — not jsdom — but the runner is a tooling choice
+  ([§6](#6-accessibility)). They cover exactly what axe cannot — but they assert the DOM/ARIA
   mechanism, **not** that a screen reader speaks it; real AT verification is a manual pass
   outside the DoD.
 - **RTL specs:** mirrored layout, checkbox side, and the **authored** Select overlay positions under
@@ -935,9 +990,12 @@ component's docs to keep this visible.
 - **Contracts entry-point boundary + lint hygiene.** The `@tellma/core-ui/contracts` entry point
   ([§2.1](#21-shared-contracts)) must stay importable by the future grid without dragging in the
   components, so a lint **fails CI if `contracts` imports anything from `@angular/core` or the
-  component modules** — it is types (`SignalLike`/the interfaces) plus pure helpers only. (No
-  signal-primitive allowlist is needed anymore: with the pattern layer collapsed, the components are
-  ordinary Angular code that may use the full framework; only the `contracts` surface is constrained.)
+  component modules** — it is types (`SignalLike`/the interfaces) plus pure helpers only. **This is a
+  few lines of ESLint config, not test code:** a path-scoped `no-restricted-imports` (or an
+  import-boundary rule such as `eslint-plugin-boundaries`) on the `contracts/` folder, run as part of
+  the normal lint pass. (No signal-primitive allowlist is needed anymore: with the pattern layer
+  collapsed, the components are ordinary Angular code that may use the full framework; only the
+  `contracts` surface is constrained.)
   The same lint job also fails on cross-package leakage and on bare `outline: none`
   ([§6](#6-accessibility)).
 - **e2e:** the behavioral specs above run against Storybook stories on a real browser (Storybook is the
@@ -960,6 +1018,12 @@ scope for now.
 - API Extractor (`.api.json`) + a thin extractor → **`components.json`** (single source of truth).
 - `components.json` feeds: the Storybook showcase, `llms.txt`, the scoped **`@tellma/core-ui-mcp`**
   server (Phase 1: `list` / `describe` / `example` tools), and the API goldens.
+  - **`llms.txt`** is a single, flat, agent-readable Markdown digest of the library's surface (the
+    components, their selectors, inputs/outputs, tokens, and a canonical example each) at a conventional
+    path. It is the *static, no-server* path for a coding agent — including the ones building
+    distributions — to load the whole library as context in one fetch, where the MCP server is the
+    *interactive* path (query a single component on demand). Both are generated from `components.json`,
+    so they never diverge from the code; `llms.txt` is just the offline, whole-surface projection of it.
 - The federated `dotnet tellma mcp` umbrella is not in Phase 1.
 
 **`components.json` schema (defined here because it feeds everything else).** It is a generated,
@@ -975,11 +1039,12 @@ interface ComponentsJson {
 interface ComponentDoc {
   name: string;                     // 'tm-select'
   kind: 'component' | 'directive';
+  group: string;                    // taxonomy as metadata, not a folder: 'form-control' | 'layout' | … (§12)
   selector: string;                 // 'tm-select' | 'input[tmInput]'
   entryPoint: string;               // '@tellma/core-ui/select'
   formControl?: 'FormValueControl' | 'FormCheckboxControl' | null;
-  summary: string;                  // from the JSDoc
-  inputs:  PropDoc[];               // name, type, default, required, jsDoc, signal: 'input'|'model'
+  description: string;              // the component's JSDoc text (consistent with PropDoc/SlotDoc below)
+  inputs:  PropDoc[];               // name, type, default, required, description, signal: 'input'|'model'
   outputs: PropDoc[];
   slots:   SlotDoc[];               // ng-content / typed ng-template contexts
   tokens:  string[];                // CSS custom properties the component reads
@@ -989,8 +1054,8 @@ interface ComponentDoc {
   status:  'stable' | 'experimental' | 'deprecated';
   deprecation?: { since: string; replacement?: string };  // pairs with @breaking-change
 }
-interface PropDoc { name: string; type: string; default?: string; required: boolean; jsDoc: string; signal?: 'input'|'model'|'output'; }
-interface SlotDoc { name: string; selector: string; contextType?: string; jsDoc: string; }
+interface PropDoc { name: string; type: string; default?: string; required: boolean; description: string; signal?: 'input'|'model'|'output'; }
+interface SlotDoc { name: string; selector: string; contextType?: string; description: string; }
 interface ExampleDoc { title: string; code: string; }
 ```
 
@@ -998,23 +1063,31 @@ The extractor derives every field from typed source (signal `input()`/`model()`/
 the harness, and co-located stories); nothing is hand-authored, so docs can't drift from code, and the
 schema is the contract the MCP/goldens/showcase build against.
 
-## 12. Phase-1 directory layout
+## 12. Directory layout
+
+Each **component is its own secondary entry point** — a flat sibling folder under the package with its
+own `ng-package.json` + `public-api.ts`, importable as `@tellma/core-ui/select`. The **primary**
+`@tellma/core-ui` entry point holds only the cross-cutting, component-free code (providers, i18n,
+fonts, forms infrastructure, shared pure helpers) and uses the Angular-CLI default `src/lib/` layout.
 
 ```
 client/projects/core/
 ├── tellma-core-ui/
-│   ├── contracts/             # @tellma/core-ui/contracts secondary entry point:
-│   │   └── src/               #   SignalLike/WritableSignalLike, TmFormFieldControl, TmCellEditor, TmCellDisplay (+ ng-package.json)
-│   └── src/lib/
-│       ├── form-field/        # tm-form-field (inline template; .css if styles externalized)
-│       ├── input/             # tmInput directive
-│       ├── checkbox/          # tm-checkbox (inline template)
-│       ├── select/            # tm-select + tm-option (inline template; @angular/aria + CDK Overlay)
-│       ├── forms/             # provideTellmaForms(), tmForm directive, field-state helpers, message resolver
-│       ├── providers/         # provideTellmaUi() umbrella
-│       ├── i18n/              # TM_UI_TRANSLATE token + Transloco-backed default
-│       ├── shared/            # pure helpers (value→key mapping, formatters)
-│       └── fonts/             # @font-face + self-hosted woff2; TM_FONT_SUBSETS manifest + fontPreloadLinks()
+│   ├── ng-package.json        # primary entry point @tellma/core-ui
+│   ├── src/
+│   │   ├── public-api.ts      #   re-exports the providers/i18n/fonts/forms/shared surface (no components)
+│   │   └── lib/
+│   │       ├── forms/         #     provideTellmaForms(), tmForm directive, field-state helpers, message resolver
+│   │       ├── providers/     #     provideTellmaUi() umbrella (composes forms + i18n + fonts defaults)
+│   │       ├── i18n/          #     TM_UI_TRANSLATE token + Transloco-backed default
+│   │       ├── shared/        #     pure helpers (value→key mapping, formatters)
+│   │       └── fonts/         #     @font-face + self-hosted woff2; TM_FONT_SUBSETS manifest + fontPreloadLinks()
+│   ├── contracts/             # secondary EP @tellma/core-ui/contracts — ng-package.json + public-api.ts:
+│   │                          #   SignalLike/WritableSignalLike, TmFormFieldControl, TmFieldError, draft TmCellEditor/TmCellDisplay
+│   ├── input/                 # secondary EP @tellma/core-ui/input    — tmInput directive
+│   ├── checkbox/              # secondary EP @tellma/core-ui/checkbox — tm-checkbox (inline template)
+│   ├── form-field/            # secondary EP @tellma/core-ui/form-field — tm-form-field (inline template)
+│   └── select/                # secondary EP @tellma/core-ui/select   — tm-select + tm-option (@angular/aria + CDK Overlay)
 ├── tellma-core-ui-tokens/
 │   └── src/lib/
 │       ├── contract/          # TmTokens types
@@ -1026,6 +1099,36 @@ client/projects/core/
 └── tellma-core-ui-mcp/
     └── src/                   # generated components.json + minimal MCP server
 ```
+
+**Why this shape (and how it scales to ~40 components later).**
+
+- **Flat per-component folders, *not* category-nested folders.** Material, the CDK, and PrimeNG all
+  keep components as a **flat list** of sibling folders, never a `forms/`, `layout/`, `feedback/`
+  directory tree. Category ("form control" vs. "layout" vs. "complex visual") is **metadata, not a
+  folder** — it lives in the Storybook group title and a `group` field on `ComponentDoc`
+  ([§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp)), where it can be re-grouped freely. So adding the
+  later components is **append-a-folder**, with **no reorganization** of what exists — which directly
+  answers the "will reorg be too much work" worry: there is no reorg, because the taxonomy was never
+  encoded in the directory tree.
+- **Per-component secondary entry points.** Each component being its own entry point gives three
+  things a single `src/lib` barrel cannot: an **import path decoupled from disk location**
+  (`@tellma/core-ui/select` is stable even if the folder moves, so future reorg is free), a **hard
+  tree-shaking boundary** (a text/checkbox-only app importing `@tellma/core-ui/input` never pulls in
+  Select's CDK-Overlay/aria weight — the basis for the per-entry-point [§8](#8-performance-budget)
+  budgets), and a natural unit for the **API golden** per surface. The cost is one small
+  `ng-package.json` per component, which `ng generate` scaffolds.
+- **Why no double `src/`.** The CLI's *primary* entry point convention is `src/lib/` (kept here);
+  *secondary* entry points do **not** need a nested `src/` — the conventional ng-packagr shape is the
+  entry-point folder holding `ng-package.json` + `public-api.ts` + its sources directly (the Material
+  layout). So `contracts/` (and each component) is a flat folder, not `contracts/src/` — removing the
+  confusing `src`-at-two-levels of the earlier draft.
+- **Why `provideTellmaForms()` and `provideTellmaUi()` sit in different folders.**
+  `provideTellmaForms()` is a **forms-domain** artifact (it configures the error-display policy and
+  message resolver that the rest of `forms/` implements), so it lives **with its domain** in `forms/`.
+  `provideTellmaUi()` is the **app-composition umbrella** — it composes the forms, i18n, and font
+  defaults across domains — so it lives in the neutral `providers/` folder rather than privileging any
+  one domain it pulls together. (Minor call; the alternative of co-locating both in `providers/` is
+  fine too — the separation just keeps each domain provider beside its domain.)
 
 Storybook config lives in the workspace (free-port launch per [§1.3](#13-worktree-isolated-port-free-tooling)).
 
@@ -1063,10 +1166,12 @@ Storybook config lives in the workspace (free-port launch per [§1.3](#13-worktr
    precedence is verified (a `tm.theme` delta overrides base regardless of load order).
 10. The **contracts-boundary lint** passes: `@tellma/core-ui/contracts` imports nothing from
     `@angular/core` or the component modules; no cross-package leakage; no bare `outline: none`.
-11. The grid contracts are demonstrated by tests: a bare `<input tmInput>` mounts with no
-    `tm-form-field`, driven via `TmCellEditor.commit()`/`cancel()` (write channel) with no
-    document-level listeners; a `tm-select` panel anchors to an arbitrary element with two-stage Esc;
-    and `TmCellDisplay.formatValue` renders a readonly cell for each control with no component instance.
+11. The controls are **shaped** for grid embedding (rule 6) but not locked to the draft contracts:
+    a bare `<input tmInput>` mounts with no `tm-form-field` and holds no document-level listeners; a
+    `tm-select` panel anchors to an arbitrary element with two-stage Esc; each control separates a
+    pure display formatter from its interactive behavior. The draft `TmCellEditor`/`TmCellDisplay`
+    interfaces ([§2.1](#21-shared-contracts), [§9](#9-data-grid-forward-compatibility-contract)) are
+    **not** test-hardened in this phase — they are designed when the grid is built.
 12. The library's font piece is in place: self-hosted woff2, `@font-face` with `unicode-range`
     subsetting + `font-display: swap`, the `TM_FONT_SUBSETS` manifest, and `fontPreloadLinks()` — no
     CDN reference; tests assert an unconfigured script contributes no eager download. (Runtime
@@ -1074,7 +1179,7 @@ Storybook config lives in the workspace (free-port launch per [§1.3](#13-worktr
 13. `components.json` is generated and **validated against its JSON Schema** ([§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp));
     the scoped MCP server answers `list`/`describe`/`example`; `llms.txt` and a Storybook showcase
     render. API goldens committed; `approve-api` gate active.
-14. Forced-colors and reduced-motion are **Playwright-gated** (`emulateMedia`); bidi `dir="auto"`
+14. Forced-colors and reduced-motion are **real-browser-gated** (`emulateMedia`); bidi `dir="auto"`
     fields verified with mixed AR/EN content in both LTR and RTL roots; message precedence + ICU/param
     interpolation tested via the shared `form()` fixture.
 15. All tooling (Storybook, tests, MCP server) runs on OS-assigned free ports — two worktrees in
