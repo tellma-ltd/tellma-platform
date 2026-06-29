@@ -1,5 +1,8 @@
 # Spec: UI Component Library — Forms Walking Skeleton
 
+**Author:** Ahmad Akra
+**Date:** 29 Jun 2026
+
 **Status:** Walking-skeleton specification — the frozen, authoritative description of the work. The research
 analysis that preceded it is superseded by this document.
 
@@ -39,9 +42,9 @@ forms contract, harnesses, the a11y/RTL/perf gates, the docs/MCP pipeline) while
 3. **Select** — single-select dropdown (a listbox in an overlay panel).
 
 Plus the one piece of scaffolding all three need to be usable: **`tm-form-field`** (label /
-required marker / hint / error). The architecture analysis names `tm-form-field` the single most
-underweighted-yet-essential component, so it is in scope as supporting infrastructure, not as a
-fourth headline component.
+required marker / hint / error). `tm-form-field` is the single most underweighted-yet-essential
+component — every form control depends on it for labelling, the required marker, and error display —
+so it is in scope as supporting infrastructure, not as a fourth headline component.
 
 ### Why these three (the de-risking rationale)
 
