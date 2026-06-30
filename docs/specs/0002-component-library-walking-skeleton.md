@@ -1,9 +1,9 @@
-# Spec: UI Component Library — Forms Walking Skeleton
+# Spec: UI Component Library — Forms Foundation
 
 **Author:** Ahmad Akra
 **Date:** 29 Jun 2026
 
-**Status:** Walking-skeleton specification — the frozen, authoritative description of the work. The research
+**Status:** Foundation specification — the frozen, authoritative description of the work. The research
 analysis that preceded it is superseded by this document.
 
 **Departures from the research analysis's locked decisions** (this spec supersedes them where they
@@ -32,7 +32,7 @@ look — colors, type, spacing, the shared form-field token group, focus ring, d
 posture — is fixed by the Tellma design system (`tellma-brand/design-system`, especially
 `tokens/*.css` and the `forms/` reference components).
 
-This spec covers **Phase 1**: a *walking skeleton* — the thinnest end-to-end slice that stands
+This spec covers **Phase 1**: the *foundation* — the thinnest end-to-end slice that stands
 up the whole architecture (all four packages, the `@angular/aria` behavior layer, the token emitter, the
 forms contract, harnesses, the a11y/RTL/perf gates, the docs/MCP pipeline) while shipping only
 **three production components**:
@@ -48,7 +48,7 @@ so it is in scope as supporting infrastructure, not as a fourth headline compone
 
 ### Why these three (the de-risking rationale)
 
-A walking skeleton exists to **force every load-bearing architectural seam to be built once**, on
+The foundation exists to **force every load-bearing architectural seam to be built once**, on
 the thinnest possible slice, so the risky integrations are proven before 40 later components are
 templated on top of them. The set is chosen to maximize *distinct hard-seam coverage*, not feature
 breadth. Each of the three pierces a seam the others do not:
@@ -56,7 +56,8 @@ breadth. Each of the three pierces a seam the others do not:
 - **Text input** — the foundational seam: the `tm-form-field` contract, the Signal Forms
   custom-control binding, the base field. Irreducible; everything text-like descends from it.
 - **Checkbox** — a *custom-rendered binary control* (hidden native input + styled box), distinct in
-  DOM shape from text, owning tri-state ARIA (`aria-checked="mixed"`). It is the template for a
+  DOM shape from text, owning the tri-state (the native `.indeterminate` IDL property, which the browser
+  surfaces as `checked="mixed"`). It is the template for a
   whole family — radio, toggle/switch — at near-zero marginal cost.
 - **Select** — the high-leverage seam the flat controls miss entirely: **CDK-Overlay connected
   positioning composed with aria's inline-deferred popup** (the riskiest Phase-1 seam — now
@@ -160,7 +161,7 @@ Two facts about the consumer set let us delete complexity the general-purpose li
 There is **no theme-builder UI**, now or later. Theming is done by authoring CSS custom properties
 (the emitted token variables) — see [§4](#4-tokens--theming-tellmacore-ui-tokens).
 
-## 1. Package & build skeleton
+## 1. Package & build foundation
 
 All four packages are created under `client/projects/core/`. Phase 1 puts real contents in three and
 a stub-but-wired version in the fourth (`-mcp`).
@@ -196,7 +197,14 @@ a stub-but-wired version in the fourth (`-mcp`).
 - ESLint flat config + Prettier. A custom ESLint selector rule enforces the `tm-` / `Tm…` prefix on
   component selectors and exported symbols (D3); a **stylelint rule enforces a `tm-` prefix on every
   CSS class name** the library authors, so no library class can collide with a distribution's own
-  styles. (Commit-message linting — conventional commits, `commitlint` — is a **repo-wide** concern
+  styles. A second **stylelint rule bans hardcoded sizing values in component CSS** — numeric lengths
+  (`px`/`rem`/`em`) on size/space/typography properties (height, padding, margin, gap, font-size,
+  border-radius, inline/block sizing, etc.) must come from a **token CSS variable** (`var(--field-*)`,
+  `var(--space-*)`, …), not a literal. This is what keeps the deferred **density/typography runtime
+  axes** ([Non-goals](#goals--non-goals), [§4](#4-tokens--theming-tellmacore-ui-tokens)) addable later
+  without a refactor: if every component already sizes itself from tokens, switching the token set is
+  the *only* change needed. (Allowed literals: `0`, hairline `1px` borders, and anything explicitly
+  allowlisted; the rule targets sizing, not e.g. `1px solid`.) (Commit-message linting — conventional commits, `commitlint` — is a **repo-wide** concern
   configured once at the platform root, not specific to this library, so it is out of scope here.)
 - **API goldens** per entry point via Microsoft API Extractor + an `approve-api` CI gate (D11) — see
   [§10](#10-testing-tellmacore-ui-testing).
@@ -427,9 +435,20 @@ single node, so announcements are clean. Logical-property layout mirrors in RTL.
   property* — the value channel is `checked`.
   Multi-checkbox selection is a future **`tm-checkbox-group`** component that owns the array value and
   maps each child's identity; the individual `tm-checkbox` stays a pure boolean control.
-- **Rendering:** visually-hidden native checkbox for semantics + the styled box (teal when
-  checked/indeterminate, `--radius-xs`, check polyline / indeterminate bar), `aria-checked="mixed"`
-  for indeterminate, space-to-toggle, focus ring.
+- **Rendering:** visually-hidden native `<input type="checkbox">` for semantics + the styled box (teal
+  when checked/indeterminate, `--radius-xs`, check polyline / indeterminate bar), space-to-toggle, focus
+  ring.
+- **Indeterminate is the native `.indeterminate` IDL property, *not* a manual `aria-checked="mixed"`.**
+  Because the control wraps a *real* `<input type="checkbox">`, the tri-state is driven by host-binding
+  the input's **`.indeterminate` DOM property** (`[indeterminate]="indeterminate()"`) — it is an IDL
+  property only, with no HTML attribute and no value channel, so it is set imperatively/by host binding,
+  never as an attribute. The browser then **exposes `checked="mixed"` in the accessibility tree
+  automatically**; we do **not** add `aria-checked="mixed"` ourselves (doing so on a native input would
+  be redundant and can conflict with the browser's computed value). `aria-checked="mixed"` would only be
+  needed if the box were a custom `role="checkbox"` element with no real input — which this is not. The
+  visible "mixed" glyph (the indeterminate bar) is purely CSS, keyed off the same `indeterminate()`
+  signal. Note `indeterminate` is independent of `checked`: setting it does not change the input's
+  `checked`, and a user toggle clears it (matching native behavior).
 - **Touch-target mechanism:** the visible box stays at the brand 18px, but the **clickable region is
   the whole `<label>`**, padded so its hit box clears the target-size rule; where a bare checkbox has
   no adjacent label, a transparent `::before` pseudo-element expands the pointer target while the box
@@ -515,16 +534,28 @@ single node, so announcements are clean. Logical-property layout mirrors in RTL.
   The overlay is created lazily on first open; outside-click and Esc close it. **Residual (tracked in
   the DoD):** under `dir="rtl"` the spike saw the panel left-align and `matchWidth` not apply, so
   `tm-select` needs an explicit RTL-mirrored position set and an RTL `matchWidth` re-check.
+- **Known upstream bug to guard — mouse input in the overlay ([angular/components#32504](https://github.com/angular/components/issues/32504), P3).**
+  An aria combobox/listbox composed via `hostDirectives` **inside a `cdkConnectedOverlay`** — exactly
+  this composition — currently misbehaves **on mouse input only**: a click on an option may not register
+  the selection, and an outside click may not close the panel (keyboard paths are fine). This is **open**
+  and could affect our build. Mitigation: `tm-select` carries an explicit mouse path (pointerdown-driven
+  option selection + an outside-pointer close) ready to switch on if the bug bites, and the test suite
+  pins the behavior with **real mouse-event Playwright specs** ([§10](#10-testing-tellmacore-ui-testing),
+  DoD item 6) so a regression — ours or the upstream bug surfacing in our composition — fails CI rather
+  than shipping a select that ignores clicks.
 - **Commit and close are host-wired; focus and Esc are aria's.** Verified in the spike: aria does
   **not** auto-close on selection, so `tm-select` closes the panel (`expanded = false`) on the
   listbox's `valueChange` (and option click), and commits the value via the scalar↔array effect.
   **Focus never leaves the trigger** (the `activedescendant` model), so no focus-restore is needed.
-  Esc is owned by aria and is **not** swallowed by the overlay (confirmed), giving stage 1 (Esc closes
-  the open panel); `tm-select` adds stage 2 (a second Esc, panel already closed, calls the control's
-  `cancel()` — it implements `TmCellEditor` — to revert `pendingValue` and, in a grid, exit edit mode).
-  Notes: re-selecting the **same** value emits no `valueChange`, so close-on-commit needs an explicit
-  close-on-activate for that case; and Tab is not relayed to the listbox, so "commit on Tab" (if wanted)
-  is wired explicitly.
+  Esc is owned by aria and is **not** swallowed by the overlay (confirmed): **stage 1 — Esc closes the
+  open panel — is the only Esc behavior in a standalone `tm-select`.** A standalone control has nothing
+  to revert to and no edit-mode to exit, so it does **not** listen for a second Esc. **Stage 2 — a
+  second Esc that reverts and exits edit mode — is purely a grid-host concern:** the grid owns edit-mode,
+  and on the second Esc (panel already closed) it calls the control's `TmCellEditor.cancel()` to revert
+  the cell. So `tm-select` *implements* `cancel()` for a host to call ([§9](#9-data-grid-forward-compatibility-contract)),
+  but the two-stage sequencing lives in the grid, not in the standalone component. Notes: re-selecting
+  the **same** value emits no `valueChange`, so close-on-commit needs an explicit close-on-activate for
+  that case; and Tab is not relayed to the listbox, so "commit on Tab" (if wanted) is wired explicitly.
 - **RTL positioning is authored and tested, not free.** CDK connected-position strategies are
   explicit `{originX/Y, overlayX/Y}` pairs; `Directionality` flips how `start`/`end` resolve, but we
   still **author an RTL-aware position set and test it** — the "mirrors automatically" framing is
@@ -573,6 +604,18 @@ runtime currency — the TS layer sits *above* them and buys what raw CSS cannot
   foreground token (text/icon/border) without declaring the background it sits on. So adding a
   component forces its pairs to be declared — the check grows with the contract by construction rather
   than by remembering to update a list.
+  **Justified exemptions (so "reproduce the brand exactly" and "fail on sub-AA" can't deadlock).**
+  "Reproduce the brand" and "fail the build below AA" are **jointly unsatisfiable** for some brand pairs
+  by design — e.g. canonical teal-400 carries white text at only 2.97:1 (the brand itself flags this and
+  routes *text* through teal-600, using teal-400 only as a decorative fill/border/dot that never carries
+  text). To reconcile them without weakening the gate, the contract carries a typed
+  **`contrastExceptions`** allowlist: each entry names the exact `{ fg, bg }` pair plus a **mandatory
+  `reason`** (and optional `expires`/owner). The gate **skips only the listed pairs** and **fails the
+  build on an exception with an empty/missing `reason`**, so every below-AA pair is an *explicit,
+  reviewed, justified* decision that shows up as a diff — never a silent lowering of the threshold. A
+  pair not on the list still must pass. (The brand's teal-400-as-decoration is the canonical first
+  entry: reason = "brand-identity surface only; never carries text — text uses `--color-primary`
+  teal-600".) Adding an exemption is the manual escape hatch; the default remains hard-fail.
 - **One source, many outputs** — the same contract emits the CSS variables, the JSON Schema, the
   docs/MCP metadata, and (later) a Figma sync.
 - **Safe composition** — presets extend a base by typed merge, not copy-paste.
@@ -692,23 +735,37 @@ opts into an optional **`[tmForm]` directive on the `<form>`** that provides the
 signal through DI to descendant `tm-form-field`s; the display policy reads it when present. Phase 1
 ships the field-scoped default and the `[tmForm]` provider hook; richer cross-field policy is deferred.
 
-**`disabled` / `readonly` / `required` precedence — mechanism (verified against `@angular/forms@22`).**
-The rule is **field wins when bound; the control's own input applies when unbound** — and this is the
-framework's *automatic* behavior, not something we hand-build. There is exactly **one** `disabled`
-input on the control (declared as the optional `FormUiControl` state input `disabled = input(false)`,
-likewise `readonly`/`required`/`disabledReasons`). When `[formField]` is present, Angular's
-control-directive host protocol (`ɵɵControlFeature` → `setInputOnDirectives` → `writeToDirectiveInput`)
-runs a per-change-detection update that reads `field().disabled()`/`readonly()`/`required()` and
-**writes them straight into those same input signal nodes**, after ordinary element bindings — so the
-field is the last writer each cycle and wins. When the control is **unbound** (no `[formField]`), no
-control directive is attached, that update closure never runs, and the input keeps the author-provided
-value or its default. So we simply declare the contract inputs and read `disabled()`/`readonly()`/
-`required()` directly — **no `computed` merge, no detection needed** for precedence (and `disabled()`
-populates both `disabled` and `disabledReasons`; the latter feeds tooltips). Authors must **not** also
-template-bind these inputs on a field-bound control. The `FormField` directive *does* provide an
-injectable **`FORM_FIELD`** token, so a control **may** `inject(FORM_FIELD, { optional: true })` — but
-**only** to branch *other* behavior on bound-vs-unbound (e.g. dropping a standalone-search default), never
-to choose between two disabled values.
+**`disabled` / `readonly` / `required` precedence — what is contractual vs. what is not.** The rule we
+want is **field wins when bound; the control's own input applies when unbound**. It is worth being
+precise about which half of that is a documented Angular contract:
+
+- **Documented (a public contract):** `[formField]` **binds the field's state into the control's
+  optional state inputs** — `disabled`, `readonly`, `required`, `disabledReasons`, `invalid`, `errors`,
+  `touched`, `pending`, etc. This is the
+  [Signal Forms custom-controls guide](https://angular.dev/guide/forms/signals/custom-controls): a
+  custom control *declares* these optional inputs and the framework *writes field state into them*. So a
+  field-bound control reflecting the field's `disabled()`/`readonly()`/`required()` is guaranteed
+  behavior. When the control is **unbound** (no `[formField]`), nothing writes those inputs and they keep
+  the author-provided value or default — also well-defined. We therefore declare exactly **one**
+  `disabled` input (the optional state input `disabled = input(false)`, likewise
+  `readonly`/`required`/`disabledReasons`) and read it directly — **no `computed` merge, no manual
+  detection** in the normal (single-writer) case.
+- **NOT documented (an implementation detail, do not rely on it):** what happens if an author *also*
+  template-binds the same input on a field-bound control — i.e. the **tie-break ordering**. Tracing
+  `@angular/forms@22` source shows the control-directive host protocol
+  (`ɵɵControlFeature` → `setInputOnDirectives` → `writeToDirectiveInput`) writes the field value into the
+  input node *after* ordinary element bindings each change-detection pass, so the field happens to be the
+  last writer and "wins". But those are **private `ɵ`-prefixed internals with no stability guarantee** —
+  there is **no public documentation promising this write order**, and it could change in a patch. So we
+  **do not treat the ordering as a contract.** Instead we **forbid the conflict**: authors must not
+  template-bind `disabled`/`readonly`/`required` on a field-bound control (enforced by lint + a doc
+  note), which removes the ambiguity entirely. A single regression test pins the observed behavior so a
+  framework change surfaces loudly rather than silently flipping precedence.
+
+The `FormField` directive *does* provide an injectable **`FORM_FIELD`** token, so a control **may**
+`inject(FORM_FIELD, { optional: true })` — but **only** to branch *other* behavior on bound-vs-unbound
+(e.g. dropping a standalone-search default), never to choose between two disabled values. (`disabled()`
+also populates `disabledReasons`, which feeds tooltips.)
 
 **Async / pending validation — and who debounces.** ERP forms have server-side/async validators. The
 control exposes the field's `pending` signal; while `pending()` is true the control sets
@@ -723,7 +780,7 @@ never bakes in a hardcoded server-call debounce; it gives the schema the hooks t
 
 **Numeric (a later phase)** will use the stable **`transformedValue`** utility (`@angular/forms/signals`)
 for the string↔number parse/format with automatic parse-error reporting — which is why numeric is a
-cheap follow-up rather than skeleton-worthy.
+cheap follow-up rather than foundation-worthy.
 
 **Providers — split, not bundled.** Two functions, so i18n/fonts don't hide inside a *forms*
 provider:
@@ -735,6 +792,18 @@ provider:
   **key** (`required`, `minlength`, …) to a **localized** default via the i18n runtime
   ([§7](#7-rtl-i18n--l10n)). So inline message → else key-resolved default; the control surfaces the
   resolved string through `errors` ([§2.1](#21-shared-contracts)).
+  **Missing-translation fallback (the non-EN / not-yet-translated case).** A distribution can run a
+  locale before it has supplied every library string — e.g. an Amharic tenant hits a `required` error
+  before `am` translations for the built-in validator keys exist. The resolution is a defined **fallback
+  chain**, never a blank or a raw key shown to a user: (1) the **active locale's** string for the key;
+  (2) else the **fallback locale's** string — the library ships **English + Arabic presets for every
+  built-in validator key** and configures Transloco's `fallbackLang` to **English**, so a missing `am`
+  `required` renders the **English** default ("This field is required") rather than nothing; (3) the raw
+  key (`required`) is only a **last-resort guard** if even the fallback locale lacks it — which can't
+  happen for built-in keys (EN always ships them) and signals a **missing custom key**, surfaced by a
+  dev-mode `console.warn` from the `TM_UI_TRANSLATE` default and (optionally) a CI check that every
+  validator key used has an English entry. So: built-in keys always resolve to at least English;
+  distribution-custom keys that lack a translation degrade to English-or-warn, never to a broken UI.
   **Param interpolation + ICU:** validators carry params (`minlength` → `{requiredLength, actualLength}`,
   `min`/`max` → the bound, etc.). The resolver passes those params to the translate call, so the
   translation string interpolates them (`"At least {requiredLength} characters"`), and **plurals/gender
@@ -751,16 +820,15 @@ provider:
 Target **WCAG 2.1 AA**. **axe-core is necessary but nowhere near sufficient:** it catches
 static violations (missing roles, contrast, names) but **cannot** verify keyboard navigation, focus
 return on close, `aria-activedescendant` tracking, the two-stage Esc, or screen-reader announcements —
-which is precisely where Select's compliance is hard. Those are gated by **behavioral, real-browser
-tests** ([§10](#10-testing-tellmacore-ui-testing)), with axe as the static floor. **The load-bearing
-requirement is a real browser engine, not a specific runner:** these assertions depend on real focus
-semantics, `:focus-visible`, layout/measurement, the CDK overlay portal's positioning, and
-`emulateMedia` (forced-colors/reduced-motion) — none of which `jsdom`/`happy-dom` implement faithfully.
-So they may be written as **Playwright specs *or* as Vitest browser-mode component tests** (Vitest's
-browser mode is itself Playwright/WebDriver-backed); the choice is a tooling preference. What they
-**cannot** be is plain jsdom unit tests. **Caveat:** either way the test verifies the **DOM/ARIA
-mechanism** (roles, `aria-live` region updates, focus moves, id-relationship chains) — it **cannot
-verify that a screen reader actually speaks** the right thing.
+which is precisely where Select's compliance is hard. Those are gated by **behavioral Playwright
+tests** ([§10](#10-testing-tellmacore-ui-testing)), with axe as the static floor. **Playwright is the
+standardized runner for these specs — not left to the implementer's choice:** these assertions depend on
+real focus semantics, `:focus-visible`, layout/measurement, the CDK overlay portal's positioning, real
+mouse-vs-keyboard input, and `emulateMedia` (forced-colors/reduced-motion), so a real browser engine is
+mandatory (plain `jsdom`/`happy-dom` unit tests cannot cover them) and the whole library uses **one**
+tool — Playwright — so the behavioral suite is uniform and portable across components. **Caveat:**
+Playwright verifies the **DOM/ARIA mechanism** (roles, `aria-live` region updates, focus moves,
+id-relationship chains) — it **cannot verify that a screen reader actually speaks** the right thing.
 Real assistive-technology verification (NVDA/JAWS/VoiceOver) is a **manual pass, out of DoD scope**;
 the automated suite asserts the mechanism that *should* drive that speech.
 
@@ -775,7 +843,9 @@ the automated suite asserts the mechanism that *should* drive that speech.
   typing); on a blocked submit the form may escalate its summary to **`assertive`**/`role="alert"`,
   but per-field errors stay `polite`. Both hint and error ids are wired into the control's
   `aria-describedby` so a screen reader reads them when the field is focused.
-- Checkbox: native checkbox semantics, `aria-checked="mixed"`, space-to-toggle, clickable label.
+- Checkbox: native checkbox semantics; the tri-state is the native `.indeterminate` IDL property, so
+  the browser exposes `checked="mixed"` in the a11y tree automatically (no manual `aria-checked`); space-
+  to-toggle, clickable label.
 - Select: `@angular/aria` combobox/listbox roles, `aria-expanded`/`aria-selected`/
   `aria-activedescendant`, full keyboard model, focus returned to the trigger on close. No focus
   trap (the combobox+activedescendant model keeps focus on the trigger). **Portaled-overlay sharp
@@ -793,10 +863,10 @@ the automated suite asserts the mechanism that *should* drive that speech.
   `outline: none`.
 - **Forced-colors and reduced-motion are gated, not just asserted.** `@media (forced-colors: active)`
   and `prefers-reduced-motion` are honored (the latter disables the 120–280ms fades), and both are
-  **tested in a real browser** via `emulateMedia({ forcedColors: 'active' })` and
+  **tested in Playwright** via `page.emulateMedia({ forcedColors: 'active' })` and
   `{ reducedMotion: 'reduce' }`, asserting the computed result (borders/focus ring remain visible
   under forced-colors; transition durations collapse under reduced-motion). They move off the
-  manual-pass list because the browser can emulate both media features.
+  manual-pass list because Playwright can emulate both media features.
 - **Target size — WCAG 2.2 AA, not 44px.** The conformance criterion is
   **2.5.8 Target Size (Minimum) = 24×24 CSS px** (WCAG 2.2, level AA), with its standard exceptions
   (sufficient **spacing**, an **equivalent** control elsewhere, **inline** targets, **essential**
@@ -900,11 +970,11 @@ loading all of them**:
   an API change.
 - **Bundle budget** per entry point in CI — with **concrete initial ceilings, not "TBD"**, so
   the DoD's "within budget" is not circular. Starting ceilings (gzipped, self-weight excluding shared
-  Angular/CDK already in the app): `tmInput` ≤ 40 KB, `tm-checkbox` ≤ 40 KB, `tm-form-field` ≤ 30 KB,
-  `tm-select` ≤ 120 KB (it carries the Overlay/listbox wiring), `@tellma/core-ui-tokens` runtime ≤ 20 KB.
-  These are **deliberately generous starting ceilings** — set to catch gross regressions now, to be
-  **inspected and tightened** once real builds land. They are **ratchets**: CI fails on regression and
-  we tighten them as builds land, never loosen silently. The ceilings measure each component's **own weight on top of an assumed Angular + CDK
+  Angular/CDK already in the app): `tmInput` ≤ 8 KB, `tm-checkbox` ≤ 8 KB, `tm-form-field` ≤ 6 KB,
+  `tm-select` ≤ 24 KB (it carries the Overlay/listbox wiring), `@tellma/core-ui-tokens` runtime ≤ 4 KB.
+  These are **starting ceilings** — set to catch regressions now, to be **inspected and tightened**
+  once real builds land. They are **ratchets**: CI fails on regression and we tighten them as builds
+  land, never loosen silently. The ceilings measure each component's **own weight on top of an assumed Angular + CDK
   baseline** — because that baseline is a *given*: any real distribution ships components that
   pull in CDK, so counting CDK against `tm-select` would double-count a cost the app already pays.
   `sideEffects:false` + per-component entry points keep tree-shaking honest, and the fact that CDK
@@ -979,15 +1049,27 @@ component's docs to keep this visible.
   `compareWith`, Esc/outside-click close.
 - **axe-core** specs per component (including the open Select panel) as the **static floor** —
   necessary, not sufficient.
-- **Behavioral a11y specs (real-browser, the real gate — Playwright or Vitest browser mode):** keyboard
-  navigation (arrows/Home/End/typeahead), **focus return to the trigger on close**,
-  **`aria-activedescendant` tracking** across the portal, the **two-stage Esc** (close panel → cancel
-  edit), the **trigger→listbox `aria-controls` AT-relationship** chain, and the **announcement
-  *mechanism*** (error `aria-live` region updates, `aria-busy` while pending). These need a real browser
-  engine (focus, layout, the overlay portal) — not jsdom — but the runner is a tooling choice
-  ([§6](#6-accessibility)). They cover exactly what axe cannot — but they assert the DOM/ARIA
-  mechanism, **not** that a screen reader speaks it; real AT verification is a manual pass
-  outside the DoD.
+- **Behavioral a11y specs (Playwright, the real gate):** keyboard navigation (arrows/Home/End/
+  typeahead), **focus return to the trigger on close**, **`aria-activedescendant` tracking** across the
+  portal, the **Esc behavior** (standalone: Esc closes the panel; grid: the host's second Esc cancels —
+  [§3.4](#34-select--tm-select)/[§9](#9-data-grid-forward-compatibility-contract)), the
+  **trigger→listbox `aria-controls` AT-relationship** chain, and the **announcement *mechanism***
+  (error `aria-live` region updates, `aria-busy` while pending). Playwright is the standardized runner
+  ([§6](#6-accessibility)) — a real browser engine is required and the choice is not left to the
+  implementer. They cover exactly what axe cannot — but they assert the DOM/ARIA mechanism, **not** that
+  a screen reader speaks it; real AT verification is a manual pass outside the DoD.
+- **Select mouse-interaction specs (real mouse events, guarding a known aria-in-overlay bug).** There is
+  an open Angular CDK/aria issue —
+  [angular/components#32504](https://github.com/angular/components/issues/32504) (P3) — where an aria
+  combobox/listbox composed via `hostDirectives` **inside a `cdkConnectedOverlay`** misbehaves **on
+  mouse input only**: clicking an option may not register the selection, and an outside click may not
+  close the panel (keyboard paths are unaffected). Because `tm-select` is exactly this composition
+  ([§3.4](#34-select--tm-select)), the Playwright suite **must include mouse-driven specs** — real
+  `mouse.click()` (not `.click()` dispatch / not keyboard) for: **clicking an option commits and closes**,
+  **clicking outside closes**, and **clicking the trigger toggles** — so a regression (or the upstream
+  bug surfacing in our composition) fails CI. If the bug bites our build, the workaround is wired in
+  `tm-select` (explicit pointerdown/selection handling on the option rows and an outside-pointer close),
+  and these specs verify the workaround holds. Tracked as a DoD item.
 - **RTL specs:** mirrored layout, checkbox side, and the **authored** Select overlay positions under
   `dir="rtl"` (positions are tested, not assumed — [§3.4](#34-select--tm-select)).
 - **Contracts entry-point boundary + lint hygiene.** The `@tellma/core-ui/contracts` entry point
@@ -1143,7 +1225,8 @@ Storybook config lives in the workspace (free-port launch per [§1.3](#13-worktr
    holds (field wins when bound; component inputs apply only unbound).
 4. Each component: unit tests green, harness shipped, **axe clean** (static floor), and **behavioral
    Playwright a11y specs green** — keyboard nav, focus return, `aria-activedescendant` + `aria-controls`
-   across the portal, two-stage Esc, `aria-live`/`aria-busy` announcements.
+   across the portal, the standalone Esc-closes-panel behavior, `aria-live`/`aria-busy` announcements.
+   **Playwright is the standardized a11y runner ([§6](#6-accessibility)) — not implementer's choice.**
 5. **RTL spec green** with the **authored** Select overlay positions verified under `dir="rtl"`.
 6. Select: the settled **nested `cdkConnectedOverlay` + `ngComboboxPopup` composition**
    ([§3.4](#34-select--tm-select)) works — `usePopover:'inline'` panel escapes an `overflow:hidden`
@@ -1152,7 +1235,10 @@ Storybook config lives in the workspace (free-port launch per [§1.3](#13-worktr
    overlay relocation; `focusMode="activedescendant"` + `selectionMode="explicit"`; lazy overlay;
    captures `tm-option.value` (e.g. a record id) while displaying projected label. **RTL residual from
    the spike is closed:** an RTL-mirrored position set is authored and `matchWidth` verified under
-   `dir="rtl"` (the spike saw both fail by default).
+   `dir="rtl"` (the spike saw both fail by default). **Mouse-interaction specs (real mouse events) green,
+   guarding [angular/components#32504](https://github.com/angular/components/issues/32504):** clicking an
+   option commits and closes, clicking outside closes, clicking the trigger toggles
+   ([§10](#10-testing-tellmacore-ui-testing)).
 7. Select prepopulated/async value integrity: a **prepopulated value survives until its `ngOption`
    renders** (not just its label) — i.e. the `FormValueControl<T>` model stays source-of-truth and is
    re-applied to aria's listbox when options arrive, defeating aria's unmatched-value auto-prune; the
@@ -1166,8 +1252,10 @@ Storybook config lives in the workspace (free-port launch per [§1.3](#13-worktr
     `@angular/core` or the component modules; no cross-package leakage; no bare `outline: none`.
 11. The controls are **shaped** for grid embedding (rule 6) but not locked to the draft contracts:
     a bare `<input tmInput>` mounts with no `tm-form-field` and holds no document-level listeners; a
-    `tm-select` panel anchors to an arbitrary element with two-stage Esc; each control separates a
-    pure display formatter from its interactive behavior. The draft `TmCellEditor`/`TmCellDisplay`
+    `tm-select` panel anchors to an arbitrary element and exposes `cancel()` for a host to drive (the
+    second-Esc revert is the grid host's, not the standalone control's — [§3.4](#34-select--tm-select));
+    each control separates a pure display formatter from its interactive behavior. The draft
+    `TmCellEditor`/`TmCellDisplay`
     interfaces ([§2.1](#21-shared-contracts), [§9](#9-data-grid-forward-compatibility-contract)) are
     **not** test-hardened in this phase — they are designed when the grid is built.
 12. The library's font piece is in place: self-hosted woff2, `@font-face` with `unicode-range`
@@ -1177,7 +1265,7 @@ Storybook config lives in the workspace (free-port launch per [§1.3](#13-worktr
 13. `components.json` is generated and **validated against its JSON Schema** ([§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp));
     the scoped MCP server answers `list`/`describe`/`example`; `llms.txt` and a Storybook showcase
     render. API goldens committed; `approve-api` gate active.
-14. Forced-colors and reduced-motion are **real-browser-gated** (`emulateMedia`); bidi `dir="auto"`
+14. Forced-colors and reduced-motion are **Playwright-gated** (`emulateMedia`); bidi `dir="auto"`
     fields verified with mixed AR/EN content in both LTR and RTL roots; message precedence + ICU/param
     interpolation tested via the shared `form()` fixture.
 15. All tooling (Storybook, tests, MCP server) runs on OS-assigned free ports — two worktrees in

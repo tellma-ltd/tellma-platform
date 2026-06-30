@@ -1,6 +1,6 @@
 # Angular Component-Library Analysis — Material/CDK vs PrimeNG
 
-> **Superseded.** This is a research/rationale document. The component-library walking-skeleton work it
+> **Superseded.** This is a research/rationale document. The component-library foundation work it
 > informed is now specified in [`docs/specs/0002-component-library-walking-skeleton.md`](../specs/0002-component-library-walking-skeleton.md),
 > which is the authoritative source and supersedes this analysis where they differ (e.g. the three-
 > component skeleton, Signal-Forms-only, stable `@angular/aria`, inline templates). This doc is kept
