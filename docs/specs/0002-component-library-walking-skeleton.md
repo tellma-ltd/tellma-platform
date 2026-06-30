@@ -33,7 +33,7 @@ posture — is fixed by the Tellma design system (`tellma-brand/design-system`, 
 `tokens/*.css` and the `forms/` reference components).
 
 This spec covers **Phase 1**: the *foundation* — the thinnest end-to-end slice that stands
-up the whole architecture (all four packages, the `@angular/aria` behavior layer, the token emitter, the
+up the whole architecture (all four core packages plus the reference locale pack, the `@angular/aria` behavior layer, the token emitter, the
 forms contract, harnesses, the a11y/RTL/perf gates, the docs/MCP pipeline) while shipping only
 **three production components**:
 
@@ -123,10 +123,18 @@ Two facts about the consumer set let us delete complexity the general-purpose li
 
 **Goals**
 
-- Stand up all four `@tellma/core-ui*` packages with real (if small) contents and working build,
-  test, lint, and docs pipelines.
+- Stand up all four `@tellma/core-ui*` packages (plus the reference `@tellma/locale-ar` pack, below)
+  with real (if small) contents and working build, test, lint, and docs pipelines.
 - Ship `tmInput`, `tm-checkbox`, `tm-select`, and `tm-form-field` to production quality:
   a11y-complete, RTL-complete, themed from the brand tokens, Signal-Forms-native.
+- Ship the **`@tellma/locale-ar` (Arabic) locale pack** as the **reference locale pack**. The
+  locale-pack mechanism (a locale's library strings **+** its self-hosted font subset **+** its
+  `TM_FONT_SUBSETS` manifest entries, merged at build and preloaded per tenant — [§7](#7-rtl-i18n--l10n)/
+  [§7.1](#71-fonts--web-font-loading)) is a load-bearing seam, so the foundation proves it once with a
+  real pack rather than leaving it on paper. Arabic is the natural first pack: the brand is RTL-first,
+  Tellma's primary markets (KSA/UAE) need it on day one, and it exercises the RTL + Arabic-font +
+  Arabic-strings path the spec already gates. **The core stays English-only** ([§7](#7-rtl-i18n--l10n));
+  Arabic ships as this separate, installable package — that separation *is* the thing being proven.
 - Prove the shared overlay/positioning + aria-listbox + keyboard-navigation infrastructure once,
   via Select, so later overlay/collection components reuse it.
 - Establish the canonical component template, the harness template, and the
@@ -145,6 +153,9 @@ Two facts about the consumer set let us delete complexity the general-purpose li
   CDK-Overlay + aria infra Select establishes; the `TmDateAdapter` is the multi-calendar
   (Gregorian/Hijri/Ethiopian) abstraction that picker *depends on*, not a text-field substitute for
   it. See [§7](#7-rtl-i18n--l10n).
+- **Locale packs beyond Arabic** (Amharic, and any other script/language). The locale-pack mechanism is
+  proven once with the reference `@tellma/locale-ar`; additional packs are mechanical follow-ons against
+  that template, not foundation work. (`@tellma/locale-ar` itself **is** in scope — see Goals.)
 - The full `provideTellmaForms()` cross-field policy engine beyond what these three controls need.
 - The federated `dotnet tellma mcp` umbrella (D13). Phase 1 ships the *scoped* `@tellma/core-ui-mcp`
   as a thin, generated server.
@@ -163,8 +174,9 @@ There is **no theme-builder UI**, now or later. Theming is done by authoring CSS
 
 ## 1. Package & build foundation
 
-All four packages are created under `client/projects/core/`. Phase 1 puts real contents in three and
-a stub-but-wired version in the fourth (`-mcp`).
+The four `@tellma/core-ui*` packages are created under `client/projects/core/`, plus the reference
+`@tellma/locale-ar` pack. Phase 1 puts real contents in three core packages, a stub-but-wired version
+in the fourth (`-mcp`), and a real (if small) Arabic locale pack.
 
 | Package | Phase-1 contents |
 |---|---|
@@ -172,6 +184,7 @@ a stub-but-wired version in the fourth (`-mcp`).
 | `@tellma/core-ui-tokens` | `TmTokens` TS contract; the brand default preset; the `tokens → CSS variables` emitter; generated JSON Schema; build-time schema + WCAG-contrast validation. |
 | `@tellma/core-ui-testing` | `TmInputHarness`, `TmCheckboxHarness`, `TmSelectHarness` (+ `TmOptionHarness`), `TmFormFieldHarness`. |
 | `@tellma/core-ui-mcp` | Generated `components.json` for the components; a minimal MCP server exposing `list/describe/example` tools over it. Wired into the build; tool breadth is later. |
+| `@tellma/locale-ar` | The **reference locale pack**: Arabic translations for the library's built-in strings (validator-key messages, placeholders, the required-field announcement) as a Transloco scope, **plus** the self-hosted **Noto Sans Arabic** woff2 + `@font-face` (`unicode-range`) and its `TM_FONT_SUBSETS` manifest entries. Installing it adds Arabic to a distribution; not installing it leaves the core English-only. It is the template every later locale pack (`@tellma/locale-am`, …) copies. |
 
 **Build & tooling (shared, established once):**
 
@@ -229,11 +242,14 @@ best-practices output is the source of truth for framework conventions; this spe
 
 Phase 1 uses **pnpm workspaces + the Angular CLI + ng-packagr** — no nx. The reason is structural, not
 just "small now": **nx's headline wins (project-graph caching, `affected`, distributed cache) scale
-with the number of *projects*, and the UI library's project count is essentially fixed at four — it
-does not grow as the component library fills out.** What *does* grow with every new component lives
-*inside* those four packages — more components, tokens, harnesses, tests, stories, and `components.json`
-entries — and that intra-package growth is served by the **test runner's own incremental/changed-file
-selection**, not by a cross-project task graph. So nx would optimize the axis that stays constant while
+with the number of *projects*, and the UI library's project count is essentially fixed — four core
+packages plus a small, slowly-growing set of locale packs (one per supported language, a low-tens
+ceiling at most). It does not grow as the component library fills out.** What *does* grow with every new
+component lives *inside* those core packages — more components, tokens, harnesses, tests, stories, and
+`components.json` entries — and that intra-package growth is served by the **test runner's own
+incremental/changed-file selection**, not by a cross-project task graph. (Each new locale pack is one
+more project, but it is a self-contained leaf with no cross-project graph to cache, so it doesn't move
+the nx calculus either.) So nx would optimize the axis that stays constant while
 adding onboarding and tooling-sprawl cost (the same low-onboarding argument that rejected Bazel in D1;
 the Angular side already sits beside the .NET MSBuild build). We **revisit nx** only if the *project*
 count climbs — many in-repo distributions, or the UI family splitting into many packages. Package
@@ -916,11 +932,14 @@ the automated suite asserts the mechanism that *should* drive that speech.
   the Transloco-backed default itself; the token only needs supplying to override it. The
   `contracts` entry point never imports Transloco (it stays dependency-free); only the components'
   default provider does. This keeps one mechanism for the whole platform while leaving a clean swap
-  point if ever needed. **Only the English** library-string preset ships in-package; **Arabic, Amharic,
+  point if ever needed. **Only the English** library-string preset ships in the core; **Arabic, Amharic,
   and every other locale ship as optional per-distribution locale packs** — the same locale-pack
   mechanism that ships their fonts ([§7.1](#71-fonts--web-font-loading)). A locale pack bundles **both**
   a locale's library strings and its font subset/manifest entries, so a distribution installs the packs
   its tenants need (a KSA/UAE distribution installs `@tellma/locale-ar`); the core stays English-only.
+  **The Arabic pack `@tellma/locale-ar` is delivered in this phase** as the reference pack that proves
+  the mechanism end-to-end ([§1](#1-package--build-foundation), Goals); other locale packs are later,
+  mechanical follow-ons against its template.
 - **Adapters named as future seams, not shipped in Phase 1.** `TmNumberAdapter` / `TmCurrencyAdapter` /
   `TmDateAdapter` (D8) are the locale/calendar seams *later* components will need (numeric, currency,
   date picker — e.g. a Hijri calendar from a Locale pack). **None of the three Phase-1 controls needs
@@ -1196,6 +1215,19 @@ client/projects/core/
     └── src/                   # generated components.json + minimal MCP server
 ```
 
+The reference locale pack lives in a sibling `locale/` family (locale packs are not `core-ui`
+packages), proving the structure later packs (`@tellma/locale-am`, …) copy:
+
+```
+client/projects/locale/
+└── tellma-locale-ar/         # @tellma/locale-ar — the reference Arabic locale pack
+    ├── ng-package.json
+    └── src/
+        ├── strings/ar.json   # Arabic translations for the built-in library strings (Transloco scope)
+        ├── fonts/            # self-hosted Noto Sans Arabic woff2 + @font-face (unicode-range)
+        └── manifest.ts       # TM_FONT_SUBSETS entries (Arabic script → asset URL + range), merged at build
+```
+
 **Why this shape (and how it scales to ~40 components later).**
 
 - **Flat per-component folders, *not* category-nested folders.** Material, the CDK, and PrimeNG all
@@ -1225,8 +1257,9 @@ Storybook config lives in the workspace (free-port launch per [§1.3](#13-worktr
 
 ## 13. Definition of done
 
-1. All four packages build, lint (incl. the `tm-` selector rule), and are consumable by an in-repo
-   app via workspace path mappings; `@tellma/core-ui/contracts` resolves as a secondary entry point.
+1. All four core packages **and `@tellma/locale-ar`** build, lint (incl. the `tm-` selector rule), and
+   are consumable by an in-repo app via workspace path mappings; `@tellma/core-ui/contracts` resolves as
+   a secondary entry point.
 2. `tmInput`, `tm-checkbox`, `tm-select`, `tm-form-field` work bound via `[formField]` in a **Signal
    Form** (each implementing the correct interface — `tm-checkbox` via `FormCheckboxControl` with
    **no `value` property**, enforced by lint/API golden), themed from the brand preset, in light and
@@ -1273,20 +1306,28 @@ Storybook config lives in the workspace (free-port launch per [§1.3](#13-worktr
     subsetting + `font-display: swap`, the `TM_FONT_SUBSETS` manifest, and `fontPreloadLinks()` — no
     CDN reference; tests assert an unconfigured script contributes no eager download. (Runtime
     per-tenant preload injection is distribution-shell scope, not tested here.)
-13. `components.json` is generated and **validated against its JSON Schema** ([§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp));
+13. The reference **Arabic locale pack `@tellma/locale-ar` ships and works end-to-end**: installed, it
+    adds Arabic library strings (validator-key messages, placeholder, required-field announcement)
+    resolved through `TM_UI_TRANSLATE`, and contributes self-hosted **Noto Sans Arabic** (woff2 +
+    `@font-face` + `TM_FONT_SUBSETS` manifest entries) merged at build. A test asserts that **with** the
+    pack an Arabic locale renders Arabic strings (and the Arabic face is available), and **without** it
+    the same keys fall back to English (no blank/raw key) and no Arabic font is fetched. The core stays
+    English-only; the pack is the template later locale packs copy.
+14. `components.json` is generated and **validated against its JSON Schema** ([§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp));
     the scoped MCP server answers `list`/`describe`/`example`; `llms.txt` and a Storybook showcase
     render. API goldens committed; `approve-api` gate active.
-14. Forced-colors and reduced-motion are **Playwright-gated** (`emulateMedia`); bidi `dir="auto"`
+15. Forced-colors and reduced-motion are **Playwright-gated** (`emulateMedia`); bidi `dir="auto"`
     fields verified with mixed AR/EN content in both LTR and RTL roots; message precedence + ICU/param
     interpolation tested via the shared `form()` fixture.
-15. All tooling (Storybook, tests, MCP server) runs on OS-assigned free ports — two worktrees in
+16. All tooling (Storybook, tests, MCP server) runs on OS-assigned free ports — two worktrees in
     parallel, no collision.
 
 ## Decisions confirmed
 
 The earlier open questions are settled:
 
-1. **Repo home** — the UI family lives in `client/projects/core/` in `tellma-platform`.
+1. **Repo home** — the UI family lives in `client/projects/core/` in `tellma-platform`; locale packs
+   (the reference `@tellma/locale-ar`, and later ones) live in the sibling `client/projects/locale/`.
 2. **Build tooling** — pnpm + Angular CLI for Phase 1; nx revisited later if the in-repo project
    count or changed-test needs grow ([§1.2](#12-build-tooling--pnpm--angular-cli-nx-deferred)).
 3. **i18n** — standardize on Transloco behind the thin `TM_UI_TRANSLATE` escape-hatch token; the
