@@ -796,20 +796,24 @@ provider:
   locale before it has supplied every library string — e.g. an Amharic tenant hits a `required` error
   before `am` translations for the built-in validator keys exist. The resolution is a defined **fallback
   chain**, never a blank or a raw key shown to a user: (1) the **active locale's** string for the key;
-  (2) else the **fallback locale's** string — the library ships **English + Arabic presets for every
-  built-in validator key** and configures Transloco's `fallbackLang` to **English**, so a missing `am`
-  `required` renders the **English** default ("This field is required") rather than nothing; (3) the raw
-  key (`required`) is only a **last-resort guard** if even the fallback locale lacks it — which can't
-  happen for built-in keys (EN always ships them) and signals a **missing custom key**, surfaced by a
-  dev-mode `console.warn` from the `TM_UI_TRANSLATE` default and (optionally) a CI check that every
-  validator key used has an English entry. So: built-in keys always resolve to at least English;
-  distribution-custom keys that lack a translation degrade to English-or-warn, never to a broken UI.
+  (2) else the **fallback locale's** string — **English is the only library-string locale that ships
+  in-package**; every other locale, **Arabic and Amharic included**, ships as an **optional
+  per-distribution locale pack** ([§7](#7-rtl-i18n--l10n)). Transloco's `fallbackLang` is **English**, so
+  when the active locale's pack is absent or incomplete — an Amharic tenant before `@tellma/locale-am`
+  is installed, or even an Arabic one before `@tellma/locale-ar` — a `required` error renders the
+  **English** default ("This field is required") rather than nothing; (3) the raw key (`required`) is
+  only a **last-resort guard** if even English lacks it — which can't happen for built-in keys (English
+  always ships them) and signals a **missing custom key**, surfaced by a dev-mode `console.warn` from
+  the `TM_UI_TRANSLATE` default and (optionally) a CI check that every validator key used has an English
+  entry. So: built-in keys always resolve to at least English; a not-yet-installed or incomplete locale
+  pack degrades to English, never to a blank or a broken UI.
   **Param interpolation + ICU:** validators carry params (`minlength` → `{requiredLength, actualLength}`,
   `min`/`max` → the bound, etc.). The resolver passes those params to the translate call, so the
   translation string interpolates them (`"At least {requiredLength} characters"`), and **plurals/gender
   use ICU MessageFormat** via Transloco's MessageFormat plugin (`@jsverse/transloco-messageformat`) —
-  i.e. ICU lives in the translation layer, not in our resolver. The default English/Arabic presets ship
-  ICU-formatted strings for the built-in validator keys.
+  i.e. ICU lives in the translation layer, not in our resolver. The built-in **English** preset ships
+  ICU-formatted strings for the built-in validator keys; other locales' ICU strings arrive with their
+  **locale pack**.
 - **`provideTellmaUi()`** — the umbrella a distribution actually calls: composes
   `provideTellmaForms()` **+** the default Transloco-backed `TM_UI_TRANSLATE` **+** any UI-wide
   defaults. A distribution on the defaults calls `provideTellmaUi()` once and writes **zero** other
@@ -912,7 +916,11 @@ the automated suite asserts the mechanism that *should* drive that speech.
   the Transloco-backed default itself; the token only needs supplying to override it. The
   `contracts` entry point never imports Transloco (it stays dependency-free); only the components'
   default provider does. This keeps one mechanism for the whole platform while leaving a clean swap
-  point if ever needed. English + Arabic library-string presets ship in-package.
+  point if ever needed. **Only the English** library-string preset ships in-package; **Arabic, Amharic,
+  and every other locale ship as optional per-distribution locale packs** — the same locale-pack
+  mechanism that ships their fonts ([§7.1](#71-fonts--web-font-loading)). A locale pack bundles **both**
+  a locale's library strings and its font subset/manifest entries, so a distribution installs the packs
+  its tenants need (a KSA/UAE distribution installs `@tellma/locale-ar`); the core stays English-only.
 - **Adapters named as future seams, not shipped in Phase 1.** `TmNumberAdapter` / `TmCurrencyAdapter` /
   `TmDateAdapter` (D8) are the locale/calendar seams *later* components will need (numeric, currency,
   date picker — e.g. a Hijri calendar from a Locale pack). **None of the three Phase-1 controls needs
@@ -927,14 +935,15 @@ text paint, and scalable to many scripts (Amharic, Japanese, Hindi, Russian, …
 loading all of them**:
 
 - **Self-hosted, content-hashed `.woff2`** served from the app origin (works offline/intranet). No
-  Google Fonts CDN in production. `@tellma/core-ui` ships the default bilingual families — **Noto
-  Sans** (Latin) + **Noto Sans Arabic**, plus **Noto Sans Mono** for code — and the `@font-face`
-  rules; the components reference only the `--font-*` tokens.
+  Google Fonts CDN in production. `@tellma/core-ui` ships only the **Latin** family — **Noto Sans** —
+  plus **Noto Sans Mono** for code, and the `@font-face` machinery; the components reference only the
+  `--font-*` tokens. **Arabic (Noto Sans Arabic) and every other script ship with their locale pack**,
+  not in the core — the same English-only baseline as the library strings ([§7](#7-rtl-i18n--l10n)).
 - **`unicode-range` subsetting per `@font-face`** is the key to not eagerly loading every script: the
-  browser downloads a face **only when the page actually contains glyphs in that range**. Additional
-  scripts are declared as separate `@font-face` blocks (or shipped by **Locale packs** —
-  `@tellma/locale-am` ships Amharic, etc.) and fetched on demand; nothing for an unused script is
-  ever downloaded.
+  browser downloads a face **only when the page actually contains glyphs in that range**. Non-Latin
+  scripts ship as **Locale packs** (`@tellma/locale-ar` → Arabic, `@tellma/locale-am` → Amharic, …),
+  each contributing its `@font-face` blocks **and** that locale's library strings; faces are fetched on
+  demand and nothing for an uninstalled or unused script is ever downloaded.
 - **`font-display: swap`** so text paints immediately in a fallback and swaps when the web font
   arrives (fast TTI; no invisible-text delay).
 - **Preload is resolved at runtime from per-tenant locale config** — and the **library/shell split
@@ -942,16 +951,18 @@ loading all of them**:
   three and switches at runtime, so two tenants in the *same* distribution may run English+Arabic vs.
   English+Amharic. **Latin is always preloaded** (the universal fallback); the additional subsets to
   preload are exactly those the resolved tenant locales need. The responsibility boundary:
-  - **The library ships** the `@font-face` rules (with `unicode-range`), the self-hosted woff2 for its
-    default families, a typed **`TM_FONT_SUBSETS` manifest** (locale/script → asset URL + unicode
-    range), and a small pure helper **`fontPreloadLinks(locales) → PreloadLink[]`**.
+  - **The core library ships** the Latin/Mono `@font-face` rules (with `unicode-range`) and their
+    self-hosted woff2, the typed **`TM_FONT_SUBSETS` manifest** shape plus its Latin/Mono entries, and a
+    small pure helper **`fontPreloadLinks(locales) → PreloadLink[]`**. **Each locale pack contributes**
+    its own `@font-face` rules, woff2, and manifest entries (and that locale's strings), merged into the
+    manifest at build time.
   - **The distribution app shell owns** the runtime act: it reads per-tenant locale config (a
     distribution concern, outside the component library), calls `fontPreloadLinks(...)`, and injects
     the `<link rel="preload" as="font" crossorigin>` tags. The library does not read tenant config or
     touch the document head.
-  Extra scripts beyond the defaults are shipped by **Locale packs** (`@tellma/locale-am` → Amharic),
-  which contribute their faces and manifest entries; the preloadable set is the union of the
-  distribution's installed Locale packs. Unconfigured scripts are never preloaded and only fetch on
+  Scripts beyond the Latin default are shipped by **Locale packs** (`@tellma/locale-ar` → Arabic,
+  `@tellma/locale-am` → Amharic, …), which contribute their faces and manifest entries; the preloadable
+  set is the union of the distribution's installed Locale packs. Unconfigured scripts are never preloaded and only fetch on
   demand via `unicode-range` if their glyphs appear. Accordingly, the DoD tests the library's piece
   (the `@font-face`/`unicode-range` setup, the manifest, and `fontPreloadLinks`), not the
   distribution-owned runtime injection.
