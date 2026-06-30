@@ -184,7 +184,7 @@ in the fourth (`-mcp`), and a real (if small) Arabic locale pack.
 | `@tellma/core-ui-tokens` | `TmTokens` TS contract; the brand default preset; the `tokens → CSS variables` emitter; generated JSON Schema; build-time schema + WCAG-contrast validation. |
 | `@tellma/core-ui-testing` | `TmInputHarness`, `TmCheckboxHarness`, `TmSelectHarness` (+ `TmOptionHarness`), `TmFormFieldHarness`. |
 | `@tellma/core-ui-mcp` | Generated `components.json` for the components; a minimal MCP server exposing `list/describe/example` tools over it. Wired into the build; tool breadth is later. |
-| `@tellma/locale-ar` | The **reference locale pack**: Arabic translations for the library's built-in strings (validator-key messages, placeholders, the required-field announcement) as a Transloco scope, **plus** the self-hosted **Noto Sans Arabic** woff2 + `@font-face` (`unicode-range`) and its `TM_FONT_SUBSETS` manifest entries. Installing it adds Arabic to a distribution; not installing it leaves the core English-only. It is the template every later locale pack (`@tellma/locale-am`, …) copies. |
+| `@tellma/locale-ar` | The **reference locale pack**: Arabic translations for the library's built-in strings (validator-key messages, placeholders, the required-field announcement) as a Transloco scope, **plus** the self-hosted **Noto Sans Arabic** woff2 + `@font-face` (`unicode-range`) and its `TM_FONT_SUBSETS` manifest entries — all wired by a single **`provideTellmaLocaleAr()`** a distribution adds to its app config (merge mechanism in [§7.1](#71-fonts--web-font-loading)). Installing it adds Arabic to a distribution; not installing it leaves the core English-only. It is the template every later locale pack (`@tellma/locale-am`, …) copies. |
 
 **Build & tooling (shared, established once):**
 
@@ -203,10 +203,13 @@ in the fourth (`-mcp`), and a real (if small) Arabic locale pack.
   [angular.dev/guide/aria](https://angular.dev/guide/aria/listbox) and
   [angular.dev/guide/forms/signals](https://angular.dev/guide/forms/signals/custom-controls). The
   Angular CLI MCP's `get_best_practices` (v22) likewise lists Signal Forms as stable and OnPush as the
-  default. **Version pinning:** `@angular/aria` ships in lockstep with the Angular framework, so it
-  is **pinned to the platform's Angular minor** (they move together — `@angular/aria 22.x` with
-  `@angular/core 22.x`), and the platform tracks **only the latest stable release** of both Angular and
-  aria — no preview/next tags.
+  default. **Version pinning:** `@angular/aria` ships in lockstep with the Angular framework, so it is
+  **pinned to a single Angular minor at a time** — the **22.x** line at authoring — with `@angular/aria`
+  and `@angular/core` always on the *same* minor. "Single pinned version" and "tracks the latest stable"
+  are not in tension: the platform holds **one** Angular minor across every package and **bumps it
+  deliberately, as one platform-wide step**, to the latest **stable** release (never `next`/preview,
+  never an automatic per-package float). At any moment there is exactly one Angular version in the repo;
+  moving it is a conscious, all-at-once upgrade.
 - ESLint flat config + Prettier. A custom ESLint selector rule enforces the `tm-` / `Tm…` prefix on
   component selectors and exported symbols (D3); a **stylelint rule enforces a `tm-` prefix on every
   CSS class name** the library authors, so no library class can collide with a distribution's own
@@ -222,7 +225,10 @@ in the fourth (`-mcp`), and a real (if small) Arabic locale pack.
 - **API goldens** per entry point via Microsoft API Extractor + an `approve-api` CI gate (D11) — see
   [§10](#10-testing-tellmacore-ui-testing).
 - CI gates: unit + harness tests, **axe-core**, **bundle-size budget**, API golden, lint. Tests
-  always on. (No SSR gate — distributions are client-rendered.)
+  always on. (No SSR gate — distributions are client-rendered. This is a deliberate **one-way door**:
+  the top-layer `[popover]` overlay, `font-display: swap`, and zoneless assumptions are CSR-shaped, so a
+  future surface that needs SSR/SSG would have to revisit them — flagged so it's a conscious choice, not
+  a surprise.)
 
 > **Note — inline templates.** Per the v22 best-practices guide (the authoritative source for
 > framework conventions, which takes precedence over the research doc), small components use
@@ -554,7 +560,9 @@ single node, so announcements are clean. Logical-property layout mirrors in RTL.
   An aria combobox/listbox composed via `hostDirectives` **inside a `cdkConnectedOverlay`** — exactly
   this composition — currently misbehaves **on mouse input only**: a click on an option may not register
   the selection, and an outside click may not close the panel (keyboard paths are fine). This is **open**
-  and could affect our build. Mitigation: `tm-select` carries an explicit mouse path (pointerdown-driven
+  and could affect our build. (The positioning spike's 36/36 above covered flip/clipping/keyboard and the
+  ARIA id-chain — **not** this mouse-in-overlay path, which is proven separately by the mouse specs below,
+  not by the spike.) Mitigation: `tm-select` carries an explicit mouse path (pointerdown-driven
   option selection + an outside-pointer close) ready to switch on if the bug bites, and the test suite
   pins the behavior with **real mouse-event Playwright specs** ([§10](#10-testing-tellmacore-ui-testing),
   DoD item 6) so a regression — ours or the upstream bug surfacing in our composition — fails CI rather
@@ -812,17 +820,25 @@ provider:
   locale before it has supplied every library string — e.g. an Amharic tenant hits a `required` error
   before `am` translations for the built-in validator keys exist. The resolution is a defined **fallback
   chain**, never a blank or a raw key shown to a user: (1) the **active locale's** string for the key;
-  (2) else the **fallback locale's** string — **English is the only library-string locale that ships
-  in-package**; every other locale, **Arabic and Amharic included**, ships as an **optional
-  per-distribution locale pack** ([§7](#7-rtl-i18n--l10n)). Transloco's `fallbackLang` is **English**, so
-  when the active locale's pack is absent or incomplete — an Amharic tenant before `@tellma/locale-am`
-  is installed, or even an Arabic one before `@tellma/locale-ar` — a `required` error renders the
-  **English** default ("This field is required") rather than nothing; (3) the raw key (`required`) is
-  only a **last-resort guard** if even English lacks it — which can't happen for built-in keys (English
-  always ships them) and signals a **missing custom key**, surfaced by a dev-mode `console.warn` from
-  the `TM_UI_TRANSLATE` default and (optionally) a CI check that every validator key used has an English
-  entry. So: built-in keys always resolve to at least English; a not-yet-installed or incomplete locale
-  pack degrades to English, never to a blank or a broken UI.
+  (2) else the **English** string — **English is the only library-string locale that ships in-package**;
+  every other locale, **Arabic and Amharic included**, ships as an **optional per-distribution locale
+  pack** ([§7](#7-rtl-i18n--l10n)). Two *different* failure modes reach English, and they need **two
+  different Transloco settings** — both set by the `TM_UI_TRANSLATE` default, because `fallbackLang`
+  alone does **not** cover the second:
+  - **Whole pack absent** (the language never loads — an Amharic tenant before `@tellma/locale-am`, or an
+    Arabic one before `@tellma/locale-ar`): handled by **`fallbackLang: 'en'`**, which loads English when
+    the active language fails to load.
+  - **Pack installed but a key is missing** (an incomplete translation): `fallbackLang` does **not** fire
+    here — it triggers on a failed *language* load, not a missing *key* in a loaded one. So the default
+    also sets **`useFallbackTranslation: true`** (Transloco's per-key fall-through to the fallback
+    language), or equivalently a custom **`MissingHandler`** that resolves the key against English — so a
+    missing key in a present locale still renders the English string, not the raw key.
+
+  (3) The raw key (`required`) is only a **last-resort guard** if even English lacks it — which can't
+  happen for built-in keys (English always ships them) and signals a **missing custom key**, surfaced by
+  a dev-mode `console.warn` from the `TM_UI_TRANSLATE` default and (optionally) a CI check that every
+  validator key used has an English entry. So: built-in keys always resolve to at least English; a
+  not-yet-installed or incomplete locale pack degrades to English, never to a blank or a broken UI.
   **Param interpolation + ICU:** validators carry params (`minlength` → `{requiredLength, actualLength}`,
   `min`/`max` → the bound, etc.). The resolver passes those params to the translate call, so the
   translation string interpolates them (`"At least {requiredLength} characters"`), and **plurals/gender
@@ -935,8 +951,11 @@ the automated suite asserts the mechanism that *should* drive that speech.
   point if ever needed. **Only the English** library-string preset ships in the core; **Arabic, Amharic,
   and every other locale ship as optional per-distribution locale packs** — the same locale-pack
   mechanism that ships their fonts ([§7.1](#71-fonts--web-font-loading)). A locale pack bundles **both**
-  a locale's library strings and its font subset/manifest entries, so a distribution installs the packs
-  its tenants need (a KSA/UAE distribution installs `@tellma/locale-ar`); the core stays English-only.
+  a locale's library strings and its font subset/manifest entries, wired through a single
+  **`provideTellmaLocale*()`** provider (Transloco scope + `TM_FONT_SUBSETS` multi-token entries + a
+  static `@font-face` stylesheet — merge mechanism in [§7.1](#71-fonts--web-font-loading)). A
+  distribution installs the packs its tenants need (a KSA/UAE distribution installs `@tellma/locale-ar`);
+  the core stays English-only.
   **The Arabic pack `@tellma/locale-ar` is delivered in this phase** as the reference pack that proves
   the mechanism end-to-end ([§1](#1-package--build-foundation), Goals); other locale packs are later,
   mechanical follow-ons against its template.
@@ -971,20 +990,26 @@ loading all of them**:
   English+Amharic. **Latin is always preloaded** (the universal fallback); the additional subsets to
   preload are exactly those the resolved tenant locales need. The responsibility boundary:
   - **The core library ships** the Latin/Mono `@font-face` rules (with `unicode-range`) and their
-    self-hosted woff2, the typed **`TM_FONT_SUBSETS` manifest** shape plus its Latin/Mono entries, and a
-    small pure helper **`fontPreloadLinks(locales) → PreloadLink[]`**. **Each locale pack contributes**
-    its own `@font-face` rules, woff2, and manifest entries (and that locale's strings), merged into the
-    manifest at build time.
+    self-hosted woff2, the typed **`TM_FONT_SUBSETS` manifest** shape (seeded with its Latin/Mono
+    entries), and a small **pure** helper **`fontPreloadLinks(subsets, locales) → PreloadLink[]`**.
+  - **How a locale pack contributes (the merge mechanism — this is the seam being proven).** Each pack
+    exposes a provider (e.g. **`provideTellmaLocaleAr()`**) a distribution adds to its app config. It
+    contributes three things by three standard mechanisms: (a) the locale's **library strings** as a
+    Transloco scope/loader; (b) its **font-subset manifest entries** into **`TM_FONT_SUBSETS`, a
+    `multi: true` DI token** the core also seeds — so the *injected* token is the **union** of the core
+    plus every installed pack; and (c) its **`@font-face` rules** as a static stylesheet bundled in the
+    pack (present whenever the pack is a dependency; faces fetch on demand via `unicode-range`). There is
+    **no build-time scan and no central registry to edit** — installing a pack and calling its provider
+    is the whole wiring.
   - **The distribution app shell owns** the runtime act: it reads per-tenant locale config (a
-    distribution concern, outside the component library), calls `fontPreloadLinks(...)`, and injects
-    the `<link rel="preload" as="font" crossorigin>` tags. The library does not read tenant config or
-    touch the document head.
-  Scripts beyond the Latin default are shipped by **Locale packs** (`@tellma/locale-ar` → Arabic,
-  `@tellma/locale-am` → Amharic, …), which contribute their faces and manifest entries; the preloadable
-  set is the union of the distribution's installed Locale packs. Unconfigured scripts are never preloaded and only fetch on
-  demand via `unicode-range` if their glyphs appear. Accordingly, the DoD tests the library's piece
-  (the `@font-face`/`unicode-range` setup, the manifest, and `fontPreloadLinks`), not the
-  distribution-owned runtime injection.
+    distribution concern, outside the component library), injects **`TM_FONT_SUBSETS`** (the merged
+    union), calls **`fontPreloadLinks(subsets, tenantLocales)`**, and injects the
+    `<link rel="preload" as="font" crossorigin>` tags. The library does not read tenant config or touch
+    the document head.
+  The preloadable set is the union of the distribution's installed Locale packs; unconfigured scripts are
+  never preloaded and only fetch on demand via `unicode-range` if their glyphs appear. Accordingly, the
+  DoD tests the library's piece (the `@font-face`/`unicode-range` setup, the `TM_FONT_SUBSETS` multi-token
+  merge, and `fontPreloadLinks`), not the distribution-owned runtime injection.
 - **Variable fonts** where available, to cut file count/weight (one file spans weights).
 - **Long-cache immutable** (content-hashed filenames, `Cache-Control: immutable, max-age=1y`) plus
   the PWA service-worker cache, so repeat loads are instant.
@@ -1094,8 +1119,10 @@ component's docs to keep this visible.
   combobox/listbox composed via `hostDirectives` **inside a `cdkConnectedOverlay`** misbehaves **on
   mouse input only**: clicking an option may not register the selection, and an outside click may not
   close the panel (keyboard paths are unaffected). Because `tm-select` is exactly this composition
-  ([§3.4](#34-select--tm-select)), the Playwright suite **must include mouse-driven specs** — real
-  `mouse.click()` (not `.click()` dispatch / not keyboard) for: **clicking an option commits and closes**,
+  ([§3.4](#34-select--tm-select)), the Playwright suite **must include mouse-driven specs** — driving
+  selection with **real input events** (`locator.click()` / `page.mouse.click()`, which Playwright
+  delivers as trusted mouse input), **not** synthetic `dispatchEvent('click')` and **not** the keyboard
+  path — for: **clicking an option commits and closes**,
   **clicking outside closes**, and **clicking the trigger toggles** — so a regression (or the upstream
   bug surfacing in our composition) fails CI. If the bug bites our build, the workaround is wired in
   `tm-select` (explicit pointerdown/selection handling on the option rows and an outside-pointer close),
@@ -1224,8 +1251,9 @@ client/projects/locale/
     ├── ng-package.json
     └── src/
         ├── strings/ar.json   # Arabic translations for the built-in library strings (Transloco scope)
-        ├── fonts/            # self-hosted Noto Sans Arabic woff2 + @font-face (unicode-range)
-        └── manifest.ts       # TM_FONT_SUBSETS entries (Arabic script → asset URL + range), merged at build
+        ├── fonts/            # self-hosted Noto Sans Arabic woff2 + @font-face (unicode-range), static stylesheet
+        ├── manifest.ts       # TM_FONT_SUBSETS entries (Arabic script → asset URL + range)
+        └── public-api.ts     # provideTellmaLocaleAr(): Transloco scope + TM_FONT_SUBSETS multi-token + @font-face
 ```
 
 **Why this shape (and how it scales to ~40 components later).**
@@ -1343,8 +1371,10 @@ The Select-architecture and forms-precedence questions were investigated directl
 [§5](#5-forms-integration-signal-forms), and [§9](#9-data-grid-forward-compatibility-contract): aria
 owns Select's keyboard/typeahead/active-descendant/open-close as DI directives (so `tm-select` owns only
 the scalar↔array bridge, value→key mapping, label resolution, and grid commit/cancel — no separate
-pattern class), and Signal-Forms field state writes into the control's single input signal so "field
-wins when bound" is automatic. The riskiest piece — composing aria's inline-deferred popup with
+pattern class), and Signal Forms binds field state into the control's declared optional inputs (the
+documented contract), so a field-bound control reflects the field's state — with a conflicting template
+binding *forbidden by lint* rather than relied on as framework write-order ([§5](#5-forms-integration-signal-forms)).
+The riskiest piece — composing aria's inline-deferred popup with
 CDK-Overlay connected positioning — was **settled by a running Angular-22 + Playwright spike** (the
 nested `cdkConnectedOverlay` + `ngComboboxPopup` pattern with `usePopover:'inline'`;
 [§3.4](#34-select--tm-select)), leaving only an RTL position-mirroring detail tracked in the DoD.
