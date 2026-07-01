@@ -1,7 +1,7 @@
 # Spec: UI Component Library — Forms Foundation
 
-**Author:** Ahmad Akra
-**Date:** 29 Jun 2026
+- **Author:** Ahmad Akra
+- **Date:** 29 June 2026
 
 **Status:** Foundation specification — a frozen, **historical** record of the design and its reasoning
 at implementation time. It is not updated as the code or its dependencies evolve; it captures the
