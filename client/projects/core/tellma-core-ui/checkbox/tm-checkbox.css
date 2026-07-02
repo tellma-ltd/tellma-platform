@@ -95,7 +95,7 @@
 }
 
 .tm-checkbox__label {
-  font-family: var(--font-sans);
+  font-family: var(--font-ui);
   font-size: var(--field-font-size);
   color: var(--field-text);
   user-select: none;

@@ -1,6 +1,7 @@
 import { Component, Type } from '@angular/core';
 
 import { CheckboxStory } from './checkbox/checkbox-story';
+import { I18nStory } from './i18n/i18n-story';
 import { InputStory } from './input/input-story';
 import { SelectStory } from './select/select-story';
 import { ThemingStory } from './theming/theming-story';
@@ -36,4 +37,5 @@ export const SANDBOX_STORIES: readonly SandboxStory[] = [
   { id: 'input', title: 'Text input (tmInput + tm-form-field)', component: InputStory },
   { id: 'checkbox', title: 'Checkbox (tm-checkbox)', component: CheckboxStory },
   { id: 'select', title: 'Select (tm-select)', component: SelectStory },
+  { id: 'i18n', title: 'i18n / locale packs', component: I18nStory },
 ];

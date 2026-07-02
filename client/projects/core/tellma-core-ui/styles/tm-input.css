@@ -3,7 +3,7 @@
    tm-form-field. A grid cell mounts the bare input with nothing to strip. */
 
 .tm-input {
-  font-family: var(--font-sans);
+  font-family: var(--font-ui);
   font-size: var(--field-font-size);
   color: var(--field-text);
   /* Alignment follows the field's own dir="auto" base direction (§7). */

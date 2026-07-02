@@ -4,7 +4,7 @@ body {
   margin: 0;
   background: var(--surface-page);
   color: var(--text-strong);
-  font-family: var(--font-sans);
+  font-family: var(--font-ui);
   font-size: var(--text-base);
-  line-height: var(--leading-body);
+  line-height: var(--leading-ui);
 }
