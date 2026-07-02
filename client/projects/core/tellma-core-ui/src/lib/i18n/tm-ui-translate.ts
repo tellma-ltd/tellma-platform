@@ -10,7 +10,7 @@ import {
   type Signal,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { TranslocoService } from '@jsverse/transloco';
+import { TRANSLOCO_TRANSPILER, TranslocoService } from '@jsverse/transloco';
 
 import { TM_UI_STRINGS_EN } from './strings-en';
 
@@ -82,7 +82,12 @@ function missingKeyGuard(key: string): string {
  */
 export function tmDefaultUiTranslate(): TmUiTranslateFn {
   const injector = inject(Injector);
-  const transloco = inject(TranslocoService, { optional: true });
+  // TranslocoService is providedIn:'root', so an optional inject would still
+  // instantiate it and then crash on ITS missing config deps in an app that
+  // never called provideTransloco/provideTellmaUi. The transpiler token is
+  // only present when Transloco was actually provided — probe that instead.
+  const translocoProvided = inject(TRANSLOCO_TRANSPILER, { optional: true }) !== null;
+  const transloco = translocoProvided ? inject(TranslocoService) : null;
   const cache = new Map<string, Signal<string>>();
 
   return (key, params) => {
