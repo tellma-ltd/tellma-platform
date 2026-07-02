@@ -11,6 +11,8 @@ import { provideTranslocoMessageformat } from '@jsverse/transloco-messageformat'
 import { TM_UI_I18N_SCOPE } from '../i18n/tm-ui-translate';
 import { TM_UI_STRINGS_EN } from '../i18n/strings-en';
 import { provideTellmaForms, type TmFormsOptions } from '../forms/provide-tellma-forms';
+import { TM_FONT_SUBSETS } from '../fonts/font-subsets';
+import { TM_FONTS_LATIN } from '../fonts/font-manifest.generated';
 
 export interface TmUiOptions {
   readonly forms?: TmFormsOptions;
@@ -61,6 +63,9 @@ export function provideTellmaUi(options: TmUiOptions = {}): EnvironmentProviders
         merge: true,
       });
     }),
+    // The core's Latin/Mono font-subset manifest entries; locale packs add
+    // theirs through the same multi token (§7.1).
+    { provide: TM_FONT_SUBSETS, useValue: TM_FONTS_LATIN, multi: true },
     provideTellmaForms(options.forms),
   ]);
 }

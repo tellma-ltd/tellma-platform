@@ -9,6 +9,8 @@
 
 export * from './lib/i18n/strings-en';
 export * from './lib/i18n/tm-ui-translate';
+export * from './lib/fonts/font-subsets';
+export * from './lib/fonts/font-manifest.generated';
 export * from './lib/forms/field-errors';
 export * from './lib/forms/provide-tellma-forms';
 export * from './lib/providers/provide-tellma-ui';
