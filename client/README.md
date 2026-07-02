@@ -1,59 +1,63 @@
-# TellmaClient
+# Tellma client workspace
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.0.5.
+The Angular workspace for the `@tellma/*` npm package family (spec
+`docs/specs/0002-component-library-foundation.md`). Angular 22, pnpm, signal-first, zoneless.
 
-## Development server
+| Package | Folder |
+|---|---|
+| `@tellma/core-ui` (+ `/contracts`, `/input`, `/checkbox`, `/form-field`, `/select`) | `projects/core/tellma-core-ui` |
+| `@tellma/core-ui-tokens` | `projects/core/tellma-core-ui-tokens` |
+| `@tellma/core-ui-testing` | `projects/core/tellma-core-ui-testing` |
+| `@tellma/core-ui-mcp` | `projects/core/tellma-core-ui-mcp` |
+| `@tellma/locale-ar` | `projects/locale/tellma-locale-ar` |
+| sandbox (internal dev host, never published) | `projects/internal/sandbox` |
 
-To start a local development server, run:
-
-```bash
-ng serve
-```
-
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
-
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+## Workflow
 
 ```bash
-ng generate component component-name
+pnpm install
+pnpm run build       # all packages in dependency order
+pnpm run test        # unit tests (vitest via @angular/build:unit-test)
+pnpm run e2e         # Playwright behavioral/a11y suite against the sandbox
+pnpm start           # sandbox dev server
+pnpm run storybook   # Storybook dev server
 ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+**No hardcoded ports.** Every server binds to a port from the worktree's
+`.dev-ports.local` (once `dotnet tellma setup-worktree` exists) or an
+OS-assigned free port — see `scripts/ports.mjs`. Two worktrees always run in
+parallel without collisions. Never pass a literal port in configs or scripts.
 
-```bash
-ng generate --help
-```
+## Storybook under Angular 22 — decision record (stage-3 spike, 2026-07-01)
 
-## Building
+**Verdict: PASS with workarounds.** `@storybook/angular@10.4.6` declares
+`@angular/core >=18 <22`, so peer ranges are overridden in
+`pnpm-workspace.yaml` (`peerDependencyRules.allowedVersions`). Two real
+incompatibilities surfaced and are worked around there and in `angular.json`:
 
-To build the project run:
+1. **Duplicate peer-keyed webpack instances** (Storybook's vs
+   `@angular-devkit/build-angular`'s) crash with `The 'compilation' argument
+   must be an instance of Compilation`. Fixed by pnpm `overrides` pinning one
+   `webpack` + one `postcss` so the instances converge.
+2. **Double sourcemap emission** (Storybook and the v22 builder both inject
+   `SourceMapDevToolPlugin`) fails the build with asset-filename conflicts.
+   Fixed by a dedicated `sandbox:build:storybook` configuration with
+   `sourceMap: false`; Storybook targets it via `browserTarget`.
 
-```bash
-ng build
-```
+Verified: `ng run sandbox:build-storybook` succeeds; the probe-select story
+renders and is fully interactive (open, option-click commit, close) in the
+static build. Revisit and drop the overrides when Storybook ships official
+Angular 22 support.
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
+## Stage-3 spike findings (spec §3.4 composition)
 
-## Running unit tests
-
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+- All 11 probe specs pass: clipping escape (`usePopover:'inline'`), flip-up
+  (with the `updatePosition()`-on-`(attach)` **macrotask** fix — required),
+  the trigger→listbox→option ARIA id chain across the portal, real-mouse
+  option/outside/trigger clicks, keyboard commit + focus retention, Esc.
+- **angular/components#32504 did NOT bite** this composition — no explicit
+  pointer-path mitigation needed; the mouse specs stay in the suite as the
+  regression guard.
+- **Component hosts must be `display: block`.** An inline host wrapping the
+  block trigger hit-tests ABOVE the trigger in Chromium, so real user clicks
+  land on the host and never reach the trigger.

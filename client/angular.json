@@ -128,7 +128,9 @@
                 "input": "projects/internal/sandbox/public"
               }
             ],
-            "styles": ["projects/internal/sandbox/src/styles.css"]
+            "styles": [
+              "projects/internal/sandbox/src/styles.css"
+            ]
           },
           "configurations": {
             "production": {
@@ -150,6 +152,11 @@
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true
+            },
+            "storybook": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": false
             }
           },
           "defaultConfiguration": "production"
@@ -168,6 +175,23 @@
         },
         "test": {
           "builder": "@angular/build:unit-test"
+        },
+        "storybook": {
+          "builder": "@storybook/angular:start-storybook",
+          "options": {
+            "configDir": ".storybook",
+            "browserTarget": "sandbox:build:storybook",
+            "compodoc": false
+          }
+        },
+        "build-storybook": {
+          "builder": "@storybook/angular:build-storybook",
+          "options": {
+            "configDir": ".storybook",
+            "browserTarget": "sandbox:build:storybook",
+            "compodoc": false,
+            "outputDir": ".artifacts/storybook"
+          }
         }
       }
     }

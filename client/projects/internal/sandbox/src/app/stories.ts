@@ -1,5 +1,7 @@
 import { Component, Type } from '@angular/core';
 
+import { OverlayProbeStory } from './probe/overlay-probe-story';
+
 /**
  * The sandbox story registry.
  *
@@ -27,4 +29,5 @@ export class WelcomeStory {}
 
 export const SANDBOX_STORIES: readonly SandboxStory[] = [
   { id: 'welcome', title: 'Welcome', component: WelcomeStory },
+  { id: 'overlay-probe', title: 'Overlay probe (spec §3.4 spike)', component: OverlayProbeStory },
 ];
