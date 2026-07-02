@@ -1,0 +1,203 @@
+/* tm-select — trigger + overlay panel chrome (spec §3.4). The component OWNS
+   its chrome (ownsChrome); sizing comes from the field/select tokens and
+   layout uses logical properties so RTL mirrors for free. */
+
+:host {
+  /* Inline hosts hit-test above their children (stage-3 spike finding). */
+  display: block;
+}
+
+.tm-select__trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  block-size: var(--field-height);
+  padding-inline: var(--field-padding-x);
+  background: var(--field-bg);
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--field-radius);
+  color: var(--field-text);
+  font-family: var(--font-ui);
+  font-size: var(--field-font-size);
+  cursor: pointer;
+  user-select: none;
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+:host(.tm-select--sm) .tm-select__trigger {
+  block-size: var(--field-height-sm);
+}
+
+:host(.tm-select--lg) .tm-select__trigger {
+  block-size: var(--field-height-lg);
+}
+
+.tm-select__trigger:hover {
+  border-color: var(--field-border-hover);
+}
+
+.tm-select__trigger:focus-visible {
+  border-color: var(--field-border-focus);
+  box-shadow: var(--focus-ring);
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     the box-shadow focus ring above is the equally-visible substitute (§6). */
+  outline: none;
+}
+
+:host(.tm-select--invalid) .tm-select__trigger {
+  border-color: var(--field-border-invalid);
+}
+
+:host(.tm-select--disabled) .tm-select__trigger {
+  background: var(--field-bg-disabled);
+  color: var(--field-text-disabled);
+  cursor: default;
+}
+
+.tm-select__value {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: start;
+}
+
+.tm-select__value--placeholder {
+  color: var(--field-placeholder);
+}
+
+.tm-select__caret {
+  flex: none;
+  inline-size: var(--space-4);
+  block-size: var(--space-4);
+  color: var(--field-icon);
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+
+:host(.tm-select--open) .tm-select__caret {
+  transform: rotate(180deg);
+}
+
+.tm-select__spinner {
+  flex: none;
+  inline-size: var(--space-4);
+  block-size: var(--space-4);
+  color: var(--field-icon);
+  animation: tm-select-spin var(--duration-slow) linear infinite;
+}
+
+@keyframes tm-select-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-select__spinner {
+    animation: none;
+  }
+
+  .tm-select__caret {
+    transition: none;
+  }
+}
+
+.tm-select__panel {
+  box-sizing: border-box;
+  inline-size: 100%;
+  margin-block-start: var(--space-1);
+  background: var(--field-bg);
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--field-radius);
+  box-shadow: var(--shadow-md);
+  color: var(--field-text);
+  font-family: var(--font-ui);
+  font-size: var(--field-font-size);
+}
+
+.tm-select__listbox {
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  /* Scroll lives on the LISTBOX (role=listbox): keyboard users scroll it
+     via active-descendant navigation + scrollActiveItemIntoView (§3.4). */
+  max-block-size: var(--select-panel-max-height);
+  overflow: auto;
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     focus stays on the trigger (activedescendant model); the listbox itself
+     is never the visible focus target and the active OPTION carries the
+     visible indication below (§3.4/§6). */
+  outline: none;
+}
+
+@media (forced-colors: active) {
+  .tm-select__trigger,
+  .tm-select__panel {
+    border-color: FieldText;
+  }
+}
+
+/* Option rows (rendered here — tm-option is a data/template host): sized for
+   comfortable pointer/touch use via the select component tokens; the active
+   row carries the visible active-descendant indication. */
+
+.tm-option__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-block-size: var(--select-option-height);
+  box-sizing: border-box;
+  padding-inline: var(--space-3);
+  padding-block: var(--space-1);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+.tm-option__row[aria-disabled='true'] {
+  color: var(--field-text-disabled);
+  cursor: default;
+}
+
+.tm-option__row[data-active='true'] {
+  background: var(--surface-hover);
+  box-shadow: inset 0 0 0 var(--focus-ring-width) var(--focus-ring-color);
+}
+
+.tm-option__row[aria-selected='true'] {
+  background: var(--surface-selected);
+  color: var(--text-strong);
+}
+
+.tm-option__content {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-option__check {
+  flex: none;
+  inline-size: var(--space-4);
+  block-size: var(--space-4);
+  color: var(--color-primary);
+  visibility: hidden;
+}
+
+.tm-option__row[aria-selected='true'] .tm-option__check {
+  visibility: visible;
+}
+
+@media (forced-colors: active) {
+  .tm-option__row[data-active='true'] {
+    outline: var(--focus-ring-width) solid Highlight;
+    outline-offset: 0;
+  }
+
+  .tm-option__row[aria-selected='true'] {
+    background: Highlight;
+    color: HighlightText;
+  }
+}

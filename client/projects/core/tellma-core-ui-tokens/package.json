@@ -1,0 +1,11 @@
+{
+  "name": "@tellma/core-ui-tokens",
+  "version": "0.1.0",
+  "description": "Typed design-token contract, presets, and the tokens-to-CSS-variables emitter for the Tellma UI component library.",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "tslib": "^2.3.0"
+  },
+  "sideEffects": false,
+  "type": "module"
+}

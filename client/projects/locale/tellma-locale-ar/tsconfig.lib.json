@@ -1,0 +1,24 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../../out-tsc/lib",
+    "rootDir": "./src",
+    "declaration": true,
+    "declarationMap": true,
+    "types": [],
+    "paths": {
+      "@tellma/core-ui": [
+        "../../../dist/core-ui"
+      ],
+      "@tellma/core-ui/*": [
+        "../../../dist/core-ui/*"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "**/*.spec.ts"
+  ]
+}

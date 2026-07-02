@@ -1,0 +1,20 @@
+{
+  "name": "@tellma/core-ui",
+  "version": "0.1.0",
+  "description": "Tellma UI component library — tm-* form controls built on @angular/cdk + @angular/aria, signal-first, Signal Forms native.",
+  "license": "Apache-2.0",
+  "peerDependencies": {
+    "@angular/aria": "^22.0.0",
+    "@angular/cdk": "^22.0.0",
+    "@angular/common": "^22.0.0",
+    "@angular/core": "^22.0.0",
+    "@angular/forms": "^22.0.0",
+    "@jsverse/transloco": "^8.4.0",
+    "@jsverse/transloco-messageformat": "^8.4.0"
+  },
+  "dependencies": {
+    "tslib": "^2.3.0"
+  },
+  "sideEffects": false,
+  "type": "module"
+}

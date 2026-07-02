@@ -1,0 +1,33 @@
+/* tmInput — deliberately bare (§3.2): the native input carries no box of its
+   own; the bordered chrome, focus ring, and adornments belong to
+   tm-form-field. A grid cell mounts the bare input with nothing to strip. */
+
+.tm-input {
+  font-family: var(--font-ui);
+  font-size: var(--field-font-size);
+  color: var(--field-text);
+  /* Alignment follows the field's own dir="auto" base direction (§7). */
+  text-align: start;
+}
+
+.tm-input::placeholder {
+  color: var(--field-placeholder);
+}
+
+.tm-input:disabled {
+  color: var(--field-text-disabled);
+}
+
+/* Inside the field box the input dissolves into the chrome: the box owns
+   border + focus ring (:focus-within). */
+.tm-input--in-field {
+  flex: 1;
+  min-inline-size: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     The enclosing .tm-form-field__box:focus-within ring is the equally-visible
+     substitute (§6); a second UA outline inside the box would double up. */
+  outline: none;
+}
