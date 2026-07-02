@@ -54,6 +54,12 @@
     },
     {
       "path": "./projects/locale/tellma-locale-ar/tsconfig.spec.json"
+    },
+    {
+      "path": "./projects/internal/sandbox/tsconfig.app.json"
+    },
+    {
+      "path": "./projects/internal/sandbox/tsconfig.spec.json"
     }
   ]
 }

@@ -3,10 +3,11 @@
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
-    "start": "ng serve",
+    "start": "node scripts/serve.mjs sandbox",
     "build": "node scripts/build.mjs",
     "test": "ng test",
-    "lint": "ng lint"
+    "lint": "ng lint",
+    "e2e": "node scripts/e2e.mjs"
   },
   "private": true,
   "packageManager": "pnpm@11.9.0",
@@ -31,6 +32,9 @@
     "@angular/build": "22.0.5",
     "@angular/cli": "22.0.5",
     "@angular/compiler-cli": "22.0.5",
+    "@axe-core/playwright": "4.12.1",
+    "@playwright/test": "1.61.1",
+    "axe-core": "4.12.1",
     "jsdom": "29.1.1",
     "ng-packagr": "22.0.1",
     "prettier": "^3.8.1",
