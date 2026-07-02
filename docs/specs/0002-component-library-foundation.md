@@ -554,9 +554,10 @@ rather than restate it.
     **and calls `preventDefault()`** on Escape (its `keydownEvents()` handler, gated only by
     `disableClose`/modifier keys) — that would double-handle Esc against aria's own Escape handling *and*
     desync state (overlay detached while `expanded` is still true). So the overlay is created with
-    **`disableClose: true`**; Esc is handled by aria alone, which collapses `expanded`, and every close
-    path (Esc, outside-click via the overlay's outside-pointer events, selection commit) routes through
-    that one shared `expanded` signal — never a bare `detach()`.
+    **`disableClose: true`** — exactly what the official aria `combobox-select` example passes
+    (`[cdkConnectedOverlayDisableClose]="true"`); Esc is handled by aria alone, which collapses
+    `expanded`, and every close path (Esc, outside-click via the overlay's outside-pointer events,
+    selection commit) routes through that one shared `expanded` signal — never a bare `detach()`.
   The overlay is created lazily on first open. **RTL — re-diagnose, don't author (residual, in the DoD):**
   CDK's `FlexibleConnectedPositionStrategy` resolves `originX`/`overlayX` `start`/`end` against
   `Directionality` (`_isRtl()` in the strategy source), so a `[bottom-start, top-start]` set **mirrors for
