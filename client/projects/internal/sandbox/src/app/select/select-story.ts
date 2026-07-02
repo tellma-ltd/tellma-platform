@@ -64,7 +64,7 @@ const COUNTRIES: readonly Country[] = [
 
     <!-- Pinned near the viewport bottom: the panel must flip up. -->
     <div class="flip-anchor">
-      <tm-select [(value)]="flipValue" placeholder="Flips up" data-testid="select-flip">
+      <tm-select [(value)]="flipValue" placeholder="Flips up" aria-label="Flip demo" data-testid="select-flip">
         @for (country of countries; track country.id) {
           <tm-option [value]="country.id" [label]="country.name">{{ country.name }}</tm-option>
         }

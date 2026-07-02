@@ -72,6 +72,7 @@ let nextUniqueId = 0;
       [(expanded)]="expanded"
       [disabled]="disabled()"
       [softDisabled]="readonly()"
+      [attr.aria-label]="ariaLabel()"
       [attr.aria-labelledby]="ariaLabelledBy()"
       [attr.aria-describedby]="ariaDescribedBy()"
       [attr.aria-invalid]="showsInvalid() ? 'true' : null"
@@ -157,6 +158,8 @@ let nextUniqueId = 0;
   styleUrl: './tm-select.css',
   host: {
     class: 'tm-select',
+    // The accessible name lives on the trigger; strip it from the host.
+    '[attr.aria-label]': 'null',
     '[class.tm-select--open]': 'expanded()',
     '[class.tm-select--disabled]': 'disabled()',
     '[class.tm-select--invalid]': 'showsInvalid()',
@@ -195,6 +198,8 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
    */
   readonly displayWith = input<((value: T) => string) | undefined>(undefined);
   readonly placeholder = input<string | undefined>(undefined);
+  /** Accessible name for a select used WITHOUT tm-form-field (§3.1). */
+  readonly ariaLabel = input<string | null>(null, { alias: 'aria-label' });
   readonly size = input<'sm' | 'md' | 'lg'>('md');
   readonly selectionChange = output<T>();
   readonly opened = output<void>();

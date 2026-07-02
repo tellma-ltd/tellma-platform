@@ -107,8 +107,6 @@
 .tm-select__panel {
   box-sizing: border-box;
   inline-size: 100%;
-  max-block-size: var(--select-panel-max-height);
-  overflow: auto;
   margin-block-start: var(--space-1);
   background: var(--field-bg);
   border: var(--border-width) solid var(--field-border);
@@ -123,6 +121,10 @@
   margin: 0;
   padding: var(--space-1);
   list-style: none;
+  /* Scroll lives on the LISTBOX (role=listbox): keyboard users scroll it
+     via active-descendant navigation + scrollActiveItemIntoView (§3.4). */
+  max-block-size: var(--select-panel-max-height);
+  overflow: auto;
   /* stylelint-disable-next-line declaration-property-value-disallowed-list --
      focus stays on the trigger (activedescendant model); the listbox itself
      is never the visible focus target and the active OPTION carries the
