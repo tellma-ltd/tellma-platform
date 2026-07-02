@@ -34,7 +34,7 @@ The new shape:
 | **Promotion** | The process by which a feature graduates from distribution-local code to a platform pack. Triggered once three or more production distributions have independently implemented the same feature and converged on a common shape. See [Feature promotion](#feature-promotion). |
 | **Distribution** | A deployed multi-tenant web app for one tenant or a group of homogeneous tenants. Has its own repo, its own sub-domain, its own Azure resources. Depends on `Tellma.Core`'s published packages. |
 | **Landing page** | `tellma.com`. Authenticates the user, looks up which distributions they belong to, and routes them. Source in `tellma-platform`; deployed as its own App Service. |
-| **Identity Provider** | Shared OIDC authority (Duende). Single sign-on across all distributions. Source in `tellma-platform`; deployed as its own App Service. |
+| **Identity Provider** | Shared OIDC authority (OpenIddict + ASP.NET Core Identity). Single sign-on across all distributions. Source in `tellma-platform`; deployed as its own App Service. |
 | **Tenant** | A single business unit using the system. Always owns one application database. |
 | **Control plane** | A dedicated Tellma-owned distribution (the operator console) for managing tenants, billing, support, and operations *across* distributions. Distinct from any business distribution. See [Control Plane & Fleet Operations](#control-plane--fleet-operations). |
 | **Stack** | The vertical unit of a feature: a table (with optional paired UDTT) generated from a C# entity class, plus the services, controllers/APIs, and Angular page that capture a full CRUD or report feature. The entity class is the single source of truth for storage shape. See [Data Layer](#data-layer). |
@@ -75,7 +75,7 @@ When introducing new tooling or local-dev features, this is a hard requirement: 
 
 ## Naming Conventions
 
-All repos use lowercase kebab-case: **`tellma-platform`** for the platform, **`tellma-<slug>`** for distributions. Inside the platform repo, names match function: the reusable library family is `Tellma.Core` / `Tellma.Core.EntityFrameworkCore` / `@tellma/core` (because that's what it is — the *core* libraries distributions build on); the deployable services are `Tellma.Identity` and `Tellma.Landing`; the toolchain is `dotnet tellma`; the build asset is `Tellma.Core.targets`. PascalCase + dots is preserved where the .NET ecosystem expects it; npm packages stay lowercase as npm requires.
+All repos use lowercase kebab-case: **`tellma-platform`** for the platform, **`tellma-<slug>`** for distributions. Inside the platform repo, names match function: the reusable library family is `Tellma.Core` / `Tellma.Core.EntityFrameworkCore` / `@tellma/core` (because that's what it is — the *core* libraries distributions build on); the deployable services are `Tellma.Identity.Web` and `Tellma.Landing` (the identity server's reusable engine is the `Tellma.Identity` library); the toolchain is `dotnet tellma`; the build asset is `Tellma.Core.targets`. PascalCase + dots is preserved where the .NET ecosystem expects it; npm packages stay lowercase as npm requires.
 
 Repo names and package ids are deliberately decoupled. This follows modern .NET convention (`dotnet/aspnetcore` → `Microsoft.AspNetCore.*`, `dotnet/efcore` → `Microsoft.EntityFrameworkCore.*`) and reflects the fact that `tellma-platform` produces multiple outputs — library packages, deployable apps, dev tools — no single one of which is the canonical identity. The repo is named after the umbrella; the things inside it are named after their functions.
 
@@ -99,7 +99,7 @@ Slug constraints:
 - Lowercase letters, digits, and hyphens only.
 - Must start with a letter.
 - Max 15 characters — the tightest Azure name limits (storage account and Key Vault, 24 characters) must fit the 8-character `sttellma` / `kvtellma` prefixes plus the slug.
-- Reserved — cannot be used as a slug: `core`, `landing`, `identity`, `platform`, `tellma`, `www`, `app`, `api`, `admin`, `auth`, `login`, `secure`, `support`, `help`, `training`, `status`, `demo`, `test`, `staging`, `sample`, `dev`. Because the identity provider trusts all of `*.app.tellma.com` (see [Identity](#identity)), every issuable slug becomes a trusted OIDC redirect target — the reserved list is a security control and is kept deliberately broad against phishing-friendly names.
+- Reserved — cannot be used as a slug: `core`, `landing`, `identity`, `platform`, `tellma`, `www`, `app`, `api`, `admin`, `auth`, `login`, `secure`, `support`, `help`, `training`, `status`, `demo`, `test`, `staging`, `sample`, `dev`. Because every distribution at `<slug>.app.tellma.com` is a first-party host with its own OIDC client and registered redirect URIs (see [Identity](#identity)), the reserved list is a security control kept deliberately broad against phishing-friendly names.
 
 Local clones match the GitHub repo name exactly — never rename on clone. The workspace parent folder is a free local choice; a sensible default is `~/source/repos/tellma/`.
 
@@ -123,7 +123,7 @@ flowchart LR
             LOC["Tellma.Locale.*<br/>(cultural primitives)"]
         end
         LANDING["Landing web app"]
-        IDP["Identity server (Duende)"]
+        IDP["Identity server (OpenIddict)"]
         TPL["Distribution template"]
     end
 
@@ -216,7 +216,8 @@ tellma-platform/
 │   ├── locale/                          # cultural and presentation primitives
 │   │   └── Tellma.Locale.Ar/
 │   ├── apps/                            # deployable services
-│   │   ├── Tellma.Identity/             # .csproj — deployable Duende App Service
+│   │   ├── Tellma.Identity/             # .csproj — OpenIddict + ASP.NET Core Identity engine (Razor Class Library); referenced by Tellma.Identity.Web and by distributions running in-proc
+│   │   ├── Tellma.Identity.Web/         # .csproj — deployable standalone identity App Service (hosts Tellma.Identity)
 │   │   └── Tellma.Landing/              # .csproj — deployable App Service, serves the Landing SPA from wwwroot
 │   └── tooling/
 │       └── Tellma.Cli/                  # .csproj — published as the `dotnet tellma` CLI (dotnet tool)
@@ -753,16 +754,13 @@ A headless, separately-tested *engine* (the D4 pattern idea) is **reserved for t
 
 ## Identity
 
-Duende IdentityServer, lifted out of today's embedded host into its own deployed Azure App Service. All distributions (and, when reintroduced, the landing page) are configured as OIDC relying parties. Microsoft Entra External ID is noted as a possible future migration path.
+OpenIddict with ASP.NET Core Identity, packaged as the reusable engine library `Tellma.Identity` and deployed by the standalone host `Tellma.Identity.Web` as its own Azure App Service. All distributions (and, when reintroduced, the landing page) are configured as OIDC relying parties. Because distributions are plain OIDC relying parties the authority is swappable; a managed authority such as Microsoft Entra External ID is noted as a possible future migration path.
 
-**In-proc identity mode (opt-in).** A distribution can host the OIDC authority inside its own ASP.NET host — the same Duende stack, embedded rather than remote. It serves two cases: **local development**, where a fresh distribution clone runs and authenticates with no dependency on shared platform services, and **standalone hosting**, where a distribution is deployed in isolation from the shared Tellma estate (e.g. on-premises delivery). The mode is selected by configuration; the Azure-hosted default remains the shared identity App Service.
+**In-proc identity mode (opt-in).** A distribution can host the OIDC authority inside its own ASP.NET host by referencing the `Tellma.Identity` engine — the same stack, embedded rather than remote. It serves two cases: **local development**, where a fresh distribution clone runs and authenticates with no dependency on shared platform services, and **standalone hosting**, where a distribution is deployed in isolation from the shared Tellma estate (e.g. on-premises delivery). The mode is selected by configuration; the Azure-hosted default remains the shared identity App Service.
 
-**Distributions occupy a dedicated `*.app.tellma.com` namespace that the identity provider trusts by convention.** Every distribution is reachable at `<slug>.app.tellma.com`, isolated from Tellma's own subdomains (`www`, `help`, `training`, …). The identity provider trusts the whole `*.app.tellma.com` wildcard — custom `IRedirectUriValidator`, post-logout-redirect validator, and `ICorsPolicyService` implementations accept any redirect/origin under it — so onboarding a distribution needs **no manual redirect-URI registration**. Two coherent shapes:
+**Each distribution is its own confidential OIDC client, provisioned at onboarding.** Every distribution is reachable at `<slug>.app.tellma.com`, isolated from Tellma's own subdomains (`www`, `help`, `training`, …). Each distribution is a confidential client using the BFF pattern (`client_id = <slug>`, secret in the distribution's Key Vault); the onboarding script provisions the client record automatically and, because it knows the slug, registers the client's **exact** redirect URIs (`https://<slug>.app.tellma.com/signin-oidc` and post-logout `…/signout-callback-oidc`). Redirect validation therefore uses OpenIddict's built-in exact match — there is **no wildcard redirect/CORS trust and no custom validator**, which keeps the open-redirect surface minimal.
 
-- **Automated per-distribution client (default).** Each distribution is its own confidential client (BFF pattern, `client_id = <slug>`, secret in the distribution's Key Vault); the onboarding script provisions the client record automatically. Full per-distribution isolation and policy, with no human registration step.
-- **Single shared public client (simpler, Phase-1 option).** One Authorization-Code + PKCE public client (no secret) serves every distribution via the wildcard validators above. Zero per-distribution registration, at the cost of per-distribution client policy.
-
-The wildcard trust is **first-party-only**: it assumes Tellma controls every name under `app.tellma.com`. A dangling or orphaned CNAME there would become a token-redirect vector, so DNS hygiene under `app.tellma.com` is itself a security control.
+DNS hygiene under `app.tellma.com` remains a hosting control: every name there is first-party, and a dangling or orphaned CNAME could host a hostile relying party, so the reserved-slug list (see [Naming Conventions](#naming-conventions)) is kept deliberately broad against phishing-friendly names.
 
 ## Versioning & Upgrades
 
@@ -1008,7 +1006,7 @@ flowchart TB
 
     subgraph SHARED["Shared platform (rg-tellma-platform)"]
         LANDING_APP["Landing App Service"]
-        IDP_APP["Identity App Service<br/>(Duende)"]
+        IDP_APP["Identity App Service<br/>(OpenIddict)"]
         IDP_SQL[("Identity DB<br/>(on the shared SQL server)")]
         PLAN[/"App Service Plan(s)<br/>tiered — hosts every App Service"/]
         SQL_POOL[("Azure SQL server +<br/>shared elastic pool(s)<br/>holds every distribution's<br/>Catalog DB + tenant DBs")]
@@ -1103,7 +1101,7 @@ This document describes the **target** architecture. A few elements are delibera
 - **Pool tiering policy:** what triggers promoting a distribution from a shared App Service Plan or SQL pool to a dedicated one? Candidate signals: sustained CPU/DTU/RPS thresholds, a specific compliance requirement, an explicit customer SLA. Needs concrete thresholds and tooling.
 - **Edge ingress / WAF trigger:** central ingress (Front Door / App Gateway / Cloudflare) is a planned later optimization; what fires it — a public-facing security/compliance requirement, observed credential-stuffing or bot traffic, an edge-caching need, static-asset latency for users far from the hosting region, or a customer SLA? Until a trigger fires, distributions are direct-to-App-Service with per-host managed certs and no shared WAF.
 - **Distribution discovery:** the **control plane's fleet registry** (populated by distribution self-registration) is the operator-side system-of-record for which distributions exist (see [Control Plane & Fleet Operations](#control-plane--fleet-operations)). The **end-user routing** side — how the landing page and identity resolve a signed-in user to their distribution(s) — remains deferred with the landing page; users currently navigate directly to `<slug>.app.tellma.com`.
-- **Identity migration path:** when, if ever, do we move from Duende to Microsoft Entra External ID?
+- **Identity migration path:** when, if ever, do we move from OpenIddict to a managed authority like Microsoft Entra External ID? (Distributions are plain OIDC relying parties, so the authority is swappable.)
 - **Tenant data residency:** how do we honor per-tenant region requirements within a single distribution? (Likely answer: region-specific shared SQL servers + pools, with the distribution's tenant DBs placed by region. Needs to be designed.)
 - **Cross-repo PR coordination:** when a distribution task forces a platform change, what is the merge protocol? (Likely: PR lands on the appropriate `tellma-platform` branch — `main` for new feature work, the matching `release/<major>.x` for a fix targeting the distribution's pinned major. CI tags a release and publishes the new package. Dependabot opens the bump PR in the distribution. Needs to be confirmed and tooled, including the forward-port discipline so fixes don't regress on `main`.)
 - **Per-worktree DB name suffix:** databases are prefixed `Tellma.dev.<worktree-id>.*` so worktrees don't collide on the shared SQL Server. The form of `<worktree-id>` is open — candidates: 8 hex chars of SHA-256 of the worktree path (compact, deterministic), the branch name sanitized (readable, but slugs may collide across distributions), or a UUID generated at first run and stored in `.dev-ports.local`. Pick when `dotnet tellma setup-worktree` is implemented.
