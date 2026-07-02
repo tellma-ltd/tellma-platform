@@ -27,7 +27,18 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
-            "tsConfig": "projects/core/tellma-core-ui/tsconfig.spec.json"
+            "tsConfig": "projects/core/tellma-core-ui/tsconfig.spec.json",
+            "browsers": [
+              "chromiumHeadless"
+            ],
+            "include": [
+              "**/*.spec.ts",
+              "../contracts/**/*.spec.ts",
+              "../input/**/*.spec.ts",
+              "../checkbox/**/*.spec.ts",
+              "../form-field/**/*.spec.ts",
+              "../select/**/*.spec.ts"
+            ]
           }
         }
       }
@@ -131,6 +142,7 @@
             "styles": [
               "projects/core/tellma-core-ui-tokens/css/tellma-default.css",
               "projects/core/tellma-core-ui/fonts/fonts.css",
+              "projects/core/tellma-core-ui/styles/tm-input.css",
               "projects/internal/sandbox/src/styles.css"
             ]
           },

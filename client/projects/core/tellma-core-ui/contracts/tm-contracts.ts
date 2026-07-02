@@ -80,8 +80,16 @@ export interface TmFormFieldControl {
   readonly invalid: SignalLike<boolean>;
   /** Async validation in progress. */
   readonly pending: SignalLike<boolean>;
-  /** Already-localized messages (resolved through the message resolver, §5). */
-  readonly errors: SignalLike<readonly TmFieldError[]>;
+  /**
+   * Already-localized messages (resolved through the message resolver, §5).
+   *
+   * NOTE — named `localizedErrors`, departing from the spec's `errors`: the
+   * control must also declare the framework's `errors` INPUT (raw
+   * ValidationError[], bound by [formField] — §5), and one class member
+   * cannot carry both types. The seam is otherwise exactly the spec's: the
+   * wrapper reads already-localized text and only decides WHETHER to show it.
+   */
+  readonly localizedErrors: SignalLike<readonly TmFieldError[]>;
   /**
    * Optional: field calls this when the user clicks the container chrome
    * (padding/border, not the input itself) so the control focuses itself.

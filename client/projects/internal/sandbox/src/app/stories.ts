@@ -1,5 +1,6 @@
 import { Component, Type } from '@angular/core';
 
+import { InputStory } from './input/input-story';
 import { OverlayProbeStory } from './probe/overlay-probe-story';
 import { ThemingStory } from './theming/theming-story';
 
@@ -32,4 +33,5 @@ export const SANDBOX_STORIES: readonly SandboxStory[] = [
   { id: 'welcome', title: 'Welcome', component: WelcomeStory },
   { id: 'overlay-probe', title: 'Overlay probe (spec §3.4 spike)', component: OverlayProbeStory },
   { id: 'theming', title: 'Tokens & theming', component: ThemingStory },
+  { id: 'input', title: 'Text input (tmInput + tm-form-field)', component: InputStory },
 ];

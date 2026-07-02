@@ -1,7 +1,6 @@
 /*
  * Public API Surface of @tellma/core-ui/form-field — the tm-form-field
- * label / required-marker / hint / error scaffold.
+ * label / required-marker / hint / error scaffold (spec §3.1).
  */
 
-/** Entry-point marker (replaced by tm-form-field in a later stage). */
-export const TM_FORM_FIELD_ENTRY_POINT = '@tellma/core-ui/form-field';
+export { TmFormField, TM_FORM_FIELD_CONTROL } from './tm-form-field';

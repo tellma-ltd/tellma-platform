@@ -49,6 +49,7 @@
     "@playwright/test": "1.61.1",
     "@storybook/angular": "10.4.6",
     "@types/node": "^24.13.2",
+    "@vitest/browser-playwright": "4.1.9",
     "angular-eslint": "22.0.0",
     "axe-core": "4.12.1",
     "eslint": "10.6.0",

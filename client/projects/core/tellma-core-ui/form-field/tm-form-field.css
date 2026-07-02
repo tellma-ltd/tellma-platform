@@ -1,0 +1,114 @@
+/* tm-form-field — the shared label/hint/error scaffold + the bordered box
+   chrome for bare-directive controls (spec §3.1). Every size comes from the
+   field/space/text token variables (stylelint-enforced); layout uses
+   logical properties only so RTL mirrors for free (§7). */
+
+:host {
+  display: block;
+  font-family: var(--font-sans);
+}
+
+.tm-form-field__label {
+  display: block;
+  margin-block-end: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-strong);
+}
+
+.tm-form-field__required {
+  margin-inline-start: var(--space-1);
+  color: var(--error);
+}
+
+.tm-form-field__box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  block-size: var(--field-height);
+  padding-inline: var(--field-padding-x);
+  background: var(--field-bg);
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--field-radius);
+  color: var(--field-text);
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+:host(.tm-form-field--sm) .tm-form-field__box {
+  block-size: var(--field-height-sm);
+}
+
+:host(.tm-form-field--lg) .tm-form-field__box {
+  block-size: var(--field-height-lg);
+}
+
+.tm-form-field__box:hover {
+  border-color: var(--field-border-hover);
+}
+
+/* The focus ring wraps box-plus-adornments — the reason the chrome is the
+   wrapper's, not a border on the empty <input> element (§3). */
+.tm-form-field__box:focus-within {
+  border-color: var(--field-border-focus);
+  box-shadow: var(--focus-ring);
+}
+
+:host(.tm-form-field--invalid) .tm-form-field__box {
+  border-color: var(--field-border-invalid);
+}
+
+:host(.tm-form-field--disabled) .tm-form-field__box {
+  background: var(--field-bg-disabled);
+  color: var(--field-text-disabled);
+}
+
+/* ownsChrome controls (tm-checkbox, tm-select) render their own box; the
+   field's collapses to pure projection (§3). */
+.tm-form-field__box--chromeless {
+  display: contents;
+}
+
+.tm-form-field__spinner {
+  inline-size: var(--space-4);
+  block-size: var(--space-4);
+  flex: none;
+  color: var(--field-icon);
+  animation: tm-form-field-spin var(--duration-slow) linear infinite;
+}
+
+@keyframes tm-form-field-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-form-field__spinner {
+    animation: none;
+  }
+}
+
+.tm-form-field__hint,
+.tm-form-field__error {
+  margin-block-start: var(--space-1);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+.tm-form-field__hint {
+  color: var(--text-secondary);
+}
+
+.tm-form-field__error {
+  color: var(--error);
+  /* Persistent live region: keep the element in the a11y tree even when
+     empty; only the text toggles (§6). */
+  min-block-size: 0;
+}
+
+@media (forced-colors: active) {
+  .tm-form-field__box {
+    border-color: FieldText;
+  }
+}

@@ -1,6 +1,5 @@
 /*
- * Public API Surface of @tellma/core-ui/input — the tmInput directive.
+ * Public API Surface of @tellma/core-ui/input — the tmInput directive (§3.2).
  */
 
-/** Entry-point marker (replaced by the tmInput directive in a later stage). */
-export const TM_INPUT_ENTRY_POINT = '@tellma/core-ui/input';
+export { TmInput } from './tm-input';
