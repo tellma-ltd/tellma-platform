@@ -6,7 +6,8 @@
     "start": "node scripts/serve.mjs sandbox",
     "build": "node scripts/build.mjs",
     "test": "ng test",
-    "lint": "ng lint",
+    "lint": "eslint . && stylelint \"projects/**/*.css\" --allow-empty-input",
+    "lint:test": "vitest run --config tools/vitest.config.mts",
     "e2e": "node scripts/e2e.mjs",
     "storybook": "node scripts/storybook.mjs",
     "storybook:build": "ng run sandbox:build-storybook"
@@ -36,15 +37,21 @@
     "@angular/cli": "22.0.5",
     "@angular/compiler-cli": "22.0.5",
     "@axe-core/playwright": "4.12.1",
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "1.61.1",
     "@storybook/angular": "10.4.6",
     "@types/node": "^24.13.2",
+    "angular-eslint": "22.0.0",
     "axe-core": "4.12.1",
+    "eslint": "10.6.0",
     "jsdom": "29.1.1",
     "ng-packagr": "22.0.1",
+    "postcss-value-parser": "4.2.0",
     "prettier": "^3.8.1",
     "storybook": "10.4.6",
+    "stylelint": "17.14.0",
     "typescript": "~6.0.2",
+    "typescript-eslint": "8.62.1",
     "vitest": "4.1.9"
   }
 }
