@@ -18,7 +18,8 @@
     "prestorybook": "pnpm run tokens:build-css",
     "api:check": "node scripts/api-extractor.mjs --check",
     "approve-api": "node scripts/api-extractor.mjs --approve",
-    "docs:build": "tsx tools/docs/build-docs.mts"
+    "docs:build": "tsx tools/docs/build-docs.mts",
+    "size:check": "node scripts/bundle-size.mjs"
   },
   "private": true,
   "type": "module",
@@ -58,6 +59,7 @@
     "@vitest/browser-playwright": "4.1.9",
     "angular-eslint": "22.0.0",
     "axe-core": "4.12.1",
+    "esbuild": "0.28.1",
     "eslint": "10.6.0",
     "jsdom": "29.1.1",
     "ng-packagr": "22.0.1",
