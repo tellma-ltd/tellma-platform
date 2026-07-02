@@ -16,12 +16,25 @@ The Angular workspace for the `@tellma/*` npm package family (spec
 
 ```bash
 pnpm install
-pnpm run build       # all packages in dependency order
-pnpm run test        # unit tests (vitest via @angular/build:unit-test)
-pnpm run e2e         # Playwright behavioral/a11y suite against the sandbox
-pnpm start           # sandbox dev server
-pnpm run storybook   # Storybook dev server
+pnpm exec playwright install chromium   # once per machine (unit tests run in real Chromium too)
+
+pnpm run build          # tokens gates + CSS, then every package in dependency order
+pnpm run test           # all unit suites (vitest via @angular/build:unit-test)
+pnpm run test:changed   # changed packages + their direct consumers (CI PR mode)
+pnpm run e2e            # Playwright behavioral/a11y/RTL suite against the sandbox
+pnpm run lint           # ESLint (tm- rules, contracts boundary) + stylelint (token sizing)
+pnpm run lint:test      # the custom lint rules' own unit tests + MCP smoke tests
+pnpm run tokens:check   # token schema + WCAG-contrast + completeness gates
+pnpm run api:check      # public-API goldens (client/api/*.api.md)
+pnpm run approve-api    # accept an INTENDED public-API change (commit the diff)
+pnpm run docs:build     # components.json (schema-validated) + llms.txt for the MCP package
+pnpm run size:check     # per-entry-point gzipped self-weight vs the §8 ceilings
+pnpm start              # sandbox dev server
+pnpm run storybook      # Storybook dev server (the showcase)
 ```
+
+**Changing a public API?** `api:check` fails on any drift; review the surface
+change, run `approve-api`, and commit the golden diff alongside the code.
 
 **No hardcoded ports.** Every server binds to a port from the worktree's
 `.dev-ports.local` (once `dotnet tellma setup-worktree` exists) or an

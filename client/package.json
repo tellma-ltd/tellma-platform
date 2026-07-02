@@ -19,7 +19,8 @@
     "api:check": "node scripts/api-extractor.mjs --check",
     "approve-api": "node scripts/api-extractor.mjs --approve",
     "docs:build": "tsx tools/docs/build-docs.mts",
-    "size:check": "node scripts/bundle-size.mjs"
+    "size:check": "node scripts/bundle-size.mjs",
+    "test:changed": "node scripts/test-changed.mjs"
   },
   "private": true,
   "type": "module",
