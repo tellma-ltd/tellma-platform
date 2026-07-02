@@ -751,13 +751,16 @@ interface the control implements and binds:
 
 - The control implements `FormValueControl<T>` (`tmInput`, `tm-select`) or `FormCheckboxControl`
   (`tm-checkbox`) and exposes `value = model<T>()` / `checked = model<boolean>()`. `[formField]` binds
-  that, **and** sets the control's declared optional state inputs — per the `FormUiControl` source, the
-  full set is `disabled`, `disabledReasons`, `dirty`, `errors`, `hidden`, `invalid`, `max`, `maxLength`,
-  `min`, `minLength`, `name`, `pattern`, `pending`, `readonly`, `required`, `touched` (there is **no
-  `valid`** input — only `invalid`; `valid` exists solely on `FieldState`). `touched` is **two-way** (a
-  `model()`/output, not a plain input): the control sets it `true` on blur and the field state updates.
-  `pattern` is declared `readonly RegExp[]` (an **array**); `min`/`max` are `number | undefined`. The
-  control therefore *is* the thing that holds field state.
+  that, **and** sets the control's declared optional state inputs — per the `FormUiControl<TValue>`
+  source (`@angular/forms@22.0.5`), the full set is `disabled`, `disabledReasons`, `dirty`, `errors`,
+  `hidden`, `invalid`, `max`, `maxLength`, `min`, `minLength`, `name`, `pattern`, `pending`, `readonly`,
+  `required`, `touched` (there is **no `valid`** input — only `invalid`; `valid` exists solely on
+  `FieldState`). `touched` is a plain read input; the control reports touch by emitting the separate
+  **`touch: OutputRef<void>` output on native blur**, which the directive listens to. `pattern` is
+  declared `readonly RegExp[]` (an **array**); `min`/`max` are `NonNullable<TValue> | undefined` (typed
+  by the control's value, not plain `number`). The contract also carries optional `focus?()`/`reset?()`
+  methods the framework calls when asked to focus/reset the field. The control therefore *is* the thing
+  that holds field state.
 - **`tm-form-field` reads that state off the control via `TmFormFieldControl`** (it does **not** get the
   `Field` reference — the control does, and re-surfaces it, [§2.1](#21-shared-contracts)). The wrapper
   queries the projected control and reads `errors`/`touched`/`dirty`/`invalid`/`pending`/`required`. This
@@ -766,11 +769,12 @@ interface the control implements and binds:
 **Error-display policy (field-scoped) — and why there is no `[tmForm]` directive.** Default policy: show
 errors when `invalid() && (touched() || dirty())` — every signal it needs is on the field-control
 contract, so no form-level plumbing is required. *"Show errors after a submit attempt"* needs none either:
-Signal Forms' `submit()` calls a recursive `markAllAsTouched()` on the field tree **before** evaluating
-validity or running the action (verified in the `@angular/forms/signals` source), so a submit attempt
-flips every field's `touched` and the field-scoped default policy surfaces every error — form-scoped
-submitted-state plumbing would duplicate what the framework already does. Richer cross-field policy is
-deferred.
+Signal Forms' `submit()` marks the submitted field **and every descendant** as touched (the field's
+recursive `markAsTouched()`) **before** evaluating validity or running the action (verified in
+`@angular/forms@22.0.5` source), so a submit attempt flips every field's `touched` and the field-scoped
+default policy surfaces every error. Even the form-element wiring is the framework's: v22 ships
+**`form[formRoot]`**, which sets `novalidate` and calls `submit()` on the bound field tree — so a library
+form directive would duplicate the framework twice over. Richer cross-field policy is deferred.
 
 **`disabled` / `readonly` / `required` precedence — what is contractual vs. what is not.** The rule is
 **field wins when bound; the control's own input applies when unbound**. Which half is a documented Angular
@@ -805,8 +809,9 @@ suppresses a stale "valid" affirmation, and the display policy holds errors unti
 covers this). **Debouncing the server call is the consumer's concern:** the async validator and its
 cadence live in the consumer's form schema, where Signal Forms' `debounce()` (and `debounce('blur')`)
 controls how often the model — and therefore the validator — fires. The library only **cooperates**: the
-control sets its two-way `touched` model on blur (so `debounce('blur')` works) and doesn't push value
-updates faster than the user types. It never bakes in a hardcoded server-call debounce.
+control emits its `touch` output on native blur (which `debounce('blur')` relies on, per the
+`FormUiControl` docs) and doesn't push value updates faster than the user types. It never bakes in a
+hardcoded server-call debounce.
 
 **Numeric (a later phase)** will use the stable `transformedValue` utility (`@angular/forms/signals`) for
 the string↔number parse/format with automatic parse-error reporting — which is why numeric is a cheap
