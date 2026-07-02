@@ -66,7 +66,10 @@ test.describe('ARIA id chain across the portal', () => {
     await expect(listbox).toHaveRole('listbox');
 
     // Arrow down activates an option; aria-activedescendant must reference it.
+    await expect(trigger).toHaveAttribute('aria-activedescendant', /.+/);
+    const initialActiveId = await trigger.getAttribute('aria-activedescendant');
     await trigger.press('ArrowDown');
+    await expect(trigger).not.toHaveAttribute('aria-activedescendant', initialActiveId!);
     const activeId = await trigger.getAttribute('aria-activedescendant');
     expect(activeId).toBeTruthy();
     const activeOption = page.locator(`[id="${activeId}"]`);

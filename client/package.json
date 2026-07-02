@@ -10,9 +10,15 @@
     "lint:test": "vitest run --config tools/vitest.config.mts",
     "e2e": "node scripts/e2e.mjs",
     "storybook": "node scripts/storybook.mjs",
-    "storybook:build": "ng run sandbox:build-storybook"
+    "storybook:build": "ng run sandbox:build-storybook",
+    "tokens:build-css": "tsx tools/tokens/build-css.mts",
+    "tokens:check": "tsx tools/tokens/check.mts",
+    "prestart": "pnpm run tokens:build-css",
+    "pree2e": "pnpm run tokens:build-css",
+    "prestorybook": "pnpm run tokens:build-css"
   },
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@11.9.0",
   "engines": {
     "node": ">=24"
@@ -50,8 +56,10 @@
     "prettier": "^3.8.1",
     "storybook": "10.4.6",
     "stylelint": "17.14.0",
+    "tsx": "4.22.4",
     "typescript": "~6.0.2",
     "typescript-eslint": "8.62.1",
-    "vitest": "4.1.9"
+    "vitest": "4.1.9",
+    "zod": "4.4.3"
   }
 }

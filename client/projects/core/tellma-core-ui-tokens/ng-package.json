@@ -3,5 +3,9 @@
   "dest": "../../../dist/core-ui-tokens",
   "lib": {
     "entryFile": "src/public-api.ts"
-  }
+  },
+  "assets": [
+    "css/**/*.css",
+    "generated/*.json"
+  ]
 }

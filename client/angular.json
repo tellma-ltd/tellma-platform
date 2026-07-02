@@ -129,6 +129,7 @@
               }
             ],
             "styles": [
+              "projects/core/tellma-core-ui-tokens/css/tellma-default.css",
               "projects/internal/sandbox/src/styles.css"
             ]
           },

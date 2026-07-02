@@ -48,3 +48,6 @@ Thumbs.db
 **/generated/
 *.tsbuildinfo
 projects/core/tellma-core-ui-mcp/dist/
+
+# Generated token stylesheets (built by tokens:build-css)
+projects/core/tellma-core-ui-tokens/css/

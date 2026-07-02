@@ -1,1 +1,10 @@
-/* You can add global styles to this file, and also import other style files */
+/* Sandbox global styles — painted from the emitted token variables so the
+   dark scheme visibly flips the whole page. */
+body {
+  margin: 0;
+  background: var(--surface-page);
+  color: var(--text-strong);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-body);
+}
