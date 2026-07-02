@@ -225,7 +225,11 @@ export const tmTokensDefault: TmTokens = {
       fontSize: '{font.size.sm}',
     },
   },
-  component: {},
+  component: {
+    // tm-checkbox (§3.3): the visible box renders at the brand 18px while
+    // the hit target is padded past the 24px minimum.
+    checkbox: { boxSize: '18px' },
+  },
   contrastPairs: [
     // Text on its surface.
     { fg: '--text-strong', bg: '--surface-page', kind: 'text' },

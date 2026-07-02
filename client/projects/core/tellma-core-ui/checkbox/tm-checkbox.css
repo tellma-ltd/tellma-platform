@@ -1,0 +1,123 @@
+/* tm-checkbox — visually-hidden native input + styled box (spec §3.3).
+   The box renders at the brand 18px (component token); the CLICKABLE region
+   is the whole label row, padded to clear the 24px WCAG 2.2 target minimum;
+   a bare (label-less) checkbox expands its hit box via the pseudo overlay. */
+
+:host {
+  /* Inline hosts hit-test above their children (stage-3 spike finding). */
+  display: inline-block;
+}
+
+.tm-checkbox__layout {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* Pads the hit box past 24px while the visible box stays 18px (§6). */
+  padding-block: var(--space-1);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:host(.tm-checkbox--disabled) .tm-checkbox__layout {
+  cursor: default;
+}
+
+.tm-checkbox__box-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Visually hidden, semantically present: the native input stays focusable
+   and stretched over the pointer target so clicks land on IT. */
+.tm-checkbox__native {
+  position: absolute;
+  inset: calc(-1 * var(--space-1));
+  inline-size: calc(100% + 2 * var(--space-1));
+  block-size: calc(100% + 2 * var(--space-1));
+  margin: 0;
+  opacity: 0.0001;
+  cursor: inherit;
+}
+
+.tm-checkbox__box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* The brand 18px box — the checkbox component token (§4 component tier). */
+  inline-size: var(--checkbox-box-size);
+  block-size: var(--checkbox-box-size);
+  box-sizing: border-box;
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--radius-xs);
+  background: var(--field-bg);
+  color: var(--color-on-primary);
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+  pointer-events: none;
+}
+
+.tm-checkbox__glyph {
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.tm-checkbox__mark {
+  opacity: 0;
+}
+
+:host(.tm-checkbox--checked) .tm-checkbox__box,
+:host(.tm-checkbox--indeterminate) .tm-checkbox__box {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+:host(.tm-checkbox--checked) .tm-checkbox__mark,
+:host(.tm-checkbox--indeterminate) .tm-checkbox__mark {
+  opacity: 1;
+}
+
+.tm-checkbox__native:focus-visible ~ .tm-checkbox__box {
+  border-color: var(--field-border-focus);
+  box-shadow: var(--focus-ring);
+}
+
+:host(.tm-checkbox--disabled) .tm-checkbox__box {
+  background: var(--field-bg-disabled);
+  border-color: var(--field-border);
+  color: var(--field-text-disabled);
+}
+
+:host(.tm-checkbox--disabled.tm-checkbox--checked) .tm-checkbox__box,
+:host(.tm-checkbox--disabled.tm-checkbox--indeterminate) .tm-checkbox__box {
+  background: var(--field-bg-disabled);
+  border-color: var(--field-border);
+}
+
+.tm-checkbox__label {
+  font-family: var(--font-sans);
+  font-size: var(--field-font-size);
+  color: var(--field-text);
+  user-select: none;
+}
+
+.tm-checkbox__label:empty {
+  display: none;
+}
+
+:host(.tm-checkbox--disabled) .tm-checkbox__label {
+  color: var(--field-text-disabled);
+}
+
+@media (forced-colors: active) {
+  .tm-checkbox__box {
+    border-color: FieldText;
+  }
+
+  :host(.tm-checkbox--checked) .tm-checkbox__box,
+  :host(.tm-checkbox--indeterminate) .tm-checkbox__box {
+    background: Highlight;
+    border-color: Highlight;
+    color: HighlightText;
+  }
+}

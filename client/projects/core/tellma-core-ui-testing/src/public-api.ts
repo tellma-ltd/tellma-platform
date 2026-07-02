@@ -7,5 +7,6 @@
  */
 
 export * from './lib/input-harness';
+export * from './lib/checkbox-harness';
 export * from './lib/form-field-harness';
 export * from './lib/form-fixture';
