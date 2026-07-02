@@ -57,10 +57,12 @@ test.describe('focus ring (§6)', () => {
     const box = page.getByTestId('ff-email').locator('.tm-form-field__box');
 
     await input.focus();
-    const shadow = await box.evaluate((el) => getComputedStyle(el).boxShadow);
-    expect(shadow).not.toBe('none');
-    const borderColor = await box.evaluate((el) => getComputedStyle(el).borderColor);
-    expect(borderColor).toBe('rgb(62, 137, 157)'); // --teal-500 focus border
+    // Auto-retrying reads: the border-color transitions over --duration-fast,
+    // so an instant getComputedStyle can catch an interpolated color on slow CI.
+    await expect
+      .poll(() => box.evaluate((el) => getComputedStyle(el).boxShadow))
+      .not.toBe('none');
+    await expect(box).toHaveCSS('border-color', 'rgb(62, 137, 157)'); // --teal-500 focus border
   });
 });
 
