@@ -116,5 +116,8 @@ for (const project of ALL_PROJECTS.filter((p) => projects.has(p))) {
   run(process.execPath, [ng, 'test', project]);
 }
 if (runTools) {
-  run(process.execPath, [require.resolve('vitest/vitest.mjs'), 'run', '--config', 'tools/vitest.config.mts']);
+  // vitest's `exports` map doesn't expose the CLI file; resolve it via the
+  // exported package.json instead.
+  const vitestCli = join(dirname(require.resolve('vitest/package.json')), 'vitest.mjs');
+  run(process.execPath, [vitestCli, 'run', '--config', 'tools/vitest.config.mts']);
 }
