@@ -1,0 +1,17 @@
+{
+  "name": "@tellma/core-ui-testing",
+  "version": "0.1.0",
+  "description": "Component harnesses for the Tellma UI component library — a typed, implementation-independent automation surface for tests and agents.",
+  "license": "Apache-2.0",
+  "peerDependencies": {
+    "@angular/aria": "^22.0.0",
+    "@angular/cdk": "^22.0.0",
+    "@angular/core": "^22.0.0",
+    "@angular/forms": "^22.0.0",
+    "@tellma/core-ui": "^0.1.0"
+  },
+  "dependencies": {
+    "tslib": "^2.3.0"
+  },
+  "sideEffects": false
+}

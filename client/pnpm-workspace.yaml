@@ -1,0 +1,26 @@
+packages:
+  - "projects/core/tellma-core-ui-mcp"
+
+allowBuilds:
+  "@parcel/watcher": true
+  esbuild: true
+  lmdb: true
+  msgpackr-extract: true
+
+minimumReleaseAgeExclude:
+  - "@angular-devkit/architect@0.2200.5"
+  - "@angular-devkit/core@22.0.5"
+  - "@angular-devkit/schematics@22.0.5"
+  - "@angular/aria@22.0.3"
+  - "@angular/build@22.0.5"
+  - "@angular/cdk@22.0.3"
+  - "@angular/cli@22.0.5"
+  - "@angular/common@22.0.5"
+  - "@angular/compiler-cli@22.0.5"
+  - "@angular/compiler@22.0.5"
+  - "@angular/core@22.0.5"
+  - "@angular/forms@22.0.5"
+  - "@angular/platform-browser@22.0.5"
+  - "@angular/router@22.0.5"
+  - "@schematics/angular@22.0.5"
+  - ng-packagr@22.0.1

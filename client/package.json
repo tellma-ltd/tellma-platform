@@ -1,0 +1,40 @@
+{
+  "name": "tellma-client",
+  "version": "0.0.0",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "node scripts/build.mjs",
+    "test": "ng test",
+    "lint": "ng lint"
+  },
+  "private": true,
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@angular/aria": "22.0.3",
+    "@angular/cdk": "22.0.3",
+    "@angular/common": "22.0.5",
+    "@angular/compiler": "22.0.5",
+    "@angular/core": "22.0.5",
+    "@angular/forms": "22.0.5",
+    "@angular/platform-browser": "22.0.5",
+    "@angular/router": "22.0.5",
+    "@jsverse/transloco": "8.4.0",
+    "@jsverse/transloco-messageformat": "8.4.0",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@angular/build": "22.0.5",
+    "@angular/cli": "22.0.5",
+    "@angular/compiler-cli": "22.0.5",
+    "jsdom": "29.1.1",
+    "ng-packagr": "22.0.1",
+    "prettier": "^3.8.1",
+    "typescript": "~6.0.2",
+    "vitest": "4.1.9"
+  }
+}
