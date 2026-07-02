@@ -15,7 +15,9 @@
     "tokens:check": "tsx tools/tokens/check.mts",
     "prestart": "pnpm run tokens:build-css",
     "pree2e": "pnpm run tokens:build-css",
-    "prestorybook": "pnpm run tokens:build-css"
+    "prestorybook": "pnpm run tokens:build-css",
+    "api:check": "node scripts/api-extractor.mjs --check",
+    "approve-api": "node scripts/api-extractor.mjs --approve"
   },
   "private": true,
   "type": "module",
@@ -47,6 +49,7 @@
     "@fontsource-variable/noto-sans": "5.2.10",
     "@fontsource-variable/noto-sans-arabic": "5.2.10",
     "@fontsource/noto-sans-mono": "5.2.10",
+    "@microsoft/api-extractor": "7.58.9",
     "@playwright/test": "1.61.1",
     "@storybook/angular": "10.4.6",
     "@types/node": "^24.13.2",
