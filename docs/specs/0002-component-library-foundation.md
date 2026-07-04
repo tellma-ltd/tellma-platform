@@ -11,7 +11,9 @@ original intent, not the current state. The research analysis that preceded it i
 support, and running it on peer-override workarounds added fragility without functional value. The
 showcase surface is the internal **showcase app** (`client/projects/internal/showcase`, dev-only, never
 published), which also serves as the Playwright/axe target; co-located `*.examples.ts` files replace
-`*.stories.ts` as the docs example source. The body below is amended accordingly.
+`*.stories.ts` as the docs example source. The same amendment drops changed-test selection ([§10](#10-testing-tellmacore-ui-testing)):
+CI always runs the full unit suite — at this scale the selection machinery was not worth its
+complexity. The body below is amended accordingly.
 
 **Departures from the research analysis's locked decisions** (superseded where they conflict):
 - **D9 → Signal Forms only.** Drop the `ControlValueAccessor` dual-compat requirement: Signal Forms is
@@ -232,7 +234,7 @@ headline wins (project-graph caching, `affected`, distributed cache) scale with 
 which here is essentially fixed — four core packages plus a slowly-growing set of locale packs (one per
 language, a low-tens ceiling). What grows with each new component lives *inside* those packages (more
 components, tokens, harnesses, tests, examples, `components.json` entries) and is served by the test
-runner's own incremental/changed-file selection, not a cross-project graph. So nx would optimize a
+runner itself, not a cross-project graph. So nx would optimize a
 near-constant axis while adding onboarding and tooling-sprawl cost (the same low-onboarding argument that
 rejected Bazel in D1). **Revisit nx** only if the *project* count climbs — many in-repo distributions, or
 the UI family splitting into many packages. Package boundaries are nx-ready regardless, so adoption later
@@ -1115,10 +1117,10 @@ component — so a grid edit-cell **mounts the full `tm-select` component** and 
   `outline: none` ([§6](#6-accessibility)).
 - **e2e:** the behavioral specs run against the showcase app's story pages on a real browser
   ([§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp)).
-- **Changed-test selection.** On PRs, the test runner's `--changed`-against-merge-base filtering (per
-  package) **plus** the direct consumers of any changed package (so a `contracts` or tokens change re-tests
-  the components); on `main`/release, the full suite always runs. This is the pnpm + Angular CLI path; nx
-  `affected` is the upgrade if it proves insufficient ([§1.2](#12-build-tooling--pnpm--angular-cli-nx-deferred)).
+- **The full suite always runs** — on PRs and on `main`. There is no changed-test selection: the suite
+  is small enough that selection buys little, and the machinery it needs (a dependency graph, a
+  merge-base diff, full-history checkouts) is complexity without payoff at this scale. nx `affected`
+  is the upgrade if suite runtime ever demands selection ([§1.2](#12-build-tooling--pnpm--angular-cli-nx-deferred)).
 - Tests are **on in CI** (D16).
 
 ## 11. Docs & MCP pipeline (`@tellma/core-ui-mcp`)
@@ -1327,7 +1329,7 @@ The earlier open questions are settled:
 1. **Repo home** — the UI family lives in `client/projects/core/`; locale packs (the reference
    `@tellma/locale-ar`, and later ones) live in the sibling `client/projects/locale/`.
 2. **Build tooling** — pnpm + Angular CLI for Phase 1; nx revisited later if the in-repo project count or
-   changed-test needs grow ([§1.2](#12-build-tooling--pnpm--angular-cli-nx-deferred)).
+   suite runtime grows ([§1.2](#12-build-tooling--pnpm--angular-cli-nx-deferred)).
 3. **i18n** — standardize on Transloco behind the thin `TM_UI_TRANSLATE` escape-hatch token; the default
    path is zero-config for distributions ([§7](#7-rtl-i18n--l10n)).
 4. **Density/typography runtime axes** — deferred, but a design requirement to be addable later without a

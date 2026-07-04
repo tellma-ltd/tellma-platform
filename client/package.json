@@ -5,7 +5,7 @@
     "ng": "ng",
     "start": "node scripts/serve.mjs showcase",
     "build": "node scripts/build.mjs",
-    "test": "ng test",
+    "test": "ng test core-ui-tokens && ng test core-ui && ng test core-ui-testing && ng test locale-ar && ng test showcase",
     "lint": "eslint . && stylelint \"projects/**/*.css\" --allow-empty-input",
     "lint:test": "vitest run --config tools/vitest.config.mts",
     "e2e": "node scripts/e2e.mjs",
@@ -16,8 +16,7 @@
     "api:check": "node scripts/api-extractor.mjs --check",
     "approve-api": "node scripts/api-extractor.mjs --approve",
     "docs:build": "tsx tools/docs/build-docs.mts",
-    "size:check": "node scripts/bundle-size.mjs",
-    "test:changed": "node scripts/test-changed.mjs"
+    "size:check": "node scripts/bundle-size.mjs"
   },
   "private": true,
   "type": "module",

@@ -20,7 +20,6 @@ pnpm exec playwright install chromium   # once per machine (unit tests run in re
 
 pnpm run build          # tokens gates + CSS, then every package in dependency order
 pnpm run test           # all unit suites (vitest via @angular/build:unit-test)
-pnpm run test:changed   # changed packages + their direct consumers (CI PR mode)
 pnpm run e2e            # Playwright behavioral/a11y/RTL suite against the showcase
 pnpm run lint           # ESLint (tm- rules, contracts boundary) + stylelint (token sizing)
 pnpm run lint:test      # the custom lint rules' own unit tests + MCP smoke tests
