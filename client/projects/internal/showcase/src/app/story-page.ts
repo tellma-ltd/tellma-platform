@@ -3,7 +3,7 @@ import { Component, DOCUMENT, computed, effect, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 
-import { SANDBOX_STORIES } from './stories';
+import { SHOWCASE_STORIES } from './stories';
 
 /**
  * Renders the story named by the :id route param and applies the ?dir and
@@ -38,7 +38,7 @@ export class StoryPage {
 
   protected readonly storyId = computed(() => this.params()?.get('id') ?? '');
   protected readonly story = computed(() =>
-    SANDBOX_STORIES.find((s) => s.id === this.storyId()),
+    SHOWCASE_STORIES.find((s) => s.id === this.storyId()),
   );
 
   constructor() {

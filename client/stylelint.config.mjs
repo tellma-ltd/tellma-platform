@@ -6,7 +6,7 @@ import tmNoHardcodedSizing from './tools/stylelint/tm-no-hardcoded-sizing.mjs';
  * - no hardcoded sizing (density/typography stay token-switchable)
  * - no bare `outline: none` (focus-visibility is never removed without a
  *   substitute; the substitute case is an explicit, justified disable)
- * The internal sandbox app is exempt (not shipped).
+ * The internal showcase app is exempt (not shipped).
  */
 export default {
   plugins: [tmNoHardcodedSizing],

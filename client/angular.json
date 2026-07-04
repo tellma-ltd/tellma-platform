@@ -2,7 +2,8 @@
   "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
   "version": 1,
   "cli": {
-    "packageManager": "pnpm"
+    "packageManager": "pnpm",
+    "analytics": false
   },
   "newProjectRoot": "projects",
   "projects": {
@@ -121,22 +122,22 @@
         }
       }
     },
-    "sandbox": {
+    "showcase": {
       "projectType": "application",
       "schematics": {},
-      "root": "projects/internal/sandbox",
-      "sourceRoot": "projects/internal/sandbox/src",
+      "root": "projects/internal/showcase",
+      "sourceRoot": "projects/internal/showcase/src",
       "prefix": "app",
       "architect": {
         "build": {
           "builder": "@angular/build:application",
           "options": {
-            "browser": "projects/internal/sandbox/src/main.ts",
-            "tsConfig": "projects/internal/sandbox/tsconfig.app.json",
+            "browser": "projects/internal/showcase/src/main.ts",
+            "tsConfig": "projects/internal/showcase/tsconfig.app.json",
             "assets": [
               {
                 "glob": "**/*",
-                "input": "projects/internal/sandbox/public"
+                "input": "projects/internal/showcase/public"
               }
             ],
             "styles": [
@@ -144,7 +145,7 @@
               "projects/core/tellma-core-ui/fonts/fonts.css",
               "projects/core/tellma-core-ui/styles/tm-input.css",
               "projects/locale/tellma-locale-ar/fonts/fonts.css",
-              "projects/internal/sandbox/src/styles.css"
+              "projects/internal/showcase/src/styles.css"
             ]
           },
           "configurations": {
@@ -180,10 +181,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "sandbox:build:production"
+              "buildTarget": "showcase:build:production"
             },
             "development": {
-              "buildTarget": "sandbox:build:development"
+              "buildTarget": "showcase:build:development"
             }
           },
           "defaultConfiguration": "development"
@@ -195,7 +196,7 @@
           "builder": "@storybook/angular:start-storybook",
           "options": {
             "configDir": ".storybook",
-            "browserTarget": "sandbox:build:storybook",
+            "browserTarget": "showcase:build:storybook",
             "compodoc": false
           }
         },
@@ -203,7 +204,7 @@
           "builder": "@storybook/angular:build-storybook",
           "options": {
             "configDir": ".storybook",
-            "browserTarget": "sandbox:build:storybook",
+            "browserTarget": "showcase:build:storybook",
             "compodoc": false,
             "outputDir": ".artifacts/storybook"
           }

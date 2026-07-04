@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 
 const worktreeRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-/** @param {string} name KEY in .dev-ports.local, e.g. 'CLIENT_SANDBOX' */
+/** @param {string} name KEY in .dev-ports.local, e.g. 'CLIENT_SHOWCASE' */
 export async function getPort(name) {
   const portsFile = join(worktreeRoot, '.dev-ports.local');
   if (existsSync(portsFile)) {

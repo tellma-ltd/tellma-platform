@@ -1,13 +1,13 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * The sandbox port is supplied by scripts/e2e.mjs (from .dev-ports.local or
+ * The showcase port is supplied by scripts/e2e.mjs (from .dev-ports.local or
  * an OS-assigned free port — spec 0002 §1.3). No literal port ever appears
  * in the repo; run the suite via `pnpm run e2e`.
  */
-const port = Number(process.env['SANDBOX_PORT']);
+const port = Number(process.env['SHOWCASE_PORT']);
 if (!Number.isFinite(port) || port <= 0) {
-  throw new Error('SANDBOX_PORT is not set. Run the suite via `pnpm run e2e` (scripts/e2e.mjs).');
+  throw new Error('SHOWCASE_PORT is not set. Run the suite via `pnpm run e2e` (scripts/e2e.mjs).');
 }
 
 export default defineConfig({
@@ -28,7 +28,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `node scripts/serve.mjs sandbox --port ${port}`,
+    command: `node scripts/serve.mjs showcase --port ${port}`,
     url: `http://localhost:${port}`,
     cwd: '..',
     reuseExistingServer: !process.env['CI'],

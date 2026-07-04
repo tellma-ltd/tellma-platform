@@ -65,7 +65,7 @@ export default tseslint.config(
     },
   },
 
-  // The internal sandbox is not a library — app/sandbox prefixes apply.
+  // The internal showcase is not a library — app/showcase prefixes apply.
   {
     files: ['projects/internal/**/*.ts'],
     rules: {
@@ -75,7 +75,7 @@ export default tseslint.config(
       ],
       '@angular-eslint/component-selector': [
         'error',
-        { type: 'element', prefix: ['app', 'sandbox'], style: 'kebab-case' },
+        { type: 'element', prefix: ['app', 'showcase'], style: 'kebab-case' },
       ],
     },
   },

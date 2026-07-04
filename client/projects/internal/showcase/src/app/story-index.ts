@@ -1,14 +1,14 @@
 import { Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
-import { SANDBOX_STORIES } from './stories';
+import { SHOWCASE_STORIES } from './stories';
 
 /** Index page listing every registered story. */
 @Component({
   imports: [RouterLink],
   template: `
     <main class="index-main">
-      <h1>Tellma UI sandbox</h1>
+      <h1>Tellma UI showcase</h1>
       <ul>
         @for (story of stories; track story.id) {
           <li><a [routerLink]="['/story', story.id]">{{ story.title }}</a></li>
@@ -23,5 +23,5 @@ import { SANDBOX_STORIES } from './stories';
   `,
 })
 export class StoryIndex {
-  protected readonly stories = SANDBOX_STORIES;
+  protected readonly stories = SHOWCASE_STORIES;
 }

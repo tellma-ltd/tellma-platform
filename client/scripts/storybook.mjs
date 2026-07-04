@@ -17,7 +17,7 @@ const port = await getPort('CLIENT_STORYBOOK');
 console.log(`[storybook] http://localhost:${port}/`);
 const child = spawn(
   process.execPath,
-  [ng, 'run', 'sandbox:storybook', '--port', String(port), ...process.argv.slice(2)],
+  [ng, 'run', 'showcase:storybook', '--port', String(port), ...process.argv.slice(2)],
   { cwd: clientDir, stdio: 'inherit' },
 );
 child.on('exit', (code) => process.exit(code ?? 0));

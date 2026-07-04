@@ -22,15 +22,15 @@ const ng = require.resolve('@angular/cli/bin/ng.js');
 
 /** path prefix (repo-relative) → the ng projects to re-test. */
 const GRAPH = [
-  // Tokens feed every component's CSS + the sandbox theme — test everything.
+  // Tokens feed every component's CSS + the showcase theme — test everything.
   {
     prefix: 'client/projects/core/tellma-core-ui-tokens/',
-    projects: ['core-ui-tokens', 'core-ui', 'core-ui-testing', 'locale-ar', 'sandbox'],
+    projects: ['core-ui-tokens', 'core-ui', 'core-ui-testing', 'locale-ar', 'showcase'],
   },
-  // core-ui (incl. contracts) — consumers: testing, locale-ar, sandbox.
+  // core-ui (incl. contracts) — consumers: testing, locale-ar, showcase.
   {
     prefix: 'client/projects/core/tellma-core-ui/',
-    projects: ['core-ui', 'core-ui-testing', 'locale-ar', 'sandbox'],
+    projects: ['core-ui', 'core-ui-testing', 'locale-ar', 'showcase'],
   },
   // Harness changes re-test the component suites that drive them.
   {
@@ -38,7 +38,7 @@ const GRAPH = [
     projects: ['core-ui-testing', 'core-ui', 'locale-ar'],
   },
   { prefix: 'client/projects/locale/tellma-locale-ar/', projects: ['locale-ar'] },
-  { prefix: 'client/projects/internal/sandbox/', projects: ['sandbox'] },
+  { prefix: 'client/projects/internal/showcase/', projects: ['showcase'] },
 ];
 
 /** Workspace-tooling paths run the tools vitest suite. */
@@ -55,7 +55,7 @@ const GLOBAL_PREFIXES = [
   'client/stylelint.config.mjs',
 ];
 
-const ALL_PROJECTS = ['core-ui-tokens', 'core-ui', 'core-ui-testing', 'locale-ar', 'sandbox'];
+const ALL_PROJECTS = ['core-ui-tokens', 'core-ui', 'core-ui-testing', 'locale-ar', 'showcase'];
 
 function run(command, args) {
   const result = spawnSync(command, args, { cwd: clientDir, stdio: 'inherit' });

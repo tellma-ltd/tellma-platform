@@ -3,10 +3,10 @@ import { expect, test } from '@playwright/test';
 import { expectNoAxeViolations } from '../support/axe';
 import { storyUrl } from '../support/story-map';
 
-test.describe('sandbox shell', () => {
+test.describe('showcase shell', () => {
   test('index lists the registered stories and is axe-clean', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'Tellma UI sandbox' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Tellma UI showcase' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Welcome' })).toBeVisible();
     await expectNoAxeViolations(page);
   });

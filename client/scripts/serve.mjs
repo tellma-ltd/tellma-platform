@@ -1,5 +1,5 @@
 /**
- * Launches `ng serve` for a project (default: sandbox) on a port-free basis
+ * Launches `ng serve` for a project (default: showcase) on a port-free basis
  * per spec 0002 §1.3: the port comes from .dev-ports.local when present,
  * else the OS assigns one.
  *
@@ -18,7 +18,7 @@ const ng = require.resolve('@angular/cli/bin/ng.js', { paths: [clientDir] });
 
 const args = process.argv.slice(2);
 const portFlag = args.indexOf('--port');
-const project = args.find((a) => !a.startsWith('--')) ?? 'sandbox';
+const project = args.find((a) => !a.startsWith('--')) ?? 'showcase';
 const port =
   portFlag >= 0 ? Number(args[portFlag + 1]) : await getPort(`CLIENT_${project.toUpperCase().replaceAll('-', '_')}`);
 

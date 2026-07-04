@@ -1,8 +1,7 @@
 /**
  * Single indirection between the specs and the page host serving the stories.
- * Today the host is the internal sandbox app (/story/:id); if the showcase
- * moves to Storybook, only this function changes (e.g. to
- * /iframe.html?id=<id>), not the specs.
+ * Today the host is the internal showcase app (/story/:id); if the host ever
+ * changes, only this function changes, not the specs.
  */
 export interface StoryUrlOptions {
   readonly dir?: 'ltr' | 'rtl';

@@ -10,7 +10,7 @@ The Angular workspace for the `@tellma/*` npm package family (spec
 | `@tellma/core-ui-testing` | `projects/core/tellma-core-ui-testing` |
 | `@tellma/core-ui-mcp` | `projects/core/tellma-core-ui-mcp` |
 | `@tellma/locale-ar` | `projects/locale/tellma-locale-ar` |
-| sandbox (internal dev host, never published) | `projects/internal/sandbox` |
+| showcase (internal dev host, never published) | `projects/internal/showcase` |
 
 ## Workflow
 
@@ -21,7 +21,7 @@ pnpm exec playwright install chromium   # once per machine (unit tests run in re
 pnpm run build          # tokens gates + CSS, then every package in dependency order
 pnpm run test           # all unit suites (vitest via @angular/build:unit-test)
 pnpm run test:changed   # changed packages + their direct consumers (CI PR mode)
-pnpm run e2e            # Playwright behavioral/a11y/RTL suite against the sandbox
+pnpm run e2e            # Playwright behavioral/a11y/RTL suite against the showcase
 pnpm run lint           # ESLint (tm- rules, contracts boundary) + stylelint (token sizing)
 pnpm run lint:test      # the custom lint rules' own unit tests + MCP smoke tests
 pnpm run tokens:check   # token schema + WCAG-contrast + completeness gates
@@ -29,7 +29,7 @@ pnpm run api:check      # public-API goldens (client/api/*.api.md)
 pnpm run approve-api    # accept an INTENDED public-API change (commit the diff)
 pnpm run docs:build     # components.json (schema-validated) + llms.txt for the MCP package
 pnpm run size:check     # per-entry-point gzipped self-weight vs the §8 ceilings
-pnpm start              # sandbox dev server
+pnpm start              # showcase dev server
 pnpm run storybook      # Storybook dev server (the showcase)
 ```
 
@@ -54,10 +54,10 @@ incompatibilities surfaced and are worked around there and in `angular.json`:
    `webpack` + one `postcss` so the instances converge.
 2. **Double sourcemap emission** (Storybook and the v22 builder both inject
    `SourceMapDevToolPlugin`) fails the build with asset-filename conflicts.
-   Fixed by a dedicated `sandbox:build:storybook` configuration with
+   Fixed by a dedicated `showcase:build:storybook` configuration with
    `sourceMap: false`; Storybook targets it via `browserTarget`.
 
-Verified: `ng run sandbox:build-storybook` succeeds; the probe-select story
+Verified: `ng run showcase:build-storybook` succeeds; the probe-select story
 renders and is fully interactive (open, option-click commit, close) in the
 static build. Revisit and drop the overrides when Storybook ships official
 Angular 22 support.
