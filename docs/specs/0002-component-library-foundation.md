@@ -7,6 +7,12 @@
 at implementation time. It is not updated as the code or its dependencies evolve; it captures the
 original intent, not the current state. The research analysis that preceded it is superseded here.
 
+**Amendment (4 July 2026):** Storybook is out of Phase-1 scope — `@storybook/angular` has no Angular 22
+support, and running it on peer-override workarounds added fragility without functional value. The
+showcase surface is the internal **showcase app** (`client/projects/internal/showcase`, dev-only, never
+published), which also serves as the Playwright/axe target; co-located `*.examples.ts` files replace
+`*.stories.ts` as the docs example source. The body below is amended accordingly.
+
 **Departures from the research analysis's locked decisions** (superseded where they conflict):
 - **D9 → Signal Forms only.** Drop the `ControlValueAccessor` dual-compat requirement: Signal Forms is
   stable in v22 and every consumer is greenfield v22+, so the CVA fallback buys nothing.
@@ -121,7 +127,7 @@ Two facts about the consumer set delete complexity the general-purpose libraries
 - Prove the shared overlay/positioning + aria-listbox + keyboard-navigation infrastructure once, via
   Select, so later overlay/collection components reuse it.
 - Establish the canonical component template, the harness template, and the
-  `*.stories.ts` → `components.json` docs template every later component copies.
+  `*.examples.ts` → `components.json` docs template every later component copies.
 - Encode the brand tokens into the typed `TmTokens` contract + emitter, with one default preset
   reproducing `tellma-brand/design-system` and a build-time WCAG-contrast gate.
 
@@ -225,7 +231,7 @@ Phase 1 uses **pnpm workspaces + the Angular CLI + ng-packagr** — no nx. The r
 headline wins (project-graph caching, `affected`, distributed cache) scale with the number of *projects*,
 which here is essentially fixed — four core packages plus a slowly-growing set of locale packs (one per
 language, a low-tens ceiling). What grows with each new component lives *inside* those packages (more
-components, tokens, harnesses, tests, stories, `components.json` entries) and is served by the test
+components, tokens, harnesses, tests, examples, `components.json` entries) and is served by the test
 runner's own incremental/changed-file selection, not a cross-project graph. So nx would optimize a
 near-constant axis while adding onboarding and tooling-sprawl cost (the same low-onboarding argument that
 rejected Bazel in D1). **Revisit nx** only if the *project* count climbs — many in-repo distributions, or
@@ -238,12 +244,12 @@ The platform's parallel-local-development rule applies: every build/test/run pat
 parallel across isolated git worktrees with **no hardcoded localhost ports** and no shared mutable global
 state:
 
-- Storybook, the test runner, the MCP server, and any dev/preview server bind to an OS-assigned free port
-  (or read the worktree's `.dev-ports.local`), never a literal port.
+- The showcase app, the test runner, the MCP server, and any dev/preview server bind to an OS-assigned
+  free port (or read the worktree's `.dev-ports.local`), never a literal port.
 - Test artifacts, caches, and emitted files are written under the worktree (or a per-worktree namespaced
   path), so two worktrees never collide.
-- The MCP server and Storybook are launched by scripts following the same free-port discovery as the
-  platform's `dotnet tellma setup-worktree` flow; nothing assumes a singleton instance.
+- The MCP server and the showcase app are launched by scripts following the same free-port discovery as
+  the platform's `dotnet tellma setup-worktree` flow; nothing assumes a singleton instance.
 
 ## 2. Behavior layer and shared contracts
 
@@ -1064,8 +1070,8 @@ component — so a grid edit-cell **mounts the full `tm-select` component** and 
   `TestbedHarnessEnvironment` but no Playwright environment, and building/maintaining a custom
   `HarnessEnvironment` is not Phase-1 work. So harnesses drive the unit/TestBed layer (and remain the
   typed automation surface for agents), while the Playwright behavioral/e2e specs use **raw locators**
-  (role/label-first, `data-testid` where semantics don't identify an element) against the Storybook
-  stories.
+  (role/label-first, `data-testid` where semantics don't identify an element) against the showcase
+  app's story pages.
 - **API goldens** — for each entry point, **API Extractor** emits a diff-able `*.api.md` snapshot of the
   complete public API surface, committed to the repo, so a public-API change shows up as a golden diff in
   review (it matters when agent-generated code depends on a stable surface).
@@ -1074,10 +1080,10 @@ component — so a grid edit-cell **mounts the full `tm-select` component** and 
   golden, making every public-API change an explicit, reviewed act.
 - **A shared `form()` test fixture.** Behavioral tests for `[formField]` binding, disabled/required
   precedence, pending state, and message resolution all need a live Signal Form, so the testing package
-  ships a tiny host harness (a Storybook decorator + a TestBed helper) wrapping the control under test in a
+  ships a tiny host harness (a TestBed helper) wrapping the control under test in a
   host exposing a `form()` with a configurable schema (validators, async validators, `debounce`, inline
-  messages) bound via `[formField]`. Stories that exercise form behavior render through this decorator; the
-  same fixture backs the unit and Playwright specs.
+  messages) bound via `[formField]`. Showcase story pages that exercise form behavior use the same
+  schema shapes; the same fixture backs the unit and Playwright specs.
 - **Unit tests** per component (zoneless test env), using that fixture: value flow via Signal Forms,
   validity/touched, **pending/async-validation state**, **prepopulated-value trigger label via
   `displayWith`**, **disabled/required field-vs-input precedence**, **message precedence + ICU/param
@@ -1107,8 +1113,8 @@ component — so a grid edit-cell **mounts the full `tm-select` component** and 
   This is a few lines of ESLint config (a path-scoped `no-restricted-imports`, or `eslint-plugin-boundaries`,
   on the `contracts/` folder), not test code. The same lint job also fails on cross-package leakage and bare
   `outline: none` ([§6](#6-accessibility)).
-- **e2e:** the behavioral specs run against Storybook stories on a real browser (Storybook is the only
-  showcase surface — [§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp)).
+- **e2e:** the behavioral specs run against the showcase app's story pages on a real browser
+  ([§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp)).
 - **Changed-test selection.** On PRs, the test runner's `--changed`-against-merge-base filtering (per
   package) **plus** the direct consumers of any changed package (so a `contracts` or tokens change re-tests
   the components); on `main`/release, the full suite always runs. This is the pnpm + Angular CLI path; nx
@@ -1118,11 +1124,14 @@ component — so a grid edit-cell **mounts the full `tm-select` component** and 
 ## 11. Docs & MCP pipeline (`@tellma/core-ui-mcp`)
 
 Per **D12/D13**, docs are generated from source as a single source of truth. The Phase-1 showcase is
-**Storybook only** — no dedicated showcase app, and the sample distribution is out of scope for now.
+the **internal showcase app** (`client/projects/internal/showcase`) — a dev-only host that serves each
+component's story pages (addressable per dir × theme via query params) and doubles as the Playwright/axe
+target; it is never published. The sample distribution is out of scope for now.
 
-- Co-located `*.stories.ts` per component (runnable demos + interaction tests) + a short narrative `*.md`.
+- Co-located `*.examples.ts` per component (canonical, copy-pasteable usage templates) + a short
+  narrative `*.md`.
 - API Extractor (`.api.json`) + a thin extractor → **`components.json`** (single source of truth).
-- `components.json` feeds the Storybook showcase, `llms.txt`, the scoped **`@tellma/core-ui-mcp`** server
+- `components.json` feeds the showcase, `llms.txt`, the scoped **`@tellma/core-ui-mcp`** server
   (Phase 1: `list` / `describe` / `example` tools), and the API goldens.
   - **`llms.txt`** is a single, flat, agent-readable Markdown digest of the library's surface (components,
     selectors, inputs/outputs, tokens, a canonical example each) at a conventional path — the *static,
@@ -1132,8 +1141,8 @@ Per **D12/D13**, docs are generated from source as a single source of truth. The
 - The federated `dotnet tellma mcp` umbrella is not in Phase 1.
 
 **`components.json` schema** (defined here because it feeds everything else). A generated, versioned JSON
-document validated against its own JSON Schema in CI, so the MCP server, `llms.txt`, Storybook, and goldens
-consume a stable shape. Phase-1 shape:
+document validated against its own JSON Schema in CI, so the MCP server, `llms.txt`, the showcase, and
+goldens consume a stable shape. Phase-1 shape:
 
 ```ts
 interface ComponentsJson {
@@ -1154,7 +1163,7 @@ interface ComponentDoc {
   slots:   SlotDoc[];               // ng-content / typed ng-template contexts
   tokens:  string[];                // CSS custom properties the component reads
   a11y:    { roles: string[]; keyboard: string[]; notes: string };
-  examples: ExampleDoc[];           // title, code, from the stories
+  examples: ExampleDoc[];           // title, code, from the examples files
   harness: string;                  // 'TmSelectHarness'
   status:  'stable' | 'experimental' | 'deprecated';
   deprecation?: { since: string; replacement?: string };  // pairs with @breaking-change
@@ -1165,7 +1174,7 @@ interface ExampleDoc { title: string; code: string; }
 ```
 
 The extractor derives every field from typed source (signal `input()`/`model()`/`output()`, JSDoc, the
-harness, co-located stories); nothing is hand-authored, so docs can't drift from code, and the schema is
+harness, co-located examples); nothing is hand-authored, so docs can't drift from code, and the schema is
 the contract the MCP/goldens/showcase build against.
 
 ## 12. Directory layout
@@ -1223,7 +1232,7 @@ client/projects/locale/
 
 - **Flat per-component folders, *not* category-nested folders.** Material, the CDK, and PrimeNG all keep
   components as a flat list of sibling folders, never a `forms/`/`layout/`/`feedback/` tree. Category is
-  **metadata, not a folder** — it lives in the Storybook group title and a `group` field on `ComponentDoc`
+  **metadata, not a folder** — it lives in the `group` field on `ComponentDoc`
   ([§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp)), re-groupable freely. So adding later components is
   append-a-folder with no reorganization: the taxonomy was never encoded in the directory tree.
 - **Per-component secondary entry points** give three things a single `src/lib` barrel cannot: an import
@@ -1238,7 +1247,8 @@ client/projects/locale/
   (composing forms + i18n + font defaults across domains) and lives in the neutral `providers/` folder.
   (Minor call; co-locating both in `providers/` would be fine too.)
 
-Storybook config lives in the workspace (free-port launch per [§1.3](#13-worktree-isolated-port-free-tooling)).
+The showcase app lives in the workspace at `projects/internal/showcase` (free-port launch per
+[§1.3](#13-worktree-isolated-port-free-tooling)).
 
 ## 13. Definition of done
 
@@ -1302,13 +1312,13 @@ Storybook config lives in the workspace (free-port launch per [§1.3](#13-worktr
     text in the new locale** (the reactive `errors` derivation, [§5](#5-forms-integration-signal-forms)).
     The core stays English-only; the pack is the template later packs copy.
 14. `components.json` is generated and **validated against its JSON Schema** ([§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp));
-    the scoped MCP server answers `list`/`describe`/`example`; `llms.txt` and a Storybook showcase render.
+    the scoped MCP server answers `list`/`describe`/`example`; `llms.txt` and the showcase app render.
     API goldens committed; `approve-api` gate active.
 15. Forced-colors and reduced-motion are **Playwright-gated** (`emulateMedia`); bidi `dir="auto"` fields
     verified with mixed AR/EN content in both LTR and RTL roots; message precedence + ICU/param
     interpolation tested via the shared `form()` fixture.
-16. All tooling (Storybook, tests, MCP server) runs on OS-assigned free ports — two worktrees in parallel,
-    no collision.
+16. All tooling (the showcase app, tests, MCP server) runs on OS-assigned free ports — two worktrees in
+    parallel, no collision.
 
 ## Decisions confirmed
 
@@ -1322,7 +1332,8 @@ The earlier open questions are settled:
    path is zero-config for distributions ([§7](#7-rtl-i18n--l10n)).
 4. **Density/typography runtime axes** — deferred, but a design requirement to be addable later without a
    major refactor (token-set switching; no component-internal changes).
-5. **Showcase** — Storybook only; sample distribution and any showcase app out of scope for now.
+5. **Showcase** — the internal showcase app (dev-only, never published), which is also the e2e target;
+   the sample distribution is out of scope for now.
 6. **Templates** — inline for these small components (v22 best practice supersedes D5 here).
 
 The Select-architecture and forms-precedence questions were investigated against `@angular/aria@22` and

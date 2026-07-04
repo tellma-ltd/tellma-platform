@@ -2,11 +2,11 @@
  * components.json extractor (spec 0002 §11, plan D5): derives every field
  * from typed source — signal input()/model()/output() call-sites, JSDoc
  * (incl. the @tmGroup, @tmA11yNotes and @tmStatus tags), inline-template ng-content
- * scan, component-CSS var(--…) scan, and the co-located *.stories.ts —
+ * scan, component-CSS var(--…) scan, and the co-located *.examples.ts —
  * so docs cannot drift from code. Nothing is hand-authored.
  *
  * (API Extractor's .api.json stays goldens-only: it cannot see templates,
- * slots, CSS tokens, or stories — recorded deviation from §11's framing.)
+ * slots, CSS tokens, or examples — recorded deviation from §11's framing.)
  */
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -192,14 +192,14 @@ function extractTokens(
 }
 
 function extractExamples(sourceFile: string): ComponentDoc['examples'] {
-  const storiesPath = sourceFile.replace(/\.ts$/, '.stories.ts');
-  if (!existsSync(storiesPath)) {
+  const examplesPath = sourceFile.replace(/\.ts$/, '.examples.ts');
+  if (!existsSync(examplesPath)) {
     return [];
   }
-  const text = readFileSync(storiesPath, 'utf8');
+  const text = readFileSync(examplesPath, 'utf8');
   const examples: ComponentDoc['examples'] = [];
   for (const match of text.matchAll(
-    /export const (\w+): Story = \{[\s\S]*?template: `([\s\S]*?)`,?\s*\}\)/g,
+    /export const (\w+) = \{\s*template: `([\s\S]*?)`,?\s*\};/g,
   )) {
     examples.push({ title: match[1], code: match[2].trim() });
   }

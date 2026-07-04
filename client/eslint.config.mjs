@@ -37,7 +37,6 @@ export default tseslint.config(
       'dist/',
       '.artifacts/',
       '.angular/',
-      '.storybook/',
       '**/generated/',
       'projects/core/tellma-core-ui-mcp/dist/',
       '**/*.d.ts',
@@ -83,7 +82,7 @@ export default tseslint.config(
   // tm/Tm/TM_ prefix on every library export (reviewed allowlist above).
   {
     files: ['projects/core/**/*.ts', 'projects/locale/**/*.ts'],
-    ignores: ['**/*.spec.ts', '**/*.stories.ts', 'projects/core/tellma-core-ui-mcp/**'],
+    ignores: ['**/*.spec.ts', '**/*.examples.ts', 'projects/core/tellma-core-ui-mcp/**'],
     plugins: { tm: tmPlugin },
     rules: {
       'tm/prefix-exports': ['error', { allow: UNPREFIXED_EXPORTS }],

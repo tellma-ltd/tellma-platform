@@ -29,8 +29,7 @@ pnpm run api:check      # public-API goldens (client/api/*.api.md)
 pnpm run approve-api    # accept an INTENDED public-API change (commit the diff)
 pnpm run docs:build     # components.json (schema-validated) + llms.txt for the MCP package
 pnpm run size:check     # per-entry-point gzipped self-weight vs the §8 ceilings
-pnpm start              # showcase dev server
-pnpm run storybook      # Storybook dev server (the showcase)
+pnpm start              # showcase dev server (the component showcase + e2e target)
 ```
 
 **Changing a public API?** `api:check` fails on any drift; review the surface
@@ -40,27 +39,6 @@ change, run `approve-api`, and commit the golden diff alongside the code.
 `.dev-ports.local` (once `dotnet tellma setup-worktree` exists) or an
 OS-assigned free port — see `scripts/ports.mjs`. Two worktrees always run in
 parallel without collisions. Never pass a literal port in configs or scripts.
-
-## Storybook under Angular 22 — decision record (stage-3 spike, 2026-07-01)
-
-**Verdict: PASS with workarounds.** `@storybook/angular@10.4.6` declares
-`@angular/core >=18 <22`, so peer ranges are overridden in
-`pnpm-workspace.yaml` (`peerDependencyRules.allowedVersions`). Two real
-incompatibilities surfaced and are worked around there and in `angular.json`:
-
-1. **Duplicate peer-keyed webpack instances** (Storybook's vs
-   `@angular-devkit/build-angular`'s) crash with `The 'compilation' argument
-   must be an instance of Compilation`. Fixed by pnpm `overrides` pinning one
-   `webpack` + one `postcss` so the instances converge.
-2. **Double sourcemap emission** (Storybook and the v22 builder both inject
-   `SourceMapDevToolPlugin`) fails the build with asset-filename conflicts.
-   Fixed by a dedicated `showcase:build:storybook` configuration with
-   `sourceMap: false`; Storybook targets it via `browserTarget`.
-
-Verified: `ng run showcase:build-storybook` succeeds; the probe-select story
-renders and is fully interactive (open, option-click commit, close) in the
-static build. Revisit and drop the overrides when Storybook ships official
-Angular 22 support.
 
 ## Stage-3 spike findings (spec §3.4 composition)
 

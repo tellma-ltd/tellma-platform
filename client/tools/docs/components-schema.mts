@@ -1,6 +1,6 @@
 /**
  * The components.json contract (spec 0002 §11) — the single source of truth
- * feeding the Storybook showcase, llms.txt, and the @tellma/core-ui-mcp
+ * feeding the showcase, llms.txt, and the @tellma/core-ui-mcp
  * server. Consumers pin/validate `schemaVersion`.
  */
 import { z } from 'zod';

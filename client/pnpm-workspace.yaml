@@ -7,32 +7,6 @@ allowBuilds:
   lmdb: true
   msgpackr-extract: true
 
-# Two webpack majors otherwise land in the store (Storybook's vs
-# @angular-devkit/build-angular's) and cross-instance `instanceof
-# Compilation` checks crash the Storybook build. Pin one webpack.
-overrides:
-  webpack: 5.108.3
-  postcss: 8.5.16
-
-# Storybook does not yet declare Angular 22 peer support (its range is
-# >=18 <22). The override lets the stage-3 spike evaluate it under v22;
-# see client/README.md for the recorded verdict.
-peerDependencyRules:
-  allowedVersions:
-    "@storybook/angular>@angular/core": "22"
-    "@storybook/angular>@angular/common": "22"
-    "@storybook/angular>@angular/compiler": "22"
-    "@storybook/angular>@angular/compiler-cli": "22"
-    "@storybook/angular>@angular/platform-browser": "22"
-    "@storybook/angular>@angular/platform-browser-dynamic": "22"
-    "@storybook/angular>@angular/animations": "22"
-    "@storybook/angular>@angular/forms": "22"
-    "@storybook/angular>@angular/cli": "22"
-    "@storybook/angular>@angular-devkit/core": "22"
-    "@storybook/angular>@angular-devkit/build-angular": "22"
-    "@storybook/angular>@angular-devkit/architect": "0.2200.5"
-    "@storybook/angular>zone.js": "*"
-
 minimumReleaseAgeExclude:
   - "@angular-devkit/architect@0.2200.5"
   - "@angular-devkit/core@22.0.5"
@@ -50,6 +24,3 @@ minimumReleaseAgeExclude:
   - "@angular/router@22.0.5"
   - "@schematics/angular@22.0.5"
   - ng-packagr@22.0.1
-  - '@angular-devkit/build-angular@22.0.5'
-  - '@angular-devkit/build-webpack@0.2200.5'
-  - '@ngtools/webpack@22.0.5'
