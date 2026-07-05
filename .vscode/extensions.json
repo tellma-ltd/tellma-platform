@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    // Angular Language Service: inline-template type checking for client/.
+    "angular.ng-template",
+    // In-editor parity with `pnpm run lint` (flat config + stylelint rules).
+    "dbaeumer.vscode-eslint",
+    "stylelint.vscode-stylelint"
+  ]
+}
