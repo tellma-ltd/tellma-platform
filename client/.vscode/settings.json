@@ -1,0 +1,5 @@
+{
+  // Analyze with the workspace TypeScript (~6.0), not VS Code's bundled
+  // 5.x — accept the "Use Workspace Version" prompt once.
+  "typescript.tsdk": "node_modules/typescript/lib"
+}

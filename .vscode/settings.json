@@ -1,0 +1,5 @@
+{
+  // Analyze client TypeScript with the workspace compiler (~6.0), not VS
+  // Code's bundled 5.x — accept the "Use Workspace Version" prompt once.
+  "typescript.tsdk": "client/node_modules/typescript/lib"
+}
