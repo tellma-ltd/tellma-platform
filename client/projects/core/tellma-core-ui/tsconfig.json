@@ -1,0 +1,20 @@
+/*
+ * EDITOR-VIEW project (not used by any build): VS Code's TS server assigns a
+ * file to the nearest tsconfig.json, and the build tsconfigs don't cover the
+ * secondary-entry-point folders (tsconfig.lib.json is src-rooted; the spec
+ * project claims only *.spec.ts). This program covers src + every entry-point
+ * folder — current and future — so no library file falls into an inferred
+ * project without the @tellma/* path mappings. Spec files are excluded here
+ * on purpose: they fall through to tsconfig.spec.json (vitest types).
+ * CI-gated via `pnpm run typecheck`.
+ */
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../../out-tsc/editor",
+    "rootDir": ".",
+    "types": []
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["**/*.spec.ts"]
+}

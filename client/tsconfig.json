@@ -38,6 +38,9 @@
       "path": "./projects/core/tellma-core-ui/tsconfig.spec.json"
     },
     {
+      "path": "./projects/core/tellma-core-ui/tsconfig.json"
+    },
+    {
       "path": "./projects/core/tellma-core-ui-tokens/tsconfig.lib.json"
     },
     {
