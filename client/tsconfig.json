@@ -5,11 +5,11 @@
   "compilerOptions": {
     "strict": true,
     "paths": {
-      "@tellma/core-ui": ["./projects/core/tellma-core-ui/src/public-api.ts"],
+      "@tellma/core-ui": ["./projects/core/tellma-core-ui/public-api.ts"],
       "@tellma/core-ui/*": ["./projects/core/tellma-core-ui/*/public-api.ts"],
-      "@tellma/core-ui-tokens": ["./projects/core/tellma-core-ui-tokens/src/public-api.ts"],
-      "@tellma/core-ui-testing": ["./projects/core/tellma-core-ui-testing/src/public-api.ts"],
-      "@tellma/locale-ar": ["./projects/locale/tellma-locale-ar/src/public-api.ts"]
+      "@tellma/core-ui-tokens": ["./projects/core/tellma-core-ui-tokens/public-api.ts"],
+      "@tellma/core-ui-testing": ["./projects/core/tellma-core-ui-testing/public-api.ts"],
+      "@tellma/locale-ar": ["./projects/locale/tellma-locale-ar/public-api.ts"]
     },
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": true,
@@ -36,9 +36,6 @@
     },
     {
       "path": "./projects/core/tellma-core-ui/tsconfig.spec.json"
-    },
-    {
-      "path": "./projects/core/tellma-core-ui/tsconfig.json"
     },
     {
       "path": "./projects/core/tellma-core-ui-tokens/tsconfig.lib.json"

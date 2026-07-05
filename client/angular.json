@@ -10,7 +10,7 @@
     "core-ui": {
       "projectType": "library",
       "root": "projects/core/tellma-core-ui",
-      "sourceRoot": "projects/core/tellma-core-ui/src",
+      "sourceRoot": "projects/core/tellma-core-ui",
       "prefix": "tm",
       "architect": {
         "build": {
@@ -31,14 +31,6 @@
             "tsConfig": "projects/core/tellma-core-ui/tsconfig.spec.json",
             "browsers": [
               "chromiumHeadless"
-            ],
-            "include": [
-              "**/*.spec.ts",
-              "../contracts/**/*.spec.ts",
-              "../input/**/*.spec.ts",
-              "../checkbox/**/*.spec.ts",
-              "../form-field/**/*.spec.ts",
-              "../select/**/*.spec.ts"
             ]
           }
         }
@@ -47,7 +39,7 @@
     "core-ui-tokens": {
       "projectType": "library",
       "root": "projects/core/tellma-core-ui-tokens",
-      "sourceRoot": "projects/core/tellma-core-ui-tokens/src",
+      "sourceRoot": "projects/core/tellma-core-ui-tokens",
       "prefix": "tm",
       "architect": {
         "build": {
@@ -73,7 +65,7 @@
     "core-ui-testing": {
       "projectType": "library",
       "root": "projects/core/tellma-core-ui-testing",
-      "sourceRoot": "projects/core/tellma-core-ui-testing/src",
+      "sourceRoot": "projects/core/tellma-core-ui-testing",
       "prefix": "tm",
       "architect": {
         "build": {
@@ -99,7 +91,7 @@
     "locale-ar": {
       "projectType": "library",
       "root": "projects/locale/tellma-locale-ar",
-      "sourceRoot": "projects/locale/tellma-locale-ar/src",
+      "sourceRoot": "projects/locale/tellma-locale-ar",
       "prefix": "tm",
       "architect": {
         "build": {

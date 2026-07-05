@@ -22,7 +22,7 @@ pnpm run build          # tokens gates + CSS, then every package in dependency o
 pnpm run test           # all unit suites (vitest via @angular/build:unit-test)
 pnpm run e2e            # Playwright behavioral/a11y/RTL suite against the showcase
 pnpm run lint           # ESLint (tm- rules, contracts boundary) + stylelint (token sizing)
-pnpm run typecheck      # the editor-view program (what VS Code shows) — keeps squiggles CI-gated
+pnpm run typecheck      # the full core-ui program incl. files no build compiles (examples)
 pnpm run lint:test      # the custom lint rules' own unit tests + MCP smoke tests
 pnpm run tokens:check   # token schema + WCAG-contrast + completeness gates
 pnpm run api:check      # public-API goldens (client/api/*.api.md)

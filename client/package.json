@@ -7,7 +7,7 @@
     "build": "node scripts/build.mjs",
     "test": "ng test core-ui-tokens && ng test core-ui && ng test core-ui-testing && ng test locale-ar && ng test showcase",
     "lint": "eslint . && stylelint \"projects/**/*.css\" --allow-empty-input",
-    "typecheck": "tsc -p projects/core/tellma-core-ui/tsconfig.json --noEmit",
+    "typecheck": "tsc -p projects/core/tellma-core-ui/tsconfig.lib.json --noEmit",
     "lint:test": "vitest run --config tools/vitest.config.mts",
     "e2e": "node scripts/e2e.mjs",
     "tokens:build-css": "tsx tools/tokens/build-css.mts",

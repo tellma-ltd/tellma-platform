@@ -5,6 +5,6 @@
  * locale pack copies.
  */
 
-export * from './lib/provide-tellma-locale-ar';
-export * from './lib/strings-ar';
-export * from './lib/font-manifest.generated';
+export * from './provide-tellma-locale-ar';
+export * from './strings-ar';
+export * from './font-manifest.generated';

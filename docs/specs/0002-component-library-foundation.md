@@ -7,15 +7,13 @@
 at implementation time. It is not updated as the code or its dependencies evolve; it captures the
 original intent, not the current state. The research analysis that preceded it is superseded here.
 
-**Amendment (4 July 2026):** Storybook is out of Phase-1 scope — `@storybook/angular` has no Angular 22
-support, and running it on peer-override workarounds added fragility without functional value. The
-showcase surface is the internal **showcase app** (`client/projects/internal/showcase`, dev-only, never
-published), which also serves as the Playwright/axe target; co-located `*.examples.ts` files replace
-`*.stories.ts` as the docs example source. The same amendment drops changed-test selection ([§10](#10-testing-tellmacore-ui-testing)):
-CI always runs the full unit suite — at this scale the selection machinery was not worth its
-complexity. The body below is amended accordingly.
-
 **Departures from the research analysis's locked decisions** (superseded where they conflict):
+- **D12 → no Storybook.** `@storybook/angular` has no Angular 22 support, and running it on
+  peer-override workarounds adds fragility without value over an in-repo host. The showcase surface is
+  the internal **showcase app** (`client/projects/internal/showcase`, dev-only, never published), which
+  doubles as the Playwright/axe target; co-located `*.examples.ts` files feed the docs pipeline
+  ([§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp)). Re-evaluate Storybook when it ships official
+  Angular 22 support.
 - **D9 → Signal Forms only.** Drop the `ControlValueAccessor` dual-compat requirement: Signal Forms is
   stable in v22 and every consumer is greenfield v22+, so the CVA fallback buys nothing.
 - **D6 → CSS-variable theming, no builder.** No theme-builder UI, ever. Themes are the emitted CSS
@@ -1182,22 +1180,22 @@ the contract the MCP/goldens/showcase build against.
 ## 12. Directory layout
 
 Each **component is its own secondary entry point** — a flat sibling folder with its own `ng-package.json`
-+ `public-api.ts`, importable as `@tellma/core-ui/select`. The **primary** `@tellma/core-ui` entry point
-holds only the cross-cutting, component-free code (providers, i18n, fonts, forms infrastructure, shared
-pure helpers) and uses the Angular-CLI default `src/lib/` layout.
++ `public-api.ts`, importable as `@tellma/core-ui/select`. The **package root is the code root**: the
+primary `@tellma/core-ui` entry point's `public-api.ts` sits at the root, its cross-cutting internals
+(providers, i18n, fonts, forms infrastructure — no components) are plain folders without an
+`ng-package.json`, and there is no `src/` wrapper. Every folder in a library either *is* an entry point
+or belongs to the primary; entry points consume shared code only via its import path
+(`@tellma/core-ui`), never via `../` relative paths — each entry point is its own compilation unit.
 
 ```
 client/projects/core/
 ├── tellma-core-ui/
 │   ├── ng-package.json        # primary entry point @tellma/core-ui
-│   ├── src/
-│   │   ├── public-api.ts      #   re-exports the providers/i18n/fonts/forms/shared surface (no components)
-│   │   └── lib/
-│   │       ├── forms/         #     provideTellmaForms(), field-state helpers, message resolver
-│   │       ├── providers/     #     provideTellmaUi() umbrella (composes forms + i18n + fonts defaults)
-│   │       ├── i18n/          #     TM_UI_TRANSLATE token + Transloco-backed default
-│   │       ├── shared/        #     pure helpers (value→key mapping, formatters)
-│   │       └── fonts/         #     @font-face + self-hosted woff2; TM_FONT_SUBSETS manifest + fontPreloadLinks()
+│   ├── public-api.ts          #   re-exports the providers/i18n/fonts/forms surface (no components)
+│   ├── forms/                 #   provideTellmaForms(), field-state helpers, message resolver
+│   ├── providers/             #   provideTellmaUi() umbrella (composes forms + i18n + fonts defaults)
+│   ├── i18n/                  #   TM_UI_TRANSLATE token + Transloco-backed default
+│   ├── fonts/                 #   self-hosted woff2 + @font-face; TM_FONT_SUBSETS manifest + fontPreloadLinks()
 │   ├── contracts/             # secondary EP @tellma/core-ui/contracts — ng-package.json + public-api.ts:
 │   │                          #   SignalLike/WritableSignalLike, TmFormFieldControl, TmFieldError, draft TmCellEditor/TmCellDisplay
 │   ├── input/                 # secondary EP @tellma/core-ui/input    — tmInput directive
@@ -1205,15 +1203,16 @@ client/projects/core/
 │   ├── form-field/            # secondary EP @tellma/core-ui/form-field — tm-form-field (inline template)
 │   └── select/                # secondary EP @tellma/core-ui/select   — tm-select + tm-option (@angular/aria + CDK Overlay)
 ├── tellma-core-ui-tokens/
-│   └── src/lib/
-│       ├── contract/          # TmTokens types
-│       ├── presets/tellma-default.ts
-│       ├── emit/              # tokens → CSS emitter
-│       └── schema/            # generated JSON Schema + validators (contrast, missing-ref)
+│   ├── public-api.ts
+│   ├── contract/              # TmTokens types
+│   ├── presets/tellma-default.ts
+│   ├── emit/                  # tokens → CSS emitter
+│   └── schema/                # validators (contrast, missing-ref) feeding the generated JSON Schema
 ├── tellma-core-ui-testing/
-│   └── src/lib/               # the harnesses (incl. TmSelectHarness + TmOptionHarness)
+│   ├── public-api.ts          # the harnesses (incl. TmSelectHarness + TmOptionHarness) + form fixture
+│   └── *-harness.ts, form-fixture.ts
 └── tellma-core-ui-mcp/
-    └── src/                   # generated components.json + minimal MCP server
+    └── src/                   # plain Node package (tsc): generated components.json + minimal MCP server
 ```
 
 The reference locale pack lives in a sibling `locale/` family (locale packs are not `core-ui` packages),
@@ -1221,14 +1220,17 @@ proving the structure later packs (`@tellma/locale-am`, …) copy:
 
 ```
 client/projects/locale/
-└── tellma-locale-ar/         # @tellma/locale-ar — the reference Arabic locale pack
+└── tellma-locale-ar/                 # @tellma/locale-ar — the reference Arabic locale pack
     ├── ng-package.json
-    └── src/
-        ├── strings/ar.json   # Arabic translations for the built-in library strings (Transloco scope)
-        ├── fonts/            # self-hosted Noto Sans Arabic woff2 + @font-face (unicode-range), static stylesheet
-        ├── manifest.ts       # TM_FONT_SUBSETS entries (Arabic script → asset URL + range)
-        └── public-api.ts     # provideTellmaLocaleAr(): Transloco scope + TM_FONT_SUBSETS multi-token + @font-face
+    ├── public-api.ts                 # provideTellmaLocaleAr(): Transloco strings + TM_FONT_SUBSETS multi-token
+    ├── strings-ar.ts                 # Arabic translations for the built-in library strings
+    ├── font-manifest.generated.ts    # TM_FONT_SUBSETS entries (Arabic script → asset URL + range)
+    └── fonts/                        # self-hosted Noto Sans Arabic woff2 + @font-face (unicode-range) stylesheet
 ```
+
+If entry points later grow shared machinery that should not be public API, it becomes a `private/`
+entry point (importable — so it compiles once — but carrying no stability guarantees), the pattern
+`@angular/aria` and the CDK use.
 
 **Why this shape (and how it scales to ~40 components later).**
 
@@ -1237,7 +1239,7 @@ client/projects/locale/
   **metadata, not a folder** — it lives in the `group` field on `ComponentDoc`
   ([§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp)), re-groupable freely. So adding later components is
   append-a-folder with no reorganization: the taxonomy was never encoded in the directory tree.
-- **Per-component secondary entry points** give three things a single `src/lib` barrel cannot: an import
+- **Per-component secondary entry points** give three things a single barrel file cannot: an import
   path decoupled from disk location (`@tellma/core-ui/select` is stable even if the folder moves), a hard
   tree-shaking boundary (a text/checkbox-only app importing `@tellma/core-ui/input` never pulls in Select's
   CDK-Overlay/aria weight — the basis for the per-entry-point [§8](#8-performance-budget) budgets), and a

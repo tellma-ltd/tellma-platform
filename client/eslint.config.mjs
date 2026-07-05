@@ -91,7 +91,7 @@ export default tseslint.config(
 
   // Contracts entry-point boundary (spec §10, DoD 10): types + pure helpers
   // only — no Angular, no other @tellma packages, no i18n/rxjs, no reaching
-  // into src/lib.
+  // into the primary entry point's internals.
   {
     files: ['projects/core/tellma-core-ui/contracts/**/*.ts'],
     rules: {
@@ -113,7 +113,7 @@ export default tseslint.config(
             },
             {
               group: ['../*'],
-              message: 'The contracts entry point must not reach into src/lib.',
+              message: "The contracts entry point must not reach into the primary entry point's internals.",
             },
           ],
         },

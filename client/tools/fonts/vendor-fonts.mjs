@@ -4,7 +4,7 @@
  * fonts/ assets, and generates:
  *   - fonts/fonts.css       (@font-face + unicode-range + font-display:swap)
  *   - fonts/OFL.txt         (SIL Open Font License — must ship with the fonts)
- *   - src/lib/fonts/font-manifest.generated.ts (the TM_FONT_SUBSETS seed)
+ *   - fonts/font-manifest.generated.ts (the TM_FONT_SUBSETS seed)
  * The copied binaries are COMMITTED so the published package is fully
  * self-contained (intranet-safe, no CDN). Re-run only to refresh versions.
  *
@@ -128,6 +128,6 @@ const manifest = [
   '];',
   '',
 ].join('\n');
-writeFileSync(join(uiDir, 'src', 'lib', 'fonts', 'font-manifest.generated.ts'), manifest);
+writeFileSync(join(uiDir, 'fonts', 'font-manifest.generated.ts'), manifest);
 
 console.log(`vendored ${subsets.length} subsets -> ${fontsDir}`);

@@ -8,8 +8,8 @@
  * the shipped runtime tiny.
  */
 
-export * from './lib/contract/tokens';
-export * from './lib/presets/tellma-default';
-export * from './lib/emit/emit-css';
-export * from './lib/schema/contrast';
-export * from './lib/schema/validate';
+export * from './contract/tokens';
+export * from './presets/tellma-default';
+export * from './emit/emit-css';
+export * from './schema/contrast';
+export * from './schema/validate';
