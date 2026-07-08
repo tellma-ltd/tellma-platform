@@ -98,6 +98,25 @@ describe('tmEmitCss', () => {
     expect(css).toContain('--grey-900: var(--ink-900);');
   });
 
+  it('emits --font-ui as the single multi-script stack, with no direction coupling', () => {
+    expect(css).toContain(
+      "--font-ui: 'Noto Sans', 'Noto Sans Arabic', system-ui, -apple-system, 'Segoe UI', sans-serif;",
+    );
+    // Typography never keys on direction: per-glyph face selection comes from
+    // the stack + unicode-range, leading from :lang() below.
+    expect(css).not.toContain('[dir=');
+  });
+
+  it('emits language-keyed leading that both sets and resets, after :root', () => {
+    expect(css).toMatch(/:lang\(ar\) \{\n\s*--leading-ui: var\(--leading-arabic\);/);
+    // The en rule restores the body leading, so a lang="en" island inside an
+    // Arabic page snaps back instead of inheriting 1.9.
+    expect(css).toMatch(/:lang\(en\) \{\n\s*--leading-ui: var\(--leading-body\);/);
+    // :lang() ties :root on specificity — source order decides on <html>, so
+    // the :lang blocks must come after the :root block.
+    expect(css.indexOf(':lang(ar)')).toBeGreaterThan(css.indexOf(':root {'));
+  });
+
   it('overlays dark primitives so grey-built components flip automatically', () => {
     const dark = tmEmittedSchemeVars(tmTokensDefault, 'dark');
     expect(dark.get('--white')).toBe('#16252D');
@@ -120,6 +139,23 @@ describe('tmValidateTokens gates', () => {
     };
     const issues = tmValidateTokens(broken);
     expect(issues.some((i) => i.gate === 'missing-ref')).toBe(true);
+  });
+
+  it('fails on a leadingByLang ref to a missing token', () => {
+    const broken: TmTokens = {
+      ...tmTokensDefault,
+      semantic: {
+        ...tmTokensDefault.semantic,
+        leadingByLang: {
+          ...tmTokensDefault.semantic.leadingByLang,
+          he: '{font.leading.hebrew}',
+        },
+      },
+    };
+    const issues = tmValidateTokens(broken);
+    expect(
+      issues.some((i) => i.gate === 'missing-ref' && i.message.includes('leadingByLang.he')),
+    ).toBe(true);
   });
 
   it('fails on a below-AA pair that is not excepted', () => {

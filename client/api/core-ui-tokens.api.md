@@ -189,6 +189,7 @@ export interface TmTokens {
             readonly sans: string;
             readonly arabic: string;
             readonly mono: string;
+            readonly ui: readonly string[];
             readonly size: {
                 readonly xs: string;
                 readonly sm: string;
@@ -246,6 +247,7 @@ export interface TmTokens {
             readonly paddingY: string;
             readonly fontSize: TmTokenValue;
         };
+        readonly leadingByLang: Readonly<Record<string, TmTokenValue>>;
     };
 }
 

@@ -83,6 +83,7 @@ export const tmTokensZodSchema = z.object({
       sans: value,
       arabic: value,
       mono: value,
+      ui: z.array(value).min(1),
       size: z.object({ xs: value, sm: value, base: value, lg: value }),
       weight: z.object({ regular: value, medium: value, semibold: value, bold: value }),
       leading: z.object({ tight: value, snug: value, body: value, arabic: value }),
@@ -110,6 +111,7 @@ export const tmTokensZodSchema = z.object({
       paddingY: value,
       fontSize: value,
     }),
+    leadingByLang: z.record(z.string(), value),
   }),
   component: z.record(z.string(), z.record(z.string(), value)),
   contrastPairs: z.array(

@@ -157,6 +157,15 @@ export interface TmTokens {
       readonly sans: string;
       readonly arabic: string;
       readonly mono: string;
+      /**
+       * The multi-script UI stack emitted as `--font-ui`: brand family names
+       * in fallback order, generic families last. Each glyph resolves to its
+       * script's face via the faces' `@font-face` `unicode-range`s, so mixed
+       * Arabic/Latin/etc. lines render every brand face at once. Names whose
+       * faces no installed locale pack registers are skipped harmlessly, so
+       * the stack lists every brand script face up front.
+       */
+      readonly ui: readonly string[];
       readonly size: {
         readonly xs: string;
         readonly sm: string;
@@ -212,6 +221,15 @@ export interface TmTokens {
       readonly paddingY: string;
       readonly fontSize: TmTokenValue;
     };
+    /**
+     * Language-keyed line-height, emitted as `:lang()` rules re-pointing
+     * `--leading-ui`. Leading is a line-box property — unlike the font stack
+     * it cannot follow scripts per glyph — so it keys on content language,
+     * which distributions set via the root `lang` attribute. Every listed
+     * language both sets and resets the alias, so an explicitly marked
+     * island (`lang="en"` inside an Arabic page) keeps its own leading.
+     */
+    readonly leadingByLang: Readonly<Record<string, TmTokenValue>>;
   };
   /** Component tier: `--<component>-<key>` variables referencing semantic tokens. */
   readonly component: Record<string, Record<string, TmTokenValue>>;

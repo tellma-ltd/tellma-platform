@@ -35,6 +35,10 @@ test('runtime locale switch re-renders visible errors; Arabic font loads on dema
   await page.getByTestId('lang-ar').click();
   await expect(error).toHaveText('هذا الحقل مطلوب');
   await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
+
+  // :lang(ar) re-points --leading-ui (§7): body leading 1.6 → 1.9 at 16px.
+  expect(await page.evaluate(() => getComputedStyle(document.body).lineHeight)).toBe('30.4px');
 
   // …and NOW Arabic glyphs are painted, so the face loads on demand — from
   // the app origin, no CDN.
@@ -49,7 +53,8 @@ test('runtime locale switch re-renders visible errors; Arabic font loads on dema
   // The library's Select placeholder is localized too.
   await expect(page.getByTestId('select-status')).toContainText('اختر خيارًا');
 
-  // And back — no reload anywhere.
+  // And back — no reload anywhere; the :lang(en) rule restores body leading.
   await page.getByTestId('lang-en').click();
   await expect(error).toHaveText('This field is required');
+  expect(await page.evaluate(() => getComputedStyle(document.body).lineHeight)).toBe('25.6px');
 });

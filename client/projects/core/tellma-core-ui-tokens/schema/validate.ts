@@ -1,5 +1,5 @@
 import type { TmTokens } from '../contract/tokens';
-import { tmEmittedSchemeVars } from '../emit/emit-css';
+import { tmEmittedSchemeVars, tmTokenValueToCss } from '../emit/emit-css';
 import { tmContrastRatio, tmParseColor, TM_CONTRAST_THRESHOLDS, type TmRgba } from './contrast';
 
 /**
@@ -65,6 +65,19 @@ export function tmValidateTokens(tokens: TmTokens): TmTokenValidationIssue[] {
           });
         }
       }
+    }
+  }
+
+  // Gate 1 also covers the :lang() leading rules, which live outside the
+  // scheme blocks: each value must resolve against the emitted variables.
+  for (const [lang, value] of Object.entries(tokens.semantic.leadingByLang)) {
+    const css = tmTokenValueToCss(value);
+    const ref = /^var\((--[a-z0-9-]+)\)$/i.exec(css);
+    if (ref && !varMaps.get('light')!.has(ref[1])) {
+      issues.push({
+        gate: 'missing-ref',
+        message: `leadingByLang.${lang} references missing token ${ref[1]}`,
+      });
     }
   }
 

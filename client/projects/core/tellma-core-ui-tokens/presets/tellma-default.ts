@@ -192,6 +192,9 @@ export const tmTokensDefault: TmTokens = {
       sans: "'Noto Sans', system-ui, -apple-system, 'Segoe UI', sans-serif",
       arabic: "'Noto Sans Arabic', 'Noto Sans', sans-serif",
       mono: "'Noto Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace",
+      // Brand faces per script first (core-ui vendors the Latin faces; the
+      // Arabic faces arrive with @tellma/locale-ar), generics last.
+      ui: ["'Noto Sans'", "'Noto Sans Arabic'", 'system-ui', '-apple-system', "'Segoe UI'", 'sans-serif'],
       size: { xs: '12px', sm: '14px', base: '16px', lg: '18px' },
       weight: { regular: '400', medium: '500', semibold: '600', bold: '700' },
       leading: { tight: '1.2', snug: '1.35', body: '1.6', arabic: '1.9' },
@@ -223,6 +226,10 @@ export const tmTokensDefault: TmTokens = {
       paddingX: '12px',
       paddingY: '8px',
       fontSize: '{font.size.sm}',
+    },
+    leadingByLang: {
+      ar: '{font.leading.arabic}',
+      en: '{font.leading.body}',
     },
   },
   component: {
