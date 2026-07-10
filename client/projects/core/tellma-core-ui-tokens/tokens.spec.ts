@@ -99,9 +99,15 @@ describe('tmEmitCss', () => {
   });
 
   it('emits --font-ui as the single multi-script stack, with no direction coupling', () => {
-    expect(css).toContain(
-      "--font-ui: 'Noto Sans', 'Noto Sans Arabic', system-ui, -apple-system, 'Segoe UI', sans-serif;",
+    // Ordered-contains, not exact-equals: adding faces later must not break
+    // this — the invariants are brand faces before generics and no exact
+    // stack pinning.
+    const stack = /--font-ui: (.*);/.exec(css)?.[1] ?? '';
+    const order = ["'Noto Sans'", "'Noto Sans Arabic'", 'sans-serif'].map((f) =>
+      stack.indexOf(f),
     );
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
     // Typography never keys on direction: per-glyph face selection comes from
     // the stack + unicode-range, leading from :lang() below.
     expect(css).not.toContain('[dir=');
