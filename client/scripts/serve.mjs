@@ -1,3 +1,8 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
 /**
  * Launches `ng serve` for a project (default: showcase) on a port-free basis
  * per spec 0002 §1.3: the port comes from .dev-ports.local when present,

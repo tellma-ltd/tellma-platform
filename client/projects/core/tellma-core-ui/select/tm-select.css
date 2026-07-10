@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
 /* tm-select — trigger + overlay panel chrome (spec §3.4). The component OWNS
    its chrome (ownsChrome); sizing comes from the field/select tokens and
    layout uses logical properties so RTL mirrors for free. */

@@ -1,3 +1,8 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
 /**
  * API goldens per entry point (spec §10, D11/DoD 14): Microsoft API
  * Extractor runs against ng-packagr's flattened dist .d.ts and emits a

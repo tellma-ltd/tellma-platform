@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
 /**
  * @tellma/core-ui-mcp — scoped MCP server for the Tellma UI component
  * library: answers `list` / `describe` / `example` over

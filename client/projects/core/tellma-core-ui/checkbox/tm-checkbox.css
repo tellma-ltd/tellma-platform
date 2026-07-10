@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
 /* tm-checkbox — visually-hidden native input + styled box (spec §3.3).
    The box renders at the brand 18px (component token); the CLICKABLE region
    is the whole label row, padded to clear the 24px WCAG 2.2 target minimum;

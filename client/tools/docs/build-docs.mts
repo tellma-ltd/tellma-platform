@@ -1,3 +1,8 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
 /**
  * docs:build — generates components.json (schema-validated) + its JSON
  * Schema + llms.txt into the MCP package (spec §11). llms.txt is the

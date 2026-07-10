@@ -1,3 +1,8 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
 /**
  * components.json extractor (spec 0002 §11, plan D5): derives every field
  * from typed source — signal input()/model()/output() call-sites, JSDoc

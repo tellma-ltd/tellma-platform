@@ -1,3 +1,8 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
 import type { TmTokens } from '../contract/tokens';
 import { tmEmittedSchemeVars, tmTokenValueToCss } from '../emit/emit-css';
 import { tmContrastRatio, tmParseColor, TM_CONTRAST_THRESHOLDS, type TmRgba } from './contrast';

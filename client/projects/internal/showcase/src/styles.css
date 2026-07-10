@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
 /* Showcase global styles — painted from the emitted token variables so the
    dark scheme visibly flips the whole page. */
 body {

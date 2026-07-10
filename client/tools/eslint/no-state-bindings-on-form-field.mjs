@@ -1,3 +1,8 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
 /**
  * tm/no-state-bindings-on-form-field — template rule forbidding
  * disabled/readonly/required bindings on a [formField]-bound control
