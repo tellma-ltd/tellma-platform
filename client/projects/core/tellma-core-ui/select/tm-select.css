@@ -87,25 +87,7 @@
   transform: rotate(180deg);
 }
 
-.tm-select__spinner {
-  flex: none;
-  inline-size: var(--space-4);
-  block-size: var(--space-4);
-  color: var(--field-icon);
-  animation: tm-select-spin var(--duration-slow) linear infinite;
-}
-
-@keyframes tm-select-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .tm-select__spinner {
-    animation: none;
-  }
-
   .tm-select__caret {
     transition: none;
   }

@@ -14,7 +14,7 @@ import {
 } from '@angular/core';
 
 import type { TmFormFieldControl } from '@tellma/core-ui/contracts';
-import { TM_ERROR_DISPLAY, TM_FORM_FIELD_DEFAULTS } from '@tellma/core-ui';
+import { TM_ERROR_DISPLAY, TM_FORM_FIELD_DEFAULTS, TmSpinner } from '@tellma/core-ui';
 
 /**
  * A control projects itself into `tm-form-field` by providing this token
@@ -46,6 +46,7 @@ let nextUniqueId = 0;
  */
 @Component({
   selector: 'tm-form-field',
+  imports: [TmSpinner],
   template: `
     @if (label() !== '') {
       <label
@@ -70,10 +71,7 @@ let nextUniqueId = 0;
       <ng-content />
       <ng-content select="[tmSuffix]" />
       @if (pending() && !chromeless()) {
-        <svg class="tm-form-field__spinner" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-opacity="0.25" />
-          <path d="M8 1.5 A 6.5 6.5 0 0 1 14.5 8" stroke="currentColor" stroke-linecap="round" />
-        </svg>
+        <tm-spinner class="tm-form-field__spinner" />
       }
     </div>
     <!-- Persistent polite live region: exists whether or not it holds text, so

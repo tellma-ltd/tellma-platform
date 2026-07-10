@@ -76,26 +76,6 @@
   display: contents;
 }
 
-.tm-form-field__spinner {
-  inline-size: var(--space-4);
-  block-size: var(--space-4);
-  flex: none;
-  color: var(--field-icon);
-  animation: tm-form-field-spin var(--duration-slow) linear infinite;
-}
-
-@keyframes tm-form-field-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tm-form-field__spinner {
-    animation: none;
-  }
-}
-
 .tm-form-field__hint,
 .tm-form-field__error {
   margin-block-start: var(--space-1);

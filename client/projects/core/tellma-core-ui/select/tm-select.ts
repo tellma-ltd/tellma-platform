@@ -34,6 +34,7 @@ import {
   TM_FORM_FIELD_DEFAULTS,
   TM_UI_TRANSLATE,
   tmResolveFieldErrors,
+  TmSpinner,
 } from '@tellma/core-ui';
 import { TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/form-field';
 
@@ -72,7 +73,16 @@ let nextUniqueId = 0;
  */
 @Component({
   selector: 'tm-select',
-  imports: [Combobox, ComboboxPopup, ComboboxWidget, Listbox, Option, NgTemplateOutlet, OverlayModule],
+  imports: [
+    Combobox,
+    ComboboxPopup,
+    ComboboxWidget,
+    Listbox,
+    Option,
+    NgTemplateOutlet,
+    OverlayModule,
+    TmSpinner,
+  ],
   providers: [{ provide: TM_FORM_FIELD_CONTROL, useExisting: TmSelect }],
   template: `
     <div
@@ -95,10 +105,7 @@ let nextUniqueId = 0;
         {{ triggerLabel() }}
       </span>
       @if (pending()) {
-        <svg class="tm-select__spinner" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-opacity="0.25" />
-          <path d="M8 1.5 A 6.5 6.5 0 0 1 14.5 8" stroke="currentColor" stroke-linecap="round" />
-        </svg>
+        <tm-spinner class="tm-select__spinner" />
       }
       <svg class="tm-select__caret" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <polyline

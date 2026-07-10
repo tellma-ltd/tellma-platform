@@ -18,3 +18,4 @@ export * from './i18n/tm-ui-translate';
 export * from './forms/field-errors';
 export * from './forms/provide-tellma-forms';
 export * from './providers/provide-tellma-ui';
+export * from './spinner/tm-spinner';
