@@ -117,6 +117,14 @@ describe('tmEmitCss', () => {
     expect(css.indexOf(':lang(ar)')).toBeGreaterThan(css.indexOf(':root {'));
   });
 
+  it('emits the ::selection rule with per-scheme teal highlight tokens', () => {
+    expect(css).toMatch(/::selection \{\n\s*background-color: var\(--selection-bg\);\n\s*color: var\(--selection-text\);/);
+    const light = tmEmittedSchemeVars(tmTokensDefault, 'light');
+    expect(light.get('--selection-bg')).toBe('var(--teal-100)');
+    const dark = tmEmittedSchemeVars(tmTokensDefault, 'dark');
+    expect(dark.get('--selection-bg')).toBe('var(--teal-800)');
+  });
+
   it('overlays dark primitives so grey-built components flip automatically', () => {
     const dark = tmEmittedSchemeVars(tmTokensDefault, 'dark');
     expect(dark.get('--white')).toBe('#16252D');

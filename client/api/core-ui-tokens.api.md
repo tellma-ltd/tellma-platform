@@ -122,6 +122,10 @@ export interface TmSchemeColors {
         readonly grey?: Partial<TmGreyRamp>;
         readonly teal?: Partial<TmTealRamp>;
     };
+    readonly selection: {
+        readonly bg: TmTokenValue;
+        readonly text: TmTokenValue;
+    };
     // (undocumented)
     readonly status: {
         readonly success: TmStatusColors;

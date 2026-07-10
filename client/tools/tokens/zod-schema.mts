@@ -41,6 +41,7 @@ const schemeColors = z.object({
     selected: value,
   }),
   border: z.object({ subtle: value, default: value, strong: value, divider: value }),
+  selection: z.object({ bg: value, text: value }),
   action: z.object({
     primary: value,
     primaryHover: value,

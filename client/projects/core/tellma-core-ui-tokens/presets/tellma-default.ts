@@ -33,6 +33,11 @@ const light: TmSchemeColors = {
     strong: '{grey.300}',
     divider: '{grey.100}',
   },
+  // Light teal selection highlight; ink text keeps 14:1.
+  selection: {
+    bg: '{teal.100}',
+    text: '{ink.900}',
+  },
   action: {
     // Teal that CARRIES TEXT is teal-600 (5.67:1 with white); the canonical
     // logo teal-400 is decorative only (2.97:1 — see contrastExceptions).
@@ -111,6 +116,12 @@ const dark: TmSchemeColors = {
     default: 'rgba(255, 255, 255, 0.12)',
     strong: 'rgba(255, 255, 255, 0.20)',
     divider: 'rgba(255, 255, 255, 0.07)',
+  },
+  // Deep teal selection; the inverted light text keeps 10.5:1. teal-800 is
+  // NOT overridden in this scheme, so the ref hits the base ramp.
+  selection: {
+    bg: '{teal.800}',
+    text: '{grey.900}',
   },
   action: {
     // Lighter teal on dark carries INK text (ink on teal-400 = 6.12:1).
@@ -248,6 +259,7 @@ export const tmTokensDefault: TmTokens = {
     { fg: '--text-link', bg: '--surface-page', kind: 'text' },
     { fg: '--text-on-dark', bg: '--surface-inverse', kind: 'text' },
     { fg: '--color-on-primary', bg: '--color-primary', kind: 'text' },
+    { fg: '--selection-text', bg: '--selection-bg', kind: 'text' },
     // Field group.
     { fg: '--field-text', bg: '--field-bg', kind: 'text' },
     { fg: '--field-text-disabled', bg: '--field-bg-disabled', kind: 'text' },

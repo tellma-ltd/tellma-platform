@@ -46,7 +46,7 @@ function resolveColor(vars: Map<string, string>, name: string): TmRgba | null {
  */
 // NOTE: --text-xs/sm/base/lg are font SIZES (brand naming), not colors — the
 // text COLOR roles are enumerated explicitly.
-const COMPLETENESS_FG = /^--(text-(strong|body|secondary|muted|link|on-dark)|field-(text|text-disabled|placeholder|icon|border|border-hover|border-focus|border-invalid)|color-on-primary|accent|focus-ring-color|success|warning|error|info)$/;
+const COMPLETENESS_FG = /^--(text-(strong|body|secondary|muted|link|on-dark)|field-(text|text-disabled|placeholder|icon|border|border-hover|border-focus|border-invalid)|selection-text|color-on-primary|accent|focus-ring-color|success|warning|error|info)$/;
 
 export function tmValidateTokens(tokens: TmTokens): TmTokenValidationIssue[] {
   const issues: TmTokenValidationIssue[] = [];

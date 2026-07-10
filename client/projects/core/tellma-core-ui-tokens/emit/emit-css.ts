@@ -114,6 +114,9 @@ function schemeVars(scheme: TmSchemeColors): VarMap {
   for (const [key, value] of Object.entries(scheme.border)) {
     set(key === 'divider' ? '--divider' : tmRefToVarName(`border.${key}`), value);
   }
+  for (const [key, value] of Object.entries(scheme.selection)) {
+    set(tmRefToVarName(`selection.${key}`), value);
+  }
   for (const [key, value] of Object.entries(scheme.action)) {
     set(tmRefToVarName(`action.${key}`), value);
   }
@@ -234,6 +237,14 @@ export function tmEmitCss(tokens: TmTokens): string {
     '     these must come later in source; every listed language sets its own',
     '     value, so a marked island (lang="en" in an Arabic page) snaps back. */',
     ...langBlocks,
+    '',
+    '  /* Text selection paints the brand teal. Flat color only: the CSS',
+    '     highlight pseudo-elements ignore background-image, so no gradient',
+    '     can apply here. */',
+    '  ::selection {',
+    '    background-color: var(--selection-bg);',
+    '    color: var(--selection-text);',
+    '  }',
     '}',
     '',
   ].join('\n');

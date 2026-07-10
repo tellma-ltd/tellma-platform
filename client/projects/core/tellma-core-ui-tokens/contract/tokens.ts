@@ -77,6 +77,15 @@ export interface TmSchemeColors {
     readonly strong: TmTokenValue;
     readonly divider: TmTokenValue;
   };
+  /**
+   * Text-selection highlight (`::selection`). Flat colors only — the CSS
+   * highlight pseudo-elements ignore `background-image`, so a gradient
+   * cannot apply here.
+   */
+  readonly selection: {
+    readonly bg: TmTokenValue;
+    readonly text: TmTokenValue;
+  };
   readonly action: {
     /** Teal surface that CARRIES TEXT (buttons, solid badges). */
     readonly primary: TmTokenValue;
