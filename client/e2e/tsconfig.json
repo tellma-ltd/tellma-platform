@@ -1,0 +1,16 @@
+/*
+ * EDITOR-VIEW project (not used by any build — Playwright transpiles the
+ * config and specs itself): no build project covers e2e/, so without this
+ * VS Code serves these files from a fallback project that loads no ambient
+ * @types, and `process` (from @types/node) shows as ts(2591).
+ *
+ * Path mappings are inherited from ../tsconfig.json and stay anchored there.
+ */
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": ["**/*.ts"]
+}

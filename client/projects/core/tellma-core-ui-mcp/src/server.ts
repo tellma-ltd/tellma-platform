@@ -23,18 +23,10 @@ interface ComponentDoc {
   entryPoint: string;
   formControl: string | null;
   description: string;
-  inputs: { name: string; type: string; description: string }[];
-  outputs: { name: string; type: string; description: string }[];
-  slots: { name: string; selector: string; description: string }[];
-  tokens: string[];
-  a11y: { roles: string[]; keyboard: string[]; notes: string };
   examples: { title: string; code: string }[];
-  harness: string;
-  status: string;
 }
 
 interface ComponentsJson {
-  schemaVersion: string;
   libraryVersion: string;
   components: ComponentDoc[];
 }

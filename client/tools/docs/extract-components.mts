@@ -14,8 +14,10 @@ import { fileURLToPath } from 'node:url';
 import {
   Node,
   Project,
+  TypeFormatFlags,
   type ClassDeclaration,
   type ObjectLiteralExpression,
+  type PropertyDeclaration,
 } from 'ts-morph';
 
 import type { ComponentDoc, ComponentsJson } from './components-schema.mjs';
@@ -93,6 +95,21 @@ function metaString(meta: ObjectLiteralExpression, key: string): string | undefi
   return undefined;
 }
 
+/**
+ * Type text for the docs artifact. Bare getText() qualifies out-of-scope
+ * symbols with machine-local `import("…/node_modules/…").` prefixes; the
+ * generated files ship in the published package, so nothing machine-specific
+ * may appear. The enclosing node + flag keep names scope-relative, and the
+ * replace strips any qualifier the printer still emits (e.g. on nested
+ * type arguments).
+ */
+function propTypeText(prop: PropertyDeclaration): string {
+  return prop
+    .getType()
+    .getText(prop, TypeFormatFlags.UseAliasDefinedOutsideCurrentScope)
+    .replace(/import\("[^"]*"\)\./g, '');
+}
+
 function extractProps(cls: ClassDeclaration) {
   const inputs: ComponentDoc['inputs'] = [];
   const outputs: ComponentDoc['outputs'] = [];
@@ -117,7 +134,7 @@ function extractProps(cls: ClassDeclaration) {
     if (callee === 'input' || callee === 'input.required') {
       inputs.push({
         name,
-        type: typeArg ?? prop.getType().getText().replace(/^InputSignal(WithTransform)?</, ''),
+        type: typeArg ?? propTypeText(prop),
         default: callee === 'input.required' ? undefined : firstArg,
         required: callee === 'input.required',
         description,
@@ -198,9 +215,7 @@ function extractExamples(sourceFile: string): ComponentDoc['examples'] {
   }
   const text = readFileSync(examplesPath, 'utf8');
   const examples: ComponentDoc['examples'] = [];
-  for (const match of text.matchAll(
-    /export const (\w+) = \{\s*template: `([\s\S]*?)`,?\s*\};/g,
-  )) {
+  for (const match of text.matchAll(/export const (\w+) = \{\s*template: `([\s\S]*?)`,?\s*\};/g)) {
     examples.push({ title: match[1], code: match[2].trim() });
   }
   return examples;

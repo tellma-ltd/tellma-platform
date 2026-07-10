@@ -61,7 +61,8 @@ export class TmInput implements TmFormFieldControl {
   private readonly element = inject<ElementRef<HTMLInputElement>>(ElementRef).nativeElement;
   private readonly translate = inject(TM_UI_TRANSLATE);
   private readonly errorDisplay = inject(TM_ERROR_DISPLAY);
-  /** The enclosing field, if any — used only to resolve the size default. */
+  /** The enclosing field, if any — used only to flag `--in-field` so the input
+   * inherits the field's chrome and sizing. Form state flows via `[formField]`. */
   protected readonly formField = inject(TmFormField, { optional: true });
 
   // ---- FormValueControl<string> + the optional state inputs (§5) ----
@@ -87,14 +88,16 @@ export class TmInput implements TmFormFieldControl {
   // ---- TmFormFieldControl (§2.1) ----
   /** The field renders the bordered box around this bare directive (§3). */
   readonly ownsChrome = false;
-  readonly empty = computed(() => this.value() === '');
+  readonly empty = computed(() => {
+    const value = this.value();
+    return value === undefined || value === null || value === '';
+  });
   private readonly fieldDescribedBy = signal<readonly string[]>([]);
   readonly describedByIds = this.fieldDescribedBy.asReadonly();
   readonly localizedErrors: () => readonly TmFieldError[] = tmResolveFieldErrors(
     this.errors,
     this.translate,
   );
-
   protected readonly ariaDescribedBy = computed(() => this.describedByIds().join(' ') || null);
 
   /**
@@ -115,7 +118,7 @@ export class TmInput implements TmFormFieldControl {
     // Reflect external value writes into the native input without clobbering
     // the caret on the user's own keystrokes.
     effect(() => {
-      const value = this.value();
+      const value = this.value() ?? '';
       if (this.element.value !== value) {
         this.element.value = value;
       }

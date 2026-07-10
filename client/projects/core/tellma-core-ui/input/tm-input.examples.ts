@@ -27,7 +27,7 @@ export const WithAdornments = {
 export const Sizes = {
   template: `
     <tm-form-field label="Small" size="sm"><input tmInput /></tm-form-field>
-    <tm-form-field label="Medium"><input tmInput /></tm-form-field>
+    <tm-form-field label="Medium" size="md"><input tmInput /></tm-form-field>
     <tm-form-field label="Large" size="lg"><input tmInput /></tm-form-field>
   `,
 };

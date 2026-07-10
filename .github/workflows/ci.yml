@@ -16,7 +16,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
@@ -32,7 +32,7 @@ jobs:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
@@ -46,7 +46,7 @@ jobs:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
@@ -64,7 +64,7 @@ jobs:
       HOST: test/core/assets/Tellma.Core.EntityFrameworkCore.MigrationsHost
       PKG_HOST: test/core/assets/Tellma.Core.EntityFrameworkCore.MigrationsHost.Package
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
@@ -110,11 +110,11 @@ jobs:
       run:
         working-directory: client
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4 # version from client/package.json packageManager
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6 # version from client/package.json packageManager
         with:
           package_json_file: client/package.json
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm

@@ -1,7 +1,7 @@
 {
   "name": "@tellma/locale-ar",
   "version": "0.1.0",
-  "description": "Arabic locale pack for Tellma distributions — library strings (Transloco scope) plus the self-hosted Noto Sans Arabic font subset. The reference template every later locale pack copies.",
+  "description": "Arabic locale pack for Tellma distributions — library strings (Transloco scope) plus the self-hosted Noto Sans Arabic font subset.",
   "license": "Apache-2.0",
   "peerDependencies": {
     "@angular/core": "^22.0.0",

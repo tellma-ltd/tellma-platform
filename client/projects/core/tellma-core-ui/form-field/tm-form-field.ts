@@ -49,10 +49,10 @@ let nextUniqueId = 0;
         [attr.for]="labelFor()"
         (click)="onLabelClick()"
       >
-        {{ label()
-        }}@if (showRequiredMarker()) {<span class="tm-form-field__required" aria-hidden="true">{{
-            requiredMarker
-          }}</span>}
+        {{ label() }}
+        @if (showRequiredMarker()) {
+          <span class="tm-form-field__required" aria-hidden="true">{{ requiredMarker }}</span>
+        }
       </label>
     }
 
@@ -71,8 +71,6 @@ let nextUniqueId = 0;
         </svg>
       }
     </div>
-
-    <div class="tm-form-field__hint" [id]="hintId" [hidden]="!showHint()">{{ hint() }}</div>
     <!-- Persistent polite live region: exists whether or not it holds text, so
          empty->message (or message->message) is announced once (§6). -->
     <div class="tm-form-field__error" [id]="errorId" aria-live="polite" aria-atomic="true">
@@ -80,6 +78,7 @@ let nextUniqueId = 0;
         {{ errorText() }}
       }
     </div>
+    <div class="tm-form-field__hint" [id]="hintId" [hidden]="!showHint()">{{ hint() }}</div>
   `,
   styleUrl: './tm-form-field.css',
   host: {

@@ -156,7 +156,7 @@ describe('tmInput + tm-form-field (Signal Forms, §3.1/§3.2/§5)', () => {
     class BoundHost {
       readonly model = signal({ code: 'x' });
       readonly f = form(this.model, (p) => {
-        disabled(p.code, () => true);
+        disabled(p.code, { when: () => true });
       });
     }
 

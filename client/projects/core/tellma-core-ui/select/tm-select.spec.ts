@@ -259,7 +259,7 @@ describe('tm-select (§3.4)', () => {
     class DisabledHost {
       readonly model = signal<{ countryId: number | null }>({ countryId: 1 });
       readonly f = form(this.model, (p) => {
-        disabled(p.countryId, () => true);
+        disabled(p.countryId, { when: () => true });
       });
       readonly countries = COUNTRIES;
     }

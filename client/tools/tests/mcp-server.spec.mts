@@ -36,6 +36,28 @@ describe('@tellma/core-ui-mcp server', () => {
     );
   }, 60_000);
 
+  it('emits every field the server hand-reads from components.json (rename guard)', async () => {
+    // server.ts picks these fields BY NAME off the parsed JSON; a rename in
+    // the tooling schema would make them `undefined`, and JSON.stringify
+    // silently DROPS undefined keys — so assert on the endpoint output.
+    const result = await client.callTool({ name: 'list', arguments: {} });
+    const parsed = JSON.parse(
+      (result.content as { type: string; text: string }[])[0].text,
+    ) as { libraryVersion: string; components: Record<string, unknown>[] };
+
+    expect(parsed.libraryVersion).toBeTruthy();
+    expect(parsed.components.length).toBeGreaterThan(0);
+    for (const component of parsed.components) {
+      const name = String(component['name']);
+      for (const key of ['name', 'selector', 'kind', 'group', 'entryPoint', 'summary']) {
+        expect(component[key], `list dropped "${key}" for ${name}`).toBeTruthy();
+      }
+      // formControl is legitimately null on non-form components; a schema
+      // rename would drop the key, so assert presence rather than truthiness.
+      expect(component, `list dropped "formControl" for ${name}`).toHaveProperty('formControl');
+    }
+  });
+
   it('lists the Phase-1 components', async () => {
     const result = await client.callTool({ name: 'list', arguments: {} });
     const text = (result.content as { type: string; text: string }[])[0].text;
@@ -69,6 +91,8 @@ describe('@tellma/core-ui-mcp server', () => {
     const text = (result.content as { type: string; text: string }[])[0].text;
     expect(text).toContain('<tm-select');
     expect(text).toContain('tm-option');
+    // A renamed `title` doesn't throw — it interpolates as `<!-- undefined -->`.
+    expect(text).not.toContain('<!-- undefined -->');
   });
 
   it('flags unknown components as errors', async () => {

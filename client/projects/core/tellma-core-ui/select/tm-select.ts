@@ -188,8 +188,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   // ---- Own API (§3.4) ----
   /**
    * Maps a domain value to a STABLE primitive key (aria selects with `===`).
-   * Unneeded for primitive values. Deliberately NOT `compareWith` — this is
-   * a one-argument key extractor, not a two-argument comparator.
+   * Unneeded for primitive values.
    */
   readonly valueKey = input<((value: T) => string | number) | undefined>(undefined);
   /**
@@ -253,8 +252,8 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     if (value === undefined || value === null) {
       return value;
     }
-    const key = this.valueKey();
-    return key ? key(value) : value;
+    const keyFn = this.valueKey();
+    return keyFn ? keyFn(value) : value;
   }
 
   private readonly defaultPlaceholder = this.translate('select.placeholder');

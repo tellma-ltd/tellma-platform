@@ -9,8 +9,8 @@ import { z } from 'zod';
 import type { TmTokens } from '@tellma/core-ui-tokens';
 
 const value = z.string().min(1);
-const ramp = (stops: readonly number[]) =>
-  z.object(Object.fromEntries(stops.map((s) => [s, value])) as Record<string, z.ZodString>);
+const ramp = <S extends number>(stops: readonly S[]) =>
+  z.object(Object.fromEntries(stops.map((s) => [s, value])) as { [K in S]: typeof value });
 
 const statusColors = z.object({ fg: value, bg: value, border: value });
 
