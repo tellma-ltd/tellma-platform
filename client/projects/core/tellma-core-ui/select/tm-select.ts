@@ -24,7 +24,12 @@ import type { ConnectedPosition } from '@angular/cdk/overlay';
 import type { ValidationError } from '@angular/forms/signals';
 
 import type { TmCellEditor, TmFieldError, TmFormFieldControl } from '@tellma/core-ui/contracts';
-import { TM_ERROR_DISPLAY, TM_UI_TRANSLATE, tmResolveFieldErrors } from '@tellma/core-ui';
+import {
+  TM_ERROR_DISPLAY,
+  TM_FORM_FIELD_DEFAULTS,
+  TM_UI_TRANSLATE,
+  tmResolveFieldErrors,
+} from '@tellma/core-ui';
 import { TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/form-field';
 
 import { TmOption } from './tm-option';
@@ -171,6 +176,7 @@ let nextUniqueId = 0;
 export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefined> {
   private readonly translate = inject(TM_UI_TRANSLATE);
   private readonly errorDisplay = inject(TM_ERROR_DISPLAY);
+  private readonly defaults = inject(TM_FORM_FIELD_DEFAULTS);
 
   // ---- FormValueControl<T | undefined> + optional state inputs (§5) ----
   /** The selected domain value — THE source of truth (§3.4). */
@@ -200,7 +206,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   readonly placeholder = input<string | undefined>(undefined);
   /** Accessible name for a select used WITHOUT tm-form-field (§3.1). */
   readonly ariaLabel = input<string | null>(null, { alias: 'aria-label' });
-  readonly size = input<'sm' | 'md' | 'lg'>('md');
+  readonly size = input<'sm' | 'md' | 'lg'>(this.defaults.size);
   readonly selectionChange = output<T>();
   readonly opened = output<void>();
   readonly closed = output<void>();
