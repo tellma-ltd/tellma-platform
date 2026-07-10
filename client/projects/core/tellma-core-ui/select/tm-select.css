@@ -160,6 +160,14 @@
   cursor: default;
 }
 
+/* Pointer hover: same surface as the active row, so mouse users get
+   feedback without moving the active descendant. Selected rows keep their
+   own surface (the rules below win by source order at equal precedence,
+   and hover on a selected row must not wash out the selected state). */
+.tm-option__row:hover:not([aria-disabled='true']):not([aria-selected='true']) {
+  background: var(--surface-hover);
+}
+
 .tm-option__row[data-active='true'] {
   background: var(--surface-hover);
   box-shadow: inset 0 0 0 var(--focus-ring-width) var(--focus-ring-color);
