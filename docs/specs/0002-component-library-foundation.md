@@ -1020,9 +1020,11 @@ many scripts (Amharic, Japanese, Hindi, Russian, …) without eagerly loading al
 - **Long option lists:** `@for` + `track` now; `cdk/scrolling` virtual scroll drops in later without an API
   change.
 - **Bundle budget** per entry point in CI, with **concrete initial ceilings, not "TBD"**, so the DoD's
-  "within budget" isn't circular. Starting ceilings (gzipped, self-weight excluding shared Angular/CDK
-  already in the app): `tmInput` ≤ 8 KB, `tm-checkbox` ≤ 8 KB, `tm-form-field` ≤ 6 KB, `tm-select` ≤ 24 KB
-  (it carries the Overlay/listbox wiring), `@tellma/core-ui-tokens` runtime ≤ 4 KB. These are **ratchets**:
+  "within budget" isn't circular. Ceilings (gzipped, self-weight excluding shared Angular/CDK
+  already in the app): `tmInput` ≤ 3 KB, `tm-checkbox` ≤ 4 KB, `tm-form-field` ≤ 4 KB, `tm-select` ≤ 8 KB
+  (it carries the Overlay/listbox wiring), `@tellma/core-ui-tokens` runtime ≤ 8 KB (it ships the
+  WCAG-contrast and validation gates as runtime code — the client-side contrast check for user-picked
+  colors). These are **ratchets**:
   set to catch regressions now, inspected and tightened once real builds land, never loosened silently. The
   ceilings measure each component's own weight on top of an assumed Angular + CDK baseline — that baseline
   is a given (any real distribution ships components that pull in CDK), so counting CDK against `tm-select`

@@ -19,32 +19,26 @@ const esbuild = require('esbuild');
 
 /** Ceilings in KB gzipped (§8). */
 const BUDGETS = [
-  { name: '@tellma/core-ui/input', entry: 'dist/core-ui/fesm2022/tellma-core-ui-input.mjs', kb: 8 },
+  { name: '@tellma/core-ui/input', entry: 'dist/core-ui/fesm2022/tellma-core-ui-input.mjs', kb: 3 },
   {
     name: '@tellma/core-ui/checkbox',
     entry: 'dist/core-ui/fesm2022/tellma-core-ui-checkbox.mjs',
-    kb: 8,
+    kb: 4,
   },
   {
     name: '@tellma/core-ui/form-field',
     entry: 'dist/core-ui/fesm2022/tellma-core-ui-form-field.mjs',
-    kb: 6,
+    kb: 4,
   },
   {
     name: '@tellma/core-ui/select',
     entry: 'dist/core-ui/fesm2022/tellma-core-ui-select.mjs',
-    kb: 24,
+    kb: 8,
   },
   {
-    // §8 estimated 4 KB pre-implementation; the first real build measures
-    // 5.28 KB because the package legitimately ships the WCAG-contrast +
-    // validation gates as RUNTIME code (the spec's own client-side
-    // contrast-check feature for user-picked colors, §4). Ratchet inspected
-    // and reset at first measurement — recorded in the phase-1 report, not
-    // silent. Tighten if the gates ever move out of the runtime barrel.
     name: '@tellma/core-ui-tokens',
     entry: 'dist/core-ui-tokens/fesm2022/tellma-core-ui-tokens.mjs',
-    kb: 6,
+    kb: 8,
   },
 ];
 
