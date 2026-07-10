@@ -54,20 +54,14 @@ export interface TmStatusColors {
 
 /**
  * Everything scheme-dependent, one instance per scheme (light/dark). Dark
- * mode is a second base scheme, not a separate mechanism: the dark
- * instance may override primitive ramp values (the brand inverts the cool
- * neutral ramp so grey-built components flip automatically) and redefines
- * the semantic roles.
+ * mode is a second base scheme, not a separate mechanism. Primitives are
+ * scheme-invariant — `--white` is always white, `--grey-900` always the
+ * darkest grey — so each scheme expresses its whole appearance through
+ * these semantic roles.
  */
 export interface TmSchemeColors {
   /** Value of the CSS `color-scheme` property inside the scheme's scope. */
   readonly colorScheme: 'light' | 'dark';
-  /** Primitive ramp overrides applied within this scheme's scope. */
-  readonly primitiveOverrides?: {
-    readonly white?: string;
-    readonly grey?: Partial<TmGreyRamp>;
-    readonly teal?: Partial<TmTealRamp>;
-  };
   /** Text ink roles, strongest to most muted, plus the on-dark and link inks. */
   readonly text: {
     readonly strong: TmTokenValue;

@@ -136,12 +136,16 @@ describe('tmEmitCss', () => {
     expect(dark.get('--selection-bg')).toBe('var(--teal-800)');
   });
 
-  it('overlays dark primitives so grey-built components flip automatically', () => {
+  it('primitives never lie: identical in both schemes; dark is all semantic', () => {
     const dark = tmEmittedSchemeVars(tmTokensDefault, 'dark');
-    expect(dark.get('--white')).toBe('#16252D');
-    expect(dark.get('--grey-900')).toBe('#F2F7F8');
-    expect(tmResolveVar(dark, '--field-text')).toBe('#F2F7F8');
     const light = tmEmittedSchemeVars(tmTokensDefault, 'light');
+    // --white is always white, --grey-900 always the darkest grey.
+    expect(dark.get('--white')).toBe('#FEFEFE');
+    expect(dark.get('--white')).toBe(light.get('--white'));
+    expect(dark.get('--grey-900')).toBe(light.get('--grey-900'));
+    // The dark appearance flows entirely through the semantic roles.
+    expect(tmResolveVar(dark, '--field-text')).toBe('#F2F7F8');
+    expect(tmResolveVar(dark, '--field-bg')).toBe('#16252D');
     expect(tmResolveVar(light, '--field-text')).toBe('#001722');
   });
 });

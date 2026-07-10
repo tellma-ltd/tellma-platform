@@ -7,8 +7,9 @@ import type { TmSchemeColors, TmTokens } from '../contract/tokens';
 
 /**
  * The default preset, reproducing `tellma-brand/design-system`: same
- * hexes, same `--field-*` / focus-ring / spacing / type tokens, same
- * `[data-theme=dark]` inversion. One deliberate departure: the focus
+ * hexes, same `--field-*` / focus-ring / spacing / type tokens; the dark
+ * scheme restates the brand's inverted neutrals as semantic-role values
+ * (primitives never change meaning). One deliberate departure: the focus
  * ring color is teal-500 (clears the 3:1 focus-indicator ratio vs the white
  * field; the brand's older spacing.css still carried teal-400).
  */
@@ -73,45 +74,34 @@ const light: TmSchemeColors = {
   },
 };
 
+// The dark neutral scale — the brand's inversion of the light greys, stated
+// as literals: primitives are scheme-invariant (--white stays white), so
+// dark expresses its whole appearance through the semantic roles below.
+const darkNeutral = {
+  surface: '#16252D', // card/field surfaces (the slot white fills in light)
+  25: '#1C2C34',
+  400: '#74888E',
+  500: '#94A5AB',
+  700: '#CDD8DC',
+  900: '#F2F7F8',
+} as const;
+
 const dark: TmSchemeColors = {
   colorScheme: 'dark',
-  // Inverted cool neutral ramp: light end = dark surfaces, dark end = light
-  // text. Components built on the grey scale flip automatically.
-  primitiveOverrides: {
-    white: '#16252D',
-    grey: {
-      25: '#1C2C34',
-      50: '#21323A',
-      100: '#2A3C44',
-      200: '#374B53',
-      300: '#475B63',
-      400: '#74888E',
-      500: '#94A5AB',
-      600: '#B1C1C5',
-      700: '#CDD8DC',
-      800: '#E3EBED',
-      900: '#F2F7F8',
-    },
-    teal: {
-      50: 'rgba(76, 160, 182, 0.16)',
-      100: 'rgba(76, 160, 182, 0.34)',
-      700: '#8FD0DE',
-    },
-  },
   text: {
-    strong: '{grey.900}',
-    body: '{grey.700}',
-    secondary: '{grey.500}',
-    muted: '{grey.400}',
-    onDark: '{grey.900}',
+    strong: darkNeutral[900],
+    body: darkNeutral[700],
+    secondary: darkNeutral[500],
+    muted: darkNeutral[400],
+    onDark: darkNeutral[900],
     link: '{teal.300}',
   },
   surface: {
     page: '#0D181E',
     subtle: '#0D181E',
     sunken: '#0A1418',
-    card: '{white}',
-    inverse: '#1C2C34',
+    card: darkNeutral.surface,
+    inverse: darkNeutral[25],
     hover: '#20313A',
     selected: 'rgba(76, 160, 182, 0.18)',
   },
@@ -122,11 +112,10 @@ const dark: TmSchemeColors = {
     strong: 'rgba(255, 255, 255, 0.20)',
     divider: 'rgba(255, 255, 255, 0.07)',
   },
-  // Deep teal selection; the inverted light text keeps 10.5:1. teal-800 is
-  // NOT overridden in this scheme, so the ref hits the base ramp.
+  // Deep teal selection; the light text keeps 10.5:1.
   selection: {
     bg: '{teal.800}',
-    text: '{grey.900}',
+    text: darkNeutral[900],
   },
   action: {
     // Lighter teal on dark carries INK text (ink on teal-400 = 6.12:1).
@@ -143,17 +132,17 @@ const dark: TmSchemeColors = {
     info: { fg: '{teal.300}', bg: 'rgba(76, 160, 182, 0.16)', border: 'rgba(76, 160, 182, 0.34)' },
   },
   field: {
-    bg: '{white}',
+    bg: darkNeutral.surface,
     bgDisabled: '#1A2930',
-    bgFilled: '{grey.25}',
+    bgFilled: darkNeutral[25],
     border: 'rgba(255, 255, 255, 0.14)',
     borderHover: 'rgba(255, 255, 255, 0.24)',
     borderFocus: '{teal.300}',
     borderInvalid: '{status.error.fg}',
-    text: '{grey.900}',
-    textDisabled: '{grey.400}',
-    placeholder: '{grey.400}',
-    icon: '{grey.400}',
+    text: darkNeutral[900],
+    textDisabled: darkNeutral[400],
+    placeholder: darkNeutral[400],
+    icon: darkNeutral[400],
   },
 };
 

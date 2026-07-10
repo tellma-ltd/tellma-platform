@@ -105,11 +105,6 @@ export interface TmSchemeColors {
         readonly placeholder: TmTokenValue;
         readonly icon: TmTokenValue;
     };
-    readonly primitiveOverrides?: {
-        readonly white?: string;
-        readonly grey?: Partial<TmGreyRamp>;
-        readonly teal?: Partial<TmTealRamp>;
-    };
     readonly selection: {
         readonly bg: TmTokenValue;
         readonly text: TmTokenValue;

@@ -21,13 +21,6 @@ const statusColors = z.object({ fg: value, bg: value, border: value });
 
 const schemeColors = z.object({
   colorScheme: z.enum(['light', 'dark']),
-  primitiveOverrides: z
-    .object({
-      white: value.optional(),
-      grey: ramp([25, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900]).partial().optional(),
-      teal: ramp([50, 100, 200, 300, 400, 500, 600, 700, 800, 900]).partial().optional(),
-    })
-    .optional(),
   text: z.object({
     strong: value,
     body: value,

@@ -97,19 +97,6 @@ function schemeVars(scheme: TmSchemeColors): VarMap {
   const vars: VarMap = new Map();
   const set = (name: string, value: string) => vars.set(name, tmTokenValueToCss(value));
 
-  const overrides = scheme.primitiveOverrides;
-  if (overrides?.white) {
-    set('--white', overrides.white);
-  }
-  for (const [ramp, values] of [
-    ['grey', overrides?.grey],
-    ['teal', overrides?.teal],
-  ] as const) {
-    for (const [stop, value] of Object.entries(values ?? {})) {
-      set(`--${ramp}-${stop}`, value as string);
-    }
-  }
-
   for (const [key, value] of Object.entries(scheme.text)) {
     set(tmRefToVarName(`text.${key}`), value);
   }
@@ -194,7 +181,7 @@ function sharedVars(tokens: TmTokens): VarMap {
   // page background, then the ring color.
   vars.set(
     '--focus-ring',
-    '0 0 0 var(--focus-ring-offset) var(--white), ' +
+    '0 0 0 var(--focus-ring-offset) var(--surface-page), ' +
       '0 0 0 calc(var(--focus-ring-offset) + var(--focus-ring-width)) var(--focus-ring-color)',
   );
   for (const [key, value] of Object.entries(formField)) {
