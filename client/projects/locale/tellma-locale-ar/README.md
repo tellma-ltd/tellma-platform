@@ -1,64 +1,51 @@
-# LocaleAr
+# @tellma/locale-ar
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.0.0.
+The Arabic locale pack — and the template every future locale pack copies.
 
-## Code scaffolding
+One provider wires everything:
 
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
-
-```bash
-ng generate component component-name
+```ts
+providers: [provideTellmaUi(), provideTellmaLocaleAr()]
 ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+## What the pack contributes
 
-```bash
-ng generate --help
-```
+- **Strings** — the library's built-in messages in Arabic
+  (`strings-ar.ts`), merged into Transloco's `ar` resources under the shared
+  `tmUi` namespace. Plurals carry the full Arabic ICU categories
+  (one/two/few/many/other); imperative verbs conjugate for the addressee via
+  the ambient `{gender}` parameter (see below).
+- **Fonts** — self-hosted, content-hashed Noto Sans Arabic woff2 with an
+  Arabic `unicode-range`, so the face downloads only when Arabic glyphs
+  render. `fonts/fonts.css` carries the `@font-face`; OFL.txt ships
+  alongside.
+- **Manifest entries** — `TM_FONTS_ARABIC` into the `TM_FONT_SUBSETS` multi
+  token, so `fontPreloadLinks()` can preload Arabic for tenants that need it.
 
-## Building
+The consuming app serves the pack's `fonts/` folder as static assets (e.g.
+under `fonts/arabic/`) and links its stylesheet — see the showcase's
+`angular.json` and `index.html` for the reference wiring.
 
-To build the library, run:
+## Gendered strings
 
-```bash
-ng build locale-ar
-```
+Arabic imperatives differ by addressee (أدخل / أدخلي). The strings branch on
+the ambient `{gender}` ICU parameter supplied by `TM_UI_MESSAGE_CONTEXT`
+(default `other` — the base form). A distribution provides one signal, e.g.
+mapped from the user profile, and every visible string re-renders when it
+changes.
 
-This command will compile your project, and the build artifacts will be placed in the `dist/` directory.
+## Writing a new pack
 
-### Publishing the Library
+Copy this package's structure:
 
-Once the project is built, you can publish your library by following these steps:
-
-1. Navigate to the `dist` directory:
-
-   ```bash
-   cd dist/locale-ar
-   ```
-
-2. Run the `npm publish` command to publish your library to the npm registry:
-   ```bash
-   npm publish
-   ```
-
-## Running unit tests
-
-To execute unit tests with the [Karma](https://karma-runner.github.io) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+1. `strings-xx.ts` — translate every key of `TM_UI_STRINGS_EN`; keep the ICU
+   categories your language needs; branch on `{gender}` only where grammar
+   requires it.
+2. Vendor the script's font subsets (see `tools/fonts/vendor-fonts-ar.mjs`)
+   if the language needs a non-Latin face; skip fonts entirely for
+   Latin-script locales.
+3. `provide-tellma-locale-xx.ts` — register the strings and (if any) the
+   font manifest entries.
+4. If the script's leading differs from Latin, add the language to the token
+   preset's `leadingByLang`; if it needs a new face, add the family to the
+   preset's `font.ui` stack.

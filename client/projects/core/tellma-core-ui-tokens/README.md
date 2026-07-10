@@ -1,64 +1,25 @@
-# CoreUiTokens
+# @tellma/core-ui-tokens
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.0.0.
+The design-token layer: a typed `TmTokens` contract, the brand default
+preset, a tokens→CSS emitter, and shipped validation gates.
 
-## Code scaffolding
+- **Contract + preset** — three tiers (primitive ramps → semantic roles →
+  component variables), light and dark as two instances of the same scheme
+  shape, one multi-script font stack, language-keyed leading.
+- **Emitter** — `tmEmitCss(tokens)` produces a static stylesheet; every sheet
+  opens with `@layer tm.base, tm.theme;` so load order can never change
+  which layer wins. A distribution themes by emitting its delta into
+  `tm.theme`, or at runtime via `setProperty` (inline styles beat both
+  layers).
+- **Gates** — `tmValidateTokens(tokens)` runs at build time *and* ships as
+  runtime code (for user-picked colors): missing-ref resolution, WCAG 2.1 AA
+  contrast in both schemes against the declared `contrastPairs`,
+  scheme-scopable justified exceptions, and a completeness lint that fails
+  when an ink-carrying token has no declared pairing.
+- **Tokens as data** — `generated/tm-tokens.schema.json` (shipped in the
+  package) is the language-neutral JSON Schema of the contract, for
+  validating token documents that arrive as data rather than TypeScript.
 
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
-
-```bash
-ng generate component component-name
-```
-
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
-
-```bash
-ng generate --help
-```
-
-## Building
-
-To build the library, run:
-
-```bash
-ng build core-ui-tokens
-```
-
-This command will compile your project, and the build artifacts will be placed in the `dist/` directory.
-
-### Publishing the Library
-
-Once the project is built, you can publish your library by following these steps:
-
-1. Navigate to the `dist` directory:
-
-   ```bash
-   cd dist/core-ui-tokens
-   ```
-
-2. Run the `npm publish` command to publish your library to the npm registry:
-   ```bash
-   npm publish
-   ```
-
-## Running unit tests
-
-To execute unit tests with the [Karma](https://karma-runner.github.io) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+A non-theming app needs only the emitted `css/tellma-default.css` added to
+its styles — the TypeScript entry point stays out of the bundle unless
+imported.

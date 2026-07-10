@@ -40,15 +40,4 @@ change, run `api:approve`, and commit the golden diff alongside the code.
 OS-assigned free port — see `scripts/ports.mjs`. Two worktrees always run in
 parallel without collisions. Never pass a literal port in configs or scripts.
 
-## Stage-3 spike findings (spec §3.4 composition)
-
-- All 11 probe specs pass: clipping escape (`usePopover:'inline'`), flip-up
-  (with the `updatePosition()`-on-`(attach)` **macrotask** fix — required),
-  the trigger→listbox→option ARIA id chain across the portal, real-mouse
-  option/outside/trigger clicks, keyboard commit + focus retention, Esc.
-- **angular/components#32504 did NOT bite** this composition — no explicit
-  pointer-path mitigation needed; the mouse specs stay in the suite as the
-  regression guard.
-- **Component hosts must be `display: block`.** An inline host wrapping the
-  block trigger hit-tests ABOVE the trigger in Chromium, so real user clicks
-  land on the host and never reach the trigger.
+Each project folder carries its own README describing what it ships.

@@ -1,64 +1,36 @@
-# CoreUi
+# @tellma/core-ui
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.0.0.
+The Tellma UI component library: signal-first, zoneless Angular form controls
+built on `@angular/cdk` + `@angular/aria`, Signal Forms native (`[formField]`
+binds every control; the bound field is authoritative for
+disabled/readonly/required).
 
-## Code scaffolding
+## Entry points
 
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+| Import | Contents |
+|---|---|
+| `@tellma/core-ui` | `provideTellmaUi()` / `provideTellmaForms()`, the `TM_UI_TRANSLATE` i18n seam + `TM_UI_MESSAGE_CONTEXT`, field-error resolution, `TM_FONT_SUBSETS` + `fontPreloadLinks()`, self-hosted Latin/Mono font assets |
+| `@tellma/core-ui/contracts` | Dependency-free contracts: `SignalLike`, `TmFormFieldControl`, the draft grid cell interfaces |
+| `@tellma/core-ui/input` | `tmInput` — a bare directive on the native `<input>` |
+| `@tellma/core-ui/checkbox` | `tm-checkbox` — native-input tri-state checkbox |
+| `@tellma/core-ui/form-field` | `tm-form-field` — label/hint/error chrome around any control |
+| `@tellma/core-ui/select` | `tm-select` + `tm-option` — overlay single-select |
 
-```bash
-ng generate component component-name
-```
+## Consuming
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+Add `@tellma/core-ui-tokens`' emitted stylesheet plus this package's static
+font assets (see the workspace root README and the showcase's `angular.json`
+for the reference wiring). Theming, sizing, and typography all flow from the
+token variables — the components ship no hardcoded sizes or colors.
 
-```bash
-ng generate --help
-```
+## Authoring conventions
 
-## Building
-
-To build the library, run:
-
-```bash
-ng build core-ui
-```
-
-This command will compile your project, and the build artifacts will be placed in the `dist/` directory.
-
-### Publishing the Library
-
-Once the project is built, you can publish your library by following these steps:
-
-1. Navigate to the `dist` directory:
-
-   ```bash
-   cd dist/core-ui
-   ```
-
-2. Run the `npm publish` command to publish your library to the npm registry:
-   ```bash
-   npm publish
-   ```
-
-## Running unit tests
-
-To execute unit tests with the [Karma](https://karma-runner.github.io) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+- The package root is the code root: every folder either is an entry point
+  (has an `ng-package.json`) or belongs to the primary entry point.
+- Entry points import shared code via `@tellma/core-ui` only — never a
+  relative `../` path (each entry point is its own compilation unit).
+- Component hosts must be `display: block`: an inline host wrapping a block
+  child hit-tests above the child in Chromium, swallowing real clicks.
+- Usage examples live in co-located `*.examples.ts` files (dependency-free
+  template objects); they feed the docs pipeline and are compile-checked
+  against the live components by `docs-examples.spec.ts`.
