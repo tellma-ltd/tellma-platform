@@ -12,7 +12,7 @@ export function provideTellmaLocaleAr(): EnvironmentProviders;
 // @public
 export const TM_FONTS_ARABIC: readonly TmFontSubset[];
 
-// @public (undocumented)
+// @public
 export const TM_LOCALE_AR_STRINGS: {
     readonly errors: {
         readonly required: "هذا الحقل مطلوب";
@@ -29,7 +29,5 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly placeholder: "{gender, select, female {حددي خيارا} other {حدد خيارا}}";
     };
 };
-
-// (No @packageDocumentation comment for this package)
 
 ```

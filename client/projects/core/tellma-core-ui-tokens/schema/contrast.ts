@@ -4,10 +4,15 @@
  * composited over their background before measuring). Dependency-free.
  */
 
+/** A parsed color: 0–255 channels plus 0–1 alpha. */
 export interface TmRgba {
+  /** Red channel, 0–255. */
   readonly r: number;
+  /** Green channel, 0–255. */
   readonly g: number;
+  /** Blue channel, 0–255. */
   readonly b: number;
+  /** Alpha, 0 (transparent) to 1 (opaque). */
   readonly a: number;
 }
 

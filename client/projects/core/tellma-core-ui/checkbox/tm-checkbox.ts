@@ -112,18 +112,27 @@ export class TmCheckbox implements TmFormFieldControl {
   readonly indeterminate = model(false);
   /** Non-form usage only — the bound field is authoritative when bound (§5). */
   readonly disabled = input(false, { transform: booleanAttribute });
+  /** Readonly state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly readonly = input(false, { transform: booleanAttribute });
+  /** Required state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly required = input(false, { transform: booleanAttribute });
+  /** Validity state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly invalid = input(false, { transform: booleanAttribute });
+  /** Touched state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly touched = input(false, { transform: booleanAttribute });
+  /** Dirty state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly dirty = input(false, { transform: booleanAttribute });
+  /** Async-validation-pending state — the bound field is authoritative when bound via [formField]. */
   readonly pending = input(false, { transform: booleanAttribute });
+  /** The raw framework errors, bound by [formField] and localized into `localizedErrors`. */
   readonly errors = input<readonly ValidationError.WithOptionalFieldTree[]>([]);
+  /** Emits when the native input blurs — touch reporting for the bound field. */
   readonly touch = output<void>();
 
   /** Accessible name for a LABEL-LESS checkbox, forwarded to the native input. */
   readonly ariaLabel = input<string | null>(null, { alias: 'aria-label' });
 
+  /** Stable generated id of the native input — the `<label for>` and aria wiring target. */
   readonly controlId = signal(`tm-checkbox-${nextUniqueId++}`).asReadonly();
 
   private readonly native = viewChild.required<ElementRef<HTMLInputElement>>('native');
@@ -132,14 +141,18 @@ export class TmCheckbox implements TmFormFieldControl {
   /** Renders its own box chrome; the field adds only label/hint/error (§3). */
   readonly ownsChrome = true;
   private readonly fieldDescribedBy = signal<readonly string[]>([]);
+  /** The hint/error ids the enclosing field pushed via `setDescribedByIds`. */
   readonly describedByIds = this.fieldDescribedBy.asReadonly();
+  /** Already-localized error messages resolved from `errors` — read by the enclosing field. */
   readonly localizedErrors: () => readonly TmFieldError[] = tmResolveFieldErrors(
     this.errors,
     this.translate,
   );
 
+  /** The merged aria-describedby attribute value, or null when no ids apply. */
   protected readonly ariaDescribedBy = computed(() => this.describedByIds().join(' ') || null);
 
+  /** Whether invalidity is surfaced (aria-invalid) — follows the error-display policy. */
   protected readonly showsInvalid = computed(() =>
     this.errorDisplay({
       invalid: this.invalid(),
@@ -149,18 +162,22 @@ export class TmCheckbox implements TmFormFieldControl {
     }),
   );
 
+  /** Receives the field's hint/error ids and exposes them via aria-describedby. */
   setDescribedByIds(ids: readonly string[]): void {
     this.fieldDescribedBy.set(ids);
   }
 
+  /** Focuses the checkbox when the user clicks the field's container chrome. */
   onContainerClick(): void {
     this.focus();
   }
 
+  /** Focuses the native input; Signal Forms calls this when asked to focus the field. */
   focus(options?: FocusOptions): void {
     this.native().nativeElement.focus(options);
   }
 
+  /** Native change handler: reverts when readonly, else updates `checked` and clears mixed. */
   protected onNativeChange(event: Event): void {
     if (this.readonly()) {
       // Native checkboxes have no readonly; revert the toggle.

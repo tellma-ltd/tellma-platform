@@ -152,6 +152,7 @@ const dark: TmSchemeColors = {
   },
 };
 
+/** The Tellma brand default preset — the document the shipped stylesheet is emitted from. */
 export const tmTokensDefault: TmTokens = {
   primitive: {
     color: {

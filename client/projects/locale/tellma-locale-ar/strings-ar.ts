@@ -10,6 +10,11 @@
  */
 const enter = '{gender, select, female {أدخلي} other {أدخل}}';
 
+/**
+ * The Arabic translations of the library's built-in strings — same shape as
+ * `TM_UI_STRINGS_EN`; registered under the tmUi namespace of the 'ar'
+ * language resources by `provideTellmaLocaleAr()`.
+ */
 export const TM_LOCALE_AR_STRINGS = {
   errors: {
     required: 'هذا الحقل مطلوب',

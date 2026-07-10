@@ -17,7 +17,6 @@ export interface TmCellDisplay<T> {
 export interface TmCellEditor<T> {
     cancel(): void;
     commit(): void;
-    // (undocumented)
     focus(): void;
     onKeydown(e: KeyboardEvent): void;
     readonly value: WritableSignalLike<T>;
@@ -25,9 +24,7 @@ export interface TmCellEditor<T> {
 
 // @public
 export interface TmFieldError {
-    // (undocumented)
     readonly kind: string;
-    // (undocumented)
     readonly message: string;
 }
 
@@ -35,34 +32,24 @@ export interface TmFieldError {
 export interface TmFormFieldControl {
     readonly controlId: SignalLike<string>;
     readonly describedByIds: SignalLike<readonly string[]>;
-    // (undocumented)
     readonly dirty: SignalLike<boolean>;
-    // (undocumented)
     readonly disabled: SignalLike<boolean>;
-    // (undocumented)
     readonly invalid: SignalLike<boolean>;
     readonly localizedErrors: SignalLike<readonly TmFieldError[]>;
     onContainerClick?(): void;
     readonly ownsChrome: boolean;
     readonly pending: SignalLike<boolean>;
-    // (undocumented)
     readonly readonly: SignalLike<boolean>;
-    // (undocumented)
     readonly required: SignalLike<boolean>;
     setDescribedByIds(ids: readonly string[]): void;
     setLabelId?(id: string | null): void;
-    // (undocumented)
     readonly touched: SignalLike<boolean>;
 }
 
 // @public
 export interface WritableSignalLike<T> extends SignalLike<T> {
-    // (undocumented)
     set(value: T): void;
-    // (undocumented)
     update(fn: (prev: T) => T): void;
 }
-
-// (No @packageDocumentation comment for this package)
 
 ```

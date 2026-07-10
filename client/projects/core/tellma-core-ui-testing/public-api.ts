@@ -1,9 +1,11 @@
-/*
+/**
  * Public API Surface of @tellma/core-ui-testing.
  *
- * Component harnesses (the typed automation surface, spec §10). Harnesses
- * drive the TestBed layer; Playwright specs use raw locators against the
- * stories.
+ * Tellma UI component harnesses: typed, implementation-independent drivers
+ * for tests that consume the tm-* controls. Harnesses drive the TestBed
+ * layer; Playwright specs use raw locators against the stories.
+ *
+ * @packageDocumentation
  */
 
 export * from './input-harness';

@@ -10,11 +10,13 @@ export interface TmFontSubset {
   readonly family: string;
   /** unicode-range subset name: 'latin' | 'latin-ext' | 'arabic' | 'ethiopic' | … */
   readonly script: string;
+  /** The face's font-style. */
   readonly style: 'normal' | 'italic';
   /** '100 900' for a variable face, '400' for a static weight. */
   readonly weight: string;
   /** Package-relative woff2 URL — resolved by the consuming app's asset pipeline. */
   readonly url: string;
+  /** The @font-face `unicode-range`, so the face only downloads when its glyphs occur. */
   readonly unicodeRange: string;
 }
 
@@ -30,10 +32,15 @@ export const TM_FONT_SUBSETS = new InjectionToken<readonly (readonly TmFontSubse
 
 /** A `<link rel="preload">` descriptor the distribution shell injects (§7.1). */
 export interface PreloadLink {
+  /** Always 'preload'. */
   readonly rel: 'preload';
+  /** The subset's woff2 URL, taken from the manifest entry. */
   readonly href: string;
+  /** Always 'font'. */
   readonly as: 'font';
+  /** Always 'font/woff2'. */
   readonly type: 'font/woff2';
+  /** Always 'anonymous' — font requests are CORS-mode even same-origin. */
   readonly crossorigin: 'anonymous';
 }
 

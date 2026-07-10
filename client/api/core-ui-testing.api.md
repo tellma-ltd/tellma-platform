@@ -10,21 +10,13 @@ import { TestKey } from '@angular/cdk/testing';
 
 // @public
 export class TmCheckboxHarness extends ComponentHarness {
-    // (undocumented)
     blur(): Promise<void>;
-    // (undocumented)
     focus(): Promise<void>;
-    // (undocumented)
     getLabelText(): Promise<string>;
-    // (undocumented)
     static hostSelector: string;
-    // (undocumented)
     isChecked(): Promise<boolean>;
-    // (undocumented)
     isDisabled(): Promise<boolean>;
-    // (undocumented)
     isIndeterminate(): Promise<boolean>;
-    // (undocumented)
     isRequired(): Promise<boolean>;
     toggle(): Promise<void>;
 }
@@ -32,87 +24,53 @@ export class TmCheckboxHarness extends ComponentHarness {
 // @public
 export class TmFormFieldHarness extends ComponentHarness {
     getErrorText(): Promise<string | null>;
-    // (undocumented)
     getHintText(): Promise<string | null>;
-    // (undocumented)
     getLabelText(): Promise<string | null>;
-    // (undocumented)
     hasRequiredMarker(): Promise<boolean>;
-    // (undocumented)
     static hostSelector: string;
-    // (undocumented)
     labelClick(): Promise<void>;
 }
 
 // @public
 export class TmInputHarness extends ComponentHarness {
-    // (undocumented)
     blur(): Promise<void>;
-    // (undocumented)
     focus(): Promise<void>;
-    // (undocumented)
     getDescribedBy(): Promise<string | null>;
-    // (undocumented)
     getPlaceholder(): Promise<string>;
-    // (undocumented)
     getValue(): Promise<string>;
-    // (undocumented)
     static hostSelector: string;
-    // (undocumented)
     isBusy(): Promise<boolean>;
-    // (undocumented)
     isDisabled(): Promise<boolean>;
-    // (undocumented)
     isFocused(): Promise<boolean>;
-    // (undocumented)
     isInvalid(): Promise<boolean>;
-    // (undocumented)
     isReadonly(): Promise<boolean>;
-    // (undocumented)
     isRequired(): Promise<boolean>;
     setValue(value: string): Promise<void>;
 }
 
 // @public
 export class TmOptionHarness extends ComponentHarness {
-    // (undocumented)
     click(): Promise<void>;
-    // (undocumented)
     getText(): Promise<string>;
-    // (undocumented)
     static hostSelector: string;
-    // (undocumented)
     isActive(): Promise<boolean>;
-    // (undocumented)
     isDisabled(): Promise<boolean>;
-    // (undocumented)
     isSelected(): Promise<boolean>;
 }
 
 // @public
 export class TmSelectHarness extends ComponentHarness {
-    // (undocumented)
     close(): Promise<void>;
-    // (undocumented)
     getOptions(filter?: HarnessPredicate<TmOptionHarness>): Promise<TmOptionHarness[]>;
-    // (undocumented)
     getTriggerText(): Promise<string>;
-    // (undocumented)
     static hostSelector: string;
-    // (undocumented)
     isBusy(): Promise<boolean>;
-    // (undocumented)
     isDisabled(): Promise<boolean>;
-    // (undocumented)
     isOpen(): Promise<boolean>;
-    // (undocumented)
     isPlaceholderShown(): Promise<boolean>;
-    // (undocumented)
     open(): Promise<void>;
     selectOption(text: string): Promise<void>;
     sendTriggerKeys(...keys: (string | TestKey)[]): Promise<void>;
 }
-
-// (No @packageDocumentation comment for this package)
 
 ```

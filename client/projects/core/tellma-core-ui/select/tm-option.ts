@@ -35,6 +35,7 @@ export class TmOption<T> {
    * label before the panel ever rendered.
    */
   readonly label = input<string | undefined>(undefined);
+  /** Disables the option: it stays visible but cannot be activated. */
   readonly disabled = input(false, { transform: booleanAttribute });
 
   /** The projected display content, stamped into the panel by tm-select. */
@@ -43,5 +44,6 @@ export class TmOption<T> {
   /** Written by tm-select after the row renders (textContent fallback, §3.4). */
   readonly derivedText = signal('');
 
+  /** The label in effect for typeahead and trigger resolution: `label`, else the derived text. */
   readonly effectiveLabel = computed(() => this.label() ?? this.derivedText());
 }

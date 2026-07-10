@@ -14,7 +14,9 @@ import { provideTellmaForms, type TmFormsOptions } from '../forms/provide-tellma
 import { TM_FONT_SUBSETS } from '../fonts/font-subsets';
 import { TM_FONTS_LATIN } from '../fonts/font-manifest.generated';
 
+/** Options for `provideTellmaUi()`. */
 export interface TmUiOptions {
+  /** Forms customization, forwarded to `provideTellmaForms()`. */
   readonly forms?: TmFormsOptions;
   /**
    * The languages the distribution can activate (default ['en']). Locale

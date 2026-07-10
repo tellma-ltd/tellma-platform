@@ -2,25 +2,30 @@ import { ComponentHarness, TestKey, type HarnessPredicate } from '@angular/cdk/t
 
 /** Harness for a single `tm-option` (spec §10). */
 export class TmOptionHarness extends ComponentHarness {
+  /** The selector for an option row rendered in the open panel. */
   static hostSelector = '.tm-option__row';
 
-
+  /** Gets the option's rendered display text, trimmed. */
   async getText(): Promise<string> {
     return (await (await this.locatorFor('.tm-option__content')()).text()).trim();
   }
 
+  /** Whether the option is the selected one (aria-selected). */
   async isSelected(): Promise<boolean> {
     return (await (await this.host()).getAttribute('aria-selected')) === 'true';
   }
 
+  /** Whether the option is the active (keyboard-highlighted) one. */
   async isActive(): Promise<boolean> {
     return (await (await this.host()).getAttribute('data-active')) === 'true';
   }
 
+  /** Whether the option is disabled. */
   async isDisabled(): Promise<boolean> {
     return (await (await this.host()).getAttribute('aria-disabled')) === 'true';
   }
 
+  /** Clicks the option row. */
   async click(): Promise<void> {
     return (await this.host()).click();
   }
@@ -32,14 +37,17 @@ export class TmOptionHarness extends ComponentHarness {
  * option locators only resolve while it is open.
  */
 export class TmSelectHarness extends ComponentHarness {
+  /** The selector for the `tm-select` host element. */
   static hostSelector = 'tm-select';
 
   private readonly trigger = this.locatorFor('.tm-select__trigger');
 
+  /** Whether the options panel is open. */
   async isOpen(): Promise<boolean> {
     return (await (await this.trigger()).getAttribute('aria-expanded')) === 'true';
   }
 
+  /** Opens the options panel by clicking the trigger (no-op when already open). */
   async open(): Promise<void> {
     if (!(await this.isOpen())) {
       const trigger = await this.trigger();
@@ -50,29 +58,35 @@ export class TmSelectHarness extends ComponentHarness {
     }
   }
 
+  /** Closes the options panel via Escape (no-op when already closed). */
   async close(): Promise<void> {
     if (await this.isOpen()) {
       await this.sendTriggerKeys(TestKey.ESCAPE);
     }
   }
 
+  /** Gets the text shown in the trigger (the selected label or the placeholder). */
   async getTriggerText(): Promise<string> {
     return (await (await this.locatorFor('.tm-select__value')()).text()).trim();
   }
 
+  /** Whether the trigger shows the placeholder rather than a selected value. */
   async isPlaceholderShown(): Promise<boolean> {
     const value = await this.locatorFor('.tm-select__value')();
     return (await value.getAttribute('class'))!.includes('tm-select__value--placeholder');
   }
 
+  /** Whether the select is disabled. */
   async isDisabled(): Promise<boolean> {
     return (await (await this.trigger()).getAttribute('aria-disabled')) === 'true';
   }
 
+  /** Whether the select announces pending async validation (aria-busy). */
   async isBusy(): Promise<boolean> {
     return (await (await this.trigger()).getAttribute('aria-busy')) === 'true';
   }
 
+  /** Opens the panel and gets harnesses for the rendered options, optionally filtered. */
   async getOptions(filter?: HarnessPredicate<TmOptionHarness>): Promise<TmOptionHarness[]> {
     await this.open();
     return this.documentRootLocatorFactory().locatorForAll(filter ?? TmOptionHarness)();

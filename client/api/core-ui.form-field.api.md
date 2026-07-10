@@ -14,41 +14,25 @@ export const TM_FORM_FIELD_CONTROL: InjectionToken<TmFormFieldControl>;
 export class TmFormField {
     constructor();
     protected readonly chromeless: _angular_core.Signal<boolean>;
-    // (undocumented)
     protected readonly control: _angular_core.Signal<TmFormFieldControl | undefined>;
     readonly error: _angular_core.InputSignal<string>;
-    // (undocumented)
     protected readonly errorId: string;
-    // (undocumented)
     protected readonly errorText: _angular_core.Signal<string>;
     readonly hint: _angular_core.InputSignal<string>;
-    // (undocumented)
     protected readonly hintId: string;
     readonly label: _angular_core.InputSignal<string>;
     protected readonly labelFor: _angular_core.Signal<string | null>;
-    // (undocumented)
     protected readonly labelId: string;
-    // (undocumented)
     protected onContainerClick(event: MouseEvent): void;
-    // (undocumented)
     protected onLabelClick(): void;
-    // (undocumented)
     protected readonly pending: _angular_core.Signal<boolean>;
-    // (undocumented)
     protected readonly requiredMarker: string;
-    // (undocumented)
     protected readonly showError: _angular_core.Signal<boolean>;
-    // (undocumented)
     protected readonly showHint: _angular_core.Signal<boolean>;
-    // (undocumented)
     protected readonly showRequiredMarker: _angular_core.Signal<boolean>;
     readonly size: _angular_core.InputSignal<"sm" | "md" | "lg">;
-    // (undocumented)
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmFormField, "tm-form-field", never, { "label": { "alias": "label"; "required": false; "isSignal": true; }; "hint": { "alias": "hint"; "required": false; "isSignal": true; }; "error": { "alias": "error"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; }, {}, ["control"], ["[tmPrefix]", "*", "[tmSuffix]"], true, never>;
-    // (undocumented)
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmFormField, never>;
 }
-
-// (No @packageDocumentation comment for this package)
 
 ```

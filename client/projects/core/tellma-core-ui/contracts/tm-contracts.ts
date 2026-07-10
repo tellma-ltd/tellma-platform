@@ -14,7 +14,9 @@ export type SignalLike<T> = () => T;
 
 /** Read + write channel (the grid owns a cell's value and passes it in). */
 export interface WritableSignalLike<T> extends SignalLike<T> {
+  /** Replaces the current value. */
   set(value: T): void;
+  /** Derives the next value from the previous one. */
   update(fn: (prev: T) => T): void;
 }
 
@@ -26,7 +28,9 @@ export interface WritableSignalLike<T> extends SignalLike<T> {
  * the message resolver — the wrapper only decides whether to show it).
  */
 export interface TmFieldError {
+  /** The framework error kind, camelCase (e.g. 'required', 'minLength'). */
   readonly kind: string;
+  /** The human-readable, already-localized message text. */
   readonly message: string;
 }
 
@@ -67,11 +71,17 @@ export interface TmFormFieldControl {
    */
   setLabelId?(id: string | null): void;
   // Field state, mirrored from the bound Field (all read-only to the wrapper):
+  /** Whether the field is required, mirrored from the bound field. */
   readonly required: SignalLike<boolean>;
+  /** Whether the field is disabled, mirrored from the bound field. */
   readonly disabled: SignalLike<boolean>;
+  /** Whether the field is readonly, mirrored from the bound field. */
   readonly readonly: SignalLike<boolean>;
+  /** Whether the user has blurred the field, mirrored from the bound field. */
   readonly touched: SignalLike<boolean>;
+  /** Whether the user has changed the value, mirrored from the bound field. */
   readonly dirty: SignalLike<boolean>;
+  /** Whether the field fails validation, mirrored from the bound field. */
   readonly invalid: SignalLike<boolean>;
   /** Async validation in progress. */
   readonly pending: SignalLike<boolean>;
@@ -112,6 +122,7 @@ export interface TmCellEditor<T> {
   commit(): void;
   /** Revert to last committed (Esc). */
   cancel(): void;
+  /** Focuses the editor's focusable element. */
   focus(): void;
   /** Host forwards; the editor consumes only its own keys. */
   onKeydown(e: KeyboardEvent): void;

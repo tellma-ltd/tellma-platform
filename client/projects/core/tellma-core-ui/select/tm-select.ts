@@ -183,13 +183,21 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   readonly value = model<T | undefined>(undefined);
   /** Non-form usage only — the bound field is authoritative when bound (§5). */
   readonly disabled = input(false, { transform: booleanAttribute });
+  /** Readonly state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly readonly = input(false, { transform: booleanAttribute });
+  /** Required state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly required = input(false, { transform: booleanAttribute });
+  /** Validity state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly invalid = input(false, { transform: booleanAttribute });
+  /** Touched state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly touched = input(false, { transform: booleanAttribute });
+  /** Dirty state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly dirty = input(false, { transform: booleanAttribute });
+  /** Async-validation-pending state — the bound field is authoritative when bound via [formField]. */
   readonly pending = input(false, { transform: booleanAttribute });
+  /** The raw framework errors, bound by [formField] and localized into `localizedErrors`. */
   readonly errors = input<readonly ValidationError.WithOptionalFieldTree[]>([]);
+  /** Emits when the trigger blurs — touch reporting for the bound field. */
   readonly touch = output<void>();
 
   // ---- Own API (§3.4) ----
@@ -203,21 +211,30 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
    * practice for prepopulated/async lists (§3.4).
    */
   readonly displayWith = input<((value: T) => string) | undefined>(undefined);
+  /** Trigger text while no value is selected; defaults to the localized built-in placeholder. */
   readonly placeholder = input<string | undefined>(undefined);
   /** Accessible name for a select used WITHOUT tm-form-field (§3.1). */
   readonly ariaLabel = input<string | null>(null, { alias: 'aria-label' });
+  /** Height/density variant; defaults to the workspace-wide form-field default. */
   readonly size = input<'sm' | 'md' | 'lg'>(this.defaults.size);
+  /** Emits the committed value whenever the user activates an option. */
   readonly selectionChange = output<T>();
+  /** Emits when the options panel opens. */
   readonly opened = output<void>();
+  /** Emits when the options panel closes. */
   readonly closed = output<void>();
 
+  /** Stable generated id of the trigger — the target for the field's aria wiring. */
   readonly controlId = signal(`tm-select-${nextUniqueId++}`).asReadonly();
 
+  /** Whether the options panel is open. */
   protected readonly expanded = signal(false);
   /** aria's listbox value — an ARRAY of keys; never the source of truth. */
   protected readonly listboxValue = signal<unknown[]>([]);
+  /** The projected `tm-option` children. */
   protected readonly options = contentChildren(TmOption<T>);
 
+  /** Overlay positions: below the trigger, flipping above when space runs out. */
   protected readonly positions: ConnectedPosition[] = [
     { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top' },
     { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom' },
@@ -232,18 +249,24 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   private lastCommitted: T | undefined;
 
   // ---- TmFormFieldControl (§2.1) ----
+  /** Renders its own trigger chrome; the field adds only label/hint/error. */
   readonly ownsChrome = true;
   private readonly fieldDescribedBy = signal<readonly string[]>([]);
+  /** The hint/error ids the enclosing field pushed via `setDescribedByIds`. */
   readonly describedByIds = this.fieldDescribedBy.asReadonly();
   private readonly labelIdFromField = signal<string | null>(null);
+  /** Already-localized error messages resolved from `errors` — read by the enclosing field. */
   readonly localizedErrors: () => readonly TmFieldError[] = tmResolveFieldErrors(
     this.errors,
     this.translate,
   );
 
+  /** The merged aria-describedby attribute value, or null when no ids apply. */
   protected readonly ariaDescribedBy = computed(() => this.describedByIds().join(' ') || null);
+  /** The field-provided label id, bound as aria-labelledby on the trigger. */
   protected readonly ariaLabelledBy = computed(() => this.labelIdFromField());
 
+  /** Whether invalidity is surfaced (aria-invalid) — follows the error-display policy. */
   protected readonly showsInvalid = computed(() =>
     this.errorDisplay({
       invalid: this.invalid(),
@@ -263,10 +286,12 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   }
 
   private readonly defaultPlaceholder = this.translate('select.placeholder');
+  /** The placeholder in effect: the `placeholder` input, or the localized default. */
   protected readonly effectivePlaceholder = computed(
     () => this.placeholder() ?? this.defaultPlaceholder(),
   );
 
+  /** Whether the trigger currently shows the placeholder (no value selected). */
   protected readonly showsPlaceholder = computed(
     () => this.value() === undefined || this.value() === null,
   );
@@ -346,6 +371,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   // ---- Overlay plumbing (§3.4, proven by the stage-3 spike) ----
   private pendingRemeasure: ReturnType<typeof setTimeout> | undefined;
 
+  /** Re-measures the overlay position one macrotask after attach, so flip-up can work. */
   protected onOverlayAttach(): void {
     // DeferredContent inserts the panel one render pass after CDK attaches
     // and measures; without a MACROTASK re-measure, flip-up would measure a
@@ -357,6 +383,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   }
 
   // ---- Commit path: activation events ONLY, never valueChange (§3.4) ----
+  /** Commits when an option row is clicked; panel padding/scrollbar clicks do nothing. */
   protected onListboxClick(event: MouseEvent): void {
     // Only option rows commit — panel padding/scrollbar clicks don't close.
     if ((event.target as Element).closest('[ngOption]')) {
@@ -364,6 +391,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     }
   }
 
+  /** Commits the listbox's active selection into `value` and closes the panel. */
   protected commitFromListbox(): void {
     const keys = this.listboxValue();
     if (keys.length > 0) {
@@ -382,6 +410,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   }
 
   // ---- TmFormFieldControl plumbing ----
+  /** Receives the field's hint/error ids and exposes them via aria-describedby. */
   setDescribedByIds(ids: readonly string[]): void {
     this.fieldDescribedBy.set(ids);
   }
@@ -391,11 +420,13 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     this.labelIdFromField.set(id);
   }
 
+  /** Focuses the trigger when the user clicks the field's container chrome. */
   onContainerClick(): void {
     this.focus();
   }
 
   // ---- TmCellEditor<T | undefined> (DRAFT — §9; hardened with the grid) ----
+  /** Accepts the current value as the revert baseline and closes the panel. */
   commit(): void {
     this.lastCommitted = this.value();
     this.expanded.set(false);
@@ -411,10 +442,12 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     this.expanded.set(false);
   }
 
+  /** Focuses the trigger; Signal Forms calls this when asked to focus the field. */
   focus(options?: FocusOptions): void {
     untracked(() => this.combobox()).element.focus(options);
   }
 
+  /** Grid-editor seam: hosts forward keys; the trigger's own listeners consume them. */
   onKeydown(event: KeyboardEvent): void {
     // Draft grid seam: the host forwards keys; aria's own host listener on
     // the trigger handles everything this control consumes. Nothing to do

@@ -19,16 +19,11 @@ export function tmComposite(top: TmRgba, bottom: TmRgba): TmRgba;
 
 // @public
 export interface TmContrastException {
-    // (undocumented)
     readonly bg: string;
-    // (undocumented)
     readonly expires?: string;
-    // (undocumented)
     readonly fg: string;
     readonly kind?: TmContrastKind;
-    // (undocumented)
     readonly owner?: string;
-    // (undocumented)
     readonly reason: string;
     readonly scheme?: 'light' | 'dark';
 }
@@ -38,11 +33,8 @@ export type TmContrastKind = 'text' | 'largeText' | 'uiComponent';
 
 // @public
 export interface TmContrastPair {
-    // (undocumented)
     readonly bg: string;
-    // (undocumented)
     readonly fg: string;
-    // (undocumented)
     readonly kind: TmContrastKind;
 }
 
@@ -55,10 +47,10 @@ export function tmEmitCss(tokens: TmTokens): string;
 // @public
 export function tmEmittedSchemeVars(tokens: TmTokens, scheme: 'light' | 'dark'): Map<string, string>;
 
-// @public (undocumented)
+// @public
 export type TmGreyRamp = Record<25 | 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900, TmTokenValue>;
 
-// @public (undocumented)
+// @public
 export type TmInkRamp = Record<700 | 800 | 900, string>;
 
 // @public
@@ -78,19 +70,14 @@ export function tmResolveVar(vars: Map<string, string>, name: string): string | 
 
 // @public
 export interface TmRgba {
-    // (undocumented)
     readonly a: number;
-    // (undocumented)
     readonly b: number;
-    // (undocumented)
     readonly g: number;
-    // (undocumented)
     readonly r: number;
 }
 
 // @public
 export interface TmSchemeColors {
-    // (undocumented)
     readonly action: {
         readonly primary: TmTokenValue;
         readonly primaryHover: TmTokenValue;
@@ -98,7 +85,6 @@ export interface TmSchemeColors {
         readonly onPrimary: TmTokenValue;
         readonly accent: TmTokenValue;
     };
-    // (undocumented)
     readonly border: {
         readonly subtle: TmTokenValue;
         readonly default: TmTokenValue;
@@ -128,14 +114,12 @@ export interface TmSchemeColors {
         readonly bg: TmTokenValue;
         readonly text: TmTokenValue;
     };
-    // (undocumented)
     readonly status: {
         readonly success: TmStatusColors;
         readonly warning: TmStatusColors;
         readonly error: TmStatusColors;
         readonly info: TmStatusColors;
     };
-    // (undocumented)
     readonly surface: {
         readonly page: TmTokenValue;
         readonly subtle: TmTokenValue;
@@ -145,7 +129,6 @@ export interface TmSchemeColors {
         readonly hover: TmTokenValue;
         readonly selected: TmTokenValue;
     };
-    // (undocumented)
     readonly text: {
         readonly strong: TmTokenValue;
         readonly body: TmTokenValue;
@@ -158,15 +141,12 @@ export interface TmSchemeColors {
 
 // @public
 export interface TmStatusColors {
-    // (undocumented)
     readonly bg: TmTokenValue;
-    // (undocumented)
     readonly border: TmTokenValue;
-    // (undocumented)
     readonly fg: TmTokenValue;
 }
 
-// @public (undocumented)
+// @public
 export type TmTealRamp = Record<50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900, string>;
 
 // @public
@@ -174,7 +154,6 @@ export interface TmTokens {
     readonly component: Record<string, Record<string, TmTokenValue>>;
     readonly contrastExceptions: readonly TmContrastException[];
     readonly contrastPairs: readonly TmContrastPair[];
-    // (undocumented)
     readonly primitive: {
         readonly color: {
             readonly ink: TmInkRamp;
@@ -233,7 +212,6 @@ export interface TmTokens {
             readonly easeInOut: string;
         };
     };
-    // (undocumented)
     readonly semantic: {
         readonly colorScheme: {
             readonly light: TmSchemeColors;
@@ -257,14 +235,12 @@ export interface TmTokens {
     };
 }
 
-// @public (undocumented)
+// @public
 export const tmTokensDefault: TmTokens;
 
 // @public
 export interface TmTokenValidationIssue {
-    // (undocumented)
     readonly gate: 'missing-ref' | 'contrast' | 'exception' | 'completeness';
-    // (undocumented)
     readonly message: string;
 }
 
@@ -274,9 +250,7 @@ export type TmTokenValue = TmRef | (string & NonNullable<unknown>);
 // @public
 export function tmTokenValueToCss(value: string): string;
 
-// @public (undocumented)
+// @public
 export function tmValidateTokens(tokens: TmTokens): TmTokenValidationIssue[];
-
-// (No @packageDocumentation comment for this package)
 
 ```

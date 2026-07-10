@@ -24,20 +24,26 @@ export type TmColorRamp = Partial<
   Record<25 | 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900, string>
 >;
 
+/** The brand teal ramp (stops 50–900). */
 export type TmTealRamp = Record<
   50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900,
   string
 >;
+/** The cool neutral grey ramp (stops 25–900); values may reference other tokens. */
 export type TmGreyRamp = Record<
   25 | 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900,
   TmTokenValue
 >;
+/** The dark ink ramp — the brand carries only the 700/800/900 stops. */
 export type TmInkRamp = Record<700 | 800 | 900, string>;
 
 /** Per-status color triple (fg carries text/icon ink; bg/border tint the surface). */
 export interface TmStatusColors {
+  /** The status ink — carries text and icons. */
   readonly fg: TmTokenValue;
+  /** The tinted surface behind status content. */
   readonly bg: TmTokenValue;
+  /** The border tint around status content. */
   readonly border: TmTokenValue;
 }
 
@@ -57,6 +63,7 @@ export interface TmSchemeColors {
     readonly grey?: Partial<TmGreyRamp>;
     readonly teal?: Partial<TmTealRamp>;
   };
+  /** Text ink roles, strongest to most muted, plus the on-dark and link inks. */
   readonly text: {
     readonly strong: TmTokenValue;
     readonly body: TmTokenValue;
@@ -65,6 +72,7 @@ export interface TmSchemeColors {
     readonly onDark: TmTokenValue;
     readonly link: TmTokenValue;
   };
+  /** Background surface roles, from the page canvas to hover/selected states. */
   readonly surface: {
     readonly page: TmTokenValue;
     readonly subtle: TmTokenValue;
@@ -74,6 +82,7 @@ export interface TmSchemeColors {
     readonly hover: TmTokenValue;
     readonly selected: TmTokenValue;
   };
+  /** Border inks by emphasis, plus the divider. */
   readonly border: {
     readonly subtle: TmTokenValue;
     readonly default: TmTokenValue;
@@ -89,6 +98,7 @@ export interface TmSchemeColors {
     readonly bg: TmTokenValue;
     readonly text: TmTokenValue;
   };
+  /** Interactive action colors: the primary surface trio, its text ink, and the accent. */
   readonly action: {
     /** Teal surface that CARRIES TEXT (buttons, solid badges). */
     readonly primary: TmTokenValue;
@@ -98,6 +108,7 @@ export interface TmSchemeColors {
     /** Brand-identity teal — decorative fills/borders only, never text. */
     readonly accent: TmTokenValue;
   };
+  /** Status color triples for success/warning/error/info. */
   readonly status: {
     readonly success: TmStatusColors;
     readonly warning: TmStatusColors;
@@ -129,8 +140,11 @@ export type TmContrastKind = 'text' | 'largeText' | 'uiComponent';
  * each scheme and fails the build below the fixed AA ratio for `kind`.
  */
 export interface TmContrastPair {
+  /** Emitted variable name of the foreground ink (e.g. '--field-text'). */
   readonly fg: string;
+  /** Emitted variable name of the background it renders on (e.g. '--field-bg'). */
   readonly bg: string;
+  /** The WCAG category whose AA threshold the pair must clear. */
   readonly kind: TmContrastKind;
 }
 
@@ -140,7 +154,9 @@ export interface TmContrastPair {
  * explicit decision that shows up in review (§4).
  */
 export interface TmContrastException {
+  /** Emitted variable name of the excepted pair's foreground. */
   readonly fg: string;
+  /** Emitted variable name of the excepted pair's background. */
   readonly bg: string;
   /**
    * Narrows the exception to one scheme. Omitted, it suppresses the pair in
@@ -150,13 +166,17 @@ export interface TmContrastException {
   readonly scheme?: 'light' | 'dark';
   /** Narrows the exception to pairs declared with one kind; omitted, any. */
   readonly kind?: TmContrastKind;
+  /** The justification recorded for review; must be non-empty. */
   readonly reason: string;
+  /** Optional date (ISO 8601) by which the exception should be revisited. */
   readonly expires?: string;
+  /** Optional owner accountable for the exception. */
   readonly owner?: string;
 }
 
 /** The full token document (one preset = one TmTokens instance). */
 export interface TmTokens {
+  /** Primitive tier: raw brand values (ramps, radius, spacing, type, shadows, motion). */
   readonly primitive: {
     readonly color: {
       readonly ink: TmInkRamp;
@@ -221,6 +241,7 @@ export interface TmTokens {
       readonly easeInOut: string;
     };
   };
+  /** Semantic tier: role tokens referencing primitives, per color scheme where needed. */
   readonly semantic: {
     readonly colorScheme: {
       readonly light: TmSchemeColors;

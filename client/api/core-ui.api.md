@@ -14,15 +14,10 @@ export function fontPreloadLinks(subsets: readonly (readonly TmFontSubset[])[], 
 
 // @public
 export interface PreloadLink {
-    // (undocumented)
     readonly as: 'font';
-    // (undocumented)
     readonly crossorigin: 'anonymous';
-    // (undocumented)
     readonly href: string;
-    // (undocumented)
     readonly rel: 'preload';
-    // (undocumented)
     readonly type: 'font/woff2';
 }
 
@@ -32,7 +27,7 @@ export function provideTellmaForms(options?: TmFormsOptions): EnvironmentProvide
 // @public
 export function provideTellmaUi(options?: TmUiOptions): EnvironmentProviders;
 
-// @public (undocumented)
+// @public
 export const TM_ERROR_DISPLAY: InjectionToken<TmErrorDisplayPolicy>;
 
 // @public
@@ -41,7 +36,7 @@ export const TM_FONT_SUBSETS: InjectionToken<readonly (readonly TmFontSubset[])[
 // @public
 export const TM_FONTS_LATIN: readonly TmFontSubset[];
 
-// @public (undocumented)
+// @public
 export const TM_FORM_FIELD_DEFAULTS: InjectionToken<TmFormFieldDefaults>;
 
 // @public
@@ -85,13 +80,9 @@ export type TmErrorDisplayPolicy = (state: TmErrorDisplayState) => boolean;
 
 // @public
 export interface TmErrorDisplayState {
-    // (undocumented)
     readonly dirty: boolean;
-    // (undocumented)
     readonly invalid: boolean;
-    // (undocumented)
     readonly pending: boolean;
-    // (undocumented)
     readonly touched: boolean;
 }
 
@@ -102,9 +93,7 @@ export function tmErrorParams(error: ValidationError): Record<string, unknown>;
 export interface TmFontSubset {
     readonly family: string;
     readonly script: string;
-    // (undocumented)
     readonly style: 'normal' | 'italic';
-    // (undocumented)
     readonly unicodeRange: string;
     readonly url: string;
     readonly weight: string;
@@ -113,15 +102,12 @@ export interface TmFontSubset {
 // @public
 export interface TmFormFieldDefaults {
     readonly requiredMarker: string;
-    // (undocumented)
     readonly size: 'sm' | 'md' | 'lg';
 }
 
-// @public (undocumented)
+// @public
 export interface TmFormsOptions {
-    // (undocumented)
     readonly errorDisplay?: TmErrorDisplayPolicy;
-    // (undocumented)
     readonly formFieldDefaults?: Partial<TmFormFieldDefaults>;
 }
 
@@ -131,16 +117,13 @@ export function tmResolveFieldErrors(errors: Signal<readonly ValidationError.Wit
 // @public
 export type TmUiMessageContext = Record<string, unknown>;
 
-// @public (undocumented)
+// @public
 export interface TmUiOptions {
     readonly availableLangs?: readonly string[];
-    // (undocumented)
     readonly forms?: TmFormsOptions;
 }
 
 // @public
 export type TmUiTranslateFn = (key: string, params?: Record<string, unknown>) => Signal<string>;
-
-// (No @packageDocumentation comment for this package)
 
 ```

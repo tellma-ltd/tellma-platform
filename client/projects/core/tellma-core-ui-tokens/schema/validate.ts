@@ -10,7 +10,9 @@ import { tmContrastRatio, tmParseColor, TM_CONTRAST_THRESHOLDS, type TmRgba } fr
  */
 
 export interface TmTokenValidationIssue {
+  /** Which gate flagged the issue. */
   readonly gate: 'missing-ref' | 'contrast' | 'exception' | 'completeness';
+  /** Human-readable description of the failure. */
   readonly message: string;
 }
 
@@ -48,6 +50,10 @@ function resolveColor(vars: Map<string, string>, name: string): TmRgba | null {
 // text COLOR roles are enumerated explicitly.
 const COMPLETENESS_FG = /^--(text-(strong|body|secondary|muted|link|on-dark)|field-(text|text-disabled|placeholder|icon|border|border-hover|border-focus|border-invalid)|selection-text|color-on-primary|accent|focus-ring-color|success|warning|error|info)$/;
 
+/**
+ * Runs every gate over a preset and returns all issues found; an empty
+ * array means the preset passes.
+ */
 export function tmValidateTokens(tokens: TmTokens): TmTokenValidationIssue[] {
   const issues: TmTokenValidationIssue[] = [];
   const schemes = ['light', 'dark'] as const;

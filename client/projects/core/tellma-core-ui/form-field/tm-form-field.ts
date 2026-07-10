@@ -107,10 +107,14 @@ export class TmFormField {
   /** Height/density variant mapping to the --field-height* tokens (§3.2). */
   readonly size = input<'sm' | 'md' | 'lg'>(this.defaults.size);
 
+  /** The projected control, discovered through the TM_FORM_FIELD_CONTROL token. */
   protected readonly control = contentChild(TM_FORM_FIELD_CONTROL);
 
+  /** Stable id of the label element, handed to non-labelable controls for aria-labelledby. */
   protected readonly labelId = `tm-ff-label-${this.uniqueId}`;
+  /** Stable id of the hint element, merged into the control's aria-describedby. */
   protected readonly hintId = `tm-ff-hint-${this.uniqueId}`;
+  /** Stable id of the error live region, merged into the control's aria-describedby. */
   protected readonly errorId = `tm-ff-error-${this.uniqueId}`;
 
   /** `<label for>` only associates with labelable elements (§3.1). */
@@ -119,9 +123,12 @@ export class TmFormField {
     return control && !control.setLabelId ? control.controlId() : null;
   });
 
+  /** The configured visual marker rendered next to a required field's label. */
   protected readonly requiredMarker = this.defaults.requiredMarker;
+  /** Whether the required marker is rendered — mirrors the control's required state. */
   protected readonly showRequiredMarker = computed(() => this.control()?.required() ?? false);
 
+  /** Whether the error element shows text — the display policy plus available errors. */
   protected readonly showError = computed(() => {
     const control = this.control();
     if (!control) {
@@ -137,6 +144,7 @@ export class TmFormField {
     );
   });
 
+  /** The displayed error text: the control's first localized error, else the `error` input. */
   protected readonly errorText = computed(() => {
     const control = this.control();
     if (!control) {
@@ -145,8 +153,10 @@ export class TmFormField {
     return control.localizedErrors()[0]?.message ?? '';
   });
 
+  /** Whether the hint is shown — a displayed error hides it. */
   protected readonly showHint = computed(() => this.hint() !== '' && !this.showError());
 
+  /** Whether the control reports async validation in progress — drives the spinner. */
   protected readonly pending = computed(() => this.control()?.pending() ?? false);
 
   /** ownsChrome controls render their own box — the field's collapses (§3). */
@@ -173,12 +183,14 @@ export class TmFormField {
     });
   }
 
+  /** Forwards label clicks to controls that `<label for>` cannot reach. */
   protected onLabelClick(): void {
     // <label for> handles native inputs; forward for non-labelable hosts so
     // click-to-focus still works (§3.1).
     this.control()?.onContainerClick?.();
   }
 
+  /** Lets the control grab focus on clicks that land on the container chrome itself. */
   protected onContainerClick(event: MouseEvent): void {
     // Clicks on the container chrome (padding/border), not on the control
     // itself — let the control grab focus (§2.1).

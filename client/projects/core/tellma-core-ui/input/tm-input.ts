@@ -70,30 +70,42 @@ export class TmInput implements TmFormFieldControl {
   readonly value = model('');
   /** Non-form usage only — the bound field is authoritative when bound (§5). */
   readonly disabled = input(false, { transform: booleanAttribute });
+  /** Readonly state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly readonly = input(false, { transform: booleanAttribute });
+  /** Required state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly required = input(false, { transform: booleanAttribute });
+  /** Validity state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly invalid = input(false, { transform: booleanAttribute });
+  /** Touched state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly touched = input(false, { transform: booleanAttribute });
+  /** Dirty state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly dirty = input(false, { transform: booleanAttribute });
+  /** Async-validation-pending state — the bound field is authoritative when bound via [formField]. */
   readonly pending = input(false, { transform: booleanAttribute });
+  /** The raw framework errors, bound by [formField] and localized into `localizedErrors`. */
   readonly errors = input<readonly ValidationError.WithOptionalFieldTree[]>([]);
   /** Touch reporting on native blur — `debounce('blur')` relies on it (§5). */
   readonly touch = output<void>();
 
   // ---- Own API (§3.2) ----
+  /** Placeholder text shown while the input is empty. */
   readonly placeholder = input('');
 
+  /** Stable generated id of the input — the `<label for>` and aria wiring target. */
   readonly controlId = signal(`tm-input-${nextUniqueId++}`).asReadonly();
 
   // ---- TmFormFieldControl (§2.1) ----
   /** The field renders the bordered box around this bare directive (§3). */
   readonly ownsChrome = false;
   private readonly fieldDescribedBy = signal<readonly string[]>([]);
+  /** The hint/error ids the enclosing field pushed via `setDescribedByIds`. */
   readonly describedByIds = this.fieldDescribedBy.asReadonly();
+  /** Already-localized error messages resolved from `errors` — read by the enclosing field. */
   readonly localizedErrors: () => readonly TmFieldError[] = tmResolveFieldErrors(
     this.errors,
     this.translate,
   );
+  /** The merged aria-describedby attribute value, or null when no ids apply. */
   protected readonly ariaDescribedBy = computed(() => this.describedByIds().join(' ') || null);
 
   /**
@@ -121,10 +133,12 @@ export class TmInput implements TmFormFieldControl {
     });
   }
 
+  /** Receives the field's hint/error ids and exposes them via aria-describedby. */
   setDescribedByIds(ids: readonly string[]): void {
     this.fieldDescribedBy.set(ids);
   }
 
+  /** Focuses the input when the user clicks the field's container chrome. */
   onContainerClick(): void {
     this.focus();
   }
@@ -134,6 +148,7 @@ export class TmInput implements TmFormFieldControl {
     this.element.focus(options);
   }
 
+  /** Mirrors native input events into the `value` model. */
   protected onInput(event: Event): void {
     this.value.set((event.target as HTMLInputElement).value);
   }
