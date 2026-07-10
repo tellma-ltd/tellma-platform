@@ -51,7 +51,7 @@ test('runtime locale switch re-renders visible errors; Arabic font loads on dema
   ).toBe(true);
 
   // The library's Select placeholder is localized too.
-  await expect(page.getByTestId('select-status')).toContainText('اختر خيارًا');
+  await expect(page.getByTestId('select-status')).toContainText('حدد خيارا');
 
   // And back — no reload anywhere; the :lang(en) rule restores body leading.
   await page.getByTestId('lang-en').click();

@@ -82,10 +82,14 @@ describe('@tellma/locale-ar (DoD 13)', () => {
     await settle(fixture);
 
     const two = host.translate('errors.minLength', { minLength: 2 });
-    const many = host.translate('errors.minLength', { minLength: 5 });
+    const few = host.translate('errors.minLength', { minLength: 5 });
+    const many = host.translate('errors.minLength', { minLength: 11 });
+    const other = host.translate('errors.minLength', { minLength: 100 });
     await settle(fixture);
     expect(two()).toBe('أدخل حرفين على الأقل'); // the Arabic dual
-    expect(many()).toBe('أدخل 5 أحرف على الأقل');
+    expect(few()).toBe('أدخل 5 أحرف على الأقل'); // 3-10 broken plural
+    expect(many()).toBe('أدخل 11 حرفا على الأقل'); // 11-99 singular accusative
+    expect(other()).toBe('أدخل 100 حرف على الأقل'); // 100+ singular
   });
 
   it('WITHOUT the pack: the same keys fall back to ENGLISH — never a raw key', async () => {
