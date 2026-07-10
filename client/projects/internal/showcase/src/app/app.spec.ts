@@ -1,6 +1,8 @@
 import { provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 
+import { provideTellmaUi } from '@tellma/core-ui';
+
 import { App } from './app';
 import { routes } from './app.routes';
 
@@ -8,7 +10,8 @@ describe('App', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [App],
-      providers: [provideRouter(routes)],
+      // The shell's language toggle injects TranslocoService.
+      providers: [provideRouter(routes), provideTellmaUi()],
     }).compileComponents();
   });
 

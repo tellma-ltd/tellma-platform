@@ -19,9 +19,6 @@ import { Component, DOCUMENT, inject } from '@angular/core';
     </div>
 
     <p>
-      <button type="button" data-testid="toggle-theme" (click)="toggleTheme()">
-        Toggle dark mode
-      </button>
       <label>
         Primary color override:
         <input
@@ -65,15 +62,6 @@ import { Component, DOCUMENT, inject } from '@angular/core';
 })
 export class ThemingStory {
   private readonly document = inject(DOCUMENT);
-
-  protected toggleTheme(): void {
-    const root = this.document.documentElement;
-    if (root.getAttribute('data-theme') === 'dark') {
-      root.removeAttribute('data-theme');
-    } else {
-      root.setAttribute('data-theme', 'dark');
-    }
-  }
 
   protected setPrimary(event: Event): void {
     const value = (event.target as HTMLInputElement).value;

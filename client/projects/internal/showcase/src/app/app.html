@@ -1,1 +1,28 @@
+<header class="shell-header">
+  <a class="shell-brand" routerLink="/">Tellma UI</a>
+  <nav class="shell-nav" aria-label="Stories">
+    @for (story of stories; track story.id) {
+      <a
+        [routerLink]="['/story', story.id]"
+        queryParamsHandling="preserve"
+        routerLinkActive="shell-nav__link--active"
+        class="shell-nav__link"
+        >{{ story.title }}</a
+      >
+    }
+  </nav>
+  <div class="shell-controls">
+    <button type="button" data-testid="toggle-theme" (click)="toggleTheme()">
+      {{ theme() === 'dark' ? 'Light' : 'Dark' }}
+    </button>
+    <!-- Latin labels on purpose: Arabic glyphs here would eagerly fetch the
+         Arabic face on every page and defeat the on-demand loading the
+         showcase exists to demonstrate. -->
+    <button type="button" data-testid="lang-en" (click)="setLang('en')">EN</button>
+    <button type="button" data-testid="lang-ar" (click)="setLang('ar')" aria-label="Arabic">
+      AR
+    </button>
+    <span class="shell-lang" data-testid="active-lang">{{ lang() }}</span>
+  </div>
+</header>
 <router-outlet />

@@ -1,12 +1,65 @@
-import { Component, signal } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { Component, DOCUMENT, computed, effect, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { TranslocoService } from '@jsverse/transloco';
 
+import { SHOWCASE_STORIES } from './stories';
+
+/**
+ * The showcase shell: a persistent header with the story menu and the
+ * light/dark + EN/AR toggles, visible on every page. The URL stays the
+ * source of truth for appearance (?theme=dark, ?dir=rtl — every story stays
+ * addressable in all combinations for the Playwright matrix): the theme
+ * toggle rewrites the query params, and this shell is the ONE place that
+ * applies dir/lang/data-theme to <html>. Direction follows the language
+ * unless ?dir= forces it.
+ */
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive],
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
 export class App {
-  protected readonly title = signal('showcase');
+  private readonly document = inject(DOCUMENT);
+  private readonly router = inject(Router);
+  private readonly transloco = inject(TranslocoService);
+
+  protected readonly stories = SHOWCASE_STORIES;
+  protected readonly lang = signal('en');
+
+  // Query params are route-global, so the root route sees every page's.
+  private readonly query = toSignal(inject(ActivatedRoute).queryParamMap);
+
+  protected readonly theme = computed(() =>
+    this.query()?.get('theme') === 'dark' ? 'dark' : 'light',
+  );
+  private readonly dir = computed(
+    () => this.query()?.get('dir') ?? (this.lang() === 'ar' ? 'rtl' : 'ltr'),
+  );
+
+  constructor() {
+    effect(() => {
+      const root = this.document.documentElement;
+      root.dir = this.dir() === 'rtl' ? 'rtl' : 'ltr';
+      root.lang = this.lang();
+      if (this.theme() === 'dark') {
+        root.setAttribute('data-theme', 'dark');
+      } else {
+        root.removeAttribute('data-theme');
+      }
+    });
+  }
+
+  protected toggleTheme(): void {
+    void this.router.navigate([], {
+      queryParams: { theme: this.theme() === 'dark' ? null : 'dark' },
+      queryParamsHandling: 'merge',
+    });
+  }
+
+  protected setLang(lang: string): void {
+    this.transloco.setActiveLang(lang);
+    this.lang.set(lang);
+  }
 }

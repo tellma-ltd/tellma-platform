@@ -1,0 +1,70 @@
+/* Showcase shell chrome — painted from the tokens so the toggles restyle it
+   live like everything else. */
+
+.shell-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-4);
+  background: var(--surface-subtle);
+  border-block-end: 1px solid var(--divider);
+}
+
+.shell-brand {
+  font-weight: var(--weight-bold);
+  color: var(--text-strong);
+  text-decoration: none;
+}
+
+.shell-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.shell-nav__link {
+  color: var(--text-body);
+  text-decoration: none;
+  padding-block: var(--space-1);
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.shell-nav__link:hover {
+  background: var(--surface-hover);
+}
+
+.shell-nav__link--active {
+  background: var(--surface-selected);
+  color: var(--text-strong);
+}
+
+.shell-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+}
+
+.shell-controls button {
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-body);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding-block: var(--space-1);
+  padding-inline: var(--space-2);
+  cursor: pointer;
+}
+
+.shell-controls button:hover {
+  background: var(--surface-hover);
+}
+
+.shell-lang {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
