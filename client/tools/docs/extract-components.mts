@@ -13,7 +13,7 @@
  * (API Extractor's .api.json stays goldens-only: it cannot see templates,
  * slots, CSS tokens, or examples — recorded deviation from §11's framing.)
  */
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -25,39 +25,44 @@ import {
   type PropertyDeclaration,
 } from 'ts-morph';
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore untyped workspace helper (plain .mjs)
+import { discoverLibraries } from '../workspace.mjs';
 import type { ComponentDoc, ComponentsJson } from './components-schema.mjs';
 import { COMPONENTS_JSON_SCHEMA_VERSION } from './components-schema.mjs';
 
 const clientDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const uiDir = join(clientDir, 'projects', 'core', 'tellma-core-ui');
 
-/** The documented surfaces and their entry points/harnesses (§11/§12). */
-const SOURCES: {
-  file: string;
-  entryPoint: string;
-  harness: string;
-  /** Directive-owned GLOBAL stylesheet (a directive carries no styleUrl). */
-  styles?: string;
-}[] = [
-  {
-    file: 'input/tm-input.ts',
-    entryPoint: '@tellma/core-ui/input',
-    harness: 'TmInputHarness',
-    styles: 'styles/tm-input.css',
-  },
-  {
-    file: 'checkbox/tm-checkbox.ts',
-    entryPoint: '@tellma/core-ui/checkbox',
-    harness: 'TmCheckboxHarness',
-  },
-  {
-    file: 'form-field/tm-form-field.ts',
-    entryPoint: '@tellma/core-ui/form-field',
-    harness: 'TmFormFieldHarness',
-  },
-  { file: 'select/tm-select.ts', entryPoint: '@tellma/core-ui/select', harness: 'TmSelectHarness' },
-  { file: 'select/tm-option.ts', entryPoint: '@tellma/core-ui/select', harness: 'TmOptionHarness' },
-];
+/**
+ * The documented surfaces, DERIVED from the workspace: every root-level
+ * component/directive source (tm-*.ts) of every @tellma/core-ui entry point.
+ * Entry points without decorated classes (contracts, the primary) simply
+ * contribute nothing; harnesses pair by the `<ClassName>Harness` convention,
+ * and a directive's global stylesheet (it has no styleUrl) is declared in
+ * the package's "tellma".docs.globalStyles.
+ */
+const coreUi = discoverLibraries(clientDir).find(
+  (library: { name: string }) => library.name === '@tellma/core-ui',
+)!;
+const GLOBAL_STYLES: Record<string, string> = coreUi.tellma?.docs?.globalStyles ?? {};
+const SOURCES: { file: string; entryPoint: string; styles?: string }[] = coreUi.entryPoints.flatMap(
+  (entryPoint: { id: string; dir: string; importPath: string }) =>
+    readdirSync(entryPoint.dir)
+      .filter(
+        (name) =>
+          /^tm-[\w-]+\.ts$/.test(name) &&
+          !name.endsWith('.spec.ts') &&
+          !name.endsWith('.examples.ts'),
+      )
+      .map((name) => ({
+        file: join(entryPoint.dir, name),
+        entryPoint: entryPoint.importPath,
+        styles: GLOBAL_STYLES[entryPoint.id]
+          ? join(coreUi.dir, GLOBAL_STYLES[entryPoint.id])
+          : undefined,
+      })),
+);
 
 function jsDocText(node: { getJsDocs(): { getDescription(): string }[] }): string {
   const docs = node.getJsDocs();
@@ -306,7 +311,7 @@ export function extractComponents(): ComponentsJson {
   const components: ComponentDoc[] = [];
 
   for (const source of SOURCES) {
-    const filePath = join(uiDir, source.file);
+    const filePath = source.file;
     const sourceFile = project.addSourceFileAtPath(filePath);
     for (const cls of sourceFile.getClasses()) {
       const decorated = decoratorMeta(cls);
@@ -332,11 +337,11 @@ export function extractComponents(): ComponentsJson {
         tokens: extractTokens(
           dirname(filePath),
           meta,
-          source.styles ? join(uiDir, source.styles) : undefined,
+          source.styles,
         ),
         a11y: extractA11y(cls, template),
         examples: extractExamples(project, filePath),
-        harness: source.harness,
+        harness: `${cls.getName()}Harness`,
         status: (jsDocTag(cls, 'tmStatus') as ComponentDoc['status'] | undefined) ?? 'stable',
       });
     }

@@ -16,6 +16,8 @@
  * (`pnpm run api:approve` + commit).
  */
 import { createRequire } from 'node:module';
+
+import { discoverLibraries } from '../tools/workspace.mjs';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,57 +27,15 @@ const require = createRequire(join(clientDir, 'package.json'));
 const { Extractor, ExtractorConfig } = require('@microsoft/api-extractor');
 
 /**
- * Every published entry point (the MCP Node package is out of golden scope).
- * `publicApi` is the source entry point whose `@packageDocumentation` header
- * is restored into the flattened d.ts (see `prepareDts`).
+ * Every published entry point, discovered from the workspace (any folder
+ * with an ng-package.json). The MCP Node package has none, so it stays out
+ * of golden scope by construction. `publicApi` is the source entry point
+ * whose `@packageDocumentation` header is restored into the flattened d.ts
+ * (see `prepareDts`).
  */
-const ENTRY_POINTS = [
-  {
-    report: 'core-ui.api.md',
-    dts: 'dist/core-ui/types/tellma-core-ui.d.ts',
-    publicApi: 'projects/core/tellma-core-ui/public-api.ts',
-  },
-  {
-    report: 'core-ui.contracts.api.md',
-    dts: 'dist/core-ui/types/tellma-core-ui-contracts.d.ts',
-    publicApi: 'projects/core/tellma-core-ui/contracts/public-api.ts',
-  },
-  {
-    report: 'core-ui.input.api.md',
-    dts: 'dist/core-ui/types/tellma-core-ui-input.d.ts',
-    publicApi: 'projects/core/tellma-core-ui/input/public-api.ts',
-  },
-  {
-    report: 'core-ui.checkbox.api.md',
-    dts: 'dist/core-ui/types/tellma-core-ui-checkbox.d.ts',
-    publicApi: 'projects/core/tellma-core-ui/checkbox/public-api.ts',
-  },
-  {
-    report: 'core-ui.form-field.api.md',
-    dts: 'dist/core-ui/types/tellma-core-ui-form-field.d.ts',
-    publicApi: 'projects/core/tellma-core-ui/form-field/public-api.ts',
-  },
-  {
-    report: 'core-ui.select.api.md',
-    dts: 'dist/core-ui/types/tellma-core-ui-select.d.ts',
-    publicApi: 'projects/core/tellma-core-ui/select/public-api.ts',
-  },
-  {
-    report: 'core-ui-tokens.api.md',
-    dts: 'dist/core-ui-tokens/types/tellma-core-ui-tokens.d.ts',
-    publicApi: 'projects/core/tellma-core-ui-tokens/public-api.ts',
-  },
-  {
-    report: 'core-ui-testing.api.md',
-    dts: 'dist/core-ui-testing/types/tellma-core-ui-testing.d.ts',
-    publicApi: 'projects/core/tellma-core-ui-testing/public-api.ts',
-  },
-  {
-    report: 'locale-ar.api.md',
-    dts: 'dist/locale-ar/types/tellma-locale-ar.d.ts',
-    publicApi: 'projects/locale/tellma-locale-ar/public-api.ts',
-  },
-];
+const ENTRY_POINTS = discoverLibraries(
+  resolve(dirname(fileURLToPath(import.meta.url)), '..'),
+).flatMap((library) => library.entryPoints);
 
 /** The fixed note injected above Angular's generated static members. */
 const GENERATED_MEMBER_NOTE =
@@ -136,7 +96,7 @@ mkdirSync(tempFolder, { recursive: true });
 let failed = false;
 
 for (const entryPoint of ENTRY_POINTS) {
-  prepareDts(join(clientDir, entryPoint.dts), join(clientDir, entryPoint.publicApi));
+  prepareDts(join(clientDir, entryPoint.dts), entryPoint.publicApi);
 
   const config = ExtractorConfig.prepare({
     configObjectFullPath: undefined,

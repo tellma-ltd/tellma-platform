@@ -1,7 +1,7 @@
 {
   "name": "@tellma/core-ui",
   "version": "0.1.0",
-  "description": "Tellma UI component library — tm-* form controls built on @angular/cdk + @angular/aria, signal-first, Signal Forms native.",
+  "description": "Tellma UI component library \u2014 tm-* form controls built on @angular/cdk + @angular/aria, signal-first, Signal Forms native.",
   "license": "Apache-2.0",
   "peerDependencies": {
     "@angular/aria": "^22.0.0",
@@ -16,5 +16,20 @@
     "tslib": "^2.3.0"
   },
   "sideEffects": false,
-  "type": "module"
+  "type": "module",
+  "tellma": {
+    "budgets": {
+      ".": 4,
+      "./contracts": 1,
+      "./input": 3,
+      "./checkbox": 4,
+      "./form-field": 4,
+      "./select": 8
+    },
+    "docs": {
+      "globalStyles": {
+        "./input": "styles/tm-input.css"
+      }
+    }
+  }
 }
