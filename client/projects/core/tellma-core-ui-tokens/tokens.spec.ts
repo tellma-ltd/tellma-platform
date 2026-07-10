@@ -185,6 +185,31 @@ describe('tmValidateTokens gates', () => {
     expect(issues.some((i) => i.gate === 'contrast' && i.message.includes('--accent'))).toBe(true);
   });
 
+  it('a scheme-scoped exception does not suppress the other scheme', () => {
+    // --white on --accent fails in LIGHT (2.97:1); a dark-only exception
+    // must leave that light failure gated.
+    const broken: TmTokens = {
+      ...tmTokensDefault,
+      contrastPairs: [
+        ...tmTokensDefault.contrastPairs,
+        { fg: '--white', bg: '--accent', kind: 'text' },
+      ],
+      contrastExceptions: [
+        ...tmTokensDefault.contrastExceptions,
+        { fg: '--white', bg: '--accent', scheme: 'dark', reason: 'dark-only carve-out' },
+      ],
+    };
+    const issues = tmValidateTokens(broken);
+    expect(
+      issues.some(
+        (i) => i.gate === 'contrast' && i.message.includes('[light]') && i.message.includes('--accent'),
+      ),
+    ).toBe(true);
+    expect(issues.some((i) => i.message.includes('[dark]') && i.message.includes('--accent'))).toBe(
+      false,
+    );
+  });
+
   it('fails on an exception with an empty reason', () => {
     const broken: TmTokens = {
       ...tmTokensDefault,

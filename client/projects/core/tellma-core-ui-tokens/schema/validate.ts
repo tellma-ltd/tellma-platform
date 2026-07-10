@@ -91,13 +91,21 @@ export function tmValidateTokens(tokens: TmTokens): TmTokenValidationIssue[] {
     }
   }
 
-  // Gate 3 — WCAG contrast, both schemes, fixed AA thresholds.
-  const excepted = new Set(tokens.contrastExceptions.map((e) => `${e.fg}|${e.bg}`));
+  // Gate 3 — WCAG contrast, both schemes, fixed AA thresholds. Exceptions
+  // match per scheme (and per kind when they declare one), so a pair that
+  // only fails in one scheme stays gated in the other.
   for (const scheme of schemes) {
     const vars = varMaps.get(scheme)!;
     const canvas = resolveColor(vars, '--surface-page') ?? undefined;
     for (const pair of tokens.contrastPairs) {
-      if (excepted.has(`${pair.fg}|${pair.bg}`)) {
+      const excepted = tokens.contrastExceptions.some(
+        (e) =>
+          e.fg === pair.fg &&
+          e.bg === pair.bg &&
+          (e.scheme === undefined || e.scheme === scheme) &&
+          (e.kind === undefined || e.kind === pair.kind),
+      );
+      if (excepted) {
         continue;
       }
       const fg = resolveColor(vars, pair.fg);

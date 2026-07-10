@@ -122,6 +122,8 @@ export const tmTokensZodSchema = z.object({
     z.object({
       fg: value,
       bg: value,
+      scheme: z.enum(['light', 'dark']).optional(),
+      kind: z.enum(['text', 'largeText', 'uiComponent']).optional(),
       reason: value,
       expires: value.optional(),
       owner: value.optional(),

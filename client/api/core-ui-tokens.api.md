@@ -25,10 +25,12 @@ export interface TmContrastException {
     readonly expires?: string;
     // (undocumented)
     readonly fg: string;
+    readonly kind?: TmContrastKind;
     // (undocumented)
     readonly owner?: string;
     // (undocumented)
     readonly reason: string;
+    readonly scheme?: 'light' | 'dark';
 }
 
 // @public

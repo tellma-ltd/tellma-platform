@@ -287,6 +287,7 @@ export const tmTokensDefault: TmTokens = {
       // The canonical first entry named by the spec (§4).
       fg: '--accent',
       bg: '--surface-page',
+      scheme: 'light',
       reason:
         'brand-identity surface only; never carries text — text uses --color-primary (teal-600). ' +
         'Canonical logo teal-400 reads 2.97:1 on the white page by design.',
@@ -294,6 +295,7 @@ export const tmTokensDefault: TmTokens = {
     {
       fg: '--text-muted',
       bg: '--surface-page',
+      scheme: 'light',
       reason:
         'muted/disabled-adjacent text (captions, placeholders elsewhere); disabled text is ' +
         'exempt under WCAG 1.4.3 and muted text is never the sole carrier of information.',
@@ -327,18 +329,21 @@ export const tmTokensDefault: TmTokens = {
     {
       fg: '--warning',
       bg: '--surface-page',
+      scheme: 'light',
       reason:
-        'brand warning amber (#B7791F, 3.4:1) — always paired with an icon and/or text label; ' +
+        'brand warning amber (#B7791F, 3.61:1) — always paired with an icon and/or text label; ' +
         'body-size warning copy uses --text-body with a warning icon, not bare amber text.',
     },
     {
       fg: '--warning',
       bg: '--warning-bg',
+      scheme: 'light',
       reason: 'warning ink on its own tint — same rationale as --warning on the page.',
     },
     {
       fg: '--success',
       bg: '--success-bg',
+      scheme: 'light',
       reason:
         'brand success green on its own tint measures 4.34:1 — used in badges/alerts always ' +
         'paired with an icon; body-size success copy uses --text-body on the tint.',
@@ -346,13 +351,15 @@ export const tmTokensDefault: TmTokens = {
     {
       fg: '--info',
       bg: '--surface-page',
+      scheme: 'light',
       reason:
-        'teal-500 info accent (4.0:1) — informational glyph/badge color paired with body text; ' +
+        'teal-500 info accent (3.95:1) — informational glyph/badge color paired with body text; ' +
         'clears the 3:1 non-text ratio, used at large/bold sizes for text.',
     },
     {
       fg: '--info',
       bg: '--info-bg',
+      scheme: 'light',
       reason: 'info ink on its own tint — same rationale as --info on the page.',
     },
   ],

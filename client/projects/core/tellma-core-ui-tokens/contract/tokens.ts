@@ -142,6 +142,14 @@ export interface TmContrastPair {
 export interface TmContrastException {
   readonly fg: string;
   readonly bg: string;
+  /**
+   * Narrows the exception to one scheme. Omitted, it suppresses the pair in
+   * both — prefer scoping it, so a pair that only fails in light stays
+   * gated in dark.
+   */
+  readonly scheme?: 'light' | 'dark';
+  /** Narrows the exception to pairs declared with one kind; omitted, any. */
+  readonly kind?: TmContrastKind;
   readonly reason: string;
   readonly expires?: string;
   readonly owner?: string;
