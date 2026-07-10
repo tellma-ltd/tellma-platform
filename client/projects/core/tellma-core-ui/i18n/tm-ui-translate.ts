@@ -1,15 +1,12 @@
 import {
   computed,
+  DestroyRef,
   inject,
   InjectionToken,
-  Injector,
   isDevMode,
-  runInInjectionContext,
   signal,
-  untracked,
   type Signal,
 } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
 import { TRANSLOCO_TRANSPILER, TranslocoService } from '@jsverse/transloco';
 
 import { TM_UI_STRINGS_EN } from './strings-en';
@@ -17,11 +14,11 @@ import { TM_UI_STRINGS_EN } from './strings-en';
 /**
  * The thin one-function i18n seam (§7): resolves a library string key to a
  * reactive `Signal<string>` — reading the signal in a reactive context makes
- * the consumer re-render when the active locale changes, so no translated
- * string is ever cached outside the reactive graph.
+ * the consumer re-render when the active locale changes.
  *
- * Implementations MUST return a stable signal per (key, params) so consumers
- * can call the function inside `computed()` without churn.
+ * The returned signal is a plain computed with no subscription of its own:
+ * calling the function freely (even building a fresh signal per evaluation
+ * of a consumer `computed()`) allocates nothing that outlives the caller.
  */
 export type TmUiTranslateFn = (key: string, params?: Record<string, unknown>) => Signal<string>;
 
@@ -79,53 +76,52 @@ function missingKeyGuard(key: string): string {
  * `TranslocoService` is provided (the `provideTellmaUi()` path — live locale
  * switching included), else a static English-only resolver (so the library
  * renders sensibly even in a Transloco-less harness).
+ *
+ * Resolution is SYNCHRONOUS against Transloco's loaded translations (the
+ * library's own strings are registered eagerly by `provideTellmaUi()` and
+ * the locale packs), re-evaluated through one shared version signal bumped
+ * by language changes and translation (re)loads. That keeps the factory to
+ * two app-lifetime subscriptions total — resolving a message never
+ * subscribes, caches, or serializes params — and a string's very first
+ * read already carries text (English until the locale's strings apply),
+ * never a blank frame in the error live region.
  */
 export function tmDefaultUiTranslate(): TmUiTranslateFn {
-  const injector = inject(Injector);
   // TranslocoService is providedIn:'root', so an optional inject would still
   // instantiate it and then crash on ITS missing config deps in an app that
   // never called provideTransloco/provideTellmaUi. The transpiler token is
   // only present when Transloco was actually provided — probe that instead.
   const translocoProvided = inject(TRANSLOCO_TRANSPILER, { optional: true }) !== null;
-  const transloco = translocoProvided ? inject(TranslocoService) : null;
-  const cache = new Map<string, Signal<string>>();
-
-  return (key, params) => {
-    const cacheKey = `${key}|${params ? JSON.stringify(params) : ''}`;
-    let result = cache.get(cacheKey);
-    if (result) {
-      return result;
-    }
-    if (transloco) {
-      const namespacedKey = `${TM_UI_I18N_SCOPE}.${key}`;
-      // untracked: the fn is legitimately called inside computed()s — signal
-      // CREATION must not register with the caller's reactive context.
-      const translated = untracked(() =>
-        runInInjectionContext(injector, () =>
-          toSignal(transloco.selectTranslate<string>(namespacedKey, params), {
-            initialValue: '',
-          }),
-        ),
-      );
-      result = computed(() => {
-        const text = translated();
-        if (text === '') {
-          return ''; // initial async tick — consumers render nothing briefly
-        }
-        if (text === namespacedKey || text === key) {
-          // Raw-key echo: the key is missing everywhere Transloco looked.
-          const english = tmEnglishString(key);
-          return english !== null ? interpolate(english, params) : missingKeyGuard(key);
-        }
-        return text;
-      });
-    } else {
+  if (!translocoProvided) {
+    return (key, params) => {
       const english = tmEnglishString(key);
-      result = signal(english !== null ? interpolate(english, params) : missingKeyGuard(key));
-    }
-    cache.set(cacheKey, result);
-    return result;
-  };
+      const text = english !== null ? interpolate(english, params) : missingKeyGuard(key);
+      return signal(text).asReadonly();
+    };
+  }
+
+  const transloco = inject(TranslocoService);
+  const version = signal(0);
+  const bump = () => version.update((v) => v + 1);
+  const langSub = transloco.langChanges$.subscribe(bump);
+  const eventSub = transloco.events$.subscribe(bump);
+  inject(DestroyRef).onDestroy(() => {
+    langSub.unsubscribe();
+    eventSub.unsubscribe();
+  });
+
+  return (key, params) =>
+    computed(() => {
+      version();
+      const namespacedKey = `${TM_UI_I18N_SCOPE}.${key}`;
+      const text = transloco.translate<string>(namespacedKey, params);
+      if (text === '' || text === namespacedKey || text === key) {
+        // Raw-key echo: the key is missing everywhere Transloco looked.
+        const english = tmEnglishString(key);
+        return english !== null ? interpolate(english, params) : missingKeyGuard(key);
+      }
+      return text;
+    });
 }
 
 /**

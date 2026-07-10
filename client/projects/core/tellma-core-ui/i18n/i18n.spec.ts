@@ -42,10 +42,28 @@ describe('TM_UI_TRANSLATE (Transloco-backed default)', () => {
     expect(many()).toBe('Enter at least 8 characters');
   });
 
-  it('returns a STABLE signal per (key, params) so computed() can call it', async () => {
+  it('resolves without a blank first frame — the very first read carries text', async () => {
     const host = await setup();
-    expect(host.translate('errors.required')).toBe(host.translate('errors.required'));
-    expect(host.translate('errors.min', { min: 1 })).toBe(host.translate('errors.min', { min: 1 }));
+    // No settling: read the signal synchronously on creation.
+    expect(host.translate('errors.required')()).toBe('This field is required');
+  });
+
+  it('never subscribes or serializes per call: circular params are fine', async () => {
+    const host = await setup();
+    const params: Record<string, unknown> = { min: 3 };
+    params['self'] = params; // JSON.stringify would throw on this
+    expect(host.translate('errors.min', params)()).toBe('Enter a value of at least 3');
+  });
+
+  it('a fresh signal per call still resolves consistently (computed()-friendly)', async () => {
+    const host = await setup();
+    // Distinct params objects per call — the per-keystroke validator shape
+    // that used to grow a permanent cache entry each time.
+    for (let i = 1; i <= 50; i++) {
+      expect(host.translate('errors.minLength', { minLength: 8 })()).toBe(
+        'Enter at least 8 characters',
+      );
+    }
   });
 
   it('falls back to English when the active locale has no pack at all', async () => {
