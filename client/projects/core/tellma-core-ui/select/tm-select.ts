@@ -5,6 +5,7 @@ import {
   Component,
   computed,
   contentChildren,
+  DestroyRef,
   effect,
   ElementRef,
   inject,
@@ -280,6 +281,8 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   });
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => clearTimeout(this.pendingRemeasure));
+
     // The ONE-DIRECTIONAL value bridge (§3.4): mirror the model into aria's
     // listbox (as the stable key), re-applied whenever the option set
     // changes — aria's afterRenderEffect prunes any selected key without a
@@ -334,11 +337,16 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   }
 
   // ---- Overlay plumbing (§3.4, proven by the stage-3 spike) ----
+  private pendingRemeasure: ReturnType<typeof setTimeout> | undefined;
+
   protected onOverlayAttach(): void {
     // DeferredContent inserts the panel one render pass after CDK attaches
     // and measures; without a MACROTASK re-measure, flip-up would measure a
-    // zero-height panel and never flip (spike-verified).
-    setTimeout(() => this.overlay()?.overlayRef?.updatePosition());
+    // zero-height panel and never flip (spike-verified). The timer must not
+    // outlive the component — updatePosition() on a disposed overlay throws
+    // — so destroy clears it (registered once in the constructor).
+    clearTimeout(this.pendingRemeasure);
+    this.pendingRemeasure = setTimeout(() => this.overlay()?.overlayRef?.updatePosition());
   }
 
   // ---- Commit path: activation events ONLY, never valueChange (§3.4) ----
