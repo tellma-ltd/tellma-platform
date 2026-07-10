@@ -431,5 +431,5 @@ FodyWeavers.xsd
 
 .claude/
 
-# Per-worktree local dev ports (written by dotnet tellma setup-worktree)
+# Per-worktree local dev ports
 .dev-ports.local

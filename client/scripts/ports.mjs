@@ -2,8 +2,7 @@
  * Worktree-isolated, port-free tooling (spec 0002 §1.3).
  *
  * getPort(name) resolves the port for a named local service:
- *   1. If the worktree root has a .dev-ports.local file (written by
- *      `dotnet tellma setup-worktree`; KEY=VALUE lines) and it contains the
+ *   1. If the worktree root has a .dev-ports.local file and it contains the
  *      key, that port is used — stable per worktree.
  *   2. Otherwise the OS assigns a free port (listen on 0).
  *
@@ -14,6 +13,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseEnv } from 'node:util';
 
 const worktreeRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -21,12 +21,9 @@ const worktreeRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export async function getPort(name) {
   const portsFile = join(worktreeRoot, '.dev-ports.local');
   if (existsSync(portsFile)) {
-    const lines = readFileSync(portsFile, 'utf8').split(/\r?\n/);
-    for (const line of lines) {
-      const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(\d+)\s*$/);
-      if (match && match[1] === name) {
-        return Number(match[2]);
-      }
+    const value = parseEnv(readFileSync(portsFile, 'utf8'))[name];
+    if (value !== undefined && /^\d+$/.test(value)) {
+      return Number(value);
     }
   }
   return osAssignedPort();
