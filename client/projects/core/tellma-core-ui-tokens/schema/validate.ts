@@ -3,8 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import type { TmTokens } from '../contract/tokens';
-import { tmEmittedSchemeVars, tmTokenValueToCss } from '../emit/emit-css';
+import type { TmSchemeColors, TmTokens } from '../contract/tokens';
+import { tmEmittedSchemeVars, tmRefToVarName, tmTokenValueToCss } from '../emit/emit-css';
 import { tmContrastRatio, tmParseColor, TM_CONTRAST_THRESHOLDS, type TmRgba } from './contrast';
 
 /**
@@ -45,15 +45,79 @@ function resolveColor(vars: Map<string, string>, name: string): TmRgba | null {
 }
 
 /**
- * Variables that carry text/glyph/boundary ink and therefore MUST appear as
- * a `fg` in contrastPairs or contrastExceptions — the completeness lint that
- * keeps the pair list growing with the contract. Generic page borders
- * and dividers are decorative and deliberately excluded; field borders are
- * component boundaries and included.
+ * Ink classification of every scheme-color key, typed against the contract:
+ * `true` = the token carries text/glyph/boundary ink and MUST appear as a
+ * `fg` in contrastPairs or contrastExceptions. Adding a key — or a whole
+ * group — to `TmSchemeColors` refuses to compile until it is classified
+ * here, so the completeness lint grows with the contract by construction;
+ * only the exclusions (decorative surfaces and page borders) are a human
+ * decision. For `status`, `true` means the triple's `fg` ink.
  */
-// NOTE: --text-xs/sm/base/lg are font SIZES (brand naming), not colors — the
-// text COLOR roles are enumerated explicitly.
-const COMPLETENESS_FG = /^--(text-(strong|body|secondary|muted|link|on-dark)|field-(text|text-disabled|placeholder|icon|border|border-hover|border-focus|border-invalid)|selection-text|color-on-primary|accent|focus-ring-color|success|warning|error|info)$/;
+type TmInkClassification = {
+  readonly [G in Exclude<keyof TmSchemeColors, 'colorScheme'>]: {
+    readonly [K in keyof TmSchemeColors[G]]: boolean;
+  };
+};
+
+const CARRIES_INK: TmInkClassification = {
+  text: { strong: true, body: true, secondary: true, muted: true, onDark: true, link: true },
+  surface: {
+    page: false,
+    subtle: false,
+    sunken: false,
+    card: false,
+    inverse: false,
+    hover: false,
+    selected: false,
+  },
+  // Generic page borders/dividers are decorative de-emphasis; the FIELD
+  // borders below are component boundaries and carry ink.
+  border: { subtle: false, default: false, strong: false, divider: false },
+  selection: { bg: false, text: true },
+  action: {
+    primary: false,
+    primaryHover: false,
+    primaryActive: false,
+    onPrimary: true,
+    accent: true,
+  },
+  status: { success: true, warning: true, error: true, info: true },
+  field: {
+    bg: false,
+    bgDisabled: false,
+    bgFilled: false,
+    border: true,
+    borderHover: true,
+    borderFocus: true,
+    borderInvalid: true,
+    text: true,
+    textDisabled: true,
+    placeholder: true,
+    icon: true,
+  },
+};
+
+/** The emitted variable names the classification marks as ink-carrying. */
+function requiredInkVars(): ReadonlySet<string> {
+  const names = new Set<string>();
+  for (const [group, keys] of Object.entries(CARRIES_INK)) {
+    for (const [key, carriesInk] of Object.entries(keys)) {
+      if (!carriesInk) {
+        continue;
+      }
+      if (group === 'status') {
+        names.add(`--${key}`); // the triple's fg variable
+      } else if (group === 'border' && key === 'divider') {
+        names.add('--divider');
+      } else {
+        names.add(tmRefToVarName(`${group}.${key}`));
+      }
+    }
+  }
+  // Semantic ink outside the scheme groups.
+  names.add('--focus-ring-color');
+  return names;
+}
 
 /**
  * Runs every gate over a preset and returns all issues found; an empty
@@ -146,9 +210,8 @@ export function tmValidateTokens(tokens: TmTokens): TmTokenValidationIssue[] {
     ...tokens.contrastPairs.map((p) => p.fg),
     ...tokens.contrastExceptions.map((e) => e.fg),
   ]);
-  const lightVars = varMaps.get('light')!;
-  for (const name of lightVars.keys()) {
-    if (COMPLETENESS_FG.test(name) && !declared.has(name)) {
+  for (const name of requiredInkVars()) {
+    if (!declared.has(name)) {
       issues.push({
         gate: 'completeness',
         message: `${name} carries foreground ink but is not declared in contrastPairs/contrastExceptions`,
