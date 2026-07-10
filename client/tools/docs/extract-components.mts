@@ -110,12 +110,28 @@ function propTypeText(prop: PropertyDeclaration): string {
     .replace(/import\("[^"]*"\)\./g, '');
 }
 
+/** The class plus its base-class chain (inherited inputs are API too). */
+function classChain(cls: ClassDeclaration): ClassDeclaration[] {
+  const chain: ClassDeclaration[] = [];
+  for (let current: ClassDeclaration | undefined = cls; current; current = current.getBaseClass()) {
+    chain.push(current);
+  }
+  return chain;
+}
+
 function extractProps(cls: ClassDeclaration) {
   const inputs: ComponentDoc['inputs'] = [];
   const outputs: ComponentDoc['outputs'] = [];
   let formControl: ComponentDoc['formControl'] = null;
 
-  for (const prop of cls.getProperties()) {
+  // Own properties first, then up the base chain; an override shadows its
+  // base declaration.
+  const seen = new Set<string>();
+  const props = classChain(cls)
+    .flatMap((klass) => klass.getProperties())
+    .filter((prop) => !seen.has(prop.getName()) && seen.add(prop.getName()));
+
+  for (const prop of props) {
     const init = prop.getInitializer();
     if (!init || !Node.isCallExpression(init)) {
       continue;
@@ -208,15 +224,35 @@ function extractTokens(
   return [...new Set([...css.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]))].sort();
 }
 
-function extractExamples(sourceFile: string): ComponentDoc['examples'] {
+/**
+ * Reads the co-located *.examples.ts through the AST, not a regex: each
+ * exported const object literal contributes its `template` string. A
+ * template-less export is skipped cleanly instead of corrupting the scan,
+ * and extra properties beside `template` don't confuse it.
+ */
+export function extractExamples(
+  project: Project,
+  sourceFile: string,
+): ComponentDoc['examples'] {
   const examplesPath = sourceFile.replace(/\.ts$/, '.examples.ts');
   if (!existsSync(examplesPath)) {
     return [];
   }
-  const text = readFileSync(examplesPath, 'utf8');
+  const file = project.addSourceFileAtPath(examplesPath);
   const examples: ComponentDoc['examples'] = [];
-  for (const match of text.matchAll(/export const (\w+) = \{\s*template: `([\s\S]*?)`,?\s*\};/g)) {
-    examples.push({ title: match[1], code: match[2].trim() });
+  for (const decl of file.getVariableDeclarations()) {
+    const init = decl.getInitializer();
+    if (!decl.isExported() || !init || !Node.isObjectLiteralExpression(init)) {
+      continue;
+    }
+    const templateProp = init.getProperty('template');
+    if (!templateProp || !Node.isPropertyAssignment(templateProp)) {
+      continue;
+    }
+    const value = templateProp.getInitializer();
+    if (value && (Node.isNoSubstitutionTemplateLiteral(value) || Node.isStringLiteral(value))) {
+      examples.push({ title: decl.getName(), code: value.getLiteralText().trim() });
+    }
   }
   return examples;
 }
@@ -294,7 +330,7 @@ export function extractComponents(): ComponentsJson {
           source.styles ? join(uiDir, source.styles) : undefined,
         ),
         a11y: extractA11y(cls, template),
-        examples: extractExamples(filePath),
+        examples: extractExamples(project, filePath),
         harness: source.harness,
         status: (jsDocTag(cls, 'tmStatus') as ComponentDoc['status'] | undefined) ?? 'stable',
       });
