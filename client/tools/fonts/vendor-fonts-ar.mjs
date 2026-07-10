@@ -5,7 +5,8 @@
  *
  * Usage: node tools/fonts/vendor-fonts-ar.mjs
  */
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,7 +31,14 @@ if (!file || !unicodeRange) {
   throw new Error('Arabic subset not found in the Fontsource css');
 }
 
-copyFileSync(join(sourceDir, 'files', file), join(fontsDir, file));
+// Content-hashed binary + a stylesheet whose URLs are relative to itself:
+// both are served as static assets (fonts/arabic/ in the consuming app),
+// never through the styles pipeline, so the manifest URL below and the
+// @font-face URL resolve to the same immutable file.
+const bytes = readFileSync(join(sourceDir, 'files', file));
+const hash = createHash('sha256').update(bytes).digest('hex').slice(0, 10);
+const hashedFile = file.replace(/\.woff2$/, `.${hash}.woff2`);
+writeFileSync(join(fontsDir, hashedFile), bytes);
 
 writeFileSync(
   join(fontsDir, 'fonts.css'),
@@ -44,7 +52,7 @@ writeFileSync(
     '  font-style: normal;',
     '  font-display: swap;',
     '  font-weight: 100 900;',
-    `  src: url(./${file}) format('woff2-variations');`,
+    `  src: url(./${hashedFile}) format('woff2-variations');`,
     `  unicode-range: ${unicodeRange};`,
     '}',
     '',
@@ -72,7 +80,7 @@ writeFileSync(
     "    script: 'arabic',",
     "    style: 'normal',",
     "    weight: '100 900',",
-    `    url: 'fonts/${file}',`,
+    `    url: 'fonts/arabic/${hashedFile}',`,
     `    unicodeRange: '${unicodeRange}',`,
     '  },',
     '];',
