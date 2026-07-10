@@ -18,9 +18,6 @@ export const TM_UI_STRINGS_EN = {
     minDate: 'Enter a date on or after {minDate}',
     maxDate: 'Enter a date on or before {maxDate}',
   },
-  formField: {
-    required: 'required',
-  },
   select: {
     placeholder: 'Select an option',
   },

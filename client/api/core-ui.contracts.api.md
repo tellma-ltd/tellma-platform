@@ -39,7 +39,6 @@ export interface TmFormFieldControl {
     readonly dirty: SignalLike<boolean>;
     // (undocumented)
     readonly disabled: SignalLike<boolean>;
-    readonly empty: SignalLike<boolean>;
     // (undocumented)
     readonly invalid: SignalLike<boolean>;
     readonly localizedErrors: SignalLike<readonly TmFieldError[]>;

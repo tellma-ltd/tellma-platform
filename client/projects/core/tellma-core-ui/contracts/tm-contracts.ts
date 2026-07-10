@@ -50,11 +50,6 @@ export interface TmFormFieldControl {
    */
   readonly ownsChrome: boolean;
   /**
-   * Control currently holds no value — drives the field's empty/placeholder
-   * styling and "show hint vs error" logic.
-   */
-  readonly empty: SignalLike<boolean>;
-  /**
    * Ids the control currently exposes via aria-describedby (read so the
    * field can merge, not clobber, existing ones).
    */

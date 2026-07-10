@@ -21,8 +21,6 @@ export class TmCheckbox implements TmFormFieldControl {
     readonly dirty: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly disabled: _angular_core.InputSignalWithTransform<boolean, unknown>;
     // (undocumented)
-    readonly empty: _angular_core.Signal<boolean>;
-    // (undocumented)
     readonly errors: _angular_core.InputSignal<readonly ValidationError.WithOptionalFieldTree[]>;
     // (undocumented)
     focus(options?: FocusOptions): void;

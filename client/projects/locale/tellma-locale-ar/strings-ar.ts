@@ -17,9 +17,6 @@ export const TM_LOCALE_AR_STRINGS = {
     minDate: 'أدخل تاريخا لا يسبق {minDate}',
     maxDate: 'أدخل تاريخا لا يتجاوز {maxDate}',
   },
-  formField: {
-    required: 'مطلوب',
-  },
   select: {
     placeholder: 'حدد خيارا',
   },

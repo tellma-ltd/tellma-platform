@@ -88,10 +88,6 @@ export class TmInput implements TmFormFieldControl {
   // ---- TmFormFieldControl (§2.1) ----
   /** The field renders the bordered box around this bare directive (§3). */
   readonly ownsChrome = false;
-  readonly empty = computed(() => {
-    const value = this.value();
-    return value === undefined || value === null || value === '';
-  });
   private readonly fieldDescribedBy = signal<readonly string[]>([]);
   readonly describedByIds = this.fieldDescribedBy.asReadonly();
   readonly localizedErrors: () => readonly TmFieldError[] = tmResolveFieldErrors(

@@ -131,7 +131,6 @@ export class TmCheckbox implements TmFormFieldControl {
   // ---- TmFormFieldControl (§2.1) ----
   /** Renders its own box chrome; the field adds only label/hint/error (§3). */
   readonly ownsChrome = true;
-  readonly empty = computed(() => !this.checked() && !this.indeterminate());
   private readonly fieldDescribedBy = signal<readonly string[]>([]);
   readonly describedByIds = this.fieldDescribedBy.asReadonly();
   readonly localizedErrors: () => readonly TmFieldError[] = tmResolveFieldErrors(

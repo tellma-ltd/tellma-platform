@@ -60,9 +60,6 @@ export const TM_UI_STRINGS_EN: {
         readonly minDate: "Enter a date on or after {minDate}";
         readonly maxDate: "Enter a date on or before {maxDate}";
     };
-    readonly formField: {
-        readonly required: "required";
-    };
     readonly select: {
         readonly placeholder: "Select an option";
     };

@@ -233,7 +233,6 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
 
   // ---- TmFormFieldControl (§2.1) ----
   readonly ownsChrome = true;
-  readonly empty = computed(() => this.value() === undefined || this.value() === null);
   private readonly fieldDescribedBy = signal<readonly string[]>([]);
   readonly describedByIds = this.fieldDescribedBy.asReadonly();
   private readonly labelIdFromField = signal<string | null>(null);
@@ -268,7 +267,9 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     () => this.placeholder() ?? this.defaultPlaceholder(),
   );
 
-  protected readonly showsPlaceholder = computed(() => this.empty());
+  protected readonly showsPlaceholder = computed(
+    () => this.value() === undefined || this.value() === null,
+  );
 
   /** Trigger label chain: displayWith → matched option → placeholder (§3.4). */
   protected readonly triggerLabel = computed(() => {

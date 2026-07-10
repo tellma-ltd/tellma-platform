@@ -51,8 +51,6 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     // (undocumented)
     protected readonly effectivePlaceholder: _angular_core.Signal<string>;
     // (undocumented)
-    readonly empty: _angular_core.Signal<boolean>;
-    // (undocumented)
     readonly errors: _angular_core.InputSignal<readonly ValidationError.WithOptionalFieldTree[]>;
     // (undocumented)
     protected readonly expanded: _angular_core.WritableSignal<boolean>;

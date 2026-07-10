@@ -25,9 +25,6 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly minDate: "أدخل تاريخا لا يسبق {minDate}";
         readonly maxDate: "أدخل تاريخا لا يتجاوز {maxDate}";
     };
-    readonly formField: {
-        readonly required: "مطلوب";
-    };
     readonly select: {
         readonly placeholder: "حدد خيارا";
     };

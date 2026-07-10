@@ -294,8 +294,6 @@ export interface TmFormFieldControl {
   readonly ownsChrome: boolean;                  // true = control renders its own adornment chrome
                                                  //   (tm-checkbox, tm-select); false = the field wraps the
                                                  //   control in the shared bordered box (tmInput) — see §3
-  readonly empty: SignalLike<boolean>;           // control currently holds no value — drives the field's
-                                                 //   empty/placeholder styling and "show hint vs error" logic
   readonly describedByIds: SignalLike<string[]>; // ids the control currently exposes via aria-describedby
                                                  //   (read so the field can merge, not clobber, existing ones)
   setDescribedByIds(ids: string[]): void;        // field pushes its hint/error element ids; control writes
