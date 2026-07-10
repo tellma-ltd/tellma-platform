@@ -97,6 +97,7 @@ const llms = [
 
 writeFileSync(join(outDir, 'llms.txt'), llms);
 
-console.log(
-  `docs:build OK — ${doc.components.length} components -> components.json + schema + llms.txt`,
-);
+console.log(`docs:build OK — ${doc.components.length} components ->`);
+for (const file of ['components.json', 'components.schema.json', 'llms.txt']) {
+  console.log(`  ${join(outDir, file)}`);
+}
