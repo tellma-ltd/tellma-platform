@@ -20,7 +20,8 @@ import { extractComponents } from './extract-components.mjs';
 import type { ComponentDoc } from './components-schema.mjs';
 
 const clientDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const outDir = join(clientDir, 'projects', 'core', 'tellma-core-ui-mcp', 'generated');
+const relativeOutDir = join('projects', 'core', 'tellma-core-ui-mcp', 'generated');
+const outDir = join(clientDir, relativeOutDir);
 mkdirSync(outDir, { recursive: true });
 
 const doc = extractComponents();
@@ -117,5 +118,5 @@ writeFileSync(join(outDir, 'llms.txt'), llms);
 
 console.log(`docs:build OK — ${doc.components.length} components ->`);
 for (const file of ['components.json', 'components.schema.json', 'llms.txt']) {
-  console.log(`  ${join(outDir, file)}`);
+  console.log(`  ${join(relativeOutDir, file)}`);
 }

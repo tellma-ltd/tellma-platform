@@ -30,7 +30,7 @@ export function tmErrorParams(error: ValidationError): Record<string, unknown> {
 /**
  * The validation-message resolver. Message precedence: a schema-inline
  * message (the `{message: …}` passed to a validator, surfaced as the
- * framework error's own `message`) wins when present; otherwise the error's
+ * framework error's own `message`) wins when non-empty; otherwise the error's
  * camelCase `kind` maps to a localized default via `TM_UI_TRANSLATE`
  * (`errors.<kind>`). The result is reactive: switching the active locale
  * recomputes every message.
@@ -39,11 +39,21 @@ export function tmResolveFieldErrors(
   errors: Signal<readonly ValidationError.WithOptionalFieldTree[]>,
   translate: TmUiTranslateFn,
 ): Signal<readonly TmFieldError[]> {
-  return computed(() =>
-    errors().map((error) => ({
-      kind: error.kind,
-      message:
-        error.message ?? translate(`errors.${error.kind}`, tmErrorParams(error))(),
-    })),
+  return computed(
+    () =>
+      errors().map((error) => ({
+        kind: error.kind,
+        // `||`, not `??`: a blank inline message must not beat the localized
+        // default — the field would show its invalid state announcing nothing.
+        message:
+          error.message || translate(`errors.${error.kind}`, tmErrorParams(error))(),
+      })),
+    {
+      // Errors are recreated per validation run; compare by value so
+      // unchanged messages don't ripple through the field's computeds.
+      equal: (a, b) =>
+        a.length === b.length &&
+        a.every((x, i) => x.kind === b[i].kind && x.message === b[i].message),
+    },
   );
 }
