@@ -12,21 +12,21 @@ export function provideTellmaLocaleAr(): EnvironmentProviders;
 // @public
 export const TM_FONTS_ARABIC: readonly TmFontSubset[];
 
-// @public
+// @public (undocumented)
 export const TM_LOCALE_AR_STRINGS: {
     readonly errors: {
         readonly required: "هذا الحقل مطلوب";
-        readonly email: "أدخل عنوان بريد إلكتروني صحيحا";
-        readonly minLength: "{minLength, plural, one {أدخل حرفا واحدا على الأقل} two {أدخل حرفين على الأقل} few {أدخل # أحرف على الأقل} many {أدخل # حرفا على الأقل} other {أدخل # حرف على الأقل}}";
-        readonly maxLength: "{maxLength, plural, one {أدخل حرفا واحدا كحد أقصى} two {أدخل حرفين كحد أقصى} few {أدخل # أحرف كحد أقصى} many {أدخل # حرفا كحد أقصى} other {أدخل # حرف كحد أقصى}}";
-        readonly min: "أدخل قيمة لا تقل عن {min}";
-        readonly max: "أدخل قيمة لا تزيد عن {max}";
+        readonly email: "{gender, select, female {أدخلي} other {أدخل}} عنوان بريد إلكتروني صحيحا";
+        readonly minLength: "{gender, select, female {أدخلي} other {أدخل}} {minLength, plural, one {حرفا واحدا على الأقل} two {حرفين على الأقل} few {# أحرف على الأقل} many {# حرفا على الأقل} other {# حرف على الأقل}}";
+        readonly maxLength: "{gender, select, female {أدخلي} other {أدخل}} {maxLength, plural, one {حرفا واحدا كحد أقصى} two {حرفين كحد أقصى} few {# أحرف كحد أقصى} many {# حرفا كحد أقصى} other {# حرف كحد أقصى}}";
+        readonly min: "{gender, select, female {أدخلي} other {أدخل}} قيمة لا تقل عن {min}";
+        readonly max: "{gender, select, female {أدخلي} other {أدخل}} قيمة لا تزيد عن {max}";
         readonly pattern: "القيمة لا تطابق التنسيق المطلوب";
-        readonly minDate: "أدخل تاريخا لا يسبق {minDate}";
-        readonly maxDate: "أدخل تاريخا لا يتجاوز {maxDate}";
+        readonly minDate: "{gender, select, female {أدخلي} other {أدخل}} تاريخا لا يسبق {minDate}";
+        readonly maxDate: "{gender, select, female {أدخلي} other {أدخل}} تاريخا لا يتجاوز {maxDate}";
     };
     readonly select: {
-        readonly placeholder: "حدد خيارا";
+        readonly placeholder: "{gender, select, female {حددي خيارا} other {حدد خيارا}}";
     };
 };
 

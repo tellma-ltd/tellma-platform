@@ -3,7 +3,12 @@ import { TestBed } from '@angular/core/testing';
 import { TranslocoService } from '@jsverse/transloco';
 import { email, form, FormField, minLength, required } from '@angular/forms/signals';
 
-import { provideTellmaUi, TM_FONT_SUBSETS, TM_UI_TRANSLATE } from '@tellma/core-ui';
+import {
+  provideTellmaUi,
+  TM_FONT_SUBSETS,
+  TM_UI_MESSAGE_CONTEXT,
+  TM_UI_TRANSLATE,
+} from '@tellma/core-ui';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmInput } from '@tellma/core-ui/input';
 
@@ -90,6 +95,30 @@ describe('@tellma/locale-ar (DoD 13)', () => {
     expect(few()).toBe('أدخل 5 أحرف على الأقل'); // 3-10 broken plural
     expect(many()).toBe('أدخل 11 حرفا على الأقل'); // 11-99 singular accusative
     expect(other()).toBe('أدخل 100 حرف على الأقل'); // 100+ singular
+  });
+
+  it('the ambient gender context conjugates the imperative', async () => {
+    const gender = signal<Record<string, unknown>>({ gender: 'female' });
+    TestBed.configureTestingModule({
+      providers: [
+        provideTellmaUi(),
+        provideTellmaLocaleAr(),
+        { provide: TM_UI_MESSAGE_CONTEXT, useValue: gender.asReadonly() },
+      ],
+    });
+    const fixture = TestBed.createComponent(Host);
+    await fixture.whenStable();
+    const host = fixture.componentInstance;
+    host.transloco.setActiveLang('ar');
+    await settle(fixture);
+
+    const text = host.translate('errors.minLength', { minLength: 2 });
+    const placeholder = host.translate('select.placeholder');
+    expect(text()).toBe('أدخلي حرفين على الأقل'); // feminine imperative
+    expect(placeholder()).toBe('حددي خيارا');
+
+    gender.set({ gender: 'other' });
+    expect(text()).toBe('أدخل حرفين على الأقل'); // live re-render on switch
   });
 
   it('WITHOUT the pack: the same keys fall back to ENGLISH — never a raw key', async () => {

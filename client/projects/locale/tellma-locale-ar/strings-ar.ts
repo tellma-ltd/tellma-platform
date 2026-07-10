@@ -3,21 +3,26 @@
  * same shape as TM_UI_STRINGS_EN; plurals use ICU MessageFormat with the
  * Arabic plural categories.
  */
+/**
+ * The imperative verb conjugates for the addressee's gender, so it branches
+ * on the ambient {gender} context param (TM_UI_MESSAGE_CONTEXT — 'other' is
+ * the base form) while the counted noun stays in a single plural block.
+ */
+const enter = '{gender, select, female {أدخلي} other {أدخل}}';
+
 export const TM_LOCALE_AR_STRINGS = {
   errors: {
     required: 'هذا الحقل مطلوب',
-    email: 'أدخل عنوان بريد إلكتروني صحيحا',
-    minLength:
-      '{minLength, plural, one {أدخل حرفا واحدا على الأقل} two {أدخل حرفين على الأقل} few {أدخل # أحرف على الأقل} many {أدخل # حرفا على الأقل} other {أدخل # حرف على الأقل}}',
-    maxLength:
-      '{maxLength, plural, one {أدخل حرفا واحدا كحد أقصى} two {أدخل حرفين كحد أقصى} few {أدخل # أحرف كحد أقصى} many {أدخل # حرفا كحد أقصى} other {أدخل # حرف كحد أقصى}}',
-    min: 'أدخل قيمة لا تقل عن {min}',
-    max: 'أدخل قيمة لا تزيد عن {max}',
+    email: `${enter} عنوان بريد إلكتروني صحيحا`,
+    minLength: `${enter} {minLength, plural, one {حرفا واحدا على الأقل} two {حرفين على الأقل} few {# أحرف على الأقل} many {# حرفا على الأقل} other {# حرف على الأقل}}`,
+    maxLength: `${enter} {maxLength, plural, one {حرفا واحدا كحد أقصى} two {حرفين كحد أقصى} few {# أحرف كحد أقصى} many {# حرفا كحد أقصى} other {# حرف كحد أقصى}}`,
+    min: `${enter} قيمة لا تقل عن {min}`,
+    max: `${enter} قيمة لا تزيد عن {max}`,
     pattern: 'القيمة لا تطابق التنسيق المطلوب',
-    minDate: 'أدخل تاريخا لا يسبق {minDate}',
-    maxDate: 'أدخل تاريخا لا يتجاوز {maxDate}',
+    minDate: `${enter} تاريخا لا يسبق {minDate}`,
+    maxDate: `${enter} تاريخا لا يتجاوز {maxDate}`,
   },
   select: {
-    placeholder: 'حدد خيارا',
+    placeholder: '{gender, select, female {حددي خيارا} other {حدد خيارا}}',
   },
 } as const;

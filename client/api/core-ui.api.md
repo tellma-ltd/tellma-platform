@@ -48,6 +48,9 @@ export const TM_FORM_FIELD_DEFAULTS: InjectionToken<TmFormFieldDefaults>;
 export const TM_UI_I18N_SCOPE = "tmUi";
 
 // @public
+export const TM_UI_MESSAGE_CONTEXT: InjectionToken<Signal<TmUiMessageContext>>;
+
+// @public
 export const TM_UI_STRINGS_EN: {
     readonly errors: {
         readonly required: "This field is required";
@@ -124,6 +127,9 @@ export interface TmFormsOptions {
 
 // @public
 export function tmResolveFieldErrors(errors: Signal<readonly ValidationError.WithOptionalFieldTree[]>, translate: TmUiTranslateFn): Signal<readonly TmFieldError[]>;
+
+// @public
+export type TmUiMessageContext = Record<string, unknown>;
 
 // @public (undocumented)
 export interface TmUiOptions {

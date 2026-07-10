@@ -31,6 +31,26 @@ export type TmUiTranslateFn = (key: string, params?: Record<string, unknown>) =>
 export const TM_UI_I18N_SCOPE = 'tmUi';
 
 /**
+ * Ambient ICU parameters merged under every message resolution (explicit
+ * per-call params win on collision). Grammatical context that is a property
+ * of the SESSION rather than of any one message lives here — e.g. Arabic
+ * imperatives conjugate for the addressee's gender, so Arabic strings
+ * branch on `{gender, select, female {…} other {…}}`.
+ */
+export type TmUiMessageContext = Record<string, unknown>;
+
+/**
+ * The session-wide message context as a signal, so a runtime change (a user
+ * profile load, a preference switch) re-renders every visible string. The
+ * default carries `gender: 'other'`, which every gendered string must
+ * treat as its base form.
+ */
+export const TM_UI_MESSAGE_CONTEXT = new InjectionToken<Signal<TmUiMessageContext>>(
+  'TM_UI_MESSAGE_CONTEXT',
+  { providedIn: 'root', factory: () => signal<TmUiMessageContext>({ gender: 'other' }).asReadonly() },
+);
+
+/**
  * Resolves a key against the packaged English strings ('errors.required' →
  * the English default). Returns null when even English lacks the key (a
  * missing CUSTOM kind — the caller decides the last-resort guard).
@@ -92,12 +112,14 @@ export function tmDefaultUiTranslate(): TmUiTranslateFn {
   // never called provideTransloco/provideTellmaUi. The transpiler token is
   // only present when Transloco was actually provided — probe that instead.
   const translocoProvided = inject(TRANSLOCO_TRANSPILER, { optional: true }) !== null;
+  const context = inject(TM_UI_MESSAGE_CONTEXT);
   if (!translocoProvided) {
-    return (key, params) => {
-      const english = tmEnglishString(key);
-      const text = english !== null ? interpolate(english, params) : missingKeyGuard(key);
-      return signal(text).asReadonly();
-    };
+    return (key, params) =>
+      computed(() => {
+        const merged = { ...context(), ...params };
+        const english = tmEnglishString(key);
+        return english !== null ? interpolate(english, merged) : missingKeyGuard(key);
+      });
   }
 
   const transloco = inject(TranslocoService);
@@ -113,12 +135,13 @@ export function tmDefaultUiTranslate(): TmUiTranslateFn {
   return (key, params) =>
     computed(() => {
       version();
+      const merged = { ...context(), ...params };
       const namespacedKey = `${TM_UI_I18N_SCOPE}.${key}`;
-      const text = transloco.translate<string>(namespacedKey, params);
+      const text = transloco.translate<string>(namespacedKey, merged);
       if (text === '' || text === namespacedKey || text === key) {
         // Raw-key echo: the key is missing everywhere Transloco looked.
         const english = tmEnglishString(key);
-        return english !== null ? interpolate(english, params) : missingKeyGuard(key);
+        return english !== null ? interpolate(english, merged) : missingKeyGuard(key);
       }
       return text;
     });
