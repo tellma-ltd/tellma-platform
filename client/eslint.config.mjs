@@ -1,4 +1,5 @@
 // @ts-check
+import { defineConfig } from 'eslint/config';
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import angular from 'angular-eslint';
@@ -31,7 +32,7 @@ const tmPlugin = {
   },
 };
 
-export default tseslint.config(
+export default defineConfig(
   {
     ignores: [
       'dist/',
