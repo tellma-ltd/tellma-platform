@@ -182,10 +182,12 @@ function sharedVars(tokens: TmTokens): VarMap {
   set('--focus-ring-width', focusRing.width);
   set('--focus-ring-color', focusRing.color);
   set('--focus-ring-offset', focusRing.offset);
+  // The composite two-layer ring: an inner gap of --focus-ring-offset in the
+  // page background, then the ring color.
   vars.set(
     '--focus-ring',
-    '0 0 0 var(--focus-ring-width) var(--white), ' +
-      '0 0 0 calc(var(--focus-ring-width) + 2px) var(--focus-ring-color)',
+    '0 0 0 var(--focus-ring-offset) var(--white), ' +
+      '0 0 0 calc(var(--focus-ring-offset) + var(--focus-ring-width)) var(--focus-ring-color)',
   );
   for (const [key, value] of Object.entries(formField)) {
     set(tmRefToVarName(`formField.${key}`), value);
