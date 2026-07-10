@@ -1,6 +1,6 @@
 import { ComponentHarness } from '@angular/cdk/testing';
 
-/** Harness for `tm-checkbox` (spec §10). */
+/** Harness for `tm-checkbox`. */
 export class TmCheckboxHarness extends ComponentHarness {
   /** The selector for the `tm-checkbox` host element. */
   static hostSelector = 'tm-checkbox';

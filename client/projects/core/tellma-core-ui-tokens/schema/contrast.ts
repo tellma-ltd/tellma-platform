@@ -1,5 +1,5 @@
 /**
- * WCAG 2.1 contrast math (§4): relative luminance + contrast ratio, with
+ * WCAG 2.1 contrast math: relative luminance + contrast ratio, with
  * alpha compositing (the dark scheme uses rgba() borders, which must be
  * composited over their background before measuring). Dependency-free.
  */
@@ -83,7 +83,7 @@ export function tmContrastRatio(fg: TmRgba, bg: TmRgba, canvas?: TmRgba): number
   return (hi + 0.05) / (lo + 0.05);
 }
 
-/** The fixed WCAG 2.1 AA thresholds (§4) — never configurable. */
+/** The fixed WCAG 2.1 AA thresholds — never configurable. */
 export const TM_CONTRAST_THRESHOLDS = {
   text: 4.5,
   largeText: 3,

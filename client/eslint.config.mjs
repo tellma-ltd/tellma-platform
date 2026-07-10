@@ -98,7 +98,7 @@ export default defineConfig(
           patterns: [
             {
               group: ['@angular/*'],
-              message: 'The contracts entry point must stay free of Angular imports (spec §2.1).',
+              message: 'The contracts entry point must stay free of Angular imports.',
             },
             {
               group: ['@tellma/*'],
@@ -106,7 +106,7 @@ export default defineConfig(
             },
             {
               group: ['@jsverse/*', 'rxjs', 'rxjs/*'],
-              message: 'The contracts entry point is dependency-free (spec §7).',
+              message: 'The contracts entry point is dependency-free.',
             },
             {
               group: ['../*'],

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
  * @tellma/core-ui-mcp — scoped MCP server for the Tellma UI component
- * library (spec 0002 §11): answers `list` / `describe` / `example` over
+ * library: answers `list` / `describe` / `example` over
  * stdio from the generated components.json (the single source of truth
  * extracted from the component sources), so
  * `npx @tellma/core-ui-mcp@<pinned>` answers against the exact version a
  * distribution depends on. stdio transport — no port (worktree-parallel by
- * construction, §1.3).
+ * construction).
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';

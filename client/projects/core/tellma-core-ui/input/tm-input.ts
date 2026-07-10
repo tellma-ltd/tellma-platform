@@ -20,18 +20,18 @@ let nextUniqueId = 0;
 
 /**
  * Single-line text field — a bare directive on the native `<input>` (the
- * matInput model, §3.2): the native element IS the control, so it drops into
+ * matInput model): the native element IS the control, so it drops into
  * a grid cell with nothing to strip. Adornment chrome (bordered box, focus
- * ring, prefix/suffix) belongs to the enclosing `tm-form-field` (§3).
+ * ring, prefix/suffix) belongs to the enclosing `tm-form-field`.
  *
  * Signal Forms native: implements `FormValueControl<string>` (`value`
  * model) plus the optional state inputs `[formField]` binds; reports touch
  * on native blur. When bound, the field is authoritative for
  * disabled/readonly/required — template-binding those on a bound control is
- * forbidden by lint (§5).
+ * forbidden by lint.
  *
- * Bidi: `dir="auto"` picks each field's base direction from its own content
- * (§7), independent of page direction; alignment follows via
+ * Bidi: `dir="auto"` picks each field's base direction from its own content,
+ * independent of page direction; alignment follows via
  * `text-align: start`.
  *
  * @tmGroup form-control
@@ -68,7 +68,7 @@ export class TmInput implements TmFormFieldControl {
   // ---- FormValueControl<string> + the optional state inputs (§5) ----
   /** The field value (the FormValueControl model). */
   readonly value = model('');
-  /** Non-form usage only — the bound field is authoritative when bound (§5). */
+  /** Non-form usage only — the bound field is authoritative when bound via [formField]. */
   readonly disabled = input(false, { transform: booleanAttribute });
   /** Readonly state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly readonly = input(false, { transform: booleanAttribute });
@@ -84,7 +84,7 @@ export class TmInput implements TmFormFieldControl {
   readonly pending = input(false, { transform: booleanAttribute });
   /** The raw framework errors, bound by [formField] and localized into `localizedErrors`. */
   readonly errors = input<readonly ValidationError.WithOptionalFieldTree[]>([]);
-  /** Touch reporting on native blur — `debounce('blur')` relies on it (§5). */
+  /** Touch reporting on native blur — `debounce('blur')` relies on it. */
   readonly touch = output<void>();
 
   // ---- Own API (§3.2) ----
@@ -95,7 +95,7 @@ export class TmInput implements TmFormFieldControl {
   readonly controlId = signal(`tm-input-${nextUniqueId++}`).asReadonly();
 
   // ---- TmFormFieldControl (§2.1) ----
-  /** The field renders the bordered box around this bare directive (§3). */
+  /** The field renders the bordered box around this bare directive. */
   readonly ownsChrome = false;
   private readonly fieldDescribedBy = signal<readonly string[]>([]);
   /** The hint/error ids the enclosing field pushed via `setDescribedByIds`. */
@@ -111,7 +111,7 @@ export class TmInput implements TmFormFieldControl {
   /**
    * aria-invalid follows the error-DISPLAY policy, not raw field validity —
    * a pristine required field is technically invalid but must not be
-   * announced as such before the user has interacted (§5/§6).
+   * announced as such before the user has interacted.
    */
   protected readonly showsInvalid = computed(() =>
     this.errorDisplay({

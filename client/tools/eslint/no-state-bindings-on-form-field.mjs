@@ -18,7 +18,7 @@ export default {
     messages: {
       forbidden:
         'Do not bind "{{name}}" on a [formField]-bound control — the bound field is ' +
-        'authoritative for disabled/readonly/required (spec 0002 §5); set it in the form schema.',
+        'authoritative for disabled/readonly/required; set it in the form schema.',
     },
   },
   create(context) {

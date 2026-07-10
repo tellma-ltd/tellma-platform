@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 
 /**
- * One selectable option of a `tm-select` (spec §3.4). Displays one property,
+ * One selectable option of a `tm-select`. Displays one property,
  * captures another: `value` is what lands in the model; the projected
  * content is what the user sees.
  *
@@ -30,7 +30,7 @@ export class TmOption<T> {
   /** The domain value captured into the model when this option is chosen. */
   readonly value = input.required<T>();
   /**
-   * Explicit typeahead/search label (§3.4); derived from the rendered row
+   * Explicit typeahead/search label; derived from the rendered row
    * text when omitted. Providing it also lets a CLOSED trigger resolve its
    * label before the panel ever rendered.
    */
@@ -41,7 +41,7 @@ export class TmOption<T> {
   /** The projected display content, stamped into the panel by tm-select. */
   readonly contentTemplate = viewChild.required<TemplateRef<unknown>>('content');
 
-  /** Written by tm-select after the row renders (textContent fallback, §3.4). */
+  /** Written by tm-select after the row renders (textContent fallback). */
   readonly derivedText = signal('');
 
   /** The label in effect for typeahead and trigger resolution: `label`, else the derived text. */

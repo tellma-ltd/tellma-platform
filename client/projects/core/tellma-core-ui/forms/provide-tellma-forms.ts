@@ -4,7 +4,7 @@ import {
   type EnvironmentProviders,
 } from '@angular/core';
 
-/** The field-state inputs the error-display policy decides over (§5). */
+/** The field-state inputs the error-display policy decides over. */
 export interface TmErrorDisplayState {
   /** The field currently fails at least one validator. */
   readonly invalid: boolean;
@@ -16,14 +16,14 @@ export interface TmErrorDisplayState {
   readonly pending: boolean;
 }
 
-/** Decides whether a field's errors are shown (field-scoped — §5). */
+/** Decides whether a field's errors are shown (field-scoped). */
 export type TmErrorDisplayPolicy = (state: TmErrorDisplayState) => boolean;
 
 /**
  * Default policy: show errors when invalid AND (touched OR dirty). "Show
  * after a submit attempt" needs no extra plumbing — Signal Forms' `submit()`
  * marks every descendant touched before validating, so this policy surfaces
- * every error then. While async validation is pending, errors are held (§5).
+ * every error then. While async validation is pending, errors are held.
  */
 export const tmDefaultErrorDisplay: TmErrorDisplayPolicy = (state) =>
   !state.pending && state.invalid && (state.touched || state.dirty);
@@ -37,7 +37,7 @@ export const TM_ERROR_DISPLAY = new InjectionToken<TmErrorDisplayPolicy>('TM_ERR
   factory: () => tmDefaultErrorDisplay,
 });
 
-/** Workspace-wide form-field defaults (§5). */
+/** Workspace-wide form-field defaults. */
 export interface TmFormFieldDefaults {
   /** The height/density variant fields use when they do not set one. */
   readonly size: 'sm' | 'md' | 'lg';
@@ -66,7 +66,7 @@ export interface TmFormsOptions {
 }
 
 /**
- * Forms-only providers (§5): the error-display policy, the validation-message
+ * Forms-only providers: the error-display policy, the validation-message
  * resolution defaults, and form-field defaults. Composed by
  * `provideTellmaUi()`; call directly only to customize forms behavior without
  * the umbrella.

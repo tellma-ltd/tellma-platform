@@ -14,7 +14,7 @@ import { TM_ERROR_DISPLAY, TM_FORM_FIELD_DEFAULTS } from '@tellma/core-ui';
 /**
  * A control projects itself into `tm-form-field` by providing this token
  * (`providers: [{ provide: TM_FORM_FIELD_CONTROL, useExisting: … }]`) — the
- * MatFormFieldControl seam adapted to Signal Forms (spec §2.1/§3.1).
+ * MatFormFieldControl seam adapted to Signal Forms.
  */
 export const TM_FORM_FIELD_CONTROL = new InjectionToken<TmFormFieldControl>(
   'TM_FORM_FIELD_CONTROL',
@@ -24,7 +24,7 @@ let nextUniqueId = 0;
 
 /**
  * The shared label / required-marker / hint / error scaffold every form
- * control projects into (spec §3.1; brand FormField, `--field-*` tokens).
+ * control projects into (brand FormField, `--field-*` tokens).
  *
  * Labelling is two-path: a native-input control gets `<label for>`; a
  * control with a non-labelable host implements `setLabelId` and the field
@@ -72,7 +72,7 @@ let nextUniqueId = 0;
       }
     </div>
     <!-- Persistent polite live region: exists whether or not it holds text, so
-         empty->message (or message->message) is announced once (§6). -->
+         empty->message (or message->message) is announced once. -->
     <div class="tm-form-field__error" [id]="errorId" aria-live="polite" aria-atomic="true">
       @if (showError()) {
         {{ errorText() }}
@@ -101,10 +101,10 @@ export class TmFormField {
   readonly hint = input('');
   /**
    * Plain error text for NON-form usage only; a [formField]-bound control's
-   * errors come from the field state and take precedence (§3.1).
+   * errors come from the field state and take precedence.
    */
   readonly error = input('');
-  /** Height/density variant mapping to the --field-height* tokens (§3.2). */
+  /** Height/density variant mapping to the --field-height* tokens. */
   readonly size = input<'sm' | 'md' | 'lg'>(this.defaults.size);
 
   /** The projected control, discovered through the TM_FORM_FIELD_CONTROL token. */
@@ -117,7 +117,7 @@ export class TmFormField {
   /** Stable id of the error live region, merged into the control's aria-describedby. */
   protected readonly errorId = `tm-ff-error-${this.uniqueId}`;
 
-  /** `<label for>` only associates with labelable elements (§3.1). */
+  /** `<label for>` only associates with labelable elements. */
   protected readonly labelFor = computed(() => {
     const control = this.control();
     return control && !control.setLabelId ? control.controlId() : null;
@@ -159,7 +159,7 @@ export class TmFormField {
   /** Whether the control reports async validation in progress — drives the spinner. */
   protected readonly pending = computed(() => this.control()?.pending() ?? false);
 
-  /** ownsChrome controls render their own box — the field's collapses (§3). */
+  /** ownsChrome controls render their own box — the field's collapses. */
   protected readonly chromeless = computed(() => this.control()?.ownsChrome ?? true);
 
   constructor() {

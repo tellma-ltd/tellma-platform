@@ -3,7 +3,7 @@ import { tmEmittedSchemeVars, tmTokenValueToCss } from '../emit/emit-css';
 import { tmContrastRatio, tmParseColor, TM_CONTRAST_THRESHOLDS, type TmRgba } from './contrast';
 
 /**
- * The build-time token gates (§4, DoD 9): missing-ref, WCAG contrast in both
+ * The build-time token gates: missing-ref, WCAG contrast in both
  * schemes (honoring the justified-exceptions allowlist), exception hygiene
  * (mandatory reason), and the contrast-pair completeness lint. A preset that
  * fails any gate fails the build.
@@ -42,7 +42,7 @@ function resolveColor(vars: Map<string, string>, name: string): TmRgba | null {
 /**
  * Variables that carry text/glyph/boundary ink and therefore MUST appear as
  * a `fg` in contrastPairs or contrastExceptions — the completeness lint that
- * keeps the pair list growing with the contract (§4). Generic page borders
+ * keeps the pair list growing with the contract. Generic page borders
  * and dividers are decorative and deliberately excluded; field borders are
  * component boundaries and included.
  */

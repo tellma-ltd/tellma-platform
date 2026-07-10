@@ -28,7 +28,7 @@ export interface TmUiOptions {
 }
 
 /**
- * The umbrella a distribution calls once (§5/§7): composes
+ * The umbrella a distribution calls once: composes
  * `provideTellmaForms()` with the default Transloco-backed i18n runtime —
  * `fallbackLang: 'en'` (whole pack absent → English) plus per-key
  * fall-through (`useFallbackTranslation`, pack installed but key missing →
@@ -36,8 +36,7 @@ export interface TmUiOptions {
  * distribution on the defaults writes ZERO other config; locale packs add
  * their strings by calling their own `provideTellmaLocale*()` next to this.
  *
- * (Font preloading is a distribution-shell concern and is not wired here —
- * §7.1.)
+ * (Font preloading is a distribution-shell concern and is not wired here.)
  */
 export function provideTellmaUi(options: TmUiOptions = {}): EnvironmentProviders {
   return makeEnvironmentProviders([

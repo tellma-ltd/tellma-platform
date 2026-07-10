@@ -12,7 +12,7 @@ import { TM_FONTS_ARABIC } from './font-manifest.generated';
 import { TM_LOCALE_AR_STRINGS } from './strings-ar';
 
 /**
- * Installs the Arabic locale pack (spec §7/§7.1, DoD 13) — THE reference
+ * Installs the Arabic locale pack — THE reference
  * template every later pack (`@tellma/locale-am`, …) copies. One provider
  * contributes the three pieces by three standard mechanisms:
  *

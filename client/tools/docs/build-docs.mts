@@ -28,6 +28,19 @@ if (!parsed.success) {
   process.exit(1);
 }
 
+// Consumer-visible docs must stand alone: fail on internal spec references
+// ("§" section sigils, "spec 0002") leaking out of TSDoc into the digest.
+const SPEC_REF = /§|spec 0002/;
+const leaking = doc.components.filter((component) => SPEC_REF.test(JSON.stringify(component)));
+if (leaking.length > 0 || SPEC_REF.test(JSON.stringify(doc))) {
+  const offenders = leaking.map((component) => component.name).join(', ') || '(document header)';
+  console.error(
+    `components.json contains internal spec references ("§" / "spec 0002") in: ${offenders}.`,
+  );
+  console.error('Rewrite the offending TSDoc to be self-contained — consumers never see the spec.');
+  process.exit(1);
+}
+
 writeFileSync(join(outDir, 'components.json'), JSON.stringify(doc, null, 2) + '\n');
 writeFileSync(
   join(outDir, 'components.schema.json'),

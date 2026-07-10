@@ -2,7 +2,7 @@ import { ComponentHarness } from '@angular/cdk/testing';
 
 /**
  * Harness for `tm-form-field` — label/required-marker/hint/error scaffold
- * assertions (spec §10).
+ * assertions.
  */
 export class TmFormFieldHarness extends ComponentHarness {
   /** The selector for the `tm-form-field` host element. */

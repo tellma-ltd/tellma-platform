@@ -1,5 +1,5 @@
 /**
- * Arabic translations for the library's built-in strings (spec §7/DoD 13) —
+ * Arabic translations for the library's built-in strings —
  * same shape as TM_UI_STRINGS_EN; plurals use ICU MessageFormat with the
  * Arabic plural categories.
  */

@@ -1,5 +1,5 @@
 /**
- * Usage examples (spec 0002 §11): the docs extractor reads each exported
+ * Usage examples: the docs extractor reads each exported
  * const's `template` into components.json (→ llms.txt → the MCP `example`
  * tool), titled by the export name. Keep every template copy-pasteable.
  */

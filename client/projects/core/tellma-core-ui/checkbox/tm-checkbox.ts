@@ -19,7 +19,7 @@ import { TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/form-field';
 let nextUniqueId = 0;
 
 /**
- * Boolean / tri-state checkbox (spec §3.3): a visually-hidden NATIVE
+ * Boolean / tri-state checkbox: a visually-hidden NATIVE
  * `<input type="checkbox">` carries the semantics; the styled 18px box +
  * check/indeterminate glyphs are chrome. The value channel is `checked`
  * (FormCheckboxControl) — deliberately NO `value` property (enforced by the
@@ -27,12 +27,12 @@ let nextUniqueId = 0;
  *
  * Tri-state: `indeterminate` host-binds the native `.indeterminate` IDL
  * property — the browser exposes `checked="mixed"` in the accessibility
- * tree itself; no manual aria-checked (§3.3). Independent of `checked`; a
+ * tree itself; no manual aria-checked. Independent of `checked`; a
  * user toggle clears it, matching native behavior.
  *
  * Touch target: the clickable region is the whole label row, padded past
  * the 24px minimum (WCAG 2.2 AA 2.5.8) while the box renders at the brand
- * 18px; a bare checkbox expands its hit box via a transparent overlay (§6).
+ * 18px; a bare checkbox expands its hit box via a transparent overlay.
  *
  * @tmGroup form-control
  * @tmA11yNotes Native checkbox semantics; space toggles; label click
@@ -106,11 +106,11 @@ export class TmCheckbox implements TmFormFieldControl {
   /** The checkbox state (the FormCheckboxControl model). */
   readonly checked = model(false);
   /**
-   * Tri-state "mixed" (§3.3): independent of `checked`; drives the native
+   * Tri-state "mixed": independent of `checked`; drives the native
    * `.indeterminate` IDL property; cleared by a user toggle.
    */
   readonly indeterminate = model(false);
-  /** Non-form usage only — the bound field is authoritative when bound (§5). */
+  /** Non-form usage only — the bound field is authoritative when bound via [formField]. */
   readonly disabled = input(false, { transform: booleanAttribute });
   /** Readonly state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly readonly = input(false, { transform: booleanAttribute });
@@ -138,7 +138,7 @@ export class TmCheckbox implements TmFormFieldControl {
   private readonly native = viewChild.required<ElementRef<HTMLInputElement>>('native');
 
   // ---- TmFormFieldControl (§2.1) ----
-  /** Renders its own box chrome; the field adds only label/hint/error (§3). */
+  /** Renders its own box chrome; the field adds only label/hint/error. */
   readonly ownsChrome = true;
   private readonly fieldDescribedBy = signal<readonly string[]>([]);
   /** The hint/error ids the enclosing field pushed via `setDescribedByIds`. */

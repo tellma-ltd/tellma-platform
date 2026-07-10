@@ -1,9 +1,9 @@
 import type { TmSchemeColors, TmTokens } from '../contract/tokens';
 
 /**
- * The default preset, reproducing `tellma-brand/design-system` (§4): same
+ * The default preset, reproducing `tellma-brand/design-system`: same
  * hexes, same `--field-*` / focus-ring / spacing / type tokens, same
- * `[data-theme=dark]` inversion. One departure fixed by the spec: the focus
+ * `[data-theme=dark]` inversion. One deliberate departure: the focus
  * ring color is teal-500 (clears the 3:1 focus-indicator ratio vs the white
  * field; the brand's older spacing.css still carried teal-400).
  */

@@ -1,5 +1,5 @@
 /**
- * Cross-cutting contracts of the Tellma UI library (spec 0002 §2.1).
+ * Cross-cutting contracts of the Tellma UI library.
  *
  * This entry point is types + pure helpers ONLY: no Angular, no other
  * @tellma packages, no i18n (enforced by lint) — so the future data grid can
@@ -36,7 +36,7 @@ export interface TmFieldError {
 
 /**
  * What `tm-form-field` needs to do its job (the MatFormFieldControl seam
- * adapted to Signal Forms — spec §2.1/§3.1). The control re-surfaces the
+ * adapted to Signal Forms). The control re-surfaces the
  * Signal Forms field state it receives via [formField] so the wrapper can
  * apply the display policy and render the localized error text — the FULL
  * state set, not just `invalid`.
@@ -50,7 +50,7 @@ export interface TmFormFieldControl {
   /**
    * true = the control renders its own adornment chrome (tm-checkbox,
    * tm-select); false = the field wraps the control in the shared bordered
-   * box (tmInput) — see §3.
+   * box (tmInput).
    */
   readonly ownsChrome: boolean;
   /**
@@ -67,7 +67,7 @@ export interface TmFormFieldControl {
    * For controls whose focusable host is NOT labelable (tm-select's <div>
    * trigger): the field passes its <label> id, the control binds
    * aria-labelledby; native-input hosts omit this — <label for> does the
-   * job (§3.1).
+   * job.
    */
   setLabelId?(id: string | null): void;
   // Field state, mirrored from the bound Field (all read-only to the wrapper):
@@ -86,13 +86,13 @@ export interface TmFormFieldControl {
   /** Async validation in progress. */
   readonly pending: SignalLike<boolean>;
   /**
-   * Already-localized messages (resolved through the message resolver, §5).
+   * Already-localized messages (resolved through the message resolver).
    *
-   * NOTE — named `localizedErrors`, departing from the spec's `errors`: the
-   * control must also declare the framework's `errors` INPUT (raw
-   * ValidationError[], bound by [formField] — §5), and one class member
-   * cannot carry both types. The seam is otherwise exactly the spec's: the
-   * wrapper reads already-localized text and only decides WHETHER to show it.
+   * NOTE — named `localizedErrors` rather than `errors`: the control must
+   * also declare the framework's `errors` INPUT (raw ValidationError[],
+   * bound by [formField]), and one class member cannot carry both types.
+   * The seam is otherwise unchanged: the wrapper reads already-localized
+   * text and only decides WHETHER to show it.
    */
   readonly localizedErrors: SignalLike<readonly TmFieldError[]>;
   /**
@@ -131,8 +131,8 @@ export interface TmCellEditor<T> {
 /**
  * DRAFT / STUB (see note above). Pure display path, no Angular instance
  * required — lets the grid paint thousands of non-edited cells as plain
- * readonly DOM (§9). A grid-facing capability, NOT what the standalone
- * control uses to render its own trigger (§3.4).
+ * readonly DOM. A grid-facing capability, NOT what the standalone
+ * control uses to render its own trigger.
  */
 export interface TmCellDisplay<T> {
   /** e.g. select → resolved label; text → the string. */

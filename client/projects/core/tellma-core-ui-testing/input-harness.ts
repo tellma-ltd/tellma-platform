@@ -2,7 +2,7 @@ import { ComponentHarness } from '@angular/cdk/testing';
 
 /**
  * Harness for the `tmInput` directive — the typed, implementation-independent
- * automation surface for tests and agents (spec §10).
+ * automation surface for tests and agents.
  */
 export class TmInputHarness extends ComponentHarness {
   /** The selector for the `input[tmInput]` host element. */

@@ -1,8 +1,8 @@
 import { InjectionToken } from '@angular/core';
 
 /**
- * One self-hosted font subset (one @font-face) a package contributes
- * (§7.1). The core seeds Latin/Mono; each locale pack contributes its
+ * One self-hosted font subset (one @font-face) a package contributes.
+ * The core seeds Latin/Mono; each locale pack contributes its
  * script's subsets through the same multi token.
  */
 export interface TmFontSubset {
@@ -23,14 +23,14 @@ export interface TmFontSubset {
 /**
  * The merged font-subset manifest (`multi: true`): the injected value is the
  * UNION of the core's Latin/Mono entries plus every installed locale pack's
- * entries — no build-time scan, no central registry (§7.1). Each provider
+ * entries — no build-time scan, no central registry. Each provider
  * contributes an ARRAY of subsets.
  */
 export const TM_FONT_SUBSETS = new InjectionToken<readonly (readonly TmFontSubset[])[]>(
   'TM_FONT_SUBSETS',
 );
 
-/** A `<link rel="preload">` descriptor the distribution shell injects (§7.1). */
+/** A `<link rel="preload">` descriptor the distribution shell injects. */
 export interface PreloadLink {
   /** Always 'preload'. */
   readonly rel: 'preload';
@@ -63,7 +63,7 @@ const LOCALE_SCRIPTS: Record<string, readonly string[]> = {
 };
 
 /**
- * Pure helper (§7.1): given the merged `TM_FONT_SUBSETS` manifest and the
+ * Pure helper: given the merged `TM_FONT_SUBSETS` manifest and the
  * tenant's resolved locales, returns the `<link rel="preload">` descriptors
  * to inject. Latin is ALWAYS preloaded (the universal fallback); other
  * scripts only when a configured locale needs them — unconfigured scripts

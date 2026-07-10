@@ -1,6 +1,6 @@
 import { ComponentHarness, TestKey, type HarnessPredicate } from '@angular/cdk/testing';
 
-/** Harness for a single `tm-option` (spec §10). */
+/** Harness for a single `tm-option`. */
 export class TmOptionHarness extends ComponentHarness {
   /** The selector for an option row rendered in the open panel. */
   static hostSelector = '.tm-option__row';
@@ -32,7 +32,7 @@ export class TmOptionHarness extends ComponentHarness {
 }
 
 /**
- * Collection harness for `tm-select` (spec §10): open the panel, list and
+ * Collection harness for `tm-select`: open the panel, list and
  * select options, read the trigger. The panel renders lazily on open; the
  * option locators only resolve while it is open.
  */

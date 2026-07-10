@@ -1,5 +1,5 @@
 /**
- * The typed design-token contract (spec 0002 §4) — three tiers
+ * The typed design-token contract — three tiers
  * (primitive → semantic → component) emitted to CSS custom properties.
  *
  * The TS contract is canonical; the brand CSS
@@ -7,7 +7,7 @@
  * either literal CSS values or typed `Ref`s to other tokens (resolved to
  * `var(--…)` references by the emitter — see `refToVarName`). Ramp shapes
  * follow the brand reality (ink has 700/800/900 only; grey carries a 25
- * stop); the spec's slice is explicitly a design-in-progress subset.
+ * stop); the contract is explicitly a design-in-progress subset.
  */
 
 /** A typed reference to another token, e.g. '{teal.600}' or '{status.error.fg}'. */
@@ -49,7 +49,7 @@ export interface TmStatusColors {
 
 /**
  * Everything scheme-dependent, one instance per scheme (light/dark). Dark
- * mode is a second base scheme, not a separate mechanism (§4): the dark
+ * mode is a second base scheme, not a separate mechanism: the dark
  * instance may override primitive ramp values (the brand inverts the cool
  * neutral ramp so grey-built components flip automatically) and redefines
  * the semantic roles.
@@ -131,7 +131,7 @@ export interface TmSchemeColors {
   };
 }
 
-/** WCAG 2.1 AA contrast categories (fixed thresholds: 4.5 / 3 / 3 — §4). */
+/** WCAG 2.1 AA contrast categories (fixed thresholds: 4.5 / 3 / 3). */
 export type TmContrastKind = 'text' | 'largeText' | 'uiComponent';
 
 /**
@@ -151,7 +151,7 @@ export interface TmContrastPair {
 /**
  * A reviewed, justified below-AA pair. `reason` is MANDATORY and must be
  * non-empty — the gate fails on an empty reason, so every exception is an
- * explicit decision that shows up in review (§4).
+ * explicit decision that shows up in review.
  */
 export interface TmContrastException {
   /** Emitted variable name of the excepted pair's foreground. */

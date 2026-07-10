@@ -12,7 +12,7 @@ import { TRANSLOCO_TRANSPILER, TranslocoService } from '@jsverse/transloco';
 import { TM_UI_STRINGS_EN } from './strings-en';
 
 /**
- * The thin one-function i18n seam (§7): resolves a library string key to a
+ * The thin one-function i18n seam: resolves a library string key to a
  * reactive `Signal<string>` — reading the signal in a reactive context makes
  * the consumer re-render when the active locale changes.
  *
@@ -148,7 +148,7 @@ export function tmDefaultUiTranslate(): TmUiTranslateFn {
 }
 
 /**
- * The i18n escape hatch (§7): a distribution on the default (Transloco-backed)
+ * The i18n escape hatch: a distribution on the default (Transloco-backed)
  * path writes zero config; supplying this token swaps the whole i18n backend.
  */
 export const TM_UI_TRANSLATE = new InjectionToken<TmUiTranslateFn>('TM_UI_TRANSLATE', {

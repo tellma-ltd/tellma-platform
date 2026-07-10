@@ -37,7 +37,7 @@ import { TmOption } from './tm-option';
 let nextUniqueId = 0;
 
 /**
- * Single-select dropdown (spec §3.4): a custom `<div>` trigger composed with
+ * Single-select dropdown: a custom `<div>` trigger composed with
  * `@angular/aria`'s combobox/listbox directives, panel positioned by CDK
  * Overlay (`usePopover:'inline'` — native top layer, escapes clipping;
  * `matchWidth`; `[bottom-start, top-start]` flip; `disableClose` so aria
@@ -51,19 +51,19 @@ let nextUniqueId = 0;
  * `[ngOption]` rows render here inside the listbox (aria's DI does not
  * cross content projection).
  *
- * Value integrity (§3.4): the `value` model is the single source of truth.
+ * Value integrity: the `value` model is the single source of truth.
  * It is mirrored into aria's listbox as a `valueKey`-mapped stable key and
  * RE-APPLIED whenever the option set changes, defeating aria's
  * unmatched-value auto-prune; commits happen on ACTIVATION events only
  * (click/Enter/Space), never on `valueChange`, so a prune can never wipe
  * the form value or close the panel.
  *
- * Not an entity picker: in-memory/simple lists only (§3.4).
+ * Not an entity picker: in-memory/simple lists only.
  *
  * @tmGroup form-control
  * @tmA11yNotes Focus never leaves the trigger (active-descendant model);
  *   the portaled listbox is referenced via aria-controls; Esc closes the
- *   panel only (stage-2 revert is a grid-host concern).
+ *   panel only (reverting the value on a second Esc is a grid-host concern).
  */
 @Component({
   selector: 'tm-select',
@@ -179,9 +179,9 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   private readonly defaults = inject(TM_FORM_FIELD_DEFAULTS);
 
   // ---- FormValueControl<T | undefined> + optional state inputs (§5) ----
-  /** The selected domain value — THE source of truth (§3.4). */
+  /** The selected domain value — THE source of truth. */
   readonly value = model<T | undefined>(undefined);
-  /** Non-form usage only — the bound field is authoritative when bound (§5). */
+  /** Non-form usage only — the bound field is authoritative when bound via [formField]. */
   readonly disabled = input(false, { transform: booleanAttribute });
   /** Readonly state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly readonly = input(false, { transform: booleanAttribute });
@@ -208,12 +208,12 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   readonly valueKey = input<((value: T) => string | number) | undefined>(undefined);
   /**
    * Resolves the trigger label without a materialized option — required in
-   * practice for prepopulated/async lists (§3.4).
+   * practice for prepopulated/async lists.
    */
   readonly displayWith = input<((value: T) => string) | undefined>(undefined);
   /** Trigger text while no value is selected; defaults to the localized built-in placeholder. */
   readonly placeholder = input<string | undefined>(undefined);
-  /** Accessible name for a select used WITHOUT tm-form-field (§3.1). */
+  /** Accessible name for a select used WITHOUT tm-form-field. */
   readonly ariaLabel = input<string | null>(null, { alias: 'aria-label' });
   /** Height/density variant; defaults to the workspace-wide form-field default. */
   readonly size = input<'sm' | 'md' | 'lg'>(this.defaults.size);
@@ -245,7 +245,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   private readonly listbox = viewChild(Listbox);
   private readonly optionRows = viewChildren('optionRow', { read: ElementRef });
 
-  /** Grid revert baseline (TmCellEditor — draft, not test-hardened, §9). */
+  /** Grid revert baseline (TmCellEditor — draft, not test-hardened). */
   private lastCommitted: T | undefined;
 
   // ---- TmFormFieldControl (§2.1) ----
@@ -276,7 +276,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     }),
   );
 
-  /** Domain value → the stable primitive key aria selects on (§3.4). */
+  /** Domain value → the stable primitive key aria selects on. */
   keyOf(value: T): unknown {
     if (value === undefined || value === null) {
       return value;
@@ -296,7 +296,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     () => this.value() === undefined || this.value() === null,
   );
 
-  /** Trigger label chain: displayWith → matched option → placeholder (§3.4). */
+  /** Trigger label chain: displayWith → matched option → placeholder. */
   protected readonly triggerLabel = computed(() => {
     const value = this.value();
     if (value === undefined || value === null) {
@@ -415,7 +415,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     this.fieldDescribedBy.set(ids);
   }
 
-  /** The <div> trigger is not labelable — the field hands us its label id (§3.1). */
+  /** The <div> trigger is not labelable — the field hands us its label id. */
   setLabelId(id: string | null): void {
     this.labelIdFromField.set(id);
   }
@@ -435,7 +435,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   /**
    * Reverts to the last committed value — for a GRID HOST to call on its
    * second Esc; the standalone control's own Esc only closes the panel
-   * (stage 1) and never reaches here (§3.4).
+   * and never reaches here.
    */
   cancel(): void {
     this.value.set(this.lastCommitted);

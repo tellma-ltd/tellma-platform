@@ -8,7 +8,7 @@ import type { TmUiTranslateFn } from '../i18n/tm-ui-translate';
 /**
  * Extracts the typed params a framework error carries (minLength → the
  * required length, min/max → the bound, …) so the localized default can
- * interpolate them (§5). Everything except the error envelope fields is a
+ * interpolate them. Everything except the error envelope fields is a
  * param.
  */
 export function tmErrorParams(error: ValidationError): Record<string, unknown> {
@@ -23,7 +23,7 @@ export function tmErrorParams(error: ValidationError): Record<string, unknown> {
 }
 
 /**
- * The validation-message resolver (§5). Message precedence: a schema-inline
+ * The validation-message resolver. Message precedence: a schema-inline
  * message (the `{message: …}` passed to a validator, surfaced as the
  * framework error's own `message`) wins when present; otherwise the error's
  * camelCase `kind` maps to a localized default via `TM_UI_TRANSLATE`
