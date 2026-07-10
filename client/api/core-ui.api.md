@@ -10,18 +10,6 @@ import { Signal } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
 
 // @public
-export function fontPreloadLinks(subsets: readonly (readonly TmFontSubset[])[], locales: readonly string[]): readonly PreloadLink[];
-
-// @public
-export interface PreloadLink {
-    readonly as: 'font';
-    readonly crossorigin: 'anonymous';
-    readonly href: string;
-    readonly rel: 'preload';
-    readonly type: 'font/woff2';
-}
-
-// @public
 export function provideTellmaForms(options?: TmFormsOptions): EnvironmentProviders;
 
 // @public
@@ -29,12 +17,6 @@ export function provideTellmaUi(options?: TmUiOptions): EnvironmentProviders;
 
 // @public
 export const TM_ERROR_DISPLAY: InjectionToken<TmErrorDisplayPolicy>;
-
-// @public
-export const TM_FONT_SUBSETS: InjectionToken<readonly (readonly TmFontSubset[])[]>;
-
-// @public
-export const TM_FONTS_LATIN: readonly TmFontSubset[];
 
 // @public
 export const TM_FORM_FIELD_DEFAULTS: InjectionToken<TmFormFieldDefaults>;
@@ -88,16 +70,6 @@ export interface TmErrorDisplayState {
 
 // @public
 export function tmErrorParams(error: ValidationError): Record<string, unknown>;
-
-// @public
-export interface TmFontSubset {
-    readonly family: string;
-    readonly script: string;
-    readonly style: 'normal' | 'italic';
-    readonly unicodeRange: string;
-    readonly url: string;
-    readonly weight: string;
-}
 
 // @public
 export interface TmFormFieldDefaults {

@@ -7,10 +7,10 @@ The component showcase and browser-test host. Never published.
   suite's addressing scheme.
 - The persistent header offers the story menu and live light/dark + EN/AR
   toggles on every page; the URL stays the source of truth for appearance.
-- It doubles as the reference consumer wiring: `angular.json` (token
-  stylesheet + font asset globs), `index.html` (font stylesheets), and
-  `app.config.ts` (providers + font preload injection) show exactly what a
-  distribution sets up.
+- It doubles as the reference consumer wiring: `angular.json` (token +
+  font stylesheets in the `styles` array) and `app.config.ts` (providers)
+  show exactly what a distribution sets up; `pnpm run build:showcase` runs
+  the production build plus the post-build font-preload injection.
 
 ```bash
 pnpm start        # dev server on a worktree-local port

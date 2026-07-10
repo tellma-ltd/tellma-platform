@@ -15,16 +15,16 @@ providers: [provideTellmaUi(), provideTellmaLocaleAr()]
   `tmUi` namespace. Plurals carry the full Arabic ICU categories
   (one/two/few/many/other); imperative verbs conjugate for the addressee via
   the ambient `{gender}` parameter (see below).
-- **Fonts** — self-hosted, content-hashed Noto Sans Arabic woff2 with an
-  Arabic `unicode-range`, so the face downloads only when Arabic glyphs
-  render. `fonts/fonts.css` carries the `@font-face`; OFL.txt ships
-  alongside.
-- **Manifest entries** — `TM_FONTS_ARABIC` into the `TM_FONT_SUBSETS` multi
-  token, so `fontPreloadLinks()` can preload Arabic for tenants that need it.
+- **Fonts** — self-hosted Noto Sans Arabic woff2 with an Arabic
+  `unicode-range`, so the face downloads only when Arabic glyphs render.
+  `fonts/fonts.css` carries the `@font-face`; OFL.txt ships alongside.
 
-The consuming app serves the pack's `fonts/` folder as static assets (e.g.
-under `fonts/arabic/`) and links its stylesheet — see the showcase's
-`angular.json` and `index.html` for the reference wiring.
+The consuming app adds the pack's stylesheet to its build's `styles` array
+(the pipeline fingerprints the binary like any other asset):
+
+```jsonc
+"styles": [..., "node_modules/@tellma/locale-ar/fonts/fonts.css"]
+```
 
 ## Gendered strings
 
@@ -44,8 +44,7 @@ Copy this package's structure:
 2. Vendor the script's font subsets (see `tools/fonts/vendor-fonts-ar.mjs`)
    if the language needs a non-Latin face; skip fonts entirely for
    Latin-script locales.
-3. `provide-tellma-locale-xx.ts` — register the strings and (if any) the
-   font manifest entries.
+3. `provide-tellma-locale-xx.ts` — register the strings.
 4. If the script's leading differs from Latin, add the language to the token
    preset's `leadingByLang`; if it needs a new face, add the family to the
    preset's `font.ui` stack.

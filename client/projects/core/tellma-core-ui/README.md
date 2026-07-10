@@ -9,7 +9,7 @@ disabled/readonly/required).
 
 | Import | Contents |
 |---|---|
-| `@tellma/core-ui` | `provideTellmaUi()` / `provideTellmaForms()`, the `TM_UI_TRANSLATE` i18n seam + `TM_UI_MESSAGE_CONTEXT`, field-error resolution, `TM_FONT_SUBSETS` + `fontPreloadLinks()`, self-hosted Latin/Mono font assets |
+| `@tellma/core-ui` | `provideTellmaUi()` / `provideTellmaForms()`, the `TM_UI_TRANSLATE` i18n seam + `TM_UI_MESSAGE_CONTEXT`, field-error resolution, self-hosted Latin/Mono fonts (`fonts/fonts.css`) |
 | `@tellma/core-ui/contracts` | Dependency-free contracts: `SignalLike`, `TmFormFieldControl`, the draft grid cell interfaces |
 | `@tellma/core-ui/input` | `tmInput` — a bare directive on the native `<input>` |
 | `@tellma/core-ui/checkbox` | `tm-checkbox` — native-input tri-state checkbox |
@@ -18,10 +18,13 @@ disabled/readonly/required).
 
 ## Consuming
 
-Add `@tellma/core-ui-tokens`' emitted stylesheet plus this package's static
-font assets (see the workspace root README and the showcase's `angular.json`
-for the reference wiring). Theming, sizing, and typography all flow from the
-token variables — the components ship no hardcoded sizes or colors.
+Add `@tellma/core-ui-tokens`' emitted stylesheet plus this package's
+`fonts/fonts.css` to the application's `styles` array — the build pipeline
+fingerprints the font binaries like any other CSS-referenced asset (see the
+showcase's `angular.json` for the reference wiring; a post-build script can
+inject `<link rel="preload">` tags for the emitted font URLs). Theming,
+sizing, and typography all flow from the token variables — the components
+ship no hardcoded sizes or colors.
 
 ## Authoring conventions
 

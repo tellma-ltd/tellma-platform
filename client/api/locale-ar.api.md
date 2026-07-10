@@ -10,9 +10,6 @@ import { EnvironmentProviders } from '@angular/core';
 export function provideTellmaLocaleAr(): EnvironmentProviders;
 
 // @public
-export const TM_FONTS_ARABIC: readonly TmFontSubset[];
-
-// @public
 export const TM_LOCALE_AR_STRINGS: {
     readonly errors: {
         readonly required: "هذا الحقل مطلوب";

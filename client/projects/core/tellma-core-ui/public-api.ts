@@ -15,8 +15,6 @@
 // LICENSE file in the root directory of this source tree.
 export * from './i18n/strings-en';
 export * from './i18n/tm-ui-translate';
-export * from './fonts/font-subsets';
-export * from './fonts/font-manifest.generated';
 export * from './forms/field-errors';
 export * from './forms/provide-tellma-forms';
 export * from './providers/provide-tellma-ui';

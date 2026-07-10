@@ -120,7 +120,7 @@ Two facts about the consumer set delete complexity the general-purpose libraries
   RTL-complete, brand-themed, Signal-Forms-native.
 - Ship **`@tellma/locale-ar`** as the **reference locale pack**, proving the locale-pack seam end-to-end
   rather than leaving it on paper (a locale's library strings + self-hosted font subset +
-  `TM_FONT_SUBSETS` entries, installed per distribution — [§7](#7-rtl-i18n--l10n)/[§7.1](#71-fonts--web-font-loading)).
+  `@font-face` stylesheet, installed per distribution — [§7](#7-rtl-i18n--l10n)/[§7.1](#71-fonts--web-font-loading)).
   Arabic is the natural first pack: the brand is RTL-first and Tellma's primary markets (KSA/UAE) need it
   on day one. **The core stays English-only** ([§7](#7-rtl-i18n--l10n)); Arabic ships as a separate,
   installable package — that separation is the thing being proven.
@@ -170,7 +170,7 @@ the fourth (`-mcp`), and a real (if small) Arabic locale pack.
 | `@tellma/core-ui-tokens` | `TmTokens` TS contract; the brand default preset; the `tokens → CSS variables` emitter; generated JSON Schema; build-time schema + WCAG-contrast validation. |
 | `@tellma/core-ui-testing` | `TmInputHarness`, `TmCheckboxHarness`, `TmSelectHarness` (+ `TmOptionHarness`), `TmFormFieldHarness`. |
 | `@tellma/core-ui-mcp` | Generated `components.json` for the components; a minimal MCP server exposing `list/describe/example` tools over it. Wired into the build; tool breadth is later. |
-| `@tellma/locale-ar` | The **reference locale pack**: Arabic translations for the library's built-in strings (validator-key messages, placeholders, the required-field announcement) as a Transloco scope, **plus** the self-hosted **Noto Sans Arabic** woff2 + `@font-face` (`unicode-range`) and its `TM_FONT_SUBSETS` manifest entries — all wired by a single **`provideTellmaLocaleAr()`** a distribution adds to its app config (merge mechanism in [§7.1](#71-fonts--web-font-loading)). Installing it adds Arabic to a distribution; not installing it leaves the core English-only. It is the template every later locale pack (`@tellma/locale-am`, …) copies. |
+| `@tellma/locale-ar` | The **reference locale pack**: Arabic translations for the library's built-in strings (validator-key messages, placeholders, the required-field announcement) as a Transloco scope, **plus** the self-hosted **Noto Sans Arabic** woff2 + `@font-face` (`unicode-range`) stylesheet — the strings wired by a single **`provideTellmaLocaleAr()`** in the app config, the stylesheet added to the build's `styles` ([§7.1](#71-fonts--web-font-loading)). Installing it adds Arabic to a distribution; not installing it leaves the core English-only. It is the template every later locale pack (`@tellma/locale-am`, …) copies. |
 
 **Build & tooling (shared, established once):**
 
@@ -864,8 +864,8 @@ follow-up rather than foundation-worthy.
   locales' ICU strings arrive with their locale pack.
 - **`provideTellmaUi()`** — the umbrella a distribution calls: composes `provideTellmaForms()` + the
   default Transloco-backed `TM_UI_TRANSLATE` + any UI-wide defaults. A distribution on the defaults calls
-  it once and writes **zero** other config. (Font preloading is a distribution-shell concern, not wired
-  here — [§7.1](#71-fonts--web-font-loading).)
+  it once and writes **zero** other config. (Font preloading is a post-build step, not wired here —
+  [§7.1](#71-fonts--web-font-loading).)
 
 ## 6. Accessibility
 
@@ -953,10 +953,10 @@ thing; real AT verification (NVDA/JAWS/VoiceOver) is a manual pass, out of DoD s
   supplying to override it. The `contracts` entry point never imports Transloco (it stays dependency-free);
   only the components' default provider does. **Only English** ships in the core; **Arabic, Amharic, and
   every other locale ship as optional per-distribution locale packs** — the same mechanism that ships their
-  fonts ([§7.1](#71-fonts--web-font-loading)). A pack bundles a locale's library strings **and** its font
-  subset/manifest entries, wired through a single **`provideTellmaLocale*()`** provider (Transloco scope +
-  `TM_FONT_SUBSETS` multi-token entries + a static `@font-face` stylesheet — merge mechanism in
-  [§7.1](#71-fonts--web-font-loading)). A distribution installs the packs its tenants need; the core stays
+  fonts ([§7.1](#71-fonts--web-font-loading)). A pack bundles a locale's library strings, wired through a
+  single **`provideTellmaLocale*()`** provider (Transloco scope), plus a static `@font-face` stylesheet
+  the distribution adds to its build's `styles` ([§7.1](#71-fonts--web-font-loading)). A distribution
+  installs the packs its tenants need; the core stays
   English-only. **`@tellma/locale-ar` ships in this phase** as the reference pack proving the mechanism
   end-to-end ([§1](#1-package--build-foundation), Goals).
 - **Adapters named as future seams, not shipped in Phase 1.** `TmNumberAdapter` / `TmCurrencyAdapter` /
@@ -980,33 +980,24 @@ many scripts (Amharic, Japanese, Hindi, Russian, …) without eagerly loading al
   locale packs (`@tellma/locale-ar` → Arabic, `@tellma/locale-am` → Amharic, …), each contributing its
   `@font-face` blocks and that locale's strings; nothing for an uninstalled or unused script is downloaded.
 - **`font-display: swap`** so text paints immediately in a fallback and swaps when the web font arrives.
-- **Preload is resolved at runtime from per-tenant locale config** — and the library/shell split matters. A
-  distribution may support any number of locales; each tenant configures up to three and switches at
-  runtime, so two tenants in the same distribution may run English+Arabic vs. English+Amharic. **Latin is
-  always preloaded** (the universal fallback); the additional subsets to preload are exactly those the
-  resolved tenant locales need. Responsibility boundary:
-  - **The core library ships** the Latin/Mono `@font-face` rules (with `unicode-range`) and their woff2,
-    the typed **`TM_FONT_SUBSETS` manifest** shape (seeded with its Latin/Mono entries), and a small
-    **pure** helper **`fontPreloadLinks(subsets, locales) → PreloadLink[]`**.
-  - **How a locale pack contributes (the merge mechanism — the seam being proven).** Each pack exposes a
-    provider (e.g. **`provideTellmaLocaleAr()`**) a distribution adds to its app config. It contributes
-    three things by three standard mechanisms: (a) the locale's **library strings** as a Transloco
-    scope/loader; (b) its **font-subset manifest entries** into **`TM_FONT_SUBSETS`, a `multi: true` DI
-    token** the core also seeds — so the injected token is the **union** of the core plus every installed
-    pack; and (c) its **`@font-face` rules** as a static stylesheet bundled in the pack (present whenever
-    the pack is a dependency; faces fetch on demand via `unicode-range`). There is **no build-time scan and
-    no central registry to edit** — installing a pack and calling its provider is the whole wiring.
-  - **The distribution app shell owns** the runtime act: it reads per-tenant locale config (a distribution
-    concern), injects **`TM_FONT_SUBSETS`** (the merged union), calls **`fontPreloadLinks(subsets,
-    tenantLocales)`**, and injects the `<link rel="preload" as="font" crossorigin>` tags. The library does
-    not read tenant config or touch the document head.
-  The preloadable set is the union of installed locale packs; unconfigured scripts are never preloaded and
-  only fetch on demand via `unicode-range`. The DoD tests the library's piece (the `@font-face`/`unicode-range`
-  setup, the `TM_FONT_SUBSETS` multi-token merge, and `fontPreloadLinks`), not the distribution-owned
-  runtime injection.
+- **Fonts flow through the regular application build pipeline.** Each package's `@font-face` stylesheet
+  is added to the app's `styles` array; the builder rewrites and fingerprints the woff2 URLs into
+  `media/…` outputs like any other CSS-referenced asset. Responsibility boundary:
+  - **The core library ships** the Latin/Mono `@font-face` rules (with `unicode-range`) and their woff2.
+  - **A locale pack contributes** (a) the locale's **library strings** as a Transloco scope wired by its
+    provider (e.g. **`provideTellmaLocaleAr()`**), and (b) its **`@font-face` rules** as a stylesheet the
+    distribution adds to its build's `styles` (faces fetch on demand via `unicode-range`). Installing the
+    pack, calling its provider, and adding the stylesheet is the whole wiring — no build-time scan, no
+    central registry.
+  - **Preloading is a post-build step**, not runtime machinery: a small script scans the emitted
+    stylesheets for fingerprinted `media/*.woff2` URLs and injects the matching
+    `<link rel="preload" as="font" crossorigin>` tags into the built `index.html` (Latin by default;
+    additional scripts opt in per distribution). Because it reads what the build emitted, preload hrefs
+    can never drift from the real URLs. Unconfigured scripts are never preloaded and only fetch on demand
+    via `unicode-range`.
 - **Variable fonts** where available, to cut file count/weight (one file spans weights).
-- **Long-cache immutable** (content-hashed filenames, `Cache-Control: immutable, max-age=1y`) plus the PWA
-  service-worker cache, so repeat loads are instant.
+- **Long-cache immutable** (the builder's fingerprinted filenames, `Cache-Control: immutable, max-age=1y`)
+  plus the PWA service-worker cache, so repeat loads are instant.
 
 ## 8. Performance budget
 
@@ -1200,7 +1191,7 @@ client/projects/core/
 │   ├── forms/                 #   provideTellmaForms(), field-state helpers, message resolver
 │   ├── providers/             #   provideTellmaUi() umbrella (composes forms + i18n + fonts defaults)
 │   ├── i18n/                  #   TM_UI_TRANSLATE token + Transloco-backed default
-│   ├── fonts/                 #   self-hosted woff2 + @font-face; TM_FONT_SUBSETS manifest + fontPreloadLinks()
+│   ├── fonts/                 #   self-hosted woff2 + @font-face stylesheet (added to app styles)
 │   ├── contracts/             # secondary EP @tellma/core-ui/contracts — ng-package.json + public-api.ts:
 │   │                          #   SignalLike/WritableSignalLike, TmFormFieldControl, TmFieldError, draft TmCellEditor/TmCellDisplay
 │   ├── input/                 # secondary EP @tellma/core-ui/input    — tmInput directive
@@ -1227,9 +1218,8 @@ proving the structure later packs (`@tellma/locale-am`, …) copy:
 client/projects/locale/
 └── tellma-locale-ar/                 # @tellma/locale-ar — the reference Arabic locale pack
     ├── ng-package.json
-    ├── public-api.ts                 # provideTellmaLocaleAr(): Transloco strings + TM_FONT_SUBSETS multi-token
+    ├── public-api.ts                 # provideTellmaLocaleAr(): the pack's Transloco strings
     ├── strings-ar.ts                 # Arabic translations for the built-in library strings
-    ├── font-manifest.generated.ts    # TM_FONT_SUBSETS entries (Arabic script → asset URL + range)
     └── fonts/                        # self-hosted Noto Sans Arabic woff2 + @font-face (unicode-range) stylesheet
 ```
 
@@ -1309,12 +1299,12 @@ The showcase app lives in the workspace at `projects/internal/showcase` (free-po
     interfaces ([§2.1](#21-shared-contracts), [§9](#9-data-grid-forward-compatibility-contract)) are **not**
     test-hardened in this phase.
 12. The library's font piece is in place: self-hosted woff2, `@font-face` with `unicode-range` subsetting +
-    `font-display: swap`, the `TM_FONT_SUBSETS` manifest, and `fontPreloadLinks()` — no CDN reference; tests
+    `font-display: swap` — no CDN reference; tests
     assert an unconfigured script contributes no eager download. (Runtime per-tenant preload injection is
     distribution-shell scope, not tested here.)
 13. The reference **Arabic locale pack `@tellma/locale-ar` ships and works end-to-end**: installed (via
     `provideTellmaLocaleAr()`), it adds Arabic library strings resolved through `TM_UI_TRANSLATE` and
-    contributes self-hosted **Noto Sans Arabic** (woff2 + `@font-face` + `TM_FONT_SUBSETS` entries via the
+    contributes self-hosted **Noto Sans Arabic** (woff2 + `@font-face` stylesheet next to the
     multi-token). A test asserts that **with** the pack an Arabic locale renders Arabic strings (and the
     Arabic face is available), and **without** it the same keys fall back to English (no blank/raw key) and
     no Arabic font is fetched; **switching the active locale at runtime re-renders already-visible error

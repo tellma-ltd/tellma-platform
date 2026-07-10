@@ -130,6 +130,8 @@ jobs:
       - run: pnpm run api:check
       - run: pnpm run docs:build
       - run: pnpm run size:check
+      # Production showcase build + post-build font preload injection.
+      - run: pnpm run build:showcase
       - run: pnpm run e2e
 
   # PR merge gate: the single status check required by branch protection. It fails if any job

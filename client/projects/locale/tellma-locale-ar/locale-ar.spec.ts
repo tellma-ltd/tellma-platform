@@ -8,16 +8,10 @@ import { TestBed } from '@angular/core/testing';
 import { TranslocoService } from '@jsverse/transloco';
 import { email, form, FormField, minLength, required } from '@angular/forms/signals';
 
-import {
-  provideTellmaUi,
-  TM_FONT_SUBSETS,
-  TM_UI_MESSAGE_CONTEXT,
-  TM_UI_TRANSLATE,
-} from '@tellma/core-ui';
+import { provideTellmaUi, TM_UI_MESSAGE_CONTEXT, TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmInput } from '@tellma/core-ui/input';
 
-import { TM_FONTS_ARABIC } from './font-manifest.generated';
 import { provideTellmaLocaleAr } from './provide-tellma-locale-ar';
 
 @Component({
@@ -153,15 +147,5 @@ describe('@tellma/locale-ar (DoD 13)', () => {
     host.transloco.setActiveLang('en');
     await settle(fixture);
     expect(errorText(fixture)).toBe('This field is required');
-  });
-
-  it('contributes the Arabic font subsets through the TM_FONT_SUBSETS multi token', async () => {
-    await setup(true);
-    const merged = TestBed.inject(TM_FONT_SUBSETS).flat();
-    expect(merged).toContain(TM_FONTS_ARABIC[0]);
-    // The union also still carries the core's Latin entries.
-    expect(merged.some((s) => s.script === 'latin')).toBe(true);
-    // Self-hosted: no CDN URL.
-    expect(TM_FONTS_ARABIC.every((s) => !/^https?:/.test(s.url))).toBe(true);
   });
 });

@@ -34,20 +34,6 @@ test('Latin page fetches only Latin subsets, self-hosted, no CDN', async ({ page
     false,
   );
 
-  // Content hashing (§7.1): every fetched font URL carries its hash, so the
-  // files can be cached immutable.
-  expect(fontRequests.every((url) => /\.[0-9a-f]{10}\.woff2$/.test(url))).toBe(true);
-
-  // The preload manifest and @font-face resolve to the SAME URLs: every
-  // injected preload href was actually fetched, and exactly once — a
-  // mismatch would 404 or double-download.
-  const preloadHrefs = await page.$$eval('link[rel="preload"][as="font"]', (links) =>
-    links.map((l) => (l as HTMLLinkElement).href),
-  );
-  expect(preloadHrefs.length).toBeGreaterThan(0);
-  for (const href of preloadHrefs) {
-    expect(fontRequests.filter((url) => url === href)).toHaveLength(1);
-  }
 });
 
 /**

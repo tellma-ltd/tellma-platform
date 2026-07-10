@@ -130,21 +130,13 @@
               {
                 "glob": "**/*",
                 "input": "projects/internal/showcase/public"
-              },
-              {
-                "glob": "*.{woff2,css,txt}",
-                "input": "projects/core/tellma-core-ui/fonts",
-                "output": "fonts"
-              },
-              {
-                "glob": "*.{woff2,css,txt}",
-                "input": "projects/locale/tellma-locale-ar/fonts",
-                "output": "fonts/arabic"
               }
             ],
             "styles": [
               "projects/core/tellma-core-ui-tokens/css/tellma-default.css",
+              "projects/core/tellma-core-ui/fonts/fonts.css",
               "projects/core/tellma-core-ui/styles/tm-input.css",
+              "projects/locale/tellma-locale-ar/fonts/fonts.css",
               "projects/internal/showcase/src/styles.css"
             ]
           },

@@ -5,6 +5,7 @@
     "ng": "ng",
     "start": "node scripts/serve.mjs showcase",
     "build": "node scripts/build.mjs",
+    "build:showcase": "ng build showcase && node scripts/inject-font-preloads.mjs dist/showcase/browser",
     "test": "ng test core-ui-tokens --watch=false && ng test core-ui --watch=false && ng test locale-ar --watch=false && ng test showcase --watch=false",
     "lint": "eslint . && stylelint \"projects/**/*.css\" --allow-empty-input",
     "typecheck": "tsc -p projects/core/tellma-core-ui/tsconfig.lib.json --noEmit && tsc -p tools/tsconfig.json --noEmit && tsc -p e2e/tsconfig.json --noEmit",
