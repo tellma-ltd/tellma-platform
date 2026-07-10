@@ -79,11 +79,38 @@ test.describe('forced-colors (§6)', () => {
     await page.emulateMedia({ forcedColors: 'active' });
     await page.goto(storyUrl('checkbox'));
     const box = page.getByTestId('cb-simple').locator('.tm-checkbox__box');
-    const borderStyle = await box.evaluate((el) => getComputedStyle(el).borderStyle);
-    expect(borderStyle).toBe('solid');
+
+    // Unchecked: the boundary must be visible on its own — forced colors
+    // flattens any author background to Canvas, so the box lives or dies by
+    // a solid border in a color DISTINCT from that flattened background.
+    const unchecked = await box.evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { borderStyle: s.borderStyle, borderColor: s.borderTopColor, bg: s.backgroundColor };
+    });
+    expect(unchecked.borderStyle).toBe('solid');
+    expect(unchecked.borderColor).not.toBe(unchecked.bg);
 
     await page.getByTestId('cb-simple').getByRole('checkbox').check();
-    const background = await box.evaluate((el) => getComputedStyle(el).backgroundColor);
-    expect(background).not.toBe('rgba(0, 0, 0, 0)'); // Highlight paint applied
+
+    // Checked: the state must be visibly different from unchecked — the box
+    // flips to the Highlight system pair (fill differs from the unchecked
+    // Canvas) and the glyph paints in currentColor (HighlightText) distinct
+    // from that fill. A bg !== transparent check would pass on an unchecked
+    // box too, since Canvas is opaque. Poll: the fill animates in over
+    // --duration-fast, so the first frame still reads Canvas.
+    await expect
+      .poll(() => box.evaluate((el) => getComputedStyle(el).backgroundColor))
+      .not.toBe(unchecked.bg);
+    const checked = await box.evaluate((el) => {
+      const s = getComputedStyle(el);
+      const mark = el.querySelector('.tm-checkbox__mark');
+      return {
+        bg: s.backgroundColor,
+        color: s.color,
+        markOpacity: mark ? getComputedStyle(mark).opacity : null,
+      };
+    });
+    expect(checked.markOpacity).toBe('1');
+    expect(checked.color).not.toBe(checked.bg);
   });
 });
