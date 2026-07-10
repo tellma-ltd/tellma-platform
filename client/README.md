@@ -26,14 +26,14 @@ pnpm run typecheck      # the full core-ui program incl. files no build compiles
 pnpm run lint:test      # the custom lint rules' own unit tests + MCP smoke tests
 pnpm run tokens:check   # token schema + WCAG-contrast + completeness gates
 pnpm run api:check      # public-API goldens (client/api/*.api.md)
-pnpm run approve-api    # accept an INTENDED public-API change (commit the diff)
+pnpm run api:approve    # accept an INTENDED public-API change (commit the diff)
 pnpm run docs:build     # components.json (schema-validated) + llms.txt for the MCP package
 pnpm run size:check     # per-entry-point gzipped self-weight vs the §8 ceilings
 pnpm start              # showcase dev server (the component showcase + e2e target)
 ```
 
 **Changing a public API?** `api:check` fails on any drift; review the surface
-change, run `approve-api`, and commit the golden diff alongside the code.
+change, run `api:approve`, and commit the golden diff alongside the code.
 
 **No hardcoded ports.** Every server binds to a port from the worktree's
 `.dev-ports.local` (once `dotnet tellma setup-worktree` exists) or an

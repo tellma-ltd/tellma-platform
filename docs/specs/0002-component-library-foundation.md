@@ -205,7 +205,7 @@ the fourth (`-mcp`), and a real (if small) Arabic locale pack.
   only change. (Allowed literals: `0`, hairline `1px` borders, explicit allowlist entries; the rule
   targets sizing, not e.g. `1px solid`.) (Commit-message linting — `commitlint` — is a repo-wide concern
   configured at the platform root, out of scope here.)
-- **API goldens** per entry point via Microsoft API Extractor + an `approve-api` CI gate (D11) — see
+- **API goldens** per entry point via Microsoft API Extractor + an `api:approve` CI gate (D11) — see
   [§10](#10-testing-tellmacore-ui-testing).
 - CI gates: unit + harness tests, **axe-core**, **bundle-size budget**, API golden, lint — always on.
   (No SSR gate — distributions are client-rendered. This is a deliberate **one-way door**: the top-layer
@@ -1086,8 +1086,8 @@ component — so a grid edit-cell **mounts the full `tm-select` component** and 
 - **API goldens** — for each entry point, **API Extractor** emits a diff-able `*.api.md` snapshot of the
   complete public API surface, committed to the repo, so a public-API change shows up as a golden diff in
   review (it matters when agent-generated code depends on a stable surface).
-- **`approve-api` CI gate** — CI re-extracts the API and compares it to the committed golden; if they
-  differ, CI fails. To land an intended change, a maintainer runs `approve-api` to regenerate and commit the
+- **`api:approve` CI gate** — CI re-extracts the API and compares it to the committed golden; if they
+  differ, CI fails. To land an intended change, a maintainer runs `api:approve` to regenerate and commit the
   golden, making every public-API change an explicit, reviewed act.
 - **A shared `form()` test fixture.** Behavioral tests for `[formField]` binding, disabled/required
   precedence, pending state, and message resolution all need a live Signal Form, so the testing package
@@ -1328,7 +1328,7 @@ The showcase app lives in the workspace at `projects/internal/showcase` (free-po
     The core stays English-only; the pack is the template later packs copy.
 14. `components.json` is generated and **validated against its JSON Schema** ([§11](#11-docs--mcp-pipeline-tellmacore-ui-mcp));
     the scoped MCP server answers `list`/`describe`/`example`; `llms.txt` and the showcase app render.
-    API goldens committed; `approve-api` gate active.
+    API goldens committed; `api:approve` gate active.
 15. Forced-colors and reduced-motion are **Playwright-gated** (`emulateMedia`); bidi `dir="auto"` fields
     verified with mixed AR/EN content in both LTR and RTL roots; message precedence + ICU/param
     interpolation tested via the shared `form()` fixture.

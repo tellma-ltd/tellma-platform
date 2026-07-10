@@ -8,7 +8,7 @@
  *   node scripts/api-extractor.mjs --approve   # regenerate the goldens
  *
  * Every public-API change is therefore an explicit, reviewed act
- * (`pnpm run approve-api` + commit).
+ * (`pnpm run api:approve` + commit).
  */
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
@@ -107,7 +107,7 @@ for (const entryPoint of ENTRY_POINTS) {
   } else if (result.apiReportChanged) {
     console.error(
       `API DRIFT: ${entryPoint.report} no longer matches the public surface. ` +
-        `Review the change and run \`pnpm run approve-api\` to accept it.`,
+        `Review the change and run \`pnpm run api:approve\` to accept it.`,
     );
     failed = true;
   } else if (!result.succeeded) {
