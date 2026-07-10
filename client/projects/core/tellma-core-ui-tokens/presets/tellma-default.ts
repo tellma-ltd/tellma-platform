@@ -206,12 +206,23 @@ export const tmTokensDefault: TmTokens = {
       24: '96px',
     },
     font: {
-      sans: "'Noto Sans', system-ui, -apple-system, 'Segoe UI', sans-serif",
-      arabic: "'Noto Sans Arabic', 'Noto Sans', sans-serif",
-      mono: "'Noto Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace",
+      sans: "'Noto Sans', 'Noto Sans Fallback', system-ui, -apple-system, 'Segoe UI', sans-serif",
+      arabic: "'Noto Sans Arabic', 'Noto Sans Arabic Fallback', 'Noto Sans', sans-serif",
+      mono: "'Noto Sans Mono', 'Noto Sans Mono Fallback', ui-monospace, 'SF Mono', Menlo, monospace",
       // Brand faces per script first (core-ui vendors the Latin faces; the
-      // Arabic faces arrive with @tellma/locale-ar), generics last.
-      ui: ["'Noto Sans'", "'Noto Sans Arabic'", 'system-ui', '-apple-system', "'Segoe UI'", 'sans-serif'],
+      // Arabic faces arrive with @tellma/locale-ar), then the metric-adjusted
+      // local fallbacks (unicode-range keeps each on its own script),
+      // generics last.
+      ui: [
+        "'Noto Sans'",
+        "'Noto Sans Arabic'",
+        "'Noto Sans Fallback'",
+        "'Noto Sans Arabic Fallback'",
+        'system-ui',
+        '-apple-system',
+        "'Segoe UI'",
+        'sans-serif',
+      ],
       size: { xs: '12px', sm: '14px', base: '16px', lg: '18px' },
       weight: { regular: '400', medium: '500', semibold: '600', bold: '700' },
       leading: { tight: '1.2', snug: '1.35', body: '1.6', arabic: '1.9' },

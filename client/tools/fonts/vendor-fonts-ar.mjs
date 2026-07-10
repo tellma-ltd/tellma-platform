@@ -11,6 +11,8 @@
  * Usage: node tools/fonts/vendor-fonts-ar.mjs
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+
+import { fallbackFace } from './fallback-face.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -67,6 +69,15 @@ writeFileSync(
     `  unicode-range: ${unicodeRange};`,
     '}',
     '',
+    // Metric-adjusted local fallback (see fallback-face.mjs): Arabic text
+    // lays out at Noto Sans Arabic's metrics before the face arrives.
+    fallbackFace({
+      family: 'Noto Sans Arabic Fallback',
+      preferred: 'notoSansArabic',
+      fallback: 'tahoma',
+      local: 'Tahoma',
+      unicodeRange,
+    }),
   ].join('\n'),
 );
 

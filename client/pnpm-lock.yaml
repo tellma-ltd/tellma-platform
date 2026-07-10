@@ -57,6 +57,9 @@ importers:
       '@axe-core/playwright':
         specifier: 4.12.1
         version: 4.12.1(playwright-core@1.61.1)
+      '@capsizecss/metrics':
+        specifier: ^4.1.0
+        version: 4.1.0
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.6.0(jiti@2.7.0))
@@ -510,6 +513,9 @@ packages:
 
   '@cacheable/utils@2.5.0':
     resolution: {integrity: sha512-buipgOVDkkPXNR5+xBpDw7Zk2n1EvU7qBJCNUcL7rhQ//kfpOXPAvQ511Os0vpLYJ1pZnvudNytkQt2hst3wqA==}
+
+  '@capsizecss/metrics@4.1.0':
+    resolution: {integrity: sha512-utyNeUNh3Y3vECkJCdUDk7CXeslk+Za6/AYzFefKVc/FJrc9lFZnuAqm2Jy5lqiO7mw/abzHLKTMEAg75UI/4A==}
 
   '@csstools/color-helpers@6.1.0':
     resolution: {integrity: sha512-064IFJdjTfUqnjpCVpMOdbr8FLQBhinbZj6yRv2An2E41O/pLEXqfFRWqGq/SxlE5PEUYTlvWsG2r8MswAVvkg==}
@@ -4612,6 +4618,8 @@ snapshots:
     dependencies:
       hashery: 1.5.1
       keyv: 5.6.0
+
+  '@capsizecss/metrics@4.1.0': {}
 
   '@csstools/color-helpers@6.1.0': {}
 

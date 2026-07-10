@@ -15,6 +15,8 @@
  * Usage: node tools/fonts/vendor-fonts.mjs
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+
+import { fallbackFace } from './fallback-face.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -113,6 +115,23 @@ const css = [
       '',
     ].join('\n'),
   ),
+  // Metric-adjusted LOCAL fallbacks: text lays out at the web fonts' exact
+  // metrics from the first frame, so the font-display swap shifts nothing.
+  // unicode-range keeps each fallback to its own web font's scripts.
+  fallbackFace({
+    family: 'Noto Sans Fallback',
+    preferred: 'notoSans',
+    fallback: 'arial',
+    local: 'Arial',
+    unicodeRange: [subsets[0].unicodeRange, subsets[1].unicodeRange].join(','),
+  }),
+  fallbackFace({
+    family: 'Noto Sans Mono Fallback',
+    preferred: 'notoSansMono',
+    fallback: 'courierNew',
+    local: 'Courier New',
+    unicodeRange: subsets[2].unicodeRange,
+  }),
 ].join('\n');
 writeFileSync(join(fontsDir, 'fonts.css'), css);
 

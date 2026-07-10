@@ -45,6 +45,7 @@
     "@angular/cli": "22.0.5",
     "@angular/compiler-cli": "22.0.5",
     "@axe-core/playwright": "4.12.1",
+    "@capsizecss/metrics": "^4.1.0",
     "@eslint/js": "^10.0.1",
     "@fontsource-variable/noto-sans": "5.2.10",
     "@fontsource-variable/noto-sans-arabic": "5.2.10",
