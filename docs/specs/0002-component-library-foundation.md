@@ -711,29 +711,29 @@ design-in-progress). Primitive ramps → semantic roles via typed refs → the s
 input inherits:
 
 ```ts
-export type Ref = `{${string}}`;                 // a typed reference to another token, e.g. '{teal.600}'
-export type ColorRamp = Record<50|100|200|300|400|500|600|700|800|900, string>;
+export type TmRef = `{${string}}`;               // a typed reference to another token, e.g. '{teal.600}'
+export type TmColorRamp = Record<50|100|200|300|400|500|600|700|800|900, string>;
 
 export interface TmTokens {
   primitive: {
-    color: { ink: ColorRamp; teal: ColorRamp; grey: ColorRamp; white: string };
+    color: { ink: TmColorRamp; teal: TmColorRamp; grey: TmColorRamp; white: string };
     radius: { xs: string; sm: string; md: string; lg: string; full: string };
     space:  Record<0|1|2|3|4|6|8, string>;
     font:   { sans: string; arabic: string; mono: string; size: Record<'xs'|'sm'|'base'|'lg', string> };
   };
   semantic: {
-    colorScheme: { light: SchemeColors; dark: SchemeColors };  // both validated for contrast at build
-    focusRing: { width: string; color: Ref; offset: string };   // e.g. color: '{teal.500}'
+    colorScheme: { light: TmSchemeColors; dark: TmSchemeColors };  // both validated for contrast at build
+    focusRing: { width: string; color: TmRef; offset: string };   // e.g. color: '{teal.500}'
     motion:   { durationFast: string; easeStandard: string };
     formField: {                       // one override restyles every input (the ERP runs on dense forms)
-      bg: Ref; bgDisabled: Ref; border: Ref; borderHover: Ref; borderFocus: Ref; borderInvalid: Ref;
-      text: Ref; placeholder: Ref; icon: Ref; radius: Ref;
-      height: string; heightSm: string; heightLg: string; paddingX: string; fontSize: Ref;
+      bg: TmRef; bgDisabled: TmRef; border: TmRef; borderHover: TmRef; borderFocus: TmRef; borderInvalid: TmRef;
+      text: TmRef; placeholder: TmRef; icon: TmRef; radius: TmRef;
+      height: string; heightSm: string; heightLg: string; paddingX: string; fontSize: TmRef;
     };
   };
-  component: Record<string, Record<string, Ref | string>>;  // tm-checkbox, tm-select … ref semantic
+  component: Record<string, Record<string, TmRef | string>>;  // tm-checkbox, tm-select … ref semantic
 }
-interface SchemeColors { textStrong: Ref; textBody: Ref; surfacePage: Ref; surfaceCard: Ref; border: Ref; /* … */ }
+interface TmSchemeColors { textStrong: TmRef; textBody: TmRef; surfacePage: TmRef; surfaceCard: TmRef; border: TmRef; /* … */ }
 ```
 
 **Brand source of truth:** the **TS `TmTokens` contract is canonical**; the brand CSS is a starting

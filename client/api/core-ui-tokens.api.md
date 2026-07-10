@@ -5,17 +5,14 @@
 ```ts
 
 // @public
-export type ColorRamp = Partial<Record<25 | 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900, string>>;
-
-// @public
-export type Ref = `{${string}}`;
-
-// @public
 export const TM_CONTRAST_THRESHOLDS: {
     readonly text: 4.5;
     readonly largeText: 3;
     readonly uiComponent: 3;
 };
+
+// @public
+export type TmColorRamp = Partial<Record<25 | 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900, string>>;
 
 // @public
 export function tmComposite(top: TmRgba, bottom: TmRgba): TmRgba;
@@ -64,6 +61,9 @@ export type TmInkRamp = Record<700 | 800 | 900, string>;
 
 // @public
 export function tmParseColor(value: string): TmRgba | null;
+
+// @public
+export type TmRef = `{${string}}`;
 
 // @public
 export function tmRefToVarName(path: string): string;
@@ -267,7 +267,7 @@ export interface TmTokenValidationIssue {
 }
 
 // @public
-export type TmTokenValue = string;
+export type TmTokenValue = TmRef | (string & NonNullable<unknown>);
 
 // @public
 export function tmTokenValueToCss(value: string): string;

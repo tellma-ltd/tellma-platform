@@ -11,13 +11,16 @@
  */
 
 /** A typed reference to another token, e.g. '{teal.600}' or '{status.error.fg}'. */
-export type Ref = `{${string}}`;
+export type TmRef = `{${string}}`;
 
-/** A CSS value literal, or a `Ref` to another token. */
-export type TmTokenValue = string;
+/**
+ * A CSS value literal, or a `TmRef` to another token. The intersection keeps
+ * the union from collapsing to `string`, so editors surface the ref form.
+ */
+export type TmTokenValue = TmRef | (string & NonNullable<unknown>);
 
 /** Generic color ramp shape (brand ramps use subsets of these stops). */
-export type ColorRamp = Partial<
+export type TmColorRamp = Partial<
   Record<25 | 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900, string>
 >;
 

@@ -16,10 +16,6 @@ const UNPREFIXED_EXPORTS = [
   // contracts (§2.1)
   'SignalLike',
   'WritableSignalLike',
-  // tokens contract (§4)
-  'Ref',
-  'ColorRamp',
-  'SchemeColors',
   // fonts (§7.1)
   'fontPreloadLinks',
   'PreloadLink',
