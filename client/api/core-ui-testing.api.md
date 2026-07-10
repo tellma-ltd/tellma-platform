@@ -5,11 +5,8 @@
 ```ts
 
 import { ComponentHarness } from '@angular/cdk/testing';
-import { FieldTree } from '@angular/forms/signals';
 import { HarnessPredicate } from '@angular/cdk/testing';
-import { SchemaOrSchemaFn } from '@angular/forms/signals';
 import { TestKey } from '@angular/cdk/testing';
-import { WritableSignal } from '@angular/core';
 
 // @public
 export class TmCheckboxHarness extends ComponentHarness {
@@ -115,17 +112,6 @@ export class TmSelectHarness extends ComponentHarness {
     selectOption(text: string): Promise<void>;
     sendTriggerKeys(...keys: (string | TestKey)[]): Promise<void>;
 }
-
-// @public
-export interface TmTestForm<T> {
-    // (undocumented)
-    readonly form: FieldTree<T>;
-    // (undocumented)
-    readonly model: WritableSignal<T>;
-}
-
-// @public (undocumented)
-export function tmTestForm<T>(initial: T, schema?: SchemaOrSchemaFn<T>): TmTestForm<T>;
 
 // (No @packageDocumentation comment for this package)
 

@@ -1089,13 +1089,9 @@ component — so a grid edit-cell **mounts the full `tm-select` component** and 
 - **`api:approve` CI gate** — CI re-extracts the API and compares it to the committed golden; if they
   differ, CI fails. To land an intended change, a maintainer runs `api:approve` to regenerate and commit the
   golden, making every public-API change an explicit, reviewed act.
-- **A shared `form()` test fixture.** Behavioral tests for `[formField]` binding, disabled/required
-  precedence, pending state, and message resolution all need a live Signal Form, so the testing package
-  ships a tiny host harness (a TestBed helper) wrapping the control under test in a
-  host exposing a `form()` with a configurable schema (validators, async validators, `debounce`, inline
-  messages) bound via `[formField]`. Showcase story pages that exercise form behavior use the same
-  schema shapes; the same fixture backs the unit and Playwright specs.
-- **Unit tests** per component (zoneless test env), using that fixture: value flow via Signal Forms,
+- **Unit tests** per component (zoneless test env), each building the live Signal Form its behavioral
+  assertions need (`[formField]` binding, disabled/required precedence, pending state, message
+  resolution): value flow via Signal Forms,
   validity/touched, **pending/async-validation state**, **prepopulated-value trigger label via
   `displayWith`**, **disabled/required field-vs-input precedence**, **message precedence + ICU/param
   interpolation**, indeterminate, and — for Select — open/close, keyboard nav, typeahead (explicit
@@ -1220,8 +1216,8 @@ client/projects/core/
 │   ├── emit/                  # tokens → CSS emitter
 │   └── schema/                # validators (contrast, missing-ref) feeding the generated JSON Schema
 ├── tellma-core-ui-testing/
-│   ├── public-api.ts          # the harnesses (incl. TmSelectHarness + TmOptionHarness) + form fixture
-│   └── *-harness.ts, form-fixture.ts
+│   ├── public-api.ts          # the harnesses (incl. TmSelectHarness + TmOptionHarness)
+│   └── *-harness.ts
 └── tellma-core-ui-mcp/
     └── src/                   # plain Node package (tsc): generated components.json + minimal MCP server
 ```
@@ -1331,7 +1327,7 @@ The showcase app lives in the workspace at `projects/internal/showcase` (free-po
     API goldens committed; `api:approve` gate active.
 15. Forced-colors and reduced-motion are **Playwright-gated** (`emulateMedia`); bidi `dir="auto"` fields
     verified with mixed AR/EN content in both LTR and RTL roots; message precedence + ICU/param
-    interpolation tested via the shared `form()` fixture.
+    interpolation covered by the component unit specs.
 16. All tooling (the showcase app, tests, MCP server) runs on OS-assigned free ports — two worktrees in
     parallel, no collision.
 
