@@ -192,11 +192,16 @@ describe('tm-select (§3.4)', () => {
       const host = fixture.componentInstance;
       await select.open();
 
-      // One key per stabilization: aria relays trigger keydowns to the
-      // listbox through a signal, which holds only the LATEST event — a
-      // burst-typed string would lose every char but the last.
-      for (const char of 'united arab') {
-        await select.sendTriggerKeys(char);
+      // Dispatch the query directly on the listbox element, synchronously.
+      // Typing through the trigger needs one stabilization per key (the
+      // combobox relays keydowns through a signal holding only the LATEST
+      // event), and eleven real-time stabilizations can cross aria's 500 ms
+      // typeahead reset on a slow runner — flaking the test. Direct dispatch
+      // runs aria's handlers and the panel's own bindings back-to-back in
+      // microseconds, so the query cannot reset mid-word.
+      const listboxEl = document.querySelector('.tm-select__listbox') as HTMLElement;
+      for (const key of 'united arab') {
+        listboxEl.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
       }
       await fixture.whenStable();
 
