@@ -47,15 +47,18 @@ function resolveColor(vars: Map<string, string>, name: string): TmRgba | null {
 /**
  * Ink classification of every scheme-color key, typed against the contract:
  * `true` = the token carries text/glyph/boundary ink and MUST appear as a
- * `fg` in contrastPairs or contrastExceptions. Adding a key — or a whole
- * group — to `TmSchemeColors` refuses to compile until it is classified
- * here, so the completeness lint grows with the contract by construction;
- * only the exclusions (decorative surfaces and page borders) are a human
- * decision. For `status`, `true` means the triple's `fg` ink.
+ * `fg` in contrastPairs or contrastExceptions. Object-valued keys (the
+ * `status` triples) classify each member separately. Adding a key — or a
+ * whole group, or a member to a triple — refuses to compile until it is
+ * classified here, so the completeness lint grows with the contract by
+ * construction; only the exclusions (decorative surfaces and page borders)
+ * are a human decision.
  */
 type TmInkClassification = {
   readonly [G in Exclude<keyof TmSchemeColors, 'colorScheme'>]: {
-    readonly [K in keyof TmSchemeColors[G]]: boolean;
+    readonly [K in keyof TmSchemeColors[G]]: TmSchemeColors[G][K] extends object
+      ? { readonly [M in keyof TmSchemeColors[G][K]]: boolean }
+      : boolean;
   };
 };
 
@@ -81,7 +84,13 @@ const CARRIES_INK: TmInkClassification = {
     onPrimary: true,
     accent: true,
   },
-  status: { success: true, warning: true, error: true, info: true },
+  // Each triple's fg carries text/icon ink; bg and border are surface tints.
+  status: {
+    success: { fg: true, bg: false, border: false },
+    warning: { fg: true, bg: false, border: false },
+    error: { fg: true, bg: false, border: false },
+    info: { fg: true, bg: false, border: false },
+  },
   field: {
     bg: false,
     bgDisabled: false,
@@ -101,16 +110,19 @@ const CARRIES_INK: TmInkClassification = {
 function requiredInkVars(): ReadonlySet<string> {
   const names = new Set<string>();
   for (const [group, keys] of Object.entries(CARRIES_INK)) {
-    for (const [key, carriesInk] of Object.entries(keys)) {
-      if (!carriesInk) {
-        continue;
-      }
-      if (group === 'status') {
-        names.add(`--${key}`); // the triple's fg variable
-      } else if (group === 'border' && key === 'divider') {
-        names.add('--divider');
-      } else {
-        names.add(tmRefToVarName(`${group}.${key}`));
+    for (const [key, classification] of Object.entries(keys)) {
+      if (typeof classification === 'object') {
+        for (const [member, carriesInk] of Object.entries(classification)) {
+          if (carriesInk) {
+            names.add(tmRefToVarName(`${group}.${key}.${member}`));
+          }
+        }
+      } else if (classification) {
+        names.add(
+          group === 'border' && key === 'divider'
+            ? '--divider'
+            : tmRefToVarName(`${group}.${key}`),
+        );
       }
     }
   }
