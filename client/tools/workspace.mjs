@@ -32,14 +32,9 @@ import { join } from 'node:path';
  * @property {string} report      API-golden filename, e.g. 'core-ui.select.api.md'
  */
 
-/**
- * Discovers every ng-packagr library and its entry points.
- *
- * @param {string} clientDir absolute path of the client workspace root
- * @returns {{ name: string, short: string, dir: string, tellma: any, entryPoints: TmEntryPoint[] }[]}
- */
-export function discoverLibraries(clientDir) {
-  const libraries = [];
+/** Every projects/<area>/<name> folder carrying a package.json. */
+function packageDirs(clientDir) {
+  const dirs = [];
   const projectsDir = join(clientDir, 'projects');
   for (const area of readdirSync(projectsDir, { withFileTypes: true })) {
     if (!area.isDirectory()) {
@@ -47,32 +42,74 @@ export function discoverLibraries(clientDir) {
     }
     for (const pkg of readdirSync(join(projectsDir, area.name), { withFileTypes: true })) {
       const dir = join(projectsDir, area.name, pkg.name);
-      if (
-        !pkg.isDirectory() ||
-        !existsSync(join(dir, 'ng-package.json')) ||
-        !existsSync(join(dir, 'package.json'))
-      ) {
-        continue;
+      if (pkg.isDirectory() && existsSync(join(dir, 'package.json'))) {
+        dirs.push({ dir, folder: pkg.name });
       }
-      const packageJson = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
-      const short = pkg.name.replace(/^tellma-/, '');
-      const entry = (id, sub) => ({
-        id,
-        importPath: sub ? `${packageJson.name}/${sub}` : packageJson.name,
-        dir: sub ? join(dir, sub) : dir,
-        publicApi: join(dir, sub ?? '', 'public-api.ts'),
-        fesm: `dist/${short}/fesm2022/${pkg.name}${sub ? `-${sub}` : ''}.mjs`,
-        dts: `dist/${short}/types/${pkg.name}${sub ? `-${sub}` : ''}.d.ts`,
-        report: `${short}${sub ? `.${sub}` : ''}.api.md`,
-      });
-      const entryPoints = [entry('.')];
-      for (const sub of readdirSync(dir, { withFileTypes: true })) {
-        if (sub.isDirectory() && existsSync(join(dir, sub.name, 'ng-package.json'))) {
-          entryPoints.push(entry(`./${sub.name}`, sub.name));
-        }
-      }
-      libraries.push({ name: packageJson.name, short, dir, tellma: packageJson.tellma, entryPoints });
     }
   }
+  return dirs;
+}
+
+function packageBasics(dir, folder) {
+  const packageJson = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+  return {
+    name: packageJson.name,
+    short: folder.replace(/^tellma-/, ''),
+    dir,
+    tellma: packageJson.tellma,
+    // Declared package names this one depends on (any section) — the build
+    // orders workspace packages by these edges.
+    dependsOn: [
+      ...Object.keys(packageJson.dependencies ?? {}),
+      ...Object.keys(packageJson.peerDependencies ?? {}),
+      ...Object.keys(packageJson.devDependencies ?? {}),
+    ],
+  };
+}
+
+/**
+ * Discovers every ng-packagr library and its entry points.
+ *
+ * @param {string} clientDir absolute path of the client workspace root
+ * @returns {{ name: string, short: string, dir: string, tellma: any, dependsOn: string[], entryPoints: TmEntryPoint[] }[]}
+ */
+export function discoverLibraries(clientDir) {
+  const libraries = [];
+  for (const { dir, folder } of packageDirs(clientDir)) {
+    if (!existsSync(join(dir, 'ng-package.json'))) {
+      continue;
+    }
+    const basics = packageBasics(dir, folder);
+    const entry = (id, sub) => ({
+      id,
+      importPath: sub ? `${basics.name}/${sub}` : basics.name,
+      dir: sub ? join(dir, sub) : dir,
+      publicApi: join(dir, sub ?? '', 'public-api.ts'),
+      fesm: `dist/${basics.short}/fesm2022/${folder}${sub ? `-${sub}` : ''}.mjs`,
+      dts: `dist/${basics.short}/types/${folder}${sub ? `-${sub}` : ''}.d.ts`,
+      report: `${basics.short}${sub ? `.${sub}` : ''}.api.md`,
+    });
+    const entryPoints = [entry('.')];
+    for (const sub of readdirSync(dir, { withFileTypes: true })) {
+      if (sub.isDirectory() && existsSync(join(dir, sub.name, 'ng-package.json'))) {
+        entryPoints.push(entry(`./${sub.name}`, sub.name));
+      }
+    }
+    libraries.push({ ...basics, entryPoints });
+  }
   return libraries;
+}
+
+/**
+ * Discovers the plain Node packages (package.json, no ng-package.json —
+ * currently the MCP server), built with `tsc -b` rather than ng-packagr.
+ * Apps carry no package.json, so they never appear here.
+ *
+ * @param {string} clientDir absolute path of the client workspace root
+ * @returns {{ name: string, short: string, dir: string, tellma: any, dependsOn: string[] }[]}
+ */
+export function discoverNodePackages(clientDir) {
+  return packageDirs(clientDir)
+    .filter(({ dir }) => !existsSync(join(dir, 'ng-package.json')))
+    .map(({ dir, folder }) => packageBasics(dir, folder));
 }

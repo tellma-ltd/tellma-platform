@@ -4,14 +4,20 @@
 // LICENSE file in the root directory of this source tree.
 
 /**
- * Builds every package in dependency order:
- * tokens → core-ui → testing → locale-ar (ng-packagr), then the MCP Node
- * package (tsc -b). Run from anywhere; paths resolve relative to this file.
+ * Builds every workspace package in DERIVED dependency order: packages and
+ * their edges come from the same package.json files the packages declare
+ * (dependencies/peerDependencies on other workspace packages), Kahn-sorted
+ * with a name-sorted tie-break for determinism. ng-packagr libraries build
+ * via `ng build`; plain Node packages (the MCP server) via `tsc -b`. There
+ * is no hand-maintained project list. Run from anywhere; paths resolve
+ * relative to this file.
  */
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { discoverLibraries, discoverNodePackages } from '../tools/workspace.mjs';
 
 const clientDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
@@ -27,7 +33,28 @@ const tsx = require.resolve('tsx/cli', { paths: [clientDir] });
 run(tsx, ['tools/tokens/check.mts']);
 run(tsx, ['tools/tokens/build-css.mts']);
 
-for (const project of ['core-ui-tokens', 'core-ui', 'core-ui-testing', 'locale-ar']) {
-  run(ng, ['build', project]);
+const packages = [
+  ...discoverLibraries(clientDir).map((pkg) => ({ ...pkg, kind: 'angular' })),
+  ...discoverNodePackages(clientDir).map((pkg) => ({ ...pkg, kind: 'node' })),
+];
+const workspaceNames = new Set(packages.map((pkg) => pkg.name));
+const remaining = new Map(packages.map((pkg) => [pkg.name, pkg]));
+const built = new Set();
+
+while (remaining.size > 0) {
+  const ready = [...remaining.values()]
+    .filter((pkg) => pkg.dependsOn.every((dep) => !workspaceNames.has(dep) || built.has(dep)))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if (ready.length === 0) {
+    throw new Error(`dependency cycle among workspace packages: ${[...remaining.keys()].join(', ')}`);
+  }
+  for (const pkg of ready) {
+    if (pkg.kind === 'angular') {
+      run(ng, ['build', pkg.short]);
+    } else {
+      run(tsc, ['-b', relative(clientDir, pkg.dir)]);
+    }
+    built.add(pkg.name);
+    remaining.delete(pkg.name);
+  }
 }
-run(tsc, ['-b', 'projects/core/tellma-core-ui-mcp']);
