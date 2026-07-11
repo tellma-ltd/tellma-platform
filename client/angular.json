@@ -126,6 +126,7 @@
           "options": {
             "browser": "projects/internal/showcase/src/main.ts",
             "tsConfig": "projects/internal/showcase/tsconfig.app.json",
+            "allowedCommonJsDependencies": ["@messageformat/core"],
             "assets": [
               {
                 "glob": "**/*",
