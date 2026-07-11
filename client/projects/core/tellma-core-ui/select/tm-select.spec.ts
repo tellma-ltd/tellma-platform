@@ -224,6 +224,53 @@ describe('tm-select (§3.4)', () => {
     });
   });
 
+  describe('disabled options', () => {
+    @Component({
+      imports: [TmSelect, TmOption],
+      template: `
+        <tm-select [(value)]="value" (selectionChange)="emissions.push($event)">
+          <tm-option [value]="1" label="Enabled">Enabled</tm-option>
+          <tm-option [value]="2" label="Blocked" disabled>Blocked</tm-option>
+        </tm-select>
+      `,
+    })
+    class Host {
+      readonly value = signal<number | undefined>(1);
+      readonly emissions: number[] = [];
+    }
+
+    it('clicking a disabled option neither commits, closes, nor re-emits', async () => {
+      const { fixture, select } = await setup(Host);
+      const host = fixture.componentInstance;
+      await select.open();
+
+      const disabledRow = document.querySelectorAll('.tm-option__row')[1] as HTMLElement;
+      expect(disabledRow.getAttribute('aria-disabled')).toBe('true');
+      disabledRow.click();
+      await fixture.whenStable();
+
+      expect(await select.isOpen()).toBe(true);
+      expect(host.value()).toBe(1);
+      expect(host.emissions).toEqual([]);
+    });
+
+    it('Enter on a disabled active option (softDisabled navigation) is a no-op', async () => {
+      const { fixture, select } = await setup(Host);
+      const host = fixture.componentInstance;
+      await select.open();
+
+      await select.sendTriggerKeys(TestKey.DOWN_ARROW); // Blocked becomes active
+      const options = await select.getOptions();
+      expect(await options[1].isActive()).toBe(true);
+      await select.sendTriggerKeys(TestKey.ENTER);
+      await fixture.whenStable();
+
+      expect(await select.isOpen()).toBe(true);
+      expect(host.value()).toBe(1);
+      expect(host.emissions).toEqual([]);
+    });
+  });
+
   describe('typeahead textContent fallback (§3.4)', () => {
     @Component({
       imports: [TmSelect, TmOption],

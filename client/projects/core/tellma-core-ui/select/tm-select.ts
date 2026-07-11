@@ -256,6 +256,8 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   private readonly overlay = viewChild(CdkConnectedOverlay);
   private readonly listbox = viewChild(Listbox);
   private readonly optionRows = viewChildren('optionRow', { read: ElementRef });
+  /** aria's rendered `[ngOption]` directives — activation guards read active/disabled. */
+  private readonly ariaOptions = viewChildren(Option);
 
   /** Grid revert baseline (TmCellEditor): the value `cancel()` returns to. */
   private lastCommitted: T | undefined;
@@ -410,10 +412,13 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   }
 
   // ---- Commit path: activation events ONLY, never valueChange (§3.4) ----
-  /** Commits when an option row is clicked; panel padding/scrollbar clicks do nothing. */
+  /** Commits when an ENABLED option row is clicked; other clicks do nothing. */
   protected onListboxClick(event: MouseEvent): void {
     // Only option rows commit — panel padding/scrollbar clicks don't close.
-    if ((event.target as Element).closest('[ngOption]')) {
+    // A DISABLED row doesn't either: no commit, no close, and no re-emit of
+    // the previous selection.
+    const row = (event.target as Element).closest('[ngOption]');
+    if (row && row.getAttribute('aria-disabled') !== 'true') {
       this.commitFromListbox();
     }
   }
@@ -433,6 +438,12 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
 
   /** Commits the listbox's active selection into `value` and closes the panel. */
   protected commitFromListbox(): void {
+    // softDisabled (aria's default) keeps disabled options NAVIGABLE, so
+    // Enter/Space can activate one — a no-op: the panel stays open and the
+    // previous selection is not re-emitted.
+    if (this.ariaOptions().find((o) => o.active())?.disabled()) {
+      return;
+    }
     const keys = this.listboxValue();
     if (keys.length > 0) {
       const key = keys[0];
