@@ -30,7 +30,7 @@ const light: TmSchemeColors = {
     sunken: '{grey.50}',
     card: '{white}',
     inverse: '{ink.900}',
-    hover: '{grey.25}',
+    hover: '{grey.50}',
     selected: '{teal.50}',
   },
   border: {
