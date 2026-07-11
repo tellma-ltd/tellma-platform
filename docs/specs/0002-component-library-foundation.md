@@ -918,13 +918,15 @@ thing; real AT verification (NVDA/JAWS/VoiceOver) is a manual pass, out of DoD s
   stack** (brand faces first, generics last): each glyph resolves to its script's face via the faces'
   `unicode-range`s ([§7.1](#71-fonts--web-font-loading)), so mixed Arabic/Latin lines render every brand
   face at once, and family names whose faces no installed pack registers are skipped harmlessly. Leading
-  is a line-box property that cannot follow scripts per glyph, so **`:lang()` rules** emitted from the
-  token contract's language→leading map both re-point `--leading-ui` and apply
-  `line-height: var(--leading-ui)` (line-height inherits by computed value, so re-pointing alone would
-  never reach below the root); every listed language both sets and resets, so an explicitly marked
-  island (`lang="ar"` in an English page, or the reverse) gets its own leading at any depth. The rules
-  live in `@layer tm.base` — unlayered component/app line-heights still win. Distributions set the root
-  `lang` attribute when switching locale — required for assistive technology anyway.
+  is a line-box property that cannot follow scripts per glyph, so **`[lang]:lang()` rules** emitted from
+  the token contract's language→leading map both re-point `--leading-ui` and apply
+  `line-height: var(--leading-ui)` at **explicitly marked lang roots** (the root element, island roots),
+  inheriting below. Applying at marked roots only — never per element — keeps inheritance-based app
+  overrides intact (a `body { line-height }` flows through its subtree); the property application is what
+  lets a marked island (`lang="ar"` in an English page, or the reverse) re-lead at any depth, since
+  line-height inherits by computed value and a re-pointed variable alone would never be re-read below
+  the root. The rules live in `@layer tm.base`. Distributions set the root `lang` attribute when
+  switching locale — required for assistive technology anyway.
 - **Bidi text inside fields (mixed Arabic/English).** Form values routinely mix scripts (an Arabic name
   with a Latin code, a phone number in an RTL paragraph). The browser's Unicode Bidi Algorithm handles the
   *display* ordering, but the field's base direction must be right or punctuation and Latin runs land

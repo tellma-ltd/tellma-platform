@@ -81,21 +81,27 @@ describe('tmEmitCss', () => {
     expect(css).not.toContain('[dir=');
   });
 
-  it('emits language-keyed leading that sets, resets, AND applies, after :root', () => {
-    // Each block must re-point the variable and apply line-height: the
+  it('emits language-keyed leading at explicit lang roots: set, reset, AND apply', () => {
+    // [lang]:lang(x), not bare :lang(x): the rule must hit only elements
+    // explicitly MARKED with a lang attribute and inherit below — a bare
+    // :lang() matches every element via language inheritance and would pin
+    // each one to the tm.base value, defeating inheritance-based app
+    // overrides (body { line-height: 1.5 } would win on body alone).
+    // Each block re-points the variable AND applies line-height: the
     // property inherits by computed value, so without the application a
     // lang island below the root would keep its parent's leading.
     expect(css).toMatch(
-      /:lang\(ar\) \{\n\s*--leading-ui: var\(--leading-arabic\);\n\s*line-height: var\(--leading-ui\);/,
+      /\[lang\]:lang\(ar\) \{\n\s*--leading-ui: var\(--leading-arabic\);\n\s*line-height: var\(--leading-ui\);/,
     );
     // The en rule restores the body leading, so a lang="en" island inside an
     // Arabic page snaps back instead of inheriting 1.9.
     expect(css).toMatch(
-      /:lang\(en\) \{\n\s*--leading-ui: var\(--leading-body\);\n\s*line-height: var\(--leading-ui\);/,
+      /\[lang\]:lang\(en\) \{\n\s*--leading-ui: var\(--leading-body\);\n\s*line-height: var\(--leading-ui\);/,
     );
-    // :lang() ties :root on specificity — source order decides on <html>, so
-    // the :lang blocks must come after the :root block.
-    expect(css.indexOf(':lang(ar)')).toBeGreaterThan(css.indexOf(':root {'));
+    expect(css).not.toMatch(/[^\]]:lang\(/); // no bare :lang() anywhere
+    // Source order beats the specificity tie on <html>, so the lang blocks
+    // must come after the :root block.
+    expect(css.indexOf('[lang]:lang(ar)')).toBeGreaterThan(css.indexOf(':root {'));
   });
 
   it('emits the ::selection rule with per-scheme teal highlight tokens', () => {

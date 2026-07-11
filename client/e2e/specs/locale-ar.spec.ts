@@ -80,14 +80,27 @@ test('leading islands are real BELOW the root: marked subtrees re-lead both ways
     // nested back inside it.
     const arabicIsland = probe('ar', document.body);
     const englishIsland = probe('en', arabicIsland);
+
+    // The standard app override pattern: line-height set on ONE element must
+    // flow to unmarked descendants by inheritance — the emitted rules apply
+    // only at [lang]-marked roots, so they must not pin descendants.
+    const overridden = document.createElement('div');
+    overridden.style.lineHeight = '2';
+    const unmarkedChild = document.createElement('p');
+    unmarkedChild.textContent = 'inherits the override';
+    overridden.append(unmarkedChild);
+    document.body.append(overridden);
+
     return {
       body: getComputedStyle(document.body).lineHeight,
       arabicIsland: getComputedStyle(arabicIsland).lineHeight,
       englishInsideArabic: getComputedStyle(englishIsland).lineHeight,
+      childOfOverride: getComputedStyle(unmarkedChild).lineHeight,
     };
   });
 
   expect(leadings.body).toBe('25.6px'); // 1.6 × 16px
   expect(leadings.arabicIsland).toBe('30.4px'); // 1.9 × 16px — not inherited 1.6
   expect(leadings.englishInsideArabic).toBe('25.6px'); // snaps back
+  expect(leadings.childOfOverride).toBe('32px'); // 2 × 16px — inheritance intact
 });

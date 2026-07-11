@@ -211,14 +211,19 @@ export function tmEmitCss(tokens: TmTokens): string {
 
   const langBlocks = Object.entries(tokens.semantic.leadingByLang).map(([lang, value]) =>
     block(
-      `:lang(${lang})`,
+      // [lang]:lang(x): only elements EXPLICITLY marked with a lang
+      // attribute (the root, island roots) — descendants inherit. A bare
+      // :lang(x) would match every element via language inheritance and
+      // pin each one to the tm.base value, silently defeating the standard
+      // inheritance-based app override (body { line-height: 1.5 } would
+      // win on body alone while every descendant snapped back).
+      `[lang]:lang(${lang})`,
       new Map([
         ['--leading-ui', tmTokenValueToCss(value)],
         // Re-pointing the variable alone is not enough below the root:
         // line-height inherits by COMPUTED value, so a lang island would
-        // keep its parent's leading unless the property itself is applied
-        // where the variable changed. Layered in tm.base, any unlayered
-        // line-height (component or app styles) still wins.
+        // keep its parent's leading unless the property is applied at the
+        // island root where the variable changed.
         ['line-height', 'var(--leading-ui)'],
       ]),
       '  ',
@@ -237,12 +242,14 @@ export function tmEmitCss(tokens: TmTokens): string {
     '',
     block('[data-theme=dark]', darkVars, '  '),
     '',
-    '  /* Language-adaptive leading. Each block re-points --leading-ui AND',
-    '     applies line-height (which inherits by computed value — without the',
-    '     application, a marked island would keep its parent leading). :lang()',
-    '     ties :root on specificity, so these must come later in source; every',
-    '     listed language sets its own value, so a marked island (lang="en" in',
-    '     an Arabic page) snaps back. */',
+    '  /* Language-adaptive leading, applied at EXPLICITLY marked lang roots',
+    '     only ([lang]) and inherited below — so an app line-height override',
+    '     flows through its subtree, while every marked island (lang="en" in',
+    '     an Arabic page) re-leads at any depth. Each block re-points',
+    '     --leading-ui AND applies line-height (which inherits by computed',
+    '     value — without the application, an island would keep its parent',
+    '     leading). Emitted after :root so source order beats the tie on',
+    '     <html>. */',
     ...langBlocks,
     '',
     '  /* Text selection paints the brand teal. Flat color only: the CSS',

@@ -219,15 +219,18 @@ export interface TmTokens {
       readonly fontSize: TmTokenValue;
     };
     /**
-     * Language-keyed line-height, emitted as `:lang()` rules that re-point
-     * `--leading-ui` AND apply `line-height: var(--leading-ui)` (line-height
-     * inherits by computed value, so re-pointing alone would never reach
-     * below the root). Leading is a line-box property — unlike the font
-     * stack it cannot follow scripts per glyph — so it keys on content
-     * language, via the root `lang` attribute or any marked island. Every
-     * listed language both sets and resets, so `lang="en"` inside an Arabic
-     * page keeps its own leading; the rules live in `@layer tm.base`, so
-     * any unlayered component/app `line-height` still wins.
+     * Language-keyed line-height, emitted as `[lang]:lang()` rules that
+     * re-point `--leading-ui` AND apply `line-height: var(--leading-ui)`
+     * at EXPLICITLY marked lang roots (the `lang` attribute on the root or
+     * an island), inheriting below. Applying at marked roots only — never
+     * per element — keeps the standard inheritance-based app override
+     * intact (a `body { line-height }` flows through its subtree), while
+     * the property application is what lets a marked island re-lead at any
+     * depth (line-height inherits by computed value, so re-pointing the
+     * variable alone would never reach below the root). Leading is a
+     * line-box property — unlike the font stack it cannot follow scripts
+     * per glyph — so it keys on content language; distributions set the
+     * root `lang` attribute when switching locale.
      */
     readonly leadingByLang: Readonly<Record<string, TmTokenValue>>;
   };
