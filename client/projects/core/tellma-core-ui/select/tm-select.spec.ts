@@ -186,6 +186,42 @@ describe('tm-select (§3.4)', () => {
       const options = await select.getOptions();
       expect(await options[3].isActive()).toBe(true);
     });
+
+    it('space inside an active typeahead query searches, never commits', async () => {
+      const { fixture, select } = await setup(Host);
+      const host = fixture.componentInstance;
+      await select.open();
+
+      // One key per stabilization: aria relays trigger keydowns to the
+      // listbox through a signal, which holds only the LATEST event — a
+      // burst-typed string would lose every char but the last.
+      for (const char of 'united arab') {
+        await select.sendTriggerKeys(char);
+      }
+      await fixture.whenStable();
+
+      expect(await select.isOpen()).toBe(true); // the space did not commit/close
+      expect(host.value()).toBeUndefined();
+      const options = await select.getOptions();
+      expect(await options[1].isActive()).toBe(true); // matched across the space
+
+      await select.sendTriggerKeys(TestKey.ENTER);
+      await fixture.whenStable();
+      expect(host.value()).toBe(2);
+    });
+
+    it('space with no typeahead in flight commits the active option', async () => {
+      const { fixture, select } = await setup(Host);
+      const host = fixture.componentInstance;
+
+      await select.sendTriggerKeys(TestKey.DOWN_ARROW); // opens
+      await select.sendTriggerKeys(TestKey.DOWN_ARROW);
+      await select.sendTriggerKeys(' ');
+      await fixture.whenStable();
+
+      expect(await select.isOpen()).toBe(false);
+      expect(host.value()).not.toBeUndefined();
+    });
   });
 
   describe('typeahead textContent fallback (§3.4)', () => {

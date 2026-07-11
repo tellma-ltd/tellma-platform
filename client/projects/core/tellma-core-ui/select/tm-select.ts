@@ -143,7 +143,7 @@ let nextUniqueId = 0;
             [activeDescendant]="lb.activeDescendant()"
             (click)="onListboxClick($event)"
             (keydown.enter)="commitFromListbox()"
-            (keydown.space)="commitFromListbox()"
+            (keydown.space)="onSpaceKey()"
           >
             @for (option of options(); track option) {
               <li
@@ -416,6 +416,19 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     if ((event.target as Element).closest('[ngOption]')) {
       this.commitFromListbox();
     }
+  }
+
+  /** Space commits — unless it is part of an in-progress typeahead query. */
+  protected onSpaceKey(): void {
+    // While a typeahead query is active, aria routes space into the search
+    // string (its own select-on-space binding goes dormant); the commit here
+    // must go dormant with it, or typing "united arab" closes the panel at
+    // the first space. isTyping() is the same predicate aria keys that
+    // behavior on (version-locked internal seam; the unit test guards it).
+    if (this.listbox()?._pattern.listBehavior.isTyping()) {
+      return;
+    }
+    this.commitFromListbox();
   }
 
   /** Commits the listbox's active selection into `value` and closes the panel. */
