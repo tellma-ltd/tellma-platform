@@ -9,7 +9,7 @@
   "sideEffects": false,
   "type": "module",
   "tellma": {
-    "budgets": {
+    "budgetsInKb": {
       ".": 8
     }
   }

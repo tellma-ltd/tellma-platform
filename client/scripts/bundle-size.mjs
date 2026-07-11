@@ -8,14 +8,14 @@
  * SELF-weight — its built FESM bundled with esbuild while the assumed app
  * baseline (@angular/* incl. cdk+aria, rxjs, tslib, @jsverse/*) AND the
  * other @tellma entry points stay external — then gzips and compares to the
- * ceilings each library declares in its package.json "tellma".budgets.
+ * ceilings each library declares in its package.json "tellma".budgetsInKb.
  * The ceilings are RATCHETS: set just above measured reality to catch
  * regressions, inspected and tightened as real builds land, never loosened
  * silently.
  *
  * Coverage is enforced both ways: a library that declares budgets must
  * cover EVERY discovered entry point, and every budget key must match a
- * real entry point. A library with no "tellma".budgets block is exempt by
+ * real entry point. A library with no "tellma".budgetsInKb block is exempt by
  * decision — visible in its own package.json.
  *
  * Usage: node scripts/bundle-size.mjs   (after `pnpm run build`)
@@ -35,7 +35,7 @@ let failed = false;
 const rows = [];
 
 for (const library of discoverLibraries(clientDir)) {
-  const budgets = library.tellma?.budgets;
+  const budgets = library.tellma?.budgetsInKb;
   if (!budgets) {
     continue;
   }
@@ -44,7 +44,7 @@ for (const library of discoverLibraries(clientDir)) {
     const kb = budgets[entryPoint.id];
     if (kb === undefined) {
       console.error(
-        `${library.name}: entry point '${entryPoint.id}' has no ceiling in "tellma".budgets — ` +
+        `${library.name}: entry point '${entryPoint.id}' has no ceiling in "tellma".budgetsInKb — ` +
           `every entry point of a budgeted library must be covered.`,
       );
       failed = true;
@@ -73,7 +73,7 @@ for (const library of discoverLibraries(clientDir)) {
     });
   }
   for (const orphan of declared) {
-    console.error(`${library.name}: "tellma".budgets declares '${orphan}', which is not an entry point.`);
+    console.error(`${library.name}: "tellma".budgetsInKb declares '${orphan}', which is not an entry point.`);
     failed = true;
   }
 }

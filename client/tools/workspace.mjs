@@ -14,7 +14,7 @@
  * each library package.json's "tellma" field, next to the code it governs:
  *
  *   "tellma": {
- *     "budgets": { ".": 4, "./select": 8 },          // KB gzipped per entry point
+ *     "budgetsInKb": { ".": 4, "./select": 8 },      // KB gzipped per entry point
  *     "docs": { "globalStyles": { "./input": "…" } } // directive-owned stylesheet
  *   }
  */
