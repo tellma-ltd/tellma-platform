@@ -73,6 +73,18 @@ describe('@tellma/core-ui-mcp server', () => {
     expect(names).toContain('tm-form-field');
     expect(names).toContain('tm-select');
     expect(names).toContain('tm-option');
+    // The one component outside the entry-point-root scan pattern's original
+    // reach — pinned so it can never silently drop out of the docs again.
+    expect(names).toContain('tm-spinner');
+  });
+
+  it('describes tm-spinner: a component without a harness reports null', async () => {
+    const result = await client.callTool({ name: 'describe', arguments: { name: 'tm-spinner' } });
+    const component = JSON.parse(
+      (result.content as { type: string; text: string }[])[0].text,
+    ) as { selector: string; harness: string | null };
+    expect(component.selector).toBe('tm-spinner');
+    expect(component.harness).toBeNull(); // never a fabricated class name
   });
 
   it('describes tm-select with its full reference', async () => {

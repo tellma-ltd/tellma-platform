@@ -10,7 +10,9 @@
  */
 import { z } from 'zod';
 
-export const COMPONENTS_JSON_SCHEMA_VERSION = '1.1.0';
+// 2.0.0: `harness` widened to string|null — breaking for readers that
+// assumed a string, hence the major bump.
+export const COMPONENTS_JSON_SCHEMA_VERSION = '2.0.0';
 
 const propDoc = z.object({
   name: z.string(),
