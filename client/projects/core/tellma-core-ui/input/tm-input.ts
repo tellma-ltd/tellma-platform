@@ -13,6 +13,7 @@ import {
   input,
   model,
   output,
+  type Signal,
   signal,
 } from '@angular/core';
 import type { ValidationError } from '@angular/forms/signals';
@@ -56,7 +57,7 @@ let nextUniqueId = 0;
     '[required]': 'required()',
     '[placeholder]': 'placeholder()',
     '[attr.aria-invalid]': 'showsInvalid() ? "true" : null',
-    '[attr.aria-describedby]': 'ariaDescribedBy()',
+    '[attr.aria-describedby]': 'describedByAttr()',
     '[attr.aria-busy]': 'pending() ? "true" : null',
     '(input)': 'onInput($event)',
     '(blur)': 'touch.emit()',
@@ -95,6 +96,13 @@ export class TmInput implements TmFormFieldControl {
   // ---- Own API (§3.2) ----
   /** Placeholder text shown while the input is empty. */
   readonly placeholder = input('');
+  /**
+   * Author-supplied describedby ids (space-separated). Preserved — the
+   * enclosing field's hint/error ids are merged AFTER them, never over
+   * them. Set as the `aria-describedby` attribute or bound as an input;
+   * a raw `[attr.aria-describedby]` binding is outside the seam and loses.
+   */
+  readonly ariaDescribedby = input<string | null>(null, { alias: 'aria-describedby' });
 
   /** Stable generated id of the input — the `<label for>` and aria wiring target. */
   readonly controlId = signal(`tm-input-${nextUniqueId++}`).asReadonly();
@@ -103,15 +111,18 @@ export class TmInput implements TmFormFieldControl {
   /** The field renders the bordered box around this bare directive. */
   readonly ownsChrome = false;
   private readonly fieldDescribedBy = signal<readonly string[]>([]);
-  /** The hint/error ids the enclosing field pushed via `setDescribedByIds`. */
-  readonly describedByIds = this.fieldDescribedBy.asReadonly();
+  /** Every exposed describedby id: author-supplied first, then the field's hint/error ids. */
+  readonly describedByIds: Signal<readonly string[]> = computed(() => [
+    ...(this.ariaDescribedby()?.split(/\s+/).filter(Boolean) ?? []),
+    ...this.fieldDescribedBy(),
+  ]);
   /** Already-localized error messages resolved from `errors` — read by the enclosing field. */
   readonly localizedErrors: () => readonly TmFieldError[] = tmResolveFieldErrors(
     this.errors,
     this.translate,
   );
   /** The merged aria-describedby attribute value, or null when no ids apply. */
-  protected readonly ariaDescribedBy = computed(() => this.describedByIds().join(' ') || null);
+  protected readonly describedByAttr = computed(() => this.describedByIds().join(' ') || null);
 
   /**
    * aria-invalid follows the error-DISPLAY policy, not raw field validity —

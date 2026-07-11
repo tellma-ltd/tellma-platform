@@ -17,6 +17,7 @@ import {
   input,
   model,
   output,
+  type Signal,
   signal,
   untracked,
   viewChild,
@@ -95,7 +96,7 @@ let nextUniqueId = 0;
       [softDisabled]="readonly()"
       [attr.aria-label]="ariaLabel()"
       [attr.aria-labelledby]="ariaLabelledBy()"
-      [attr.aria-describedby]="ariaDescribedBy()"
+      [attr.aria-describedby]="describedByAttr()"
       [attr.aria-invalid]="showsInvalid() ? 'true' : null"
       [attr.aria-busy]="pending() ? 'true' : null"
       [attr.aria-required]="required() ? 'true' : null"
@@ -176,8 +177,10 @@ let nextUniqueId = 0;
   styleUrl: './tm-select.css',
   host: {
     class: 'tm-select',
-    // The accessible name lives on the trigger; strip it from the host.
+    // The accessible name and description live on the trigger; strip both
+    // from the role-less host.
     '[attr.aria-label]': 'null',
+    '[attr.aria-describedby]': 'null',
     '[class.tm-select--open]': 'expanded()',
     '[class.tm-select--disabled]': 'disabled()',
     '[class.tm-select--invalid]': 'showsInvalid()',
@@ -227,6 +230,12 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   readonly placeholder = input<string | undefined>(undefined);
   /** Accessible name for a select used WITHOUT tm-form-field. */
   readonly ariaLabel = input<string | null>(null, { alias: 'aria-label' });
+  /**
+   * Author-supplied describedby ids (space-separated), relocated to the
+   * TRIGGER and preserved — the enclosing field's hint/error ids are merged
+   * AFTER them, never over them.
+   */
+  readonly ariaDescribedby = input<string | null>(null, { alias: 'aria-describedby' });
   /** Height/density variant; defaults to the workspace-wide form-field default. */
   readonly size = input<'sm' | 'md' | 'lg'>(this.defaults.size);
   /** Emits the committed value whenever the user activates an option. */
@@ -275,8 +284,11 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   /** Renders its own trigger chrome; the field adds only label/hint/error. */
   readonly ownsChrome = true;
   private readonly fieldDescribedBy = signal<readonly string[]>([]);
-  /** The hint/error ids the enclosing field pushed via `setDescribedByIds`. */
-  readonly describedByIds = this.fieldDescribedBy.asReadonly();
+  /** Every exposed describedby id: author-supplied first, then the field's hint/error ids. */
+  readonly describedByIds: Signal<readonly string[]> = computed(() => [
+    ...(this.ariaDescribedby()?.split(/\s+/).filter(Boolean) ?? []),
+    ...this.fieldDescribedBy(),
+  ]);
   private readonly labelIdFromField = signal<string | null>(null);
   /** Already-localized error messages resolved from `errors` — read by the enclosing field. */
   readonly localizedErrors: () => readonly TmFieldError[] = tmResolveFieldErrors(
@@ -285,7 +297,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   );
 
   /** The merged aria-describedby attribute value, or null when no ids apply. */
-  protected readonly ariaDescribedBy = computed(() => this.describedByIds().join(' ') || null);
+  protected readonly describedByAttr = computed(() => this.describedByIds().join(' ') || null);
   /** The field-provided label id, bound as aria-labelledby on the trigger. */
   protected readonly ariaLabelledBy = computed(() => this.labelIdFromField());
 

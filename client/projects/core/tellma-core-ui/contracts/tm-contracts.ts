@@ -59,13 +59,14 @@ export interface TmFormFieldControl {
    */
   readonly ownsChrome: boolean;
   /**
-   * Ids the control currently exposes via aria-describedby (read so the
-   * field can merge, not clobber, existing ones).
+   * Every id the control exposes via aria-describedby: author-supplied ids
+   * first, then the ids the field pushed via `setDescribedByIds`.
    */
   readonly describedByIds: SignalLike<readonly string[]>;
   /**
-   * Field pushes its hint/error element ids; the control writes them into
-   * aria-describedby.
+   * Field pushes its hint/error element ids; the control MERGES them after
+   * any author-supplied ids and writes the union into aria-describedby —
+   * an author's `aria-describedby` is never clobbered.
    */
   setDescribedByIds(ids: readonly string[]): void;
   /**

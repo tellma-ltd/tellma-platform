@@ -12,6 +12,7 @@ import {
   input,
   model,
   output,
+  type Signal,
   signal,
   viewChild,
 } from '@angular/core';
@@ -60,7 +61,7 @@ let nextUniqueId = 0;
           [required]="required()"
           [attr.aria-label]="ariaLabel()"
           [attr.aria-invalid]="showsInvalid() ? 'true' : null"
-          [attr.aria-describedby]="ariaDescribedBy()"
+          [attr.aria-describedby]="describedByAttr()"
           [attr.aria-busy]="pending() ? 'true' : null"
           (change)="onNativeChange($event)"
           (blur)="touch.emit()"
@@ -98,9 +99,10 @@ let nextUniqueId = 0;
     '[class.tm-checkbox--checked]': 'checked()',
     '[class.tm-checkbox--indeterminate]': 'indeterminate()',
     '[class.tm-checkbox--disabled]': 'disabled()',
-    // The accessible name lives on the NATIVE input; a role-less custom
-    // element must not carry aria-label itself.
+    // The accessible name and description live on the NATIVE input; a
+    // role-less custom element must not carry aria-label/-describedby.
     '[attr.aria-label]': 'null',
+    '[attr.aria-describedby]': 'null',
   },
 })
 export class TmCheckbox implements TmFormFieldControl {
@@ -136,6 +138,12 @@ export class TmCheckbox implements TmFormFieldControl {
 
   /** Accessible name for a LABEL-LESS checkbox, forwarded to the native input. */
   readonly ariaLabel = input<string | null>(null, { alias: 'aria-label' });
+  /**
+   * Author-supplied describedby ids (space-separated), relocated to the
+   * NATIVE input and preserved — the enclosing field's hint/error ids are
+   * merged AFTER them, never over them.
+   */
+  readonly ariaDescribedby = input<string | null>(null, { alias: 'aria-describedby' });
 
   /** Stable generated id of the native input — the `<label for>` and aria wiring target. */
   readonly controlId = signal(`tm-checkbox-${nextUniqueId++}`).asReadonly();
@@ -146,8 +154,11 @@ export class TmCheckbox implements TmFormFieldControl {
   /** Renders its own box chrome; the field adds only label/hint/error. */
   readonly ownsChrome = true;
   private readonly fieldDescribedBy = signal<readonly string[]>([]);
-  /** The hint/error ids the enclosing field pushed via `setDescribedByIds`. */
-  readonly describedByIds = this.fieldDescribedBy.asReadonly();
+  /** Every exposed describedby id: author-supplied first, then the field's hint/error ids. */
+  readonly describedByIds: Signal<readonly string[]> = computed(() => [
+    ...(this.ariaDescribedby()?.split(/\s+/).filter(Boolean) ?? []),
+    ...this.fieldDescribedBy(),
+  ]);
   /** Already-localized error messages resolved from `errors` — read by the enclosing field. */
   readonly localizedErrors: () => readonly TmFieldError[] = tmResolveFieldErrors(
     this.errors,
@@ -155,7 +166,7 @@ export class TmCheckbox implements TmFormFieldControl {
   );
 
   /** The merged aria-describedby attribute value, or null when no ids apply. */
-  protected readonly ariaDescribedBy = computed(() => this.describedByIds().join(' ') || null);
+  protected readonly describedByAttr = computed(() => this.describedByIds().join(' ') || null);
 
   /** Whether invalidity is surfaced (aria-invalid) — follows the error-display policy. */
   protected readonly showsInvalid = computed(() =>

@@ -6,6 +6,7 @@
 
 import * as _angular_core from '@angular/core';
 import { ConnectedPosition } from '@angular/cdk/overlay';
+import { Signal } from '@angular/core';
 import { TemplateRef } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
 
@@ -24,19 +25,20 @@ export class TmOption<T> {
 // @public
 export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefined> {
     constructor();
-    protected readonly ariaDescribedBy: _angular_core.Signal<string | null>;
+    readonly ariaDescribedby: _angular_core.InputSignal<string | null>;
     readonly ariaLabel: _angular_core.InputSignal<string | null>;
-    protected readonly ariaLabelledBy: _angular_core.Signal<string | null>;
+    protected readonly ariaLabelledBy: Signal<string | null>;
     cancel(): void;
     readonly closed: _angular_core.OutputEmitterRef<void>;
     commit(): void;
     protected commitFromListbox(): void;
-    readonly controlId: _angular_core.Signal<string>;
-    readonly describedByIds: _angular_core.Signal<readonly string[]>;
+    readonly controlId: Signal<string>;
+    protected readonly describedByAttr: Signal<string | null>;
+    readonly describedByIds: Signal<readonly string[]>;
     readonly dirty: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly disabled: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly displayWith: _angular_core.InputSignal<((value: T) => string) | undefined>;
-    protected readonly effectivePlaceholder: _angular_core.Signal<string>;
+    protected readonly effectivePlaceholder: Signal<string>;
     readonly errors: _angular_core.InputSignal<readonly ValidationError.WithOptionalFieldTree[]>;
     protected readonly expanded: _angular_core.WritableSignal<boolean>;
     focus(options?: FocusOptions): void;
@@ -48,8 +50,9 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     onKeydown(event: KeyboardEvent): void;
     protected onListboxClick(event: MouseEvent): void;
     protected onOverlayAttach(): void;
+    protected onSpaceKey(): void;
     readonly opened: _angular_core.OutputEmitterRef<void>;
-    protected readonly options: _angular_core.Signal<readonly TmOption<T>[]>;
+    protected readonly options: Signal<readonly TmOption<T>[]>;
     readonly ownsChrome = true;
     readonly pending: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly placeholder: _angular_core.InputSignal<string | undefined>;
@@ -59,15 +62,15 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     readonly selectionChange: _angular_core.OutputEmitterRef<T>;
     setDescribedByIds(ids: readonly string[]): void;
     setLabelId(id: string | null): void;
-    protected readonly showsInvalid: _angular_core.Signal<boolean>;
-    protected readonly showsPlaceholder: _angular_core.Signal<boolean>;
+    protected readonly showsInvalid: Signal<boolean>;
+    protected readonly showsPlaceholder: Signal<boolean>;
     readonly size: _angular_core.InputSignal<"sm" | "md" | "lg">;
     readonly touch: _angular_core.OutputEmitterRef<void>;
     readonly touched: _angular_core.InputSignalWithTransform<boolean, unknown>;
-    protected readonly triggerLabel: _angular_core.Signal<string>;
+    protected readonly triggerLabel: Signal<string>;
     readonly value: _angular_core.ModelSignal<T | undefined>;
     readonly valueKey: _angular_core.InputSignal<((value: T) => string | number) | undefined>;
-    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmSelect<any>, "tm-select", never, { "value": { "alias": "value"; "required": false; "isSignal": true; }; "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "required": { "alias": "required"; "required": false; "isSignal": true; }; "invalid": { "alias": "invalid"; "required": false; "isSignal": true; }; "touched": { "alias": "touched"; "required": false; "isSignal": true; }; "dirty": { "alias": "dirty"; "required": false; "isSignal": true; }; "pending": { "alias": "pending"; "required": false; "isSignal": true; }; "errors": { "alias": "errors"; "required": false; "isSignal": true; }; "valueKey": { "alias": "valueKey"; "required": false; "isSignal": true; }; "displayWith": { "alias": "displayWith"; "required": false; "isSignal": true; }; "placeholder": { "alias": "placeholder"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; }, { "value": "valueChange"; "touch": "touch"; "selectionChange": "selectionChange"; "opened": "opened"; "closed": "closed"; }, ["options"], never, true, never>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmSelect<any>, "tm-select", never, { "value": { "alias": "value"; "required": false; "isSignal": true; }; "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "required": { "alias": "required"; "required": false; "isSignal": true; }; "invalid": { "alias": "invalid"; "required": false; "isSignal": true; }; "touched": { "alias": "touched"; "required": false; "isSignal": true; }; "dirty": { "alias": "dirty"; "required": false; "isSignal": true; }; "pending": { "alias": "pending"; "required": false; "isSignal": true; }; "errors": { "alias": "errors"; "required": false; "isSignal": true; }; "valueKey": { "alias": "valueKey"; "required": false; "isSignal": true; }; "displayWith": { "alias": "displayWith"; "required": false; "isSignal": true; }; "placeholder": { "alias": "placeholder"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; "ariaDescribedby": { "alias": "aria-describedby"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; }, { "value": "valueChange"; "touch": "touch"; "selectionChange": "selectionChange"; "opened": "opened"; "closed": "closed"; }, ["options"], never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmSelect<any>, never>;
 }
 

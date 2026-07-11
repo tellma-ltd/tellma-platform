@@ -224,6 +224,28 @@ describe('tm-select (§3.4)', () => {
     });
   });
 
+  describe('author-supplied aria-describedby (§2.1)', () => {
+    @Component({
+      imports: [TmSelect, TmOption],
+      template: `
+        <span id="ext-desc">External description</span>
+        <tm-select aria-describedby="ext-desc" aria-label="Country">
+          <tm-option [value]="1" label="One">One</tm-option>
+        </tm-select>
+      `,
+    })
+    class Host {}
+
+    it('relocates to the trigger and survives, stripped from the host', async () => {
+      const { fixture } = await setup(Host);
+      const hostEl = fixture.nativeElement.querySelector('tm-select') as HTMLElement;
+      const trigger = hostEl.querySelector('.tm-select__trigger') as HTMLElement;
+
+      expect(trigger.getAttribute('aria-describedby')).toBe('ext-desc');
+      expect(hostEl.getAttribute('aria-describedby')).toBeNull();
+    });
+  });
+
   describe('disabled options', () => {
     @Component({
       imports: [TmSelect, TmOption],

@@ -189,6 +189,59 @@ describe('tmInput + tm-form-field (Signal Forms, §3.1/§3.2/§5)', () => {
     });
   });
 
+  describe('author-supplied aria-describedby (§2.1)', () => {
+    @Component({
+      imports: [TmInput],
+      template: `
+        <span id="ext-desc">External description</span>
+        <input tmInput aria-describedby="ext-desc" />
+      `,
+    })
+    class BareHost {}
+
+    it('survives on a bare input outside any field', async () => {
+      TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+      const fixture = TestBed.createComponent(BareHost);
+      await fixture.whenStable();
+      const inputEl = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+      expect(inputEl.getAttribute('aria-describedby')).toBe('ext-desc');
+    });
+
+    @Component({
+      imports: [TmInput, TmFormField, FormField],
+      template: `
+        <span id="ext-desc">External description</span>
+        <tm-form-field label="Email" hint="Work email">
+          <input tmInput aria-describedby="ext-desc" [formField]="f.email" />
+        </tm-form-field>
+      `,
+    })
+    class FieldHost {
+      readonly model = signal({ email: '' });
+      readonly f = form(this.model, (p) => {
+        required(p.email);
+      });
+    }
+
+    it("merges ahead of the field's hint/error ids, never clobbered", async () => {
+      const { fixture, input } = await setup(FieldHost);
+      const inputEl = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+
+      const ids = inputEl.getAttribute('aria-describedby')!.split(' ');
+      expect(ids[0]).toBe('ext-desc');
+      expect(document.getElementById(ids[1])?.textContent?.trim()).toBe('Work email');
+
+      await input.focus();
+      await input.blur();
+      await fixture.whenStable();
+      const after = inputEl.getAttribute('aria-describedby')!.split(' ');
+      expect(after[0]).toBe('ext-desc'); // author id stays first
+      expect(document.getElementById(after[1])?.textContent?.trim()).toBe(
+        'This field is required',
+      );
+    });
+  });
+
   describe('pending/async validation (§5, DoD 8)', () => {
     let releaseValidation: () => void;
     let pendingGate: Promise<void>;

@@ -5,15 +5,17 @@
 ```ts
 
 import * as _angular_core from '@angular/core';
+import { Signal } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
 
 // @public
 export class TmCheckbox implements TmFormFieldControl {
-    protected readonly ariaDescribedBy: _angular_core.Signal<string | null>;
+    readonly ariaDescribedby: _angular_core.InputSignal<string | null>;
     readonly ariaLabel: _angular_core.InputSignal<string | null>;
     readonly checked: _angular_core.ModelSignal<boolean>;
-    readonly controlId: _angular_core.Signal<string>;
-    readonly describedByIds: _angular_core.Signal<readonly string[]>;
+    readonly controlId: Signal<string>;
+    protected readonly describedByAttr: Signal<string | null>;
+    readonly describedByIds: Signal<readonly string[]>;
     readonly dirty: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly disabled: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly errors: _angular_core.InputSignal<readonly ValidationError.WithOptionalFieldTree[]>;
@@ -28,10 +30,10 @@ export class TmCheckbox implements TmFormFieldControl {
     readonly readonly: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly required: _angular_core.InputSignalWithTransform<boolean, unknown>;
     setDescribedByIds(ids: readonly string[]): void;
-    protected readonly showsInvalid: _angular_core.Signal<boolean>;
+    protected readonly showsInvalid: Signal<boolean>;
     readonly touch: _angular_core.OutputEmitterRef<void>;
     readonly touched: _angular_core.InputSignalWithTransform<boolean, unknown>;
-    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmCheckbox, "tm-checkbox", never, { "checked": { "alias": "checked"; "required": false; "isSignal": true; }; "indeterminate": { "alias": "indeterminate"; "required": false; "isSignal": true; }; "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "required": { "alias": "required"; "required": false; "isSignal": true; }; "invalid": { "alias": "invalid"; "required": false; "isSignal": true; }; "touched": { "alias": "touched"; "required": false; "isSignal": true; }; "dirty": { "alias": "dirty"; "required": false; "isSignal": true; }; "pending": { "alias": "pending"; "required": false; "isSignal": true; }; "errors": { "alias": "errors"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; }, { "checked": "checkedChange"; "indeterminate": "indeterminateChange"; "touch": "touch"; }, never, ["*"], true, never>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmCheckbox, "tm-checkbox", never, { "checked": { "alias": "checked"; "required": false; "isSignal": true; }; "indeterminate": { "alias": "indeterminate"; "required": false; "isSignal": true; }; "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "required": { "alias": "required"; "required": false; "isSignal": true; }; "invalid": { "alias": "invalid"; "required": false; "isSignal": true; }; "touched": { "alias": "touched"; "required": false; "isSignal": true; }; "dirty": { "alias": "dirty"; "required": false; "isSignal": true; }; "pending": { "alias": "pending"; "required": false; "isSignal": true; }; "errors": { "alias": "errors"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; "ariaDescribedby": { "alias": "aria-describedby"; "required": false; "isSignal": true; }; }, { "checked": "checkedChange"; "indeterminate": "indeterminateChange"; "touch": "touch"; }, never, ["*"], true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmCheckbox, never>;
 }
 

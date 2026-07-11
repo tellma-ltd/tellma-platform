@@ -139,4 +139,24 @@ describe('tm-checkbox (§3.3)', () => {
       expect(await checkbox.isChecked()).toBe(true);
     });
   });
+
+  describe('author-supplied aria-describedby (§2.1)', () => {
+    @Component({
+      imports: [TmCheckbox],
+      template: `
+        <span id="ext-desc">External description</span>
+        <tm-checkbox aria-describedby="ext-desc">Terms</tm-checkbox>
+      `,
+    })
+    class Host {}
+
+    it('relocates to the native input and survives, stripped from the host', async () => {
+      const { fixture } = await setup(Host);
+      const hostEl = fixture.nativeElement.querySelector('tm-checkbox') as HTMLElement;
+      const native = hostEl.querySelector('input') as HTMLInputElement;
+
+      expect(native.getAttribute('aria-describedby')).toBe('ext-desc');
+      expect(hostEl.getAttribute('aria-describedby')).toBeNull();
+    });
+  });
 });

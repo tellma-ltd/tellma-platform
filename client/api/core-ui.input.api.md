@@ -5,14 +5,16 @@
 ```ts
 
 import * as _angular_core from '@angular/core';
+import { Signal } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
 
 // @public
 export class TmInput implements TmFormFieldControl {
     constructor();
-    protected readonly ariaDescribedBy: _angular_core.Signal<string | null>;
-    readonly controlId: _angular_core.Signal<string>;
-    readonly describedByIds: _angular_core.Signal<readonly string[]>;
+    readonly ariaDescribedby: _angular_core.InputSignal<string | null>;
+    readonly controlId: Signal<string>;
+    protected readonly describedByAttr: Signal<string | null>;
+    readonly describedByIds: Signal<readonly string[]>;
     readonly dirty: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly disabled: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly errors: _angular_core.InputSignal<readonly ValidationError.WithOptionalFieldTree[]>;
@@ -28,11 +30,11 @@ export class TmInput implements TmFormFieldControl {
     readonly readonly: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly required: _angular_core.InputSignalWithTransform<boolean, unknown>;
     setDescribedByIds(ids: readonly string[]): void;
-    protected readonly showsInvalid: _angular_core.Signal<boolean>;
+    protected readonly showsInvalid: Signal<boolean>;
     readonly touch: _angular_core.OutputEmitterRef<void>;
     readonly touched: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly value: _angular_core.ModelSignal<string>;
-    static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmInput, "input[tmInput]", never, { "value": { "alias": "value"; "required": false; "isSignal": true; }; "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "required": { "alias": "required"; "required": false; "isSignal": true; }; "invalid": { "alias": "invalid"; "required": false; "isSignal": true; }; "touched": { "alias": "touched"; "required": false; "isSignal": true; }; "dirty": { "alias": "dirty"; "required": false; "isSignal": true; }; "pending": { "alias": "pending"; "required": false; "isSignal": true; }; "errors": { "alias": "errors"; "required": false; "isSignal": true; }; "placeholder": { "alias": "placeholder"; "required": false; "isSignal": true; }; }, { "value": "valueChange"; "touch": "touch"; }, never, never, true, never>;
+    static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmInput, "input[tmInput]", never, { "value": { "alias": "value"; "required": false; "isSignal": true; }; "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "required": { "alias": "required"; "required": false; "isSignal": true; }; "invalid": { "alias": "invalid"; "required": false; "isSignal": true; }; "touched": { "alias": "touched"; "required": false; "isSignal": true; }; "dirty": { "alias": "dirty"; "required": false; "isSignal": true; }; "pending": { "alias": "pending"; "required": false; "isSignal": true; }; "errors": { "alias": "errors"; "required": false; "isSignal": true; }; "placeholder": { "alias": "placeholder"; "required": false; "isSignal": true; }; "ariaDescribedby": { "alias": "aria-describedby"; "required": false; "isSignal": true; }; }, { "value": "valueChange"; "touch": "touch"; }, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmInput, never>;
 }
 
