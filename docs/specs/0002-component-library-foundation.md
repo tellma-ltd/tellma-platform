@@ -422,13 +422,14 @@ usage.
 ### 3.2 Text input — `tmInput`
 
 - **Selector:** `input[tmInput]` (`textarea[tmInput]` reserved for later).
-- **API:** `value = model<string>()` (the FormValueControl value); `placeholder`; `size` resolved from
-  the enclosing `tm-form-field` or set directly; **`disabled`/`readonly`/`required` apply only in non-form
+- **API:** `value = model<string>()` (the FormValueControl value); `placeholder`; sizing comes from
+  the enclosing `tm-form-field`'s `size` (the bare directive carries no size input of its own);
+  **`disabled`/`readonly`/`required` apply only in non-form
   (unbound) usage** — when bound via `[formField]` the field is authoritative
   ([§5](#5-forms-integration-signal-forms)). Implements `FormValueControl<string>` + `TmFormFieldControl`,
   and declares the optional Signal Forms state inputs (`disabled`, `readonly`, `invalid`, `errors`,
   `touched`, `pending`, `required`, …) that `[formField]` binds.
-- **`size`** = the control's height/density variant, mapping to the brand field-height tokens: `sm` →
+- **`size`** (on the field) = the control's height/density variant, mapping to the brand field-height tokens: `sm` →
   `--field-height-sm` (30px), `md` → `--field-height` (38px, default), `lg` → `--field-height-lg` (46px).
   It is the static, per-instance density knob (distinct from a global density *system*,
   [Non-goals](#goals--non-goals)); it also adjusts padding and font-size tokens.
