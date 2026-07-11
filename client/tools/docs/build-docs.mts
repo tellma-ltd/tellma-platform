@@ -62,7 +62,9 @@ function llmsSection(component: ComponentDoc): string {
     `- Kind: ${component.kind} | Group: ${component.group} | Status: ${component.status}`,
     `- Import: \`${component.entryPoint}\``,
     `- Forms: ${component.formControl ?? 'not a form control'}`,
-    `- Harness: \`${component.harness}\` (@tellma/core-ui-testing)`,
+    component.harness
+      ? `- Harness: \`${component.harness}\` (@tellma/core-ui-testing)`
+      : '- Harness: none',
   ];
   if (component.inputs.length > 0) {
     lines.push('', '### Inputs', '');

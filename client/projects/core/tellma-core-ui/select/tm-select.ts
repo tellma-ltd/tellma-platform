@@ -35,9 +35,9 @@ import {
   TM_FORM_FIELD_DEFAULTS,
   TM_UI_TRANSLATE,
   tmResolveFieldErrors,
-  TmSpinner,
 } from '@tellma/core-ui';
 import { TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/form-field';
+import { TmSpinner } from '@tellma/core-ui/spinner';
 
 import { TmOption } from './tm-option';
 

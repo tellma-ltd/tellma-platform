@@ -12,10 +12,12 @@ import { TmCheckbox } from '@tellma/core-ui/checkbox';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmInput } from '@tellma/core-ui/input';
 import { TmOption, TmSelect } from '@tellma/core-ui/select';
+import { TmSpinner } from '@tellma/core-ui/spinner';
 
 import * as checkboxExamples from './checkbox/tm-checkbox.examples';
 import * as inputExamples from './input/tm-input.examples';
 import * as selectExamples from './select/tm-select.examples';
+import * as spinnerExamples from './spinner/tm-spinner.examples';
 
 /**
  * The `*.examples.ts` templates ship as canonical usage in components.json /
@@ -36,11 +38,12 @@ import * as selectExamples from './select/tm-select.examples';
  * The placeholder template uses every import (NG8113 flags unused ones).
  */
 @Component({
-  imports: [TmCheckbox, TmFormField, TmInput, TmOption, TmSelect],
+  imports: [TmCheckbox, TmFormField, TmInput, TmOption, TmSelect, TmSpinner],
   template: `
     <tm-form-field label="placeholder"><input tmInput /></tm-form-field>
     <tm-checkbox>placeholder</tm-checkbox>
     <tm-select><tm-option [value]="0">placeholder</tm-option></tm-select>
+    <tm-spinner />
   `,
 })
 class ExampleHost {}
@@ -62,6 +65,7 @@ const SUITES = [
   { source: 'input/tm-input.examples.ts', examples: inputExamples },
   { source: 'checkbox/tm-checkbox.examples.ts', examples: checkboxExamples },
   { source: 'select/tm-select.examples.ts', examples: selectExamples },
+  { source: 'spinner/tm-spinner.examples.ts', examples: spinnerExamples },
 ];
 
 describe('co-located docs examples compile against the live API (§11)', () => {

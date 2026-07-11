@@ -15,6 +15,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/checkbox` | `tm-checkbox` — native-input tri-state checkbox |
 | `@tellma/core-ui/form-field` | `tm-form-field` — label/hint/error chrome around any control |
 | `@tellma/core-ui/select` | `tm-select` + `tm-option` — overlay single-select |
+| `@tellma/core-ui/spinner` | `tm-spinner` — the shared decorative pending/progress glyph |
 
 ## Consuming
 

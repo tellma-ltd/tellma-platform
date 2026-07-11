@@ -5,7 +5,6 @@
 ```ts
 
 import { EnvironmentProviders } from '@angular/core';
-import * as i0 from '@angular/core';
 import { InjectionToken } from '@angular/core';
 import { Signal } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
@@ -86,12 +85,6 @@ export interface TmFormsOptions {
 
 // @public
 export function tmResolveFieldErrors(errors: Signal<readonly ValidationError.WithOptionalFieldTree[]>, translate: TmUiTranslateFn): Signal<readonly TmFieldError[]>;
-
-// @public
-export class TmSpinner {
-    static ɵcmp: i0.ɵɵComponentDeclaration<TmSpinner, "tm-spinner", never, {}, {}, never, never, true, never>;
-    static ɵfac: i0.ɵɵFactoryDeclaration<TmSpinner, never>;
-}
 
 // @public
 export type TmUiMessageContext = Record<string, unknown>;

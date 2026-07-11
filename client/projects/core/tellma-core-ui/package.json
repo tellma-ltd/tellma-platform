@@ -24,7 +24,8 @@
       "./input": 3,
       "./checkbox": 4,
       "./form-field": 4,
-      "./select": 8
+      "./select": 8,
+      "./spinner": 1
     },
     "docs": {
       "globalStyles": {

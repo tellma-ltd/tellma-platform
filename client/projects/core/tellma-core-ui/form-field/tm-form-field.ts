@@ -14,7 +14,8 @@ import {
 } from '@angular/core';
 
 import type { TmFormFieldControl } from '@tellma/core-ui/contracts';
-import { TM_ERROR_DISPLAY, TM_FORM_FIELD_DEFAULTS, TmSpinner } from '@tellma/core-ui';
+import { TM_ERROR_DISPLAY, TM_FORM_FIELD_DEFAULTS } from '@tellma/core-ui';
+import { TmSpinner } from '@tellma/core-ui/spinner';
 
 /**
  * A control projects itself into `tm-form-field` by providing this token

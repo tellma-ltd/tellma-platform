@@ -10,7 +10,7 @@
  */
 import { z } from 'zod';
 
-export const COMPONENTS_JSON_SCHEMA_VERSION = '1.0.0';
+export const COMPONENTS_JSON_SCHEMA_VERSION = '1.1.0';
 
 const propDoc = z.object({
   name: z.string(),
@@ -51,7 +51,8 @@ export const componentDoc = z.object({
     notes: z.string(),
   }),
   examples: z.array(exampleDoc),
-  harness: z.string(),
+  /** `<ClassName>Harness` in @tellma/core-ui-testing, or null when none exists. */
+  harness: z.string().nullable(),
   status: z.enum(['stable', 'experimental', 'deprecated']),
   deprecation: z.object({ since: z.string(), replacement: z.string().optional() }).optional(),
 });

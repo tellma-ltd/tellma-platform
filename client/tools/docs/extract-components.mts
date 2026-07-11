@@ -45,6 +45,18 @@ const uiDir = join(clientDir, 'projects', 'core', 'tellma-core-ui');
 const coreUi = discoverLibraries(clientDir).find(
   (library: { name: string }) => library.name === '@tellma/core-ui',
 )!;
+
+/**
+ * Harnesses pair by the `<ClassName>Harness` convention — but only when the
+ * class actually EXISTS in @tellma/core-ui-testing; a component without one
+ * (tm-spinner) documents `harness: null` rather than advertising a
+ * nonexistent import.
+ */
+const testingDir = join(clientDir, 'projects', 'core', 'tellma-core-ui-testing');
+const TESTING_SOURCE = readdirSync(testingDir)
+  .filter((name) => name.endsWith('.ts'))
+  .map((name) => readFileSync(join(testingDir, name), 'utf8'))
+  .join('\n');
 const GLOBAL_STYLES: Record<string, string> = coreUi.tellma?.docs?.globalStyles ?? {};
 const SOURCES: { file: string; entryPoint: string; styles?: string }[] = coreUi.entryPoints.flatMap(
   (entryPoint: { id: string; dir: string; importPath: string }) =>
@@ -341,7 +353,9 @@ export function extractComponents(): ComponentsJson {
         ),
         a11y: extractA11y(cls, template),
         examples: extractExamples(project, filePath),
-        harness: `${cls.getName()}Harness`,
+        harness: TESTING_SOURCE.includes(`class ${cls.getName()}Harness`)
+          ? `${cls.getName()}Harness`
+          : null,
         status: (jsDocTag(cls, 'tmStatus') as ComponentDoc['status'] | undefined) ?? 'stable',
       });
     }

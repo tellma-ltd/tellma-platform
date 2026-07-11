@@ -11,6 +11,10 @@ import { Component } from '@angular/core';
  * tests) can observe or restyle the animation there. Hidden from assistive
  * technology — the pending SEMANTIC belongs to the busy control
  * (`aria-busy`), never to this glyph.
+ *
+ * @tmGroup indicator
+ * @tmA11yNotes Purely decorative (aria-hidden); the busy control carries
+ *   aria-busy. The animation collapses under prefers-reduced-motion.
  */
 @Component({
   selector: 'tm-spinner',

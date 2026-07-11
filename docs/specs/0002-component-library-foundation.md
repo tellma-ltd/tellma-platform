@@ -623,10 +623,12 @@ rather than restate it.
 The analysis (D10) fixes the icon *direction* — SVG only, no icon fonts, a future `tm-icon` +
 `TmIconRegistry` (default set Lucide, sanitized/Trusted-Types) keeping the set swappable per distribution
 — but the registry earns its keep only when consumers supply icons, and no Phase-1 API takes one. The
-foundation needs exactly three glyphs: the select **caret**, the checkbox **check / indeterminate marks**,
-and the pending **spinner**. Each ships as a **static inline SVG in the owning component's template** —
-private DOM, `tm-`-classed, colored via `currentColor`/tokens (so themes and forced-colors restyle them),
-`aria-hidden="true"`, spinner animation honoring `prefers-reduced-motion`. No icon font, no runtime icon
+foundation needs exactly three glyphs: the select **caret** and the checkbox **check / indeterminate
+marks** ship as **static inline SVGs in the owning component's template** — private DOM, `tm-`-classed,
+colored via `currentColor`/tokens (so themes and forced-colors restyle them), `aria-hidden="true"`. The
+pending **spinner** is shared by several controls, so it is the one glyph with a public face:
+`tm-spinner` (`@tellma/core-ui/spinner`), decorative (`aria-hidden` — the busy control carries
+`aria-busy`), animated on its host with `prefers-reduced-motion` honored. No icon font, no runtime icon
 processing, no registry dependency. `tm-icon`/`TmIconRegistry` arrive with the first component that
 accepts consumer-supplied icons; the built-in glyphs can migrate to it then without any public-API change.
 
@@ -1198,7 +1200,8 @@ client/projects/core/
 │   ├── input/                 # secondary EP @tellma/core-ui/input    — tmInput directive
 │   ├── checkbox/              # secondary EP @tellma/core-ui/checkbox — tm-checkbox (inline template)
 │   ├── form-field/            # secondary EP @tellma/core-ui/form-field — tm-form-field (inline template)
-│   └── select/                # secondary EP @tellma/core-ui/select   — tm-select + tm-option (@angular/aria + CDK Overlay)
+│   ├── select/                # secondary EP @tellma/core-ui/select   — tm-select + tm-option (@angular/aria + CDK Overlay)
+│   └── spinner/               # secondary EP @tellma/core-ui/spinner  — tm-spinner, the shared pending glyph
 ├── tellma-core-ui-tokens/
 │   ├── public-api.ts
 │   ├── contract/              # TmTokens types
