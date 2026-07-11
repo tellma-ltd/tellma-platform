@@ -145,24 +145,48 @@ test.describe('prepopulated/async value in the browser (DoD 7)', () => {
 });
 
 test.describe('RTL (§3.4 residual, DoD 5/6)', () => {
-  test('panel mirrors: start-aligned to the trigger and matchWidth holds under dir=rtl', async ({
-    page,
-  }) => {
-    await page.goto(storyUrl('select', { dir: 'rtl' }));
-    const { trigger, panel } = await openSelect(page, 'select-country');
-    const triggerBounds = (await trigger.boundingBox())!;
-    const panelBounds = (await panel.boundingBox())!;
+  // With matchWidth the panel and trigger have EQUAL widths, so left- and
+  // right-edge alignment are the same assertion — edge geometry cannot tell
+  // a mirrored position resolution from an unmirrored one. The mirroring
+  // evidence is (a) the direction CDK resolved for its positioning math,
+  // stamped as `dir` on the overlay bounding box, and (b) the side
+  // inline-END content actually lands on inside the overlay.
+  for (const dir of ['ltr', 'rtl'] as const) {
+    const endSide = dir === 'rtl' ? 'left' : 'right';
+    test(`overlay resolves ${dir}; inline-end content lands on the ${endSide}`, async ({
+      page,
+    }) => {
+      await page.goto(storyUrl('select', { dir }));
+      const { trigger, panel } = await openSelect(page, 'select-country');
 
-    // matchWidth: the panel takes the trigger's width.
-    expect(Math.abs(panelBounds.width - triggerBounds.width)).toBeLessThanOrEqual(1);
-    // start-aligned in RTL = the inline-START (right) edges coincide, which
-    // with equal widths means the left edges do too.
-    expect(Math.abs(panelBounds.x + panelBounds.width - (triggerBounds.x + triggerBounds.width))).toBeLessThanOrEqual(1);
-    expect(Math.abs(panelBounds.x - triggerBounds.x)).toBeLessThanOrEqual(1);
+      await expect(page.locator('.cdk-overlay-connected-position-bounding-box')).toHaveAttribute(
+        'dir',
+        dir,
+      );
 
-    // And the option rows mirror (check glyph at the inline-end = left).
-    await expect(panel.getByRole('option', { name: 'Jordan' })).toBeVisible();
-  });
+      // matchWidth: the panel takes the trigger's width in both directions.
+      const triggerBounds = (await trigger.boundingBox())!;
+      const panelBounds = (await panel.boundingBox())!;
+      expect(Math.abs(panelBounds.width - triggerBounds.width)).toBeLessThanOrEqual(1);
+
+      // Select an option and reopen: the selected row's check glyph sits at
+      // the inline end — opposite halves of the row in the two directions.
+      await panel.getByRole('option', { name: 'Jordan' }).click();
+      await expect(panel).toBeHidden();
+      await openSelect(page, 'select-country');
+
+      const row = page.locator('.tm-option__row[aria-selected="true"]');
+      const rowBox = (await row.boundingBox())!;
+      const glyphBox = (await row.locator('.tm-option__check').boundingBox())!;
+      const glyphMid = glyphBox.x + glyphBox.width / 2;
+      const rowMid = rowBox.x + rowBox.width / 2;
+      if (dir === 'rtl') {
+        expect(glyphMid).toBeLessThan(rowMid);
+      } else {
+        expect(glyphMid).toBeGreaterThan(rowMid);
+      }
+    });
+  }
 });
 
 test.describe('live dir toggle (shell Dir wrapper)', () => {
