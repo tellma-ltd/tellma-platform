@@ -189,6 +189,55 @@ describe('tmInput + tm-form-field (Signal Forms, §3.1/§3.2/§5)', () => {
     });
   });
 
+  describe('non-form error input (§3.1)', () => {
+    @Component({
+      imports: [TmInput, TmFormField],
+      template: `
+        <tm-form-field label="Code" error="That code is not valid">
+          <input tmInput value="XYZ" />
+        </tm-form-field>
+      `,
+    })
+    class UnboundHost {}
+
+    it('shows the plain error for an unbound control and describes the input with it', async () => {
+      const { fixture, field } = await setup(UnboundHost);
+      expect(await field.getErrorText()).toBe('That code is not valid');
+
+      const inputEl = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+      const ids = inputEl.getAttribute('aria-describedby')!.split(' ');
+      const errorEl = document.getElementById(ids[ids.length - 1]);
+      expect(errorEl?.textContent?.trim()).toBe('That code is not valid');
+    });
+
+    @Component({
+      imports: [TmInput, TmFormField, FormField],
+      template: `
+        <tm-form-field label="Email" error="Manual fallback">
+          <input tmInput [formField]="f.email" />
+        </tm-form-field>
+      `,
+    })
+    class BoundHost {
+      readonly model = signal({ email: '' });
+      readonly f = form(this.model, (p) => {
+        required(p.email);
+      });
+    }
+
+    it("a bound control's displayed errors take precedence over the plain error", async () => {
+      const { fixture, input, field } = await setup(BoundHost);
+      // The plain error is author-controlled and unconditional while the
+      // control displays nothing (here: pristine, policy not showing yet).
+      expect(await field.getErrorText()).toBe('Manual fallback');
+
+      await input.focus();
+      await input.blur();
+      await fixture.whenStable();
+      expect(await field.getErrorText()).toBe('This field is required');
+    });
+  });
+
   describe('author-supplied aria-describedby (§2.1)', () => {
     @Component({
       imports: [TmInput],

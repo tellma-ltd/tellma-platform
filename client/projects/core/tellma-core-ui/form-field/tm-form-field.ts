@@ -103,8 +103,9 @@ export class TmFormField {
   /** Supporting text shown while no error is displayed. */
   readonly hint = input('');
   /**
-   * Plain error text for NON-form usage only; a [formField]-bound control's
-   * errors come from the field state and take precedence.
+   * Plain error text for non-form usage: shown whenever the control itself
+   * displays no error (unbound controls always qualify). A [formField]-bound
+   * control's own errors take precedence while displayed.
    */
   readonly error = input('');
   /** Height/density variant mapping to the --field-height* tokens. */
@@ -131,29 +132,30 @@ export class TmFormField {
   /** Whether the required marker is rendered — mirrors the control's required state. */
   protected readonly showRequiredMarker = computed(() => this.control()?.required() ?? false);
 
-  /** Whether the error element shows text — the display policy plus available errors. */
-  protected readonly showError = computed(() => {
+  /** Whether the error element shows text. */
+  protected readonly showError = computed(() => this.errorText() !== '');
+
+  /**
+   * The displayed error text: the control's first localized error while the
+   * display policy shows it, else the plain `error` input — which is what a
+   * control WITHOUT a bound field (every projected control provides the
+   * token, bound or not) falls through to.
+   */
+  protected readonly errorText = computed(() => {
     const control = this.control();
-    if (!control) {
-      return this.error() !== '';
-    }
-    return (
+    if (
+      control &&
       this.errorDisplay({
         invalid: control.invalid(),
         touched: control.touched(),
         dirty: control.dirty(),
         pending: control.pending(),
-      }) && control.localizedErrors().length > 0
-    );
-  });
-
-  /** The displayed error text: the control's first localized error, else the `error` input. */
-  protected readonly errorText = computed(() => {
-    const control = this.control();
-    if (!control) {
-      return this.error();
+      }) &&
+      control.localizedErrors().length > 0
+    ) {
+      return control.localizedErrors()[0].message;
     }
-    return control.localizedErrors()[0]?.message ?? '';
+    return this.error();
   });
 
   /** Whether the hint is shown — a displayed error hides it. */
