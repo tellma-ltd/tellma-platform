@@ -24,7 +24,7 @@ pnpm run e2e            # Playwright behavioral/a11y/RTL suite against the showc
 pnpm run lint           # ESLint (tm- rules, contracts boundary) + stylelint (token sizing)
 pnpm run typecheck      # the full core-ui program incl. files no build compiles (examples)
 pnpm run lint:test      # the custom lint rules' own unit tests + MCP smoke tests
-pnpm run tokens:check   # token schema + WCAG-contrast + completeness gates
+pnpm run tokens:check   # token schema + missing-ref gate (contrast is axe's job in e2e)
 pnpm run api:check      # public-API goldens (client/api/*.api.md)
 pnpm run api:approve    # accept an INTENDED public-API change (commit the diff)
 pnpm run docs:build     # components.json (schema-validated) + llms.txt for the MCP package

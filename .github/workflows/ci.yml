@@ -100,9 +100,10 @@ jobs:
           grep -q "CreateTableType" "$PKG_HOST"/Migrations/*_PackageProbe.cs
 
   # The Angular workspace (spec 0002): lint (incl. the tm- rules), token
-  # gates (schema + WCAG contrast), build, the full unit suite, API
+  # gates (schema + missing-ref), build, the full unit suite, API
   # goldens, docs/MCP generation + validation, bundle budgets, and the
-  # Playwright behavioral/a11y/RTL suite — all port-free (§1.3).
+  # Playwright behavioral/a11y/RTL suite (incl. axe contrast) — all
+  # port-free (§1.3).
   client:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest

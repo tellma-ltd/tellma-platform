@@ -647,7 +647,7 @@ layer sits above them and buys what raw CSS cannot:
   and run a **missing-ref gate**: every emitted `var()` reference must resolve within its scheme (the
   `:lang()` leading map included), so a preset that references a missing token **fails the build**.
   Color contrast is checked where it is observable — the axe browser battery runs over the rendered
-  components in light and dark ([§10](#10-testing-strategy)) — not by arithmetic over declared token
+  components in light and dark ([§10](#10-testing-tellmacore-ui-testing)) — not by arithmetic over declared token
   pairs. (The brand routes *text* through teal-600 — 5.67:1 on white; the canonical teal-400 is a
   decorative fill that never carries text.)
 - **One source, many outputs** — the same contract emits the CSS variables, the JSON Schema, the docs/MCP
