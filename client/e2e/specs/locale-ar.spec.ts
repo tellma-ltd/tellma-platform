@@ -63,3 +63,31 @@ test('runtime locale switch re-renders visible errors; Arabic font loads on dema
   await expect(error).toHaveText('This field is required');
   expect(await page.evaluate(() => getComputedStyle(document.body).lineHeight)).toBe('25.6px');
 });
+
+test('leading islands are real BELOW the root: marked subtrees re-lead both ways', async ({
+  page,
+}) => {
+  await page.goto(storyUrl('i18n')); // <html lang="en">: body leading 1.6
+  const leadings = await page.evaluate(() => {
+    const probe = (lang: string, parent: Element) => {
+      const el = document.createElement('p');
+      el.lang = lang;
+      el.textContent = 'قياس / probe';
+      parent.append(el);
+      return el;
+    };
+    // An Arabic island inside the English page, and an English island
+    // nested back inside it.
+    const arabicIsland = probe('ar', document.body);
+    const englishIsland = probe('en', arabicIsland);
+    return {
+      body: getComputedStyle(document.body).lineHeight,
+      arabicIsland: getComputedStyle(arabicIsland).lineHeight,
+      englishInsideArabic: getComputedStyle(englishIsland).lineHeight,
+    };
+  });
+
+  expect(leadings.body).toBe('25.6px'); // 1.6 × 16px
+  expect(leadings.arabicIsland).toBe('30.4px'); // 1.9 × 16px — not inherited 1.6
+  expect(leadings.englishInsideArabic).toBe('25.6px'); // snaps back
+});

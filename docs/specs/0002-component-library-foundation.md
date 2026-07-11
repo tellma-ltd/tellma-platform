@@ -931,11 +931,13 @@ thing; real AT verification (NVDA/JAWS/VoiceOver) is a manual pass, out of DoD s
   stack** (brand faces first, generics last): each glyph resolves to its script's face via the faces'
   `unicode-range`s ([§7.1](#71-fonts--web-font-loading)), so mixed Arabic/Latin lines render every brand
   face at once, and family names whose faces no installed pack registers are skipped harmlessly. Leading
-  is a line-box property that cannot follow scripts per glyph, so `--leading-ui` is re-pointed by
-  **`:lang()` rules** emitted from the token contract's language→leading map (Arabic gets the larger
-  brand leading); every listed language both sets and resets the alias, so an explicitly marked island
-  (`lang="en"` inside an Arabic page) keeps its own leading. Distributions set the root `lang` attribute
-  when switching locale — required for assistive technology anyway.
+  is a line-box property that cannot follow scripts per glyph, so **`:lang()` rules** emitted from the
+  token contract's language→leading map both re-point `--leading-ui` and apply
+  `line-height: var(--leading-ui)` (line-height inherits by computed value, so re-pointing alone would
+  never reach below the root); every listed language both sets and resets, so an explicitly marked
+  island (`lang="ar"` in an English page, or the reverse) gets its own leading at any depth. The rules
+  live in `@layer tm.base` — unlayered component/app line-heights still win. Distributions set the root
+  `lang` attribute when switching locale — required for assistive technology anyway.
 - **Bidi text inside fields (mixed Arabic/English).** Form values routinely mix scripts (an Arabic name
   with a Latin code, a phone number in an RTL paragraph). The browser's Unicode Bidi Algorithm handles the
   *display* ordering, but the field's base direction must be right or punctuation and Latin runs land

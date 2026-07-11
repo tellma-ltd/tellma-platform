@@ -153,7 +153,7 @@ function sharedVars(tokens: TmTokens): VarMap {
   // faces' unicode-ranges, so mixed-script lines render every brand face at
   // once, independent of page language or direction. --leading-ui is a
   // line-box property that cannot adapt per glyph; the :lang() blocks
-  // emitted by tmEmitCss re-point it by content language.
+  // emitted by tmEmitCss re-point AND apply it by content language.
   vars.set('--font-ui', font.ui.join(', '));
   vars.set('--leading-ui', 'var(--leading-body)');
   for (const [key, value] of Object.entries(font.size)) {
@@ -210,7 +210,19 @@ export function tmEmitCss(tokens: TmTokens): string {
   const darkVars = schemeVars(tokens.semantic.colorScheme.dark);
 
   const langBlocks = Object.entries(tokens.semantic.leadingByLang).map(([lang, value]) =>
-    block(`:lang(${lang})`, new Map([['--leading-ui', tmTokenValueToCss(value)]]), '  '),
+    block(
+      `:lang(${lang})`,
+      new Map([
+        ['--leading-ui', tmTokenValueToCss(value)],
+        // Re-pointing the variable alone is not enough below the root:
+        // line-height inherits by COMPUTED value, so a lang island would
+        // keep its parent's leading unless the property itself is applied
+        // where the variable changed. Layered in tm.base, any unlayered
+        // line-height (component or app styles) still wins.
+        ['line-height', 'var(--leading-ui)'],
+      ]),
+      '  ',
+    ),
   );
 
   return [
@@ -225,9 +237,12 @@ export function tmEmitCss(tokens: TmTokens): string {
     '',
     block('[data-theme=dark]', darkVars, '  '),
     '',
-    '  /* Language-adaptive leading. :lang() ties :root on specificity, so',
-    '     these must come later in source; every listed language sets its own',
-    '     value, so a marked island (lang="en" in an Arabic page) snaps back. */',
+    '  /* Language-adaptive leading. Each block re-points --leading-ui AND',
+    '     applies line-height (which inherits by computed value — without the',
+    '     application, a marked island would keep its parent leading). :lang()',
+    '     ties :root on specificity, so these must come later in source; every',
+    '     listed language sets its own value, so a marked island (lang="en" in',
+    '     an Arabic page) snaps back. */',
     ...langBlocks,
     '',
     '  /* Text selection paints the brand teal. Flat color only: the CSS',

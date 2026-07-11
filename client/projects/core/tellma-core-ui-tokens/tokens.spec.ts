@@ -118,11 +118,18 @@ describe('tmEmitCss', () => {
     expect(css).not.toContain('[dir=');
   });
 
-  it('emits language-keyed leading that both sets and resets, after :root', () => {
-    expect(css).toMatch(/:lang\(ar\) \{\n\s*--leading-ui: var\(--leading-arabic\);/);
+  it('emits language-keyed leading that sets, resets, AND applies, after :root', () => {
+    // Each block must re-point the variable and apply line-height: the
+    // property inherits by computed value, so without the application a
+    // lang island below the root would keep its parent's leading.
+    expect(css).toMatch(
+      /:lang\(ar\) \{\n\s*--leading-ui: var\(--leading-arabic\);\n\s*line-height: var\(--leading-ui\);/,
+    );
     // The en rule restores the body leading, so a lang="en" island inside an
     // Arabic page snaps back instead of inheriting 1.9.
-    expect(css).toMatch(/:lang\(en\) \{\n\s*--leading-ui: var\(--leading-body\);/);
+    expect(css).toMatch(
+      /:lang\(en\) \{\n\s*--leading-ui: var\(--leading-body\);\n\s*line-height: var\(--leading-ui\);/,
+    );
     // :lang() ties :root on specificity — source order decides on <html>, so
     // the :lang blocks must come after the :root block.
     expect(css.indexOf(':lang(ar)')).toBeGreaterThan(css.indexOf(':root {'));
