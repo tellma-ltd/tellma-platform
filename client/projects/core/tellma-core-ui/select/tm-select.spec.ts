@@ -281,7 +281,7 @@ describe('tm-select (§3.4)', () => {
     });
   });
 
-  describe('grid shaping (DoD 11 — drivable, not test-hardened)', () => {
+  describe('grid shaping (DoD 11)', () => {
     @Component({
       imports: [TmSelect, TmOption],
       template: `
@@ -297,22 +297,43 @@ describe('tm-select (§3.4)', () => {
       readonly countries = COUNTRIES;
     }
 
-    it('a host can drive cancel() to revert to the last committed value', async () => {
+    it('cancel() reverts an activation commit to the pre-edit value', async () => {
       const { fixture, select } = await setup(Host);
-      const host = fixture.componentInstance;
+      const host = fixture.componentInstance; // starts at 2 (external baseline)
       const instance = fixture.debugElement.query(
         (el) => el.componentInstance instanceof TmSelect,
       ).componentInstance as TmSelect<number>;
 
       await select.selectOption('Jordan');
       await fixture.whenStable();
-      expect(host.value()).toBe(4); // committed by activation
+      expect(host.value()).toBe(4); // the activation committed to the model…
 
-      host.value.set(1); // grid writes through the value channel
+      instance.cancel(); // …but the HOST decides (second Esc, §3.4)
       await fixture.whenStable();
-      instance.cancel(); // second-Esc revert is the HOST's call (§3.4)
+      expect(host.value()).toBe(2); // back to the value before the edit
+    });
+
+    it('external writes and commit() move the baseline; cancel() returns to it', async () => {
+      const { fixture, select } = await setup(Host);
+      const host = fixture.componentInstance;
+      const instance = fixture.debugElement.query(
+        (el) => el.componentInstance instanceof TmSelect,
+      ).componentInstance as TmSelect<number>;
+
+      host.value.set(1); // grid loads a row through the value channel
       await fixture.whenStable();
-      expect(host.value()).toBe(1); // external writes move the baseline
+
+      await select.selectOption('Jordan');
+      await fixture.whenStable();
+      instance.commit(); // host accepts the edit — 4 is the new baseline
+
+      await select.selectOption('Ethiopia');
+      await fixture.whenStable();
+      expect(host.value()).toBe(3);
+
+      instance.cancel();
+      await fixture.whenStable();
+      expect(host.value()).toBe(4); // the committed Jordan, not the loaded 1
     });
   });
 });

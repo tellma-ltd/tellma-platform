@@ -257,8 +257,17 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   private readonly listbox = viewChild(Listbox);
   private readonly optionRows = viewChildren('optionRow', { read: ElementRef });
 
-  /** Grid revert baseline (TmCellEditor — draft, not test-hardened). */
+  /** Grid revert baseline (TmCellEditor): the value `cancel()` returns to. */
   private lastCommitted: T | undefined;
+  /**
+   * The value this select itself just wrote (activation commit or cancel),
+   * so the baseline effect can tell its own echo from an EXTERNAL write —
+   * only external writes (form resets, grid loads) and `commit()` move the
+   * revert baseline. If the baseline followed activations too, it would
+   * equal `value()` at every observable point and `cancel()` could never
+   * revert anything.
+   */
+  private selfWrite: { readonly value: T | undefined } | null = null;
 
   // ---- TmFormFieldControl (§2.1) ----
   /** Renders its own trigger chrome; the field adds only label/hint/error. */
@@ -357,9 +366,15 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
       }
     });
 
-    // External writes (form resets, grid loads) move the revert baseline.
+    // External writes (form resets, grid loads) move the revert baseline;
+    // the select's own writes (marked via `selfWrite`) do not.
     effect(() => {
-      this.lastCommitted = this.value();
+      const value = this.value();
+      const self = this.selfWrite;
+      this.selfWrite = null;
+      if (!self || !Object.is(self.value, value)) {
+        this.lastCommitted = value;
+      }
     });
 
     // Typeahead textContent fallback (§3.4): after the rows render, feed
@@ -411,8 +426,8 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
       const option = this.options().find((o) => this.keyOf(o.value()) === key);
       if (option && !option.disabled()) {
         const newValue = option.value();
+        this.selfWrite = { value: newValue };
         this.value.set(newValue);
-        this.lastCommitted = newValue;
         this.selectionChange.emit(newValue);
       }
     }
@@ -450,6 +465,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
    * and never reaches here.
    */
   cancel(): void {
+    this.selfWrite = { value: this.lastCommitted };
     this.value.set(this.lastCommitted);
     this.expanded.set(false);
   }
