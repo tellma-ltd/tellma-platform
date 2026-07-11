@@ -32,4 +32,9 @@
     <span class="shell-lang" data-testid="active-lang">{{ lang() }}</span>
   </div>
 </header>
-<router-outlet />
+<!-- Dir wrapper: a LIVE Directionality for CDK overlays; the root service
+     reads <html dir> only once at construction and would go stale on the
+     shell's runtime dir toggle. -->
+<main class="shell-main" [dir]="dir()">
+  <router-outlet />
+</main>

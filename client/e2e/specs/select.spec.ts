@@ -165,6 +165,25 @@ test.describe('RTL (§3.4 residual, DoD 5/6)', () => {
   });
 });
 
+test.describe('live dir toggle (shell Dir wrapper)', () => {
+  test('overlay Directionality follows a RUNTIME dir flip, not just fresh loads', async ({
+    page,
+  }) => {
+    await page.goto(storyUrl('select')); // fresh LTR load
+    await page.getByTestId('lang-ar').click(); // flip at runtime — no reload
+    await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+
+    await openSelect(page, 'select-country');
+    // The root Directionality reads <html dir> once at construction; without
+    // the shell's Dir wrapper the overlay would still stamp (and position)
+    // dir="ltr" here.
+    await expect(page.locator('.cdk-overlay-connected-position-bounding-box')).toHaveAttribute(
+      'dir',
+      'rtl',
+    );
+  });
+});
+
 test.describe('reduced motion (§6/DoD 15)', () => {
   test('caret transition collapses under prefers-reduced-motion', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });

@@ -6,6 +6,7 @@
 import { Component, DOCUMENT, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { Dir } from '@angular/cdk/bidi';
 import { TranslocoService } from '@jsverse/transloco';
 
 import { SHOWCASE_STORIES } from './stories';
@@ -18,10 +19,16 @@ import { SHOWCASE_STORIES } from './stories';
  * toggle rewrites the query params, and this shell is the ONE place that
  * applies dir/lang/data-theme to <html>. Direction follows the language
  * unless ?dir= forces it.
+ *
+ * The story outlet is additionally wrapped in the CDK `Dir` directive: the
+ * root Directionality reads <html dir> ONCE at construction, so a LIVE dir
+ * flip would leave CDK overlays positioning (and stamping dir on) the old
+ * direction. The wrapper gives every story a Directionality that follows
+ * the toggle.
  */
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, Dir],
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
@@ -39,14 +46,16 @@ export class App {
   protected readonly theme = computed(() =>
     this.query()?.get('theme') === 'dark' ? 'dark' : 'light',
   );
-  private readonly dir = computed(
-    () => this.query()?.get('dir') ?? (this.lang() === 'ar' ? 'rtl' : 'ltr'),
+  protected readonly dir = computed(() =>
+    (this.query()?.get('dir') ?? (this.lang() === 'ar' ? 'rtl' : 'ltr')) === 'rtl'
+      ? ('rtl' as const)
+      : ('ltr' as const),
   );
 
   constructor() {
     effect(() => {
       const root = this.document.documentElement;
-      root.dir = this.dir() === 'rtl' ? 'rtl' : 'ltr';
+      root.dir = this.dir();
       root.lang = this.lang();
       if (this.theme() === 'dark') {
         root.setAttribute('data-theme', 'dark');
