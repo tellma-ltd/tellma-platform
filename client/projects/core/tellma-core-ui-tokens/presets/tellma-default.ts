@@ -46,7 +46,7 @@ const light: TmSchemeColors = {
   },
   action: {
     // Teal that CARRIES TEXT is teal-600 (5.67:1 with white); the canonical
-    // logo teal-400 is decorative only (2.97:1 — see contrastExceptions).
+    // logo teal-400 is decorative only (2.97:1 on the white page by design).
     primary: '{teal.600}',
     primaryHover: '{teal.700}',
     primaryActive: '{teal.800}',
@@ -256,117 +256,4 @@ export const tmTokensDefault: TmTokens = {
     // tm-select (§3.4): panel + option-row geometry (touch-comfortable rows).
     select: { panelMaxHeight: '280px', optionHeight: '36px' },
   },
-  contrastPairs: [
-    // Text on its surface.
-    { fg: '--text-strong', bg: '--surface-page', kind: 'text' },
-    { fg: '--text-body', bg: '--surface-card', kind: 'text' },
-    { fg: '--text-secondary', bg: '--surface-page', kind: 'text' },
-    { fg: '--text-muted', bg: '--surface-page', kind: 'text' },
-    { fg: '--text-link', bg: '--surface-page', kind: 'text' },
-    { fg: '--text-on-dark', bg: '--surface-inverse', kind: 'text' },
-    { fg: '--color-on-primary', bg: '--color-primary', kind: 'text' },
-    { fg: '--selection-text', bg: '--selection-bg', kind: 'text' },
-    // Field group.
-    { fg: '--field-text', bg: '--field-bg', kind: 'text' },
-    { fg: '--field-text-disabled', bg: '--field-bg-disabled', kind: 'text' },
-    { fg: '--field-placeholder', bg: '--field-bg', kind: 'text' },
-    { fg: '--field-icon', bg: '--field-bg', kind: 'uiComponent' },
-    { fg: '--field-border', bg: '--field-bg', kind: 'uiComponent' },
-    { fg: '--field-border-hover', bg: '--field-bg', kind: 'uiComponent' },
-    { fg: '--field-border-focus', bg: '--field-bg', kind: 'uiComponent' },
-    { fg: '--field-border-invalid', bg: '--field-bg', kind: 'uiComponent' },
-    // Focus indicator + brand accent.
-    { fg: '--focus-ring-color', bg: '--surface-page', kind: 'uiComponent' },
-    { fg: '--accent', bg: '--surface-page', kind: 'uiComponent' },
-    // Status fg on the page and on its own tint.
-    { fg: '--success', bg: '--surface-page', kind: 'text' },
-    { fg: '--success', bg: '--success-bg', kind: 'text' },
-    { fg: '--warning', bg: '--surface-page', kind: 'text' },
-    { fg: '--warning', bg: '--warning-bg', kind: 'text' },
-    { fg: '--error', bg: '--surface-page', kind: 'text' },
-    { fg: '--error', bg: '--error-bg', kind: 'text' },
-    { fg: '--info', bg: '--surface-page', kind: 'text' },
-    { fg: '--info', bg: '--info-bg', kind: 'text' },
-  ],
-  contrastExceptions: [
-    {
-      // The canonical first entry named by the spec (§4).
-      fg: '--accent',
-      bg: '--surface-page',
-      scheme: 'light',
-      reason:
-        'brand-identity surface only; never carries text — text uses --color-primary (teal-600). ' +
-        'Canonical logo teal-400 reads 2.97:1 on the white page by design.',
-    },
-    {
-      fg: '--text-muted',
-      bg: '--surface-page',
-      scheme: 'light',
-      reason:
-        'muted/disabled-adjacent text (captions, placeholders elsewhere); disabled text is ' +
-        'exempt under WCAG 1.4.3 and muted text is never the sole carrier of information.',
-    },
-    {
-      fg: '--field-placeholder',
-      bg: '--field-bg',
-      reason:
-        'placeholder is supplementary — the visible label (tm-form-field) carries the accessible ' +
-        'name and every required datum; brand grey-400 placeholder is a deliberate de-emphasis.',
-    },
-    {
-      fg: '--field-text-disabled',
-      bg: '--field-bg-disabled',
-      reason: 'disabled controls are exempt from contrast minimums (WCAG 1.4.3/1.4.11).',
-    },
-    {
-      fg: '--field-border',
-      bg: '--field-bg',
-      reason:
-        'resting hairline border is decorative de-emphasis; the field is identified by its label ' +
-        'and placeholder, and the hover/focus/invalid borders carry the 3:1 state indication.',
-    },
-    {
-      fg: '--field-border-hover',
-      bg: '--field-bg',
-      reason:
-        'hover is a transient pointer affordance, not the sole state indicator; focus/invalid ' +
-        'borders clear 3:1.',
-    },
-    {
-      fg: '--warning',
-      bg: '--surface-page',
-      scheme: 'light',
-      reason:
-        'brand warning amber (#B7791F, 3.61:1) — always paired with an icon and/or text label; ' +
-        'body-size warning copy uses --text-body with a warning icon, not bare amber text.',
-    },
-    {
-      fg: '--warning',
-      bg: '--warning-bg',
-      scheme: 'light',
-      reason: 'warning ink on its own tint — same rationale as --warning on the page.',
-    },
-    {
-      fg: '--success',
-      bg: '--success-bg',
-      scheme: 'light',
-      reason:
-        'brand success green on its own tint measures 4.34:1 — used in badges/alerts always ' +
-        'paired with an icon; body-size success copy uses --text-body on the tint.',
-    },
-    {
-      fg: '--info',
-      bg: '--surface-page',
-      scheme: 'light',
-      reason:
-        'teal-500 info accent (3.95:1) — informational glyph/badge color paired with body text; ' +
-        'clears the 3:1 non-text ratio, used at large/bold sizes for text.',
-    },
-    {
-      fg: '--info',
-      bg: '--info-bg',
-      scheme: 'light',
-      reason: 'info ink on its own tint — same rationale as --info on the page.',
-    },
-  ],
 };

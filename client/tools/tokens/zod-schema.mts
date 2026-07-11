@@ -113,20 +113,6 @@ export const tmTokensZodSchema = z.object({
     leadingByLang: z.record(z.string(), value),
   }),
   component: z.record(z.string(), z.record(z.string(), value)),
-  contrastPairs: z.array(
-    z.object({ fg: value, bg: value, kind: z.enum(['text', 'largeText', 'uiComponent']) }),
-  ),
-  contrastExceptions: z.array(
-    z.object({
-      fg: value,
-      bg: value,
-      scheme: z.enum(['light', 'dark']).optional(),
-      kind: z.enum(['text', 'largeText', 'uiComponent']).optional(),
-      reason: value,
-      expires: value.optional(),
-      owner: value.optional(),
-    }),
-  ),
 });
 
 // Compile-time sync with the canonical TS contract: if the zod mirror drifts,

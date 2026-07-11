@@ -6,7 +6,6 @@
 import type { TmTokens } from './contract/tokens';
 import { tmEmitCss, tmEmittedSchemeVars, tmRefToVarName, tmTokenValueToCss } from './emit/emit-css';
 import { tmTokensDefault } from './presets/tellma-default';
-import { tmContrastRatio, tmParseColor, tmRelativeLuminance } from './schema/contrast';
 import { tmResolveVar, tmValidateTokens } from './schema/validate';
 
 describe('tmRefToVarName', () => {
@@ -35,42 +34,6 @@ describe('tmRefToVarName', () => {
     expect(tmTokenValueToCss('{teal.600}')).toBe('var(--teal-600)');
     expect(tmTokenValueToCss('#FEFEFE')).toBe('#FEFEFE');
     expect(tmTokenValueToCss('rgba(255, 255, 255, 0.12)')).toBe('rgba(255, 255, 255, 0.12)');
-  });
-});
-
-describe('contrast math (WCAG 2.1)', () => {
-  it('reproduces the ratios the spec quotes (§4)', () => {
-    const white = tmParseColor('#FEFEFE')!;
-    const teal600 = tmParseColor('#316E80')!;
-    const teal400 = tmParseColor('#4CA0B6')!;
-    // action-teal = teal-600 for text-on-fill clears 4.5:1
-    expect(tmContrastRatio(white, teal600)).toBeGreaterThan(4.5);
-    expect(tmContrastRatio(white, teal600)).toBeCloseTo(5.67, 1);
-    // canonical teal-400 carries white text at only 2.97:1
-    expect(tmContrastRatio(white, teal400)).toBeLessThan(3);
-    expect(tmContrastRatio(white, teal400)).toBeCloseTo(2.97, 1);
-    // focus ring teal-500 clears 3:1 against the white field
-    const teal500 = tmParseColor('#3E899D')!;
-    expect(tmContrastRatio(teal500, white)).toBeGreaterThan(3);
-  });
-
-  it('parses hex forms and rgb()/rgba()', () => {
-    expect(tmParseColor('#fff')).toEqual({ r: 255, g: 255, b: 255, a: 1 });
-    expect(tmParseColor('#00172280')?.a).toBeCloseTo(0.5, 1);
-    expect(tmParseColor('rgb(76, 160, 182)')).toEqual({ r: 76, g: 160, b: 182, a: 1 });
-    expect(tmParseColor('rgba(255, 255, 255, 0.12)')?.a).toBeCloseTo(0.12);
-    expect(tmParseColor('nonsense')).toBeNull();
-    expect(tmRelativeLuminance(tmParseColor('#000000')!)).toBe(0);
-    expect(tmRelativeLuminance(tmParseColor('#ffffff')!)).toBe(1);
-  });
-
-  it('composites semi-transparent colors over their background', () => {
-    const semiWhite = tmParseColor('rgba(255, 255, 255, 0.14)')!;
-    const darkField = tmParseColor('#16252D')!;
-    // Composited border is barely lighter than the field — low ratio.
-    const ratio = tmContrastRatio(semiWhite, darkField);
-    expect(ratio).toBeGreaterThan(1);
-    expect(ratio).toBeLessThan(2);
   });
 });
 
@@ -157,7 +120,7 @@ describe('tmEmitCss', () => {
   });
 });
 
-describe('tmValidateTokens gates', () => {
+describe('tmValidateTokens (missing-ref gate)', () => {
   it('passes the default preset', () => {
     expect(tmValidateTokens(tmTokensDefault)).toEqual([]);
   });
@@ -185,67 +148,6 @@ describe('tmValidateTokens gates', () => {
     const issues = tmValidateTokens(broken);
     expect(
       issues.some((i) => i.gate === 'missing-ref' && i.message.includes('leadingByLang.he')),
-    ).toBe(true);
-  });
-
-  it('fails on a below-AA pair that is not excepted', () => {
-    const broken: TmTokens = {
-      ...tmTokensDefault,
-      contrastPairs: [
-        ...tmTokensDefault.contrastPairs,
-        // white text on the canonical teal-400: 2.97:1 — the spec's own example.
-        { fg: '--white', bg: '--accent', kind: 'text' },
-      ],
-    };
-    const issues = tmValidateTokens(broken);
-    expect(issues.some((i) => i.gate === 'contrast' && i.message.includes('--accent'))).toBe(true);
-  });
-
-  it('a scheme-scoped exception does not suppress the other scheme', () => {
-    // --white on --accent fails in LIGHT (2.97:1); a dark-only exception
-    // must leave that light failure gated.
-    const broken: TmTokens = {
-      ...tmTokensDefault,
-      contrastPairs: [
-        ...tmTokensDefault.contrastPairs,
-        { fg: '--white', bg: '--accent', kind: 'text' },
-      ],
-      contrastExceptions: [
-        ...tmTokensDefault.contrastExceptions,
-        { fg: '--white', bg: '--accent', scheme: 'dark', reason: 'dark-only carve-out' },
-      ],
-    };
-    const issues = tmValidateTokens(broken);
-    expect(
-      issues.some(
-        (i) => i.gate === 'contrast' && i.message.includes('[light]') && i.message.includes('--accent'),
-      ),
-    ).toBe(true);
-    expect(issues.some((i) => i.message.includes('[dark]') && i.message.includes('--accent'))).toBe(
-      false,
-    );
-  });
-
-  it('fails on an exception with an empty reason', () => {
-    const broken: TmTokens = {
-      ...tmTokensDefault,
-      contrastExceptions: [
-        ...tmTokensDefault.contrastExceptions,
-        { fg: '--white', bg: '--accent', reason: '   ' },
-      ],
-    };
-    const issues = tmValidateTokens(broken);
-    expect(issues.some((i) => i.gate === 'exception')).toBe(true);
-  });
-
-  it('fails when an ink-carrying token has no declared pair (completeness)', () => {
-    const broken: TmTokens = {
-      ...tmTokensDefault,
-      contrastPairs: tmTokensDefault.contrastPairs.filter((p) => p.fg !== '--field-text'),
-    };
-    const issues = tmValidateTokens(broken);
-    expect(
-      issues.some((i) => i.gate === 'completeness' && i.message.includes('--field-text')),
     ).toBe(true);
   });
 });

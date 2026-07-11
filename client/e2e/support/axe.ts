@@ -16,12 +16,11 @@ export async function expectNoAxeViolations(page: Page, selector?: string): Prom
   if (selector) {
     builder = builder.include(selector);
   }
-  // Mirrors the reviewed contrastExceptions ledger in the tokens preset
-  // (@tellma/core-ui-tokens): placeholder text is supplementary — the
-  // visible label carries the accessible name — and the brand grey-400
-  // placeholder is a deliberate de-emphasis. Native ::placeholder is
-  // outside axe's reach; tm-select renders its placeholder as real text,
-  // so the SAME justified exception is applied here explicitly.
+  // Justified contrast carve-out: placeholder text is supplementary — the
+  // visible label carries the accessible name and every required datum —
+  // and the brand grey-400 placeholder is a deliberate de-emphasis. Native
+  // ::placeholder is outside axe's reach; tm-select renders its placeholder
+  // as real text, so the same decision is applied here explicitly.
   builder = builder.exclude('.tm-select__value--placeholder');
   const results = await builder.analyze();
   expect(

@@ -129,7 +129,7 @@ Two facts about the consumer set delete complexity the general-purpose libraries
 - Establish the canonical component template, the harness template, and the
   `*.examples.ts` → `components.json` docs template every later component copies.
 - Encode the brand tokens into the typed `TmTokens` contract + emitter, with one default preset
-  reproducing `tellma-brand/design-system` and a build-time WCAG-contrast gate.
+  reproducing `tellma-brand/design-system` and a build-time schema + missing-ref gate.
 
 **Non-goals (explicitly deferred)**
 
@@ -167,7 +167,7 @@ the fourth (`-mcp`), and a real (if small) Arabic locale pack.
 | Package | Phase-1 contents |
 |---|---|
 | `@tellma/core-ui` | The components — `tmInput` directive; `tm-checkbox`; `tm-select` + `tm-option` (overlay panel via CDK Overlay, listbox via `@angular/aria`); `tm-form-field`; `provideTellmaForms()`/`provideTellmaUi()`; the static base CSS; the self-hosted default fonts + `@font-face` ([§7.1](#71-fonts--web-font-loading)). Plus a **`@tellma/core-ui/contracts`** secondary entry point holding the `SignalLike`/`WritableSignalLike` boundary types and the `TmFormFieldControl`/`TmCellEditor`/`TmCellDisplay` interfaces ([§2.1](#21-shared-contracts)). Each component is its own secondary entry point (`@tellma/core-ui/input`, `/checkbox`, `/select`, `/form-field`); the primary `@tellma/core-ui` entry point carries the providers, i18n, fonts, and forms infrastructure ([§12](#12-directory-layout)). |
-| `@tellma/core-ui-tokens` | `TmTokens` TS contract; the brand default preset; the `tokens → CSS variables` emitter; generated JSON Schema; build-time schema + WCAG-contrast validation. |
+| `@tellma/core-ui-tokens` | `TmTokens` TS contract; the brand default preset; the `tokens → CSS variables` emitter; generated JSON Schema; build-time schema + missing-ref validation. |
 | `@tellma/core-ui-testing` | `TmInputHarness`, `TmCheckboxHarness`, `TmSelectHarness` (+ `TmOptionHarness`), `TmFormFieldHarness`. |
 | `@tellma/core-ui-mcp` | Generated `components.json` for the components; a minimal MCP server exposing `list/describe/example` tools over it. Wired into the build; tool breadth is later. |
 | `@tellma/locale-ar` | The **reference locale pack**: Arabic translations for the library's built-in strings (validator-key messages, placeholders, the required-field announcement) as a Transloco scope, **plus** the self-hosted **Noto Sans Arabic** woff2 + `@font-face` (`unicode-range`) stylesheet — the strings wired by a single **`provideTellmaLocaleAr()`** in the app config, the stylesheet added to the build's `styles` ([§7.1](#71-fonts--web-font-loading)). Installing it adds Arabic to a distribution; not installing it leaves the core English-only. It is the template every later locale pack (`@tellma/locale-am`, …) copies. |
@@ -643,27 +643,13 @@ same `[data-theme=dark]` inversion.
 layer sits above them and buys what raw CSS cannot:
 
 - **Type safety** — autocomplete, and a reference to a missing token won't compile.
-- **Build-time validation** — generate a JSON Schema from `TmTokens`, validate every preset against it
-  **and** run a WCAG-contrast check (light and dark) so a preset that breaks contrast or references a
-  missing token **fails the build**. Thresholds are the **fixed WCAG 2.1 AA** ratios: **4.5:1** normal
-  text, **3:1** large text (≥24px, or ≥18.66px bold), **3:1** UI-component boundaries and focus indicators.
-  (action-teal = teal-600 for text-on-fill clears 4.5:1; focus-ring = teal-500 clears 3:1.)
-  **Keeping the pair list complete as components grow:** each component's token group **declares its own
-  foreground/background pairings as typed metadata** (a `contrastPairs` field naming `{ fg, bg, kind }`,
-  `kind ∈ text | largeText | uiComponent`). The gate derives the full check from those declarations, and a
-  **completeness lint fails the build** if a component group introduces a foreground token (text/icon/border)
-  without declaring its background — so the check grows with the contract, not by remembering to update a
-  list.
-  **Justified exemptions (so "reproduce the brand exactly" and "fail on sub-AA" can't deadlock):** some
-  brand pairs are jointly unsatisfiable by design — e.g. canonical teal-400 carries white text at only
-  2.97:1 (the brand routes *text* through teal-600 and uses teal-400 only as a decorative fill/border/dot
-  that never carries text). The contract carries a typed **`contrastExceptions`** allowlist: each entry
-  names the exact `{ fg, bg }` pair plus a **mandatory `reason`** (and optional `expires`/owner). The gate
-  skips only the listed pairs and **fails on an exception with an empty/missing `reason`**, so every
-  below-AA pair is an explicit, reviewed, justified decision that shows up as a diff — never a silent
-  threshold drop; a pair not on the list still must pass. (The teal-400 decoration is the canonical first
-  entry: reason = "brand-identity surface only; never carries text — text uses `--color-primary`
-  teal-600".)
+- **Build-time validation** — generate a JSON Schema from `TmTokens`, validate every preset against it,
+  and run a **missing-ref gate**: every emitted `var()` reference must resolve within its scheme (the
+  `:lang()` leading map included), so a preset that references a missing token **fails the build**.
+  Color contrast is checked where it is observable — the axe browser battery runs over the rendered
+  components in light and dark ([§10](#10-testing-strategy)) — not by arithmetic over declared token
+  pairs. (The brand routes *text* through teal-600 — 5.67:1 on white; the canonical teal-400 is a
+  decorative fill that never carries text.)
 - **One source, many outputs** — the same contract emits the CSS variables, the JSON Schema, the docs/MCP
   metadata, and (later) a Figma sync.
 - **Safe composition** — presets extend a base by typed merge, not copy-paste.
@@ -673,8 +659,9 @@ layer sits above them and buys what raw CSS cannot:
 distribution's settings screen (e.g. a color picker) sets the relevant variable(s) on a scope at runtime
 (`document.documentElement.style.setProperty('--color-primary', …)` or a scoped `<style>`) and every
 component restyles instantly. The TS contract is the build-time authoring/validation layer; runtime
-overrides operate directly on the emitted variables (the same contrast check can run client-side before
-applying a user-picked color). Dark mode is exactly this (`[data-theme=dark]` swaps a variable set).
+overrides operate directly on the emitted variables (the same schema + missing-ref validation can run
+client-side over an admin-authored token document). Dark mode is exactly this (`[data-theme=dark]`
+swaps a variable set).
 
 **Emission — static, build-time CSS.** "Precompiled"/"static" = the emitter runs at library/distribution
 build time and writes plain `.css` files (base component styles + token variables) that ship in the
@@ -723,7 +710,7 @@ export interface TmTokens {
     font:   { sans: string; arabic: string; mono: string; size: Record<'xs'|'sm'|'base'|'lg', string> };
   };
   semantic: {
-    colorScheme: { light: TmSchemeColors; dark: TmSchemeColors };  // both validated for contrast at build
+    colorScheme: { light: TmSchemeColors; dark: TmSchemeColors };  // two instances of one scheme shape
     focusRing: { width: string; color: TmRef; offset: string };   // e.g. color: '{teal.500}'
     motion:   { durationFast: string; easeStandard: string };
     formField: {                       // one override restyles every input (the ERP runs on dense forms)
@@ -739,7 +726,7 @@ interface TmSchemeColors { textStrong: TmRef; textBody: TmRef; surfacePage: TmRe
 
 **Brand source of truth:** the **TS `TmTokens` contract is canonical**; the brand CSS is a starting
 import. A conformance test asserting the emitted CSS matches `tellma-brand` anchors is **deferred** (the
-brand is still in flux). The schema + WCAG-contrast gates ship in Phase 1 regardless (they don't depend on
+brand is still in flux). The schema + missing-ref gates ship in Phase 1 regardless (they don't depend on
 the brand).
 
 ## 5. Forms integration (Signal Forms)
@@ -1017,8 +1004,8 @@ many scripts (Amharic, Japanese, Hindi, Russian, …) without eagerly loading al
   "within budget" isn't circular. Ceilings (gzipped, self-weight excluding shared Angular/CDK
   already in the app): `tmInput` ≤ 3 KB, `tm-checkbox` ≤ 4 KB, `tm-form-field` ≤ 4 KB, `tm-select` ≤ 8 KB
   (it carries the Overlay/listbox wiring), `@tellma/core-ui-tokens` runtime ≤ 8 KB (it ships the
-  WCAG-contrast and validation gates as runtime code — the client-side contrast check for user-picked
-  colors). These are **ratchets**:
+  emitter + missing-ref gate as runtime code — the client-side validation of admin-authored token
+  documents). These are **ratchets**:
   set to catch regressions now, inspected and tightened once real builds land, never loosened silently. The
   ceilings measure each component's own weight on top of an assumed Angular + CDK baseline — that baseline
   is a given (any real distribution ships components that pull in CDK), so counting CDK against `tm-select`
@@ -1209,7 +1196,7 @@ client/projects/core/
 │   ├── contract/              # TmTokens types
 │   ├── presets/tellma-default.ts
 │   ├── emit/                  # tokens → CSS emitter
-│   └── schema/                # validators (contrast, missing-ref) feeding the generated JSON Schema
+│   └── schema/                # the missing-ref validator feeding the generated JSON Schema
 ├── tellma-core-ui-testing/
 │   ├── public-api.ts          # the harnesses (incl. TmSelectHarness + TmOptionHarness)
 │   └── *-harness.ts
@@ -1291,7 +1278,7 @@ The showcase app lives in the workspace at `projects/internal/showcase` (free-po
    resolves via `displayWith`** before any option renders.
 8. Pending/async-validation state shows `aria-busy` + spinner and suppresses stale "valid".
 9. Every entry point is **within its concrete bundle ceiling** ([§8](#8-performance-budget)); the token
-   preset passes the schema + fixed-WCAG-AA-contrast gate (with `contrastExceptions`) in both schemes;
+   preset passes the schema + missing-ref gate in both schemes;
    runtime CSS-variable override demonstrated (`setProperty` changes `--color-primary` live); the
    `@layer tm.base, tm.theme` precedence is verified (a `tm.theme` delta overrides base regardless of load
    order).

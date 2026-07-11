@@ -130,49 +130,6 @@ export interface TmSchemeColors {
   };
 }
 
-/** WCAG 2.1 AA contrast categories (fixed thresholds: 4.5 / 3 / 3). */
-export type TmContrastKind = 'text' | 'largeText' | 'uiComponent';
-
-/**
- * A declared foreground/background pairing, named by EMITTED variable names
- * (e.g. '--field-text' on '--field-bg'). The contrast gate resolves both in
- * each scheme and fails the build below the fixed AA ratio for `kind`.
- */
-export interface TmContrastPair {
-  /** Emitted variable name of the foreground ink (e.g. '--field-text'). */
-  readonly fg: string;
-  /** Emitted variable name of the background it renders on (e.g. '--field-bg'). */
-  readonly bg: string;
-  /** The WCAG category whose AA threshold the pair must clear. */
-  readonly kind: TmContrastKind;
-}
-
-/**
- * A reviewed, justified below-AA pair. `reason` is MANDATORY and must be
- * non-empty — the gate fails on an empty reason, so every exception is an
- * explicit decision that shows up in review.
- */
-export interface TmContrastException {
-  /** Emitted variable name of the excepted pair's foreground. */
-  readonly fg: string;
-  /** Emitted variable name of the excepted pair's background. */
-  readonly bg: string;
-  /**
-   * Narrows the exception to one scheme. Omitted, it suppresses the pair in
-   * both — prefer scoping it, so a pair that only fails in light stays
-   * gated in dark.
-   */
-  readonly scheme?: 'light' | 'dark';
-  /** Narrows the exception to pairs declared with one kind; omitted, any. */
-  readonly kind?: TmContrastKind;
-  /** The justification recorded for review; must be non-empty. */
-  readonly reason: string;
-  /** Optional date (ISO 8601) by which the exception should be revisited. */
-  readonly expires?: string;
-  /** Optional owner accountable for the exception. */
-  readonly owner?: string;
-}
-
 /** The full token document (one preset = one TmTokens instance). */
 export interface TmTokens {
   /** Primitive tier: raw brand values (ramps, radius, spacing, type, shadows, motion). */
@@ -276,8 +233,4 @@ export interface TmTokens {
   };
   /** Component tier: `--<component>-<key>` variables referencing semantic tokens. */
   readonly component: Record<string, Record<string, TmTokenValue>>;
-  /** Declared fg/bg pairings the contrast gate checks in BOTH schemes. */
-  readonly contrastPairs: readonly TmContrastPair[];
-  /** Reviewed below-AA pairs (mandatory reason) the gate skips. */
-  readonly contrastExceptions: readonly TmContrastException[];
 }

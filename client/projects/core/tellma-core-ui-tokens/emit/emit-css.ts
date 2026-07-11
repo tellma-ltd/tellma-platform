@@ -259,8 +259,8 @@ export function tmEmitCss(tokens: TmTokens): string {
 
 /**
  * The flat variable map of a scheme as emitted (light = shared + light;
- * dark = light map overlaid with the dark block) — the input the contrast
- * gate resolves. Exported for the validators and tests.
+ * dark = light map overlaid with the dark block) — the input the
+ * missing-ref gate scans. Exported for the validator and tests.
  */
 export function tmEmittedSchemeVars(tokens: TmTokens, scheme: 'light' | 'dark'): Map<string, string> {
   const base = new Map([

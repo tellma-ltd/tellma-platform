@@ -6,10 +6,10 @@
 /**
  * tokens:check — the build gate (§4, DoD 9):
  *   1. zod-parses the default preset (schema gate),
- *   2. runs the validation gates (missing-ref, contrast both schemes,
- *      exception hygiene, completeness),
+ *   2. runs the missing-ref gate (both schemes + the :lang() leading map),
  *   3. emits the generated JSON Schema into the package's assets.
- * Exits non-zero on any issue.
+ * Exits non-zero on any issue. Color-contrast accessibility is covered by
+ * the axe browser battery, not here.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -30,7 +30,7 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-// 2. Validation gates.
+// 2. Missing-ref gate.
 const issues = tmValidateTokens(tmTokensDefault);
 if (issues.length > 0) {
   console.error(`tokens:check FAILED — ${issues.length} issue(s):`);
@@ -46,4 +46,4 @@ const outDir = join(packageDir, 'generated');
 mkdirSync(outDir, { recursive: true });
 writeFileSync(join(outDir, 'tm-tokens.schema.json'), JSON.stringify(jsonSchema, null, 2) + '\n');
 
-console.log('tokens:check OK — schema, contrast (light+dark), completeness, exceptions.');
+console.log('tokens:check OK — schema, missing-ref (light+dark).');

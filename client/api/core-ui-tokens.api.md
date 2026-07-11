@@ -5,41 +5,7 @@
 ```ts
 
 // @public
-export const TM_CONTRAST_THRESHOLDS: {
-    readonly text: 4.5;
-    readonly largeText: 3;
-    readonly uiComponent: 3;
-};
-
-// @public
 export type TmColorRamp = Partial<Record<25 | 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900, string>>;
-
-// @public
-export function tmComposite(top: TmRgba, bottom: TmRgba): TmRgba;
-
-// @public
-export interface TmContrastException {
-    readonly bg: string;
-    readonly expires?: string;
-    readonly fg: string;
-    readonly kind?: TmContrastKind;
-    readonly owner?: string;
-    readonly reason: string;
-    readonly scheme?: 'light' | 'dark';
-}
-
-// @public
-export type TmContrastKind = 'text' | 'largeText' | 'uiComponent';
-
-// @public
-export interface TmContrastPair {
-    readonly bg: string;
-    readonly fg: string;
-    readonly kind: TmContrastKind;
-}
-
-// @public
-export function tmContrastRatio(fg: TmRgba, bg: TmRgba, canvas?: TmRgba): number;
 
 // @public
 export function tmEmitCss(tokens: TmTokens): string;
@@ -54,27 +20,13 @@ export type TmGreyRamp = Record<25 | 50 | 100 | 200 | 300 | 400 | 500 | 600 | 70
 export type TmInkRamp = Record<700 | 800 | 900, string>;
 
 // @public
-export function tmParseColor(value: string): TmRgba | null;
-
-// @public
 export type TmRef = `{${string}}`;
 
 // @public
 export function tmRefToVarName(path: string): string;
 
 // @public
-export function tmRelativeLuminance(color: TmRgba): number;
-
-// @public
 export function tmResolveVar(vars: Map<string, string>, name: string): string | null;
-
-// @public
-export interface TmRgba {
-    readonly a: number;
-    readonly b: number;
-    readonly g: number;
-    readonly r: number;
-}
 
 // @public
 export interface TmSchemeColors {
@@ -147,8 +99,6 @@ export type TmTealRamp = Record<50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 8
 // @public
 export interface TmTokens {
     readonly component: Record<string, Record<string, TmTokenValue>>;
-    readonly contrastExceptions: readonly TmContrastException[];
-    readonly contrastPairs: readonly TmContrastPair[];
     readonly primitive: {
         readonly color: {
             readonly ink: TmInkRamp;
@@ -235,7 +185,7 @@ export const tmTokensDefault: TmTokens;
 
 // @public
 export interface TmTokenValidationIssue {
-    readonly gate: 'missing-ref' | 'contrast' | 'exception' | 'completeness';
+    readonly gate: 'missing-ref';
     readonly message: string;
 }
 
