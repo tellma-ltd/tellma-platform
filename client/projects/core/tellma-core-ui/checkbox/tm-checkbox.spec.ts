@@ -71,6 +71,36 @@ describe('tm-checkbox (§3.3)', () => {
       expect(await checkbox.isChecked()).toBe(false);
     });
 
+    it('a readonly checkbox reverts the toggle AND the .indeterminate IDL property', async () => {
+      @Component({
+        imports: [TmCheckbox],
+        template: `
+          <tm-checkbox readonly [(checked)]="checked" [(indeterminate)]="indeterminate">
+            Locked mixed
+          </tm-checkbox>
+        `,
+      })
+      class ReadonlyHost {
+        readonly checked = signal(false);
+        readonly indeterminate = signal(true);
+      }
+
+      const { fixture } = await setup(ReadonlyHost);
+      const native = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+      expect(native.indeterminate).toBe(true);
+
+      // Activation flips .checked and CLEARS .indeterminate before change
+      // fires; the revert must restore BOTH (the binding won't re-fire — the
+      // signals never changed), or AT reads "not checked" under a mixed glyph.
+      native.click();
+      await fixture.whenStable();
+
+      expect(native.checked).toBe(false);
+      expect(native.indeterminate).toBe(true);
+      expect(fixture.componentInstance.checked()).toBe(false);
+      expect(fixture.componentInstance.indeterminate()).toBe(true);
+    });
+
     // Space-to-toggle is NATIVE activation behavior that synthetic TestBed
     // keystrokes cannot trigger — it is covered by the Playwright battery
     // with trusted input.

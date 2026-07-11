@@ -196,8 +196,13 @@ export class TmCheckbox implements TmFormFieldControl {
   /** Native change handler: reverts when readonly, else updates `checked` and clears mixed. */
   protected onNativeChange(event: Event): void {
     if (this.readonly()) {
-      // Native checkboxes have no readonly; revert the toggle.
-      (event.target as HTMLInputElement).checked = this.checked();
+      // Native checkboxes have no readonly; revert the toggle. Activation
+      // also cleared the .indeterminate IDL property, and the binding won't
+      // re-fire (the signal never changed) — restore it too, or AT reports
+      // "not checked" while the glyph still shows mixed.
+      const native = event.target as HTMLInputElement;
+      native.checked = this.checked();
+      native.indeterminate = this.indeterminate();
       return;
     }
     this.checked.set((event.target as HTMLInputElement).checked);
