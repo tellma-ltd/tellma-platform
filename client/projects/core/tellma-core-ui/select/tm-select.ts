@@ -71,6 +71,9 @@ let nextUniqueId = 0;
  * @tmA11yNotes Focus never leaves the trigger (active-descendant model);
  *   the portaled listbox is referenced via aria-controls; Esc closes the
  *   panel only (reverting the value on a second Esc is a grid-host concern).
+ *   A printable character on the CLOSED trigger opens the panel and moves
+ *   the active option to the first match (select-only combobox behavior) —
+ *   typing never changes the value silently; committing stays explicit.
  */
 @Component({
   selector: 'tm-select',
@@ -100,6 +103,7 @@ let nextUniqueId = 0;
       [attr.aria-invalid]="showsInvalid() ? 'true' : null"
       [attr.aria-busy]="pending() ? 'true' : null"
       [attr.aria-required]="required() ? 'true' : null"
+      (keydown)="onTriggerKeydown($event)"
       (blur)="touch.emit()"
     >
       <span class="tm-select__value" [class.tm-select__value--placeholder]="showsPlaceholder()">
@@ -268,6 +272,15 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   /** aria's rendered `[ngOption]` directives — activation guards read active/disabled. */
   private readonly ariaOptions = viewChildren(Option);
 
+  /**
+   * A printable character typed on the CLOSED trigger, held until the panel
+   * renders so it can seed aria's typeahead (the panel content inserts one
+   * render pass after the overlay attaches).
+   */
+  private pendingTypeaheadKey: string | null = null;
+  /** The deferred seed dispatch — cleared on destroy like the re-measure timer. */
+  private pendingSeedDispatch: ReturnType<typeof setTimeout> | undefined;
+
   /** Grid revert baseline (TmCellEditor): the value `cancel()` returns to. */
   private lastCommitted: T | undefined;
   /**
@@ -348,7 +361,10 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   });
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => clearTimeout(this.pendingRemeasure));
+    inject(DestroyRef).onDestroy(() => {
+      clearTimeout(this.pendingRemeasure);
+      clearTimeout(this.pendingSeedDispatch);
+    });
 
     // The ONE-DIRECTIONAL value bridge (§3.4): mirror the model into aria's
     // listbox (as the stable key), re-applied whenever the option set
@@ -375,6 +391,9 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
         if (isExpanded) {
           this.opened.emit();
         } else {
+          // A seed the panel never got to consume must not leak into the
+          // NEXT open (e.g. Escape racing the panel render).
+          this.pendingTypeaheadKey = null;
           this.closed.emit();
         }
       }
@@ -405,7 +424,26 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
           options[i].derivedText.set(text);
         }
       }
-      this.listbox()?.scrollActiveItemIntoView();
+      // Closed-trigger typeahead, second half: the character that opened the
+      // panel is forwarded once the listbox exists (the panel content
+      // inserts a render pass after the overlay attaches — and after the
+      // derivedText loop above, so label-less options are searchable too).
+      // Dispatching a real keydown is the same mechanism aria's own relay
+      // uses, so its typeahead takes over from here. One MACROTASK later
+      // (the onOverlayAttach re-measure pattern): the listbox's own
+      // after-render effects are registered after this one, so a same-pass
+      // dispatch would land before its default active state and be
+      // clobbered by it.
+      const listbox = this.listbox();
+      if (listbox && this.pendingTypeaheadKey !== null) {
+        const key = this.pendingTypeaheadKey;
+        this.pendingTypeaheadKey = null;
+        clearTimeout(this.pendingSeedDispatch);
+        this.pendingSeedDispatch = setTimeout(() =>
+          listbox.element.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })),
+        );
+      }
+      listbox?.scrollActiveItemIntoView();
     });
   }
 
@@ -433,6 +471,32 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     if (row && row.getAttribute('aria-disabled') !== 'true') {
       this.commitFromListbox();
     }
+  }
+
+  /**
+   * Closed-trigger typeahead (the APG select-only combobox behavior): a
+   * printable character on the CLOSED trigger opens the panel and seeds the
+   * typeahead with that character — the active option moves to the first
+   * match, and committing stays an explicit activation. (Deliberately NOT
+   * the native <select> behavior of changing the value silently while
+   * closed: a keystroke must never mutate the model.) aria's own collapsed
+   * handling covers only ArrowDown/Enter/Space, all plain opens.
+   */
+  protected onTriggerKeydown(event: KeyboardEvent): void {
+    if (
+      this.expanded() ||
+      this.disabled() ||
+      this.readonly() ||
+      event.key.length !== 1 ||
+      event.key === ' ' || // aria's own binding: space opens, never searches
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey
+    ) {
+      return;
+    }
+    this.pendingTypeaheadKey = event.key;
+    this.expanded.set(true);
   }
 
   /** Space commits — unless it is part of an in-progress typeahead query. */

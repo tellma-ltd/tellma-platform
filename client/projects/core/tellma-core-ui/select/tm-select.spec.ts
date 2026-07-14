@@ -229,6 +229,92 @@ describe('tm-select (§3.4)', () => {
     });
   });
 
+  describe('closed-trigger typeahead (select-only combobox)', () => {
+    @Component({
+      imports: [TmSelect, TmOption],
+      template: `
+        <tm-select [(value)]="value" (selectionChange)="emissions.push($event)">
+          @for (country of countries; track country.id) {
+            <tm-option [value]="country.id" [label]="country.name">{{ country.name }}</tm-option>
+          }
+        </tm-select>
+      `,
+    })
+    class Host {
+      readonly value = signal<number | undefined>(undefined);
+      readonly emissions: number[] = [];
+      readonly countries = COUNTRIES;
+    }
+
+    it('a printable character opens the panel and moves active to the first match — no silent commit', async () => {
+      const { fixture, select } = await setup(Host);
+      const host = fixture.componentInstance;
+
+      await select.sendTriggerKeys('j'); // Jordan, typed on the CLOSED trigger
+      await fixture.whenStable();
+      // The seed dispatches one macrotask after the panel renders.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await fixture.whenStable();
+
+      expect(await select.isOpen()).toBe(true);
+      const options = await select.getOptions();
+      expect(await options[3].isActive()).toBe(true);
+      expect(host.value()).toBeUndefined(); // the value never changes on a keystroke
+      expect(host.emissions).toEqual([]);
+
+      await select.sendTriggerKeys(TestKey.ENTER); // committing stays explicit
+      await fixture.whenStable();
+      expect(host.value()).toBe(4);
+      expect(host.emissions).toEqual([4]);
+    });
+
+    it('the seed composes with further typing into one query', async () => {
+      const { fixture, select } = await setup(Host);
+
+      await select.sendTriggerKeys('u'); // opens, United Arab Emirates active
+      await fixture.whenStable();
+      await new Promise((resolve) => setTimeout(resolve, 0)); // seed dispatch
+      await fixture.whenStable();
+
+      const listboxEl = document.querySelector('.tm-select__listbox') as HTMLElement;
+      for (const key of 'nited arab') {
+        listboxEl.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      }
+      await fixture.whenStable();
+
+      const options = await select.getOptions();
+      expect(await options[1].isActive()).toBe(true); // 'united arab' — ONE query
+    });
+
+    it('a modified key does not open the panel', async () => {
+      const { fixture, select } = await setup(Host);
+      const trigger = fixture.nativeElement.querySelector('.tm-select__trigger') as HTMLElement;
+
+      trigger.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'j', ctrlKey: true, bubbles: true }),
+      );
+      await fixture.whenStable();
+      expect(await select.isOpen()).toBe(false);
+    });
+
+    it('a readonly select ignores closed typing', async () => {
+      @Component({
+        imports: [TmSelect, TmOption],
+        template: `
+          <tm-select readonly>
+            <tm-option [value]="1" label="One">One</tm-option>
+          </tm-select>
+        `,
+      })
+      class ReadonlyHost {}
+
+      const { fixture, select } = await setup(ReadonlyHost);
+      await select.sendTriggerKeys('o');
+      await fixture.whenStable();
+      expect(await select.isOpen()).toBe(false);
+    });
+  });
+
   describe('author-supplied aria-describedby (§2.1)', () => {
     @Component({
       imports: [TmSelect, TmOption],

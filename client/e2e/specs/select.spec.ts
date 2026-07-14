@@ -128,6 +128,25 @@ test.describe('keyboard + focus (§6)', () => {
     await expect(trigger).toContainText('Select an option'); // localized default placeholder
     await expect(trigger).toBeFocused();
   });
+
+  test('typing on the CLOSED trigger opens the panel and moves to the match — never commits', async ({
+    page,
+  }) => {
+    const { trigger, panel } = await openSelect(page, 'select-country');
+    await trigger.press('Escape'); // closed again, focus retained
+    await expect(panel).toBeHidden();
+
+    await trigger.press('j'); // Jordan
+    await expect(panel).toBeVisible();
+    const activeId = await trigger.getAttribute('aria-activedescendant');
+    await expect(page.locator(`[id="${activeId}"]`)).toContainText('Jordan');
+    // The keystroke searched; it did not silently change the value.
+    await expect(trigger).toContainText('Select an option');
+
+    await trigger.press('Enter'); // committing stays explicit
+    await expect(panel).toBeHidden();
+    await expect(trigger).toContainText('Jordan');
+  });
 });
 
 test.describe('prepopulated/async value in the browser (DoD 7)', () => {

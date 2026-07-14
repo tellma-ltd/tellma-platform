@@ -522,6 +522,11 @@ rather than restate it.
   input** forwarded to `ngOption`; when absent, `tm-option` derives it from its projected text
   (`textContent.trim()` after render). This is the *search* string; the *trigger* label resolution below
   is a separate path.
+- **Typeahead works from the CLOSED trigger too** (the APG select-only-combobox behavior): a printable
+  character on the focused, collapsed trigger opens the panel and seeds aria's typeahead with that
+  character, moving the active option to the first match; committing stays an explicit activation.
+  Deliberately *not* the native `<select>` behavior of changing the value silently while closed — a
+  keystroke never mutates the model.
 - **Trigger label resolution — and the prepopulated-value problem.** Caching the projected option's label
   only works once that option has rendered, but a form frequently arrives with `value` set before any
   `tm-option` exists (an edit screen; an async/virtualized list). So the trigger resolves its label in

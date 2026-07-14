@@ -51,6 +51,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     protected onListboxClick(event: MouseEvent): void;
     protected onOverlayAttach(): void;
     protected onSpaceKey(): void;
+    protected onTriggerKeydown(event: KeyboardEvent): void;
     readonly opened: _angular_core.OutputEmitterRef<void>;
     protected readonly options: Signal<readonly TmOption<T>[]>;
     readonly ownsChrome = true;
