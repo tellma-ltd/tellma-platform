@@ -278,8 +278,6 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
    * render pass after the overlay attaches).
    */
   private pendingTypeaheadKey: string | null = null;
-  /** The deferred seed dispatch — cleared on destroy like the re-measure timer. */
-  private pendingSeedDispatch: ReturnType<typeof setTimeout> | undefined;
 
   /** Grid revert baseline (TmCellEditor): the value `cancel()` returns to. */
   private lastCommitted: T | undefined;
@@ -361,10 +359,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   });
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => {
-      clearTimeout(this.pendingRemeasure);
-      clearTimeout(this.pendingSeedDispatch);
-    });
+    inject(DestroyRef).onDestroy(() => clearTimeout(this.pendingRemeasure));
 
     // The ONE-DIRECTIONAL value bridge (§3.4): mirror the model into aria's
     // listbox (as the stable key), re-applied whenever the option set
@@ -428,20 +423,27 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
       // panel is forwarded once the listbox exists (the panel content
       // inserts a render pass after the overlay attaches — and after the
       // derivedText loop above, so label-less options are searchable too).
-      // Dispatching a real keydown is the same mechanism aria's own relay
-      // uses, so its typeahead takes over from here. One MACROTASK later
-      // (the onOverlayAttach re-measure pattern): the listbox's own
-      // after-render effects are registered after this one, so a same-pass
-      // dispatch would land before its default active state and be
-      // clobbered by it.
+      // Everything happens HERE, before the highlight ever renders — any
+      // deferral (a macrotask, even a scheduler race) lets a frame paint
+      // with the DEFAULT highlight first, a visible jump to the match. The
+      // options are already registered (DI, during change detection), but
+      // the listbox initializes its active state only in ITS OWN
+      // after-render callbacks, which run after this one — so the default
+      // state is initialized imperatively to anchor the search, and the
+      // dispatched keydown marks the listbox as interacted, which turns its
+      // own later initialization into a no-op instead of a clobber
+      // (version-locked internal seam, guarded by the tests).
+      // Gated on RENDERED ROWS, not just the listbox: the panel mounts in
+      // stages, and on the earliest run the listbox shell exists with zero
+      // registered options — consuming the seed there loses it (an empty
+      // listbox swallows the keydown entirely). This effect re-runs when
+      // the rows land (optionRows() is tracked above).
       const listbox = this.listbox();
-      if (listbox && this.pendingTypeaheadKey !== null) {
+      if (listbox && this.pendingTypeaheadKey !== null && rows.length > 0) {
         const key = this.pendingTypeaheadKey;
         this.pendingTypeaheadKey = null;
-        clearTimeout(this.pendingSeedDispatch);
-        this.pendingSeedDispatch = setTimeout(() =>
-          listbox.element.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })),
-        );
+        listbox._pattern.setDefaultState();
+        listbox.element.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
       }
       listbox?.scrollActiveItemIntoView();
     });

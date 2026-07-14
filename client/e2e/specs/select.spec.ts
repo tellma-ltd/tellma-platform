@@ -136,12 +136,51 @@ test.describe('keyboard + focus (§6)', () => {
     await trigger.press('Escape'); // closed again, focus retained
     await expect(panel).toBeHidden();
 
+    // Record every data-active transition the DOM ever carries, so the
+    // assertion below can prove the panel never flashes the DEFAULT
+    // highlight before jumping to the match.
+    await page.evaluate(() => {
+      const log: string[] = [];
+      (window as unknown as { __activeLog: string[] }).__activeLog = log;
+      const record = (el: Element) => log.push(el.textContent?.trim() ?? '');
+      new MutationObserver((records) => {
+        for (const rec of records) {
+          const target = rec.target as Element;
+          if (rec.type === 'attributes' && target.getAttribute('data-active') === 'true') {
+            record(target);
+          }
+          if (rec.type === 'childList') {
+            for (const node of rec.addedNodes) {
+              if (node.nodeType === 1) {
+                for (const row of (node as Element).querySelectorAll('[data-active="true"]')) {
+                  record(row);
+                }
+              }
+            }
+          }
+        }
+      }).observe(document.body, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['data-active'],
+      });
+    });
+
     await trigger.press('j'); // Jordan
     await expect(panel).toBeVisible();
     const activeId = await trigger.getAttribute('aria-activedescendant');
     await expect(page.locator(`[id="${activeId}"]`)).toContainText('Jordan');
     // The keystroke searched; it did not silently change the value.
     await expect(trigger).toContainText('Select an option');
+
+    // No jump: the FIRST highlight the DOM ever carried is the match — a
+    // frame showing the default option would appear here as a leading entry.
+    const transitions = await page.evaluate(
+      () => (window as unknown as { __activeLog: string[] }).__activeLog,
+    );
+    expect(transitions.length).toBeGreaterThan(0);
+    expect(transitions[0]).toContain('Jordan');
 
     await trigger.press('Enter'); // committing stays explicit
     await expect(panel).toBeHidden();

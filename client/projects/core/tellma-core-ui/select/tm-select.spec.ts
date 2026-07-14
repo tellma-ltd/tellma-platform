@@ -252,8 +252,8 @@ describe('tm-select (§3.4)', () => {
 
       await select.sendTriggerKeys('j'); // Jordan, typed on the CLOSED trigger
       await fixture.whenStable();
-      // The seed dispatches one macrotask after the panel renders.
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      // Settle one frame: the seed applies as the panel's rows land.
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
       await fixture.whenStable();
 
       expect(await select.isOpen()).toBe(true);
@@ -273,7 +273,7 @@ describe('tm-select (§3.4)', () => {
 
       await select.sendTriggerKeys('u'); // opens, United Arab Emirates active
       await fixture.whenStable();
-      await new Promise((resolve) => setTimeout(resolve, 0)); // seed dispatch
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null))); // seed frame
       await fixture.whenStable();
 
       const listboxEl = document.querySelector('.tm-select__listbox') as HTMLElement;
