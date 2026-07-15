@@ -1,0 +1,41 @@
+# @tellma/core-ui
+
+The Tellma UI component library: signal-first, zoneless Angular form controls
+built on `@angular/cdk` + `@angular/aria`, Signal Forms native (`[formField]`
+binds every control; the bound field is authoritative for
+disabled/readonly/required).
+
+## Entry points
+
+| Import | Contents |
+|---|---|
+| `@tellma/core-ui` | `provideTellmaUi()` / `provideTellmaForms()`, the `TM_UI_TRANSLATE` i18n seam + `TM_UI_MESSAGE_CONTEXT`, field-error resolution, self-hosted Latin/Mono fonts (`fonts/fonts.css`) |
+| `@tellma/core-ui/contracts` | Dependency-free contracts: `SignalLike`, `TmFormFieldControl`, the draft grid cell interfaces |
+| `@tellma/core-ui/input` | `tmInput` — a bare directive on the native `<input>` |
+| `@tellma/core-ui/checkbox` | `tm-checkbox` — native-input tri-state checkbox |
+| `@tellma/core-ui/form-field` | `tm-form-field` — label/hint/error chrome around any control |
+| `@tellma/core-ui/select` | `tm-select` + `tm-option` — overlay single-select |
+| `@tellma/core-ui/spinner` | `tm-spinner` — the shared decorative pending/progress glyph |
+
+## Consuming
+
+Add `@tellma/core-ui-tokens`' emitted stylesheet plus this package's
+`fonts/fonts.css` to the application's `styles` array — the build pipeline
+fingerprints the font binaries like any other CSS-referenced asset (see the
+showcase's `angular.json` for the reference wiring, and the workspace's
+`scripts/inject-font-preloads.mjs` for the post-build step that injects
+`<link rel="preload">` tags for the emitted font URLs). Theming,
+sizing, and typography all flow from the token variables — the components
+ship no hardcoded sizes or colors.
+
+## Authoring conventions
+
+- The package root is the code root: every folder either is an entry point
+  (has an `ng-package.json`) or belongs to the primary entry point.
+- Entry points import shared code via `@tellma/core-ui` only — never a
+  relative `../` path (each entry point is its own compilation unit).
+- Component hosts must be `display: block`: an inline host wrapping a block
+  child hit-tests above the child in Chromium, swallowing real clicks.
+- Usage examples live in co-located `*.examples.ts` files (dependency-free
+  template objects); they feed the docs pipeline and are compile-checked
+  against the live components by `docs-examples.spec.ts`.

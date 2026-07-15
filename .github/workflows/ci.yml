@@ -16,7 +16,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
@@ -32,7 +32,7 @@ jobs:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
@@ -46,7 +46,7 @@ jobs:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
@@ -64,7 +64,7 @@ jobs:
       HOST: test/core/assets/Tellma.Core.EntityFrameworkCore.MigrationsHost
       PKG_HOST: test/core/assets/Tellma.Core.EntityFrameworkCore.MigrationsHost.Package
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
@@ -99,6 +99,42 @@ jobs:
           dotnet ef migrations add PackageProbe --project "$PKG_HOST" --startup-project "$PKG_HOST" --no-build
           grep -q "CreateTableType" "$PKG_HOST"/Migrations/*_PackageProbe.cs
 
+  # The Angular workspace (spec 0002): lint (incl. the tm- rules), token
+  # gates (schema + missing-ref), build, the full unit suite, API
+  # goldens, docs/MCP generation + validation, bundle budgets, and the
+  # Playwright behavioral/a11y/RTL suite (incl. axe contrast) — all
+  # port-free (§1.3).
+  client:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6 # version from client/package.json packageManager
+        with:
+          package_json_file: client/package.json
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: client/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install chromium --with-deps
+      - run: pnpm run lint
+      - run: pnpm run typecheck
+      - run: pnpm run lint:test
+      - run: pnpm run tokens:check
+      - run: pnpm run build
+      - run: pnpm run test
+      - run: pnpm run api:check
+      - run: pnpm run docs:build
+      - run: pnpm run size:check
+      # Production showcase build + post-build font preload injection.
+      - run: pnpm run build:showcase
+      - run: pnpm run e2e
+
   # PR merge gate: the single status check required by branch protection. It fails if any job
   # below did not succeed, without making any individual job a required check (which would couple
   # branch protection to job names / the OS matrix).
@@ -106,7 +142,7 @@ jobs:
     if: ${{ !cancelled() && !github.event.pull_request.draft }}
     # Include all required job in this list — a job missing here is NOT gated.
     # Branch protection must require THIS job only.
-    needs: [build-test, format, integration, design-e2e]
+    needs: [build-test, format, integration, design-e2e, client]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any dependency did not succeed

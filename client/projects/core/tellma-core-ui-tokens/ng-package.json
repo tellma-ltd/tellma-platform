@@ -1,0 +1,11 @@
+{
+  "$schema": "../../../node_modules/ng-packagr/ng-package.schema.json",
+  "dest": "../../../dist/core-ui-tokens",
+  "lib": {
+    "entryFile": "public-api.ts"
+  },
+  "assets": [
+    "css/**/*.css",
+    "generated/*.json"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "../../../node_modules/ng-packagr/ng-package.schema.json",
+  "dest": "../../../dist/core-ui",
+  "lib": {
+    "entryFile": "public-api.ts"
+  },
+  "assets": [
+    "fonts/*.woff2",
+    "fonts/*.css",
+    "fonts/*.txt",
+    "styles/**/*.css"
+  ]
+}

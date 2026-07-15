@@ -1,0 +1,24 @@
+/*
+ * EDITOR-VIEW project (not used by any build — the tools run via tsx and
+ * vitest, which take their own config): VS Code's TS server assigns each file
+ * to the nearest tsconfig.json, and no build project covers tools/. Without
+ * this, the .mts/.mjs scripts fall into an inferred project that resolves
+ * neither Node's `node:` builtins nor the @tellma/* path mappings, so the
+ * editor shows spurious ts(2307)/"cannot find name" squiggles.
+ *
+ * The @tellma/* path mappings are inherited from ../tsconfig.json: there is no
+ * node_modules/@tellma (the workspace packages aren't linked), so those imports
+ * — @tellma/core-ui-tokens in tokens/*.mts — resolve only via `paths`. TS
+ * anchors inherited `paths` to the config that DEFINES them (../tsconfig.json),
+ * so they keep pointing at ./projects/... under client/ and need no restating
+ * here; new entry points added upstream flow through automatically.
+ */
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "allowJs": true,
+    "noEmit": true
+  },
+  "include": ["**/*.mts", "**/*.mjs"]
+}

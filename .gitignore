@@ -430,3 +430,6 @@ FodyWeavers.xsd
 *.msp
 
 .claude/
+
+# Per-worktree local dev ports
+.dev-ports.local
