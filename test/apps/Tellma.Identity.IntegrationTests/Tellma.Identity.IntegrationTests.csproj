@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <!-- The standalone host under test (WebApplicationFactory over its Program). -->
+    <ProjectReference Include="..\..\..\src\apps\Tellma.Identity.Web\Tellma.Identity.Web.csproj" />
+    <!-- The in-proc, distribution-shaped host asset exercised by the composition-parity suite. -->
+    <ProjectReference Include="..\assets\Tellma.Identity.TestInProcHost\Tellma.Identity.TestInProcHost.csproj" />
+    <PackageReference Include="AngleSharp" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Testcontainers.MsSql" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>

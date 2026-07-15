@@ -430,3 +430,4 @@ FodyWeavers.xsd
 *.msp
 
 .claude/
+temp/

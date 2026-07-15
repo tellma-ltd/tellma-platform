@@ -1,0 +1,161 @@
+/*
+ * The identity UI's only hand-written stylesheet. Consumes @tellma/core-ui-tokens custom
+ * properties exclusively — no raw color or size literals — and uses CSS logical properties
+ * throughout so right-to-left locales need no second sheet.
+ */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--tl-font-family);
+  font-size: var(--tl-font-size-md);
+  line-height: var(--tl-line-height);
+  color: var(--tl-color-text);
+  background: var(--tl-color-surface);
+}
+
+/* Centered single-card shell shared by every auth-flow page. */
+.tl-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--tl-space-4);
+}
+
+.tl-card {
+  width: 100%;
+  max-width: 26rem;
+  background: var(--tl-color-surface-raised);
+  border: 1px solid var(--tl-color-border);
+  border-radius: var(--tl-radius-lg);
+  box-shadow: var(--tl-shadow-2);
+  padding: var(--tl-space-8);
+}
+
+.tl-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--tl-space-2);
+  margin-block-end: var(--tl-space-6);
+}
+
+.tl-brand-name {
+  font-size: var(--tl-font-size-xl);
+  font-weight: var(--tl-font-weight-bold);
+  color: var(--tl-color-primary);
+}
+
+.tl-title {
+  font-size: var(--tl-font-size-lg);
+  font-weight: var(--tl-font-weight-medium);
+  margin-block: 0 var(--tl-space-4);
+}
+
+.tl-field {
+  margin-block-end: var(--tl-space-4);
+}
+
+.tl-label {
+  display: block;
+  font-size: var(--tl-font-size-sm);
+  color: var(--tl-color-text-muted);
+  margin-block-end: var(--tl-space-1);
+}
+
+.tl-input {
+  width: 100%;
+  padding: var(--tl-space-2) var(--tl-space-3);
+  font-family: inherit;
+  font-size: var(--tl-font-size-md);
+  color: var(--tl-color-text);
+  background: var(--tl-color-surface-raised);
+  border: 1px solid var(--tl-color-border);
+  border-radius: var(--tl-radius-md);
+}
+
+.tl-input:focus-visible {
+  outline: 2px solid var(--tl-color-focus);
+  outline-offset: 1px;
+}
+
+.tl-button {
+  display: block;
+  width: 100%;
+  padding: var(--tl-space-2) var(--tl-space-4);
+  font-family: inherit;
+  font-size: var(--tl-font-size-md);
+  font-weight: var(--tl-font-weight-medium);
+  border-radius: var(--tl-radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  margin-block-end: var(--tl-space-2);
+}
+
+.tl-button-primary {
+  background: var(--tl-color-primary);
+  color: var(--tl-color-on-primary);
+}
+
+.tl-button-primary:hover {
+  background: var(--tl-color-primary-hover);
+}
+
+.tl-button-secondary {
+  background: var(--tl-color-surface-raised);
+  color: var(--tl-color-text);
+  border-color: var(--tl-color-border);
+}
+
+.tl-button:focus-visible {
+  outline: 2px solid var(--tl-color-focus);
+  outline-offset: 1px;
+}
+
+.tl-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--tl-space-2);
+  margin-block-end: var(--tl-space-4);
+  font-size: var(--tl-font-size-sm);
+}
+
+.tl-error {
+  color: var(--tl-color-danger);
+  font-size: var(--tl-font-size-sm);
+  margin-block: var(--tl-space-2);
+}
+
+.tl-status {
+  color: var(--tl-color-text-muted);
+  font-size: var(--tl-font-size-sm);
+  margin-block: var(--tl-space-2);
+}
+
+.tl-muted {
+  color: var(--tl-color-text-muted);
+  font-size: var(--tl-font-size-sm);
+}
+
+.tl-divider {
+  border: none;
+  border-block-start: 1px solid var(--tl-color-border);
+  margin-block: var(--tl-space-4);
+}
+
+.tl-link {
+  color: var(--tl-color-primary);
+  text-decoration: none;
+}
+
+.tl-link:hover {
+  text-decoration: underline;
+}
+
+.tl-inline {
+  display: inline;
+}

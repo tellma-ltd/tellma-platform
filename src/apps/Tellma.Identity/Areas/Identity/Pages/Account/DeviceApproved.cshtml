@@ -1,0 +1,9 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Account.DeviceApprovedModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["DeviceDoneTitle"].Value;
+}
+
+<h1 class="tl-title">@L["DeviceDoneTitle"]</h1>
+<p class="tl-muted">@L["DeviceDonePrompt"]</p>

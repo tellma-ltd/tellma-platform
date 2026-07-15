@@ -1,0 +1,22 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Account.EmailCodeModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["EnterCode"].Value;
+}
+
+<h1 class="tl-title">@L["EnterCode"]</h1>
+<p class="tl-status">@L["CodeSentIfAccountExists"]</p>
+
+<form method="post" asp-route-email="@Model.Email" asp-route-returnUrl="@Model.ReturnUrl"
+      asp-route-stepUp="@Model.StepUp" asp-route-rememberMe="@Model.RememberMe">
+    <div class="tl-field">
+        <label class="tl-label" for="code">@L["Code"]</label>
+        <input class="tl-input" id="code" name="Code" type="text" inputmode="numeric"
+               autocomplete="one-time-code" required autofocus />
+    </div>
+    <button class="tl-button tl-button-primary" type="submit">@L["Verify"]</button>
+    <button class="tl-button tl-button-secondary" type="submit" asp-page-handler="Resend">@L["ResendCode"]</button>
+</form>
+
+<div asp-validation-summary="All" class="tl-error"></div>

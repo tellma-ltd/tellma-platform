@@ -1,0 +1,12 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Account.LogoutModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["SignOut"].Value;
+}
+
+<h1 class="tl-title">@L["SignOutConfirm"]</h1>
+
+<form method="post">
+    <button class="tl-button tl-button-primary" type="submit">@L["SignOut"]</button>
+</form>

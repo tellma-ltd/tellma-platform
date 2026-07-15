@@ -1,0 +1,26 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Manage.SessionsModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["Sessions"].Value;
+}
+
+<h1 class="tl-title">@L["Sessions"]</h1>
+
+<ul>
+    @foreach (var session in Model.Sessions)
+    {
+        <li>
+            <span>@(session.UserAgent ?? L["UnknownDevice"].Value)</span>
+            <span class="tl-muted">— @session.LastSeenUtc.ToString("g")</span>
+            @if (session.IsCurrent)
+            {
+                <span class="tl-muted">(@L["ThisSession"])</span>
+            }
+        </li>
+    }
+</ul>
+
+<form method="post" asp-page-handler="SignOutEverywhere">
+    <button class="tl-button tl-button-secondary" type="submit">@L["SignOutEverywhere"]</button>
+</form>

@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="SignIn" xml:space="preserve">
+    <value>Sign in</value>
+  </data>
+  <data name="ConfirmItsYou" xml:space="preserve">
+    <value>Confirm it's you</value>
+  </data>
+  <data name="Email" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="ContinueWithEmailCode" xml:space="preserve">
+    <value>Email me a sign-in code</value>
+  </data>
+  <data name="SignInWithPasskey" xml:space="preserve">
+    <value>Sign in with a passkey</value>
+  </data>
+  <data name="EnterCode" xml:space="preserve">
+    <value>Enter the code we emailed you</value>
+  </data>
+  <data name="CodeSentIfAccountExists" xml:space="preserve">
+    <value>If an account exists for that address, we sent it a sign-in code.</value>
+  </data>
+  <data name="Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="Verify" xml:space="preserve">
+    <value>Verify</value>
+  </data>
+  <data name="ResendCode" xml:space="preserve">
+    <value>Send a new code</value>
+  </data>
+  <data name="InvalidCode" xml:space="preserve">
+    <value>The code is invalid or has expired.</value>
+  </data>
+  <data name="RememberMe" xml:space="preserve">
+    <value>Remember me</value>
+  </data>
+  <data name="SignOut" xml:space="preserve">
+    <value>Sign out</value>
+  </data>
+  <data name="SignedOut" xml:space="preserve">
+    <value>You are signed out.</value>
+  </data>
+  <data name="SignOutConfirm" xml:space="preserve">
+    <value>Sign out of your account?</value>
+  </data>
+  <data name="AccessDenied" xml:space="preserve">
+    <value>You do not have access to this resource.</value>
+  </data>
+  <data name="ErrorTitle" xml:space="preserve">
+    <value>Something went wrong</value>
+  </data>
+  <data name="ConsentTitle" xml:space="preserve">
+    <value>Authorize application</value>
+  </data>
+  <data name="ConsentPrompt" xml:space="preserve">
+    <value>{0} wants to access your account with the following scopes: {1}</value>
+  </data>
+  <data name="Accept" xml:space="preserve">
+    <value>Allow</value>
+  </data>
+  <data name="Deny" xml:space="preserve">
+    <value>Deny</value>
+  </data>
+  <data name="Continue" xml:space="preserve">
+    <value>Continue</value>
+  </data>
+  <data name="DeviceTitle" xml:space="preserve">
+    <value>Authorize your device</value>
+  </data>
+  <data name="DeviceCode" xml:space="preserve">
+    <value>Enter the code shown on your device</value>
+  </data>
+  <data name="DeviceConfirmPrompt" xml:space="preserve">
+    <value>{0} is requesting access to your account. Approve this device?</value>
+  </data>
+  <data name="DeviceDoneTitle" xml:space="preserve">
+    <value>All set</value>
+  </data>
+  <data name="DeviceDonePrompt" xml:space="preserve">
+    <value>You can return to your device.</value>
+  </data>
+  <data name="RegisterPasskeyTitle" xml:space="preserve">
+    <value>Set up a passkey</value>
+  </data>
+  <data name="RegisterPasskeyPrompt" xml:space="preserve">
+    <value>A passkey lets you sign in with your fingerprint, face, or device PIN — no password to remember.</value>
+  </data>
+  <data name="RegisterPasskeyButton" xml:space="preserve">
+    <value>Create a passkey</value>
+  </data>
+  <data name="PasskeyFailed" xml:space="preserve">
+    <value>The passkey could not be verified. Please try again.</value>
+  </data>
+  <data name="Passkeys" xml:space="preserve">
+    <value>Passkeys</value>
+  </data>
+  <data name="AddPasskey" xml:space="preserve">
+    <value>Add a passkey</value>
+  </data>
+  <data name="Remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="DeviceBound" xml:space="preserve">
+    <value>Device-bound</value>
+  </data>
+  <data name="Synced" xml:space="preserve">
+    <value>Synced</value>
+  </data>
+  <data name="NoPasskeys" xml:space="preserve">
+    <value>You have no passkeys yet.</value>
+  </data>
+  <data name="InvitationTitle" xml:space="preserve">
+    <value>Welcome</value>
+  </data>
+  <data name="InvitationPrompt" xml:space="preserve">
+    <value>Set up a passkey to finish creating your account.</value>
+  </data>
+  <data name="InvitationInvalid" xml:space="preserve">
+    <value>This invitation link is invalid or has expired. Ask your administrator to send a new one.</value>
+  </data>
+  <data name="TapTitle" xml:space="preserve">
+    <value>Recover your account</value>
+  </data>
+  <data name="TapPrompt" xml:space="preserve">
+    <value>Enter your email and the access pass your administrator gave you.</value>
+  </data>
+  <data name="TapPass" xml:space="preserve">
+    <value>Access pass</value>
+  </data>
+  <data name="TapInvalid" xml:space="preserve">
+    <value>The access pass is invalid or has expired.</value>
+  </data>
+  <data name="SetupTitle" xml:space="preserve">
+    <value>Set up the administrator</value>
+  </data>
+  <data name="SetupPrompt" xml:space="preserve">
+    <value>Enter the one-time setup token to configure the break-glass administrator.</value>
+  </data>
+  <data name="SetupToken" xml:space="preserve">
+    <value>Setup token</value>
+  </data>
+  <data name="SetupInvalid" xml:space="preserve">
+    <value>The setup token is invalid or setup has already been completed.</value>
+  </data>
+  <data name="Profile" xml:space="preserve">
+    <value>Profile</value>
+  </data>
+  <data name="Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Language" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="Save" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="Saved" xml:space="preserve">
+    <value>Your changes have been saved.</value>
+  </data>
+  <data name="UnknownDevice" xml:space="preserve">
+    <value>Unknown device</value>
+  </data>
+  <data name="ThisSession" xml:space="preserve">
+    <value>this session</value>
+  </data>
+  <data name="AuthenticatorApp" xml:space="preserve">
+    <value>Authenticator app</value>
+  </data>
+  <data name="AuthenticatorEnrollPrompt" xml:space="preserve">
+    <value>Scan the QR code with your authenticator app, then enter the 6-digit code to confirm.</value>
+  </data>
+  <data name="EnableAuthenticator" xml:space="preserve">
+    <value>Enable authenticator app</value>
+  </data>
+  <data name="RecoveryCodesPrompt" xml:space="preserve">
+    <value>Save these recovery codes somewhere safe. Each can be used once if you lose access to your other methods.</value>
+  </data>
+  <data name="ForgotPassword" xml:space="preserve">
+    <value>Forgot your password?</value>
+  </data>
+  <data name="ForgotPasswordPrompt" xml:space="preserve">
+    <value>Enter your email and we will send you a link to reset your password.</value>
+  </data>
+  <data name="ResetPassword" xml:space="preserve">
+    <value>Reset your password</value>
+  </data>
+  <data name="Password" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="SendResetLink" xml:space="preserve">
+    <value>Send reset link</value>
+  </data>
+  <data name="ResetLinkSent" xml:space="preserve">
+    <value>If an account exists for that address, we sent it a password-reset link.</value>
+  </data>
+  <data name="ContinueWithGoogle" xml:space="preserve">
+    <value>Continue with Google</value>
+  </data>
+  <data name="ContinueWithMicrosoft" xml:space="preserve">
+    <value>Continue with Microsoft</value>
+  </data>
+</root>

@@ -22,7 +22,7 @@ jobs:
           global-json-file: global.json
       - run: dotnet restore Tellma.slnx
       - run: dotnet build Tellma.slnx -c Release --no-restore
-      - run: dotnet test Tellma.slnx -c Release --no-build --filter "Category!=Integration"
+      - run: dotnet test Tellma.slnx -c Release --no-build --filter "Category!=Integration&Category!=E2E"
 
   # Code style and formatting: the full IDE code-style surface (whitespace, imports, IDE00xx) that
   # the compiler build does not run even with EnforceCodeStyleInBuild. Same analyzers and
@@ -99,6 +99,46 @@ jobs:
           dotnet ef migrations add PackageProbe --project "$PKG_HOST" --startup-project "$PKG_HOST" --no-build
           grep -q "CreateTableType" "$PKG_HOST"/Migrations/*_PackageProbe.cs
 
+  # Containerized SQL Server for the identity server's flow/API suite (Testcontainers manages the
+  # container; Docker is preinstalled on ubuntu runners). Covers every OAuth/OIDC flow end to end
+  # against real SQL, plus the invitation and service-account APIs.
+  identity-integration:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet test test/apps/Tellma.Identity.IntegrationTests -c Release --filter "Category=Integration"
+
+  # Browser end-to-end scenarios (Playwright + Chromium) for the identity UI, including passkeys
+  # via the CDP virtual authenticator. The browser download is cached on the package version.
+  identity-e2e:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet build test/apps/Tellma.Identity.E2E -c Release
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('Directory.Packages.props') }}
+      - name: Install Chromium
+        run: pwsh test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+      - run: dotnet test test/apps/Tellma.Identity.E2E -c Release --no-build --filter "Category=E2E"
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright-traces
+          if-no-files-found: ignore
+
   # PR merge gate: the single status check required by branch protection. It fails if any job
   # below did not succeed, without making any individual job a required check (which would couple
   # branch protection to job names / the OS matrix).
@@ -106,7 +146,7 @@ jobs:
     if: ${{ !cancelled() && !github.event.pull_request.draft }}
     # Include all required job in this list — a job missing here is NOT gated.
     # Branch protection must require THIS job only.
-    needs: [build-test, format, integration, design-e2e]
+    needs: [build-test, format, integration, design-e2e, identity-integration, identity-e2e]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any dependency did not succeed

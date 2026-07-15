@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <Description>The Tellma Identity Server engine: OpenIddict + ASP.NET Core Identity configuration, protocol endpoints, auth-flow UI, lifecycle APIs, and stores. Referenced by Tellma.Identity.Web (standalone) and by a distribution's web host (in-proc).</Description>
+    <!-- The engine ships MVC controllers and Razor Pages alongside its static web assets. -->
+    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+    <!-- Pin the RCL asset prefix so hosts reference engine assets by a stable path. -->
+    <StaticWebAssetBasePath>_content/Tellma.Identity</StaticWebAssetBasePath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Azure packages back config-gated optional paths only (Key Vault certificates, blob-backed
+         Data Protection). On-prem deployments run fully without Azure: certificate-store/PFX key
+         sources, file-system Data Protection, and SMTP email. -->
+    <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Blobs" />
+    <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Keys" />
+    <PackageReference Include="Azure.Identity" />
+    <PackageReference Include="Azure.Security.KeyVault.Certificates" />
+    <PackageReference Include="Azure.Security.KeyVault.Secrets" />
+    <PackageReference Include="MailKit" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
+    <PackageReference Include="Net.Codecrete.QrCodeGenerator" />
+    <!-- Individual OpenIddict packages, deliberately not the OpenIddict.AspNetCore metapackage:
+         the metapackage pulls in the OpenIddict client stack, which this server does not use
+         (external logins go through the ASP.NET Core authentication handlers). -->
+    <PackageReference Include="OpenIddict.EntityFrameworkCore" />
+    <PackageReference Include="OpenIddict.Quartz" />
+    <PackageReference Include="OpenIddict.Server.AspNetCore" />
+    <PackageReference Include="OpenIddict.Validation.AspNetCore" />
+    <PackageReference Include="OpenIddict.Validation.ServerIntegration" />
+    <PackageReference Include="Quartz.Extensions.Hosting" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,47 @@
+/*
+ * PLACEHOLDER for the compiled output of @tellma/core-ui-tokens.
+ *
+ * Replace this file's CONTENTS with the published tokens build when the client component
+ * library ships; keep the file name and path stable so no markup changes. Custom properties on
+ * :root only — never add selectors or rules here. Per-tenant branding later means serving a
+ * different tokens file, not editing styles.
+ */
+:root {
+  /* Color */
+  --tl-color-primary: #1f6feb;
+  --tl-color-primary-hover: #175bc4;
+  --tl-color-on-primary: #ffffff;
+  --tl-color-surface: #f5f7fa;
+  --tl-color-surface-raised: #ffffff;
+  --tl-color-border: #d4dae3;
+  --tl-color-text: #1a2330;
+  --tl-color-text-muted: #5b6878;
+  --tl-color-danger: #c62828;
+  --tl-color-success: #1b7f4d;
+  --tl-color-warning: #b26a00;
+  --tl-color-focus: #1f6feb;
+
+  /* Typography */
+  --tl-font-family: "Segoe UI", system-ui, -apple-system, "Noto Sans Arabic", "Tahoma", sans-serif;
+  --tl-font-size-sm: 0.8125rem;
+  --tl-font-size-md: 0.9375rem;
+  --tl-font-size-lg: 1.125rem;
+  --tl-font-size-xl: 1.5rem;
+  --tl-font-weight-regular: 400;
+  --tl-font-weight-medium: 600;
+  --tl-font-weight-bold: 700;
+  --tl-line-height: 1.5;
+
+  /* Shape and space */
+  --tl-radius-sm: 4px;
+  --tl-radius-md: 8px;
+  --tl-radius-lg: 12px;
+  --tl-space-1: 0.25rem;
+  --tl-space-2: 0.5rem;
+  --tl-space-3: 0.75rem;
+  --tl-space-4: 1rem;
+  --tl-space-6: 1.5rem;
+  --tl-space-8: 2rem;
+  --tl-shadow-1: 0 1px 3px rgba(16, 24, 40, 0.1);
+  --tl-shadow-2: 0 8px 24px rgba(16, 24, 40, 0.12);
+}

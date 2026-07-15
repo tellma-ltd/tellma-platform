@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <!-- Not an xunit project: a distribution-shaped web host asset that mounts the identity
+         engine in-proc, exercised by the integration suite's composition-parity tests. -->
+    <TellmaTestAsset>true</TellmaTestAsset>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\apps\Tellma.Identity\Tellma.Identity.csproj" />
+    <ProjectReference Include="..\..\..\..\src\apps\Tellma.Identity.Migrations\Tellma.Identity.Migrations.csproj" />
+  </ItemGroup>
+
+</Project>

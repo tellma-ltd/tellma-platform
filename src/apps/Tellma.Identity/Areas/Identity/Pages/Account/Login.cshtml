@@ -1,0 +1,74 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Account.LoginModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = Model.StepUp ? L["ConfirmItsYou"].Value : L["SignIn"].Value;
+}
+
+<h1 class="tl-title">@(Model.StepUp ? L["ConfirmItsYou"] : L["SignIn"])</h1>
+
+<partial name="Shared/_StatusMessage" model="@(Model.StatusMessage)" />
+
+@{
+    string passkeyMethod = Tellma.Identity.Services.AuthenticationPolicy.AuthenticationMethods.Passkey;
+    string emailCodeMethod = Tellma.Identity.Services.AuthenticationPolicy.AuthenticationMethods.EmailCode;
+    string googleMethod = Tellma.Identity.Services.AuthenticationPolicy.AuthenticationMethods.Google;
+    string microsoftMethod = Tellma.Identity.Services.AuthenticationPolicy.AuthenticationMethods.Microsoft;
+    bool showPasskey = Model.Methods.Contains(passkeyMethod);
+    bool showEmailCode = Model.Methods.Contains(emailCodeMethod);
+    bool showGoogle = Model.Methods.Contains(googleMethod) && Model.ConfiguredExternalProviders.Contains("Google");
+    bool showMicrosoft = Model.Methods.Contains(microsoftMethod) && Model.ConfiguredExternalProviders.Contains("Microsoft");
+}
+
+@if (showEmailCode)
+{
+    <form method="post" asp-page-handler="EmailCode" asp-route-returnUrl="@Model.ReturnUrl" asp-route-stepUp="@Model.StepUp">
+        <div class="tl-field">
+            <label class="tl-label" for="email">@L["Email"]</label>
+            @* autocomplete carries the webauthn token so passkey conditional UI can attach here. *@
+            <input class="tl-input" id="email" name="Email" type="email" inputmode="email"
+                   autocomplete="username webauthn" required value="@Model.Email" />
+        </div>
+        <label class="tl-checkbox">
+            <input type="checkbox" name="RememberMe" value="true" checked="@Model.RememberMe" />
+            @L["RememberMe"]
+        </label>
+        <button class="tl-button tl-button-primary" type="submit">@L["ContinueWithEmailCode"]</button>
+    </form>
+}
+
+@if (showPasskey)
+{
+    @* The assertion credential is posted back through this hidden field by passkey.js. *@
+    <form method="post" id="passkey-form" asp-page-handler="Passkey" asp-route-returnUrl="@Model.ReturnUrl" asp-route-stepUp="@Model.StepUp">
+        <input type="hidden" id="passkey-credential" name="Credential" />
+        <button class="tl-button tl-button-secondary" type="button" id="passkey-button">@L["SignInWithPasskey"]</button>
+    </form>
+}
+
+@if (showGoogle || showMicrosoft)
+{
+    <hr class="tl-divider" />
+    @if (showGoogle)
+    {
+        <form method="post" asp-page="/Account/ExternalLogin" asp-route-provider="Google" asp-route-returnUrl="@Model.ReturnUrl">
+            <button class="tl-button tl-button-secondary" type="submit">@L["ContinueWithGoogle"]</button>
+        </form>
+    }
+    @if (showMicrosoft)
+    {
+        <form method="post" asp-page="/Account/ExternalLogin" asp-route-provider="Microsoft" asp-route-returnUrl="@Model.ReturnUrl">
+            <button class="tl-button tl-button-secondary" type="submit">@L["ContinueWithMicrosoft"]</button>
+        </form>
+    }
+}
+
+<div asp-validation-summary="All" class="tl-error"></div>
+
+@if (showPasskey)
+{
+    @section Scripts {
+        <partial name="Shared/_PasskeyScripts" />
+        <script src="~/_content/Tellma.Identity/js/login.page.js"></script>
+    }
+}

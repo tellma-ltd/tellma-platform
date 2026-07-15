@@ -1,0 +1,19 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Account.InvitationModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["InvitationTitle"].Value;
+}
+
+<h1 class="tl-title">@L["InvitationTitle"]</h1>
+
+@if (!Model.IsValid)
+{
+    <p class="tl-error">@L["InvitationInvalid"]</p>
+}
+else
+{
+    <p class="tl-muted">@L["InvitationPrompt"]</p>
+    <a class="tl-button tl-button-primary" asp-area="Identity" asp-page="/Account/RegisterPasskey"
+       asp-route-returnUrl="@Model.ReturnUrl">@L["RegisterPasskeyButton"]</a>
+}

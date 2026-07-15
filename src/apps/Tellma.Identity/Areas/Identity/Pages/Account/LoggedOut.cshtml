@@ -1,0 +1,8 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Account.LoggedOutModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["SignedOut"].Value;
+}
+
+<h1 class="tl-title">@L["SignedOut"]</h1>

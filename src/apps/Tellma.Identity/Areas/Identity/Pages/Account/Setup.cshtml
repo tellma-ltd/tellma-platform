@@ -1,0 +1,19 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Account.SetupModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["SetupTitle"].Value;
+}
+
+<h1 class="tl-title">@L["SetupTitle"]</h1>
+<p class="tl-muted">@L["SetupPrompt"]</p>
+
+<form method="post">
+    <div class="tl-field">
+        <label class="tl-label" for="token">@L["SetupToken"]</label>
+        <input class="tl-input" id="token" name="Token" type="text" autocomplete="off" required />
+    </div>
+    <button class="tl-button tl-button-primary" type="submit">@L["Continue"]</button>
+</form>
+
+<div asp-validation-summary="All" class="tl-error"></div>
