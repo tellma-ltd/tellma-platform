@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using Tellma.Identity.Data;
 using Tellma.Identity.Data.Entities;
+using Tellma.Identity.Infrastructure;
 using Tellma.Identity.Options;
 using Tellma.Identity.Services.Audit;
 using Tellma.Identity.Services.Email;
@@ -43,8 +44,9 @@ namespace Tellma.Identity.Services.Invitations
     /// <summary>
     ///     Bulk user invitation: create-or-get each user by email, assign each a <c>sub</c>, send a
     ///     localized single-use link, and return per-user status plus <c>sub</c>. The link — the
-    ///     email-ownership proof — is never returned in any environment. The whole batch is one
-    ///     save and one email hand-off, so inviting many users has no per-record round-trips.
+    ///     email-ownership proof — is never returned in any environment. Users are created through
+    ///     the Identity user manager (one persistence operation each, so its validators and
+    ///     normalizers run), while the email delivery for the whole batch is a single hand-off.
     /// </summary>
     /// <param name="userManager">The Identity user manager.</param>
     /// <param name="tokens">One-time invitation tokens.</param>
@@ -52,6 +54,7 @@ namespace Tellma.Identity.Services.Invitations
     /// <param name="templates">Localized message construction.</param>
     /// <param name="options">The engine options (issuer for the link base).</param>
     /// <param name="auditLogger">Audit emission.</param>
+    /// <param name="metrics">Identity metrics.</param>
     /// <param name="timeProvider">The clock.</param>
     public sealed class InvitationService(
         UserManager<TellmaIdentityUser> userManager,
@@ -60,6 +63,7 @@ namespace Tellma.Identity.Services.Invitations
         EmailTemplateService templates,
         IOptions<TellmaIdentityOptions> options,
         IAuditLogger auditLogger,
+        IdentityMetrics metrics,
         TimeProvider timeProvider)
     {
         /// <summary>The invitation link lifetime.</summary>
@@ -84,6 +88,7 @@ namespace Tellma.Identity.Services.Invitations
             {
                 (TellmaIdentityUser user, InvitationStatus status) = await CreateOrGetAsync(item);
                 results.Add(new InvitationResultItem(item.Email, user.Id, status));
+                metrics.Invitation(status.ToString());
 
                 // Active users need no link — nothing to prove; the distribution records membership.
                 if (status == InvitationStatus.Active)
@@ -122,6 +127,15 @@ namespace Tellma.Identity.Services.Invitations
             TellmaIdentityUser? existing = await userManager.FindByEmailAsync(item.Email);
             if (existing is not null)
             {
+                // A disabled or purged user is never reactivated by an invitation: re-enabling an
+                // administratively disabled account, or resurrecting a data-erased identity, must
+                // be a deliberate operator action, not a side effect of a bulk invite.
+                if (existing.LifecycleState is UserLifecycleState.Disabled or UserLifecycleState.Purged)
+                {
+                    throw new Provisioning.ProvisioningValidationException(
+                        $"The user '{item.Email}' is {existing.LifecycleState} and cannot be re-invited; an operator must re-enable it first.");
+                }
+
                 bool hasCredentials = (await userManager.GetPasskeysAsync(existing)).Count > 0
                     || await userManager.HasPasswordAsync(existing)
                     || (await userManager.GetLoginsAsync(existing)).Count > 0;
@@ -131,12 +145,19 @@ namespace Tellma.Identity.Services.Invitations
                     return (existing, InvitationStatus.Active);
                 }
 
-                // Restore an orphaned user and re-invite a credential-less one.
-                if (existing.LifecycleState != UserLifecycleState.Active)
+                // Restore an orphaned user; a credential-less Active user is simply re-invited.
+                if (existing.LifecycleState == UserLifecycleState.Orphaned)
                 {
                     existing.LifecycleState = UserLifecycleState.Active;
                     existing.OrphanedUtc = null;
                     await userManager.UpdateAsync(existing);
+                    await auditLogger.LogAsync(new AuditEventEntry
+                    {
+                        Action = AuditActions.UserLifecycleChanged,
+                        Subject = existing.Id,
+                        Outcome = "success",
+                        DetailsJson = System.Text.Json.JsonSerializer.Serialize(new { from = "Orphaned", to = "Active", reason = "reinvited" }),
+                    });
                 }
 
                 return (existing, InvitationStatus.Reinvited);

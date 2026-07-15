@@ -12,8 +12,9 @@ namespace Tellma.Identity.Services.Keys
     /// <summary>
     ///     Development-only key material: self-signed certificates generated on first run and
     ///     persisted under the local application-data folder, so locally issued tokens and
-    ///     cookies survive restarts. Never reachable in production — the options validator
-    ///     rejects this source without the explicit development flag.
+    ///     cookies survive restarts. The options validator rejects this source both without the
+    ///     explicit development flag and outside the Development environment, so it never loads in
+    ///     production.
     /// </summary>
     public sealed class DevelopmentCertificateSource : ICertificateSource
     {
@@ -47,16 +48,18 @@ namespace Tellma.Identity.Services.Keys
             byte[] pkcs12 = Generate(use);
             try
             {
-                // Atomic move so two processes generating concurrently cannot interleave writes;
-                // the loser simply loads the winner's file below.
+                // Atomic overwrite so two processes generating concurrently cannot interleave
+                // writes and, critically, so an expiring certificate is actually replaced (a
+                // non-overwriting move would fail against the stale file and leave it in place).
                 string temporary = file + "." + Guid.NewGuid().ToString("N") + ".tmp";
                 File.WriteAllBytes(temporary, pkcs12);
                 try
                 {
-                    File.Move(temporary, file, overwrite: false);
+                    File.Move(temporary, file, overwrite: true);
                 }
                 catch (IOException)
                 {
+                    // A concurrent winner already moved its file into place; drop ours and load theirs.
                     File.Delete(temporary);
                 }
             }

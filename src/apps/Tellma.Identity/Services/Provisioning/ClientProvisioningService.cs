@@ -79,11 +79,17 @@ namespace Tellma.Identity.Services.Provisioning
             ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
             ArgumentNullException.ThrowIfNull(resources);
 
+            // Audience least-privilege: a service account may only name audiences its creating
+            // client owns. Resolving the caller's own origin and rejecting anything else stops one
+            // distribution's backend from minting tokens whose `aud` is a foreign distribution.
+            IReadOnlyCollection<string> grantedResources =
+                await ResolveServiceAccountResourcesAsync(resources, createdByClientId, cancellationToken);
+
             string clientId = ServiceAccountClientIdPrefix + Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(16));
             string secret = GenerateSecret();
 
             await applicationManager.CreateAsync(
-                ClientDescriptorFactory.ServiceAccount(clientId, displayName, secret, resources, timeProvider.GetUtcNow()),
+                ClientDescriptorFactory.ServiceAccount(clientId, displayName, secret, grantedResources, timeProvider.GetUtcNow()),
                 cancellationToken);
 
             await auditLogger.LogAsync(
@@ -169,6 +175,42 @@ namespace Tellma.Identity.Services.Provisioning
             return secret;
         }
 
+        /// <summary>
+        ///     Resolves the audiences a new service account may hold: the creating client's own
+        ///     origin. An empty request defaults to that origin (the common "a service account for
+        ///     my own API" case); any explicitly requested resource that is not the caller's origin
+        ///     is rejected.
+        /// </summary>
+        private async Task<IReadOnlyCollection<string>> ResolveServiceAccountResourcesAsync(
+            IReadOnlyCollection<string> requested, string? createdByClientId, CancellationToken cancellationToken)
+        {
+            string? callerOrigin = null;
+            if (!string.IsNullOrWhiteSpace(createdByClientId)
+                && await applicationManager.FindByClientIdAsync(createdByClientId, cancellationToken) is { } caller)
+            {
+                ImmutableDictionary<string, JsonElement> properties =
+                    await applicationManager.GetPropertiesAsync(caller, cancellationToken);
+                callerOrigin = TellmaClientProperties.Get(properties, TellmaClientProperties.Origin);
+            }
+
+            if (callerOrigin is null)
+            {
+                throw new ProvisioningValidationException(
+                    "The calling client has no distribution origin, so it cannot create service accounts.");
+            }
+
+            foreach (string resource in requested)
+            {
+                if (!string.Equals(resource, callerOrigin, StringComparison.Ordinal))
+                {
+                    throw new ProvisioningValidationException(
+                        $"A service account may only be granted its own distribution's audience ('{callerOrigin}').");
+                }
+            }
+
+            return [callerOrigin];
+        }
+
         /// <summary>Generates a 256-bit URL-safe client secret.</summary>
         internal static string GenerateSecret()
         {
@@ -229,7 +271,12 @@ namespace Tellma.Identity.Services.Provisioning
             }
         }
 
-        /// <summary>Grants a resource permission to every seeded platform client.</summary>
+        /// <summary>
+        ///     Grants a new distribution's audience to the platform clients that may name
+        ///     distribution APIs (CLI, native apps). The control plane is deliberately excluded: its
+        ///     only audience is the control-plane surface, so a compromised control-plane secret
+        ///     cannot mint tokens for a distribution API.
+        /// </summary>
         private async Task GrantResourceToPlatformClientsAsync(string resource, CancellationToken cancellationToken)
         {
             string permission = Permissions.Prefixes.Resource + resource;
@@ -237,7 +284,7 @@ namespace Tellma.Identity.Services.Provisioning
             {
                 ImmutableDictionary<string, JsonElement> properties =
                     await applicationManager.GetPropertiesAsync(application, cancellationToken);
-                if (!TellmaClientProperties.IsSet(properties, TellmaClientProperties.Platform))
+                if (!TellmaClientProperties.IsSet(properties, TellmaClientProperties.CallsDistributionApis))
                 {
                     continue;
                 }

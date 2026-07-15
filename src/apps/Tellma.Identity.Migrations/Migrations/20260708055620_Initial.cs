@@ -592,22 +592,23 @@ namespace Tellma.Identity.Migrations
                 table: "TemporaryAccessPasses",
                 column: "UserId");
 
-            // Filtered index supporting the Quartz prune query: redeemed/revoked/rejected rows
-            // are exactly the prune bulk, while untouched valid tokens (the hot majority) stay
-            // out of the index. CreationDate is included because the prune predicate is bounded
-            // by it. Raw SQL because CreateIndex cannot express a WHERE clause with this shape.
+            // Index supporting the Quartz prune query. OpenIddict prunes rows whose CreationDate is
+            // older than a threshold (the query's dominant, most selective bound), so the index
+            // leads with CreationDate to seek them; Status and ExpirationDate are included to cover
+            // the residual predicate without a key lookup. Deliberately unfiltered: OpenIddict never
+            // flips Status on expiry, so expired-but-'valid' access tokens are the prune bulk and a
+            // Status <> 'valid' filter would exclude exactly what the query scans.
             migrationBuilder.Sql(
-                "CREATE NONCLUSTERED INDEX [IX_OpenIddictTokens_Status_ExpirationDate] " +
-                "ON [idsvr].[OpenIddictTokens] ([Status], [ExpirationDate]) " +
-                "INCLUDE ([CreationDate]) " +
-                "WHERE [Status] <> N'valid';");
+                "CREATE NONCLUSTERED INDEX [IX_OpenIddictTokens_CreationDate] " +
+                "ON [idsvr].[OpenIddictTokens] ([CreationDate]) " +
+                "INCLUDE ([Status], [ExpirationDate]);");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.Sql(
-                "DROP INDEX [IX_OpenIddictTokens_Status_ExpirationDate] ON [idsvr].[OpenIddictTokens];");
+                "DROP INDEX [IX_OpenIddictTokens_CreationDate] ON [idsvr].[OpenIddictTokens];");
 
             migrationBuilder.DropTable(
                 name: "AspNetRoleClaims",

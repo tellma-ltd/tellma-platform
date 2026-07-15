@@ -23,11 +23,13 @@ namespace Tellma.Identity.Infrastructure
         /// <summary>
         ///     Every identity page ships external, same-origin JavaScript and CSS only, so the
         ///     policy needs no nonces, hashes, or third-party hosts. <c>img-src data:</c> covers
-        ///     inline SVG/QR data URIs.
+        ///     inline SVG/QR data URIs. <c>require-trusted-types-for 'script'</c> blocks DOM-XSS
+        ///     sinks (the ceremony scripts touch none), honoring the §14 Trusted Types commitment.
         /// </summary>
         private const string ContentSecurityPolicy =
             "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
-            + "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'";
+            + "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; "
+            + "require-trusted-types-for 'script'; trusted-types 'none'";
 
         private readonly string _pathBase = options.Value.PathBase;
 

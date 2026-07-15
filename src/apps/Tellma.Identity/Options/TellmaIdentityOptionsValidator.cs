@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace Tellma.Identity.Options
@@ -10,9 +11,17 @@ namespace Tellma.Identity.Options
     /// <summary>
     ///     Startup validation for <see cref="TellmaIdentityOptions" />. Every failure is reported
     ///     at once so a misconfigured deployment is fixed in one pass, and insecure combinations
-    ///     (development keys outside development, HTTP without the explicit flag) never boot.
+    ///     (development keys outside development, HTTP without the explicit flag, an unencrypted
+    ///     blob key ring) never boot.
     /// </summary>
-    public sealed class TellmaIdentityOptionsValidator : IValidateOptions<TellmaIdentityOptions>
+    /// <param name="environment">
+    ///     The host environment, when available: used to reject development-only settings outside
+    ///     the Development environment regardless of their opt-in flag. Null for the eager
+    ///     registration-time snapshot check, where the same rule is enforced later at start-up by
+    ///     the DI-resolved validator that does have it.
+    /// </param>
+    public sealed class TellmaIdentityOptionsValidator(IHostEnvironment? environment = null)
+        : IValidateOptions<TellmaIdentityOptions>
     {
         /// <inheritdoc />
         public ValidateOptionsResult Validate(string? name, TellmaIdentityOptions options)
@@ -21,7 +30,8 @@ namespace Tellma.Identity.Options
 
             List<string> failures = [];
 
-            // Issuer: required, absolute, and free of query/fragment noise.
+            // Issuer: required, absolute, HTTPS (outside the dev-insecure flag), and free of
+            // query/fragment noise.
             if (options.Issuer is null)
             {
                 failures.Add("TellmaIdentity:Issuer is required.");
@@ -34,11 +44,26 @@ namespace Tellma.Identity.Options
             {
                 failures.Add("TellmaIdentity:Issuer must not contain a query string or fragment.");
             }
+            else if (!string.Equals(options.Issuer.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal)
+                && !options.Development.AllowInsecureHttp)
+            {
+                failures.Add("TellmaIdentity:Issuer must use HTTPS (or enable TellmaIdentity:Development:AllowInsecureHttp for local development).");
+            }
 
             // Path base and mode must agree, and the in-proc issuer must live under the path base.
-            if (options.Mode == TellmaIdentityDeploymentMode.Standalone && options.PathBase.Length > 0)
+            if (options.Mode == TellmaIdentityDeploymentMode.Standalone)
             {
-                failures.Add("TellmaIdentity:PathBase must be empty in Standalone mode.");
+                if (options.PathBase.Length > 0)
+                {
+                    failures.Add("TellmaIdentity:PathBase must be empty in Standalone mode.");
+                }
+
+                // A standalone issuer is the bare origin: endpoints register unprefixed, so a
+                // non-empty issuer path would serve discovery where relying parties never look.
+                if (options.Issuer is { IsAbsoluteUri: true } && options.Issuer.AbsolutePath.Trim('/').Length > 0)
+                {
+                    failures.Add("TellmaIdentity:Issuer must have no path segment in Standalone mode (the issuer is the bare origin).");
+                }
             }
             else if (options.Mode == TellmaIdentityDeploymentMode.InProc)
             {
@@ -61,6 +86,14 @@ namespace Tellma.Identity.Options
 
             ValidateCertificate(options, options.Keys.Signing, "Signing", failures);
             ValidateCertificate(options, options.Keys.Encryption, "Encryption", failures);
+
+            // Data Protection: a blob-persisted key ring MUST be encrypted with a Key Vault key,
+            // or the DP master keys sit unprotected in blob storage (anyone with blob read access
+            // could forge cookies and decrypt WebAuthn state and DP-format tokens).
+            if (options.DataProtection.BlobUri is not null && options.DataProtection.KeyVaultKeyUri is null)
+            {
+                failures.Add("TellmaIdentity:DataProtection:KeyVaultKeyUri is required when BlobUri is set, so the blob-persisted key ring is encrypted at rest.");
+            }
 
             // Email delivery is load-bearing (invitations, recovery): a deployment must either
             // configure SMTP or explicitly opt into the development sink.
@@ -86,7 +119,7 @@ namespace Tellma.Identity.Options
         }
 
         /// <summary>Validates one certificate slot's source configuration.</summary>
-        private static void ValidateCertificate(
+        private void ValidateCertificate(
             TellmaIdentityOptions options,
             TellmaIdentityCertificateOptions certificate,
             string slot,
@@ -100,6 +133,13 @@ namespace Tellma.Identity.Options
                 && !options.Development.AllowDevelopmentCertificates)
             {
                 failures.Add($"TellmaIdentity:Keys:{slot}: DevelopmentSelfSigned certificates require TellmaIdentity:Development:AllowDevelopmentCertificates and must never be used in production.");
+            }
+            else if (certificate.Source == TellmaIdentityCertificateSourceKind.DevelopmentSelfSigned
+                && environment is not null && !environment.IsDevelopment())
+            {
+                // Defense-in-depth beyond the opt-in flag: never let a self-signed dev key boot in
+                // a non-Development environment, mirroring the dev-admin double guard.
+                failures.Add($"TellmaIdentity:Keys:{slot}: DevelopmentSelfSigned certificates are only permitted in the Development environment.");
             }
             else if (certificate.Source == TellmaIdentityCertificateSourceKind.PfxFile
                 && !certificate.PfxFiles.Any(static f => !string.IsNullOrWhiteSpace(f.Path)))

@@ -85,7 +85,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
             }
 
             // Scope the upcoming credential ceremony to this user without a session.
-            CredentialFlowCookie.Issue(HttpContext, user.Id);
+            CredentialFlowCookie.Issue(HttpContext, user.Id, CredentialFlowPurpose.Invitation);
             IsValid = true;
             return Page();
         }

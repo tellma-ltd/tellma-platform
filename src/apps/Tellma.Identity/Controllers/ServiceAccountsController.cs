@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using OpenIddict.Abstractions;
 using Tellma.Identity.Controllers.Api;
@@ -31,8 +32,16 @@ namespace Tellma.Identity.Controllers
         {
             ArgumentNullException.ThrowIfNull(request);
 
-            ServiceAccountCredentials credentials = await provisioning.CreateServiceAccountAsync(
-                request.DisplayName, [.. request.Resources], CallerClientId(), HttpContext.RequestAborted);
+            ServiceAccountCredentials credentials;
+            try
+            {
+                credentials = await provisioning.CreateServiceAccountAsync(
+                    request.DisplayName, [.. request.Resources], CallerClientId(), HttpContext.RequestAborted);
+            }
+            catch (ProvisioningValidationException exception)
+            {
+                return Problem(detail: exception.Message, statusCode: StatusCodes.Status400BadRequest);
+            }
 
             return CreatedAtAction(nameof(Get), new { clientId = credentials.ClientId }, new CreateServiceAccountResponse
             {

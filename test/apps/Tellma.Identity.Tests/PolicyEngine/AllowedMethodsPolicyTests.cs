@@ -54,7 +54,7 @@ namespace Tellma.Identity.Tests.PolicyEngine
         [Fact]
         public void A_tier_no_allowed_method_can_reach_is_unsatisfiable()
         {
-            // aal2 requested but only email code allowed (aal1-capable on its own).
+            // aal3 requested but only email code allowed (aal1 on its own).
             PolicyEvaluation evaluation = _policy.Evaluate(
                 acrValues: [AcrTiers.Aal3],
                 maxAge: null,
@@ -64,6 +64,81 @@ namespace Tellma.Identity.Tests.PolicyEngine
                 nowUnixSeconds: 200);
 
             Assert.Equal(PolicyOutcome.Unsatisfiable, evaluation.Outcome);
+        }
+
+        [Theory]
+        [InlineData(AuthenticationMethods.EmailCode)]
+        [InlineData(AuthenticationMethods.Password)]
+        [InlineData(AuthenticationMethods.Totp)]
+        public void A_lone_factor_that_only_composes_to_aal1_cannot_satisfy_aal2(string method)
+        {
+            // Ranks compose: a lone password, TOTP, or email code derives aal1, so offering it
+            // for an aal2 request would loop the user forever instead of failing cleanly.
+            PolicyEvaluation evaluation = _policy.Evaluate(
+                acrValues: [AcrTiers.Aal2],
+                maxAge: null,
+                allowedMethods: [method],
+                current: null,
+                forceInteraction: false,
+                nowUnixSeconds: 200);
+
+            Assert.Equal(PolicyOutcome.Unsatisfiable, evaluation.Outcome);
+        }
+
+        [Fact]
+        public void Otp_factors_without_a_password_cannot_satisfy_aal2()
+        {
+            PolicyEvaluation evaluation = _policy.Evaluate(
+                acrValues: [AcrTiers.Aal2],
+                maxAge: null,
+                allowedMethods: [AuthenticationMethods.Totp, AuthenticationMethods.EmailCode],
+                current: null,
+                forceInteraction: false,
+                nowUnixSeconds: 200);
+
+            Assert.Equal(PolicyOutcome.Unsatisfiable, evaluation.Outcome);
+        }
+
+        [Fact]
+        public void Password_with_an_otp_factor_composes_to_aal2()
+        {
+            PolicyEvaluation required = _policy.Evaluate(
+                acrValues: [AcrTiers.Aal2],
+                maxAge: null,
+                allowedMethods: [AuthenticationMethods.Password, AuthenticationMethods.Totp],
+                current: null,
+                forceInteraction: false,
+                nowUnixSeconds: 200);
+
+            Assert.Equal(PolicyOutcome.InteractionRequired, required.Outcome);
+            Assert.Equal([AuthenticationMethods.Password, AuthenticationMethods.Totp], required.OfferableMethods);
+
+            AssuranceResult current = _policy.DeriveAssurance(
+                [AuthenticationMethods.Password, AuthenticationMethods.Totp], passkeyIsDeviceBound: false, authTime: 100);
+            PolicyEvaluation satisfied = _policy.Evaluate(
+                acrValues: [AcrTiers.Aal2],
+                maxAge: null,
+                allowedMethods: [AuthenticationMethods.Password, AuthenticationMethods.Totp],
+                current: current,
+                forceInteraction: false,
+                nowUnixSeconds: 200);
+
+            Assert.Equal(PolicyOutcome.Satisfied, satisfied.Outcome);
+        }
+
+        [Fact]
+        public void Aal3_offers_only_the_passkey_method()
+        {
+            PolicyEvaluation evaluation = _policy.Evaluate(
+                acrValues: [AcrTiers.Aal3],
+                maxAge: null,
+                allowedMethods: null,
+                current: null,
+                forceInteraction: false,
+                nowUnixSeconds: 200);
+
+            Assert.Equal(PolicyOutcome.InteractionRequired, evaluation.Outcome);
+            Assert.Equal([AuthenticationMethods.Passkey], evaluation.OfferableMethods);
         }
 
         [Fact]

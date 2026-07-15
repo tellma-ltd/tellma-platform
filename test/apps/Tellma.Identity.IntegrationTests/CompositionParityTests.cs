@@ -46,8 +46,15 @@ namespace Tellma.Identity.IntegrationTests
             // Identical protocol capabilities.
             Assert.Equal(SortedStrings(left, "grant_types_supported"), SortedStrings(right, "grant_types_supported"));
             Assert.Equal(SortedStrings(left, "response_types_supported"), SortedStrings(right, "response_types_supported"));
-            Assert.Equal(SortedStrings(left, "scopes_supported"), SortedStrings(right, "scopes_supported"));
             Assert.Equal(SortedStrings(left, "code_challenge_methods_supported"), SortedStrings(right, "code_challenge_methods_supported"));
+
+            // Scopes match except for the control-plane scope, which is a standalone-only surface
+            // (the operator API is absent in-proc), so it is advertised only there.
+            Assert.Equal(
+                SortedStrings(left, "scopes_supported").Where(static s => s != "tellma_control_plane"),
+                SortedStrings(right, "scopes_supported"));
+            Assert.Contains("tellma_control_plane", SortedStrings(left, "scopes_supported"));
+            Assert.DoesNotContain("tellma_control_plane", SortedStrings(right, "scopes_supported"));
 
             // Issuers differ only by the reserved path base.
             Assert.Equal("http://localhost", left.GetProperty("issuer").GetString()?.TrimEnd('/'));

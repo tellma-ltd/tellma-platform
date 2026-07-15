@@ -27,27 +27,29 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
             ArgumentNullException.ThrowIfNull(claim);
 
             // Server-side state: never serialized into any token.
-            if (claim.Type is TellmaClaims.AllowedMethods or SecurityStampClaimType)
+            if (claim.Type is TellmaClaims.AllowedMethods or SecurityStampClaimType or SignInClaims.PasskeyDeviceBound)
             {
                 yield break;
             }
 
             switch (claim.Type)
             {
-                // Profile claims ride the access token; the id token gets them under `profile`.
+                // Identity claims are gated on their scope in both tokens: a client not granted
+                // `profile`/`email` gets a token without them, and resource servers receive no
+                // more than the grant allows.
                 case Claims.Name or Claims.PreferredUsername or Claims.Locale:
-                    yield return Destinations.AccessToken;
                     if (claim.Subject!.HasScope(Scopes.Profile))
                     {
+                        yield return Destinations.AccessToken;
                         yield return Destinations.IdentityToken;
                     }
 
                     yield break;
 
                 case Claims.Email or Claims.EmailVerified:
-                    yield return Destinations.AccessToken;
                     if (claim.Subject!.HasScope(Scopes.Email))
                     {
+                        yield return Destinations.AccessToken;
                         yield return Destinations.IdentityToken;
                     }
 

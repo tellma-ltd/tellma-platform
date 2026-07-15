@@ -27,7 +27,7 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
         /// <param name="methods">The concrete methods used (allow-list vocabulary).</param>
         /// <param name="passkeyIsDeviceBound">
         ///     Whether the passkey used is device-bound (non-synced), per the authenticator's
-        ///     self-asserted backup-state flags.
+        ///     self-asserted backup-eligibility flag.
         /// </param>
         /// <param name="authTime">When the interactive event happened (unix seconds).</param>
         /// <returns>The derived assurance.</returns>

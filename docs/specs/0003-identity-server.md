@@ -131,9 +131,15 @@ Distinct clients with least-privilege permissions:
 | Distribution BFF (`<slug>`) | Confidential | Onboarding automation | `authorization_code`, `refresh_token` |
 | Distribution backend M2M (`<slug>-svc`) | Confidential | Onboarding automation | `client_credentials` (+ `token_exchange` when it acts for users) |
 | Service account | Confidential | Runtime (invitation/service-account API) | `client_credentials` |
-| Tellma CLI | Public | Seeded platform config | `authorization_code` (loopback), `device_code` |
-| Native app | Public | Seeded per app | `authorization_code` (system browser), `device_code` |
+| Tellma CLI | Public | Seeded platform config | `authorization_code` (loopback), `device_code`, `refresh_token` |
+| Native app | Public | Seeded per app | `authorization_code` (system browser), `device_code`, `refresh_token` |
 | Control plane | Confidential | Seeded platform config | `client_credentials` |
+
+Public native and CLI clients hold refresh tokens (per RFC 8252 §6): they run on the user's own
+device with no server-side session to fall back on, so silent renewal needs a client-held refresh
+token. The token-theft exposure a browser faces (§7.1) does not apply — nothing is served to a remote
+origin — and rotation with reuse detection (§6.3) bounds a stolen token. Service accounts still get no
+refresh token (client credentials re-authenticates directly).
 
 ## 6. Tokens, claims, scopes, and audiences
 
@@ -551,8 +557,9 @@ at the tenant layer (authoritative for permissions), while authority-side sessio
 Optimizations applied now:
 
 - **Token/authorization pruning via `UseQuartz()`** — the single most important operational job, since
-  every issued token writes a row. A filtered index on `(Status, ExpirationDate)` supports the prune
-  query.
+  every issued token writes a row. An index leading with `CreationDate` (the prune query's selective
+  bound) supports it; it is deliberately unfiltered, because the server never flips a token's status on
+  expiry, so expired-but-still-`valid` access tokens are the prune bulk.
 - Discovery/JWKS caching (same-process APIs use `UseLocalServer()`); output-cached discovery/JWKS at the
   edge.
 - Bulkified user operations; indexed lookups on `sub` and `client_id`.

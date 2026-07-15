@@ -26,9 +26,16 @@ namespace Tellma.Identity.Options
 
         /// <summary>
         ///     The reserved path base the engine is mounted at in in-proc mode (for example
-        ///     <c>/id</c>). Empty in standalone mode.
+        ///     <c>/id</c>). Empty in standalone mode. Normalized on assignment to a single leading
+        ///     slash with no trailing slash, so every consumer (cookie paths, emailed links, the
+        ///     CSP, route prefixes) sees one canonical form and a stray trailing slash cannot
+        ///     produce a double-slash path that fails to route.
         /// </summary>
-        public string PathBase { get; set; } = string.Empty;
+        public string PathBase
+        {
+            get;
+            set => field = string.IsNullOrWhiteSpace(value) ? string.Empty : "/" + value.Trim('/');
+        } = string.Empty;
 
         /// <summary>
         ///     The SQL Server connection string for the identity store. Alternatively an in-proc

@@ -60,7 +60,9 @@ namespace Tellma.Identity.Hosting
             }
 
             services.AddOptions<TellmaIdentityOptions>().Configure(configure).ValidateOnStart();
-            services.AddSingleton<IValidateOptions<TellmaIdentityOptions>, TellmaIdentityOptionsValidator>();
+            services.AddSingleton<IValidateOptions<TellmaIdentityOptions>>(
+                static provider => new TellmaIdentityOptionsValidator(
+                    provider.GetService<Microsoft.Extensions.Hosting.IHostEnvironment>()));
 
             services.AddHttpContextAccessor();
             services.TryAddSingleton(TimeProvider.System);
@@ -80,6 +82,13 @@ namespace Tellma.Identity.Hosting
             services.AddScoped<Services.EmailCodes.IEmailCodeService, Services.EmailCodes.EmailCodeService>();
             services.AddScoped<Services.RateLimiting.IRateLimitCounterStore, Services.RateLimiting.SqlRateLimitCounterStore>();
             services.AddScoped<Services.Email.EmailTemplateService>();
+
+            // Outbound mail leaves the request path via a background worker so enumeration-safe
+            // endpoints return in constant time.
+            services.AddSingleton<Services.Email.EmailDispatcher>();
+            services.AddSingleton<Services.Email.IEmailDispatcher>(
+                static provider => provider.GetRequiredService<Services.Email.EmailDispatcher>());
+            services.AddHostedService<Services.Email.EmailDispatchHostedService>();
             services.AddSingleton<IBrandingResolver, DefaultBrandingResolver>();
             services.AddSingleton<Services.BackchannelLogout.LogoutTokenFactory>();
             services.AddScoped<Services.BackchannelLogout.IBackchannelLogoutService, Services.BackchannelLogout.BackchannelLogoutService>();
@@ -140,6 +149,11 @@ namespace Tellma.Identity.Hosting
             services.AddControllersWithViews()
                 .AddApplicationPart(typeof(TellmaIdentityServiceCollectionExtensions).Assembly);
             services.AddRazorPages();
+
+            // The operator (control-plane) surface exists only in standalone mode; remove it from
+            // the application model in-proc so its routes do not exist there at all.
+            services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(mvc =>
+                mvc.Conventions.Add(new RemoveControlPlaneControllersConvention(snapshot.Mode)));
 
             string prefix = snapshot.RoutePrefix;
             if (prefix.Length > 0)

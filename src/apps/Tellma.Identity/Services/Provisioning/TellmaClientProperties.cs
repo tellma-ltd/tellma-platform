@@ -25,6 +25,14 @@ namespace Tellma.Identity.Services.Provisioning
         /// <summary>Marks seeded platform clients (CLI, native apps, control plane).</summary>
         public const string Platform = "tellma:platform";
 
+        /// <summary>
+        ///     Marks clients allowed to name per-distribution API audiences via the <c>resource</c>
+        ///     parameter (the CLI and native apps). Set at seed time so provisioning grants a new
+        ///     distribution's audience only to these clients, never to the control plane, whose sole
+        ///     audience is the control-plane surface.
+        /// </summary>
+        public const string CallsDistributionApis = "tellma:calls_distribution_apis";
+
         /// <summary>Marks runtime-provisioned service accounts.</summary>
         public const string ServiceAccount = "tellma:service_account";
 

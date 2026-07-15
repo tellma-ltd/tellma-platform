@@ -7,8 +7,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 using Tellma.Identity.Data;
 using Tellma.Identity.Services.Audit;
+using Tellma.Identity.Services.AuthenticationPolicy;
 
 namespace Tellma.Identity.Areas.Identity.Pages.Manage
 {
@@ -18,10 +20,12 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
     /// </summary>
     /// <param name="userManager">The Identity user manager.</param>
     /// <param name="auditLogger">Audit emission.</param>
+    /// <param name="localizer">UI strings.</param>
     [Authorize]
     public sealed class PasskeysModel(
         UserManager<TellmaIdentityUser> userManager,
-        IAuditLogger auditLogger) : PageModel
+        IAuditLogger auditLogger,
+        IStringLocalizer<SharedResources> localizer) : PageModel
     {
         /// <summary>A passkey shown in the list.</summary>
         /// <param name="CredentialId">Base64url credential id (round-tripped for removal).</param>
@@ -56,7 +60,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
                 || await userManager.HasPasswordAsync(user);
             if (!hasOtherFactor)
             {
-                StatusMessage = "You cannot remove your only sign-in method.";
+                StatusMessage = localizer["CannotRemoveOnlySignInMethod"].Value;
                 await LoadAsync();
                 return Page();
             }
@@ -83,7 +87,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
             Passkeys = [.. passkeys.Select(static passkey => new PasskeyView(
                 Base64UrlEncode(passkey.CredentialId),
                 passkey.Name ?? Base64UrlEncode(passkey.CredentialId)[..8],
-                IsDeviceBound: !passkey.IsBackedUp))];
+                PasskeySignals.IsDeviceBound(passkey)))];
         }
 
         /// <summary>Encodes a credential id as base64url.</summary>

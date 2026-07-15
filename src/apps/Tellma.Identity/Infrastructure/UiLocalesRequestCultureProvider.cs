@@ -5,6 +5,7 @@
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Localization;
+using Microsoft.Extensions.Primitives;
 
 namespace Tellma.Identity.Infrastructure
 {
@@ -25,10 +26,15 @@ namespace Tellma.Identity.Infrastructure
                 return Task.FromResult<ProviderCultureResult?>(null);
             }
 
-            // ui_locales is a space-delimited preference list; the first entry wins and the
-            // localization middleware falls back through its configured cultures.
-            string first = uiLocales.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
-            return Task.FromResult<ProviderCultureResult?>(new ProviderCultureResult(first));
+            // ui_locales is an ordered preference list; returning every entry lets the localization
+            // middleware pick the first one it actually supports (an unsupported leading tag does
+            // not force the default).
+            List<StringSegment> cultures =
+                [.. uiLocales.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(static culture => new StringSegment(culture))];
+
+            return Task.FromResult(
+                cultures.Count == 0 ? null : new ProviderCultureResult(cultures, cultures));
         }
     }
 }

@@ -6,8 +6,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Tellma.Identity\Tellma.Identity.csproj" />
-    <!-- The migrations assembly, so startup migration apply and dotnet-ef (with this project as
-         the startup project) both work. -->
+    <!-- The migrations assembly, so runtime migration apply works. Only the runtime EF provider
+         flows in; the Design toolchain is private to the migrations project (its own dotnet-ef
+         startup), so this host never ships it. -->
     <ProjectReference Include="..\Tellma.Identity.Migrations\Tellma.Identity.Migrations.csproj" />
     <!-- Azure Monitor exporting is config-gated; without configuration the OpenTelemetry
          pipeline runs with no exporter. -->

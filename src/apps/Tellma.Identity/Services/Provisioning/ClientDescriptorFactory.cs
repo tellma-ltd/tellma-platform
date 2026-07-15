@@ -242,6 +242,9 @@ namespace Tellma.Identity.Services.Provisioning
                 descriptor.RedirectUris.Add(new Uri(redirectUri, UriKind.Absolute));
             }
 
+            // CLI and native apps legitimately name distribution APIs; the control plane never does.
+            TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.CallsDistributionApis, "true");
+
             return descriptor;
         }
 

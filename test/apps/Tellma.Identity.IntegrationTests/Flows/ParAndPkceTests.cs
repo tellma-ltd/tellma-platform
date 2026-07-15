@@ -41,6 +41,13 @@ namespace Tellma.Identity.IntegrationTests.Flows
             string location = response.Headers.Location?.ToString() ?? string.Empty;
             Assert.DoesNotContain("/Identity/Account/Login", location, StringComparison.Ordinal);
             Assert.DoesNotContain("code=", location, StringComparison.Ordinal);
+
+            // Positive assertion: the rejection is an actual protocol error (not a vacuously-absent
+            // redirect). The PAR requirement is enforced before redirect_uri is validated, so the
+            // error is rendered in place rather than redirected back to the client.
+            Assert.False(response.IsSuccessStatusCode);
+            string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.Contains("invalid_request", body, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -59,6 +66,35 @@ namespace Tellma.Identity.IntegrationTests.Flows
                     ["redirect_uri"] = "https://acme.app.tellma.com/signin-oidc",
                     ["response_type"] = "code",
                     ["scope"] = "openid",
+                }),
+                TestContext.Current.CancellationToken);
+
+            Assert.False(response.IsSuccessStatusCode);
+            using var document = JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            Assert.Equal("invalid_request", document.RootElement.GetProperty("error").GetString());
+        }
+
+        [Fact]
+        public async Task Pushing_a_plain_code_challenge_method_is_rejected()
+        {
+            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idpkceplain");
+            DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
+            (string verifier, string _) = OidcFlowClient.CreatePkcePair();
+
+            using HttpClient backchannel = factory.CreateClient();
+            using HttpResponseMessage response = await backchannel.PostAsync(
+                new Uri("/connect/par", UriKind.Relative),
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["client_id"] = "acme",
+                    ["client_secret"] = distribution.BffClientSecret,
+                    ["redirect_uri"] = "https://acme.app.tellma.com/signin-oidc",
+                    ["response_type"] = "code",
+                    ["scope"] = "openid",
+                    // A downgrade to the plain challenge method the server must refuse (S256 only).
+                    ["code_challenge"] = verifier,
+                    ["code_challenge_method"] = "plain",
                 }),
                 TestContext.Current.CancellationToken);
 

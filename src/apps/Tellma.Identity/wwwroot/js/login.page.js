@@ -7,15 +7,14 @@
 // conditional-UI (autofill) sign-in offered on load where the platform supports it.
 "use strict";
 
-const assertionUrl = "/Identity/api/passkey/assertion-options";
+// The endpoint is generated server-side (via routing) so it carries the in-proc path prefix.
+const assertionUrl = document.getElementById("passkey-form").dataset.assertionUrl;
 
 document.getElementById("passkey-button").addEventListener("click", async () => {
     // Signal any in-flight conditional ceremony to abort before the explicit one starts.
     window.dispatchEvent(new Event("tellma:passkey-explicit"));
-    const emailInput = document.getElementById("email");
-    const email = emailInput ? emailInput.value : "";
     try {
-        await passkey.signIn(assertionUrl, "passkey-credential", email);
+        await passkey.signIn(assertionUrl, "passkey-credential");
     } catch (error) {
         // A dismissed ceremony leaves the page for the user to choose another method.
     }

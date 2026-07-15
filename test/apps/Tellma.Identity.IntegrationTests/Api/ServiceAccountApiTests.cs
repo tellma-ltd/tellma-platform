@@ -64,6 +64,24 @@ namespace Tellma.Identity.IntegrationTests.Api
                 await tokenResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         }
 
+        [Fact]
+        public async Task Create_rejects_a_foreign_distribution_audience()
+        {
+            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idsvcacctforeign");
+            using HttpClient client = factory.CreateClient();
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", await GetIdentityScopeTokenAsync(factory));
+
+            // The caller (acme's backend) names a different distribution's origin as an audience.
+            string[] resources = ["https://evil.app.tellma.com"];
+            using HttpResponseMessage response = await client.PostAsJsonAsync(
+                new Uri("/api/identity/service-accounts", UriKind.Relative),
+                new { displayName = "Cross-tenant job", resources },
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        }
+
         /// <summary>Provisions a distribution and obtains a token carrying the tellma_identity scope.</summary>
         private static async Task<string> GetIdentityScopeTokenAsync(StandaloneFactory factory)
         {

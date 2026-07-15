@@ -75,7 +75,9 @@ namespace Tellma.Identity.IntegrationTests.Flows
                 new FormUrlEncodedContent(new Dictionary<string, string>
                 {
                     ["client_id"] = "tellma-cli",
-                    ["scope"] = "openid offline_access",
+                    // Request the email scope so the email identity claim rides the token (identity
+                    // claims are scope-gated).
+                    ["scope"] = "openid offline_access email",
                 }),
                 TestContext.Current.CancellationToken);
 

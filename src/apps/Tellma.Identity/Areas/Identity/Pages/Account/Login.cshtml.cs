@@ -24,7 +24,6 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
     ///     (advisory UI state — enforcement happens at the authorization endpoint on the pushed
     ///     request when the browser returns) and doubles as the step-up/re-authentication surface.
     /// </summary>
-    /// <param name="userManager">The Identity user manager.</param>
     /// <param name="signInManager">The Identity sign-in manager (passkey assertion API).</param>
     /// <param name="emailCodes">Email one-time code issuance.</param>
     /// <param name="signInService">The engine sign-in (method evidence stamping).</param>
@@ -34,7 +33,6 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
     /// <param name="localizer">UI strings.</param>
     [AllowAnonymous]
     public sealed class LoginModel(
-        UserManager<TellmaIdentityUser> userManager,
         SignInManager<TellmaIdentityUser> signInManager,
         IEmailCodeService emailCodes,
         TellmaSignInService signInService,
@@ -94,19 +92,16 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                 return Page();
             }
 
-            string flowBinding = LoginFlowCookie.GetOrCreate(HttpContext);
-            TellmaIdentityUser? user = await userManager.FindByEmailAsync(Email);
-            if (user is not null && user.LifecycleState == UserLifecycleState.Active)
-            {
-                await emailCodes.IssueAsync(
-                    user,
-                    SingleUseCodePurpose.SignIn,
-                    flowBinding,
-                    HttpContext.Connection.RemoteIpAddress?.ToString(),
-                    HttpContext.RequestAborted);
-            }
+            // Enumeration-safe: the code service rate-limits, looks the user up, and dispatches the
+            // mail in the background, so this returns in constant time whether or not the account
+            // exists. The response is identical either way.
+            await emailCodes.RequestCodeAsync(
+                Email,
+                SingleUseCodePurpose.SignIn,
+                LoginFlowCookie.GetOrCreate(HttpContext),
+                HttpContext.Connection.RemoteIpAddress?.ToString(),
+                HttpContext.RequestAborted);
 
-            // Identical response whether or not the account exists.
             return RedirectToPage("EmailCode", new { email = Email, returnUrl = ReturnUrl, stepUp = StepUp, rememberMe = RememberMe });
         }
 
@@ -142,17 +137,15 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                 return Page();
             }
 
-            // Device-bound (hardware, non-synced) is the backup-ELIGIBILITY signal: a credential
-            // that cannot be backed up. Backup state alone would misclassify a syncable passkey
-            // that simply has not synced yet, over-asserting the aal3 tier.
-            bool deviceBound = !assertion.Passkey.IsBackupEligible;
+            bool deviceBound = PasskeySignals.IsDeviceBound(assertion.Passkey);
             await signInService.SignInAsync(
                 assertion.User,
                 new SignInEvidence(AuthenticationMethods.Passkey, deviceBound),
                 isPersistent: RememberMe,
                 HttpContext.RequestAborted);
 
-            return LocalRedirect(ReturnUrlValidator.Sanitize(ReturnUrl, "/Identity/Account/Login"));
+            string fallback = Url.Page("/Account/Login", new { area = "Identity" })!;
+            return LocalRedirect(ReturnUrlValidator.Sanitize(ReturnUrl, fallback));
         }
 
         /// <summary>Applies and validates the flow parameters.</summary>

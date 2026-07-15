@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 using Tellma.Identity.Data;
 using Tellma.Identity.Infrastructure;
+using Tellma.Identity.Services.RateLimiting;
 using Tellma.Identity.Services.Tap;
 
 namespace Tellma.Identity.Areas.Identity.Pages.Account
@@ -21,13 +22,18 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
     /// </summary>
     /// <param name="tapService">Temporary Access Pass redemption.</param>
     /// <param name="userManager">The Identity user manager.</param>
+    /// <param name="rateLimits">Redemption rate limiting.</param>
     /// <param name="localizer">UI strings.</param>
     [AllowAnonymous]
     public sealed class TapModel(
         ITemporaryAccessPassService tapService,
         UserManager<TellmaIdentityUser> userManager,
+        IRateLimitCounterStore rateLimits,
         IStringLocalizer<SharedResources> localizer) : PageModel
     {
+        /// <summary>Redemption attempts per IP per hour before the endpoint stops responding.</summary>
+        public const int MaxAttemptsPerIpPerHour = 20;
+
         /// <summary>The email identifying the account.</summary>
         [BindProperty]
         public string? Email { get; set; }
@@ -41,6 +47,17 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         public async Task<IActionResult> OnPostAsync()
         {
             if (string.IsNullOrWhiteSpace(Email) || string.IsNullOrWhiteSpace(Pass))
+            {
+                ModelState.AddModelError(string.Empty, localizer["TapInvalid"].Value);
+                return Page();
+            }
+
+            // Defense-in-depth against guessing: bound attempts per IP even though the pass has
+            // ~50 bits of entropy, so a leaked email cannot be paired with unlimited tries.
+            string? ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+            if (ip is not null
+                && await rateLimits.IncrementAsync($"tap:ip:{ip}", TimeSpan.FromHours(1), HttpContext.RequestAborted)
+                    > MaxAttemptsPerIpPerHour)
             {
                 ModelState.AddModelError(string.Empty, localizer["TapInvalid"].Value);
                 return Page();
@@ -61,8 +78,8 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                 await userManager.UpdateAsync(user);
             }
 
-            CredentialFlowCookie.Issue(HttpContext, userId);
-            return RedirectToPage("RegisterPasskey", new { returnUrl = "/Identity/Manage/Passkeys" });
+            CredentialFlowCookie.Issue(HttpContext, userId, CredentialFlowPurpose.Recovery);
+            return RedirectToPage("RegisterPasskey", new { returnUrl = Url.Page("/Manage/Passkeys", new { area = "Identity" }) });
         }
     }
 }

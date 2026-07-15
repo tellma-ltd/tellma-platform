@@ -40,7 +40,8 @@
 @if (showPasskey)
 {
     @* The assertion credential is posted back through this hidden field by passkey.js. *@
-    <form method="post" id="passkey-form" asp-page-handler="Passkey" asp-route-returnUrl="@Model.ReturnUrl" asp-route-stepUp="@Model.StepUp">
+    <form method="post" id="passkey-form" asp-page-handler="Passkey" asp-route-returnUrl="@Model.ReturnUrl" asp-route-stepUp="@Model.StepUp"
+          data-assertion-url="@Url.Action("AssertionOptions", "PasskeyCeremony")">
         <input type="hidden" id="passkey-credential" name="Credential" />
         <button class="tl-button tl-button-secondary" type="button" id="passkey-button">@L["SignInWithPasskey"]</button>
     </form>

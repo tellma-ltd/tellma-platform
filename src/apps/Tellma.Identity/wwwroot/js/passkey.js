@@ -68,8 +68,9 @@ const passkey = {
     },
 
     // Signs in with a passkey via an explicit button: fetch request options, run assertion, submit.
-    async signIn(optionsUrl, resultFieldId, email) {
-        const optionsJson = await tellma.postForm(optionsUrl, email ? { email } : {});
+    // Always a discoverable-credential ceremony (no email scoping); the authenticator picks account.
+    async signIn(optionsUrl, resultFieldId) {
+        const optionsJson = await tellma.postForm(optionsUrl, {});
         const options = PublicKeyCredential.parseRequestOptionsFromJSON(optionsJson);
         const credential = await navigator.credentials.get({ publicKey: options });
         tellma.submitWithValue(resultFieldId, credentialToJson(credential));

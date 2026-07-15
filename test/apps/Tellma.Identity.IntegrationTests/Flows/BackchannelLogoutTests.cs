@@ -89,7 +89,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             // back-channel logout event.
             Assert.Single(factory.BackchannelLogouts.LogoutTokens);
             string logoutToken = factory.BackchannelLogouts.LogoutTokens.First();
-            await AssertValidLogoutTokenAsync(factory, logoutToken);
+            await AssertValidLogoutTokenAsync(factory, logoutToken, "acme");
 
             // The grant backing the refresh token was revoked: renewal now fails.
             using HttpClient client = factory.CreateClient();
@@ -106,6 +106,92 @@ namespace Tellma.Identity.IntegrationTests.Flows
             Assert.False(refreshResponse.IsSuccessStatusCode);
         }
 
+        [Fact]
+        public async Task Global_logout_fans_out_to_every_distribution_under_one_sid()
+        {
+            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idbclmulti");
+            DistributionClientCredentials acme = await TestData.ProvisionDistributionAsync(
+                factory, "acme", new Uri("https://acme.app.tellma.com/backchannel-logout"));
+            DistributionClientCredentials beta = await TestData.ProvisionDistributionAsync(
+                factory, "beta", new Uri("https://beta.app.tellma.com/backchannel-logout"));
+            await TestData.CreateActiveUserAsync(factory, "grace@example.com");
+
+            using OidcFlowClient flow = new(factory);
+
+            // Sign in to acme through the full flow (establishes the SSO cookie and sid), then to
+            // beta reusing the same browser session — both register under one sid.
+            await SignInToDistributionAsync(flow, "acme", acme.BffClientSecret, signInUser: true);
+            await SignInToDistributionAsync(flow, "beta", beta.BffClientSecret, signInUser: false);
+
+            using (HttpResponseMessage logout = await flow.Browser.PostAsync(
+                new Uri("/Identity/Account/Logout", UriKind.Relative),
+                await AntiforgeryContentAsync(flow),
+                TestContext.Current.CancellationToken))
+            {
+                Assert.Equal(System.Net.HttpStatusCode.Redirect, logout.StatusCode);
+            }
+
+            // Both distributions received a valid logout token — the parallel-fan-out path that a
+            // single-distribution test never exercises.
+            Assert.Equal(2, factory.BackchannelLogouts.LogoutTokens.Count);
+            HashSet<string> audiences = [];
+            foreach (string token in factory.BackchannelLogouts.LogoutTokens)
+            {
+                audiences.Add(await AssertValidLogoutTokenAsync(factory, token, expectedAudience: null));
+            }
+
+            Assert.Equal(["acme", "beta"], audiences.OrderBy(static a => a, StringComparer.Ordinal));
+        }
+
+        /// <summary>Drives a full or SSO-silent authorization-code sign-in for a distribution.</summary>
+        private static async Task SignInToDistributionAsync(
+            OidcFlowClient flow, string slug, string bffSecret, bool signInUser)
+        {
+            (string verifier, string challenge) = OidcFlowClient.CreatePkcePair();
+            string requestUri = await flow.PushAuthorizationRequestAsync(new Dictionary<string, string>
+            {
+                ["client_id"] = slug,
+                ["client_secret"] = bffSecret,
+                ["redirect_uri"] = $"https://{slug}.app.tellma.com/signin-oidc",
+                ["response_type"] = "code",
+                ["scope"] = "openid offline_access tellma_api",
+                ["code_challenge"] = challenge,
+                ["code_challenge_method"] = "S256",
+                ["tellma_allowed_methods"] = "email_code",
+            });
+
+            string authorizeUrl = $"/connect/authorize?client_id={slug}&request_uri=" + Uri.EscapeDataString(requestUri);
+            string code;
+            using (HttpResponseMessage authorizeResponse = await flow.Browser.GetAsync(
+                new Uri(authorizeUrl, UriKind.Relative), TestContext.Current.CancellationToken))
+            {
+                Uri location = authorizeResponse.Headers.Location!;
+                if (signInUser && location.ToString().Contains("/Account/Login", StringComparison.Ordinal))
+                {
+                    // No SSO cookie yet: complete the email-code sign-in, then land on the code.
+                    string returnUrl = await flow.SignInWithEmailCodeAsync("grace@example.com", location.ToString());
+                    using HttpResponseMessage afterLogin = await flow.Browser.GetAsync(
+                        new Uri(returnUrl, UriKind.RelativeOrAbsolute), TestContext.Current.CancellationToken);
+                    location = afterLogin.Headers.Location!;
+                }
+
+                Dictionary<string, Microsoft.Extensions.Primitives.StringValues> query =
+                    Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(location.Query);
+                code = (string?)query["code"] ?? throw new InvalidOperationException($"No code returned for {slug}.");
+            }
+
+            using JsonDocument tokens = await flow.ExchangeAsync(new Dictionary<string, string>
+            {
+                ["grant_type"] = "authorization_code",
+                ["client_id"] = slug,
+                ["client_secret"] = bffSecret,
+                ["code"] = code,
+                ["redirect_uri"] = $"https://{slug}.app.tellma.com/signin-oidc",
+                ["code_verifier"] = verifier,
+            });
+            Assert.True(tokens.RootElement.TryGetProperty("access_token", out _));
+        }
+
         /// <summary>Posts the logout form after reading its antiforgery token.</summary>
         private static async Task<FormUrlEncodedContent> AntiforgeryContentAsync(OidcFlowClient flow)
         {
@@ -115,8 +201,12 @@ namespace Tellma.Identity.IntegrationTests.Flows
             return new FormUrlEncodedContent(fields);
         }
 
-        /// <summary>Validates the logout token's signature against JWKS and its required claims.</summary>
-        private static async Task AssertValidLogoutTokenAsync(StandaloneFactory factory, string logoutToken)
+        /// <summary>
+        ///     Validates the logout token's signature against JWKS and its required claims, and
+        ///     returns its audience (the notified client id).
+        /// </summary>
+        private static async Task<string> AssertValidLogoutTokenAsync(
+            StandaloneFactory factory, string logoutToken, string? expectedAudience)
         {
             using HttpClient client = factory.CreateClient();
             JsonWebKeySet jwks = (await client.GetFromJsonAsync<JsonWebKeySet>(
@@ -126,14 +216,28 @@ namespace Tellma.Identity.IntegrationTests.Flows
             TokenValidationResult result = await handler.ValidateTokenAsync(logoutToken, new TokenValidationParameters
             {
                 ValidIssuer = "http://localhost/",
-                ValidAudience = "acme",
+                ValidateAudience = false,
                 IssuerSigningKeys = jwks.Keys,
                 ValidateLifetime = false,
             });
 
             Assert.True(result.IsValid, result.Exception?.Message);
+
+            // OIDC Back-Channel Logout 1.0 required shape.
+            var jwt = (Microsoft.IdentityModel.JsonWebTokens.JsonWebToken)result.SecurityToken;
+            Assert.Equal("logout+jwt", jwt.Typ);
+            Assert.False(result.Claims.ContainsKey("nonce"), "A logout token MUST NOT contain a nonce.");
+            Assert.False(string.IsNullOrEmpty((string?)result.Claims["sub"]));
             Assert.False(string.IsNullOrEmpty((string?)result.Claims["sid"]));
             Assert.True(result.Claims.ContainsKey("events"));
+
+            string audience = (string)result.Claims["aud"];
+            if (expectedAudience is not null)
+            {
+                Assert.Equal(expectedAudience, audience);
+            }
+
+            return audience;
         }
     }
 }

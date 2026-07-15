@@ -64,18 +64,20 @@ namespace Tellma.Identity.IntegrationTests
                 Assert.Contains(expected, tables);
             }
 
-            // The prune-supporting filtered index exists on the tokens table.
+            // The prune-supporting index exists on the tokens table and leads with CreationDate
+            // (the prune query's dominant bound), so SQL Server can seek the old rows.
             await using (SqlCommand command = connection.CreateCommand())
             {
                 command.CommandText =
-                    "SELECT i.has_filter FROM sys.indexes i "
+                    "SELECT c.name FROM sys.indexes i "
                     + "JOIN sys.tables t ON i.object_id = t.object_id "
                     + "JOIN sys.schemas s ON t.schema_id = s.schema_id "
+                    + "JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id AND ic.key_ordinal = 1 "
+                    + "JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id "
                     + "WHERE s.name = 'idsvr' AND t.name = 'OpenIddictTokens' "
-                    + "AND i.name = 'IX_OpenIddictTokens_Status_ExpirationDate'";
-                object? hasFilter = await command.ExecuteScalarAsync(TestContext.Current.CancellationToken);
-                Assert.NotNull(hasFilter);
-                Assert.True((bool)hasFilter, "The prune index must be filtered.");
+                    + "AND i.name = 'IX_OpenIddictTokens_CreationDate'";
+                object? leadingColumn = await command.ExecuteScalarAsync(TestContext.Current.CancellationToken);
+                Assert.Equal("CreationDate", leadingColumn);
             }
         }
     }

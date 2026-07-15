@@ -4,9 +4,11 @@
 // LICENSE file in the root directory of this source tree.
 
 using Azure.Monitor.OpenTelemetry.AspNetCore;
+using Microsoft.AspNetCore.HttpOverrides;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using Serilog;
+using System.Net;
 using Tellma.Identity.Hosting;
 using Tellma.Identity.Infrastructure;
 
@@ -51,7 +53,35 @@ namespace Tellma.Identity.Web
                 builder.Services.AddOpenTelemetry().UseAzureMonitor();
             }
 
+            // Behind a reverse proxy (Azure App Service, nginx), the real client IP arrives in
+            // X-Forwarded-For. Per-IP rate limiting and audit forensics depend on it, so the proxy
+            // headers are honored when configured. Trust is scoped to the configured known proxies
+            // / networks (empty by default) so the headers cannot be spoofed by a direct caller;
+            // clear the default loopback-only set and list the deployment's proxy explicitly, or
+            // set ASPNETCORE_FORWARDEDHEADERS_ENABLED=true on App Service to trust its front end.
+            bool useForwardedHeaders = builder.Configuration.GetValue("ForwardedHeaders:Enabled", false);
+            if (useForwardedHeaders)
+            {
+                builder.Services.Configure<ForwardedHeadersOptions>(headers =>
+                {
+                    headers.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+                    headers.KnownIPNetworks.Clear();
+                    headers.KnownProxies.Clear();
+                    foreach (string proxy in builder.Configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>() ?? [])
+                    {
+                        headers.KnownProxies.Add(IPAddress.Parse(proxy));
+                    }
+                });
+            }
+
             WebApplication app = builder.Build();
+
+            // Forwarded headers must be the first middleware so every later component (rate limiter,
+            // audit, HTTPS redirect) observes the real client IP and scheme.
+            if (useForwardedHeaders)
+            {
+                app.UseForwardedHeaders();
+            }
 
             app.UseSerilogRequestLogging();
 

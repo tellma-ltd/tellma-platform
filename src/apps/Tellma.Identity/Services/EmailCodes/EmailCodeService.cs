@@ -3,12 +3,14 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Tellma.Identity.Data;
 using Tellma.Identity.Data.Entities;
+using Tellma.Identity.Infrastructure;
 using Tellma.Identity.Services.Audit;
 using Tellma.Identity.Services.Email;
 using Tellma.Identity.Services.RateLimiting;
@@ -17,17 +19,21 @@ namespace Tellma.Identity.Services.EmailCodes
 {
     /// <summary>The database-backed single-use email code service.</summary>
     /// <param name="context">The identity store.</param>
+    /// <param name="userManager">The Identity user manager (email lookup).</param>
     /// <param name="rateLimits">Issuance rate limiting.</param>
-    /// <param name="emailSender">The delivery transport.</param>
+    /// <param name="emailQueue">The background mail dispatch queue.</param>
     /// <param name="templates">Localized message construction.</param>
     /// <param name="auditLogger">Audit emission.</param>
+    /// <param name="metrics">Identity metrics.</param>
     /// <param name="timeProvider">The clock.</param>
     public sealed class EmailCodeService(
         TellmaIdentityDbContext context,
+        UserManager<TellmaIdentityUser> userManager,
         IRateLimitCounterStore rateLimits,
-        IEmailSender emailSender,
+        IEmailDispatcher emailQueue,
         EmailTemplateService templates,
         IAuditLogger auditLogger,
+        IdentityMetrics metrics,
         TimeProvider timeProvider) : IEmailCodeService
     {
         /// <summary>Failed attempts before the code is invalidated.</summary>
@@ -43,23 +49,44 @@ namespace Tellma.Identity.Services.EmailCodes
         public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
 
         /// <inheritdoc />
-        public async Task<bool> IssueAsync(
-            TellmaIdentityUser user,
+        public async Task RequestCodeAsync(
+            string email,
             SingleUseCodePurpose purpose,
             string flowBinding,
             string? ipAddress,
             CancellationToken cancellationToken)
         {
-            ArgumentNullException.ThrowIfNull(user);
+            ArgumentException.ThrowIfNullOrWhiteSpace(email);
             ArgumentException.ThrowIfNullOrWhiteSpace(flowBinding);
 
+            // Rate-limit by IP before any user lookup: an unknown address is counted too, so an
+            // attacker cannot probe unlimited addresses, and the miss path does the same work.
             var window = TimeSpan.FromHours(1);
-            int perUser = await rateLimits.IncrementAsync($"emailcode:user:{user.Id}", window, cancellationToken);
             int perIp = ipAddress is null
                 ? 0
                 : await rateLimits.IncrementAsync($"emailcode:ip:{ipAddress}", window, cancellationToken);
 
-            if (perUser > MaxCodesPerUserPerHour || perIp > MaxCodesPerIpPerHour)
+            TellmaIdentityUser? user = await userManager.FindByEmailAsync(email);
+            if (perIp > MaxCodesPerIpPerHour || user is null || user.LifecycleState != UserLifecycleState.Active)
+            {
+                if (perIp > MaxCodesPerIpPerHour)
+                {
+                    await auditLogger.LogAsync(
+                        new AuditEventEntry
+                        {
+                            Action = AuditActions.EmailCodeRateLimited,
+                            Subject = user?.Id,
+                            IpAddress = ipAddress,
+                            Outcome = "failure",
+                        },
+                        cancellationToken);
+                }
+
+                return;
+            }
+
+            int perUser = await rateLimits.IncrementAsync($"emailcode:user:{user.Id}", window, cancellationToken);
+            if (perUser > MaxCodesPerUserPerHour)
             {
                 await auditLogger.LogAsync(
                     new AuditEventEntry
@@ -70,7 +97,7 @@ namespace Tellma.Identity.Services.EmailCodes
                         Outcome = "failure",
                     },
                     cancellationToken);
-                return false;
+                return;
             }
 
             DateTimeOffset now = timeProvider.GetUtcNow();
@@ -93,7 +120,8 @@ namespace Tellma.Identity.Services.EmailCodes
             });
             await context.SaveChangesAsync(cancellationToken);
 
-            await emailSender.SendAsync([templates.SignInCode(user, code)], cancellationToken);
+            // Hand delivery to the background worker so the request returns without an SMTP wait.
+            emailQueue.Enqueue([templates.SignInCode(user, code)]);
 
             await auditLogger.LogAsync(
                 new AuditEventEntry
@@ -106,7 +134,7 @@ namespace Tellma.Identity.Services.EmailCodes
                 },
                 cancellationToken);
 
-            return true;
+            metrics.EmailCode(purpose.ToString(), "issued");
         }
 
         /// <inheritdoc />
@@ -163,6 +191,7 @@ namespace Tellma.Identity.Services.EmailCodes
                 },
                 cancellationToken);
 
+            metrics.EmailCode(purpose.ToString(), result == EmailCodeVerificationResult.Success ? "verified" : "failed");
             return result;
         }
 

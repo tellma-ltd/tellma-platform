@@ -81,15 +81,20 @@ namespace Tellma.Identity.IntegrationTests.Flows
             Assert.Equal("invalid_client", document.RootElement.GetProperty("error").GetString());
         }
 
-        /// <summary>Provisions a service account through the engine's provisioning surface.</summary>
+        /// <summary>
+        ///     Provisions a distribution (so a caller with an origin exists) and creates a service
+        ///     account on its behalf — the origin-scoped audience path §6.2 requires.
+        /// </summary>
         internal static async Task<ServiceAccountCredentials> CreateServiceAccountAsync(
             StandaloneFactory factory, IReadOnlyCollection<string> resources)
         {
+            DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
+
             using IServiceScope scope = factory.Services.CreateScope();
             IClientProvisioningService provisioning =
                 scope.ServiceProvider.GetRequiredService<IClientProvisioningService>();
             return await provisioning.CreateServiceAccountAsync(
-                "Integration test account", resources, createdByClientId: null, TestContext.Current.CancellationToken);
+                "Integration test account", resources, distribution.ServiceClientId, TestContext.Current.CancellationToken);
         }
 
         /// <summary>Decodes a JWT's payload segment without validating it (assert-only).</summary>

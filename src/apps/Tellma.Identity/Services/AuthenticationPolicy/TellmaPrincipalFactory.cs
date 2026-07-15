@@ -137,6 +137,15 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                 identity.SetClaim(TellmaClaimDestinations.SecurityStampClaimType, securityStamp);
             }
 
+            // The device-bound passkey signal (server-side only) rides the encrypted grant
+            // principal so the refresh path re-derives the aal3 tier instead of silently
+            // downgrading a hardware-key session to aal2.
+            string? passkeyDeviceBound = cookiePrincipal.FindFirst(SignInClaims.PasskeyDeviceBound)?.Value;
+            if (passkeyDeviceBound is not null)
+            {
+                identity.SetClaim(SignInClaims.PasskeyDeviceBound, passkeyDeviceBound);
+            }
+
             identity.SetScopes(grant.Scopes);
 
             string? audienceError = await SetAudiencesAsync(identity, grant, application, cancellationToken);
@@ -187,29 +196,29 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
             ClaimsIdentity identity, GrantRequest grant, object application, CancellationToken cancellationToken)
         {
             List<string> resources = [.. grant.Resources];
-            if (resources.Count == 0)
+            if (resources.Count == 0 && identity.HasScope(TellmaIdentityConstants.ApiScope))
             {
-                if (identity.HasScope(TellmaIdentityConstants.ApiScope))
+                ImmutableDictionary<string, JsonElement> properties =
+                    await applicationManager.GetPropertiesAsync(application, cancellationToken);
+                string? origin = TellmaClientProperties.Get(properties, TellmaClientProperties.Origin);
+                if (origin is null)
                 {
-                    ImmutableDictionary<string, JsonElement> properties =
-                        await applicationManager.GetPropertiesAsync(application, cancellationToken);
-                    string? origin = TellmaClientProperties.Get(properties, TellmaClientProperties.Origin);
-                    if (origin is null)
-                    {
-                        return "The tellma_api scope requires an explicit 'resource' parameter for this client.";
-                    }
-
-                    resources.Add(origin);
+                    return "The tellma_api scope requires an explicit 'resource' parameter for this client.";
                 }
 
-                ImmutableArray<string> platformScopes =
-                    [.. identity.GetScopes().Where(static scope => scope != TellmaIdentityConstants.ApiScope)];
-                await foreach (string resource in scopeManager.ListResourcesAsync(platformScopes, cancellationToken))
+                resources.Add(origin);
+            }
+
+            // Platform-scope audiences are unioned in unconditionally: a token granted
+            // tellma_identity or tellma_control_plane must carry that audience even when an
+            // explicit resource was also named, or the platform API would reject it.
+            ImmutableArray<string> platformScopes =
+                [.. identity.GetScopes().Where(static scope => scope != TellmaIdentityConstants.ApiScope)];
+            await foreach (string resource in scopeManager.ListResourcesAsync(platformScopes, cancellationToken))
+            {
+                if (!resources.Contains(resource, StringComparer.Ordinal))
                 {
-                    if (!resources.Contains(resource, StringComparer.Ordinal))
-                    {
-                        resources.Add(resource);
-                    }
+                    resources.Add(resource);
                 }
             }
 

@@ -125,16 +125,12 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
 
             if (!string.IsNullOrWhiteSpace(Email))
             {
-                TellmaIdentityUser? user = await userManager.FindByEmailAsync(Email);
-                if (user is not null && user.LifecycleState == UserLifecycleState.Active)
-                {
-                    await emailCodes.IssueAsync(
-                        user,
-                        SingleUseCodePurpose.SignIn,
-                        LoginFlowCookie.GetOrCreate(HttpContext),
-                        HttpContext.Connection.RemoteIpAddress?.ToString(),
-                        HttpContext.RequestAborted);
-                }
+                await emailCodes.RequestCodeAsync(
+                    Email,
+                    SingleUseCodePurpose.SignIn,
+                    LoginFlowCookie.GetOrCreate(HttpContext),
+                    HttpContext.Connection.RemoteIpAddress?.ToString(),
+                    HttpContext.RequestAborted);
             }
 
             return Page();

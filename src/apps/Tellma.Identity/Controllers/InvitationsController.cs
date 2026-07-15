@@ -37,8 +37,15 @@ namespace Tellma.Identity.Controllers
             string? clientId = User.GetClaim(OpenIddictConstants.Claims.ClientId)
                 ?? User.GetClaim(OpenIddictConstants.Claims.Subject);
 
-            IReadOnlyList<InvitationResultItem> results =
-                await invitationService.InviteAsync(items, clientId, HttpContext.RequestAborted);
+            IReadOnlyList<InvitationResultItem> results;
+            try
+            {
+                results = await invitationService.InviteAsync(items, clientId, HttpContext.RequestAborted);
+            }
+            catch (Services.Provisioning.ProvisioningValidationException exception)
+            {
+                return Problem(detail: exception.Message, statusCode: Microsoft.AspNetCore.Http.StatusCodes.Status400BadRequest);
+            }
 
             return Ok(new InviteUsersResponse
             {

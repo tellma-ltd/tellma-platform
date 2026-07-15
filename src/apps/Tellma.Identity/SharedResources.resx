@@ -213,4 +213,7 @@
   <data name="ContinueWithMicrosoft" xml:space="preserve">
     <value>Continue with Microsoft</value>
   </data>
+  <data name="CannotRemoveOnlySignInMethod" xml:space="preserve">
+    <value>You cannot remove your only sign-in method.</value>
+  </data>
 </root>

@@ -213,4 +213,7 @@
   <data name="ContinueWithMicrosoft" xml:space="preserve">
     <value>المتابعة باستخدام Microsoft</value>
   </data>
+  <data name="CannotRemoveOnlySignInMethod" xml:space="preserve">
+    <value>لا يمكنك إزالة وسيلة تسجيل الدخول الوحيدة لديك.</value>
+  </data>
 </root>

@@ -8,6 +8,7 @@ using OpenIddict.Abstractions;
 using System.Collections.Immutable;
 using System.Text.Json;
 using Tellma.Identity.Data.Entities;
+using Tellma.Identity.Infrastructure;
 using Tellma.Identity.Services.Audit;
 using Tellma.Identity.Services.Provisioning;
 using Tellma.Identity.Services.Sessions;
@@ -21,6 +22,7 @@ namespace Tellma.Identity.Services.BackchannelLogout
     /// <param name="tokenFactory">Logout-token minting.</param>
     /// <param name="httpClientFactory">The resilient delivery client.</param>
     /// <param name="auditLogger">Audit emission.</param>
+    /// <param name="metrics">Identity metrics.</param>
     /// <param name="logger">Delivery diagnostics.</param>
     public sealed class BackchannelLogoutService(
         ISessionRegistry sessionRegistry,
@@ -29,6 +31,7 @@ namespace Tellma.Identity.Services.BackchannelLogout
         LogoutTokenFactory tokenFactory,
         IHttpClientFactory httpClientFactory,
         IAuditLogger auditLogger,
+        IdentityMetrics metrics,
         ILogger<BackchannelLogoutService> logger) : IBackchannelLogoutService
     {
         /// <summary>The named <see cref="HttpClient" /> deliveries go through.</summary>
@@ -48,7 +51,7 @@ namespace Tellma.Identity.Services.BackchannelLogout
             await NotifyAsync(subject, clients, cancellationToken);
         }
 
-        /// <summary>Revokes each registration's grant and fans logout tokens out in parallel.</summary>
+        /// <summary>Revokes each registration's grant and delivers each logout token.</summary>
         private async Task NotifyAsync(
             string subject, IReadOnlyList<IdentitySessionClient> clients, CancellationToken cancellationToken)
         {
@@ -61,13 +64,29 @@ namespace Tellma.Identity.Services.BackchannelLogout
                 }
 
                 object? authorization = await authorizationManager.FindByIdAsync(registration.AuthorizationId, cancellationToken);
-                if (authorization is not null)
+                if (authorization is not null && await authorizationManager.TryRevokeAsync(authorization, cancellationToken))
                 {
-                    await authorizationManager.TryRevokeAsync(authorization, cancellationToken);
+                    await auditLogger.LogAsync(
+                        new AuditEventEntry
+                        {
+                            Action = AuditActions.TokenRevoked,
+                            Subject = subject,
+                            ClientId = registration.ClientId,
+                            Sid = registration.Sid,
+                            Outcome = "success",
+                        },
+                        cancellationToken);
                 }
             }
 
-            await Task.WhenAll(clients.Select(registration => DeliverAsync(subject, registration, cancellationToken)));
+            // Deliveries run sequentially: each one reads client metadata and writes notification
+            // state and audit rows through the request-scoped DbContext, which is not thread-safe
+            // — a parallel fan-out would trip EF's concurrency detector and mark reachable
+            // distributions as failed. The per-user client count is small.
+            foreach (IdentitySessionClient registration in clients)
+            {
+                await DeliverAsync(subject, registration, cancellationToken);
+            }
         }
 
         /// <summary>Delivers one logout token; failures are audited, never thrown.</summary>
@@ -111,6 +130,7 @@ namespace Tellma.Identity.Services.BackchannelLogout
                         Outcome = "success",
                     },
                     cancellationToken);
+                metrics.BackchannelLogoutDelivery("success");
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -125,6 +145,7 @@ namespace Tellma.Identity.Services.BackchannelLogout
                         Outcome = "failure",
                     },
                     cancellationToken);
+                metrics.BackchannelLogoutDelivery("failure");
             }
         }
     }

@@ -95,7 +95,17 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
                 new Uri(codePageUrl, UriKind.RelativeOrAbsolute), TestContext.Current.CancellationToken);
             Assert.True(codePage.IsSuccessStatusCode, $"Code page failed: {codePage.StatusCode}");
 
-            string? code = _factory.Emails.LatestCodeFor(email);
+            // The code is delivered by the background mail worker, so poll briefly for it.
+            string? code = null;
+            for (int attempt = 0; attempt < 50 && string.IsNullOrEmpty(code); attempt++)
+            {
+                code = _factory.Emails.LatestCodeFor(email);
+                if (string.IsNullOrEmpty(code))
+                {
+                    await Task.Delay(20, TestContext.Current.CancellationToken);
+                }
+            }
+
             Assert.False(string.IsNullOrEmpty(code), "No sign-in code was captured.");
 
             (string verifyAction, Dictionary<string, string> verifyFields) = await ParseFormAsync(codePage);

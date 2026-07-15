@@ -24,7 +24,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
     /// </summary>
     /// <param name="userManager">The Identity user manager.</param>
     /// <param name="tokens">One-time reset tokens.</param>
-    /// <param name="emailSender">The email transport.</param>
+    /// <param name="emailQueue">The background mail dispatch queue.</param>
     /// <param name="templates">Localized message construction.</param>
     /// <param name="engineOptions">The engine options (password gate, link base).</param>
     /// <param name="auditLogger">Audit emission.</param>
@@ -32,7 +32,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
     public sealed class ForgotPasswordModel(
         UserManager<TellmaIdentityUser> userManager,
         IOneTimeTokenService tokens,
-        IEmailSender emailSender,
+        IEmailDispatcher emailQueue,
         EmailTemplateService templates,
         IOptions<TellmaIdentityOptions> engineOptions,
         IAuditLogger auditLogger) : PageModel
@@ -74,7 +74,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                 string prefix = engineOptions.Value.PathBase;
                 string link = new Uri(engineOptions.Value.Issuer!, $"{prefix}/Identity/Account/ResetPassword?code={Uri.EscapeDataString(token)}").AbsoluteUri;
 
-                await emailSender.SendAsync([templates.PasswordReset(user, link)], HttpContext.RequestAborted);
+                emailQueue.Enqueue([templates.PasswordReset(user, link)]);
                 await auditLogger.LogAsync(new AuditEventEntry
                 {
                     Action = AuditActions.PasswordResetRequested,

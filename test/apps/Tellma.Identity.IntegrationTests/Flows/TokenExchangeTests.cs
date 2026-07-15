@@ -54,6 +54,12 @@ namespace Tellma.Identity.IntegrationTests.Flows
             string accessToken = exchanged.RootElement.GetProperty("access_token").GetString()!;
             using JsonDocument payload = ClientCredentialsTests.DecodeJwtPayload(accessToken);
             Assert.Equal("https://acme.app.tellma.com", ClientCredentialsTests.ReadSingleOrArray(payload.RootElement, "aud").Single());
+
+            // The scope was actually narrowed: tellma_api survives, tellma_identity is dropped. The
+            // scope claim serializes as a single space-delimited string (RFC 9068).
+            string[] scopes = payload.RootElement.GetProperty("scope").GetString()!.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            Assert.Contains("tellma_api", scopes);
+            Assert.DoesNotContain("tellma_identity", scopes);
         }
 
         [Fact]

@@ -9,6 +9,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenIddict.Abstractions;
+using System.Collections.Immutable;
+using System.Text.Json;
 using Tellma.Identity.Data;
 using Tellma.Identity.Options;
 using Tellma.Identity.Services.Audit;
@@ -77,7 +79,17 @@ namespace Tellma.Identity.Services.Seeding
 
             await EnsureScopeAsync(TellmaIdentityConstants.ApiScope, "Call a distribution API", apiResources, cancellationToken);
             await EnsureScopeAsync(TellmaIdentityConstants.IdentityScope, "Call the identity server management API", [issuerOrigin], cancellationToken);
-            await EnsureScopeAsync(TellmaIdentityConstants.ControlPlaneScope, "Call the control-plane admin surface", [TellmaIdentityConstants.ControlPlaneAudience], cancellationToken);
+
+            // The control-plane scope and its audience exist only in standalone mode, where the
+            // operator surface lives; in-proc deployments never advertise or grant it.
+            if (engineOptions.Mode != TellmaIdentityDeploymentMode.InProc)
+            {
+                await EnsureScopeAsync(
+                    TellmaIdentityConstants.ControlPlaneScope,
+                    "Call the control-plane admin surface",
+                    [TellmaIdentityConstants.ControlPlaneAudience],
+                    cancellationToken);
+            }
         }
 
         /// <summary>Creates a scope or unions the given resources into an existing one.</summary>
@@ -117,15 +129,22 @@ namespace Tellma.Identity.Services.Seeding
                 return;
             }
 
-            // Re-seeding must not wipe the per-distribution resource permissions granted to
-            // platform clients at provisioning time.
-            OpenIddictApplicationDescriptor current = new();
-            await applicationManager.PopulateAsync(current, existing, cancellationToken);
-            foreach (string permission in current.Permissions)
+            // Re-seeding must not wipe the per-distribution resource permissions granted to the CLI
+            // and native apps at provisioning time — but only those clients accumulate them, so a
+            // client that never names distribution APIs (the control plane) never resurrects a
+            // stale grant.
+            ImmutableDictionary<string, JsonElement> existingProperties =
+                await applicationManager.GetPropertiesAsync(existing, cancellationToken);
+            if (TellmaClientProperties.IsSet(existingProperties, TellmaClientProperties.CallsDistributionApis))
             {
-                if (permission.StartsWith(OpenIddictConstants.Permissions.Prefixes.Resource, StringComparison.Ordinal))
+                OpenIddictApplicationDescriptor current = new();
+                await applicationManager.PopulateAsync(current, existing, cancellationToken);
+                foreach (string permission in current.Permissions)
                 {
-                    descriptor.Permissions.Add(permission);
+                    if (permission.StartsWith(OpenIddictConstants.Permissions.Prefixes.Resource, StringComparison.Ordinal))
+                    {
+                        descriptor.Permissions.Add(permission);
+                    }
                 }
             }
 

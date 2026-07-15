@@ -82,8 +82,8 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                 Outcome = "success",
             });
 
-            CredentialFlowCookie.Issue(HttpContext, user.Id);
-            return RedirectToPage("RegisterPasskey", new { returnUrl = "/Identity/Manage/Passkeys" });
+            CredentialFlowCookie.Issue(HttpContext, user.Id, CredentialFlowPurpose.Recovery);
+            return RedirectToPage("RegisterPasskey", new { returnUrl = Url.Page("/Manage/Passkeys", new { area = "Identity" }) });
         }
 
         /// <summary>Renders the generic setup failure.</summary>

@@ -90,10 +90,13 @@ namespace Tellma.Identity.Services.Sessions
                 return [];
             }
 
+            // Idempotent: a second termination of the same session must not re-revoke grants or
+            // re-deliver logout tokens, mirroring TerminateAllAsync's active-only filter.
+            bool wasActive = session.TerminatedUtc is null;
             session.TerminatedUtc ??= timeProvider.GetUtcNow();
             await context.SaveChangesAsync(cancellationToken);
 
-            return [.. session.Clients];
+            return wasActive ? [.. session.Clients] : [];
         }
 
         /// <inheritdoc />

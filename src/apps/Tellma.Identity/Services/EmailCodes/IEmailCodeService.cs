@@ -32,18 +32,19 @@ namespace Tellma.Identity.Services.EmailCodes
     public interface IEmailCodeService
     {
         /// <summary>
-        ///     Issues a fresh code (invalidating any outstanding one for the same purpose) and
-        ///     emails it, unless rate limits apply. Callers respond identically either way —
-        ///     issuance is enumeration-safe.
+        ///     Requests a code for an email address: rate-limits by IP first (so probing is bounded
+        ///     regardless of whether the address exists), then — only for an active user — issues a
+        ///     fresh code and hands it to the background mail worker. Returns without waiting for
+        ///     delivery and does the same work-shape whether or not the account exists, so neither
+        ///     the response nor its latency reveals account existence.
         /// </summary>
-        /// <param name="user">The user requesting a code.</param>
+        /// <param name="email">The address a code was requested for.</param>
         /// <param name="purpose">What the code is for; verification is purpose-bound.</param>
         /// <param name="flowBinding">The requesting browser session's flow id.</param>
         /// <param name="ipAddress">The requester's IP, for rate limiting.</param>
         /// <param name="cancellationToken">Aborts the operation.</param>
-        /// <returns>False when rate limits suppressed issuance.</returns>
-        Task<bool> IssueAsync(
-            TellmaIdentityUser user,
+        Task RequestCodeAsync(
+            string email,
             SingleUseCodePurpose purpose,
             string flowBinding,
             string? ipAddress,

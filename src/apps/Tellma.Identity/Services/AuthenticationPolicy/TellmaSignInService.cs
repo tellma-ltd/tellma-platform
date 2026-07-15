@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Identity;
 using System.Globalization;
 using System.Security.Claims;
 using Tellma.Identity.Data;
+using Tellma.Identity.Infrastructure;
 using Tellma.Identity.Services.Audit;
 using Tellma.Identity.Services.Sessions;
 using static OpenIddict.Abstractions.OpenIddictConstants;
@@ -33,6 +34,7 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
     /// <param name="userManager">The Identity user manager.</param>
     /// <param name="sessionRegistry">The sid registry.</param>
     /// <param name="auditLogger">Audit emission.</param>
+    /// <param name="metrics">Identity metrics.</param>
     /// <param name="timeProvider">The clock.</param>
     /// <param name="httpContextAccessor">Request context for audit/session detail.</param>
     public sealed class TellmaSignInService(
@@ -40,6 +42,7 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
         UserManager<TellmaIdentityUser> userManager,
         ISessionRegistry sessionRegistry,
         IAuditLogger auditLogger,
+        IdentityMetrics metrics,
         TimeProvider timeProvider,
         IHttpContextAccessor httpContextAccessor)
     {
@@ -82,6 +85,8 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                 methods.Add(evidence.Method);
             }
 
+            // A merge into an existing sid is a step-up; a fresh sid is a new session.
+            bool isNewSession = sid is null;
             sid ??= Guid.NewGuid().ToString("N");
             long authTime = timeProvider.GetUtcNow().ToUnixTimeSeconds();
 
@@ -105,17 +110,33 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
             user.LastSignInUtc = timeProvider.GetUtcNow();
             await userManager.UpdateAsync(user);
 
+            string? ipAddress = httpContext.Connection.RemoteIpAddress?.ToString();
             await auditLogger.LogAsync(
                 new AuditEventEntry
                 {
                     Action = AuditActions.LoginSucceeded,
                     Subject = user.Id,
                     Sid = sid,
-                    IpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),
+                    IpAddress = ipAddress,
                     Outcome = "success",
                     DetailsJson = System.Text.Json.JsonSerializer.Serialize(new { method = evidence.Method }),
                 },
                 cancellationToken);
+
+            // Session lifecycle: a brand-new sid is a session creation; adding a factor to an
+            // existing sid is a step-up. Both are distinct §15 audit events.
+            await auditLogger.LogAsync(
+                new AuditEventEntry
+                {
+                    Action = isNewSession ? AuditActions.SessionCreated : AuditActions.StepUpCompleted,
+                    Subject = user.Id,
+                    Sid = sid,
+                    IpAddress = ipAddress,
+                    Outcome = "success",
+                },
+                cancellationToken);
+
+            metrics.LoginAttempt(evidence.Method, "success", isNewSession ? "primary" : "step_up");
         }
     }
 }

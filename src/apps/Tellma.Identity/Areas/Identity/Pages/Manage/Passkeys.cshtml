@@ -31,4 +31,4 @@ else
 }
 
 <a class="tl-button tl-button-primary" asp-area="Identity" asp-page="/Account/RegisterPasskey"
-   asp-route-returnUrl="/Identity/Manage/Passkeys">@L["AddPasskey"]</a>
+   asp-route-returnUrl="@Url.Page("/Manage/Passkeys", new { area = "Identity" })">@L["AddPasskey"]</a>

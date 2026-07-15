@@ -293,21 +293,26 @@ namespace Tellma.Identity.Controllers
         private async Task<IActionResult?> SetMachineAudiencesAsync(ClaimsIdentity identity, OpenIddictRequest request)
         {
             List<string> resources = [.. request.GetResources()];
-            if (resources.Count == 0)
+            if (resources.Count == 0 && request.HasScope(TellmaIdentityConstants.ApiScope))
             {
-                if (request.HasScope(TellmaIdentityConstants.ApiScope))
-                {
-                    return Forbid(
-                        authenticationSchemes: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
-                        properties: new AuthenticationProperties(new Dictionary<string, string?>
-                        {
-                            [OpenIddictServerAspNetCoreConstants.Properties.Error] = Errors.InvalidTarget,
-                            [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] =
-                                "The tellma_api scope requires an explicit 'resource' parameter naming the target API.",
-                        }));
-                }
+                return Forbid(
+                    authenticationSchemes: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
+                    properties: new AuthenticationProperties(new Dictionary<string, string?>
+                    {
+                        [OpenIddictServerAspNetCoreConstants.Properties.Error] = Errors.InvalidTarget,
+                        [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] =
+                            "The tellma_api scope requires an explicit 'resource' parameter naming the target API.",
+                    }));
+            }
 
-                await foreach (string resource in scopeManager.ListResourcesAsync(identity.GetScopes(), HttpContext.RequestAborted))
+            // Platform-scope audiences are unioned in unconditionally (mirroring the interactive
+            // path); tellma_api is excluded because its scope entity aggregates every
+            // distribution's audience — the target API must be named explicitly.
+            System.Collections.Immutable.ImmutableArray<string> platformScopes =
+                [.. identity.GetScopes().Where(static scope => scope != TellmaIdentityConstants.ApiScope)];
+            await foreach (string resource in scopeManager.ListResourcesAsync(platformScopes, HttpContext.RequestAborted))
+            {
+                if (!resources.Contains(resource, StringComparer.Ordinal))
                 {
                     resources.Add(resource);
                 }

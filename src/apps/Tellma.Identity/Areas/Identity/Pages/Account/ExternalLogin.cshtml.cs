@@ -46,7 +46,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         /// <returns>A challenge to the external provider.</returns>
         public IActionResult OnPost(string provider, string? returnUrl = null)
         {
-            string safeReturn = ReturnUrlValidator.IsValid(returnUrl) ? returnUrl! : "/Identity/Account/Login";
+            string safeReturn = ReturnUrlValidator.Sanitize(returnUrl, Url.Page("/Account/Login", new { area = "Identity" })!);
             string redirectUrl = Url.Page("ExternalLogin", pageHandler: "Callback", values: new { returnUrl = safeReturn })!;
             AuthenticationProperties properties = signInManager.ConfigureExternalAuthenticationProperties(provider, redirectUrl);
             return Challenge(properties, provider);
@@ -58,7 +58,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         /// <returns>The post-sign-in redirect, or the page with a generic error.</returns>
         public async Task<IActionResult> OnGetCallbackAsync(string? returnUrl = null, string? remoteError = null)
         {
-            string safeReturn = ReturnUrlValidator.Sanitize(returnUrl, "/Identity/Account/Login");
+            string safeReturn = ReturnUrlValidator.Sanitize(returnUrl, Url.Page("/Account/Login", new { area = "Identity" })!);
             if (remoteError is not null)
             {
                 return Fail();
@@ -131,15 +131,16 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                 return await userManager.GetUserAsync(User);
             }
 
-            // The invitation/recovery credential-flow cookie is the ownership proof; the provider's
-            // verified email must match the invited account.
-            string? flowUserId = CredentialFlowCookie.GetUserId(HttpContext);
-            if (flowUserId is null || providerEmail is null)
+            // Only the invitation flow may link an external login (§8.4): the single-use invitation
+            // link is the email-ownership proof. A recovery or bootstrap context has a passkey-only
+            // exit (§10.3–§10.4), so it must never yield a signed-in session by linking a social IdP.
+            CredentialFlowContext? flow = CredentialFlowCookie.Read(HttpContext);
+            if (flow is not { Purpose: CredentialFlowPurpose.Invitation } || providerEmail is null)
             {
                 return null;
             }
 
-            TellmaIdentityUser? user = await userManager.FindByIdAsync(flowUserId);
+            TellmaIdentityUser? user = await userManager.FindByIdAsync(flow.UserId);
             return user is not null
                 && string.Equals(user.Email, providerEmail, StringComparison.OrdinalIgnoreCase)
                 ? user

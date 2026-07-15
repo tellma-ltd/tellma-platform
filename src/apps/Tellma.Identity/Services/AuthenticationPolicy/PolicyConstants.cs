@@ -98,7 +98,7 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
     {
         /// <summary>
         ///     Whether the passkey used is device-bound (non-synced), per the authenticator's
-        ///     self-asserted backup-state flags.
+        ///     self-asserted backup-eligibility flag.
         /// </summary>
         public const string PasskeyDeviceBound = "tellma_passkey_device_bound";
     }

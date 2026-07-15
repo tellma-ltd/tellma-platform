@@ -21,6 +21,7 @@ namespace Tellma.Identity.Controllers
     /// <param name="userManager">The Identity user manager.</param>
     /// <param name="tapService">Temporary Access Pass issuance.</param>
     [ApiController]
+    [ControlPlaneOnly]
     [Authorize(AuthenticationSchemes = OpenIddict.Validation.AspNetCore.OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme,
         Policy = ApiPolicies.ControlPlaneScope)]
     public sealed class OperatorController(

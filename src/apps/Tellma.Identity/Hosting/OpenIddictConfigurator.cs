@@ -63,16 +63,28 @@ namespace Tellma.Identity.Hosting
                           .AllowDeviceAuthorizationFlow()
                           .AllowTokenExchangeFlow();
 
-                    // PKCE for every authorization-code client, public and confidential.
+                    // PKCE for every authorization-code client, public and confidential, and only
+                    // the S256 challenge method — the plain method is a downgrade the OAuth
+                    // Security BCP forbids, so it is removed from the advertised/accepted set.
                     server.RequireProofKeyForCodeExchange();
+                    server.Configure(static serverOptions =>
+                        serverOptions.CodeChallengeMethods.Remove(CodeChallengeMethods.Plain));
 
-                    server.RegisterScopes(
-                        Scopes.Email,
-                        Scopes.Profile,
-                        Scopes.OfflineAccess,
-                        TellmaIdentityConstants.ApiScope,
-                        TellmaIdentityConstants.IdentityScope,
-                        TellmaIdentityConstants.ControlPlaneScope);
+                    // The control-plane scope exists only in standalone mode (the operator surface
+                    // is absent in-proc), so it is neither advertised nor grantable there.
+                    string[] scopes = options.Mode == TellmaIdentityDeploymentMode.InProc
+                        ?
+                        [
+                            Scopes.Email, Scopes.Profile, Scopes.OfflineAccess,
+                            TellmaIdentityConstants.ApiScope, TellmaIdentityConstants.IdentityScope,
+                        ]
+                        :
+                        [
+                            Scopes.Email, Scopes.Profile, Scopes.OfflineAccess,
+                            TellmaIdentityConstants.ApiScope, TellmaIdentityConstants.IdentityScope,
+                            TellmaIdentityConstants.ControlPlaneScope,
+                        ];
+                    server.RegisterScopes(scopes);
 
                     server.SetAccessTokenLifetime(options.Lifetimes.AccessToken)
                           .SetIdentityTokenLifetime(options.Lifetimes.IdentityToken)
@@ -124,8 +136,10 @@ namespace Tellma.Identity.Hosting
                         }
                     }
 
-                    // Custom pipeline handlers: audit every token-endpoint outcome, including
-                    // rejections the pass-through controller never sees.
+                    // Custom pipeline handlers: capture the request's subject during authentication,
+                    // then audit every token-endpoint outcome (issuance, rejection, refresh replay)
+                    // including failures the pass-through controller never sees.
+                    server.AddEventHandler(Handlers.CaptureAuditSubjectHandler.Descriptor);
                     server.AddEventHandler(Handlers.AuditTokenResponseHandler.Descriptor);
 
                     // Pass-through: the engine's controllers shape every interactive protocol

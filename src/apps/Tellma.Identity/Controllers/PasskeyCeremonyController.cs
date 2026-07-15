@@ -52,19 +52,19 @@ namespace Tellma.Identity.Controllers
         }
 
         /// <summary>
-        ///     Produces request (assertion) options for signing in with a passkey. With no email,
-        ///     a discoverable-credential ceremony lets the authenticator pick the account; with an
-        ///     email, the options are scoped to that user's credentials.
+        ///     Produces request (assertion) options for signing in with a passkey. The ceremony is
+        ///     always discoverable-credential (the authenticator picks the account): scoping by a
+        ///     caller-supplied email on this anonymous endpoint would leak account existence and a
+        ///     user's credential ids, and §8.1's resident-key + conditional-UI model makes email
+        ///     scoping only a UX filter with no security value.
         /// </summary>
-        /// <param name="email">The optional email the ceremony is scoped to.</param>
         /// <returns>The WebAuthn request options JSON.</returns>
         [AllowAnonymous]
         [HttpPost("Identity/api/passkey/assertion-options")]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> AssertionOptions([FromForm] string? email)
+        public async Task<IActionResult> AssertionOptions()
         {
-            TellmaIdentityUser? user = string.IsNullOrWhiteSpace(email) ? null : await userManager.FindByEmailAsync(email);
-            string options = await signInManager.MakePasskeyRequestOptionsAsync(user);
+            string options = await signInManager.MakePasskeyRequestOptionsAsync(user: null);
             return Content(options, "application/json");
         }
 

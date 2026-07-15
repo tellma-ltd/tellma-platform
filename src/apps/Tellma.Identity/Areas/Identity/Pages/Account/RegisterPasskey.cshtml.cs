@@ -100,9 +100,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
             // raises the assurance tier.
             if (User.Identity?.IsAuthenticated != true)
             {
-                // Device-bound is the backup-eligibility signal (a credential that cannot be
-                // synced), not the current backup state.
-                bool deviceBound = !attestation.Passkey.IsBackupEligible;
+                bool deviceBound = PasskeySignals.IsDeviceBound(attestation.Passkey);
                 await signInService.SignInAsync(
                     user,
                     new SignInEvidence(AuthenticationMethods.Passkey, deviceBound),
@@ -111,7 +109,8 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                 CredentialFlowCookie.Clear(HttpContext);
             }
 
-            return LocalRedirect(ReturnUrlValidator.Sanitize(ReturnUrl, "/Identity/Manage/Passkeys"));
+            string fallback = Url.Page("/Manage/Passkeys", new { area = "Identity" })!;
+            return LocalRedirect(ReturnUrlValidator.Sanitize(ReturnUrl, fallback));
         }
 
         /// <summary>Resolves the user this ceremony acts for (authenticated or flow-scoped).</summary>

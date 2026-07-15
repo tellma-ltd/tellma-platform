@@ -64,7 +64,12 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
             List<string> amr = [];
             string acr = AcrTiers.Aal1;
 
-            if (methods.Contains(AuthenticationMethods.Passkey, StringComparer.Ordinal))
+            bool passkey = methods.Contains(AuthenticationMethods.Passkey, StringComparer.Ordinal);
+            bool password = methods.Contains(AuthenticationMethods.Password, StringComparer.Ordinal);
+            bool otp = methods.Contains(AuthenticationMethods.Totp, StringComparer.Ordinal)
+                || methods.Contains(AuthenticationMethods.EmailCode, StringComparer.Ordinal);
+
+            if (passkey)
             {
                 // A passkey is a single multi-factor, phishing-resistant authenticator. The
                 // device-bound (non-synced) signal raises it to the aal3 tier; a fully
@@ -73,26 +78,25 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                 amr.Add(AuthenticationMethodReferences.UserPresence);
                 acr = passkeyIsDeviceBound ? AcrTiers.Aal3 : AcrTiers.Aal2;
             }
-            else
+
+            // Non-passkey factors are recorded even when a passkey was also used, so amr stays a
+            // complete audit record of every method the session actually exercised.
+            if (password)
             {
-                bool password = methods.Contains(AuthenticationMethods.Password, StringComparer.Ordinal);
-                bool otp = methods.Contains(AuthenticationMethods.Totp, StringComparer.Ordinal)
-                    || methods.Contains(AuthenticationMethods.EmailCode, StringComparer.Ordinal);
+                amr.Add(AuthenticationMethodReferences.Password);
+            }
 
-                if (password)
-                {
-                    amr.Add(AuthenticationMethodReferences.Password);
-                }
+            if (otp)
+            {
+                amr.Add(AuthenticationMethodReferences.OneTimePassword);
+            }
 
-                if (otp)
+            if (password && otp)
+            {
+                // Two distinct factors: knowledge plus possession.
+                amr.Add(AuthenticationMethodReferences.MultiFactor);
+                if (TierRanks[acr] < TierRanks[AcrTiers.Aal2])
                 {
-                    amr.Add(AuthenticationMethodReferences.OneTimePassword);
-                }
-
-                if (password && otp)
-                {
-                    // Two distinct factors: knowledge plus possession.
-                    amr.Add(AuthenticationMethodReferences.MultiFactor);
                     acr = AcrTiers.Aal2;
                 }
             }
@@ -153,8 +157,9 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                 _ => AcrTiers.Aal1,
             };
 
-            // The methods the login UI may offer: allow-list ∩ methods able to reach the tier.
-            List<string> offerable = [.. (allowedMethods ?? AuthenticationMethods.All).Where(m => MaxReachableRank(m) >= requiredRank)];
+            // The methods the login UI may offer: those able to participate in a composition of
+            // allowed methods that reaches the tier. An empty set means no composition can.
+            List<string> offerable = OfferableMethods(allowedMethods ?? AuthenticationMethods.All, requiredRank);
             if (offerable.Count == 0)
             {
                 return new PolicyEvaluation(PolicyOutcome.Unsatisfiable, RequiredTier: requiredTier);
@@ -185,22 +190,42 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                 : new PolicyEvaluation(PolicyOutcome.Satisfied, Assurance: current);
         }
 
-        /// <summary>The highest tier a method can reach on its own (with composition for password).</summary>
-        private static int MaxReachableRank(string method)
+        /// <summary>
+        ///     The methods worth offering for a required tier — mirroring how
+        ///     <see cref="DeriveAssurance" /> composes: ranks are not per-method. Any method
+        ///     reaches aal1; aal2 needs a passkey OR password plus an OTP factor (a lone password,
+        ///     TOTP, or email code derives only aal1); aal3 needs a device-bound passkey, so only
+        ///     the passkey method is offered — whether the presented authenticator is device-bound
+        ///     is knowable only once the user presents it.
+        /// </summary>
+        private static List<string> OfferableMethods(IReadOnlyList<string> allowed, int requiredRank)
         {
-            return method switch
+            if (requiredRank <= 1)
             {
-                AuthenticationMethods.Passkey => 3,
-                // Password composes with a second factor to reach aal2.
-                AuthenticationMethods.Password => 2,
-                AuthenticationMethods.Totp => 2,
-                AuthenticationMethods.EmailCode => 2,
-                // Social logins are aal1 unless the provider asserts MFA (uplift enforced by an
-                // additional local factor at sign-in time).
-                AuthenticationMethods.Google => 1,
-                AuthenticationMethods.Microsoft => 1,
-                _ => 1,
-            };
+                return [.. allowed];
+            }
+
+            bool passkey = allowed.Contains(AuthenticationMethods.Passkey, StringComparer.Ordinal);
+            if (requiredRank >= 3)
+            {
+                return passkey ? [AuthenticationMethods.Passkey] : [];
+            }
+
+            List<string> offerable = [];
+            if (passkey)
+            {
+                offerable.Add(AuthenticationMethods.Passkey);
+            }
+
+            List<string> otpFactors =
+                [.. allowed.Where(static m => m is AuthenticationMethods.Totp or AuthenticationMethods.EmailCode)];
+            if (allowed.Contains(AuthenticationMethods.Password, StringComparer.Ordinal) && otpFactors.Count > 0)
+            {
+                offerable.Add(AuthenticationMethods.Password);
+                offerable.AddRange(otpFactors);
+            }
+
+            return offerable;
         }
     }
 }

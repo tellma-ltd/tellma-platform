@@ -11,7 +11,7 @@
 <partial name="Shared/_StatusMessage" model="@(Model.StatusMessage)" />
 
 @* The credential is posted back through this form's hidden field by passkey.js. *@
-<form method="post" id="passkey-form">
+<form method="post" id="passkey-form" data-creation-url="@Url.Action("CreationOptions", "PasskeyCeremony")">
     <input type="hidden" id="credential" name="Credential" />
     <button class="tl-button tl-button-primary" type="button" id="enroll-button">@L["RegisterPasskeyButton"]</button>
 </form>

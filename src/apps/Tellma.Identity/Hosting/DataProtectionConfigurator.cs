@@ -39,16 +39,14 @@ namespace Tellma.Identity.Hosting
                 dataProtection.PersistKeysToFileSystem(new DirectoryInfo(options.DataProtection.FileSystemKeyRingPath));
             }
 
-            // Config-gated Azure path: shared blob ring encrypted with a Key Vault key.
-            if (options.DataProtection.BlobUri is { } blobUri)
+            // Config-gated Azure path: a shared blob ring encrypted with a Key Vault key. The
+            // options validator rejects a BlobUri without a KeyVaultKeyUri, so the blob is never
+            // persisted unencrypted.
+            if (options.DataProtection.BlobUri is { } blobUri && options.DataProtection.KeyVaultKeyUri is { } keyUri)
             {
                 DefaultAzureCredential credential = new();
                 dataProtection.PersistKeysToAzureBlobStorage(blobUri, credential);
-
-                if (options.DataProtection.KeyVaultKeyUri is { } keyUri)
-                {
-                    dataProtection.ProtectKeysWithAzureKeyVault(keyUri, credential);
-                }
+                dataProtection.ProtectKeysWithAzureKeyVault(keyUri, credential);
             }
         }
     }

@@ -38,9 +38,10 @@ namespace Tellma.Identity.Services.RateLimiting
             }
 
             // First event in the window: insert, tolerating a concurrent winner.
+            Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry<RateLimitCounter> entry =
+                context.Set<RateLimitCounter>().Add(new RateLimitCounter { Key = key, WindowStartUtc = windowStart, Count = 1 });
             try
             {
-                context.Set<RateLimitCounter>().Add(new RateLimitCounter { Key = key, WindowStartUtc = windowStart, Count = 1 });
                 await context.SaveChangesAsync(cancellationToken);
 
                 // Opportunistic cleanup of the key's expired windows.
@@ -52,8 +53,10 @@ namespace Tellma.Identity.Services.RateLimiting
             }
             catch (DbUpdateException)
             {
-                // A concurrent request created the row first; retry the atomic bump.
-                context.ChangeTracker.Clear();
+                // A concurrent request created the row first. Detach only this failed insert — not
+                // the whole tracker — so a caller's other pending changes are never discarded, then
+                // retry the atomic bump.
+                entry.State = EntityState.Detached;
                 await context.Set<RateLimitCounter>()
                     .Where(counter => counter.Key == key && counter.WindowStartUtc == windowStart)
                     .ExecuteUpdateAsync(
