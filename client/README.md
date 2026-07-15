@@ -5,7 +5,7 @@ The Angular workspace for the `@tellma/*` npm package family (spec
 
 | Package | Folder |
 |---|---|
-| `@tellma/core-ui` (+ `/contracts`, `/input`, `/checkbox`, `/form-field`, `/select`) | `projects/core/tellma-core-ui` |
+| `@tellma/core-ui` (+ `/contracts`, `/input`, `/checkbox`, `/form-field`, `/select`, `/spinner`) | `projects/core/tellma-core-ui` |
 | `@tellma/core-ui-tokens` | `projects/core/tellma-core-ui-tokens` |
 | `@tellma/core-ui-testing` | `projects/core/tellma-core-ui-testing` |
 | `@tellma/core-ui-mcp` | `projects/core/tellma-core-ui-mcp` |
@@ -28,7 +28,7 @@ pnpm run tokens:check   # token schema + missing-ref gate (contrast is axe's job
 pnpm run api:check      # public-API goldens (client/api/*.api.md)
 pnpm run api:approve    # accept an INTENDED public-API change (commit the diff)
 pnpm run docs:build     # components.json (schema-validated) + llms.txt for the MCP package
-pnpm run size:check     # per-entry-point gzipped self-weight vs the §8 ceilings
+pnpm run size:check     # gzipped self-weight vs each package's "tellma".budgetsInKb ceilings
 pnpm start              # showcase dev server (the component showcase + e2e target)
 ```
 

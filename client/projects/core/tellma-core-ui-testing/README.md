@@ -11,6 +11,6 @@ against rendered pages instead.
 
 ```ts
 const select = await loader.getHarness(TmSelectHarness);
-await select.open();
-await select.clickOption({ label: 'Active' });
+await select.selectOption('Active');
+expect(await select.getTriggerText()).toBe('Active');
 ```

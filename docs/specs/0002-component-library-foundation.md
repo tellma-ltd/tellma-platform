@@ -1008,11 +1008,14 @@ many scripts (Amharic, Japanese, Hindi, Russian, …) without eagerly loading al
 - **Long option lists:** `@for` + `track` now; `cdk/scrolling` virtual scroll drops in later without an API
   change.
 - **Bundle budget** per entry point in CI, with **concrete initial ceilings, not "TBD"**, so the DoD's
-  "within budget" isn't circular. Ceilings (gzipped, self-weight excluding shared Angular/CDK
-  already in the app): `tmInput` ≤ 3 KB, `tm-checkbox` ≤ 4 KB, `tm-form-field` ≤ 4 KB, `tm-select` ≤ 8 KB
-  (it carries the Overlay/listbox wiring), `@tellma/core-ui-tokens` runtime ≤ 8 KB (it ships the
-  emitter + missing-ref gate as runtime code — the client-side validation of admin-authored token
-  documents). These are **ratchets**:
+  "within budget" isn't circular. Each package declares its ceilings next to the code, in its
+  `package.json` `"tellma".budgetsInKb`, with coverage enforced both ways (a budgeted package must cover
+  every entry point; every key must name a real one). Ceilings (gzipped, self-weight excluding shared
+  Angular/CDK already in the app): `@tellma/core-ui` primary ≤ 4 KB, `/contracts` ≤ 1 KB, `tmInput` ≤ 3 KB,
+  `tm-checkbox` ≤ 4 KB, `tm-form-field` ≤ 4 KB, `tm-select` ≤ 8 KB
+  (it carries the Overlay/listbox wiring), `tm-spinner` ≤ 1 KB, `@tellma/core-ui-tokens` runtime ≤ 8 KB
+  (it ships the emitter + missing-ref gate as runtime code — the client-side validation of
+  admin-authored token documents). These are **ratchets**:
   set to catch regressions now, inspected and tightened once real builds land, never loosened silently. The
   ceilings measure each component's own weight on top of an assumed Angular + CDK baseline — that baseline
   is a given (any real distribution ships components that pull in CDK), so counting CDK against `tm-select`

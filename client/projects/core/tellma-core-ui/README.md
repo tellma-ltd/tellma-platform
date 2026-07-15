@@ -22,8 +22,9 @@ disabled/readonly/required).
 Add `@tellma/core-ui-tokens`' emitted stylesheet plus this package's
 `fonts/fonts.css` to the application's `styles` array — the build pipeline
 fingerprints the font binaries like any other CSS-referenced asset (see the
-showcase's `angular.json` for the reference wiring; a post-build script can
-inject `<link rel="preload">` tags for the emitted font URLs). Theming,
+showcase's `angular.json` for the reference wiring, and the workspace's
+`scripts/inject-font-preloads.mjs` for the post-build step that injects
+`<link rel="preload">` tags for the emitted font URLs). Theming,
 sizing, and typography all flow from the token variables — the components
 ship no hardcoded sizes or colors.
 
