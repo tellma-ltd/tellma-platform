@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../node_modules/ng-packagr/ng-package.schema.json",
+  "dest": "../../../dist/locale-ar",
+  "lib": {
+    "entryFile": "public-api.ts"
+  },
+  "assets": [
+    "fonts/**/*"
+  ]
+}

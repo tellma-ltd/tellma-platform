@@ -1,0 +1,24 @@
+{
+  "name": "@tellma/core-ui-mcp",
+  "version": "0.1.0",
+  "description": "Scoped MCP server for the Tellma UI component library. Answers list/describe/example against the generated components.json.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "tellma-core-ui-mcp": "dist/server.js"
+  },
+  "files": [
+    "dist",
+    "generated"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "recommendations": [
+    // Angular Language Service: inline-template type checking for client/.
+    "angular.ng-template",
+    // In-editor parity with `pnpm run lint` (flat config + stylelint rules).
+    "dbaeumer.vscode-eslint",
+    "stylelint.vscode-stylelint",
+    // Prettier: auto-formatting
+    "esbenp.prettier-vscode",
+    // C# Dev Kit
+    "ms-dotnettools.csdevkit",
+    // Mermaid diagrams in MD files
+    "bierner.markdown-mermaid"
+  ]
+}

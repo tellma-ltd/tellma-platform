@@ -1,0 +1,8 @@
+packages:
+  - "projects/core/tellma-core-ui-mcp"
+
+allowBuilds:
+  "@parcel/watcher": true
+  esbuild: true
+  lmdb: true
+  msgpackr-extract: true

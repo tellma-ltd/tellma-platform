@@ -1,0 +1,8 @@
+{
+  // Analyze client TypeScript with the workspace compiler (~6.0), not VS
+  // Code's bundled 5.x — accept the "Use Workspace Version" prompt once.
+  "typescript.tsdk": "client/node_modules/typescript/lib",
+  // The repo root is what gets opened; point the ESLint extension at the
+  // flat config under client/ so in-editor lint matches `pnpm run lint`.
+  "eslint.workingDirectories": ["client"]
+}

@@ -431,3 +431,6 @@ FodyWeavers.xsd
 
 .claude/
 temp/
+
+# Per-worktree local dev ports
+.dev-ports.local
