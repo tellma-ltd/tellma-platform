@@ -21,6 +21,7 @@
     "budgetsInKb": {
       ".": 4,
       "./contracts": 1,
+      "./grid-engine": 13,
       "./input": 3,
       "./checkbox": 4,
       "./form-field": 4,
