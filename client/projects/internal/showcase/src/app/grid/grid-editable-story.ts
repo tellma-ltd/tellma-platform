@@ -250,7 +250,14 @@ export class DemoAgentEditor implements TmCellEditor<number | null> {
     </tm-grid>
 
     <h3>Model</h3>
-    <pre class="model-dump" data-testid="model-json">{{ modelJson() }}</pre>
+    <!-- tabindex: the dump scrolls, so keyboard users must be able to
+         reach it (axe scrollable-region-focusable). -->
+    <pre
+      class="model-dump"
+      data-testid="model-json"
+      tabindex="0"
+      aria-label="Model JSON"
+    >{{ modelJson() }}</pre>
   `,
   styles: `
     .toolbar {

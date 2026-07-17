@@ -403,6 +403,55 @@ test.describe('IME composition (CDP)', () => {
   });
 });
 
+test.describe('fill down (§9.5)', () => {
+  test('Mod+D fills the selection down from its top row; ONE undo restores it', async ({
+    page,
+  }) => {
+    const top = await cellText(page, 1, 0);
+    const before2 = (await lineAt(page, 2)).description;
+    const before3 = (await lineAt(page, 3)).description;
+
+    await activateCell(page, 1, 0);
+    await cell(page, 3, 0).click({ modifiers: ['Shift'] });
+    await page.keyboard.press('Control+d');
+
+    await expect.poll(async () => (await lineAt(page, 3)).description).toBe(top);
+    expect((await lineAt(page, 2)).description).toBe(top);
+
+    await page.keyboard.press('Control+z');
+    await expect.poll(async () => (await lineAt(page, 3)).description).toBe(before3);
+    expect((await lineAt(page, 2)).description).toBe(before2);
+  });
+});
+
+test.describe('clearHistory (§12)', () => {
+  test('clearHistory drops the undo stack: undo reaches only later ops', async ({ page }) => {
+    // Commit an edit that WOULD be undoable…
+    await activateCell(page, 0, 0);
+    await page.keyboard.press('X');
+    await page.keyboard.press('Enter');
+    await expect.poll(async () => (await lineAt(page, 0)).description).toBe('X');
+
+    // …then the story's save/cancel stand-in calls the grid's clearHistory().
+    await page.getByTestId('clear-history').click();
+
+    // A post-clear edit IS undoable — the machinery still works…
+    const before1 = (await lineAt(page, 1)).description;
+    await activateCell(page, 1, 0);
+    await page.keyboard.press('Y');
+    await page.keyboard.press('Enter');
+    await expect.poll(async () => (await lineAt(page, 1)).description).toBe('Y');
+    await page.keyboard.press('Control+z');
+    await expect.poll(async () => (await lineAt(page, 1)).description).toBe(before1);
+
+    // …but the stack ends there: another undo has nothing pre-clear to
+    // reach, so the first edit stands.
+    await page.keyboard.press('Control+z');
+    await expect.poll(async () => (await lineAt(page, 0)).description).toBe('X');
+    expect(await cellText(page, 0, 0)).toBe('X');
+  });
+});
+
 test.describe('custom editor story (grid-custom-editor)', () => {
   interface Review {
     readonly id: number;

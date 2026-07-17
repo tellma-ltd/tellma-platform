@@ -9,6 +9,7 @@ import { ConnectedPosition } from '@angular/cdk/overlay';
 import { DestroyRef } from '@angular/core';
 import { FieldTree } from '@angular/forms/signals';
 import { FlexibleConnectedPositionStrategyOrigin } from '@angular/cdk/overlay';
+import { FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
 import { Injector } from '@angular/core';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { Signal } from '@angular/core';

@@ -144,4 +144,13 @@ test.describe('announcements (§14, CDK live region)', () => {
 
     await expect(liveRegion(page)).toContainText('All cells selected');
   });
+
+  test('loading transitions announce: Loading, then the loaded record count', async ({ page }) => {
+    await gotoGrid(page, 'grid-states');
+    await page.getByTestId('set-loading').click();
+    await expect(liveRegion(page)).toContainText('Loading');
+
+    await page.getByTestId('set-loading').click(); // toggle back off
+    await expect(liveRegion(page)).toContainText('records loaded');
+  });
 });

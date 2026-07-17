@@ -9,13 +9,14 @@ import {
   Component,
   computed,
   ElementRef,
+  inject,
   input,
   untracked,
   ViewContainerRef,
   viewChild,
 } from '@angular/core';
 import { OverlayModule } from '@angular/cdk/overlay';
-import type { ConnectedPosition } from '@angular/cdk/overlay';
+import type { ConnectedPosition, FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
 
 import { TmMenu } from '@tellma/core-ui/menu';
 import { TmSpinner } from '@tellma/core-ui/spinner';
@@ -279,11 +280,16 @@ import { ɵTmGridTouchHandles } from './touch-handles';
     <tm-grid-icons />
 
     <!-- Active-cell error message: a top-layer overlay so errors appearing
-         or clearing never shift the grid's (or the page's) layout. -->
+         or clearing never shift the grid's (or the page's) layout. The
+         popover host attaches to THIS component's element, not inline at
+         the origin: inline insertion would place it inside the role="row"
+         element, where a tooltip is not an allowed child (axe
+         aria-required-children); the view host keeps token/direction
+         inheritance and the top layer positions it all the same. -->
     <ng-template
       [cdkConnectedOverlay]="{
         origin: core().errorAnchor()!,
-        usePopover: 'inline',
+        usePopover: errorPopoverLocation,
         disableClose: true,
         positions: errorPositions,
       }"
@@ -312,6 +318,12 @@ export class ɵTmGridView {
     { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top' },
     { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom' },
   ];
+
+  /** The error popover's DOM home: this host, outside any role="row". */
+  protected readonly errorPopoverLocation: FlexibleOverlayPopoverLocation = {
+    type: 'parent',
+    element: inject(ElementRef).nativeElement as Element,
+  };
 
   private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
   private readonly editorOutlet = viewChild('editorOutlet', { read: ViewContainerRef });

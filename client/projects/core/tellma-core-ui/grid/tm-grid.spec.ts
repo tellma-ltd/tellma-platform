@@ -13,6 +13,8 @@ import { TmGridHarness, TmGridRowHarness } from '@tellma/core-ui-testing';
 
 import { TmGrid } from './tm-grid';
 import { TmGridColumn } from './tm-grid-column';
+import { TmGridStateStore } from './tm-grid-state-store';
+import { TmGridHeaderDef } from './tm-grid-templates';
 
 interface Row {
   readonly id: number;
@@ -55,6 +57,25 @@ const ROW_HEIGHT = 32;
 class Host {
   readonly rows = signal<readonly Row[]>(makeRows(200));
   readonly loading = signal(false);
+  readonly rowId = (row: Row): number => row.id;
+}
+
+@Component({
+  imports: [TmGrid, TmGridColumn, TmGridHeaderDef],
+  template: `
+    <tm-grid gridId="spec-grid-header" [data]="rows()" [rowId]="rowId" style="block-size: 300px">
+      <tm-grid-column key="name" header="Name" [width]="140">
+        <ng-container *tmGridHeader="let header">
+          <span class="hdr-label">{{ header }}</span>
+          <button type="button" class="hdr-btn">filter</button>
+        </ng-container>
+      </tm-grid-column>
+      <tm-grid-column key="qty" type="number" header="Qty" [flex]="1" />
+    </tm-grid>
+  `,
+})
+class HeaderHost {
+  readonly rows = signal<readonly Row[]>(makeRows(20));
   readonly rowId = (row: Row): number => row.id;
 }
 
@@ -340,5 +361,64 @@ describe('tm-grid (readonly core)', () => {
 
     await grid.clickCorner();
     expect(await (await grid.getCell(0, 3)).isSelected()).toBe(true);
+  });
+});
+
+describe('tm-grid (custom header template §6.2)', () => {
+  it('renders *tmGridHeader; interactive header content never selects the column', async () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(HeaderHost);
+    await stable(fixture);
+    const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+      '.tm-grid__scroller',
+    ) as HTMLElement;
+    const header = scroller.querySelector('[data-tm-colhdr][data-col="0"]') as HTMLElement;
+    expect(header.querySelector('.hdr-label')?.textContent).toBe('Name');
+
+    // A click on the projected BUTTON keeps its own affordance: no column
+    // selection results.
+    (header.querySelector('.hdr-btn') as HTMLElement).click();
+    await stable(fixture);
+    expect(scroller.querySelectorAll('[data-tm-cell][aria-selected="true"]').length).toBe(0);
+
+    // A click on the header background selects the column.
+    header.click();
+    await stable(fixture);
+    expect(cellAt(scroller, 0, 0)?.getAttribute('aria-selected')).toBe('true');
+    expect(cellAt(scroller, 0, 1)?.getAttribute('aria-selected')).toBeNull();
+  });
+});
+
+describe('TmGridStateStore width blobs (§12)', () => {
+  it('round-trips widths through serializeWidths → restoreWidths', () => {
+    const source = new TmGridStateStore();
+    source.register('grid-a', undefined).setWidths({ name: 120, qty: 90.5 });
+    const blob = source.serializeWidths('grid-a');
+    expect(blob).not.toBeNull();
+
+    // A fresh store (a later session) restores the identical widths.
+    const target = new TmGridStateStore();
+    target.restoreWidths('grid-a', blob as string);
+    expect(target.register('grid-a', undefined).getWidths()).toEqual({ name: 120, qty: 90.5 });
+  });
+
+  it('serializes null when the gridId has no persisted widths', () => {
+    expect(new TmGridStateStore().serializeWidths('unknown-grid')).toBeNull();
+  });
+
+  it('ignores malformed blobs — defaults apply on the next mount', () => {
+    const store = new TmGridStateStore();
+    store.restoreWidths('grid-a', '{not json');
+    store.restoreWidths('grid-a', '[120, 90]'); // an array is not a widths map
+    store.restoreWidths('grid-a', '"120"');
+    store.restoreWidths('grid-a', 'null');
+    expect(store.register('grid-a', undefined).getWidths()).toBeUndefined();
+  });
+
+  it('filters non-numeric and non-finite entries from a restored blob', () => {
+    const store = new TmGridStateStore();
+    // 1e999 parses to Infinity; the string and null entries are not widths.
+    store.restoreWidths('grid-a', '{"name":120,"qty":"wide","note":null,"extra":1e999}');
+    expect(store.register('grid-a', undefined).getWidths()).toEqual({ name: 120 });
   });
 });

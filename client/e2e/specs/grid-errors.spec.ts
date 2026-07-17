@@ -190,7 +190,8 @@ test.describe('clearing rules', () => {
 
     // The raw text is gone, but the cell is still errored — the message
     // SWAPPED from the invalid-input string to the field's required error.
-    expect(await cellText(page, 7, 1)).toBe('');
+    // (Polled: the repaint after the Delete keydown races a bare read.)
+    await expect.poll(() => cellText(page, 7, 1)).toBe('');
     await expect(cell(page, 7, 1)).toHaveClass(/tm-grid__cell--error/);
     await expect.poll(() => overlayMessage(page, 7, 1)).toContain('required');
     await expect(statusChip(page)).toContainText('1 error');
