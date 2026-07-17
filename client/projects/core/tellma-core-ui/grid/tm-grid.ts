@@ -31,8 +31,12 @@ import { ɵTmGridView } from './internal/grid-view';
  *   focus via a roving tabindex, and the active row is always rendered so
  *   scrolling never drops focus. A readonly grid is a single tab stop;
  *   Escape parks focus on the container so Tab exits mid-grid, and any
- *   arrow re-enters at the active cell. Selection, clipboard, and loading
- *   changes are announced through the live region in the active locale.
+ *   arrow re-enters at the active cell. Selection, clipboard, loading,
+ *   checked-count, and find-counter changes are announced through the live
+ *   region in the active locale. With `selectable`, the labelled row
+ *   checkboxes toggle via Space (select-all via Ctrl+Shift+Space) and
+ *   checked rows carry row-level `aria-selected`; the find bar's field and
+ *   buttons are labelled from library strings.
  */
 @Component({
   selector: 'tm-grid',

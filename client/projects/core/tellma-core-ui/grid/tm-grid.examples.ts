@@ -85,3 +85,18 @@ export const LoadingAndEmptyStates = {
     </tm-grid>
   `,
 };
+
+/**
+ * The list-screen shape: `selectable` adds the row-checkbox column for
+ * bulk selection (readonly grids only — checked ids land in the two-way
+ * `selectedIds` set, fully independent of cell-range selection), and
+ * `searchable` enables the Mod+F find bar over every cell's text.
+ */
+export const SelectableSearchableListScreen = {
+  template: `
+    <tm-grid gridId="customers" [data]="rows" [rowId]="rowId" selectable searchable style="block-size: 320px">
+      <tm-grid-column key="name" header="Name" [flex]="2" />
+      <tm-grid-column key="qty" type="number" header="Orders" [width]="100" />
+    </tm-grid>
+  `,
+};

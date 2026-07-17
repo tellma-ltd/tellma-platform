@@ -8,6 +8,7 @@ import { Component, Type } from '@angular/core';
 import { CheckboxStory } from './checkbox/checkbox-story';
 import { GridCustomEditorStory } from './grid/grid-custom-editor-story';
 import { GridEditableStory } from './grid/grid-editable-story';
+import { GridListScreenStory } from './grid/grid-list-screen-story';
 import { GridReadonlyStory } from './grid/grid-readonly-story';
 import { GridStatesStory } from './grid/grid-states-story';
 import { TreeGridStory } from './grid/tree-grid-story';
@@ -51,6 +52,12 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'select', title: 'Select (tm-select)', component: SelectStory },
   { id: 'menu', title: 'Menu', component: MenuStory },
   { id: 'grid-readonly', title: 'Grid (readonly)', component: GridReadonlyStory, wide: true },
+  {
+    id: 'grid-list-screen',
+    title: 'Grid (list screen: selectable + searchable)',
+    component: GridListScreenStory,
+    wide: true,
+  },
   { id: 'grid-states', title: 'Grid (states)', component: GridStatesStory, wide: true },
   { id: 'grid-editable', title: 'Grid (editable)', component: GridEditableStory, wide: true },
   {

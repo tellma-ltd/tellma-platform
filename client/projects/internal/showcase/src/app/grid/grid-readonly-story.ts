@@ -25,7 +25,7 @@ const REGIONS = ['North', 'South', 'East', 'West', 'Central'] as const;
 const FIRST_NAMES = ['Ada', 'Grace', 'Alan', 'Edsger', 'Barbara', 'Donald', 'Radia', 'Vint'] as const;
 const LAST_NAMES = ['Lovelace', 'Hopper', 'Turing', 'Dijkstra', 'Liskov', 'Knuth', 'Perlman', 'Cerf'] as const;
 
-interface DemoRow {
+export interface DemoRow {
   readonly id: number;
   readonly code: string;
   readonly name: string;
@@ -43,9 +43,9 @@ interface DemoRow {
 /**
  * Row i is a pure function of i (own PRNG stream per row), so values stay
  * identical — and assertable — whether 1k or 100k rows are generated, and
- * every text cell embeds the row index.
+ * every text cell embeds the row index. (Shared with the list-screen story.)
  */
-function makeRow(i: number): DemoRow {
+export function makeRow(i: number): DemoRow {
   const random = mulberry32(0x9e3779b9 ^ i);
   const pick = <T>(values: readonly T[]): T => values[Math.floor(random() * values.length)];
   return {

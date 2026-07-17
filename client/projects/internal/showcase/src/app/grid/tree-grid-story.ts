@@ -115,8 +115,9 @@ const LAZY_CHILDREN: readonly Account[] = [
  * insert-child through `newRow(parent)`, lazy loading behind a
  * configurable delay and failure toggle, the readonly flip, a
  * default-depth select, contentKey switching and unmount/remount buttons
- * to exercise expansion-state persistence, and a live JSON model dump the
- * Playwright battery asserts against.
+ * to exercise expansion-state persistence, `searchable` (the find bar's
+ * tree deep-search), and a live JSON model dump the Playwright battery
+ * asserts against.
  */
 @Component({
   imports: [TmTreeGrid, TmGridColumn],
@@ -192,6 +193,7 @@ const LAZY_CHILDREN: readonly Account[] = [
         [defaultExpandedDepth]="depth()"
         [newRow]="newAccount"
         [readonly]="readonly()"
+        searchable
       >
         <tm-grid-column key="name" header="Name" [flex]="2" [minWidth]="240" />
         <tm-grid-column key="code" header="Code" [width]="90" />

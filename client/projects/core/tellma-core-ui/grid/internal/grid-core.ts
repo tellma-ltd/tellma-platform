@@ -46,7 +46,12 @@ import {
   type TmGridTreeOptions,
   type TmRowCol,
 } from '@tellma/core-ui/grid-engine';
-import type { TmMenu, TmMenuEntry, TmMenuItem } from '@tellma/core-ui/menu';
+import {
+  ɵtmObserveLongPress,
+  type TmMenu,
+  type TmMenuEntry,
+  type TmMenuItem,
+} from '@tellma/core-ui/menu';
 
 import type { TmGridColumn } from '../tm-grid-column';
 import type {
@@ -107,6 +112,15 @@ const WARMUP_ROWS_PER_SLICE = 500;
 /** How long the transient failure notice stays visible, in ms. */
 const TRANSIENT_NOTICE_MS = 6_000;
 
+/** Debounce between checked-set changes and the count announcement, in ms. */
+const CHECKED_ANNOUNCE_DEBOUNCE_MS = 150;
+
+/** Debounce between find-query changes and the scan (§8.7 pacing), in ms. */
+const FIND_DEBOUNCE_MS = 250;
+
+/** Cells one find-scan slice visits before yielding to the event loop (§16). */
+const FIND_SCAN_CELLS_PER_SLICE = 2_000;
+
 /** Uniquifies the per-instance error-overlay message element id. */
 let nextErrorMsgId = 0;
 
@@ -127,6 +141,18 @@ function errorCellKey(rowId: TmRowId, columnId: string): string {
 /** One field-validation-errored cell, by identity. */
 interface FieldErrorCell {
   readonly rowId: TmRowId;
+  readonly columnId: string;
+}
+
+/**
+ * One find match, by cell identity — identity (not view coordinates)
+ * because the match list spans the whole model, collapsed tree rows
+ * included, and must survive expansion changes between scan and use.
+ */
+export interface ɵTmGridFindMatch {
+  /** The matched row's id. */
+  readonly rowId: TmRowId;
+  /** The matched column's id. */
   readonly columnId: string;
 }
 
@@ -202,7 +228,7 @@ function defaultParseFor(
 export interface ɵTmGridColumnVm {
   /** Data-column index (0-based, display order). */
   readonly index: number;
-  /** `aria-colindex` (1-based; the row-header column is 1). */
+  /** `aria-colindex` (1-based, after the row-header and checkbox chrome). */
   readonly ariaColIndex: number;
   /** Stable identity: the model key, else a generated id. */
   readonly id: string;
@@ -272,6 +298,10 @@ export interface ɵTmGridCellVm {
   readonly pending: boolean;
   /** Whether the cell lies inside the armed cut's range (marquee styling). */
   readonly inCutRange: boolean;
+  /** Whether the cell is a find match (rendered-window highlight). */
+  readonly findMatch: boolean;
+  /** Whether the cell is the ACTIVE find match (outline). */
+  readonly activeFindMatch: boolean;
   /** Whether the cell renders the tree affordance (trees, hierarchy column). */
   readonly hierarchy: boolean;
   /** Tree depth for the indent spacer (0 outside the hierarchy cell). */
@@ -298,6 +328,8 @@ export interface ɵTmGridRowVm {
   readonly outlierTransform: string | null;
   /** Whether the row carries the readonly zebra stripe. */
   readonly zebra: boolean;
+  /** Whether the row is checkbox-checked (row tint + row-level aria-selected). */
+  readonly checked: boolean;
   /** Whether the row header highlights (a selection range covers the row). */
   readonly headerHit: boolean;
   /** The row-header text (1-based row number, `*` on the placeholder). */
@@ -378,6 +410,8 @@ export interface ɵTmGridCoreDeps<T> {
   readonly searchable: Signal<boolean>;
   /** Whether row checkbox selection is enabled. */
   readonly selectable: Signal<boolean>;
+  /** The two-way checked-row set of a `selectable` grid. */
+  readonly selectedIds: WritableSignal<ReadonlySet<TmRowId>>;
   /** The density variant. */
   readonly size: Signal<'sm' | 'md' | 'lg'>;
   /** Consumer context-menu items appended after the built-ins. */
@@ -428,6 +462,26 @@ export interface ɵTmGridViewCore {
   readonly columnModel: Signal<readonly ɵTmGridColumnVm[]>;
   /** Per-column header highlight (a selection range covers the column). */
   readonly hitCols: Signal<readonly boolean[]>;
+  /** Whether the row-checkbox chrome column renders (`selectable`, readonly). */
+  readonly checkboxColumn: Signal<boolean>;
+  /** The select-all checkbox's tri-state over ALL data rows. */
+  readonly checkAllState: Signal<'all' | 'none' | 'mixed'>;
+  /** The select-all checkbox's accessible name. */
+  readonly selectAllLabel: Signal<string>;
+  /** The row checkboxes' accessible name. */
+  readonly selectRowLabel: Signal<string>;
+  /** Whether the find bar is open. */
+  readonly findOpen: Signal<boolean>;
+  /** The find query as typed. */
+  readonly findQuery: Signal<string>;
+  /** The localized match counter ('3 of 41' / no-matches; empty pre-scan). */
+  readonly findCounterText: Signal<string>;
+  /** Count of matches of the completed scan. */
+  readonly findMatchCount: Signal<number>;
+  /** Whether the primary pointer is coarse (renders the touch handles). */
+  readonly coarsePointer: Signal<boolean>;
+  /** The active range's corner cells for the touch handles, or `null` while hidden. */
+  readonly selectionHandles: Signal<{ readonly start: TmRowCol; readonly end: TmRowCol } | null>;
   /** The spacer height in px (`rowCount × rowHeight`). */
   readonly totalHeight: Signal<number>;
   /** The window block's translate. */
@@ -456,6 +510,16 @@ export interface ɵTmGridViewCore {
   readonly transientNotice: Signal<string | null>;
   /** Jumps to the next (+1) / previous (−1) errored cell, row-major, cycling. */
   gotoError(direction: 1 | -1): void;
+  /** Updates the find query (the scan is debounced and chunked). */
+  setFindQuery(query: string): void;
+  /** Cycles to the next (+1) / previous (−1) match and ACTIVATES its cell. */
+  findStep(direction: 1 | -1): void;
+  /** Closes the find bar: clears the query, focus returns to the grid. */
+  closeFind(): void;
+  /** Hands the core the find bar's input (or `null` when the bar closes). */
+  attachFindInput(element: HTMLElement | null): void;
+  /** A touch handle's pointerdown: extends the range from the dragged corner. */
+  beginHandleDrag(event: PointerEvent, edge: 'start' | 'end'): void;
   /** Hands the core the scroll container once the view rendered it. */
   attachScroller(element: HTMLElement): void;
   /** Hands the core the editing cell's editor outlet (or `null` when closed). */
@@ -544,6 +608,28 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   private readonly wantedExpansionIds = signal<ReadonlySet<TmRowId>>(new Set());
   /** Guards stray async completions after destroy. */
   private destroyed = false;
+  /** The last individually toggled checkbox row — the Shift+click anchor. */
+  private lastToggledRowId: TmRowId | null = null;
+  /** Debounces the checked-count announcement across toggle bursts. */
+  private checkedAnnounceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Kills superseded find-scan chains (re-query, rows change, destroy). */
+  private findGeneration = 0;
+  /** Debounces query keystrokes into one scan. */
+  private findDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The find bar's input, while the bar is open (Mod+F re-focus target). */
+  private findInput: HTMLElement | null = null;
+
+  private readonly findOpenSignal = signal(false);
+  private readonly findQuerySignal = signal('');
+  private readonly findMatchesSignal = signal<readonly ɵTmGridFindMatch[]>([]);
+  private readonly findActiveIndexSignal = signal(-1);
+  /** The query the current match list answers (counter gates on it). */
+  private readonly findResultsFor = signal<string | null>(null);
+  private readonly coarsePointerSignal = signal(false);
+  /** Fast match membership for the rendered window's highlight flags. */
+  private readonly findMatchKeys: Signal<ReadonlySet<string>>;
+  /** The active match, or `null`. */
+  private readonly activeFindMatchSignal: Signal<ɵTmGridFindMatch | null>;
 
   private readonly columnsInternal: Signal<readonly ColumnInternal<T>[]>;
   private readonly engineColumns: Signal<ReadonlyArray<TmGridEngineColumn<T>>>;
@@ -594,6 +680,26 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   readonly columnModel: Signal<readonly ɵTmGridColumnVm[]>;
   /** Per-column header highlight flags. */
   readonly hitCols: Signal<readonly boolean[]>;
+  /** Whether the row-checkbox chrome column renders (`selectable`, readonly). */
+  readonly checkboxColumn: Signal<boolean>;
+  /** The select-all checkbox's tri-state over ALL data rows. */
+  readonly checkAllState: Signal<'all' | 'none' | 'mixed'>;
+  /** The select-all checkbox's accessible name. */
+  readonly selectAllLabel: Signal<string>;
+  /** The row checkboxes' accessible name. */
+  readonly selectRowLabel: Signal<string>;
+  /** Whether the find bar is open. */
+  readonly findOpen: Signal<boolean>;
+  /** The find query as typed. */
+  readonly findQuery: Signal<string>;
+  /** The localized match counter. */
+  readonly findCounterText: Signal<string>;
+  /** Count of matches of the completed scan. */
+  readonly findMatchCount: Signal<number>;
+  /** Whether the primary pointer is coarse. */
+  readonly coarsePointer: Signal<boolean>;
+  /** The active range's corner cells for the touch handles, or `null`. */
+  readonly selectionHandles: Signal<{ readonly start: TmRowCol; readonly end: TmRowCol } | null>;
   /** The resolved row height in px. */
   readonly rowHeight: Signal<number>;
   /** Rows per viewport page (PageUp/PageDown motion size). */
@@ -662,6 +768,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       return [];
     });
     this.editable = computed(() => deps.field() !== undefined && !deps.readonlyInput());
+    // Row checkbox selection is a readonly-grid affordance (§8.8); the
+    // shell throws in dev mode when `selectable` meets an editable grid,
+    // and the chrome column stays off in prod builds.
+    this.checkboxColumn = computed(() => deps.selectable() && !this.editable());
     this.gridRole = computed(() => (this.engine.model.isTree ? 'treegrid' : 'grid'));
     this.loading = deps.loading;
     this.emptyDef = deps.emptyDef;
@@ -671,9 +781,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.rowHeight = this.rowHeightSignal.asReadonly();
     this.escaped = this.escapedSignal.asReadonly();
 
-    this.columnsInternal = computed(() =>
-      deps.columns().map((dir, index) => this.buildColumn(dir, index)),
-    );
+    this.columnsInternal = computed(() => {
+      // Chrome columns preceding the data columns in `aria-colindex` space:
+      // the row header, plus the checkbox column when it renders.
+      const chromeCols = this.checkboxColumn() ? 2 : 1;
+      return deps.columns().map((dir, index) => this.buildColumn(dir, index, chromeCols));
+    });
     this.columnModel = this.columnsInternal;
     this.engineColumns = computed(() =>
       this.columnsInternal().map((column) => column.engineColumn),
@@ -725,7 +838,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.windowTransform = computed(() => `translateY(${this.window().leadOffset}px)`);
 
     this.ariaRowCount = computed(() => this.engine.model.viewRowCount() + 1);
-    this.ariaColCount = computed(() => this.engine.model.columnCount() + 1);
+    this.ariaColCount = computed(
+      () => this.engine.model.columnCount() + (this.checkboxColumn() ? 2 : 1),
+    );
     this.showEmpty = computed(
       () => !deps.loading() && !this.editable() && this.engine.model.viewRowCount() === 0,
     );
@@ -741,6 +856,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.gridTemplate = computed(() => {
       const overrides = this.widthOverrides();
       const tracks = ['var(--grid-row-header-width)'];
+      if (this.checkboxColumn()) {
+        tracks.push('var(--grid-check-col-width)');
+      }
       for (const column of this.columnsInternal()) {
         const width = overrides.get(column.id) ?? column.width;
         if (width !== undefined) {
@@ -753,6 +871,86 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       }
       return tracks.join(' ');
     });
+    // ---- row checkbox selection (§8.8) ----
+    this.selectAllLabel = deps.translate('grid.selectAll');
+    this.selectRowLabel = deps.translate('grid.selectRow');
+    // The tri-state ranges over ALL data rows (collapsed tree rows
+    // included): select-all is all↔none over the DATA, not the viewport.
+    this.checkAllState = computed(() => {
+      const selected = deps.selectedIds();
+      const rows = this.rows();
+      if (rows.length === 0 || selected.size === 0) {
+        return 'none';
+      }
+      const rowIdOf = deps.rowId();
+      let checked = 0;
+      for (const row of rows) {
+        if (selected.has(rowIdOf(row))) {
+          checked += 1;
+        }
+      }
+      return checked === 0 ? 'none' : checked === rows.length ? 'all' : 'mixed';
+    });
+
+    // ---- find (§8.7) ----
+    this.findOpen = this.findOpenSignal.asReadonly();
+    this.findQuery = this.findQuerySignal.asReadonly();
+    this.findMatchCount = computed(() => this.findMatchesSignal().length);
+    this.findMatchKeys = computed(() => {
+      const keys = new Set<string>();
+      for (const match of this.findMatchesSignal()) {
+        keys.add(errorCellKey(match.rowId, match.columnId));
+      }
+      return keys;
+    });
+    this.activeFindMatchSignal = computed(
+      () => this.findMatchesSignal()[this.findActiveIndexSignal()] ?? null,
+    );
+    this.findCounterText = computed(() => {
+      const query = this.findQuerySignal();
+      if (!this.findOpenSignal() || query === '' || this.findResultsFor() !== query) {
+        return ''; // no counter before the first completed scan of this query
+      }
+      const count = this.findMatchesSignal().length;
+      if (count === 0) {
+        return deps.translate('grid.find.noMatches')();
+      }
+      return deps.translate('grid.find.counter', {
+        index: this.findActiveIndexSignal() + 1,
+        count,
+      })();
+    });
+
+    // ---- touch selection handles (§8.6) ----
+    this.coarsePointer = this.coarsePointerSignal.asReadonly();
+    if (typeof matchMedia === 'function') {
+      const coarseQuery = matchMedia('(pointer: coarse)');
+      this.coarsePointerSignal.set(coarseQuery.matches);
+      const onCoarseChange = (event: MediaQueryListEvent): void =>
+        this.coarsePointerSignal.set(event.matches);
+      coarseQuery.addEventListener('change', onCoarseChange);
+      deps.destroyRef.onDestroy(() => coarseQuery.removeEventListener('change', onCoarseChange));
+    }
+    this.selectionHandles = computed(() => {
+      if (!this.coarsePointerSignal()) {
+        return null;
+      }
+      const engine = this.engine;
+      if (engine.edit.session() !== null) {
+        return null; // handles hide while an editor is open
+      }
+      const active = engine.selection.activeRange();
+      if (active === null) {
+        return null;
+      }
+      engine.model.viewRows(); // row/column extents feed the rect
+      const rect = engine.selection.rectOf(active);
+      return {
+        start: { row: rect.top, col: rect.left },
+        end: { row: rect.bottom, col: rect.right },
+      };
+    });
+
     // ---- error tally (§10) ----
     // Field-invalid cells come from per-row errorSummary reads; the first
     // read is deferred behind the chunked warm-up (§16, wired in
@@ -1058,8 +1256,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       isMac: IS_MAC_PLATFORM,
       editable: untracked(this.editable),
       searchable: untracked(this.deps.searchable),
-      // Row checkbox selection is a later milestone.
-      selectable: false,
+      selectable: untracked(this.checkboxColumn),
       isTree: engine.model.isTree,
       activeIsBoolean,
     });
@@ -1155,8 +1352,27 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (target.closest('[data-tm-resize]') !== null) {
       return; // the resize controller owns the gesture
     }
+    if (target.closest('[data-tm-handle]') !== null) {
+      return; // the touch handle owns its gesture (beginHandleDrag)
+    }
     if (target.closest('[data-tm-editor]') !== null) {
       return; // presses inside the open editor keep their native semantics
+    }
+    if (target.closest('[data-tm-checkcell], [data-tm-checkhdr]') !== null) {
+      // Checkbox chrome (§8.8) toggles on CLICK (a pan never synthesizes
+      // one). Mouse presses preventDefault so focus stays where it is;
+      // touch keeps the event native so panning stays possible.
+      if (event.pointerType !== 'touch') {
+        event.preventDefault();
+      }
+      return;
+    }
+    if (event.pointerType === 'touch') {
+      // §8.6: native pan must win on touch — no preventDefault, no pointer
+      // capture, no drag-selection. The tap's synthesized click activates
+      // the cell (onClick), and a double-tap's dblclick opens the editor
+      // through the shared handler. Range selection rides the handles.
+      return;
     }
     if (untracked(() => this.engine.edit.session()) !== null) {
       // Clicking another cell commits the open editor first (§8.4); focus
@@ -1248,27 +1464,80 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       this.engine.selection.selectAll();
       return;
     }
+    // Row-checkbox chrome (§8.8): the select-all header and the row cells
+    // toggle on click — pointerdown already pinned focus for mouse presses,
+    // and a touch pan never synthesizes a click.
+    if (target.closest('[data-tm-checkhdr]') !== null) {
+      this.toggleSelectAllCheckbox();
+      return;
+    }
+    const checkCell = target.closest('[data-tm-checkcell]');
+    if (checkCell !== null) {
+      const row = Number(checkCell.getAttribute('data-row'));
+      if (Number.isInteger(row)) {
+        this.toggleRowCheckAt(row, event.shiftKey);
+      }
+      return;
+    }
     const header = target.closest('[data-tm-colhdr]');
-    if (header === null) {
+    if (header !== null) {
+      // Interactive projected header content never triggers column selection.
+      const interactive = target.closest('a, button, input, select, [tabindex]');
+      if (interactive !== null && header.contains(interactive)) {
+        return;
+      }
+      const col = Number(header.getAttribute('data-col'));
+      if (!Number.isInteger(col)) {
+        return;
+      }
+      const engine = this.engine;
+      const mod = IS_MAC_PLATFORM ? event.metaKey : event.ctrlKey;
+      this.escapedSignal.set(false);
+      if (untracked(() => engine.model.viewRowCount()) > 0) {
+        engine.nav.setActive({ row: 0, col });
+      }
+      engine.selection.selectCols(col, col, mod);
+      this.requestFocusActive();
       return;
     }
-    // Interactive projected header content never triggers column selection.
-    const interactive = target.closest('a, button, input, select, [tabindex]');
-    if (interactive !== null && header.contains(interactive)) {
+    // Touch taps (§8.6): the pointerdown deliberately did nothing (native
+    // pan), so the synthesized click is where a tap activates its target.
+    if (event instanceof PointerEvent && event.pointerType === 'touch') {
+      this.onTouchTap(target);
+    }
+  }
+
+  /** A touch tap on a cell or row header: activation without a drag. */
+  private onTouchTap(target: Element): void {
+    if (target.closest('[data-tm-editor]') !== null) {
+      return; // taps inside the open editor keep their native semantics
+    }
+    const cellElement = target.closest('[data-tm-cell]');
+    if (cellElement !== null) {
+      const cell = this.cellFromElement(cellElement);
+      if (cell === null) {
+        return;
+      }
+      if (untracked(() => this.engine.edit.session()) !== null) {
+        // Tapping another cell commits the open editor first (§8.4).
+        this.commitEditor({ refocus: false });
+      }
+      this.escapedSignal.set(false);
+      this.engine.clickCell(cell);
+      this.requestFocusActive();
       return;
     }
-    const col = Number(header.getAttribute('data-col'));
-    if (!Number.isInteger(col)) {
-      return;
+    const rowHeader = target.closest('[data-tm-rowhdr]');
+    if (rowHeader !== null) {
+      const row = Number(rowHeader.getAttribute('data-row'));
+      if (!Number.isInteger(row)) {
+        return;
+      }
+      this.escapedSignal.set(false);
+      this.engine.nav.setActive({ row, col: 0 });
+      this.engine.selection.selectRows(row, row, false);
+      this.requestFocusActive();
     }
-    const engine = this.engine;
-    const mod = IS_MAC_PLATFORM ? event.metaKey : event.ctrlKey;
-    this.escapedSignal.set(false);
-    if (untracked(() => engine.model.viewRowCount()) > 0) {
-      engine.nav.setActive({ row: 0, col });
-    }
-    engine.selection.selectCols(col, col, mod);
-    this.requestFocusActive();
   }
 
   /** The scroller's dblclick handler: opens the editor in *edit* mode (§8.3). */
@@ -1314,20 +1583,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (menu === null) {
       return;
     }
-    const engine = this.engine;
-    if (untracked(() => engine.edit.session()) !== null) {
+    if (untracked(() => this.engine.edit.session()) !== null) {
       this.commitEditor({ refocus: true });
     }
     if (event.target instanceof Element) {
-      const cellElement = event.target.closest('[data-tm-cell]');
-      if (cellElement !== null) {
-        const cell = this.cellFromElement(cellElement);
-        if (cell !== null && !untracked(() => engine.selection.isCellSelected(cell))) {
-          this.escapedSignal.set(false);
-          engine.clickCell(cell);
-          this.requestFocusActive();
-        }
-      }
+      this.selectMenuTarget(event.target.closest('[data-tm-cell]'));
     }
     const element = this.activeCellElement();
     const keyboardSourced = event.clientX === 0 && event.clientY === 0;
@@ -1336,6 +1596,39 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         ? element.getBoundingClientRect()
         : { x: event.clientX, y: event.clientY };
     menu.open(anchor, element !== null ? { restoreFocus: element } : undefined);
+  }
+
+  /**
+   * A touch/pen long-press (§8.6): the same path as right-click — select
+   * the pressed cell when it lies outside the selection, then open the
+   * context menu at the press point. The long-press observer suppresses
+   * the trailing synthetic click/contextmenu burst itself.
+   */
+  private onLongPress(point: { x: number; y: number }): void {
+    const menu = this.menuRef;
+    if (menu === null) {
+      return;
+    }
+    if (untracked(() => this.engine.edit.session()) !== null) {
+      this.commitEditor({ refocus: true });
+    }
+    const hit = document.elementFromPoint(point.x, point.y);
+    this.selectMenuTarget(hit?.closest('[data-tm-cell]') ?? null);
+    const element = this.activeCellElement();
+    menu.open(point, element !== null ? { restoreFocus: element } : undefined);
+  }
+
+  /** Right-click/long-press target outside the selection becomes it (Excel). */
+  private selectMenuTarget(cellElement: Element | null): void {
+    if (cellElement === null) {
+      return;
+    }
+    const cell = this.cellFromElement(cellElement);
+    if (cell !== null && !untracked(() => this.engine.selection.isCellSelected(cell))) {
+      this.escapedSignal.set(false);
+      this.engine.clickCell(cell);
+      this.requestFocusActive();
+    }
   }
 
   /**
@@ -1528,7 +1821,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     });
   }
 
-  private buildColumn(dir: TmGridColumn<T, unknown>, index: number): ColumnInternal<T> {
+  private buildColumn(
+    dir: TmGridColumn<T, unknown>,
+    index: number,
+    chromeCols: number,
+  ): ColumnInternal<T> {
     const locale = this.deps.locale;
     const key = dir.key() ?? null;
     const id = key ?? dir.generatedId;
@@ -1627,7 +1924,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
 
     return {
       index,
-      ariaColIndex: index + 2,
+      ariaColIndex: index + chromeCols + 1,
       id,
       key,
       type,
@@ -1712,6 +2009,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     const loadingChildren = isTree ? this.loadingChildrenIds() : null;
     const wantedExpansion = isTree ? this.wantedExpansionIds() : null;
 
+    // Checked rows (§8.8) and find highlights (§8.7) for the window.
+    const checkedIds = this.checkboxColumn() ? this.deps.selectedIds() : null;
+    const findKeys = this.findOpenSignal() ? this.findMatchKeys() : null;
+    const activeFind = this.findOpenSignal() ? this.activeFindMatchSignal() : null;
+
     const session = editable ? engine.edit.session() : null;
     const fieldErrors = editable ? this.fieldErrorCells() : EMPTY_FIELD_ERRORS;
     // The armed cut's marquee (§9.5): identity sets so windowed rendering
@@ -1787,6 +2089,16 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
             view !== null &&
             cutRowIds.has(view.id) &&
             cutColumnIds!.has(column.id),
+          findMatch:
+            findKeys !== null &&
+            view !== null &&
+            findKeys.size > 0 &&
+            findKeys.has(errorCellKey(view.id, column.id)),
+          activeFindMatch:
+            activeFind !== null &&
+            view !== null &&
+            activeFind.rowId === view.id &&
+            activeFind.columnId === column.id,
           hierarchy: isHierarchy,
           level: isHierarchy && view !== null ? view.level : 0,
           expander,
@@ -1805,6 +2117,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           ? `translateY(${(viewIndex - win.start) * rowHeight}px)`
           : null,
         zebra: !editable && !isTree && viewIndex % 2 === 1,
+        checked: checkedIds !== null && view !== null && checkedIds.has(view.id),
         headerHit: engine.selection.rowIntersects(viewIndex),
         rowHeaderText: isPlaceholder ? '*' : String(viewIndex + 1),
         // The tree placeholder is a root-level ghost: level 1, no set place.
@@ -1953,10 +2266,24 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         }
         return true;
       }
+      case 'toggleCheck': {
+        // Space on the active row's checkbox (§8.8); the placeholder and
+        // an inactive grid fall through to the browser.
+        const active = untracked(() => engine.nav.activeCell());
+        if (active === null || untracked(() => engine.model.rowAt(active.row)) === null) {
+          return false;
+        }
+        this.toggleRowCheckAt(active.row, false);
+        return true;
+      }
+      case 'toggleSelectAllCheckbox':
+        this.toggleSelectAllCheckbox();
+        return true;
+      case 'find':
+        this.openFind();
+        return true;
       default:
-        // find (find-bar milestone), toggleCheck / toggleSelectAllCheckbox
-        // (row-checkbox milestone).
-        return false;
+        return false; // unreachable: every intent kind is handled above
     }
   }
 
@@ -2043,6 +2370,277 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       const next = new Set(current);
       next.delete(rowId);
       target.set(next);
+    }
+  }
+
+  // ---- row checkbox selection (§8.8) ----
+
+  /**
+   * Toggles the checkbox of the row at a view index. With `shift`, applies
+   * the Gmail range model instead: every row between the last toggled row
+   * (the anchor) and this one is set to the ANCHOR's current state. The
+   * `selectedIds` model always receives a fresh `Set` (two-way binding
+   * consumers diff by identity).
+   */
+  private toggleRowCheckAt(viewRow: number, shift: boolean): void {
+    const view = untracked(() => this.engine.model.rowAt(viewRow));
+    if (view === null) {
+      return; // the placeholder row has no checkbox
+    }
+    const selected = untracked(this.deps.selectedIds);
+    const anchorId = this.lastToggledRowId;
+    if (shift && anchorId !== null) {
+      const anchorRow = untracked(() => this.engine.model.viewIndexOfRow(anchorId));
+      if (anchorRow !== -1) {
+        const anchorState = selected.has(anchorId);
+        const from = Math.min(anchorRow, viewRow);
+        const to = Math.max(anchorRow, viewRow);
+        const next = new Set(selected);
+        for (let row = from; row <= to; row++) {
+          const member = untracked(() => this.engine.model.rowAt(row));
+          if (member === null) {
+            continue;
+          }
+          if (anchorState) {
+            next.add(member.id);
+          } else {
+            next.delete(member.id);
+          }
+        }
+        this.deps.selectedIds.set(next);
+        this.lastToggledRowId = view.id;
+        return;
+      }
+    }
+    const next = new Set(selected);
+    if (next.has(view.id)) {
+      next.delete(view.id);
+    } else {
+      next.add(view.id);
+    }
+    this.deps.selectedIds.set(next);
+    this.lastToggledRowId = view.id;
+  }
+
+  /**
+   * The select-all checkbox (header click / Ctrl+Shift+Space): `all` clears
+   * to none; `none` and `mixed` check every data row — hidden-by-collapse
+   * rows included, select-all ranges over the DATA, not the viewport.
+   */
+  private toggleSelectAllCheckbox(): void {
+    if (untracked(this.checkAllState) === 'all') {
+      this.deps.selectedIds.set(new Set());
+      return;
+    }
+    const rowIdOf = untracked(this.deps.rowId);
+    const next = new Set<TmRowId>();
+    for (const row of untracked(this.rows)) {
+      next.add(rowIdOf(row));
+    }
+    this.deps.selectedIds.set(next);
+  }
+
+  // ---- find (§8.7) ----
+
+  /** Opens the find bar (Mod+F) and focuses its input; re-focuses when open. */
+  private openFind(): void {
+    if (!untracked(this.deps.searchable)) {
+      return;
+    }
+    if (!untracked(this.findOpenSignal)) {
+      this.findOpenSignal.set(true);
+      // DOM handlers run outside a tick in zoneless Angular; force the bar
+      // to render so its input exists to focus (same device as openEditor).
+      this.appRef.tick();
+    }
+    this.findInput?.focus();
+  }
+
+  /** Updates the find query; the scan effect debounces and chunks the scan. */
+  setFindQuery(query: string): void {
+    this.findQuerySignal.set(query);
+  }
+
+  /** The find bar registers its input element (or `null` on close). */
+  attachFindInput(element: HTMLElement | null): void {
+    this.findInput = element;
+  }
+
+  /**
+   * Cycles to the next (+1) / previous (−1) match and ACTIVATES its cell —
+   * grid operations then apply to it — while focus stays in the find input
+   * (the caller is the bar's Enter/Shift+Enter or its buttons).
+   */
+  findStep(direction: 1 | -1): void {
+    const matches = untracked(this.findMatchesSignal);
+    if (matches.length === 0) {
+      return;
+    }
+    const current = untracked(this.findActiveIndexSignal);
+    const next =
+      current === -1
+        ? direction === 1
+          ? 0
+          : matches.length - 1
+        : (current + direction + matches.length) % matches.length;
+    this.findActiveIndexSignal.set(next);
+    this.activateFindMatch(matches[next]);
+    this.announceFindCounter();
+  }
+
+  /**
+   * Closes the find bar (Esc in the input, the close button): the query
+   * clears, and focus returns to the grid at the current match — which is
+   * activated first so grid operations continue from it.
+   */
+  closeFind(): void {
+    const match = untracked(this.activeFindMatchSignal);
+    if (match !== null) {
+      this.activateFindMatch(match);
+    }
+    this.findGeneration += 1; // kills any in-flight scan
+    if (this.findDebounceTimer !== null) {
+      clearTimeout(this.findDebounceTimer);
+      this.findDebounceTimer = null;
+    }
+    this.findQuerySignal.set('');
+    this.findMatchesSignal.set([]);
+    this.findActiveIndexSignal.set(-1);
+    this.findResultsFor.set(null);
+    this.findOpenSignal.set(false);
+    // The focused input unmounts with the bar; the roving-focus effect
+    // then lands focus on the (possibly newly rendered) active cell.
+    this.requestReveal();
+    this.requestFocusActive();
+  }
+
+  /**
+   * Scans the WHOLE MODEL (collapsed tree rows included) for the query in
+   * time-sliced chunks — large grids produce no long tasks (§16). Matching
+   * is a case-insensitive substring test against each cell's text
+   * representation: the column's `getText`, overridden by an invalid
+   * input's raw text exactly like the display and copy paths.
+   */
+  private runFindScan(query: string, generation: number): void {
+    const rows = untracked(this.rows);
+    const columns = untracked(this.columnsInternal);
+    const editable = untracked(this.editable);
+    const rowIdOf = untracked(this.deps.rowId);
+    const needle = query.toLowerCase();
+    const matches: ɵTmGridFindMatch[] = [];
+    const rowsPerSlice = Math.max(
+      1,
+      Math.floor(FIND_SCAN_CELLS_PER_SLICE / Math.max(1, columns.length)),
+    );
+    const scanSlice = (start: number): void => {
+      if (generation !== this.findGeneration) {
+        return; // superseded by a re-query, a rows change, or destroy
+      }
+      const end = Math.min(rows.length, start + rowsPerSlice);
+      for (let i = start; i < end; i++) {
+        const row = rows[i];
+        const rowId = rowIdOf(row);
+        for (const column of columns) {
+          const invalid = editable
+            ? untracked(() => this.engine.annotations.invalidInput(rowId, column.id))
+            : undefined;
+          const text = invalid !== undefined ? invalid.rawText : column.engineColumn.getText(row);
+          if (text.toLowerCase().includes(needle)) {
+            matches.push({ rowId, columnId: column.id });
+          }
+        }
+      }
+      if (end < rows.length) {
+        setTimeout(() => scanSlice(end), 0);
+      } else {
+        this.finishFindScan(query, matches);
+      }
+    };
+    scanSlice(0);
+  }
+
+  /**
+   * Lands a completed scan: the nearest match — the first at/after the
+   * active cell in view order, else the first — becomes current and is
+   * scrolled into view (without activating; navigation activates), and the
+   * counter is announced.
+   */
+  private finishFindScan(query: string, matches: readonly ɵTmGridFindMatch[]): void {
+    this.findMatchesSignal.set(matches);
+    this.findResultsFor.set(query);
+    let index = matches.length > 0 ? 0 : -1;
+    if (matches.length > 0) {
+      const active = untracked(() => this.engine.nav.activeCell());
+      if (active !== null) {
+        for (let i = 0; i < matches.length; i++) {
+          const row = this.engine.model.viewIndexOfRow(matches[i].rowId);
+          if (row === -1) {
+            continue; // hidden in a collapsed subtree; navigation expands
+          }
+          const col = this.engine.model.columnIndexOf(matches[i].columnId);
+          if (row > active.row || (row === active.row && col >= active.col)) {
+            index = i;
+            break;
+          }
+        }
+      }
+    }
+    this.findActiveIndexSignal.set(index);
+    if (index !== -1) {
+      this.revealFindRow(matches[index].rowId);
+    }
+    this.announceFindCounter();
+  }
+
+  /**
+   * Activates a match's cell: ancestors expand first (deep tree matches,
+   * §8.7), then activation + collapse + reveal. Focus is NOT pulled — the
+   * find input keeps it while the bar is open.
+   */
+  private activateFindMatch(match: ɵTmGridFindMatch): void {
+    const engine = this.engine;
+    if (engine.model.isTree) {
+      engine.model.expandAncestorsOf(match.rowId);
+    }
+    const row = engine.model.viewIndexOfRow(match.rowId);
+    const col = engine.model.columnIndexOf(match.columnId);
+    if (row === -1 || col === -1) {
+      return; // the match's row/column no longer exists
+    }
+    engine.nav.setActive({ row, col });
+    engine.selection.collapseTo({ row, col });
+    this.requestReveal();
+  }
+
+  /** Scrolls a match's row into the viewport without touching activation. */
+  private revealFindRow(rowId: TmRowId): void {
+    const viewRow = this.engine.model.viewIndexOfRow(rowId);
+    const scroller = untracked(this.scrollerSignal);
+    if (viewRow === -1 || scroller === null) {
+      return;
+    }
+    const rowHeight = untracked(this.rowHeightSignal);
+    const rowTop = viewRow * rowHeight;
+    const rowBottom = rowTop + rowHeight;
+    const bodyViewport = Math.max(rowHeight, scroller.clientHeight - rowHeight);
+    if (rowTop < scroller.scrollTop) {
+      scroller.scrollTop = rowTop;
+    } else if (rowBottom > scroller.scrollTop + bodyViewport) {
+      scroller.scrollTop = rowBottom - bodyViewport;
+    }
+    this.scrollTop.set(scroller.scrollTop);
+  }
+
+  /** Announces the counter ('3 of 41' / no matches) through the live region. */
+  private announceFindCounter(): void {
+    const count = untracked(this.findMatchesSignal).length;
+    if (count === 0) {
+      this.announcements.announce('grid.find.noMatches');
+    } else {
+      this.announcements.announce('grid.find.counter', {
+        index: untracked(this.findActiveIndexSignal) + 1,
+        count,
+      });
     }
   }
 
@@ -2386,15 +2984,43 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.scrollLeft.set(scroller.scrollLeft);
   }
 
-  private beginDrag(event: PointerEvent, mode: 'cells' | 'rows'): void {
+  /**
+   * A touch handle's pointerdown (§8.6): the dragged corner becomes the
+   * active range's focus (the OPPOSITE corner re-anchors, so the start
+   * handle effectively moves the anchor), then the shared drag pipeline —
+   * elementFromPoint tracking plus edge auto-scroll — extends the range
+   * under the finger. Pointer capture sits on the HANDLE; its events
+   * bubble to the scroller listeners.
+   */
+  beginHandleDrag(event: PointerEvent, edge: 'start' | 'end'): void {
+    const handles = untracked(this.selectionHandles);
+    if (handles === null || !event.isPrimary) {
+      return;
+    }
+    event.preventDefault(); // the handle gesture must never become a pan
+    const fixed = edge === 'start' ? handles.end : handles.start;
+    const dragged = edge === 'start' ? handles.start : handles.end;
+    const engine = this.engine;
+    engine.selection.collapseTo(fixed);
+    engine.selection.extendActiveTo(dragged);
+    const capture = event.currentTarget;
+    this.beginDrag(event, 'cells', capture instanceof HTMLElement ? capture : undefined);
+  }
+
+  private beginDrag(
+    event: PointerEvent,
+    mode: 'cells' | 'rows',
+    captureTarget?: HTMLElement,
+  ): void {
     const scroller = untracked(this.scrollerSignal);
     if (scroller === null) {
       return;
     }
     this.endDrag();
     const pointerId = event.pointerId;
+    const captureElement = captureTarget ?? scroller;
     try {
-      scroller.setPointerCapture(pointerId);
+      captureElement.setPointerCapture(pointerId);
     } catch {
       // Synthetic events may carry no active pointer.
     }
@@ -2403,8 +3029,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     let frame = 0;
 
     const applyPoint = (): void => {
-      const hit = document.elementFromPoint(lastX, lastY);
-      const cellElement = hit?.closest('[data-tm-cell], [data-tm-rowhdr]') ?? null;
+      const cellElement = this.dragHitElement(lastX, lastY);
       if (cellElement === null) {
         return;
       }
@@ -2469,11 +3094,26 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       scroller.removeEventListener('pointerup', onEnd);
       scroller.removeEventListener('pointercancel', onEnd);
       try {
-        scroller.releasePointerCapture(pointerId);
+        captureElement.releasePointerCapture(pointerId);
       } catch {
         // Already released with the pointer.
       }
     };
+  }
+
+  /**
+   * The drag target under a point. `elementsFromPoint` (plural) pierces
+   * the touch handles — during a handle drag the finger sits ON the
+   * handle, and the cell beneath it is the one that matters.
+   */
+  private dragHitElement(x: number, y: number): Element | null {
+    for (const element of document.elementsFromPoint(x, y)) {
+      const hit = element.closest('[data-tm-cell], [data-tm-rowhdr], [data-tm-checkcell]');
+      if (hit !== null) {
+        return hit;
+      }
+    }
+    return null;
   }
 
   private endDrag(): void {
@@ -2933,6 +3573,80 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       },
       { injector },
     );
+
+    // Touch/pen long-press opens the context menu (§8.6), same path as
+    // right-click; the observer suppresses the trailing click/contextmenu.
+    effect(
+      (onCleanup) => {
+        const scroller = this.scrollerSignal();
+        if (scroller === null) {
+          return;
+        }
+        onCleanup(ɵtmObserveLongPress(scroller, (point) => this.onLongPress(point)));
+      },
+      { injector },
+    );
+
+    // Checked-count announcement (§8.8), debounced so a Shift+click range
+    // or a toggle burst speaks once.
+    let lastChecked: ReadonlySet<TmRowId> | undefined;
+    effect(
+      () => {
+        const selected = this.deps.selectedIds();
+        const enabled = this.checkboxColumn();
+        untracked(() => {
+          const first = lastChecked === undefined;
+          const changed = selected !== lastChecked;
+          lastChecked = selected;
+          if (first || !changed || !enabled) {
+            return;
+          }
+          if (this.checkedAnnounceTimer !== null) {
+            clearTimeout(this.checkedAnnounceTimer);
+          }
+          this.checkedAnnounceTimer = setTimeout(() => {
+            this.checkedAnnounceTimer = null;
+            this.announcements.announce('grid.announce.checkedCount', {
+              selected: untracked(this.deps.selectedIds).size,
+              total: untracked(this.rows).length,
+            });
+          }, CHECKED_ANNOUNCE_DEBOUNCE_MS);
+        });
+      },
+      { injector },
+    );
+
+    // The find scan (§8.7): debounced behind keystrokes, re-armed when the
+    // rows or columns change under an open query, generation-guarded so a
+    // superseded scan's slices die quietly. A computed cannot chunk — this
+    // effect only schedules; the imperative scanner does the walking.
+    effect(
+      () => {
+        const open = this.findOpenSignal();
+        const query = this.findQuerySignal();
+        this.rows();
+        this.columnsInternal();
+        untracked(() => {
+          this.findGeneration += 1;
+          if (this.findDebounceTimer !== null) {
+            clearTimeout(this.findDebounceTimer);
+            this.findDebounceTimer = null;
+          }
+          if (!open || query === '') {
+            this.findMatchesSignal.set([]);
+            this.findActiveIndexSignal.set(-1);
+            this.findResultsFor.set(null);
+            return;
+          }
+          const generation = this.findGeneration;
+          this.findDebounceTimer = setTimeout(() => {
+            this.findDebounceTimer = null;
+            this.runFindScan(query, generation);
+          }, FIND_DEBOUNCE_MS);
+        });
+      },
+      { injector },
+    );
   }
 
   /** One error-tally warm-up slice; chains the next via a macrotask. */
@@ -2973,9 +3687,18 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.destroyed = true; // in-flight lazy child loads complete silently
     this.endDrag();
     this.warmupGeneration += 1; // kills any in-flight warm-up chain
+    this.findGeneration += 1; // kills any in-flight find-scan chain
     if (this.transientNoticeTimer !== null) {
       clearTimeout(this.transientNoticeTimer);
       this.transientNoticeTimer = null;
+    }
+    if (this.checkedAnnounceTimer !== null) {
+      clearTimeout(this.checkedAnnounceTimer);
+      this.checkedAnnounceTimer = null;
+    }
+    if (this.findDebounceTimer !== null) {
+      clearTimeout(this.findDebounceTimer);
+      this.findDebounceTimer = null;
     }
     this.editorSession.destroy();
     if (this.handle !== null) {

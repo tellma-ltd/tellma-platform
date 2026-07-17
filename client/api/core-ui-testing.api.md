@@ -7,6 +7,7 @@
 import { BaseHarnessFilters } from '@angular/cdk/testing';
 import { ComponentHarness } from '@angular/cdk/testing';
 import { HarnessPredicate } from '@angular/cdk/testing';
+import { TestElement } from '@angular/cdk/testing';
 import { TestKey } from '@angular/cdk/testing';
 
 // @public
@@ -83,6 +84,7 @@ export class TmGridHarness extends ComponentHarness {
     getPendingCount(): Promise<number>;
     getRenderedRowCount(): Promise<number>;
     getRowCount(): Promise<number>;
+    protected readonly gridElement: () => Promise<TestElement>;
     hasPlaceholderRow(): Promise<boolean>;
     static hostSelector: string;
     isEditorOpen(): Promise<boolean>;
@@ -170,6 +172,18 @@ export class TmSelectHarness extends ComponentHarness {
     open(): Promise<void>;
     selectOption(text: string): Promise<void>;
     sendTriggerKeys(...keys: (string | TestKey)[]): Promise<void>;
+}
+
+// @public
+export class TmTreeGridHarness extends TmGridHarness {
+    clickExpander(rowIndex: number): Promise<void>;
+    collapse(rowIndex: number): Promise<void>;
+    expand(rowIndex: number): Promise<void>;
+    getLevel(rowIndex: number): Promise<number>;
+    getVisibleRowCount(): Promise<number>;
+    static hostSelector: string;
+    isExpanded(rowIndex: number): Promise<boolean>;
+    isLoadingChildren(rowIndex: number): Promise<boolean>;
 }
 
 ```

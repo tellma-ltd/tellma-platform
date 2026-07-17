@@ -7,6 +7,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import {
   afterRenderEffect,
   Component,
+  computed,
   ElementRef,
   input,
   untracked,
@@ -19,22 +20,34 @@ import type { ConnectedPosition } from '@angular/cdk/overlay';
 import { TmMenu } from '@tellma/core-ui/menu';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
+import { ɵTmGridFindBar } from './find-bar';
 import type { ɵTmGridViewCore } from './grid-core';
 import { ɵTmGridIcons } from './icons';
 import { ɵTmGridStatusBar } from './status-bar';
+import { ɵTmGridTouchHandles } from './touch-handles';
 
 /**
  * The grid's one and only template: scroller, sticky header, virtualized
- * row window, the loading/empty overlays, the editing-cell editor outlet,
- * the editable-mode status bar, the context menu, and the active-cell
- * error overlay. `tm-grid` and `tm-tree-grid` are thin shells around this
- * component so the large template compiles exactly once. All
- * state and behavior live in the `core` it renders from; the template only
- * binds signals and routes DOM events back into it.
+ * row window, the row-checkbox chrome column, the loading/empty overlays,
+ * the editing-cell editor outlet, the editable-mode status bar, the
+ * context menu, the find bar, the coarse-pointer selection handles, and
+ * the active-cell error overlay. `tm-grid` and `tm-tree-grid` are thin
+ * shells around this component so the large template compiles exactly
+ * once. All state and behavior live in the `core` it renders from; the
+ * template only binds signals and routes DOM events back into it.
  */
 @Component({
   selector: 'tm-grid-view',
-  imports: [NgTemplateOutlet, OverlayModule, TmMenu, TmSpinner, ɵTmGridIcons, ɵTmGridStatusBar],
+  imports: [
+    NgTemplateOutlet,
+    OverlayModule,
+    TmMenu,
+    TmSpinner,
+    ɵTmGridFindBar,
+    ɵTmGridIcons,
+    ɵTmGridStatusBar,
+    ɵTmGridTouchHandles,
+  ],
   template: `
     <div
       #scroller
@@ -59,6 +72,20 @@ import { ɵTmGridStatusBar } from './status-bar';
     >
       <div class="tm-grid__header" role="row" aria-rowindex="1">
         <div class="tm-grid__corner" role="columnheader" aria-colindex="1" data-tm-corner></div>
+        @if (core().checkboxColumn()) {
+          <div class="tm-grid__checkhdr" role="columnheader" aria-colindex="2" data-tm-checkhdr>
+            <div
+              class="tm-grid__check"
+              role="checkbox"
+              tabindex="-1"
+              data-tm-checkall
+              [class.tm-grid__check--on]="core().checkAllState() === 'all'"
+              [class.tm-grid__check--mixed]="core().checkAllState() === 'mixed'"
+              [attr.aria-checked]="checkAllAria()"
+              [attr.aria-label]="core().selectAllLabel()"
+            ></div>
+          </div>
+        }
         @for (col of core().columnModel(); track col.id) {
           <div
             class="tm-grid__colhdr"
@@ -93,7 +120,9 @@ import { ɵTmGridStatusBar } from './status-bar';
               [attr.aria-expanded]="row.ariaExpanded"
               [attr.aria-posinset]="row.ariaPosInSet"
               [attr.aria-setsize]="row.ariaSetSize"
+              [attr.aria-selected]="row.checked ? 'true' : null"
               [class.tm-grid__row--zebra]="row.zebra"
+              [class.tm-grid__row--checked]="row.checked"
               [class.tm-grid__row--placeholder]="row.isPlaceholder"
               [class.tm-grid__row--outlier]="row.outlier"
               [style.transform]="row.outlierTransform"
@@ -108,6 +137,28 @@ import { ɵTmGridStatusBar } from './status-bar';
               >
                 {{ row.rowHeaderText }}
               </div>
+              @if (core().checkboxColumn()) {
+                <div
+                  class="tm-grid__checkcell"
+                  role="gridcell"
+                  aria-colindex="2"
+                  data-tm-checkcell
+                  [attr.data-row]="row.viewIndex"
+                >
+                  <!-- The placeholder row has no checkbox; its chrome cell
+                       stays to keep the grid tracks aligned. -->
+                  @if (!row.isPlaceholder) {
+                    <div
+                      class="tm-grid__check"
+                      role="checkbox"
+                      tabindex="-1"
+                      [class.tm-grid__check--on]="row.checked"
+                      [attr.aria-checked]="row.checked ? 'true' : 'false'"
+                      [attr.aria-label]="core().selectRowLabel()"
+                    ></div>
+                  }
+                </div>
+              }
               @for (cell of row.cells; track cell.colIndex) {
                 <div
                   class="tm-grid__cell"
@@ -127,6 +178,8 @@ import { ɵTmGridStatusBar } from './status-bar';
                   [class.tm-grid__cell--readonly]="cell.readonly"
                   [class.tm-grid__cell--editing]="cell.editing"
                   [class.tm-grid__cell--cut]="cell.inCutRange"
+                  [class.tm-grid__cell--find]="cell.findMatch"
+                  [class.tm-grid__cell--find-active]="cell.activeFindMatch"
                   [style.text-align]="cell.align"
                 >
                   @if (cell.hierarchy) {
@@ -178,6 +231,11 @@ import { ɵTmGridStatusBar } from './status-bar';
             </div>
           }
         </div>
+        @if (core().coarsePointer()) {
+          <!-- Range-selection drag handles (coarse pointers): inside the
+               spacer so their measured positions scroll with the rows. -->
+          <tm-grid-touch-handles [core]="core()" />
+        }
       </div>
 
       @if (core().loading()) {
@@ -199,6 +257,13 @@ import { ɵTmGridStatusBar } from './status-bar';
         </div>
       }
     </div>
+
+    @if (core().findOpen()) {
+      <!-- Outside the scroller: the bar's keys never reach the grid's
+           delegated handlers, and the roving-focus effect leaves focus
+           alone while it rests here. -->
+      <tm-grid-find-bar [core]="core()" />
+    }
 
     @if (core().editable()) {
       <tm-grid-status-bar class="tm-grid__status" [core]="core()" />
@@ -235,6 +300,12 @@ import { ɵTmGridStatusBar } from './status-bar';
 export class ɵTmGridView {
   /** The composition root this view renders from (built by the grid shell). */
   readonly core = input.required<ɵTmGridViewCore>();
+
+  /** The select-all checkbox's `aria-checked` value (`mixed` is tri-state). */
+  protected readonly checkAllAria = computed(() => {
+    const state = this.core().checkAllState();
+    return state === 'mixed' ? 'mixed' : state === 'all' ? 'true' : 'false';
+  });
 
   /** Error-overlay placement: below the cell, flipping above. */
   protected readonly errorPositions: ConnectedPosition[] = [

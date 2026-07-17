@@ -60,6 +60,36 @@ export function liveRegion(page: Page): Locator {
   return page.locator('.cdk-live-announcer-element');
 }
 
+/** The select-all tri-state checkbox in the checkbox column's header (§8.8). */
+export function checkAllBox(page: Page): Locator {
+  return page.locator('[data-tm-checkall]');
+}
+
+/** The checkbox chrome cell at a view-space row (`selectable` grids). */
+export function checkCell(page: Page, row: number): Locator {
+  return page.locator(`[data-tm-checkcell][data-row="${row}"]`);
+}
+
+/** The row checkbox widget inside the chrome cell at a view-space row. */
+export function rowCheckbox(page: Page, row: number): Locator {
+  return checkCell(page, row).locator('.tm-grid__check');
+}
+
+/** The find bar (`searchable` grids, rendered only while open). */
+export function findBar(page: Page): Locator {
+  return page.locator('.tm-grid-find-bar');
+}
+
+/** The find bar's text input. */
+export function findInput(page: Page): Locator {
+  return page.locator('[data-tm-find-input]');
+}
+
+/** The find bar's match counter ('3 of 41' / 'No matches'). */
+export function findCounter(page: Page): Locator {
+  return page.locator('[data-tm-find-counter]');
+}
+
 /** A cell's display text as the user sees it (visually-hidden text included). */
 export async function cellText(page: Page, row: number, col: number): Promise<string> {
   return (await cell(page, row, col).innerText()).trim();

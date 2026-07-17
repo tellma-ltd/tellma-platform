@@ -29,6 +29,10 @@
   font-family: var(--font-ui);
   font-size: var(--field-font-size);
   border: var(--border-width) solid var(--grid-line);
+  /* Touch: pan + pinch stay native, double-tap zoom is dropped — a
+     double-tap must synthesize dblclick (opens the editor) without the
+     300ms tap delay. */
+  touch-action: manipulation;
 }
 
 .tm-grid__scroller:focus-visible {
@@ -132,6 +136,65 @@
   background: var(--grid-selection-bg);
 }
 
+/* ---- row-checkbox chrome column (readonly list screens) ---- */
+
+.tm-grid__checkhdr,
+.tm-grid__checkcell {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-block-end: var(--border-width) solid var(--grid-line);
+  border-inline-end: var(--border-width) solid var(--grid-line);
+  user-select: none;
+}
+
+.tm-grid__checkhdr {
+  background: var(--grid-header-bg);
+}
+
+/* The check glyph rides the same tokens as tm-checkbox's box (the
+   .tm-grid-bool approach): a static div, no per-row component. */
+.tm-grid__check {
+  inline-size: var(--checkbox-box-size);
+  block-size: var(--checkbox-box-size);
+  box-sizing: border-box;
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--radius-xs);
+  background: var(--field-bg);
+  cursor: pointer;
+}
+
+.tm-grid__check--on,
+.tm-grid__check--mixed {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.tm-grid__check--on::after {
+  content: '';
+  display: block;
+  inline-size: calc(var(--checkbox-box-size) * 0.3);
+  block-size: calc(var(--checkbox-box-size) * 0.55);
+  margin-block-start: calc(var(--checkbox-box-size) * 0.08);
+  margin-inline: auto;
+  box-sizing: border-box;
+  border-block-end: calc(var(--checkbox-box-size) / 9) solid var(--color-on-primary);
+  border-inline-end: calc(var(--checkbox-box-size) / 9) solid var(--color-on-primary);
+  transform: rotate(45deg);
+}
+
+/* Tri-state 'mixed': a centered horizontal bar. */
+.tm-grid__check--mixed::after {
+  content: '';
+  display: block;
+  inline-size: calc(var(--checkbox-box-size) * 0.55);
+  block-size: calc(var(--checkbox-box-size) / 9);
+  margin-block-start: calc((var(--checkbox-box-size) - var(--checkbox-box-size) / 9) / 2 - var(--border-width));
+  margin-inline: auto;
+  background: var(--color-on-primary);
+}
+
 .tm-grid__cell {
   position: relative; /* anchors the editor overlay and the pending spinner */
   box-sizing: border-box;
@@ -155,6 +218,14 @@
 
 .tm-grid__row--zebra > .tm-grid__cell {
   background: var(--grid-zebra-bg);
+}
+
+/* Checkbox-checked rows: a PERSISTENT row tint, distinct from the
+   translucent range fill (which paints over it), declared after zebra so
+   a checked zebra row reads as checked. */
+.tm-grid__row--checked > .tm-grid__cell,
+.tm-grid__row--checked > .tm-grid__checkcell {
+  background: var(--surface-selected);
 }
 
 .tm-grid__row--placeholder > .tm-grid__cell {
@@ -194,6 +265,18 @@
 .tm-grid__cell.tm-grid__cell--cut {
   outline: var(--border-width) dashed var(--grid-cut-border);
   outline-offset: calc(-2 * var(--border-width));
+}
+
+/* Find highlights (§8.7): match tint on every rendered match, an outline
+   on the ACTIVE match. Declared after --selected so a match inside a
+   range still reads as a match. */
+.tm-grid__cell.tm-grid__cell--find {
+  background: var(--grid-find-match-bg);
+}
+
+.tm-grid__cell.tm-grid__cell--find-active {
+  outline: var(--focus-ring-width) solid var(--grid-find-active-outline);
+  outline-offset: calc(-1 * var(--focus-ring-width));
 }
 
 /* ---- tree hierarchy affordance (tm-tree-grid) ----
@@ -436,18 +519,51 @@
     background: Canvas;
   }
 
-  .tm-grid-bool {
+  /* Checked rows keep a system-color distinction from the range fill. */
+  .tm-grid__row--checked > .tm-grid__cell,
+  .tm-grid__row--checked > .tm-grid__checkcell {
+    background: SelectedItem;
+    color: SelectedItemText;
+  }
+
+  .tm-grid__checkhdr,
+  .tm-grid__checkcell {
+    border-color: CanvasText;
+  }
+
+  /* Find matches never rely on tint alone: a dotted outline (distinct
+     from the error dashes), the active match keeps its solid outline. */
+  .tm-grid__cell.tm-grid__cell--find {
+    background: Canvas;
+    outline: var(--border-width) dotted CanvasText;
+    outline-offset: calc(-2 * var(--border-width));
+  }
+
+  .tm-grid__cell.tm-grid__cell--find-active {
+    outline: var(--focus-ring-width) solid Highlight;
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .tm-grid-bool,
+  .tm-grid__check {
     border-color: FieldText;
     background: Field;
   }
 
-  .tm-grid-bool--on {
+  .tm-grid-bool--on,
+  .tm-grid__check--on,
+  .tm-grid__check--mixed {
     background: Highlight;
     border-color: Highlight;
   }
 
-  .tm-grid-bool--on::after {
+  .tm-grid-bool--on::after,
+  .tm-grid__check--on::after {
     border-color: HighlightText;
+  }
+
+  .tm-grid__check--mixed::after {
+    background: HighlightText;
   }
 }
 

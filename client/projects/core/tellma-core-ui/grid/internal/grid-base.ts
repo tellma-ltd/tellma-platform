@@ -82,16 +82,28 @@ export abstract class ɵTmGridBase<T> {
   readonly newRow = input<((parent?: T) => T) | undefined>(undefined);
   /** Shows the loading overlay (headers stay rendered) and sets `aria-busy`. */
   readonly loading = input(false, { transform: booleanAttribute });
-  /** Enables the find bar (a later milestone renders it). */
+  /**
+   * Enables the find bar: Mod+F while the grid has focus opens a floating
+   * bar that searches every cell's text representation across the whole
+   * model (collapsed tree rows included) and cycles through the matches.
+   */
   readonly searchable = input(false, { transform: booleanAttribute });
-  /** Enables row checkbox selection (a later milestone renders it; readonly grids only). */
+  /**
+   * Enables the row-checkbox column for bulk selection (list screens).
+   * Readonly grids only — enabling it on an editable grid is a dev-mode
+   * error. Checked rows live in the two-way `selectedIds` model.
+   */
   readonly selectable = input(false, { transform: booleanAttribute });
   /** Extra context-menu items appended after the built-ins. */
   readonly extraMenuItems = input<readonly TmMenuItem[]>([]);
   /** Row density. */
   readonly size = input<'sm' | 'md' | 'lg'>('md');
 
-  /** The checked row ids of a `selectable` grid (a later milestone wires the checkboxes). */
+  /**
+   * The checked row ids of a `selectable` grid. Fully independent of
+   * cell-range selection: bulk actions read from it, ranges drive copy.
+   * Every change lands as a FRESH `ReadonlySet` instance.
+   */
   readonly selectedIds = model<ReadonlySet<string | number>>(new Set());
 
   /** The projected column definitions, in display order. */
@@ -149,6 +161,7 @@ export abstract class ɵTmGridBase<T> {
       loading: this.loading,
       searchable: this.searchable,
       selectable: this.selectable,
+      selectedIds: this.selectedIds,
       size: this.size,
       extraMenuItems: this.extraMenuItems,
       // The query token is the generic directive class, so the query signal
@@ -172,6 +185,16 @@ export abstract class ɵTmGridBase<T> {
             hasData
               ? 'tm-grid: [data] and [field] are both bound — bind exactly one.'
               : 'tm-grid: neither [data] nor [field] is bound — bind exactly one.',
+          );
+        }
+      });
+      // Row checkbox selection is a readonly-grid affordance: bulk
+      // selection belongs to list screens, never to editable line grids.
+      effect(() => {
+        if (this.selectable() && this.field() !== undefined && !this.readonly()) {
+          throw new Error(
+            'tm-grid: [selectable] requires a readonly grid — bind [data], ' +
+              'or keep [readonly] on while the [field] binding is selectable.',
           );
         }
       });

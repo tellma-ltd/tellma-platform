@@ -52,6 +52,15 @@ export default defineConfig({
       use: { ...devices['Desktop Safari'] },
       grep: /@cross-engine/,
     },
+    // The touch battery runs on a real coarse-pointer device descriptor
+    // (chromium engine with touch + mobile emulation — no extra browser
+    // install beyond chromium). Only /grid-touch/ runs here; chromium's
+    // testIgnore keeps the same specs out of the desktop run.
+    {
+      name: 'touch',
+      testMatch: /grid-touch/,
+      use: { ...devices['Pixel 7'] },
+    },
   ],
   webServer: {
     command: `node scripts/serve.mjs showcase --port ${port}`,

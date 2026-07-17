@@ -1,0 +1,50 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-grid-touch-handles — an inert overlay filling the spacer (content
+   space, scrolls with the rows); only the handles themselves hit-test.
+   Each handle is a ≥ --grid-handle-size (24px, the WCAG 2.2 AA floor)
+   touch target centered on its range corner via a physical translate —
+   the corner coordinates are measured, so direction is already baked in. */
+
+:host {
+  position: absolute;
+  inset: 0;
+  z-index: 1; /* above the cells, below the sticky header band (2) */
+  pointer-events: none;
+}
+
+.tm-grid__handle {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--grid-handle-size);
+  block-size: var(--grid-handle-size);
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  touch-action: none; /* the drag must never become a pan */
+  cursor: grab;
+}
+
+.tm-grid__handle::after {
+  content: '';
+  inline-size: calc(var(--grid-handle-size) / 2);
+  block-size: calc(var(--grid-handle-size) / 2);
+  box-sizing: border-box;
+  border-radius: var(--radius-full);
+  border: var(--border-width) solid var(--surface-page);
+  background: var(--grid-selection-border);
+  box-shadow: var(--shadow-sm);
+}
+
+@media (forced-colors: active) {
+  .tm-grid__handle::after {
+    background: Highlight;
+    border-color: Canvas;
+  }
+}

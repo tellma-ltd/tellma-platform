@@ -90,8 +90,11 @@ export function tmObserveLongPress(
   element.addEventListener('pointerup', onPointerEnd);
   element.addEventListener('pointercancel', onPointerEnd);
   window.addEventListener('scroll', onScroll, { capture: true, passive: true });
-  element.addEventListener('click', suppress, true);
-  element.addEventListener('contextmenu', suppress, true);
+  // Suppression sits at DOCUMENT capture: the trailing synthetic click must
+  // die before overlay outside-click dispatchers (body capture) can treat
+  // it as an outside press and close the menu the long-press just opened.
+  document.addEventListener('click', suppress, true);
+  document.addEventListener('contextmenu', suppress, true);
 
   return () => {
     cancel();
@@ -100,7 +103,7 @@ export function tmObserveLongPress(
     element.removeEventListener('pointerup', onPointerEnd);
     element.removeEventListener('pointercancel', onPointerEnd);
     window.removeEventListener('scroll', onScroll, { capture: true });
-    element.removeEventListener('click', suppress, true);
-    element.removeEventListener('contextmenu', suppress, true);
+    document.removeEventListener('click', suppress, true);
+    document.removeEventListener('contextmenu', suppress, true);
   };
 }
