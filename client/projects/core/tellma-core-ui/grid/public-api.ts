@@ -27,6 +27,7 @@ export {
   type ɵTmGridColumnVm,
   type ɵTmGridCoreDeps,
   type ɵTmGridRowVm,
+  type ɵTmGridTreeConfig,
   type ɵTmGridViewCore,
 } from './internal/grid-core';
 export { ɵTmGridView } from './internal/grid-view';

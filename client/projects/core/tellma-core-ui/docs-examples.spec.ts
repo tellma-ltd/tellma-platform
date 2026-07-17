@@ -21,6 +21,7 @@ import { TmInput } from '@tellma/core-ui/input';
 import { TmContextMenuTrigger, TmMenu } from '@tellma/core-ui/menu';
 import { TmOption, TmSelect } from '@tellma/core-ui/select';
 import { TmSpinner } from '@tellma/core-ui/spinner';
+import { TmTreeGrid } from '@tellma/core-ui/tree-grid';
 
 import * as checkboxExamples from './checkbox/tm-checkbox.examples';
 import * as gridExamples from './grid/tm-grid.examples';
@@ -28,6 +29,7 @@ import * as inputExamples from './input/tm-input.examples';
 import * as menuExamples from './menu/tm-menu.examples';
 import * as selectExamples from './select/tm-select.examples';
 import * as spinnerExamples from './spinner/tm-spinner.examples';
+import * as treeGridExamples from './tree-grid/tm-tree-grid.examples';
 
 /**
  * The `*.examples.ts` templates ship as canonical usage in components.json /
@@ -49,6 +51,14 @@ interface ExampleRow {
   readonly price: number;
   readonly active: boolean;
   readonly status: string;
+}
+
+/** The adjacency-list row shape behind the tree-grid examples' bindings. */
+interface ExampleTreeRow {
+  readonly id: number;
+  readonly parentId: number | null;
+  readonly name: string;
+  readonly qty: number;
 }
 
 /**
@@ -76,6 +86,7 @@ interface ExampleRow {
     TmOption,
     TmSelect,
     TmSpinner,
+    TmTreeGrid,
   ],
   template: `
     <tm-form-field label="placeholder"><input tmInput /></tm-form-field>
@@ -91,6 +102,15 @@ interface ExampleRow {
       <span *tmGridEmpty>placeholder</span>
       <span *tmGridLoading>placeholder</span>
     </tm-grid>
+    <tm-tree-grid
+      gridId="placeholder-tree"
+      [data]="treeRows"
+      [rowId]="treeRowId"
+      [parentId]="treeParentId"
+      style="block-size: 120px"
+    >
+      <tm-grid-column key="name" header="placeholder" />
+    </tm-tree-grid>
   `,
 })
 class ExampleHost {
@@ -101,6 +121,17 @@ class ExampleHost {
   protected readonly rowId = (row: ExampleRow): number => row.id;
   protected readonly total = (row: ExampleRow): number => row.qty * row.price;
   protected readonly statuses: readonly string[] = ['Draft', 'Posted', 'Void'];
+
+  protected readonly treeRows: readonly ExampleTreeRow[] = [
+    { id: 1, parentId: null, name: 'Assets', qty: 2 },
+    { id: 2, parentId: 1, name: 'Cash', qty: 5 },
+    { id: 3, parentId: 1, name: 'Receivables', qty: 8 },
+    { id: 4, parentId: null, name: 'Liabilities', qty: 3 },
+  ];
+  protected readonly treeRowId = (row: ExampleTreeRow): number => row.id;
+  protected readonly treeParentId = (row: ExampleTreeRow): number | null => row.parentId;
+  protected readonly treeHasChildren = (row: ExampleTreeRow): boolean => row.parentId === null;
+  protected readonly loadTreeChildren = (): Promise<void> => Promise.resolve();
 }
 
 /** The example templates' grids, read off the debug tree. */
@@ -165,6 +196,7 @@ const SUITES = [
   { source: 'spinner/tm-spinner.examples.ts', examples: spinnerExamples },
   { source: 'menu/tm-menu.examples.ts', examples: menuExamples },
   { source: 'grid/tm-grid.examples.ts', examples: gridExamples },
+  { source: 'tree-grid/tm-tree-grid.examples.ts', examples: treeGridExamples },
 ];
 
 describe('co-located docs examples compile against the live API (§11)', () => {

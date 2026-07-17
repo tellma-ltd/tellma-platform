@@ -17,12 +17,14 @@ import {
   type Signal,
   type TemplateRef,
   type ViewContainerRef,
+  type WritableSignal,
 } from '@angular/core';
 import type { LiveAnnouncer } from '@angular/cdk/a11y';
 import type { FieldTree, ValidationError } from '@angular/forms/signals';
 
 import {
   TM_PARSE_ERROR,
+  type SignalLike,
   type TmGridContentState,
   type TmGridScrollPosition,
   type TmLabelResolution,
@@ -41,6 +43,7 @@ import {
   type TmGridEngineColumn,
   type TmGridHistorySnapshot,
   type TmGridResolutionRequest,
+  type TmGridTreeOptions,
   type TmRowCol,
 } from '@tellma/core-ui/grid-engine';
 import type { TmMenu, TmMenuEntry, TmMenuItem } from '@tellma/core-ui/menu';
@@ -269,6 +272,14 @@ export interface ɵTmGridCellVm {
   readonly pending: boolean;
   /** Whether the cell lies inside the armed cut's range (marquee styling). */
   readonly inCutRange: boolean;
+  /** Whether the cell renders the tree affordance (trees, hierarchy column). */
+  readonly hierarchy: boolean;
+  /** Tree depth for the indent spacer (0 outside the hierarchy cell). */
+  readonly level: number;
+  /** The expander glyph state, or `null` when the row cannot expand. */
+  readonly expander: 'expanded' | 'collapsed' | null;
+  /** Whether the row's lazy children are loading (reserved-slot spinner). */
+  readonly loadingChildren: boolean;
 }
 
 /** One rendered row's view model. */
@@ -291,8 +302,35 @@ export interface ɵTmGridRowVm {
   readonly headerHit: boolean;
   /** The row-header text (1-based row number, `*` on the placeholder). */
   readonly rowHeaderText: string;
+  /** `aria-level` (1-based tree depth), or `null` outside trees. */
+  readonly ariaLevel: number | null;
+  /** `aria-expanded`, or `null` when absent (flat grids, leaf rows). */
+  readonly ariaExpanded: 'true' | 'false' | null;
+  /** `aria-posinset` (1-based position among siblings), or `null`. */
+  readonly ariaPosInSet: number | null;
+  /** `aria-setsize` (the sibling count), or `null`. */
+  readonly ariaSetSize: number | null;
   /** The row's cells, in column order. */
   readonly cells: readonly ɵTmGridCellVm[];
+}
+
+/**
+ * The tree bindings a tree-grid shell contributes to the composition root.
+ * Every member is a deferred read: the subclass's input signals do not
+ * exist yet when the base class constructs the core, so the shell hands
+ * over closures and the core reads them lazily.
+ */
+export interface ɵTmGridTreeConfig<T> {
+  /** Reads a row's parent id; `null` marks a root. */
+  readonly parentId: SignalLike<(row: T) => TmRowId | null>;
+  /** The model property holding the parent id (editable-tree re-parenting). */
+  readonly parentIdKey: SignalLike<string | undefined>;
+  /** Marks rows whose children may not be loaded yet. */
+  readonly hasChildren: SignalLike<((row: T) => boolean) | undefined>;
+  /** Loads a row's children on first expand (§13.3 lazy loading). */
+  readonly loadChildren: SignalLike<((row: T) => Promise<void>) | undefined>;
+  /** How deep the tree starts expanded; `undefined` = fully expanded. */
+  readonly defaultExpandedDepth: SignalLike<number | undefined>;
 }
 
 /**
@@ -350,6 +388,8 @@ export interface ɵTmGridCoreDeps<T> {
   readonly emptyDef: Signal<TmGridEmptyDef | undefined>;
   /** The projected loading-state template, if any. */
   readonly loadingDef: Signal<TmGridLoadingDef | undefined>;
+  /** The tree bindings; absent for the flat grid. */
+  readonly tree?: ɵTmGridTreeConfig<T>;
 }
 
 /**
@@ -360,6 +400,8 @@ export interface ɵTmGridCoreDeps<T> {
  * `T` without variance friction.
  */
 export interface ɵTmGridViewCore {
+  /** The container role: `treegrid` when the core carries a tree config. */
+  readonly gridRole: Signal<'grid' | 'treegrid'>;
   /** Whether the grid is editable (field bound and not readonly). */
   readonly editable: Signal<boolean>;
   /** The loading flag. */
@@ -491,10 +533,27 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   private readonly pasteReadDenied = signal(false);
   private readonly transientNoticeSignal = signal<string | null>(null);
   private transientNoticeTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Rows whose lazy children are loading (reserved-slot spinner, §13.3). */
+  private readonly loadingChildrenIds = signal<ReadonlySet<TmRowId>>(new Set());
+  /**
+   * Rows the user wants expanded once their lazy load lands. A collapse
+   * during the load clears the row's entry — the load continues, but on
+   * resolve the node stays collapsed and the children simply render on
+   * the next expand (§13.3).
+   */
+  private readonly wantedExpansionIds = signal<ReadonlySet<TmRowId>>(new Set());
+  /** Guards stray async completions after destroy. */
+  private destroyed = false;
 
   private readonly columnsInternal: Signal<readonly ColumnInternal<T>[]>;
   private readonly engineColumns: Signal<ReadonlyArray<TmGridEngineColumn<T>>>;
   private readonly window: Signal<ReturnType<typeof tmComputeAxisWindow>>;
+  /** The data-column index rendering the hierarchy (trees; -1 otherwise). */
+  private readonly hierarchyColIndex: Signal<number>;
+  /** Per visible row: 1-based position among its siblings + sibling count. */
+  private readonly treeAria: Signal<
+    ReadonlyMap<TmRowId, { readonly pos: number; readonly size: number }>
+  >;
   /** Field-validation-errored cells keyed for dedupe with invalid inputs. */
   private readonly fieldErrorCells: Signal<ReadonlyMap<string, FieldErrorCell>>;
   /** Every errored cell in view coordinates, row-major (the jump order). */
@@ -507,6 +566,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
 
   /** The bound rows: `data`, else the field's value, else empty. */
   readonly rows: Signal<readonly T[]>;
+  /** The container role: `treegrid` when the core carries a tree config. */
+  readonly gridRole: Signal<'grid' | 'treegrid'>;
   /** Whether the grid is editable (field bound and not readonly). */
   readonly editable: Signal<boolean>;
   /** The loading flag. */
@@ -601,6 +662,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       return [];
     });
     this.editable = computed(() => deps.field() !== undefined && !deps.readonlyInput());
+    this.gridRole = computed(() => (this.engine.model.isTree ? 'treegrid' : 'grid'));
     this.loading = deps.loading;
     this.emptyDef = deps.emptyDef;
     this.loadingDef = deps.loadingDef;
@@ -616,6 +678,34 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.engineColumns = computed(() =>
       this.columnsInternal().map((column) => column.engineColumn),
     );
+    this.hierarchyColIndex = computed(() => {
+      if (!this.engine.model.isTree) {
+        return -1;
+      }
+      const marked = deps.columns().findIndex((column) => column.hierarchy());
+      return marked === -1 ? 0 : marked;
+    });
+    // aria-posinset/-setsize count SIBLINGS. Every visible row's siblings
+    // are visible too (the shared parent is expanded, or all are roots), so
+    // one pass over the visible sequence grouped by parent id is exact.
+    this.treeAria = computed(() => {
+      const result = new Map<TmRowId, { pos: number; size: number }>();
+      if (!this.engine.model.isTree) {
+        return result;
+      }
+      const views = this.engine.model.viewRows();
+      const sizeByParent = new Map<TmRowId | null, number>();
+      const posById = new Map<TmRowId, number>();
+      for (const view of views) {
+        const pos = (sizeByParent.get(view.parentId) ?? 0) + 1;
+        sizeByParent.set(view.parentId, pos);
+        posById.set(view.id, pos);
+      }
+      for (const view of views) {
+        result.set(view.id, { pos: posById.get(view.id)!, size: sizeByParent.get(view.parentId)! });
+      }
+      return result;
+    });
 
     this.pageSize = computed(() => {
       const rowHeight = this.rowHeightSignal();
@@ -968,9 +1058,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       isMac: IS_MAC_PLATFORM,
       editable: untracked(this.editable),
       searchable: untracked(this.deps.searchable),
-      // Row checkbox selection and the tree grid are later milestones.
+      // Row checkbox selection is a later milestone.
       selectable: false,
-      isTree: false,
+      isTree: engine.model.isTree,
       activeIsBoolean,
     });
     if (intent !== null && this.executeIntent(intent)) {
@@ -1080,6 +1170,17 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       if (cell === null) {
         return;
       }
+      // The tree expander: activate its cell WITH the roving focus (so
+      // Alt+Arrows work right after a twisty press) and suppress the
+      // button's own focus; the click handler performs the toggle. No
+      // drag — a twisty press is never a range-selection gesture.
+      if (target.closest('[data-tm-expander]') !== null) {
+        event.preventDefault();
+        this.escapedSignal.set(false);
+        this.engine.clickCell(cell);
+        this.requestFocusActive();
+        return;
+      }
       // A press on interactive projected content (a record link) must keep
       // its native affordances — click activation, middle-click,
       // open-in-new-tab. Activate the cell but leave the event alone: no
@@ -1128,6 +1229,21 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (target.closest('[data-tm-resize]') !== null) {
       return;
     }
+    const expander = target.closest('[data-tm-expander]');
+    if (expander !== null) {
+      // Pointer path of expand/collapse (§13.3). The pointerdown already
+      // activated the cell through the interactive-content branch; the
+      // toggle folds in a pending wanted-expansion so a click during a
+      // lazy load re-collapses instead of re-requesting.
+      const cellElement = expander.closest('[data-tm-cell]');
+      const cell = cellElement === null ? null : this.cellFromElement(cellElement);
+      const view = cell === null ? null : untracked(() => this.engine.model.rowAt(cell.row));
+      if (view !== null && view.expandable) {
+        const wanting = untracked(this.wantedExpansionIds).has(view.id);
+        this.setRowExpanded(view.id, !(view.expanded || wanting));
+      }
+      return;
+    }
     if (target.closest('[data-tm-corner]') !== null) {
       this.engine.selection.selectAll();
       return;
@@ -1170,6 +1286,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     }
     if (hit.closest('[data-tm-editor]') !== null) {
       return; // double-clicks inside the editor select words natively
+    }
+    if (hit.closest('[data-tm-expander]') !== null) {
+      return; // rapid expander toggling must never open an editor
     }
     const cellElement = hit.closest('[data-tm-cell]');
     if (cellElement === null) {
@@ -1353,6 +1472,30 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     }, TRANSIENT_NOTICE_MS);
   }
 
+  /**
+   * The engine's tree options over the shell's deferred input closures, or
+   * `undefined` for the flat grid. `parentId`/`hasChildren` read the
+   * CURRENT input inside the engine's derivations (rebinds recompute the
+   * structure); the scalar members are getters read per use, untracked
+   * (they are consumed from event pipelines and seeding, never reactively).
+   */
+  private buildTreeOptions(): TmGridTreeOptions<T> | undefined {
+    const config = this.deps.tree;
+    if (config === undefined) {
+      return undefined;
+    }
+    return {
+      parentId: (row: T) => config.parentId()(row),
+      hasChildren: (row: T) => config.hasChildren()?.(row) ?? false,
+      get parentIdKey(): string | undefined {
+        return untracked(config.parentIdKey);
+      },
+      get defaultExpandedDepth(): number | undefined {
+        return untracked(config.defaultExpandedDepth);
+      },
+    };
+  }
+
   private createEngine(): TmGridEngine<T> {
     return new TmGridEngine<T>({
       rows: () => this.rows(),
@@ -1364,6 +1507,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       tenant: () => this.deps.tenant(),
       direction: () => this.deps.direction(),
       pageSize: () => this.pageSize(),
+      tree: this.buildTreeOptions(),
       oversizeCopyCellThreshold: ɵTM_GRID_OVERSIZE_COPY_CELLS,
       host: {
         // The field binding gets the field-tree writer; the data binding
@@ -1563,6 +1707,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     const rowHeight = this.rowHeightSignal();
     const isTree = engine.model.isTree;
 
+    const hierarchyCol = isTree ? this.hierarchyColIndex() : -1;
+    const treeAria = isTree ? this.treeAria() : null;
+    const loadingChildren = isTree ? this.loadingChildrenIds() : null;
+    const wantedExpansion = isTree ? this.wantedExpansionIds() : null;
+
     const session = editable ? engine.edit.session() : null;
     const fieldErrors = editable ? this.fieldErrorCells() : EMPTY_FIELD_ERRORS;
     // The armed cut's marquee (§9.5): identity sets so windowed rendering
@@ -1609,6 +1758,15 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
                 (model.cellValue(cell) ?? null) as boolean | null,
               )
             : undefined;
+        const isHierarchy = isTree && column.index === hierarchyCol;
+        // The expander glyph reflects the PENDING intent during a lazy
+        // load (wanted expansion), so a click while loading re-collapses.
+        const expander =
+          isHierarchy && view !== null && view.expandable
+            ? view.expanded || wantedExpansion!.has(view.id)
+              ? ('expanded' as const)
+              : ('collapsed' as const)
+            : null;
         return {
           colIndex: column.index,
           ariaColIndex: column.ariaColIndex,
@@ -1629,8 +1787,14 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
             view !== null &&
             cutRowIds.has(view.id) &&
             cutColumnIds!.has(column.id),
+          hierarchy: isHierarchy,
+          level: isHierarchy && view !== null ? view.level : 0,
+          expander,
+          loadingChildren:
+            isHierarchy && view !== null && loadingChildren!.has(view.id),
         };
       });
+      const siblingPlace = view === null ? undefined : treeAria?.get(view.id);
       rows.push({
         rowKey,
         viewIndex,
@@ -1643,6 +1807,16 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         zebra: !editable && !isTree && viewIndex % 2 === 1,
         headerHit: engine.selection.rowIntersects(viewIndex),
         rowHeaderText: isPlaceholder ? '*' : String(viewIndex + 1),
+        // The tree placeholder is a root-level ghost: level 1, no set place.
+        ariaLevel: isTree ? (view?.level ?? 0) + 1 : null,
+        ariaExpanded:
+          isTree && view !== null && view.expandable
+            ? view.expanded
+              ? 'true'
+              : 'false'
+            : null,
+        ariaPosInSet: siblingPlace?.pos ?? null,
+        ariaSetSize: siblingPlace?.size ?? null,
         cells,
       });
     };
@@ -1766,10 +1940,109 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           untracked(this.scrollerSignal)?.focus();
         }
         return true;
+      case 'expand':
+      case 'collapse': {
+        // Alt+Arrow acts on the ACTIVE ROW from any column, and is always
+        // consumed in a tree — the browser would otherwise navigate history.
+        const active = untracked(() => engine.nav.activeCell());
+        const view = active === null ? null : untracked(() => engine.model.rowAt(active.row));
+        if (view !== null) {
+          this.setRowExpanded(view.id, intent.kind === 'expand');
+          this.requestReveal();
+          this.requestFocusActive();
+        }
+        return true;
+      }
       default:
         // find (find-bar milestone), toggleCheck / toggleSelectAllCheckbox
-        // (row-checkbox milestone), expand / collapse (tree milestone).
+        // (row-checkbox milestone).
         return false;
+    }
+  }
+
+  // ---- tree expand/collapse + lazy loading (§13.3) ----
+
+  /**
+   * Expands or collapses a row, composing lazy child loading: expanding a
+   * `hasChildren` row with no loaded children calls `loadChildren` and
+   * shows the reserved-slot spinner; the node expands when the load lands
+   * (unless the user re-collapsed meanwhile), restores collapsed with an
+   * announcement on rejection, and a repeat expand while loading just
+   * re-marks the wanted expansion. Everything else goes straight to the
+   * engine (which also moves activation out of a collapsing subtree).
+   */
+  private setRowExpanded(rowId: TmRowId, expanded: boolean): void {
+    const engine = this.engine;
+    if (!expanded) {
+      this.removeFrom(this.wantedExpansionIds, rowId);
+      engine.setExpanded(rowId, false);
+      return;
+    }
+    const config = this.deps.tree;
+    const loadChildren = config === undefined ? undefined : untracked(config.loadChildren);
+    const hasChildren = config === undefined ? undefined : untracked(config.hasChildren);
+    const row = engine.model.rowById(rowId);
+    const needsLoad =
+      loadChildren !== undefined &&
+      hasChildren !== undefined &&
+      row !== undefined &&
+      hasChildren(row) &&
+      engine.model.subtreeRowIds(rowId).length <= 1; // no loaded children yet
+    if (!needsLoad) {
+      engine.setExpanded(rowId, true);
+      return;
+    }
+    this.addTo(this.wantedExpansionIds, rowId);
+    if (untracked(this.loadingChildrenIds).has(rowId)) {
+      return; // already in flight; the resolve path expands
+    }
+    this.addTo(this.loadingChildrenIds, rowId);
+    Promise.resolve()
+      .then(() => loadChildren(row))
+      .then(
+        () => this.finishChildLoad(rowId, true),
+        () => this.finishChildLoad(rowId, false),
+      );
+  }
+
+  /** The tail of a lazy child load: clear the spinner, then expand/restore. */
+  private finishChildLoad(rowId: TmRowId, resolved: boolean): void {
+    if (this.destroyed) {
+      return;
+    }
+    this.removeFrom(this.loadingChildrenIds, rowId);
+    const wanted = untracked(this.wantedExpansionIds).has(rowId);
+    this.removeFrom(this.wantedExpansionIds, rowId);
+    if (!resolved) {
+      // The node never expanded during the load; make the restore explicit
+      // and tell the user why nothing appeared.
+      this.engine.setExpanded(rowId, false);
+      this.announcements.announce('grid.announce.lazyLoadFailed');
+      return;
+    }
+    if (wanted) {
+      this.engine.setExpanded(rowId, true);
+      this.requestReveal();
+    }
+  }
+
+  /** Adds one id to a set signal (copy-on-write). */
+  private addTo(target: WritableSignal<ReadonlySet<TmRowId>>, rowId: TmRowId): void {
+    const current = untracked(target);
+    if (!current.has(rowId)) {
+      const next = new Set(current);
+      next.add(rowId);
+      target.set(next);
+    }
+  }
+
+  /** Removes one id from a set signal (copy-on-write). */
+  private removeFrom(target: WritableSignal<ReadonlySet<TmRowId>>, rowId: TmRowId): void {
+    const current = untracked(target);
+    if (current.has(rowId)) {
+      const next = new Set(current);
+      next.delete(rowId);
+      target.set(next);
     }
   }
 
@@ -2002,16 +2275,45 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           disabled: !canAddRows,
           action: () => this.engine.insertRows('below'),
         },
-        {
-          id: 'deleteRows',
-          label: translate('grid.menu.deleteRows', { count })(),
-          icon: icons?.listMinus,
-          action: () => this.engine.deleteSelectedRows(),
-        },
       );
+      if (engine.model.isTree) {
+        // Insert child row (§13.4): needs the row factory and an active
+        // DATA row to parent under (the placeholder has no identity yet).
+        const active = engine.nav.activeCell();
+        const activeView = active === null ? null : engine.model.rowAt(active.row);
+        items.push({
+          id: 'insertChild',
+          label: translate('grid.menu.insertChild')(),
+          icon: icons?.listPlus,
+          disabled: !canAddRows || activeView === null,
+          action: () => this.insertChildAtActive(),
+        });
+      }
+      items.push({
+        id: 'deleteRows',
+        label: translate('grid.menu.deleteRows', { count })(),
+        icon: icons?.listMinus,
+        action: () => this.engine.deleteSelectedRows(),
+      });
     }
     const extras = this.deps.extraMenuItems();
     return extras.length > 0 ? [...items, { separator: true }, ...extras] : items;
+  }
+
+  /**
+   * The menu's Insert-child action: materializes `newRow(parent)` as the
+   * active row's last child through the engine (which expands the parent
+   * and activates the new row's first editable cell, §13.4).
+   */
+  private insertChildAtActive(): void {
+    const engine = this.engine;
+    const active = untracked(() => engine.nav.activeCell());
+    const view = active === null ? null : untracked(() => engine.model.rowAt(active.row));
+    if (view !== null) {
+      engine.insertChildRow(view.id);
+      this.requestReveal();
+      this.requestFocusActive();
+    }
   }
 
   /** Enter on a readonly cell activates its first interactive child (a record link). */
@@ -2233,6 +2535,31 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       engine.model.restoreExpansion(content.expandedRowIds);
     } else if (!initial) {
       engine.model.seedExpansion();
+    }
+    this.collapseUnloadedLazyRows();
+  }
+
+  /**
+   * Collapses lazy rows a seed/restore left "expanded" with no loaded
+   * children: such a node renders nothing beneath and would never trigger
+   * its load — it must start collapsed so the first expand fetches
+   * (§13.3). Runs after every seed/restore; no-op without lazy loading.
+   */
+  private collapseUnloadedLazyRows(): void {
+    const config = this.deps.tree;
+    if (config === undefined) {
+      return;
+    }
+    const hasChildren = untracked(config.hasChildren);
+    if (hasChildren === undefined || untracked(config.loadChildren) === undefined) {
+      return;
+    }
+    const engine = this.engine;
+    for (const id of untracked(() => engine.model.expandedIds())) {
+      const row = engine.model.rowById(id);
+      if (row !== undefined && hasChildren(row) && engine.model.subtreeRowIds(id).length <= 1) {
+        engine.model.setExpanded(id, false);
+      }
     }
   }
 
@@ -2643,6 +2970,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   }
 
   private onDestroy(): void {
+    this.destroyed = true; // in-flight lazy child loads complete silently
     this.endDrag();
     this.warmupGeneration += 1; // kills any in-flight warm-up chain
     if (this.transientNoticeTimer !== null) {

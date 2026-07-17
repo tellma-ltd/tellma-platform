@@ -17,12 +17,12 @@ import { storyUrl, type StoryUrlOptions } from './story-map';
 /** Navigates to a grid story and waits for the grid chrome to render. */
 export async function gotoGrid(page: Page, id: string, options: StoryUrlOptions = {}): Promise<void> {
   await page.goto(storyUrl(id, options));
-  await expect(page.locator('[role="grid"]')).toBeVisible();
+  await expect(gridScroller(page)).toBeVisible();
 }
 
-/** The grid's scroll container (the `role="grid"` element). */
+/** The grid's scroll container (`role="grid"`, or `treegrid` on trees). */
 export function gridScroller(page: Page): Locator {
-  return page.locator('[role="grid"]');
+  return page.locator('[role="grid"], [role="treegrid"]');
 }
 
 /** The cell at a view-space row × data-column position. */

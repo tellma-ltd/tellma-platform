@@ -72,10 +72,11 @@ export async function seedClipboard(page: Page, flavors: ClipboardFlavors): Prom
  */
 export async function syntheticPaste(page: Page, flavors: ClipboardFlavors): Promise<void> {
   await page.evaluate(({ text, html }) => {
+    const selector = '[role="grid"], [role="treegrid"]';
     const grid =
-      document.activeElement?.closest('[role="grid"]') ?? document.querySelector('[role="grid"]');
+      document.activeElement?.closest(selector) ?? document.querySelector(selector);
     if (grid === null || grid === undefined) {
-      throw new Error('syntheticPaste: no [role="grid"] element on the page');
+      throw new Error('syntheticPaste: no [role="grid"]/[role="treegrid"] element on the page');
     }
 
     let event: ClipboardEvent | null = null;

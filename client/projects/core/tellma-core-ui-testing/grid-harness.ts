@@ -196,7 +196,8 @@ export class TmGridHarness extends ComponentHarness {
   /** The selector for the `tm-grid` host element. */
   static hostSelector = 'tm-grid';
 
-  private readonly gridElement = this.locatorFor('[role="grid"]');
+  /** The grid's scroller (`role="grid"`, or `treegrid` on `tm-tree-grid`). */
+  protected readonly gridElement = this.locatorFor('[role="grid"], [role="treegrid"]');
 
   /**
    * The full ARIA row count (`aria-rowcount`): all view rows — data rows

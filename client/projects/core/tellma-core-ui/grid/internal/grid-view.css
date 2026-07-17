@@ -196,6 +196,75 @@
   outline-offset: calc(-2 * var(--border-width));
 }
 
+/* ---- tree hierarchy affordance (tm-tree-grid) ----
+   Inline flow inside the hierarchy cell so the cell-level nowrap/ellipsis
+   still governs the text. The twisty and the lazy-loading spinner each own
+   a FIXED slot: the spinner appearing or leaving never shifts layout. */
+
+.tm-grid__indent,
+.tm-grid__twisty,
+.tm-grid__childspin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: top;
+  block-size: calc(var(--grid-row-height) - var(--border-width));
+  user-select: none;
+}
+
+.tm-grid__indent {
+  inline-size: calc(var(--grid-level, 0) * var(--grid-indent));
+}
+
+.tm-grid__twisty {
+  inline-size: var(--grid-indent);
+}
+
+.tm-grid__childspin {
+  inline-size: var(--space-4);
+}
+
+.tm-grid__childspin-spinner {
+  inline-size: var(--space-3);
+  block-size: var(--space-3);
+}
+
+/* Pointer-only (tabindex -1, aria-hidden): keyboard expand/collapse rides
+   Alt+Arrows on the active cell instead. */
+.tm-grid__expander {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 100%;
+  block-size: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+/* Collapsed: a triangle pointing inline-end (mirrors in RTL). */
+.tm-grid__expander::before {
+  content: '';
+  display: block;
+  inline-size: 0;
+  block-size: 0;
+  border-block-start: var(--space-1) solid transparent;
+  border-block-end: var(--space-1) solid transparent;
+  border-inline-start: calc(var(--space-1) * 1.5) solid currentColor;
+  border-inline-end: 0 solid transparent;
+}
+
+/* Expanded: a triangle pointing block-end (no rotation — direction-safe). */
+.tm-grid__expander--open::before {
+  border-block-start: calc(var(--space-1) * 1.5) solid currentColor;
+  border-block-end: 0 solid transparent;
+  border-inline-start: var(--space-1) solid transparent;
+  border-inline-end: var(--space-1) solid transparent;
+}
+
 /* ---- the single live editor (fills the cell box) ---- */
 
 .tm-grid__editor {

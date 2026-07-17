@@ -27,8 +27,8 @@ import { ɵTmGridStatusBar } from './status-bar';
  * The grid's one and only template: scroller, sticky header, virtualized
  * row window, the loading/empty overlays, the editing-cell editor outlet,
  * the editable-mode status bar, the context menu, and the active-cell
- * error overlay. `tm-grid` (and, later, `tm-tree-grid`) are thin shells
- * around this component so the large template compiles exactly once. All
+ * error overlay. `tm-grid` and `tm-tree-grid` are thin shells around this
+ * component so the large template compiles exactly once. All
  * state and behavior live in the `core` it renders from; the template only
  * binds signals and routes DOM events back into it.
  */
@@ -39,7 +39,7 @@ import { ɵTmGridStatusBar } from './status-bar';
     <div
       #scroller
       class="tm-grid__scroller"
-      role="grid"
+      [attr.role]="core().gridRole()"
       aria-multiselectable="true"
       [class.tm-grid__scroller--readonly]="!core().editable()"
       [attr.aria-rowcount]="core().ariaRowCount()"
@@ -89,6 +89,10 @@ import { ɵTmGridStatusBar } from './status-bar';
               class="tm-grid__row"
               role="row"
               [attr.aria-rowindex]="row.ariaRowIndex"
+              [attr.aria-level]="row.ariaLevel"
+              [attr.aria-expanded]="row.ariaExpanded"
+              [attr.aria-posinset]="row.ariaPosInSet"
+              [attr.aria-setsize]="row.ariaSetSize"
               [class.tm-grid__row--zebra]="row.zebra"
               [class.tm-grid__row--placeholder]="row.isPlaceholder"
               [class.tm-grid__row--outlier]="row.outlier"
@@ -125,6 +129,32 @@ import { ɵTmGridStatusBar } from './status-bar';
                   [class.tm-grid__cell--cut]="cell.inCutRange"
                   [style.text-align]="cell.align"
                 >
+                  @if (cell.hierarchy) {
+                    <!-- Tree affordance: level indent, the pointer-only
+                         expander, and a RESERVED lazy-loading spinner slot,
+                         so the spinner appearing shifts nothing. -->
+                    <span
+                      class="tm-grid__indent"
+                      aria-hidden="true"
+                      [style.--grid-level]="cell.level"
+                    ></span>
+                    <span class="tm-grid__twisty" aria-hidden="true">
+                      @if (cell.expander !== null) {
+                        <button
+                          type="button"
+                          class="tm-grid__expander"
+                          data-tm-expander
+                          tabindex="-1"
+                          [class.tm-grid__expander--open]="cell.expander === 'expanded'"
+                        ></button>
+                      }
+                    </span>
+                    <span class="tm-grid__childspin" aria-hidden="true">
+                      @if (cell.loadingChildren) {
+                        <tm-spinner class="tm-grid__childspin-spinner" data-tm-childspin />
+                      }
+                    </span>
+                  }
                   @if (cell.editing) {
                     <div class="tm-grid__editor" data-tm-editor>
                       <ng-container #editorOutlet />

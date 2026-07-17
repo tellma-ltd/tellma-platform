@@ -75,10 +75,4 @@ export interface TmMenuSeparator {
     readonly separator: true;
 }
 
-// @public
-export function ɵtmObserveLongPress(element: HTMLElement, onLongPress: (point: {
-    x: number;
-    y: number;
-}) => void, options?: TmLongPressOptions): () => void;
-
 ```

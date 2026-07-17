@@ -31,12 +31,12 @@ import type { TmMenuItem } from '@tellma/core-ui/menu';
 import { TmGridColumn } from '../tm-grid-column';
 import { TmGridEmptyDef, TmGridLoadingDef } from '../tm-grid-templates';
 import { TmGridStateStore } from '../tm-grid-state-store';
-import { ɵTmGridCore } from './grid-core';
+import { ɵTmGridCore, type ɵTmGridTreeConfig } from './grid-core';
 
 /**
- * The shared shell of `tm-grid` (and the future `tm-tree-grid`): declares
- * the inputs, content queries, and public members both components carry,
- * and constructs the composition root (`ɵTmGridCore`) from the host's
+ * The shared shell of `tm-grid` and `tm-tree-grid`: declares the inputs,
+ * content queries, and public members both components carry, and
+ * constructs the composition root (`ɵTmGridCore`) from the host's
  * injected dependencies. Selector-less by design — concrete grids extend
  * it and render `ɵTmGridView`.
  */
@@ -156,6 +156,7 @@ export abstract class ɵTmGridBase<T> {
       columns: this.columns as Signal<ReadonlyArray<TmGridColumn<T, unknown>>>,
       emptyDef: this.emptyDef,
       loadingDef: this.loadingDef,
+      tree: this.treeConfig(),
     });
     this.errorCount = this.core.errorCount;
     this.pendingCount = this.core.pendingCount;
@@ -175,6 +176,16 @@ export abstract class ɵTmGridBase<T> {
         }
       });
     }
+  }
+
+  /**
+   * The tree bindings handed to the core, or `undefined` for the flat
+   * grid. The tree-grid subclass overrides this. Called once during the
+   * BASE constructor — before subclass fields initialize — so an override
+   * must return deferred closures over its inputs, never input values.
+   */
+  protected treeConfig(): ɵTmGridTreeConfig<T> | undefined {
+    return undefined;
   }
 
   /**

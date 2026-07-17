@@ -1,0 +1,25 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-tree-grid — host-level styles only; the grid chrome (including the
+   tree indent/expander/spinner affordance) lives with the shared internal
+   view component. The density variants re-point the row height token for
+   everything inside. Trees keep a uniform row background (no zebra) so
+   indentation alone carries the structure. */
+
+:host {
+  display: block;
+  inline-size: 100%;
+}
+
+:host(.tm-grid--sm) {
+  --grid-row-height: var(--grid-row-height-sm);
+}
+
+:host(.tm-grid--lg) {
+  --grid-row-height: var(--grid-row-height-lg);
+}
