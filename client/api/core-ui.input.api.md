@@ -9,9 +9,11 @@ import { Signal } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
 
 // @public
-export class TmInput implements TmFormFieldControl {
+export class TmInput implements TmFormFieldControl, TmCellEditor<string> {
     constructor();
     readonly ariaDescribedby: _angular_core.InputSignal<string | null>;
+    cancel(): void;
+    commit(): void;
     readonly controlId: Signal<string>;
     protected readonly describedByAttr: Signal<string | null>;
     readonly describedByIds: Signal<readonly string[]>;
@@ -29,8 +31,10 @@ export class TmInput implements TmFormFieldControl {
     readonly placeholder: _angular_core.InputSignal<string>;
     readonly readonly: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly required: _angular_core.InputSignalWithTransform<boolean, unknown>;
+    seed(text: string): void;
     setDescribedByIds(ids: readonly string[]): void;
     protected readonly showsInvalid: Signal<boolean>;
+    readonly text: Signal<string | null>;
     readonly touch: _angular_core.OutputEmitterRef<void>;
     readonly touched: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly value: _angular_core.ModelSignal<string>;

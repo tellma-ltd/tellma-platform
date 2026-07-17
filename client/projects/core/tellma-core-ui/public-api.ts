@@ -17,4 +17,5 @@ export * from './i18n/strings-en';
 export * from './i18n/tm-ui-translate';
 export * from './forms/field-errors';
 export * from './forms/provide-tellma-forms';
+export * from './forms/tm-cell-editor-host';
 export * from './providers/provide-tellma-ui';

@@ -16,6 +16,9 @@ export function provideTellmaForms(options?: TmFormsOptions): EnvironmentProvide
 export function provideTellmaUi(options?: TmUiOptions): EnvironmentProviders;
 
 // @public
+export const TM_CELL_EDITOR_HOST: InjectionToken<TmCellEditorHost>;
+
+// @public
 export const TM_ERROR_DISPLAY: InjectionToken<TmErrorDisplayPolicy>;
 
 // @public

@@ -255,5 +255,33 @@ export const tmTokensDefault: TmTokens = {
     checkbox: { boxSize: '18px' },
     // tm-select (§3.4): panel + option-row geometry (touch-comfortable rows).
     select: { panelMaxHeight: '280px', optionHeight: '36px' },
+    // tm-grid / tm-tree-grid: row density mirrors the field-height scale
+    // one notch tighter (data rows, not form fields); selection fill is a
+    // translucent brand teal so gridlines and text stay readable under it.
+    grid: {
+      rowHeight: '32px',
+      rowHeightSm: '26px',
+      rowHeightLg: '40px',
+      headerBg: '{surface.subtle}',
+      headerText: '{text.secondary}',
+      line: '{border.subtle}',
+      selectionBg: 'rgba(76, 160, 182, 0.14)',
+      selectionBorder: '{action.accent}',
+      errorBg: '{status.error.bg}',
+      errorBorder: '{status.error.border}',
+      readonlyBg: '{surface.subtle}',
+      zebraBg: '{surface.subtle}',
+      cutBorder: '{action.accent}',
+      findMatchBg: '{status.warning.bg}',
+      findActiveOutline: '{status.warning.fg}',
+      indent: '20px',
+      rowHeaderWidth: '48px',
+      checkColWidth: '36px',
+      minColWidth: '48px',
+      handleSize: '24px',
+    },
+    // tm-menu: panel + item-row geometry; colors ride the field/surface
+    // semantic tokens in the component CSS.
+    menu: { minWidth: '180px', itemHeight: '32px', iconSize: '16px' },
   },
 };
