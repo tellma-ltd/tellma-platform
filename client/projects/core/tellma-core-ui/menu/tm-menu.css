@@ -1,0 +1,92 @@
+/* Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree. */
+
+/* The host renders nothing in-flow — the panel lives in the overlay. */
+:host {
+  display: block;
+}
+
+.tm-menu__panel {
+  min-inline-size: var(--menu-min-width);
+  padding-block: var(--space-1);
+  background: var(--field-bg);
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--field-radius);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.tm-menu__list {
+  display: flex;
+  flex-direction: column;
+  /* The list receives programmatic focus; the ring belongs to the items. */
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     focus is delegated to the active item via aria's activedescendant-style
+     roving pattern; the list itself must not double-ring. */
+  outline: none;
+}
+
+.tm-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  block-size: var(--menu-item-height);
+  padding-inline: var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--text-body);
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.tm-menu__item[data-active='true'] {
+  background: var(--surface-hover);
+  color: var(--text-strong);
+}
+
+.tm-menu__item[aria-disabled='true'] {
+  color: var(--field-text-disabled);
+}
+
+.tm-menu__icon {
+  display: inline-flex;
+  inline-size: var(--menu-icon-size);
+  block-size: var(--menu-icon-size);
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--field-icon);
+}
+
+.tm-menu__icon > * {
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.tm-menu__label {
+  flex: 1;
+}
+
+.tm-menu__separator {
+  block-size: 0;
+  margin-block: var(--space-1);
+  border-block-start: var(--border-width) solid var(--divider);
+}
+
+@media (forced-colors: active) {
+  .tm-menu__panel {
+    border-color: CanvasText;
+  }
+
+  .tm-menu__item[data-active='true'] {
+    background: Highlight;
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
+
+  .tm-menu__item[aria-disabled='true'] {
+    color: GrayText;
+  }
+}

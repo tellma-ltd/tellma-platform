@@ -23,6 +23,7 @@
       "./contracts": 1,
       "./grid-engine": 13,
       "./input": 3,
+      "./menu": 6,
       "./checkbox": 4,
       "./form-field": 4,
       "./select": 8,

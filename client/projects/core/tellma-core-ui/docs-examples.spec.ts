@@ -11,11 +11,13 @@ import { provideTellmaUi } from '@tellma/core-ui';
 import { TmCheckbox } from '@tellma/core-ui/checkbox';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmInput } from '@tellma/core-ui/input';
+import { TmContextMenuTrigger, TmMenu } from '@tellma/core-ui/menu';
 import { TmOption, TmSelect } from '@tellma/core-ui/select';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
 import * as checkboxExamples from './checkbox/tm-checkbox.examples';
 import * as inputExamples from './input/tm-input.examples';
+import * as menuExamples from './menu/tm-menu.examples';
 import * as selectExamples from './select/tm-select.examples';
 import * as spinnerExamples from './spinner/tm-spinner.examples';
 
@@ -38,12 +40,14 @@ import * as spinnerExamples from './spinner/tm-spinner.examples';
  * The placeholder template uses every import (NG8113 flags unused ones).
  */
 @Component({
-  imports: [TmCheckbox, TmFormField, TmInput, TmOption, TmSelect, TmSpinner],
+  imports: [TmCheckbox, TmContextMenuTrigger, TmFormField, TmInput, TmMenu, TmOption, TmSelect, TmSpinner],
   template: `
     <tm-form-field label="placeholder"><input tmInput /></tm-form-field>
     <tm-checkbox>placeholder</tm-checkbox>
     <tm-select><tm-option [value]="0">placeholder</tm-option></tm-select>
     <tm-spinner />
+    <div [tmContextMenuTrigger]="placeholderMenu">placeholder</div>
+    <tm-menu #placeholderMenu [items]="[]" />
   `,
 })
 class ExampleHost {}
@@ -59,6 +63,7 @@ class ExampleHost {}
  */
 const MARKERS: { type: Type<unknown>; pattern: RegExp }[] = [
   { type: TmInput, pattern: /\btmInput\b/ },
+  { type: TmContextMenuTrigger, pattern: /\btmContextMenuTrigger\b/ },
 ];
 
 const SUITES = [
@@ -66,6 +71,7 @@ const SUITES = [
   { source: 'checkbox/tm-checkbox.examples.ts', examples: checkboxExamples },
   { source: 'select/tm-select.examples.ts', examples: selectExamples },
   { source: 'spinner/tm-spinner.examples.ts', examples: spinnerExamples },
+  { source: 'menu/tm-menu.examples.ts', examples: menuExamples },
 ];
 
 describe('co-located docs examples compile against the live API (§11)', () => {

@@ -7,9 +7,12 @@
  * tm/prefix-exports — every exported symbol of a library package carries the
  * library prefix (spec 0002 §1, D3): classes/interfaces/types/enums start
  * with `Tm`, SCREAMING_CASE constants with `TM_`, functions/values with `tm`
- * or `provideTellma`. The spec's own deliberately-unprefixed exports
- * (SignalLike, Ref, fontPreloadLinks, …) are named in the reviewed `allow`
- * option — additions are an explicit, reviewed act.
+ * or `provideTellma`. A leading `ɵ` (the private-by-convention surface
+ * shared between entry points, spec 0004 §1) is transparent — the rest of
+ * the name must still carry a valid prefix. The spec's own
+ * deliberately-unprefixed exports (SignalLike, Ref, fontPreloadLinks, …)
+ * are named in the reviewed `allow` option — additions are an explicit,
+ * reviewed act.
  */
 const SCREAMING = /^[A-Z][A-Z0-9_]*$/;
 const TYPE_LIKE = /^Tm[A-Z0-9]/;
@@ -40,20 +43,22 @@ export default {
   create(context) {
     const allow = new Set(context.options[0]?.allow ?? []);
 
-    function check(name, node) {
-      if (!name || allow.has(name)) {
+    function check(rawName, node) {
+      if (!rawName || allow.has(rawName)) {
         return;
       }
+      // The ɵ private-surface marker is transparent to the prefix check.
+      const name = rawName.startsWith('ɵ') ? rawName.slice(1) : rawName;
       if (SCREAMING.test(name)) {
         if (!name.startsWith('TM_')) {
-          context.report({ node, messageId: 'badName', data: { name } });
+          context.report({ node, messageId: 'badName', data: { name: rawName } });
         }
         return;
       }
       if (TYPE_LIKE.test(name) || VALUE_LIKE.test(name)) {
         return;
       }
-      context.report({ node, messageId: 'badName', data: { name } });
+      context.report({ node, messageId: 'badName', data: { name: rawName } });
     }
 
     return {

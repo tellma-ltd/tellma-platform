@@ -49,6 +49,23 @@ export class TmInputHarness extends ComponentHarness {
 }
 
 // @public
+export class TmMenuHarness extends ComponentHarness {
+    clickItem(label: string): Promise<void>;
+    getItemLabels(): Promise<string[]>;
+    getItems(filter?: HarnessPredicate<TmMenuItemHarness>): Promise<TmMenuItemHarness[]>;
+    static hostSelector: string;
+}
+
+// @public
+export class TmMenuItemHarness extends ComponentHarness {
+    click(): Promise<void>;
+    getText(): Promise<string>;
+    static hostSelector: string;
+    isActive(): Promise<boolean>;
+    isDisabled(): Promise<boolean>;
+}
+
+// @public
 export class TmOptionHarness extends ComponentHarness {
     click(): Promise<void>;
     getText(): Promise<string>;
