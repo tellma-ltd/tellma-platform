@@ -4,8 +4,10 @@
 // LICENSE file in the root directory of this source tree.
 
 import {
+  afterNextRender,
   afterRenderEffect,
   Component,
+  DestroyRef,
   ElementRef,
   inject,
   input,
@@ -72,6 +74,7 @@ function samePoint(a: HandlePoint | null, b: HandlePoint | null): boolean {
 })
 export class ɵTmGridTouchHandles {
   private readonly host = inject(ElementRef).nativeElement as HTMLElement;
+  private readonly destroyRef = inject(DestroyRef);
 
   /** The composition root the handles read the active range from. */
   readonly core = input.required<ɵTmGridViewCore>();
@@ -88,6 +91,25 @@ export class ɵTmGridTouchHandles {
       const anchors = core.selectionHandles();
       core.renderRows();
       untracked(() => this.measure(anchors));
+    });
+
+    // A column resize (or any width change — an added/removed column, the
+    // checkbox chrome toggling) rewrites the grid's `--grid-template` custom
+    // property but moves none of the signals the effect above tracks, so the
+    // corner cells shift under handles that never re-measure. That property
+    // lives as an inline style on the grid host, and it is the only style
+    // written there; observe its mutations and re-measure against the new
+    // column geometry. (Density changes flow through `renderRows` already.)
+    afterNextRender(() => {
+      const templateHost = this.host.closest('tm-grid, tm-tree-grid');
+      if (templateHost === null) {
+        return;
+      }
+      const observer = new MutationObserver(() =>
+        untracked(() => this.measure(this.core().selectionHandles())),
+      );
+      observer.observe(templateHost, { attributeFilter: ['style'] });
+      this.destroyRef.onDestroy(() => observer.disconnect());
     });
   }
 

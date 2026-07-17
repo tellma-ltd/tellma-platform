@@ -10,13 +10,19 @@
  *
  * `rows`, `rowId`, `statuses`, and `total` are members of the consuming
  * component — a template literal cannot express function-valued inputs, and
- * `rowId` is required. Real usage looks like:
+ * `rowId` is required. The editable example adds `lineForm` (a Signal Forms
+ * field tree over the rows), `makeLine` (the new-row factory), and `editing`
+ * (the view/edit toggle). Real usage looks like:
  *
  * ```ts
  * readonly rows: readonly Product[] = [...];
  * readonly rowId = (row: Product): number => row.id;
  * readonly statuses: readonly string[] = ['Draft', 'Posted', 'Void'];
  * readonly total = (row: Product): number => row.qty * row.price;
+ * readonly lines = signal<Product[]>([...]);
+ * readonly lineForm = form(this.lines);
+ * readonly makeLine = (): Product => ({ id: nextId(), name: '', qty: 0, ... });
+ * readonly editing = signal(true);
  * ```
  */
 
@@ -31,6 +37,31 @@ export const ReadonlyGrid = {
       <tm-grid-column key="name" header="Name" [flex]="2" />
       <tm-grid-column key="qty" type="number" header="Qty" [width]="90" />
       <tm-grid-column key="active" type="boolean" header="Active" [width]="80" />
+    </tm-grid>
+  `,
+};
+
+/**
+ * The editable shape: bind `field` (a Signal Forms field tree over the rows
+ * array) instead of `data`, add `newRow` for the new-row placeholder, and
+ * drive `readonly` from a signal to flip the whole screen between view and
+ * edit without touching the data. A column can be `readonly` on its own —
+ * here the system-owned status — while the rest of the row edits.
+ */
+export const EditableGrid = {
+  template: `
+    <tm-grid
+      gridId="doc-lines"
+      [field]="lineForm"
+      [rowId]="rowId"
+      [newRow]="makeLine"
+      [readonly]="!editing()"
+      style="block-size: 320px"
+    >
+      <tm-grid-column key="name" header="Item" [flex]="1" />
+      <tm-grid-column key="qty" type="number" header="Qty" [width]="90" />
+      <tm-grid-column key="price" type="number" header="Price" [width]="90" />
+      <tm-grid-column key="status" header="Status" readonly [width]="90" />
     </tm-grid>
   `,
 };

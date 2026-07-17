@@ -126,9 +126,11 @@ export function tmResolveGridKey(event: KeyboardEvent, ctx: TmGridKeyContext): T
       case 'a':
         return { kind: 'selectAll' };
       case 'z':
-        return event.shiftKey ? { kind: 'redo' } : { kind: 'undo' };
+        // Undo/redo only mutate an editable grid; in readonly view mode the
+        // key is left to the browser (the engine also gates the write).
+        return ctx.editable ? (event.shiftKey ? { kind: 'redo' } : { kind: 'undo' }) : null;
       case 'y':
-        return { kind: 'redo' };
+        return ctx.editable ? { kind: 'redo' } : null;
       case 'd':
         return ctx.editable ? { kind: 'fillDown' } : null;
       case 'f':
@@ -173,9 +175,13 @@ export function tmResolveGridKey(event: KeyboardEvent, ctx: TmGridKeyContext): T
       break;
   }
 
-  // Type-to-edit: any printable character replaces the cell content.
-  // AltGr arrives as ctrl+alt on Windows — those characters still count.
-  const printable = key.length === 1 && !mod && (!event.altKey || event.ctrlKey);
+  // Type-to-edit: any printable character replaces the cell content. Detect
+  // it from the physical modifiers, not the platform `mod`: on Windows AltGr
+  // arrives as ctrl+alt (so `@ € [ { \` on German/French/Nordic layouts must
+  // still open the editor), while a bare macOS Ctrl+letter (emacs caret keys)
+  // must NOT — keying off `mod` inverted both cases.
+  const printable =
+    key.length === 1 && !event.metaKey && (!event.ctrlKey || event.altKey);
   if (printable && ctx.editable) {
     if (ctx.activeIsBoolean) {
       return null; // boolean cells toggle via Enter/Space only

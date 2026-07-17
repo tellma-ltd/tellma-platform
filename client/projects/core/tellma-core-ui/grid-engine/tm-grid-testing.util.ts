@@ -152,7 +152,6 @@ export interface MakeEngineOptions {
   readonly tenant?: string;
   readonly pageSize?: number;
   readonly historyCapacity?: number;
-  readonly oversizeCopyCellThreshold?: number;
 }
 
 /** Constructs a full engine over signal inputs — no TestBed, no DOM. */
@@ -180,7 +179,6 @@ export function makeEngine(
     pageSize: () => pageSize(),
     tree: options.tree,
     historyCapacity: options.historyCapacity,
-    oversizeCopyCellThreshold: options.oversizeCopyCellThreshold,
     host: {
       writer: options.readonlyBinding ? undefined : writer,
       onNotice: (notice) => notices.push(notice),

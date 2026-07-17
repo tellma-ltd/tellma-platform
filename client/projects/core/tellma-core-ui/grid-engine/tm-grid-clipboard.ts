@@ -29,8 +29,10 @@ export interface TmGridCopyPayload {
   readonly matrix: ReadonlyArray<readonly string[]>;
   /**
    * Per-cell raw values aligned with `matrix` (`undefined` = no raw value:
-   * oversize copies, accessor columns, invalid-input cells — whose raw
-   * text must round-trip as text, not as the cleared model value).
+   * accessor columns and invalid-input cells — whose raw text must
+   * round-trip as text, not as the cleared model value). Raw values are
+   * kept regardless of copy size so a same-session paste of a large copy
+   * stays typed; the clipboard's HTML flavor sheds them for oversize copies.
    */
   readonly rawValues: ReadonlyArray<ReadonlyArray<{ readonly value: unknown } | undefined>>;
   /** The copied rows' identities, present when the copy is full rows. */
@@ -110,8 +112,6 @@ export interface TmGridClipboardOptions<T = unknown> {
   readonly parentIdKey?: string;
   /** Component-layer callbacks. */
   readonly host?: Pick<TmGridEngineHost<T>, 'onNotice'>;
-  /** Cell count beyond which copies omit raw values. Defaults to 100 000. */
-  readonly oversizeCellThreshold?: number;
 }
 
 interface AwaitingCell {
@@ -137,8 +137,6 @@ interface OutstandingRequest {
   readonly controller: AbortController;
   readonly paste: OpenPaste;
 }
-
-const DEFAULT_OVERSIZE_THRESHOLD = 100_000;
 
 /**
  * Clipboard semantics over the engine state: copy/cut extraction from the
@@ -172,6 +170,9 @@ export class TmGridClipboard<T = unknown> {
     if (untracked(() => this.options.selection.ranges()).length === 0) {
       return null; // nothing selected — nothing to refuse or announce
     }
+    // A fresh copy gesture supersedes any armed cut (spreadsheet rule):
+    // copying the cut range then pasting must not perform the destructive move.
+    this.cancelCut();
     const shape = this.options.selection.compactForCopy();
     if (shape === null) {
       this.options.host?.onNotice?.({ kind: 'copyRefusedMisaligned' });
@@ -182,7 +183,6 @@ export class TmGridClipboard<T = unknown> {
     }
     const model = this.options.model;
     const cellCount = shape.rows.length * shape.cols.length;
-    const oversize = cellCount > (this.options.oversizeCellThreshold ?? DEFAULT_OVERSIZE_THRESHOLD);
     const matrix: string[][] = [];
     const rawValues: Array<Array<{ readonly value: unknown } | undefined>> = [];
     for (const row of shape.rows) {
@@ -192,7 +192,7 @@ export class TmGridClipboard<T = unknown> {
       for (const col of shape.cols) {
         const cell = { row, col };
         textRow.push(this.options.displayText(cell));
-        if (oversize || view === null) {
+        if (view === null) {
           rawRow.push(undefined);
         } else {
           const column = model.columnAt(col);
@@ -250,16 +250,31 @@ export class TmGridClipboard<T = unknown> {
     if (payload === null) {
       return null;
     }
-    const shape = this.options.selection.compactForCopy();
-    if (shape === null) {
+    // The deferred move is a single rectangle: arm it over the ACTIVE range's
+    // rect, not the whole compacted (possibly multi-range) selection — a
+    // multi-range compaction would clear cells outside any real range.
+    const rect = this.options.selection.activeRect();
+    if (rect === null) {
       return payload;
     }
     const model = this.options.model;
+    const rowIds: TmRowId[] = [];
+    for (let row = rect.top; row <= rect.bottom; row++) {
+      const id = model.rowAt(row)?.id;
+      if (id !== undefined) {
+        rowIds.push(id);
+      }
+    }
+    const columnIds: string[] = [];
+    for (let col = rect.left; col <= rect.right; col++) {
+      const column = model.columnAt(col);
+      if (column !== undefined) {
+        columnIds.push(column.id);
+      }
+    }
     this.pendingCutSignal.set({
-      rowIds: shape.rows
-        .map((row) => model.rowAt(row)?.id)
-        .filter((id): id is TmRowId => id !== undefined),
-      columnIds: shape.cols.map((col) => model.columnAt(col).id),
+      rowIds,
+      columnIds,
       isFullRows: payload.rowIds !== undefined,
       fingerprint: fingerprint(payload),
     });
@@ -331,8 +346,12 @@ export class TmGridClipboard<T = unknown> {
     if (cut !== null && sourceFingerprint !== undefined && cut.fingerprint === sourceFingerprint) {
       this.pendingCutSignal.set(null);
       if (cut.isFullRows && rowIds !== undefined && rowIds.length > 0) {
-        this.moveRows(rowIds, anchor);
-        return empty;
+        if (this.moveRows(rowIds, anchor) !== 'unresolved') {
+          return empty; // moved, or a deliberate rejection — done either way
+        }
+        // The cut rows couldn't be resolved against the current model — e.g.
+        // the HTML rung coerced string ids that look numeric. Fall back to a
+        // cell paste so the gesture is never silently dropped.
       }
       return this.pasteCells(matrix, rawValues, source.meta, anchor, cut);
     }
@@ -348,7 +367,11 @@ export class TmGridClipboard<T = unknown> {
    * it. Stale results (any later write bumped a cell's token, or the paste
    * was undone) are discarded per cell.
    */
-  applyResolution(requestId: number, results: ReadonlyMap<string, TmLabelResolution<unknown>>): void {
+  applyResolution(
+    requestId: number,
+    results: ReadonlyMap<string, TmLabelResolution<unknown>>,
+    opts?: { readonly failed?: boolean },
+  ): void {
     const request = this.outstanding.get(requestId);
     if (request === undefined) {
       return;
@@ -360,10 +383,13 @@ export class TmGridClipboard<T = unknown> {
     const annotations = this.options.annotations;
     const writes: TmGridCellWrite[] = [];
     for (const cell of request.cells) {
-      annotations.setPending(cell.rowId, cell.columnId, false);
       if (annotations.currentToken(cell.rowId, cell.columnId) !== cell.token) {
-        continue; // a later write invalidated this cell — the result is stale
+        // A later write/paste owns this cell now (its token moved on): this
+        // result is stale. Leave the pending mark for whoever owns it — a
+        // newer request will clear it — so pendingCount can't drop early.
+        continue;
       }
+      annotations.setPending(cell.rowId, cell.columnId, false);
       if (model.modelIndexOfRow(cell.rowId) === -1) {
         continue;
       }
@@ -375,7 +401,11 @@ export class TmGridClipboard<T = unknown> {
       }
       const before = column.getValue(row as T);
       const invalidBefore = annotations.invalidInput(cell.rowId, cell.columnId) ?? null;
-      const outcome = results.get(cell.label) ?? { error: 'notFound' as const };
+      // A rejected resolver never checked the label — it stays an invalid
+      // input, but under a distinct reason (retryable), not a definitive
+      // 'not found'.
+      const fallback = opts?.failed === true ? ('resolutionFailed' as const) : ('notFound' as const);
+      const outcome = results.get(cell.label) ?? { error: fallback };
       if ('value' in outcome) {
         writes.push({
           rowId: cell.rowId,
@@ -523,18 +553,27 @@ export class TmGridClipboard<T = unknown> {
     return matches >= 2;
   }
 
-  /** The full-row move (a matching full-row cut pasted in the same grid). */
-  private moveRows(cutRowIds: readonly TmRowId[], anchor: TmRowCol): boolean {
+  /**
+   * The full-row move (a matching full-row cut pasted in the same grid).
+   * `'moved'` on success, `'rejected'` for a deliberate no-op/refusal (paste
+   * onto self, move into own subtree), `'unresolved'` when the cut rows can't
+   * be resolved at all (foreign-rung id coercion) — the caller then falls
+   * back to a cell paste rather than dropping the gesture.
+   */
+  private moveRows(
+    cutRowIds: readonly TmRowId[],
+    anchor: TmRowCol,
+  ): 'moved' | 'rejected' | 'unresolved' {
     const model = this.options.model;
     const surviving = cutRowIds.filter((id) => model.modelIndexOfRow(id) !== -1);
     if (surviving.length === 0) {
-      return false;
+      return 'unresolved';
     }
     const targetView = model.rowAt(anchor.row);
     const targetIsPlaceholder = model.isPlaceholder(anchor.row) || targetView === null;
     // Pasting onto one of the moved rows is a no-op.
     if (!targetIsPlaceholder && surviving.includes(targetView.id)) {
-      return false;
+      return 'rejected';
     }
     // A row cannot move into its own subtree.
     if (
@@ -544,26 +583,36 @@ export class TmGridClipboard<T = unknown> {
       )
     ) {
       this.options.host?.onNotice?.({ kind: 'moveIntoDescendantRejected' });
-      return false;
+      return 'rejected';
     }
-    // Each moved row carries its whole subtree, in flattened order.
+    // Each moved row carries its whole subtree, in flattened order. Only the
+    // cut ROOTS — cut rows with no cut ancestor — expand; a nested cut row
+    // (a descendant of another cut row) travels once, inside its ancestor's
+    // subtree. Walking every survivor would emit a shared descendant under
+    // both its ancestor AND itself, duplicating the row in the move.
+    const survivingSet = new Set(surviving);
+    const roots = surviving.filter(
+      (id) => !model.ancestorsOf(id).some((ancestor) => survivingSet.has(ancestor)),
+    );
     const movedWithSubtrees: TmRowId[] = [];
-    const topLevel = new Set(surviving);
-    for (const id of surviving) {
+    const seen = new Set<TmRowId>();
+    for (const id of roots) {
       for (const member of model.subtreeRowIds(id)) {
-        if (member !== id && topLevel.has(member)) {
-          continue; // a cut row inside another cut row's subtree travels once
+        if (!seen.has(member)) {
+          seen.add(member);
+          movedWithSubtrees.push(member);
         }
-        movedWithSubtrees.push(member);
       }
     }
     const beforeRowId = targetIsPlaceholder ? null : targetView.id;
     const newParentId = targetIsPlaceholder ? null : targetView.parentId;
-    // Re-parenting writes for the top-level moved rows whose parent changes.
+    // Re-parenting writes for the moved ROOTS whose parent changes; nested
+    // cut rows keep their (also-moving) ancestor as parent, so they are not
+    // re-parented.
     const parentWrites: TmGridCellWrite[] = [];
     const parentKey = this.options.parentIdKey;
     if (model.isTree && parentKey !== undefined) {
-      for (const id of surviving) {
+      for (const id of roots) {
         const currentParent = model.ancestorsOf(id)[0] ?? null;
         if (currentParent !== newParentId) {
           parentWrites.push({
@@ -580,7 +629,7 @@ export class TmGridClipboard<T = unknown> {
     }
     this.options.history.runRowMove(movedWithSubtrees, beforeRowId, parentWrites);
     this.options.host?.onNotice?.({ kind: 'rowsMoved', count: surviving.length });
-    return true;
+    return 'moved';
   }
 
   /** The cell paste: shaping, conversion ladder, one open history entry. */
@@ -664,13 +713,20 @@ export class TmGridClipboard<T = unknown> {
     const sourceTenant = meta?.tenant;
     const tenant = untracked(() => this.options.tenant?.());
     const locale = untracked(() => this.options.locale());
-    const sameTenant = sourceTenant !== undefined && sourceTenant === tenant;
+    // Both-undefined tenants match: the tenant seam is optional, so the
+    // default (unset) config must still reach the typed fast path — a
+    // requiring-`!== undefined` guard left it permanently unreachable there.
+    const sameTenant = sourceTenant === tenant;
     const writes: TmGridCellWrite[] = [];
     const collect = new Map<
       string,
-      { columnKey: string; labels: string[]; cells: AwaitingCell[] }
+      { columnKey: string; labels: string[]; seen: Set<string>; cells: AwaitingCell[] }
     >();
     let errors = 0;
+    // Cells that received a definite value now (typed/empty/parsed) — the
+    // announced paste count. Resolver placeholders (counted as pending),
+    // parse errors, and the cut-source clears below are excluded.
+    let valueWrites = 0;
 
     for (let i = 0; i < height; i++) {
       const rowId = targetRowId(i);
@@ -700,11 +756,13 @@ export class TmGridClipboard<T = unknown> {
         const metaCol = meta?.cols?.[sc];
         if (raw !== undefined && sameTenant && metaCol?.type === column.type) {
           writes.push({ ...base, after: raw.value, invalidAfter: null });
+          valueWrites++;
           continue;
         }
         // (2) Empty text writes the cleared value (never hits the resolver).
         if (text === '') {
           writes.push({ ...base, after: column.clearedValue, invalidAfter: null });
+          valueWrites++;
           continue;
         }
         // (3) The synchronous parse.
@@ -712,6 +770,7 @@ export class TmGridClipboard<T = unknown> {
           const parsed = column.parse(text, { locale, sourceLocale });
           if (parsed !== TM_PARSE_ERROR) {
             writes.push({ ...base, after: parsed, invalidAfter: null });
+            valueWrites++;
             continue;
           }
         }
@@ -720,10 +779,11 @@ export class TmGridClipboard<T = unknown> {
           writes.push({ ...base, after: column.clearedValue, invalidAfter: null });
           let entry = collect.get(column.id);
           if (entry === undefined) {
-            entry = { columnKey: column.key, labels: [], cells: [] };
+            entry = { columnKey: column.key, labels: [], seen: new Set<string>(), cells: [] };
             collect.set(column.id, entry);
           }
-          if (!entry.labels.includes(text)) {
+          if (!entry.seen.has(text)) {
+            entry.seen.add(text);
             entry.labels.push(text);
           }
           entry.cells.push({ rowId, columnId: column.id, columnKey: column.key, label: text, token: 0 });
@@ -759,8 +819,10 @@ export class TmGridClipboard<T = unknown> {
           if (column === undefined || column.key === null || row === undefined) {
             continue;
           }
-          const viewIndex = model.viewIndexOfRow(rowId);
-          if (viewIndex !== -1 && !model.isCellEditable({ row: viewIndex, col: colIndex })) {
+          // Readonly check by IDENTITY (not view coordinates): a cut-source
+          // row hidden in a collapsed subtree has no view index, and must
+          // get the same readonly protection as a visible one.
+          if (!column.editable || column.isCellReadonly(row as T)) {
             continue;
           }
           writes.push({
@@ -778,8 +840,12 @@ export class TmGridClipboard<T = unknown> {
 
     handle.applyWrites(writes);
 
-    // Issue the batched resolutions: tokens are read AFTER the synchronous
-    // writes bumped them, so only a LATER write invalidates a cell.
+    // Issue the batched resolutions: each awaiting cell's token is
+    // established with an explicit bump here (not merely read), so a value
+    // no-op paste-clear — which the history's write elision would skip — can
+    // never leave the token where it was and let two requests share it. Any
+    // later write (manual edit, delete, a second paste onto the cell) bumps
+    // the token again, invalidating this resolution.
     const resolutions: TmGridResolutionRequest[] = [];
     let pendingCells = 0;
     if (collect.size === 0) {
@@ -790,7 +856,7 @@ export class TmGridClipboard<T = unknown> {
         const controller = new AbortController();
         const cells = entry.cells.map((cell) => ({
           ...cell,
-          token: this.options.annotations.currentToken(cell.rowId, cell.columnId),
+          token: this.options.annotations.bumpToken(cell.rowId, cell.columnId),
         }));
         for (const cell of cells) {
           this.options.annotations.setPending(cell.rowId, cell.columnId, true);
@@ -825,7 +891,7 @@ export class TmGridClipboard<T = unknown> {
       });
     }
 
-    const cellsWritten = writes.length - errors;
+    const cellsWritten = valueWrites;
     this.options.host?.onNotice?.({
       kind: 'pasteComplete',
       cells: cellsWritten,

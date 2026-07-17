@@ -26,15 +26,6 @@ import type { ɵTmGridViewCore } from './grid-core';
       @if (core().errorCount() > 0) {
         <button
           type="button"
-          class="tm-grid__status-chip"
-          data-tm-status-chip
-          (click)="core().gotoError(1)"
-        >
-          <span class="tm-grid__status-warn" aria-hidden="true">⚠</span>
-          {{ tallyText() }}
-        </button>
-        <button
-          type="button"
           class="tm-grid__status-nav"
           data-tm-status-prev
           [attr.aria-label]="prevLabel()"
@@ -43,6 +34,15 @@ import type { ɵTmGridViewCore } from './grid-core';
           <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <polyline points="10,4 6,8 10,12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
+        </button>
+        <button
+          type="button"
+          class="tm-grid__status-chip"
+          data-tm-status-chip
+          (click)="core().gotoError(1)"
+        >
+          <span class="tm-grid__status-warn" aria-hidden="true">⚠</span>
+          {{ tallyText() }}
         </button>
         <button
           type="button"

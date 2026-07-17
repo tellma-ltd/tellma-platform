@@ -145,6 +145,18 @@ function escapeHtmlText(text: string): string {
   return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
+/**
+ * A table cell's HTML: escaped, with in-cell newlines as `<br>` — Excel and
+ * Sheets collapse a raw newline as layout whitespace, so a `\n` in a cell
+ * would be lost on paste without the explicit break.
+ */
+function escapeHtmlCellText(text: string): string {
+  return escapeHtmlText(text)
+    .replaceAll('\r\n', '<br>')
+    .replaceAll('\n', '<br>')
+    .replaceAll('\r', '<br>');
+}
+
 function escapeHtmlAttribute(text: string): string {
   return escapeHtmlText(text).replaceAll('"', '&quot;');
 }
@@ -190,7 +202,7 @@ export function tmSerializeHtmlTable(args: TmSerializeHtmlTableArgs): string {
   if (args.headerRow !== undefined) {
     parts.push('<thead><tr>');
     for (const header of args.headerRow) {
-      parts.push(`<th>${escapeHtmlText(header)}</th>`);
+      parts.push(`<th>${escapeHtmlCellText(header)}</th>`);
     }
     parts.push('</tr></thead>');
   }
@@ -203,7 +215,7 @@ export function tmSerializeHtmlTable(args: TmSerializeHtmlTableArgs): string {
     const rawRow = args.rawValues?.[r];
     for (let c = 0; c < args.matrix[r].length; c++) {
       const raw = rawRow?.[c];
-      const text = escapeHtmlText(args.matrix[r][c]);
+      const text = escapeHtmlCellText(args.matrix[r][c]);
       if (raw !== undefined && isJsonSafe(raw.value)) {
         parts.push(`<td data-tm-v="${escapeHtmlAttribute(JSON.stringify(raw.value))}">${text}</td>`);
       } else {

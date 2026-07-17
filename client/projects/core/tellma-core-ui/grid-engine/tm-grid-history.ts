@@ -3,9 +3,9 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { computed, signal, type Signal } from '@angular/core';
+import { computed, signal, untracked, type Signal } from '@angular/core';
 
-import type { TmCellEdit, TmRowId } from '@tellma/core-ui/contracts';
+import type { SignalLike, TmCellEdit, TmRowId } from '@tellma/core-ui/contracts';
 
 import type { TmGridCellAnnotations, TmGridInvalidInput } from './tm-grid-cell-annotations';
 import type { TmGridDataModel } from './tm-grid-data-model';
@@ -117,6 +117,13 @@ export interface TmGridHistoryOptions<T = unknown> {
   readonly annotations: TmGridCellAnnotations;
   /** The data writer; absent in readonly mode (every run is then a no-op). */
   readonly writer?: TmGridModelWriter<T>;
+  /**
+   * Whether the grid is editable right now. The writer stays bound across a
+   * readonly view/edit toggle (so the stack survives), so undo/redo and the
+   * public transaction channel gate on this instead — they must never write
+   * while the grid is in readonly view mode.
+   */
+  readonly editable?: SignalLike<boolean>;
   /** Component-layer callbacks (undo/redo notices, warnings). */
   readonly host?: Pick<TmGridEngineHost<T>, 'onNotice' | 'onWarn'>;
   /** Called after undo/redo applies, with the affected identities. */
@@ -165,17 +172,31 @@ export class TmGridHistory<T = unknown> {
    * state both unchanged) are elided; an all-no-op batch records nothing.
    */
   runCellWrites(kind: TmGridOpKind, writes: readonly TmGridCellWrite[]): void {
-    const effective = writes.filter(
+    if (this.options.writer === undefined) {
+      return;
+    }
+    const hasEffect = writes.some(
       (write) =>
         !Object.is(write.before, write.after) ||
         !sameInvalid(write.invalidBefore, write.invalidAfter),
     );
-    if (effective.length === 0 || this.options.writer === undefined) {
+    if (!hasEffect) {
+      // Nothing changes in the model — but a write onto a still-resolving
+      // cell (a Delete or a manual edit over a pending paste) must supersede
+      // it: bump the token so the late resolution is stale, and drop the
+      // pending mark. No history entry: there is no model change to undo.
+      const annotations = this.options.annotations;
+      for (const write of writes) {
+        if (annotations.isPending(write.rowId, write.columnId)) {
+          annotations.bumpToken(write.rowId, write.columnId);
+          annotations.setPending(write.rowId, write.columnId, false);
+        }
+      }
       return;
     }
     const entry = this.newEntry(kind);
     this.push(entry);
-    this.applyWritesTo(entry, effective);
+    this.applyWritesTo(entry, writes);
   }
 
   /** Creates rows via the row factory as one entry. Returns the snapshots. */
@@ -188,9 +209,20 @@ export class TmGridHistory<T = unknown> {
     if (writer === undefined || count <= 0) {
       return [];
     }
+    const redoBefore = this.redoStack;
     const entry = this.newEntry('rowInsert');
     this.push(entry);
-    return this.insertRowsInto(entry, modelIndex, count, parentRowId ?? null);
+    const snapshots = this.insertRowsInto(entry, modelIndex, count, parentRowId ?? null);
+    if (snapshots.length === 0) {
+      // The factory created nothing: don't leave an empty entry (or the redo
+      // stack that `push` cleared) behind.
+      this.remove(entry);
+      if (this.redoStack.length === 0) {
+        this.redoStack = redoBefore;
+        this.version.update((v) => v + 1);
+      }
+    }
+    return snapshots;
   }
 
   /** Removes rows as one entry (snapshots them for undo). */
@@ -271,6 +303,7 @@ export class TmGridHistory<T = unknown> {
   beginCompound(kind: TmGridOpKind): TmGridCompoundHandle {
     const entry = this.newEntry(kind);
     entry.open = true;
+    const redoBefore = this.redoStack;
     this.push(entry);
     return {
       applyWrites: (writes) => {
@@ -301,7 +334,8 @@ export class TmGridHistory<T = unknown> {
         entry.open = false;
         entry.onCancel = null;
         // A compound that ends empty (every write elided or invalidated)
-        // must not linger as a no-op undo step.
+        // must not linger as a no-op undo step — nor discard the redo stack
+        // that opening it cleared (a no-op paste keeps the redo history).
         if (
           entry.writes.length === 0 &&
           entry.insertedRows.length === 0 &&
@@ -309,6 +343,10 @@ export class TmGridHistory<T = unknown> {
           entry.move === null
         ) {
           this.remove(entry);
+          if (this.redoStack.length === 0) {
+            this.redoStack = redoBefore;
+            this.version.update((v) => v + 1);
+          }
         }
       },
       get isOpen() {
@@ -324,6 +362,9 @@ export class TmGridHistory<T = unknown> {
    */
   applyTransaction(edits: readonly TmCellEdit[], opts?: { label?: string }): void {
     void opts;
+    if (!this.mutationsAllowed()) {
+      return; // readonly view mode never writes through the field tree
+    }
     const model = this.options.model;
     const writes: TmGridCellWrite[] = [];
     for (const edit of edits) {
@@ -351,10 +392,14 @@ export class TmGridHistory<T = unknown> {
 
   /** Undoes the newest entry. Returns whether anything applied. */
   undo(): boolean {
+    if (!this.mutationsAllowed()) {
+      return false; // the stack survives a readonly flip but never writes there
+    }
     const entry = this.undoStack.pop();
     if (entry === undefined) {
       return false;
     }
+    const wasOpen = entry.open;
     if (entry.open) {
       entry.onCancel?.();
       entry.open = false;
@@ -363,7 +408,14 @@ export class TmGridHistory<T = unknown> {
     this.version.update((v) => v + 1);
     const skipped = this.applyEntry(entry, 'undo');
     if (skipped === 'nothing') {
-      this.options.host?.onNotice?.({ kind: 'undoSkippedMissingRows' });
+      // An open paste cancelled before any effective write (every cell was
+      // still awaiting resolution) reports the cancellation, not the
+      // "rows no longer exist" skip that a truly-vanished entry gets.
+      this.options.host?.onNotice?.(
+        wasOpen
+          ? { kind: 'undoApplied', opKind: entry.kind, skippedRows: 0 }
+          : { kind: 'undoSkippedMissingRows' },
+      );
       return true;
     }
     this.redoStack.push(entry);
@@ -374,6 +426,9 @@ export class TmGridHistory<T = unknown> {
 
   /** Redoes the newest undone entry. Returns whether anything applied. */
   redo(): boolean {
+    if (!this.mutationsAllowed()) {
+      return false; // the stack survives a readonly flip but never writes there
+    }
     const entry = this.redoStack.pop();
     if (entry === undefined) {
       return false;
@@ -417,6 +472,11 @@ export class TmGridHistory<T = unknown> {
 
   // ---- internals ----
 
+  /** Whether writes may flow now — editable when the flag is bound. */
+  private mutationsAllowed(): boolean {
+    return this.options.editable === undefined || untracked(() => this.options.editable!());
+  }
+
   private newEntry(kind: TmGridOpKind): HistoryEntry<T> {
     return {
       kind,
@@ -453,13 +513,30 @@ export class TmGridHistory<T = unknown> {
     if (writer === undefined) {
       return;
     }
+    const annotations = this.options.annotations;
     for (const write of writes) {
-      if (Object.is(write.before, write.after) && sameInvalid(write.invalidBefore, write.invalidAfter)) {
+      const valueChanged = !Object.is(write.before, write.after);
+      const invalidChanged = !sameInvalid(write.invalidBefore, write.invalidAfter);
+      if (!valueChanged && !invalidChanged) {
+        // A value/invalid no-op still supersedes an in-flight resolution on
+        // the cell (a second paste onto a pending cell writes the same
+        // cleared value): bump the token so the earlier request goes stale,
+        // and drop the pending mark. Nothing is recorded for undo.
+        if (annotations.isPending(write.rowId, write.columnId)) {
+          annotations.bumpToken(write.rowId, write.columnId);
+          annotations.setPending(write.rowId, write.columnId, false);
+        }
         continue;
       }
-      writer.setCellValue(write.rowId, write.columnKey, write.after);
-      this.options.annotations.setInvalid(write.rowId, write.columnId, write.invalidAfter);
-      this.options.annotations.bumpToken(write.rowId, write.columnId);
+      if (valueChanged) {
+        writer.setCellValue(write.rowId, write.columnKey, write.after);
+      }
+      annotations.setInvalid(write.rowId, write.columnId, write.invalidAfter);
+      annotations.bumpToken(write.rowId, write.columnId);
+      // A real write onto a pending cell supersedes its resolution too.
+      if (annotations.isPending(write.rowId, write.columnId)) {
+        annotations.setPending(write.rowId, write.columnId, false);
+      }
       entry.writes.push(write);
     }
   }
@@ -536,12 +613,26 @@ export class TmGridHistory<T = unknown> {
         applied = true;
       }
       if (entry.removedRows.length > 0) {
-        writer.reinsertRows(entry.removedRows.map(({ row, modelIndex }) => ({ row, modelIndex })));
-        for (const cell of entry.removedInvalid) {
-          annotations.setInvalid(cell.rowId, cell.columnId, cell.entry);
+        // An external refresh may have re-added some of these ids: reinserting
+        // them would duplicate the row. Reinsert only the still-missing ones
+        // and fold the rest into the skip tally.
+        const missing = entry.removedRows.filter((row) => model.modelIndexOfRow(row.id) === -1);
+        for (const row of entry.removedRows) {
+          if (model.modelIndexOfRow(row.id) !== -1) {
+            skippedRowIds.add(row.id);
+          }
         }
-        entry.removedRows.forEach((row) => touchedRowIds.add(row.id));
-        applied = true;
+        if (missing.length > 0) {
+          writer.reinsertRows(missing.map(({ row, modelIndex }) => ({ row, modelIndex })));
+          const missingIds = new Set(missing.map((row) => row.id));
+          for (const cell of entry.removedInvalid) {
+            if (missingIds.has(cell.rowId)) {
+              annotations.setInvalid(cell.rowId, cell.columnId, cell.entry);
+            }
+          }
+          missing.forEach((row) => touchedRowIds.add(row.id));
+          applied = true;
+        }
       }
       if (entry.move !== null) {
         const surviving = entry.move.snapshots.filter(
@@ -585,9 +676,18 @@ export class TmGridHistory<T = unknown> {
         }
       }
       if (entry.insertedRows.length > 0) {
-        writer.reinsertRows(entry.insertedRows.map(({ row, modelIndex }) => ({ row, modelIndex })));
-        entry.insertedRows.forEach((row) => touchedRowIds.add(row.id));
-        applied = true;
+        // Re-creation on redo skips ids an external refresh already restored.
+        const missing = entry.insertedRows.filter((row) => model.modelIndexOfRow(row.id) === -1);
+        for (const row of entry.insertedRows) {
+          if (model.modelIndexOfRow(row.id) !== -1) {
+            skippedRowIds.add(row.id);
+          }
+        }
+        if (missing.length > 0) {
+          writer.reinsertRows(missing.map(({ row, modelIndex }) => ({ row, modelIndex })));
+          missing.forEach((row) => touchedRowIds.add(row.id));
+          applied = true;
+        }
       }
       for (const write of entry.writes) {
         applyWrite(write, true);
@@ -606,11 +706,7 @@ export class TmGridHistory<T = unknown> {
 
   /** Invalidates every pending resolution touching a structurally-changed row. */
   private bumpRowTokens(rowId: TmRowId): void {
-    const model = this.options.model;
-    const count = model.columnCount();
-    for (let col = 0; col < count; col++) {
-      this.options.annotations.bumpToken(rowId, model.columnAt(col).id);
-    }
+    this.options.annotations.bumpRowToken(rowId);
   }
 }
 

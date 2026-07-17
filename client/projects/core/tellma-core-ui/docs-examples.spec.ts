@@ -3,9 +3,10 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { form } from '@angular/forms/signals';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 import { TmCheckbox } from '@tellma/core-ui/checkbox';
@@ -132,12 +133,28 @@ class ExampleHost {
   protected readonly treeParentId = (row: ExampleTreeRow): number | null => row.parentId;
   protected readonly treeHasChildren = (row: ExampleTreeRow): boolean => row.parentId === null;
   protected readonly loadTreeChildren = (): Promise<void> => Promise.resolve();
+
+  // The editable example's members: a Signal Forms field tree over the rows,
+  // a new-row factory, and the view/edit toggle bound to `readonly`.
+  protected readonly editing = signal(true);
+  protected readonly lines = signal<ExampleRow[]>([...this.rows]);
+  protected readonly lineForm = form(this.lines);
+  private lineId = 100;
+  protected readonly makeLine = (): ExampleRow => ({
+    id: this.lineId++,
+    name: '',
+    qty: 0,
+    price: 0,
+    active: false,
+    status: 'Draft',
+  });
 }
 
-/** The example templates' grids, read off the debug tree. */
+/** The example templates' grids — flat and tree — read off the debug tree. */
 function grids(fixture: ComponentFixture<ExampleHost>): TmGrid<unknown>[] {
   return fixture.debugElement
     .queryAll(By.directive(TmGrid))
+    .concat(fixture.debugElement.queryAll(By.directive(TmTreeGrid)))
     .map((element) => element.componentInstance as TmGrid<unknown>);
 }
 
@@ -146,12 +163,15 @@ function grids(fixture: ComponentFixture<ExampleHost>): TmGrid<unknown>[] {
  * `<tm-select>` throws NG0304), but an attribute DIRECTIVE that quietly
  * stopped matching is invisible to it — `<input tmInput>` is legal HTML with
  * or without the directive. So: any template that mentions an attribute
- * selector must actually instantiate its directive. (Element components are
- * deliberately absent here: tm-option instances live behind tm-select's
- * ngTemplateOutlet, outside the fixture's debug tree. And the grid's
- * template directives sit on unprojected CONTENT of tm-grid, which debug
- * queries cannot reach — those are read off the grid's content-query
- * signals instead.)
+ * selector must actually instantiate its directive. The same blind spot
+ * covers a renamed static-attribute INPUT: `errorOnUnknownProperties` flags
+ * a stale `[selectable]` binding but not a bare `selectable` attribute
+ * (legal HTML either way), so a template that names one must show its effect
+ * on the live grid. (Element components are deliberately absent here:
+ * tm-option instances live behind tm-select's ngTemplateOutlet, outside the
+ * fixture's debug tree. And the grid's template directives sit on
+ * unprojected CONTENT of tm-grid, which debug queries cannot reach — those
+ * are read off the grid's content-query signals instead.)
  */
 const MARKERS: {
   name: string;
@@ -186,6 +206,27 @@ const MARKERS: {
     name: 'TmGridLoadingDef',
     pattern: /\btmGridLoading\b/,
     instantiated: (fixture) => grids(fixture).some((grid) => grid.loadingDef() !== undefined),
+  },
+  {
+    name: 'selectable',
+    pattern: /\bselectable\b/,
+    instantiated: (fixture) => grids(fixture).some((grid) => grid.selectable()),
+  },
+  {
+    name: 'searchable',
+    pattern: /\bsearchable\b/,
+    instantiated: (fixture) => grids(fixture).some((grid) => grid.searchable()),
+  },
+  {
+    name: 'loading',
+    pattern: /\bloading\b/,
+    instantiated: (fixture) => grids(fixture).some((grid) => grid.loading()),
+  },
+  {
+    name: 'hierarchy',
+    pattern: /\bhierarchy\b/,
+    instantiated: (fixture) =>
+      grids(fixture).some((grid) => grid.columns().some((column) => column.hierarchy())),
   },
 ];
 

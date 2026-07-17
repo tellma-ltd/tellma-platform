@@ -189,6 +189,40 @@ describe('TmGridClipboard cut-paste move', () => {
     expect(h.rows()[0]['parentId']).toBeNull();
   });
 
+  it('moves a nested full-row cut (parent + descendant) without duplicating a shared descendant', () => {
+    // 1 > 2 > 3 (three levels) with root 4 first; cut BOTH root 1 and its
+    // child 2. The naive subtree walk emits grandchild 3 twice (once under 1,
+    // once under 2) — a duplicate id in the moved data.
+    const h = makeEngine(
+      [
+        { id: 4, a: 'a4', parentId: null },
+        { id: 1, a: 'a1', parentId: null },
+        { id: 2, a: 'a2', parentId: 1 },
+        { id: 3, a: 'a3', parentId: 2 },
+      ],
+      {
+        columns: [{ key: 'a' }],
+        tree: {
+          parentId: (row) => row['parentId'] as TmRowId | null,
+          parentIdKey: 'parentId',
+        },
+      },
+    );
+    // View order is 4, 1, 2, 3 — cut view rows 1 and 2 (ids 1 and 2).
+    h.engine.selection.selectRows(1, 2, false);
+    const payload = requirePayload(h.engine.clipboard.cut(() => 'fp'));
+    h.engine.clickCell({ row: 0, col: 0 }); // view row 0 = root 4
+    h.engine.clipboard.paste(sourceOf(payload), 'fp');
+    const ids = h.rows().map((row) => row.id);
+    expect(ids).toEqual([1, 2, 3, 4]); // the subtree moved before row 4, once
+    expect(new Set(ids).size).toBe(ids.length); // no duplicate id 3
+    expect(h.rows().find((row) => row.id === 1)?.['parentId']).toBeNull();
+    expect(h.rows().find((row) => row.id === 2)?.['parentId']).toBe(1);
+    expect(h.rows().find((row) => row.id === 3)?.['parentId']).toBe(2);
+    expect(h.engine.history.undo()).toBe(true);
+    expect(h.rows().map((row) => row.id)).toEqual([4, 1, 2, 3]);
+  });
+
   it('rejects a move into the row own descendant with a notice and no change', () => {
     const h = makeTreeHarness();
     h.engine.selection.selectRows(0, 0, false); // root 1

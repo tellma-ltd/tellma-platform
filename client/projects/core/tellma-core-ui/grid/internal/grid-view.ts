@@ -134,6 +134,7 @@ import { ɵTmGridTouchHandles } from './touch-handles';
                 aria-colindex="1"
                 data-tm-rowhdr
                 [attr.data-row]="row.viewIndex"
+                [attr.aria-label]="row.isPlaceholder ? core().newRowLabel() : null"
                 [class.tm-grid__rowhdr--hit]="row.headerHit"
               >
                 {{ row.rowHeaderText }}
@@ -171,7 +172,7 @@ import { ɵTmGridTouchHandles } from './touch-handles';
                   [attr.aria-selected]="cell.selected ? 'true' : null"
                   [attr.aria-invalid]="cell.invalid ? 'true' : null"
                   [attr.aria-readonly]="cell.readonly ? 'true' : null"
-                  [attr.aria-describedby]="cell.active && cell.invalid ? core().errorMsgId : null"
+                  [attr.aria-describedby]="cell.active && cell.invalid && !cell.editing ? core().errorMsgId : null"
                   [tabindex]="cell.active && !core().escaped() ? 0 : -1"
                   [class.tm-grid__cell--active]="cell.active"
                   [class.tm-grid__cell--selected]="cell.selected"
@@ -238,26 +239,30 @@ import { ɵTmGridTouchHandles } from './touch-handles';
           <tm-grid-touch-handles [core]="core()" />
         }
       </div>
-
-      @if (core().loading()) {
-        <div class="tm-grid__overlay" data-tm-loading>
-          @if (core().loadingDef(); as loadingDef) {
-            <ng-container [ngTemplateOutlet]="loadingDef.template" />
-          } @else {
-            <tm-spinner class="tm-grid__overlay-spinner" />
-            <span class="tm-grid__overlay-text">{{ core().loadingText() }}</span>
-          }
-        </div>
-      } @else if (core().showEmpty()) {
-        <div class="tm-grid__overlay" data-tm-empty>
-          @if (core().emptyDef(); as emptyDef) {
-            <ng-container [ngTemplateOutlet]="emptyDef.template" />
-          } @else {
-            <span class="tm-grid__overlay-text">{{ core().emptyText() }}</span>
-          }
-        </div>
-      }
     </div>
+
+    <!-- Loading / empty overlay: a sibling of the scroller (not inside its
+         scrolling flow) so it covers the visible viewport regardless of the
+         scroll position — inside the scroller it would flow after the
+         full-height row spacer and render off-screen while rows are bound. -->
+    @if (core().loading()) {
+      <div class="tm-grid__overlay" data-tm-loading>
+        @if (core().loadingDef(); as loadingDef) {
+          <ng-container [ngTemplateOutlet]="loadingDef.template" />
+        } @else {
+          <tm-spinner class="tm-grid__overlay-spinner" />
+          <span class="tm-grid__overlay-text">{{ core().loadingText() }}</span>
+        }
+      </div>
+    } @else if (core().showEmpty()) {
+      <div class="tm-grid__overlay" data-tm-empty>
+        @if (core().emptyDef(); as emptyDef) {
+          <ng-container [ngTemplateOutlet]="emptyDef.template" />
+        } @else {
+          <span class="tm-grid__overlay-text">{{ core().emptyText() }}</span>
+        }
+      </div>
+    }
 
     @if (core().findOpen()) {
       <!-- Outside the scroller: the bar's keys never reach the grid's

@@ -61,13 +61,19 @@ export class ɵTmGridColumnResize {
       header.getBoundingClientRect().width;
     const min = column.minWidth ?? ɵTM_GRID_MIN_COL_WIDTH;
     const sign = untracked(this.options.direction) === 'rtl' ? -1 : 1;
+    // Pin the drag to the pointer that started it: a second touch landing on
+    // the handle mid-drag must not perturb the width or end the gesture.
+    const pointerId = event.pointerId;
     try {
-      handle.setPointerCapture(event.pointerId);
+      handle.setPointerCapture(pointerId);
     } catch {
       // Synthetic events may carry no active pointer; the drag still works
       // as long as the pointer stays over the handle.
     }
     const onMove = (move: PointerEvent): void => {
+      if (move.pointerId !== pointerId) {
+        return;
+      }
       const width = Math.max(min, Math.round(startWidth + (move.clientX - startX) * sign));
       this.options.widthOverrides.update((overrides) => {
         if (overrides.get(column.id) === width) {
@@ -78,7 +84,10 @@ export class ɵTmGridColumnResize {
         return next;
       });
     };
-    const onEnd = (): void => {
+    const onEnd = (end: PointerEvent): void => {
+      if (end.pointerId !== pointerId) {
+        return;
+      }
       handle.removeEventListener('pointermove', onMove);
       handle.removeEventListener('pointerup', onEnd);
       handle.removeEventListener('pointercancel', onEnd);

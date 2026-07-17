@@ -65,11 +65,7 @@ import type {
 } from '../tm-grid-templates';
 import type { TmGridStateHandle, TmGridStateStore } from '../tm-grid-state-store';
 import { ɵTmGridAnnouncements } from './announcements';
-import {
-  ɵTmGridClipboardDom,
-  ɵtmGridResolvePasteSource,
-  ɵTM_GRID_OVERSIZE_COPY_CELLS,
-} from './clipboard-dom';
+import { ɵTmGridClipboardDom, ɵtmGridResolvePasteSource } from './clipboard-dom';
 import { ɵTmGridColumnResize } from './column-resize';
 import { ɵTmGridEditorSession, type ɵTmGridEditorMountConfig } from './editor-session';
 import { ɵTmGridFieldWriter, ɵtmChildField, ɵtmRowField } from './field-writer';
@@ -470,6 +466,8 @@ export interface ɵTmGridViewCore {
   readonly selectAllLabel: Signal<string>;
   /** The row checkboxes' accessible name. */
   readonly selectRowLabel: Signal<string>;
+  /** The new-row placeholder row-header's accessible name. */
+  readonly newRowLabel: Signal<string>;
   /** Whether the find bar is open. */
   readonly findOpen: Signal<boolean>;
   /** The find query as typed. */
@@ -567,6 +565,17 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   private handle: TmGridStateHandle | null = null;
   private lastContentKey: string | number | undefined;
   private pendingScroll: TmGridScrollPosition | null = null;
+  /**
+   * Tree expansion deferred until rows first arrive: the idiomatic ERP flow
+   * mounts empty then fetches, so a seed/restore at mount runs over zero rows
+   * — it must re-run (un-pruned) on the first non-empty rows for the content.
+   */
+  private treeExpansionPending:
+    | { readonly kind: 'restore'; readonly ids: ReadonlySet<TmRowId> }
+    | { readonly kind: 'seed' }
+    | null = null;
+  /** A persisted selection to re-apply once the content's rows are present. */
+  private pendingSelectionRestore: NonNullable<TmGridContentState['selection']> | null = null;
   private pendingGestureFocus = false;
   /** Whether the most recent real focus landed inside the grid/its overlays. */
   private gridOwnsFocus = false;
@@ -606,6 +615,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
    * the next expand (§13.3).
    */
   private readonly wantedExpansionIds = signal<ReadonlySet<TmRowId>>(new Set());
+  /** Kills in-flight lazy-child-load completions across a content switch/destroy. */
+  private lazyLoadGeneration = 0;
   /** Guards stray async completions after destroy. */
   private destroyed = false;
   /** The last individually toggled checkbox row — the Shift+click anchor. */
@@ -642,8 +653,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   >;
   /** Field-validation-errored cells keyed for dedupe with invalid inputs. */
   private readonly fieldErrorCells: Signal<ReadonlyMap<string, FieldErrorCell>>;
-  /** Every errored cell in view coordinates, row-major (the jump order). */
-  private readonly errorCellList: Signal<readonly TmRowCol[]>;
+  /** Every errored cell by identity (collapsed ones included), the jump order. */
+  private readonly errorCellRefs: Signal<readonly FieldErrorCell[]>;
   /** The active cell's raw field errors (feeds the localized overlay message). */
   private readonly activeCellFieldErrors: Signal<
     readonly ValidationError.WithOptionalFieldTree[]
@@ -688,6 +699,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   readonly selectAllLabel: Signal<string>;
   /** The row checkboxes' accessible name. */
   readonly selectRowLabel: Signal<string>;
+  /** The new-row placeholder row-header's accessible name. */
+  readonly newRowLabel: Signal<string>;
   /** Whether the find bar is open. */
   readonly findOpen: Signal<boolean>;
   /** The find query as typed. */
@@ -874,6 +887,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     // ---- row checkbox selection (§8.8) ----
     this.selectAllLabel = deps.translate('grid.selectAll');
     this.selectRowLabel = deps.translate('grid.selectRow');
+    this.newRowLabel = deps.translate('grid.newRow');
     // The tri-state ranges over ALL data rows (collapsed tree rows
     // included): select-all is all↔none over the DATA, not the viewport.
     this.checkAllState = computed(() => {
@@ -999,21 +1013,17 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       return count;
     });
     this.pendingCount = computed(() => this.engine.annotations.pendingCount());
-    this.errorCellList = computed(() => {
+    this.errorCellRefs = computed(() => {
       const engine = this.engine;
       const seen = new Set<string>();
-      const cells: TmRowCol[] = [];
+      const refs: FieldErrorCell[] = [];
       const push = (rowId: TmRowId, columnId: string): void => {
         const key = errorCellKey(rowId, columnId);
         if (seen.has(key)) {
           return;
         }
         seen.add(key);
-        const row = engine.model.viewIndexOfRow(rowId);
-        const col = engine.model.columnIndexOf(columnId);
-        if (row !== -1 && col !== -1) {
-          cells.push({ row, col });
-        }
+        refs.push({ rowId, columnId });
       };
       for (const ref of engine.annotations.invalidCells()) {
         push(ref.rowId, ref.columnId);
@@ -1021,8 +1031,16 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       for (const cell of this.fieldErrorCells().values()) {
         push(cell.rowId, cell.columnId);
       }
-      cells.sort((a, b) => a.row - b.row || a.col - b.col);
-      return cells;
+      // A stable order over ALL errored cells — collapsed-subtree rows
+      // included, so the jump can reach them (the chip's count already does)
+      // — by row model order, then column index.
+      return refs.sort((a, b) => {
+        const rowDelta =
+          engine.model.modelIndexOfRow(a.rowId) - engine.model.modelIndexOfRow(b.rowId);
+        return rowDelta !== 0
+          ? rowDelta
+          : engine.model.columnIndexOf(a.columnId) - engine.model.columnIndexOf(b.columnId);
+      });
     });
 
     // ---- active-cell error overlay ----
@@ -1082,6 +1100,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
               collection: header,
               label: invalid.rawText,
             })();
+          case 'resolutionFailed':
+            return deps.translate('grid.cellErrors.resolutionFailed', {
+              collection: header,
+              label: invalid.rawText,
+            })();
         }
       }
       return this.activeCellResolvedErrors()[0]?.message ?? '';
@@ -1109,11 +1132,31 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         target instanceof Element &&
         (deps.host.contains(target) || target.closest('.cdk-overlay-container') !== null);
     };
+    // Clearing on a GENUINE blur out of the grid is what keeps the roving
+    // reclaim from yanking focus back after the user deliberately clicks away
+    // to non-focusable page content (which blurs the cell to <body> with a
+    // focusout but no focusin). A repeater DOM-move drop removes the node and
+    // fires NO focusout, so it stays distinguishable and still reclaims.
+    const onDocumentFocusOut = (event: FocusEvent): void => {
+      const target = event.target;
+      if (!(target instanceof Node) || !target.isConnected || !deps.host.contains(target)) {
+        return;
+      }
+      const next = event.relatedTarget;
+      const stayedWithGrid =
+        next instanceof Element &&
+        (deps.host.contains(next) || next.closest('.cdk-overlay-container') !== null);
+      if (!stayedWithGrid) {
+        this.gridOwnsFocus = false;
+      }
+    };
     document.addEventListener('pointerdown', onDocumentPointerDown, true);
     document.addEventListener('focusin', onDocumentFocusIn, true);
+    document.addEventListener('focusout', onDocumentFocusOut, true);
     deps.destroyRef.onDestroy(() => {
       document.removeEventListener('pointerdown', onDocumentPointerDown, true);
       document.removeEventListener('focusin', onDocumentFocusIn, true);
+      document.removeEventListener('focusout', onDocumentFocusOut, true);
       this.onDestroy();
     });
   }
@@ -1158,39 +1201,68 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (untracked(() => engine.edit.session()) !== null) {
       this.commitEditor({ refocus: false });
     }
-    const cells = untracked(this.errorCellList);
-    if (cells.length === 0) {
+    const refs = untracked(this.errorCellRefs);
+    if (refs.length === 0) {
       return;
     }
     const active = untracked(() => engine.nav.activeCell());
-    let index: number;
-    if (active === null) {
-      index = direction === 1 ? 0 : cells.length - 1;
-    } else {
-      const after = (cell: TmRowCol): boolean =>
-        cell.row > active.row || (cell.row === active.row && cell.col > active.col);
-      const before = (cell: TmRowCol): boolean =>
-        cell.row < active.row || (cell.row === active.row && cell.col < active.col);
-      if (direction === 1) {
-        index = cells.findIndex(after);
-        if (index === -1) {
-          index = 0; // cycle to the first
-        }
-      } else {
-        index = cells.length - 1 - [...cells].reverse().findIndex(before);
-        if (index === cells.length) {
-          index = cells.length - 1; // nothing before: cycle to the last
-        }
-      }
+    const index = this.nextErrorIndex(refs, active, direction);
+    const target = refs[index];
+    // Reveal a collapsed-subtree error before landing on it (mirrors find),
+    // so the arrows reach every cell the count includes.
+    if (engine.model.isTree) {
+      engine.expandAncestorsOf(target.rowId);
     }
-    const cell = cells[index];
-    engine.nav.setActive(cell);
-    engine.selection.collapseTo(cell);
+    const row = engine.model.viewIndexOfRow(target.rowId);
+    const col = engine.model.columnIndexOf(target.columnId);
+    if (row === -1 || col === -1) {
+      return;
+    }
+    engine.nav.setActive({ row, col });
+    engine.selection.collapseTo({ row, col });
     this.requestReveal();
     this.announcements.announce('grid.announce.errorJump', {
       index: index + 1,
-      count: cells.length,
+      count: refs.length,
     });
+  }
+
+  /**
+   * The next (+1) / previous (−1) errored cell's index in {@link errorCellRefs},
+   * cycling, relative to the active cell's position in the same row-model /
+   * column-index order the refs are sorted by.
+   */
+  private nextErrorIndex(
+    refs: readonly FieldErrorCell[],
+    active: TmRowCol | null,
+    direction: 1 | -1,
+  ): number {
+    if (active === null) {
+      return direction === 1 ? 0 : refs.length - 1;
+    }
+    const engine = this.engine;
+    const activeView = engine.model.rowAt(active.row);
+    const activeRowOrder = activeView === null ? Number.POSITIVE_INFINITY : activeView.modelIndex;
+    const after = (ref: FieldErrorCell): boolean => {
+      const rowOrder = engine.model.modelIndexOfRow(ref.rowId);
+      return (
+        rowOrder > activeRowOrder ||
+        (rowOrder === activeRowOrder && engine.model.columnIndexOf(ref.columnId) > active.col)
+      );
+    };
+    const before = (ref: FieldErrorCell): boolean => {
+      const rowOrder = engine.model.modelIndexOfRow(ref.rowId);
+      return (
+        rowOrder < activeRowOrder ||
+        (rowOrder === activeRowOrder && engine.model.columnIndexOf(ref.columnId) < active.col)
+      );
+    };
+    if (direction === 1) {
+      const found = refs.findIndex(after);
+      return found === -1 ? 0 : found;
+    }
+    const reversed = [...refs].reverse().findIndex(before);
+    return reversed === -1 ? refs.length - 1 : refs.length - 1 - reversed;
   }
 
   /** Drops the user-visible undo history (consumer save/cancel moments). */
@@ -1260,6 +1332,13 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       isTree: engine.model.isTree,
       activeIsBoolean,
     });
+    // After Esc parked focus on the container, Tab/Shift+Tab must leave the
+    // grid natively — the engineered mid-grid exit. On an editable grid the
+    // keymap still resolves Tab (it means commit-and-move mid-edit), so guard
+    // it here rather than re-entering the grid at the next editable cell.
+    if (intent?.kind === 'tab' && untracked(this.escapedSignal)) {
+      return;
+    }
     if (intent !== null && this.executeIntent(intent)) {
       event.preventDefault();
     }
@@ -1276,6 +1355,15 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     // Any editing keystroke on a scrolled-away cell scrolls it back first (§4).
     this.revealActiveCell();
     if (event.defaultPrevented) {
+      return;
+    }
+    // Mod+F opens the grid find even from inside an editor — the editor input
+    // must not let the browser's find dialog shadow it: commit, then open.
+    const mod = IS_MAC_PLATFORM ? event.metaKey : event.ctrlKey;
+    if (mod && !event.altKey && event.key.toLowerCase() === 'f' && untracked(this.deps.searchable)) {
+      event.preventDefault();
+      this.commitEditor({ refocus: false });
+      this.openFind();
       return;
     }
     const mounted = this.editorSession.current();
@@ -1375,9 +1463,20 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       return;
     }
     if (untracked(() => this.engine.edit.session()) !== null) {
-      // Clicking another cell commits the open editor first (§8.4); focus
-      // then follows the press through the normal activation path.
-      this.commitEditor({ refocus: false });
+      // A press on the scroller's own scrollbar gutter keeps the editor open
+      // (dragging the scrollbar is not a click-away commit); every other
+      // press commits first, then activation follows the press.
+      const scroller = untracked(this.scrollerSignal);
+      const onScrollbar =
+        scroller !== null &&
+        target === scroller &&
+        ((untracked(this.deps.direction) === 'rtl'
+          ? event.offsetX < scroller.offsetWidth - scroller.clientWidth
+          : event.offsetX >= scroller.clientWidth) ||
+          event.offsetY >= scroller.clientHeight);
+      if (!onScrollbar) {
+        this.commitEditor({ refocus: false });
+      }
     }
     const mod = IS_MAC_PLATFORM ? event.metaKey : event.ctrlKey;
     const cellElement = target.closest('[data-tm-cell]');
@@ -1414,6 +1513,17 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       this.escapedSignal.set(false);
       this.engine.clickCell(cell, { shift: event.shiftKey, mod });
       this.requestFocusActive();
+      // A boolean cell toggles directly on a plain click (§6.2) — activation
+      // above already committed any editor; there is no range drag to start.
+      if (
+        !event.shiftKey &&
+        !mod &&
+        untracked(this.editable) &&
+        untracked(this.columnsInternal)[cell.col]?.type === 'boolean'
+      ) {
+        this.engine.edit.toggleBoolean(cell);
+        return;
+      }
       this.beginDrag(event, 'cells');
       return;
     }
@@ -1653,11 +1763,19 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
 
   /** The scroller's copy handler. */
   onCopy(event: ClipboardEvent): void {
+    const engine = this.engineInstance;
+    if (engine !== null && untracked(() => engine.edit.session()) !== null) {
+      return; // an open editor keeps its native copy (the selected substring)
+    }
     this.clipboardDom.onCopy(event);
   }
 
   /** The scroller's cut handler (arms the deferred move; copy in readonly). */
   onCut(event: ClipboardEvent): void {
+    const engine = this.engineInstance;
+    if (engine !== null && untracked(() => engine.edit.session()) !== null) {
+      return; // an open editor keeps its native cut — not a grid range cut-move
+    }
     this.clipboardDom.onCut(event);
   }
 
@@ -1700,10 +1818,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
 
   /**
    * Runs each column's batched label resolver (§9.4) and hands the outcome
-   * back to the engine. A rejected (or synchronously throwing) resolver
-   * resolves to an empty map — every awaiting label falls to `notFound`;
-   * a column without a resolver (unreachable: the engine only collects for
-   * resolver-carrying columns) short-circuits the same way.
+   * back to the engine. A rejected (or synchronously throwing) resolver marks
+   * its awaiting labels as a RETRYABLE resolution failure (distinct from a
+   * definitive `notFound`); a column without a resolver (unreachable: the
+   * engine only collects for resolver-carrying columns) short-circuits with
+   * an empty answered map.
    */
   private runResolutions(requests: readonly TmGridResolutionRequest[]): void {
     for (const request of requests) {
@@ -1719,7 +1838,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         .then(() => resolver([...request.labels], request.context))
         .then(
           (results) => this.engine.clipboard.applyResolution(request.id, results),
-          () => this.engine.clipboard.applyResolution(request.id, new Map()),
+          () => this.engine.clipboard.applyResolution(request.id, new Map(), { failed: true }),
         );
     }
   }
@@ -1801,7 +1920,6 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       direction: () => this.deps.direction(),
       pageSize: () => this.pageSize(),
       tree: this.buildTreeOptions(),
-      oversizeCopyCellThreshold: ɵTM_GRID_OVERSIZE_COPY_CELLS,
       host: {
         // The field binding gets the field-tree writer; the data binding
         // stays writer-less, so every engine mutation is a structural
@@ -2204,7 +2322,19 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       }
       case 'toggleBoolean': {
         const active = untracked(() => engine.nav.activeCell());
-        return active !== null && engine.edit.toggleBoolean(active);
+        if (active !== null && engine.edit.toggleBoolean(active)) {
+          return true;
+        }
+        // A readonly boolean cell can't toggle: fall back to Enter semantics
+        // (activate a projected link, else move down) so the key is never
+        // dead and Space never scrolls the grid instead.
+        if (this.activateCellLink()) {
+          return true;
+        }
+        engine.moveActive('down');
+        this.requestReveal();
+        this.requestFocusActive();
+        return true;
       }
       case 'menu': {
         const menu = this.menuRef;
@@ -2324,18 +2454,19 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       return; // already in flight; the resolve path expands
     }
     this.addTo(this.loadingChildrenIds, rowId);
+    const generation = this.lazyLoadGeneration;
     Promise.resolve()
       .then(() => loadChildren(row))
       .then(
-        () => this.finishChildLoad(rowId, true),
-        () => this.finishChildLoad(rowId, false),
+        () => this.finishChildLoad(rowId, true, generation),
+        () => this.finishChildLoad(rowId, false, generation),
       );
   }
 
   /** The tail of a lazy child load: clear the spinner, then expand/restore. */
-  private finishChildLoad(rowId: TmRowId, resolved: boolean): void {
-    if (this.destroyed) {
-      return;
+  private finishChildLoad(rowId: TmRowId, resolved: boolean, generation: number): void {
+    if (this.destroyed || generation !== this.lazyLoadGeneration) {
+      return; // disposed, or the content switched out from under the load
     }
     this.removeFrom(this.loadingChildrenIds, rowId);
     const wanted = untracked(this.wantedExpansionIds).has(rowId);
@@ -2511,7 +2642,13 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     // The focused input unmounts with the bar; the roving-focus effect
     // then lands focus on the (possibly newly rendered) active cell.
     this.requestReveal();
-    this.requestFocusActive();
+    if (untracked(() => this.engine.nav.activeCell()) === null) {
+      // No cell to land on (no match, empty query): focus the container so
+      // focus never falls to <body> (mirrors the Esc escape-intent path).
+      untracked(this.scrollerSignal)?.focus();
+    } else {
+      this.requestFocusActive();
+    }
   }
 
   /**
@@ -2566,18 +2703,43 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
    * counter is announced.
    */
   private finishFindScan(query: string, matches: readonly ɵTmGridFindMatch[]): void {
-    this.findMatchesSignal.set(matches);
+    const engine = this.engine;
+    // Match cycling follows VIEW order, not the rows-array (scan) order — a
+    // tree whose flat array is not authored depth-first would otherwise cycle
+    // around unpredictably. A hidden (collapsed) match orders by its nearest
+    // visible ancestor, so it slots near where it will appear once expanded.
+    const viewOrderKey = (match: ɵTmGridFindMatch): number => {
+      const direct = engine.model.viewIndexOfRow(match.rowId);
+      if (direct !== -1) {
+        return direct;
+      }
+      for (const ancestor of engine.model.ancestorsOf(match.rowId)) {
+        const view = engine.model.viewIndexOfRow(ancestor);
+        if (view !== -1) {
+          return view;
+        }
+      }
+      return Number.POSITIVE_INFINITY;
+    };
+    const sorted = [...matches].sort((a, b) => {
+      const va = viewOrderKey(a);
+      const vb = viewOrderKey(b);
+      return va !== vb
+        ? va - vb
+        : engine.model.columnIndexOf(a.columnId) - engine.model.columnIndexOf(b.columnId);
+    });
+    this.findMatchesSignal.set(sorted);
     this.findResultsFor.set(query);
-    let index = matches.length > 0 ? 0 : -1;
-    if (matches.length > 0) {
-      const active = untracked(() => this.engine.nav.activeCell());
+    let index = sorted.length > 0 ? 0 : -1;
+    if (sorted.length > 0) {
+      const active = untracked(() => engine.nav.activeCell());
       if (active !== null) {
-        for (let i = 0; i < matches.length; i++) {
-          const row = this.engine.model.viewIndexOfRow(matches[i].rowId);
+        for (let i = 0; i < sorted.length; i++) {
+          const row = engine.model.viewIndexOfRow(sorted[i].rowId);
           if (row === -1) {
             continue; // hidden in a collapsed subtree; navigation expands
           }
-          const col = this.engine.model.columnIndexOf(matches[i].columnId);
+          const col = engine.model.columnIndexOf(sorted[i].columnId);
           if (row > active.row || (row === active.row && col >= active.col)) {
             index = i;
             break;
@@ -2587,7 +2749,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     }
     this.findActiveIndexSignal.set(index);
     if (index !== -1) {
-      this.revealFindRow(matches[index].rowId);
+      this.revealFindRow(sorted[index].rowId);
     }
     this.announceFindCounter();
   }
@@ -2600,7 +2762,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   private activateFindMatch(match: ɵTmGridFindMatch): void {
     const engine = this.engine;
     if (engine.model.isTree) {
-      engine.model.expandAncestorsOf(match.rowId);
+      // Through the engine (not the model) so the order snapshot syncs —
+      // a later external-data reconcile then remaps against a fresh baseline.
+      engine.expandAncestorsOf(match.rowId);
     }
     const row = engine.model.viewIndexOfRow(match.rowId);
     const col = engine.model.columnIndexOf(match.columnId);
@@ -2914,14 +3078,21 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     }
   }
 
-  /** Enter on a readonly cell activates its first interactive child (a record link). */
+  /** Enter on a readonly cell activates its first interactive projected child. */
   private activateCellLink(): boolean {
     const element = this.activeCellElement();
-    const interactive = element?.querySelector<HTMLElement>('a, button') ?? null;
+    const interactive = element?.querySelector<HTMLElement>(INTERACTIVE_CONTENT_SELECTOR) ?? null;
     if (interactive === null) {
       return false;
     }
-    interactive.click();
+    // Actuate links/buttons; focus inputs/selects/[tabindex] — the single
+    // tab-stop sweep pulled every projected control out of the tab order, so
+    // Enter is the only keyboard route to reach them.
+    if (interactive.matches('a[href], button')) {
+      interactive.click();
+    } else {
+      interactive.focus();
+    }
     return true;
   }
 
@@ -2998,27 +3169,28 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       return;
     }
     event.preventDefault(); // the handle gesture must never become a pan
+    // Keep the press off the scroller's long-press observer, so holding a
+    // handle extends the selection instead of opening the context menu.
+    event.stopPropagation();
     const fixed = edge === 'start' ? handles.end : handles.start;
     const dragged = edge === 'start' ? handles.start : handles.end;
     const engine = this.engine;
     engine.selection.collapseTo(fixed);
     engine.selection.extendActiveTo(dragged);
-    const capture = event.currentTarget;
-    this.beginDrag(event, 'cells', capture instanceof HTMLElement ? capture : undefined);
+    this.beginDrag(event, 'cells');
   }
 
-  private beginDrag(
-    event: PointerEvent,
-    mode: 'cells' | 'rows',
-    captureTarget?: HTMLElement,
-  ): void {
+  private beginDrag(event: PointerEvent, mode: 'cells' | 'rows'): void {
     const scroller = untracked(this.scrollerSignal);
     if (scroller === null) {
       return;
     }
     this.endDrag();
     const pointerId = event.pointerId;
-    const captureElement = captureTarget ?? scroller;
+    // Capture on the SCROLLER (never the handle): a touch-handle drag whose
+    // corner scrolls out of the virtual window unmounts the handle div, and
+    // capturing there would lose the pointer — the scroller never unmounts.
+    const captureElement = scroller;
     try {
       captureElement.setPointerCapture(pointerId);
     } catch {
@@ -3075,6 +3247,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     };
 
     const onMove = (move: PointerEvent): void => {
+      if (move.pointerId !== pointerId) {
+        return;
+      }
       lastX = move.clientX;
       lastY = move.clientY;
       applyPoint();
@@ -3082,17 +3257,26 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         frame = requestAnimationFrame(autoScrollStep);
       }
     };
-    const onEnd = (): void => this.endDrag();
-    scroller.addEventListener('pointermove', onMove);
-    scroller.addEventListener('pointerup', onEnd);
-    scroller.addEventListener('pointercancel', onEnd);
+    const onEnd = (end: PointerEvent): void => {
+      if (end.pointerId !== pointerId) {
+        return;
+      }
+      this.endDrag();
+    };
+    // Listeners on the DOCUMENT so the drag's pointerup is seen even after
+    // capture is lost (the handle unmounting past the edge) — otherwise
+    // `endDrag` never runs and `autoScrollStep` reschedules forever.
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onEnd);
+    document.addEventListener('pointercancel', onEnd);
     this.dragCleanup = () => {
       if (frame !== 0) {
         cancelAnimationFrame(frame);
+        frame = 0;
       }
-      scroller.removeEventListener('pointermove', onMove);
-      scroller.removeEventListener('pointerup', onEnd);
-      scroller.removeEventListener('pointercancel', onEnd);
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onEnd);
+      document.removeEventListener('pointercancel', onEnd);
       try {
         captureElement.releasePointerCapture(pointerId);
       } catch {
@@ -3107,9 +3291,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
    * handle, and the cell beneath it is the one that matters.
    */
   private dragHitElement(x: number, y: number): Element | null {
+    const scroller = untracked(this.scrollerSignal);
     for (const element of document.elementsFromPoint(x, y)) {
       const hit = element.closest('[data-tm-cell], [data-tm-rowhdr], [data-tm-checkcell]');
-      if (hit !== null) {
+      // Only THIS grid's cells: a point over another grid must fall through
+      // to null (so the edge auto-scroll governs), never select its cells.
+      if (hit !== null && (scroller === null || scroller.contains(hit))) {
         return hit;
       }
     }
@@ -3122,6 +3309,22 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   }
 
   // ---- state store ----
+
+  /**
+   * Drops content-scoped transient state on a switch, so a spinner, a forced
+   * collapse, or an in-flight lazy-load failure/find scan from the OUTGOING
+   * content never lands on the incoming content's same-id row.
+   */
+  private resetContentTransientState(): void {
+    if (untracked(this.loadingChildrenIds).size > 0) {
+      this.loadingChildrenIds.set(new Set());
+    }
+    if (untracked(this.wantedExpansionIds).size > 0) {
+      this.wantedExpansionIds.set(new Set());
+    }
+    this.lazyLoadGeneration += 1; // in-flight child loads resolve into a no-op
+    this.findGeneration += 1; // in-flight find scans die quietly
+  }
 
   private restoreState(initial: boolean): void {
     if (this.handle === null) {
@@ -3144,22 +3347,13 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       this.scrollRestoreRequest.update((value) => value + 1);
     }
     if (content?.selection !== undefined) {
-      const { restored, activeCell } = engine.selection.restore(content.selection);
-      let active = activeCell;
-      if (
-        active === null &&
-        untracked(() => engine.model.viewRowCount()) > 0 &&
-        untracked(() => engine.model.columnCount()) > 0
-      ) {
-        // The engine already tried the row id and the clamped view index;
-        // the last leg of the chain is the grid origin.
-        active = { row: 0, col: 0 };
-      }
-      if (active !== null) {
-        engine.nav.setActive(active);
-        if (!restored) {
-          engine.selection.collapseTo(active);
-        }
+      if (untracked(() => engine.model.dataRowCount()) === 0) {
+        // No rows yet (async fetch pending): resolving the selection now would
+        // fall to the grid origin and lose what §12 remembered — defer it to
+        // the first non-empty rows for this content.
+        this.pendingSelectionRestore = content.selection;
+      } else {
+        this.applySelectionSnapshot(content.selection);
       }
     } else if (!initial) {
       engine.selection.clear();
@@ -3171,12 +3365,82 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     } else if (!initial) {
       engine.history.clear();
     }
-    if (content?.expandedRowIds !== undefined) {
-      engine.model.restoreExpansion(content.expandedRowIds);
-    } else if (!initial) {
-      engine.model.seedExpansion();
+    if (engine.model.isTree) {
+      const dataRows = untracked(() => engine.model.dataRowCount());
+      const ids = content?.expandedRowIds;
+      if (ids !== undefined) {
+        if (dataRows === 0) {
+          // Keep the stored set UN-pruned until rows exist — pruning it now
+          // (against zero rows) would persist it back as empty.
+          this.treeExpansionPending = { kind: 'restore', ids };
+        } else {
+          engine.restoreExpansion(ids);
+          this.treeExpansionPending = null;
+        }
+      } else if (dataRows === 0) {
+        // The engine seeded over an empty model in its constructor; re-seed
+        // once rows arrive so `defaultExpandedDepth` actually takes effect.
+        this.treeExpansionPending = { kind: 'seed' };
+      } else if (!initial) {
+        engine.seedExpansion();
+        this.treeExpansionPending = null;
+      }
     }
     this.collapseUnloadedLazyRows();
+  }
+
+  /** Applies a persisted selection snapshot with the active-cell fallback chain. */
+  private applySelectionSnapshot(snapshot: NonNullable<TmGridContentState['selection']>): void {
+    const engine = this.engine;
+    const { restored, activeCell } = engine.selection.restore(snapshot);
+    let active = activeCell;
+    if (
+      active === null &&
+      untracked(() => engine.model.viewRowCount()) > 0 &&
+      untracked(() => engine.model.columnCount()) > 0
+    ) {
+      // The engine already tried the row id and the clamped view index; the
+      // last leg of the chain is the grid origin.
+      active = { row: 0, col: 0 };
+    }
+    if (active !== null) {
+      engine.nav.setActive(active);
+      if (!restored) {
+        engine.selection.collapseTo(active);
+      }
+    }
+  }
+
+  /**
+   * Applies restores deferred at mount because the content had no rows yet
+   * (the idiomatic mount-empty-then-fetch flow): the remembered tree
+   * expansion and selection land on the first non-empty rows. No-op once
+   * nothing is pending or while rows are still absent.
+   */
+  private applyPendingRestores(): void {
+    if (this.treeExpansionPending === null && this.pendingSelectionRestore === null) {
+      return;
+    }
+    if (untracked(() => this.engine.model.dataRowCount()) === 0) {
+      return;
+    }
+    const engine = this.engine;
+    if (this.treeExpansionPending !== null) {
+      const pending = this.treeExpansionPending;
+      this.treeExpansionPending = null;
+      if (pending.kind === 'restore') {
+        engine.restoreExpansion(pending.ids);
+      } else {
+        engine.seedExpansion();
+      }
+      this.collapseUnloadedLazyRows();
+    }
+    if (this.pendingSelectionRestore !== null) {
+      const snapshot = this.pendingSelectionRestore;
+      this.pendingSelectionRestore = null;
+      this.applySelectionSnapshot(snapshot);
+      this.requestReveal();
+    }
   }
 
   /**
@@ -3198,7 +3462,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     for (const id of untracked(() => engine.model.expandedIds())) {
       const row = engine.model.rowById(id);
       if (row !== undefined && hasChildren(row) && engine.model.subtreeRowIds(id).length <= 1) {
-        engine.model.setExpanded(id, false);
+        // Through the engine so the order snapshot syncs (this runs after a
+        // seed/restore that itself synced, and mutates expansion further).
+        engine.setExpanded(id, false);
       }
     }
   }
@@ -3208,15 +3474,19 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       return;
     }
     const overrides = untracked(this.widthOverrides);
-    if (overrides.size === 0) {
-      return;
-    }
-    const widths: Record<string, number> = {};
+    // Merge onto the stored widths rather than rebuilding from the current
+    // columns only — a column temporarily absent from the set (conditionally
+    // rendered) keeps its persisted width; restore tolerates unknown keys.
+    const widths: Record<string, number> = { ...(this.handle.getWidths() ?? {}) };
     for (const column of untracked(this.columnsInternal)) {
+      if (column.key === null) {
+        continue; // accessor columns have no stable cross-session identity
+      }
       const width = overrides.get(column.id);
-      if (width !== undefined && column.key !== null) {
-        // Accessor columns have no stable cross-session identity to persist.
+      if (width !== undefined) {
         widths[column.key] = width;
+      } else {
+        delete widths[column.key]; // a reset column drops its stored width
       }
     }
     this.handle.setWidths(widths);
@@ -3234,7 +3504,13 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         x: untracked(this.scrollLeft),
         y: untracked(this.scrollTop),
       },
-      selection: engine.selection.toSnapshot(untracked(() => engine.nav.activeCell())),
+      // Resolve the OUTGOING selection through the engine's outgoing order:
+      // on a content switch the rows array has already swapped, so the current
+      // model would map these view rows to the new content's row ids.
+      selection: engine.selection.toSnapshot(
+        untracked(() => engine.nav.activeCell()),
+        engine.orderSnapshot,
+      ),
       history: engine.history.toSnapshot(),
       ...(engine.model.isTree
         ? { expandedRowIds: untracked(() => engine.model.expandedIds()) }
@@ -3260,10 +3536,22 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
             this.lastContentKey = contentKey;
             this.restoreState(true);
           } else if (contentKey !== this.lastContentKey) {
+            // A content switch cancels any open editor (a later commit would
+            // otherwise write into the NEW record's same-id row), persists the
+            // outgoing state, drops the outgoing content's in-flight transient
+            // state, then loads the incoming.
+            if (untracked(() => this.engine.edit.session()) !== null) {
+              this.cancelEditor({ refocus: false });
+            }
             this.persistContentState();
             this.handle.switchContent(contentKey);
             this.lastContentKey = contentKey;
+            this.resetContentTransientState();
             this.restoreState(false);
+            // Re-baseline the order so the reconcile the concurrent rows
+            // change triggers is an identity no-op — not a remap against the
+            // outgoing order that would drop the just-restored selection.
+            this.engine.resyncOrder();
           }
         });
       },
@@ -3280,9 +3568,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         untracked(() => {
           if (firstRows) {
             firstRows = false;
-            return;
+          } else {
+            this.engine.reconcile();
           }
-          this.engine.reconcile();
+          // Async-loaded content: apply the tree expansion / selection that
+          // mount deferred because the rows had not arrived yet.
+          this.applyPendingRestores();
         });
       },
       { injector },
@@ -3404,8 +3695,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
             if (loading) {
               this.announcements.announce('grid.announce.loading');
             } else {
+              // The record count is every loaded row, collapsed-subtree rows
+              // included — not just the currently-visible ones.
               this.announcements.announce('grid.announce.loaded', {
-                count: untracked(() => this.engine.model.dataRowCount()),
+                count: untracked(() => this.engine.model.modelRowCount()),
               });
             }
           }
@@ -3521,11 +3814,14 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       { injector },
     );
 
-    // Single tab stop: interactive content projected into cells and headers
-    // (record links, rich-header widgets) is pulled out of the tab order —
-    // it stays reachable through cell navigation + Enter, and links keep
-    // their native pointer affordances. Runs per render so recycled window
-    // rows are re-stamped. Editor content is exempt (it must hold focus).
+    // Single tab stop: interactive content projected into data cells is
+    // pulled out of the tab order — it stays reachable through cell
+    // navigation + Enter, and links keep their native pointer affordances.
+    // Column/row HEADERS are excluded: the active cell never ranges over the
+    // header row and there is no key to activate into it, so neutralizing
+    // their content would make a rich/interactive header pointer-only. Runs
+    // per render so recycled window rows are re-stamped. Editor content is
+    // exempt (it must hold focus).
     afterRenderEffect(
       () => {
         this.renderRows();
@@ -3535,9 +3831,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         }
         untracked(() => {
           const interactive = scroller.querySelectorAll(
-            ['[role="gridcell"]', '[role="columnheader"]', '[role="rowheader"]']
-              .map((scope) => INTERACTIVE_CONTENT_SELECTOR.split(', ').map((s) => `${scope} ${s}`))
-              .flat()
+            INTERACTIVE_CONTENT_SELECTOR.split(', ')
+              .map((s) => `[role="gridcell"] ${s}`)
               .join(', '),
           );
           for (const element of interactive) {
@@ -3562,6 +3857,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         untracked(() => {
           const pending = this.pendingScroll;
           if (scroller === null || pending === null) {
+            return;
+          }
+          // Wait for the content to have height before restoring a non-origin
+          // scroll — consuming it against a zero-height spacer clamps it to 0
+          // and loses it (async-loaded content). The origin restore is free.
+          if ((pending.x !== 0 || pending.y !== 0) && untracked(this.totalHeight) === 0) {
             return;
           }
           this.pendingScroll = null;
@@ -3626,6 +3927,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         const query = this.findQuerySignal();
         this.rows();
         this.columnsInternal();
+        // Find searches an invalid-input cell's raw text, so a change to the
+        // invalid-input map (a paste, an edit) must re-arm the scan too.
+        this.engine.annotations.invalidCount();
         untracked(() => {
           this.findGeneration += 1;
           if (this.findDebounceTimer !== null) {

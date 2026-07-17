@@ -69,6 +69,7 @@ export class TmGridEngine<T = unknown> {
       model: this.model,
       annotations: this.annotations,
       writer: options.host.writer,
+      editable: options.editable,
       host: options.host,
       capacity: options.historyCapacity,
       onReveal: (reveal) => this.revealAfterHistory(reveal.rowIds, reveal.columnIds),
@@ -102,7 +103,6 @@ export class TmGridEngine<T = unknown> {
       tenant: options.tenant,
       parentIdKey: options.tree?.parentIdKey,
       host: options.host,
-      oversizeCellThreshold: options.oversizeCopyCellThreshold,
     });
     this.model.seedExpansion();
     this.lastOrder = this.model.captureOrder();
@@ -148,8 +148,24 @@ export class TmGridEngine<T = unknown> {
         // No range yet: anchor the extension at the active cell.
         this.selection.collapseTo(active);
       }
-      const from = range?.focus ?? active;
-      const target = this.nav.target(motion, from, opts?.jump === true);
+      const focus = range?.focus ?? active;
+      // Excel's data-edge jump scans along the ACTIVE cell's axis (the active
+      // cell stays put inside the selection): a vertical jump scans the
+      // active column from the focus row, a horizontal one the active row
+      // from the focus column. Only the moved axis is written to the focus,
+      // so a diagonal selection keeps its other extent.
+      const vertical =
+        motion === 'up' || motion === 'down' || motion === 'pageUp' || motion === 'pageDown';
+      const from =
+        opts?.jump === true
+          ? vertical
+            ? { row: focus.row, col: active.col }
+            : { row: active.row, col: focus.col }
+          : focus;
+      const jumped = this.nav.target(motion, from, opts?.jump === true);
+      const target = vertical
+        ? { row: jumped.row, col: focus.col }
+        : { row: focus.row, col: jumped.col };
       this.selection.extendActiveTo(target);
       return;
     }
@@ -181,17 +197,19 @@ export class TmGridEngine<T = unknown> {
 
   /** Selects the active range's rows (Shift+Space) — full-width ranges. */
   selectActiveRows(additive = false): void {
-    const rect = this.selection.activeRect();
-    if (rect !== null) {
-      this.selection.selectRows(rect.top, rect.bottom, additive);
+    // Build from the active range's ANCHOR/FOCUS rows (not the normalized
+    // rect), so a following Shift+motion still extends from the right corner.
+    const active = untracked(this.selection.activeRange);
+    if (active !== null) {
+      this.selection.selectRows(active.anchor.row, active.focus.row, additive);
     }
   }
 
   /** Selects the active range's columns (Ctrl+Space). */
   selectActiveCols(additive = false): void {
-    const rect = this.selection.activeRect();
-    if (rect !== null) {
-      this.selection.selectCols(rect.left, rect.right, additive);
+    const active = untracked(this.selection.activeRange);
+    if (active !== null) {
+      this.selection.selectCols(active.anchor.col, active.focus.col, additive);
     }
   }
 
@@ -370,6 +388,31 @@ export class TmGridEngine<T = unknown> {
   }
 
   /**
+   * Expands a row's ancestors so it becomes visible (find matches, reveals),
+   * keeping the order snapshot current — a later reconcile remaps against a
+   * fresh baseline, never a pre-expansion one.
+   */
+  expandAncestorsOf(rowId: TmRowId): void {
+    this.model.expandAncestorsOf(rowId);
+    this.syncOrder();
+  }
+
+  /**
+   * Seeds expansion from the configured default depth (content restore with
+   * no persisted set), syncing the order snapshot.
+   */
+  seedExpansion(): void {
+    this.model.seedExpansion();
+    this.syncOrder();
+  }
+
+  /** Restores a persisted expansion set (content restore), syncing the order. */
+  restoreExpansion(ids: ReadonlySet<TmRowId>): void {
+    this.model.restoreExpansion(ids);
+    this.syncOrder();
+  }
+
+  /**
    * The Esc chain's first stage: disarms a pending cut. Returns whether it
    * did (the component moves focus to the container otherwise).
    */
@@ -397,16 +440,34 @@ export class TmGridEngine<T = unknown> {
   reconcile(): void {
     const before = this.lastOrder;
     const active = untracked(() => this.nav.activeCell());
-    // The editor first: cancel if its row vanished, relocate otherwise.
+    // The editor first. A virtual placeholder session (rowId === null)
+    // follows the placeholder's new index (cancelling if it disappeared); a
+    // session on a surviving row relocates, revealing it when it fell into a
+    // collapsed subtree; one whose row vanished cancels with a notice.
     const session = untracked(() => this.edit.session());
-    if (session !== null && session.rowId !== null) {
-      if (this.model.modelIndexOfRow(session.rowId) === -1) {
+    if (session !== null) {
+      if (session.rowId === null) {
+        const placeholder = this.model.placeholderIndex();
+        if (placeholder === -1) {
+          this.edit.cancel();
+          this.options.host.onNotice?.({ kind: 'editorCancelledRowRemoved' });
+        } else if (placeholder !== session.cell.row) {
+          this.edit.relocateSession({ row: placeholder, col: session.cell.col });
+        }
+      } else if (this.model.modelIndexOfRow(session.rowId) === -1) {
         this.edit.cancel();
         this.options.host.onNotice?.({ kind: 'editorCancelledRowRemoved' });
       } else {
-        const viewRow = this.model.viewIndexOfRow(session.rowId);
+        let viewRow = this.model.viewIndexOfRow(session.rowId);
+        if (viewRow === -1) {
+          this.model.expandAncestorsOf(session.rowId);
+          viewRow = this.model.viewIndexOfRow(session.rowId);
+        }
         if (viewRow !== -1) {
           this.edit.relocateSession({ row: viewRow, col: session.cell.col });
+        } else {
+          this.edit.cancel();
+          this.options.host.onNotice?.({ kind: 'editorCancelledRowRemoved' });
         }
       }
     }
@@ -417,13 +478,44 @@ export class TmGridEngine<T = unknown> {
       if (newIndex !== -1) {
         this.nav.setActive({ row: newIndex, col: active.col }, { keepTabRun: true });
       } else {
-        this.nav.reclamp();
+        // The active row vanished: mirror the selection's fallback — the
+        // nearest surviving row in the old order, same column — instead of
+        // holding the stale (now-clamped) view index.
+        const fallback = this.nearestSurvivingIndex(active.row, before);
+        if (fallback !== -1) {
+          this.nav.setActive({ row: fallback, col: active.col }, { keepTabRun: true });
+        } else {
+          this.nav.reclamp();
+        }
       }
     } else {
       this.nav.reclamp();
     }
+    this.nav.remapTabRun((oldRow) => {
+      const id = before.visibleIds[oldRow];
+      return id === undefined ? -1 : this.model.viewIndexOfRow(id);
+    });
     this.annotations.prune(this.model);
     this.clipboard.reconcileCut();
+    this.syncOrder();
+  }
+
+  /**
+   * The visible order as of the last reconcile. During a pending data change
+   * (rows swapped but not yet reconciled) this is still the OUTGOING order —
+   * what a persist must resolve the outgoing selection's view rows through.
+   */
+  get orderSnapshot(): TmGridOrderSnapshot {
+    return this.lastOrder;
+  }
+
+  /**
+   * Re-captures the order snapshot to the current model order. The component
+   * calls it after restoring a switched content's state, so the reconcile the
+   * concurrent rows change triggers remaps against a current baseline (an
+   * identity no-op) instead of the stale outgoing order.
+   */
+  resyncOrder(): void {
     this.syncOrder();
   }
 
@@ -433,6 +525,32 @@ export class TmGridEngine<T = unknown> {
   }
 
   // ---- internals ----
+
+  /**
+   * The nearest surviving view index around an old view row (searching the
+   * before-order outward), or -1 when nothing in that neighbourhood survived.
+   */
+  private nearestSurvivingIndex(oldRow: number, before: TmGridOrderSnapshot): number {
+    const ids = before.visibleIds;
+    for (let distance = 1; distance < ids.length; distance++) {
+      // Successor before predecessor: on a tie the row that slid up into the
+      // vacated position wins (the spreadsheet convention on a row delete).
+      for (const candidate of [oldRow + distance, oldRow - distance]) {
+        if (candidate < 0 || candidate >= ids.length) {
+          continue;
+        }
+        const id = ids[candidate];
+        if (id === undefined) {
+          continue;
+        }
+        const index = this.model.viewIndexOfRow(id);
+        if (index !== -1) {
+          return index;
+        }
+      }
+    }
+    return -1;
+  }
 
   /** First activation: cell 0,0 when the grid has any cell. */
   private activateDefault(): void {

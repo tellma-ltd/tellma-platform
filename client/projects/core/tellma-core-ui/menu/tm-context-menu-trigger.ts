@@ -35,11 +35,14 @@ export class TmContextMenuTrigger {
   readonly tmContextMenuTriggerDisabled = input(false, { transform: booleanAttribute });
 
   constructor() {
-    const stop = tmObserveLongPress(this.element, (point) => {
-      if (!this.tmContextMenuTriggerDisabled()) {
-        this.tmContextMenuTrigger().open(point, { restoreFocus: this.element });
-      }
-    });
+    // Gate the long-press observer on the disabled state: a disabled trigger
+    // starts no press timer and arms no suppression, so the platform's native
+    // long-press context menu comes back and the follow-up tap is untouched.
+    const stop = tmObserveLongPress(
+      this.element,
+      (point) => this.tmContextMenuTrigger().open(point, { restoreFocus: this.element }),
+      { enabled: () => !this.tmContextMenuTriggerDisabled() },
+    );
     inject(DestroyRef).onDestroy(stop);
   }
 

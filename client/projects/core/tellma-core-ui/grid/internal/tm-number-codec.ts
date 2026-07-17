@@ -83,14 +83,25 @@ export function tmParseNumber(
     }
   }
   // Last resort: plain JavaScript number syntax (machine-formatted text).
-  const plain = Number(trimmed);
+  // Strip invisible format/bidi-control marks first — `String.trim` leaves
+  // them, so `Number('‎-12')` would otherwise be NaN.
+  const plain = Number(trimmed.replace(FORMAT_CONTROL, ''));
   return Number.isFinite(plain) ? plain : TM_PARSE_ERROR;
 }
 
+/** Unicode format / bidi-control marks (the `Cf` category) — always invisible. */
+const FORMAT_CONTROL = /\p{Cf}/gu;
+
 function parseWithLocale(text: string, locale: string): number | TmParseError {
   const symbols = symbolsFor(locale);
+  // Drop invisible format/bidi-control marks up front. `Intl.NumberFormat`
+  // prefixes a NEGATIVE with one in RTL / non-Latin-minus locales (ar/fa/he
+  // emit U+200E, ar-EG emits U+061C as a leading literal part), and
+  // `symbolsFor` never captures it — so committing an unchanged negative, or
+  // pasting an Intl-formatted negative, would otherwise reject and clear it.
+  const cleaned = text.replace(FORMAT_CONTROL, '');
   let normalized = '';
-  for (const ch of text) {
+  for (const ch of cleaned) {
     const code = ch.codePointAt(0)!;
     // Numbering-system digits → ASCII.
     if (code >= symbols.zeroCodePoint && code <= symbols.zeroCodePoint + 9) {

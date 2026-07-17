@@ -122,8 +122,11 @@ export class TmGridSelectionModel {
     const lastCol = Math.max(0, untracked(() => this.model.columnCount()) - 1);
     const top = Math.min(range.anchor.row, range.focus.row);
     const bottom = Math.max(range.anchor.row, range.focus.row);
-    const left = Math.min(range.anchor.col, range.focus.col);
-    const right = Math.max(range.anchor.col, range.focus.col);
+    // Columns have no reconcile of their own: clamp stored indices to the
+    // current extent so a shrunk `columns` input can't hand copy an
+    // out-of-range column (which then reads `undefined` and crashes).
+    const left = Math.min(Math.min(range.anchor.col, range.focus.col), lastCol);
+    const right = Math.min(Math.max(range.anchor.col, range.focus.col), lastCol);
     switch (range.kind) {
       case 'rows':
         return { top, bottom, left: 0, right: lastCol };
@@ -273,14 +276,23 @@ export class TmGridSelectionModel {
     this.rangesSignal.set(remapped);
   }
 
-  /** Persists the selection by identity (with the active cell) for the state store. */
-  toSnapshot(activeCell: TmRowCol | null): TmGridSelectionSnapshot {
+  /**
+   * Persists the selection by identity (with the active cell) for the state
+   * store. `order` resolves view rows to row ids through a specific snapshot
+   * — a content switch persists the OUTGOING selection while the rows array
+   * has already swapped, so the current model would resolve foreign ids.
+   */
+  toSnapshot(activeCell: TmRowCol | null, order?: TmGridOrderSnapshot): TmGridSelectionSnapshot {
+    const rowIdAt =
+      order === undefined
+        ? (viewRow: number): TmRowId | null => this.rowIdAt(viewRow)
+        : (viewRow: number): TmRowId | null => order.visibleIds[viewRow] ?? null;
     const ranges = untracked(this.rangesSignal).map((range): TmGridRangeSnapshot => {
       const rowless = range.kind === 'cols' || range.kind === 'all';
       const colless = range.kind === 'rows' || range.kind === 'all';
       return {
-        anchorRowId: rowless ? null : this.rowIdAt(range.anchor.row),
-        focusRowId: rowless ? null : this.rowIdAt(range.focus.row),
+        anchorRowId: rowless ? null : rowIdAt(range.anchor.row),
+        focusRowId: rowless ? null : rowIdAt(range.focus.row),
         anchorColumnKey: colless ? null : this.columnIdAt(range.anchor.col),
         focusColumnKey: colless ? null : this.columnIdAt(range.focus.col),
         kind: range.kind,
@@ -288,7 +300,7 @@ export class TmGridSelectionModel {
     });
     return {
       ranges,
-      activeRowId: activeCell === null ? null : this.rowIdAt(activeCell.row),
+      activeRowId: activeCell === null ? null : rowIdAt(activeCell.row),
       activeColumnKey: activeCell === null ? null : this.columnIdAt(activeCell.col),
       ...(activeCell === null ? {} : { activeViewRow: activeCell.row }),
     };

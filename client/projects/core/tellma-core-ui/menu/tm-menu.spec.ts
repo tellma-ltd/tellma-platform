@@ -3,12 +3,19 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component, computed, viewChild, type ElementRef, type TemplateRef } from '@angular/core';
+import {
+  Component,
+  computed,
+  signal,
+  viewChild,
+  type ElementRef,
+  type TemplateRef,
+} from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 
 import { provideTellmaUi } from '@tellma/core-ui';
-import { ɵtmObserveLongPress } from '@tellma/core-ui/menu';
+import { ɵtmObserveLongPress, TmContextMenuTrigger } from '@tellma/core-ui/menu';
 import { TmMenuHarness } from '@tellma/core-ui-testing';
 
 import { TmMenu, type TmMenuEntry, type TmMenuItem } from './tm-menu';
@@ -317,6 +324,207 @@ describe('tm-menu', () => {
       const menu = await menuHarness(fixture);
       expect(await menu.getItemLabels()).toContain('Edit');
     });
+
+    it('re-invoking at a new point (same-tick close+reopen) re-anchors, not sticks', async () => {
+      const { fixture, host } = await setup();
+      host.menu().open({ x: 20, y: 20 });
+      await settle(fixture);
+      const first = panel()!.getBoundingClientRect();
+
+      // Mimic the reinvoking right-click: the CDK outside-click dispatcher
+      // closes at the capture phase, then the trigger reopens at the new
+      // point as the same event bubbles — one synchronous burst with no
+      // change detection between, so `expanded` toggles false→true and the
+      // CDK `open` binding never flips. The menu must still move.
+      host.menu().close({ restoreFocus: false });
+      host.menu().open({ x: 320, y: 260 });
+      await settle(fixture);
+
+      expect(host.menu().isOpen()).toBe(true);
+      expect(document.querySelectorAll('.tm-menu__panel').length).toBe(1);
+      const second = panel()!.getBoundingClientRect();
+      expect(second.left).toBeGreaterThan(first.left + 100);
+      expect(second.top).toBeGreaterThan(first.top + 100);
+    });
+
+    it('re-anchoring while open emits no second `opened` and no `closed`', async () => {
+      const { fixture, host } = await setup();
+      const events: string[] = [];
+      host.menu().opened.subscribe(() => events.push('opened'));
+      host.menu().closed.subscribe(() => events.push('closed'));
+
+      host.menu().open({ x: 40, y: 40 });
+      await settle(fixture);
+      expect(events).toEqual(['opened']);
+
+      host.menu().open({ x: 200, y: 160 }); // re-anchor while open
+      await settle(fixture);
+      expect(events).toEqual(['opened']); // one continuous open, not a fresh one
+    });
+  });
+});
+
+@Component({
+  imports: [TmMenu],
+  template: `<tm-menu [items]="items()" aria-label="Maybe empty" />`,
+})
+class EmptyHost {
+  readonly menu = viewChild.required(TmMenu);
+  readonly items = signal<readonly TmMenuEntry[]>([{ separator: true }]);
+}
+
+describe('empty menu', () => {
+  it('open() with no non-separator entries is ignored (dev-mode warns)', async () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(EmptyHost);
+    await settle(fixture);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    fixture.componentInstance.menu().open({ x: 30, y: 30 });
+    await settle(fixture);
+
+    expect(panel()).toBeNull();
+    expect(fixture.componentInstance.menu().isOpen()).toBe(false);
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
+  it('open() shows the panel once a real item is present', async () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(EmptyHost);
+    fixture.componentInstance.items.set([
+      { id: 'go', label: 'Go', action: () => undefined },
+    ]);
+    await settle(fixture);
+
+    fixture.componentInstance.menu().open({ x: 30, y: 30 });
+    await settle(fixture);
+
+    expect(panel()).not.toBeNull();
+    expect(fixture.componentInstance.menu().isOpen()).toBe(true);
+  });
+});
+
+@Component({
+  imports: [TmMenu],
+  template: `
+    <tm-menu #first [items]="items()" aria-label="First" />
+    <tm-menu #second [items]="items()" aria-label="Second" />
+  `,
+})
+class TwoMenuHost {
+  readonly first = viewChild.required<TmMenu>('first');
+  readonly second = viewChild.required<TmMenu>('second');
+  readonly items = signal<readonly TmMenuEntry[]>([
+    { id: 'a', label: 'Alpha', action: () => undefined },
+  ]);
+}
+
+describe('multiple open menus (Escape stacking)', () => {
+  it('one Escape closes only the front-most menu', async () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(TwoMenuHost);
+    await settle(fixture);
+    const host = fixture.componentInstance;
+
+    host.first().open({ x: 20, y: 20 });
+    await settle(fixture);
+    host.second().open({ x: 200, y: 200 }); // opens on top of the first
+    await settle(fixture);
+    expect(document.querySelectorAll('.tm-menu__panel').length).toBe(2);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await settle(fixture);
+
+    // Only the top-most (second) menu closed; the first stays open.
+    expect(host.second().isOpen()).toBe(false);
+    expect(host.first().isOpen()).toBe(true);
+    expect(document.querySelectorAll('.tm-menu__panel').length).toBe(1);
+  });
+});
+
+@Component({
+  imports: [TmMenu, TmContextMenuTrigger],
+  template: `
+    <div
+      #area
+      class="ctx-area"
+      [tmContextMenuTrigger]="menu"
+      [tmContextMenuTriggerDisabled]="disabled()"
+    >
+      Context area
+    </div>
+    <tm-menu #menu [items]="items()" aria-label="Context actions" />
+  `,
+})
+class TriggerHost {
+  readonly menu = viewChild.required(TmMenu);
+  readonly area = viewChild.required<ElementRef<HTMLElement>>('area');
+  readonly disabled = signal(false);
+  readonly items = signal<readonly TmMenuEntry[]>([
+    { id: 'a', label: 'Alpha', action: () => undefined },
+    { id: 'b', label: 'Beta', action: () => undefined },
+  ]);
+}
+
+describe('tmContextMenuTrigger long-press', () => {
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  /** A primary touch pointerdown — starts a long-press on the observed element. */
+  function touchDown(el: HTMLElement, x: number, y: number): void {
+    el.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        pointerType: 'touch',
+        isPrimary: true,
+        pointerId: 1,
+        clientX: x,
+        clientY: y,
+        bubbles: true,
+      }),
+    );
+  }
+
+  async function setupTrigger() {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(TriggerHost);
+    await settle(fixture);
+    return { fixture, host: fixture.componentInstance };
+  }
+
+  // The trigger uses the default 500ms long-press delay; wait past it.
+  const HOLD = 560;
+
+  it('a touch long-press opens the menu at the press point', async () => {
+    const { fixture, host } = await setupTrigger();
+    const area = host.area().nativeElement;
+    const open = vi.spyOn(host.menu(), 'open');
+
+    touchDown(area, 44, 52);
+    await sleep(HOLD);
+    await settle(fixture);
+
+    expect(panel()).not.toBeNull();
+    expect(host.menu().isOpen()).toBe(true);
+    expect(open).toHaveBeenCalledWith(
+      { x: 44, y: 52 },
+      expect.objectContaining({ restoreFocus: area }),
+    );
+  });
+
+  it('a DISABLED trigger neither opens nor starts the long-press', async () => {
+    const { fixture, host } = await setupTrigger();
+    host.disabled.set(true);
+    await settle(fixture);
+    const area = host.area().nativeElement;
+    const open = vi.spyOn(host.menu(), 'open');
+
+    touchDown(area, 44, 52);
+    await sleep(HOLD);
+    await settle(fixture);
+
+    expect(panel()).toBeNull();
+    expect(host.menu().isOpen()).toBe(false);
+    expect(open).not.toHaveBeenCalled();
   });
 });
 

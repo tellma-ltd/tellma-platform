@@ -134,6 +134,4 @@ export interface TmGridEngineOptions<T = unknown> {
   readonly host: TmGridEngineHost<T>;
   /** Undo-stack depth cap. Defaults to 100. */
   readonly historyCapacity?: number;
-  /** Cell count beyond which copies drop per-cell raw values. Defaults to 100 000. */
-  readonly oversizeCopyCellThreshold?: number;
 }

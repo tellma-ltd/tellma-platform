@@ -223,7 +223,9 @@ describe('tm-grid (readonly core)', () => {
     const { fixture, scroller } = await setup();
     fixture.componentInstance.rows.set([]);
     await stable(fixture);
-    const overlay = scroller.querySelector('[data-tm-empty]');
+    // The overlay is a sibling of the scroller (it covers the viewport), so
+    // query it from the grid-view host, not inside the scroller.
+    const overlay = scroller.parentElement!.querySelector('[data-tm-empty]');
     expect(overlay?.textContent).toContain('No records to display');
   });
 
@@ -232,7 +234,7 @@ describe('tm-grid (readonly core)', () => {
     fixture.componentInstance.loading.set(true);
     await stable(fixture);
     expect(scroller.getAttribute('aria-busy')).toBe('true');
-    expect(scroller.querySelector('[data-tm-loading] tm-spinner')).not.toBeNull();
+    expect(scroller.parentElement!.querySelector('[data-tm-loading] tm-spinner')).not.toBeNull();
     expect(scroller.querySelectorAll('.tm-grid__colhdr').length).toBe(4);
   });
 

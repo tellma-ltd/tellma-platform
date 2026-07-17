@@ -102,6 +102,24 @@ test.describe('foreign payloads (Excel / Sheets shapes)', () => {
       .toEqual([3, 4.5, 5, 6.25]);
   });
 
+  test('@cross-engine German-locale Excel TSV has no locale hint — an en grid misparses it', async ({
+    page,
+  }) => {
+    await activateCell(page, 1, 1);
+    // Plain TSV carries no source-locale metadata, so the 'en' grid parses
+    // '1.234,56' by its own rules ('.' decimal, ',' grouping) → 1.23456, not
+    // 1234.56 (and '2.500,75' → 2.50075). Recovering the German values needs
+    // the HTML metadata path (tellma/numbers-de.html), covered below.
+    await syntheticPaste(page, { text: readFixture('excel/numbers-de.txt') });
+
+    await expect
+      .poll(async () => {
+        const model = await lines(page);
+        return [model[1].quantity, model[1].unitPrice];
+      })
+      .toEqual([1.23456, 2.50075]);
+  });
+
   test('@cross-engine Sheets HTML pastes the display text and IGNORES data-sheets-value', async ({
     page,
   }) => {

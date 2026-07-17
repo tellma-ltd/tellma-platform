@@ -31,6 +31,7 @@ export function tmComputeAxisWindow(args: TmAxisWindowArgs): TmAxisWindow;
 
 // @public
 export class TmGridCellAnnotations {
+    bumpRowToken(rowId: TmRowId): number;
     bumpToken(rowId: TmRowId, columnId: string): number;
     currentToken(rowId: TmRowId, columnId: string): number;
     invalidCells(): readonly TmGridCellRef[];
@@ -64,7 +65,9 @@ export interface TmGridCellWrite {
 export class TmGridClipboard<T = unknown> {
     constructor(options: TmGridClipboardOptions<T>);
     abortResolutions(): void;
-    applyResolution(requestId: number, results: ReadonlyMap<string, TmLabelResolution<unknown>>): void;
+    applyResolution(requestId: number, results: ReadonlyMap<string, TmLabelResolution<unknown>>, opts?: {
+        readonly failed?: boolean;
+    }): void;
     cancelCut(): void;
     copy(opts?: {
         withHeaders?: boolean;
@@ -99,7 +102,6 @@ export interface TmGridClipboardOptions<T = unknown> {
     readonly locale: SignalLike<string>;
     readonly model: TmGridDataModel<T>;
     readonly nav: TmGridNav;
-    readonly oversizeCellThreshold?: number;
     readonly parentIdKey?: string;
     readonly selection: TmGridSelectionModel;
     readonly tenant?: SignalLike<string | undefined>;
@@ -239,6 +241,7 @@ export class TmGridEngine<T = unknown> {
     dragTo(cell: TmRowCol): void;
     readonly edit: TmGridEditState<T>;
     escape(): boolean;
+    expandAncestorsOf(rowId: TmRowId): void;
     readonly history: TmGridHistory<T>;
     insertChildRow(parentRowId: TmRowId): readonly TmGridRowSnapshot<T>[];
     insertRows(where: 'above' | 'below', count?: number): readonly TmGridRowSnapshot<T>[];
@@ -248,7 +251,11 @@ export class TmGridEngine<T = unknown> {
         jump?: boolean;
     }): void;
     readonly nav: TmGridNav;
+    get orderSnapshot(): TmGridOrderSnapshot;
     reconcile(): void;
+    restoreExpansion(ids: ReadonlySet<TmRowId>): void;
+    resyncOrder(): void;
+    seedExpansion(): void;
     selectActiveCols(additive?: boolean): void;
     selectActiveRows(additive?: boolean): void;
     readonly selection: TmGridSelectionModel;
@@ -287,7 +294,6 @@ export interface TmGridEngineOptions<T = unknown> {
     readonly historyCapacity?: number;
     readonly host: TmGridEngineHost<T>;
     readonly locale: SignalLike<string>;
-    readonly oversizeCopyCellThreshold?: number;
     readonly pageSize: SignalLike<number>;
     rowId(row: T): TmRowId;
     readonly rows: SignalLike<readonly T[]>;
@@ -319,6 +325,7 @@ export class TmGridHistory<T = unknown> {
 export interface TmGridHistoryOptions<T = unknown> {
     readonly annotations: TmGridCellAnnotations;
     readonly capacity?: number;
+    readonly editable?: SignalLike<boolean>;
     readonly host?: Pick<TmGridEngineHost<T>, 'onNotice' | 'onWarn'>;
     readonly model: TmGridDataModel<T>;
     onReveal?(reveal: TmGridHistoryReveal, direction: 'undo' | 'redo'): void;
@@ -343,7 +350,7 @@ export interface TmGridInvalidInput {
 }
 
 // @public
-export type TmGridInvalidInputReason = 'parse' | 'notFound' | 'ambiguous';
+export type TmGridInvalidInputReason = 'parse' | 'notFound' | 'ambiguous' | 'resolutionFailed';
 
 // @public
 export interface TmGridModelWriter<T = unknown> {
@@ -369,6 +376,7 @@ export class TmGridNav {
     readonly activeCell: Signal<TmRowCol | null>;
     enterTarget(backward: boolean): TmRowCol | null;
     reclamp(): void;
+    remapTabRun(resolveRow: (oldViewRow: number) => number): void;
     resetTabRun(): void;
     setActive(cell: TmRowCol | null, opts?: {
         keepTabRun?: boolean;
@@ -543,7 +551,7 @@ export class TmGridSelectionModel {
     selectAll(): void;
     selectCols(fromCol: number, toCol: number, additive: boolean): void;
     selectRows(fromViewRow: number, toViewRow: number, additive: boolean): void;
-    toSnapshot(activeCell: TmRowCol | null): TmGridSelectionSnapshot;
+    toSnapshot(activeCell: TmRowCol | null, order?: TmGridOrderSnapshot): TmGridSelectionSnapshot;
 }
 
 // @public

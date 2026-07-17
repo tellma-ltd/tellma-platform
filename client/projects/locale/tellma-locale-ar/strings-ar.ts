@@ -53,11 +53,8 @@ export const TM_LOCALE_AR_STRINGS = {
     loading: 'جار التحميل…',
     empty: 'لا توجد سجلات للعرض',
     newRow: 'صف جديد',
-    rowHeader: 'الصف {index}',
     selectAll: 'تحديد كل الصفوف',
     selectRow: 'تحديد الصف',
-    expand: 'توسيع الصف',
-    collapse: 'طي الصف',
     menu: {
       cut: '{gender, select, female {قصي} other {قص}}',
       copy: copyVerb,
@@ -115,6 +112,7 @@ export const TM_LOCALE_AR_STRINGS = {
       invalidInput: '«{text}» ليست قيمة {column} صالحة؛ يبقى الحقل فارغا حتى يتم التصحيح.',
       notFound: 'لا يوجد {collection} باسم «{label}»',
       ambiguous: '«{label}» يطابق أكثر من {collection}',
+      resolutionFailed: 'تعذر التحقق من «{label}» في {collection} — الصقها مجددا لإعادة المحاولة',
       tally:
         '{count, plural, zero {# خطأ} one {خطأ واحد} two {خطآن} few {# أخطاء} many {# خطأ} other {# خطأ}}',
       pending:

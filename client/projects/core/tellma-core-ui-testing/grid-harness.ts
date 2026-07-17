@@ -77,8 +77,12 @@ function dispatchPointerPress(target: TestElement, init: PointerEventInit): void
  * filters; the grid virtualizes rows, so only rendered cells resolve.
  */
 export class TmGridCellHarness extends ComponentHarness {
-  /** The selector for a rendered grid cell. */
-  static hostSelector = '[role="gridcell"]';
+  /**
+   * The selector for a rendered data cell. Scoped to `data-tm-cell` so the
+   * row-checkbox chrome cell of a `selectable` grid — also a `gridcell`, but
+   * outside the data-column coordinate space — never resolves as a cell.
+   */
+  static hostSelector = '[role="gridcell"][data-tm-cell]';
 
   /** Gets a predicate that filters cells by view coordinates. */
   static with(options: TmGridCellHarnessFilters = {}): HarnessPredicate<TmGridCellHarness> {
@@ -209,7 +213,8 @@ export class TmGridHarness extends ComponentHarness {
 
   /**
    * The full ARIA column count (`aria-colcount`): the data columns plus the
-   * row-header column.
+   * row-header column, and — on a `selectable` grid — the row-checkbox
+   * chrome column.
    */
   async getColCount(): Promise<number> {
     return Number(await (await this.gridElement()).getAttribute('aria-colcount'));

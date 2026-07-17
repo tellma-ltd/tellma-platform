@@ -9,8 +9,12 @@ import type { TmRowId } from '@tellma/core-ui/contracts';
 
 import type { TmGridDataModel } from './tm-grid-data-model';
 
-/** Why a cell holds an invalid input instead of a value. */
-export type TmGridInvalidInputReason = 'parse' | 'notFound' | 'ambiguous';
+/**
+ * Why a cell holds an invalid input instead of a value. `resolutionFailed`
+ * is distinct from `notFound`: the resolver rejected (a transient failure),
+ * so the label was never actually checked — the message invites a retry.
+ */
+export type TmGridInvalidInputReason = 'parse' | 'notFound' | 'ambiguous' | 'resolutionFailed';
 
 /**
  * A raw text the grid holds for a cell whose content could not be turned
@@ -47,7 +51,10 @@ export class TmGridCellAnnotations {
     new Map(),
   );
   private readonly pendingMap = signal<ReadonlyMap<string, TmGridCellRef>>(new Map());
-  private readonly tokens = new Map<string, number>();
+  /** Per-cell sequence tokens, nested by row id so a delete prunes in O(1). */
+  private readonly cellTokens = new Map<TmRowId, Map<string, number>>();
+  /** Per-row structural tokens: one bump invalidates every cell of the row. */
+  private readonly rowTokens = new Map<TmRowId, number>();
   private tokenCounter = 0;
 
   /** Count of cells holding an invalid input. */
@@ -77,13 +84,33 @@ export class TmGridCellAnnotations {
    */
   bumpToken(rowId: TmRowId, columnId: string): number {
     const token = ++this.tokenCounter;
-    this.tokens.set(cellKey(rowId, columnId), token);
+    let row = this.cellTokens.get(rowId);
+    if (row === undefined) {
+      row = new Map<string, number>();
+      this.cellTokens.set(rowId, row);
+    }
+    row.set(columnId, token);
+    return token;
+  }
+
+  /**
+   * Bumps a whole row's structural token — one entry, consulted alongside
+   * each cell token — so a row move or deletion invalidates every pending
+   * resolution on the row without writing a token per column (which grew the
+   * map by rowCount × columnCount on every delete).
+   */
+  bumpRowToken(rowId: TmRowId): number {
+    const token = ++this.tokenCounter;
+    this.rowTokens.set(rowId, token);
     return token;
   }
 
   /** The cell's current sequence token (0 before any write). */
   currentToken(rowId: TmRowId, columnId: string): number {
-    return this.tokens.get(cellKey(rowId, columnId)) ?? 0;
+    return Math.max(
+      this.cellTokens.get(rowId)?.get(columnId) ?? 0,
+      this.rowTokens.get(rowId) ?? 0,
+    );
   }
 
   /** Sets or clears (`null`) a cell's invalid input. */
@@ -145,6 +172,27 @@ export class TmGridCellAnnotations {
     if (survivingPending.size !== pending.size) {
       this.pendingMap.set(survivingPending);
     }
+    // Sequence tokens: drop vanished rows entirely (and vanished columns
+    // within surviving rows) so the maps stay bounded across many deletes.
+    for (const rowId of [...this.cellTokens.keys()]) {
+      if (model.modelIndexOfRow(rowId) === -1) {
+        this.cellTokens.delete(rowId);
+        continue;
+      }
+      const columns = this.cellTokens.get(rowId)!;
+      for (const columnId of [...columns.keys()]) {
+        if (model.columnIndexOf(columnId) === -1) {
+          columns.delete(columnId);
+        }
+      }
+      if (columns.size === 0) {
+        this.cellTokens.delete(rowId);
+      }
+    }
+    for (const rowId of [...this.rowTokens.keys()]) {
+      if (model.modelIndexOfRow(rowId) === -1) {
+        this.rowTokens.delete(rowId);
+      }
+    }
   }
-
 }

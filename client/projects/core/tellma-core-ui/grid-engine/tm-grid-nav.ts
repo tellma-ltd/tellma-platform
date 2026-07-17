@@ -181,6 +181,23 @@ export class TmGridNav {
     this.tabRunOrigin = null;
   }
 
+  /**
+   * Remaps the Tab-run origin's row after a reconcile that preserved the run,
+   * or ends the run when the origin's row no longer resolves — so Enter after
+   * a background data change returns to the right line, not a stale view row.
+   */
+  remapTabRun(resolveRow: (oldViewRow: number) => number): void {
+    if (this.tabRunOrigin === null) {
+      return;
+    }
+    const next = resolveRow(this.tabRunOrigin.row);
+    if (next === -1) {
+      this.tabRunOrigin = null;
+    } else if (next !== this.tabRunOrigin.row) {
+      this.tabRunOrigin = { row: next, col: this.tabRunOrigin.col };
+    }
+  }
+
   // ---- internals ----
 
   private page(): number {

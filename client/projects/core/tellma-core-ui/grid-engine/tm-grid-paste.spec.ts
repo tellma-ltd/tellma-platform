@@ -134,13 +134,15 @@ describe('TmGridClipboard copy', () => {
     ]);
   });
 
-  it('omits every raw value on an oversize copy but keeps meta and rowIds', () => {
-    const h = makeEngine(makeRows(2), { oversizeCopyCellThreshold: 3 });
+  it('keeps raw values regardless of copy size (the HTML flavor sheds them, not the payload)', () => {
+    // A large copy stays typed for a same-session paste; only the copied
+    // HTML flavor drops per-cell raw values above the oversize threshold.
+    const h = makeEngine(makeRows(2));
     h.engine.selection.selectRows(0, 1, false);
     const payload = requirePayload(h.engine.clipboard.copy());
     expect(payload.rawValues).toEqual([
-      [undefined, undefined, undefined],
-      [undefined, undefined, undefined],
+      [{ value: 'a1' }, { value: 'b1' }, { value: 'c1' }],
+      [{ value: 'a2' }, { value: 'b2' }, { value: 'c2' }],
     ]);
     expect(payload.meta.cols).toHaveLength(3);
     expect(payload.rowIds).toEqual([1, 2]);
@@ -460,6 +462,43 @@ describe('TmGridClipboard paste resolution lifecycle', () => {
     expect(h.rows()).toHaveLength(1);
     expect(h.rows()[0]['r']).toBe('old1');
     expect(h.engine.history.canUndo()).toBe(false);
+  });
+
+  it('a second paste onto a pending cell supersedes the first — the newer resolution wins', () => {
+    // §9.4.5: a later write invalidates an earlier request's token. The
+    // paste-clear onto an already-empty pending cell is a value no-op, so the
+    // guard must not rely on the write bumping the token on its own.
+    const h = makeEngine([{ id: 1, r: null }], { columns: resolverColumns });
+    h.engine.clickCell({ row: 0, col: 0 });
+    const first = h.engine.clipboard.paste({ matrix: [['Alpha']] });
+    expect(h.engine.annotations.pendingCount()).toBe(1);
+    const second = h.engine.clipboard.paste({ matrix: [['Beta']] });
+    // The FIRST resolution arrives first and must be discarded as stale.
+    h.engine.clipboard.applyResolution(
+      first.resolutions[0].id,
+      new Map<string, TmLabelResolution<unknown>>([['Alpha', { value: 'ALPHA-ID' }]]),
+    );
+    h.engine.clipboard.applyResolution(
+      second.resolutions[0].id,
+      new Map<string, TmLabelResolution<unknown>>([['Beta', { value: 'BETA-ID' }]]),
+    );
+    expect(h.rows()[0]['r']).toBe('BETA-ID');
+    expect(h.engine.annotations.pendingCount()).toBe(0);
+  });
+
+  it('a delete on a pending cell wins — the late resolution never overwrites the cleared cell', () => {
+    const h = makeEngine([{ id: 1, r: 'old' }], { columns: resolverColumns });
+    h.engine.clickCell({ row: 0, col: 0 });
+    const result = h.engine.clipboard.paste({ matrix: [['Gamma']] });
+    expect(h.engine.annotations.pendingCount()).toBe(1);
+    // The user clears the pending cell before the resolution lands.
+    h.engine.clearSelection();
+    expect(h.engine.annotations.pendingCount()).toBe(0);
+    h.engine.clipboard.applyResolution(
+      result.resolutions[0].id,
+      new Map<string, TmLabelResolution<unknown>>([['Gamma', { value: 'GAMMA-ID' }]]),
+    );
+    expect(h.rows()[0]['r']).toBeNull();
   });
 
   it('turns notFound, ambiguous, and unanswered labels into invalid inputs with cleared models', () => {

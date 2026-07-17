@@ -151,8 +151,25 @@ function escapeHtmlText(text: string): string {
   return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
+/** A table cell's HTML: escaped, with in-cell newlines as `<br>` (Excel/Sheets). */
+function escapeHtmlCellText(text: string): string {
+  return escapeHtmlText(text)
+    .replaceAll('\r\n', '<br>')
+    .replaceAll('\n', '<br>')
+    .replaceAll('\r', '<br>');
+}
+
 function escapeHtmlAttribute(text: string): string {
   return escapeHtmlText(text).replaceAll('"', '&quot;');
+}
+
+/** Whether the async Clipboard write API is usable in this context (secure, supported). */
+function asyncClipboardWritable(): boolean {
+  return (
+    typeof navigator !== 'undefined' &&
+    typeof navigator.clipboard?.write === 'function' &&
+    typeof ClipboardItem !== 'undefined'
+  );
 }
 
 /** Construction inputs of {@link ɵTmGridClipboardDom}. */
@@ -258,7 +275,12 @@ export class ɵTmGridClipboardDom {
    * serialized TSV so both paths write the exact fingerprinted text.
    */
   private writeEvent(event: ClipboardEvent, payload: TmGridCopyPayload, tsv?: string): void {
-    if (payload.cellCount <= ɵTM_GRID_OVERSIZE_COPY_CELLS) {
+    // Escalate to the async API only when it actually exists — in a non-secure
+    // context (an `http://` intranet) `navigator.clipboard` is undefined, and
+    // preventing the default before an unguarded throw would leave the
+    // clipboard empty with no failure path (a silent failed copy). Fall back
+    // to a synchronous serialize onto the event instead.
+    if (payload.cellCount <= ɵTM_GRID_OVERSIZE_COPY_CELLS || !asyncClipboardWritable()) {
       this.writeSync(event, payload, tsv);
     } else {
       event.preventDefault();
@@ -298,6 +320,13 @@ export class ɵTmGridClipboardDom {
    * it cannot be retried programmatically once the gesture is gone.
    */
   private writeAsync(payload: TmGridCopyPayload, tsv?: string): void {
+    if (!asyncClipboardWritable()) {
+      // A menu copy has no ClipboardEvent to fall back onto — a failed copy is
+      // announced, never silent (and never a synchronous throw).
+      this.options.announcements.announce('grid.announce.copyFailed');
+      this.options.onCopyFailed?.();
+      return;
+    }
     const oversize = payload.cellCount > ɵTM_GRID_OVERSIZE_COPY_CELLS;
     const textPromise = (
       tsv !== undefined ? Promise.resolve(tsv) : this.serializeTsvChunked(payload)
@@ -323,15 +352,24 @@ export class ɵTmGridClipboardDom {
             }),
           )
     ).then((html) => new Blob([html], { type: 'text/html' }));
-    navigator.clipboard
-      .write([new ClipboardItem({ 'text/plain': textPromise, 'text/html': htmlPromise })])
-      .then(
-        () => this.options.announcements.announce('grid.announce.copied', { cells: payload.cellCount }),
-        () => {
-          this.options.announcements.announce('grid.announce.copyFailed');
-          this.options.onCopyFailed?.();
-        },
-      );
+    try {
+      navigator.clipboard
+        .write([new ClipboardItem({ 'text/plain': textPromise, 'text/html': htmlPromise })])
+        .then(
+          () =>
+            this.options.announcements.announce('grid.announce.copied', {
+              cells: payload.cellCount,
+            }),
+          () => {
+            this.options.announcements.announce('grid.announce.copyFailed');
+            this.options.onCopyFailed?.();
+          },
+        );
+    } catch {
+      // `new ClipboardItem` / `write` can throw synchronously on some engines.
+      this.options.announcements.announce('grid.announce.copyFailed');
+      this.options.onCopyFailed?.();
+    }
   }
 
   private async serializeTsvChunked(payload: TmGridCopyPayload): Promise<string> {
@@ -357,7 +395,7 @@ export class ɵTmGridClipboardDom {
     if (payload.headerRow !== undefined) {
       parts.push('<thead><tr>');
       for (const header of payload.headerRow) {
-        parts.push(`<th>${escapeHtmlText(header)}</th>`);
+        parts.push(`<th>${escapeHtmlCellText(header)}</th>`);
       }
       parts.push('</tr></thead>');
     }
@@ -373,7 +411,7 @@ export class ɵTmGridClipboardDom {
             : `<tr data-tm-rowid="${escapeHtmlAttribute(String(rowId))}">`,
         );
         for (const cell of matrix[r]) {
-          parts.push(`<td>${escapeHtmlText(cell)}</td>`);
+          parts.push(`<td>${escapeHtmlCellText(cell)}</td>`);
         }
         parts.push('</tr>');
       }

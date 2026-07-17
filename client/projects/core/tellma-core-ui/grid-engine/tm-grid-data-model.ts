@@ -307,14 +307,18 @@ export class TmGridDataModel<T = unknown> {
     if (!nodes.has(rowId)) {
       return [];
     }
+    // Iterative pre-order DFS (explicit stack, children pushed reversed to
+    // pop in model order) — recursion would overflow on very deep subtrees.
     const result: TmRowId[] = [];
-    const emit = (id: TmRowId): void => {
+    const stack: TmRowId[] = [rowId];
+    while (stack.length > 0) {
+      const id = stack.pop()!;
       result.push(id);
-      for (const child of nodes.get(id)!.children) {
-        emit(child);
+      const children = nodes.get(id)!.children;
+      for (let i = children.length - 1; i >= 0; i--) {
+        stack.push(children[i]);
       }
-    };
-    emit(rowId);
+    }
     return result;
   }
 

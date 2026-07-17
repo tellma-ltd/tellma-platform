@@ -41,7 +41,7 @@ export class TmGridColumn<T = unknown, V = unknown> {
     readonly options: _angular_core.InputSignal<readonly unknown[] | undefined>;
     readonly optionValue: _angular_core.InputSignal<((option: never) => V) | undefined>;
     readonly parse: _angular_core.InputSignal<((text: string, ctx: TmParseContext) => V | TmParseError) | undefined>;
-    readonly readonly: _angular_core.InputSignal<boolean | ((row: T) => boolean)>;
+    readonly readonly: _angular_core.InputSignalWithTransform<boolean | ((row: T) => boolean), string | boolean | ((row: T) => boolean)>;
     readonly resolvePastedLabels: _angular_core.InputSignal<((labels: string[], ctx: TmPasteContext) => Promise<ReadonlyMap<string, TmLabelResolution<V>>>) | undefined>;
     readonly type: _angular_core.InputSignal<TmGridColumnType>;
     readonly value: _angular_core.InputSignal<((row: T) => V) | undefined>;
@@ -70,7 +70,7 @@ export class TmGridDisplayDef<T = unknown, V = unknown> {
 // @public
 export interface TmGridEditorContext<T = unknown, V = unknown> {
     readonly $implicit: V;
-    readonly row: T;
+    readonly row: T | undefined;
 }
 
 // @public
@@ -128,10 +128,8 @@ export class TmGridStateStore {
     register(gridId: string, contentKey: string | number | undefined): TmGridStateHandle;
     restoreWidths(gridId: string, blob: string): void;
     serializeWidths(gridId: string): string | null;
-    readonly ɵcontent: Lru<TmGridContentState>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmGridStateStore, never>;
     static ɵprov: _angular_core.ɵɵInjectableDeclaration<TmGridStateStore>;
-    readonly ɵwidths: Lru<Readonly<Record<string, number>>>;
 }
 
 ```

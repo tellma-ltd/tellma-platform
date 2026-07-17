@@ -18,6 +18,9 @@ import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 
 import type { ɵTmGridViewCore } from './grid-core';
 
+/** ⌘ is the find modifier on Apple platforms; Ctrl everywhere else. */
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+
 /**
  * The find bar (`searchable` grids): a floating strip at the grid's top
  * inline-end corner — a labelled text field, the match counter, previous/
@@ -129,7 +132,7 @@ export class ɵTmGridFindBar {
       this.core().closeFind();
       return;
     }
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f' && !event.altKey) {
+    if ((IS_MAC ? event.metaKey : event.ctrlKey) && event.key.toLowerCase() === 'f' && !event.altKey) {
       event.preventDefault();
       event.stopPropagation();
       this.findInput().nativeElement.select();

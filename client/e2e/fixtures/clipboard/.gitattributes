@@ -1,4 +1,7 @@
-# Clipboard fixtures are BYTE-EXACT test vectors: the paste specs compare
-# round-tripped payloads against these files verbatim (CRLF row terminators,
-# bare LF inside quoted TSV fields). No EOL conversion, ever.
-* -text
+# Clipboard fixture PAYLOADS are BYTE-EXACT test vectors: the paste specs
+# compare round-tripped payloads against these files verbatim (CRLF row
+# terminators, bare LF inside quoted TSV fields), so they must never be
+# EOL-normalized. Scoped to the payload extensions only — README.md and
+# generate-tellma.mts stay under the repo's normal EOL normalization policy.
+*.txt -text
+*.html -text

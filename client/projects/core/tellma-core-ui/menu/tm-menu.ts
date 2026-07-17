@@ -11,6 +11,7 @@ import {
   DestroyRef,
   inject,
   input,
+  isDevMode,
   output,
   signal,
   type Signal,
@@ -57,6 +58,13 @@ export interface TmMenuOpenOptions {
   /** The element focus returns to when the menu closes via keyboard. */
   readonly restoreFocus?: HTMLElement;
 }
+
+/**
+ * Open menus, most-recently-opened last. Every open instance handles Escape
+ * at the document capture phase; gating on the front of this stack keeps a
+ * single Escape from closing more than the top-most menu.
+ */
+const openMenuStack: TmMenu[] = [];
 
 /**
  * A general-purpose menu: flat items + separators with icon and disabled
@@ -171,10 +179,11 @@ export class TmMenu {
    * Capture-phase Escape interception while open: the aria menu registers
    * its own Escape handler (a no-op for a parentless menu) that consumes
    * the event before it could bubble to the panel, so the close key must
-   * be caught ahead of it.
+   * be caught ahead of it. Only the front-most open menu acts, so one
+   * Escape never closes menus stacked behind it.
    */
   private readonly onDocumentKeydownCapture = (event: KeyboardEvent): void => {
-    if (event.key === 'Escape') {
+    if (event.key === 'Escape' && openMenuStack[openMenuStack.length - 1] === this) {
       event.preventDefault();
       event.stopPropagation();
       this.close();
@@ -185,7 +194,7 @@ export class TmMenu {
     this.isOpen = this.expanded.asReadonly();
     inject(DestroyRef).onDestroy(() => {
       clearTimeout(this.pendingRemeasure);
-      document.removeEventListener('keydown', this.onDocumentKeydownCapture, true);
+      this.disarmEscapeClose();
     });
 
     // Focus the menu once its items have rendered (the overlay content
@@ -205,18 +214,33 @@ export class TmMenu {
 
   /**
    * Opens the menu at an element, rectangle, or pointer position. While
-   * already open, the menu re-anchors to the new position.
+   * already open, the menu re-anchors to the new position. Ignored (with a
+   * dev-mode warning) when there is nothing actionable to show.
    */
   open(anchor: TmMenuAnchor, options?: TmMenuOpenOptions): void {
+    if (!this.hasActionableItems()) {
+      if (isDevMode()) {
+        console.warn('tm-menu: open() ignored — the menu has no actionable items.');
+      }
+      return;
+    }
     this.restoreFocusTarget = options?.restoreFocus ?? null;
     this.overlayOrigin.set(toOverlayOrigin(anchor));
     this.focusedOnOpen = false;
-    if (untracked(this.expanded)) {
-      // Re-anchoring while open: the origin signal changed; re-measure.
-      this.onOverlayAttach();
+    this.armEscapeClose();
+
+    // Re-anchor rather than (re)open whenever the overlay is still live: a
+    // genuine open-while-open, or a same-tick close+reopen where an outside-
+    // click dispatcher caught the reinvoking right-click at the capture phase
+    // and flipped `expanded` false before it bubbled to the trigger. With no
+    // change detection between the two, the CDK `open` binding never toggles,
+    // so the overlay neither re-attaches nor re-applies its object-form origin
+    // — drive the re-measure explicitly.
+    if (untracked(this.expanded) || (this.overlay()?.overlayRef?.hasAttached() ?? false)) {
+      this.expanded.set(true);
+      this.reanchor();
       return;
     }
-    document.addEventListener('keydown', this.onDocumentKeydownCapture, true);
     this.expanded.set(true);
   }
 
@@ -225,7 +249,7 @@ export class TmMenu {
     if (!untracked(this.expanded)) {
       return;
     }
-    document.removeEventListener('keydown', this.onDocumentKeydownCapture, true);
+    this.disarmEscapeClose();
     this.expanded.set(false);
     if (options?.restoreFocus !== false) {
       this.restoreFocusTarget?.focus();
@@ -278,20 +302,55 @@ export class TmMenu {
     }
   }
 
-  /** Re-measures the overlay one macrotask after attach so flipping can work. */
+  /** Emits `opened` on the fresh CDK attach, then re-measures the overlay. */
   protected onOverlayAttach(): void {
     this.opened.emit();
-    clearTimeout(this.pendingRemeasure);
-    this.pendingRemeasure = setTimeout(() => this.overlay()?.overlayRef?.updatePosition());
+    this.reanchor();
   }
 
   /** Keeps `expanded` honest when the overlay detaches out-of-band. */
   protected onOverlayDetach(): void {
     if (untracked(this.expanded)) {
-      document.removeEventListener('keydown', this.onDocumentKeydownCapture, true);
+      this.disarmEscapeClose();
       this.expanded.set(false);
     }
     this.closed.emit();
+  }
+
+  /**
+   * Re-measures the overlay one macrotask after the origin changed so
+   * flexible positioning re-flips at the new anchor — without re-emitting
+   * `opened` (a re-anchor is one continuous open, not a fresh one).
+   */
+  private reanchor(): void {
+    clearTimeout(this.pendingRemeasure);
+    this.pendingRemeasure = setTimeout(() => this.overlay()?.overlayRef?.updatePosition());
+  }
+
+  /** Whether the menu has at least one non-separator entry to show. */
+  private hasActionableItems(): boolean {
+    return untracked(this.items).some((entry) => !this.isSeparator(entry));
+  }
+
+  /**
+   * Registers this menu as the front-most Escape target: it listens at the
+   * document capture phase and joins the open-menu stack. Idempotent, so a
+   * re-anchor never double-registers.
+   */
+  private armEscapeClose(): void {
+    document.addEventListener('keydown', this.onDocumentKeydownCapture, true);
+    if (!openMenuStack.includes(this)) {
+      openMenuStack.push(this);
+    }
+  }
+
+  /** Stops Escape handling and leaves the open-menu stack. */
+  private disarmEscapeClose(): void {
+    document.removeEventListener('keydown', this.onDocumentKeydownCapture, true);
+    const index = openMenuStack.indexOf(this);
+    if (index !== -1) {
+      openMenuStack.splice(index, 1);
+    }
   }
 }
 

@@ -5,6 +5,7 @@
 
 import { Component, computed, signal } from '@angular/core';
 
+import type { TmRowId } from '@tellma/core-ui/contracts';
 import { TmGrid, TmGridColumn, TmGridDisplayDef } from '@tellma/core-ui/grid';
 
 import { mulberry32 } from './seeded-random';
@@ -92,12 +93,14 @@ export function makeRow(i: number): DemoRow {
       [rowId]="rowId"
     >
       <tm-grid-column key="code" header="Code" [width]="110">
-        <!-- A same-path absolute href: with <base href="/">, a bare
-             "#fragment" href would resolve to "/#fragment" and unload the
-             story; this stays a same-document fragment jump. -->
+        <!-- Same-document fragment jump built from the CURRENT URL: keeping
+             the path + search string preserves the ?dir/?theme matrix params
+             instead of dropping them. (A bare "#fragment" href would resolve
+             against <base href="/"> and unload the story; a fixed "/story/…"
+             href would drop the query string.) -->
         <a
           *tmGridDisplay="let value; let id = rowId"
-          [attr.href]="'/story/grid-readonly#record-' + id"
+          [attr.href]="recordHref(id)"
           >{{ value }}</a
         >
       </tm-grid-column>
@@ -143,6 +146,16 @@ export class GridReadonlyStory {
 
   readonly rowId = (row: DemoRow): number => row.id;
   readonly total = (row: DemoRow): number => Math.round(row.qty * row.price * 100) / 100;
+
+  /**
+   * Builds the record link's href from the current URL so the same-document
+   * fragment jump preserves any query string (e.g. the ?dir/?theme matrix
+   * params). Using the full path + search keeps a bare '#fragment' from
+   * resolving against <base href="/"> and unloading the story, and the
+   * fragment stays exactly '#record-{id}'.
+   */
+  readonly recordHref = (id: TmRowId): string =>
+    `${location.pathname}${location.search}#record-${id}`;
 
   readonly statuses = STATUSES;
   readonly statusLabel = (status: Status): string => status.label;

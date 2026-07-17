@@ -21,7 +21,7 @@
     "budgetsInKb": {
       ".": 4,
       "./contracts": 1,
-      "./grid-engine": 13,
+      "./grid-engine": 14,
       "./grid": 33,
       "./tree-grid": 8,
       "./input": 3,

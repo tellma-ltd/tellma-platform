@@ -437,14 +437,20 @@
 /* ---- loading / empty ---- */
 
 .tm-grid__overlay {
-  position: sticky;
-  inset-inline-start: 0;
+  /* A sibling of the scroller, absolutely covering the grid box, so the
+     loading/empty layer stays in the viewport whatever the scroll position
+     (inside the scroller it flowed after the full-height spacer, off-screen). */
+  position: absolute;
+  inset: 0;
+  z-index: 4; /* above the rows, the sticky header, and the notice */
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
   padding-block: var(--space-8);
   color: var(--text-secondary);
+  /* Translucent scrim so a loading refresh reads as an overlay over the rows. */
+  background: color-mix(in srgb, var(--field-bg) 82%, transparent);
 }
 
 .tm-grid__overlay-spinner {

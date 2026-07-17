@@ -46,8 +46,12 @@ export class TmGridDisplayDef<T = unknown, V = unknown> {
 export interface TmGridEditorContext<T = unknown, V = unknown> {
   /** The cell's value when the editor opened. */
   readonly $implicit: V;
-  /** The row object. */
-  readonly row: T;
+  /**
+   * The row object, or `undefined` on the new-row placeholder — the row does
+   * not materialize until the edit commits, so consumer templates must handle
+   * its absence.
+   */
+  readonly row: T | undefined;
 }
 
 /**

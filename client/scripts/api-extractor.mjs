@@ -98,6 +98,16 @@ function prepareDts(dtsFullPath, publicApiFullPath) {
 const INTERNAL_DECLARATION = /^export\s+(?:declare\s+)?(?:abstract\s+)?(?:class|interface|type|const|enum|function|let|var|namespace)\s+ɵ/mu;
 
 /**
+ * Matches an `ɵ`-prefixed INSTANCE member inside a (public) class body — the
+ * private-by-convention fields/methods a shared class exposes for its
+ * siblings. These must leave the golden too (and with them their references
+ * to internal types). The Angular compiler's `static ɵcmp/ɵfac/ɵprov`
+ * metadata is deliberately NOT matched — `static` sits before the `ɵ`, so it
+ * stays (documented by the generated-member note).
+ */
+const INTERNAL_MEMBER = /^[ \t]+(?:readonly\s+|get\s+|set\s+|abstract\s+|protected\s+)*ɵ\w/u;
+
+/**
  * Drops every `ɵ`-declaring block from a generated .api.md report. The
  * report's fenced ```ts section is a sequence of blank-line-separated
  * blocks — imports first, then declarations, each led by its `// @public`
@@ -120,7 +130,17 @@ function stripPrivateByConvention(report) {
   let block = [];
   const flush = () => {
     if (!block.some((line) => INTERNAL_DECLARATION.test(line))) {
-      kept.push(...block);
+      // Within a kept (public) block, still drop any ɵ instance members and
+      // the generated-member note that would immediately precede one.
+      for (let i = 0; i < block.length; i++) {
+        if (INTERNAL_MEMBER.test(block[i])) {
+          if (kept.length > 0 && kept[kept.length - 1].includes(GENERATED_MEMBER_NOTE)) {
+            kept.pop();
+          }
+          continue;
+        }
+        kept.push(block[i]);
+      }
     }
     block = [];
   };

@@ -6,7 +6,7 @@
 import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
-import { applyEach, disabled, form, required } from '@angular/forms/signals';
+import { applyEach, disabled, form, readonly, required } from '@angular/forms/signals';
 
 import type { TmCellEditor } from '@tellma/core-ui/contracts';
 import { provideTellmaUi, TM_CELL_EDITOR_HOST } from '@tellma/core-ui';
@@ -58,6 +58,8 @@ class EditHost {
       required(line.name);
       // Row 3's qty (42) is field-disabled — the field beats the column.
       disabled(line.qty, { when: ({ value }) => value() === 42 });
+      // Row 3's name (Gamma) is field-readonly — the field beats the column too.
+      readonly(line.name, { when: ({ value }) => value() === 'Gamma' });
     });
   });
   readonly readonly = signal(false);
@@ -320,6 +322,22 @@ describe('tm-grid (editing)', () => {
     expect(host.model()[2].qty).toBe(42);
   });
 
+  it('field-level readonly beats column editability', async () => {
+    const { fixture, host, scroller } = await setup();
+    await activateOrigin(fixture, scroller);
+    // Move to (2,0): name Gamma, field-readonly by the schema.
+    keydown(scroller, 'ArrowDown');
+    keydown(scroller, 'ArrowDown');
+    await stable(fixture);
+
+    const cell = cellAt(scroller, 2, 0) as HTMLElement;
+    expect(cell.classList.contains('tm-grid__cell--readonly')).toBe(true);
+    const event = keydown(scroller, 'Z');
+    expect(editorInput(scroller)).toBeNull(); // no editor — a no-op, not a swallow
+    expect(event.defaultPrevented).toBe(false);
+    expect(host.model()[2].name).toBe('Gamma'); // never entered edit, never written
+  });
+
   it('a readonly flip mid-edit cancels (model untouched); grid state survives the round trip', async () => {
     const { fixture, host, scroller } = await setup();
     await activateOrigin(fixture, scroller);
@@ -410,6 +428,32 @@ describe('tm-grid (editing)', () => {
     keydown(scroller, 'y', { ctrlKey: true });
     await stable(fixture);
     expect(host.model()[0].name).toBe('Renamed');
+  });
+
+  it('in-editor Ctrl+Z stays native — the grid never steals it for history undo', async () => {
+    const { fixture, host, scroller } = await setup();
+    await activateOrigin(fixture, scroller);
+
+    // Commit edit A on (0,0); focus moves down to the next editable cell.
+    keydown(scroller, 'R');
+    typeInto(editorInput(scroller) as HTMLInputElement, 'Renamed');
+    keydown(editorInput(scroller) as HTMLInputElement, 'Enter');
+    await stable(fixture);
+    expect(host.model()[0].name).toBe('Renamed');
+
+    // Open a fresh editor on the next row and type into it.
+    keydown(scroller, 'S');
+    const input = editorInput(scroller) as HTMLInputElement;
+    typeInto(input, 'Second');
+
+    // Ctrl+Z here is the input's own text-undo. The editing keymap returns
+    // null for modified keys, so the grid must neither consume the event nor
+    // run a history undo (which would revert the committed edit A).
+    const event = keydown(input, 'z', { ctrlKey: true });
+    await stable(fixture);
+    expect(event.defaultPrevented).toBe(false); // grid stayed out of the way
+    expect(host.model()[0].name).toBe('Renamed'); // committed edit A untouched
+    expect(editorInput(scroller)).not.toBeNull(); // session still open
   });
 
   it('keyboard row insert and delete mutate the model through the field', async () => {

@@ -30,11 +30,8 @@ export const TM_UI_STRINGS_EN = {
     loading: 'Loading…',
     empty: 'No records to display',
     newRow: 'New row',
-    rowHeader: 'Row {index}',
     selectAll: 'Select all rows',
     selectRow: 'Select row',
-    expand: 'Expand row',
-    collapse: 'Collapse row',
     menu: {
       cut: 'Cut',
       copy: 'Copy',
@@ -68,8 +65,10 @@ export const TM_UI_STRINGS_EN = {
         '{cells, plural, =0 {Nothing} one {1 cell} other {# cells}} pasted{errors, plural, =0 {} one {, 1 error} other {, # errors}}{pending, plural, =0 {} one {, 1 resolving} other {, # resolving}}',
       pasteRowsDropped:
         '{count, plural, one {1 row} other {# rows}} could not be added — the grid does not create rows',
-      undone: '{skipped, plural, =0 {Undid {action}} other {Undid {action} — # rows no longer exist}}',
-      redone: '{skipped, plural, =0 {Redid {action}} other {Redid {action} — # rows no longer exist}}',
+      undone:
+        '{skipped, plural, =0 {Undid {action}} one {Undid {action} — 1 row no longer exists} other {Undid {action} — # rows no longer exist}}',
+      redone:
+        '{skipped, plural, =0 {Redid {action}} one {Redid {action} — 1 row no longer exists} other {Redid {action} — # rows no longer exist}}',
       undoSkipped: 'Undo skipped — the affected rows no longer exist',
       redoSkipped: 'Redo skipped — the affected rows no longer exist',
       rowsInserted: '{count, plural, one {1 row} other {# rows}} inserted',
@@ -89,6 +88,7 @@ export const TM_UI_STRINGS_EN = {
       invalidInput: '‘{text}’ is not a valid {column}; the field is empty until corrected.',
       notFound: 'No {collection} named ‘{label}’',
       ambiguous: '‘{label}’ matches more than one {collection}',
+      resolutionFailed: 'Could not check ‘{label}’ in {collection} — paste it again to retry',
       tally: '{count, plural, one {1 error} other {# errors}}',
       pending: '{count, plural, one {1 cell} other {# cells}} resolving',
       next: 'Next error',

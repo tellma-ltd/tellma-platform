@@ -31,6 +31,16 @@
   cursor: grab;
 }
 
+/* The start grip rides the range's top-start corner; centering it there
+   would push its block-start half above the corner, under the sticky
+   header band (z-index 2) whenever the range's top row is the first
+   visible row — clipping the hit target to half the WCAG floor. Drop the
+   grip fully below the corner so its whole target stays in the scrollport
+   (physical translate: the corner point already bakes in the direction). */
+.tm-grid__handle[data-tm-handle="start"] {
+  transform: translate(-50%, 0);
+}
+
 .tm-grid__handle::after {
   content: '';
   inline-size: calc(var(--grid-handle-size) / 2);

@@ -57,10 +57,16 @@ export function tmResolveTree<T>(
   const modelIndexById = new Map<TmRowId, number>();
   const rowById = new Map<TmRowId, T>();
   const orderedIds: TmRowId[] = [];
+  const reportedDuplicates = new Set<TmRowId>();
   for (let i = 0; i < rows.length; i++) {
     const id = rowIdOf(rows[i]);
     if (rowById.has(id)) {
-      irregularities.push({ kind: 'duplicateRowId', rowId: id });
+      // At most one irregularity per (kind, rowId): a third occurrence of the
+      // same id must not report a second duplicate for it.
+      if (!reportedDuplicates.has(id)) {
+        reportedDuplicates.add(id);
+        irregularities.push({ kind: 'duplicateRowId', rowId: id });
+      }
       continue;
     }
     rowById.set(id, rows[i]);
@@ -133,15 +139,22 @@ export function tmResolveTree<T>(
     }
   }
   const levelById = new Map<TmRowId, number>();
+  // Iterative level resolution: walk the parent chain into a stack until a
+  // known level (or a root) is reached, then assign levels back down. A
+  // recursive walk would overflow the stack on pathologically deep chains.
   const resolveLevel = (id: TmRowId): number => {
-    const known = levelById.get(id);
-    if (known !== undefined) {
-      return known;
+    const chain: TmRowId[] = [];
+    let current: TmRowId | null = id;
+    while (current !== null && levelById.get(current) === undefined) {
+      chain.push(current);
+      current = parentById.get(current)!;
     }
-    const parent = parentById.get(id)!;
-    const level = parent === null ? 0 : resolveLevel(parent) + 1;
-    levelById.set(id, level);
-    return level;
+    let level = current === null ? -1 : levelById.get(current)!;
+    for (let i = chain.length - 1; i >= 0; i--) {
+      level += 1;
+      levelById.set(chain[i], level);
+    }
+    return levelById.get(id)!;
   };
 
   const nodes = new Map<TmRowId, TmTreeNode<T>>();
@@ -172,17 +185,22 @@ export function tmFlattenVisible<T>(
   expandedIds: ReadonlySet<TmRowId>,
 ): readonly TmRowId[] {
   const visible: TmRowId[] = [];
-  const emit = (id: TmRowId): void => {
+  // Iterative pre-order DFS (an explicit stack, children pushed reversed so
+  // they pop in model order) — a recursive walk would overflow the stack on
+  // a pathologically deep tree.
+  const stack: TmRowId[] = [];
+  for (let i = structure.roots.length - 1; i >= 0; i--) {
+    stack.push(structure.roots[i]);
+  }
+  while (stack.length > 0) {
+    const id = stack.pop()!;
     visible.push(id);
     const node = structure.nodes.get(id)!;
     if (node.children.length > 0 && expandedIds.has(id)) {
-      for (const child of node.children) {
-        emit(child);
+      for (let i = node.children.length - 1; i >= 0; i--) {
+        stack.push(node.children[i]);
       }
     }
-  };
-  for (const root of structure.roots) {
-    emit(root);
   }
   return visible;
 }

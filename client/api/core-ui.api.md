@@ -50,11 +50,8 @@ export const TM_UI_STRINGS_EN: {
         readonly loading: "Loading…";
         readonly empty: "No records to display";
         readonly newRow: "New row";
-        readonly rowHeader: "Row {index}";
         readonly selectAll: "Select all rows";
         readonly selectRow: "Select row";
-        readonly expand: "Expand row";
-        readonly collapse: "Collapse row";
         readonly menu: {
             readonly cut: "Cut";
             readonly copy: "Copy";
@@ -86,8 +83,8 @@ export const TM_UI_STRINGS_EN: {
             readonly cutCancelled: "Cut cancelled";
             readonly pasted: "{cells, plural, =0 {Nothing} one {1 cell} other {# cells}} pasted{errors, plural, =0 {} one {, 1 error} other {, # errors}}{pending, plural, =0 {} one {, 1 resolving} other {, # resolving}}";
             readonly pasteRowsDropped: "{count, plural, one {1 row} other {# rows}} could not be added — the grid does not create rows";
-            readonly undone: "{skipped, plural, =0 {Undid {action}} other {Undid {action} — # rows no longer exist}}";
-            readonly redone: "{skipped, plural, =0 {Redid {action}} other {Redid {action} — # rows no longer exist}}";
+            readonly undone: "{skipped, plural, =0 {Undid {action}} one {Undid {action} — 1 row no longer exists} other {Undid {action} — # rows no longer exist}}";
+            readonly redone: "{skipped, plural, =0 {Redid {action}} one {Redid {action} — 1 row no longer exists} other {Redid {action} — # rows no longer exist}}";
             readonly undoSkipped: "Undo skipped — the affected rows no longer exist";
             readonly redoSkipped: "Redo skipped — the affected rows no longer exist";
             readonly rowsInserted: "{count, plural, one {1 row} other {# rows}} inserted";
@@ -106,6 +103,7 @@ export const TM_UI_STRINGS_EN: {
             readonly invalidInput: "‘{text}’ is not a valid {column}; the field is empty until corrected.";
             readonly notFound: "No {collection} named ‘{label}’";
             readonly ambiguous: "‘{label}’ matches more than one {collection}";
+            readonly resolutionFailed: "Could not check ‘{label}’ in {collection} — paste it again to retry";
             readonly tally: "{count, plural, one {1 error} other {# errors}}";
             readonly pending: "{count, plural, one {1 cell} other {# cells}} resolving";
             readonly next: "Next error";

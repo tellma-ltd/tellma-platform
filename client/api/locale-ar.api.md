@@ -29,11 +29,8 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly loading: "جار التحميل…";
         readonly empty: "لا توجد سجلات للعرض";
         readonly newRow: "صف جديد";
-        readonly rowHeader: "الصف {index}";
         readonly selectAll: "تحديد كل الصفوف";
         readonly selectRow: "تحديد الصف";
-        readonly expand: "توسيع الصف";
-        readonly collapse: "طي الصف";
         readonly menu: {
             readonly cut: "{gender, select, female {قصي} other {قص}}";
             readonly copy: "{gender, select, female {انسخي} other {انسخ}}";
@@ -85,6 +82,7 @@ export const TM_LOCALE_AR_STRINGS: {
             readonly invalidInput: "«{text}» ليست قيمة {column} صالحة؛ يبقى الحقل فارغا حتى يتم التصحيح.";
             readonly notFound: "لا يوجد {collection} باسم «{label}»";
             readonly ambiguous: "«{label}» يطابق أكثر من {collection}";
+            readonly resolutionFailed: "تعذر التحقق من «{label}» في {collection} — الصقها مجددا لإعادة المحاولة";
             readonly tally: "{count, plural, zero {# خطأ} one {خطأ واحد} two {خطآن} few {# أخطاء} many {# خطأ} other {# خطأ}}";
             readonly pending: "{count, plural, zero {# خلية} one {خلية واحدة} two {خليتان} few {# خلايا} many {# خلية} other {# خلية}} قيد المطابقة";
             readonly next: "الخطأ التالي";

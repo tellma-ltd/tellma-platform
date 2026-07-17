@@ -13,9 +13,10 @@ import { storyUrl } from '../support/story-map';
  * keyboard invocation, and overlay geometry that the TestBed layer cannot
  * exercise.
  *
- * TODO(touch project): long-press open belongs to the dedicated touch
- * Playwright project (page.touchscreen requires hasTouch); cover it there
- * once that project lands.
+ * Touch long-press open (opens at the point; disabled trigger stays inert)
+ * is exercised in the tm-menu unit spec, which dispatches touch-type
+ * PointerEvents at a `tmContextMenuTrigger` host — no touch-enabled device
+ * project is needed for that path.
  */
 
 /** Positioning tolerance: below-start anchoring plus sub-pixel rounding. */

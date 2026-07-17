@@ -78,7 +78,14 @@ export class TmGridColumn<T = unknown, V = unknown> {
     ((labels: string[], ctx: TmPasteContext) => Promise<ReadonlyMap<string, TmLabelResolution<V>>>) | undefined
   >(undefined);
   /** Column- or per-cell-level editability (bound field state still wins). */
-  readonly readonly = input<boolean | ((row: T) => boolean)>(false);
+  readonly readonly = input<
+    boolean | ((row: T) => boolean),
+    boolean | ((row: T) => boolean) | string
+  >(false, {
+    // Coerce the static-attribute form (`readonly` ⇒ `''` ⇒ `true`) while
+    // leaving a bound boolean or per-row predicate untouched.
+    transform: (value) => (typeof value === 'function' ? value : booleanAttribute(value)),
+  });
   /** Fixed width in px (user resize converts a column to this). */
   readonly width = input<number | undefined>(undefined);
   /** Proportional share of leftover space (emitted as a `fr` track). */

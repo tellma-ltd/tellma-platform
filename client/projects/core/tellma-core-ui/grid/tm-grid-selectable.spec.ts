@@ -6,9 +6,11 @@
 import { Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
+import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { applyEach, form, required } from '@angular/forms/signals';
 
 import { provideTellmaUi } from '@tellma/core-ui';
+import { TmGridHarness } from '@tellma/core-ui-testing';
 import { TmTreeGrid } from '@tellma/core-ui/tree-grid';
 
 import { TmGrid } from './tm-grid';
@@ -358,6 +360,27 @@ describe('tm-grid (row checkbox selection §8.8)', () => {
     expect(scroller.querySelector('[data-tm-checkhdr]')).toBeNull();
     expect(scroller.querySelector('[data-tm-checkcell]')).toBeNull();
     expect(scroller.getAttribute('aria-colcount')).toBe('4');
+  });
+
+  it('the public harness targets the DATA first column, not the checkbox chrome', async () => {
+    const { fixture, host } = await setupSelectable();
+    const loader = TestbedHarnessEnvironment.loader(fixture);
+    const grid = await loader.getHarness(TmGridHarness);
+
+    // aria-colcount counts the checkbox chrome column too (3 data + rowhdr + checkbox).
+    expect(await grid.getColCount()).toBe(5);
+
+    // getCell(r, 0) resolves the real data cell, never the checkbox chrome cell
+    // that shares role="gridcell" and precedes it in the DOM.
+    expect(await grid.getCellText(1, 0)).toBe('Item 1');
+    expect(await grid.getCellText(1, 1)).toBe('1,001');
+
+    // Clicking data cell (1, 0) activates it and leaves selectedIds untouched —
+    // before the scoping fix this press landed on the row checkbox and toggled it.
+    await grid.clickCell(1, 0);
+    expect(await grid.getActiveCell()).toEqual({ row: 1, col: 0 });
+    expect(await (await grid.getCell(1, 0)).isActive()).toBe(true);
+    expect(host.selection().size).toBe(0);
   });
 });
 

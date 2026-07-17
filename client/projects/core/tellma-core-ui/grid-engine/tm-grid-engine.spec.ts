@@ -132,6 +132,27 @@ describe('TmGridEngine', () => {
       expect(h.engine.history.canUndo()).toBe(false);
     });
 
+    it('insertRows below a nested row stamps the reference row parent (a sibling insert)', () => {
+      const h = makeEngine(
+        [
+          { id: 1, a: 'root1', parentId: null },
+          { id: 2, a: 'child2', parentId: 1 },
+          { id: 3, a: 'child3', parentId: 1 },
+          { id: 4, a: 'root4', parentId: null },
+        ],
+        { tree: TREE, columns: [{ key: 'a' }] },
+      );
+      // View order 1, 2, 3, 4 — select the level-2 row child 2.
+      h.engine.clickCell({ row: 1, col: 0 });
+      const created = h.engine.insertRows('below');
+      expect(created).toHaveLength(1);
+      // The created row is a SIBLING of the reference (same parent 1)...
+      expect(created[0].row['parentId']).toBe(1);
+      // ...inserted as the next sibling: view order 1, 2, <new>, 3, 4.
+      expect(h.engine.model.viewIndexOfRow(created[0].id)).toBe(2);
+      expect(h.notices).toContainEqual({ kind: 'rowsInserted', count: 1 });
+    });
+
     it('deleteSelectedRows removes each selected row with its whole subtree', () => {
       const h = makeEngine(
         [
