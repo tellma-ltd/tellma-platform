@@ -4,7 +4,9 @@
 // LICENSE file in the root directory of this source tree.
 
 import {
+  afterNextRender,
   afterRenderEffect,
+  ApplicationRef,
   computed,
   effect,
   isDevMode,
@@ -14,9 +16,10 @@ import {
   type Injector,
   type Signal,
   type TemplateRef,
+  type ViewContainerRef,
 } from '@angular/core';
 import type { LiveAnnouncer } from '@angular/cdk/a11y';
-import type { FieldTree } from '@angular/forms/signals';
+import type { FieldTree, ValidationError } from '@angular/forms/signals';
 
 import {
   TM_PARSE_ERROR,
@@ -26,21 +29,25 @@ import {
   type TmParseError,
   type TmRowId,
 } from '@tellma/core-ui/contracts';
-import type { TmUiTranslateFn } from '@tellma/core-ui';
+import { tmResolveFieldErrors, type TmUiTranslateFn } from '@tellma/core-ui';
 import { TM_CHECKBOX_CELL_DISPLAY } from '@tellma/core-ui/checkbox';
 import {
   TmGridEngine,
   tmComputeAxisWindow,
   type TmGridColumnType,
+  type TmGridEditSession,
   type TmGridEngineColumn,
   type TmGridHistorySnapshot,
   type TmRowCol,
 } from '@tellma/core-ui/grid-engine';
+import type { TmMenu, TmMenuEntry, TmMenuItem } from '@tellma/core-ui/menu';
 
 import type { TmGridColumn } from '../tm-grid-column';
 import type {
   TmGridDisplayContext,
   TmGridDisplayDef,
+  TmGridEditorContext,
+  TmGridEditorDef,
   TmGridEmptyDef,
   TmGridHeaderContext,
   TmGridLoadingDef,
@@ -49,7 +56,15 @@ import type { TmGridStateHandle, TmGridStateStore } from '../tm-grid-state-store
 import { ɵTmGridAnnouncements } from './announcements';
 import { ɵTmGridClipboardDom, ɵTM_GRID_OVERSIZE_COPY_CELLS } from './clipboard-dom';
 import { ɵTmGridColumnResize } from './column-resize';
-import { tmResolveGridKey, type TmGridIntent } from './grid-keymap';
+import { ɵTmGridEditorSession, type ɵTmGridEditorMountConfig } from './editor-session';
+import { ɵTmGridFieldWriter, ɵtmChildField, ɵtmRowField } from './field-writer';
+import {
+  tmResolveEditingKey,
+  tmResolveGridKey,
+  type TmGridEditingCommitTarget,
+  type TmGridIntent,
+} from './grid-keymap';
+import type { ɵTmGridIconTemplates } from './icons';
 import { tmFormatNumber, tmParseNumber } from './tm-number-codec';
 
 /** Row height fallback (px) while the `--grid-row-height` token is unresolvable. */
@@ -76,9 +91,33 @@ const IS_MAC_PLATFORM =
 /** Natively-focusable content consumers may project into cells/headers. */
 const INTERACTIVE_CONTENT_SELECTOR = 'a[href], button, input, select, textarea, [tabindex]';
 
+/** Rows whose field nodes one error-tally warm-up slice touches (§16). */
+const WARMUP_ROWS_PER_SLICE = 500;
+
+/** Uniquifies the per-instance error-overlay message element id. */
+let nextErrorMsgId = 0;
+
 function cellSelector(cell: TmRowCol): string {
   return `[data-tm-cell][data-row="${cell.row}"][data-col="${cell.col}"]`;
 }
+
+/**
+ * The identity key of a cell for error-tally dedupe. The format mirrors the
+ * engine annotation store's internal key (type-prefixed so numeric id 1 and
+ * string id '1' never collide) — the two sources must dedupe to distinct
+ * CELLS, so they must agree on the key.
+ */
+function errorCellKey(rowId: TmRowId, columnId: string): string {
+  return `${typeof rowId === 'number' ? '#' : '$'}${String(rowId)} ${columnId}`;
+}
+
+/** One field-validation-errored cell, by identity. */
+interface FieldErrorCell {
+  readonly rowId: TmRowId;
+  readonly columnId: string;
+}
+
+const EMPTY_FIELD_ERRORS: ReadonlyMap<string, FieldErrorCell> = new Map();
 
 function isHistorySnapshot(value: unknown): value is TmGridHistorySnapshot {
   return (
@@ -176,6 +215,11 @@ export interface ɵTmGridColumnVm {
 interface ColumnInternal<T> extends ɵTmGridColumnVm {
   readonly engineColumn: TmGridEngineColumn<T>;
   readonly displayDef: TmGridDisplayDef<T, unknown> | undefined;
+  readonly editorDef: TmGridEditorDef<T, unknown> | undefined;
+  /** `enum` columns: the raw options plus their label/value accessors. */
+  readonly enumOptions: readonly unknown[] | undefined;
+  readonly optionLabel: ((option: unknown) => string) | undefined;
+  readonly optionValue: ((option: unknown) => unknown) | undefined;
 }
 
 /** One rendered cell's view model. */
@@ -198,6 +242,14 @@ export interface ɵTmGridCellVm {
   readonly displayTemplate: TemplateRef<TmGridDisplayContext<unknown, unknown>> | undefined;
   /** The custom display template's context. */
   readonly displayCtx: TmGridDisplayContext<unknown, unknown> | undefined;
+  /** Whether the open editor session sits on this cell (renders the outlet). */
+  readonly editing: boolean;
+  /** Whether the cell is in error state (invalid input or field-invalid). */
+  readonly invalid: boolean;
+  /** Whether the cell rejects writes while the grid is editable (readonly tint). */
+  readonly readonly: boolean;
+  /** Whether the cell awaits an async paste resolution (inline spinner). */
+  readonly pending: boolean;
 }
 
 /** One rendered row's view model. */
@@ -269,6 +321,8 @@ export interface ɵTmGridCoreDeps<T> {
   readonly selectable: Signal<boolean>;
   /** The density variant. */
   readonly size: Signal<'sm' | 'md' | 'lg'>;
+  /** Consumer context-menu items appended after the built-ins. */
+  readonly extraMenuItems: Signal<readonly TmMenuItem[]>;
   /** The projected column definitions, in display order. */
   readonly columns: Signal<ReadonlyArray<TmGridColumn<T, unknown>>>;
   /** The projected empty-state template, if any. */
@@ -319,8 +373,26 @@ export interface ɵTmGridViewCore {
   readonly renderRows: Signal<readonly ɵTmGridRowVm[]>;
   /** The column-resize pointer controller. */
   readonly resize: ɵTmGridColumnResize;
+  /** Count of cells in error state (invalid inputs ∪ field-invalid cells). */
+  readonly errorCount: Signal<number>;
+  /** Count of cells awaiting async paste resolutions. */
+  readonly pendingCount: Signal<number>;
+  /** The context-menu entries (built-ins + consumer extras). */
+  readonly menuItems: Signal<readonly TmMenuEntry[]>;
+  /** The error-overlay message element's id (`aria-describedby` target). */
+  readonly errorMsgId: string;
+  /** The active errored cell's element — the error overlay's anchor. */
+  readonly errorAnchor: Signal<Element | null>;
+  /** The active errored cell's localized message. */
+  readonly errorMessage: Signal<string>;
+  /** Jumps to the next (+1) / previous (−1) errored cell, row-major, cycling. */
+  gotoError(direction: 1 | -1): void;
   /** Hands the core the scroll container once the view rendered it. */
   attachScroller(element: HTMLElement): void;
+  /** Hands the core the editing cell's editor outlet (or `null` when closed). */
+  attachEditorOutlet(outlet: ViewContainerRef | null): void;
+  /** Hands the core the context menu and the built-in icon templates. */
+  attachMenu(menu: TmMenu | null, icons: ɵTmGridIconTemplates | null): void;
   /** The scroller's scroll handler. */
   onScroll(event: Event): void;
   /** The scroller's keydown handler. */
@@ -329,6 +401,12 @@ export interface ɵTmGridViewCore {
   onPointerDown(event: PointerEvent): void;
   /** The scroller's click handler (column headers, corner). */
   onClick(event: MouseEvent): void;
+  /** The scroller's dblclick handler (opens the editor in *edit* mode). */
+  onDblClick(event: MouseEvent): void;
+  /** The scroller's contextmenu handler (select target, open the menu). */
+  onContextMenu(event: MouseEvent): void;
+  /** The scroller's focusout handler (commit-on-blur). */
+  onFocusOut(event: FocusEvent): void;
   /** The scroller's copy handler. */
   onCopy(event: ClipboardEvent): void;
   /** The scroller's cut handler. */
@@ -349,12 +427,22 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   private readonly deps: ɵTmGridCoreDeps<T>;
   private readonly announcements: ɵTmGridAnnouncements;
   private readonly clipboardDom: ɵTmGridClipboardDom;
+  private readonly appRef: ApplicationRef;
+  private readonly fieldWriter: ɵTmGridFieldWriter<T>;
+  private readonly editorSession: ɵTmGridEditorSession;
   private engineInstance: TmGridEngine<T> | null = null;
   private handle: TmGridStateHandle | null = null;
   private lastContentKey: string | number | undefined;
   private pendingScroll: TmGridScrollPosition | null = null;
   private pendingGestureFocus = false;
+  /** Whether the most recent real focus landed inside the grid/its overlays. */
+  private gridOwnsFocus = false;
+  /** When the user last pressed outside the grid (guards focus reclaim). */
+  private lastOutsidePointerDown = 0;
   private dragCleanup: (() => void) | null = null;
+  private menuRef: TmMenu | null = null;
+  /** Generation guard for the chunked error-tally warm-up chains. */
+  private warmupGeneration = 0;
   /** Columns already warned about a missing required `format` (one warn each). */
   private readonly warnedColumns = new Set<string>();
 
@@ -368,10 +456,23 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   private readonly focusRequest = signal(0);
   private readonly revealRequest = signal(0);
   private readonly scrollRestoreRequest = signal(0);
+  private readonly iconTemplates = signal<ɵTmGridIconTemplates | null>(null);
+  /** Whether the deferred error-tally warm-up has completed (§16). */
+  private readonly errorWarmupDone = signal(false);
+  private readonly errorAnchorSignal = signal<Element | null>(null);
 
   private readonly columnsInternal: Signal<readonly ColumnInternal<T>[]>;
   private readonly engineColumns: Signal<ReadonlyArray<TmGridEngineColumn<T>>>;
   private readonly window: Signal<ReturnType<typeof tmComputeAxisWindow>>;
+  /** Field-validation-errored cells keyed for dedupe with invalid inputs. */
+  private readonly fieldErrorCells: Signal<ReadonlyMap<string, FieldErrorCell>>;
+  /** Every errored cell in view coordinates, row-major (the jump order). */
+  private readonly errorCellList: Signal<readonly TmRowCol[]>;
+  /** The active cell's raw field errors (feeds the localized overlay message). */
+  private readonly activeCellFieldErrors: Signal<
+    readonly ValidationError.WithOptionalFieldTree[]
+  >;
+  private readonly activeCellResolvedErrors: ReturnType<typeof tmResolveFieldErrors>;
 
   /** The bound rows: `data`, else the field's value, else empty. */
   readonly rows: Signal<readonly T[]>;
@@ -413,18 +514,35 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   readonly renderRows: Signal<readonly ɵTmGridRowVm[]>;
   /** The `grid-template-columns` value bound on the host as `--grid-template`. */
   readonly gridTemplate: Signal<string>;
-  /** Count of cells in error state (field validation errors arrive with the editing milestone). */
+  /** Count of cells in error state (invalid inputs ∪ field-invalid cells, distinct). */
   readonly errorCount: Signal<number>;
   /** Count of cells awaiting async paste resolutions. */
   readonly pendingCount: Signal<number>;
   /** The column-resize pointer controller. */
   readonly resize: ɵTmGridColumnResize;
+  /** The context-menu entries (built-ins + consumer extras). */
+  readonly menuItems: Signal<readonly TmMenuEntry[]>;
+  /** The error-overlay message element's id (`aria-describedby` target). */
+  readonly errorMsgId = `tm-grid-errmsg-${nextErrorMsgId++}`;
+  /** The active errored cell's element — the error overlay's anchor. */
+  readonly errorAnchor: Signal<Element | null>;
+  /** The active errored cell's localized message. */
+  readonly errorMessage: Signal<string>;
 
   constructor(deps: ɵTmGridCoreDeps<T>) {
     this.deps = deps;
     this.announcements = new ɵTmGridAnnouncements(deps.announcer, deps.translate);
+    this.appRef = deps.injector.get(ApplicationRef);
+    this.editorSession = new ɵTmGridEditorSession(deps.injector);
+    this.fieldWriter = new ɵTmGridFieldWriter<T>({
+      field: () => this.deps.field(),
+      newRow: () => this.deps.newRow(),
+      rowId: (row) => this.deps.rowId()(row),
+      modelIndexOfRow: (rowId) => this.engine.model.modelIndexOfRow(rowId),
+      rowById: (rowId) => this.engine.model.rowById(rowId),
+    });
     this.clipboardDom = new ɵTmGridClipboardDom({
-      copy: () => this.engine.clipboard.copy(),
+      copy: (opts) => this.engine.clipboard.copy(opts),
       announcements: this.announcements,
     });
     this.resize = new ɵTmGridColumnResize({
@@ -507,11 +625,171 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       }
       return tracks.join(' ');
     });
-    this.errorCount = computed(() => this.engine.annotations.invalidCount());
+    // ---- error tally (§10) ----
+    // Field-invalid cells come from per-row errorSummary reads; the first
+    // read is deferred behind the chunked warm-up (§16, wired in
+    // setupEffects) so mounting a large editable grid never pays the whole
+    // field-tree materialization in one frame.
+    this.fieldErrorCells = computed(() => {
+      if (!this.errorWarmupDone()) {
+        return EMPTY_FIELD_ERRORS;
+      }
+      const tree = this.deps.field();
+      if (tree === undefined) {
+        return EMPTY_FIELD_ERRORS;
+      }
+      const rows = this.rows();
+      const columns = this.columnsInternal();
+      if (columns.length === 0 || rows.length === 0) {
+        return EMPTY_FIELD_ERRORS;
+      }
+      const rowIdOf = this.deps.rowId();
+      const map = new Map<string, FieldErrorCell>();
+      for (let i = 0; i < rows.length; i++) {
+        const rowField = ɵtmRowField(tree, i);
+        if (rowField === undefined) {
+          continue;
+        }
+        const summary = rowField().errorSummary();
+        if (summary.length === 0) {
+          continue;
+        }
+        const rowId = rowIdOf(rows[i]);
+        for (const error of summary) {
+          const column = this.attributeErrorColumn(error, columns);
+          map.set(errorCellKey(rowId, column.id), { rowId, columnId: column.id });
+        }
+      }
+      return map;
+    });
+    this.errorCount = computed(() => {
+      const fieldErrors = this.fieldErrorCells();
+      let count = fieldErrors.size;
+      for (const ref of this.engine.annotations.invalidCells()) {
+        if (!fieldErrors.has(errorCellKey(ref.rowId, ref.columnId))) {
+          count += 1;
+        }
+      }
+      return count;
+    });
     this.pendingCount = computed(() => this.engine.annotations.pendingCount());
+    this.errorCellList = computed(() => {
+      const engine = this.engine;
+      const seen = new Set<string>();
+      const cells: TmRowCol[] = [];
+      const push = (rowId: TmRowId, columnId: string): void => {
+        const key = errorCellKey(rowId, columnId);
+        if (seen.has(key)) {
+          return;
+        }
+        seen.add(key);
+        const row = engine.model.viewIndexOfRow(rowId);
+        const col = engine.model.columnIndexOf(columnId);
+        if (row !== -1 && col !== -1) {
+          cells.push({ row, col });
+        }
+      };
+      for (const ref of engine.annotations.invalidCells()) {
+        push(ref.rowId, ref.columnId);
+      }
+      for (const cell of this.fieldErrorCells().values()) {
+        push(cell.rowId, cell.columnId);
+      }
+      cells.sort((a, b) => a.row - b.row || a.col - b.col);
+      return cells;
+    });
+
+    // ---- active-cell error overlay ----
+    this.errorAnchor = this.errorAnchorSignal.asReadonly();
+    this.activeCellFieldErrors = computed(() => {
+      const tree = this.deps.field();
+      const active = this.engine.nav.activeCell();
+      if (tree === undefined || active === null || !this.editable()) {
+        return [];
+      }
+      const view = this.engine.model.rowAt(active.row);
+      const column = this.columnsInternal()[active.col];
+      if (view === null || column === undefined) {
+        return [];
+      }
+      const rowField = ɵtmRowField(tree, view.modelIndex);
+      if (rowField === undefined) {
+        return [];
+      }
+      const columns = this.columnsInternal();
+      // The row's aggregated errors, narrowed to the ones this milestone
+      // attributes to the active cell (same attribution as the tally).
+      return rowField()
+        .errorSummary()
+        .filter((error) => this.attributeErrorColumn(error, columns).id === column.id);
+    });
+    this.activeCellResolvedErrors = tmResolveFieldErrors(
+      this.activeCellFieldErrors,
+      deps.translate,
+    );
+    this.errorMessage = computed(() => {
+      const active = this.engine.nav.activeCell();
+      if (active === null || !this.editable()) {
+        return '';
+      }
+      const view = this.engine.model.rowAt(active.row);
+      const column = this.columnsInternal()[active.col];
+      if (view === null || column === undefined) {
+        return '';
+      }
+      const invalid = this.engine.annotations.invalidInput(view.id, column.id);
+      if (invalid !== undefined) {
+        const header = column.header();
+        switch (invalid.reason) {
+          case 'parse':
+            return deps.translate('grid.cellErrors.invalidInput', {
+              text: invalid.rawText,
+              column: header,
+            })();
+          case 'notFound':
+            return deps.translate('grid.cellErrors.notFound', {
+              collection: header,
+              label: invalid.rawText,
+            })();
+          case 'ambiguous':
+            return deps.translate('grid.cellErrors.ambiguous', {
+              collection: header,
+              label: invalid.rawText,
+            })();
+        }
+      }
+      return this.activeCellResolvedErrors()[0]?.message ?? '';
+    });
+
+    // ---- context menu (§8.5) ----
+    this.menuItems = computed(() => this.buildMenuItems());
 
     this.setupEffects();
-    deps.destroyRef.onDestroy(() => this.onDestroy());
+
+    // Focus-drop bookkeeping: when the repeater MOVES the focused row's DOM
+    // node (outlier ↔ window transitions), the browser silently drops focus
+    // to <body> with no focusout — the roving-focus effect reclaims it, but
+    // only when the grid genuinely owned focus and the user didn't just
+    // press outside (see the effect). Both listeners are document-level
+    // captures so nothing inside the page can hide the signal.
+    const onDocumentPointerDown = (event: Event): void => {
+      if (event.target instanceof Node && !deps.host.contains(event.target)) {
+        this.lastOutsidePointerDown = Date.now();
+      }
+    };
+    const onDocumentFocusIn = (event: Event): void => {
+      const target = event.target;
+      this.gridOwnsFocus =
+        target instanceof Element &&
+        (deps.host.contains(target) || target.closest('.cdk-overlay-container') !== null);
+    };
+    document.addEventListener('pointerdown', onDocumentPointerDown, true);
+    document.addEventListener('focusin', onDocumentFocusIn, true);
+    deps.destroyRef.onDestroy(() => {
+      document.removeEventListener('pointerdown', onDocumentPointerDown, true);
+      document.removeEventListener('focusin', onDocumentFocusIn, true);
+      this.onDestroy();
+    });
   }
 
   /**
@@ -529,6 +807,64 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (untracked(this.scrollerSignal) !== element) {
       this.scrollerSignal.set(element);
     }
+  }
+
+  /** Hands the core the editing cell's editor outlet (or `null` when closed). */
+  attachEditorOutlet(outlet: ViewContainerRef | null): void {
+    this.editorSession.attachOutlet(outlet);
+  }
+
+  /** Hands the core the context menu and the built-in icon templates. */
+  attachMenu(menu: TmMenu | null, icons: ɵTmGridIconTemplates | null): void {
+    this.menuRef = menu;
+    if (untracked(this.iconTemplates) !== icons) {
+      this.iconTemplates.set(icons);
+    }
+  }
+
+  /**
+   * Jumps to the next (+1) / previous (−1) errored cell in row-major order,
+   * cycling in either direction — the status-bar tally's navigation. An
+   * open editor commits first (the jump is a navigation gesture).
+   */
+  gotoError(direction: 1 | -1): void {
+    const engine = this.engine;
+    if (untracked(() => engine.edit.session()) !== null) {
+      this.commitEditor({ refocus: false });
+    }
+    const cells = untracked(this.errorCellList);
+    if (cells.length === 0) {
+      return;
+    }
+    const active = untracked(() => engine.nav.activeCell());
+    let index: number;
+    if (active === null) {
+      index = direction === 1 ? 0 : cells.length - 1;
+    } else {
+      const after = (cell: TmRowCol): boolean =>
+        cell.row > active.row || (cell.row === active.row && cell.col > active.col);
+      const before = (cell: TmRowCol): boolean =>
+        cell.row < active.row || (cell.row === active.row && cell.col < active.col);
+      if (direction === 1) {
+        index = cells.findIndex(after);
+        if (index === -1) {
+          index = 0; // cycle to the first
+        }
+      } else {
+        index = cells.length - 1 - [...cells].reverse().findIndex(before);
+        if (index === cells.length) {
+          index = cells.length - 1; // nothing before: cycle to the last
+        }
+      }
+    }
+    const cell = cells[index];
+    engine.nav.setActive(cell);
+    engine.selection.collapseTo(cell);
+    this.requestReveal();
+    this.announcements.announce('grid.announce.errorJump', {
+      index: index + 1,
+      count: cells.length,
+    });
   }
 
   /** Drops the user-visible undo history (consumer save/cancel moments). */
@@ -562,12 +898,31 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
 
   /** The scroller's keydown handler: resolve to an intent, execute, consume. */
   onKeydown(event: KeyboardEvent): void {
+    const engine = this.engine;
+    const session = untracked(() => engine.edit.session());
     if (event.isComposing || event.keyCode === 229) {
-      // IME composition: the editing milestone opens an unseeded editor
-      // here; the readonly core stays out of the composition session.
+      // IME composition (§8.4): the very first composing keydown opens an
+      // UNSEEDED editor and moves focus into its input synchronously, so
+      // the whole composition session — and its commit — happens inside
+      // the editor, never against the non-editable cell. Never
+      // preventDefault: the composition must proceed untouched.
+      if (session === null) {
+        const active = untracked(() => engine.nav.activeCell());
+        if (
+          active !== null &&
+          untracked(this.editable) &&
+          untracked(this.columnsInternal)[active.col]?.type !== 'boolean' &&
+          untracked(() => engine.model.isCellEditable(active))
+        ) {
+          this.openEditor(active, 'edit', undefined, { ime: true });
+        }
+      }
       return;
     }
-    const engine = this.engine;
+    if (session !== null) {
+      this.onEditingKeydown(event, session);
+      return;
+    }
     const active = untracked(() => engine.nav.activeCell());
     const activeIsBoolean =
       active !== null && untracked(this.columnsInternal)[active.col]?.type === 'boolean';
@@ -585,6 +940,84 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     }
   }
 
+  /**
+   * The keydown branch while an editor session is open. The handler runs
+   * at the scroller (after the editor's own listeners), so it acts only on
+   * keys the editor did not `preventDefault` — this is how the two-stage
+   * Esc composes: the select's aria layer consumes Esc №1 closing its
+   * panel; Esc №2 reaches here and cancels the session.
+   */
+  private onEditingKeydown(event: KeyboardEvent, session: TmGridEditSession): void {
+    // Any editing keystroke on a scrolled-away cell scrolls it back first (§4).
+    this.revealActiveCell();
+    if (event.defaultPrevented) {
+      return;
+    }
+    const mounted = this.editorSession.current();
+    const resolved = tmResolveEditingKey(event, {
+      mode: session.mode,
+      isDropdownOpen: mounted?.isDropdownOpen() ?? false,
+    });
+    if (resolved === null) {
+      return;
+    }
+    switch (resolved.kind) {
+      case 'cancel':
+        this.cancelEditor({ refocus: true });
+        event.preventDefault();
+        return;
+      case 'toggleMode':
+        this.engine.edit.toggleMode();
+        event.preventDefault();
+        return;
+      case 'openDropdown':
+        if (mounted !== null && mounted.kind === 'enum') {
+          mounted.openDropdown();
+          event.preventDefault();
+        }
+        return;
+      case 'commitMove':
+        this.commitAndMove(resolved.target, event);
+        return;
+    }
+  }
+
+  /** Commits the session, then executes the key's move. */
+  private commitAndMove(target: TmGridEditingCommitTarget, event: KeyboardEvent): void {
+    const engine = this.engine;
+    this.commitEditor({ refocus: true });
+    switch (target) {
+      case 'tabNext':
+      case 'tabPrev': {
+        const next = engine.nav.tab(target === 'tabPrev');
+        if (next === null || next === 'exit') {
+          // Committed, but the key is not consumed: the browser's own Tab
+          // from the re-focused cell exits the grid (§8.2).
+          return;
+        }
+        // Selection moves only — no editor opens on the target (Excel).
+        engine.nav.setActive(next, { keepTabRun: true });
+        engine.selection.collapseTo(next);
+        break;
+      }
+      case 'enterRun':
+      case 'enterRunBack': {
+        const next = engine.nav.enterTarget(target === 'enterRunBack');
+        if (next !== null) {
+          engine.nav.setActive(next);
+          engine.selection.collapseTo(next);
+        }
+        break;
+      }
+      default:
+        engine.moveActive(target);
+        break;
+    }
+    event.preventDefault();
+    this.requestReveal();
+    this.requestFocusActive();
+  }
+
   /** The scroller's pointerdown handler: cell presses, row headers, drags. */
   onPointerDown(event: PointerEvent): void {
     if (event.button !== 0 || !(event.target instanceof Element)) {
@@ -593,6 +1026,14 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     const target = event.target;
     if (target.closest('[data-tm-resize]') !== null) {
       return; // the resize controller owns the gesture
+    }
+    if (target.closest('[data-tm-editor]') !== null) {
+      return; // presses inside the open editor keep their native semantics
+    }
+    if (untracked(() => this.engine.edit.session()) !== null) {
+      // Clicking another cell commits the open editor first (§8.4); focus
+      // then follows the press through the normal activation path.
+      this.commitEditor({ refocus: false });
     }
     const mod = IS_MAC_PLATFORM ? event.metaKey : event.ctrlKey;
     const cellElement = target.closest('[data-tm-cell]');
@@ -676,6 +1117,90 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.requestFocusActive();
   }
 
+  /** The scroller's dblclick handler: opens the editor in *edit* mode (§8.3). */
+  onDblClick(event: MouseEvent): void {
+    if (!untracked(this.editable)) {
+      return;
+    }
+    // The pointerdown capture retargets the click pair at the scroller
+    // (pointerup's target becomes the capture element, and dblclick's
+    // target is the pair's common ancestor) — the pressed CELL must be
+    // resolved from the pointer position, not from `event.target`.
+    const hit = document.elementFromPoint(event.clientX, event.clientY);
+    if (hit === null) {
+      return;
+    }
+    if (hit.closest('[data-tm-editor]') !== null) {
+      return; // double-clicks inside the editor select words natively
+    }
+    const cellElement = hit.closest('[data-tm-cell]');
+    if (cellElement === null) {
+      return;
+    }
+    const cell = this.cellFromElement(cellElement);
+    // The first click of the pair already committed any session and
+    // activated the cell; boolean cells toggled on that click path instead.
+    if (cell !== null && untracked(this.columnsInternal)[cell.col]?.type !== 'boolean') {
+      this.openEditor(cell, 'edit');
+    }
+  }
+
+  /**
+   * The scroller's contextmenu handler: suppresses the native menu, selects
+   * the press target when it lies outside the selection (Excel), and opens
+   * the grid menu at the pointer (or at the active cell for keyboard-
+   * sourced events, which carry no real coordinates).
+   */
+  onContextMenu(event: MouseEvent): void {
+    event.preventDefault();
+    const menu = this.menuRef;
+    if (menu === null) {
+      return;
+    }
+    const engine = this.engine;
+    if (untracked(() => engine.edit.session()) !== null) {
+      this.commitEditor({ refocus: true });
+    }
+    if (event.target instanceof Element) {
+      const cellElement = event.target.closest('[data-tm-cell]');
+      if (cellElement !== null) {
+        const cell = this.cellFromElement(cellElement);
+        if (cell !== null && !untracked(() => engine.selection.isCellSelected(cell))) {
+          this.escapedSignal.set(false);
+          engine.clickCell(cell);
+          this.requestFocusActive();
+        }
+      }
+    }
+    const element = this.activeCellElement();
+    const keyboardSourced = event.clientX === 0 && event.clientY === 0;
+    const anchor =
+      keyboardSourced && element !== null
+        ? element.getBoundingClientRect()
+        : { x: event.clientX, y: event.clientY };
+    menu.open(anchor, element !== null ? { restoreFocus: element } : undefined);
+  }
+
+  /**
+   * Commit-on-blur (§8.4): when focus leaves the grid — and lands outside
+   * every owned overlay surface (select panel, error overlay, context
+   * menu; the CDK keeps popover panes inside its overlay container) — an
+   * open editor commits. Safer for forms than Excel's keep-editing.
+   */
+  onFocusOut(event: FocusEvent): void {
+    const engine = this.engineInstance;
+    if (engine === null || untracked(() => engine.edit.session()) === null) {
+      return;
+    }
+    const next = event.relatedTarget;
+    if (next instanceof Element) {
+      if (this.deps.host.contains(next) || next.closest('.cdk-overlay-container') !== null) {
+        return; // focus stayed inside the grid or one of its overlay surfaces
+      }
+    }
+    this.commitEditor({ refocus: false });
+  }
+
   /** The scroller's copy handler. */
   onCopy(event: ClipboardEvent): void {
     this.clipboardDom.onCopy(event);
@@ -706,10 +1231,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       pageSize: () => this.pageSize(),
       oversizeCopyCellThreshold: ɵTM_GRID_OVERSIZE_COPY_CELLS,
       host: {
-        // The field-tree writer lands with the editing milestone; with no
-        // writer every engine mutation is a structural no-op, which is the
-        // readonly contract.
-        writer: undefined,
+        // The field binding gets the field-tree writer; the data binding
+        // stays writer-less, so every engine mutation is a structural
+        // no-op — the readonly contract.
+        writer: untracked(this.deps.field) !== undefined ? this.fieldWriter : undefined,
         onNotice: (notice) => this.announcements.notice(notice),
         onReveal: () => this.requestReveal(),
         onWarn: (warning) => {
@@ -746,13 +1271,16 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           : () => null;
 
     let enumLabels: ReadonlyMap<unknown, string> | null = null;
+    let enumOptions: readonly unknown[] | undefined;
+    let optionLabel: ((option: unknown) => string) | undefined;
+    let optionValue: ((option: unknown) => unknown) | undefined;
     if (type === 'enum') {
-      const options = dir.options();
-      if (options !== undefined) {
-        const optionLabel = dir.optionLabel() as ((option: unknown) => string) | undefined;
-        const optionValue = dir.optionValue() as ((option: unknown) => unknown) | undefined;
+      enumOptions = dir.options();
+      if (enumOptions !== undefined) {
+        optionLabel = dir.optionLabel() as ((option: unknown) => string) | undefined;
+        optionValue = dir.optionValue() as ((option: unknown) => unknown) | undefined;
         const labels = new Map<unknown, string>();
-        for (const option of options) {
+        for (const option of enumOptions) {
           const value = optionValue !== undefined ? optionValue(option) : option;
           if (!labels.has(value)) {
             labels.set(value, optionLabel !== undefined ? optionLabel(option) : String(option));
@@ -807,9 +1335,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       editable:
         key !== null &&
         (BUILT_IN_EDIT_TYPES.has(type) || customParse !== undefined || editorDef !== undefined),
-      // Per-cell field state (disabled/readonly child fields win over the
-      // column setting) folds in with the editing milestone.
-      isCellReadonly: (row) => alwaysReadonly || (readonlyFn !== null && readonlyFn(row)),
+      // The bound field's per-cell disabled/readonly state WINS over the
+      // column setting (§5.1 — the field is authoritative when bound).
+      isCellReadonly: (row) =>
+        alwaysReadonly ||
+        (readonlyFn !== null && readonlyFn(row)) ||
+        (key !== null && this.isFieldCellReadonly(row, key)),
       ...(parse !== undefined ? { parse } : {}),
       hasResolver,
       clearedValue: defaultValue !== undefined ? defaultValue : type === 'boolean' ? false : null,
@@ -831,7 +1362,57 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       flex: dir.flex(),
       engineColumn,
       displayDef,
+      editorDef,
+      enumOptions,
+      optionLabel,
+      optionValue,
     };
+  }
+
+  /**
+   * Whether the bound field marks the row's `key` child disabled or
+   * readonly — the field is authoritative over column-level editability.
+   * A `data` binding (no field tree) never restricts anything here.
+   */
+  private isFieldCellReadonly(row: T, key: string): boolean {
+    const tree = this.deps.field();
+    if (tree === undefined) {
+      return false;
+    }
+    const index = this.engine.model.modelIndexOfRow(this.deps.rowId()(row));
+    if (index === -1) {
+      return false;
+    }
+    const rowField = ɵtmRowField(tree, index);
+    if (rowField === undefined) {
+      return false;
+    }
+    const child = ɵtmChildField(rowField, key);
+    if (child === undefined) {
+      return false;
+    }
+    const state = child();
+    return state.disabled() || state.readonly();
+  }
+
+  /**
+   * The column a field validation error is attributed to: the error
+   * field's `keyInParent` when it names a column key (a leaf error under
+   * the row), else the first column — row-level errors and deeper-nested
+   * ones still count in the tally and remain reachable by the error jump.
+   */
+  private attributeErrorColumn(
+    error: ValidationError.WithFieldTree,
+    columns: readonly ColumnInternal<T>[],
+  ): ColumnInternal<T> {
+    const keyInParent = error.fieldTree().keyInParent();
+    if (typeof keyInParent === 'string') {
+      const match = columns.find((column) => column.key === keyInParent);
+      if (match !== undefined) {
+        return match;
+      }
+    }
+    return columns[0];
   }
 
   private buildRenderRows(): readonly ɵTmGridRowVm[] {
@@ -845,6 +1426,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     const editable = this.editable();
     const rowHeight = this.rowHeightSignal();
     const isTree = engine.model.isTree;
+
+    const session = editable ? engine.edit.session() : null;
+    const fieldErrors = editable ? this.fieldErrorCells() : EMPTY_FIELD_ERRORS;
 
     const rows: ɵTmGridRowVm[] = [];
     const pushRow = (viewIndex: number, outlier: boolean): void => {
@@ -860,6 +1444,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       const cells = columns.map((column): ɵTmGridCellVm => {
         const cell: TmRowCol = { row: viewIndex, col: column.index };
         const isActive = active !== null && active.row === viewIndex && active.col === column.index;
+        const invalid =
+          !isPlaceholder &&
+          view !== null &&
+          editable &&
+          (engine.annotations.invalidInput(view.id, column.id) !== undefined ||
+            fieldErrors.has(errorCellKey(view.id, column.id)));
         let displayTemplate: TemplateRef<TmGridDisplayContext<unknown, unknown>> | undefined;
         let displayCtx: TmGridDisplayContext<unknown, unknown> | undefined;
         if (!isPlaceholder && view !== null && column.displayDef !== undefined) {
@@ -868,7 +1458,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
             $implicit: column.engineColumn.getValue(view.row),
             row: view.row,
             rowId: view.id,
-            invalid: engine.annotations.invalidInput(view.id, column.id) !== undefined,
+            invalid,
             readonly: !model.isCellEditable(cell),
           };
         }
@@ -888,6 +1478,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           glyphClass,
           displayTemplate,
           displayCtx,
+          editing:
+            session !== null && session.cell.row === viewIndex && session.cell.col === column.index,
+          invalid,
+          readonly: editable && !isPlaceholder && !model.isCellEditable(cell),
+          pending: view !== null && engine.annotations.isPending(view.id, column.id),
         };
       });
       rows.push({
@@ -946,14 +1541,45 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         return true;
       }
       case 'enter': {
-        // Editable cells open an editor here once the editing milestone
-        // lands; the readonly behavior applies to every cell until then.
-        if (!intent.backward && this.activateCellLink()) {
-          return true;
+        if (!intent.backward) {
+          // Enter on an editable non-boolean cell opens the editor in
+          // *edit* mode (§8.2); the keymap already routed editable boolean
+          // cells to the toggle.
+          const active = untracked(() => engine.nav.activeCell());
+          if (
+            active !== null &&
+            untracked(this.editable) &&
+            untracked(() => engine.model.isCellEditable(active)) &&
+            this.openEditor(active, 'edit')
+          ) {
+            return true;
+          }
+          if (this.activateCellLink()) {
+            return true;
+          }
         }
         engine.moveActive(intent.backward ? 'up' : 'down');
         this.requestReveal();
         this.requestFocusActive();
+        return true;
+      }
+      case 'edit': {
+        // F2 / Alt+ArrowDown / type-to-edit. A readonly cell is a NO-OP,
+        // not a swallow — the key may still mean something to the browser.
+        const active = untracked(() => engine.nav.activeCell());
+        return active !== null && this.openEditor(active, intent.mode, intent.seed);
+      }
+      case 'toggleBoolean': {
+        const active = untracked(() => engine.nav.activeCell());
+        return active !== null && engine.edit.toggleBoolean(active);
+      }
+      case 'menu': {
+        const menu = this.menuRef;
+        const element = this.activeCellElement();
+        if (menu === null || element === null) {
+          return false;
+        }
+        menu.open(element.getBoundingClientRect(), { restoreFocus: element });
         return true;
       }
       case 'clear':
@@ -992,12 +1618,240 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         }
         return true;
       default:
-        // edit/toggleBoolean (editing milestone), menu (context-menu
-        // milestone), find (find-bar milestone), toggleCheck /
-        // toggleSelectAllCheckbox (row-checkbox milestone), expand /
-        // collapse (tree milestone).
+        // find (find-bar milestone), toggleCheck / toggleSelectAllCheckbox
+        // (row-checkbox milestone), expand / collapse (tree milestone).
         return false;
     }
+  }
+
+  // ---- editor session (§8.4) ----
+
+  /**
+   * Opens an editor session on a cell and mounts its editor SYNCHRONOUSLY.
+   * The outlet only exists once the session signal has rendered, so the
+   * core forces one render pass via `ApplicationRef.tick()` — DOM event
+   * handlers always run outside a tick in zoneless Angular, so the call is
+   * re-entrancy-safe, and the synchronous mount is what lets an IME
+   * composition land inside the editor's input within the same task
+   * (`opts.ime`); every other open path shares it for one behavior.
+   * Returns whether a session opened.
+   */
+  private openEditor(
+    cell: TmRowCol,
+    mode: 'edit' | 'enter',
+    seedText?: string,
+    opts?: { ime?: boolean },
+  ): boolean {
+    const engine = this.engine;
+    const column = untracked(this.columnsInternal)[cell.col];
+    if (column === undefined) {
+      return false;
+    }
+    if (column.editorDef === undefined && column.type === 'entity') {
+      if (isDevMode() && untracked(() => engine.model.isCellEditable(cell))) {
+        throw new Error(
+          `tm-grid: column "${column.id}" of type 'entity' has no built-in editor — ` +
+            `project a *tmGridEditor template hosting a control that implements TmCellEditor.`,
+        );
+      }
+      return false;
+    }
+    if (!engine.edit.openEdit(cell, mode, seedText)) {
+      return false;
+    }
+    this.escapedSignal.set(false);
+    // The opening keystroke on a scrolled-away cell scrolls it back (§4).
+    this.revealActiveCell();
+    const view = untracked(() => engine.model.rowAt(cell.row));
+    const valueAtOpen = untracked(() => engine.model.cellValue(cell));
+    const displayText = untracked(() => engine.displayText(cell));
+    const header = untracked(column.header);
+
+    let config: ɵTmGridEditorMountConfig;
+    if (column.editorDef !== undefined) {
+      config = {
+        kind: 'template',
+        template: column.editorDef.template as TemplateRef<TmGridEditorContext<unknown, unknown>>,
+        context: { $implicit: valueAtOpen, row: view?.row },
+      };
+    } else if (column.type === 'enum') {
+      config = {
+        kind: 'enum',
+        label: header,
+        options: column.enumOptions ?? [],
+        optionLabel: column.optionLabel,
+        optionValue: column.optionValue,
+        onActivation: () => this.onEnumActivation(),
+      };
+    } else {
+      config = { kind: 'text', label: header };
+    }
+
+    this.editorSession.stage(config);
+    this.appRef.tick(); // render the outlet now (see the method TSDoc)
+    const mounted = this.editorSession.mountIfReady();
+    if (mounted === null) {
+      // Nothing registered (prod fallback of the dev-mode throw).
+      engine.edit.cancel();
+      return false;
+    }
+
+    const editor = mounted.editor;
+    editor.focus();
+    if (opts?.ime === true) {
+      // IME opens UNSEEDED: the composition itself supplies the content.
+    } else if (mounted.kind === 'enum') {
+      editor.value.set(valueAtOpen);
+      if (seedText !== undefined) {
+        // Type-to-edit: the select opens its panel seeding the typeahead.
+        editor.seed?.(seedText);
+      } else {
+        mounted.openDropdown();
+      }
+    } else if (seedText !== undefined) {
+      if (editor.seed !== undefined) {
+        editor.seed(seedText);
+      } else {
+        editor.value.set(seedText);
+      }
+    } else if (mounted.kind === 'text') {
+      // Edit mode edits the cell's CURRENT DISPLAY TEXT (Excel edits the
+      // formatted text; for an invalid-input cell that is the raw text).
+      if (editor.seed !== undefined) {
+        editor.seed(displayText);
+      } else {
+        editor.value.set(displayText);
+      }
+    } else {
+      // Consumer template editor: the grid owns the value channel and
+      // seeds it with the raw cell value (also carried in the context).
+      editor.value.set(valueAtOpen);
+    }
+    return true;
+  }
+
+  /** An enum option was activated: commit and CLOSE, no move (Sheets). */
+  private onEnumActivation(): void {
+    if (untracked(() => this.engine.edit.session()) !== null) {
+      this.commitEditor({ refocus: true });
+    }
+  }
+
+  /**
+   * Commits the open session through the engine: the enum select commits
+   * its VALUE; text-path editors commit their text through the column's
+   * parse — unless `text()` is `null` (content not representable as text),
+   * which commits the value channel directly.
+   */
+  private commitEditor(opts: { refocus: boolean }): void {
+    const engine = this.engine;
+    const mounted = this.editorSession.current();
+    if (mounted === null) {
+      engine.edit.cancel();
+    } else if (mounted.kind === 'enum') {
+      engine.edit.commitValue(untracked(() => mounted.editor.value()));
+    } else {
+      const text = untracked(() => mounted.editor.text());
+      if (text === null) {
+        engine.edit.commitValue(untracked(() => mounted.editor.value()));
+      } else {
+        engine.edit.commitText(text);
+      }
+    }
+    this.closeEditor(opts);
+  }
+
+  /** Cancels the open session: the model is never written (§8.2 Esc, §5.1). */
+  private cancelEditor(opts: { refocus: boolean }): void {
+    this.editorSession.current()?.editor.cancel();
+    this.engine.edit.cancel();
+    this.closeEditor(opts);
+  }
+
+  private closeEditor(opts: { refocus: boolean }): void {
+    this.editorSession.destroy();
+    if (opts.refocus) {
+      // Synchronously, so focus never falls to <body> (a body-focus frame
+      // would look like a grid blur to outside observers) — then again
+      // after render, when the move (if any) re-targets the active cell.
+      this.activeCellElement()?.focus({ preventScroll: true });
+      this.requestFocusActive();
+    }
+  }
+
+  // ---- context menu (§8.5) ----
+
+  private buildMenuItems(): readonly TmMenuEntry[] {
+    const translate = this.deps.translate;
+    const icons = this.iconTemplates();
+    const editable = this.editable();
+    const canAddRows = this.deps.newRow() !== undefined;
+    const engine = this.engine;
+    engine.selection.ranges(); // recompute the row tally as selection changes
+    const spans = engine.selection.rowsUnion();
+    const count = Math.max(
+      1,
+      spans.reduce((sum, span) => sum + (span.end - span.start + 1), 0),
+    );
+    const items: TmMenuEntry[] = [
+      {
+        id: 'cut',
+        label: translate('grid.menu.cut')(),
+        icon: icons?.cut,
+        disabled: !editable,
+        // Cut arms the deferred move with the clipboard milestone; until
+        // then the menu cut copies (exactly like the keyboard Mod+X path).
+        action: () => this.clipboardDom.copyAsync(),
+      },
+      {
+        id: 'copy',
+        label: translate('grid.menu.copy')(),
+        icon: icons?.copy,
+        action: () => this.clipboardDom.copyAsync(),
+      },
+      {
+        id: 'copyWithHeaders',
+        label: translate('grid.menu.copyWithHeaders')(),
+        icon: icons?.copyPlus,
+        action: () => this.clipboardDom.copyAsync({ withHeaders: true }),
+      },
+      {
+        id: 'paste',
+        label: translate('grid.menu.paste')(),
+        icon: icons?.clipboard,
+        // Paste lands with the clipboard milestone; the item ships disabled
+        // so the menu's shape (and muscle memory) stays stable.
+        disabled: true,
+        action: () => undefined,
+      },
+    ];
+    if (editable) {
+      items.push(
+        { separator: true },
+        {
+          id: 'insertAbove',
+          label: translate('grid.menu.insertAbove', { count })(),
+          icon: icons?.listPlus,
+          disabled: !canAddRows,
+          action: () => this.engine.insertRows('above'),
+        },
+        {
+          id: 'insertBelow',
+          label: translate('grid.menu.insertBelow', { count })(),
+          icon: icons?.listPlus,
+          disabled: !canAddRows,
+          action: () => this.engine.insertRows('below'),
+        },
+        {
+          id: 'deleteRows',
+          label: translate('grid.menu.deleteRows', { count })(),
+          icon: icons?.listMinus,
+          action: () => this.engine.deleteSelectedRows(),
+        },
+      );
+    }
+    const extras = this.deps.extraMenuItems();
+    return extras.length > 0 ? [...items, { separator: true }, ...extras] : items;
   }
 
   /** Enter on a readonly cell activates its first interactive child (a record link). */
@@ -1336,6 +2190,83 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       { injector },
     );
 
+    // Mode flip (§5.1): editable → readonly never mutates data. The open
+    // editor CANCELS (a flip usually follows Save/Cancel — a mode change
+    // must not write as a side effect), a pending cut clears, in-flight
+    // resolutions abort, and the active cell clamps (the placeholder row
+    // is gone). Selection, undo, scroll, and the invalid-input map all
+    // survive and return with edit mode.
+    let lastEditable: boolean | undefined;
+    effect(
+      () => {
+        const editable = this.editable();
+        untracked(() => {
+          if (lastEditable === true && !editable) {
+            const engine = this.engine;
+            const scroller = untracked(this.scrollerSignal);
+            const hadFocus = scroller !== null && scroller.contains(document.activeElement);
+            if (untracked(() => engine.edit.session()) !== null) {
+              this.cancelEditor({ refocus: false });
+            }
+            engine.clipboard.cancelCut();
+            engine.clipboard.abortResolutions();
+            engine.nav.reclamp();
+            if (hadFocus) {
+              // Focus returns via the editor-close path: to the active cell.
+              this.requestFocusActive();
+            }
+          }
+          lastEditable = editable;
+        });
+      },
+      { injector },
+    );
+
+    // Error-tally warm-up (§16): the first `errorSummary` read forces every
+    // row's field nodes, so it is deferred off the mount path — a post-
+    // render start, then idle-chunked slices (~500 rows per macrotask)
+    // touching each row's summary — before the tally computed first
+    // evaluates. A field rebind restarts the chain; the generation guard
+    // kills superseded chains.
+    effect(
+      () => {
+        const tree = this.deps.field();
+        untracked(() => {
+          this.warmupGeneration += 1;
+          const generation = this.warmupGeneration;
+          this.errorWarmupDone.set(false);
+          if (tree === undefined) {
+            return;
+          }
+          afterNextRender(() => this.warmupErrorSlice(tree, 0, generation), { injector });
+        });
+      },
+      { injector },
+    );
+
+    // The error overlay's anchor: the ACTIVE cell's element while that cell
+    // is errored, no editor is open, and the grid is editable. Re-resolved
+    // after every render (the element is recycled by virtualization).
+    afterRenderEffect(
+      () => {
+        this.renderRows();
+        const active = this.engine.nav.activeCell();
+        const editable = this.editable();
+        const session = this.engine.edit.session();
+        this.fieldErrorCells();
+        untracked(() => {
+          let element: Element | null = null;
+          if (editable && session === null && active !== null && this.isCellInError(active)) {
+            element = this.activeCellElement();
+          }
+          if (untracked(this.errorAnchorSignal) !== element) {
+            this.errorAnchorSignal.set(element);
+          }
+        });
+      },
+      { injector },
+    );
+
     // Loading / empty transitions.
     let lastLoading: boolean | undefined;
     effect(
@@ -1403,11 +2334,18 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     );
 
     // Roving focus: the active cell takes real focus after render whenever
-    // activity changed while the grid owned focus, or a gesture asked for it.
+    // activity changed while the grid owned focus, or a gesture asked for
+    // it. Also tracks the rendered window: when the repeater MOVES the
+    // focused row's DOM node (outlier ↔ window transitions) the browser
+    // silently drops focus to <body> without any focusout — the render
+    // that moved the node re-runs this effect, and focus is reclaimed as
+    // long as the grid owned it and the drop wasn't the user pressing
+    // outside.
     afterRenderEffect(
       () => {
         const active = this.engine.nav.activeCell();
         this.focusRequest();
+        this.renderRows();
         const escaped = this.escapedSignal();
         untracked(() => {
           if (escaped) {
@@ -1419,11 +2357,28 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
             this.pendingGestureFocus = false;
             return;
           }
-          const shouldFocus = this.pendingGestureFocus || scroller.contains(document.activeElement);
+          const droppedByDomMove =
+            this.gridOwnsFocus &&
+            document.hasFocus() &&
+            document.activeElement === document.body &&
+            Date.now() - this.lastOutsidePointerDown > 200;
+          const shouldFocus =
+            this.pendingGestureFocus ||
+            scroller.contains(document.activeElement) ||
+            droppedByDomMove;
           this.pendingGestureFocus = false;
-          if (shouldFocus) {
-            scroller.querySelector<HTMLElement>(cellSelector(active))?.focus({ preventScroll: true });
+          if (!shouldFocus) {
+            return;
           }
+          if (untracked(() => this.engine.edit.session()) !== null) {
+            // An open editor owns focus. Only reclaim after a DOM-move drop
+            // — and into the EDITOR, never the cell under it.
+            if (droppedByDomMove) {
+              this.editorSession.current()?.editor.focus();
+            }
+            return;
+          }
+          scroller.querySelector<HTMLElement>(cellSelector(active))?.focus({ preventScroll: true });
         });
       },
       { injector },
@@ -1493,8 +2448,44 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     );
   }
 
+  /** One error-tally warm-up slice; chains the next via a macrotask. */
+  private warmupErrorSlice(tree: FieldTree<T[]>, start: number, generation: number): void {
+    if (generation !== this.warmupGeneration) {
+      return; // superseded by a rebind or disposal
+    }
+    const total = untracked(this.rows).length;
+    const end = Math.min(total, start + WARMUP_ROWS_PER_SLICE);
+    untracked(() => {
+      for (let i = start; i < end; i++) {
+        ɵtmRowField(tree, i)?.().errorSummary();
+      }
+    });
+    if (end < untracked(this.rows).length) {
+      setTimeout(() => this.warmupErrorSlice(tree, end, generation), 0);
+    } else {
+      this.errorWarmupDone.set(true);
+    }
+  }
+
+  /** Whether a cell is errored (invalid input or field-invalid), untracked. */
+  private isCellInError(cell: TmRowCol): boolean {
+    return untracked(() => {
+      const view = this.engine.model.rowAt(cell.row);
+      const column = this.columnsInternal()[cell.col];
+      if (view === null || column === undefined) {
+        return false;
+      }
+      return (
+        this.engine.annotations.invalidInput(view.id, column.id) !== undefined ||
+        this.fieldErrorCells().has(errorCellKey(view.id, column.id))
+      );
+    });
+  }
+
   private onDestroy(): void {
     this.endDrag();
+    this.warmupGeneration += 1; // kills any in-flight warm-up chain
+    this.editorSession.destroy();
     if (this.handle !== null) {
       this.persistWidths();
       this.persistContentState();

@@ -6,10 +6,18 @@
 import {
   ComponentHarness,
   HarnessPredicate,
+  TestKey,
   type BaseHarnessFilters,
   type TestElement,
-  type TestKey,
 } from '@angular/cdk/testing';
+
+import { TmMenuHarness } from './menu-harness';
+
+/** How {@link TmGridHarness.openEditor} opens the editor session. */
+export type TmGridEditorOpenVia = 'enter' | 'f2' | 'type';
+
+/** How {@link TmGridHarness.commitEditor} commits the open session. */
+export type TmGridEditorCommitVia = 'enter' | 'tab';
 
 /** A cell address: view-space row index and data-column index (both 0-based). */
 export interface TmGridCellCoordinate {
@@ -318,6 +326,156 @@ export class TmGridHarness extends ComponentHarness {
   /** Whether the new-row placeholder row is rendered. */
   async hasPlaceholderRow(): Promise<boolean> {
     return (await this.locatorForOptional('.tm-grid__row--placeholder')()) !== null;
+  }
+
+  // ---- editing (editable grids only) ----
+
+  /**
+   * Opens an editor session on a cell: clicks the cell, then presses the
+   * opening key. `via: 'enter'` and `'f2'` open in *edit* mode (the full
+   * display text, caret at the end); `'type'` opens in *enter* mode by
+   * typing `seed` — its first character is the type-to-edit keystroke that
+   * replaces the content, the rest is typed into the editor. Boolean cells
+   * toggle instead of opening a session; readonly cells are a no-op.
+   */
+  async openEditor(
+    rowIndex: number,
+    colIndex: number,
+    via: TmGridEditorOpenVia = 'enter',
+    seed?: string,
+  ): Promise<void> {
+    await this.clickCell(rowIndex, colIndex);
+    if (via === 'enter') {
+      await this.pressKeys(TestKey.ENTER);
+      return;
+    }
+    if (via === 'f2') {
+      await this.pressKeys(TestKey.F2);
+      return;
+    }
+    if (seed === undefined || seed.length === 0) {
+      throw new Error('TmGridHarness.openEditor: via "type" requires a non-empty seed.');
+    }
+    await this.pressKeys(seed[0]);
+    if (seed.length > 1) {
+      await this.typeInEditor(seed.slice(1));
+    }
+  }
+
+  /** Whether an editor session is open (the editing cell renders its outlet). */
+  async isEditorOpen(): Promise<boolean> {
+    return (await this.locatorForOptional('[data-tm-editor]')()) !== null;
+  }
+
+  /**
+   * The open editor's current text: the value of the input rendered inside
+   * the editing cell (`[data-tm-editor] input` — the built-in text editor,
+   * or any input-hosting registered editor). Throws when no editor is open
+   * or the mounted editor renders no input (e.g. the enum select).
+   */
+  async getEditorText(): Promise<string> {
+    const input = await this.locatorFor('[data-tm-editor] input')();
+    return input.getProperty<string>('value');
+  }
+
+  /**
+   * Types into the open editor's input through native key/input events,
+   * appending at the end of its current content (use `'type'` seeding or
+   * the editor's own selection semantics to replace). Input-hosting
+   * editors only, as {@link getEditorText}.
+   */
+  async typeInEditor(text: string): Promise<void> {
+    const input = await this.locatorFor('[data-tm-editor] input')();
+    await input.sendKeys(text);
+  }
+
+  /**
+   * Commits the open session: Enter commits and moves down (or back to the
+   * tab run's origin column), Tab commits and moves the selection to the
+   * next editable cell without opening an editor (§8.2). The key is sent
+   * through the editor so it bubbles to the grid exactly like a user's
+   * keystroke. Note: an OPEN dropdown panel owns Enter — commit an enum
+   * editor by activating an option instead.
+   */
+  async commitEditor(via: TmGridEditorCommitVia = 'enter'): Promise<void> {
+    await this.sendEditorKey(via === 'enter' ? TestKey.ENTER : TestKey.TAB);
+  }
+
+  /**
+   * Cancels the open session via Escape — the model is never written. On
+   * an enum editor with an open panel the first Escape only closes the
+   * panel (the two-stage Esc, §8.4); call again to cancel the session.
+   */
+  async cancelEditor(): Promise<void> {
+    await this.sendEditorKey(TestKey.ESCAPE);
+  }
+
+  // ---- error tally (the editable status bar, §10) ----
+
+  /**
+   * The error count shown by the status-bar tally chip, or 0 while the
+   * chip is absent (no errors, or readonly mode — the bar renders in
+   * editable mode only).
+   */
+  async getErrorCount(): Promise<number> {
+    const chip = await this.locatorForOptional('[data-tm-status-chip]')();
+    return chip === null ? 0 : this.leadingCount(await chip.text());
+  }
+
+  /**
+   * The pending-resolution count shown in the status bar while async paste
+   * resolutions are in flight, or 0 while none are.
+   */
+  async getPendingCount(): Promise<number> {
+    const pending = await this.locatorForOptional('.tm-grid__status-pending')();
+    return pending === null ? 0 : this.leadingCount(await pending.text());
+  }
+
+  /**
+   * Clicks the status bar's next-error button: activates and scrolls to
+   * the next errored cell in row-major order, cycling. Requires at least
+   * one error (the buttons render with the chip).
+   */
+  async tallyNext(): Promise<void> {
+    await (await this.locatorFor('[data-tm-status-next]')()).click();
+  }
+
+  /** Clicks the previous-error button — {@link tallyNext} in reverse. */
+  async tallyPrevious(): Promise<void> {
+    await (await this.locatorFor('[data-tm-status-prev]')()).click();
+  }
+
+  // ---- context menu (§8.5) ----
+
+  /**
+   * Opens the grid's context menu via Shift+F10 — at the given cell after
+   * clicking it, or at the current active cell when no coordinates are
+   * given — and returns the menu's harness. The menu panel is portaled
+   * into the CDK overlay (outside the grid), so the harness is resolved
+   * through the document root.
+   */
+  async openContextMenu(rowIndex?: number, colIndex?: number): Promise<TmMenuHarness> {
+    if (rowIndex !== undefined && colIndex !== undefined) {
+      await this.clickCell(rowIndex, colIndex);
+    }
+    const active = await this.locatorForOptional('[role="gridcell"][tabindex="0"]')();
+    const target = active ?? (await this.gridElement());
+    await target.focus();
+    await target.sendKeys({ shift: true }, TestKey.F10);
+    return this.documentRootLocatorFactory().locatorFor(TmMenuHarness)();
+  }
+
+  /** Sends one key through the open editor (the input when it has one). */
+  private async sendEditorKey(key: TestKey): Promise<void> {
+    const input = await this.locatorForOptional('[data-tm-editor] input')();
+    const target = input ?? (await this.locatorFor('[data-tm-editor]')());
+    await target.sendKeys(key);
+  }
+
+  /** The first integer in a localized tally text ("3 errors" → 3). */
+  private leadingCount(text: string): number {
+    const match = /\d+/.exec(text);
+    return match === null ? 0 : Number(match[0]);
   }
 
   private async modifierClickCell(

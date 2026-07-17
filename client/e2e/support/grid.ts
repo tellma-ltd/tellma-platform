@@ -111,6 +111,50 @@ export async function dragBetween(page: Page, from: Locator, to: Locator): Promi
 }
 
 /**
+ * Clicks a cell and waits for the roving focus to land on it. The focus
+ * handoff happens on the render after the activating pointerdown, so a key
+ * pressed immediately after a bare `click()` can still target the
+ * previously-focused element (the page body on a fresh load) and never
+ * reach the grid — always settle before typing.
+ */
+export async function activateCell(page: Page, row: number, col: number): Promise<void> {
+  await cell(page, row, col).click();
+  await expect(cell(page, row, col)).toBeFocused();
+}
+
+/** The open editor's container inside the editing cell. */
+export function editor(page: Page): Locator {
+  return page.locator('[data-tm-editor]');
+}
+
+/**
+ * The open editor's input (the built-in text editor, or any input-hosting
+ * registered editor).
+ */
+export function editorInput(page: Page): Locator {
+  return page.locator('[data-tm-editor] input');
+}
+
+/** The editable status bar's error tally chip. */
+export function statusChip(page: Page): Locator {
+  return page.locator('[data-tm-status-chip]');
+}
+
+/**
+ * Parses the story's live model dump (`data-testid="model-json"` — the
+ * reactive JSON.stringify of the bound rows array).
+ */
+export async function modelJson<T>(page: Page): Promise<T> {
+  const text = await page.getByTestId('model-json').textContent();
+  return JSON.parse(text ?? 'null') as T;
+}
+
+/** The caret position (`selectionStart`) of the open editor's input. */
+export async function editorCaret(page: Page): Promise<number | null> {
+  return editorInput(page).evaluate((el) => (el as HTMLInputElement).selectionStart);
+}
+
+/**
  * Reads both flavors off the real system clipboard through the async
  * Clipboard API. Chromium-only: requires `clipboard-read` permission
  * (granted per test file via `test.use`). Note that Chromium SANITIZES the

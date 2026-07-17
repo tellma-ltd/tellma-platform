@@ -79,7 +79,7 @@ export abstract class ɵTmGridBase<T> {
   readonly searchable = input(false, { transform: booleanAttribute });
   /** Enables row checkbox selection (a later milestone renders it; readonly grids only). */
   readonly selectable = input(false, { transform: booleanAttribute });
-  /** Extra context-menu items appended after the built-ins (a later milestone renders the menu). */
+  /** Extra context-menu items appended after the built-ins. */
   readonly extraMenuItems = input<readonly TmMenuItem[]>([]);
   /** Row density. */
   readonly size = input<'sm' | 'md' | 'lg'>('md');
@@ -98,9 +98,9 @@ export abstract class ɵTmGridBase<T> {
   protected readonly core: ɵTmGridCore<T>;
 
   /**
-   * Count of cells in error state. In the readonly core this counts held
-   * invalid inputs; bound-field validation errors join the tally with the
-   * editing milestone.
+   * Count of distinct cells in error state: held invalid inputs plus the
+   * bound field's validation-errored cells. Consumers gate Save buttons on
+   * it.
    */
   readonly errorCount: Signal<number>;
   /** Count of cells awaiting async paste resolutions. */
@@ -142,6 +142,7 @@ export abstract class ɵTmGridBase<T> {
       searchable: this.searchable,
       selectable: this.selectable,
       size: this.size,
+      extraMenuItems: this.extraMenuItems,
       // The query token is the generic directive class, so the query signal
       // erases T; the rows these directives read are this grid's rows.
       columns: this.columns as Signal<ReadonlyArray<TmGridColumn<T, unknown>>>,

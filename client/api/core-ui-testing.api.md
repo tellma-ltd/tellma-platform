@@ -59,26 +59,43 @@ export interface TmGridCellHarnessFilters extends BaseHarnessFilters {
 }
 
 // @public
+export type TmGridEditorCommitVia = 'enter' | 'tab';
+
+// @public
+export type TmGridEditorOpenVia = 'enter' | 'f2' | 'type';
+
+// @public
 export class TmGridHarness extends ComponentHarness {
+    cancelEditor(): Promise<void>;
     clickCell(rowIndex: number, colIndex: number): Promise<void>;
     clickColumnHeader(colIndex: number): Promise<void>;
     clickCorner(): Promise<void>;
     clickRowHeader(rowIndex: number): Promise<void>;
+    commitEditor(via?: TmGridEditorCommitVia): Promise<void>;
     getActiveCell(): Promise<TmGridCellCoordinate | null>;
     getCell(rowIndex: number, colIndex: number): Promise<TmGridCellHarness>;
     getCellText(rowIndex: number, colIndex: number): Promise<string>;
     getColCount(): Promise<number>;
+    getEditorText(): Promise<string>;
     getEmptyText(): Promise<string | null>;
+    getErrorCount(): Promise<number>;
     getHeaderTexts(): Promise<string[]>;
+    getPendingCount(): Promise<number>;
     getRenderedRowCount(): Promise<number>;
     getRowCount(): Promise<number>;
     hasPlaceholderRow(): Promise<boolean>;
     static hostSelector: string;
+    isEditorOpen(): Promise<boolean>;
     isLoading(): Promise<boolean>;
     modClickCell(rowIndex: number, colIndex: number): Promise<void>;
+    openContextMenu(rowIndex?: number, colIndex?: number): Promise<TmMenuHarness>;
+    openEditor(rowIndex: number, colIndex: number, via?: TmGridEditorOpenVia, seed?: string): Promise<void>;
     pressKeys(...keys: (string | TestKey)[]): Promise<void>;
     selectRange(from: TmGridCellCoordinate, to: TmGridCellCoordinate): Promise<void>;
     shiftClickCell(rowIndex: number, colIndex: number): Promise<void>;
+    tallyNext(): Promise<void>;
+    tallyPrevious(): Promise<void>;
+    typeInEditor(text: string): Promise<void>;
 }
 
 // @public

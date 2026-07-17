@@ -5,12 +5,15 @@
 ```ts
 
 import * as _angular_core from '@angular/core';
+import { ConnectedPosition } from '@angular/cdk/overlay';
 import { DestroyRef } from '@angular/core';
 import { FieldTree } from '@angular/forms/signals';
+import { FlexibleConnectedPositionStrategyOrigin } from '@angular/cdk/overlay';
 import { Injector } from '@angular/core';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { Signal } from '@angular/core';
 import { TemplateRef } from '@angular/core';
+import { ViewContainerRef } from '@angular/core';
 import { WritableSignal } from '@angular/core';
 
 // @public
@@ -169,7 +172,11 @@ export interface ɵTmGridCellVm {
     readonly colIndex: number;
     readonly displayCtx: TmGridDisplayContext<unknown, unknown> | undefined;
     readonly displayTemplate: TemplateRef<TmGridDisplayContext<unknown, unknown>> | undefined;
+    readonly editing: boolean;
     readonly glyphClass: string | undefined;
+    readonly invalid: boolean;
+    readonly pending: boolean;
+    readonly readonly: boolean;
     readonly selected: boolean;
     readonly text: string;
 }
@@ -200,6 +207,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     constructor(deps: ɵTmGridCoreDeps<T>);
     readonly ariaColCount: Signal<number>;
     readonly ariaRowCount: Signal<number>;
+    attachEditorOutlet(outlet: ViewContainerRef | null): void;
+    attachMenu(menu: TmMenu | null, icons: ɵTmGridIconTemplates | null): void;
     attachScroller(element: HTMLElement): void;
     clearHistory(): void;
     readonly columnModel: Signal<readonly ɵTmGridColumnVm[]>;
@@ -208,17 +217,25 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     readonly emptyDef: Signal<TmGridEmptyDef | undefined>;
     readonly emptyText: Signal<string>;
     get engine(): TmGridEngine<T>;
+    readonly errorAnchor: Signal<Element | null>;
     readonly errorCount: Signal<number>;
+    readonly errorMessage: Signal<string>;
+    readonly errorMsgId: string;
     readonly escaped: Signal<boolean>;
     focus(): void;
+    gotoError(direction: 1 | -1): void;
     readonly gridTemplate: Signal<string>;
     readonly hitCols: Signal<readonly boolean[]>;
     readonly loading: Signal<boolean>;
     readonly loadingDef: Signal<TmGridLoadingDef | undefined>;
     readonly loadingText: Signal<string>;
+    readonly menuItems: Signal<readonly TmMenuEntry[]>;
     onClick(event: MouseEvent): void;
+    onContextMenu(event: MouseEvent): void;
     onCopy(event: ClipboardEvent): void;
     onCut(event: ClipboardEvent): void;
+    onDblClick(event: MouseEvent): void;
+    onFocusOut(event: FocusEvent): void;
     onKeydown(event: KeyboardEvent): void;
     onPaste(event: ClipboardEvent): void;
     onPointerDown(event: PointerEvent): void;
@@ -243,6 +260,7 @@ export interface ɵTmGridCoreDeps<T> {
     readonly destroyRef: DestroyRef;
     readonly direction: Signal<'ltr' | 'rtl'>;
     readonly emptyDef: Signal<TmGridEmptyDef | undefined>;
+    readonly extraMenuItems: Signal<readonly TmMenuItem[]>;
     readonly field: Signal<FieldTree<T[]> | undefined>;
     readonly gridId: Signal<string>;
     readonly host: HTMLElement;
@@ -258,6 +276,16 @@ export interface ɵTmGridCoreDeps<T> {
     readonly size: Signal<'sm' | 'md' | 'lg'>;
     readonly store: TmGridStateStore;
     readonly translate: TmUiTranslateFn;
+}
+
+// @public
+export interface ɵTmGridIconTemplates {
+    readonly clipboard: TemplateRef<void>;
+    readonly copy: TemplateRef<void>;
+    readonly copyPlus: TemplateRef<void>;
+    readonly cut: TemplateRef<void>;
+    readonly listMinus: TemplateRef<void>;
+    readonly listPlus: TemplateRef<void>;
 }
 
 // @public
@@ -278,6 +306,7 @@ export interface ɵTmGridRowVm {
 export class ɵTmGridView {
     constructor();
     readonly core: _angular_core.InputSignal<ɵTmGridViewCore>;
+    protected readonly errorPositions: ConnectedPosition[];
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<ɵTmGridView, "tm-grid-view", never, { "core": { "alias": "core"; "required": true; "isSignal": true; }; }, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<ɵTmGridView, never>;
 }
@@ -286,24 +315,36 @@ export class ɵTmGridView {
 export interface ɵTmGridViewCore {
     readonly ariaColCount: Signal<number>;
     readonly ariaRowCount: Signal<number>;
+    attachEditorOutlet(outlet: ViewContainerRef | null): void;
+    attachMenu(menu: TmMenu | null, icons: ɵTmGridIconTemplates | null): void;
     attachScroller(element: HTMLElement): void;
     readonly columnModel: Signal<readonly ɵTmGridColumnVm[]>;
     readonly containerTabindex: Signal<number>;
     readonly editable: Signal<boolean>;
     readonly emptyDef: Signal<TmGridEmptyDef | undefined>;
     readonly emptyText: Signal<string>;
+    readonly errorAnchor: Signal<Element | null>;
+    readonly errorCount: Signal<number>;
+    readonly errorMessage: Signal<string>;
+    readonly errorMsgId: string;
     readonly escaped: Signal<boolean>;
+    gotoError(direction: 1 | -1): void;
     readonly hitCols: Signal<readonly boolean[]>;
     readonly loading: Signal<boolean>;
     readonly loadingDef: Signal<TmGridLoadingDef | undefined>;
     readonly loadingText: Signal<string>;
+    readonly menuItems: Signal<readonly TmMenuEntry[]>;
     onClick(event: MouseEvent): void;
+    onContextMenu(event: MouseEvent): void;
     onCopy(event: ClipboardEvent): void;
     onCut(event: ClipboardEvent): void;
+    onDblClick(event: MouseEvent): void;
+    onFocusOut(event: FocusEvent): void;
     onKeydown(event: KeyboardEvent): void;
     onPaste(event: ClipboardEvent): void;
     onPointerDown(event: PointerEvent): void;
     onScroll(event: Event): void;
+    readonly pendingCount: Signal<number>;
     readonly renderRows: Signal<readonly ɵTmGridRowVm[]>;
     readonly resize: ɵTmGridColumnResize;
     readonly showEmpty: Signal<boolean>;

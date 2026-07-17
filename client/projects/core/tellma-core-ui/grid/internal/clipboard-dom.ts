@@ -67,6 +67,24 @@ function rememberDescriptor(descriptor: ɵTmGridCopyDescriptor): void {
 }
 
 /**
+ * The descriptor a paste's fast path consumes. Data-only: the clipboard
+ * TSV may carry a prepended header row (copy-with-headers), but the
+ * descriptor stores the data matrix with the headers flag stripped, so a
+ * same-session paste never mistakes the first DATA row for a header.
+ */
+function descriptorFor(tsv: string, payload: TmGridCopyPayload): ɵTmGridCopyDescriptor {
+  const meta: TmGridClipboardMeta =
+    payload.meta.headers === undefined ? payload.meta : { ...payload.meta, headers: undefined };
+  return {
+    fingerprint: tmClipboardFingerprint(tsv),
+    meta,
+    matrix: payload.matrix,
+    rawValues: payload.rawValues,
+    rowIds: payload.rowIds,
+  };
+}
+
+/**
  * The paste milestone's fast-path lookup: the stored descriptor whose TSV
  * flavor fingerprints to `fingerprint`, or `undefined`. A hit is touched to
  * the back of the eviction order.
@@ -96,7 +114,7 @@ function escapeHtmlAttribute(text: string): string {
 /** Construction inputs of {@link ɵTmGridClipboardDom}. */
 export interface ɵTmGridClipboardDomOptions {
   /** Extracts the current selection as a copy payload (the engine's copy). */
-  copy(): TmGridCopyPayload | null;
+  copy(opts?: { withHeaders?: boolean }): TmGridCopyPayload | null;
   /** The grid's live-region voice. */
   readonly announcements: ɵTmGridAnnouncements;
 }
@@ -133,8 +151,28 @@ export class ɵTmGridClipboardDom {
     this.onCopy(event);
   }
 
+  /**
+   * The context-menu copy path: no ClipboardEvent exists inside a menu
+   * action, so both flavors go through the async Clipboard API
+   * (`navigator.clipboard.write` succeeds everywhere within a user
+   * gesture). Reuses the chunked serializers — correct at any size, and
+   * the descriptor still lands in the same-session paste LRU.
+   */
+  copyAsync(opts?: { withHeaders?: boolean }): void {
+    const payload = this.options.copy(opts);
+    if (payload === null) {
+      return; // nothing selected, or the engine already announced a refusal
+    }
+    this.writeOversize(payload);
+  }
+
   private writeSync(event: ClipboardEvent, payload: TmGridCopyPayload): void {
-    const tsv = tmSerializeTsv(payload.matrix);
+    // Copy-with-headers prepends the header row to BOTH flavors (foreign
+    // targets read it as data; the HTML flavor additionally marks it so a
+    // paste back into a grid skips it).
+    const tsvMatrix =
+      payload.headerRow === undefined ? payload.matrix : [payload.headerRow, ...payload.matrix];
+    const tsv = tmSerializeTsv(tsvMatrix);
     const html = tmSerializeHtmlTable({
       matrix: payload.matrix,
       meta: payload.meta,
@@ -142,13 +180,7 @@ export class ɵTmGridClipboardDom {
       rowIds: payload.rowIds,
       headerRow: payload.headerRow,
     });
-    rememberDescriptor({
-      fingerprint: tmClipboardFingerprint(tsv),
-      meta: payload.meta,
-      matrix: payload.matrix,
-      rawValues: payload.rawValues,
-      rowIds: payload.rowIds,
-    });
+    rememberDescriptor(descriptorFor(tsv, payload));
     if (event.clipboardData === null) {
       return;
     }
@@ -182,20 +214,16 @@ export class ɵTmGridClipboardDom {
 
   private async serializeTsvChunked(payload: TmGridCopyPayload): Promise<string> {
     const parts: string[] = [];
-    for (const chunk of tmSerializeTsvChunks(payload.matrix, OVERSIZE_ROWS_PER_CHUNK)) {
+    const tsvMatrix =
+      payload.headerRow === undefined ? payload.matrix : [payload.headerRow, ...payload.matrix];
+    for (const chunk of tmSerializeTsvChunks(tsvMatrix, OVERSIZE_ROWS_PER_CHUNK)) {
       parts.push(chunk);
       await nextFrame();
     }
     const tsv = parts.join('');
     // Oversize copies drop raw values (engine contract), but the descriptor
     // still lets a same-session paste skip re-parsing the display strings.
-    rememberDescriptor({
-      fingerprint: tmClipboardFingerprint(tsv),
-      meta: payload.meta,
-      matrix: payload.matrix,
-      rawValues: payload.rawValues,
-      rowIds: payload.rowIds,
-    });
+    rememberDescriptor(descriptorFor(tsv, payload));
     return tsv;
   }
 

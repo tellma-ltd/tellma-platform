@@ -10,24 +10,31 @@ import {
   ElementRef,
   input,
   untracked,
+  ViewContainerRef,
   viewChild,
 } from '@angular/core';
+import { OverlayModule } from '@angular/cdk/overlay';
+import type { ConnectedPosition } from '@angular/cdk/overlay';
 
+import { TmMenu } from '@tellma/core-ui/menu';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
 import type { ɵTmGridViewCore } from './grid-core';
+import { ɵTmGridIcons } from './icons';
+import { ɵTmGridStatusBar } from './status-bar';
 
 /**
  * The grid's one and only template: scroller, sticky header, virtualized
- * row window, and the loading/empty overlays. `tm-grid` (and, later,
- * `tm-tree-grid`) are thin shells around this component so the large
- * template compiles exactly once. All state and behavior live in the
- * `core` it renders from; the template only binds signals and routes DOM
- * events back into it.
+ * row window, the loading/empty overlays, the editing-cell editor outlet,
+ * the editable-mode status bar, the context menu, and the active-cell
+ * error overlay. `tm-grid` (and, later, `tm-tree-grid`) are thin shells
+ * around this component so the large template compiles exactly once. All
+ * state and behavior live in the `core` it renders from; the template only
+ * binds signals and routes DOM events back into it.
  */
 @Component({
   selector: 'tm-grid-view',
-  imports: [NgTemplateOutlet, TmSpinner],
+  imports: [NgTemplateOutlet, OverlayModule, TmMenu, TmSpinner, ɵTmGridIcons, ɵTmGridStatusBar],
   template: `
     <div
       #scroller
@@ -42,6 +49,9 @@ import type { ɵTmGridViewCore } from './grid-core';
       (keydown)="core().onKeydown($event)"
       (pointerdown)="core().onPointerDown($event)"
       (click)="core().onClick($event)"
+      (dblclick)="core().onDblClick($event)"
+      (contextmenu)="core().onContextMenu($event)"
+      (focusout)="core().onFocusOut($event)"
       (copy)="core().onCopy($event)"
       (cut)="core().onCut($event)"
       (paste)="core().onPaste($event)"
@@ -103,12 +113,22 @@ import type { ɵTmGridViewCore } from './grid-core';
                   [attr.data-col]="cell.colIndex"
                   [attr.aria-colindex]="cell.ariaColIndex"
                   [attr.aria-selected]="cell.selected ? 'true' : null"
+                  [attr.aria-invalid]="cell.invalid ? 'true' : null"
+                  [attr.aria-readonly]="cell.readonly ? 'true' : null"
+                  [attr.aria-describedby]="cell.active && cell.invalid ? core().errorMsgId : null"
                   [tabindex]="cell.active && !core().escaped() ? 0 : -1"
                   [class.tm-grid__cell--active]="cell.active"
                   [class.tm-grid__cell--selected]="cell.selected"
+                  [class.tm-grid__cell--error]="cell.invalid"
+                  [class.tm-grid__cell--readonly]="cell.readonly"
+                  [class.tm-grid__cell--editing]="cell.editing"
                   [style.text-align]="cell.align"
                 >
-                  @if (cell.displayTemplate; as displayTemplate) {
+                  @if (cell.editing) {
+                    <div class="tm-grid__editor" data-tm-editor>
+                      <ng-container #editorOutlet />
+                    </div>
+                  } @else if (cell.displayTemplate; as displayTemplate) {
                     <ng-container
                       [ngTemplateOutlet]="displayTemplate"
                       [ngTemplateOutletContext]="cell.displayCtx ?? null"
@@ -118,6 +138,9 @@ import type { ɵTmGridViewCore } from './grid-core';
                     <span class="tm-visually-hidden">{{ cell.text }}</span>
                   } @else {
                     <span class="tm-grid__text">{{ cell.text }}</span>
+                  }
+                  @if (cell.pending) {
+                    <tm-spinner class="tm-grid__cell-spin" />
                   }
                 </div>
               }
@@ -145,6 +168,29 @@ import type { ɵTmGridViewCore } from './grid-core';
         </div>
       }
     </div>
+
+    @if (core().editable()) {
+      <tm-grid-status-bar class="tm-grid__status" [core]="core()" />
+    }
+
+    <tm-menu [items]="core().menuItems()" />
+    <tm-grid-icons />
+
+    <!-- Active-cell error message: a top-layer overlay so errors appearing
+         or clearing never shift the grid's (or the page's) layout. -->
+    <ng-template
+      [cdkConnectedOverlay]="{
+        origin: core().errorAnchor()!,
+        usePopover: 'inline',
+        disableClose: true,
+        positions: errorPositions,
+      }"
+      [cdkConnectedOverlayOpen]="core().errorAnchor() !== null"
+    >
+      <div class="tm-grid__error-msg" [id]="core().errorMsgId" role="tooltip">
+        {{ core().errorMessage() }}
+      </div>
+    </ng-template>
   `,
   styleUrl: './grid-view.css',
   host: { class: 'tm-grid-view' },
@@ -153,7 +199,16 @@ export class ɵTmGridView {
   /** The composition root this view renders from (built by the grid shell). */
   readonly core = input.required<ɵTmGridViewCore>();
 
+  /** Error-overlay placement: below the cell, flipping above. */
+  protected readonly errorPositions: ConnectedPosition[] = [
+    { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top' },
+    { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom' },
+  ];
+
   private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
+  private readonly editorOutlet = viewChild('editorOutlet', { read: ViewContainerRef });
+  private readonly menu = viewChild(TmMenu);
+  private readonly icons = viewChild(ɵTmGridIcons);
 
   constructor() {
     afterRenderEffect(() => {
@@ -162,6 +217,20 @@ export class ɵTmGridView {
       if (scroller !== undefined) {
         untracked(() => core.attachScroller(scroller.nativeElement));
       }
+    });
+    // The editing cell's outlet exists only while a session renders; the
+    // core forces that render synchronously and mounts right after (see
+    // ɵTmGridCore.openEditor) — this effect only keeps the reference fresh.
+    afterRenderEffect(() => {
+      const core = this.core();
+      const outlet = this.editorOutlet();
+      untracked(() => core.attachEditorOutlet(outlet ?? null));
+    });
+    afterRenderEffect(() => {
+      const core = this.core();
+      const menu = this.menu();
+      const icons = this.icons();
+      untracked(() => core.attachMenu(menu ?? null, icons?.templates() ?? null));
     });
   }
 }

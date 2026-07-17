@@ -31,3 +31,4 @@ export {
 } from './internal/grid-core';
 export { ɵTmGridView } from './internal/grid-view';
 export { ɵTmGridColumnResize } from './internal/column-resize';
+export { type ɵTmGridIconTemplates } from './internal/icons';

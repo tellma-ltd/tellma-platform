@@ -80,7 +80,14 @@ export class TmGridEngine<T = unknown> {
       locale: options.locale,
       // Any edit disarms a pending cut (the deferred move dies on edits).
       // `clipboard` is assigned below; commits can only run after that.
-      onEdit: () => this.clipboard.cancelCut(),
+      // The order snapshot syncs too: a commit can materialize the
+      // placeholder row (a structural change with no reconcile of its
+      // own), and the component layer's rows-changed reconcile must then
+      // see a CURRENT baseline, not remap against a stale one.
+      onEdit: () => {
+        this.clipboard.cancelCut();
+        this.syncOrder();
+      },
     });
     this.clipboard = new TmGridClipboard<T>({
       model: this.model,

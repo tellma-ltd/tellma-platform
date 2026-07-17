@@ -1,0 +1,85 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-grid-status-bar — fixed height by design (§ errors never shift the
+   layout); tallies ride the grid tokens. */
+
+:host {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  block-size: var(--grid-row-height);
+  border-block-start: var(--border-width) solid var(--grid-line);
+  padding-inline: var(--space-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--grid-header-bg);
+}
+
+.tm-grid__status-live {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.tm-grid__status-chip,
+.tm-grid__status-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  padding-block: 0;
+  padding-inline: var(--space-1);
+  cursor: pointer;
+}
+
+.tm-grid__status-chip {
+  color: var(--status-error-fg);
+}
+
+.tm-grid__status-chip:hover,
+.tm-grid__status-nav:hover {
+  background: var(--surface-hover);
+}
+
+.tm-grid__status-chip:focus-visible,
+.tm-grid__status-nav:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+}
+
+.tm-grid__status-warn {
+  line-height: 1;
+}
+
+.tm-grid__status-nav svg {
+  inline-size: var(--space-4);
+  block-size: var(--space-4);
+}
+
+.tm-grid__status-spinner {
+  inline-size: var(--space-3);
+  block-size: var(--space-3);
+}
+
+@media (forced-colors: active) {
+  :host {
+    border-block-start-color: CanvasText;
+  }
+
+  .tm-grid__status-chip,
+  .tm-grid__status-nav {
+    border-color: ButtonText;
+  }
+}
