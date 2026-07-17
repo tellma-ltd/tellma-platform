@@ -27,9 +27,30 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   projects: [
+    // Chromium runs the FULL battery (real-clipboard permissions, touch
+    // specs excluded — those need a touch-enabled device project).
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      testIgnore: /grid-touch/,
+    },
+    // Firefox/WebKit run the @cross-engine subset: tests that dispatch
+    // synthetic ClipboardEvents (no OS clipboard, no Chromium-only
+    // permissions), pinning the parse/serialize paths on every engine.
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] },
+      grep: /@cross-engine/,
+      // Headless Firefox starves its rendering pipeline when many instances
+      // run in parallel, and Playwright's pre-click stability check then
+      // times out on perfectly idle pages. Serializing within each file
+      // caps the concurrent Firefox instances; the subset is small.
+      fullyParallel: false,
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
+      grep: /@cross-engine/,
     },
   ],
   webServer: {

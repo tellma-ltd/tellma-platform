@@ -3,22 +3,28 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-// The clipboard's DOM half: ClipboardEvent handling for copy/cut, the
-// oversize escalation to the async Clipboard API (chunked serialization
-// across frames), and the module-scoped in-memory descriptor LRU that the
-// paste milestone consults for typed same-session Tellma→Tellma pastes.
+// The clipboard's DOM half: ClipboardEvent handling for copy/cut (cut arms
+// the engine's deferred move under one shared serialization), the oversize
+// escalation to the async Clipboard API (chunked serialization across
+// frames), the module-scoped in-memory descriptor LRU, and the paste
+// resolution ladder that reduces the richest available clipboard flavor to
+// the engine's paste-source shape.
 
 import type { TmRowId } from '@tellma/core-ui/contracts';
 import {
   tmClipboardFingerprint,
+  tmPasteSourceFromDescriptor,
+  tmPasteSourceFromTsv,
   tmSerializeHtmlTable,
   tmSerializeTsv,
   tmSerializeTsvChunks,
   type TmGridClipboardMeta,
   type TmGridCopyPayload,
+  type TmGridPasteSource,
 } from '@tellma/core-ui/grid-engine';
 
 import type { ɵTmGridAnnouncements } from './announcements';
+import { ɵtmReduceClipboardHtml } from './clipboard-html';
 
 /**
  * Cell count beyond which a copy escalates from the synchronous
@@ -85,9 +91,9 @@ function descriptorFor(tsv: string, payload: TmGridCopyPayload): ɵTmGridCopyDes
 }
 
 /**
- * The paste milestone's fast-path lookup: the stored descriptor whose TSV
- * flavor fingerprints to `fingerprint`, or `undefined`. A hit is touched to
- * the back of the eviction order.
+ * The paste fast-path lookup: the stored descriptor whose TSV flavor
+ * fingerprints to `fingerprint`, or `undefined`. A hit is touched to the
+ * back of the eviction order.
  */
 export function ɵtmGridCopyDescriptor(fingerprint: string): ɵTmGridCopyDescriptor | undefined {
   const descriptor = copyDescriptors.get(fingerprint);
@@ -96,6 +102,44 @@ export function ɵtmGridCopyDescriptor(fingerprint: string): ɵTmGridCopyDescrip
     copyDescriptors.set(fingerprint, descriptor);
   }
   return descriptor;
+}
+
+/** What the paste resolution ladder produced for one paste gesture. */
+export interface ɵTmGridResolvedPaste {
+  /** The reduced source the engine consumes. */
+  readonly source: TmGridPasteSource;
+  /**
+   * Fingerprint of the payload's `text/plain` flavor — the engine matches
+   * it against an armed cut regardless of which rung produced the source.
+   */
+  readonly fingerprint: string | undefined;
+}
+
+/**
+ * The paste resolution ladder over the two clipboard flavors: (1) the
+ * in-memory descriptor whose fingerprint matches the actual `text/plain`
+ * payload (typed same-session fast path), (2) the `text/html` table
+ * reduction, (3) the `text/plain` TSV parse. Returns `null` when both
+ * flavors are empty (or the only HTML carries no table and no text exists).
+ */
+export function ɵtmGridResolvePasteSource(text: string, html: string): ɵTmGridResolvedPaste | null {
+  const fingerprint = text.length > 0 ? tmClipboardFingerprint(text) : undefined;
+  if (fingerprint !== undefined) {
+    const descriptor = ɵtmGridCopyDescriptor(fingerprint);
+    if (descriptor !== undefined) {
+      return { source: tmPasteSourceFromDescriptor(descriptor), fingerprint };
+    }
+  }
+  if (html.length > 0) {
+    const reduced = ɵtmReduceClipboardHtml(html);
+    if (reduced !== null) {
+      return { source: reduced, fingerprint };
+    }
+  }
+  if (text.length > 0) {
+    return { source: tmPasteSourceFromTsv(text), fingerprint };
+  }
+  return null;
 }
 
 /** Yields control back to the event loop between serialization chunks. */
@@ -115,8 +159,16 @@ function escapeHtmlAttribute(text: string): string {
 export interface ɵTmGridClipboardDomOptions {
   /** Extracts the current selection as a copy payload (the engine's copy). */
   copy(opts?: { withHeaders?: boolean }): TmGridCopyPayload | null;
+  /**
+   * The engine's cut: copies AND arms the deferred move under the
+   * fingerprint the callback computes (in readonly mode the engine falls
+   * back to a plain copy and never calls the callback).
+   */
+  cut(fingerprint: (payload: TmGridCopyPayload) => string): TmGridCopyPayload | null;
   /** The grid's live-region voice. */
   readonly announcements: ɵTmGridAnnouncements;
+  /** Called when an async clipboard write rejects (transient visible notice). */
+  onCopyFailed?(): void;
 }
 
 /**
@@ -124,8 +176,10 @@ export interface ɵTmGridClipboardDomOptions {
  * engine's copy payload into both clipboard flavors, remembers the typed
  * descriptor in the module LRU, and escalates oversize copies to the async
  * Clipboard API — announcing success and failure either way (a failed copy
- * is never silent). In the readonly core, cut behaves exactly like copy;
- * the cut marquee arrives with the editing milestone.
+ * is never silent). Cut shares the exact serialization with copy, so the
+ * fingerprint the engine arms its deferred move under always matches the
+ * clipboard's actual `text/plain` payload; in the readonly core, cut
+ * degrades to copy inside the engine.
  */
 export class ɵTmGridClipboardDom {
   constructor(private readonly options: ɵTmGridClipboardDomOptions) {}
@@ -138,17 +192,25 @@ export class ɵTmGridClipboardDom {
       // engine already emitted the refusal notice for the latter.
       return;
     }
-    if (payload.cellCount <= ɵTM_GRID_OVERSIZE_COPY_CELLS) {
-      this.writeSync(event, payload);
-    } else {
-      event.preventDefault();
-      this.writeOversize(payload);
-    }
+    this.writeEvent(event, payload);
   }
 
-  /** The `cut` ClipboardEvent handler — copy semantics in the readonly core. */
+  /**
+   * The `cut` ClipboardEvent handler: the engine arms the deferred move
+   * under the TSV fingerprint computed here, and the SAME serialized text
+   * is what lands on the clipboard — byte-identical, so a later paste of
+   * that payload fingerprints back to the armed cut.
+   */
   onCut(event: ClipboardEvent): void {
-    this.onCopy(event);
+    let cachedTsv: string | undefined;
+    const payload = this.options.cut((cutPayload) => {
+      cachedTsv = this.serializeTsv(cutPayload);
+      return tmClipboardFingerprint(cachedTsv);
+    });
+    if (payload === null) {
+      return;
+    }
+    this.writeEvent(event, payload, cachedTsv);
   }
 
   /**
@@ -163,16 +225,52 @@ export class ɵTmGridClipboardDom {
     if (payload === null) {
       return; // nothing selected, or the engine already announced a refusal
     }
-    this.writeOversize(payload);
+    this.writeAsync(payload);
   }
 
-  private writeSync(event: ClipboardEvent, payload: TmGridCopyPayload): void {
+  /**
+   * The context-menu cut path: arms the deferred move exactly like
+   * {@link onCut} — the fingerprint is computed from the synchronously
+   * serialized TSV, and that same text backs the async write.
+   */
+  cutAsync(): void {
+    let cachedTsv: string | undefined;
+    const payload = this.options.cut((cutPayload) => {
+      cachedTsv = this.serializeTsv(cutPayload);
+      return tmClipboardFingerprint(cachedTsv);
+    });
+    if (payload === null) {
+      return;
+    }
+    this.writeAsync(payload, cachedTsv);
+  }
+
+  /** The TSV flavor: copy-with-headers prepends the header row as data. */
+  private serializeTsv(payload: TmGridCopyPayload): string {
+    const tsvMatrix =
+      payload.headerRow === undefined ? payload.matrix : [payload.headerRow, ...payload.matrix];
+    return tmSerializeTsv(tsvMatrix);
+  }
+
+  /**
+   * The ClipboardEvent path: synchronous below the oversize threshold,
+   * escalated to the async API above it. An armed cut passes its already-
+   * serialized TSV so both paths write the exact fingerprinted text.
+   */
+  private writeEvent(event: ClipboardEvent, payload: TmGridCopyPayload, tsv?: string): void {
+    if (payload.cellCount <= ɵTM_GRID_OVERSIZE_COPY_CELLS) {
+      this.writeSync(event, payload, tsv);
+    } else {
+      event.preventDefault();
+      this.writeAsync(payload, tsv);
+    }
+  }
+
+  private writeSync(event: ClipboardEvent, payload: TmGridCopyPayload, tsv?: string): void {
     // Copy-with-headers prepends the header row to BOTH flavors (foreign
     // targets read it as data; the HTML flavor additionally marks it so a
     // paste back into a grid skips it).
-    const tsvMatrix =
-      payload.headerRow === undefined ? payload.matrix : [payload.headerRow, ...payload.matrix];
-    const tsv = tmSerializeTsv(tsvMatrix);
+    const text = tsv ?? this.serializeTsv(payload);
     const html = tmSerializeHtmlTable({
       matrix: payload.matrix,
       meta: payload.meta,
@@ -180,35 +278,59 @@ export class ɵTmGridClipboardDom {
       rowIds: payload.rowIds,
       headerRow: payload.headerRow,
     });
-    rememberDescriptor(descriptorFor(tsv, payload));
+    rememberDescriptor(descriptorFor(text, payload));
     if (event.clipboardData === null) {
       return;
     }
-    event.clipboardData.setData('text/plain', tsv);
+    event.clipboardData.setData('text/plain', text);
     event.clipboardData.setData('text/html', html);
     event.preventDefault();
     this.options.announcements.announce('grid.announce.copied', { cells: payload.cellCount });
   }
 
   /**
-   * The oversize path: promise-backed ClipboardItems started within the
-   * user gesture; both flavors serialize in row bands with a yield between
-   * bands so no frame blocks on millions of cells. Rejection (focus loss,
-   * expired activation, permission) is announced — it cannot be retried
-   * programmatically once the gesture is gone.
+   * The async path (oversize escalations and every menu action):
+   * promise-backed ClipboardItems started within the user gesture; both
+   * flavors serialize in row bands with a yield between bands so no frame
+   * blocks on millions of cells (an armed cut's TSV is already serialized
+   * and is reused verbatim). Rejection (focus loss, expired activation,
+   * permission) is announced AND surfaced as a transient visible notice —
+   * it cannot be retried programmatically once the gesture is gone.
    */
-  private writeOversize(payload: TmGridCopyPayload): void {
-    const textPromise = this.serializeTsvChunked(payload).then(
-      (tsv) => new Blob([tsv], { type: 'text/plain' }),
-    );
-    const htmlPromise = this.serializeHtmlChunked(payload).then(
-      (html) => new Blob([html], { type: 'text/html' }),
-    );
+  private writeAsync(payload: TmGridCopyPayload, tsv?: string): void {
+    const oversize = payload.cellCount > ɵTM_GRID_OVERSIZE_COPY_CELLS;
+    const textPromise = (
+      tsv !== undefined ? Promise.resolve(tsv) : this.serializeTsvChunked(payload)
+    ).then((text) => {
+      // Oversize copies drop raw values (engine contract), but the
+      // descriptor still lets a same-session paste skip re-parsing.
+      rememberDescriptor(descriptorFor(text, payload));
+      return new Blob([text], { type: 'text/plain' });
+    });
+    // Below the threshold (menu copies of normal selections) the HTML
+    // flavor keeps its per-cell raw values — only oversize payloads shed
+    // them (§9.2), and only those need the chunked builder.
+    const htmlPromise = (
+      oversize
+        ? this.serializeHtmlChunked(payload)
+        : Promise.resolve(
+            tmSerializeHtmlTable({
+              matrix: payload.matrix,
+              meta: payload.meta,
+              rawValues: payload.rawValues,
+              rowIds: payload.rowIds,
+              headerRow: payload.headerRow,
+            }),
+          )
+    ).then((html) => new Blob([html], { type: 'text/html' }));
     navigator.clipboard
       .write([new ClipboardItem({ 'text/plain': textPromise, 'text/html': htmlPromise })])
       .then(
         () => this.options.announcements.announce('grid.announce.copied', { cells: payload.cellCount }),
-        () => this.options.announcements.announce('grid.announce.copyFailed'),
+        () => {
+          this.options.announcements.announce('grid.announce.copyFailed');
+          this.options.onCopyFailed?.();
+        },
       );
   }
 
@@ -220,11 +342,7 @@ export class ɵTmGridClipboardDom {
       parts.push(chunk);
       await nextFrame();
     }
-    const tsv = parts.join('');
-    // Oversize copies drop raw values (engine contract), but the descriptor
-    // still lets a same-session paste skip re-parsing the display strings.
-    rememberDescriptor(descriptorFor(tsv, payload));
-    return tsv;
+    return parts.join('');
   }
 
   /**

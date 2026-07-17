@@ -69,6 +69,13 @@ export abstract class ɵTmGridBase<T> {
   /** With `field` bound, toggles view/edit of the same screen. */
   readonly readonly = input(false, { transform: booleanAttribute });
   /**
+   * Identifies the bound data's tenant in clipboard metadata. Raw values
+   * pasted from another grid are trusted only when the source tenant
+   * matches this one; otherwise the pasted labels re-parse or re-resolve —
+   * raw ids never cross tenants.
+   */
+  readonly tenant = input<string | undefined>(undefined);
+  /**
    * The new-row factory. Binding it enables the new-row placeholder and
    * paste-overflow row creation; new rows must carry client-side ids.
    */
@@ -137,6 +144,7 @@ export abstract class ɵTmGridBase<T> {
       field: this.field,
       rowId: this.rowId,
       readonlyInput: this.readonly,
+      tenant: this.tenant,
       newRow: this.newRow,
       loading: this.loading,
       searchable: this.searchable,

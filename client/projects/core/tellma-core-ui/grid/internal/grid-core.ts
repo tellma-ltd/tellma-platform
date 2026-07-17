@@ -25,8 +25,10 @@ import {
   TM_PARSE_ERROR,
   type TmGridContentState,
   type TmGridScrollPosition,
+  type TmLabelResolution,
   type TmParseContext,
   type TmParseError,
+  type TmPasteContext,
   type TmRowId,
 } from '@tellma/core-ui/contracts';
 import { tmResolveFieldErrors, type TmUiTranslateFn } from '@tellma/core-ui';
@@ -38,6 +40,7 @@ import {
   type TmGridEditSession,
   type TmGridEngineColumn,
   type TmGridHistorySnapshot,
+  type TmGridResolutionRequest,
   type TmRowCol,
 } from '@tellma/core-ui/grid-engine';
 import type { TmMenu, TmMenuEntry, TmMenuItem } from '@tellma/core-ui/menu';
@@ -54,7 +57,11 @@ import type {
 } from '../tm-grid-templates';
 import type { TmGridStateHandle, TmGridStateStore } from '../tm-grid-state-store';
 import { ɵTmGridAnnouncements } from './announcements';
-import { ɵTmGridClipboardDom, ɵTM_GRID_OVERSIZE_COPY_CELLS } from './clipboard-dom';
+import {
+  ɵTmGridClipboardDom,
+  ɵtmGridResolvePasteSource,
+  ɵTM_GRID_OVERSIZE_COPY_CELLS,
+} from './clipboard-dom';
 import { ɵTmGridColumnResize } from './column-resize';
 import { ɵTmGridEditorSession, type ɵTmGridEditorMountConfig } from './editor-session';
 import { ɵTmGridFieldWriter, ɵtmChildField, ɵtmRowField } from './field-writer';
@@ -93,6 +100,9 @@ const INTERACTIVE_CONTENT_SELECTOR = 'a[href], button, input, select, textarea, 
 
 /** Rows whose field nodes one error-tally warm-up slice touches (§16). */
 const WARMUP_ROWS_PER_SLICE = 500;
+
+/** How long the transient failure notice stays visible, in ms. */
+const TRANSIENT_NOTICE_MS = 6_000;
 
 /** Uniquifies the per-instance error-overlay message element id. */
 let nextErrorMsgId = 0;
@@ -220,6 +230,13 @@ interface ColumnInternal<T> extends ɵTmGridColumnVm {
   readonly enumOptions: readonly unknown[] | undefined;
   readonly optionLabel: ((option: unknown) => string) | undefined;
   readonly optionValue: ((option: unknown) => unknown) | undefined;
+  /** The column's batched paste-label resolver, when the consumer bound one. */
+  readonly resolveLabels:
+    | ((
+        labels: string[],
+        ctx: TmPasteContext,
+      ) => Promise<ReadonlyMap<string, TmLabelResolution<unknown>>>)
+    | undefined;
 }
 
 /** One rendered cell's view model. */
@@ -250,6 +267,8 @@ export interface ɵTmGridCellVm {
   readonly readonly: boolean;
   /** Whether the cell awaits an async paste resolution (inline spinner). */
   readonly pending: boolean;
+  /** Whether the cell lies inside the armed cut's range (marquee styling). */
+  readonly inCutRange: boolean;
 }
 
 /** One rendered row's view model. */
@@ -299,6 +318,8 @@ export interface ɵTmGridCoreDeps<T> {
   readonly store: TmGridStateStore;
   /** The active locale (formatting, parse context, clipboard metadata). */
   readonly locale: string;
+  /** The bound data's tenant (clipboard metadata + cross-tenant paste guard). */
+  readonly tenant: Signal<string | undefined>;
   /** The grid definition's stable identity. */
   readonly gridId: Signal<string>;
   /** The content identity. */
@@ -385,6 +406,12 @@ export interface ɵTmGridViewCore {
   readonly errorAnchor: Signal<Element | null>;
   /** The active errored cell's localized message. */
   readonly errorMessage: Signal<string>;
+  /**
+   * A short-lived localized failure notice (an async clipboard write
+   * rejected), or `null`. The status bar renders it in editable mode; the
+   * view renders a block-end overlay strip for readonly grids.
+   */
+  readonly transientNotice: Signal<string | null>;
   /** Jumps to the next (+1) / previous (−1) errored cell, row-major, cycling. */
   gotoError(direction: 1 | -1): void;
   /** Hands the core the scroll container once the view rendered it. */
@@ -460,6 +487,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   /** Whether the deferred error-tally warm-up has completed (§16). */
   private readonly errorWarmupDone = signal(false);
   private readonly errorAnchorSignal = signal<Element | null>(null);
+  /** Whether an async clipboard read was denied (degrades menu Paste, §8.5). */
+  private readonly pasteReadDenied = signal(false);
+  private readonly transientNoticeSignal = signal<string | null>(null);
+  private transientNoticeTimer: ReturnType<typeof setTimeout> | null = null;
 
   private readonly columnsInternal: Signal<readonly ColumnInternal<T>[]>;
   private readonly engineColumns: Signal<ReadonlyArray<TmGridEngineColumn<T>>>;
@@ -528,6 +559,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   readonly errorAnchor: Signal<Element | null>;
   /** The active errored cell's localized message. */
   readonly errorMessage: Signal<string>;
+  /** A short-lived localized failure notice, or `null`. */
+  readonly transientNotice: Signal<string | null>;
 
   constructor(deps: ɵTmGridCoreDeps<T>) {
     this.deps = deps;
@@ -543,8 +576,13 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     });
     this.clipboardDom = new ɵTmGridClipboardDom({
       copy: (opts) => this.engine.clipboard.copy(opts),
+      cut: (fingerprint) => this.engine.clipboard.cut(fingerprint),
       announcements: this.announcements,
+      // A failed copy is never silent (§9.1): the live region announced it;
+      // this surfaces the visible transient notice alongside.
+      onCopyFailed: () => this.showTransientNotice('grid.announce.copyFailed'),
     });
+    this.transientNotice = this.transientNoticeSignal.asReadonly();
     this.resize = new ɵTmGridColumnResize({
       widthOverrides: this.widthOverrides,
       direction: deps.direction,
@@ -1206,17 +1244,114 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.clipboardDom.onCopy(event);
   }
 
-  /** The scroller's cut handler (copy semantics in the readonly core). */
+  /** The scroller's cut handler (arms the deferred move; copy in readonly). */
   onCut(event: ClipboardEvent): void {
     this.clipboardDom.onCut(event);
   }
 
-  /** The scroller's paste handler — a deliberate no-op until the paste milestone. */
+  /**
+   * The scroller's paste handler: reduces the richest available clipboard
+   * flavor through the resolution ladder (§9.3) and hands it to the engine.
+   * While an editor is open the event stays with the editor untouched
+   * (plain text editing inside the cell, §8.4).
+   */
   onPaste(event: ClipboardEvent): void {
-    void event;
+    const engine = this.engineInstance;
+    if (engine !== null && untracked(() => engine.edit.session()) !== null) {
+      return; // native paste into the open editor
+    }
+    event.preventDefault();
+    const data = event.clipboardData;
+    if (data === null) {
+      return;
+    }
+    this.pasteFlavors(data.getData('text/plain'), data.getData('text/html'));
   }
 
   // ---- internals ----
+
+  /**
+   * The shared tail of both paste paths (ClipboardEvent and the menu's
+   * async read): ladder reduction, the engine paste, driving the batched
+   * label resolutions, and re-focusing the (possibly moved) active cell.
+   */
+  private pasteFlavors(text: string, html: string): void {
+    const resolved = ɵtmGridResolvePasteSource(text, html);
+    if (resolved === null) {
+      return;
+    }
+    const result = this.engine.clipboard.paste(resolved.source, resolved.fingerprint);
+    this.runResolutions(result.resolutions);
+    this.requestReveal();
+    this.requestFocusActive();
+  }
+
+  /**
+   * Runs each column's batched label resolver (§9.4) and hands the outcome
+   * back to the engine. A rejected (or synchronously throwing) resolver
+   * resolves to an empty map — every awaiting label falls to `notFound`;
+   * a column without a resolver (unreachable: the engine only collects for
+   * resolver-carrying columns) short-circuits the same way.
+   */
+  private runResolutions(requests: readonly TmGridResolutionRequest[]): void {
+    for (const request of requests) {
+      const column = untracked(this.columnsInternal).find(
+        (candidate) => candidate.id === request.columnId,
+      );
+      const resolver = column?.resolveLabels;
+      if (resolver === undefined) {
+        this.engine.clipboard.applyResolution(request.id, new Map());
+        continue;
+      }
+      Promise.resolve()
+        .then(() => resolver([...request.labels], request.context))
+        .then(
+          (results) => this.engine.clipboard.applyResolution(request.id, results),
+          () => this.engine.clipboard.applyResolution(request.id, new Map()),
+        );
+    }
+  }
+
+  /**
+   * The menu Paste action: reads both flavors through the async Clipboard
+   * API and funnels them into the shared paste tail. A rejected read
+   * (permission denied, dismissed prompt) degrades the menu item to the
+   * keyboard-shortcut hint on subsequent opens (§8.5) — nothing else.
+   */
+  private async pasteFromAsyncClipboard(): Promise<void> {
+    let text = '';
+    let html = '';
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        if (text === '' && item.types.includes('text/plain')) {
+          text = await (await item.getType('text/plain')).text();
+        }
+        if (html === '' && item.types.includes('text/html')) {
+          html = await (await item.getType('text/html')).text();
+        }
+      }
+    } catch {
+      this.pasteReadDenied.set(true);
+      return;
+    }
+    this.pasteFlavors(text, html);
+  }
+
+  /**
+   * Shows a localized transient notice for {@link TRANSIENT_NOTICE_MS}
+   * (a fresh notice restarts the clock; destroy clears the timer).
+   */
+  private showTransientNotice(key: string): void {
+    if (this.transientNoticeTimer !== null) {
+      clearTimeout(this.transientNoticeTimer);
+    }
+    this.transientNoticeSignal.set(untracked(this.deps.translate(key)));
+    this.transientNoticeTimer = setTimeout(() => {
+      this.transientNoticeTimer = null;
+      this.transientNoticeSignal.set(null);
+    }, TRANSIENT_NOTICE_MS);
+  }
 
   private createEngine(): TmGridEngine<T> {
     return new TmGridEngine<T>({
@@ -1226,7 +1361,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       editable: () => this.editable(),
       canAddRows: () => this.deps.newRow() !== undefined,
       locale: () => this.deps.locale,
-      // Tenant identity wiring (cross-tenant paste guard) lands with paste.
+      tenant: () => this.deps.tenant(),
       direction: () => this.deps.direction(),
       pageSize: () => this.pageSize(),
       oversizeCopyCellThreshold: ɵTM_GRID_OVERSIZE_COPY_CELLS,
@@ -1259,7 +1394,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     const customParse = dir.parse();
     const readonlyOption = dir.readonly();
     const defaultValue = dir.defaultValue();
-    const hasResolver = dir.resolvePastedLabels() !== undefined;
+    const resolveLabels = dir.resolvePastedLabels();
     const displayDef = dir.displayDef();
     const editorDef = dir.editorDef();
 
@@ -1342,7 +1477,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         (readonlyFn !== null && readonlyFn(row)) ||
         (key !== null && this.isFieldCellReadonly(row, key)),
       ...(parse !== undefined ? { parse } : {}),
-      hasResolver,
+      hasResolver: resolveLabels !== undefined,
       clearedValue: defaultValue !== undefined ? defaultValue : type === 'boolean' ? false : null,
     };
 
@@ -1366,6 +1501,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       enumOptions,
       optionLabel,
       optionValue,
+      resolveLabels,
     };
   }
 
@@ -1429,6 +1565,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
 
     const session = editable ? engine.edit.session() : null;
     const fieldErrors = editable ? this.fieldErrorCells() : EMPTY_FIELD_ERRORS;
+    // The armed cut's marquee (§9.5): identity sets so windowed rendering
+    // marks exactly the cut cells whatever the current scroll position.
+    const pendingCut = editable ? engine.clipboard.pendingCut() : null;
+    const cutRowIds = pendingCut === null ? null : new Set(pendingCut.rowIds);
+    const cutColumnIds = pendingCut === null ? null : new Set(pendingCut.columnIds);
 
     const rows: ɵTmGridRowVm[] = [];
     const pushRow = (viewIndex: number, outlier: boolean): void => {
@@ -1483,6 +1624,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           invalid,
           readonly: editable && !isPlaceholder && !model.isCellEditable(cell),
           pending: view !== null && engine.annotations.isPending(view.id, column.id),
+          inCutRange:
+            cutRowIds !== null &&
+            view !== null &&
+            cutRowIds.has(view.id) &&
+            cutColumnIds!.has(column.id),
         };
       });
       rows.push({
@@ -1610,7 +1756,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         engine.selection.selectAll();
         return true;
       case 'escape':
-        if (!engine.escape()) {
+        if (engine.escape()) {
+          // Stage one of the Esc chain disarmed the pending cut (§9.5).
+          this.announcements.announce('grid.announce.cutCancelled');
+        } else {
           // The mid-grid exit: the container becomes the single tab stop
           // (cells leave the tab order); any arrow re-enters at the active cell.
           this.escapedSignal.set(true);
@@ -1793,15 +1942,18 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       1,
       spans.reduce((sum, span) => sum + (span.end - span.start + 1), 0),
     );
+    // Menu Paste rides the async read API. Where the read is unavailable —
+    // or once a read was denied — the item degrades to the keyboard-
+    // shortcut hint instead (§8.5, the Sheets-established fallback).
+    const canReadClipboard =
+      typeof navigator.clipboard?.read === 'function' && !this.pasteReadDenied();
     const items: TmMenuEntry[] = [
       {
         id: 'cut',
         label: translate('grid.menu.cut')(),
         icon: icons?.cut,
         disabled: !editable,
-        // Cut arms the deferred move with the clipboard milestone; until
-        // then the menu cut copies (exactly like the keyboard Mod+X path).
-        action: () => this.clipboardDom.copyAsync(),
+        action: () => this.clipboardDom.cutAsync(),
       },
       {
         id: 'copy',
@@ -1815,15 +1967,23 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         icon: icons?.copyPlus,
         action: () => this.clipboardDom.copyAsync({ withHeaders: true }),
       },
-      {
-        id: 'paste',
-        label: translate('grid.menu.paste')(),
-        icon: icons?.clipboard,
-        // Paste lands with the clipboard milestone; the item ships disabled
-        // so the menu's shape (and muscle memory) stays stable.
-        disabled: true,
-        action: () => undefined,
-      },
+      canReadClipboard
+        ? {
+            id: 'paste',
+            label: translate('grid.menu.paste')(),
+            icon: icons?.clipboard,
+            disabled: !editable,
+            action: () => void this.pasteFromAsyncClipboard(),
+          }
+        : {
+            id: 'paste',
+            label: translate('grid.menu.pasteHint', {
+              shortcut: IS_MAC_PLATFORM ? '⌘V' : 'Ctrl+V',
+            })(),
+            icon: icons?.clipboard,
+            disabled: true,
+            action: () => undefined,
+          },
     ];
     if (editable) {
       items.push(
@@ -2485,6 +2645,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   private onDestroy(): void {
     this.endDrag();
     this.warmupGeneration += 1; // kills any in-flight warm-up chain
+    if (this.transientNoticeTimer !== null) {
+      clearTimeout(this.transientNoticeTimer);
+      this.transientNoticeTimer = null;
+    }
     this.editorSession.destroy();
     if (this.handle !== null) {
       this.persistWidths();

@@ -1,0 +1,4 @@
+# Clipboard fixtures are BYTE-EXACT test vectors: the paste specs compare
+# round-tripped payloads against these files verbatim (CRLF row terminators,
+# bare LF inside quoted TSV fields). No EOL conversion, ever.
+* -text

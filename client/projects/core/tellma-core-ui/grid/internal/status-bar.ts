@@ -13,10 +13,10 @@ import type { ɵTmGridViewCore } from './grid-core';
 /**
  * The editable grid's fixed-height status bar: the error tally chip
  * (clicking it jumps to the next errored cell) flanked by previous/next
- * buttons, and the pending-resolution spinner while async paste
- * resolutions are in flight. Rendered by the shared view in editable mode
- * only; the fixed height means errors appearing or clearing never shift
- * the grid's layout.
+ * buttons, the pending-resolution spinner while async paste resolutions
+ * are in flight, and the transient clipboard-failure notice. Rendered by
+ * the shared view in editable mode only; the fixed height means errors
+ * appearing or clearing never shift the grid's layout.
  */
 @Component({
   selector: 'tm-grid-status-bar',
@@ -61,6 +61,11 @@ import type { ɵTmGridViewCore } from './grid-core';
         <span class="tm-grid__status-pending">{{ pendingText() }}</span>
       }
     </div>
+    <!-- Outside the live block: the failure was already announced through
+         the LiveAnnouncer; re-announcing here would double-speak it. -->
+    @if (core().transientNotice(); as notice) {
+      <span class="tm-grid__status-notice" data-tm-status-notice>{{ notice }}</span>
+    }
   `,
   styleUrl: './status-bar.css',
   host: { class: 'tm-grid-status-bar' },

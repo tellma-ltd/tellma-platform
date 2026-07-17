@@ -122,6 +122,7 @@ import { ɵTmGridStatusBar } from './status-bar';
                   [class.tm-grid__cell--error]="cell.invalid"
                   [class.tm-grid__cell--readonly]="cell.readonly"
                   [class.tm-grid__cell--editing]="cell.editing"
+                  [class.tm-grid__cell--cut]="cell.inCutRange"
                   [style.text-align]="cell.align"
                 >
                   @if (cell.editing) {
@@ -171,6 +172,12 @@ import { ɵTmGridStatusBar } from './status-bar';
 
     @if (core().editable()) {
       <tm-grid-status-bar class="tm-grid__status" [core]="core()" />
+    } @else {
+      <!-- Readonly grids have no status bar; the transient clipboard-failure
+           notice overlays the grid's block-end edge instead (zero layout shift). -->
+      @if (core().transientNotice(); as notice) {
+        <div class="tm-grid__notice" data-tm-notice>{{ notice }}</div>
+      }
     }
 
     <tm-menu [items]="core().menuItems()" />

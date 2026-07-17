@@ -160,7 +160,8 @@ export abstract class ɵTmGridBase<T> {
     readonly selectable: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly selectedIds: _angular_core.ModelSignal<ReadonlySet<string | number>>;
     readonly size: _angular_core.InputSignal<"sm" | "md" | "lg">;
-    static ɵdir: _angular_core.ɵɵDirectiveDeclaration<ɵTmGridBase<any>, never, never, { "gridId": { "alias": "gridId"; "required": true; "isSignal": true; }; "contentKey": { "alias": "contentKey"; "required": false; "isSignal": true; }; "data": { "alias": "data"; "required": false; "isSignal": true; }; "field": { "alias": "field"; "required": false; "isSignal": true; }; "rowId": { "alias": "rowId"; "required": true; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "newRow": { "alias": "newRow"; "required": false; "isSignal": true; }; "loading": { "alias": "loading"; "required": false; "isSignal": true; }; "searchable": { "alias": "searchable"; "required": false; "isSignal": true; }; "selectable": { "alias": "selectable"; "required": false; "isSignal": true; }; "extraMenuItems": { "alias": "extraMenuItems"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; "selectedIds": { "alias": "selectedIds"; "required": false; "isSignal": true; }; }, { "selectedIds": "selectedIdsChange"; }, ["columns", "emptyDef", "loadingDef"], never, true, never>;
+    readonly tenant: _angular_core.InputSignal<string | undefined>;
+    static ɵdir: _angular_core.ɵɵDirectiveDeclaration<ɵTmGridBase<any>, never, never, { "gridId": { "alias": "gridId"; "required": true; "isSignal": true; }; "contentKey": { "alias": "contentKey"; "required": false; "isSignal": true; }; "data": { "alias": "data"; "required": false; "isSignal": true; }; "field": { "alias": "field"; "required": false; "isSignal": true; }; "rowId": { "alias": "rowId"; "required": true; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "tenant": { "alias": "tenant"; "required": false; "isSignal": true; }; "newRow": { "alias": "newRow"; "required": false; "isSignal": true; }; "loading": { "alias": "loading"; "required": false; "isSignal": true; }; "searchable": { "alias": "searchable"; "required": false; "isSignal": true; }; "selectable": { "alias": "selectable"; "required": false; "isSignal": true; }; "extraMenuItems": { "alias": "extraMenuItems"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; "selectedIds": { "alias": "selectedIds"; "required": false; "isSignal": true; }; }, { "selectedIds": "selectedIdsChange"; }, ["columns", "emptyDef", "loadingDef"], never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<ɵTmGridBase<any>, never>;
 }
 
@@ -174,6 +175,7 @@ export interface ɵTmGridCellVm {
     readonly displayTemplate: TemplateRef<TmGridDisplayContext<unknown, unknown>> | undefined;
     readonly editing: boolean;
     readonly glyphClass: string | undefined;
+    readonly inCutRange: boolean;
     readonly invalid: boolean;
     readonly pending: boolean;
     readonly readonly: boolean;
@@ -248,6 +250,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     readonly rows: Signal<readonly T[]>;
     readonly showEmpty: Signal<boolean>;
     readonly totalHeight: Signal<number>;
+    readonly transientNotice: Signal<string | null>;
     readonly windowTransform: Signal<string>;
 }
 
@@ -275,6 +278,7 @@ export interface ɵTmGridCoreDeps<T> {
     readonly selectable: Signal<boolean>;
     readonly size: Signal<'sm' | 'md' | 'lg'>;
     readonly store: TmGridStateStore;
+    readonly tenant: Signal<string | undefined>;
     readonly translate: TmUiTranslateFn;
 }
 
@@ -349,6 +353,7 @@ export interface ɵTmGridViewCore {
     readonly resize: ɵTmGridColumnResize;
     readonly showEmpty: Signal<boolean>;
     readonly totalHeight: Signal<number>;
+    readonly transientNotice: Signal<string | null>;
     readonly windowTransform: Signal<string>;
 }
 

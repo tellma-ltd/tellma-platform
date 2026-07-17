@@ -108,7 +108,7 @@ test.describe('opening', () => {
 });
 
 test.describe('items', () => {
-  test('the localized built-in items render, and Paste ships disabled', async ({ page }) => {
+  test('the localized built-in items render, and Paste is enabled', async ({ page }) => {
     await activateCell(page, 2, 0);
     await page.keyboard.press('Shift+F10');
 
@@ -121,9 +121,10 @@ test.describe('items', () => {
       'Insert 1 row below',
       'Delete 1 row',
     ]);
-    // Paste arrives with the clipboard milestone; the item keeps the
-    // menu's shape but stays disabled.
-    await expect(menuItem(page, 'Paste')).toHaveAttribute('aria-disabled', 'true');
+    // Chromium exposes navigator.clipboard.read, so the Paste item rides
+    // the async read path and is enabled on an editable grid (§8.5); the
+    // denied-read degradation is covered in grid-clipboard.spec.ts.
+    await expect(menuItem(page, 'Paste')).toHaveAttribute('aria-disabled', 'false');
     await page.keyboard.press('Escape');
   });
 

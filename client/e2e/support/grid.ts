@@ -183,12 +183,31 @@ export async function readClipboard(page: Page): Promise<{ text: string; html: s
  * Dispatches a synthetic `copy` ClipboardEvent at the grid and returns what
  * the grid wrote into its DataTransfer — full-fidelity flavor capture that
  * works in every engine (no system clipboard, no permissions).
+ *
+ * Engine note: the flavors are captured by intercepting `setData` DURING
+ * dispatch rather than read back afterwards — Firefox flips a synthetic
+ * DataTransfer to protected mode once the copy event finishes, so a
+ * post-dispatch `getData` returns `''` there (Chromium/WebKit read fine
+ * either way).
  */
 export async function syntheticCopy(page: Page): Promise<{ text: string; html: string }> {
   return gridScroller(page).evaluate((el) => {
     const data = new DataTransfer();
     const event = new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true });
+    const captured: Record<string, string> = {};
+    const target = event.clipboardData ?? data;
+    const original = target.setData.bind(target);
+    Object.defineProperty(target, 'setData', {
+      configurable: true,
+      value: (type: string, value: string) => {
+        captured[type] = value;
+        original(type, value);
+      },
+    });
     el.dispatchEvent(event);
-    return { text: data.getData('text/plain'), html: data.getData('text/html') };
+    return {
+      text: captured['text/plain'] ?? data.getData('text/plain'),
+      html: captured['text/html'] ?? data.getData('text/html'),
+    };
   });
 }

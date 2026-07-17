@@ -214,6 +214,7 @@ export class DemoAgentEditor implements TmCellEditor<number | null> {
       [rowId]="rowId"
       [newRow]="newLine"
       [readonly]="readonly()"
+      [tenant]="'t1'"
     >
       <tm-grid-column key="description" header="Description" [flex]="2" [minWidth]="160" />
       <tm-grid-column key="quantity" type="number" header="Qty" [width]="90" />

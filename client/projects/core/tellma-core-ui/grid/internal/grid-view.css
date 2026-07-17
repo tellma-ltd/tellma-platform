@@ -13,6 +13,7 @@
    fixed columns wider than the viewport overflow with their paint. */
 
 :host {
+  position: relative; /* anchors the transient-notice overlay strip */
   display: flex;
   flex-direction: column;
   block-size: 100%;
@@ -187,6 +188,14 @@
   box-shadow: inset 0 0 0 var(--focus-ring-width) var(--grid-selection-border);
 }
 
+/* The armed cut's marquee (§9.5): a dashed accent border on every cell of
+   the cut range — static by design (no marching animation; the grid chrome
+   stays animation-free). An outline never shifts layout. */
+.tm-grid__cell.tm-grid__cell--cut {
+  outline: var(--border-width) dashed var(--grid-cut-border);
+  outline-offset: calc(-2 * var(--border-width));
+}
+
 /* ---- the single live editor (fills the cell box) ---- */
 
 .tm-grid__editor {
@@ -254,6 +263,25 @@
   transform: rotate(45deg);
 }
 
+/* ---- transient clipboard-failure notice (readonly grids only; editable
+        grids surface it in the status bar) ---- */
+
+.tm-grid__notice {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-start: 0;
+  z-index: 3; /* above the sticky header band */
+  max-inline-size: 100%;
+  box-sizing: border-box;
+  padding-block: var(--space-1);
+  padding-inline: var(--space-2);
+  background: var(--grid-error-bg);
+  color: var(--status-error-fg);
+  border: var(--border-width) solid var(--grid-error-border);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+
 /* ---- loading / empty ---- */
 
 .tm-grid__overlay {
@@ -315,6 +343,17 @@
     box-shadow: none;
     outline: var(--focus-ring-width) solid Highlight;
     outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  /* The cut marquee stays a dashed outline; the system forces its color. */
+  .tm-grid__cell.tm-grid__cell--cut {
+    outline-color: Highlight;
+  }
+
+  .tm-grid__notice {
+    background: Canvas;
+    color: CanvasText;
+    border-color: CanvasText;
   }
 
   .tm-grid__colhdr--hit,
