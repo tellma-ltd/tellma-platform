@@ -92,6 +92,7 @@ export interface TmGridScrollPosition {
 export interface TmGridSelectionSnapshot {
     readonly activeColumnKey: string | null;
     readonly activeRowId: TmRowId | null;
+    readonly activeViewRow?: number;
     readonly ranges: readonly TmGridRangeSnapshot[];
 }
 

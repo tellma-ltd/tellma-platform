@@ -17,3 +17,4 @@ export * from './checkbox-harness';
 export * from './select-harness';
 export * from './form-field-harness';
 export * from './menu-harness';
+export * from './grid-harness';

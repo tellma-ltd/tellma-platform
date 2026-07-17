@@ -357,6 +357,7 @@ describe('TmGridSelectionModel (§8.1 selection model)', () => {
         ],
         activeRowId: 4,
         activeColumnKey: 'b',
+        activeViewRow: 3,
       });
       sel.clear();
       const result = sel.restore(snapshot);
@@ -378,7 +379,7 @@ describe('TmGridSelectionModel (§8.1 selection model)', () => {
       expect(sel.ranges()).toEqual([]); // the failed restore left the selection alone
     });
 
-    it('restore resolves the active cell to null independently of the ranges', () => {
+    it('restore falls back to the clamped view index when the active row id vanished', () => {
       const rows = makeRows(5);
       const h = makeEngine(rows);
       const sel = h.engine.selection;
@@ -386,8 +387,22 @@ describe('TmGridSelectionModel (§8.1 selection model)', () => {
       const snapshot = sel.toSnapshot({ row: 4, col: 0 }); // active on id 5
       h.externalChange(rows.filter((row) => row.id !== 5));
       const result = sel.restore(snapshot);
-      expect(result).toEqual({ restored: true, activeCell: null });
+      // The row id no longer resolves; the persisted view row (4) clamps to
+      // the shrunken content (last row is now index 3).
+      expect(result).toEqual({ restored: true, activeCell: { row: 3, col: 0 } });
       expect(sel.rects()).toEqual([{ top: 0, bottom: 0, left: 0, right: 0 }]);
+    });
+
+    it('restore resolves the active cell to null when no view position was persisted', () => {
+      const rows = makeRows(5);
+      const h = makeEngine(rows);
+      const sel = h.engine.selection;
+      sel.collapseTo({ row: 0, col: 0 });
+      const snapshot = sel.toSnapshot({ row: 4, col: 0 });
+      const withoutViewRow = { ...snapshot, activeViewRow: undefined };
+      h.externalChange(rows.filter((row) => row.id !== 5));
+      const result = sel.restore(withoutViewRow);
+      expect(result).toEqual({ restored: true, activeCell: null });
     });
   });
 

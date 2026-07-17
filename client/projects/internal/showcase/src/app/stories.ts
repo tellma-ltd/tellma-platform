@@ -6,6 +6,8 @@
 import { Component, Type } from '@angular/core';
 
 import { CheckboxStory } from './checkbox/checkbox-story';
+import { GridReadonlyStory } from './grid/grid-readonly-story';
+import { GridStatesStory } from './grid/grid-states-story';
 import { I18nStory } from './i18n/i18n-story';
 import { InputStory } from './input/input-story';
 import { MenuStory } from './menu/menu-story';
@@ -23,6 +25,8 @@ export interface ShowcaseStory {
   readonly id: string;
   readonly title: string;
   readonly component: Type<unknown>;
+  /** Lifts the story shell's inline-size cap (data-dense stories like grids). */
+  readonly wide?: boolean;
 }
 
 @Component({
@@ -43,5 +47,7 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'checkbox', title: 'Checkbox (tm-checkbox)', component: CheckboxStory },
   { id: 'select', title: 'Select (tm-select)', component: SelectStory },
   { id: 'menu', title: 'Menu', component: MenuStory },
+  { id: 'grid-readonly', title: 'Grid (readonly)', component: GridReadonlyStory, wide: true },
+  { id: 'grid-states', title: 'Grid (states)', component: GridStatesStory, wide: true },
   { id: 'i18n', title: 'i18n / locale packs', component: I18nStory },
 ];

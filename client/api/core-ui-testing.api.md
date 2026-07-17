@@ -4,6 +4,7 @@
 
 ```ts
 
+import { BaseHarnessFilters } from '@angular/cdk/testing';
 import { ComponentHarness } from '@angular/cdk/testing';
 import { HarnessPredicate } from '@angular/cdk/testing';
 import { TestKey } from '@angular/cdk/testing';
@@ -29,6 +30,70 @@ export class TmFormFieldHarness extends ComponentHarness {
     hasRequiredMarker(): Promise<boolean>;
     static hostSelector: string;
     labelClick(): Promise<void>;
+}
+
+// @public
+export interface TmGridCellCoordinate {
+    readonly col: number;
+    readonly row: number;
+}
+
+// @public
+export class TmGridCellHarness extends ComponentHarness {
+    click(): Promise<void>;
+    doubleClick(): Promise<void>;
+    getAlign(): Promise<string>;
+    getColIndex(): Promise<number>;
+    getRowIndex(): Promise<number>;
+    getText(): Promise<string>;
+    static hostSelector: string;
+    isActive(): Promise<boolean>;
+    isSelected(): Promise<boolean>;
+    static with(options?: TmGridCellHarnessFilters): HarnessPredicate<TmGridCellHarness>;
+}
+
+// @public
+export interface TmGridCellHarnessFilters extends BaseHarnessFilters {
+    colIndex?: number;
+    rowIndex?: number;
+}
+
+// @public
+export class TmGridHarness extends ComponentHarness {
+    clickCell(rowIndex: number, colIndex: number): Promise<void>;
+    clickColumnHeader(colIndex: number): Promise<void>;
+    clickCorner(): Promise<void>;
+    clickRowHeader(rowIndex: number): Promise<void>;
+    getActiveCell(): Promise<TmGridCellCoordinate | null>;
+    getCell(rowIndex: number, colIndex: number): Promise<TmGridCellHarness>;
+    getCellText(rowIndex: number, colIndex: number): Promise<string>;
+    getColCount(): Promise<number>;
+    getEmptyText(): Promise<string | null>;
+    getHeaderTexts(): Promise<string[]>;
+    getRenderedRowCount(): Promise<number>;
+    getRowCount(): Promise<number>;
+    hasPlaceholderRow(): Promise<boolean>;
+    static hostSelector: string;
+    isLoading(): Promise<boolean>;
+    modClickCell(rowIndex: number, colIndex: number): Promise<void>;
+    pressKeys(...keys: (string | TestKey)[]): Promise<void>;
+    selectRange(from: TmGridCellCoordinate, to: TmGridCellCoordinate): Promise<void>;
+    shiftClickCell(rowIndex: number, colIndex: number): Promise<void>;
+}
+
+// @public
+export class TmGridRowHarness extends ComponentHarness {
+    getAriaRowIndex(): Promise<number>;
+    getCells(filter?: HarnessPredicate<TmGridCellHarness>): Promise<TmGridCellHarness[]>;
+    getRowHeaderText(): Promise<string>;
+    static hostSelector: string;
+    isPlaceholder(): Promise<boolean>;
+    static with(options?: TmGridRowHarnessFilters): HarnessPredicate<TmGridRowHarness>;
+}
+
+// @public
+export interface TmGridRowHarnessFilters extends BaseHarnessFilters {
+    ariaRowIndex?: number;
 }
 
 // @public

@@ -168,6 +168,12 @@ export interface TmGridSelectionSnapshot {
   readonly activeRowId: TmRowId | null;
   /** Column key of the active cell, or `null` when no cell was active. */
   readonly activeColumnKey: string | null;
+  /**
+   * The active cell's view-row index at snapshot time — the restore
+   * fallback when its row id no longer resolves (clamped to the content
+   * present at restore time).
+   */
+  readonly activeViewRow?: number;
 }
 
 /**

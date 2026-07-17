@@ -46,6 +46,80 @@ export const TM_UI_STRINGS_EN: {
     readonly select: {
         readonly placeholder: "Select an option";
     };
+    readonly grid: {
+        readonly loading: "Loading…";
+        readonly empty: "No records to display";
+        readonly newRow: "New row";
+        readonly rowHeader: "Row {index}";
+        readonly selectAll: "Select all rows";
+        readonly selectRow: "Select row";
+        readonly expand: "Expand row";
+        readonly collapse: "Collapse row";
+        readonly menu: {
+            readonly cut: "Cut";
+            readonly copy: "Copy";
+            readonly copyWithHeaders: "Copy with headers";
+            readonly paste: "Paste";
+            readonly pasteHint: "Press {shortcut} to paste";
+            readonly insertAbove: "Insert {count, plural, one {1 row} other {# rows}} above";
+            readonly insertBelow: "Insert {count, plural, one {1 row} other {# rows}} below";
+            readonly insertChild: "Insert child row";
+            readonly deleteRows: "Delete {count, plural, one {1 row} other {# rows}}";
+        };
+        readonly op: {
+            readonly cellEdit: "cell edit";
+            readonly clear: "clear";
+            readonly paste: "paste";
+            readonly fillDown: "fill down";
+            readonly cutMove: "move";
+            readonly rowInsert: "row insert";
+            readonly rowDelete: "row delete";
+            readonly rowMove: "row move";
+            readonly transaction: "change";
+        };
+        readonly announce: {
+            readonly selection: "{rows} × {cols} selected";
+            readonly selectionAll: "All cells selected";
+            readonly copied: "{cells, plural, one {1 cell} other {# cells}} copied";
+            readonly copyRefused: "Cannot copy a multi-range selection of this shape";
+            readonly copyFailed: "Copy failed — select the cells and copy again";
+            readonly cutCancelled: "Cut cancelled";
+            readonly pasted: "{cells, plural, =0 {Nothing} one {1 cell} other {# cells}} pasted{errors, plural, =0 {} one {, 1 error} other {, # errors}}{pending, plural, =0 {} one {, 1 resolving} other {, # resolving}}";
+            readonly pasteRowsDropped: "{count, plural, one {1 row} other {# rows}} could not be added — the grid does not create rows";
+            readonly undone: "{skipped, plural, =0 {Undid {action}} other {Undid {action} — # rows no longer exist}}";
+            readonly redone: "{skipped, plural, =0 {Redid {action}} other {Redid {action} — # rows no longer exist}}";
+            readonly undoSkipped: "Undo skipped — the affected rows no longer exist";
+            readonly redoSkipped: "Redo skipped — the affected rows no longer exist";
+            readonly rowsInserted: "{count, plural, one {1 row} other {# rows}} inserted";
+            readonly rowsDeleted: "{count, plural, one {1 row} other {# rows}} deleted";
+            readonly rowsMoved: "{count, plural, one {1 row} other {# rows}} moved";
+            readonly moveRejected: "Cannot move a row into its own subtree";
+            readonly editorCancelledRowRemoved: "Editing cancelled — the row was removed";
+            readonly resolved: "{count, plural, one {1 label} other {# labels}} resolved{errors, plural, =0 {} one {, 1 not matched} other {, # not matched}}";
+            readonly lazyLoadFailed: "Could not load child rows";
+            readonly errorJump: "Error {index} of {count}";
+            readonly checkedCount: "{selected} of {total} selected";
+            readonly loaded: "{count, plural, =0 {No records} one {1 record} other {# records}} loaded";
+            readonly loading: "Loading";
+        };
+        readonly cellErrors: {
+            readonly invalidInput: "‘{text}’ is not a valid {column}; the field is empty until corrected.";
+            readonly notFound: "No {collection} named ‘{label}’";
+            readonly ambiguous: "‘{label}’ matches more than one {collection}";
+            readonly tally: "{count, plural, one {1 error} other {# errors}}";
+            readonly pending: "{count, plural, one {1 cell} other {# cells}} resolving";
+            readonly next: "Next error";
+            readonly previous: "Previous error";
+        };
+        readonly find: {
+            readonly label: "Find in grid";
+            readonly counter: "{index} of {count}";
+            readonly noMatches: "No matches";
+            readonly next: "Next match";
+            readonly previous: "Previous match";
+            readonly close: "Close find";
+        };
+    };
 };
 
 // @public

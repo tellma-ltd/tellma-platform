@@ -290,6 +290,7 @@ export class TmGridSelectionModel {
       ranges,
       activeRowId: activeCell === null ? null : this.rowIdAt(activeCell.row),
       activeColumnKey: activeCell === null ? null : this.columnIdAt(activeCell.col),
+      ...(activeCell === null ? {} : { activeViewRow: activeCell.row }),
     };
   }
 
@@ -301,8 +302,21 @@ export class TmGridSelectionModel {
    * back `null`.
    */
   restore(snapshot: TmGridSelectionSnapshot): { restored: boolean; activeCell: TmRowCol | null } {
-    const activeRow = this.resolveRow(snapshot.activeRowId);
-    const activeCol = this.resolveCol(snapshot.activeColumnKey);
+    let activeRow = this.resolveRow(snapshot.activeRowId);
+    if (activeRow === null && snapshot.activeViewRow !== undefined) {
+      // The row id no longer resolves: fall back to the persisted view
+      // position, clamped to the DATA rows present now (the placeholder is
+      // a landing spot only when no data row exists).
+      const dataRows = untracked(() => this.model.dataRowCount());
+      const bound = dataRows > 0 ? dataRows : untracked(() => this.model.viewRowCount());
+      if (bound > 0) {
+        activeRow = Math.min(Math.max(0, snapshot.activeViewRow), bound - 1);
+      }
+    }
+    let activeCol = this.resolveCol(snapshot.activeColumnKey);
+    if (activeCol === null && activeRow !== null && untracked(() => this.model.columnCount()) > 0) {
+      activeCol = 0;
+    }
     const active =
       activeRow !== null && activeCol !== null ? { row: activeRow, col: activeCol } : null;
     const ranges: TmGridRange[] = [];

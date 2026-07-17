@@ -25,6 +25,80 @@ export const TM_LOCALE_AR_STRINGS: {
     readonly select: {
         readonly placeholder: "{gender, select, female {حددي خيارا} other {حدد خيارا}}";
     };
+    readonly grid: {
+        readonly loading: "جار التحميل…";
+        readonly empty: "لا توجد سجلات للعرض";
+        readonly newRow: "صف جديد";
+        readonly rowHeader: "الصف {index}";
+        readonly selectAll: "تحديد كل الصفوف";
+        readonly selectRow: "تحديد الصف";
+        readonly expand: "توسيع الصف";
+        readonly collapse: "طي الصف";
+        readonly menu: {
+            readonly cut: "{gender, select, female {قصي} other {قص}}";
+            readonly copy: "{gender, select, female {انسخي} other {انسخ}}";
+            readonly copyWithHeaders: "{gender, select, female {انسخي} other {انسخ}} مع العناوين";
+            readonly paste: "{gender, select, female {الصقي} other {الصق}}";
+            readonly pasteHint: "{gender, select, female {اضغطي} other {اضغط}} على {shortcut} للصق";
+            readonly insertAbove: "{gender, select, female {أدرجي} other {أدرج}} {count, plural, zero {# صف} one {صفا واحدا} two {صفين} few {# صفوف} many {# صفا} other {# صف}} أعلاه";
+            readonly insertBelow: "{gender, select, female {أدرجي} other {أدرج}} {count, plural, zero {# صف} one {صفا واحدا} two {صفين} few {# صفوف} many {# صفا} other {# صف}} أدناه";
+            readonly insertChild: "{gender, select, female {أدرجي} other {أدرج}} صفا فرعيا";
+            readonly deleteRows: "{gender, select, female {احذفي} other {احذف}} {count, plural, zero {# صف} one {صفا واحدا} two {صفين} few {# صفوف} many {# صفا} other {# صف}}";
+        };
+        readonly op: {
+            readonly cellEdit: "تحرير خلية";
+            readonly clear: "المسح";
+            readonly paste: "اللصق";
+            readonly fillDown: "التعبئة لأسفل";
+            readonly cutMove: "النقل";
+            readonly rowInsert: "إدراج صفوف";
+            readonly rowDelete: "حذف صفوف";
+            readonly rowMove: "نقل صفوف";
+            readonly transaction: "التغيير";
+        };
+        readonly announce: {
+            readonly selection: "تم تحديد {rows} × {cols}";
+            readonly selectionAll: "تم تحديد كل الخلايا";
+            readonly copied: "تم نسخ {cells, plural, zero {# خلية} one {خلية واحدة} two {خليتين} few {# خلايا} many {# خلية} other {# خلية}}";
+            readonly copyRefused: "يتعذر نسخ تحديد متعدد النطاقات بهذا الشكل";
+            readonly copyFailed: "فشل النسخ — {gender, select, female {حددي} other {حدد}} الخلايا و{gender, select, female {انسخي} other {انسخ}} مرة أخرى";
+            readonly cutCancelled: "تم إلغاء القص";
+            readonly pasted: "{cells, plural, =0 {لم يتم لصق أي شيء} one {تم لصق خلية واحدة} two {تم لصق خليتين} few {تم لصق # خلايا} many {تم لصق # خلية} other {تم لصق # خلية}}{errors, plural, =0 {} one {، خطأ واحد} two {، خطآن} few {، # أخطاء} many {، # خطأ} other {، # خطأ}}{pending, plural, =0 {} one {، خلية واحدة قيد المطابقة} two {، خليتان قيد المطابقة} few {، # خلايا قيد المطابقة} many {، # خلية قيد المطابقة} other {، # خلية قيد المطابقة}}";
+            readonly pasteRowsDropped: "تعذرت إضافة {count, plural, zero {# صف} one {صف واحد} two {صفين} few {# صفوف} many {# صفا} other {# صف}} — الجدول لا ينشئ صفوفا";
+            readonly undone: "{skipped, plural, =0 {تم التراجع عن {action}} one {تم التراجع عن {action} — صف واحد لم يعد موجودا} two {تم التراجع عن {action} — صفان لم يعودا موجودين} few {تم التراجع عن {action} — # صفوف لم تعد موجودة} many {تم التراجع عن {action} — # صفا لم تعد موجودة} other {تم التراجع عن {action} — # صف لم تعد موجودة}}";
+            readonly redone: "{skipped, plural, =0 {تمت إعادة {action}} one {تمت إعادة {action} — صف واحد لم يعد موجودا} two {تمت إعادة {action} — صفان لم يعودا موجودين} few {تمت إعادة {action} — # صفوف لم تعد موجودة} many {تمت إعادة {action} — # صفا لم تعد موجودة} other {تمت إعادة {action} — # صف لم تعد موجودة}}";
+            readonly undoSkipped: "تم تخطي التراجع — الصفوف المتأثرة لم تعد موجودة";
+            readonly redoSkipped: "تم تخطي الإعادة — الصفوف المتأثرة لم تعد موجودة";
+            readonly rowsInserted: "تم إدراج {count, plural, zero {# صف} one {صف واحد} two {صفين} few {# صفوف} many {# صفا} other {# صف}}";
+            readonly rowsDeleted: "تم حذف {count, plural, zero {# صف} one {صف واحد} two {صفين} few {# صفوف} many {# صفا} other {# صف}}";
+            readonly rowsMoved: "تم نقل {count, plural, zero {# صف} one {صف واحد} two {صفين} few {# صفوف} many {# صفا} other {# صف}}";
+            readonly moveRejected: "يتعذر نقل الصف إلى داخل شجرته الفرعية";
+            readonly editorCancelledRowRemoved: "تم إلغاء التحرير — تمت إزالة الصف";
+            readonly resolved: "تمت مطابقة {count, plural, zero {# تسمية} one {تسمية واحدة} two {تسميتين} few {# تسميات} many {# تسمية} other {# تسمية}}{errors, plural, =0 {} one {، واحدة لم تتطابق} two {، اثنتان لم تتطابقا} few {، # لم تتطابق} many {، # لم تتطابق} other {، # لم تتطابق}}";
+            readonly lazyLoadFailed: "تعذر تحميل الصفوف الفرعية";
+            readonly errorJump: "الخطأ {index} من {count}";
+            readonly checkedCount: "تم تحديد {selected} من {total}";
+            readonly loaded: "{count, plural, =0 {لا توجد سجلات} one {تم تحميل سجل واحد} two {تم تحميل سجلين} few {تم تحميل # سجلات} many {تم تحميل # سجلا} other {تم تحميل # سجل}}";
+            readonly loading: "جار التحميل";
+        };
+        readonly cellErrors: {
+            readonly invalidInput: "«{text}» ليست قيمة {column} صالحة؛ يبقى الحقل فارغا حتى يتم التصحيح.";
+            readonly notFound: "لا يوجد {collection} باسم «{label}»";
+            readonly ambiguous: "«{label}» يطابق أكثر من {collection}";
+            readonly tally: "{count, plural, zero {# خطأ} one {خطأ واحد} two {خطآن} few {# أخطاء} many {# خطأ} other {# خطأ}}";
+            readonly pending: "{count, plural, zero {# خلية} one {خلية واحدة} two {خليتان} few {# خلايا} many {# خلية} other {# خلية}} قيد المطابقة";
+            readonly next: "الخطأ التالي";
+            readonly previous: "الخطأ السابق";
+        };
+        readonly find: {
+            readonly label: "البحث في الجدول";
+            readonly counter: "{index} من {count}";
+            readonly noMatches: "لا توجد تطابقات";
+            readonly next: "التطابق التالي";
+            readonly previous: "التطابق السابق";
+            readonly close: "إغلاق البحث";
+        };
+    };
 };
 
 ```

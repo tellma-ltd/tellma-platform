@@ -1,0 +1,280 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-grid-view — the shared grid template's chrome: one two-axis scroller,
+   a sticky header row, virtualized rows positioned by a single translate,
+   and the loading/empty overlays. Every size rides the --grid-* /
+   --space-* tokens; geometry is logical so RTL mirrors for free. Row and
+   header backgrounds paint on the CELLS (never the row containers), so
+   fixed columns wider than the viewport overflow with their paint. */
+
+:host {
+  display: block;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.tm-grid__scroller {
+  position: relative;
+  overflow: auto;
+  box-sizing: border-box;
+  block-size: 100%;
+  font-family: var(--font-ui);
+  font-size: var(--field-font-size);
+  border: var(--border-width) solid var(--grid-line);
+}
+
+.tm-grid__scroller:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: calc(-1 * var(--focus-ring-width));
+}
+
+/* ---- sticky header ---- */
+
+.tm-grid__header {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: var(--grid-template);
+  block-size: var(--grid-row-height);
+}
+
+.tm-grid__corner,
+.tm-grid__colhdr {
+  box-sizing: border-box;
+  padding-inline: var(--space-2);
+  background: var(--grid-header-bg);
+  color: var(--grid-header-text);
+  border-block-end: var(--border-width) solid var(--grid-line);
+  border-inline-end: var(--border-width) solid var(--grid-line);
+  font-weight: var(--weight-medium);
+  line-height: calc(var(--grid-row-height) - var(--border-width));
+  white-space: nowrap;
+  user-select: none;
+}
+
+.tm-grid__colhdr {
+  position: relative; /* anchors the resize handle */
+}
+
+.tm-grid__colhdr-label {
+  display: inline-block;
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.tm-grid__colhdr--hit {
+  background: var(--grid-selection-bg);
+}
+
+.tm-grid__resize {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  inline-size: var(--grid-handle-size);
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 1;
+}
+
+/* ---- virtualized body ---- */
+
+.tm-grid__spacer {
+  position: relative;
+}
+
+.tm-grid__window {
+  will-change: transform;
+}
+
+.tm-grid__row {
+  display: grid;
+  grid-template-columns: var(--grid-template);
+  block-size: var(--grid-row-height);
+}
+
+/* The always-rendered active row outside the window: absolutely positioned
+   inside the (translated) window with its own compensating translate. */
+.tm-grid__row--outlier {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  inline-size: 100%;
+}
+
+.tm-grid__rowhdr {
+  box-sizing: border-box;
+  padding-inline: var(--space-1);
+  text-align: center;
+  font-size: var(--text-xs);
+  line-height: calc(var(--grid-row-height) - var(--border-width));
+  background: var(--grid-header-bg);
+  color: var(--grid-header-text);
+  border-block-end: var(--border-width) solid var(--grid-line);
+  border-inline-end: var(--border-width) solid var(--grid-line);
+  overflow: hidden;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.tm-grid__rowhdr--hit {
+  background: var(--grid-selection-bg);
+}
+
+.tm-grid__cell {
+  box-sizing: border-box;
+  padding-inline: var(--space-2);
+  line-height: calc(var(--grid-row-height) - var(--border-width));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-block-end: var(--border-width) solid var(--grid-line);
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     cells take real (roving) focus; the active-cell inset ring below is the
+     equally-visible substitute. */
+  outline: none;
+}
+
+/* Editable grids draw the full gridline mesh; readonly drops the vertical
+   lines and stripes rows instead (zebra is applied per cell, see header). */
+.tm-grid__scroller:not(.tm-grid__scroller--readonly) .tm-grid__cell {
+  border-inline-end: var(--border-width) solid var(--grid-line);
+}
+
+.tm-grid__row--zebra > .tm-grid__cell {
+  background: var(--grid-zebra-bg);
+}
+
+.tm-grid__row--placeholder > .tm-grid__cell {
+  background: var(--grid-readonly-bg);
+}
+
+.tm-grid__cell.tm-grid__cell--selected {
+  background: var(--grid-selection-bg);
+}
+
+.tm-grid__cell.tm-grid__cell--active {
+  box-shadow: inset 0 0 0 var(--focus-ring-width) var(--grid-selection-border);
+}
+
+/* ---- boolean glyph (token lock-step with tm-checkbox's box) ---- */
+
+.tm-grid-bool {
+  display: inline-block;
+  inline-size: var(--checkbox-box-size);
+  block-size: var(--checkbox-box-size);
+  box-sizing: border-box;
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--radius-xs);
+  background: var(--field-bg);
+  vertical-align: middle;
+}
+
+.tm-grid-bool--on {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.tm-grid-bool--on::after {
+  content: '';
+  display: block;
+  inline-size: calc(var(--checkbox-box-size) * 0.3);
+  block-size: calc(var(--checkbox-box-size) * 0.55);
+  margin-block-start: calc(var(--checkbox-box-size) * 0.08);
+  margin-inline: auto;
+  box-sizing: border-box;
+  border-block-end: calc(var(--checkbox-box-size) / 9) solid var(--color-on-primary);
+  border-inline-end: calc(var(--checkbox-box-size) / 9) solid var(--color-on-primary);
+  transform: rotate(45deg);
+}
+
+/* ---- loading / empty ---- */
+
+.tm-grid__overlay {
+  position: sticky;
+  inset-inline-start: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding-block: var(--space-8);
+  color: var(--text-secondary);
+}
+
+.tm-grid__overlay-spinner {
+  inline-size: var(--space-4);
+  block-size: var(--space-4);
+}
+
+/* ---- utilities ---- */
+
+.tm-visually-hidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- forced colors: states never rely on tint alone ---- */
+
+@media (forced-colors: active) {
+  .tm-grid__scroller,
+  .tm-grid__corner,
+  .tm-grid__colhdr,
+  .tm-grid__rowhdr,
+  .tm-grid__cell {
+    border-color: CanvasText;
+  }
+
+  .tm-grid__cell.tm-grid__cell--selected {
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .tm-grid__cell.tm-grid__cell--active {
+    box-shadow: none;
+    outline: var(--focus-ring-width) solid Highlight;
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .tm-grid__colhdr--hit,
+  .tm-grid__rowhdr--hit {
+    background: SelectedItem;
+    color: SelectedItemText;
+  }
+
+  .tm-grid__row--zebra > .tm-grid__cell,
+  .tm-grid__row--placeholder > .tm-grid__cell {
+    background: Canvas;
+  }
+
+  .tm-grid-bool {
+    border-color: FieldText;
+    background: Field;
+  }
+
+  .tm-grid-bool--on {
+    background: Highlight;
+    border-color: Highlight;
+  }
+
+  .tm-grid-bool--on::after {
+    border-color: HighlightText;
+  }
+}
+
+/* No transitions or animations are used in the grid chrome itself, so no
+   prefers-reduced-motion block is needed; tm-spinner handles its own. */
