@@ -33,7 +33,13 @@ import {
   type TmPasteContext,
   type TmRowId,
 } from '@tellma/core-ui/contracts';
-import { tmResolveFieldErrors, type TmUiTranslateFn } from '@tellma/core-ui';
+import {
+  TM_ERROR_DISPLAY,
+  tmResolveFieldErrors,
+  type TmErrorDisplayPolicy,
+  type TmErrorDisplayState,
+  type TmUiTranslateFn,
+} from '@tellma/core-ui';
 import { TM_CHECKBOX_CELL_DISPLAY } from '@tellma/core-ui/checkbox';
 import {
   TmGridEngine,
@@ -132,6 +138,21 @@ function cellSelector(cell: TmRowCol): string {
  */
 function errorCellKey(rowId: TmRowId, columnId: string): string {
   return `${typeof rowId === 'number' ? '#' : '$'}${String(rowId)} ${columnId}`;
+}
+
+/** The state a validation error's field feeds the workspace error-display policy. */
+function fieldErrorState(field: {
+  invalid(): boolean;
+  touched(): boolean;
+  dirty(): boolean;
+  pending(): boolean;
+}): TmErrorDisplayState {
+  return {
+    invalid: field.invalid(),
+    touched: field.touched(),
+    dirty: field.dirty(),
+    pending: field.pending(),
+  };
 }
 
 /** One field-validation-errored cell, by identity. */
@@ -637,6 +658,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   /** The query the current match list answers (counter gates on it). */
   private readonly findResultsFor = signal<string | null>(null);
   private readonly coarsePointerSignal = signal(false);
+  /** The workspace's error-display policy (touched/dirty/pending gating). */
+  private readonly errorDisplay: TmErrorDisplayPolicy;
   /** Fast match membership for the rendered window's highlight flags. */
   private readonly findMatchKeys: Signal<ReadonlySet<string>>;
   /** The active match, or `null`. */
@@ -746,6 +769,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.deps = deps;
     this.announcements = new ɵTmGridAnnouncements(deps.announcer, deps.translate);
     this.appRef = deps.injector.get(ApplicationRef);
+    this.errorDisplay = deps.injector.get(TM_ERROR_DISPLAY);
     this.editorSession = new ɵTmGridEditorSession(deps.injector);
     this.fieldWriter = new ɵTmGridFieldWriter<T>({
       field: () => this.deps.field(),
@@ -996,12 +1020,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         }
         const rowId = rowIdOf(rows[i]);
         for (const error of summary) {
-          // A pristine field carries no visible error yet: a freshly
-          // materialized row must not light up before its cells are edited.
-          // "Interacted" = touched (an editor blurred) OR dirty (a write —
-          // paste/delete/toggle — that never blurs an editor).
+          // The workspace's error-display policy decides when an error shows
+          // (the default holds it until the field is touched or dirty), so a
+          // freshly materialized row stays quiet until its cells are edited.
           const field = error.fieldTree();
-          if (!field.touched() && !field.dirty()) {
+          if (!this.errorDisplay(fieldErrorState(field))) {
             continue;
           }
           const column = this.attributeErrorColumn(error, columns);
@@ -1087,7 +1110,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         .filter((error) => {
           const field = error.fieldTree();
           return (
-            (field.touched() || field.dirty()) &&
+            this.errorDisplay(fieldErrorState(field)) &&
             this.attributeErrorColumn(error, columns).id === column.id
           );
         });
@@ -2405,6 +2428,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         return true;
       case 'deleteRows':
         engine.deleteSelectedRows();
+        // The deleted rows took the focused cell's DOM node with them; refocus
+        // the surviving active cell so focus never falls out of the grid (a
+        // later Mod+Z would otherwise land in whatever page control got focus).
+        this.requestFocusActive();
         return true;
       case 'insertRowsAbove':
         engine.insertRows('above');
@@ -3101,7 +3128,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         id: 'deleteRows',
         label: translate('grid.menu.deleteRows', { count })(),
         icon: icons?.listMinus,
-        action: () => this.engine.deleteSelectedRows(),
+        // Refocus the surviving active cell: the menu's restoreFocus targets
+        // the now-deleted cell, so focus would otherwise fall out of the grid.
+        action: () => {
+          this.engine.deleteSelectedRows();
+          this.requestFocusActive();
+        },
       });
     }
     const extras = this.deps.extraMenuItems();

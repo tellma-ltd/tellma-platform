@@ -287,6 +287,13 @@
   outline-offset: calc(-2 * var(--border-width));
 }
 
+/* On a cut cell that is also active, drop the solid active ring: sharing the
+   accent color and abutting the dashed marquee, it swallows the dashes into a
+   solid line. The marquee IS the treatment while the cut is armed. */
+.tm-grid__cell.tm-grid__cell--cut.tm-grid__cell--active {
+  box-shadow: none;
+}
+
 /* Find highlights (§8.7): match tint on every rendered match, an outline
    on the ACTIVE match. A translucent LAYER (background-image), like the
    selection above, so the tint composites over any base color — zebra,
@@ -381,12 +388,11 @@
   background: var(--field-bg);
 }
 
-/* A hierarchy cell's editor keeps the tree indentation: it starts after the
-   level indent + twisty + child-spinner slot (the leading affordances stay
-   visible beside it), so the edited text lines up with the display text
-   instead of jumping to the cell's inline edge. */
+/* A hierarchy cell's editor keeps the tree indentation via padding (not an
+   inset), so its field background still covers the WHOLE cell — otherwise the
+   active-cell highlight bleeds through the uncovered indent strip. */
 .tm-grid__cell--hierarchy .tm-grid__editor {
-  inset-inline-start: calc(
+  padding-inline-start: calc(
     var(--grid-level, 0) * var(--grid-indent) + var(--grid-indent) + var(--space-4)
   );
 }
@@ -494,7 +500,9 @@
      loading/empty layer stays in the viewport whatever the scroll position
      (inside the scroller it flowed after the full-height spacer, off-screen). */
   position: absolute;
-  inset: 0;
+  /* Start below the sticky header (at the scroller's top, inside its border)
+     so the column headers stay visible above the loading / empty layer. */
+  inset: calc(var(--grid-row-height) + var(--border-width)) 0 0;
   z-index: 4; /* above the rows, the sticky header, and the notice */
   display: flex;
   align-items: center;

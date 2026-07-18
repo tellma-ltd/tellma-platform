@@ -9,7 +9,7 @@ import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { applyEach, disabled, form, readonly, required } from '@angular/forms/signals';
 
 import type { TmCellEditor } from '@tellma/core-ui/contracts';
-import { provideTellmaUi, TM_CELL_EDITOR_HOST } from '@tellma/core-ui';
+import { provideTellmaUi, TM_CELL_EDITOR_HOST, TM_ERROR_DISPLAY } from '@tellma/core-ui';
 import { TmGridHarness } from '@tellma/core-ui-testing';
 
 import { TmGrid } from './tm-grid';
@@ -457,6 +457,31 @@ describe('tm-grid (editing)', () => {
     expect(host.grid().errorCount()).toBe(0);
   });
 
+  it('defers to the injected TmErrorDisplayPolicy (a suppress-all policy hides even dirty errors)', async () => {
+    // The default policy surfaces a cleared required field (see the
+    // required-field test). A custom suppress-all policy must hide the very
+    // same error — proving the grid asks the injected policy rather than a
+    // hardcoded touched/dirty check.
+    TestBed.configureTestingModule({
+      providers: [
+        provideTellmaUi(),
+        { provide: TM_ERROR_DISPLAY, useValue: (): boolean => false },
+      ],
+    });
+    const fixture = TestBed.createComponent(EditHost);
+    await stable(fixture);
+    const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+      '.tm-grid__scroller',
+    ) as HTMLElement;
+
+    await activateOrigin(fixture, scroller); // (0,0) = Name
+    keydown(scroller, 'Delete'); // clears 'Alpha' → null: invalid AND dirty
+    await stable(fixture);
+    expect(fixture.componentInstance.model()[0].name).toBeNull();
+    expect(fixture.componentInstance.grid().errorCount()).toBe(0); // hidden by the policy
+    expect(cellAt(scroller, 0, 0)!.classList.contains('tm-grid__cell--error')).toBe(false);
+  });
+
   it('Mod+Z / Mod+Y round-trip a committed edit', async () => {
     const { fixture, host, scroller } = await setup();
     await activateOrigin(fixture, scroller);
@@ -515,6 +540,11 @@ describe('tm-grid (editing)', () => {
     await stable(fixture);
     expect(host.model().length).toBe(3);
     expect(host.model()[0].id).toBe(1);
+    // Focus stays in the grid after the delete takes the active cell's DOM node
+    // with it — otherwise focus falls to the page and a later Mod+Z (undo)
+    // would land in whatever control got focus instead of the grid.
+    expect(scroller.contains(document.activeElement)).toBe(true);
+    expect((document.activeElement as HTMLElement).matches('[data-tm-cell]')).toBe(true);
   });
 
   it('enum cells edit through tm-select; activating an option commits and closes', async () => {
