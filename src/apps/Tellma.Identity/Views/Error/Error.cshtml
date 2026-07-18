@@ -1,0 +1,17 @@
+@model ErrorViewModel
+@inject IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["ErrorTitle"].Value;
+}
+
+<h1 class="tl-title">@L["ErrorTitle"]</h1>
+
+@if (!string.IsNullOrEmpty(Model.Error))
+{
+    <p class="tl-error">@Model.Error</p>
+}
+
+@if (!string.IsNullOrEmpty(Model.ErrorDescription))
+{
+    <p class="tl-muted">@Model.ErrorDescription</p>
+}

@@ -1,0 +1,25 @@
+@model ConsentViewModel
+@inject IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["ConsentTitle"].Value;
+}
+
+<h1 class="tl-title">@L["ConsentTitle"]</h1>
+<p>@L["ConsentPrompt", Model.ApplicationName ?? string.Empty, Model.Scope]</p>
+
+<form method="post">
+    @* Round-trip the protocol parameters so OpenIddict resolves the same request on POST. *@
+    @foreach (KeyValuePair<string, Microsoft.Extensions.Primitives.StringValues> parameter in
+        (Context.Request.HasFormContentType
+            ? (IEnumerable<KeyValuePair<string, Microsoft.Extensions.Primitives.StringValues>>)Context.Request.Form
+            : Context.Request.Query))
+    {
+        @if (!string.Equals(parameter.Key, "__RequestVerificationToken", StringComparison.Ordinal)
+            && !parameter.Key.StartsWith("submit.", StringComparison.Ordinal))
+        {
+            <input type="hidden" name="@parameter.Key" value="@parameter.Value" />
+        }
+    }
+    <button class="tl-button tl-button-primary" type="submit" name="submit.Accept" value="yes">@L["Accept"]</button>
+    <button class="tl-button tl-button-secondary" type="submit" name="submit.Deny" value="no">@L["Deny"]</button>
+</form>

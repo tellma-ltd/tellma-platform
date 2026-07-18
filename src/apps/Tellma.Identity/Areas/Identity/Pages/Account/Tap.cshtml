@@ -1,0 +1,23 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Account.TapModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["TapTitle"].Value;
+}
+
+<h1 class="tl-title">@L["TapTitle"]</h1>
+<p class="tl-muted">@L["TapPrompt"]</p>
+
+<form method="post">
+    <div class="tl-field">
+        <label class="tl-label" for="email">@L["Email"]</label>
+        <input class="tl-input" id="email" name="Email" type="email" inputmode="email" required value="@Model.Email" />
+    </div>
+    <div class="tl-field">
+        <label class="tl-label" for="pass">@L["TapPass"]</label>
+        <input class="tl-input" id="pass" name="Pass" type="text" autocomplete="off" required />
+    </div>
+    <button class="tl-button tl-button-primary" type="submit">@L["Continue"]</button>
+</form>
+
+<div asp-validation-summary="All" class="tl-error"></div>

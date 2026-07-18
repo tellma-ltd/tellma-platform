@@ -1,0 +1,24 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Account.RegisterPasskeyModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["RegisterPasskeyTitle"].Value;
+}
+
+<h1 class="tl-title">@L["RegisterPasskeyTitle"]</h1>
+<p class="tl-muted">@L["RegisterPasskeyPrompt"]</p>
+
+<partial name="Shared/_StatusMessage" model="@(Model.StatusMessage)" />
+
+@* The credential is posted back through this form's hidden field by passkey.js. *@
+<form method="post" id="passkey-form" data-creation-url="@Url.Action("CreationOptions", "PasskeyCeremony")">
+    <input type="hidden" id="credential" name="Credential" />
+    <button class="tl-button tl-button-primary" type="button" id="enroll-button">@L["RegisterPasskeyButton"]</button>
+</form>
+
+<div asp-validation-summary="All" class="tl-error"></div>
+
+@section Scripts {
+    <partial name="Shared/_PasskeyScripts" />
+    <script src="~/_content/Tellma.Identity/js/register-passkey.page.js"></script>
+}

@@ -1,0 +1,5 @@
+@model string?
+@if (!string.IsNullOrEmpty(Model))
+{
+    <p class="tl-status" role="status">@Model</p>
+}

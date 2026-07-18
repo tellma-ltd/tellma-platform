@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <Description>Standalone host for the Tellma Identity Server: composition, configuration, and hosting only — all identity behavior lives in Tellma.Identity.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tellma.Identity\Tellma.Identity.csproj" />
+    <!-- The migrations assembly, so runtime migration apply works. Only the runtime EF provider
+         flows in; the Design toolchain is private to the migrations project (its own dotnet-ef
+         startup), so this host never ships it. -->
+    <ProjectReference Include="..\Tellma.Identity.Migrations\Tellma.Identity.Migrations.csproj" />
+    <!-- Azure Monitor exporting is config-gated; without configuration the OpenTelemetry
+         pipeline runs with no exporter. -->
+    <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.SqlClient" />
+    <PackageReference Include="Serilog.AspNetCore" />
+  </ItemGroup>
+
+</Project>

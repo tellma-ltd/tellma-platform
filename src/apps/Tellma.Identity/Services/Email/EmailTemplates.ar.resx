@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="SignInCodeSubject" xml:space="preserve">
+    <value>رمز تسجيل الدخول إلى {0}</value>
+  </data>
+  <data name="SignInCodeBody" xml:space="preserve">
+    <value>رمز تسجيل الدخول الخاص بك هو {0}. تنتهي صلاحيته خلال 10 دقائق ويُستخدم مرة واحدة فقط. إذا لم تطلبه، يمكنك تجاهل هذه الرسالة بأمان.</value>
+  </data>
+  <data name="InvitationSubject" xml:space="preserve">
+    <value>تمت دعوتك إلى {0}</value>
+  </data>
+  <data name="InvitationBody" xml:space="preserve">
+    <value>تمت دعوتك إلى {0}. افتح هذا الرابط لإعداد حسابك: {1} يُستخدم الرابط مرة واحدة وتنتهي صلاحيته خلال {2} أيام.</value>
+  </data>
+  <data name="PasswordResetSubject" xml:space="preserve">
+    <value>إعادة تعيين كلمة مرور {0}</value>
+  </data>
+  <data name="PasswordResetBody" xml:space="preserve">
+    <value>افتح هذا الرابط لإعادة تعيين كلمة المرور: {0} يُستخدم الرابط مرة واحدة وتنتهي صلاحيته خلال ساعة واحدة. إذا لم تطلب ذلك، يمكنك تجاهل هذه الرسالة بأمان.</value>
+  </data>
+</root>

@@ -1,0 +1,25 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Manage.IndexModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["Profile"].Value;
+}
+
+<h1 class="tl-title">@L["Profile"]</h1>
+
+<partial name="../Shared/_StatusMessage" model="@(Model.StatusMessage)" />
+
+<form method="post">
+    <div class="tl-field">
+        <label class="tl-label" for="displayName">@L["Name"]</label>
+        <input class="tl-input" id="displayName" name="DisplayName" type="text" value="@Model.DisplayName" />
+    </div>
+    <div class="tl-field">
+        <label class="tl-label" for="locale">@L["Language"]</label>
+        <select class="tl-input" id="locale" name="Locale">
+            <option value="en" selected="@(Model.Locale == "en")">English</option>
+            <option value="ar" selected="@(Model.Locale == "ar")">العربية</option>
+        </select>
+    </div>
+    <button class="tl-button tl-button-primary" type="submit">@L["Save"]</button>
+</form>

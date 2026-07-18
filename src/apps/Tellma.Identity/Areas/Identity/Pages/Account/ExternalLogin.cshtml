@@ -1,0 +1,14 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Account.ExternalLoginModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["SignIn"].Value;
+}
+
+<h1 class="tl-title">@L["SignIn"]</h1>
+
+@if (!string.IsNullOrEmpty(Model.Error))
+{
+    <p class="tl-error">@Model.Error</p>
+    <a class="tl-link" asp-area="Identity" asp-page="/Account/Login">@L["SignIn"]</a>
+}

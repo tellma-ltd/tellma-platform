@@ -1,0 +1,33 @@
+@model VerifyViewModel
+@inject IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["DeviceTitle"].Value;
+}
+
+<h1 class="tl-title">@L["DeviceTitle"]</h1>
+
+@if (!string.IsNullOrEmpty(Model.Error))
+{
+    <p class="tl-error">@Model.ErrorDescription</p>
+}
+
+@if (string.IsNullOrEmpty(Model.UserCode))
+{
+    @* No resolved code yet: ask the user to enter the code shown on their device. *@
+    <form method="get" asp-controller="DeviceVerification" asp-action="Verify">
+        <div class="tl-field">
+            <label class="tl-label" for="user_code">@L["DeviceCode"]</label>
+            <input class="tl-input" id="user_code" name="user_code" type="text" autocomplete="off" required autofocus />
+        </div>
+        <button class="tl-button tl-button-primary" type="submit">@L["Continue"]</button>
+    </form>
+}
+else
+{
+    <p class="tl-muted">@L["DeviceConfirmPrompt", Model.ApplicationName ?? string.Empty]</p>
+    <form method="post" asp-controller="DeviceVerification" asp-action="Accept">
+        <input type="hidden" name="user_code" value="@Model.UserCode" />
+        <button class="tl-button tl-button-primary" type="submit" name="submit.Accept" value="yes">@L["Accept"]</button>
+        <button class="tl-button tl-button-secondary" type="submit" name="submit.Deny" value="no" asp-action="Deny">@L["Deny"]</button>
+    </form>
+}

@@ -1,0 +1,35 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Manage.EnableAuthenticatorModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["AuthenticatorApp"].Value;
+}
+
+<h1 class="tl-title">@L["AuthenticatorApp"]</h1>
+
+@if (Model.RecoveryCodes is { Count: > 0 })
+{
+    <p class="tl-status">@L["RecoveryCodesPrompt"]</p>
+    <ul>
+        @foreach (string codeValue in Model.RecoveryCodes)
+        {
+            <li><code>@codeValue</code></li>
+        }
+    </ul>
+    <a class="tl-button tl-button-primary" asp-area="Identity" asp-page="/Manage/Index">@L["Save"]</a>
+}
+else
+{
+    <p class="tl-muted">@L["AuthenticatorEnrollPrompt"]</p>
+    <img src="@Model.QrCodeDataUri" alt="QR code" width="200" height="200" />
+    <p class="tl-muted"><code>@Model.SharedKey</code></p>
+
+    <form method="post">
+        <div class="tl-field">
+            <label class="tl-label" for="code">@L["Code"]</label>
+            <input class="tl-input" id="code" name="Code" type="text" inputmode="numeric" autocomplete="one-time-code" required />
+        </div>
+        <button class="tl-button tl-button-primary" type="submit">@L["EnableAuthenticator"]</button>
+    </form>
+    <div asp-validation-summary="All" class="tl-error"></div>
+}

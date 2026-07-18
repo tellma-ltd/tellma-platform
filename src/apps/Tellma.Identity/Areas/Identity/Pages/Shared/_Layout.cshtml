@@ -1,0 +1,34 @@
+@using System.Globalization
+@inject Tellma.Identity.Infrastructure.IBrandingResolver Branding
+@{
+    Tellma.Identity.Infrastructure.BrandingInfo brand = Branding.Resolve(clientId: null);
+    bool isRtl = CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft;
+}
+<!DOCTYPE html>
+<html lang="@CultureInfo.CurrentUICulture.Name" dir="@(isRtl ? "rtl" : "ltr")">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@ViewData["Title"] · @brand.ProductName</title>
+    @* The brand faces and the emitted @tellma/core-ui-tokens build; identity.css consumes them.
+       Per-tenant branding later means serving a different tokens file, not editing styles. *@
+    <link rel="stylesheet" href="~/_content/Tellma.Identity/fonts/fonts.css" />
+    <link rel="stylesheet" href="~/_content/Tellma.Identity/css/tokens.css" />
+    <link rel="stylesheet" href="~/_content/Tellma.Identity/css/identity.css" />
+</head>
+<body>
+    <main class="tl-shell">
+        <div class="tl-card">
+            <header class="tl-brand">
+                @if (brand.LogoPath is not null)
+                {
+                    <img src="@brand.LogoPath" alt="@brand.ProductName" height="28" />
+                }
+                <span class="tl-brand-name">@brand.ProductName</span>
+            </header>
+            @RenderBody()
+        </div>
+    </main>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

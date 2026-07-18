@@ -1,0 +1,34 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Manage.PasskeysModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["Passkeys"].Value;
+}
+
+<h1 class="tl-title">@L["Passkeys"]</h1>
+
+<partial name="../Shared/_StatusMessage" model="@(Model.StatusMessage)" />
+
+@if (Model.Passkeys.Count == 0)
+{
+    <p class="tl-muted">@L["NoPasskeys"]</p>
+}
+else
+{
+    <ul>
+        @foreach (var passkey in Model.Passkeys)
+        {
+            <li>
+                <span>@passkey.Label</span>
+                <span class="tl-muted">— @(passkey.IsDeviceBound ? L["DeviceBound"] : L["Synced"])</span>
+                <form class="tl-inline" method="post" asp-page-handler="Remove">
+                    <input type="hidden" name="CredentialId" value="@passkey.CredentialId" />
+                    <button class="tl-link" type="submit">@L["Remove"]</button>
+                </form>
+            </li>
+        }
+    </ul>
+}
+
+<a class="tl-button tl-button-primary" asp-area="Identity" asp-page="/Account/RegisterPasskey"
+   asp-route-returnUrl="@Url.Page("/Manage/Passkeys", new { area = "Identity" })">@L["AddPasskey"]</a>

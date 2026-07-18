@@ -16,6 +16,9 @@
     <File Path="SECURITY.md" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/apps/Tellma.Identity/Tellma.Identity.csproj" />
+    <Project Path="src/apps/Tellma.Identity.Migrations/Tellma.Identity.Migrations.csproj" />
+    <Project Path="src/apps/Tellma.Identity.Web/Tellma.Identity.Web.csproj" />
     <Project Path="src/core/Tellma.Core.Abstractions/Tellma.Core.Abstractions.csproj" Id="a8c5c375-60d1-4415-9377-aa1254091b00" />
     <Project Path="src/core/Tellma.Core/Tellma.Core.csproj" Id="139b300f-8e04-4fcf-92db-45127fb3c7a4" />
     <Project Path="src/core/Tellma.Core.EntityFrameworkCore/Tellma.Core.EntityFrameworkCore.csproj" />
@@ -23,11 +26,15 @@
   </Folder>
   <Folder Name="/test/">
     <File Path="test/Directory.Build.props" />
+    <Project Path="test/apps/Tellma.Identity.Tests/Tellma.Identity.Tests.csproj" />
+    <Project Path="test/apps/Tellma.Identity.IntegrationTests/Tellma.Identity.IntegrationTests.csproj" />
+    <Project Path="test/apps/Tellma.Identity.E2E/Tellma.Identity.E2E.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Tests/Tellma.Core.EntityFrameworkCore.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Design.Tests/Tellma.Core.EntityFrameworkCore.Design.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.IntegrationTests/Tellma.Core.EntityFrameworkCore.IntegrationTests.csproj" />
   </Folder>
   <Folder Name="/test/assets/">
+    <Project Path="test/apps/assets/Tellma.Identity.TestInProcHost/Tellma.Identity.TestInProcHost.csproj" />
     <Project Path="test/core/assets/Tellma.Core.EntityFrameworkCore.MigrationsHost/Tellma.Core.EntityFrameworkCore.MigrationsHost.csproj" />
   </Folder>
 </Solution>

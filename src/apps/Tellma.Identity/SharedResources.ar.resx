@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="SignIn" xml:space="preserve">
+    <value>تسجيل الدخول</value>
+  </data>
+  <data name="ConfirmItsYou" xml:space="preserve">
+    <value>تأكيد هويتك</value>
+  </data>
+  <data name="Email" xml:space="preserve">
+    <value>البريد الإلكتروني</value>
+  </data>
+  <data name="ContinueWithEmailCode" xml:space="preserve">
+    <value>أرسل لي رمز تسجيل الدخول بالبريد</value>
+  </data>
+  <data name="SignInWithPasskey" xml:space="preserve">
+    <value>تسجيل الدخول بمفتاح مرور</value>
+  </data>
+  <data name="EnterCode" xml:space="preserve">
+    <value>أدخل الرمز الذي أرسلناه إلى بريدك</value>
+  </data>
+  <data name="CodeSentIfAccountExists" xml:space="preserve">
+    <value>إذا كان هناك حساب مسجل بهذا العنوان، فقد أرسلنا إليه رمز تسجيل الدخول.</value>
+  </data>
+  <data name="Code" xml:space="preserve">
+    <value>الرمز</value>
+  </data>
+  <data name="Verify" xml:space="preserve">
+    <value>تحقق</value>
+  </data>
+  <data name="ResendCode" xml:space="preserve">
+    <value>إرسال رمز جديد</value>
+  </data>
+  <data name="InvalidCode" xml:space="preserve">
+    <value>الرمز غير صحيح أو انتهت صلاحيته.</value>
+  </data>
+  <data name="RememberMe" xml:space="preserve">
+    <value>تذكرني</value>
+  </data>
+  <data name="SignOut" xml:space="preserve">
+    <value>تسجيل الخروج</value>
+  </data>
+  <data name="SignedOut" xml:space="preserve">
+    <value>لقد سجلت الخروج.</value>
+  </data>
+  <data name="SignOutConfirm" xml:space="preserve">
+    <value>تسجيل الخروج من حسابك؟</value>
+  </data>
+  <data name="AccessDenied" xml:space="preserve">
+    <value>ليست لديك صلاحية الوصول إلى هذا المورد.</value>
+  </data>
+  <data name="ErrorTitle" xml:space="preserve">
+    <value>حدث خطأ ما</value>
+  </data>
+  <data name="ConsentTitle" xml:space="preserve">
+    <value>تفويض التطبيق</value>
+  </data>
+  <data name="ConsentPrompt" xml:space="preserve">
+    <value>يريد {0} الوصول إلى حسابك بالنطاقات التالية: {1}</value>
+  </data>
+  <data name="Accept" xml:space="preserve">
+    <value>السماح</value>
+  </data>
+  <data name="Deny" xml:space="preserve">
+    <value>رفض</value>
+  </data>
+  <data name="Continue" xml:space="preserve">
+    <value>متابعة</value>
+  </data>
+  <data name="DeviceTitle" xml:space="preserve">
+    <value>تفويض جهازك</value>
+  </data>
+  <data name="DeviceCode" xml:space="preserve">
+    <value>أدخل الرمز الظاهر على جهازك</value>
+  </data>
+  <data name="DeviceConfirmPrompt" xml:space="preserve">
+    <value>يطلب {0} الوصول إلى حسابك. هل توافق على هذا الجهاز؟</value>
+  </data>
+  <data name="DeviceDoneTitle" xml:space="preserve">
+    <value>تم</value>
+  </data>
+  <data name="DeviceDonePrompt" xml:space="preserve">
+    <value>يمكنك العودة إلى جهازك.</value>
+  </data>
+  <data name="RegisterPasskeyTitle" xml:space="preserve">
+    <value>إعداد مفتاح مرور</value>
+  </data>
+  <data name="RegisterPasskeyPrompt" xml:space="preserve">
+    <value>يتيح لك مفتاح المرور تسجيل الدخول ببصمتك أو وجهك أو رمز جهازك — دون كلمة مرور تحفظها.</value>
+  </data>
+  <data name="RegisterPasskeyButton" xml:space="preserve">
+    <value>إنشاء مفتاح مرور</value>
+  </data>
+  <data name="PasskeyFailed" xml:space="preserve">
+    <value>تعذّر التحقق من مفتاح المرور. حاول مرة أخرى.</value>
+  </data>
+  <data name="Passkeys" xml:space="preserve">
+    <value>مفاتيح المرور</value>
+  </data>
+  <data name="AddPasskey" xml:space="preserve">
+    <value>إضافة مفتاح مرور</value>
+  </data>
+  <data name="Remove" xml:space="preserve">
+    <value>إزالة</value>
+  </data>
+  <data name="DeviceBound" xml:space="preserve">
+    <value>مرتبط بالجهاز</value>
+  </data>
+  <data name="Synced" xml:space="preserve">
+    <value>متزامن</value>
+  </data>
+  <data name="NoPasskeys" xml:space="preserve">
+    <value>ليست لديك مفاتيح مرور بعد.</value>
+  </data>
+  <data name="InvitationTitle" xml:space="preserve">
+    <value>مرحباً</value>
+  </data>
+  <data name="InvitationPrompt" xml:space="preserve">
+    <value>أنشئ مفتاح مرور لإكمال إنشاء حسابك.</value>
+  </data>
+  <data name="InvitationInvalid" xml:space="preserve">
+    <value>رابط الدعوة غير صالح أو انتهت صلاحيته. اطلب من المسؤول إرسال رابط جديد.</value>
+  </data>
+  <data name="TapTitle" xml:space="preserve">
+    <value>استعادة حسابك</value>
+  </data>
+  <data name="TapPrompt" xml:space="preserve">
+    <value>أدخل بريدك الإلكتروني ورمز الوصول الذي منحك إياه المسؤول.</value>
+  </data>
+  <data name="TapPass" xml:space="preserve">
+    <value>رمز الوصول</value>
+  </data>
+  <data name="TapInvalid" xml:space="preserve">
+    <value>رمز الوصول غير صالح أو انتهت صلاحيته.</value>
+  </data>
+  <data name="SetupTitle" xml:space="preserve">
+    <value>إعداد المسؤول</value>
+  </data>
+  <data name="SetupPrompt" xml:space="preserve">
+    <value>أدخل رمز الإعداد لمرة واحدة لتهيئة مسؤول الطوارئ.</value>
+  </data>
+  <data name="SetupToken" xml:space="preserve">
+    <value>رمز الإعداد</value>
+  </data>
+  <data name="SetupInvalid" xml:space="preserve">
+    <value>رمز الإعداد غير صالح أو تم إكمال الإعداد مسبقاً.</value>
+  </data>
+  <data name="Profile" xml:space="preserve">
+    <value>الملف الشخصي</value>
+  </data>
+  <data name="Name" xml:space="preserve">
+    <value>الاسم</value>
+  </data>
+  <data name="Language" xml:space="preserve">
+    <value>اللغة</value>
+  </data>
+  <data name="Save" xml:space="preserve">
+    <value>حفظ</value>
+  </data>
+  <data name="Saved" xml:space="preserve">
+    <value>تم حفظ تغييراتك.</value>
+  </data>
+  <data name="UnknownDevice" xml:space="preserve">
+    <value>جهاز غير معروف</value>
+  </data>
+  <data name="ThisSession" xml:space="preserve">
+    <value>هذه الجلسة</value>
+  </data>
+  <data name="AuthenticatorApp" xml:space="preserve">
+    <value>تطبيق المصادقة</value>
+  </data>
+  <data name="AuthenticatorEnrollPrompt" xml:space="preserve">
+    <value>امسح رمز الاستجابة السريعة بتطبيق المصادقة، ثم أدخل الرمز المكوّن من 6 أرقام للتأكيد.</value>
+  </data>
+  <data name="EnableAuthenticator" xml:space="preserve">
+    <value>تفعيل تطبيق المصادقة</value>
+  </data>
+  <data name="RecoveryCodesPrompt" xml:space="preserve">
+    <value>احفظ رموز الاسترداد هذه في مكان آمن. يُستخدم كل رمز مرة واحدة إذا فقدت الوصول إلى طرقك الأخرى.</value>
+  </data>
+  <data name="ForgotPassword" xml:space="preserve">
+    <value>هل نسيت كلمة المرور؟</value>
+  </data>
+  <data name="ForgotPasswordPrompt" xml:space="preserve">
+    <value>أدخل بريدك الإلكتروني وسنرسل لك رابطاً لإعادة تعيين كلمة المرور.</value>
+  </data>
+  <data name="ResetPassword" xml:space="preserve">
+    <value>إعادة تعيين كلمة المرور</value>
+  </data>
+  <data name="Password" xml:space="preserve">
+    <value>كلمة المرور</value>
+  </data>
+  <data name="SendResetLink" xml:space="preserve">
+    <value>إرسال رابط إعادة التعيين</value>
+  </data>
+  <data name="ResetLinkSent" xml:space="preserve">
+    <value>إذا كان هناك حساب مسجل بهذا العنوان، فقد أرسلنا إليه رابط إعادة تعيين كلمة المرور.</value>
+  </data>
+  <data name="ContinueWithGoogle" xml:space="preserve">
+    <value>المتابعة باستخدام Google</value>
+  </data>
+  <data name="ContinueWithMicrosoft" xml:space="preserve">
+    <value>المتابعة باستخدام Microsoft</value>
+  </data>
+  <data name="CannotRemoveOnlySignInMethod" xml:space="preserve">
+    <value>لا يمكنك إزالة وسيلة تسجيل الدخول الوحيدة لديك.</value>
+  </data>
+</root>
