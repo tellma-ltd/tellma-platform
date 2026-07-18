@@ -149,6 +149,9 @@ ipch/
 
 # Visual Studio Trace Files
 *.e2e
+# The .NET E2E test project's directory name ends in ".E2E", which "*.e2e" matches
+# case-insensitively on Windows (core.ignorecase=true), excluding the whole project. Keep it tracked.
+!test/apps/Tellma.Identity.E2E/
 
 # TFS 2012 Local Workspace
 $tf/
