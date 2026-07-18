@@ -667,7 +667,8 @@ APIs against real SQL via `WebApplicationFactory`), `Tellma.Identity.E2E` (UI vi
   mismatch, foreign `resource` requests, invalid client secrets, and scope-widening at exchange are all
   rejected; JWKS publishes only asymmetric keys; the invite response never carries the link.
 - **UI (Playwright):** passkey registration and sign-in via the CDP virtual authenticator, driven
-  through email-code sign-in and sign-out with an in-process email-capture harness.
+  through email-code sign-in and sign-out with an in-process email-capture harness; plus an assertion
+  that the brand token stylesheet loads and its variables resolve in the rendered page.
 
 ## 17. Out of scope and deferred
 

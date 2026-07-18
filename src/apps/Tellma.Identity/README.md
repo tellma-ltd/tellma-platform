@@ -28,5 +28,11 @@ blob-backed Data Protection, and Azure Monitor are config-gated optional paths.
 EF Core migrations for the engine's database (SQL schema `idsvr`) live in the separate
 [`Tellma.Identity.Migrations`](../Tellma.Identity.Migrations/README.md) project.
 
-The `wwwroot/css/tokens.css` stylesheet is a **placeholder** for the compiled output of
-`@tellma/core-ui-tokens`; it will be replaced byte-for-byte when the client component library ships.
+The `wwwroot/css/tokens.css` stylesheet is the **emitted build of `@tellma/core-ui-tokens`** (the
+client workspace's design-token package), and `wwwroot/fonts/` vendors the brand faces from
+`@tellma/core-ui`. Both are committed copies because this project's build has no Node toolchain; the
+client workspace's `pnpm run tokens:check` CI gate fails whenever they drift from the emitter's
+output. To refresh after a token change: `pnpm run tokens:build-css` in `client/`, then copy
+`client/projects/core/tellma-core-ui-tokens/css/tellma-default.css` over `wwwroot/css/tokens.css`
+(and `client/projects/core/tellma-core-ui/fonts/` over `wwwroot/fonts/` when the faces change).
+Per-tenant branding later means serving a different tokens file, not editing styles.

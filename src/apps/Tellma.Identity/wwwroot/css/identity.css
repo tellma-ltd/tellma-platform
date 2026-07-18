@@ -1,7 +1,9 @@
 /*
- * The identity UI's only hand-written stylesheet. Consumes @tellma/core-ui-tokens custom
+ * The identity UI's only hand-written stylesheet. Consumes the @tellma/core-ui-tokens custom
  * properties exclusively — no raw color or size literals — and uses CSS logical properties
- * throughout so right-to-left locales need no second sheet.
+ * throughout so right-to-left locales need no second sheet. The tokens sheet (tokens.css, the
+ * emitted @tellma/core-ui-tokens build) and the vendored brand faces (fonts/fonts.css) are
+ * loaded before this file.
  */
 * {
   box-sizing: border-box;
@@ -11,11 +13,11 @@ html,
 body {
   margin: 0;
   padding: 0;
-  font-family: var(--tl-font-family);
-  font-size: var(--tl-font-size-md);
-  line-height: var(--tl-line-height);
-  color: var(--tl-color-text);
-  background: var(--tl-color-surface);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  line-height: var(--leading-ui);
+  color: var(--text-body);
+  background: var(--surface-page);
 }
 
 /* Centered single-card shell shared by every auth-flow page. */
@@ -24,131 +26,152 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--tl-space-4);
+  padding: var(--space-4);
 }
 
 .tl-card {
   width: 100%;
   max-width: 26rem;
-  background: var(--tl-color-surface-raised);
-  border: 1px solid var(--tl-color-border);
-  border-radius: var(--tl-radius-lg);
-  box-shadow: var(--tl-shadow-2);
-  padding: var(--tl-space-8);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-8);
 }
 
 .tl-brand {
   display: flex;
   align-items: center;
-  gap: var(--tl-space-2);
-  margin-block-end: var(--tl-space-6);
+  gap: var(--space-2);
+  margin-block-end: var(--space-6);
 }
 
 .tl-brand-name {
-  font-size: var(--tl-font-size-xl);
-  font-weight: var(--tl-font-weight-bold);
-  color: var(--tl-color-primary);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  color: var(--color-primary);
 }
 
 .tl-title {
-  font-size: var(--tl-font-size-lg);
-  font-weight: var(--tl-font-weight-medium);
-  margin-block: 0 var(--tl-space-4);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+  margin-block: 0 var(--space-4);
 }
 
 .tl-field {
-  margin-block-end: var(--tl-space-4);
+  margin-block-end: var(--space-4);
 }
 
 .tl-label {
   display: block;
-  font-size: var(--tl-font-size-sm);
-  color: var(--tl-color-text-muted);
-  margin-block-end: var(--tl-space-1);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-block-end: var(--space-1);
 }
 
 .tl-input {
   width: 100%;
-  padding: var(--tl-space-2) var(--tl-space-3);
+  height: var(--field-height);
+  padding: var(--field-padding-y) var(--field-padding-x);
   font-family: inherit;
-  font-size: var(--tl-font-size-md);
-  color: var(--tl-color-text);
-  background: var(--tl-color-surface-raised);
-  border: 1px solid var(--tl-color-border);
-  border-radius: var(--tl-radius-md);
+  font-size: var(--field-font-size);
+  color: var(--field-text);
+  background: var(--field-bg);
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--field-radius);
+}
+
+.tl-input::placeholder {
+  color: var(--field-placeholder);
+}
+
+.tl-input:hover {
+  border-color: var(--field-border-hover);
 }
 
 .tl-input:focus-visible {
-  outline: 2px solid var(--tl-color-focus);
-  outline-offset: 1px;
+  outline: none;
+  border-color: var(--field-border-focus);
+  box-shadow: var(--focus-ring);
 }
 
 .tl-button {
   display: block;
   width: 100%;
-  padding: var(--tl-space-2) var(--tl-space-4);
+  height: var(--field-height);
+  padding: var(--field-padding-y) var(--space-4);
   font-family: inherit;
-  font-size: var(--tl-font-size-md);
-  font-weight: var(--tl-font-weight-medium);
-  border-radius: var(--tl-radius-md);
-  border: 1px solid transparent;
+  font-size: var(--field-font-size);
+  font-weight: var(--weight-medium);
+  border-radius: var(--field-radius);
+  border: var(--border-width) solid transparent;
   cursor: pointer;
-  margin-block-end: var(--tl-space-2);
+  margin-block-end: var(--space-2);
+  transition: background-color var(--duration-fast) var(--ease-standard);
 }
 
 .tl-button-primary {
-  background: var(--tl-color-primary);
-  color: var(--tl-color-on-primary);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
 }
 
 .tl-button-primary:hover {
-  background: var(--tl-color-primary-hover);
+  background: var(--color-primary-hover);
+}
+
+.tl-button-primary:active {
+  background: var(--color-primary-active);
 }
 
 .tl-button-secondary {
-  background: var(--tl-color-surface-raised);
-  color: var(--tl-color-text);
-  border-color: var(--tl-color-border);
+  background: var(--surface-card);
+  color: var(--text-body);
+  border-color: var(--border-default);
+}
+
+.tl-button-secondary:hover {
+  background: var(--surface-hover);
 }
 
 .tl-button:focus-visible {
-  outline: 2px solid var(--tl-color-focus);
-  outline-offset: 1px;
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .tl-checkbox {
   display: flex;
   align-items: center;
-  gap: var(--tl-space-2);
-  margin-block-end: var(--tl-space-4);
-  font-size: var(--tl-font-size-sm);
+  gap: var(--space-2);
+  margin-block-end: var(--space-4);
+  font-size: var(--text-sm);
 }
 
 .tl-error {
-  color: var(--tl-color-danger);
-  font-size: var(--tl-font-size-sm);
-  margin-block: var(--tl-space-2);
+  color: var(--error);
+  font-size: var(--text-sm);
+  margin-block: var(--space-2);
 }
 
 .tl-status {
-  color: var(--tl-color-text-muted);
-  font-size: var(--tl-font-size-sm);
-  margin-block: var(--tl-space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  margin-block: var(--space-2);
 }
 
 .tl-muted {
-  color: var(--tl-color-text-muted);
-  font-size: var(--tl-font-size-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
 }
 
 .tl-divider {
   border: none;
-  border-block-start: 1px solid var(--tl-color-border);
-  margin-block: var(--tl-space-4);
+  border-block-start: var(--border-width) solid var(--divider);
+  margin-block: var(--space-4);
 }
 
 .tl-link {
-  color: var(--tl-color-primary);
+  color: var(--text-link);
   text-decoration: none;
 }
 

@@ -10,7 +10,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>@ViewData["Title"] · @brand.ProductName</title>
-    @* The tokens file is the @tellma/core-ui-tokens placeholder; identity.css consumes it. *@
+    @* The brand faces and the emitted @tellma/core-ui-tokens build; identity.css consumes them.
+       Per-tenant branding later means serving a different tokens file, not editing styles. *@
+    <link rel="stylesheet" href="~/_content/Tellma.Identity/fonts/fonts.css" />
     <link rel="stylesheet" href="~/_content/Tellma.Identity/css/tokens.css" />
     <link rel="stylesheet" href="~/_content/Tellma.Identity/css/identity.css" />
 </head>
