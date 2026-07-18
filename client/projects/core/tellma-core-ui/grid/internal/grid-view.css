@@ -18,6 +18,10 @@
   flex-direction: column;
   block-size: 100%;
   min-block-size: 0;
+  /* The check/dash glyph mask (the same polyline tm-checkbox draws), defined
+     once and referenced by every boolean/checkbox glyph. */
+  --tm-grid-check-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpolyline points='3.5,8.5 6.5,11.5 12.5,4.5' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --tm-grid-dash-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8h8' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
 }
 
 .tm-grid__scroller {
@@ -79,7 +83,10 @@
 }
 
 .tm-grid__colhdr--hit {
-  background: var(--grid-selection-bg);
+  /* The translucent selection tint LAYERS over the header background (a
+     background-image over the base color) — set as `background:` it would
+     replace the header and show the page through it. */
+  background-image: linear-gradient(var(--grid-selection-bg), var(--grid-selection-bg));
 }
 
 .tm-grid__resize {
@@ -133,7 +140,8 @@
 }
 
 .tm-grid__rowhdr--hit {
-  background: var(--grid-selection-bg);
+  /* Layer the selection tint over the header background (see colhdr--hit). */
+  background-image: linear-gradient(var(--grid-selection-bg), var(--grid-selection-bg));
 }
 
 /* ---- row-checkbox chrome column (readonly list screens) ---- */
@@ -144,13 +152,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Chrome column: the same background as the row header, so it reads as a
+     gutter (not a clickable data column) — only the check glyph invites a click. */
+  background-color: var(--grid-header-bg);
   border-block-end: var(--border-width) solid var(--grid-line);
   border-inline-end: var(--border-width) solid var(--grid-line);
   user-select: none;
-}
-
-.tm-grid__checkhdr {
-  background: var(--grid-header-bg);
 }
 
 /* The check glyph rides the same tokens as tm-checkbox's box (the
@@ -171,28 +178,28 @@
   border-color: var(--color-primary);
 }
 
-.tm-grid__check--on::after {
-  content: '';
-  display: block;
-  inline-size: calc(var(--checkbox-box-size) * 0.3);
-  block-size: calc(var(--checkbox-box-size) * 0.55);
-  margin-block-start: calc(var(--checkbox-box-size) * 0.08);
-  margin-inline: auto;
-  box-sizing: border-box;
-  border-block-end: calc(var(--checkbox-box-size) / 9) solid var(--color-on-primary);
-  border-inline-end: calc(var(--checkbox-box-size) / 9) solid var(--color-on-primary);
-  transform: rotate(45deg);
-}
-
-/* Tri-state 'mixed': a centered horizontal bar. */
+/* The check/dash glyph is the SAME SVG tm-checkbox draws, painted through a
+   mask so it matches pixel-for-pixel (the old CSS border-rotate checkmark
+   sat slightly off-centre). The mark fills the box; the polyline's own
+   inset gives the symmetric padding. */
+.tm-grid__check--on::after,
 .tm-grid__check--mixed::after {
   content: '';
   display: block;
-  inline-size: calc(var(--checkbox-box-size) * 0.55);
-  block-size: calc(var(--checkbox-box-size) / 9);
-  margin-block-start: calc((var(--checkbox-box-size) - var(--checkbox-box-size) / 9) / 2 - var(--border-width));
-  margin-inline: auto;
-  background: var(--color-on-primary);
+  inline-size: 100%;
+  block-size: 100%;
+  background-color: var(--color-on-primary);
+  mask-position: center;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+}
+
+.tm-grid__check--on::after {
+  mask-image: var(--tm-grid-check-mask);
+}
+
+.tm-grid__check--mixed::after {
+  mask-image: var(--tm-grid-dash-mask);
 }
 
 .tm-grid__cell {
@@ -216,8 +223,11 @@
   border-inline-end: var(--border-width) solid var(--grid-line);
 }
 
+/* Row/cell base tints paint via background-COLOR, so the selection's
+   background-image (below) always composites over them — a shorthand
+   `background` here would reset the image and mask the range highlight. */
 .tm-grid__row--zebra > .tm-grid__cell {
-  background: var(--grid-zebra-bg);
+  background-color: var(--grid-zebra-bg);
 }
 
 /* Checkbox-checked rows: a PERSISTENT row tint, distinct from the
@@ -225,11 +235,11 @@
    a checked zebra row reads as checked. */
 .tm-grid__row--checked > .tm-grid__cell,
 .tm-grid__row--checked > .tm-grid__checkcell {
-  background: var(--surface-selected);
+  background-color: var(--surface-selected);
 }
 
 .tm-grid__row--placeholder > .tm-grid__cell {
-  background: var(--grid-readonly-bg);
+  background-color: var(--grid-readonly-bg);
 }
 
 /* The new-row glyph (*) reads as an affordance, not a numbered row. */
@@ -238,20 +248,24 @@
   font-weight: var(--weight-medium);
 }
 
+/* The range highlight is a translucent LAYER (background-image), so it
+   composites over any base tint — zebra, readonly, checked, error — instead
+   of being masked by them or replacing an opaque background. */
 .tm-grid__cell.tm-grid__cell--selected {
-  background: var(--grid-selection-bg);
+  background-image: linear-gradient(var(--grid-selection-bg), var(--grid-selection-bg));
 }
 
 /* Readonly cells in an EDITABLE grid carry a subtle tint (readonly grids
    tint nothing — every cell is readonly there). */
 .tm-grid__scroller:not(.tm-grid__scroller--readonly) .tm-grid__cell--readonly {
-  background: var(--grid-readonly-bg);
+  background-color: var(--grid-readonly-bg);
 }
 
-/* Error tint + inset ring; declared after --selected so a selected errored
-   cell still reads as errored. The active ring below wins the box-shadow. */
+/* Error tint + inset ring; the tint is a base color so the selection layer
+   still shows over it, and the ring keeps a selected errored cell reading
+   as errored. The active ring below wins the box-shadow. */
 .tm-grid__cell.tm-grid__cell--error {
-  background: var(--grid-error-bg);
+  background-color: var(--grid-error-bg);
   box-shadow: inset 0 0 0 var(--border-width) var(--grid-error-border);
 }
 
@@ -402,17 +416,18 @@
   border-color: var(--color-primary);
 }
 
+/* The same masked checkmark as the row-checkbox glyph, so a boolean cell and
+   tm-checkbox read identically. */
 .tm-grid-bool--on::after {
   content: '';
   display: block;
-  inline-size: calc(var(--checkbox-box-size) * 0.3);
-  block-size: calc(var(--checkbox-box-size) * 0.55);
-  margin-block-start: calc(var(--checkbox-box-size) * 0.08);
-  margin-inline: auto;
-  box-sizing: border-box;
-  border-block-end: calc(var(--checkbox-box-size) / 9) solid var(--color-on-primary);
-  border-inline-end: calc(var(--checkbox-box-size) / 9) solid var(--color-on-primary);
-  transform: rotate(45deg);
+  inline-size: 100%;
+  block-size: 100%;
+  background-color: var(--color-on-primary);
+  mask-image: var(--tm-grid-check-mask);
+  mask-position: center;
+  mask-size: contain;
+  mask-repeat: no-repeat;
 }
 
 /* ---- transient clipboard-failure notice (readonly grids only; editable
@@ -563,13 +578,12 @@
     border-color: Highlight;
   }
 
+  /* The masked check/dash glyph fills via background-color — a contrasting
+     system color on the Highlight box. */
   .tm-grid-bool--on::after,
-  .tm-grid__check--on::after {
-    border-color: HighlightText;
-  }
-
+  .tm-grid__check--on::after,
   .tm-grid__check--mixed::after {
-    background: HighlightText;
+    background-color: HighlightText;
   }
 }
 

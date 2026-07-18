@@ -1116,14 +1116,21 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.setupEffects();
 
     // Focus-drop bookkeeping: when the repeater MOVES the focused row's DOM
-    // node (outlier ↔ window transitions), the browser silently drops focus
-    // to <body> with no focusout — the roving-focus effect reclaims it, but
-    // only when the grid genuinely owned focus and the user didn't just
-    // press outside (see the effect). Both listeners are document-level
-    // captures so nothing inside the page can hide the signal.
+    // node (outlier ↔ window transitions during a scroll), the browser drops
+    // focus to <body> — the roving-focus effect reclaims it, but only when the
+    // grid genuinely owned focus and the user didn't just press outside.
+    //
+    // A DELIBERATE click-away to non-focusable page content also drops focus to
+    // <body>; the giveaway is the outside POINTERDOWN that precedes it (a
+    // DOM-move drop has none). So the press outside is where ownership is
+    // released — not a focusout, which also fires on the transient DOM-move
+    // blur and would wrongly cancel the reclaim (arrows would then scroll the
+    // page instead of moving the active cell). Document-level captures so
+    // nothing inside the page can hide the signal.
     const onDocumentPointerDown = (event: Event): void => {
       if (event.target instanceof Node && !deps.host.contains(event.target)) {
         this.lastOutsidePointerDown = Date.now();
+        this.gridOwnsFocus = false; // the user is interacting outside the grid
       }
     };
     const onDocumentFocusIn = (event: Event): void => {
@@ -1132,31 +1139,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         target instanceof Element &&
         (deps.host.contains(target) || target.closest('.cdk-overlay-container') !== null);
     };
-    // Clearing on a GENUINE blur out of the grid is what keeps the roving
-    // reclaim from yanking focus back after the user deliberately clicks away
-    // to non-focusable page content (which blurs the cell to <body> with a
-    // focusout but no focusin). A repeater DOM-move drop removes the node and
-    // fires NO focusout, so it stays distinguishable and still reclaims.
-    const onDocumentFocusOut = (event: FocusEvent): void => {
-      const target = event.target;
-      if (!(target instanceof Node) || !target.isConnected || !deps.host.contains(target)) {
-        return;
-      }
-      const next = event.relatedTarget;
-      const stayedWithGrid =
-        next instanceof Element &&
-        (deps.host.contains(next) || next.closest('.cdk-overlay-container') !== null);
-      if (!stayedWithGrid) {
-        this.gridOwnsFocus = false;
-      }
-    };
     document.addEventListener('pointerdown', onDocumentPointerDown, true);
     document.addEventListener('focusin', onDocumentFocusIn, true);
-    document.addEventListener('focusout', onDocumentFocusOut, true);
     deps.destroyRef.onDestroy(() => {
       document.removeEventListener('pointerdown', onDocumentPointerDown, true);
       document.removeEventListener('focusin', onDocumentFocusIn, true);
-      document.removeEventListener('focusout', onDocumentFocusOut, true);
       this.onDestroy();
     });
   }
@@ -1925,7 +1912,14 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         // stays writer-less, so every engine mutation is a structural
         // no-op — the readonly contract.
         writer: untracked(this.deps.field) !== undefined ? this.fieldWriter : undefined,
-        onNotice: (notice) => this.announcements.notice(notice),
+        onNotice: (notice) => {
+          this.announcements.notice(notice);
+          // A refused multi-range copy is otherwise silent for a sighted user
+          // (nothing lands on the clipboard) — surface the reason visibly too.
+          if (notice.kind === 'copyRefusedMisaligned') {
+            this.showTransientNotice('grid.announce.copyRefused');
+          }
+        },
         onReveal: () => this.requestReveal(),
         onWarn: (warning) => {
           if (isDevMode()) {

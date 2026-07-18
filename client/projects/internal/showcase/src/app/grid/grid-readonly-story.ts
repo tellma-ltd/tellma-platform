@@ -136,6 +136,10 @@ export function makeRow(i: number): DemoRow {
       display: block;
       block-size: 60vh;
     }
+    /* Record links render in the brand teal link color. */
+    .demo-grid a {
+      color: var(--text-link);
+    }
   `,
 })
 export class GridReadonlyStory {

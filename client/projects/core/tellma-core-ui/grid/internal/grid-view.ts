@@ -292,13 +292,12 @@ import { ɵTmGridTouchHandles } from './touch-handles';
          aria-required-children); the view host keeps token/direction
          inheritance and the top layer positions it all the same. -->
     <ng-template
-      [cdkConnectedOverlay]="{
-        origin: core().errorAnchor()!,
-        usePopover: errorPopoverLocation,
-        disableClose: true,
-        positions: errorPositions,
-      }"
+      cdkConnectedOverlay
+      [cdkConnectedOverlayOrigin]="core().errorAnchor()!"
       [cdkConnectedOverlayOpen]="core().errorAnchor() !== null"
+      [cdkConnectedOverlayPositions]="errorPositions"
+      [cdkConnectedOverlayUsePopover]="errorPopoverLocation"
+      [cdkConnectedOverlayDisableClose]="true"
     >
       <div class="tm-grid__error-msg" [id]="core().errorMsgId" role="tooltip">
         {{ core().errorMessage() }}

@@ -13,8 +13,11 @@
   font-family: var(--font-ui);
   font-size: var(--field-font-size);
   color: var(--field-text);
-  /* Alignment follows the field's own dir="auto" base direction (§7). */
-  text-align: start;
+  /* Inherit the container's alignment: a bare field follows its dir="auto"
+     base direction (start), while a grid cell editor picks up the column's
+     alignment — so a number editor is right-aligned like its committed value,
+     not left while editing then right after commit. */
+  text-align: inherit;
 }
 
 .tm-input::placeholder {
