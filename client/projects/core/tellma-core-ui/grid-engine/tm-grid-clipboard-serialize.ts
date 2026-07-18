@@ -163,13 +163,19 @@ function escapeHtmlAttribute(text: string): string {
 
 /**
  * The canonical form of a cell's display text for its {@link
- * tmClipboardFingerprint} integrity check: CR / CRLF collapsed to `'\n'` and
- * surrounding whitespace trimmed — matching exactly what the paste reducer
- * reconstructs from the cell (`<br>` → `'\n'`, then trim), so a faithful round
- * trip hashes to the same fingerprint on both ends.
+ * tmClipboardFingerprint} integrity check: hard line breaks kept as `'\n'`,
+ * every other run of whitespace collapsed to a single space, and the ends
+ * trimmed — the same RENDERED form the paste reducer reconstructs from a cell.
+ * So a faithful round trip — even one an editor re-wrapped across source lines
+ * (Excel/Sheets emit a newline + indentation) — hashes the same on both ends.
  */
 function canonicalCellText(text: string): string {
-  return text.replace(/\r\n?/g, '\n').trim();
+  return text
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .join('\n')
+    .trim();
 }
 
 /** Whether a raw value survives a JSON round trip losslessly. */

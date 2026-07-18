@@ -67,29 +67,36 @@ function parseMeta(raw: string | null): TmGridClipboardMeta | undefined {
 }
 
 /**
- * A cell's text: `textContent` with `<br>` converted to `'\n'` first (Excel
- * emits `<br>` for in-cell newlines), trimmed of surrounding whitespace
- * (HTML serializers pad cells with layout whitespace) while interior
- * spacing is preserved.
+ * A cell's RENDERED text: a `<br>` becomes a hard newline (Excel emits it for
+ * an in-cell newline), every other run of whitespace collapses to a single
+ * space (the way `white-space: normal` lays a cell out), and the ends are
+ * trimmed. Reading the rendered form, not raw `textContent`, is what lets an
+ * Excel or Sheets round trip match what the grid wrote.
  */
 function cellText(cell: HTMLTableCellElement): string {
-  let text: string;
+  let raw: string;
   if (cell.querySelector('br') === null) {
-    text = cell.textContent ?? '';
+    raw = cell.textContent ?? '';
   } else {
+    // A <br> is a HARD line break; mark it with a sentinel that survives the
+    // whitespace collapse below, then restore it to a real newline.
     const clone = cell.cloneNode(true) as HTMLElement;
     for (const br of clone.querySelectorAll('br')) {
-      br.replaceWith('\n');
+      br.replaceWith('\uE000');
     }
-    text = clone.textContent ?? '';
+    raw = clone.textContent ?? '';
   }
-  // Excel (and Sheets) weave non-breaking spaces (U+00A0, and the narrow
-  // U+202F) into cell text for layout; fold them back to a regular space so a
-  // round trip matches what the grid wrote. Otherwise an entity label like
-  // "Alice Green" comes back as "Alice Green" — its data-tm-h fingerprint
-  // no longer matches (dropping the raw id), and the resolver's exact match
-  // then fails ("no agent named 'Alice Green'").
-  return text.replace(/[\u00a0\u202f]/g, ' ').trim();
+  // Excel and Sheets wrap long cell text across SOURCE lines (a newline plus
+  // indentation) and weave in non-breaking spaces, none of it content.
+  // textContent keeps it verbatim, so an entity label "Alice Green" comes back
+  // wrapped: its data-tm-h fingerprint no longer matches (dropping the raw id)
+  // and the resolver's exact match then fails ("no agent named 'Alice Green'").
+  // Collapsing to the rendered form fixes both: the whitespace class covers the
+  // source newlines, tabs, and nbsp; only the <br> sentinel becomes a break.
+  return raw
+    .replace(/\s+/g, ' ')
+    .replace(/ ?\uE000 ?/g, '\n')
+    .trim();
 }
 
 /**

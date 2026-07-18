@@ -399,17 +399,35 @@ describe('tm-grid (clipboard paste)', () => {
     expect(host.grid().errorCount()).toBe(0);
   });
 
-  it('folds non-breaking spaces in pasted text to regular spaces (Excel/Sheets layout artifact)', async () => {
+  it('collapses the source-line wrapping an editor adds to cell text', async () => {
     const { fixture, host, scroller } = await setup();
     await activateOrigin(fixture, scroller);
-    // U+00A0 between the words: Excel weaves it into cell text for layout. It
-    // must fold to a regular space so the value matches what the grid wrote —
-    // otherwise an entity label round trip fails its resolver's exact match.
+    // Excel and Sheets wrap long cell text across HTML source lines (a newline
+    // + indentation) - layout, not content. It must collapse to a single space
+    // the way the cell renders (the exact shape that broke the agent paste).
     dispatchPaste(scroller, {
-      html: '<table><tbody><tr><td>Ada\u00A0Lovelace</td></tr></tbody></table>',
+      html: '<table><tbody><tr><td>Ada\n      Lovelace</td></tr></tbody></table>',
     });
     await stable(fixture);
     expect(host.model()[0].name).toBe('Ada Lovelace');
+  });
+
+  it('an entity round trip survives an editor re-wrapping the label across source lines', async () => {
+    const { fixture, host, scroller } = await setup();
+    await activateCell(fixture, scroller, 0, 2); // agent cell, row id 1
+    // Same-tenant payload: raw id 11 + a data-tm-h over the canonical "Alice
+    // Green", but Excel re-wrapped the visible text (newline + indentation).
+    // The rendered text still collapses to "Alice Green", so the fingerprint
+    // matches, the raw id is used, and the resolver is never consulted.
+    const html =
+      `<table data-tm-grid='{"v":1,"tenant":"acme","locale":"en-US",` +
+      `"cols":[{"key":"agentId","type":"entity"}]}'>` +
+      `<tbody><tr><td data-tm-v="11" data-tm-h="${tmClipboardFingerprint('Alice Green')}">Alice\n      Green</td></tr></tbody></table>`;
+    dispatchPaste(scroller, { html });
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(11);
+    expect(host.resolveCalls.length).toBe(0);
+    expect(host.grid().errorCount()).toBe(0);
   });
 
   it('prefers the in-memory descriptor when the payload fingerprint matches (typed same-session paste)', async () => {
