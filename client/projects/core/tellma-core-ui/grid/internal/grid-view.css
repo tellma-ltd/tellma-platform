@@ -210,6 +210,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* The cell is the selection unit, not selectable text: a plain arrow, not
+     the I-beam the text content would otherwise imply (a click-drag selects
+     the range, it never highlights the glyph text). */
+  cursor: default;
   border-block-end: var(--border-width) solid var(--grid-line);
   /* stylelint-disable-next-line declaration-property-value-disallowed-list --
      cells take real (roving) focus; the active-cell inset ring below is the
@@ -238,8 +242,10 @@
   background-color: var(--surface-selected);
 }
 
+/* The placeholder's cells ARE editable (typing materializes the row), so they
+   carry the editable (untinted) background — not the readonly tint. */
 .tm-grid__row--placeholder > .tm-grid__cell {
-  background-color: var(--grid-readonly-bg);
+  background-color: transparent;
 }
 
 /* The new-row glyph (*) reads as an affordance, not a numbered row. */
@@ -282,10 +288,12 @@
 }
 
 /* Find highlights (§8.7): match tint on every rendered match, an outline
-   on the ACTIVE match. Declared after --selected so a match inside a
-   range still reads as a match. */
+   on the ACTIVE match. A translucent LAYER (background-image), like the
+   selection above, so the tint composites over any base color — zebra,
+   readonly, checked — instead of being replaced by (or masking) it.
+   Declared after --selected so a match inside a range still reads as a match. */
 .tm-grid__cell.tm-grid__cell--find {
-  background: var(--grid-find-match-bg);
+  background-image: linear-gradient(var(--grid-find-match-bg), var(--grid-find-match-bg));
 }
 
 .tm-grid__cell.tm-grid__cell--find-active {
@@ -373,11 +381,25 @@
   background: var(--field-bg);
 }
 
+/* A hierarchy cell's editor keeps the tree indentation: it starts after the
+   level indent + twisty + child-spinner slot (the leading affordances stay
+   visible beside it), so the edited text lines up with the display text
+   instead of jumping to the cell's inline edge. */
+.tm-grid__cell--hierarchy .tm-grid__editor {
+  inset-inline-start: calc(
+    var(--grid-level, 0) * var(--grid-indent) + var(--grid-indent) + var(--space-4)
+  );
+}
+
 .tm-grid__cell-spin {
   position: absolute;
   inset-block-start: 50%;
   inset-inline-end: var(--space-1);
-  transform: translateY(-50%);
+  /* Vertical centering rides the `translate` PROPERTY, not `transform`: the
+     spinner's own spin animates `transform: rotate()`, and sharing `transform`
+     for centering makes the browser interpolate translate↔rotate — the spinner
+     slides up and down instead of turning. The two properties compose. */
+  translate: 0 -50%;
   inline-size: var(--space-3);
   block-size: var(--space-3);
   z-index: 2;
@@ -409,6 +431,9 @@
   border-radius: var(--radius-xs);
   background: var(--field-bg);
   vertical-align: middle;
+  /* An editable boolean cell is a live checkbox — the glyph invites a click
+     (the surrounding cell space starts a range drag, §6.2). */
+  cursor: pointer;
 }
 
 .tm-grid-bool--on {
@@ -428,6 +453,19 @@
   mask-position: center;
   mask-size: contain;
   mask-repeat: no-repeat;
+}
+
+/* A readonly boolean is display-only, not a clickable checkbox: no box — a
+   bare check when true (text color), an empty cell when false. Declared after
+   --on, so it also strips the checked box's fill/border. */
+.tm-grid-bool--readonly {
+  border-color: transparent;
+  background: transparent;
+  cursor: default;
+}
+
+.tm-grid-bool--readonly.tm-grid-bool--on::after {
+  background-color: var(--text-strong);
 }
 
 /* ---- transient clipboard-failure notice (readonly grids only; editable

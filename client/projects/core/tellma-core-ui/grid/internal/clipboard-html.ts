@@ -83,7 +83,13 @@ function cellText(cell: HTMLTableCellElement): string {
     }
     text = clone.textContent ?? '';
   }
-  return text.trim();
+  // Excel (and Sheets) weave non-breaking spaces (U+00A0, and the narrow
+  // U+202F) into cell text for layout; fold them back to a regular space so a
+  // round trip matches what the grid wrote. Otherwise an entity label like
+  // "Alice Green" comes back as "Alice Green" — its data-tm-h fingerprint
+  // no longer matches (dropping the raw id), and the resolver's exact match
+  // then fails ("no agent named 'Alice Green'").
+  return text.replace(/[\u00a0\u202f]/g, ' ').trim();
 }
 
 /**

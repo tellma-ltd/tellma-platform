@@ -109,16 +109,17 @@ export class TmGridEngine<T = unknown> {
   }
 
   /**
-   * The cell's display text: the invalid-input raw text while the grid is
-   * editable (the rejected text stays visible in place), the model's truth
-   * otherwise. This is what copy exports, find searches, and emptiness
-   * tests read.
+   * The cell's display text: the invalid-input raw text while the cell is
+   * EDITABLE (the rejected text stays visible in place), the model's truth
+   * otherwise. A readonly cell always shows the model value — a rejected input
+   * it can no longer be corrected in place must never linger. This is what copy
+   * exports, find searches, and emptiness tests read.
    */
   displayText(cell: TmRowCol): string {
     if (untracked(() => this.options.editable())) {
       const view = this.model.rowAt(cell.row);
       const column = this.model.columnAt(cell.col);
-      if (view !== null && column !== undefined) {
+      if (view !== null && column !== undefined && this.model.isCellEditable(cell)) {
         const invalid = this.annotations.invalidInput(view.id, column.id);
         if (invalid !== undefined) {
           return invalid.rawText;

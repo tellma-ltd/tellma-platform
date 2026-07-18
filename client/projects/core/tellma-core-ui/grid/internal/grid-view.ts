@@ -182,6 +182,8 @@ import { ɵTmGridTouchHandles } from './touch-handles';
                   [class.tm-grid__cell--cut]="cell.inCutRange"
                   [class.tm-grid__cell--find]="cell.findMatch"
                   [class.tm-grid__cell--find-active]="cell.activeFindMatch"
+                  [class.tm-grid__cell--hierarchy]="cell.hierarchy"
+                  [style.--grid-level]="cell.hierarchy ? cell.level : null"
                   [style.text-align]="cell.align"
                 >
                   @if (cell.hierarchy) {

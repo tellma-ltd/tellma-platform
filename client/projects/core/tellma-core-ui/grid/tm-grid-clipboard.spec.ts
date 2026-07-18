@@ -376,6 +376,42 @@ describe('tm-grid (clipboard paste)', () => {
     expect(host.model()[0].qty).toBe(9);
   });
 
+  it('a cell that becomes readonly sheds its error (never errored while readonly)', async () => {
+    const { fixture, host, scroller } = await setup();
+    await activateCell(fixture, scroller, 1, 1); // row id 2, qty (editable)
+    dispatchPaste(scroller, { text: 'abc' }); // unparseable → invalid input
+    await stable(fixture);
+    const cell = cellAt(scroller, 1, 1) as HTMLElement;
+    expect(cell.classList.contains('tm-grid__cell--error')).toBe(true);
+    expect(cell.textContent).toContain('abc'); // rejected text visible while editable
+    expect(host.grid().errorCount()).toBe(1);
+
+    // Lock row 2's qty → the cell turns readonly. A readonly cell is never in
+    // an error state: no tint, no tally, and the stuck raw text gives way to
+    // the model value (the input can no longer be corrected in place).
+    host.qtyLocked.set(true);
+    await stable(fixture);
+    const locked = cellAt(scroller, 1, 1) as HTMLElement;
+    expect(locked.classList.contains('tm-grid__cell--readonly')).toBe(true);
+    expect(locked.classList.contains('tm-grid__cell--error')).toBe(false);
+    expect(locked.getAttribute('aria-invalid')).toBeNull();
+    expect(locked.textContent).not.toContain('abc');
+    expect(host.grid().errorCount()).toBe(0);
+  });
+
+  it('folds non-breaking spaces in pasted text to regular spaces (Excel/Sheets layout artifact)', async () => {
+    const { fixture, host, scroller } = await setup();
+    await activateOrigin(fixture, scroller);
+    // U+00A0 between the words: Excel weaves it into cell text for layout. It
+    // must fold to a regular space so the value matches what the grid wrote —
+    // otherwise an entity label round trip fails its resolver's exact match.
+    dispatchPaste(scroller, {
+      html: '<table><tbody><tr><td>Ada\u00A0Lovelace</td></tr></tbody></table>',
+    });
+    await stable(fixture);
+    expect(host.model()[0].name).toBe('Ada Lovelace');
+  });
+
   it('prefers the in-memory descriptor when the payload fingerprint matches (typed same-session paste)', async () => {
     const { fixture, host, scroller } = await setup();
     await activateCell(fixture, scroller, 0, 2); // agent cell of row 1 (agentId 7)

@@ -996,7 +996,19 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         }
         const rowId = rowIdOf(rows[i]);
         for (const error of summary) {
+          // A pristine field carries no visible error yet: a freshly
+          // materialized row must not light up before its cells are edited.
+          // "Interacted" = touched (an editor blurred) OR dirty (a write —
+          // paste/delete/toggle — that never blurs an editor).
+          const field = error.fieldTree();
+          if (!field.touched() && !field.dirty()) {
+            continue;
+          }
           const column = this.attributeErrorColumn(error, columns);
+          // A readonly cell is never an error (can't be fixed in place).
+          if (!this.errorCellEditable(rowId, column.id)) {
+            continue;
+          }
           map.set(errorCellKey(rowId, column.id), { rowId, columnId: column.id });
         }
       }
@@ -1006,7 +1018,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       const fieldErrors = this.fieldErrorCells();
       let count = fieldErrors.size;
       for (const ref of this.engine.annotations.invalidCells()) {
-        if (!fieldErrors.has(errorCellKey(ref.rowId, ref.columnId))) {
+        if (
+          this.errorCellEditable(ref.rowId, ref.columnId) &&
+          !fieldErrors.has(errorCellKey(ref.rowId, ref.columnId))
+        ) {
           count += 1;
         }
       }
@@ -1026,7 +1041,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         refs.push({ rowId, columnId });
       };
       for (const ref of engine.annotations.invalidCells()) {
-        push(ref.rowId, ref.columnId);
+        if (this.errorCellEditable(ref.rowId, ref.columnId)) {
+          push(ref.rowId, ref.columnId);
+        }
       }
       for (const cell of this.fieldErrorCells().values()) {
         push(cell.rowId, cell.columnId);
@@ -1062,10 +1079,18 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       }
       const columns = this.columnsInternal();
       // The row's aggregated errors, narrowed to the ones this milestone
-      // attributes to the active cell (same attribution as the tally).
+      // attributes to the active cell (same attribution as the tally) — and
+      // only touched fields, so a fresh new row's active cell stays quiet
+      // until edited (matches the tally's touched gate).
       return rowField()
         .errorSummary()
-        .filter((error) => this.attributeErrorColumn(error, columns).id === column.id);
+        .filter((error) => {
+          const field = error.fieldTree();
+          return (
+            (field.touched() || field.dirty()) &&
+            this.attributeErrorColumn(error, columns).id === column.id
+          );
+        });
     });
     this.activeCellResolvedErrors = tmResolveFieldErrors(
       this.activeCellFieldErrors,
@@ -1073,7 +1098,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     );
     this.errorMessage = computed(() => {
       const active = this.engine.nav.activeCell();
-      if (active === null || !this.editable()) {
+      // A readonly active cell is never errored: no popover, whatever stale
+      // annotation or validator the underlying field may still hold.
+      if (active === null || !this.editable() || !this.engine.model.isCellEditable(active)) {
         return '';
       }
       const view = this.engine.model.rowAt(active.row);
@@ -1500,11 +1527,14 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       this.escapedSignal.set(false);
       this.engine.clickCell(cell, { shift: event.shiftKey, mod });
       this.requestFocusActive();
-      // A boolean cell toggles directly on a plain click (§6.2) — activation
-      // above already committed any editor; there is no range drag to start.
+      // A boolean cell toggles on a plain click of the GLYPH itself (§6.2) —
+      // activation above already committed any editor. A press on the empty
+      // cell space around the glyph is not a toggle: it starts a range drag
+      // like any other cell, so a selection can begin from a boolean column.
       if (
         !event.shiftKey &&
         !mod &&
+        target.closest('.tm-grid-bool') !== null &&
         untracked(this.editable) &&
         untracked(this.columnsInternal)[cell.col]?.type === 'boolean'
       ) {
@@ -2090,6 +2120,24 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
    * the row), else the first column — row-level errors and deeper-nested
    * ones still count in the tally and remain reachable by the error jump.
    */
+  /**
+   * Whether an errored cell (addressed by identity) may currently carry an
+   * error: a readonly cell never can — it can't be fixed in place, so it must
+   * not tint, count, or be jumped to. Mirrors {@link TmGridDataModel.isCellEditable}
+   * by identity, using the same column oracle.
+   */
+  private errorCellEditable(rowId: TmRowId, columnId: string): boolean {
+    if (!this.editable()) {
+      return false;
+    }
+    const column = this.columnsInternal().find((c) => c.id === columnId);
+    if (column === undefined || !column.engineColumn.editable) {
+      return false;
+    }
+    const row = this.engine.model.rowById(rowId);
+    return row !== undefined && !column.engineColumn.isCellReadonly(row);
+  }
+
   private attributeErrorColumn(
     error: ValidationError.WithFieldTree,
     columns: readonly ColumnInternal<T>[],
@@ -2152,6 +2200,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           !isPlaceholder &&
           view !== null &&
           editable &&
+          model.isCellEditable(cell) && // a readonly cell is never errored
           (engine.annotations.invalidInput(view.id, column.id) !== undefined ||
             fieldErrors.has(errorCellKey(view.id, column.id)));
         let displayTemplate: TemplateRef<TmGridDisplayContext<unknown, unknown>> | undefined;
@@ -2170,7 +2219,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           displayTemplate === undefined && !isPlaceholder && column.type === 'boolean'
             ? TM_CHECKBOX_CELL_DISPLAY.displayClass!(
                 (model.cellValue(cell) ?? null) as boolean | null,
-              )
+              ) +
+              // A readonly boolean is display-only: a bare check/empty, no box
+              // (the box invites a click the cell won't accept).
+              (model.isCellEditable(cell) ? '' : ' tm-grid-bool--readonly')
             : undefined;
         const isHierarchy = isTree && column.index === hierarchyCol;
         // The expander glyph reflects the PENDING intent during a lazy

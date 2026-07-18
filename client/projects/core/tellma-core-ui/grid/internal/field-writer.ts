@@ -81,6 +81,11 @@ export class ɵTmGridFieldWriter<T> implements TmGridModelWriter<T> {
       const child = ɵtmChildField(rowField, columnKey);
       if (child !== undefined) {
         child().value.set(value);
+        // A write is an interaction: mark the cell dirty so its validation
+        // surfaces (a paste/delete never blurs an editor, so `touched` alone
+        // wouldn't catch it) — while a never-written cell of a fresh new row
+        // stays pristine and quiet until edited.
+        child().markAsDirty();
         return;
       }
       // The property is absent from the row's value, so no child node exists
@@ -89,6 +94,7 @@ export class ɵTmGridFieldWriter<T> implements TmGridModelWriter<T> {
       (rowField() as FieldState<T>).value.update(
         (row) => ({ ...(row as Record<string, unknown>), [columnKey]: value }) as T,
       );
+      ɵtmChildField(rowField, columnKey)?.().markAsDirty();
     });
   }
 

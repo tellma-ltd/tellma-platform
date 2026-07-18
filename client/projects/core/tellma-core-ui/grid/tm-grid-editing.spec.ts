@@ -149,6 +149,12 @@ function cellAt(scroller: HTMLElement, row: number, col: number): HTMLElement | 
   );
 }
 
+function pointerPress(target: Element): void {
+  const init: PointerEventInit = { bubbles: true, cancelable: true, button: 0, pointerType: 'mouse' };
+  target.dispatchEvent(new PointerEvent('pointerdown', init));
+  target.dispatchEvent(new PointerEvent('pointerup', init));
+}
+
 function editorInput(scroller: HTMLElement): HTMLInputElement | null {
   return scroller.querySelector<HTMLInputElement>('[data-tm-editor] input');
 }
@@ -409,6 +415,46 @@ describe('tm-grid (editing)', () => {
     keydown(scroller, 'z', { ctrlKey: true });
     await stable(fixture);
     expect(host.model()[0].active).toBe(false);
+  });
+
+  it('a boolean cell toggles on the glyph press, but the empty cell space starts a range drag', async () => {
+    const { fixture, host, scroller } = await setup();
+    await activateOrigin(fixture, scroller);
+    const cell = cellAt(scroller, 0, 2) as HTMLElement; // active (boolean) column
+    const glyph = cell.querySelector('.tm-grid-bool') as HTMLElement;
+    expect(host.model()[0].active).toBe(true);
+
+    // A press on the empty cell space (target = the cell, not the glyph) is a
+    // range-drag gesture, not a toggle — the value must not change.
+    pointerPress(cell);
+    await stable(fixture);
+    expect(host.model()[0].active).toBe(true);
+
+    // A press on the glyph itself toggles.
+    pointerPress(glyph);
+    await stable(fixture);
+    expect(host.model()[0].active).toBe(false);
+  });
+
+  it('a freshly materialized new row keeps untouched required cells quiet until edited', async () => {
+    const { fixture, host, scroller } = await setup();
+    await activateOrigin(fixture, scroller); // (0,0)
+    keydown(scroller, 'ArrowDown');
+    keydown(scroller, 'ArrowDown');
+    keydown(scroller, 'ArrowDown'); // (3,0) = the new-row placeholder
+    keydown(scroller, 'ArrowRight');
+    keydown(scroller, 'ArrowRight'); // (3,2) = active (boolean)
+    await stable(fixture);
+    keydown(scroller, ' '); // toggling materializes the row
+    await stable(fixture);
+    expect(host.model().length).toBe(4);
+
+    // Name is required but never touched on the new row — it must stay quiet
+    // (before the fix it lit up the instant the row materialized). A field
+    // that IS edited still surfaces its error — see the required-field test.
+    expect(cellAt(scroller, 3, 0)!.classList.contains('tm-grid__cell--error')).toBe(false);
+    expect(cellAt(scroller, 3, 0)!.getAttribute('aria-invalid')).toBeNull();
+    expect(host.grid().errorCount()).toBe(0);
   });
 
   it('Mod+Z / Mod+Y round-trip a committed edit', async () => {
