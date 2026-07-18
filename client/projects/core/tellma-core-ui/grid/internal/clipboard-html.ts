@@ -6,11 +6,13 @@
 // The paste ladder's HTML rung: reduces a `text/html` clipboard payload to
 // the engine's paste-source shape via DOMParser — the engine itself stays
 // DOM-free. Recognizes the Tellma metadata woven into copied markup
-// (`data-tm-grid`, `data-tm-v`, `data-tm-rowid`) and degrades gracefully on
-// foreign tables (Excel, Sheets); Sheets' proprietary `data-sheets-*`
-// attributes are deliberately ignored (undocumented, unstable).
+// (`data-tm-grid`, `data-tm-v` + its `data-tm-h` integrity fingerprint,
+// `data-tm-rowid`) and degrades gracefully on foreign tables (Excel, Sheets);
+// Sheets' proprietary `data-sheets-*` attributes are deliberately ignored
+// (undocumented, unstable).
 
 import type { TmRowId } from '@tellma/core-ui/contracts';
+import { tmClipboardFingerprint } from '@tellma/core-ui/grid-engine';
 import type {
   TmGridClipboardMeta,
   TmGridColumnType,
@@ -84,10 +86,22 @@ function cellText(cell: HTMLTableCellElement): string {
   return text.trim();
 }
 
-/** The `data-tm-v` raw value, or `undefined` when absent or unparseable. */
-function cellRawValue(cell: HTMLTableCellElement): RawSlot {
+/**
+ * The `data-tm-v` raw value, or `undefined` when absent, unparseable, or — the
+ * tamper check — when the cell's current display `text` no longer matches the
+ * `data-tm-h` fingerprint captured at copy time. A foreign editor (Excel,
+ * Sheets) round-trips our `data-tm-v` verbatim while the user edits the visible
+ * text, so trusting an unverified raw value would silently overwrite that edit
+ * with the stale typed value. Absent or mismatched fingerprint → discard, so
+ * the engine re-parses the (authoritative) display text.
+ */
+function cellRawValue(cell: HTMLTableCellElement, text: string): RawSlot {
   const raw = cell.getAttribute('data-tm-v');
   if (raw === null) {
+    return undefined;
+  }
+  const fingerprint = cell.getAttribute('data-tm-h');
+  if (fingerprint === null || fingerprint !== tmClipboardFingerprint(text)) {
     return undefined;
   }
   try {
@@ -149,8 +163,9 @@ export function ɵtmReduceClipboardHtml(html: string): TmGridPasteSource | null 
     const textRow: string[] = [];
     const rawRow: RawSlot[] = [];
     for (const cell of row.cells) {
-      textRow.push(cellText(cell));
-      const raw = cellRawValue(cell);
+      const text = cellText(cell);
+      textRow.push(text);
+      const raw = cellRawValue(cell, text);
       sawRawValue ||= raw !== undefined;
       rawRow.push(raw);
     }

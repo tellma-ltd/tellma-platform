@@ -182,15 +182,37 @@ describe('tmSerializeHtmlTable', () => {
         ],
       ],
     });
-    expect(html).toContain('<td data-tm-v="&quot;s&quot;">s</td>');
-    expect(html).toContain('<td data-tm-v="42">42</td>');
-    expect(html).toContain('<td data-tm-v="true">yes</td>');
-    expect(html).toContain('<td data-tm-v="null"></td>');
-    // A value JSON would distort (or that is absent) renders a plain cell.
+    // Each typed cell also carries data-tm-h — the fingerprint of its display
+    // text — so a paste can tell a faithful round trip from a tampered one.
+    expect(html).toContain(
+      `<td data-tm-v="&quot;s&quot;" data-tm-h="${tmClipboardFingerprint('s')}">s</td>`,
+    );
+    expect(html).toContain(`<td data-tm-v="42" data-tm-h="${tmClipboardFingerprint('42')}">42</td>`);
+    expect(html).toContain(
+      `<td data-tm-v="true" data-tm-h="${tmClipboardFingerprint('yes')}">yes</td>`,
+    );
+    expect(html).toContain(`<td data-tm-v="null" data-tm-h="${tmClipboardFingerprint('')}"></td>`);
+    // A value JSON would distort (or that is absent) renders a plain cell —
+    // no data-tm-v, and so no data-tm-h either.
     expect(html).toContain('<td>date</td>');
     expect(html).toContain('<td>obj</td>');
     expect(html).toContain('<td>nan</td>');
     expect(html).toContain('<td>none</td>');
+    expect(html).not.toContain('<td data-tm-h');
+  });
+
+  it('fingerprints the canonical display text (trimmed, <br>-free) for data-tm-h', () => {
+    // A multi-line, padded display string: the fingerprint is taken over the
+    // canonical form (surrounding whitespace trimmed, newlines as '\n') so it
+    // matches what the reducer reconstructs from the cell (`<br>` → '\n',
+    // trim). The raw newline is serialized as <br> in the cell text.
+    const html = tmSerializeHtmlTable({
+      matrix: [['  a\nb  ']],
+      meta: { v: 1 },
+      rawValues: [[{ value: 'a\nb' }]],
+    });
+    expect(html).toContain(`data-tm-h="${tmClipboardFingerprint('a\nb')}"`);
+    expect(html).toContain('>  a<br>b  </td>');
   });
 
   it('escapes text content (& < >) and attribute values (")', () => {

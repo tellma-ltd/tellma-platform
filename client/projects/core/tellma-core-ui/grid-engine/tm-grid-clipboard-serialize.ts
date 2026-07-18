@@ -161,6 +161,17 @@ function escapeHtmlAttribute(text: string): string {
   return escapeHtmlText(text).replaceAll('"', '&quot;');
 }
 
+/**
+ * The canonical form of a cell's display text for its {@link
+ * tmClipboardFingerprint} integrity check: CR / CRLF collapsed to `'\n'` and
+ * surrounding whitespace trimmed — matching exactly what the paste reducer
+ * reconstructs from the cell (`<br>` → `'\n'`, then trim), so a faithful round
+ * trip hashes to the same fingerprint on both ends.
+ */
+function canonicalCellText(text: string): string {
+  return text.replace(/\r\n?/g, '\n').trim();
+}
+
 /** Whether a raw value survives a JSON round trip losslessly. */
 function isJsonSafe(value: unknown): boolean {
   return (
@@ -193,8 +204,10 @@ export interface TmSerializeHtmlTableArgs {
 /**
  * Builds the `text/html` clipboard flavor as a string: a plain `<table>` of
  * display strings that Excel and Sheets both parse, carrying the Tellma
- * metadata (`data-tm-grid`, per-cell `data-tm-v`, per-row `data-tm-rowid`)
- * that lets another grid paste typed values instead of re-parsing text.
+ * metadata (`data-tm-grid`, per-cell `data-tm-v` + its `data-tm-h` display
+ * fingerprint, per-row `data-tm-rowid`) that lets another grid paste typed
+ * values instead of re-parsing text — but only while the cell's text is
+ * unchanged since copy, which `data-tm-h` lets the reducer verify.
  */
 export function tmSerializeHtmlTable(args: TmSerializeHtmlTableArgs): string {
   const parts: string[] = [];
@@ -215,9 +228,20 @@ export function tmSerializeHtmlTable(args: TmSerializeHtmlTableArgs): string {
     const rawRow = args.rawValues?.[r];
     for (let c = 0; c < args.matrix[r].length; c++) {
       const raw = rawRow?.[c];
-      const text = escapeHtmlCellText(args.matrix[r][c]);
+      const display = args.matrix[r][c];
+      const text = escapeHtmlCellText(display);
       if (raw !== undefined && isJsonSafe(raw.value)) {
-        parts.push(`<td data-tm-v="${escapeHtmlAttribute(JSON.stringify(raw.value))}">${text}</td>`);
+        // data-tm-h fingerprints the display text so a paste can distinguish a
+        // faithful round trip from a tampered one: a foreign editor (Excel,
+        // Sheets) preserves data-tm-v verbatim while the user edits the visible
+        // text, so the reducer trusts the raw value only when the cell still
+        // hashes to this fingerprint (otherwise it re-parses the text).
+        const fingerprint = tmClipboardFingerprint(canonicalCellText(display));
+        parts.push(
+          `<td data-tm-v="${escapeHtmlAttribute(
+            JSON.stringify(raw.value),
+          )}" data-tm-h="${fingerprint}">${text}</td>`,
+        );
       } else {
         parts.push(`<td>${text}</td>`);
       }

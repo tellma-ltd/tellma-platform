@@ -13,6 +13,7 @@ import {
   type TmLabelResolution,
   type TmPasteContext,
 } from '@tellma/core-ui/contracts';
+import { tmClipboardFingerprint } from '@tellma/core-ui/grid-engine';
 import { provideTellmaUi, TM_CELL_EDITOR_HOST } from '@tellma/core-ui';
 
 import { TmGrid } from './tm-grid';
@@ -307,7 +308,8 @@ describe('tm-grid (clipboard paste)', () => {
     const htmlFor = (tenant: string): string =>
       `<table data-tm-grid='{"v":1,"tenant":"${tenant}","locale":"en-US",` +
       `"cols":[{"key":"qty","type":"number"}]}'>` +
-      `<tbody><tr><td data-tm-v="42">forty-two</td></tr></tbody></table>`;
+      `<tbody><tr><td data-tm-v="42" data-tm-h="${tmClipboardFingerprint('forty-two')}">` +
+      `forty-two</td></tr></tbody></table>`;
 
     dispatchPaste(scroller, { html: htmlFor('acme') });
     await stable(fixture);
@@ -324,6 +326,26 @@ describe('tm-grid (clipboard paste)', () => {
     expect(cell.textContent).toContain('forty-two');
     expect(cell.classList.contains('tm-grid__cell--error')).toBe(true);
     expect(host.grid().errorCount()).toBe(1);
+  });
+
+  it('ignores a raw value whose display text was edited downstream (Excel round trip)', async () => {
+    const { fixture, host, scroller } = await setup();
+    await activateCell(fixture, scroller, 0, 1); // qty
+
+    // A SAME-tenant payload carrying data-tm-v="6" — but the visible text was
+    // changed to "99" after the copy (as Excel does: it round-trips our
+    // attribute verbatim while the user edits the cell). The data-tm-h still
+    // fingerprints the original "6", so it no longer matches the cell text and
+    // the stale raw value is discarded — the edited "99" is parsed instead.
+    const tampered =
+      `<table data-tm-grid='{"v":1,"tenant":"acme","locale":"en-US",` +
+      `"cols":[{"key":"qty","type":"number"}]}'>` +
+      `<tbody><tr><td data-tm-v="6" data-tm-h="${tmClipboardFingerprint('6')}">99</td></tr>` +
+      `</tbody></table>`;
+
+    dispatchPaste(scroller, { html: tampered });
+    await stable(fixture);
+    expect(host.model()[0].qty).toBe(99); // the edited text won, not the stale 6
   });
 
   it('skips the marked header row of an HTML payload', async () => {
@@ -487,7 +509,8 @@ describe('tm-grid (clipboard resolver)', () => {
       html:
         `<table data-tm-grid='{"v":1,"tenant":"other","locale":"fr-FR",` +
         `"cols":[{"key":"agentId","type":"entity"}]}'>` +
-        `<tbody><tr><td data-tm-v="55">Adam</td></tr></tbody></table>`,
+        `<tbody><tr><td data-tm-v="55" data-tm-h="${tmClipboardFingerprint('Adam')}">Adam` +
+        `</td></tr></tbody></table>`,
     });
     await stable(fixture);
 

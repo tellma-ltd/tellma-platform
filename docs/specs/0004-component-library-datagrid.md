@@ -651,12 +651,13 @@ Both flavors are always written:
 - **`text/html`** — a `<table>` of the same display strings (Excel and Sheets both parse it), plus
   Tellma metadata woven into the markup: on `<table
   data-tm-grid='{"v":1,"tenant":…,"locale":…,"cols":[{key,type}…]}'`, per-cell
-  `data-tm-v` (JSON raw value), and per-row `data-tm-rowid` (emitted when the range is full rows —
+  `data-tm-v` (JSON raw value) paired with `data-tm-h` (a fingerprint of the cell's display text,
+  §9.3), and per-row `data-tm-rowid` (emitted when the range is full rows —
   a row *move* only needs to identify rows the grid already holds, §9.6; full records are never
   serialized onto the clipboard, where they would leak non-column fields into any HTML-preserving
-  paste target). Oversize copies (the §9.1 threshold) omit `data-tm-v` as well — per-cell JSON
-  would double-serialize millions of cells; `data-tm-grid` and `data-tm-rowid` stay, and typed
-  same-session paste still rides the fast path.
+  paste target). Oversize copies (the §9.1 threshold) omit `data-tm-v` (and its `data-tm-h`) as
+  well — per-cell JSON would double-serialize millions of cells; `data-tm-grid` and `data-tm-rowid`
+  stay, and typed same-session paste still rides the fast path.
 
 Headers are **not** copied by default (Excel parity; pasting anywhere doesn't drag header junk
 along); "Copy with headers" in the context menu prepends the column-header row — never the
@@ -676,6 +677,12 @@ with `data-tm-grid` metadata (typed) → (3) foreign `text/html` table (display 
 `text/plain` TSV (quoted-field parse). The `grid` layer reduces HTML payloads to a string matrix +
 metadata via `DOMParser` and hands that to the engine (which stays DOM-free, §1). Sheets'
 proprietary `data-sheets-value` attributes are ignored (undocumented, unstable).
+
+A cell's `data-tm-v` raw value is trusted only when its `data-tm-h` fingerprint still matches the
+cell's display text. A foreign editor (Excel, Sheets) round-trips our `data-tm-v` verbatim while
+the user edits the *visible* text, so an unverified raw value would silently overwrite that edit
+with the stale typed value; the fingerprint catches this, and the edited text is re-parsed instead.
+A faithful round trip hashes identically, so the typed fast path and its precision survive intact.
 
 **Header-row detection.** A pasted payload's leading header row is skipped, detected two ways:
 the Tellma metadata flag (§9.2) when present; otherwise — covering the copy-with-headers →
