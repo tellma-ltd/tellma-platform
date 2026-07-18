@@ -394,7 +394,7 @@
 .tm-grid__cell-spin {
   position: absolute;
   inset-block-start: 50%;
-  inset-inline-end: var(--space-1);
+  inset-inline-end: var(--space-2);
   /* Vertical centering rides the `translate` PROPERTY, not `transform`: the
      spinner's own spin animates `transform: rotate()`, and sharing `transform`
      for centering makes the browser interpolate translate↔rotate — the spinner
