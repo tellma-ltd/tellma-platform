@@ -313,8 +313,15 @@ export interface ɵTmGridCellVm {
   readonly readonly: boolean;
   /** Whether the cell awaits an async paste resolution (inline spinner). */
   readonly pending: boolean;
-  /** Whether the cell lies inside the armed cut's range (marquee styling). */
+  /** Whether the cell lies inside the armed cut's range (drops the active ring). */
   readonly inCutRange: boolean;
+  /**
+   * Which of the cut range's perimeter edges fall on this cell, as the tokens
+   * `t`/`b`/`s`/`e` (block-start/-end, inline-start/-end); empty for an interior
+   * cut cell. The marquee draws the dashes on exactly these edges, so a
+   * multi-cell cut reads as one rectangle rather than a box per cell.
+   */
+  readonly cutEdges: string;
   /** Whether the cell is a find match (rendered-window highlight). */
   readonly findMatch: boolean;
   /** Whether the cell is the ACTIVE find match (outline). */
@@ -2216,7 +2223,30 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       const rowKey = isPlaceholder
         ? ' placeholder'
         : `${typeof view!.id === 'number' ? '#' : '$'}${String(view!.id)}`;
-      const cells = columns.map((column): ɵTmGridCellVm => {
+      // Cut marquee (§9.5): draw the dashed border only on the cut RANGE's
+      // outer edges, so a multi-cell cut reads as one rectangle, not a box per
+      // cell. A cell sits on a perimeter edge when the neighbour across that
+      // edge — the row above/below in view order, the previous/next column — is
+      // NOT itself cut. Row adjacency is resolved once per row (shared by every
+      // column); column adjacency, once per column position below.
+      const rowInCut = cutRowIds !== null && view !== null && cutRowIds.has(view.id);
+      let aboveInCut = false;
+      let belowInCut = false;
+      if (rowInCut) {
+        const aboveId = engine.model.rowAt(viewIndex - 1)?.id;
+        const belowId = engine.model.rowAt(viewIndex + 1)?.id;
+        aboveInCut = aboveId !== undefined && cutRowIds!.has(aboveId);
+        belowInCut = belowId !== undefined && cutRowIds!.has(belowId);
+      }
+      const cells = columns.map((column, colPos): ɵTmGridCellVm => {
+        const inCutRange = rowInCut && cutColumnIds!.has(column.id);
+        // Perimeter edge = the neighbour across it is NOT cut (or absent).
+        const cutEdges = !inCutRange
+          ? ''
+          : (aboveInCut ? '' : 't') +
+            (belowInCut ? '' : 'b') +
+            (colPos === 0 || !cutColumnIds!.has(columns[colPos - 1].id) ? 's' : '') +
+            (colPos === columns.length - 1 || !cutColumnIds!.has(columns[colPos + 1].id) ? 'e' : '');
         const cell: TmRowCol = { row: viewIndex, col: column.index };
         const isActive = active !== null && active.row === viewIndex && active.col === column.index;
         const invalid =
@@ -2271,11 +2301,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           invalid,
           readonly: editable && !isPlaceholder && !model.isCellEditable(cell),
           pending: view !== null && engine.annotations.isPending(view.id, column.id),
-          inCutRange:
-            cutRowIds !== null &&
-            view !== null &&
-            cutRowIds.has(view.id) &&
-            cutColumnIds!.has(column.id),
+          inCutRange,
+          cutEdges,
           findMatch:
             findKeys !== null &&
             view !== null &&

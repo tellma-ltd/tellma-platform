@@ -615,6 +615,23 @@ describe('tm-grid (clipboard cut)', () => {
     expect(host.model()[2].name).toBe('Gamma');
   });
 
+  it('draws the marquee on the cut range perimeter only, not per cell', async () => {
+    const { fixture, scroller } = await setup();
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'ArrowRight', { shiftKey: true }); // (0,0)-(0,1)
+    await stable(fixture);
+    dispatchClipboard(scroller, 'cut');
+    await stable(fixture);
+
+    // Two horizontally-adjacent cut cells read as ONE rectangle: the shared
+    // inner boundary carries no dashes (no 'e' on the first cell, no 's' on the
+    // second), only the range's outer edges do. Both rows are top and bottom.
+    const edges = (r: number, c: number): string =>
+      cellAt(scroller, r, c)!.getAttribute('data-tm-cut') ?? '';
+    expect([...edges(0, 0)].sort().join('')).toBe('bst'); // start + top + bottom, no end
+    expect([...edges(0, 1)].sort().join('')).toBe('bet'); // end + top + bottom, no start
+  });
+
   it('Esc disarms the pending cut', async () => {
     const { fixture, host, scroller } = await setup();
     await activateOrigin(fixture, scroller);

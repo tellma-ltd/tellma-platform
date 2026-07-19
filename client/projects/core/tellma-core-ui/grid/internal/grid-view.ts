@@ -180,6 +180,7 @@ import { ɵTmGridTouchHandles } from './touch-handles';
                   [class.tm-grid__cell--readonly]="cell.readonly"
                   [class.tm-grid__cell--editing]="cell.editing"
                   [class.tm-grid__cell--cut]="cell.inCutRange"
+                  [attr.data-tm-cut]="cell.cutEdges || null"
                   [class.tm-grid__cell--find]="cell.findMatch"
                   [class.tm-grid__cell--find-active]="cell.activeFindMatch"
                   [class.tm-grid__cell--hierarchy]="cell.hierarchy"
