@@ -282,15 +282,17 @@
 /* The armed cut's marquee (§9.5): a dashed accent border on the cut RANGE's
    OUTER edges only, so a multi-cell cut reads as one rectangle, not a box per
    cell — each cut cell contributes the dashes on whichever of its sides face a
-   non-cut neighbour (computed in buildRenderRows). The pseudo-element is pinned
-   to the padding box (inset: 0), the same reference box as the active ring's
-   inset box-shadow, so the dashes land on exactly that rectangle and the two
-   line up to the pixel. Static by design (no marching animation; the grid
-   chrome stays animation-free); a pseudo-element never shifts layout. */
+   non-cut neighbour (computed in buildRenderRows). Inset by the ring width so
+   the dashes sit ONE STEP INSIDE the active ring (Excel's copy border): the
+   ring keeps its normal depth everywhere, and on a shared border both read at
+   once — the solid ring outside, the dashes just within it — instead of the
+   ring swallowing the dashes when the two are flush. Static by design (no
+   marching animation; the grid chrome stays animation-free); a pseudo-element
+   never shifts layout. */
 [data-tm-cut]::after {
   content: '';
   position: absolute;
-  inset: 0;
+  inset: var(--focus-ring-width);
   z-index: 1;
   pointer-events: none;
   border: 0 dashed var(--grid-cut-border);
@@ -315,26 +317,9 @@
   border-inline-end-width: var(--focus-ring-width);
 }
 
-/* The active cell keeps its ring even inside the clipboard marquee — like a
-   spreadsheet, both read at once (§9.5). Where the two would land on the same
-   rectangle (an active cell ON a marquee edge, so it carries the dashes), the
-   flush box-shadow ring would swallow the dashes into a solid line; nest the
-   ring one step inside the dashes instead (::before, pinned inside the padding
-   box) so the dashes stay legible outside it. An interior active cell (in the
-   range but off its perimeter, no data-tm-cut) has no dashes to clash with, so
-   it just keeps the default box-shadow ring above. */
-.tm-grid__cell--active[data-tm-cut] {
-  box-shadow: none;
-}
-
-.tm-grid__cell--active[data-tm-cut]::before {
-  content: '';
-  position: absolute;
-  inset: calc(var(--focus-ring-width) + var(--border-width));
-  z-index: 1;
-  pointer-events: none;
-  box-shadow: inset 0 0 0 var(--focus-ring-width) var(--grid-selection-border);
-}
+/* The active cell keeps its ordinary ring inside the clipboard marquee — the
+   marquee's inset (above) is what keeps the dashes legible, so nothing special
+   is needed here; the ring reads outside, the dashes just within it. */
 
 /* Find highlights (§8.7): match tint on every rendered match, an outline
    on the ACTIVE match. A translucent LAYER (background-image), like the
@@ -609,12 +594,6 @@
   /* The cut marquee stays a dashed perimeter border; force its color. */
   [data-tm-cut]::after {
     border-color: Highlight;
-  }
-
-  /* The active cell's Highlight outline above already marks it inside the
-     marquee — drop the nested accent ring (box-shadow isn't a system color). */
-  .tm-grid__cell--active[data-tm-cut]::before {
-    box-shadow: none;
   }
 
   .tm-grid__notice {
