@@ -414,11 +414,15 @@ export class TmGridEngine<T = unknown> {
   }
 
   /**
-   * The Esc chain's first stage: disarms a pending cut. Returns whether it
-   * did (the component moves focus to the container otherwise).
+   * The Esc chain's first stage: disarms a pending cut or clears the copy
+   * marquee. Returns whether it did (the component moves focus to the
+   * container otherwise).
    */
   escape(): boolean {
-    if (untracked(() => this.clipboard.pendingCut()) !== null) {
+    if (
+      untracked(() => this.clipboard.pendingCut()) !== null ||
+      untracked(() => this.clipboard.copyMarquee()) !== null
+    ) {
       this.clipboard.cancelCut();
       return true;
     }

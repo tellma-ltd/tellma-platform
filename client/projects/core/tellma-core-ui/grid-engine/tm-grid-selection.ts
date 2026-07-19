@@ -150,6 +150,20 @@ export class TmGridSelectionModel {
     return active === null ? null : this.rectOf(active);
   }
 
+  /**
+   * Whether the whole selection is a single cell — one range covering exactly
+   * one cell. The range fill is suppressed in this case (only the active ring
+   * shows), matching spreadsheets: a lone cell reads as a caret, not a range.
+   */
+  isSingleCellSelection(): boolean {
+    const ranges = untracked(this.rangesSignal);
+    if (ranges.length !== 1) {
+      return false;
+    }
+    const rect = this.rectOf(ranges[0]);
+    return rect.top === rect.bottom && rect.left === rect.right;
+  }
+
   /** Whether a cell lies inside any range. */
   isCellSelected(cell: TmRowCol): boolean {
     return untracked(this.rangesSignal).some((range) => {

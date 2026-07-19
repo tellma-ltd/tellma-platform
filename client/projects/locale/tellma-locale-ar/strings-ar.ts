@@ -85,6 +85,7 @@ export const TM_LOCALE_AR_STRINGS = {
       copyRefused: 'يتعذر نسخ تحديد متعدد النطاقات بهذا الشكل',
       copyFailed: `فشل النسخ — {gender, select, female {حددي} other {حدد}} الخلايا و${copyVerb} مرة أخرى`,
       cutCancelled: 'تم إلغاء القص',
+      marqueeCleared: 'تم مسح التحديد',
       pasted:
         '{cells, plural, =0 {لم يتم لصق أي شيء} one {تم لصق خلية واحدة} two {تم لصق خليتين} few {تم لصق # خلايا} many {تم لصق # خلية} other {تم لصق # خلية}}{errors, plural, =0 {} one {، خطأ واحد} two {، خطآن} few {، # أخطاء} many {، # خطأ} other {، # خطأ}}{pending, plural, =0 {} one {، خلية واحدة قيد المطابقة} two {، خليتان قيد المطابقة} few {، # خلايا قيد المطابقة} many {، # خلية قيد المطابقة} other {، # خلية قيد المطابقة}}',
       pasteRowsDropped: `تعذرت إضافة ${rowsCounted} — الجدول لا ينشئ صفوفا`,

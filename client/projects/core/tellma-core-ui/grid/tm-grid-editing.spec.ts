@@ -44,7 +44,13 @@ function makeLines(): Line[] {
       style="block-size: 300px"
     >
       <tm-grid-column key="name" header="Name" [width]="140" />
-      <tm-grid-column key="qty" type="number" header="Qty" [width]="100" />
+      <tm-grid-column
+        key="qty"
+        type="number"
+        header="Qty"
+        [maxDecimals]="qtyMaxDecimals()"
+        [width]="100"
+      />
       <tm-grid-column key="active" type="boolean" header="Active" [width]="80" />
       <tm-grid-column key="unit" type="enum" header="Unit" [options]="units" [width]="100" />
     </tm-grid>
@@ -63,6 +69,8 @@ class EditHost {
     });
   });
   readonly readonly = signal(false);
+  /** Display cap on qty's fraction digits (undefined ⇒ unbounded default). */
+  readonly qtyMaxDecimals = signal<number | undefined>(undefined);
   readonly units = ['kg', 'pcs', 'ltr'];
   readonly grid = viewChild.required(TmGrid);
   private nextId = 100;
@@ -251,6 +259,29 @@ describe('tm-grid (editing)', () => {
     // Edit mode: horizontal arrows stay with the caret (no commit, no move).
     keydown(input, 'ArrowLeft');
     expect(editorInput(scroller)).not.toBeNull();
+  });
+
+  it('a number column rounds the display but edits the full-precision value', async () => {
+    const { fixture, host, scroller } = await setup();
+    host.model.set([{ id: 1, name: 'Alpha', qty: 1.2345, active: true, unit: 'kg' }]);
+    host.qtyMaxDecimals.set(2);
+    await stable(fixture);
+
+    // The cell shows the value rounded to two places...
+    expect(cellAt(scroller, 0, 1)!.textContent!.trim()).toBe('1.23');
+
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'ArrowRight'); // (0,1) qty
+    await stable(fixture);
+    keydown(scroller, 'F2');
+    // ...but the editor opens on the UNROUNDED value, so display rounding can
+    // never be committed back over the model's real number.
+    const input = editorInput(scroller) as HTMLInputElement;
+    expect(input.value).toBe('1.2345');
+
+    keydown(input, 'Enter');
+    await stable(fixture);
+    expect(host.model()[0].qty).toBe(1.2345);
   });
 
   it('IME composition keydown opens an UNSEEDED editor without consuming the key', async () => {

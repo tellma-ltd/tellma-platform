@@ -175,7 +175,7 @@ import { ɵTmGridTouchHandles } from './touch-handles';
                   [attr.aria-describedby]="cell.active && cell.invalid && !cell.editing ? core().errorMsgId : null"
                   [tabindex]="cell.active && !core().escaped() ? 0 : -1"
                   [class.tm-grid__cell--active]="cell.active"
-                  [class.tm-grid__cell--selected]="cell.selected"
+                  [class.tm-grid__cell--selected]="cell.fill"
                   [class.tm-grid__cell--error]="cell.invalid"
                   [class.tm-grid__cell--readonly]="cell.readonly"
                   [class.tm-grid__cell--editing]="cell.editing"

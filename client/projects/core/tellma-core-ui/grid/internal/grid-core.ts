@@ -283,6 +283,12 @@ interface ColumnInternal<T> extends ɵTmGridColumnVm {
         ctx: TmPasteContext,
       ) => Promise<ReadonlyMap<string, TmLabelResolution<unknown>>>)
     | undefined;
+  /**
+   * Seeds a text editor with the cell's full-precision value (number columns),
+   * so a display `maxDecimals` rounding never writes back on edit. Absent when
+   * the display text is already the edit text (every non-number column).
+   */
+  readonly editSeedText: ((value: unknown) => string) | undefined;
 }
 
 /** One rendered cell's view model. */
@@ -295,8 +301,10 @@ export interface ɵTmGridCellVm {
   readonly text: string;
   /** Resolved alignment. */
   readonly align: 'start' | 'end' | 'center' | 'left' | 'right';
-  /** Whether the cell lies inside a selection range. */
+  /** Whether the cell lies inside a selection range (drives `aria-selected`). */
   readonly selected: boolean;
+  /** Whether the cell paints the range fill — selected AND not a lone cell. */
+  readonly fill: boolean;
   /** Whether the cell is the active cell. */
   readonly active: boolean;
   /** Boolean columns: the token-driven glyph class; `undefined` otherwise. */
@@ -2052,12 +2060,14 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       );
     }
 
+    const minDecimals = dir.minDecimals();
+    const maxDecimals = dir.maxDecimals();
     const fallbackText = (value: unknown): string =>
       value === null || value === undefined ? '' : String(value);
     const typeText = (value: unknown): string => {
       switch (type) {
         case 'number':
-          return tmFormatNumber(value, locale);
+          return tmFormatNumber(value, locale, minDecimals, maxDecimals);
         case 'boolean':
           return TM_CHECKBOX_CELL_DISPLAY.formatValue((value ?? null) as boolean | null, locale);
         case 'enum':
@@ -2068,6 +2078,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     };
     const getText: (row: T) => string =
       format !== undefined ? (row) => format(getValue(row), row) : (row) => typeText(getValue(row));
+    // A number column's editor opens on the FULL-PRECISION value, not the
+    // (possibly rounded) display text, so `maxDecimals` never writes its
+    // rounding back to the model. A custom [format] owns display AND edit text.
+    const editSeedText: ((value: unknown) => string) | undefined =
+      type === 'number' && format === undefined ? (value) => tmFormatNumber(value, locale) : undefined;
 
     const parse = customParse ?? defaultParseFor(type, enumLabels);
     const readonlyFn = typeof readonlyOption === 'function' ? readonlyOption : null;
@@ -2115,6 +2130,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       optionLabel,
       optionValue,
       resolveLabels,
+      editSeedText,
     };
   }
 
@@ -2206,11 +2222,15 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
 
     const session = editable ? engine.edit.session() : null;
     const fieldErrors = editable ? this.fieldErrorCells() : EMPTY_FIELD_ERRORS;
-    // The armed cut's marquee (§9.5): identity sets so windowed rendering
-    // marks exactly the cut cells whatever the current scroll position.
-    const pendingCut = editable ? engine.clipboard.pendingCut() : null;
-    const cutRowIds = pendingCut === null ? null : new Set(pendingCut.rowIds);
-    const cutColumnIds = pendingCut === null ? null : new Set(pendingCut.columnIds);
+    // The clipboard marquee (§9.5): the armed cut (editable only) OR a plain
+    // copy (any grid, incl. readonly — you can copy from a readonly grid).
+    // Identity sets so windowed rendering marks exactly the marquee cells
+    // whatever the current scroll position.
+    const marquee = (editable ? engine.clipboard.pendingCut() : null) ?? engine.clipboard.copyMarquee();
+    const cutRowIds = marquee === null ? null : new Set(marquee.rowIds);
+    const cutColumnIds = marquee === null ? null : new Set(marquee.columnIds);
+    // A lone selected cell shows only the active ring — no range fill (§8.6).
+    const suppressFill = engine.selection.isSingleCellSelection();
 
     const rows: ɵTmGridRowVm[] = [];
     const pushRow = (viewIndex: number, outlier: boolean): void => {
@@ -2248,6 +2268,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
             (colPos === 0 || !cutColumnIds!.has(columns[colPos - 1].id) ? 's' : '') +
             (colPos === columns.length - 1 || !cutColumnIds!.has(columns[colPos + 1].id) ? 'e' : '');
         const cell: TmRowCol = { row: viewIndex, col: column.index };
+        const selected = engine.selection.isCellSelected(cell);
         const isActive = active !== null && active.row === viewIndex && active.col === column.index;
         const invalid =
           !isPlaceholder &&
@@ -2291,7 +2312,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           ariaColIndex: column.ariaColIndex,
           text: engine.displayText(cell),
           align: column.align,
-          selected: engine.selection.isCellSelected(cell),
+          selected,
+          fill: selected && !suppressFill,
           active: isActive,
           glyphClass,
           displayTemplate,
@@ -2472,10 +2494,16 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       case 'selectAll':
         engine.selection.selectAll();
         return true;
-      case 'escape':
+      case 'escape': {
+        // A copy marquee has no pending cut behind it — announce the right one.
+        const clearedCopy =
+          untracked(() => engine.clipboard.pendingCut()) === null &&
+          untracked(() => engine.clipboard.copyMarquee()) !== null;
         if (engine.escape()) {
-          // Stage one of the Esc chain disarmed the pending cut (§9.5).
-          this.announcements.announce('grid.announce.cutCancelled');
+          // Stage one of the Esc chain cleared the clipboard marquee (§9.5).
+          this.announcements.announce(
+            clearedCopy ? 'grid.announce.marqueeCleared' : 'grid.announce.cutCancelled',
+          );
         } else {
           // The mid-grid exit: the container becomes the single tab stop
           // (cells leave the tab order); any arrow re-enters at the active cell.
@@ -2483,6 +2511,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           untracked(this.scrollerSignal)?.focus();
         }
         return true;
+      }
       case 'expand':
       case 'collapse': {
         // Alt+Arrow acts on the ACTIVE ROW from any column, and is always
@@ -2949,6 +2978,16 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     const view = untracked(() => engine.model.rowAt(cell.row));
     const valueAtOpen = untracked(() => engine.model.cellValue(cell));
     const displayText = untracked(() => engine.displayText(cell));
+    // Number columns edit on the full-precision value (see `editSeedText`), but
+    // an invalid-input cell must still show the raw text the user typed — which
+    // `displayText` already returns for it.
+    const hasInvalidInput =
+      view !== null &&
+      untracked(() => engine.annotations.invalidInput(view.id, column.id)) !== undefined;
+    const editText =
+      column.editSeedText !== undefined && !hasInvalidInput
+        ? column.editSeedText(valueAtOpen)
+        : displayText;
     const header = untracked(column.header);
 
     let config: ɵTmGridEditorMountConfig;
@@ -3000,11 +3039,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       }
     } else if (mounted.kind === 'text') {
       // Edit mode edits the cell's CURRENT DISPLAY TEXT (Excel edits the
-      // formatted text; for an invalid-input cell that is the raw text).
+      // formatted text; for an invalid-input cell that is the raw text) — but a
+      // number column edits its full-precision value, not the rounded display.
       if (editor.seed !== undefined) {
-        editor.seed(displayText);
+        editor.seed(editText);
       } else {
-        editor.value.set(displayText);
+        editor.value.set(editText);
       }
     } else {
       // Consumer template editor: the grid owns the value channel and

@@ -72,6 +72,7 @@ export class TmGridClipboard<T = unknown> {
     copy(opts?: {
         withHeaders?: boolean;
     }): TmGridCopyPayload | null;
+    readonly copyMarquee: Signal<TmGridMarquee | null>;
     cut(fingerprint: (payload: TmGridCopyPayload) => string): TmGridCopyPayload | null;
     fillDown(): void;
     paste(source: TmGridPasteSource, sourceFingerprint?: string): TmGridPasteResult;
@@ -353,6 +354,12 @@ export interface TmGridInvalidInput {
 export type TmGridInvalidInputReason = 'parse' | 'notFound' | 'ambiguous' | 'resolutionFailed';
 
 // @public
+export interface TmGridMarquee {
+    readonly columnIds: readonly string[];
+    readonly rowIds: readonly TmRowId[];
+}
+
+// @public
 export interface TmGridModelWriter<T = unknown> {
     insertNewRows(modelIndex: number, count: number, parentRowId?: TmRowId | null): ReadonlyArray<{
         readonly id: TmRowId;
@@ -535,6 +542,7 @@ export class TmGridSelectionModel {
     compactForCopy(): TmGridCopyShape | null;
     extendActiveTo(cell: TmRowCol): void;
     isCellSelected(cell: TmRowCol): boolean;
+    isSingleCellSelection(): boolean;
     readonly ranges: Signal<readonly TmGridRange[]>;
     rectOf(range: TmGridRange): TmGridRect;
     rects(): readonly TmGridRect[];

@@ -632,6 +632,40 @@ describe('tm-grid (clipboard cut)', () => {
     expect([...edges(0, 1)].sort().join('')).toBe('bet'); // end + top + bottom, no start
   });
 
+  it('arms the marquee on a plain copy too, cleared by Esc', async () => {
+    const { fixture, host, scroller } = await setup();
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'ArrowRight', { shiftKey: true }); // (0,0)-(0,1)
+    await stable(fixture);
+
+    dispatchClipboard(scroller, 'copy');
+    await stable(fixture);
+    // A copy shows the same dashed marquee as a cut — but no deferred move.
+    expect(cellAt(scroller, 0, 0)!.classList.contains('tm-grid__cell--cut')).toBe(true);
+    expect(cellAt(scroller, 0, 1)!.classList.contains('tm-grid__cell--cut')).toBe(true);
+
+    keydown(scroller, 'Escape');
+    await stable(fixture);
+    expect(cellAt(scroller, 0, 0)!.classList.contains('tm-grid__cell--cut')).toBe(false);
+    expect(host.model()[0].name).toBe('Alpha'); // copy never moved anything
+  });
+
+  it('suppresses the range fill for a lone selected cell', async () => {
+    const { fixture, scroller } = await setup();
+    await activateOrigin(fixture, scroller); // a single active cell (0,0)
+
+    // A lone cell reads as a caret: the active ring, no fill.
+    expect(cellAt(scroller, 0, 0)!.classList.contains('tm-grid__cell--active')).toBe(true);
+    expect(cellAt(scroller, 0, 0)!.classList.contains('tm-grid__cell--selected')).toBe(false);
+    // ...but it is still reported selected to assistive tech.
+    expect(cellAt(scroller, 0, 0)!.getAttribute('aria-selected')).toBe('true');
+
+    keydown(scroller, 'ArrowRight', { shiftKey: true }); // grow to a real range
+    await stable(fixture);
+    expect(cellAt(scroller, 0, 0)!.classList.contains('tm-grid__cell--selected')).toBe(true);
+    expect(cellAt(scroller, 0, 1)!.classList.contains('tm-grid__cell--selected')).toBe(true);
+  });
+
   it('Esc disarms the pending cut', async () => {
     const { fixture, host, scroller } = await setup();
     await activateOrigin(fixture, scroller);

@@ -55,4 +55,20 @@ describe('tm-number-codec', () => {
     expect(tmFormatNumber(undefined, 'en')).toBe('');
     expect(tmFormatNumber('', 'en')).toBe('');
   });
+
+  it('pads to minDecimals and rounds at maxDecimals', () => {
+    expect(tmFormatNumber(5, 'en', 2)).toBe('5.00'); // min pads
+    expect(tmFormatNumber(1.005, 'en', 0, 2)).toBe('1.01'); // max rounds
+    expect(tmFormatNumber(1483.8, 'en', 2, 2)).toBe('1,483.80'); // both, with grouping
+    expect(tmFormatNumber(1234.5, 'en', 0, 0)).toBe('1,235'); // integer display
+  });
+
+  it('defaults to 0…20 fraction digits (unbounded look)', () => {
+    expect(tmFormatNumber(1.5, 'en')).toBe('1.5');
+    expect(tmFormatNumber(42, 'en')).toBe('42');
+  });
+
+  it('floors maxDecimals at minDecimals so an inverted pair never throws', () => {
+    expect(tmFormatNumber(1.23, 'en', 3, 1)).toBe('1.230'); // max clamped up to 3
+  });
 });

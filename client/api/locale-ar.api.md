@@ -60,6 +60,7 @@ export const TM_LOCALE_AR_STRINGS: {
             readonly copyRefused: "يتعذر نسخ تحديد متعدد النطاقات بهذا الشكل";
             readonly copyFailed: "فشل النسخ — {gender, select, female {حددي} other {حدد}} الخلايا و{gender, select, female {انسخي} other {انسخ}} مرة أخرى";
             readonly cutCancelled: "تم إلغاء القص";
+            readonly marqueeCleared: "تم مسح التحديد";
             readonly pasted: "{cells, plural, =0 {لم يتم لصق أي شيء} one {تم لصق خلية واحدة} two {تم لصق خليتين} few {تم لصق # خلايا} many {تم لصق # خلية} other {تم لصق # خلية}}{errors, plural, =0 {} one {، خطأ واحد} two {، خطآن} few {، # أخطاء} many {، # خطأ} other {، # خطأ}}{pending, plural, =0 {} one {، خلية واحدة قيد المطابقة} two {، خليتان قيد المطابقة} few {، # خلايا قيد المطابقة} many {، # خلية قيد المطابقة} other {، # خلية قيد المطابقة}}";
             readonly pasteRowsDropped: "تعذرت إضافة {count, plural, zero {# صف} one {صف واحد} two {صفين} few {# صفوف} many {# صفا} other {# صف}} — الجدول لا ينشئ صفوفا";
             readonly undone: "{skipped, plural, =0 {تم التراجع عن {action}} one {تم التراجع عن {action} — صف واحد لم يعد موجودا} two {تم التراجع عن {action} — صفان لم يعودا موجودين} few {تم التراجع عن {action} — # صفوف لم تعد موجودة} many {تم التراجع عن {action} — # صفا لم تعد موجودة} other {تم التراجع عن {action} — # صف لم تعد موجودة}}";

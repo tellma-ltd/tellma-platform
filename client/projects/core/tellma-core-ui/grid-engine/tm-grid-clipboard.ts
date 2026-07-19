@@ -86,6 +86,18 @@ export interface TmGridPendingCut {
   readonly fingerprint: string;
 }
 
+/**
+ * The range a plain copy marks with the dashed marquee (no deferred move —
+ * unlike {@link TmGridPendingCut}, a copy never mutates on paste). Cleared by
+ * the same gestures that disarm a cut: Esc, any edit, a fresh clipboard op.
+ */
+export interface TmGridMarquee {
+  /** The copied rows, in view order at copy time (identity-tracked). */
+  readonly rowIds: readonly TmRowId[];
+  /** The copied columns' ids. */
+  readonly columnIds: readonly string[];
+}
+
 /** Construction inputs of {@link TmGridClipboard}. */
 export interface TmGridClipboardOptions<T = unknown> {
   /** The data model. */
@@ -150,15 +162,24 @@ interface OutstandingRequest {
 export class TmGridClipboard<T = unknown> {
   private readonly options: TmGridClipboardOptions<T>;
   private readonly pendingCutSignal = signal<TmGridPendingCut | null>(null);
+  private readonly copyMarqueeSignal = signal<TmGridMarquee | null>(null);
   private readonly outstanding = new Map<number, OutstandingRequest>();
   private nextRequestId = 1;
 
   /** The armed cut, or `null`. */
   readonly pendingCut: Signal<TmGridPendingCut | null>;
 
+  /**
+   * The plain-copy marquee range, or `null`. Mutually exclusive with
+   * {@link pendingCut} (a cut supersedes it, and vice versa) — the render
+   * layer draws the marquee from whichever is set.
+   */
+  readonly copyMarquee: Signal<TmGridMarquee | null>;
+
   constructor(options: TmGridClipboardOptions<T>) {
     this.options = options;
     this.pendingCut = this.pendingCutSignal.asReadonly();
+    this.copyMarquee = this.copyMarqueeSignal.asReadonly();
   }
 
   /**
@@ -182,6 +203,15 @@ export class TmGridClipboard<T = unknown> {
       return null;
     }
     const model = this.options.model;
+    // Mark the copied range with the dashed marquee (§9.5) — like a cut, but
+    // with no deferred move. `cancelCut()` above cleared any prior marquee; a
+    // later cut supersedes this one (it clears it after arming its own).
+    this.copyMarqueeSignal.set({
+      rowIds: shape.rows
+        .map((row) => model.rowAt(row)?.id)
+        .filter((id): id is TmRowId => id !== undefined),
+      columnIds: shape.cols.map((col) => model.columnAt(col).id),
+    });
     const cellCount = shape.rows.length * shape.cols.length;
     const matrix: string[][] = [];
     const rawValues: Array<Array<{ readonly value: unknown } | undefined>> = [];
@@ -278,13 +308,18 @@ export class TmGridClipboard<T = unknown> {
       isFullRows: payload.rowIds !== undefined,
       fingerprint: fingerprint(payload),
     });
+    // The cut owns the marquee now; drop the copy marquee `copy()` just armed.
+    this.copyMarqueeSignal.set(null);
     return payload;
   }
 
-  /** Disarms the pending cut (Esc, any edit, mode flips). */
+  /** Disarms the pending cut AND the copy marquee (Esc, any edit, mode flips). */
   cancelCut(): void {
     if (untracked(this.pendingCutSignal) !== null) {
       this.pendingCutSignal.set(null);
+    }
+    if (untracked(this.copyMarqueeSignal) !== null) {
+      this.copyMarqueeSignal.set(null);
     }
   }
 

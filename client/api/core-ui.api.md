@@ -81,6 +81,7 @@ export const TM_UI_STRINGS_EN: {
             readonly copyRefused: "Cannot copy a multi-range selection of this shape";
             readonly copyFailed: "Copy failed — select the cells and copy again";
             readonly cutCancelled: "Cut cancelled";
+            readonly marqueeCleared: "Marquee cleared";
             readonly pasted: "{cells, plural, =0 {Nothing} one {1 cell} other {# cells}} pasted{errors, plural, =0 {} one {, 1 error} other {, # errors}}{pending, plural, =0 {} one {, 1 resolving} other {, # resolving}}";
             readonly pasteRowsDropped: "{count, plural, one {1 row} other {# rows}} could not be added — the grid does not create rows";
             readonly undone: "{skipped, plural, =0 {Undid {action}} one {Undid {action} — 1 row no longer exists} other {Undid {action} — # rows no longer exist}}";

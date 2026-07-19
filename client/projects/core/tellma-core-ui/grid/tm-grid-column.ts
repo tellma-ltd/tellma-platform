@@ -99,6 +99,20 @@ export class TmGridColumn<T = unknown, V = unknown> {
    * else `start`.
    */
   readonly align = input<'start' | 'end' | 'center' | 'left' | 'right' | undefined>(undefined);
+  /**
+   * `number` columns: the fewest fraction digits to display, zero-padded
+   * (e.g. `2` renders `5` as `5.00`). Defaults to `0`. Ignored when a custom
+   * [format] is bound.
+   */
+  readonly minDecimals = input<number | undefined>(undefined);
+  /**
+   * `number` columns: the most fraction digits to display, rounding the rest
+   * away (e.g. `2` renders `1.005` as `1.01`). Defaults to unbounded. The
+   * displayed rounding never reaches the model — editing a cell seeds the
+   * editor with the full-precision value. Ignored when a custom [format] is
+   * bound.
+   */
+  readonly maxDecimals = input<number | undefined>(undefined);
   /** Marks the column that renders the tree hierarchy (defaults to the first). */
   readonly hierarchy = input(false, { transform: booleanAttribute });
 

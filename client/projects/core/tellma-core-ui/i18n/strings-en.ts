@@ -61,6 +61,7 @@ export const TM_UI_STRINGS_EN = {
       copyRefused: 'Cannot copy a multi-range selection of this shape',
       copyFailed: 'Copy failed — select the cells and copy again',
       cutCancelled: 'Cut cancelled',
+      marqueeCleared: 'Marquee cleared',
       pasted:
         '{cells, plural, =0 {Nothing} one {1 cell} other {# cells}} pasted{errors, plural, =0 {} one {, 1 error} other {, # errors}}{pending, plural, =0 {} one {, 1 resolving} other {, # resolving}}',
       pasteRowsDropped:
