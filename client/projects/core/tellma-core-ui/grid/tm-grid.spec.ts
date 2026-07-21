@@ -104,6 +104,12 @@ function keydown(target: HTMLElement, key: string, init: KeyboardEventInit = {})
   );
 }
 
+function pointerPress(target: HTMLElement, init: PointerEventInit = {}): void {
+  target.dispatchEvent(
+    new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, ...init }),
+  );
+}
+
 function cellAt(scroller: HTMLElement, row: number, col: number): HTMLElement | null {
   return scroller.querySelector<HTMLElement>(
     `[data-tm-cell][data-row="${row}"][data-col="${col}"]`,
@@ -377,17 +383,41 @@ describe('tm-grid (custom header template §6.2)', () => {
     const header = scroller.querySelector('[data-tm-colhdr][data-col="0"]') as HTMLElement;
     expect(header.querySelector('.hdr-label')?.textContent).toBe('Name');
 
-    // A click on the projected BUTTON keeps its own affordance: no column
-    // selection results.
-    (header.querySelector('.hdr-btn') as HTMLElement).click();
+    // A press on the projected BUTTON keeps its own affordance: no column
+    // selection results (column headers select on pointerdown, like rows).
+    pointerPress(header.querySelector('.hdr-btn') as HTMLElement);
     await stable(fixture);
     expect(scroller.querySelectorAll('[data-tm-cell][aria-selected="true"]').length).toBe(0);
 
-    // A click on the header background selects the column.
-    header.click();
+    // A press on the header background selects the column.
+    pointerPress(header);
     await stable(fixture);
     expect(cellAt(scroller, 0, 0)?.getAttribute('aria-selected')).toBe('true');
     expect(cellAt(scroller, 0, 1)?.getAttribute('aria-selected')).toBeNull();
+  });
+
+  it('column headers shift-extend a column span, like row headers', async () => {
+    const { scroller, fixture } = await setup();
+    const colHdr = (c: number): HTMLElement =>
+      scroller.querySelector(`[data-tm-colhdr][data-col="${c}"]`) as HTMLElement;
+    pointerPress(colHdr(0));
+    await stable(fixture);
+    pointerPress(colHdr(2), { shiftKey: true });
+    document.dispatchEvent(new PointerEvent('pointerup', { pointerId: 0 })); // end the drag
+    await stable(fixture);
+    expect(cellAt(scroller, 0, 0)?.getAttribute('aria-selected')).toBe('true');
+    expect(cellAt(scroller, 0, 1)?.getAttribute('aria-selected')).toBe('true');
+    expect(cellAt(scroller, 0, 2)?.getAttribute('aria-selected')).toBe('true');
+    expect(cellAt(scroller, 0, 3)?.getAttribute('aria-selected')).toBeNull();
+  });
+
+  it('right-click on a column header selects that column first', async () => {
+    const { scroller, fixture } = await setup();
+    const colHdr = scroller.querySelector('[data-tm-colhdr][data-col="1"]') as HTMLElement;
+    colHdr.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    await stable(fixture);
+    expect(cellAt(scroller, 0, 1)?.getAttribute('aria-selected')).toBe('true');
+    expect(cellAt(scroller, 0, 0)?.getAttribute('aria-selected')).toBeNull();
   });
 });
 

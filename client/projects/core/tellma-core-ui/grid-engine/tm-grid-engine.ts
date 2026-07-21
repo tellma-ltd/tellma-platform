@@ -5,14 +5,19 @@
 
 import { untracked } from '@angular/core';
 
-import type { TmCellEdit, TmRowId } from '@tellma/core-ui/contracts';
+import type { TmCellEdit, TmGridSelectionSnapshot, TmRowId } from '@tellma/core-ui/contracts';
 
 import { TmGridCellAnnotations } from './tm-grid-cell-annotations';
 import { TmGridClipboard } from './tm-grid-clipboard';
 import { TmGridDataModel, type TmGridOrderSnapshot } from './tm-grid-data-model';
 import { TmGridEditState } from './tm-grid-edit-state';
 import type { TmGridEngineOptions } from './tm-grid-host';
-import { TmGridHistory, type TmGridCellWrite, type TmGridRowSnapshot } from './tm-grid-history';
+import {
+  TmGridHistory,
+  type TmGridCellWrite,
+  type TmGridHistoryReveal,
+  type TmGridRowSnapshot,
+} from './tm-grid-history';
 import { TmGridNav } from './tm-grid-nav';
 import { TmGridSelectionModel } from './tm-grid-selection';
 import type { TmGridMotion, TmGridRange, TmRowCol } from './tm-grid-types';
@@ -72,7 +77,9 @@ export class TmGridEngine<T = unknown> {
       editable: options.editable,
       host: options.host,
       capacity: options.historyCapacity,
-      onReveal: (reveal) => this.revealAfterHistory(reveal.rowIds, reveal.columnIds),
+      onReveal: (reveal, direction) => this.revealAfterHistory(reveal, direction),
+      snapshotSelection: () =>
+        this.selection.toSnapshot(untracked(() => this.nav.activeCell())),
     });
     this.edit = new TmGridEditState<T>({
       model: this.model,
@@ -337,18 +344,32 @@ export class TmGridEngine<T = unknown> {
     }
     const ids: TmRowId[] = [];
     const seen = new Set<TmRowId>();
-    for (const span of this.selection.rowsUnion()) {
-      for (let row = span.start; row <= span.end; row++) {
-        const view = this.model.rowAt(row);
-        if (view === null) {
-          continue;
+    const addRow = (row: number): void => {
+      const view = this.model.rowAt(row);
+      if (view === null) {
+        return;
+      }
+      for (const member of this.model.subtreeRowIds(view.id)) {
+        if (!seen.has(member)) {
+          seen.add(member);
+          ids.push(member);
         }
-        for (const member of this.model.subtreeRowIds(view.id)) {
-          if (!seen.has(member)) {
-            seen.add(member);
-            ids.push(member);
-          }
+      }
+    };
+    const spans = this.selection.rowsUnion();
+    if (spans.length > 0) {
+      for (const span of spans) {
+        for (let row = span.start; row <= span.end; row++) {
+          addRow(row);
         }
+      }
+    } else {
+      // A row delete leaves only the active cell at the successor row (the
+      // selection remaps to empty); fall back to it so repeated Ctrl+Alt+Minus
+      // keeps deleting down the list instead of stalling after the first row.
+      const active = untracked(() => this.nav.activeCell());
+      if (active !== null) {
+        addRow(active.row);
       }
     }
     if (ids.length === 0) {
@@ -584,13 +605,34 @@ export class TmGridEngine<T = unknown> {
   }
 
   /**
-   * After undo/redo: expand the ancestors of every affected row, re-select
-   * the affected bounding range, and hand the component the reveal target.
+   * After undo/redo: expand the ancestors of every affected row, restore the
+   * op's captured selection (or, failing that, re-select the affected bounding
+   * range), and hand the component the reveal target.
    */
-  private revealAfterHistory(rowIds: readonly TmRowId[], columnIds: readonly string[]): void {
+  private revealAfterHistory(reveal: TmGridHistoryReveal, direction: 'undo' | 'redo'): void {
+    void direction;
+    const { rowIds, columnIds } = reveal;
     this.syncOrder();
     for (const id of rowIds) {
       this.model.expandAncestorsOf(id);
+    }
+    // The op stamped the exact selection to restore (pre-op on undo, post-op on
+    // redo). Restore it verbatim when it still resolves — the bounding-box
+    // fallback below is wrong for ops whose written cells don't match the
+    // selection (fill-down omits its source row; a cut-move writes both ends).
+    if (reveal.selection !== undefined) {
+      const restored = this.selection.restore(reveal.selection as TmGridSelectionSnapshot);
+      if (restored.restored && restored.activeCell !== null) {
+        this.nav.setActive(restored.activeCell);
+        const range = untracked(() => this.selection.activeRange()) ?? {
+          anchor: restored.activeCell,
+          focus: restored.activeCell,
+          kind: 'cells' as const,
+        };
+        this.options.host.onReveal?.({ cell: restored.activeCell, range });
+        this.syncOrder();
+        return;
+      }
     }
     let top = Number.POSITIVE_INFINITY;
     let bottom = -1;

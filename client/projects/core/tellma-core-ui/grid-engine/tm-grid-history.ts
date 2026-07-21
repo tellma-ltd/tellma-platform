@@ -62,6 +62,16 @@ interface HistoryEntry<T> {
   open: boolean;
   /** Cancels outstanding async work when an open entry is undone. */
   onCancel: (() => void) | null;
+  /**
+   * Opaque selection snapshot captured just BEFORE the op ran; undo restores
+   * it verbatim. Without it, undo would infer the selection from the op's
+   * written cells — wrong when those don't coincide with the prior selection
+   * (fill-down never writes its source row; a cut-move writes both source and
+   * target). Opaque so the history stays decoupled from the selection model.
+   */
+  selectionBefore?: unknown;
+  /** Selection snapshot captured at undo time (the post-op state); redo restores it. */
+  selectionAfter?: unknown;
 }
 
 /**
@@ -93,6 +103,12 @@ export interface TmGridHistoryReveal {
   readonly rowIds: readonly TmRowId[];
   /** The affected column ids (empty for purely structural ops). */
   readonly columnIds: readonly string[];
+  /**
+   * The selection snapshot to restore (the pre-op state on undo, the post-op
+   * state on redo). When present and resolvable, the reveal restores it
+   * instead of inferring the range from `rowIds`/`columnIds`.
+   */
+  readonly selection?: unknown;
 }
 
 /**
@@ -128,6 +144,12 @@ export interface TmGridHistoryOptions<T = unknown> {
   readonly host?: Pick<TmGridEngineHost<T>, 'onNotice' | 'onWarn'>;
   /** Called after undo/redo applies, with the affected identities. */
   onReveal?(reveal: TmGridHistoryReveal, direction: 'undo' | 'redo'): void;
+  /**
+   * Captures the current selection as an opaque snapshot, stamped onto each
+   * entry so undo/redo restore the real prior selection (see
+   * {@link HistoryEntry.selectionBefore}).
+   */
+  snapshotSelection?(): unknown;
   /** Stack depth cap. Defaults to 100. */
   readonly capacity?: number;
 }
@@ -405,6 +427,9 @@ export class TmGridHistory<T = unknown> {
       entry.open = false;
       entry.onCancel = null;
     }
+    // Capture the post-op selection (the current state) so a later redo can
+    // restore it, then undo restores the pre-op selection (in applyEntry).
+    entry.selectionAfter = this.options.snapshotSelection?.();
     this.version.update((v) => v + 1);
     const skipped = this.applyEntry(entry, 'undo');
     if (skipped === 'nothing') {
@@ -491,6 +516,9 @@ export class TmGridHistory<T = unknown> {
   }
 
   private push(entry: HistoryEntry<T>): void {
+    // Snapshot the selection BEFORE the op mutates (push runs ahead of every
+    // writer call), so undo can restore exactly what was selected.
+    entry.selectionBefore = this.options.snapshotSelection?.();
     this.undoStack.push(entry);
     this.redoStack = [];
     if (this.undoStack.length > this.capacity) {
@@ -697,8 +725,12 @@ export class TmGridHistory<T = unknown> {
     if (!applied) {
       return 'nothing';
     }
+    // Undo restores the pre-op selection; redo the post-op one. A missing
+    // snapshot (older entry, or none captured) leaves the reveal to infer the
+    // range from the touched cells.
+    const selection = direction === 'undo' ? entry.selectionBefore : entry.selectionAfter;
     this.options.onReveal?.(
-      { rowIds: [...touchedRowIds], columnIds: [...touchedColumnIds] },
+      { rowIds: [...touchedRowIds], columnIds: [...touchedColumnIds], selection },
       direction,
     );
     return skippedRowIds.size;

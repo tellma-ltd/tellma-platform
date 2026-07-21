@@ -37,6 +37,12 @@ export interface TmMenuItem {
   readonly icon?: TemplateRef<void>;
   /** Whether the item is disabled (kept navigable, never activates). */
   readonly disabled?: boolean;
+  /**
+   * Keyboard-shortcut hint shown trailing the label in the muted hint color
+   * (e.g. `⌘C` / `Ctrl+C`). Display only — the caller pre-formats it for the
+   * platform; it never binds the accelerator.
+   */
+  readonly shortcut?: string;
   /** Runs on activation (click, Enter, Space), before the menu closes. */
   action(): void;
 }
@@ -121,6 +127,9 @@ const openMenuStack: TmMenu[] = [];
                   }
                 </span>
                 <span class="tm-menu__label">{{ labelOf(entry)() }}</span>
+                @if (entry.shortcut; as shortcut) {
+                  <span class="tm-menu__shortcut" aria-hidden="true">{{ shortcut }}</span>
+                }
               </div>
             }
           }

@@ -170,6 +170,19 @@ describe('TmGridEngine', () => {
       expect(h.notices).toContainEqual({ kind: 'rowsDeleted', count: 4 });
     });
 
+    it('deleteSelectedRows chains on repeat — the moved-down active cell is the next target', () => {
+      const h = makeEngine(makeRows(4)); // ids 1,2,3,4
+      h.engine.clickCell({ row: 1, col: 0 }); // select id 2
+      h.engine.deleteSelectedRows();
+      expect(h.rows().map((row) => row.id)).toEqual([1, 3, 4]);
+      // A row delete remaps the selection to empty, leaving only the active
+      // cell at the successor row; the fallback must delete it, not stall.
+      h.engine.deleteSelectedRows();
+      expect(h.rows().map((row) => row.id)).toEqual([1, 4]);
+      h.engine.deleteSelectedRows();
+      expect(h.rows().map((row) => row.id)).toEqual([1]);
+    });
+
     it('collapsing an ancestor of the active cell moves activation to the ancestor', () => {
       const h = makeEngine(
         [

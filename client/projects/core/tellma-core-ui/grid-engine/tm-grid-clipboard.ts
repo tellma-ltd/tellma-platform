@@ -237,8 +237,14 @@ export class TmGridClipboard<T = unknown> {
       rawValues.push(rawRow);
     }
     const ranges = untracked(() => this.options.selection.ranges());
+    // Full rows: an explicit row/all selection, OR a cell selection that spans
+    // every column (whole rows picked cell-by-cell). Both carry row identities
+    // so a same-grid paste MOVES the rows instead of pasting values (§9.5).
+    const spansEveryColumn = shape.cols.length === untracked(() => model.columnCount());
     const isFullRows =
-      ranges.length > 0 && ranges.every((range) => range.kind === 'rows' || range.kind === 'all');
+      ranges.length > 0 &&
+      (spansEveryColumn ||
+        ranges.every((range) => range.kind === 'rows' || range.kind === 'all'));
     const rowIds = isFullRows
       ? shape.rows
           .map((row) => model.rowAt(row)?.id)

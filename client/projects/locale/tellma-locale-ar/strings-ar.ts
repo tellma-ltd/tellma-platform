@@ -110,7 +110,7 @@ export const TM_LOCALE_AR_STRINGS = {
       loading: 'جار التحميل',
     },
     cellErrors: {
-      invalidInput: '«{text}» ليست قيمة {column} صالحة؛ يبقى الحقل فارغا حتى يتم التصحيح.',
+      invalidInput: '«{text}» ليست قيمة {column} صالحة.',
       notFound: 'لا يوجد {collection} باسم «{label}»',
       ambiguous: '«{label}» يطابق أكثر من {collection}',
       resolutionFailed: 'تعذر التحقق من «{label}» في {collection} — الصقها مجددا لإعادة المحاولة',

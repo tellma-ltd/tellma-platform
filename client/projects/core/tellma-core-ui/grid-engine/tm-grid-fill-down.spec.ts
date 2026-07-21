@@ -20,6 +20,18 @@ describe('TmGridClipboard fillDown', () => {
     expect(h.engine.history.canUndo()).toBe(false);
   });
 
+  it('undo restores the WHOLE filled range, not one row short', () => {
+    const h = makeEngine(makeRows(4));
+    h.engine.clickCell({ row: 0, col: 0 });
+    h.engine.selection.extendActiveTo({ row: 2, col: 0 }); // rows 0..2, col 0
+    h.engine.clipboard.fillDown();
+    expect(h.engine.history.undo()).toBe(true);
+    // Fill-down never writes its source row, so the old written-cells heuristic
+    // dropped the top cell on undo (restoring 1..2); the captured snapshot keeps
+    // the original 0..2 range.
+    expect(h.engine.selection.activeRect()).toEqual({ top: 0, bottom: 2, left: 0, right: 0 });
+  });
+
   it('copies the cell above into a single-cell selection', () => {
     const h = makeEngine(makeRows(2));
     h.engine.clickCell({ row: 1, col: 0 });

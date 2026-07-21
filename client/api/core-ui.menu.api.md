@@ -63,6 +63,7 @@ export interface TmMenuItem {
     readonly id: string;
     readonly label?: string;
     readonly labelKey?: string;
+    readonly shortcut?: string;
 }
 
 // @public

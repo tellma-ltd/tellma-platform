@@ -80,7 +80,7 @@ export const TM_LOCALE_AR_STRINGS: {
             readonly loading: "جار التحميل";
         };
         readonly cellErrors: {
-            readonly invalidInput: "«{text}» ليست قيمة {column} صالحة؛ يبقى الحقل فارغا حتى يتم التصحيح.";
+            readonly invalidInput: "«{text}» ليست قيمة {column} صالحة.";
             readonly notFound: "لا يوجد {collection} باسم «{label}»";
             readonly ambiguous: "«{label}» يطابق أكثر من {collection}";
             readonly resolutionFailed: "تعذر التحقق من «{label}» في {collection} — الصقها مجددا لإعادة المحاولة";

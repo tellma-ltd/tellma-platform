@@ -161,6 +161,32 @@ describe('TmGridClipboard cut-paste move', () => {
     expect(h.engine.history.canUndo()).toBe(false);
   });
 
+  it('moves like a full-row cut when a CELL range covers every column (§9.5)', () => {
+    const h = makeEngine(makeRows(4));
+    // A cell range spanning all columns a,b,c — NOT selectRows — still moves.
+    h.engine.clickCell({ row: 0, col: 0 });
+    h.engine.selection.extendActiveTo({ row: 0, col: 2 });
+    const payload = requirePayload(h.engine.clipboard.cut(() => 'fp'));
+    expect(h.engine.clipboard.pendingCut()?.isFullRows).toBe(true);
+    expect(payload.rowIds).toEqual([1]);
+    h.engine.clickCell({ row: 2, col: 0 }); // row id 3
+    h.engine.clipboard.paste(sourceOf(payload), 'fp');
+    expect(h.rows().map((row) => row.id)).toEqual([2, 1, 3, 4]); // moved, not pasted
+    expect(h.notices).toContainEqual({ kind: 'rowsMoved', count: 1 });
+  });
+
+  it('undo of a single-cell cut-paste restores the prior selection, not the A→B span', () => {
+    const h = makeEngine(makeRows(4));
+    h.engine.clickCell({ row: 0, col: 0 }); // cut source A
+    const payload = requirePayload(h.engine.clipboard.cut(() => 'fp'));
+    h.engine.clickCell({ row: 2, col: 1 }); // paste target B (the live selection)
+    h.engine.clipboard.paste(sourceOf(payload), 'fp');
+    expect(h.engine.history.undo()).toBe(true);
+    // The selection returns to B — NOT the whole A..B rectangle the old
+    // written-cells heuristic would have inferred.
+    expect(h.engine.selection.activeRect()).toEqual({ top: 2, bottom: 2, left: 1, right: 1 });
+  });
+
   it('treats a move onto its own selection as a no-op', () => {
     const h = makeEngine(makeRows(3));
     h.engine.selection.selectRows(0, 1, false);

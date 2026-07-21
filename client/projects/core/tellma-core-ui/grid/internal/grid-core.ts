@@ -105,6 +105,22 @@ const BUILT_IN_EDIT_TYPES: ReadonlySet<TmGridColumnType> = new Set([
 const IS_MAC_PLATFORM =
   typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 
+/**
+ * Context-menu shortcut hints (display only — §8.5), formatted for the
+ * platform: Apple stacks glyphs (⌘⌥+), everything else joins with `+`
+ * (Ctrl+Alt++). The keys mirror the keymap: cut/copy/paste are the native
+ * Mod+X/C/V; row ops are the Alt-modified Mod+Alt+±.
+ */
+const GRID_MENU_SHORTCUTS = IS_MAC_PLATFORM
+  ? { cut: '⌘X', copy: '⌘C', paste: '⌘V', insertAbove: '⌘⌥+', deleteRows: '⌘⌥−' }
+  : {
+      cut: 'Ctrl+X',
+      copy: 'Ctrl+C',
+      paste: 'Ctrl+V',
+      insertAbove: 'Ctrl+Alt++',
+      deleteRows: 'Ctrl+Alt+−',
+    };
+
 /** Natively-focusable content consumers may project into cells/headers. */
 const INTERACTIVE_CONTENT_SELECTOR = 'a[href], button, input, select, textarea, [tabindex]';
 
@@ -1598,6 +1614,33 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         this.requestFocusActive();
       }
       this.beginDrag(event, 'rows');
+      return;
+    }
+    // Column headers mirror row headers (§6.4): press-select the column,
+    // shift-extend the column span, and drag across headers to select a range
+    // of columns. Interactive projected header content keeps its own click.
+    const colHeader = target.closest('[data-tm-colhdr]');
+    if (colHeader !== null) {
+      const interactive = target.closest(INTERACTIVE_CONTENT_SELECTOR);
+      if (interactive !== null && colHeader.contains(interactive)) {
+        return;
+      }
+      const col = Number(colHeader.getAttribute('data-col'));
+      if (!Number.isInteger(col)) {
+        return;
+      }
+      event.preventDefault();
+      this.escapedSignal.set(false);
+      if (event.shiftKey) {
+        this.engine.selection.extendActiveTo({ row: 0, col });
+      } else {
+        if (untracked(() => this.engine.model.viewRowCount()) > 0) {
+          this.engine.nav.setActive({ row: 0, col });
+        }
+        this.engine.selection.selectCols(col, col, mod);
+        this.requestFocusActive();
+      }
+      this.beginDrag(event, 'cols');
     }
   }
 
@@ -1644,27 +1687,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       }
       return;
     }
-    const header = target.closest('[data-tm-colhdr]');
-    if (header !== null) {
-      // Interactive projected header content never triggers column selection.
-      const interactive = target.closest('a, button, input, select, [tabindex]');
-      if (interactive !== null && header.contains(interactive)) {
-        return;
-      }
-      const col = Number(header.getAttribute('data-col'));
-      if (!Number.isInteger(col)) {
-        return;
-      }
-      const engine = this.engine;
-      const mod = IS_MAC_PLATFORM ? event.metaKey : event.ctrlKey;
-      this.escapedSignal.set(false);
-      if (untracked(() => engine.model.viewRowCount()) > 0) {
-        engine.nav.setActive({ row: 0, col });
-      }
-      engine.selection.selectCols(col, col, mod);
-      this.requestFocusActive();
-      return;
-    }
+    // Column headers select on POINTERDOWN now (mouse drag + shift-extend, see
+    // onPointerDown) — a touch tap still routes through onTouchTap below.
     // Touch taps (§8.6): the pointerdown deliberately did nothing (native
     // pan), so the synthesized click is where a tap activates its target.
     if (event instanceof PointerEvent && event.pointerType === 'touch') {
@@ -1701,6 +1725,24 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       this.escapedSignal.set(false);
       this.engine.nav.setActive({ row, col: 0 });
       this.engine.selection.selectRows(row, row, false);
+      this.requestFocusActive();
+      return;
+    }
+    const colHeader = target.closest('[data-tm-colhdr]');
+    if (colHeader !== null) {
+      const interactive = target.closest(INTERACTIVE_CONTENT_SELECTOR);
+      if (interactive !== null && colHeader.contains(interactive)) {
+        return;
+      }
+      const col = Number(colHeader.getAttribute('data-col'));
+      if (!Number.isInteger(col)) {
+        return;
+      }
+      this.escapedSignal.set(false);
+      if (untracked(() => this.engine.model.viewRowCount()) > 0) {
+        this.engine.nav.setActive({ row: 0, col });
+      }
+      this.engine.selection.selectCols(col, col, false);
       this.requestFocusActive();
     }
   }
@@ -1752,7 +1794,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       this.commitEditor({ refocus: true });
     }
     if (event.target instanceof Element) {
-      this.selectMenuTarget(event.target.closest('[data-tm-cell]'));
+      this.selectMenuTarget(event.target);
     }
     const element = this.activeCellElement();
     const keyboardSourced = event.clientX === 0 && event.clientY === 0;
@@ -1761,6 +1803,27 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         ? element.getBoundingClientRect()
         : { x: event.clientX, y: event.clientY };
     menu.open(anchor, element !== null ? { restoreFocus: element } : undefined);
+  }
+
+  /**
+   * Swallows the single native `contextmenu` event the keyboard Menu key emits
+   * right after we open the menu from its keydown, wherever it lands (capture
+   * phase, document-wide). A microtask timeout drops the listener when no such
+   * event follows (a synthetic keydown in tests, a browser that omits it), so
+   * it never eats a later, unrelated right-click.
+   */
+  private suppressNextNativeContextMenu(): void {
+    const swallow = (event: Event): void => {
+      event.preventDefault();
+      event.stopPropagation();
+      cleanup();
+    };
+    const cleanup = (): void => {
+      document.removeEventListener('contextmenu', swallow, true);
+      clearTimeout(timer);
+    };
+    const timer = setTimeout(cleanup, 0);
+    document.addEventListener('contextmenu', swallow, true);
   }
 
   /**
@@ -1778,20 +1841,54 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       this.commitEditor({ refocus: true });
     }
     const hit = document.elementFromPoint(point.x, point.y);
-    this.selectMenuTarget(hit?.closest('[data-tm-cell]') ?? null);
+    this.selectMenuTarget(hit);
     const element = this.activeCellElement();
     menu.open(point, element !== null ? { restoreFocus: element } : undefined);
   }
 
-  /** Right-click/long-press target outside the selection becomes it (Excel). */
-  private selectMenuTarget(cellElement: Element | null): void {
+  /**
+   * Right-click/long-press target outside the selection becomes it (Excel).
+   * A row/column header selects its whole row/column first, so the menu acts
+   * on that header; a header already inside the selection keeps it (the menu
+   * then acts on every selected row/column).
+   */
+  private selectMenuTarget(target: Element | null): void {
+    if (target === null) {
+      return;
+    }
+    const engine = this.engine;
+    const rowHeader = target.closest('[data-tm-rowhdr]');
+    if (rowHeader !== null) {
+      const row = Number(rowHeader.getAttribute('data-row'));
+      if (Number.isInteger(row) && !untracked(() => engine.selection.rowIntersects(row))) {
+        this.escapedSignal.set(false);
+        engine.nav.setActive({ row, col: 0 });
+        engine.selection.selectRows(row, row, false);
+        this.requestFocusActive();
+      }
+      return;
+    }
+    const colHeader = target.closest('[data-tm-colhdr]');
+    if (colHeader !== null) {
+      const col = Number(colHeader.getAttribute('data-col'));
+      if (Number.isInteger(col) && !untracked(() => engine.selection.colIntersects(col))) {
+        this.escapedSignal.set(false);
+        if (untracked(() => engine.model.viewRowCount()) > 0) {
+          engine.nav.setActive({ row: 0, col });
+        }
+        engine.selection.selectCols(col, col, false);
+        this.requestFocusActive();
+      }
+      return;
+    }
+    const cellElement = target.closest('[data-tm-cell]');
     if (cellElement === null) {
       return;
     }
     const cell = this.cellFromElement(cellElement);
-    if (cell !== null && !untracked(() => this.engine.selection.isCellSelected(cell))) {
+    if (cell !== null && !untracked(() => engine.selection.isCellSelected(cell))) {
       this.escapedSignal.set(false);
-      this.engine.clickCell(cell);
+      engine.clickCell(cell);
       this.requestFocusActive();
     }
   }
@@ -2461,6 +2558,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           return false;
         }
         menu.open(element.getBoundingClientRect(), { restoreFocus: element });
+        // The physical Menu/Application key (and Shift+F10) ALSO emit a native
+        // contextmenu after this keydown — and once the menu takes focus it
+        // lands on the overlay, out of the scroller's onContextMenu reach.
+        // Swallow that one event so the native menu never stacks on ours.
+        this.suppressNextNativeContextMenu();
         return true;
       }
       case 'clear':
@@ -3127,6 +3229,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         id: 'cut',
         label: translate('grid.menu.cut')(),
         icon: icons?.cut,
+        shortcut: GRID_MENU_SHORTCUTS.cut,
         disabled: !editable,
         action: () => this.clipboardDom.cutAsync(),
       },
@@ -3134,6 +3237,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         id: 'copy',
         label: translate('grid.menu.copy')(),
         icon: icons?.copy,
+        shortcut: GRID_MENU_SHORTCUTS.copy,
         action: () => this.clipboardDom.copyAsync(),
       },
       {
@@ -3147,13 +3251,14 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
             id: 'paste',
             label: translate('grid.menu.paste')(),
             icon: icons?.clipboard,
+            shortcut: GRID_MENU_SHORTCUTS.paste,
             disabled: !editable,
             action: () => void this.pasteFromAsyncClipboard(),
           }
         : {
             id: 'paste',
             label: translate('grid.menu.pasteHint', {
-              shortcut: IS_MAC_PLATFORM ? '⌘V' : 'Ctrl+V',
+              shortcut: GRID_MENU_SHORTCUTS.paste,
             })(),
             icon: icons?.clipboard,
             disabled: true,
@@ -3167,6 +3272,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           id: 'insertAbove',
           label: translate('grid.menu.insertAbove', { count })(),
           icon: icons?.listPlus,
+          shortcut: GRID_MENU_SHORTCUTS.insertAbove,
           disabled: !canAddRows,
           action: () => this.engine.insertRows('above'),
         },
@@ -3195,6 +3301,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         id: 'deleteRows',
         label: translate('grid.menu.deleteRows', { count })(),
         icon: icons?.listMinus,
+        shortcut: GRID_MENU_SHORTCUTS.deleteRows,
         // Refocus the surviving active cell: the menu's restoreFocus targets
         // the now-deleted cell, so focus would otherwise fall out of the grid.
         action: () => {
@@ -3325,7 +3432,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.beginDrag(event, 'cells');
   }
 
-  private beginDrag(event: PointerEvent, mode: 'cells' | 'rows'): void {
+  private beginDrag(event: PointerEvent, mode: 'cells' | 'rows' | 'cols'): void {
     const scroller = untracked(this.scrollerSignal);
     if (scroller === null) {
       return;
@@ -3348,6 +3455,15 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     const applyPoint = (): void => {
       const cellElement = this.dragHitElement(lastX, lastY);
       if (cellElement === null) {
+        return;
+      }
+      // Column headers carry data-col but no data-row, so resolve the 'cols'
+      // drag before the row check below (which would reject a header hit).
+      if (mode === 'cols') {
+        const col = Number(cellElement.getAttribute('data-col'));
+        if (Number.isInteger(col)) {
+          this.engine.selection.extendActiveTo({ row: 0, col });
+        }
         return;
       }
       const row = Number(cellElement.getAttribute('data-row'));
@@ -3438,7 +3554,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   private dragHitElement(x: number, y: number): Element | null {
     const scroller = untracked(this.scrollerSignal);
     for (const element of document.elementsFromPoint(x, y)) {
-      const hit = element.closest('[data-tm-cell], [data-tm-rowhdr], [data-tm-checkcell]');
+      const hit = element.closest(
+        '[data-tm-cell], [data-tm-rowhdr], [data-tm-colhdr], [data-tm-checkcell]',
+      );
       // Only THIS grid's cells: a point over another grid must fall through
       // to null (so the edge auto-scroll governs), never select its cells.
       if (hit !== null && (scroller === null || scroller.contains(hit))) {

@@ -41,7 +41,10 @@
 
 .tm-grid__scroller:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: calc(-1 * var(--focus-ring-width));
+  /* Just OUTSIDE the border, not inset: an inset ring's top band hides behind
+     the sticky header (z-index 2, opaque header cells), leaving the outline
+     thinner up top than on the sides. Outside the border, nothing covers it. */
+  outline-offset: 0;
 }
 
 /* ---- sticky header ---- */

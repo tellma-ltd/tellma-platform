@@ -69,6 +69,18 @@
   flex: 1;
 }
 
+/* Keyboard-shortcut hint: trailing, in the muted hint color, with a little
+   breathing room from the label (which flexes to fill the width between). */
+.tm-menu__shortcut {
+  flex: none;
+  margin-inline-start: var(--space-4);
+  color: var(--text-muted);
+}
+
+.tm-menu__item[aria-disabled='true'] .tm-menu__shortcut {
+  color: inherit;
+}
+
 .tm-menu__separator {
   block-size: 0;
   margin-block: var(--space-1);
@@ -88,5 +100,15 @@
 
   .tm-menu__item[aria-disabled='true'] {
     color: GrayText;
+  }
+
+  /* The muted hint has no system-color analogue; GrayText keeps it legible
+     and distinct from the active/Highlight row. */
+  .tm-menu__shortcut {
+    color: GrayText;
+  }
+
+  .tm-menu__item[data-active='true'] .tm-menu__shortcut {
+    color: HighlightText;
   }
 }

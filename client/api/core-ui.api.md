@@ -101,7 +101,7 @@ export const TM_UI_STRINGS_EN: {
             readonly loading: "Loading";
         };
         readonly cellErrors: {
-            readonly invalidInput: "‘{text}’ is not a valid {column}; the field is empty until corrected.";
+            readonly invalidInput: "‘{text}’ is not a valid {column}.";
             readonly notFound: "No {collection} named ‘{label}’";
             readonly ambiguous: "‘{label}’ matches more than one {collection}";
             readonly resolutionFailed: "Could not check ‘{label}’ in {collection} — paste it again to retry";

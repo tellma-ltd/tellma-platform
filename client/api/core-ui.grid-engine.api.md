@@ -330,6 +330,7 @@ export interface TmGridHistoryOptions<T = unknown> {
     readonly host?: Pick<TmGridEngineHost<T>, 'onNotice' | 'onWarn'>;
     readonly model: TmGridDataModel<T>;
     onReveal?(reveal: TmGridHistoryReveal, direction: 'undo' | 'redo'): void;
+    snapshotSelection?(): unknown;
     readonly writer?: TmGridModelWriter<T>;
 }
 
@@ -337,6 +338,7 @@ export interface TmGridHistoryOptions<T = unknown> {
 export interface TmGridHistoryReveal {
     readonly columnIds: readonly string[];
     readonly rowIds: readonly TmRowId[];
+    readonly selection?: unknown;
 }
 
 // @public
