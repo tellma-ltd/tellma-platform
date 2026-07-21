@@ -49,7 +49,7 @@ const COPY_LRU_CAPACITY = 4;
 export interface ɵTmGridCopyDescriptor {
   /** Fingerprint of the copy's TSV flavor (the LRU key). */
   readonly fingerprint: string;
-  /** The clipboard metadata (tenant, locale, column keys/types). */
+  /** The clipboard metadata (tenantId, locale, column keys/types). */
   readonly meta: TmGridClipboardMeta;
   /** The display-string matrix. */
   readonly matrix: ReadonlyArray<readonly string[]>;

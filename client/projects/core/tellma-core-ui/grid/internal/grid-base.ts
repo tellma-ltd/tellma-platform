@@ -29,6 +29,7 @@ import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import type { TmMenuItem } from '@tellma/core-ui/menu';
 
 import { TmGridColumn } from '../tm-grid-column';
+import { TM_GRID_CONTEXT } from '../tm-grid-context';
 import { TmGridEmptyDef, TmGridLoadingDef } from '../tm-grid-templates';
 import { TmGridStateStore } from '../tm-grid-state-store';
 import { ɵTmGridCore, type ɵTmGridTreeConfig } from './grid-core';
@@ -68,13 +69,6 @@ export abstract class ɵTmGridBase<T> {
   readonly rowId = input.required<(row: T) => TmRowId>();
   /** With `field` bound, toggles view/edit of the same screen. */
   readonly readonly = input(false, { transform: booleanAttribute });
-  /**
-   * Identifies the bound data's tenant in clipboard metadata. Raw values
-   * pasted from another grid are trusted only when the source tenant
-   * matches this one; otherwise the pasted labels re-parse or re-resolve —
-   * raw ids never cross tenants.
-   */
-  readonly tenant = input<string | undefined>(undefined);
   /**
    * The new-row factory. Binding it enables the new-row placeholder and
    * paste-overflow row creation; new rows must carry client-side ids.
@@ -134,6 +128,8 @@ export abstract class ɵTmGridBase<T> {
     const translate = inject(TM_UI_TRANSLATE);
     const store = inject(TmGridStateStore);
     const locale = inject(LOCALE_ID);
+    // Tenant identity is ambient (single tenant per app), not a per-grid input.
+    const gridContext = inject(TM_GRID_CONTEXT);
 
     const direction = signal<'ltr' | 'rtl'>(directionality.value === 'rtl' ? 'rtl' : 'ltr');
     const directionSubscription = directionality.change.subscribe((value) =>
@@ -156,7 +152,7 @@ export abstract class ɵTmGridBase<T> {
       field: this.field,
       rowId: this.rowId,
       readonlyInput: this.readonly,
-      tenant: this.tenant,
+      tenantId: gridContext.tenantId,
       newRow: this.newRow,
       loading: this.loading,
       searchable: this.searchable,

@@ -10,12 +10,16 @@ import { DestroyRef } from '@angular/core';
 import { FieldTree } from '@angular/forms/signals';
 import { FlexibleConnectedPositionStrategyOrigin } from '@angular/cdk/overlay';
 import { FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
+import { InjectionToken } from '@angular/core';
 import { Injector } from '@angular/core';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { Signal } from '@angular/core';
 import { TemplateRef } from '@angular/core';
 import { ViewContainerRef } from '@angular/core';
 import { WritableSignal } from '@angular/core';
+
+// @public
+export const TM_GRID_CONTEXT: InjectionToken<TmGridContext>;
 
 // @public
 export class TmGrid<T> extends ɵTmGridBase<T> {
@@ -50,6 +54,11 @@ export class TmGridColumn<T = unknown, V = unknown> {
     readonly width: _angular_core.InputSignal<number | undefined>;
     static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmGridColumn<any, any>, "tm-grid-column", never, { "key": { "alias": "key"; "required": false; "isSignal": true; }; "type": { "alias": "type"; "required": false; "isSignal": true; }; "header": { "alias": "header"; "required": false; "isSignal": true; }; "value": { "alias": "value"; "required": false; "isSignal": true; }; "format": { "alias": "format"; "required": false; "isSignal": true; }; "parse": { "alias": "parse"; "required": false; "isSignal": true; }; "defaultValue": { "alias": "defaultValue"; "required": false; "isSignal": true; }; "options": { "alias": "options"; "required": false; "isSignal": true; }; "optionLabel": { "alias": "optionLabel"; "required": false; "isSignal": true; }; "optionValue": { "alias": "optionValue"; "required": false; "isSignal": true; }; "resolvePastedLabels": { "alias": "resolvePastedLabels"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "width": { "alias": "width"; "required": false; "isSignal": true; }; "flex": { "alias": "flex"; "required": false; "isSignal": true; }; "minWidth": { "alias": "minWidth"; "required": false; "isSignal": true; }; "align": { "alias": "align"; "required": false; "isSignal": true; }; "minDecimals": { "alias": "minDecimals"; "required": false; "isSignal": true; }; "maxDecimals": { "alias": "maxDecimals"; "required": false; "isSignal": true; }; "hierarchy": { "alias": "hierarchy"; "required": false; "isSignal": true; }; }, {}, ["displayDef", "editorDef", "headerDef"], never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmGridColumn<any, any>, never>;
+}
+
+// @public
+export interface TmGridContext {
+    readonly tenantId: Signal<string | undefined>;
 }
 
 // @public

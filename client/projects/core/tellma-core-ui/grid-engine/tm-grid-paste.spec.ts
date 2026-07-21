@@ -43,13 +43,13 @@ describe('TmGridClipboard copy', () => {
     expect(payload.cellCount).toBe(4);
   });
 
-  it('stamps the meta with version, tenant, locale, and the copied column keys/types', () => {
-    const h = makeEngine(makeRows(1), { tenant: 't1', locale: 'fr' });
+  it('stamps the meta with version, tenantId, locale, and the copied column keys/types', () => {
+    const h = makeEngine(makeRows(1), { tenantId: 't1', locale: 'fr' });
     selectRect(h, { row: 0, col: 0 }, { row: 0, col: 1 });
     const payload = requirePayload(h.engine.clipboard.copy());
     expect(payload.meta).toEqual({
       v: 1,
-      tenant: 't1',
+      tenantId: 't1',
       locale: 'fr',
       cols: [
         { key: 'a', type: 'text' },
@@ -268,7 +268,7 @@ describe('TmGridClipboard paste shaping', () => {
 describe('TmGridClipboard paste conversion ladder', () => {
   it('writes raw values verbatim on the typed fast path, never running parse', () => {
     const h = makeEngine([{ id: 1, a: 'a1' }], {
-      tenant: 't1',
+      tenantId: 't1',
       columns: [
         {
           key: 'a',
@@ -281,7 +281,7 @@ describe('TmGridClipboard paste conversion ladder', () => {
     h.engine.clickCell({ row: 0, col: 0 });
     const result = h.engine.clipboard.paste({
       matrix: [['display']],
-      meta: { v: 1, tenant: 't1', locale: 'en', cols: [{ key: 'a', type: 'text' }] },
+      meta: { v: 1, tenantId: 't1', locale: 'en', cols: [{ key: 'a', type: 'text' }] },
       rawValues: [[{ value: 'RAW' }]],
     });
     expect(result.cellsWritten).toBe(1);
@@ -290,13 +290,13 @@ describe('TmGridClipboard paste conversion ladder', () => {
 
   it('falls to parse on a tenant mismatch even when raw values are present', () => {
     const h = makeEngine([{ id: 1, a: 'a1' }], {
-      tenant: 't1',
+      tenantId: 't1',
       columns: [{ key: 'a', parse: (text) => `parsed:${text}` }],
     });
     h.engine.clickCell({ row: 0, col: 0 });
     h.engine.clipboard.paste({
       matrix: [['display']],
-      meta: { v: 1, tenant: 't2', locale: 'en', cols: [{ key: 'a', type: 'text' }] },
+      meta: { v: 1, tenantId: 't2', locale: 'en', cols: [{ key: 'a', type: 'text' }] },
       rawValues: [[{ value: 'RAW' }]],
     });
     expect(h.rows()[0]['a']).toBe('parsed:display');
@@ -338,7 +338,7 @@ describe('TmGridClipboard paste conversion ladder', () => {
     h.engine.clickCell({ row: 0, col: 0 });
     const result = h.engine.clipboard.paste({
       matrix: [['Adam'], ['Bob'], ['Adam']],
-      meta: { v: 1, tenant: 'src', locale: 'de' },
+      meta: { v: 1, tenantId: 'src', locale: 'de' },
     });
     expect(result.errors).toBe(0);
     expect(h.engine.annotations.invalidCount()).toBe(0);
@@ -349,7 +349,7 @@ describe('TmGridClipboard paste conversion ladder', () => {
     expect(request.labels).toEqual(['Adam', 'Bob']);
     expect(request.context.locale).toBe('en');
     expect(request.context.sourceLocale).toBe('de');
-    expect(request.context.sourceTenant).toBe('src');
+    expect(request.context.sourceTenantId).toBe('src');
     expect(request.context.signal).toBeInstanceOf(AbortSignal);
     expect(request.context.signal.aborted).toBe(false);
   });

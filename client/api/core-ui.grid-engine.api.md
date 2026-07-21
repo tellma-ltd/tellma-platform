@@ -88,7 +88,7 @@ export interface TmGridClipboardMeta {
     }>;
     readonly headers?: boolean;
     readonly locale?: string;
-    readonly tenant?: string;
+    readonly tenantId?: string;
     readonly v: 1;
 }
 
@@ -105,7 +105,7 @@ export interface TmGridClipboardOptions<T = unknown> {
     readonly nav: TmGridNav;
     readonly parentIdKey?: string;
     readonly selection: TmGridSelectionModel;
-    readonly tenant?: SignalLike<string | undefined>;
+    readonly tenantId?: SignalLike<string | undefined>;
 }
 
 // @public
@@ -298,7 +298,7 @@ export interface TmGridEngineOptions<T = unknown> {
     readonly pageSize: SignalLike<number>;
     rowId(row: T): TmRowId;
     readonly rows: SignalLike<readonly T[]>;
-    readonly tenant?: SignalLike<string | undefined>;
+    readonly tenantId?: SignalLike<string | undefined>;
     readonly tree?: TmGridTreeOptions<T>;
 }
 

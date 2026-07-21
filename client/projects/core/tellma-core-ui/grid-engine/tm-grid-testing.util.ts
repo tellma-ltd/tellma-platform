@@ -149,7 +149,7 @@ export interface MakeEngineOptions {
   readonly readonlyBinding?: boolean;
   readonly tree?: TmGridTreeOptions<TestRow>;
   readonly locale?: string;
-  readonly tenant?: string;
+  readonly tenantId?: string;
   readonly pageSize?: number;
   readonly historyCapacity?: number;
 }
@@ -174,7 +174,7 @@ export function makeEngine(
     editable: () => editable(),
     canAddRows: () => canAddRows(),
     locale: () => options.locale ?? 'en',
-    tenant: () => options.tenant,
+    tenantId: () => options.tenantId,
     direction: () => direction(),
     pageSize: () => pageSize(),
     tree: options.tree,

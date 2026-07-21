@@ -118,8 +118,8 @@ export interface TmGridClipboardOptions<T = unknown> {
   readonly canAddRows: SignalLike<boolean>;
   /** The active locale. */
   readonly locale: SignalLike<string>;
-  /** The tenant identity (metadata + cross-tenant guard). */
-  readonly tenant?: SignalLike<string | undefined>;
+  /** The tenant id (metadata + cross-tenant guard). */
+  readonly tenantId?: SignalLike<string | undefined>;
   /** The parent-id model key of an editable tree (row-move re-parenting). */
   readonly parentIdKey?: string;
   /** Component-layer callbacks. */
@@ -253,7 +253,7 @@ export class TmGridClipboard<T = unknown> {
     const withHeaders = opts?.withHeaders === true;
     const meta: TmGridClipboardMeta = {
       v: 1,
-      tenant: untracked(() => this.options.tenant?.()),
+      tenantId: untracked(() => this.options.tenantId?.()),
       locale: untracked(() => this.options.locale()),
       cols: shape.cols.map((col) => {
         const column = model.columnAt(col);
@@ -751,13 +751,13 @@ export class TmGridClipboard<T = unknown> {
     };
 
     const sourceLocale = meta?.locale;
-    const sourceTenant = meta?.tenant;
-    const tenant = untracked(() => this.options.tenant?.());
+    const sourceTenantId = meta?.tenantId;
+    const tenantId = untracked(() => this.options.tenantId?.());
     const locale = untracked(() => this.options.locale());
     // Both-undefined tenants match: the tenant seam is optional, so the
     // default (unset) config must still reach the typed fast path — a
     // requiring-`!== undefined` guard left it permanently unreachable there.
-    const sameTenant = sourceTenant === tenant;
+    const sameTenant = sourceTenantId === tenantId;
     const writes: TmGridCellWrite[] = [];
     const collect = new Map<
       string,
@@ -915,7 +915,7 @@ export class TmGridClipboard<T = unknown> {
           id: request.id,
           columnId,
           labels: entry.labels,
-          context: { locale, sourceLocale, sourceTenant, signal: controller.signal },
+          context: { locale, sourceLocale, sourceTenantId, signal: controller.signal },
         });
       }
       handle.onCancel(() => {

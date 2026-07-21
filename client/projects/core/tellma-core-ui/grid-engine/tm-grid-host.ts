@@ -122,8 +122,8 @@ export interface TmGridEngineOptions<T = unknown> {
   readonly canAddRows: SignalLike<boolean>;
   /** The active locale (clipboard metadata + parse context). */
   readonly locale: SignalLike<string>;
-  /** The tenant identity (clipboard metadata + cross-tenant paste guard). */
-  readonly tenant?: SignalLike<string | undefined>;
+  /** The tenant id (clipboard metadata + cross-tenant paste guard). */
+  readonly tenantId?: SignalLike<string | undefined>;
   /** The reading direction — physical arrow keys map through it. */
   readonly direction: SignalLike<'ltr' | 'rtl'>;
   /** Rows per viewport page (PageUp/PageDown motion size). */

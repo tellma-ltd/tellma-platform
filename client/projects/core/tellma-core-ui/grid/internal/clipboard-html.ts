@@ -59,7 +59,7 @@ function parseMeta(raw: string | null): TmGridClipboardMeta | undefined {
   }
   return {
     v: 1,
-    tenant: typeof record['tenant'] === 'string' ? record['tenant'] : undefined,
+    tenantId: typeof record['tenantId'] === 'string' ? record['tenantId'] : undefined,
     locale: typeof record['locale'] === 'string' ? record['locale'] : undefined,
     cols,
     headers: record['headers'] === true,

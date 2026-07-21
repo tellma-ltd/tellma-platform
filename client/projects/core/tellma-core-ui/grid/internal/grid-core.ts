@@ -436,8 +436,8 @@ export interface ɵTmGridCoreDeps<T> {
   readonly store: TmGridStateStore;
   /** The active locale (formatting, parse context, clipboard metadata). */
   readonly locale: string;
-  /** The bound data's tenant (clipboard metadata + cross-tenant paste guard). */
-  readonly tenant: Signal<string | undefined>;
+  /** The current tenant id (clipboard metadata + cross-tenant paste guard). */
+  readonly tenantId: Signal<string | undefined>;
   /** The grid definition's stable identity. */
   readonly gridId: Signal<string>;
   /** The content identity. */
@@ -2068,7 +2068,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       editable: () => this.editable(),
       canAddRows: () => this.deps.newRow() !== undefined,
       locale: () => this.deps.locale,
-      tenant: () => this.deps.tenant(),
+      tenantId: () => this.deps.tenantId(),
       direction: () => this.deps.direction(),
       pageSize: () => this.pageSize(),
       tree: this.buildTreeOptions(),

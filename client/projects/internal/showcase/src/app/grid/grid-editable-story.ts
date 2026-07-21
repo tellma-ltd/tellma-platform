@@ -16,7 +16,7 @@ import { applyEach, form, min, required } from '@angular/forms/signals';
 
 import type { TmCellEditor, TmLabelResolution } from '@tellma/core-ui/contracts';
 import { TM_CELL_EDITOR_HOST } from '@tellma/core-ui';
-import { TmGrid, TmGridColumn, TmGridEditorDef } from '@tellma/core-ui/grid';
+import { TM_GRID_CONTEXT, TmGrid, TmGridColumn, TmGridEditorDef } from '@tellma/core-ui/grid';
 
 import { mulberry32 } from './seeded-random';
 
@@ -176,6 +176,9 @@ export class DemoAgentEditor implements TmCellEditor<number | null> {
  */
 @Component({
   imports: [TmGrid, TmGridColumn, TmGridEditorDef, DemoAgentEditor],
+  // The app supplies the tenant id ambiently (single tenant per app); this
+  // story stands in for tenant 't1' (the cross-engine paste e2e keys off it).
+  providers: [{ provide: TM_GRID_CONTEXT, useValue: { tenantId: signal('t1') } }],
   template: `
     <h2>Grid (editable)</h2>
 
@@ -214,7 +217,6 @@ export class DemoAgentEditor implements TmCellEditor<number | null> {
       [rowId]="rowId"
       [newRow]="newLine"
       [readonly]="readonly()"
-      [tenant]="'t1'"
     >
       <tm-grid-column key="description" header="Description" [flex]="2" [minWidth]="160" />
       <tm-grid-column key="quantity" type="number" header="Qty" [width]="90" />

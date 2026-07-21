@@ -44,7 +44,7 @@ emit(
     ],
     meta: {
       v: 1,
-      tenant: 't1',
+      tenantId: 't1',
       locale: 'en-US',
       cols: [
         { key: 'quantity', type: 'number' },
@@ -74,7 +74,7 @@ emit(
     ],
     meta: {
       v: 1,
-      tenant: 't1',
+      tenantId: 't1',
       locale: 'en-US',
       cols: [
         { key: 'description', type: 'text' },
@@ -126,7 +126,7 @@ emit(
     ],
     meta: {
       v: 1,
-      tenant: 't1',
+      tenantId: 't1',
       locale: 'en-US',
       cols: [
         { key: 'quantity', type: 'number' },
@@ -154,7 +154,7 @@ emit(
     matrix: [['Alice Green'], ['Bob Stone']],
     meta: {
       v: 1,
-      tenant: 't2',
+      tenantId: 't2',
       locale: 'en-US',
       cols: [{ key: 'agentId', type: 'entity' }],
     },

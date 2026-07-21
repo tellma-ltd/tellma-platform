@@ -115,7 +115,7 @@ export type TmParseError = typeof TM_PARSE_ERROR;
 // @public
 export interface TmPasteContext extends TmParseContext {
     readonly signal: AbortSignal;
-    readonly sourceTenant?: string;
+    readonly sourceTenantId?: string;
 }
 
 // @public

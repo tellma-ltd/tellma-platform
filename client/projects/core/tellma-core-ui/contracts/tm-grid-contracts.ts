@@ -76,10 +76,10 @@ export interface TmParseContext {
 /** Context handed to a column's batched label resolver during paste. */
 export interface TmPasteContext extends TmParseContext {
   /**
-   * The copying grid's tenant, from clipboard metadata — lets the resolver
+   * The copying grid's tenant id, from clipboard metadata — lets the resolver
    * refuse raw ids that crossed a tenant boundary and re-resolve by label.
    */
-  readonly sourceTenant?: string;
+  readonly sourceTenantId?: string;
   /**
    * Aborts when every cell awaiting this resolution has been invalidated
    * (edited over, re-pasted, undone). Honoring it saves a server round

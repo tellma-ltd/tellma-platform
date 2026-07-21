@@ -18,6 +18,7 @@ import { provideTellmaUi, TM_CELL_EDITOR_HOST } from '@tellma/core-ui';
 
 import { TmGrid } from './tm-grid';
 import { TmGridColumn } from './tm-grid-column';
+import { TM_GRID_CONTEXT } from './tm-grid-context';
 import { TmGridEditorDef } from './tm-grid-templates';
 
 interface Line {
@@ -78,7 +79,6 @@ class AgentEditor implements TmCellEditor<string | null> {
       [field]="f"
       [rowId]="rowId"
       [newRow]="allowNewRows() ? makeRow : undefined"
-      [tenant]="'acme'"
       style="block-size: 300px"
     >
       <tm-grid-column key="name" header="Name" [width]="140" />
@@ -180,7 +180,12 @@ async function setup(): Promise<{
   host: ClipboardHost;
   scroller: HTMLElement;
 }> {
-  TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+  TestBed.configureTestingModule({
+    providers: [
+      provideTellmaUi(),
+      { provide: TM_GRID_CONTEXT, useValue: { tenantId: signal('acme') } },
+    ],
+  });
   const fixture = TestBed.createComponent(ClipboardHost);
   await stable(fixture);
   const scroller = (fixture.nativeElement as HTMLElement).querySelector(
@@ -306,7 +311,7 @@ describe('tm-grid (clipboard paste)', () => {
     await activateCell(fixture, scroller, 0, 1); // qty
 
     const htmlFor = (tenant: string): string =>
-      `<table data-tm-grid='{"v":1,"tenant":"${tenant}","locale":"en-US",` +
+      `<table data-tm-grid='{"v":1,"tenantId":"${tenant}","locale":"en-US",` +
       `"cols":[{"key":"qty","type":"number"}]}'>` +
       `<tbody><tr><td data-tm-v="42" data-tm-h="${tmClipboardFingerprint('forty-two')}">` +
       `forty-two</td></tr></tbody></table>`;
@@ -338,7 +343,7 @@ describe('tm-grid (clipboard paste)', () => {
     // fingerprints the original "6", so it no longer matches the cell text and
     // the stale raw value is discarded — the edited "99" is parsed instead.
     const tampered =
-      `<table data-tm-grid='{"v":1,"tenant":"acme","locale":"en-US",` +
+      `<table data-tm-grid='{"v":1,"tenantId":"acme","locale":"en-US",` +
       `"cols":[{"key":"qty","type":"number"}]}'>` +
       `<tbody><tr><td data-tm-v="6" data-tm-h="${tmClipboardFingerprint('6')}">99</td></tr>` +
       `</tbody></table>`;
@@ -354,7 +359,7 @@ describe('tm-grid (clipboard paste)', () => {
 
     dispatchPaste(scroller, {
       html:
-        `<table data-tm-grid='{"v":1,"tenant":"acme","headers":true,` +
+        `<table data-tm-grid='{"v":1,"tenantId":"acme","headers":true,` +
         `"cols":[{"key":"name","type":"text"}]}'>` +
         `<thead><tr><th>Name</th></tr></thead>` +
         `<tbody><tr><td>FromHtml</td></tr></tbody></table>`,
@@ -420,7 +425,7 @@ describe('tm-grid (clipboard paste)', () => {
     // The rendered text still collapses to "Alice Green", so the fingerprint
     // matches, the raw id is used, and the resolver is never consulted.
     const html =
-      `<table data-tm-grid='{"v":1,"tenant":"acme","locale":"en-US",` +
+      `<table data-tm-grid='{"v":1,"tenantId":"acme","locale":"en-US",` +
       `"cols":[{"key":"agentId","type":"entity"}]}'>` +
       `<tbody><tr><td data-tm-v="11" data-tm-h="${tmClipboardFingerprint('Alice Green')}">Alice\n      Green</td></tr></tbody></table>`;
     dispatchPaste(scroller, { html });
@@ -561,7 +566,7 @@ describe('tm-grid (clipboard resolver)', () => {
 
     dispatchPaste(scroller, {
       html:
-        `<table data-tm-grid='{"v":1,"tenant":"other","locale":"fr-FR",` +
+        `<table data-tm-grid='{"v":1,"tenantId":"other","locale":"fr-FR",` +
         `"cols":[{"key":"agentId","type":"entity"}]}'>` +
         `<tbody><tr><td data-tm-v="55" data-tm-h="${tmClipboardFingerprint('Adam')}">Adam` +
         `</td></tr></tbody></table>`,
@@ -571,7 +576,7 @@ describe('tm-grid (clipboard resolver)', () => {
     expect(host.model()[1].agentId).toBeNull(); // 55 was NOT written
     expect(host.resolveCalls.length).toBe(1);
     expect(host.resolveCalls[0].labels).toEqual(['Adam']);
-    expect(host.resolveCalls[0].ctx.sourceTenant).toBe('other');
+    expect(host.resolveCalls[0].ctx.sourceTenantId).toBe('other');
     expect(host.resolveCalls[0].ctx.sourceLocale).toBe('fr-FR');
 
     host.resolveCalls[0].deferred.resolve(

@@ -127,7 +127,7 @@ describe('tmSerializeHtmlTable', () => {
   it('produces a table whose meta attribute round-trips through attribute unescaping', () => {
     const meta: TmGridClipboardMeta = {
       v: 1,
-      tenant: 'he said "hi" & left',
+      tenantId: 'he said "hi" & left',
       locale: 'en',
       cols: [
         { key: 'a', type: 'text' },

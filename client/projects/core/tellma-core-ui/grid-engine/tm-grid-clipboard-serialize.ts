@@ -15,8 +15,8 @@ import type { TmGridColumnType } from './tm-grid-types';
 export interface TmGridClipboardMeta {
   /** Format version. */
   readonly v: 1;
-  /** The copying grid's tenant (cross-tenant paste guard). */
-  readonly tenant?: string;
+  /** The copying grid's tenant id (cross-tenant paste guard). */
+  readonly tenantId?: string;
   /** The copying grid's locale (source-locale parse hint). */
   readonly locale?: string;
   /** The copied columns' keys and types, in copy order. */

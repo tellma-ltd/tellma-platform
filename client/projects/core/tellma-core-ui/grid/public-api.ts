@@ -16,6 +16,7 @@
 // LICENSE file in the root directory of this source tree.
 export * from './tm-grid';
 export * from './tm-grid-column';
+export * from './tm-grid-context';
 export * from './tm-grid-templates';
 export * from './tm-grid-state-store';
 
