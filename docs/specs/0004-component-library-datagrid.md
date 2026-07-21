@@ -286,6 +286,7 @@ Key inputs of `tm-grid-column<T, V>`:
 | `resolvePastedLabels?: (labels: string[], ctx: TmPasteContext) => Promise<ReadonlyMap<string, TmLabelResolution<V>>>` | Batched async label→value resolution for `enum`/`entity` paste (§9.4); each result is a value, `notFound`, or `ambiguous` (§6.3). |
 | `readonly?: boolean \| ((row: T) => boolean)` | Column- or per-cell-level editability (field state still wins, §5.1). |
 | `width?`, `flex?`, `minWidth?` | Fixed px width or proportional share (§4). |
+| `minDecimals?`, `maxDecimals?` | `number` columns: the built-in display's fraction-digit bounds (default `0`…unbounded). The displayed rounding never reaches the model — editing a cell opens on the full-precision value (Excel's formula-bar behavior). Ignored when `format` is bound. |
 | `align?` | `'start' \| 'end' \| 'center' \| 'left' \| 'right'` — logical **or** physical. Physical values exist because numerals stay right-aligned in RTL locales too (Excel's own RTL behavior). Defaults by `type`: `number`/`date` → `right`, `boolean` → `center`, else `start`. |
 | `*tmGridDisplay` template | Custom static display DOM (context: row, value, field state). |
 | `*tmGridEditor` template | Custom editor hosting a control that implements `TmCellEditor` (§6.3). |
@@ -382,7 +383,7 @@ export interface TmParseContext {
 
 /** Context handed to `resolvePastedLabels` (§9.4). */
 export interface TmPasteContext extends TmParseContext {
-  readonly sourceTenant?: string;  // from clipboard metadata — drives the cross-tenant guard (§9.4)
+  readonly sourceTenantId?: string;  // from clipboard metadata — drives the cross-tenant guard (§9.4)
   readonly signal: AbortSignal;    // aborts when every cell awaiting this call has been invalidated
 }
 
@@ -422,7 +423,7 @@ without grid changes.
   row heights per density (`sm`/`md`/`lg` via the grid's `size` input, matching the field-height
   scale), header background/text, gridline color, selection fill (translucent brand teal) +
   selection border, active-cell ring (reuses `--focus-ring`), error tint + error badge,
-  readonly-cell tint, new-row glyph, cut-marquee (dashed border), find-match highlight +
+  readonly-cell tint, new-row glyph, clipboard marquee (dashed border), find-match highlight +
   active-match outline, touch selection handles, zebra stripe for readonly grids.
 - **Readonly mode restyles**: vertical gridlines removed; alternating row background in `tm-grid`
   only — `tm-tree-grid` keeps a uniform background (striping fights the indentation the eye uses
@@ -481,7 +482,7 @@ Navigation & selection (grid focused, no editor open):
 | F2 | Open editor (*edit mode*); while editing, toggles *enter mode* ↔ *edit mode* (Excel) |
 | Any printable char | Open editor (*enter mode*) seeded with the char, replacing content |
 | Delete / Backspace | Clear selected range(s) to each column's cleared value (§6.1; readonly cells untouched; one undo op) |
-| Esc | Dismiss in order: pending cut marquee (§9.5) → else move focus to the **grid container itself**, from which Tab/Shift+Tab leave the grid natively (any arrow or Enter re-enters the cells). This is the practical mid-grid exit — a 3,000-row grid cannot ask for Tab-to-the-end (WCAG 2.1.2) |
+| Esc | Dismiss in order: the clipboard marquee — a cut or a copy (§9.5) → else move focus to the **grid container itself**, from which Tab/Shift+Tab leave the grid natively (any arrow or Enter re-enters the cells). This is the practical mid-grid exit — a 3,000-row grid cannot ask for Tab-to-the-end (WCAG 2.1.2) |
 | Menu key / Shift+F10 | Open context menu at active cell |
 | Mod+F | Focus the find bar (§8.7; only when `searchable` — otherwise the browser keeps it) |
 
@@ -522,7 +523,7 @@ Tree grid additions (§13):
 | Shift+Click | Extend range from anchor |
 | Mod+Click / Mod+Drag | Add a discontiguous range; on row headers, non-contiguous rows |
 | Click row header / drag across headers | Select row(s); Shift/Mod compose as above |
-| Click column header | Select column — only when the press lands on the header background/label, never on interactive projected content |
+| Click column header / drag across headers | Select column(s); Shift/Mod compose as above — only when the press lands on the header background/label, never on interactive projected content |
 | Click corner | Select all |
 | Double-click cell | Open editor (*edit mode*), caret at end (Sheets behavior) |
 | Right-click | If the target is outside the selection, select it first; then open the context menu (native menu suppressed) |
@@ -559,16 +560,18 @@ own component, **`tm-menu`** in `@tellma/core-ui/menu`, and the grid is merely i
   typeahead, roles) composed with the CDK-overlay pattern `tm-select` established
   (`usePopover: 'inline'`, position at a point or an anchor rect, `Directionality`-mirrored).
 - Scope for this phase: flat items + separators, disabled state, a leading **icon** slot, item
-  shape `TmMenuItem { id, label | labelKey, icon?, disabled?, action }`. Submenus (aria supports
-  them) are deferred until a consumer needs one.
+  shape `TmMenuItem { id, label | labelKey, icon?, shortcut?, disabled?, action }` — `shortcut` is a
+  display-only hint shown trailing the label in the muted hint color. Submenus (aria supports them)
+  are deferred until a consumer needs one.
 - `tmContextMenuTrigger` opens it at the pointer on right-click / Menu key / long-press.
 
 The grid's menu: built-in items (localized through `TM_UI_TRANSLATE`, each with a built-in
 inline-SVG icon per spec 0002's static-glyph posture — Lucide-derived, `tm-`-classed,
 `aria-hidden`; grayed per mode/permissions): Cut, Copy, **Copy with headers**, Paste, Insert N
-row(s) above, Insert N row(s) below, Delete N row(s). The row items appear in editable mode with
-any selection — N = the union of rows the selection spans (§8.1), the Sheets behavior. Tree grid
-adds Insert child row (§13.4). Consumers extend via `extraMenuItems: TmMenuItem[]` (consumer icons
+row(s) above, Insert N row(s) below, Delete N row(s). Items with a keyboard binding carry its
+shortcut hint, formatted for the platform (⌘X / Ctrl+X …). The row items appear in editable mode
+with any selection — N = the union of rows the selection spans (§8.1), the Sheets behavior. Tree
+grid adds Insert child row (§13.4). Consumers extend via `extraMenuItems: TmMenuItem[]` (consumer icons
 are inline-SVG `TemplateRef`s — the icon registry remains a future concern per spec 0002).
 
 Menu Copy/Cut/Paste use the async Clipboard API: writes succeed everywhere in a user gesture;
@@ -644,13 +647,17 @@ only by the context menu (§8.5). During editing, events go to the editor untouc
 
 ### 9.2 Written formats (copy/cut)
 
+The `tenantId` stamped into the metadata below is ambient — provided once per app through a context
+token (`TM_GRID_CONTEXT`, the same shape as the UI message context), not a per-grid input: a single
+tenant is live at a time and no two grids in the DOM host different tenants' data.
+
 Both flavors are always written:
 
 - **`text/plain`** — TSV, Excel quoting rules (quote cells containing tab/newline/quote; CRLF row
   separators). Cell content = the column's `format` output — exactly what the user sees.
 - **`text/html`** — a `<table>` of the same display strings (Excel and Sheets both parse it), plus
   Tellma metadata woven into the markup: on `<table
-  data-tm-grid='{"v":1,"tenant":…,"locale":…,"cols":[{key,type}…]}'`, per-cell
+  data-tm-grid='{"v":1,"tenantId":…,"locale":…,"cols":[{key,type}…]}'`, per-cell
   `data-tm-v` (JSON raw value) paired with `data-tm-h` (a fingerprint of the cell's display text,
   §9.3), and per-row `data-tm-rowid` (emitted when the range is full rows —
   a row *move* only needs to identify rows the grid already holds, §9.6; full records are never
@@ -739,19 +746,23 @@ possibly thousands at once, possibly ambiguous, possibly written in a different 
    correctness guarantee. Pending cells are not errors: the grid exposes `pendingCount` alongside
    the error count (§10), and consumers gate Save on both reaching zero.
 
-### 9.5 Cut semantics
+### 9.5 Cut semantics and the clipboard marquee
 
-Cut = Excel's deferred move: the source range gets the marching-ants marquee style; the clipboard
-receives a normal copy payload; a subsequent paste **in the same grid** performs the move (clears
-source cells, one undo op with the write); Esc — or any edit — cancels the pending move. A paste
-into any *other* target (another grid, Excel) behaves as copy and leaves the source untouched,
-which matches Excel's cross-application behavior and sidesteps the impossibility of observing an
-external paste.
+Both copy and cut mark their range with a **static dashed marquee** — one rectangle around the
+range's outer edge, drawn just inside the active-cell ring so both read on a shared border (no
+marching-ants animation; the grid chrome stays animation-free). Esc, or any edit, clears it.
+
+Cut = Excel's deferred move: the marquee's clipboard receives a normal copy payload; a subsequent
+paste **in the same grid** performs the move (clears source cells, one undo op with the write). A
+paste into any *other* target (another grid, Excel) behaves as copy and leaves the source
+untouched, which matches Excel's cross-application behavior and sidesteps the impossibility of
+observing an external paste.
 
 ### 9.6 Full-row cut/paste = row move
 
-When the cut range is full rows (`kind: 'rows'`) and the paste lands in the same grid, the
-operation is a **row move**: the rows — identified by the fast path or `data-tm-rowid`, and
+When the cut range is full rows — an explicit row selection (`kind: 'rows'`), or a cell range that
+spans every column — and the paste lands in the same grid, the operation is a **row move**: the
+rows — identified by the fast path or `data-tm-rowid`, and
 resolved against the grid's own data, which still holds them — are re-inserted above the paste
 target row and removed from their old positions, as one undo op. This is the sanctioned replacement for drag-and-drop row re-ordering. In the tree
 grid the move carries each row's whole subtree, re-parents the moved rows to the target row's
@@ -767,7 +778,7 @@ A cell is *in error* when either:
   1,000-cell paste with three rejects, the user must see *what* was rejected in place, not hunt
   the source cell down in Excel. The model field meanwhile holds the column's cleared value
   (§6.1) — never a stale prior value a save could silently persist — and the cell's message spells
-  the split out: *"‘Foo' is not a valid ‹Quantity›; the field is empty until corrected."* Copying
+  the split out: *"‘Foo' is not a valid ‹Quantity›."* Copying
   such a cell copies the raw text (the annotation round-trips out). Invalid inputs are grid state
   keyed by `(rowId, columnKey)` and are cleared by: undo, committing a valid value, or Delete
   (which may of course surface a `required` field error next).
@@ -797,10 +808,12 @@ Save buttons.
 - In-editor typing has the input's native undo; the grid stack only sees the commit.
 - Mod+Z / Mod+Y / Mod+Shift+Z when the grid has focus and no editor is open. Depth capped at 100
   ops.
-- Undo/redo restores data, invalid-input states, row existence/order — and re-selects + scrolls to
-  the affected range (Excel behavior), expanding collapsed ancestors first in the tree grid, as
-  find navigation does (§8.7). It does **not** manage view state (column widths, expansion,
-  scroll) — those are not data operations.
+- Undo/redo restores data, invalid-input states, row existence/order — and restores the operation's
+  own selection (the pre-op selection on undo, the post-op one on redo), captured with the entry
+  rather than inferred from the written cells (a fill-down never writes its source row; a cut-move
+  writes both ends), then scrolls to it (Excel behavior), expanding collapsed ancestors first in the
+  tree grid, as find navigation does (§8.7). It does **not** manage view state (column widths,
+  expansion, scroll) — those are not data operations.
 - Programmatic edits join the same stack via the public transaction API:
   `grid.applyTransaction(edits: TmCellEdit[], opts?: { label?: string })`, where
   `TmCellEdit = { rowId: string | number; key: string; value: unknown }` (the grid captures the

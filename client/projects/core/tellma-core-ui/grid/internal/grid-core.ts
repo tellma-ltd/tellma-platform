@@ -337,7 +337,7 @@ export interface ɵTmGridCellVm {
   readonly readonly: boolean;
   /** Whether the cell awaits an async paste resolution (inline spinner). */
   readonly pending: boolean;
-  /** Whether the cell lies inside the armed cut's range (drops the active ring). */
+  /** Whether the cell lies inside the clipboard marquee range (a copy or a cut). */
   readonly inCutRange: boolean;
   /**
    * Which of the cut range's perimeter edges fall on this cell, as the tokens
@@ -2340,12 +2340,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       const rowKey = isPlaceholder
         ? ' placeholder'
         : `${typeof view!.id === 'number' ? '#' : '$'}${String(view!.id)}`;
-      // Cut marquee (§9.5): draw the dashed border only on the cut RANGE's
-      // outer edges, so a multi-cell cut reads as one rectangle, not a box per
-      // cell. A cell sits on a perimeter edge when the neighbour across that
-      // edge — the row above/below in view order, the previous/next column — is
-      // NOT itself cut. Row adjacency is resolved once per row (shared by every
-      // column); column adjacency, once per column position below.
+      // Clipboard marquee (§9.5): draw the dashed border only on the marquee
+      // RANGE's outer edges, so a multi-cell copy/cut reads as one rectangle,
+      // not a box per cell. A cell sits on a perimeter edge when the neighbour
+      // across that edge — the row above/below in view order, the previous/next
+      // column — is NOT itself in the range. Row adjacency is resolved once per
+      // row (shared by every column); column adjacency, once per column below.
       const rowInCut = cutRowIds !== null && view !== null && cutRowIds.has(view.id);
       let aboveInCut = false;
       let belowInCut = false;
