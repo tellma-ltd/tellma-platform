@@ -295,7 +295,7 @@
 [data-tm-cut]::after {
   content: '';
   position: absolute;
-  inset: var(--focus-ring-width);
+  inset: 1px;
   z-index: 1;
   pointer-events: none;
   border: 0 dashed var(--grid-cut-border);

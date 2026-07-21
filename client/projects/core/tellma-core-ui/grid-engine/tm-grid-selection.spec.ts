@@ -334,7 +334,11 @@ describe('TmGridSelectionModel (§8.1 selection model)', () => {
       h.engine.clickCell({ row: 2, col: 1 }); // id 3
       h.externalChange(rows.filter((row) => row.id !== 3));
       expect(h.engine.nav.activeCell()).toEqual({ row: 2, col: 1 }); // now the row of id 4
-      expect(h.engine.selection.ranges()).toEqual([]); // its single-row range dropped
+      // The dropped range collapses onto the fallback active cell (so its
+      // row/column headers stay highlighted), never an orphaned empty selection.
+      expect(h.engine.selection.ranges()).toEqual([
+        { anchor: { row: 2, col: 1 }, focus: { row: 2, col: 1 }, kind: 'cells' },
+      ]);
     });
   });
 

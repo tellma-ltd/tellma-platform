@@ -223,6 +223,37 @@ describe('TmGridClipboard paste shaping', () => {
     expect(h.rows()[1]['a']).toBe('x');
   });
 
+  it('trims a trailing all-empty OVERFLOW tail — no blank rows added (Sheets select-all)', () => {
+    const h = makeEngine(makeRows(2)); // 2 existing rows
+    h.engine.clickCell({ row: 0, col: 0 });
+    // 3 data rows + 2 blank trailing rows: only the third data row overflows.
+    const result = h.engine.clipboard.paste({ matrix: [['x'], ['y'], ['z'], [''], ['']] });
+    expect(result.rowsMaterialized).toBe(1);
+    expect(h.rows().map((row) => row['a'])).toEqual(['x', 'y', 'z']);
+  });
+
+  it('an entirely-blank overflow tail materializes nothing', () => {
+    const h = makeEngine(makeRows(2));
+    h.engine.clickCell({ row: 0, col: 0 });
+    const result = h.engine.clipboard.paste({ matrix: [['x'], ['y'], [''], [''], ['']] });
+    expect(result.rowsMaterialized).toBe(0);
+    expect(h.rows()).toHaveLength(2);
+    expect(h.rows().map((row) => row['a'])).toEqual(['x', 'y']);
+  });
+
+  it('selects the pasted block (Excel/Sheets behavior)', () => {
+    const h = makeEngine(makeRows(4));
+    h.engine.clickCell({ row: 1, col: 0 });
+    h.engine.clipboard.paste({
+      matrix: [
+        ['p', 'q'],
+        ['r', 's'],
+      ],
+    });
+    expect(h.engine.nav.activeCell()).toEqual({ row: 1, col: 0 });
+    expect(h.engine.selection.activeRect()).toEqual({ top: 1, bottom: 2, left: 0, right: 1 });
+  });
+
   it('skips readonly cells in place without shifting values around them', () => {
     const h = makeEngine(makeRows(1), {
       columns: [{ key: 'a' }, { key: 'b', cellReadonly: (row) => row.id === 1 }, { key: 'c' }],

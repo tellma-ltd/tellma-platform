@@ -170,13 +170,17 @@ describe('TmGridEngine', () => {
       expect(h.notices).toContainEqual({ kind: 'rowsDeleted', count: 4 });
     });
 
-    it('deleteSelectedRows chains on repeat — the moved-down active cell is the next target', () => {
+    it('deleteSelectedRows collapses the selection onto the successor, and chains on repeat', () => {
       const h = makeEngine(makeRows(4)); // ids 1,2,3,4
-      h.engine.clickCell({ row: 1, col: 0 }); // select id 2
+      h.engine.clickCell({ row: 1, col: 1 }); // select id 2
       h.engine.deleteSelectedRows();
       expect(h.rows().map((row) => row.id)).toEqual([1, 3, 4]);
-      // A row delete remaps the selection to empty, leaving only the active
-      // cell at the successor row; the fallback must delete it, not stall.
+      // Reconcile collapses the dropped range onto the moved-down active cell,
+      // so its row/column headers stay highlighted (not an orphaned empty
+      // selection) AND a repeat delete has a target.
+      expect(h.engine.nav.activeCell()).toEqual({ row: 1, col: 1 });
+      expect(h.engine.selection.rowIntersects(1)).toBe(true);
+      expect(h.engine.selection.colIntersects(1)).toBe(true);
       h.engine.deleteSelectedRows();
       expect(h.rows().map((row) => row.id)).toEqual([1, 4]);
       h.engine.deleteSelectedRows();

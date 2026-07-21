@@ -187,6 +187,17 @@ describe('TmGridClipboard cut-paste move', () => {
     expect(h.engine.selection.activeRect()).toEqual({ top: 2, bottom: 2, left: 1, right: 1 });
   });
 
+  it('selects the moved rows at their new position after the move', () => {
+    const h = makeEngine(makeRows(4));
+    h.engine.selection.selectRows(0, 0, false); // row id 1
+    const payload = requirePayload(h.engine.clipboard.cut(() => 'fp'));
+    h.engine.clickCell({ row: 2, col: 0 }); // before row id 3
+    h.engine.clipboard.paste(sourceOf(payload), 'fp');
+    expect(h.rows().map((row) => row.id)).toEqual([2, 1, 3, 4]); // id 1 now at view index 1
+    expect(h.engine.nav.activeCell()?.row).toBe(1);
+    expect(h.engine.selection.activeRect()).toMatchObject({ top: 1, bottom: 1 });
+  });
+
   it('treats a move onto its own selection as a no-op', () => {
     const h = makeEngine(makeRows(3));
     h.engine.selection.selectRows(0, 1, false);

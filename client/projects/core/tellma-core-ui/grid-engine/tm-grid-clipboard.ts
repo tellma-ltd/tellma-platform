@@ -669,6 +669,16 @@ export class TmGridClipboard<T = unknown> {
       }
     }
     this.options.history.runRowMove(movedWithSubtrees, beforeRowId, parentWrites);
+    // Select the moved rows at their new position (Excel/Sheets behavior); they
+    // land contiguously, subtrees included, before the target row.
+    const movedIndices = movedWithSubtrees
+      .map((id) => model.viewIndexOfRow(id))
+      .filter((index) => index !== -1);
+    if (movedIndices.length > 0) {
+      const top = Math.min(...movedIndices);
+      this.options.nav.setActive({ row: top, col: 0 });
+      this.options.selection.selectRows(top, Math.max(...movedIndices), false);
+    }
     this.options.host?.onNotice?.({ kind: 'rowsMoved', count: surviving.length });
     return 'moved';
   }
@@ -707,6 +717,19 @@ export class TmGridClipboard<T = unknown> {
     width = Math.min(width, model.columnCount() - anchor.col);
     const dataRows = untracked(() => model.dataRowCount());
     const existingCount = Math.max(0, Math.min(height, dataRows - anchor.row));
+    // Overflow-only cap: trailing all-empty source rows never materialize NEW
+    // rows. Google Sheets' "select all" copies the data table plus hundreds of
+    // blank trailing rows (Excel copies only the used range); without this, each
+    // blank row would spawn a blank grid row. Only the OVERFLOW tail is trimmed
+    // (rows landing on existing rows still clear them, Excel parity), and only
+    // when anchoring — a paste tiled into a selection keeps the chosen extent.
+    if (height === srcHeight) {
+      let end = height;
+      while (end > existingCount && matrix[end - 1].every((cell) => cell === '')) {
+        end--;
+      }
+      height = end;
+    }
     let overflow = height - existingCount;
     let rowsDropped = 0;
     if (overflow > 0 && !untracked(() => this.options.canAddRows())) {
@@ -929,6 +952,20 @@ export class TmGridClipboard<T = unknown> {
           }
         }
         paste.outstanding = 0;
+      });
+    }
+
+    // Select the pasted block (Excel/Sheets behavior). A full-column paste thus
+    // re-selects the pasted rows too; materialized overflow rows append
+    // contiguously after the anchor in view order, so the block is
+    // anchor..anchor+height-1 × anchor+width-1.
+    if (height > 0 && width > 0) {
+      const top: TmRowCol = { row: anchor.row, col: anchor.col };
+      this.options.nav.setActive(top);
+      this.options.selection.collapseTo(top);
+      this.options.selection.extendActiveTo({
+        row: anchor.row + height - 1,
+        col: anchor.col + width - 1,
       });
     }
 

@@ -344,32 +344,18 @@ export class TmGridEngine<T = unknown> {
     }
     const ids: TmRowId[] = [];
     const seen = new Set<TmRowId>();
-    const addRow = (row: number): void => {
-      const view = this.model.rowAt(row);
-      if (view === null) {
-        return;
-      }
-      for (const member of this.model.subtreeRowIds(view.id)) {
-        if (!seen.has(member)) {
-          seen.add(member);
-          ids.push(member);
+    for (const span of this.selection.rowsUnion()) {
+      for (let row = span.start; row <= span.end; row++) {
+        const view = this.model.rowAt(row);
+        if (view === null) {
+          continue;
         }
-      }
-    };
-    const spans = this.selection.rowsUnion();
-    if (spans.length > 0) {
-      for (const span of spans) {
-        for (let row = span.start; row <= span.end; row++) {
-          addRow(row);
+        for (const member of this.model.subtreeRowIds(view.id)) {
+          if (!seen.has(member)) {
+            seen.add(member);
+            ids.push(member);
+          }
         }
-      }
-    } else {
-      // A row delete leaves only the active cell at the successor row (the
-      // selection remaps to empty); fall back to it so repeated Ctrl+Alt+Minus
-      // keeps deleting down the list instead of stalling after the first row.
-      const active = untracked(() => this.nav.activeCell());
-      if (active !== null) {
-        addRow(active.row);
       }
     }
     if (ids.length === 0) {
@@ -516,6 +502,15 @@ export class TmGridEngine<T = unknown> {
       }
     } else {
       this.nav.reclamp();
+    }
+    // A structural change can leave the active cell with NO selection covering
+    // it — a row delete drops its range entirely (remap resolves nothing). Re-
+    // establish a 1×1 selection at the settled active cell so the moved-down
+    // cell reads as selected (its row/column headers highlight) and row ops
+    // keep a target, instead of an orphaned active cell with an empty selection.
+    const settledActive = untracked(() => this.nav.activeCell());
+    if (settledActive !== null && untracked(() => this.selection.ranges()).length === 0) {
+      this.selection.collapseTo(settledActive);
     }
     this.nav.remapTabRun((oldRow) => {
       const id = before.visibleIds[oldRow];

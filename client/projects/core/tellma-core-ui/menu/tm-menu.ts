@@ -102,7 +102,11 @@ const openMenuStack: TmMenu[] = [];
       (detach)="onOverlayDetach()"
       (overlayOutsideClick)="close({ restoreFocus: false })"
     >
-      <div class="tm-menu__panel" (keydown)="onPanelKeydown($event)">
+      <div
+        class="tm-menu__panel"
+        (keydown)="onPanelKeydown($event)"
+        (contextmenu)="$event.preventDefault()"
+      >
         <div
           ngMenu
           #m="ngMenu"

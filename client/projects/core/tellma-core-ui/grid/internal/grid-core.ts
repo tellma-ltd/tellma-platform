@@ -1790,6 +1790,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (menu === null) {
       return;
     }
+    // The keyboard Menu key opens the menu from its keydown AND emits a native
+    // contextmenu; if that one lands here (focus still on the scroller), just
+    // swallow it — the menu is already open, reopening would flicker/re-anchor.
+    if (untracked(menu.isOpen)) {
+      return;
+    }
     if (untracked(() => this.engine.edit.session()) !== null) {
       this.commitEditor({ refocus: true });
     }
@@ -1803,27 +1809,6 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         ? element.getBoundingClientRect()
         : { x: event.clientX, y: event.clientY };
     menu.open(anchor, element !== null ? { restoreFocus: element } : undefined);
-  }
-
-  /**
-   * Swallows the single native `contextmenu` event the keyboard Menu key emits
-   * right after we open the menu from its keydown, wherever it lands (capture
-   * phase, document-wide). A microtask timeout drops the listener when no such
-   * event follows (a synthetic keydown in tests, a browser that omits it), so
-   * it never eats a later, unrelated right-click.
-   */
-  private suppressNextNativeContextMenu(): void {
-    const swallow = (event: Event): void => {
-      event.preventDefault();
-      event.stopPropagation();
-      cleanup();
-    };
-    const cleanup = (): void => {
-      document.removeEventListener('contextmenu', swallow, true);
-      clearTimeout(timer);
-    };
-    const timer = setTimeout(cleanup, 0);
-    document.addEventListener('contextmenu', swallow, true);
   }
 
   /**
@@ -1963,6 +1948,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       return;
     }
     const result = this.engine.clipboard.paste(resolved.source, resolved.fingerprint);
+    // Re-baseline the order so the reconcile the paste's own rows-change
+    // triggers is an identity no-op — it must not remap (and thus drop) the
+    // pasted-block selection the engine just set.
+    this.engine.resyncOrder();
     this.runResolutions(result.resolutions);
     this.requestReveal();
     this.requestFocusActive();
@@ -2558,11 +2547,6 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           return false;
         }
         menu.open(element.getBoundingClientRect(), { restoreFocus: element });
-        // The physical Menu/Application key (and Shift+F10) ALSO emit a native
-        // contextmenu after this keydown — and once the menu takes focus it
-        // lands on the overlay, out of the scroller's onContextMenu reach.
-        // Swallow that one event so the native menu never stacks on ours.
-        this.suppressNextNativeContextMenu();
         return true;
       }
       case 'clear':
