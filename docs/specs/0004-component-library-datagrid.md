@@ -225,8 +225,11 @@ unsaved rows must get client-side temporary ids from the consumer's `newRow` fac
 
 The consumer owns the array; the grid reconciles in-place changes (server recalculations,
 refreshed rows) by `rowId`: selection ranges remap to the rows' new positions (a range whose rows
-vanished shrinks or drops); the active cell follows its row, falling back to the nearest row in
-the same column; an open editor is cancelled (with an announcement) if its row disappears, and
+vanished shrinks); the active cell follows its row, falling back to the nearest row in the same
+column; a range that vanished entirely collapses onto that fallback cell rather than leaving an
+empty selection, so the settled cell's row/column headers stay highlighted and a follow-up row op
+keeps a target (the same path a row delete takes); an open editor is cancelled (with an
+announcement) if its row disappears, and
 otherwise keeps editing — its commit wins over the background write; invalid-input entries (§10)
 survive refreshes and drop with their row; undo entries apply by `rowId`, and one whose rows no
 longer exist is skipped with an announcement. A wholesale reload is the consumer's
@@ -704,10 +707,15 @@ dies on retype.
 Target shaping (all Excel semantics): single value → fills every cell of the selection; range →
 pasted anchored at the active range's top-start corner; if the target selection is an exact
 multiple of the source shape, the source **tiles** it. Overflow beyond the last row materializes
-new rows through the placeholder machinery (§5.5, requires `newRow`); overflow beyond the last
-column is dropped; readonly/disabled cells inside the paste rectangle are skipped in place (values
-are not shifted around them). The whole paste — including materialized rows and async resolutions —
-is **one undo op**.
+new rows through the placeholder machinery (§5.5, requires `newRow`) — except a **trailing run of
+entirely-blank source rows**, which never materializes new rows: Google Sheets' select-all copies
+the used range plus hundreds of blank rows below it where Excel copies only the used range, so the
+blank tail is trimmed rather than spawning blank rows (a blank row landing on an *existing* row
+still clears it). Overflow beyond the last column is dropped; readonly/disabled cells inside the
+paste rectangle are skipped in place (values are not shifted around them). The pasted block then
+becomes the selection — a full-row move selects the moved rows (§9.6) — so the next action lands on
+what was just pasted. The whole paste — including materialized rows and async resolutions — is
+**one undo op**.
 
 Per-cell value conversion, in order: (1) same `type` + same tenant with a raw value present →
 typed write, no parsing; (2) else the display string goes through the column's **`parse`** (built
