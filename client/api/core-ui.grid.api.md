@@ -29,7 +29,7 @@ export class TmGrid<T> extends ɵTmGridBase<T> {
 
 // @public
 export class TmGridColumn<T = unknown, V = unknown> {
-    readonly align: _angular_core.InputSignal<"center" | "start" | "end" | "left" | "right" | undefined>;
+    readonly align: _angular_core.InputSignal<"start" | "end" | "center" | "left" | "right" | undefined>;
     readonly defaultValue: _angular_core.InputSignal<V | undefined>;
     readonly displayDef: _angular_core.Signal<TmGridDisplayDef<any, any> | undefined>;
     readonly editorDef: _angular_core.Signal<TmGridEditorDef<any, any> | undefined>;
