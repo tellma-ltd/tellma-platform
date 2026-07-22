@@ -1371,7 +1371,13 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   onKeydown(event: KeyboardEvent): void {
     const engine = this.engine;
     const session = untracked(() => engine.edit.session());
-    if (event.isComposing || event.keyCode === 229) {
+    // `keyCode` is deprecated as a key IDENTIFIER (layout-tied), but 229 is the
+    // IME-composition status sentinel, not a key lookup — and the most reliable
+    // first-keydown IME signal: `isComposing` is false on the initiating
+    // keydown, and `key === 'Process'` is unset in WebKit. Read it through a
+    // non-deprecated view so the sentinel read doesn't trip the deprecation hint.
+    const imeKeyCode = (event as { readonly keyCode: number }).keyCode;
+    if (event.isComposing || imeKeyCode === 229) {
       // IME composition (§8.4): the very first composing keydown opens an
       // UNSEEDED editor and moves focus into its input synchronously, so
       // the whole composition session — and its commit — happens inside
