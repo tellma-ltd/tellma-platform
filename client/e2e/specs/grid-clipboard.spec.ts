@@ -6,6 +6,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { pressUndo, seedClipboard } from '../support/clipboard';
+import { useExclusiveClipboard } from '../support/clipboard-lock';
 import {
   activateCell,
   cell,
@@ -77,6 +78,7 @@ async function selectTwoByTwo(page: Page): Promise<string[][]> {
 
 test.describe('real system clipboard (Chromium permissions)', () => {
   test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
+  useExclusiveClipboard();
 
   test.beforeEach(async ({ page }) => {
     await gotoGrid(page, 'grid-readonly');
@@ -253,6 +255,7 @@ async function expectModel(page: Page, expected: readonly InvoiceLine[]): Promis
 
 test.describe('paste, cut & menu round-trips (real system clipboard, editable)', () => {
   test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
+  useExclusiveClipboard();
 
   test.beforeEach(async ({ page }) => {
     await gotoGrid(page, 'grid-editable');

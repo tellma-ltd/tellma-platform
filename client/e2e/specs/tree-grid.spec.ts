@@ -7,6 +7,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { expectNoAxeViolations } from '../support/axe';
 import { pressUndo, syntheticPaste } from '../support/clipboard';
+import { useExclusiveClipboard } from '../support/clipboard-lock';
 import {
   activateCell,
   activeCell,
@@ -309,6 +310,7 @@ test.describe('tree row operations', () => {
 
 test.describe('subtree moves & tree paste', () => {
   test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
+  useExclusiveClipboard();
 
   test('a full-row cut/paste moves the whole subtree and re-parents it; one undo restores', async ({
     page,
