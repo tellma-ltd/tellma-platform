@@ -233,6 +233,34 @@ describe('TmGridEngine', () => {
       // The pending cut kept only its surviving row.
       expect(h.engine.clipboard.pendingCut()?.rowIds).toEqual([2]);
     });
+
+    it('an active cell on the placeholder row follows the placeholder, not the last data row', () => {
+      const h = makeEngine(makeRows(2));
+      // Enter after a Tab run (or plain ArrowDown) can land the active cell
+      // on the placeholder; a reconcile right after — e.g. the rows-changed
+      // effect firing for the commit's own write — must keep it there.
+      h.engine.clickCell({ row: 2, col: 1 }); // the placeholder (2 data rows)
+      h.externalChange([...h.rows()]); // same rows, new array — a pure reconcile
+      expect(h.engine.nav.activeCell()).toEqual({ row: 2, col: 1 });
+      // A row arriving shifts the placeholder down; the active cell follows.
+      h.externalChange([...h.rows(), { id: 99, a: 'x', b: 'y', c: 'z' }]);
+      expect(h.engine.nav.activeCell()).toEqual({ row: 3, col: 1 });
+      // The selection re-collapsed onto the settled cell (headers highlight).
+      expect(h.engine.selection.ranges()).toEqual([
+        { anchor: { row: 3, col: 1 }, focus: { row: 3, col: 1 }, kind: 'cells' },
+      ]);
+    });
+
+    it('a Tab run whose origin row precedes the placeholder survives a reconcile intact', () => {
+      const h = makeEngine(makeRows(2));
+      h.engine.clickCell({ row: 1, col: 1 }); // last data row
+      expect(h.engine.nav.tab(false)).toEqual({ row: 1, col: 2 }); // starts the run
+      h.engine.nav.setActive({ row: 1, col: 2 }, { keepTabRun: true });
+      h.externalChange([...h.rows()]); // a pure reconcile must not end the run
+      // Enter returns to the run origin's column on the row BELOW the origin —
+      // the placeholder row when the origin was the last data row.
+      expect(h.engine.nav.enterTarget(false)).toEqual({ row: 2, col: 1 });
+    });
   });
 
   describe('dispose', () => {

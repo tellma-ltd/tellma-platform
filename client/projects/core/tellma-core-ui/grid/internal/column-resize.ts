@@ -17,6 +17,8 @@ export interface ɵTmGridResizeColumn {
   readonly id: string;
   /** The column's declared minimum width in px, if any. */
   readonly minWidth: number | undefined;
+  /** The column's declared fixed width in px, if any (its track needs no freeze). */
+  readonly width: number | undefined;
 }
 
 /** Construction inputs of {@link ɵTmGridColumnResize}. */
@@ -25,6 +27,8 @@ export interface ɵTmGridColumnResizeOptions {
   readonly widthOverrides: WritableSignal<ReadonlyMap<string, number>>;
   /** The reading direction — drag deltas are direction-mapped. */
   readonly direction: Signal<'ltr' | 'rtl'>;
+  /** All columns in display order (each header's `data-col` indexes into it). */
+  columns(): ReadonlyArray<ɵTmGridResizeColumn>;
   /** Persists the current widths (called once per completed drag). */
   persist(): void;
 }
@@ -55,6 +59,14 @@ export class ɵTmGridColumnResize {
     // Own the gesture: no text selection, no cell-press/column-select path.
     event.preventDefault();
     event.stopPropagation();
+    // Freeze the whole layout FIRST: while proportional (fr) tracks remain,
+    // fixing one column's width makes the others redistribute the slack, so
+    // the dragged column's far edge visibly drifts as its flexible
+    // neighbours reflow. Pinning every proportional column at its current
+    // rendered width (the Excel model — every column a definite width)
+    // leaves the drag moving only the dragged edge. Rendered widths are
+    // frozen verbatim, so nothing shifts at pointerdown.
+    this.freezeProportionalColumns(header);
     const startX = event.clientX;
     const startWidth =
       untracked(this.options.widthOverrides).get(column.id) ??
@@ -96,5 +108,34 @@ export class ɵTmGridColumnResize {
     handle.addEventListener('pointermove', onMove);
     handle.addEventListener('pointerup', onEnd);
     handle.addEventListener('pointercancel', onEnd);
+  }
+
+  /**
+   * Seeds a width override for every column that still lays out
+   * proportionally (no override, no declared fixed width) at its currently
+   * rendered width, measured off the header row's cells in one pass.
+   */
+  private freezeProportionalColumns(header: Element): void {
+    const row = header.parentElement;
+    if (row === null) {
+      return;
+    }
+    const columns = this.options.columns();
+    const measured: Array<readonly [string, number]> = [];
+    for (const cell of row.querySelectorAll<HTMLElement>('[data-tm-colhdr]')) {
+      const column = columns[Number(cell.dataset['col'])];
+      if (column !== undefined && column.width === undefined) {
+        measured.push([column.id, Math.round(cell.getBoundingClientRect().width)]);
+      }
+    }
+    this.options.widthOverrides.update((overrides) => {
+      let next: Map<string, number> | null = null;
+      for (const [id, width] of measured) {
+        if (!overrides.has(id)) {
+          (next ??= new Map(overrides)).set(id, width);
+        }
+      }
+      return next ?? overrides;
+    });
   }
 }

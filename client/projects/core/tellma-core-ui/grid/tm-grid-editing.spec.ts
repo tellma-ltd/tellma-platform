@@ -427,6 +427,47 @@ describe('tm-grid (editing)', () => {
     expect(host.model().length).toBe(3); // one undo removed row AND write
   });
 
+  it('Enter after typing in the placeholder advances onto the NEW placeholder and stays', async () => {
+    const { fixture, host, scroller } = await setup();
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'End', { ctrlKey: true });
+    keydown(scroller, 'ArrowDown');
+    keydown(scroller, 'Home'); // the placeholder's first cell (3,0)
+    await stable(fixture);
+
+    keydown(scroller, 'N');
+    typeInto(editorInput(scroller) as HTMLInputElement, 'Line A');
+    keydown(editorInput(scroller) as HTMLInputElement, 'Enter');
+    await stable(fixture);
+
+    expect(host.model()[3].name).toBe('Line A');
+    // Enter moved one row down onto the FRESH placeholder — and the commit's
+    // own rows-changed reconcile must not yank the active cell back up onto
+    // the materialized row (the placeholder is absent from the order snapshot,
+    // so the remap once mistook it for a vanished row).
+    const target = cellAt(scroller, 4, 0) as HTMLElement;
+    expect(target.getAttribute('tabindex')).toBe('0');
+    expect(document.activeElement).toBe(target);
+  });
+
+  it('a model write immediately followed by stepping onto the placeholder keeps it active', async () => {
+    const { fixture, host, scroller } = await setup();
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'ArrowDown');
+    keydown(scroller, 'ArrowDown');
+    keydown(scroller, 'ArrowRight');
+    keydown(scroller, 'ArrowRight'); // (2,2) — the last data row's boolean
+    await stable(fixture);
+
+    keydown(scroller, ' '); // toggle = a model write (its reconcile is pending)
+    keydown(scroller, 'ArrowDown'); // onto the placeholder before it lands
+    await stable(fixture);
+    expect(host.model()[2].active).toBe(false);
+    const target = cellAt(scroller, 3, 2) as HTMLElement;
+    expect(target.getAttribute('tabindex')).toBe('0');
+    expect(document.activeElement).toBe(target);
+  });
+
   it('boolean cells toggle on Space and Enter, and the toggle is undoable', async () => {
     const { fixture, host, scroller } = await setup();
     await activateOrigin(fixture, scroller);

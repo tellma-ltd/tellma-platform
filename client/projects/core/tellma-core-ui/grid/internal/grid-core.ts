@@ -823,6 +823,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.resize = new ɵTmGridColumnResize({
       widthOverrides: this.widthOverrides,
       direction: deps.direction,
+      // A thunk: `columnsInternal` is assigned further down the constructor,
+      // and the controller only reads it at drag time.
+      columns: () => untracked(this.columnsInternal),
       persist: () => this.persistWidths(),
     });
 
@@ -2378,8 +2381,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
             readonly: !model.isCellEditable(cell),
           };
         }
+        // Boolean cells keep their checkbox glyph on the placeholder row too
+        // (an unchecked box inviting the materializing toggle) — only a
+        // custom display template suppresses it (it cannot render there: no
+        // row exists yet, so the placeholder cell stays blank instead).
         const glyphClass =
-          displayTemplate === undefined && !isPlaceholder && column.type === 'boolean'
+          column.displayDef === undefined && column.type === 'boolean'
             ? TM_CHECKBOX_CELL_DISPLAY.displayClass!(
                 (model.cellValue(cell) ?? null) as boolean | null,
               ) +
@@ -2410,7 +2417,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           editing:
             session !== null && session.cell.row === viewIndex && session.cell.col === column.index,
           invalid,
-          readonly: editable && !isPlaceholder && !model.isCellEditable(cell),
+          // The placeholder row included: its cells in readonly COLUMNS are
+          // just as uneditable before materialization as after, and styling
+          // them editable-looking until the row materializes misleads.
+          readonly: editable && !model.isCellEditable(cell),
           pending: view !== null && engine.annotations.isPending(view.id, column.id),
           inCutRange,
           cutEdges,

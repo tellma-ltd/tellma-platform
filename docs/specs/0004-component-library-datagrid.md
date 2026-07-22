@@ -178,9 +178,12 @@ enabled; the status bar sits outside the scroll container and renders in editabl
 - Column widths: fixed `width` (px) **or** proportional `flex` (a fraction share of leftover
   space, emitted as `minmax(minWidth, ‹flex›fr)` — native to the `grid-template-columns` scheme,
   so proportional columns re-flow on container resize for free). User resize via a drag handle on
-  the header's trailing edge (pointer events, live update, ≥24px hit area) converts that column to
-  a px width (Excel behavior); widths are view state remembered per §12. Grid-wide default minimum
-  from tokens.
+  the header's trailing edge (pointer events, live update, ≥24px hit area) first freezes every
+  still-proportional column at its rendered px width, then drags the one column (the Excel model:
+  every column a definite width). Freezing first is what keeps the drag local — with `fr` tracks
+  still live, fixing one column's width makes the others redistribute the slack, so the dragged
+  column's *opposite* edge slides instead of the dragged one. Widths are view state remembered
+  per §12. Grid-wide default minimum from tokens.
 
 ## 5. Data model & Signal Forms binding
 
@@ -250,7 +253,12 @@ With `newRow: (parent?: T) => T` bound, the grid appends one placeholder row aft
 row — visually distinct, an asterisk in its row header, **not** part of the bound array or field
 tree. Typing (or pasting, or committing an editor) in any of its cells *materializes* it: the grid
 calls `newRow()`, pushes the result into the model through the field, and the commit lands on the
-now-real row's field; a fresh placeholder appears beneath. The placeholder cannot be deleted, no
+now-real row's field; a fresh placeholder appears beneath. Placeholder cells render like their
+column's data cells: a boolean column shows its (unchecked) checkbox glyph, and a column with no
+editing path carries the readonly tint before materialization just as after — only *per-cell*
+readonly rules, which need a row to consult, wait for one. The active cell (and a Tab run's
+origin) standing on the placeholder follows it through reconciles — a data row arriving shifts
+both down — rather than being treated as a vanished row. The placeholder cannot be deleted, no
 row can be inserted below it, and it is skipped by range operations (copy/delete). Without
 `newRow`, there is no placeholder and no paste-overflow row creation (`canAddRows ⇔ newRow`
 bound).

@@ -486,19 +486,33 @@ export class TmGridEngine<T = unknown> {
     }
     this.selection.remap(before);
     if (active !== null) {
-      const oldId = before.visibleIds[active.row];
-      const newIndex = oldId === undefined ? -1 : this.model.viewIndexOfRow(oldId);
-      if (newIndex !== -1) {
-        this.nav.setActive({ row: newIndex, col: active.col }, { keepTabRun: true });
-      } else {
-        // The active row vanished: mirror the selection's fallback — the
-        // nearest surviving row in the old order, same column — instead of
-        // holding the stale (now-clamped) view index.
-        const fallback = this.nearestSurvivingIndex(active.row, before);
-        if (fallback !== -1) {
-          this.nav.setActive({ row: fallback, col: active.col }, { keepTabRun: true });
+      if (active.row >= before.visibleIds.length) {
+        // The active cell sat on the placeholder row — a row the captured
+        // order never contains. It didn't vanish; it FOLLOWS the placeholder
+        // to its new index (data growth/shrink shifts it). Without this, the
+        // vanished-row fallback below yanks the cell up onto the last data
+        // row — e.g. right after Enter ends a Tab run onto the placeholder.
+        const placeholder = this.model.placeholderIndex();
+        if (placeholder !== -1) {
+          this.nav.setActive({ row: placeholder, col: active.col }, { keepTabRun: true });
         } else {
           this.nav.reclamp();
+        }
+      } else {
+        const oldId = before.visibleIds[active.row];
+        const newIndex = oldId === undefined ? -1 : this.model.viewIndexOfRow(oldId);
+        if (newIndex !== -1) {
+          this.nav.setActive({ row: newIndex, col: active.col }, { keepTabRun: true });
+        } else {
+          // The active row vanished: mirror the selection's fallback — the
+          // nearest surviving row in the old order, same column — instead of
+          // holding the stale (now-clamped) view index.
+          const fallback = this.nearestSurvivingIndex(active.row, before);
+          if (fallback !== -1) {
+            this.nav.setActive({ row: fallback, col: active.col }, { keepTabRun: true });
+          } else {
+            this.nav.reclamp();
+          }
         }
       }
     } else {
@@ -514,6 +528,11 @@ export class TmGridEngine<T = unknown> {
       this.selection.collapseTo(settledActive);
     }
     this.nav.remapTabRun((oldRow) => {
+      if (oldRow >= before.visibleIds.length) {
+        // A run whose origin was the placeholder row follows the placeholder
+        // (the captured order never contains it), ending only when it's gone.
+        return this.model.placeholderIndex();
+      }
       const id = before.visibleIds[oldRow];
       return id === undefined ? -1 : this.model.viewIndexOfRow(id);
     });

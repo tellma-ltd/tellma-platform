@@ -178,4 +178,34 @@ test.describe('column resize (§8.3 header edge drag)', () => {
     const cellBox = (await cell(page, 0, 2).boundingBox())!;
     expect(Math.abs(cellBox.width - after.width)).toBeLessThanOrEqual(2);
   });
+
+  test('resizing never reflows the neighbours — the layout freezes at drag start', async ({
+    page,
+  }) => {
+    // Name is proportional (flex). Before the freeze-at-drag-start fix, its
+    // track absorbed the dragged column's delta: growing Qty shrank Name, so
+    // Qty's START edge slid left while the dragged edge barely moved.
+    const name = colHeader(page, 1);
+    const qty = colHeader(page, 2);
+    const nameBefore = (await name.boundingBox())!;
+    const qtyBefore = (await qty.boundingBox())!;
+
+    const handle = qty.locator('.tm-grid__resize');
+    const grip = await centerOf(handle);
+    await page.mouse.move(grip.x, grip.y);
+    await page.mouse.down();
+    await page.mouse.move(grip.x + 40, grip.y, { steps: 6 });
+    await expect
+      .poll(async () => (await qty.boundingBox())!.width)
+      .toBeGreaterThan(qtyBefore.width + 30);
+    await page.mouse.up();
+
+    // The dragged column grew from its start edge outward…
+    const qtyAfter = (await qty.boundingBox())!;
+    expect(Math.abs(qtyAfter.x - qtyBefore.x)).toBeLessThanOrEqual(2);
+    // …and the proportional neighbour kept both its edges.
+    const nameAfter = (await name.boundingBox())!;
+    expect(Math.abs(nameAfter.x - nameBefore.x)).toBeLessThanOrEqual(2);
+    expect(Math.abs(nameAfter.width - nameBefore.width)).toBeLessThanOrEqual(2);
+  });
 });

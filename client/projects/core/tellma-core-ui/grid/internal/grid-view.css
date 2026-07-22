@@ -245,8 +245,9 @@
   background-color: var(--surface-selected);
 }
 
-/* The placeholder's cells ARE editable (typing materializes the row), so they
-   carry the editable (untinted) background — not the readonly tint. */
+/* The placeholder's editable cells carry the untinted background (typing
+   materializes the row). Cells in readonly COLUMNS still take the readonly
+   tint: the `--readonly` rule outweighs this one (0,3,0 vs 0,2,0). */
 .tm-grid__row--placeholder > .tm-grid__cell {
   background-color: transparent;
 }
