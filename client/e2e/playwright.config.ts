@@ -63,10 +63,18 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `node scripts/serve.mjs showcase --port ${port}`,
+    // CI serves an optimized production build: the dev server's latency
+    // widens the grid's async post-click focus race, so synthetic key
+    // presses intermittently land before focus settles and get dropped
+    // (broad keyboard/clipboard flakiness). Local keeps `ng serve` for fast
+    // rebuilds. The prod path folds a full build into startup, hence the
+    // wider timeout.
+    command: process.env['CI']
+      ? `node scripts/serve.mjs showcase --port ${port} --prod`
+      : `node scripts/serve.mjs showcase --port ${port}`,
     url: `http://localhost:${port}`,
     cwd: '..',
     reuseExistingServer: !process.env['CI'],
-    timeout: 180_000,
+    timeout: process.env['CI'] ? 300_000 : 180_000,
   },
 });
