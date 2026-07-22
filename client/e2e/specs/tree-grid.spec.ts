@@ -17,11 +17,10 @@ import {
   gridScroller,
   liveRegion,
   modelJson,
-  readClipboard,
   renderedRows,
   rowHeader,
   setScrollTop,
-  waitForClipboardWrite,
+  syntheticCut,
 } from '../support/grid';
 
 /**
@@ -322,16 +321,14 @@ test.describe('subtree moves & tree paste', () => {
     const before = await modelJson<Account[]>(page);
 
     await setScrollTop(page, 640); // rows ~16–38: source and target both rendered
-    const clipboardBefore = (await readClipboard(page)).text;
+    // Synthetic cut/paste: a row move rides the per-row identities, which
+    // Chromium strips from the real clipboard's HTML on read (see syntheticCut).
     await rowHeader(page, 23).click(); // Payables subtree [200, 2000, 2001]
-    await page.keyboard.press('Control+x');
+    const cutPayload = await syntheticCut(page);
     await expect(cell(page, 23, 0)).toHaveClass(/tm-grid__cell--cut/);
-    // The move needs the cut payload on the clipboard: wait out the async
-    // write, else the paste reads stale content and lands as a value paste.
-    await waitForClipboardWrite(page, clipboardBefore);
 
     await activateCell(page, 32, 0); // Share capital (id 30, a child of Equity)
-    await page.keyboard.press('Control+v');
+    await syntheticPaste(page, cutPayload);
 
     // The move announces the CUT rows (the subtree travels implicitly).
     await expect(liveRegion(page)).toContainText('1 row moved');
@@ -358,9 +355,9 @@ test.describe('subtree moves & tree paste', () => {
     const before = await modelJson<Account[]>(page);
 
     await rowHeader(page, 1).click(); // Current assets (id 10)
-    await page.keyboard.press('Control+x');
+    const cutPayload = await syntheticCut(page);
     await activateCell(page, 3, 0); // Petty cash — inside the cut subtree
-    await page.keyboard.press('Control+v');
+    await syntheticPaste(page, cutPayload);
 
     await expect(liveRegion(page)).toContainText('Cannot move a row into its own subtree');
     expect(JSON.stringify(await modelJson<Account[]>(page))).toBe(JSON.stringify(before));

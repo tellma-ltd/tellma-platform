@@ -631,6 +631,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   /** A persisted selection to re-apply once the content's rows are present. */
   private pendingSelectionRestore: NonNullable<TmGridContentState['selection']> | null = null;
   private pendingGestureFocus = false;
+  /**
+   * Set when a structural notice (row move/insert/delete) just spoke, to drop
+   * the ONE coarse selection announcement its reselection fires right after —
+   * otherwise "3 × 4 selected" clobbers "1 row moved" in the live region.
+   */
+  private suppressSelectionAnnounce = false;
   /** Whether the most recent real focus landed inside the grid/its overlays. */
   private gridOwnsFocus = false;
   /** When the user last pressed outside the grid (guards focus reclaim). */
@@ -2084,6 +2090,17 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           // (nothing lands on the clipboard) — surface the reason visibly too.
           if (notice.kind === 'copyRefusedMisaligned') {
             this.showTransientNotice('grid.announce.copyRefused');
+          }
+          // A structural op reselects (the moved/inserted rows, a delete's
+          // fallback cell); its spoken notice IS the event, so mute the coarse
+          // selection announcement that reselection would otherwise fire an
+          // instant later and overwrite it with in the live region.
+          if (
+            notice.kind === 'rowsMoved' ||
+            notice.kind === 'rowsInserted' ||
+            notice.kind === 'rowsDeleted'
+          ) {
+            this.suppressSelectionAnnounce = true;
           }
         },
         onReveal: () => this.requestReveal(),
@@ -3876,6 +3893,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           const changed = key !== lastSelectionKey;
           lastSelectionKey = key;
           if (first || !changed) {
+            return;
+          }
+          // A structural op (move/insert/delete) already spoke; skip the one
+          // announcement its reselection triggers so its notice isn't clobbered.
+          if (this.suppressSelectionAnnounce) {
+            this.suppressSelectionAnnounce = false;
             return;
           }
           if (isAll) {

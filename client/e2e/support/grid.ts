@@ -253,3 +253,39 @@ export async function syntheticCopy(page: Page): Promise<{ text: string; html: s
     };
   });
 }
+
+/**
+ * Dispatches a synthetic `cut` ClipboardEvent at the grid — arming the
+ * deferred move (marquee + in-memory descriptor) — and returns the flavors
+ * the grid wrote, captured the same way as {@link syntheticCopy}.
+ *
+ * A row MOVE cannot be proved through the REAL clipboard: the move needs the
+ * per-row identities, but Chromium strips the `data-tm-rowid` attributes when
+ * a page reads `text/html` back, so the paste can only recover them from the
+ * in-memory descriptor — matched by a fingerprint of the text flavor, whose
+ * async write races (and occasionally round-trips non-identically through)
+ * the OS clipboard. Feeding the captured flavors straight into
+ * {@link syntheticPaste} keeps the payload in-process, so the fingerprint
+ * matches deterministically and the move logic is what's under test.
+ */
+export async function syntheticCut(page: Page): Promise<{ text: string; html: string }> {
+  return gridScroller(page).evaluate((el) => {
+    const data = new DataTransfer();
+    const event = new ClipboardEvent('cut', { clipboardData: data, bubbles: true, cancelable: true });
+    const captured: Record<string, string> = {};
+    const target = event.clipboardData ?? data;
+    const original = target.setData.bind(target);
+    Object.defineProperty(target, 'setData', {
+      configurable: true,
+      value: (type: string, value: string) => {
+        captured[type] = value;
+        original(type, value);
+      },
+    });
+    el.dispatchEvent(event);
+    return {
+      text: captured['text/plain'] ?? data.getData('text/plain'),
+      html: captured['text/html'] ?? data.getData('text/html'),
+    };
+  });
+}

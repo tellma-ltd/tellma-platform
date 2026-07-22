@@ -5,7 +5,7 @@
 
 import { expect, test, type Page } from '@playwright/test';
 
-import { pressUndo, seedClipboard } from '../support/clipboard';
+import { pressUndo, seedClipboard, syntheticPaste } from '../support/clipboard';
 import { useExclusiveClipboard } from '../support/clipboard-lock';
 import {
   activateCell,
@@ -17,6 +17,7 @@ import {
   readClipboard,
   rowHeader,
   syntheticCopy,
+  syntheticCut,
   waitForClipboardWrite,
 } from '../support/grid';
 
@@ -366,16 +367,14 @@ test.describe('paste, cut & menu round-trips (real system clipboard, editable)',
     const before = await modelJson<InvoiceLine[]>(page);
     const beforeIds = before.map((line) => line.id);
 
-    const clipboardBefore = (await readClipboard(page)).text;
+    // Synthetic cut/paste: a row move rides the per-row identities, which
+    // Chromium strips from the real clipboard's HTML on read (see syntheticCut).
     await rowHeader(page, 1).click(); // full row 1 (id 2)
-    await page.keyboard.press('Control+x');
+    const cutPayload = await syntheticCut(page);
     await expect(cell(page, 1, 0)).toHaveClass(/tm-grid__cell--cut/);
-    // The move needs the cut payload on the clipboard: wait out the async
-    // write, else the paste reads stale content and lands as a value paste.
-    await waitForClipboardWrite(page, clipboardBefore);
 
     await activateCell(page, 5, 0); // row 5 holds id 6
-    await page.keyboard.press('Control+v');
+    await syntheticPaste(page, cutPayload);
 
     // The row was re-inserted above the paste target (§9.6) — a move, not a
     // write: values travel with the row identity.
