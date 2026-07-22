@@ -3369,6 +3369,20 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   private requestFocusActive(): void {
     this.pendingGestureFocus = true;
     this.focusRequest.update((value) => value + 1);
+    // Land focus SYNCHRONOUSLY when the active cell is already rendered — a
+    // pointer gesture always lands on one, and an in-window keyboard move
+    // keeps it rendered. The deferred roving-focus effect above would
+    // otherwise not focus it until the next render, so a key (or clipboard
+    // shortcut) fired right after the gesture would reach an unfocused grid
+    // and be dropped. A move to a not-yet-rendered cell (paging past the
+    // window) leaves the element null and falls through to that effect, which
+    // also owns DOM-move focus reclaim. Skipped while escaped or an editor
+    // owns focus — the effect resolves those; this only ever brings focus
+    // forward in time, never changes which cell it lands on.
+    if (untracked(this.escapedSignal) || untracked(() => this.engine.edit.session()) !== null) {
+      return;
+    }
+    this.activeCellElement()?.focus({ preventScroll: true });
   }
 
   private requestReveal(): void {
