@@ -29,10 +29,17 @@ export default defineConfig({
   projects: [
     // Chromium runs the FULL battery (real-clipboard permissions, touch
     // specs excluded — those need a touch-enabled device project).
+    // Serialized within each file: the shared CI runner also hosts the dev
+    // server and the browser, so distributing a file's tests across workers
+    // over-subscribes it and starts dropping synthetic key/clipboard events
+    // (a Control+C that never fires, a paging arrow that no-ops). One test
+    // per file at a time keeps the machine responsive; files still run in
+    // parallel across workers.
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
       testIgnore: /grid-touch/,
+      fullyParallel: false,
     },
     // Firefox/WebKit run the @cross-engine subset: tests that dispatch
     // synthetic ClipboardEvents (no OS clipboard, no Chromium-only
