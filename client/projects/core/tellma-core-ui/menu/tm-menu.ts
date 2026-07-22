@@ -5,11 +5,14 @@
 
 import { NgTemplateOutlet } from '@angular/common';
 import {
+  afterNextRender,
   afterRenderEffect,
+  type AfterRenderRef,
   Component,
   computed,
   DestroyRef,
   inject,
+  Injector,
   input,
   isDevMode,
   output,
@@ -182,8 +185,9 @@ export class TmMenu {
 
   private readonly overlay = viewChild(CdkConnectedOverlay);
   private readonly menu = viewChild(Menu);
+  private readonly injector = inject(Injector);
   private restoreFocusTarget: HTMLElement | null = null;
-  private pendingRemeasure: ReturnType<typeof setTimeout> | undefined;
+  private pendingRemeasure: AfterRenderRef | undefined;
   private focusedOnOpen = false;
   /** Per-item label signals, cached by item reference. */
   private readonly labelCache = new WeakMap<TmMenuItem, Signal<string>>();
@@ -206,7 +210,7 @@ export class TmMenu {
   constructor() {
     this.isOpen = this.expanded.asReadonly();
     inject(DestroyRef).onDestroy(() => {
-      clearTimeout(this.pendingRemeasure);
+      this.pendingRemeasure?.destroy();
       this.disarmEscapeClose();
     });
 
@@ -331,13 +335,19 @@ export class TmMenu {
   }
 
   /**
-   * Re-measures the overlay one macrotask after the origin changed so
-   * flexible positioning re-flips at the new anchor — without re-emitting
-   * `opened` (a re-anchor is one continuous open, not a fresh one).
+   * Re-measures the overlay after the NEXT render so flexible positioning
+   * re-flips at the new anchor — without re-emitting `opened` (a re-anchor is
+   * one continuous open, not a fresh one). The render barrier matters: the
+   * new origin reaches the CDK overlay directive only when change detection
+   * flushes the `[cdkConnectedOverlayOrigin]` binding, so measuring before
+   * that (a bare timer racing CD) re-measures against the OLD origin and the
+   * menu sticks at its previous point — intermittently, on slower machines.
    */
   private reanchor(): void {
-    clearTimeout(this.pendingRemeasure);
-    this.pendingRemeasure = setTimeout(() => this.overlay()?.overlayRef?.updatePosition());
+    this.pendingRemeasure?.destroy();
+    this.pendingRemeasure = afterNextRender(() => this.overlay()?.overlayRef?.updatePosition(), {
+      injector: this.injector,
+    });
   }
 
   /** Whether the menu has at least one non-separator entry to show. */
