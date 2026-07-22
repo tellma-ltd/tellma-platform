@@ -98,7 +98,11 @@ const dark: TmSchemeColors = {
   },
   surface: {
     page: '#0D181E',
-    subtle: '#0D181E',
+    // A visible step OFF the page (midway to the card surface): the role's
+    // contract is "a subtle panel tint", and everything riding it — grid
+    // zebra stripes, readonly-cell tints, header fills — vanishes if it
+    // collapses onto the page color the way an earlier draft had it.
+    subtle: '#121E25',
     sunken: '#0A1418',
     card: darkNeutral.surface,
     inverse: darkNeutral[25],
