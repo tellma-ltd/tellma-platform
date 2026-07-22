@@ -1,0 +1,23 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-grid — host-level styles only; the grid chrome itself lives with the
+   shared internal view component. The density variants re-point the row
+   height token for everything inside. */
+
+:host {
+  display: block;
+  inline-size: 100%;
+}
+
+:host(.tm-grid--sm) {
+  --grid-row-height: var(--grid-row-height-sm);
+}
+
+:host(.tm-grid--lg) {
+  --grid-row-height: var(--grid-row-height-lg);
+}

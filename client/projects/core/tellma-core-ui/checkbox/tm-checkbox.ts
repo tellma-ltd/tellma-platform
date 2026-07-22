@@ -18,7 +18,7 @@ import {
 } from '@angular/core';
 import type { ValidationError } from '@angular/forms/signals';
 
-import type { TmFieldError, TmFormFieldControl } from '@tellma/core-ui/contracts';
+import type { TmCellDisplay, TmFieldError, TmFormFieldControl } from '@tellma/core-ui/contracts';
 import { TM_ERROR_DISPLAY, TM_UI_TRANSLATE, tmResolveFieldErrors } from '@tellma/core-ui';
 import { TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/form-field';
 
@@ -210,3 +210,21 @@ export class TmCheckbox implements TmFormFieldControl {
     this.indeterminate.set(false);
   }
 }
+
+/**
+ * The checkbox's cell-display contract: how a grid paints a boolean cell as
+ * static DOM with no component instance. The text representation is the
+ * spreadsheet-interop literal `TRUE`/`FALSE` (never localized — it is what
+ * copy exports and paste parses); the glyph class renders a checkbox-box
+ * visual driven by the same `--checkbox-box-size` and field tokens the real
+ * control uses, so the two stay in lock-step. A `null` value (a cleared
+ * cell) displays as unchecked.
+ */
+export const TM_CHECKBOX_CELL_DISPLAY: TmCellDisplay<boolean | null> = {
+  formatValue(value: boolean | null): string {
+    return value ? 'TRUE' : 'FALSE';
+  },
+  displayClass(value: boolean | null): string {
+    return value ? 'tm-grid-bool tm-grid-bool--on' : 'tm-grid-bool';
+  },
+};

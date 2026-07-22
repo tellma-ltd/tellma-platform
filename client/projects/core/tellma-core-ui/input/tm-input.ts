@@ -18,8 +18,13 @@ import {
 } from '@angular/core';
 import type { ValidationError } from '@angular/forms/signals';
 
-import type { TmFieldError, TmFormFieldControl } from '@tellma/core-ui/contracts';
-import { TM_ERROR_DISPLAY, TM_UI_TRANSLATE, tmResolveFieldErrors } from '@tellma/core-ui';
+import type { TmCellEditor, TmFieldError, TmFormFieldControl } from '@tellma/core-ui/contracts';
+import {
+  TM_CELL_EDITOR_HOST,
+  TM_ERROR_DISPLAY,
+  TM_UI_TRANSLATE,
+  tmResolveFieldErrors,
+} from '@tellma/core-ui';
 import { TM_FORM_FIELD_CONTROL, TmFormField } from '@tellma/core-ui/form-field';
 
 let nextUniqueId = 0;
@@ -63,10 +68,12 @@ let nextUniqueId = 0;
     '(blur)': 'touch.emit()',
   },
 })
-export class TmInput implements TmFormFieldControl {
+export class TmInput implements TmFormFieldControl, TmCellEditor<string> {
   private readonly element = inject<ElementRef<HTMLInputElement>>(ElementRef).nativeElement;
   private readonly translate = inject(TM_UI_TRANSLATE);
   private readonly errorDisplay = inject(TM_ERROR_DISPLAY);
+  /** The enclosing grid cell's registration sink, if any — absent standalone. */
+  private readonly cellHost = inject(TM_CELL_EDITOR_HOST, { optional: true });
   /** The enclosing field, if any — used only to flag `--in-field` so the input
    * inherits the field's chrome and sizing. Form state flows via `[formField]`. */
   protected readonly formField = inject(TmFormField, { optional: true });
@@ -138,11 +145,36 @@ export class TmInput implements TmFormFieldControl {
     }),
   );
 
+  // ---- TmCellEditor<string> ----
+  /**
+   * The committed-text view of the content. For a plain text input the text
+   * IS the value — never `null`; interpreting it (parsing, validation) is
+   * the host's concern.
+   */
+  readonly text: Signal<string | null> = computed(() => this.value() ?? '');
+  /** Cell-editor revert baseline: the value `cancel()` returns to. */
+  private lastCommitted = '';
+  /**
+   * The value this input itself just wrote (keystroke, seed, cancel), so
+   * the baseline effect can tell its own echo from an EXTERNAL write — only
+   * external writes (form resets, a grid opening the editor) and `commit()`
+   * move the revert baseline.
+   */
+  private selfWrite: { readonly value: string } | null = null;
+
   constructor() {
+    this.cellHost?.register(this);
+
     // Reflect external value writes into the native input without clobbering
-    // the caret on the user's own keystrokes.
+    // the caret on the user's own keystrokes; external writes also move the
+    // cell-editor revert baseline (the input's own writes do not).
     effect(() => {
       const value = this.value() ?? '';
+      const self = this.selfWrite;
+      this.selfWrite = null;
+      if (!self || !Object.is(self.value, value)) {
+        this.lastCommitted = value;
+      }
       if (this.element.value !== value) {
         this.element.value = value;
       }
@@ -164,8 +196,34 @@ export class TmInput implements TmFormFieldControl {
     this.element.focus(options);
   }
 
+  /**
+   * Accepts the current content: the value channel already mirrors every
+   * keystroke, so committing only moves the revert baseline.
+   */
+  commit(): void {
+    this.lastCommitted = this.value() ?? '';
+  }
+
+  /** Reverts to the value present when editing began (a grid host's Esc). */
+  cancel(): void {
+    this.selfWrite = { value: this.lastCommitted };
+    this.value.set(this.lastCommitted);
+  }
+
+  /** Type-to-edit seed: replaces the content with `text`, caret at the end. */
+  seed(text: string): void {
+    this.selfWrite = { value: text };
+    this.value.set(text);
+    // Write the native value now (not at effect flush) so the caret can be
+    // placed synchronously — the user's next keystroke must append.
+    this.element.value = text;
+    this.element.setSelectionRange(text.length, text.length);
+  }
+
   /** Mirrors native input events into the `value` model. */
   protected onInput(event: Event): void {
-    this.value.set((event.target as HTMLInputElement).value);
+    const value = (event.target as HTMLInputElement).value;
+    this.selfWrite = { value };
+    this.value.set(value);
   }
 }
