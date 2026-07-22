@@ -183,7 +183,10 @@ async function setup(): Promise<{
   TestBed.configureTestingModule({
     providers: [
       provideTellmaUi(),
-      { provide: TM_GRID_CONTEXT, useValue: { tenantId: signal('acme') } },
+      {
+        provide: TM_GRID_CONTEXT,
+        useValue: { tenantId: signal('acme'), distributionKey: 'acme-dist' },
+      },
     ],
   });
   const fixture = TestBed.createComponent(ClipboardHost);
@@ -311,8 +314,8 @@ describe('tm-grid (clipboard paste)', () => {
     await activateCell(fixture, scroller, 0, 1); // qty
 
     const htmlFor = (tenant: string): string =>
-      `<table data-tm-grid='{"v":1,"tenantId":"${tenant}","locale":"en-US",` +
-      `"cols":[{"key":"qty","type":"number"}]}'>` +
+      `<table data-tm-grid='{"v":1,"tenantId":"${tenant}","distributionKey":"acme-dist",` +
+      `"locale":"en-US","cols":[{"key":"qty","type":"number"}]}'>` +
       `<tbody><tr><td data-tm-v="42" data-tm-h="${tmClipboardFingerprint('forty-two')}">` +
       `forty-two</td></tr></tbody></table>`;
 
@@ -343,8 +346,8 @@ describe('tm-grid (clipboard paste)', () => {
     // fingerprints the original "6", so it no longer matches the cell text and
     // the stale raw value is discarded — the edited "99" is parsed instead.
     const tampered =
-      `<table data-tm-grid='{"v":1,"tenantId":"acme","locale":"en-US",` +
-      `"cols":[{"key":"qty","type":"number"}]}'>` +
+      `<table data-tm-grid='{"v":1,"tenantId":"acme","distributionKey":"acme-dist",` +
+      `"locale":"en-US","cols":[{"key":"qty","type":"number"}]}'>` +
       `<tbody><tr><td data-tm-v="6" data-tm-h="${tmClipboardFingerprint('6')}">99</td></tr>` +
       `</tbody></table>`;
 
@@ -359,8 +362,8 @@ describe('tm-grid (clipboard paste)', () => {
 
     dispatchPaste(scroller, {
       html:
-        `<table data-tm-grid='{"v":1,"tenantId":"acme","headers":true,` +
-        `"cols":[{"key":"name","type":"text"}]}'>` +
+        `<table data-tm-grid='{"v":1,"tenantId":"acme","distributionKey":"acme-dist",` +
+        `"headers":true,"cols":[{"key":"name","type":"text"}]}'>` +
         `<thead><tr><th>Name</th></tr></thead>` +
         `<tbody><tr><td>FromHtml</td></tr></tbody></table>`,
     });
@@ -425,8 +428,8 @@ describe('tm-grid (clipboard paste)', () => {
     // The rendered text still collapses to "Alice Green", so the fingerprint
     // matches, the raw id is used, and the resolver is never consulted.
     const html =
-      `<table data-tm-grid='{"v":1,"tenantId":"acme","locale":"en-US",` +
-      `"cols":[{"key":"agentId","type":"entity"}]}'>` +
+      `<table data-tm-grid='{"v":1,"tenantId":"acme","distributionKey":"acme-dist",` +
+      `"locale":"en-US","cols":[{"key":"agentId","type":"entity"}]}'>` +
       `<tbody><tr><td data-tm-v="11" data-tm-h="${tmClipboardFingerprint('Alice Green')}">Alice\n      Green</td></tr></tbody></table>`;
     dispatchPaste(scroller, { html });
     await stable(fixture);

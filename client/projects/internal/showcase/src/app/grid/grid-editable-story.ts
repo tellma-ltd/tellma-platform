@@ -178,7 +178,9 @@ export class DemoAgentEditor implements TmCellEditor<number | null> {
   imports: [TmGrid, TmGridColumn, TmGridEditorDef, DemoAgentEditor],
   // The app supplies the tenant id ambiently (single tenant per app); this
   // story stands in for tenant 't1' (the cross-engine paste e2e keys off it).
-  providers: [{ provide: TM_GRID_CONTEXT, useValue: { tenantId: signal('t1') } }],
+  providers: [
+    { provide: TM_GRID_CONTEXT, useValue: { tenantId: signal('t1'), distributionKey: 'd1' } },
+  ],
   template: `
     <h2>Grid (editable)</h2>
 

@@ -108,6 +108,7 @@ export class TmGridEngine<T = unknown> {
       canAddRows: options.canAddRows,
       locale: options.locale,
       tenantId: options.tenantId,
+      distributionKey: options.distributionKey,
       parentIdKey: options.tree?.parentIdKey,
       host: options.host,
     });

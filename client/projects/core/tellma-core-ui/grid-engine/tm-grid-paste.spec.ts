@@ -43,13 +43,14 @@ describe('TmGridClipboard copy', () => {
     expect(payload.cellCount).toBe(4);
   });
 
-  it('stamps the meta with version, tenantId, locale, and the copied column keys/types', () => {
-    const h = makeEngine(makeRows(1), { tenantId: 't1', locale: 'fr' });
+  it('stamps the meta with version, tenantId, distributionKey, locale, and the copied column keys/types', () => {
+    const h = makeEngine(makeRows(1), { tenantId: 't1', distributionKey: 'd1', locale: 'fr' });
     selectRect(h, { row: 0, col: 0 }, { row: 0, col: 1 });
     const payload = requirePayload(h.engine.clipboard.copy());
     expect(payload.meta).toEqual({
       v: 1,
       tenantId: 't1',
+      distributionKey: 'd1',
       locale: 'fr',
       cols: [
         { key: 'a', type: 'text' },
@@ -333,6 +334,29 @@ describe('TmGridClipboard paste conversion ladder', () => {
     expect(h.rows()[0]['a']).toBe('parsed:display');
   });
 
+  it('falls to parse on a distribution mismatch even when the tenant ids agree', () => {
+    // Tenant ids are unique only within one distribution: the same id on two
+    // distributions names two DIFFERENT tenants, so raw values must not port.
+    const h = makeEngine([{ id: 1, a: 'a1' }], {
+      tenantId: 't1',
+      distributionKey: 'd1',
+      columns: [{ key: 'a', parse: (text) => `parsed:${text}` }],
+    });
+    h.engine.clickCell({ row: 0, col: 0 });
+    h.engine.clipboard.paste({
+      matrix: [['display']],
+      meta: {
+        v: 1,
+        tenantId: 't1',
+        distributionKey: 'd2',
+        locale: 'en',
+        cols: [{ key: 'a', type: 'text' }],
+      },
+      rawValues: [[{ value: 'RAW' }]],
+    });
+    expect(h.rows()[0]['a']).toBe('parsed:display');
+  });
+
   it('writes the parsed value on parse success', () => {
     const h = makeEngine(makeRows(1), {
       columns: [{ key: 'a', parse: (text) => text.toUpperCase() }],
@@ -369,7 +393,7 @@ describe('TmGridClipboard paste conversion ladder', () => {
     h.engine.clickCell({ row: 0, col: 0 });
     const result = h.engine.clipboard.paste({
       matrix: [['Adam'], ['Bob'], ['Adam']],
-      meta: { v: 1, tenantId: 'src', locale: 'de' },
+      meta: { v: 1, tenantId: 'src', distributionKey: 'dsrc', locale: 'de' },
     });
     expect(result.errors).toBe(0);
     expect(h.engine.annotations.invalidCount()).toBe(0);
@@ -381,6 +405,7 @@ describe('TmGridClipboard paste conversion ladder', () => {
     expect(request.context.locale).toBe('en');
     expect(request.context.sourceLocale).toBe('de');
     expect(request.context.sourceTenantId).toBe('src');
+    expect(request.context.sourceDistributionKey).toBe('dsrc');
     expect(request.context.signal).toBeInstanceOf(AbortSignal);
     expect(request.context.signal.aborted).toBe(false);
   });

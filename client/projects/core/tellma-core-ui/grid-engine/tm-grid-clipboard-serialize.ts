@@ -17,6 +17,8 @@ export interface TmGridClipboardMeta {
   readonly v: 1;
   /** The copying grid's tenant id (cross-tenant paste guard). */
   readonly tenantId?: string;
+  /** The copying grid's distribution key — tenant ids are unique only within one. */
+  readonly distributionKey?: string;
   /** The copying grid's locale (source-locale parse hint). */
   readonly locale?: string;
   /** The copied columns' keys and types, in copy order. */

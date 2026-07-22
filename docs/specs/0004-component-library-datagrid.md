@@ -386,7 +386,8 @@ export interface TmParseContext {
 
 /** Context handed to `resolvePastedLabels` (§9.4). */
 export interface TmPasteContext extends TmParseContext {
-  readonly sourceTenantId?: string;  // from clipboard metadata — drives the cross-tenant guard (§9.4)
+  readonly sourceTenantId?: string;         // from clipboard metadata — the cross-tenant guard (§9.4)
+  readonly sourceDistributionKey?: string;  // tenant ids are unique only within one distribution
   readonly signal: AbortSignal;    // aborts when every cell awaiting this call has been invalidated
 }
 
@@ -650,9 +651,13 @@ only by the context menu (§8.5). During editing, events go to the editor untouc
 
 ### 9.2 Written formats (copy/cut)
 
-The `tenantId` stamped into the metadata below is ambient — provided once per app through a context
-token (`TM_GRID_CONTEXT`, the same shape as the UI message context), not a per-grid input: a single
-tenant is live at a time and no two grids in the DOM host different tenants' data.
+The `tenantId` and `distributionKey` stamped into the metadata below are ambient — provided once
+per app through a context token (`TM_GRID_CONTEXT`, the same shape as the UI message context), not
+per-grid inputs: a single tenant is live at a time and no two grids in the DOM host different
+tenants' data. Tenant ids are unique only *within* one distribution — two tenants on different
+distributions can carry the same id — so the paste guard (§9.3) compares the pair, never the
+tenant id alone. The distribution key is constant for the app's lifetime: a plain string on the
+context, where the tenant id is a signal.
 
 Both flavors are always written:
 
@@ -660,7 +665,7 @@ Both flavors are always written:
   separators). Cell content = the column's `format` output — exactly what the user sees.
 - **`text/html`** — a `<table>` of the same display strings (Excel and Sheets both parse it), plus
   Tellma metadata woven into the markup: on `<table
-  data-tm-grid='{"v":1,"tenantId":…,"locale":…,"cols":[{key,type}…]}'`, per-cell
+  data-tm-grid='{"v":1,"tenantId":…,"distributionKey":…,"locale":…,"cols":[{key,type}…]}'`, per-cell
   `data-tm-v` (JSON raw value) paired with `data-tm-h` (a fingerprint of the cell's display text,
   §9.3), and per-row `data-tm-rowid` (emitted when the range is full rows —
   a row *move* only needs to identify rows the grid already holds, §9.6; full records are never
@@ -717,8 +722,8 @@ becomes the selection — a full-row move selects the moved rows (§9.6) — so 
 what was just pasted. The whole paste — including materialized rows and async resolutions — is
 **one undo op**.
 
-Per-cell value conversion, in order: (1) same `type` + same tenant with a raw value present →
-typed write, no parsing; (2) else the display string goes through the column's **`parse`** (built
+Per-cell value conversion, in order: (1) same `type` + same origin (distribution key **and**
+tenant id, §9.2) with a raw value present → typed write, no parsing; (2) else the display string goes through the column's **`parse`** (built
 in or consumer — enum's built-in parse matches `optionLabel` output synchronously); (3) a string
 that `parse` can't handle (or no `parse`) falls to **`resolvePastedLabels`** when the column has
 one — the async pipeline of §9.4; (4) only definitive failures — parse error with no resolver, or
@@ -732,10 +737,11 @@ possibly thousands at once, possibly ambiguous, possibly written in a different 
 
 1. The grid collects the **unique** labels per column across the whole paste and issues **one**
    `resolvePastedLabels(labels, ctx)` call per column (parallel across columns) — 1,000 pasted
-   cells with 40 distinct labels cost one request of 40 labels. `ctx` carries the source locale and
-   tenant parsed from clipboard metadata (if any), so the resolver can match against localized
-   names and refuse cross-tenant raw ids (raw entity ids are only trusted when the source tenant
-   matches; otherwise labels are re-resolved).
+   cells with 40 distinct labels cost one request of 40 labels. `ctx` carries the source locale,
+   tenant id, and distribution key parsed from clipboard metadata (if any), so the resolver can
+   match against localized names and refuse cross-tenant raw ids (raw entity ids are only trusted
+   when the source distribution key and tenant id both match, §9.2; otherwise labels are
+   re-resolved).
 2. Affected cells show a pending affordance (a subtle inline `tm-spinner`, the foundation's shared
    spinner glyph) but the grid stays fully interactive; the paste op holds its undo entry open
    until resolution lands.

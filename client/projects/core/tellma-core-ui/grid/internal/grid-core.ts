@@ -438,6 +438,8 @@ export interface ɵTmGridCoreDeps<T> {
   readonly locale: string;
   /** The current tenant id (clipboard metadata + cross-tenant paste guard). */
   readonly tenantId: Signal<string | undefined>;
+  /** The distribution key (metadata + guard) — tenant ids are unique only within one. */
+  readonly distributionKey: string | undefined;
   /** The grid definition's stable identity. */
   readonly gridId: Signal<string>;
   /** The content identity. */
@@ -2058,6 +2060,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       canAddRows: () => this.deps.newRow() !== undefined,
       locale: () => this.deps.locale,
       tenantId: () => this.deps.tenantId(),
+      distributionKey: this.deps.distributionKey,
       direction: () => this.deps.direction(),
       pageSize: () => this.pageSize(),
       tree: this.buildTreeOptions(),

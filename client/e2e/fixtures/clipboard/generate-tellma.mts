@@ -45,6 +45,7 @@ emit(
     meta: {
       v: 1,
       tenantId: 't1',
+      distributionKey: 'd1',
       locale: 'en-US',
       cols: [
         { key: 'quantity', type: 'number' },
@@ -75,6 +76,7 @@ emit(
     meta: {
       v: 1,
       tenantId: 't1',
+      distributionKey: 'd1',
       locale: 'en-US',
       cols: [
         { key: 'description', type: 'text' },
@@ -127,6 +129,7 @@ emit(
     meta: {
       v: 1,
       tenantId: 't1',
+      distributionKey: 'd1',
       locale: 'en-US',
       cols: [
         { key: 'quantity', type: 'number' },
@@ -143,11 +146,12 @@ emit(
 );
 
 // ---------------------------------------------------------------------------
-// tellma/cross-tenant.html — a copy from ANOTHER tenant (t2) whose raw
-// entity ids are deliberately WRONG for the labels (13 = 'Carol White',
-// 16 = 'Dana Reed' in the story directory). If a paste ever trusted
-// cross-tenant raw ids, the model would receive 13/16; the correct §9.4
-// behavior re-resolves the labels to 11 ('Alice Green') / 12 ('Bob Stone').
+// tellma/cross-tenant.html — a copy from ANOTHER tenant (t2) on the SAME
+// distribution (d1) whose raw entity ids are deliberately WRONG for the
+// labels (13 = 'Carol White', 16 = 'Dana Reed' in the story directory). If a
+// paste ever trusted cross-tenant raw ids, the model would receive 13/16;
+// the correct §9.4 behavior re-resolves the labels to 11 ('Alice Green') /
+// 12 ('Bob Stone').
 emit(
   'tellma/cross-tenant.html',
   tmSerializeHtmlTable({
@@ -155,6 +159,7 @@ emit(
     meta: {
       v: 1,
       tenantId: 't2',
+      distributionKey: 'd1',
       locale: 'en-US',
       cols: [{ key: 'agentId', type: 'entity' }],
     },

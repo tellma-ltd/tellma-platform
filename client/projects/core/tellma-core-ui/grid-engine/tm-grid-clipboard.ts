@@ -120,6 +120,8 @@ export interface TmGridClipboardOptions<T = unknown> {
   readonly locale: SignalLike<string>;
   /** The tenant id (metadata + cross-tenant guard). */
   readonly tenantId?: SignalLike<string | undefined>;
+  /** The distribution key (metadata + guard) — tenant ids are unique only within one. */
+  readonly distributionKey?: string;
   /** The parent-id model key of an editable tree (row-move re-parenting). */
   readonly parentIdKey?: string;
   /** Component-layer callbacks. */
@@ -254,6 +256,7 @@ export class TmGridClipboard<T = unknown> {
     const meta: TmGridClipboardMeta = {
       v: 1,
       tenantId: untracked(() => this.options.tenantId?.()),
+      distributionKey: this.options.distributionKey,
       locale: untracked(() => this.options.locale()),
       cols: shape.cols.map((col) => {
         const column = model.columnAt(col);
@@ -775,12 +778,16 @@ export class TmGridClipboard<T = unknown> {
 
     const sourceLocale = meta?.locale;
     const sourceTenantId = meta?.tenantId;
+    const sourceDistributionKey = meta?.distributionKey;
     const tenantId = untracked(() => this.options.tenantId?.());
     const locale = untracked(() => this.options.locale());
-    // Both-undefined tenants match: the tenant seam is optional, so the
+    // Both-undefined sides match: the tenant seam is optional, so the
     // default (unset) config must still reach the typed fast path — a
     // requiring-`!== undefined` guard left it permanently unreachable there.
-    const sameTenant = sourceTenantId === tenantId;
+    // The distribution key matches too: tenant ids are unique only within
+    // one distribution, so an id match alone proves nothing across two.
+    const sameOrigin =
+      sourceTenantId === tenantId && sourceDistributionKey === this.options.distributionKey;
     const writes: TmGridCellWrite[] = [];
     const collect = new Map<
       string,
@@ -815,10 +822,11 @@ export class TmGridClipboard<T = unknown> {
         const invalidBefore = this.options.annotations.invalidInput(rowId, column.id) ?? null;
         const base = { rowId, columnId: column.id, columnKey: column.key, before, invalidBefore };
 
-        // (1) Typed fast path: same column type + same tenant + a raw value.
+        // (1) Typed fast path: same column type + same origin (distribution
+        //     key AND tenant id) + a raw value.
         const raw = rawValues?.[sr]?.[sc];
         const metaCol = meta?.cols?.[sc];
-        if (raw !== undefined && sameTenant && metaCol?.type === column.type) {
+        if (raw !== undefined && sameOrigin && metaCol?.type === column.type) {
           writes.push({ ...base, after: raw.value, invalidAfter: null });
           valueWrites++;
           continue;
@@ -938,7 +946,13 @@ export class TmGridClipboard<T = unknown> {
           id: request.id,
           columnId,
           labels: entry.labels,
-          context: { locale, sourceLocale, sourceTenantId, signal: controller.signal },
+          context: {
+            locale,
+            sourceLocale,
+            sourceTenantId,
+            sourceDistributionKey,
+            signal: controller.signal,
+          },
         });
       }
       handle.onCancel(() => {

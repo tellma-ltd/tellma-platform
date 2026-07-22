@@ -153,6 +153,7 @@ export abstract class ɵTmGridBase<T> {
       rowId: this.rowId,
       readonlyInput: this.readonly,
       tenantId: gridContext.tenantId,
+      distributionKey: gridContext.distributionKey,
       newRow: this.newRow,
       loading: this.loading,
       searchable: this.searchable,

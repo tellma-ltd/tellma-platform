@@ -124,6 +124,12 @@ export interface TmGridEngineOptions<T = unknown> {
   readonly locale: SignalLike<string>;
   /** The tenant id (clipboard metadata + cross-tenant paste guard). */
   readonly tenantId?: SignalLike<string | undefined>;
+  /**
+   * The hosting distribution's stable key (clipboard metadata + paste guard).
+   * Tenant ids are unique only within one distribution, so the guard requires
+   * this key to match too. Constant for the app's lifetime — a plain string.
+   */
+  readonly distributionKey?: string;
   /** The reading direction — physical arrow keys map through it. */
   readonly direction: SignalLike<'ltr' | 'rtl'>;
   /** Rows per viewport page (PageUp/PageDown motion size). */

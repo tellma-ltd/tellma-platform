@@ -86,6 +86,7 @@ export interface TmGridClipboardMeta {
         readonly key: string | null;
         readonly type: TmGridColumnType;
     }>;
+    readonly distributionKey?: string;
     readonly headers?: boolean;
     readonly locale?: string;
     readonly tenantId?: string;
@@ -97,6 +98,7 @@ export interface TmGridClipboardOptions<T = unknown> {
     readonly annotations: TmGridCellAnnotations;
     readonly canAddRows: SignalLike<boolean>;
     displayText(cell: TmRowCol): string;
+    readonly distributionKey?: string;
     readonly editable: SignalLike<boolean>;
     readonly history: TmGridHistory<T>;
     readonly host?: Pick<TmGridEngineHost<T>, 'onNotice'>;
@@ -291,6 +293,7 @@ export interface TmGridEngineOptions<T = unknown> {
     readonly canAddRows: SignalLike<boolean>;
     readonly columns: SignalLike<ReadonlyArray<TmGridEngineColumn<T>>>;
     readonly direction: SignalLike<'ltr' | 'rtl'>;
+    readonly distributionKey?: string;
     readonly editable: SignalLike<boolean>;
     readonly historyCapacity?: number;
     readonly host: TmGridEngineHost<T>;

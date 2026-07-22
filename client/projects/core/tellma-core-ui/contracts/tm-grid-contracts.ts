@@ -78,8 +78,12 @@ export interface TmPasteContext extends TmParseContext {
   /**
    * The copying grid's tenant id, from clipboard metadata — lets the resolver
    * refuse raw ids that crossed a tenant boundary and re-resolve by label.
+   * Tenant ids are unique only within one distribution; compare
+   * {@link sourceDistributionKey} too before trusting a match.
    */
   readonly sourceTenantId?: string;
+  /** The copying grid's distribution key, from clipboard metadata. */
+  readonly sourceDistributionKey?: string;
   /**
    * Aborts when every cell awaiting this resolution has been invalidated
    * (edited over, re-pasted, undone). Honoring it saves a server round
