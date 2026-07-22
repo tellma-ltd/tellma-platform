@@ -82,12 +82,11 @@ test.describe('foreign payloads (Excel / Sheets shapes)', () => {
     await expect(cell(page, 2, 1)).toHaveClass(/tm-grid__cell--error/);
     expect(await cellText(page, 2, 1)).toBe('quote "q"');
 
-    // Re-select the pasted 2×2 from the still-active anchor with the
-    // keyboard (pointer-free — immune to under-load stability rechecks).
-    await page.keyboard.press('Shift+ArrowDown');
-    await page.keyboard.press('Shift+ArrowRight');
+    // The paste already leaves the pasted 2×2 block selected (§9.3 — the
+    // Excel behavior), so copy it straight back: a byte-identical
+    // re-serialization proves the quoting survived the round trip.
     const { text } = await syntheticCopy(page);
-    expect(text).toBe(fixture); // byte-identical re-serialization
+    expect(text).toBe(fixture);
   });
 
   test('@cross-engine an Excel CF_HTML table pastes its display strings', async ({ page }) => {

@@ -230,7 +230,11 @@ test.describe('boolean cells', () => {
     page,
   }) => {
     const before = (await lineAt(page, 1)).isPosted;
-    await activateCell(page, 1, 4);
+    // Reach the boolean cell by KEYBOARD: a click on the glyph is itself a
+    // toggle (§6.2), which would corrupt the Space-toggle under test. Activate
+    // the neighbouring (non-boolean) cell, then arrow onto the boolean one.
+    await activateCell(page, 1, 3);
+    await page.keyboard.press('ArrowRight'); // → (1,4), the isPosted cell
     await page.keyboard.press(' ');
 
     await expect(editor(page)).toHaveCount(0); // no session — an atomic toggle
