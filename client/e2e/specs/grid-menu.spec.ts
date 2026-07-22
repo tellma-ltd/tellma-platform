@@ -254,7 +254,10 @@ test.describe('menu copy (async Clipboard API)', () => {
     await cell(page, 1, 0).click({ button: 'right' });
     await menuItem(page, 'Copy with headers').click();
 
-    const { text } = await readClipboard(page);
-    expect(text.startsWith('Description\tQty\r\n')).toBe(true);
+    // Retrying read: the clipboard write is async, so a one-shot read can
+    // beat it to the payload under CI load.
+    await expect
+      .poll(async () => (await readClipboard(page)).text.startsWith('Description\tQty\r\n'))
+      .toBe(true);
   });
 });

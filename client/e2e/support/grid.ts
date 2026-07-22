@@ -210,6 +210,18 @@ export async function readClipboard(page: Page): Promise<{ text: string; html: s
 }
 
 /**
+ * Waits for a preceding `Control+C`/`Control+X` to actually reach the OS
+ * clipboard. `navigator.clipboard.write` is async, so under CI load the write
+ * can still be in flight when the next `Control+V` reads — a same-grid
+ * cut→paste then sees stale content, fails to match its own cut fingerprint,
+ * and lands as a value paste instead of a row move. Capture the text flavor
+ * before the copy/cut, pass it here, and this polls until it changes.
+ */
+export async function waitForClipboardWrite(page: Page, baseline: string): Promise<void> {
+  await expect.poll(async () => (await readClipboard(page)).text).not.toBe(baseline);
+}
+
+/**
  * Dispatches a synthetic `copy` ClipboardEvent at the grid and returns what
  * the grid wrote into its DataTransfer — full-fidelity flavor capture that
  * works in every engine (no system clipboard, no permissions).

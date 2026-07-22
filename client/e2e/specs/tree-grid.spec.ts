@@ -17,9 +17,11 @@ import {
   gridScroller,
   liveRegion,
   modelJson,
+  readClipboard,
   renderedRows,
   rowHeader,
   setScrollTop,
+  waitForClipboardWrite,
 } from '../support/grid';
 
 /**
@@ -114,15 +116,17 @@ test.describe('rendering & ARIA', () => {
     page,
   }) => {
     await selectDepthZero(page); // 8 roots + placeholder
-    expect(await cellText(page, 5, 0)).toBe('Loaded lazily');
-    expect(await cellText(page, 6, 0)).toBe('Orphan account');
-    expect(await cellText(page, 7, 0)).toBe('Cycle account A');
+    // Retrying reads: the collapse re-renders the window asynchronously, so a
+    // one-shot innerText can land before the row text paints.
+    await expect.poll(() => cellText(page, 5, 0)).toBe('Loaded lazily');
+    await expect.poll(() => cellText(page, 6, 0)).toBe('Orphan account');
+    await expect.poll(() => cellText(page, 7, 0)).toBe('Cycle account A');
     await expect(row(page, 6)).toHaveAttribute('aria-level', '1');
     await expect(row(page, 7)).toHaveAttribute('aria-level', '1');
 
     // The cycle broke at its first member; the partner renders under it.
     await expander(page, 7).click();
-    expect(await cellText(page, 8, 0)).toBe('Cycle account B');
+    await expect.poll(() => cellText(page, 8, 0)).toBe('Cycle account B');
     await expect(row(page, 8)).toHaveAttribute('aria-level', '2');
   });
 
@@ -318,9 +322,13 @@ test.describe('subtree moves & tree paste', () => {
     const before = await modelJson<Account[]>(page);
 
     await setScrollTop(page, 640); // rows ~16–38: source and target both rendered
+    const clipboardBefore = (await readClipboard(page)).text;
     await rowHeader(page, 23).click(); // Payables subtree [200, 2000, 2001]
     await page.keyboard.press('Control+x');
     await expect(cell(page, 23, 0)).toHaveClass(/tm-grid__cell--cut/);
+    // The move needs the cut payload on the clipboard: wait out the async
+    // write, else the paste reads stale content and lands as a value paste.
+    await waitForClipboardWrite(page, clipboardBefore);
 
     await activateCell(page, 32, 0); // Share capital (id 30, a child of Equity)
     await page.keyboard.press('Control+v');

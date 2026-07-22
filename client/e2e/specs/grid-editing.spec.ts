@@ -194,7 +194,7 @@ test.describe('type-to-edit and commit paths', () => {
     await page.keyboard.press('Enter');
 
     // The raw text stays in place, styled as an error; the model is cleared.
-    expect(await cellText(page, 0, 1)).toBe('abc');
+    await expect.poll(() => cellText(page, 0, 1)).toBe('abc');
     await expect(cell(page, 0, 1)).toHaveClass(/tm-grid__cell--error/);
     await expect(cell(page, 0, 1)).toHaveAttribute('aria-invalid', 'true');
     await expect.poll(async () => (await lineAt(page, 0)).quantity).toBeNull();

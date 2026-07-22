@@ -17,6 +17,7 @@ import {
   readClipboard,
   rowHeader,
   syntheticCopy,
+  waitForClipboardWrite,
 } from '../support/grid';
 
 /**
@@ -88,10 +89,11 @@ test.describe('real system clipboard (Chromium permissions)', () => {
     const texts = await selectTwoByTwo(page);
     await page.keyboard.press('Control+c');
 
-    const { text } = await readClipboard(page);
-    expect(text).toBe(
-      `${texts[0][0]}\t${texts[0][1]}\r\n${texts[1][0]}\t${texts[1][1]}\r\n`,
-    );
+    // Retrying read: the clipboard write is async, so a one-shot read can
+    // beat it to the payload under CI load.
+    await expect
+      .poll(async () => (await readClipboard(page)).text)
+      .toBe(`${texts[0][0]}\t${texts[0][1]}\r\n${texts[1][0]}\t${texts[1][1]}\r\n`);
     await expect(liveRegion(page)).toContainText('4 cells copied');
   });
 
@@ -99,9 +101,9 @@ test.describe('real system clipboard (Chromium permissions)', () => {
     await selectTwoByTwo(page);
     await page.keyboard.press('Control+c');
 
+    await expect.poll(async () => (await readClipboard(page)).html).toContain('<table');
     const { text, html } = await readClipboard(page);
     expect(text.length).toBeGreaterThan(0);
-    expect(html).toContain('<table');
     expect(html).toContain('<td');
   });
 
@@ -112,8 +114,7 @@ test.describe('real system clipboard (Chromium permissions)', () => {
     await cell(page, 1, 4).click();
     await page.keyboard.press('Control+c');
 
-    const { text } = await readClipboard(page);
-    expect(text).toBe(`${displayed}\r\n`);
+    await expect.poll(async () => (await readClipboard(page)).text).toBe(`${displayed}\r\n`);
   });
 
   test('number cells copy the localized display string, grouping included', async ({ page }) => {
@@ -134,16 +135,17 @@ test.describe('real system clipboard (Chromium permissions)', () => {
     await cell(page, row, 10).click();
     await page.keyboard.press('Control+c');
 
-    const { text } = await readClipboard(page);
-    expect(text).toBe(`${displayed}\r\n`);
-    expect(text).toMatch(/\d{1,3},\d{3}/); // localized en-US grouping, not a raw number
+    await expect.poll(async () => (await readClipboard(page)).text).toBe(`${displayed}\r\n`);
+    expect(displayed).toMatch(/\d{1,3},\d{3}/); // localized en-US grouping, not a raw number
   });
 
   test('two Ctrl-selected full rows compact into one aligned copy', async ({ page }) => {
+    const clipboardBefore = (await readClipboard(page)).text;
     await rowHeader(page, 1).click();
     await rowHeader(page, 3).click({ modifiers: ['Control'] });
     await page.keyboard.press('Control+c');
 
+    await waitForClipboardWrite(page, clipboardBefore);
     const { text } = await readClipboard(page);
     expect(text.endsWith('\r\n')).toBe(true);
     const lines = text.slice(0, -2).split('\r\n');
@@ -265,12 +267,14 @@ test.describe('paste, cut & menu round-trips (real system clipboard, editable)',
     page,
   }) => {
     const before = await modelJson<InvoiceLine[]>(page);
+    const clipboardBefore = (await readClipboard(page)).text;
 
     // Copy the 2×2 qty × unit-price block of rows 1–2…
     await cell(page, 1, 1).click();
     await cell(page, 2, 2).click({ modifiers: ['Shift'] });
     await page.keyboard.press('Control+c');
     await expect(liveRegion(page)).toContainText('4 cells copied');
+    await waitForClipboardWrite(page, clipboardBefore);
 
     // …and paste it at rows 5–6 of the same columns.
     await activateCell(page, 5, 1);
@@ -297,6 +301,7 @@ test.describe('paste, cut & menu round-trips (real system clipboard, editable)',
     page,
   }) => {
     const before = await modelJson<InvoiceLine[]>(page);
+    const clipboardBefore = (await readClipboard(page)).text;
 
     await cell(page, 1, 1).click();
     await cell(page, 2, 2).click({ modifiers: ['Shift'] });
@@ -307,6 +312,7 @@ test.describe('paste, cut & menu round-trips (real system clipboard, editable)',
     await expect(cell(page, 1, 1)).toHaveClass(/tm-grid__cell--cut/);
     await expect(cell(page, 2, 2)).toHaveClass(/tm-grid__cell--cut/);
     expect(JSON.stringify(await modelJson<InvoiceLine[]>(page))).toBe(JSON.stringify(before));
+    await waitForClipboardWrite(page, clipboardBefore);
 
     await activateCell(page, 10, 1);
     await page.keyboard.press('Control+v');
@@ -333,10 +339,12 @@ test.describe('paste, cut & menu round-trips (real system clipboard, editable)',
 
   test('Esc disarms the cut marquee; a later paste is a plain copy', async ({ page }) => {
     const before = await modelJson<InvoiceLine[]>(page);
+    const clipboardBefore = (await readClipboard(page)).text;
 
     await cell(page, 1, 1).click();
     await page.keyboard.press('Control+x');
     await expect(cell(page, 1, 1)).toHaveClass(/tm-grid__cell--cut/);
+    await waitForClipboardWrite(page, clipboardBefore);
 
     await page.keyboard.press('Escape');
     await expect(cell(page, 1, 1)).not.toHaveClass(/tm-grid__cell--cut/);
@@ -358,9 +366,13 @@ test.describe('paste, cut & menu round-trips (real system clipboard, editable)',
     const before = await modelJson<InvoiceLine[]>(page);
     const beforeIds = before.map((line) => line.id);
 
+    const clipboardBefore = (await readClipboard(page)).text;
     await rowHeader(page, 1).click(); // full row 1 (id 2)
     await page.keyboard.press('Control+x');
     await expect(cell(page, 1, 0)).toHaveClass(/tm-grid__cell--cut/);
+    // The move needs the cut payload on the clipboard: wait out the async
+    // write, else the paste reads stale content and lands as a value paste.
+    await waitForClipboardWrite(page, clipboardBefore);
 
     await activateCell(page, 5, 0); // row 5 holds id 6
     await page.keyboard.press('Control+v');
