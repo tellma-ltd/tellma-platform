@@ -18,7 +18,7 @@ const SCREAMING = /^[A-Z][A-Z0-9_]*$/;
 const TYPE_LIKE = /^Tm[A-Z0-9]/;
 const VALUE_LIKE = /^(tm[A-Z0-9]|provideTellma[A-Z0-9])/;
 
-export default {
+export default /** @type {import('eslint').Rule.RuleModule} */ ({
   meta: {
     type: 'suggestion',
     docs: {
@@ -84,4 +84,4 @@ export default {
       },
     };
   },
-};
+});
