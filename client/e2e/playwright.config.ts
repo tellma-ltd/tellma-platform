@@ -20,6 +20,15 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 2 : 0,
+  // CI runs single-worker. The GitHub runner hosts the dev server, the
+  // browser, and the tests at once; even two concurrent tests over-subscribe
+  // it and the browser starts dropping synthetic key/clipboard events (a
+  // Control+C that announces a selection instead of a copy, a paging arrow
+  // that no-ops) — a broad, whichever-test-drew-the-short-straw flakiness
+  // that no per-test hardening fixes. One test at a time keeps the machine
+  // responsive; local runs stay parallel (fast) and lean on the clipboard
+  // lock to keep the real-clipboard specs from colliding.
+  workers: process.env['CI'] ? 1 : undefined,
   reporter: [['html', { outputFolder: '../.artifacts/e2e/report', open: 'never' }], ['list']],
   outputDir: '../.artifacts/e2e/results',
   use: {
@@ -29,17 +38,10 @@ export default defineConfig({
   projects: [
     // Chromium runs the FULL battery (real-clipboard permissions, touch
     // specs excluded — those need a touch-enabled device project).
-    // Serialized within each file: the shared CI runner also hosts the dev
-    // server and the browser, so distributing a file's tests across workers
-    // over-subscribes it and starts dropping synthetic key/clipboard events
-    // (a Control+C that never fires, a paging arrow that no-ops). One test
-    // per file at a time keeps the machine responsive; files still run in
-    // parallel across workers.
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
       testIgnore: /grid-touch/,
-      fullyParallel: false,
     },
     // Firefox/WebKit run the @cross-engine subset: tests that dispatch
     // synthetic ClipboardEvents (no OS clipboard, no Chromium-only
