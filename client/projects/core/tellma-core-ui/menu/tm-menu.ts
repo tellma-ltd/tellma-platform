@@ -207,11 +207,31 @@ export class TmMenu {
     }
   };
 
+  /**
+   * Dismiss on an outside POINTERDOWN, not the trailing click: Excel/Sheets
+   * (and native menus) drop the menu the instant you press elsewhere, so a
+   * range drag begins on a clean surface instead of dragging for seconds with
+   * the menu still up. A press inside the panel is left alone so an item
+   * activates on its click. The event is NOT consumed — the same press still
+   * reaches its target (e.g. the grid's drag start). Front-most menu only.
+   */
+  private readonly onDocumentPointerDownCapture = (event: PointerEvent): void => {
+    if (openMenuStack[openMenuStack.length - 1] !== this) {
+      return;
+    }
+    const target = event.target;
+    const panel = this.overlay()?.overlayRef?.overlayElement ?? null;
+    if (target instanceof Node && panel !== null && panel.contains(target)) {
+      return;
+    }
+    this.close({ restoreFocus: false });
+  };
+
   constructor() {
     this.isOpen = this.expanded.asReadonly();
     inject(DestroyRef).onDestroy(() => {
       this.pendingRemeasure?.destroy();
-      this.disarmEscapeClose();
+      this.disarmDismissal();
     });
 
     // Focus the menu once its items have rendered (the overlay content
@@ -244,7 +264,7 @@ export class TmMenu {
     this.restoreFocusTarget = options?.restoreFocus ?? null;
     this.overlayOrigin.set(toOverlayOrigin(anchor));
     this.focusedOnOpen = false;
-    this.armEscapeClose();
+    this.armDismissal();
 
     // Re-anchor rather than (re)open whenever the overlay is still live: a
     // genuine open-while-open, or a same-tick close+reopen where an outside-
@@ -266,7 +286,7 @@ export class TmMenu {
     if (!untracked(this.expanded)) {
       return;
     }
-    this.disarmEscapeClose();
+    this.disarmDismissal();
     this.expanded.set(false);
     if (options?.restoreFocus !== false) {
       this.restoreFocusTarget?.focus();
@@ -328,7 +348,7 @@ export class TmMenu {
   /** Keeps `expanded` honest when the overlay detaches out-of-band. */
   protected onOverlayDetach(): void {
     if (untracked(this.expanded)) {
-      this.disarmEscapeClose();
+      this.disarmDismissal();
       this.expanded.set(false);
     }
     this.closed.emit();
@@ -356,20 +376,23 @@ export class TmMenu {
   }
 
   /**
-   * Registers this menu as the front-most Escape target: it listens at the
-   * document capture phase and joins the open-menu stack. Idempotent, so a
-   * re-anchor never double-registers.
+   * Registers this menu as the front-most dismissal target: the Escape and
+   * outside-pointerdown handlers listen at the document capture phase and the
+   * menu joins the open-menu stack. Idempotent, so a re-anchor never
+   * double-registers (the listeners de-dupe by reference).
    */
-  private armEscapeClose(): void {
+  private armDismissal(): void {
     document.addEventListener('keydown', this.onDocumentKeydownCapture, true);
+    document.addEventListener('pointerdown', this.onDocumentPointerDownCapture, true);
     if (!openMenuStack.includes(this)) {
       openMenuStack.push(this);
     }
   }
 
-  /** Stops Escape handling and leaves the open-menu stack. */
-  private disarmEscapeClose(): void {
+  /** Stops the document dismissal handlers and leaves the open-menu stack. */
+  private disarmDismissal(): void {
     document.removeEventListener('keydown', this.onDocumentKeydownCapture, true);
+    document.removeEventListener('pointerdown', this.onDocumentPointerDownCapture, true);
     const index = openMenuStack.indexOf(this);
     if (index !== -1) {
       openMenuStack.splice(index, 1);

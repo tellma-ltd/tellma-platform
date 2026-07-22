@@ -169,6 +169,18 @@ test.describe('mouse interaction', () => {
 
     await expect(panel(page)).toBeHidden();
   });
+
+  test('an outside mousedown closes the panel immediately — before mouseup', async ({ page }) => {
+    await openViaRightClick(page);
+
+    // Excel/Sheets drop the menu the instant you press elsewhere so a drag
+    // starts clean — dismissal must not wait for the trailing click. Press
+    // without releasing and assert the panel is already gone.
+    await page.mouse.move(700, 200);
+    await page.mouse.down();
+    await expect(panel(page)).toBeHidden();
+    await page.mouse.up();
+  });
 });
 
 test.describe('RTL (mirrored overlay resolution)', () => {
