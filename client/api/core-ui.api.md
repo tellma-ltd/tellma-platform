@@ -5,6 +5,7 @@
 ```ts
 
 import { EnvironmentProviders } from '@angular/core';
+import * as i0 from '@angular/core';
 import { InjectionToken } from '@angular/core';
 import { Signal } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
@@ -14,6 +15,9 @@ export function provideTellmaForms(options?: TmFormsOptions): EnvironmentProvide
 
 // @public
 export function provideTellmaUi(options?: TmUiOptions): EnvironmentProviders;
+
+// @public
+export const TM_ACTIVE_LOCALE: InjectionToken<Signal<string>>;
 
 // @public
 export const TM_CELL_EDITOR_HOST: InjectionToken<TmCellEditorHost>;
@@ -125,6 +129,16 @@ export const TM_UI_STRINGS_EN: {
 export const TM_UI_TRANSLATE: InjectionToken<TmUiTranslateFn>;
 
 // @public
+export class TmClientCache {
+    clearAll(): Promise<void>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmClientCache, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmClientCache>;
+}
+
+// @public
+export function tmDefaultActiveLocale(): Signal<string>;
+
+// @public
 export const tmDefaultErrorDisplay: TmErrorDisplayPolicy;
 
 // @public
@@ -157,6 +171,14 @@ export interface TmFormFieldDefaults {
 export interface TmFormsOptions {
     readonly errorDisplay?: TmErrorDisplayPolicy;
     readonly formFieldDefaults?: Partial<TmFormFieldDefaults>;
+}
+
+// @public
+export class TmL10n {
+    formatNumber(value: unknown, options?: TmNumberFormatOptions): string;
+    readonly locale: Signal<string>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmL10n, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmL10n>;
 }
 
 // @public

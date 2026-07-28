@@ -13,9 +13,12 @@
 //
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
+export * from './cache/tm-client-cache';
 export * from './i18n/strings-en';
+export * from './i18n/tm-active-locale';
 export * from './i18n/tm-ui-translate';
 export * from './forms/field-errors';
 export * from './forms/provide-tellma-forms';
 export * from './forms/tm-cell-editor-host';
+export * from './l10n-facade/tm-l10n';
 export * from './providers/provide-tellma-ui';
