@@ -219,6 +219,14 @@ export class TmOptionHarness extends ComponentHarness {
 }
 
 // @public
+export class TmPopoverHarness extends ComponentHarness {
+    getAriaLabel(): Promise<string | null>;
+    getText(): Promise<string>;
+    static hostSelector: string;
+    isFocused(): Promise<boolean>;
+}
+
+// @public
 export class TmSelectHarness extends ComponentHarness {
     close(): Promise<void>;
     getOptions(filter?: HarnessPredicate<TmOptionHarness>): Promise<TmOptionHarness[]>;
@@ -249,6 +257,16 @@ export class TmTabHarness extends ComponentHarness {
     isDisabled(): Promise<boolean>;
     isSelected(): Promise<boolean>;
     select(): Promise<void>;
+}
+
+// @public
+export class TmTooltipHarness extends ComponentHarness {
+    getDescription(): Promise<string | null>;
+    getTooltipText(): Promise<string | null>;
+    static hostSelector: string;
+    hover(): Promise<void>;
+    isTooltipVisible(): Promise<boolean>;
+    mouseAway(): Promise<void>;
 }
 
 // @public

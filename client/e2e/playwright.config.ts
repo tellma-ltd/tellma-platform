@@ -32,7 +32,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /grid-touch/,
+      testIgnore: /grid-touch|tooltip-touch/,
     },
     // Firefox/WebKit run the @cross-engine subset: tests that dispatch
     // synthetic ClipboardEvents (no OS clipboard, no Chromium-only
@@ -54,11 +54,11 @@ export default defineConfig({
     },
     // The touch battery runs on a real coarse-pointer device descriptor
     // (chromium engine with touch + mobile emulation — no extra browser
-    // install beyond chromium). Only /grid-touch/ runs here; chromium's
+    // install beyond chromium). Only the touch specs run here; chromium's
     // testIgnore keeps the same specs out of the desktop run.
     {
       name: 'touch',
-      testMatch: /grid-touch/,
+      testMatch: /grid-touch|tooltip-touch/,
       use: { ...devices['Pixel 7'] },
     },
   ],

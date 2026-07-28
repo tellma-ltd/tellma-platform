@@ -340,6 +340,13 @@ export const tmTokensDefault: TmTokens = {
       iconSize: '16px',
       scrim: 'rgba(4, 18, 24, 0.55)',
     },
+    // tm-popover: panel geometry; colors ride the surface/border semantics
+    // in the component CSS.
+    popover: {
+      padding: '12px',
+      radius: '{radius.md}',
+      maxInlineSize: '320px',
+    },
     // tm-tab-group: strip geometry; the active indicator draws inside the
     // tab box so activation never reflows.
     tabs: {
@@ -347,6 +354,16 @@ export const tmTokensDefault: TmTokens = {
       indicatorThickness: '2px',
       gap: '4px',
       labelPaddingX: '12px',
+    },
+    // tmTooltip: inverse-surface text bubble. The directive reads `delay`
+    // at show time; `offset` is the visual gap from the host.
+    tooltip: {
+      delay: '500ms',
+      offset: '6px',
+      paddingX: '8px',
+      paddingY: '4px',
+      radius: '{radius.xs}',
+      maxInlineSize: '260px',
     },
   },
 };

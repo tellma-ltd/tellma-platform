@@ -20,6 +20,8 @@ import { InputStory } from './input/input-story';
 import { MenuStory } from './menu/menu-story';
 import { ModalStory } from './modal/modal-story';
 import { NumberStory } from './number/number-story';
+import { PopoverStory } from './popover/popover-story';
+import { TooltipStory } from './tooltip/tooltip-story';
 import { SelectStory } from './select/select-story';
 import { TabsStory } from './tabs/tabs-story';
 import { ThemingStory } from './theming/theming-story';
@@ -62,6 +64,8 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'select', title: 'Select (tm-select)', component: SelectStory },
   { id: 'tabs', title: 'Tabs (tm-tab-group)', component: TabsStory },
   { id: 'modal', title: 'Modal (TmModal)', component: ModalStory },
+  { id: 'popover', title: 'Popover (tm-popover)', component: PopoverStory },
+  { id: 'tooltip', title: 'Tooltip (tmTooltip)', component: TooltipStory },
   { id: 'menu', title: 'Menu', component: MenuStory },
   { id: 'grid-readonly', title: 'Grid (readonly)', component: GridReadonlyStory, wide: true },
   {
