@@ -22,6 +22,9 @@ export const TM_UI_STRINGS_EN = {
     pattern: 'The value does not match the expected format',
     minDate: 'Enter a date on or after {minDate}',
     maxDate: 'Enter a date on or before {maxDate}',
+    parse: 'Enter a valid number, like {example}',
+    numberPrecision:
+      'Enter a number with at most {maxDigits, plural, one {# digit} other {# digits}}',
   },
   select: {
     placeholder: 'Select an option',

@@ -21,6 +21,8 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly pattern: "القيمة لا تطابق التنسيق المطلوب";
         readonly minDate: "{gender, select, female {أدخلي} other {أدخل}} تاريخا لا يسبق {minDate}";
         readonly maxDate: "{gender, select, female {أدخلي} other {أدخل}} تاريخا لا يتجاوز {maxDate}";
+        readonly parse: "{gender, select, female {أدخلي} other {أدخل}} رقما صالحا، مثل {example}";
+        readonly numberPrecision: "{gender, select, female {أدخلي} other {أدخل}} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}}";
     };
     readonly select: {
         readonly placeholder: "{gender, select, female {حددي خيارا} other {حدد خيارا}}";

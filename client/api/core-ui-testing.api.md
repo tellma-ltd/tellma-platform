@@ -173,6 +173,18 @@ export class TmMenuItemHarness extends ComponentHarness {
 }
 
 // @public
+export class TmNumberHarness extends ComponentHarness {
+    blur(): Promise<void>;
+    focus(): Promise<void>;
+    getPlaceholder(): Promise<string>;
+    getText(): Promise<string>;
+    static hostSelector: string;
+    isDisabled(): Promise<boolean>;
+    isInvalid(): Promise<boolean>;
+    setText(text: string): Promise<void>;
+}
+
+// @public
 export class TmOptionHarness extends ComponentHarness {
     click(): Promise<void>;
     getText(): Promise<string>;

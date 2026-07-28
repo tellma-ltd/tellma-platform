@@ -30,6 +30,7 @@
       "./input": 4,
       "./l10n": 8,
       "./menu": 6,
+      "./number": 4,
       "./checkbox": 4,
       "./form-field": 4,
       "./private": 4,
@@ -42,7 +43,8 @@
     "docs": {
       "globalStyles": {
         "./button": "styles/tm-button.css",
-        "./input": "styles/tm-input.css"
+        "./input": "styles/tm-input.css",
+        "./number": "styles/tm-number.css"
       }
     }
   }

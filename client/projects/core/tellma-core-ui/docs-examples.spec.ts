@@ -22,6 +22,7 @@ import {
 } from '@tellma/core-ui/grid';
 import { TmInput } from '@tellma/core-ui/input';
 import { TmContextMenuTrigger, TmMenu } from '@tellma/core-ui/menu';
+import { TmNumber } from '@tellma/core-ui/number';
 import { TmOption, TmSelect } from '@tellma/core-ui/select';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 import { TmTreeGrid } from '@tellma/core-ui/tree-grid';
@@ -32,6 +33,7 @@ import * as checkboxExamples from './checkbox/tm-checkbox.examples';
 import * as gridExamples from './grid/tm-grid.examples';
 import * as inputExamples from './input/tm-input.examples';
 import * as menuExamples from './menu/tm-menu.examples';
+import * as numberExamples from './number/tm-number.examples';
 import * as selectExamples from './select/tm-select.examples';
 import * as spinnerExamples from './spinner/tm-spinner.examples';
 import * as treeGridExamples from './tree-grid/tm-tree-grid.examples';
@@ -90,6 +92,7 @@ interface ExampleTreeRow {
     TmGridLoadingDef,
     TmInput,
     TmMenu,
+    TmNumber,
     TmOption,
     TmSelect,
     TmSpinner,
@@ -97,6 +100,7 @@ interface ExampleTreeRow {
   ],
   template: `
     <tm-form-field label="placeholder"><input tmInput /></tm-form-field>
+    <tm-form-field label="placeholder"><input tmNumber /></tm-form-field>
     <button tmButton>placeholder</button>
     <tm-alert kind="info">placeholder</tm-alert>
     <tm-checkbox>placeholder</tm-checkbox>
@@ -197,6 +201,11 @@ const MARKERS: {
     instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmButton)).length > 0,
   },
   {
+    name: 'TmNumber',
+    pattern: /\btmNumber\b/,
+    instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmNumber)).length > 0,
+  },
+  {
     name: 'TmContextMenuTrigger',
     pattern: /\btmContextMenuTrigger\b/,
     instantiated: (fixture) =>
@@ -245,6 +254,7 @@ const MARKERS: {
 
 const SUITES = [
   { source: 'input/tm-input.examples.ts', examples: inputExamples },
+  { source: 'number/tm-number.examples.ts', examples: numberExamples },
   { source: 'alert/tm-alert.examples.ts', examples: alertExamples },
   { source: 'button/tm-button.examples.ts', examples: buttonExamples },
   { source: 'checkbox/tm-checkbox.examples.ts', examples: checkboxExamples },

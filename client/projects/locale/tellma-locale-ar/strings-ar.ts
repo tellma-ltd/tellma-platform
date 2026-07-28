@@ -45,6 +45,8 @@ export const TM_LOCALE_AR_STRINGS = {
     pattern: 'القيمة لا تطابق التنسيق المطلوب',
     minDate: `${enter} تاريخا لا يسبق {minDate}`,
     maxDate: `${enter} تاريخا لا يتجاوز {maxDate}`,
+    parse: `${enter} رقما صالحا، مثل {example}`,
+    numberPrecision: `${enter} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}}`,
   },
   select: {
     placeholder: '{gender, select, female {حددي خيارا} other {حدد خيارا}}',

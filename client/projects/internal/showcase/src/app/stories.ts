@@ -17,6 +17,7 @@ import { TreeGridStory } from './grid/tree-grid-story';
 import { I18nStory } from './i18n/i18n-story';
 import { InputStory } from './input/input-story';
 import { MenuStory } from './menu/menu-story';
+import { NumberStory } from './number/number-story';
 import { SelectStory } from './select/select-story';
 import { ThemingStory } from './theming/theming-story';
 
@@ -52,6 +53,7 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'button', title: 'Button (tmButton)', component: ButtonStory },
   { id: 'alert', title: 'Alert (tm-alert)', component: AlertStory },
   { id: 'input', title: 'Text input (tmInput + tm-form-field)', component: InputStory },
+  { id: 'number', title: 'Number input (tmNumber)', component: NumberStory },
   { id: 'checkbox', title: 'Checkbox (tm-checkbox)', component: CheckboxStory },
   { id: 'select', title: 'Select (tm-select)', component: SelectStory },
   { id: 'menu', title: 'Menu', component: MenuStory },

@@ -46,6 +46,8 @@ export const TM_UI_STRINGS_EN: {
         readonly pattern: "The value does not match the expected format";
         readonly minDate: "Enter a date on or after {minDate}";
         readonly maxDate: "Enter a date on or before {maxDate}";
+        readonly parse: "Enter a valid number, like {example}";
+        readonly numberPrecision: "Enter a number with at most {maxDigits, plural, one {# digit} other {# digits}}";
     };
     readonly select: {
         readonly placeholder: "Select an option";
