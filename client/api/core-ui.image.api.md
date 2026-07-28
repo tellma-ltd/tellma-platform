@@ -38,7 +38,7 @@ export class TmImage {
     protected readonly canRefit: _angular_core.Signal<boolean>;
     readonly defer: _angular_core.InputSignalWithTransform<boolean, unknown>;
     // (undocumented)
-    protected readonly displayState: _angular_core.Signal<"preview" | "image" | "error" | "placeholder">;
+    protected readonly displayState: _angular_core.Signal<"error" | "preview" | "image" | "placeholder">;
     // (undocumented)
     protected readonly displayUrl: _angular_core.WritableSignal<string | null>;
     readonly editSrc: _angular_core.InputSignal<string | undefined>;
