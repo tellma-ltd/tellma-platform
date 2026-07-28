@@ -174,6 +174,14 @@ formatting is CLDR-locale digits/separators with fraction-digit bounds and half-
 rounding (Intl `halfExpand` ↔ .NET `MidpointRounding.AwayFromZero`; .NET has been ICU-backed
 since .NET 5, so both ends draw on the same CLDR data). The contract is *consistent output for
 the same parameters*, not byte equality (platforms differ in invisible spacing/bidi marks).
+Two rules make numeric parity hold despite the client's IEEE-754 `number` values: the
+**single-rounding rule** — a value is rounded once, in one engine, at the scale it will be
+shown (the client's commit rounding for user input, §5; a `decimal` rounding on the server for
+derived values, *before* they are embedded in a message or sent), and is thereafter only
+formatted at the scale it carries, so no midpoint is ever adjudicated twice (the same `x.xx5`
+rounds differently as a binary double than as an exact decimal); and the
+**15-significant-digit envelope** (§5), inside which every client number is exactly the decimal
+the server parses.
 It is pinned by a **committed golden** — `format-golden.json` in `l10n`, rows of
 (locale, calendar, precision, dateStyle → expected) and (locale, minDecimals, maxDecimals,
 percent, value → expected) — asserted by the client suite and consumed verbatim by the future
@@ -309,13 +317,30 @@ field chrome, bidi, Signal Forms), so the existing directive's selector extends 
   never rewrites the text** (no flicker, stable caret): the user edits the formatted string in
   place — the parser accepts group separators anyway. On **blur/commit** the text reformats to
   the canonical display form (group separators, `minDecimals`/`maxDecimals` bounds, percent sign
-  in percent mode); external model changes reformat immediately while unfocused.
+  in percent mode); external model changes reformat immediately while unfocused. A commit fires
+  only when the text actually changed — focusing and leaving a field never rewrites its model.
 - **Rounding — the model equals the display.** On commit, the parsed value is rounded to
   `maxDecimals` (the display formatter's own rounding), so the persisted value can never silently
   differ from what the field shows. The grid's `number` columns follow the same rule (superseding
   spec 0004's display-only rounding): editor commits and pasted values round to the column's
   `maxDecimals` before the field write — one platform-wide invariant, grid cells and form fields
-  agreeing.
+  agreeing. The invariant governs **user commits**: `maxDecimals` is an entry/display policy, not
+  the storage scale, so a stored value carrying more precision (a server-computed figure, or a
+  column scale above the display policy) displays rounded while the model keeps the stored value —
+  until the user edits it, at which point the commit normalizes to display scale. The server
+  remains the final authority on storage scale (it re-rounds to the column's scale on write);
+  the docs advise setting `maxDecimals` to the column scale on entry fields.
+- **Precision envelope — exact by construction.** `value` is an IEEE-754 double while the backend
+  stores exact decimals; any decimal of at most **15 significant digits** round-trips
+  string → double → string exactly, so the control guards that boundary per committed value:
+  after parse and rounding, a value whose decimal digit count (integer digits + fraction digits
+  present) exceeds 15 is rejected as a parse-level error with a localized message — never
+  silently corrupted. The rule is per-value, so it composes with any `maxDecimals`, including
+  the unbounded default (`0.12345678901234` passes on a default field; a 17-digit amount fails).
+  The grid's `number` columns enforce the same guard at editor commit and paste (an overflowing
+  pasted cell becomes an invalid input via spec 0004's error machinery). Values that genuinely
+  need more than 15 significant digits — hyperinflated-currency amounts — are the future
+  string-backed currency control's territory (Non-goals).
 - **Invalid input:** unparseable text reports through `transformedValue`'s parse-error channel
   (kind `parse`, message localized via `TM_UI_TRANSLATE`); the control shows the standard invalid
   state, keeps the user's text for correction, and the model holds `null`. Empty text parses to
@@ -977,11 +1002,13 @@ outside the DoD). Per-component semantics live in §3–§13; the cross-cutting 
    error, focus ring, fixed rows, `resize: none`); existing `input[tmInput]` behavior is
    regression-free.
 4. `tmNumber`: locale round-trip (focus-stable text, blur reformat, external writes), percent
-   mode, commit rounding (model = display), parse-error state with localized message,
-   `min`/`max` kinds resolve, `inputmode="decimal"`, physical right alignment; it is the grid's
-   built-in `number` editor via `TM_CELL_EDITOR_HOST` with the grid-owned parse path (§5), and
-   grid number commits **and pastes** round to the column's `maxDecimals` — the grid suite is
-   updated for the editor swap and the rounding invariant, and green.
+   mode, commit rounding (model = display), the 15-significant-digit envelope rejection,
+   commit-only-when-dirty (pristine focus+blur never rewrites the model), parse-error state
+   with localized message, `min`/`max` kinds resolve, `inputmode="decimal"`, physical right
+   alignment; it is the grid's built-in `number` editor via `TM_CELL_EDITOR_HOST` with the
+   grid-owned parse path (§5), and grid number commits **and pastes** round to the column's
+   `maxDecimals` and enforce the envelope — the grid suite is updated for the editor swap and
+   both invariants, and green.
 5. `tm-date-picker` value integrity: ISO shapes per precision; bounds `0001-01-01`–`9999-12-31`
    enforced; `tmMinDate`/`tmMaxDate` validate and localize; no `Date` objects in the public API.
 6. Date parsing per §6.3: locale field order, active-calendar interpretation, month names,
@@ -1113,3 +1140,7 @@ Answers to the design brief's open questions, where not already evident above:
     (atomic, no cleanup) and staged upload (fast saves, TTL + GC lifecycle) (§8.3).
 26. **Modal sizing** — semantic buckets plus a `panelClass` escape hatch, the prevailing
     component-library pattern; buckets keep Tellma modals uniform (§10).
+27. **Decimal↔double boundary** — `value` stays `number | null`; exactness against the
+    backend's `decimal` storage is guaranteed by the per-value 15-significant-digit envelope
+    (§5) plus the single-rounding rule (§2.2); the server owns storage scale and authoritative
+    aggregates; an exact string-backed channel is deferred to the future currency control.
