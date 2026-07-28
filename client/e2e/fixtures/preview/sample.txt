@@ -1,0 +1,2 @@
+Ledger note: posting runs nightly at 02:00.
+Second line <not markup>.

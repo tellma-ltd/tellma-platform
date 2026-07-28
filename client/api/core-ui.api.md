@@ -155,6 +155,14 @@ export const TM_UI_STRINGS_EN: {
     readonly modal: {
         readonly close: "Close";
     };
+    readonly preview: {
+        readonly download: "Download";
+        readonly print: "Print";
+        readonly unsupported: "Preview not available";
+        readonly unsupportedHint: "Download the file to view it";
+        readonly loadError: "The file could not be loaded";
+        readonly truncated: "Showing the first 1 MB — download the file for the rest";
+    };
     readonly filePicker: {
         readonly hint: "Drag and drop here, paste, or";
         readonly browse: "browse";

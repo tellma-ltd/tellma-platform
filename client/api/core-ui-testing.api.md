@@ -76,6 +76,16 @@ export class TmFilePickerHarness extends ComponentHarness {
 }
 
 // @public
+export class TmFilePreviewHarness extends ComponentHarness {
+    getCardTitle(): Promise<string | null>;
+    getDownloadName(): Promise<string | null>;
+    getTextContent(): Promise<string | null>;
+    hasPrintButton(): Promise<boolean>;
+    static hostSelector: string;
+    isLoading(): Promise<boolean>;
+}
+
+// @public
 export class TmFormFieldHarness extends ComponentHarness {
     getErrorText(): Promise<string | null>;
     getHintText(): Promise<string | null>;

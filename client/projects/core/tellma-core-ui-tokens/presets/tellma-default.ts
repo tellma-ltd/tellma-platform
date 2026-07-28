@@ -355,6 +355,10 @@ export const tmTokensDefault: TmTokens = {
       iconSize: '16px',
       scrim: 'rgba(4, 18, 24, 0.55)',
     },
+    // tm-file-preview: viewer-region geometry inside the lg modal.
+    preview: {
+      minHeight: '320px',
+    },
     // tm-popover: panel geometry; colors ride the surface/border semantics
     // in the component CSS.
     popover: {

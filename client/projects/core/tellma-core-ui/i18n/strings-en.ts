@@ -130,6 +130,14 @@ export const TM_UI_STRINGS_EN = {
   modal: {
     close: 'Close',
   },
+  preview: {
+    download: 'Download',
+    print: 'Print',
+    unsupported: 'Preview not available',
+    unsupportedHint: 'Download the file to view it',
+    loadError: 'The file could not be loaded',
+    truncated: 'Showing the first 1 MB — download the file for the rest',
+  },
   filePicker: {
     hint: 'Drag and drop here, paste, or',
     browse: 'browse',

@@ -120,6 +120,14 @@ export const TM_LOCALE_AR_STRINGS: {
     readonly modal: {
         readonly close: "إغلاق";
     };
+    readonly preview: {
+        readonly download: "تنزيل";
+        readonly print: "طباعة";
+        readonly unsupported: "المعاينة غير متاحة";
+        readonly unsupportedHint: "نزّل الملف لعرضه";
+        readonly loadError: "تعذر تحميل الملف";
+        readonly truncated: "يعرض أول 1 ميغابايت — نزّل الملف للباقي";
+    };
     readonly filePicker: {
         readonly hint: "اسحب الملفات وأفلتها هنا، أو الصق، أو";
         readonly browse: "تصفح";

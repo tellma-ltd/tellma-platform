@@ -154,6 +154,14 @@ export const TM_LOCALE_AR_STRINGS = {
   modal: {
     close: 'إغلاق',
   },
+  preview: {
+    download: 'تنزيل',
+    print: 'طباعة',
+    unsupported: 'المعاينة غير متاحة',
+    unsupportedHint: 'نزّل الملف لعرضه',
+    loadError: 'تعذر تحميل الملف',
+    truncated: 'يعرض أول 1 ميغابايت — نزّل الملف للباقي',
+  },
   filePicker: {
     hint: 'اسحب الملفات وأفلتها هنا، أو الصق، أو',
     browse: 'تصفح',
