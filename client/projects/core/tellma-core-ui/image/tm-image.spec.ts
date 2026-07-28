@@ -86,11 +86,15 @@ function setupFetcher(): FetcherControl {
   return control;
 }
 
-/** Polls until the predicate holds (the pipeline decodes asynchronously). */
+/**
+ * Polls until the predicate holds (the pipeline decodes asynchronously).
+ * The budget covers a cold CI runner's first IntersectionObserver tick,
+ * decode, and CacheStorage write; a passing run never waits it out.
+ */
 async function until(
   fixture: ComponentFixture<unknown>,
   predicate: () => boolean,
-  timeoutMs = 3000,
+  timeoutMs = 15000,
 ): Promise<void> {
   const start = Date.now();
   for (;;) {

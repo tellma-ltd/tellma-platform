@@ -35,10 +35,12 @@ function content(): HTMLElement | null {
   return document.querySelector('tm-file-preview-content');
 }
 
+// The budget covers a cold CI runner's first decode and defer resolution;
+// a passing run never waits it out.
 async function until(
   fixture: ComponentFixture<unknown>,
   predicate: () => boolean,
-  timeoutMs = 3000,
+  timeoutMs = 15000,
 ): Promise<void> {
   const start = Date.now();
   for (;;) {
