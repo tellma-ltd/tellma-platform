@@ -140,6 +140,7 @@ let nextUniqueId = 0;
           [max]="maxDate()"
           (selected)="onPopupSelect($event)"
           (cancelled)="closePopup(true)"
+          (rendered)="anchored.reanchor()"
         />
       }
     </ng-template>

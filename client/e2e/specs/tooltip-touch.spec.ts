@@ -45,14 +45,19 @@ test('a long-press shows the tooltip until the next tap; a plain tap does not sh
 }) => {
   await page.goto(storyUrl('tooltip'));
   const host = page.getByTestId('tooltip-first');
-  const box = (await host.boundingBox())!;
-  const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   const panel = page.locator(PANEL);
 
   // A plain tap: no tooltip (long-press owns touch).
   await host.tap();
   await page.waitForTimeout(700);
   await expect(panel).toHaveCount(0);
+
+  // Measured AFTER the tap's auto-scroll settled: the raw CDP dispatch
+  // below never auto-scrolls, and a stale point past the visual viewport
+  // would land on the document root instead of the host.
+  await host.scrollIntoViewIfNeeded();
+  const box = (await host.boundingBox())!;
+  const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 
   // The hold crosses the 500ms long-press threshold while pressed.
   await touchHold(page, center, async () => {

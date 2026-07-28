@@ -121,8 +121,14 @@ export async function clientHeightOf(page: Page): Promise<number> {
   return gridScroller(page).evaluate((el) => el.clientHeight);
 }
 
-/** The center point of a locator's bounding box. */
+/**
+ * The center point of a locator's bounding box, scrolled into view first —
+ * raw CDP touch dispatches (unlike Playwright's own gestures) never
+ * auto-scroll, and a point past the visual viewport lands on the document
+ * root instead of the element.
+ */
 export async function centerOf(locator: Locator): Promise<{ x: number; y: number }> {
+  await locator.scrollIntoViewIfNeeded();
   const box = await locator.boundingBox();
   if (box === null) {
     throw new Error('element has no bounding box');

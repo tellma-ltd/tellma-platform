@@ -9,6 +9,7 @@
 // navigate days only while focus is in the calendar.
 
 import {
+  afterNextRender,
   afterRenderEffect,
   Component,
   computed,
@@ -228,6 +229,13 @@ export class ɵTmDatePopup {
   readonly selected = output<string | null>();
   /** Esc — close without committing. */
   readonly cancelled = output<void>();
+  /**
+   * The first render completed at full size. The parent's overlay attached
+   * around the `@defer` placeholder (near-zero height, so CDK kept the
+   * primary below-the-field position even at the viewport bottom) and must
+   * re-measure now or the popup can hang past the fold.
+   */
+  readonly rendered = output<void>();
 
   /** The active view of the ladder. Always opens on the day view. */
   protected readonly view = signal<'day' | 'month' | 'year'>('day');
@@ -260,6 +268,8 @@ export class ɵTmDatePopup {
   });
 
   constructor() {
+    afterNextRender(() => this.rendered.emit());
+
     // Open on the committed value, else today — clamped into bounds.
     effect(() => {
       const calendar = this.calendar();

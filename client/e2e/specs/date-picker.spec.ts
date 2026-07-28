@@ -85,9 +85,17 @@ test.describe('keyboard matrix (DoD 7)', () => {
       await input.press('Alt+ArrowDown');
       await expect(popup(page)).toBeVisible();
 
+      // Every navigation re-renders the grid and re-focuses the roving cell
+      // a beat later; a key pressed inside that beat lands on a detached
+      // cell (or the input) and dies. Real fingers cannot race a render —
+      // wait for document focus before every press, starting with the open.
+      const rovingDay = popup(page).locator('.tm-date-popup__day[tabindex="0"]');
+      const focusedDay = async (): Promise<string | null> => {
+        await expect(rovingDay).toBeFocused();
+        return rovingDay.getAttribute('data-tm-day');
+      };
+
       // Focus landed on the committed day (3/5/2026).
-      const focusedDay = () =>
-        popup(page).locator('.tm-date-popup__day[tabindex="0"]').getAttribute('data-tm-day');
       expect(await focusedDay()).toBe('5');
 
       // inline-end arrow: +1 day in LTR terms — ArrowRight in LTR, ArrowLeft in RTL.
@@ -105,8 +113,10 @@ test.describe('keyboard matrix (DoD 7)', () => {
       await expect(
         popup(page).locator('.tm-date-popup__view-switch [aria-live="polite"]'),
       ).toBeVisible();
+      await expect(rovingDay).toBeFocused();
       await page.keyboard.press('Shift+PageDown'); // +1 year
       await expect(popup(page).locator('.tm-date-popup__view-switch')).toContainText('2027');
+      await expect(rovingDay).toBeFocused();
 
       // Enter selects the focused day and returns focus to the input.
       await page.keyboard.press('Enter');
@@ -118,7 +128,9 @@ test.describe('keyboard matrix (DoD 7)', () => {
       const committed = await input.inputValue();
       await input.press('Alt+ArrowDown');
       await expect(popup(page)).toBeVisible();
+      await expect(rovingDay).toBeFocused();
       await page.keyboard.press('ArrowRight');
+      await expect(rovingDay).toBeFocused();
       await page.keyboard.press('Escape');
       await expect(popup(page)).toBeHidden();
       await expect(input).toHaveValue(committed);
