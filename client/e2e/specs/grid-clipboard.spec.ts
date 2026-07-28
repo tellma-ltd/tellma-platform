@@ -273,6 +273,11 @@ test.describe('paste, cut & menu round-trips (real system clipboard, editable)',
     // Copy the 2×2 qty × unit-price block of rows 1–2…
     await cell(page, 1, 1).click();
     await cell(page, 2, 2).click({ modifiers: ['Shift'] });
+    // Let the SELECTION announcement land first: the live region holds one
+    // message at a time, so a debounced "2 × 2 selected" arriving after the
+    // copy would overwrite it and the next assertion would read the wrong
+    // message through no fault of the copy.
+    await expect(liveRegion(page)).toContainText('selected');
     await page.keyboard.press('Control+c');
     await expect(liveRegion(page)).toContainText('4 cells copied');
     await waitForClipboardWrite(page, clipboardBefore);
