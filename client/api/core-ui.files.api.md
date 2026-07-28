@@ -10,24 +10,15 @@ import { OnDestroy } from '@angular/core';
 // @public
 export class TmDropzone {
     constructor();
-    // (undocumented)
     protected readonly browseLabel: _angular_core.Signal<string>;
-    // (undocumented)
     protected readonly dragOver: _angular_core.WritableSignal<boolean>;
-    // (undocumented)
     protected readonly hintLabel: _angular_core.Signal<string>;
-    // (undocumented)
     protected onDragEnter(event: DragEvent): void;
-    // (undocumented)
     protected onDragLeave(): void;
-    // (undocumented)
     protected onDragOver(event: DragEvent): void;
-    // (undocumented)
     protected onDrop(event: DragEvent): void;
-    // (undocumented)
     protected onKeydown(event: KeyboardEvent): void;
     protected onPaste(event: ClipboardEvent): void;
-    // (undocumented)
     protected readonly sizeLine: _angular_core.Signal<string>;
     protected readonly typesLine: _angular_core.Signal<string | null>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmDropzone, "tm-dropzone", never, {}, {}, never, never, true, [{ directive: typeof TmFilePicker; inputs: { "accept": "accept"; "multiple": "multiple"; "maxFileSize": "maxFileSize"; "maxFiles": "maxFiles"; }; outputs: { "filesSelected": "filesSelected"; }; }]>;
@@ -42,7 +33,6 @@ export class TmFilePicker implements OnDestroy {
     readonly maxFiles: _angular_core.InputSignal<number | null>;
     readonly maxFileSize: _angular_core.InputSignal<number>;
     readonly multiple: _angular_core.InputSignalWithTransform<boolean, unknown>;
-    // (undocumented)
     ngOnDestroy(): void;
     open(): void;
     static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmFilePicker, "button[tmFilePicker]", never, { "accept": { "alias": "accept"; "required": false; "isSignal": true; }; "multiple": { "alias": "multiple"; "required": false; "isSignal": true; }; "maxFileSize": { "alias": "maxFileSize"; "required": false; "isSignal": true; }; "maxFiles": { "alias": "maxFiles"; "required": false; "isSignal": true; }; }, { "filesSelected": "filesSelected"; }, never, never, true, never>;

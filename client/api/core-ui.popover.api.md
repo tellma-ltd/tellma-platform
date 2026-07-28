@@ -46,10 +46,8 @@ export class TmPopoverContent {
 
 // @public
 export class TmPopoverTrigger {
-    // (undocumented)
     protected onKeydown(event: KeyboardEvent): void;
     readonly popover: _angular_core.InputSignal<TmPopover>;
-    // (undocumented)
     protected toggle(): void;
     static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmPopoverTrigger, "button[tmPopoverTriggerFor]", never, { "popover": { "alias": "tmPopoverTriggerFor"; "required": true; "isSignal": true; }; }, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmPopoverTrigger, never>;

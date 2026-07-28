@@ -222,6 +222,7 @@ export class TmImage {
   readonly shape = input<'rect' | 'circle'>('rect');
   /** CSS px of the box — fixed for the component's lifetime. */
   readonly width = input.required<number>();
+  /** CSS px of the box — fixed for the component's lifetime. */
   readonly height = input.required<number>();
   /** Builds the sized URL. Default appends `?size=<bucket>`. */
   readonly srcForSize = input<(src: string, size: number) => string>(tmDefaultSrcForSize);
@@ -245,14 +246,20 @@ export class TmImage {
   /** The resolved no-image template marker, when the consumer provided one. */
   readonly placeholder = contentChild(TmImagePlaceholder);
 
+  /** The hidden file input's `accept` attribute. */
   protected readonly accept = ACCEPT;
+  /** Localized label of the load-error glyph. */
   protected readonly errorLabel = this.translate('image.error');
+  /** Localized label of the replace button. */
   protected readonly replaceLabel = this.translate('image.replace');
+  /** Localized label of the re-fit button. */
   protected readonly adjustLabel = this.translate('image.adjust');
+  /** Localized label of the delete button. */
   protected readonly removeLabel = this.translate('image.remove');
 
   /** View pipeline state. */
   private readonly status = signal<'empty' | 'pending' | 'ready' | 'error'>('empty');
+  /** Object URL of the fetched rendition currently on screen. */
   protected readonly displayUrl = signal<string | null>(null);
   private readonly visible = signal(false);
   private loadToken = 0;
@@ -260,6 +267,7 @@ export class TmImage {
 
   /** Local edit overrides. */
   protected readonly fitting = signal<FittingSession | null>(null);
+  /** The uncommitted local pick/re-fit shown instead of the stored image. */
   protected readonly preview = signal<LocalPreview | null>(null);
   private readonly deleted = signal(false);
   private lastCommittedFit: TmImageFit | null = null;
@@ -267,11 +275,13 @@ export class TmImage {
   private readonly noticeKey = signal<{ key: string; params?: Record<string, unknown> } | null>(
     null,
   );
+  /** Localized rejection/processing notice under the box (`null` = none). */
   protected readonly noticeText = computed(() => {
     const notice = this.noticeKey();
     return notice === null ? null : this.translate(notice.key, notice.params)();
   });
 
+  /** Which of the four mutually exclusive box renderings is active. */
   protected readonly displayState = computed<'preview' | 'image' | 'error' | 'placeholder'>(() => {
     if (this.preview() !== null) {
       return 'preview';
@@ -286,9 +296,11 @@ export class TmImage {
     return status === 'error' ? 'error' : 'placeholder';
   });
 
+  /** Whether an image (stored or local preview) is showing — gates delete. */
   protected readonly hasImage = computed(
     () => this.preview() !== null || (!this.deleted() && this.status() === 'ready'),
   );
+  /** Whether re-fit is possible: a local original, or a stored `editSrc`. */
   protected readonly canRefit = computed(
     () =>
       this.preview() !== null ||
@@ -300,6 +312,7 @@ export class TmImage {
     const preview = this.preview();
     return preview === null ? 0 : preview.width * this.previewScale(preview);
   });
+  /** Pan of the preview `img` so the fit rect's origin lands on the box. */
   protected readonly previewTransform = computed(() => {
     const preview = this.preview();
     if (preview === null) {
@@ -433,6 +446,7 @@ export class TmImage {
 
   // ---- edit mode ----
 
+  /** Runs a picked file through the guardrails and stages it as the preview. */
   protected async onFilePicked(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -527,12 +541,14 @@ export class TmImage {
     }
   }
 
+  /** Emits one edit for a fit the pane committed (debounced upstream). */
   protected onFitCommitted(fit: TmImageFit): void {
     this.lastCommittedFit = fit;
     const session = untracked(this.fitting);
     this.imageChange.emit({ blob: session?.pickedBlob ?? null, fit });
   }
 
+  /** Closes the fit pane, keeping a picked file as the local preview. */
   protected onFitDone(): void {
     const session = untracked(this.fitting);
     if (session === null) {
@@ -560,6 +576,7 @@ export class TmImage {
     void this.restoreFocusToChrome();
   }
 
+  /** Discards any local state and emits `null` (the user deleted the image). */
   protected onDelete(): void {
     this.discardPreview();
     this.deleted.set(true);

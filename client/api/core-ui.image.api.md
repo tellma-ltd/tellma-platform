@@ -29,51 +29,34 @@ export interface TmBlobFetchResult {
 // @public
 export class TmImage {
     constructor();
-    // (undocumented)
     protected readonly accept = "image/png,image/jpeg,image/webp,image/gif,image/avif";
-    // (undocumented)
     protected readonly adjustLabel: _angular_core.Signal<string>;
     readonly alt: _angular_core.InputSignal<string>;
-    // (undocumented)
     protected readonly canRefit: _angular_core.Signal<boolean>;
     readonly defer: _angular_core.InputSignalWithTransform<boolean, unknown>;
-    // (undocumented)
-    protected readonly displayState: _angular_core.Signal<"error" | "preview" | "image" | "placeholder">;
-    // (undocumented)
+    protected readonly displayState: _angular_core.Signal<"preview" | "image" | "error" | "placeholder">;
     protected readonly displayUrl: _angular_core.WritableSignal<string | null>;
     readonly editSrc: _angular_core.InputSignal<string | undefined>;
-    // (undocumented)
     protected readonly errorLabel: _angular_core.Signal<string>;
     readonly etag: _angular_core.InputSignal<string | null>;
     protected readonly fitting: _angular_core.WritableSignal<FittingSession | null>;
-    // (undocumented)
     protected readonly hasImage: _angular_core.Signal<boolean>;
-    // (undocumented)
     readonly height: _angular_core.InputSignal<number>;
     readonly imageChange: _angular_core.OutputEmitterRef<TmImageEdit | null>;
     readonly maxEdgePx: _angular_core.InputSignal<number>;
     readonly maxFileBytes: _angular_core.InputSignal<number>;
     readonly mode: _angular_core.InputSignal<"view" | "edit">;
-    // (undocumented)
     protected readonly noticeText: _angular_core.Signal<string | null>;
-    // (undocumented)
     protected onDelete(): void;
-    // (undocumented)
     protected onFilePicked(event: Event): Promise<void>;
-    // (undocumented)
     protected onFitCommitted(fit: TmImageFit): void;
-    // (undocumented)
     protected onFitDone(): void;
     protected onRefit(): Promise<void>;
     readonly placeholder: _angular_core.Signal<TmImagePlaceholder | undefined>;
-    // (undocumented)
     protected readonly preview: _angular_core.WritableSignal<LocalPreview | null>;
-    // (undocumented)
     protected readonly previewTransform: _angular_core.Signal<string>;
     protected readonly previewWidth: _angular_core.Signal<number>;
-    // (undocumented)
     protected readonly removeLabel: _angular_core.Signal<string>;
-    // (undocumented)
     protected readonly replaceLabel: _angular_core.Signal<string>;
     readonly shape: _angular_core.InputSignal<"rect" | "circle">;
     readonly src: _angular_core.InputSignal<string>;

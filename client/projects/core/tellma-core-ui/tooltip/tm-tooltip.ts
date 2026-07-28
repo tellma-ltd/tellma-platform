@@ -122,6 +122,7 @@ export class TmTooltip implements OnDestroy {
     });
   }
 
+  /** Tears down the panel, timers, listeners, and the ARIA description. */
   ngOnDestroy(): void {
     this.hideNow();
     clearTimeout(this.showTimer);
@@ -146,6 +147,7 @@ export class TmTooltip implements OnDestroy {
     this.showTimer = setTimeout(() => this.showNow(), this.showDelayMs());
   }
 
+  /** Hover leaving schedules the hide (grace period covers panel crossing). */
   protected onPointerLeave(event: PointerEvent): void {
     // Non-hover devices fire pointerleave right after the finger lifts —
     // hiding there would dismiss a long-press tooltip ~100ms after
@@ -164,6 +166,7 @@ export class TmTooltip implements OnDestroy {
     }
   }
 
+  /** Losing focus hides immediately (1.4.13 dismissable). */
   protected onBlur(): void {
     this.hideNow();
   }

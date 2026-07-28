@@ -10,13 +10,10 @@ import { OnDestroy } from '@angular/core';
 // @public
 export class TmTooltip implements OnDestroy {
     constructor();
-    // (undocumented)
     ngOnDestroy(): void;
-    // (undocumented)
     protected onBlur(): void;
     protected onFocus(): void;
     protected onPointerEnter(event: PointerEvent): void;
-    // (undocumented)
     protected onPointerLeave(event: PointerEvent): void;
     readonly text: i0.InputSignal<string>;
     static ɵdir: i0.ɵɵDirectiveDeclaration<TmTooltip, "[tmTooltip]", never, { "text": { "alias": "tmTooltip"; "required": true; "isSignal": true; }; }, {}, never, never, true, never>;

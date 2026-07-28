@@ -88,7 +88,9 @@ export class TmDropzone {
   /** The host-directive picker — the shared engine + browse path. */
   private readonly picker = inject(TmFilePicker);
 
+  /** Localized drop-or-paste hint line. */
   protected readonly hintLabel = this.translate('filePicker.hint');
+  /** Localized "browse" text (presentational — the whole zone is the button). */
   protected readonly browseLabel = this.translate('filePicker.browse');
 
   /** The accepted-types line; absent when everything is accepted. */
@@ -96,12 +98,14 @@ export class TmDropzone {
     const accept = this.picker.accept().trim();
     return accept === '' ? null : this.translate('filePicker.acceptedTypes', { types: accept })();
   });
+  /** The localized per-file size-limit line. */
   protected readonly sizeLine = computed(() =>
     this.translate('filePicker.maxSize', {
       maxMb: Math.round(this.picker.maxFileSize() / (1024 * 1024)),
     })(),
   );
 
+  /** Whether a drag is over the zone — drives the highlight class. */
   protected readonly dragOver = signal(false);
   /** Depth counter: dragenter/leave fire per descendant boundary. */
   private dragDepth = 0;
@@ -111,6 +115,7 @@ export class TmDropzone {
     inject(DestroyRef).onDestroy(releaseGuard);
   }
 
+  /** Enter/Space opens the browse dialog (the zone is a single button). */
   protected onKeydown(event: KeyboardEvent): void {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
@@ -118,12 +123,14 @@ export class TmDropzone {
     }
   }
 
+  /** Tracks enter depth and turns the highlight on. */
   protected onDragEnter(event: DragEvent): void {
     event.preventDefault();
     this.dragDepth += 1;
     this.dragOver.set(true);
   }
 
+  /** Marks the zone a valid copy target so the drop is allowed. */
   protected onDragOver(event: DragEvent): void {
     event.preventDefault();
     if (event.dataTransfer !== null) {
@@ -131,6 +138,7 @@ export class TmDropzone {
     }
   }
 
+  /** Unwinds the enter depth; the highlight drops at zero. */
   protected onDragLeave(): void {
     this.dragDepth = Math.max(0, this.dragDepth - 1);
     if (this.dragDepth === 0) {
@@ -138,6 +146,7 @@ export class TmDropzone {
     }
   }
 
+  /** Feeds dropped files (with folder detection) to the shared engine. */
   protected onDrop(event: DragEvent): void {
     event.preventDefault();
     this.dragDepth = 0;

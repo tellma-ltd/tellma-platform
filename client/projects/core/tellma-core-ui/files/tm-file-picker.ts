@@ -74,6 +74,7 @@ export class TmFilePicker implements OnDestroy {
     });
   }
 
+  /** Removes the body-appended hidden input. */
   ngOnDestroy(): void {
     this.destroyed = true;
     this.fileInput?.remove();

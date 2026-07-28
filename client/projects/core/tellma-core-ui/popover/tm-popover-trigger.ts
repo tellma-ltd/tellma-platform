@@ -38,6 +38,7 @@ export class TmPopoverTrigger {
 
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
 
+  /** Click toggles: open anchored to this button, or close if open. */
   protected toggle(): void {
     const popover = this.popover();
     if (popover.isOpen()) {
@@ -47,6 +48,7 @@ export class TmPopoverTrigger {
     }
   }
 
+  /** Escape on the trigger closes its popover (focus may sit here, not inside). */
   protected onKeydown(event: KeyboardEvent): void {
     if (event.key === 'Escape' && !event.defaultPrevented && this.popover().isOpen()) {
       event.preventDefault();
