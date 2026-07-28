@@ -151,4 +151,7 @@ export const TM_LOCALE_AR_STRINGS = {
     warning: 'تحذير:',
     error: 'خطأ:',
   },
+  modal: {
+    close: 'إغلاق',
+  },
 } as const;

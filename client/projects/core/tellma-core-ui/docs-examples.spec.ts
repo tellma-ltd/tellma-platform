@@ -23,6 +23,7 @@ import {
 } from '@tellma/core-ui/grid';
 import { TmInput } from '@tellma/core-ui/input';
 import { TmContextMenuTrigger, TmMenu } from '@tellma/core-ui/menu';
+import { TmModalFooter } from '@tellma/core-ui/modal';
 import { TmNumber } from '@tellma/core-ui/number';
 import { TmOption, TmSelect } from '@tellma/core-ui/select';
 import { TmSpinner } from '@tellma/core-ui/spinner';
@@ -36,6 +37,7 @@ import * as datePickerExamples from './date-picker/tm-date-picker.examples';
 import * as gridExamples from './grid/tm-grid.examples';
 import * as inputExamples from './input/tm-input.examples';
 import * as menuExamples from './menu/tm-menu.examples';
+import * as modalFooterExamples from './modal/tm-modal-footer.examples';
 import * as numberExamples from './number/tm-number.examples';
 import * as selectExamples from './select/tm-select.examples';
 import * as spinnerExamples from './spinner/tm-spinner.examples';
@@ -97,6 +99,7 @@ interface ExampleTreeRow {
     TmGridLoadingDef,
     TmInput,
     TmMenu,
+    TmModalFooter,
     TmNumber,
     TmOption,
     TmSelect,
@@ -124,6 +127,7 @@ interface ExampleTreeRow {
     <tm-spinner />
     <div [tmContextMenuTrigger]="placeholderMenu">placeholder</div>
     <tm-menu #placeholderMenu [items]="[]" />
+    <div tmModalFooter>placeholder</div>
     <tm-grid gridId="placeholder-grid" [data]="rows" [rowId]="rowId" style="block-size: 120px">
       <tm-grid-column key="name" header="placeholder">
         <span *tmGridDisplay="let value">{{ value }}</span>
@@ -251,6 +255,12 @@ const MARKERS: {
       fixture.debugElement.queryAll(By.directive(TmContextMenuTrigger)).length > 0,
   },
   {
+    name: 'TmModalFooter',
+    pattern: /\btmModalFooter\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement.queryAll(By.directive(TmModalFooter)).length > 0,
+  },
+  {
     name: 'TmGridDisplayDef',
     pattern: /\btmGridDisplay\b/,
     instantiated: (fixture) =>
@@ -301,6 +311,7 @@ const SUITES = [
   { source: 'select/tm-select.examples.ts', examples: selectExamples },
   { source: 'spinner/tm-spinner.examples.ts', examples: spinnerExamples },
   { source: 'tabs/tm-tabs.examples.ts', examples: tabsExamples },
+  { source: 'modal/tm-modal-footer.examples.ts', examples: modalFooterExamples },
   { source: 'menu/tm-menu.examples.ts', examples: menuExamples },
   { source: 'grid/tm-grid.examples.ts', examples: gridExamples },
   { source: 'tree-grid/tm-tree-grid.examples.ts', examples: treeGridExamples },

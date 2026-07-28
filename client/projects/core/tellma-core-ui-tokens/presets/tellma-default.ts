@@ -327,6 +327,19 @@ export const tmTokensDefault: TmTokens = {
     // tm-menu: panel + item-row geometry; colors ride the field/surface
     // semantic tokens in the component CSS.
     menu: { minWidth: '180px', itemHeight: '32px', iconSize: '16px' },
+    // tm-modal: panel buckets + shell geometry. The scrim is a static ink
+    // veil that reads correctly over both schemes.
+    modal: {
+      widthSm: '420px',
+      widthMd: '640px',
+      margin: '16px',
+      lgMargin: '48px',
+      radius: '{radius.md}',
+      paddingX: '20px',
+      closeSize: '32px',
+      iconSize: '16px',
+      scrim: 'rgba(4, 18, 24, 0.55)',
+    },
     // tm-tab-group: strip geometry; the active indicator draws inside the
     // tab box so activation never reflows.
     tabs: {

@@ -18,6 +18,7 @@ import { TreeGridStory } from './grid/tree-grid-story';
 import { I18nStory } from './i18n/i18n-story';
 import { InputStory } from './input/input-story';
 import { MenuStory } from './menu/menu-story';
+import { ModalStory } from './modal/modal-story';
 import { NumberStory } from './number/number-story';
 import { SelectStory } from './select/select-story';
 import { TabsStory } from './tabs/tabs-story';
@@ -60,6 +61,7 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'checkbox', title: 'Checkbox (tm-checkbox)', component: CheckboxStory },
   { id: 'select', title: 'Select (tm-select)', component: SelectStory },
   { id: 'tabs', title: 'Tabs (tm-tab-group)', component: TabsStory },
+  { id: 'modal', title: 'Modal (TmModal)', component: ModalStory },
   { id: 'menu', title: 'Menu', component: MenuStory },
   { id: 'grid-readonly', title: 'Grid (readonly)', component: GridReadonlyStory, wide: true },
   {

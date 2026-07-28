@@ -1,0 +1,179 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-modal — shell + panel + backdrop. Encapsulation is off (see the shell
+   component): these rules must reach the overlay pane, the backdrop, the
+   CDK container, and the consumer-owned footer element. */
+
+.tm-modal-backdrop {
+  background: var(--modal-scrim);
+}
+
+/* The overlay pane carries the size buckets. Every bucket is capped to the
+   viewport minus the small margin — the scroll then happens in the body. */
+.tm-modal-panel {
+  display: flex;
+  max-inline-size: calc(100vw - 2 * var(--modal-margin));
+  max-block-size: calc(100vh - 2 * var(--modal-margin));
+}
+
+.tm-modal-panel--sm {
+  inline-size: var(--modal-width-sm);
+}
+
+.tm-modal-panel--md {
+  inline-size: var(--modal-width-md);
+}
+
+.tm-modal-panel--lg {
+  inline-size: calc(100vw - 2 * var(--modal-lg-margin));
+  block-size: calc(100vh - 2 * var(--modal-lg-margin));
+}
+
+/* Small-viewport convergence: every bucket goes near-full-screen. (A raw
+   600px breakpoint — custom properties don't resolve in media queries.) */
+@media (max-width: 600px) {
+  .tm-modal-panel--sm,
+  .tm-modal-panel--md,
+  .tm-modal-panel--lg {
+    inline-size: calc(100vw - 2 * var(--modal-margin));
+  }
+
+  .tm-modal-panel--lg {
+    block-size: calc(100vh - 2 * var(--modal-margin));
+  }
+}
+
+.tm-modal-panel > cdk-dialog-container {
+  display: flex;
+  flex-direction: column;
+  inline-size: 100%;
+  max-block-size: 100%;
+  background: var(--surface-card);
+  color: var(--text-body);
+  border-radius: var(--modal-radius);
+  box-shadow: var(--shadow-lg);
+  /* Clips the scrolling body to the rounded corners. */
+  overflow: hidden;
+  animation: tm-modal-enter var(--duration-normal) var(--ease-out);
+}
+
+.tm-modal-panel--lg > cdk-dialog-container {
+  block-size: 100%;
+}
+
+.tm-modal {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-block-size: 0;
+  font-family: var(--font-ui);
+}
+
+.tm-modal__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  padding-block: var(--space-4);
+  padding-inline: var(--modal-padding-x);
+  border-block-end: var(--border-width) solid var(--border-divider);
+}
+
+.tm-modal__title {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+}
+
+.tm-modal__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  margin-inline-start: auto;
+  inline-size: var(--modal-close-size);
+  block-size: var(--modal-close-size);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.tm-modal__close svg {
+  inline-size: var(--modal-icon-size);
+  block-size: var(--modal-icon-size);
+}
+
+.tm-modal__close:hover {
+  background: var(--surface-hover);
+  color: var(--text-body);
+}
+
+.tm-modal__close:focus-visible {
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     The token focus ring below is the equally-visible substitute; the UA
+     outline would double up against it. */
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tm-modal__body {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-4) var(--modal-padding-x);
+}
+
+/* The footer lives inside the CONSUMER's content (the TmModalFooter
+   directive applies this class); sticky pins it to the scrollport bottom
+   while the negative margins cancel the body padding so it runs edge to
+   edge and sits flush at rest. */
+.tm-modal__footer {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-block-start: var(--space-4);
+  margin-block-end: calc(-1 * var(--space-4));
+  margin-inline: calc(-1 * var(--modal-padding-x));
+  padding-block: var(--space-3);
+  padding-inline: var(--modal-padding-x);
+  background: var(--surface-card);
+  border-block-start: var(--border-width) solid var(--border-divider);
+}
+
+@keyframes tm-modal-enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-2)) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-modal-panel > cdk-dialog-container {
+    animation: none;
+  }
+
+  .tm-modal-backdrop {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  /* The scrim and shadow are stripped — a real border keeps the modal's
+     edge visible against the page. */
+  .tm-modal-panel > cdk-dialog-container {
+    border: var(--border-width) solid CanvasText;
+  }
+}

@@ -152,6 +152,9 @@ export const TM_UI_STRINGS_EN: {
         readonly warning: "Warning:";
         readonly error: "Error:";
     };
+    readonly modal: {
+        readonly close: "Close";
+    };
 };
 
 // @public

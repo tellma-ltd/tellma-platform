@@ -127,4 +127,7 @@ export const TM_UI_STRINGS_EN = {
     warning: 'Warning:',
     error: 'Error:',
   },
+  modal: {
+    close: 'Close',
+  },
 } as const;

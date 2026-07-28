@@ -117,6 +117,9 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly warning: "تحذير:";
         readonly error: "خطأ:";
     };
+    readonly modal: {
+        readonly close: "إغلاق";
+    };
 };
 
 ```
