@@ -12,6 +12,7 @@ import { provideTellmaUi } from '@tellma/core-ui';
 import { TmAlert } from '@tellma/core-ui/alert';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmCheckbox } from '@tellma/core-ui/checkbox';
+import { TmDatePicker } from '@tellma/core-ui/date-picker';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import {
   TmGrid,
@@ -30,6 +31,7 @@ import { TmTreeGrid } from '@tellma/core-ui/tree-grid';
 import * as alertExamples from './alert/tm-alert.examples';
 import * as buttonExamples from './button/tm-button.examples';
 import * as checkboxExamples from './checkbox/tm-checkbox.examples';
+import * as datePickerExamples from './date-picker/tm-date-picker.examples';
 import * as gridExamples from './grid/tm-grid.examples';
 import * as inputExamples from './input/tm-input.examples';
 import * as menuExamples from './menu/tm-menu.examples';
@@ -84,6 +86,7 @@ interface ExampleTreeRow {
     TmButton,
     TmCheckbox,
     TmContextMenuTrigger,
+    TmDatePicker,
     TmFormField,
     TmGrid,
     TmGridColumn,
@@ -101,6 +104,7 @@ interface ExampleTreeRow {
   template: `
     <tm-form-field label="placeholder"><input tmInput /></tm-form-field>
     <tm-form-field label="placeholder"><input tmNumber /></tm-form-field>
+    <tm-form-field label="placeholder"><tm-date-picker /></tm-form-field>
     <button tmButton>placeholder</button>
     <tm-alert kind="info">placeholder</tm-alert>
     <tm-checkbox>placeholder</tm-checkbox>
@@ -255,6 +259,7 @@ const MARKERS: {
 const SUITES = [
   { source: 'input/tm-input.examples.ts', examples: inputExamples },
   { source: 'number/tm-number.examples.ts', examples: numberExamples },
+  { source: 'date-picker/tm-date-picker.examples.ts', examples: datePickerExamples },
   { source: 'alert/tm-alert.examples.ts', examples: alertExamples },
   { source: 'button/tm-button.examples.ts', examples: buttonExamples },
   { source: 'checkbox/tm-checkbox.examples.ts', examples: checkboxExamples },

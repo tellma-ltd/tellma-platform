@@ -23,6 +23,16 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly maxDate: "{gender, select, female {أدخلي} other {أدخل}} تاريخا لا يتجاوز {maxDate}";
         readonly parse: "{gender, select, female {أدخلي} other {أدخل}} رقما صالحا، مثل {example}";
         readonly numberPrecision: "{gender, select, female {أدخلي} other {أدخل}} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}}";
+        readonly parseDate: "{gender, select, female {أدخلي} other {أدخل}} تاريخا مثل {example}";
+    };
+    readonly datePicker: {
+        readonly chooseDate: "اختيار التاريخ";
+        readonly dialogLabel: "اختيار التاريخ";
+        readonly previous: "{view, select, day {الشهر السابق} month {السنة السابقة} other {السنوات السابقة}}";
+        readonly next: "{view, select, day {الشهر التالي} month {السنة التالية} other {السنوات التالية}}";
+        readonly switchView: "{view, select, day {اختيار الشهر} month {اختيار السنة} other {العودة إلى عرض الأيام}}";
+        readonly today: "اليوم";
+        readonly clear: "مسح";
     };
     readonly select: {
         readonly placeholder: "{gender, select, female {حددي خيارا} other {حدد خيارا}}";

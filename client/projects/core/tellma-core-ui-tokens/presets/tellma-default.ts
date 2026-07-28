@@ -289,6 +289,14 @@ export const tmTokensDefault: TmTokens = {
     // tm-checkbox (§3.3): the visible box renders at the brand 18px while
     // the hit target is padded past the 24px minimum.
     checkbox: { boxSize: '18px' },
+    // tm-date-picker: popup geometry. Cells exceed the 24px touch minimum;
+    // the popup width holds seven cells plus gaps at every view.
+    datePicker: {
+      cellSize: '32px',
+      cellGap: '2px',
+      popupWidth: '280px',
+      popupPadding: '12px',
+    },
     // tm-select (§3.4): panel + option-row geometry (touch-comfortable rows).
     select: { panelMaxHeight: '280px', optionHeight: '36px' },
     // tm-grid / tm-tree-grid: row density mirrors the field-height scale

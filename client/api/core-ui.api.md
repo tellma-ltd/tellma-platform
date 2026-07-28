@@ -58,6 +58,16 @@ export const TM_UI_STRINGS_EN: {
         readonly maxDate: "Enter a date on or before {maxDate}";
         readonly parse: "Enter a valid number, like {example}";
         readonly numberPrecision: "Enter a number with at most {maxDigits, plural, one {# digit} other {# digits}}";
+        readonly parseDate: "Enter a date like {example}";
+    };
+    readonly datePicker: {
+        readonly chooseDate: "Choose date";
+        readonly dialogLabel: "Choose date";
+        readonly previous: "{view, select, day {Previous month} month {Previous year} other {Previous years}}";
+        readonly next: "{view, select, day {Next month} month {Next year} other {Next years}}";
+        readonly switchView: "{view, select, day {Choose month} month {Choose year} other {Back to day view}}";
+        readonly today: "Today";
+        readonly clear: "Clear";
     };
     readonly select: {
         readonly placeholder: "Select an option";

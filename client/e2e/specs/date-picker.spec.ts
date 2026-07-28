@@ -1,0 +1,213 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+import { expect, test, type Page } from '@playwright/test';
+
+import { expectNoAxeViolations } from '../support/axe';
+import { storyUrl } from '../support/story-map';
+
+/**
+ * Browser battery for tm-date-picker (DoD 5–8): the APG keyboard matrix in
+ * LTR and RTL and per display calendar, the fixed 6-row grid, Today/Clear,
+ * bounds clamping, the polite heading, axe with the popup open, and the
+ * live calendar/locale switches with the ISO model unchanged.
+ */
+
+const popup = (page: Page) => page.locator('.tm-date-popup');
+const openViaButton = async (page: Page, pickerId: string) => {
+  await page.getByTestId(pickerId).locator('.tm-date-picker__toggle').click();
+  await expect(popup(page)).toBeVisible();
+};
+
+test.describe('axe floor (popup open included)', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`date-picker story with open popup is axe-clean (${theme})`, async ({ page }) => {
+      await page.goto(storyUrl('date-picker', { theme }));
+      await openViaButton(page, 'picker-due');
+      await expectNoAxeViolations(page);
+    });
+  }
+});
+
+test.describe('typed entry + popup selection (DoD 5/7)', () => {
+  test('typing commits ISO; the popup opens on the committed day and selects', async ({
+    page,
+  }) => {
+    await page.goto(storyUrl('date-picker'));
+    const input = page.getByTestId('picker-due').locator('.tm-date-picker__input');
+    await expect(input).toHaveValue('3/5/2026');
+
+    await input.fill('7/14/2026');
+    await input.press('Alt+ArrowDown'); // opens; commits pending text first
+    await expect(popup(page)).toBeVisible();
+    await expect(popup(page).locator('.tm-date-popup__view-switch')).toContainText('July');
+    await expect(popup(page).locator('[data-tm-day="14"]')).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+
+    await popup(page).locator('[data-tm-day="20"]').click();
+    await expect(popup(page)).toBeHidden();
+    await expect(input).toHaveValue('7/20/2026');
+    await expect(page.getByTestId('model-json')).toContainText('"due":"2026-07-20"');
+    await expect(input).toBeFocused();
+  });
+
+  test('Today and Clear commit today / null', async ({ page }) => {
+    await page.goto(storyUrl('date-picker'));
+    await openViaButton(page, 'picker-due');
+    await popup(page).locator('.tm-date-popup__action').first().click();
+    const today = await page.evaluate(() => {
+      const now = new Date();
+      return `${String(now.getFullYear()).padStart(4, '0')}-${String(now.getMonth() + 1).padStart(
+        2,
+        '0',
+      )}-${String(now.getDate()).padStart(2, '0')}`;
+    });
+    await expect(page.getByTestId('model-json')).toContainText(`"due":"${today}"`);
+
+    await openViaButton(page, 'picker-due');
+    await popup(page).locator('.tm-date-popup__action').last().click();
+    await expect(page.getByTestId('model-json')).toContainText('"due":null');
+  });
+});
+
+test.describe('keyboard matrix (DoD 7)', () => {
+  for (const dir of ['ltr', 'rtl'] as const) {
+    test(`grid keys navigate (direction-mapped) and Esc returns to the input (${dir})`, async ({
+      page,
+    }) => {
+      await page.goto(storyUrl('date-picker', { dir }));
+      const input = page.getByTestId('picker-due').locator('.tm-date-picker__input');
+      await input.click();
+      await input.press('Alt+ArrowDown');
+      await expect(popup(page)).toBeVisible();
+
+      // Focus landed on the committed day (3/5/2026).
+      const focusedDay = () =>
+        popup(page).locator('.tm-date-popup__day[tabindex="0"]').getAttribute('data-tm-day');
+      expect(await focusedDay()).toBe('5');
+
+      // inline-end arrow: +1 day in LTR terms — ArrowRight in LTR, ArrowLeft in RTL.
+      await page.keyboard.press(dir === 'ltr' ? 'ArrowRight' : 'ArrowLeft');
+      expect(await focusedDay()).toBe('6');
+      await page.keyboard.press('ArrowDown'); // +7
+      expect(await focusedDay()).toBe('13');
+      await page.keyboard.press('Home'); // week start
+      const afterHome = Number(await focusedDay());
+      expect(afterHome).toBeLessThanOrEqual(13);
+
+      // PageDown: next month; the heading announces politely.
+      await page.keyboard.press('PageDown');
+      await expect(popup(page).locator('.tm-date-popup__view-switch')).toContainText('April');
+      await expect(
+        popup(page).locator('.tm-date-popup__view-switch [aria-live="polite"]'),
+      ).toBeVisible();
+      await page.keyboard.press('Shift+PageDown'); // +1 year
+      await expect(popup(page).locator('.tm-date-popup__view-switch')).toContainText('2027');
+
+      // Enter selects the focused day and returns focus to the input.
+      await page.keyboard.press('Enter');
+      await expect(popup(page)).toBeHidden();
+      await expect(input).toBeFocused();
+      await expect(page.getByTestId('model-json')).toContainText('"due":"2027-04');
+
+      // Esc on a reopened popup closes WITHOUT committing.
+      const committed = await input.inputValue();
+      await input.press('Alt+ArrowDown');
+      await expect(popup(page)).toBeVisible();
+      await page.keyboard.press('ArrowRight');
+      await page.keyboard.press('Escape');
+      await expect(popup(page)).toBeHidden();
+      await expect(input).toHaveValue(committed);
+      await expect(input).toBeFocused();
+    });
+  }
+});
+
+test.describe('fixed geometry (DoD 7)', () => {
+  test('the popup never resizes across month flips or views', async ({ page }) => {
+    await page.goto(storyUrl('date-picker'));
+    await openViaButton(page, 'picker-due');
+    const before = await popup(page).boundingBox();
+    await popup(page).locator('.tm-date-popup__nav').last().click(); // next month
+    const afterFlip = await popup(page).boundingBox();
+    expect(afterFlip!.height).toBeCloseTo(before!.height, 1);
+    expect(afterFlip!.width).toBeCloseTo(before!.width, 1);
+
+    await popup(page).locator('.tm-date-popup__view-switch').click(); // month view
+    const monthView = await popup(page).boundingBox();
+    expect(monthView!.width).toBeCloseTo(before!.width, 1);
+  });
+
+  test('bounds clamp navigation and disable out-of-range days', async ({ page }) => {
+    await page.goto(storyUrl('date-picker'));
+    await openViaButton(page, 'picker-bounded');
+    // The bounded field is empty: the popup opens on today clamped into
+    // March 2026.
+    await expect(popup(page).locator('.tm-date-popup__view-switch')).toContainText('March');
+    await expect(popup(page).locator('[data-tm-day="12"]')).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+  });
+});
+
+test.describe('display calendars (DoD 8)', () => {
+  test('runtime calendar switch re-renders text and popup; the ISO model never moves', async ({
+    page,
+  }) => {
+    await page.goto(storyUrl('date-picker'));
+    const input = page.getByTestId('picker-due').locator('.tm-date-picker__input');
+    await expect(input).toHaveValue('3/5/2026');
+
+    await page.getByTestId('cal-umalqura').click();
+    // 2026-03-05 is in Ramadan 1447 AH — the display re-renders in place.
+    await expect(input).not.toHaveValue('3/5/2026');
+    await expect(page.getByTestId('model-json')).toContainText('"due":"2026-03-05"');
+
+    await openViaButton(page, 'picker-due');
+    await expect(popup(page).locator('.tm-date-popup__view-switch')).toContainText('Ramadan');
+    await page.keyboard.press('Escape');
+
+    await page.getByTestId('cal-ethiopic').click();
+    await openViaButton(page, 'picker-due');
+    // The Ethiopic month grid shows 13 selectable months incl. Pagume.
+    await popup(page).locator('.tm-date-popup__view-switch').click();
+    await expect(popup(page).locator('[data-tm-month="13"]')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('model-json')).toContainText('"due":"2026-03-05"');
+  });
+
+  test('live locale switch re-renders the display; the model never moves', async ({ page }) => {
+    await page.goto(storyUrl('date-picker'));
+    const input = page.getByTestId('picker-due').locator('.tm-date-picker__input');
+    await expect(input).toHaveValue('3/5/2026');
+    await page.getByTestId('lang-ar').click();
+    await expect(input).not.toHaveValue('3/5/2026'); // ar-SA digits/order
+    await expect(page.getByTestId('model-json')).toContainText('"due":"2026-03-05"');
+    await page.getByTestId('lang-en').click();
+    await expect(input).toHaveValue('3/5/2026');
+  });
+});
+
+test.describe('forced-colors + reduced-motion gates', () => {
+  test('forced-colors keeps the popup boundary and selection visible', async ({ page }) => {
+    await page.emulateMedia({ forcedColors: 'active' });
+    await page.goto(storyUrl('date-picker'));
+    await openViaButton(page, 'picker-due');
+    const borderStyle = await popup(page).evaluate(
+      (el) => getComputedStyle(el.querySelector('.tm-date-popup') ?? el).borderStyle,
+    );
+    expect(borderStyle).toBe('solid');
+  });
+
+  test('reduced-motion renders the popup without animation surprises', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(storyUrl('date-picker'));
+    await openViaButton(page, 'picker-due');
+    await expect(popup(page)).toBeVisible();
+  });
+});

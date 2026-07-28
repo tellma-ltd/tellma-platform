@@ -47,6 +47,18 @@ export const TM_LOCALE_AR_STRINGS = {
     maxDate: `${enter} تاريخا لا يتجاوز {maxDate}`,
     parse: `${enter} رقما صالحا، مثل {example}`,
     numberPrecision: `${enter} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}}`,
+    parseDate: `${enter} تاريخا مثل {example}`,
+  },
+  datePicker: {
+    chooseDate: 'اختيار التاريخ',
+    dialogLabel: 'اختيار التاريخ',
+    previous:
+      '{view, select, day {الشهر السابق} month {السنة السابقة} other {السنوات السابقة}}',
+    next: '{view, select, day {الشهر التالي} month {السنة التالية} other {السنوات التالية}}',
+    switchView:
+      '{view, select, day {اختيار الشهر} month {اختيار السنة} other {العودة إلى عرض الأيام}}',
+    today: 'اليوم',
+    clear: 'مسح',
   },
   select: {
     placeholder: '{gender, select, female {حددي خيارا} other {حدد خيارا}}',

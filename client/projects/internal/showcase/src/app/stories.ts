@@ -8,6 +8,7 @@ import { Component, Type } from '@angular/core';
 import { AlertStory } from './alert/alert-story';
 import { ButtonStory } from './button/button-story';
 import { CheckboxStory } from './checkbox/checkbox-story';
+import { DatePickerStory } from './date-picker/date-picker-story';
 import { GridCustomEditorStory } from './grid/grid-custom-editor-story';
 import { GridEditableStory } from './grid/grid-editable-story';
 import { GridListScreenStory } from './grid/grid-list-screen-story';
@@ -54,6 +55,7 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'alert', title: 'Alert (tm-alert)', component: AlertStory },
   { id: 'input', title: 'Text input (tmInput + tm-form-field)', component: InputStory },
   { id: 'number', title: 'Number input (tmNumber)', component: NumberStory },
+  { id: 'date-picker', title: 'Date picker (tm-date-picker)', component: DatePickerStory },
   { id: 'checkbox', title: 'Checkbox (tm-checkbox)', component: CheckboxStory },
   { id: 'select', title: 'Select (tm-select)', component: SelectStory },
   { id: 'menu', title: 'Menu', component: MenuStory },

@@ -26,6 +26,7 @@
       "./calendar-ethiopic": 2,
       "./calendar-umalqura": 5,
       "./contracts": 1,
+      "./date-picker": 14,
       "./grid-engine": 15,
       "./grid": 34,
       "./tree-grid": 8,

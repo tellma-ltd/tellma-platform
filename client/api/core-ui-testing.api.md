@@ -46,6 +46,21 @@ export class TmCheckboxHarness extends ComponentHarness {
 }
 
 // @public
+export class TmDatePickerHarness extends ComponentHarness {
+    blur(): Promise<void>;
+    clear(): Promise<void>;
+    focus(): Promise<void>;
+    getText(): Promise<string>;
+    static hostSelector: string;
+    isInvalid(): Promise<boolean>;
+    isPopupOpen(): Promise<boolean>;
+    openPopup(): Promise<void>;
+    selectDay(day: number): Promise<void>;
+    selectToday(): Promise<void>;
+    setText(text: string): Promise<void>;
+}
+
+// @public
 export class TmFormFieldHarness extends ComponentHarness {
     getErrorText(): Promise<string | null>;
     getHintText(): Promise<string | null>;

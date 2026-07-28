@@ -37,6 +37,17 @@ describe('tmUmalquraCalendar', () => {
     expect(calendar.fromParts({ year: 1447, month: 1, day: 31 })).toBeNull();
   });
 
+  it('formatted output round-trips through the parser, era literal included', () => {
+    // en-US numeric Umm al-Qura output carries an "AH" era literal — the
+    // parser must tolerate it or a mere reformat would null the model.
+    for (const locale of ['en-US', 'en-GB', 'ar-SA']) {
+      const formatted = tmFormatDate('2026-03-05', locale, { calendar });
+      expect(tmParseDate(formatted, locale, { calendar }), `${locale}: ${formatted}`).toBe(
+        '2026-03-05',
+      );
+    }
+  });
+
   it('drives the date engine: Hijri segments read in the display calendar', () => {
     // 15 Safar 1448 AH per the spec's own example.
     const iso = tmParseDate('15/2/1448', 'ar-SA', { calendar });

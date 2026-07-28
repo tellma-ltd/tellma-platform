@@ -162,6 +162,37 @@ function foldName(name: string): string {
     .trim();
 }
 
+/** Folded era names per locale × calendar — tolerated (skipped) in parsed input. */
+const eraNameCache = new Map<string, ReadonlySet<string>>();
+
+function eraNamesFor(locale: string, calendarId: string): ReadonlySet<string> {
+  const key = `${locale}|${calendarId}`;
+  let names = eraNameCache.get(key);
+  if (names === undefined) {
+    const set = new Set<string>();
+    const reference = utcDateOf(2001, 2, 3);
+    for (const form of ['long', 'short', 'narrow'] as const) {
+      const parts = new Intl.DateTimeFormat(locale, {
+        year: 'numeric',
+        era: form,
+        calendar: calendarId,
+        timeZone: 'UTC',
+      }).formatToParts(reference);
+      for (const part of parts) {
+        if (part.type === 'era') {
+          const folded = foldName(part.value);
+          if (folded !== '') {
+            set.add(folded);
+          }
+        }
+      }
+    }
+    names = set;
+    eraNameCache.set(key, names);
+  }
+  return names;
+}
+
 /** Folded month name (long + short forms) → month number, per locale × calendar. */
 const monthNameCache = new Map<string, ReadonlyMap<string, number>>();
 
@@ -244,7 +275,13 @@ export function tmParseDate(
     return iso !== null && iso >= MIN_ISO && iso <= MAX_ISO ? iso : TM_PARSE_ERROR;
   }
 
-  const segments = cleaned.split(SEPARATORS).filter((segment) => segment !== '');
+  // Era literals ("AH", "ዓ/ም") ride along in some calendars' formatted
+  // output; they carry no information a segment slot needs, so they are
+  // tolerated — formatted output must round-trip through the parser.
+  const eraNames = eraNamesFor(locale, calendar.id);
+  const segments = cleaned
+    .split(SEPARATORS)
+    .filter((segment) => segment !== '' && !eraNames.has(foldName(segment)));
   if (segments.length === 0 || segments.length > 3) {
     return TM_PARSE_ERROR;
   }

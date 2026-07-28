@@ -25,6 +25,18 @@ export const TM_UI_STRINGS_EN = {
     parse: 'Enter a valid number, like {example}',
     numberPrecision:
       'Enter a number with at most {maxDigits, plural, one {# digit} other {# digits}}',
+    parseDate: 'Enter a date like {example}',
+  },
+  datePicker: {
+    chooseDate: 'Choose date',
+    dialogLabel: 'Choose date',
+    previous:
+      '{view, select, day {Previous month} month {Previous year} other {Previous years}}',
+    next: '{view, select, day {Next month} month {Next year} other {Next years}}',
+    switchView:
+      '{view, select, day {Choose month} month {Choose year} other {Back to day view}}',
+    today: 'Today',
+    clear: 'Clear',
   },
   select: {
     placeholder: 'Select an option',

@@ -14,6 +14,7 @@
 // LICENSE file in the root directory of this source tree.
 export * from './alert-harness';
 export * from './button-harness';
+export * from './date-picker-harness';
 export * from './input-harness';
 export * from './number-harness';
 export * from './checkbox-harness';
