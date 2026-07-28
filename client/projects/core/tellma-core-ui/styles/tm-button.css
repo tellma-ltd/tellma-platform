@@ -32,21 +32,26 @@
     color var(--duration-fast) var(--ease-standard);
 }
 
+/* `--button-padding-xsm` / `-xlg`, not `-x-sm`: the emitter kebab-cases the
+   `paddingXSm` token key as one word. A name that misses is not a fallback —
+   the unresolvable var() invalidates this declaration at computed-value time
+   and the size variant renders with zero inline padding. */
 .tm-button--sm {
   block-size: var(--field-height-sm);
-  padding-inline: var(--button-padding-x-sm);
+  padding-inline: var(--button-padding-xsm);
 }
 
 .tm-button--lg {
   block-size: var(--field-height-lg);
-  padding-inline: var(--button-padding-x-lg);
+  padding-inline: var(--button-padding-xlg);
 }
 
 .tm-button:focus-visible {
-  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
-     The token focus ring below is the equally-visible substitute; the UA
-     outline would double up against it. */
-  outline: none;
+  /* A transparent REAL outline beneath the token ring: forced colors strip
+     box-shadows but repaint outline-color in a system color, so the outline
+     is the only thing left carrying focus there. */
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
   box-shadow: var(--focus-ring);
 }
 

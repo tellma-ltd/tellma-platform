@@ -103,12 +103,16 @@ const FORMAT_CONTROL = /\p{Cf}/gu;
 
 /**
  * Segment separators: slash, dash, comma, Arabic date/decimal marks,
- * spaces, and the CJK date-unit suffixes (`2026年7月27日`, `2026년 7월 27일`
- * tokenize to their numbers). Dots are NOT global separators — they split
- * only between digits (`27.03.2026`), because they also live inside month
- * abbreviations (`Rab. I`, `juil.`) and dotted era names (`ฮ.ศ.`).
+ * spaces, parentheses, and the CJK date-unit suffixes (`2026年7月27日`,
+ * `2026년 7월 27일` tokenize to their numbers). Parentheses are separators
+ * because several locales bracket a grammatical suffix or an era onto a
+ * field — Basque `2026(e)ko … 20(a)`, Uzbek `1448 (hijriy)` — and the
+ * bracketed word is then shed like any other particle. Dots are NOT
+ * global separators — they split only between digits (`27.03.2026`),
+ * because they also live inside month abbreviations (`Rab. I`, `juil.`)
+ * and dotted era names (`ฮ.ศ.`).
  */
-const SEPARATORS = /[/\-,،٫؍\s年月日号號년월일]+/u;
+const SEPARATORS = /[/\-,،٫؍()（）\s年月日号號년월일]+/u;
 
 /**
  * A dot acting as a date separator: one whose neighbours are not BOTH
@@ -146,10 +150,11 @@ function normalizeDigits(text: string, locale: string): string {
 
 /**
  * The locale's field order (subset of year/month/day), cached per
- * locale × calendar × style. The NUMERIC and NAMED-MONTH patterns can
- * disagree (fa formats numeric dates year-first but medium dates
- * day-first), so all-numeric input reads in the numeric order while
- * named-month input reads in the medium order.
+ * locale × calendar × style. All three patterns can disagree (fa formats
+ * numeric dates year-first but medium dates day-first; tt formats medium
+ * dates year-first but long dates day-first), so all-numeric input reads
+ * in the numeric order while named-month input reads in the order of the
+ * style whose month spelling it matched.
  */
 const fieldOrderCache = new Map<string, readonly ('year' | 'month' | 'day')[]>();
 
@@ -161,19 +166,53 @@ function fieldOrderFor(
   const key = `${locale}|${calendarId}|${style}`;
   let order = fieldOrderCache.get(key);
   if (order === undefined) {
-    const parts = formatterFor(locale, calendarId, style).formatToParts(utcDateOf(2001, 2, 3));
-    order = parts
-      .map((part) => part.type)
-      .filter((type): type is 'year' | 'month' | 'day' =>
-        type === 'year' || type === 'month' || type === 'day',
-      );
-    if (order.length !== 3) {
-      order = ['year', 'month', 'day'];
+    order = ['year', 'month', 'day'];
+    try {
+      const parts = formatterFor(locale, calendarId, style).formatToParts(utcDateOf(2001, 2, 3));
+      const fields = parts
+        .map((part) => part.type)
+        .filter((type): type is 'year' | 'month' | 'day' =>
+          type === 'year' || type === 'month' || type === 'day',
+        );
+      if (fields.length === 3) {
+        order = fields;
+      }
+    } catch {
+      // A locale × calendar combination the engine's ICU cannot pair
+      // (some builds throw rather than fall back). ISO order is the
+      // safest default; the caller still validates the result.
     }
     fieldOrderCache.set(key, order);
   }
   return order;
 }
+
+const isoCollisionCache = new Map<string, boolean>();
+
+/**
+ * Whether this locale × calendar renders its own NUMERIC dates in the ISO
+ * shape (`1234-56-78`) but NOT in year-month-day order — the one case in
+ * which an ISO-looking string is genuinely ambiguous. Kyrgyz is the only
+ * such locale in CLDR today (`yyyy-dd-MM`), and there its own rendering
+ * must win: otherwise every date the user sees round-trips transposed.
+ * Everywhere else the fast path stays safe, because a locale that orders
+ * fields differently also separates them differently (`09/23/2024`).
+ */
+function isoShapeIsAmbiguous(locale: string, calendarId: string): boolean {
+  const key = `${locale}|${calendarId}`;
+  let ambiguous = isoCollisionCache.get(key);
+  if (ambiguous === undefined) {
+    const order = fieldOrderFor(locale, calendarId, 'numeric');
+    ambiguous =
+      (order[0] !== 'year' || order[1] !== 'month') &&
+      ISO_SHAPE.test(formatterFor(locale, calendarId, 'numeric').format(utcDateOf(2001, 2, 3)));
+    isoCollisionCache.set(key, ambiguous);
+  }
+  return ambiguous;
+}
+
+/** The shape the ISO fast path claims: a 4-digit year, then 2 and 2. */
+const ISO_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * The joiners both sides shed before comparing names: dots, spaces,
@@ -195,6 +234,16 @@ function foldExact(name: string): string {
 }
 
 /**
+ * The Turkish dotless ı — the one letter neither of the other two folds
+ * can bridge. A locale-insensitive `toLowerCase()` maps ASCII `I` to `i`
+ * (so typing `MAYIS` yields `mayis`) while the table's own key holds `ı`
+ * (`Mayıs`), and `ı` has no NFD decomposition for the mark-stripping fold
+ * to strip. It is folded in the LOOSE tier only — the exact tier must
+ * stay exact.
+ */
+const DOTLESS_I = /ı/gu;
+
+/**
  * Diacritic-insensitive folding — the FALLBACK tier, so a Latin name
  * typed without its accents (`marz 2026`) still matches. Keys that
  * become AMBIGUOUS under this fold are dropped from the fallback table
@@ -204,6 +253,7 @@ function foldName(name: string): string {
   return name
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
+    .replace(DOTLESS_I, 'i')
     .replace(NAME_JOINERS, '')
     .toLowerCase();
 }
@@ -285,6 +335,16 @@ function literalWordsFor(
 interface MonthTable {
   /** The month a segment names, or `undefined`. */
   lookup(segment: string): number | undefined;
+  /**
+   * The style whose IN-DATE spelling a segment matches, or `undefined`
+   * when the segment does not pin one down (both styles spell the month
+   * alike, or the spelling is a standalone form). The caller reads the
+   * field order from it: a locale's medium and long patterns can order
+   * fields differently (tt renders medium dates year-first and long dates
+   * day-first), so the order must come from the style that actually
+   * matched rather than from a fixed guess.
+   */
+  styleOf(segment: string): TmDateStyle | undefined;
   /** Whether a diacritic-folded word is a month name in either tier. */
   hasFolded(folded: string): boolean;
 }
@@ -303,6 +363,17 @@ function monthNamesFor(
     const loose = new Map<string, number>();
     /** Loose keys that named more than one month — never guessed at. */
     const ambiguous = new Set<string>();
+    /**
+     * Per key: the single in-date style that spells the month that way,
+     * or `null` once a second style claims the same key (the spelling
+     * then pins no order down). Standalone forms never claim a key —
+     * they belong to no pattern, so they must not blank an attribution.
+     */
+    const styleOfKey = new Map<string, TmDateStyle | null>();
+    const noteStyle = (key: string, style: TmDateStyle): void => {
+      const claimed = styleOfKey.get(key);
+      styleOfKey.set(key, claimed === undefined || claimed === style ? style : null);
+    };
     const standalone = (['long', 'short'] as const).map(
       (form) =>
         new Intl.DateTimeFormat(locale, { month: form, calendar: calendar.id, timeZone: 'UTC' }),
@@ -315,9 +386,9 @@ function monthNamesFor(
       }
       const parts = ɵtmParseIsoDate(iso)!;
       const date = utcDateOf(parts.year, parts.month, parts.day);
-      const candidates: string[] = [];
+      const candidates: { readonly name: string; readonly style: TmDateStyle | null }[] = [];
       for (const formatter of standalone) {
-        candidates.push(formatter.format(date));
+        candidates.push({ name: formatter.format(date), style: null });
       }
       // The IN-DATE forms too: several languages inflect the month inside
       // a date (ru genitive) or abbreviate it differently there (vi
@@ -326,16 +397,26 @@ function monthNamesFor(
       for (const style of ['medium', 'long'] as const) {
         for (const part of formatterFor(locale, calendar.id, style).formatToParts(date)) {
           if (part.type === 'month') {
-            candidates.push(part.value);
+            candidates.push({ name: part.value, style });
           }
         }
       }
       for (const candidate of candidates) {
-        const exactKey = foldExact(candidate);
+        // Digit-normalized exactly as the input side is: a few month
+        // names CARRY a digit (ps 'جماد ۲'), and the parser has already
+        // mapped the locale's digits to ASCII by the time it looks up.
+        const name = normalizeDigits(candidate.name, locale);
+        const exactKey = foldExact(name);
         if (exactKey !== '' && !exact.has(exactKey)) {
           exact.set(exactKey, month);
         }
-        const looseKey = foldName(candidate);
+        if (exactKey !== '' && candidate.style !== null) {
+          noteStyle(exactKey, candidate.style);
+        }
+        const looseKey = foldName(name);
+        if (looseKey !== '' && candidate.style !== null) {
+          noteStyle(looseKey, candidate.style);
+        }
         if (looseKey === '' || ambiguous.has(looseKey)) {
           continue;
         }
@@ -353,6 +434,10 @@ function monthNamesFor(
     }
     table = {
       lookup: (segment) => exact.get(foldExact(segment)) ?? loose.get(foldName(segment)),
+      styleOf: (segment) => {
+        const exactKey = foldExact(segment);
+        return styleOfKey.get(exact.has(exactKey) ? exactKey : foldName(segment)) ?? undefined;
+      },
       hasFolded: (folded) => loose.has(folded) || ambiguous.has(folded) || exact.has(folded),
     };
     monthNameCache.set(key, table);
@@ -365,7 +450,11 @@ function monthNamesFor(
  * algorithm is deterministic — forgiving on separators and completion,
  * strict on ambiguity:
  *
- * 1. An input already in the ISO shape is accepted in any locale.
+ * 1. An input already in the ISO shape is accepted in any locale — with
+ *    one exception: where the locale's OWN numeric format is that same
+ *    shape in a different field order (Kyrgyz writes `yyyy-dd-MM`), the
+ *    locale's reading wins, because otherwise the text this function
+ *    produces would not survive being read back.
  * 2. Numeric segments read in the locale's field order for the display
  *    calendar (`5/3` is day-month in en-GB and ar-SA, month-day in en-US).
  * 3. Segments are interpreted IN the display calendar, then converted to
@@ -394,8 +483,12 @@ export function tmParseDate(
     return null;
   }
 
-  // (1) The ISO fast path — unambiguous by construction, bounds included.
-  const isoParts = ɵtmParseIsoDate(cleaned);
+  // (1) The ISO fast path — unambiguous by construction in every locale
+  // but one (see `isoShapeIsAmbiguous`), bounds included.
+  // Shape first: the ambiguity probe costs an Intl format, and only an
+  // ISO-shaped input can be ambiguous in the first place.
+  const shaped = ɵtmParseIsoDate(cleaned);
+  const isoParts = shaped !== null && isoShapeIsAmbiguous(locale, calendar.id) ? null : shaped;
   if (isoParts !== null) {
     const iso = tmGregorianCalendar().fromParts({
       year: isoParts.year,
@@ -496,12 +589,15 @@ export function tmParseDate(
   const numeric: number[] = [];
   const numericRaw: string[] = [];
   let namedMonth: number | null = null;
+  /** The style the matched spelling belongs to, when it pins one down. */
+  let namedMonthStyle: TmDateStyle | undefined;
   for (const segment of segments) {
     if (/^\d{1,4}$/.test(segment)) {
       numeric.push(Number(segment));
       numericRaw.push(segment);
     } else if (namedMonth === null) {
-      let month = monthTable.lookup(segment);
+      let matched = segment;
+      let month = monthTable.lookup(matched);
       if (month === undefined) {
         // Some patterns GLUE a particle or era onto the month (Hebrew's
         // one-letter prepositions: 'ברביע' = 'ב' + the month) — shed one
@@ -509,10 +605,12 @@ export function tmParseDate(
         const folded = foldName(segment);
         for (const word of [...literalWords, ...eraNames]) {
           if (folded.startsWith(word)) {
-            month = monthTable.lookup(folded.slice(word.length));
+            matched = folded.slice(word.length);
+            month = monthTable.lookup(matched);
           }
           if (month === undefined && folded.endsWith(word)) {
-            month = monthTable.lookup(folded.slice(0, -word.length));
+            matched = folded.slice(0, -word.length);
+            month = monthTable.lookup(matched);
           }
           if (month !== undefined) {
             break;
@@ -523,15 +621,23 @@ export function tmParseDate(
         return TM_PARSE_ERROR;
       }
       namedMonth = month;
+      namedMonthStyle = monthTable.styleOf(matched);
     } else {
       return TM_PARSE_ERROR; // a second word segment
     }
   }
 
   // All-numeric input reads in the NUMERIC pattern's field order; input
-  // with a month name reads in the MEDIUM pattern's (they disagree in
-  // some locales — fa is year-first numeric, day-first medium).
-  const order = fieldOrderFor(locale, calendar.id, namedMonth === null ? 'numeric' : 'medium');
+  // with a month name reads in the field order of the style whose
+  // spelling matched, falling back to MEDIUM when the spelling is shared.
+  // The three patterns disagree in some locales — fa is year-first
+  // numeric and day-first medium, tt is year-first medium and day-first
+  // long — so the order has to follow the pattern the text came from.
+  const order = fieldOrderFor(
+    locale,
+    calendar.id,
+    namedMonth === null ? 'numeric' : (namedMonthStyle ?? 'medium'),
+  );
   let year: number | null = null;
   let month: number | null = namedMonth;
   let day: number | null = null;

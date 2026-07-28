@@ -2224,27 +2224,51 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     const getText: (row: T) => string =
       format !== undefined ? (row) => format(getValue(row), row) : (row) => typeText(getValue(row));
     // A number column's editor opens on the FULL-PRECISION value, not the
-    // (possibly rounded) display text, so `maxDecimals` never writes its
-    // rounding back to the model. A custom [format] owns display AND edit text.
+    // (possibly rounded) display text, so the user edits what the cell
+    // holds rather than a rendering of it. The COMMIT still rounds to the
+    // column's display scale (see `normalizeValue` below) — only a
+    // programmatic write keeps precision the display drops. A custom
+    // [format] owns display AND edit text.
     const editSeedText: ((value: unknown) => string) | undefined =
       type === 'number' && format === undefined
         ? (value) => tmFormatNumber(value, locale())
         : undefined;
 
-    // The built-in date parse: the paste source hints are tried first —
-    // in the SOURCE's display calendar when the clipboard carries one
-    // (Hijri `23/9/1445` copied from an ar-SA grid is a valid-looking
-    // Gregorian date; reading it as Gregorian would silently write year
-    // 1445). A known-but-unavailable source calendar skips the foreign
-    // rung entirely: failing honestly beats a plausible misparse. A
-    // foreign clipboard (no meta) keeps the Gregorian assumption. Then
-    // the active locale in the ambient display calendar. Column-level
-    // [parse] still overrides.
+    // The built-in date parse, in three rungs. A payload from OUTSIDE the
+    // app is Gregorian unless the ambient calendar reads it too, in which
+    // case it is ambiguous and errors. A payload from another Tellma grid
+    // is read in the SOURCE's display calendar (Hijri `23/9/1445` copied
+    // from an ar-SA grid is a valid-looking Gregorian date; reading it as
+    // Gregorian would silently write year 1445), and a known-but-
+    // unavailable source calendar errors rather than guess. Everything
+    // else — typed commits above all — reads in the ambient display
+    // calendar. Column-level [parse] still overrides all of it.
     const dateParse =
       type === 'date'
         ? (text: string, ctx: TmParseContext): unknown | TmParseError => {
             const active = untracked(calendar);
+            if (ctx.foreignSource === true && active.id !== 'gregory') {
+              // Outside the app, dates are Gregorian — spreadsheets and
+              // editors have no other calendar — so a foreign payload is
+              // read that way first, and only falls back to the ambient
+              // calendar if Gregorian cannot read it at all.
+              //
+              // KNOWN AMBIGUITY: text that BOTH calendars can read is
+              // decided in Gregorian's favour. That is right for the
+              // spreadsheet case this rung exists for, but wrong if the
+              // payload is really this grid's own display text pasted
+              // back through a route that dropped the metadata (a mobile
+              // keyboard, a clipboard manager, a hop through a text
+              // editor). Nothing in the text distinguishes the two.
+              const asGregorian = tmParseDate(text, ctx.locale, {
+                calendar: tmGregorianCalendar(),
+              });
+              if (typeof asGregorian === 'string' || asGregorian === null) {
+                return asGregorian;
+              }
+            }
             if (ctx.sourceLocale !== undefined) {
+              const sourceLocale = ctx.sourceLocale;
               const sourceCalendar =
                 ctx.sourceCalendar === undefined || ctx.sourceCalendar === 'gregory'
                   ? tmGregorianCalendar()
@@ -2253,9 +2277,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
                     : null;
               if (
                 sourceCalendar !== null &&
-                (ctx.sourceLocale !== ctx.locale || sourceCalendar.id !== active.id)
+                (sourceLocale !== ctx.locale || sourceCalendar.id !== active.id)
               ) {
-                const foreign = tmParseDate(text, ctx.sourceLocale, {
+                const foreign = tmParseDate(text, sourceLocale, {
                   calendar: sourceCalendar,
                 });
                 if (typeof foreign === 'string' || foreign === null) {
@@ -2416,6 +2440,13 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     const win = this.window();
     const columns = this.columnsInternal();
     // Reactive dependencies read once; per-cell helpers below are untracked.
+    // The per-cell display text is deliberately NOT one of them: it runs
+    // tracked, through the column's text closure, which reads the ambient
+    // locale and display calendar at call time. That is the only thing that
+    // re-renders every formatted cell in place when the user switches
+    // language or calendar — wrapping the cell-text path in `untracked()`
+    // would silently freeze each cell at whatever was in force when its row
+    // was last rendered for some other reason.
     engine.selection.ranges();
     engine.model.viewRows();
     const active = engine.nav.activeCell();
@@ -3245,6 +3276,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
 
     const editor = mounted.editor;
     editor.focus();
+    // Every open starts WITHOUT a pristine baseline; only the branches that
+    // seed a known text install one. Leaving the previous session's baseline
+    // in place would make a later commit of a coincidentally equal string
+    // (an emptied cell after an emptied cell) look pristine and be dropped.
+    this.editorOpenText = null;
     if (opts?.ime === true) {
       // IME opens UNSEEDED: the composition itself supplies the content.
       this.editorOpenText = '';
@@ -3263,9 +3299,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         editor.value.set(seedText);
       }
       // A type-to-edit seed REPLACES the content — committing it unchanged
-      // is still a user edit, so the pristine baseline is what the cell
-      // held before, never the seed.
-      this.editorOpenText = null;
+      // is still a user edit, so the baseline stays null (set above), never
+      // the seed.
     } else if (mounted.kind === 'text' || mounted.kind === 'number' || mounted.kind === 'date') {
       // Edit mode edits the cell's CURRENT DISPLAY TEXT (Excel edits the
       // formatted text; for an invalid-input cell that is the raw text) — but a

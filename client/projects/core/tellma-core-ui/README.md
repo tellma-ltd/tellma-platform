@@ -38,14 +38,23 @@ disabled/readonly/required).
 
 ## Consuming
 
-Add `@tellma/core-ui-tokens`' emitted stylesheet plus this package's
-`fonts/fonts.css` to the application's `styles` array — the build pipeline
-fingerprints the font binaries like any other CSS-referenced asset (see the
-showcase's `angular.json` for the reference wiring, and the workspace's
-`scripts/inject-font-preloads.mjs` for the post-build step that injects
-`<link rel="preload">` tags for the emitted font URLs). Theming,
-sizing, and typography all flow from the token variables — the components
-ship no hardcoded sizes or colors.
+Add to the application's `styles` array:
+
+- `@tellma/core-ui-tokens`' emitted stylesheet (the token variables);
+- this package's `fonts/fonts.css` (the self-hosted Latin/Mono faces);
+- one stylesheet per BARE DIRECTIVE — `styles/tm-button.css`,
+  `styles/tm-input.css`, `styles/tm-number.css`. A directive has no view of
+  its own to carry styles, so its appearance ships as a global sheet;
+  skipping these leaves buttons and text/number inputs unstyled. The
+  authoritative list is `package.json`'s `"tellma".docs.globalStyles`, keyed
+  by the entry point that needs it.
+
+The build pipeline fingerprints the font binaries like any other
+CSS-referenced asset (see the showcase's `angular.json` for the reference
+wiring, and the workspace's `scripts/inject-font-preloads.mjs` for the
+post-build step that injects `<link rel="preload">` tags for the emitted font
+URLs). Theming, sizing, and typography all flow from the token variables —
+the components ship no hardcoded sizes or colors.
 
 ## Authoring conventions
 

@@ -3,12 +3,15 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component, signal } from '@angular/core';
+import { Component, signal, type Signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestKey } from '@angular/cdk/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
+import { TranslocoService } from '@jsverse/transloco';
 
-import { provideTellmaUi } from '@tellma/core-ui';
+import { provideTellmaUi, provideTmCalendar } from '@tellma/core-ui';
+import { tmUmalquraCalendar } from '@tellma/core-ui/calendar-umalqura';
+import { tmGregorianCalendar, type TmCalendar } from '@tellma/core-ui/l10n';
 import { TmGridHarness, TmGridRowHarness } from '@tellma/core-ui-testing';
 
 import { TmGrid } from './tm-grid';
@@ -79,6 +82,27 @@ class HeaderHost {
   readonly rowId = (row: Row): number => row.id;
 }
 
+interface DisplayRow {
+  readonly id: number;
+  readonly qty: number;
+  readonly due: string;
+}
+
+/** A grid whose two columns both format through the ambient locale/calendar. */
+@Component({
+  imports: [TmGrid, TmGridColumn],
+  template: `
+    <tm-grid gridId="spec-grid-l10n" [data]="rows()" [rowId]="rowId" style="block-size: 300px">
+      <tm-grid-column key="qty" type="number" header="Qty" [width]="120" />
+      <tm-grid-column key="due" type="date" header="Due" [width]="140" />
+    </tm-grid>
+  `,
+})
+class DisplayHost {
+  readonly rows = signal<readonly DisplayRow[]>([{ id: 1, qty: 1234.5, due: '2026-03-05' }]);
+  readonly rowId = (row: DisplayRow): number => row.id;
+}
+
 async function stable(fixture: ComponentFixture<unknown>): Promise<void> {
   await fixture.whenStable();
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -96,6 +120,25 @@ async function setup(): Promise<{
   const grid = (fixture.nativeElement as HTMLElement).querySelector('tm-grid') as HTMLElement;
   const scroller = grid.querySelector('.tm-grid__scroller') as HTMLElement;
   return { fixture, grid, scroller };
+}
+
+/** Mounts {@link DisplayHost}, optionally under a switchable display calendar. */
+async function setupDisplay(calendar?: Signal<TmCalendar>): Promise<{
+  fixture: ComponentFixture<DisplayHost>;
+  scroller: HTMLElement;
+}> {
+  TestBed.configureTestingModule({
+    providers: [
+      provideTellmaUi({ availableLangs: ['en', 'ar-SA'] }),
+      ...(calendar === undefined ? [] : [provideTmCalendar(calendar)]),
+    ],
+  });
+  const fixture = TestBed.createComponent(DisplayHost);
+  await stable(fixture);
+  const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+    '.tm-grid__scroller',
+  ) as HTMLElement;
+  return { fixture, scroller };
 }
 
 function keydown(target: HTMLElement, key: string, init: KeyboardEventInit = {}): void {
@@ -418,6 +461,51 @@ describe('tm-grid (custom header template §6.2)', () => {
     await stable(fixture);
     expect(cellAt(scroller, 0, 1)?.getAttribute('aria-selected')).toBe('true');
     expect(cellAt(scroller, 0, 0)?.getAttribute('aria-selected')).toBeNull();
+  });
+});
+
+describe('tm-grid display l10n (ambient locale and calendar)', () => {
+  /** Any Arabic-Indic digit — the marker of an `ar-SA` formatted string. */
+  const ARABIC_INDIC = /[٠-٩]/;
+
+  it('re-formats number and date cells in place when the ambient locale switches', async () => {
+    const { fixture, scroller } = await setupDisplay();
+    const qtyCell = cellAt(scroller, 0, 0) as HTMLElement;
+    const dueCell = cellAt(scroller, 0, 1) as HTMLElement;
+    expect(qtyCell.textContent?.trim()).toBe('1,234.5');
+    expect(dueCell.textContent?.trim()).toBe('3/5/2026');
+
+    TestBed.inject(TranslocoService).setActiveLang('ar-SA');
+    await stable(fixture);
+
+    // The SAME cell elements now carry Arabic-Indic text: the rendered text
+    // re-derived through the cell-text path, no row was rebuilt…
+    expect(cellAt(scroller, 0, 0)).toBe(qtyCell);
+    expect(cellAt(scroller, 0, 1)).toBe(dueCell);
+    expect(qtyCell.textContent?.trim()).toMatch(ARABIC_INDIC);
+    expect(dueCell.textContent?.trim()).toMatch(ARABIC_INDIC);
+    // …and the model is untouched — display locale never rewrites values.
+    expect(fixture.componentInstance.rows()[0]).toEqual({
+      id: 1,
+      qty: 1234.5,
+      due: '2026-03-05',
+    });
+  });
+
+  it('re-formats date cells in place when the ambient display calendar switches', async () => {
+    const calendar = signal<TmCalendar>(tmGregorianCalendar());
+    const { fixture, scroller } = await setupDisplay(calendar);
+    const dueCell = cellAt(scroller, 0, 1) as HTMLElement;
+    expect(dueCell.textContent?.trim()).toBe('3/5/2026');
+
+    calendar.set(tmUmalquraCalendar());
+    await stable(fixture);
+
+    expect(cellAt(scroller, 0, 1)).toBe(dueCell);
+    expect(dueCell.textContent).toContain('1447'); // 2026-03-05 falls in 1447 AH
+    expect(dueCell.textContent).not.toContain('2026');
+    // The backing value stays ISO (proleptic Gregorian) whatever is displayed.
+    expect(fixture.componentInstance.rows()[0].due).toBe('2026-03-05');
   });
 });
 

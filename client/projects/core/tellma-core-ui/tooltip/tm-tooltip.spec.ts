@@ -144,6 +144,25 @@ describe('tmTooltip', () => {
     expect(message?.textContent?.trim()).toBe('Reload everything');
   });
 
+  it('a text change while shown re-measures: the surface stays centered on the host', async () => {
+    const { fixture, host, root } = await setup();
+    const button = root.querySelector('.first') as HTMLElement;
+    const hostBox = button.getBoundingClientRect();
+    const hostCenter = hostBox.left + hostBox.width / 2;
+    pointerEnter(button);
+    await tick(fixture);
+    const before = (panel() as HTMLElement).getBoundingClientRect();
+    expect(Math.abs(before.left + before.width / 2 - hostCenter)).toBeLessThanOrEqual(2);
+
+    // The centered placement writes an exact inline offset from the box it
+    // measured, so a longer text grows to one side unless it re-measures.
+    host.firstText.set('Reload every row that is currently loaded');
+    await tick(fixture);
+    const after = (panel() as HTMLElement).getBoundingClientRect();
+    expect(after.width).toBeGreaterThan(before.width); // the box really grew
+    expect(Math.abs(after.left + after.width / 2 - hostCenter)).toBeLessThanOrEqual(2);
+  });
+
   it('a touch long-press shows; the next tap anywhere hides', async () => {
     const { fixture, root } = await setup();
     const button = root.querySelector('.first') as HTMLElement;

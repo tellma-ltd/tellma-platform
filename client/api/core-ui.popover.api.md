@@ -23,7 +23,6 @@ export class TmPopover {
     readonly contentTemplate: Signal<TmPopoverContent | undefined>;
     protected readonly expanded: _angular_core.WritableSignal<boolean>;
     readonly isOpen: Signal<boolean>;
-    protected onOverlayKeydown(event: KeyboardEvent): void;
     protected onPanelFocusOut(event: FocusEvent): void;
     protected onPanelKeydown(event: KeyboardEvent): void;
     open(anchor: TmPopoverAnchor): void;
@@ -32,6 +31,7 @@ export class TmPopover {
     readonly position: _angular_core.InputSignal<TmOverlaySide>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmPopover, "tm-popover", never, { "position": { "alias": "position"; "required": false; "isSignal": true; }; "align": { "alias": "align"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; }, { "opened": "opened"; "closed": "closed"; }, ["contentTemplate"], never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmPopover, never>;
+    // @internal
 }
 
 // @public
@@ -46,6 +46,7 @@ export class TmPopoverContent {
 
 // @public
 export class TmPopoverTrigger {
+    constructor();
     protected onKeydown(event: KeyboardEvent): void;
     readonly popover: _angular_core.InputSignal<TmPopover>;
     protected toggle(): void;

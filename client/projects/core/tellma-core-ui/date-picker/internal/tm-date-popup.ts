@@ -31,6 +31,9 @@ import {
   type TmCalendarParts,
 } from '@tellma/core-ui/l10n';
 
+/** One cell of the month view; `null` pads the fixed five-row layout. */
+type MonthCell = { month: number; label: string; disabled: boolean } | null;
+
 /** The hard ISO window (the intersection of ISO 8601 with SQL/BCL dates). */
 const MIN_ISO = '0001-01-01';
 const MAX_ISO = '9999-12-31';
@@ -87,7 +90,7 @@ interface DayCell {
         <button
           type="button"
           class="tm-date-popup__view-switch"
-          [attr.aria-label]="switchLabel()"
+          [attr.aria-label]="switchLabel() + ', ' + headerLabel()"
           (click)="cycleView()"
         >
           <span aria-live="polite">{{ headerLabel() }}</span>
@@ -112,7 +115,7 @@ interface DayCell {
 
       @switch (view()) {
         @case ('day') {
-          <div class="tm-date-popup__grid" role="grid">
+          <div class="tm-date-popup__grid" role="grid" [attr.aria-label]="headerLabel()">
             <div class="tm-date-popup__weekdays" role="row">
               @for (name of weekdayNames(); track $index) {
                 <span class="tm-date-popup__weekday" role="columnheader">{{ name }}</span>
@@ -135,6 +138,7 @@ interface DayCell {
                       [attr.aria-disabled]="cell.disabled ? 'true' : null"
                       [attr.aria-selected]="cell.isSelected ? 'true' : 'false'"
                       [attr.aria-current]="cell.isToday ? 'date' : null"
+                      [attr.aria-label]="cellLabel(cell)"
                       [attr.data-tm-day]="cell.day"
                       (click)="selectDay(cell)"
                     >
@@ -147,7 +151,7 @@ interface DayCell {
           </div>
         }
         @case ('month') {
-          <div class="tm-date-popup__months" role="grid">
+          <div class="tm-date-popup__months" role="grid" [attr.aria-label]="headerLabel()">
             @for (row of monthGrid(); track $index) {
               <div class="tm-date-popup__month-row" role="row">
                 @for (cell of row; track $index) {
@@ -159,7 +163,13 @@ interface DayCell {
                       class="tm-date-popup__cell tm-date-popup__month"
                       role="gridcell"
                       [tabindex]="cell.month === focused().month ? 0 : -1"
-                      [attr.aria-selected]="cell.month === focused().month ? 'true' : 'false'"
+                      [disabled]="cell.disabled"
+                      [attr.aria-disabled]="cell.disabled ? 'true' : null"
+                      [attr.aria-selected]="
+                        cell.month === committedMonth() && focused().year === committedYear()
+                          ? 'true'
+                          : 'false'
+                      "
                       [attr.data-tm-month]="cell.month"
                       (click)="selectMonth(cell.month)"
                     >
@@ -172,7 +182,7 @@ interface DayCell {
           </div>
         }
         @case ('year') {
-          <div class="tm-date-popup__years" role="grid">
+          <div class="tm-date-popup__years" role="grid" [attr.aria-label]="headerLabel()">
             @for (row of yearGrid(); track $index) {
               <div class="tm-date-popup__year-row" role="row">
                 @for (cell of row; track $index) {
@@ -183,7 +193,7 @@ interface DayCell {
                     [tabindex]="cell.year === focused().year ? 0 : -1"
                     [disabled]="cell.disabled"
                     [attr.aria-disabled]="cell.disabled ? 'true' : null"
-                    [attr.aria-selected]="cell.year === focused().year ? 'true' : 'false'"
+                    [attr.aria-selected]="cell.year === committedYear() ? 'true' : 'false'"
                     [attr.data-tm-year]="cell.year"
                     (click)="selectYear(cell.year)"
                   >
@@ -197,7 +207,13 @@ interface DayCell {
       }
 
       <div class="tm-date-popup__footer">
-        <button type="button" class="tm-date-popup__action" (click)="selectToday()">
+        <button
+          type="button"
+          class="tm-date-popup__action"
+          [disabled]="todayDisabled()"
+          [attr.aria-disabled]="todayDisabled() ? 'true' : null"
+          (click)="selectToday()"
+        >
           {{ todayLabel() }}
         </button>
         <button type="button" class="tm-date-popup__action" (click)="clear()">
@@ -236,6 +252,30 @@ export class ɵTmDatePopup {
    * re-measure now or the popup can hang past the fold.
    */
   readonly rendered = output<void>();
+
+  /**
+   * The committed value's month/year in display-calendar terms, or null
+   * when there is none. The month and year views are DRILL-DOWN
+   * navigation, so `aria-selected` there must track the committed value —
+   * announcing the merely-focused cell as selected would tell a screen
+   * reader the value changed on every arrow press.
+   */
+  private readonly committedParts = computed<TmCalendarParts | null>(() => {
+    const value = this.value();
+    return value === null ? null : this.calendar().toParts(value);
+  });
+  /**
+   * Whether today lies outside the effective bounds. Committing a CLAMPED
+   * bound under a button labelled "Today" would write a date the user
+   * never chose, so the affordance is disabled instead.
+   */
+  protected readonly todayDisabled = computed(() => {
+    const today = this.calendar().today();
+    return today < this.lowerBound() || today > this.upperBound();
+  });
+
+  protected readonly committedMonth = computed(() => this.committedParts()?.month ?? null);
+  protected readonly committedYear = computed(() => this.committedParts()?.year ?? null);
 
   /** The active view of the ladder. Always opens on the day view. */
   protected readonly view = signal<'day' | 'month' | 'year'>('day');
@@ -287,12 +327,39 @@ export class ɵTmDatePopup {
       this.focused();
       untracked(() => {
         const target = this.hostElement.querySelector<HTMLElement>('[tabindex="0"]');
-        target?.focus();
+        // A disabled (or absent) roving cell would silently drop focus to
+        // <body>, where the dialog's own Escape handler no longer hears
+        // anything — fall back to the header so focus stays in the popup.
+        if (target !== null && !(target as HTMLButtonElement).disabled) {
+          target.focus();
+          return;
+        }
+        this.hostElement
+          .querySelector<HTMLElement>('.tm-date-popup__view-switch:not([disabled])')
+          ?.focus();
       });
     });
   }
 
   // ---- Header ----
+
+  /**
+   * A day cell's accessible name: the full localized date. The visible
+   * text is a bare number, which out of the grid's visual context tells a
+   * screen-reader user nothing about which month or year they are in.
+   */
+  protected cellLabel(cell: DayCell): string | null {
+    const iso = cell.iso;
+    if (iso === null) {
+      return null;
+    }
+    const calendar = this.calendar();
+    return new Intl.DateTimeFormat(this.locale(), {
+      dateStyle: 'long',
+      calendar: calendar.id,
+      timeZone: 'UTC',
+    }).format(this.utcOf(iso));
+  }
 
   /** The header label: "month year" (day view), "year", or the 24-year range. */
   protected readonly headerLabel = computed(() => {
@@ -435,7 +502,7 @@ export class ɵTmDatePopup {
   // ---- Month view ----
 
   /** The month grid (three per row; 13-capable — Pagume is selectable). */
-  protected readonly monthGrid = computed<({ month: number; label: string } | null)[][]>(() => {
+  protected readonly monthGrid = computed<MonthCell[][]>(() => {
     const calendar = this.calendar();
     const locale = this.locale();
     const focused = this.focused();
@@ -445,26 +512,44 @@ export class ɵTmDatePopup {
       calendar: calendar.id,
       timeZone: 'UTC',
     });
-    const cells: ({ month: number; label: string } | null)[] = [];
+    const lower = this.lowerBound();
+    const upper = this.upperBound();
+    const cells: MonthCell[] = [];
     for (let month = 1; month <= months; month++) {
       const iso = calendar.fromParts({ year: focused.year, month, day: 1 });
-      cells.push({ month, label: iso === null ? String(month) : formatter.format(this.utcOf(iso)) });
+      // Out of range only when the WHOLE month lies outside the bounds —
+      // the day view still disables the individual days at the edges.
+      const last = calendar.fromParts({
+        year: focused.year,
+        month,
+        day: calendar.daysInMonth(focused.year, month),
+      });
+      cells.push({
+        month,
+        label: iso === null ? String(month) : formatter.format(this.utcOf(iso)),
+        // `last === null` means the month's END is past what the calendar
+        // can represent (the ISO ceiling) — its earlier days are still
+        // reachable, so that alone must not disable it.
+        disabled: iso === null || iso > upper || (last !== null && last < lower),
+      });
     }
     // A fixed five-row layout holds 13 months without a size change
     // between years; short years pad with blanks.
     while (cells.length < 15) {
       cells.push(null);
     }
-    const rows: ({ month: number; label: string } | null)[][] = [];
+    const rows: MonthCell[][] = [];
     for (let i = 0; i < 5; i++) {
       rows.push(cells.slice(i * 3, i * 3 + 3));
     }
     return rows;
   });
 
-  /** A month drills down to the day view. */
+  /** A month drills down to the day view — never past the bounds. */
   protected selectMonth(month: number): void {
-    this.focused.update((focused) => this.constrainDay({ ...focused, month }));
+    this.focused.update((focused) =>
+      this.clampParts(this.constrainDay({ ...focused, month }), Math.sign(month - focused.month)),
+    );
     this.view.set('day');
     this.pendingFocus.update((n) => n + 1);
   }
@@ -508,9 +593,37 @@ export class ɵTmDatePopup {
 
   // ---- Footer ----
 
-  /** Today: commit the user's local date (clamped into bounds). */
+  /**
+   * Keeps Tab inside the dialog (the APG dialog pattern wraps). Tabbing
+   * out would leave the calendar open over unrelated content while the
+   * input still reports itself expanded — the state a screen reader
+   * announces would stop matching what is on screen.
+   */
+  private wrapTab(event: KeyboardEvent): void {
+    const stops = [...this.hostElement.querySelectorAll<HTMLElement>('button:not([disabled])')];
+    const first = stops[0];
+    const last = stops[stops.length - 1];
+    if (first === undefined || last === undefined) {
+      return;
+    }
+    // The roving grid exposes ONE cell as a tab stop, so the focused
+    // element is always one of `stops` while focus is inside.
+    const active = document.activeElement;
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  /** Today: commit the user's local date, or nothing when out of bounds. */
   protected selectToday(): void {
-    this.selected.emit(this.clampIso(untracked(this.calendar).today()));
+    if (untracked(this.todayDisabled)) {
+      return;
+    }
+    this.selected.emit(untracked(this.calendar).today());
   }
 
   /** Clear: commit null. */
@@ -525,6 +638,10 @@ export class ɵTmDatePopup {
     if (event.key === 'Escape') {
       event.preventDefault();
       this.cancelled.emit();
+      return;
+    }
+    if (event.key === 'Tab') {
+      this.wrapTab(event);
       return;
     }
     if (untracked(this.view) !== 'day') {
@@ -599,7 +716,9 @@ export class ɵTmDatePopup {
       const focused = untracked(this.focused);
       const months = untracked(this.calendar).monthsInYear(focused.year);
       const month = Math.min(Math.max(focused.month + delta, 1), months);
-      this.focused.set(this.constrainDay({ ...focused, month }));
+      // Through clampParts, like the year branch: roving onto a month
+      // wholly outside the bounds would strand focus on a disabled grid.
+      this.focused.set(this.clampParts(this.constrainDay({ ...focused, month }), Math.sign(delta)));
     } else {
       this.moveYears(delta);
     }
@@ -619,7 +738,16 @@ export class ɵTmDatePopup {
     const date = new Date(Date.UTC(2000, parts.month - 1, parts.day, 12));
     date.setUTCFullYear(parts.year);
     date.setUTCDate(date.getUTCDate() + days);
-    const nextIso = `${String(date.getUTCFullYear()).padStart(4, '0')}-${String(
+    // Clamp on the NUMERIC year, before serializing: a 5-digit year would
+    // slip through `clampIso`'s lexicographic compare ('10000-01-01' is
+    // neither < the floor nor > the ceiling) and then throw in `toParts`.
+    const year = date.getUTCFullYear();
+    if (year > 9999 || year < 1) {
+      const bound = year < 1 ? untracked(this.lowerBound) : untracked(this.upperBound);
+      this.focused.set(calendar.toParts(bound));
+      return;
+    }
+    const nextIso = `${String(year).padStart(4, '0')}-${String(
       date.getUTCMonth() + 1,
     ).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
     this.focused.set(calendar.toParts(this.clampIso(nextIso)));

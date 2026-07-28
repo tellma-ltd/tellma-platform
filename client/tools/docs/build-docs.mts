@@ -35,13 +35,15 @@ if (!parsed.success) {
 }
 
 // Consumer-visible docs must stand alone: fail on internal spec references
-// ("§" section sigils, "spec 0002") leaking out of TSDoc into the digest.
-const SPEC_REF = /§|spec 0002/;
+// ("§" section sigils, "spec NNNN") leaking out of TSDoc into the digest.
+// Any four-digit spec number matches, case-insensitively — pinning the gate
+// to the specs that existed when it was written let later ones through.
+const SPEC_REF = /§|spec\s*\d{4}/i;
 const leaking = doc.components.filter((component) => SPEC_REF.test(JSON.stringify(component)));
 if (leaking.length > 0 || SPEC_REF.test(JSON.stringify(doc))) {
   const offenders = leaking.map((component) => component.name).join(', ') || '(document header)';
   console.error(
-    `components.json contains internal spec references ("§" / "spec 0002") in: ${offenders}.`,
+    `components.json contains internal spec references ("§" / "spec NNNN") in: ${offenders}.`,
   );
   console.error('Rewrite the offending TSDoc to be self-contained — consumers never see the spec.');
   process.exit(1);

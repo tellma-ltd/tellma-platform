@@ -781,6 +781,11 @@ export class TmGridClipboard<T = unknown> {
 
     const sourceLocale = meta?.locale;
     const sourceCalendar = meta?.calendar;
+    // No metadata at all = the payload came from outside the app. Say so
+    // rather than inventing a calendar id: the column's parse decides
+    // what to assume, and a custom parse can tell "unknown provenance"
+    // from "the source told us it was Gregorian".
+    const foreignSource = meta === undefined;
     const sourceTenantId = meta?.tenantId;
     const sourceDistributionKey = meta?.distributionKey;
     const tenantId = untracked(() => this.options.tenantId?.());
@@ -857,7 +862,7 @@ export class TmGridClipboard<T = unknown> {
         }
         // (3) The synchronous parse, then the display-scale normalization.
         if (column.parse !== undefined) {
-          const parsed = column.parse(text, { locale, sourceLocale, sourceCalendar });
+          const parsed = column.parse(text, { locale, sourceLocale, sourceCalendar, foreignSource });
           if (parsed !== TM_PARSE_ERROR) {
             const normalized =
               column.normalizeValue === undefined ? parsed : column.normalizeValue(parsed);
@@ -981,6 +986,8 @@ export class TmGridClipboard<T = unknown> {
           context: {
             locale,
             sourceLocale,
+            sourceCalendar,
+            foreignSource,
             sourceTenantId,
             sourceDistributionKey,
             signal: controller.signal,

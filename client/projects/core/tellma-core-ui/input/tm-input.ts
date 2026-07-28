@@ -50,8 +50,10 @@ let nextUniqueId = 0;
  * never register with a cell host.
  *
  * Bidi: `dir="auto"` picks each field's base direction from its own content,
- * independent of page direction; alignment follows via
- * `text-align: start`.
+ * independent of page direction; alignment is inherited from the container
+ * rather than pinned, so a standalone field follows that base direction while
+ * a grid cell editor adopts the column's alignment — a number editor stays
+ * right-aligned while editing, matching its committed value.
  *
  * @tmGroup form-control
  * @tmA11yNotes Native input/textarea semantics; aria-invalid/aria-required/

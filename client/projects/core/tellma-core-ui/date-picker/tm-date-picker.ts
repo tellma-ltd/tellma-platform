@@ -265,6 +265,18 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
   constructor() {
     this.cellHost?.register(this);
 
+    // A control that goes disabled/readonly while its calendar is open
+    // must not stay interactive — the popup outlives the affordance that
+    // opened it, and a selection would write into an inert field.
+    effect(() => {
+      const disabled = this.disabled();
+      if (disabled || this.readonly()) {
+        // A readonly input is still focusable, so focus goes back to it
+        // rather than falling to <body>; a disabled one cannot take it.
+        untracked(() => this.closePopup(!disabled));
+      }
+    });
+
     // External value writes move the revert baseline; the control's own
     // parse-driven writes (marked inside parseText) do not.
     effect(() => {
@@ -567,6 +579,9 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
 
   /** A day was selected in the popup: commit, close, refocus the input. */
   protected onPopupSelect(iso: string | null): void {
+    if (this.disabled() || this.readonly()) {
+      return; // the control went inert while the calendar was open
+    }
     this.selfWrite = { value: iso };
     this.value.set(iso);
     const text =

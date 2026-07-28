@@ -109,9 +109,11 @@ export class TmGridColumn<T = unknown, V = unknown> {
   /**
    * `number` columns: the most fraction digits to display, rounding the rest
    * away (e.g. `2` renders `1.005` as `1.01`). Defaults to unbounded. The
-   * displayed rounding never reaches the model — editing a cell seeds the
-   * editor with the full-precision value. Ignored when a custom [format] is
-   * bound.
+   * model follows the display: a value the USER enters — a committed edit or
+   * a paste — is rounded to this scale before it reaches the model, so what
+   * is stored is what is shown. A programmatic write is never rounded, so a
+   * cell can still hold more precision than it displays. Ignored when a
+   * custom [format] is bound.
    */
   readonly maxDecimals = input<number | undefined>(undefined);
   /** Marks the column that renders the tree hierarchy (defaults to the first). */

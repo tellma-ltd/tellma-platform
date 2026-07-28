@@ -9,7 +9,12 @@ export type TmProcessedPick =
       readonly kind: 'ok';
       /** The bytes to upload — the original file unless a re-encode was needed. */
       readonly blob: Blob;
-      /** Pixel dimensions of `blob` — the frame the fit rect normalizes against. */
+      /**
+       * The DISPLAY dimensions — `blob`'s pixels as EXIF orientation shows
+       * them, which is the frame the fit rect normalizes against. A
+       * pass-through `blob` still carries its orientation tag, so its
+       * stored grid may be transposed relative to these.
+       */
       readonly width: number;
       readonly height: number;
     }
@@ -69,7 +74,10 @@ async function reencode(
  * - Anything else that decodes (`createImageBitmap` — EXIF orientation
  *   applies automatically) passes through byte-identical, unless its
  *   longest edge exceeds `maxEdgePx`: then it is downscaled and re-encoded
- *   (JPEG 0.9, or PNG when the source carries alpha).
+ *   (JPEG 0.9, or PNG when the source carries alpha). Re-encoding bakes
+ *   the orientation in; a pass-through keeps the tag, which is why the
+ *   reported dimensions (and the fit built on them) are the ORIENTED ones
+ *   whatever the stored grid looks like.
  * - A file that fails to decode is rejected.
  */
 export async function tmProcessPickedFile(

@@ -168,6 +168,11 @@ export function tmParseNumber(
     trimmed = trimmed.replace(FORMAT_CONTROL, '');
     if (trimmed.length > 0 && isPercentSign(trimmed[trimmed.length - 1])) {
       trimmed = trimmed.slice(0, -1).trim();
+    } else if (trimmed.length > 1 && LEADING_SIGN.test(trimmed[0]) && isPercentSign(trimmed[1])) {
+      // CLDR puts a leading percent sign AFTER the minus (`-%25` in tr,
+      // `−% 25` in eu), so the sign has to be lifted over it — otherwise
+      // the locale's own formatted negative fails to parse back.
+      trimmed = trimmed[0] + trimmed.slice(2).trim();
     } else if (trimmed.length > 0 && isPercentSign(trimmed[0])) {
       trimmed = trimmed.slice(1).trim();
     }
@@ -274,6 +279,13 @@ export function tmNumberDigitCount(value: number): number {
 
 /** Unicode format / bidi-control marks (the `Cf` category) — always invisible. */
 const FORMAT_CONTROL = /\p{Cf}/gu;
+
+/**
+ * The sign characters Intl is known to emit ahead of a percent sign.
+ * The ASCII hyphen must stay LAST: between `+` and `−` it would read as
+ * a range and swallow digits.
+ */
+const LEADING_SIGN = /[+−–‒-]/;
 
 /** The percent signs accepted in percent mode: ASCII, Arabic, fullwidth. */
 function isPercentSign(ch: string): boolean {

@@ -17,6 +17,7 @@ import { LiveAnnouncer } from '@angular/cdk/a11y';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 
+import { tmMaxMegabytes } from './internal/byte-size';
 import { tmSelectFiles } from './internal/file-selection';
 import type { TmFileSelection } from './tm-file-selection';
 
@@ -116,7 +117,7 @@ export class TmFilePicker implements OnDestroy {
       parts.push(
         this.translate(`filePicker.rejected.${first.reason}`, {
           name: first.file.name,
-          maxMb: Math.round(maxFileSize / (1024 * 1024)),
+          maxMb: tmMaxMegabytes(maxFileSize),
           maxFiles: untracked(this.multiple) ? (maxFiles ?? 0) : 1,
         })(),
       );

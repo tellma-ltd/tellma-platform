@@ -5,6 +5,9 @@
 
 import { Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
+
+import { TmButtonHarness } from '@tellma/core-ui-testing';
 
 import { TmButton } from './tm-button';
 
@@ -157,5 +160,31 @@ describe('tmButton', () => {
       expect(warn).not.toHaveBeenCalled();
       warn.mockRestore();
     });
+  });
+
+  it('drives the button through TmButtonHarness', async () => {
+    const { fixture, host } = setup();
+    const loader = TestbedHarnessEnvironment.loader(fixture);
+    // Two buttons match the directive's selector; the first is the probe.
+    const [button] = await loader.getAllHarnesses(TmButtonHarness);
+    expect(await button.getText()).toBe('Save');
+    expect(await button.getVariant()).toBe('secondary');
+    expect(await button.getSize()).toBe('md');
+    expect(await button.isPending()).toBe(false);
+    expect(await button.isDisabled()).toBe(false);
+
+    await button.focus();
+    expect(await button.isFocused()).toBe(true);
+    await button.click();
+    expect(host.clicks).toBe(1);
+
+    host.variant.set('danger');
+    host.size.set('lg');
+    host.pending.set(true);
+    expect(await button.getVariant()).toBe('danger');
+    expect(await button.getSize()).toBe('lg');
+    expect(await button.isPending()).toBe(true);
+    await button.click();
+    expect(host.clicks).toBe(1); // swallowed while pending
   });
 });

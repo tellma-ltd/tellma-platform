@@ -5,8 +5,10 @@
 
 import { Component, signal, type OnDestroy } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 
 import { provideTellmaUi } from '@tellma/core-ui';
+import { TmTabGroupHarness } from '@tellma/core-ui-testing';
 
 import { TmTab, TmTabContent, TmTabLabel } from './tm-tab';
 import { TmTabGroup } from './tm-tab-group';
@@ -150,5 +152,27 @@ describe('tm-tab-group + tm-tab', () => {
     await fixture.whenStable();
     expect(root.querySelectorAll('[role="tab"]')[1].getAttribute('aria-selected')).toBe('true');
     expect(root.querySelector('.content-two-input')).not.toBeNull();
+  });
+
+  it('drives the strip through TmTabGroupHarness', async () => {
+    const { fixture, host } = await setup();
+    host.thirdDisabled.set(true);
+    await fixture.whenStable();
+    const group = await TestbedHarnessEnvironment.loader(fixture).getHarness(TmTabGroupHarness);
+
+    const tabs = await group.getTabs();
+    expect(await Promise.all(tabs.map((tab) => tab.getLabel()))).toEqual(['One', 'Two', 'Three!']);
+    expect(await tabs[0].isSelected()).toBe(true);
+    expect(await tabs[2].isDisabled()).toBe(true);
+    expect(await tabs[0].isDisabled()).toBe(false);
+    expect(await (await group.getSelectedTab())?.getLabel()).toBe('One');
+
+    await tabs[1].select();
+    expect(host.selected()).toBe('two');
+    expect(await tabs[1].isSelected()).toBe(true);
+    expect(await (await group.getSelectedTab())?.getLabel()).toBe('Two');
+
+    await group.selectTab('One');
+    expect(await group.getActivePanelText()).toBe('First content');
   });
 });

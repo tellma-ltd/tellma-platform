@@ -35,7 +35,7 @@ const TEXT_CAP_BYTES = 1024 * 1024;
           <tm-spinner class="tm-preview__spinner" />
         }
         @case ('error') {
-          <div class="tm-preview__card" role="status">
+          <div class="tm-preview__card">
             <p class="tm-preview__card-title">{{ loadErrorLabel() }}</p>
           </div>
         }
@@ -75,7 +75,7 @@ const TEXT_CAP_BYTES = 1024 * 1024;
             }
             @case ('text') {
               @if (truncated()) {
-                <p class="tm-preview__notice" role="status">{{ truncatedLabel() }}</p>
+                <p class="tm-preview__notice">{{ truncatedLabel() }}</p>
               }
               <pre class="tm-preview__text">{{ text() }}</pre>
             }
@@ -88,6 +88,11 @@ const TEXT_CAP_BYTES = 1024 * 1024;
           }
         }
       }
+      <!-- One PERMANENT live region. The messages above live inside the
+           @switch, which destroys and recreates its branches — text that
+           arrives together with its region is unreliably announced, and
+           the modal is already open and focused when a lazy load fails. -->
+      <div class="tm-preview__live" role="status">{{ liveMessage() }}</div>
     </div>
     <div tmModalFooter class="tm-preview__footer">
       <span class="tm-preview__size">{{ sizeText() }}</span>
@@ -156,6 +161,14 @@ export class ɵTmFilePreviewContent implements OnDestroy {
   protected readonly canPrint = computed(
     () => this.state() === 'ready' && this.viewKind() === 'image',
   );
+
+  /** What the permanent live region announces (`''` = nothing to say). */
+  protected readonly liveMessage = computed(() => {
+    if (this.state() === 'error') {
+      return this.loadErrorLabel();
+    }
+    return this.truncated() ? this.truncatedLabel() : '';
+  });
 
   /** Localized size line (the active locale drives the digits). */
   protected readonly sizeText = computed(() => {
@@ -250,31 +263,14 @@ export class ɵTmFilePreviewContent implements OnDestroy {
     this.presentUrl(source.url);
   }
 
-  /** Whether a consumer URL is safe for the NON-SANDBOXED iframe sink. */
-  private static safeFrameUrl(url: string): boolean {
-    try {
-      const protocol = new URL(url, document.baseURI).protocol;
-      return protocol === 'https:' || protocol === 'http:' || protocol === 'blob:';
-    } catch {
-      return false;
-    }
-  }
-
-  /** Direct URLs: media streams (range requests); text needs bytes. */
+  /**
+   * Direct URLs: media streams (range requests). Everything else needs
+   * bytes this component fetched itself — see the `default` branch.
+   */
   private presentUrl(url: string): void {
     this.downloadUrl.set(url);
     const kind = this.effectiveKind();
     switch (kind) {
-      case 'pdf':
-        // The iframe bypasses Angular's resource-URL sanitizer, and a
-        // `javascript:` frame executes in THIS origin — allowlist the
-        // scheme or fall back to the download-only card.
-        if (ɵTmFilePreviewContent.safeFrameUrl(url)) {
-          this.pdfUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
-        } else {
-          this.effectiveKind.set('unsupported');
-        }
-        break;
       case 'image':
       case 'svg':
       case 'video':
@@ -282,7 +278,12 @@ export class ɵTmFilePreviewContent implements OnDestroy {
         this.displayUrl.set(url);
         break;
       default:
-        // A text/unknown URL source has no bytes to show — download-only.
+        // Text and unknown URL sources have no bytes to show, and a PDF
+        // is deliberately here too: the viewer frame is NOT sandboxed, so
+        // it may only ever be handed bytes this component fetched and
+        // re-typed itself. A URL is served by an endpoint whose real
+        // content type we cannot see — one that echoed a stored
+        // `text/html` would run script in this origin. Download-only.
         this.effectiveKind.set('unsupported');
         break;
     }
@@ -292,25 +293,41 @@ export class ɵTmFilePreviewContent implements OnDestroy {
     this.state.set('ready');
   }
 
+  /**
+   * Mints the object URL behind the download link. The type is ALWAYS
+   * replaced: `download` saves the file whatever the blob claims to be,
+   * but "Open link in new tab" NAVIGATES to the href, and a blob URL
+   * inherits this app's origin. No allowlist can gate that safely — the
+   * set of types a browser hands to a scripting parser is open-ended
+   * (`text/html`, every `+xml` media type via XSLT or XHTML-namespaced
+   * script), and an EMPTY type is MIME-SNIFFED from the bytes, so HTML
+   * uploaded under no type at all would still execute here.
+   */
+  private mintDownloadUrl(blob: Blob): string {
+    return this.mintObjectUrl(new Blob([blob], { type: 'application/octet-stream' }));
+  }
+
   private async presentBlob(blob: Blob): Promise<void> {
     const kind = this.effectiveKind();
+    // The download href is its own inert URL, minted up front so it is
+    // registered for revocation before any await — and so a truncated text
+    // preview still offers the FULL bytes. The render sinks below mint a
+    // real-typed URL only where one is actually rendered.
+    this.downloadUrl.set(this.mintDownloadUrl(blob));
     if (kind === 'text') {
       this.truncated.set(blob.size > TEXT_CAP_BYTES);
       this.text.set(await blob.slice(0, TEXT_CAP_BYTES).text());
       if (this.destroyed) {
-        return; // minting after this await would orphan the URL
+        return; // the modal closed mid-read — nothing left to render into
       }
-      // The download link still carries the FULL bytes.
-      this.downloadUrl.set(this.mintObjectUrl(blob));
       this.state.set('ready');
       return;
     }
-    const url = this.mintObjectUrl(blob);
-    this.downloadUrl.set(url);
     switch (kind) {
       case 'image':
       case 'svg': {
         // Decode off-DOM; a failure becomes the unsupported card.
+        const url = this.mintObjectUrl(blob);
         try {
           const probe = new Image();
           probe.src = url;
@@ -334,11 +351,11 @@ export class ɵTmFilePreviewContent implements OnDestroy {
       }
       case 'video':
       case 'audio':
-        this.displayUrl.set(url);
+        this.displayUrl.set(this.mintObjectUrl(blob));
         this.gateMediaType(kind);
         break;
       default:
-        break; // unsupported: the card + download
+        break; // unsupported: the card + the download link, nothing to mint
     }
     if (!this.destroyed) {
       this.state.set('ready');
@@ -359,8 +376,8 @@ export class ɵTmFilePreviewContent implements OnDestroy {
 
   /**
    * Mints an object URL this component owns — every one is revoked on
-   * close. (A viewer can hold two: the download link keeps the ORIGINAL
-   * bytes while the PDF frame gets a type-pinned re-wrap.)
+   * close. (A viewer can hold two: the download link's octet-stream
+   * re-wrap plus the real-typed URL its render sink needs.)
    */
   private mintObjectUrl(blob: Blob): string {
     const url = URL.createObjectURL(blob);

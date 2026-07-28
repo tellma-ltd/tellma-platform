@@ -105,6 +105,7 @@ export type TmLabelResolution<V> = {
 
 // @public
 export interface TmParseContext {
+    readonly foreignSource?: boolean;
     readonly locale: string;
     readonly sourceCalendar?: string;
     readonly sourceLocale?: string;

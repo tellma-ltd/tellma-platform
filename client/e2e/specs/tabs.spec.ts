@@ -137,4 +137,28 @@ test.describe('forced-colors gate', () => {
     );
     expect(border).toMatch(/^solid\|[1-9]/);
   });
+
+  test('the focus ring survives as a real outline', async ({ page }) => {
+    await page.emulateMedia({ forcedColors: 'active' });
+    await page.goto(storyUrl('tabs'));
+    const group = page.getByTestId('basic-group');
+    // Arrow from a clicked tab so the move is a KEYBOARD one (:focus-visible).
+    await group.getByRole('tab', { name: 'Details' }).click();
+    await page.keyboard.press('ArrowRight');
+
+    // The box-shadow ring is stripped here, so the transparent outline the
+    // rule also declares is the whole indicator: `outline: none` would leave
+    // a keyboard user with nothing at all.
+    const ring = await page.evaluate(() => {
+      const el = document.activeElement as HTMLElement;
+      const style = getComputedStyle(el);
+      return [
+        el.getAttribute('role'),
+        el.matches(':focus-visible'),
+        style.outlineStyle,
+        style.outlineWidth,
+      ].join('|');
+    });
+    expect(ring).toMatch(/^tab\|true\|solid\|[1-9]/);
+  });
 });

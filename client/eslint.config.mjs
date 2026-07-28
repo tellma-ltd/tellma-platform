@@ -36,6 +36,40 @@ const tmPlugin = {
   },
 };
 
+/**
+ * What a calendar pack may import, shared by the two config blocks below
+ * (spec files get this list; shipped files get it plus the sibling-climb
+ * ban). The bare '@tellma/core-ui' specifier needs its own `paths` entry —
+ * a `group` pattern only ever matches subpaths, so without it a pack could
+ * pull the whole primary entry point in and still lint clean.
+ */
+const CALENDAR_BOUNDARY = {
+  paths: [
+    {
+      name: '@tellma/core-ui',
+      message: 'Calendar entry points may depend on l10n and contracts only.',
+    },
+  ],
+  patterns: [
+    {
+      group: ['@angular/*'],
+      message: 'Calendar entry points must stay free of Angular imports.',
+    },
+    {
+      group: ['@tellma/core-ui/*', '!@tellma/core-ui/l10n', '!@tellma/core-ui/contracts'],
+      message: 'Calendar entry points may depend on l10n and contracts only.',
+    },
+    {
+      group: ['@tellma/core-ui-*', '@tellma/core-ui-*/**', '@tellma/locale-*', '@tellma/locale-*/**'],
+      message: 'Calendar entry points may depend on l10n and contracts only.',
+    },
+    {
+      group: ['@jsverse/*', 'rxjs', 'rxjs/*'],
+      message: 'Calendar entry points are dependency-free beyond the calendar arithmetic package.',
+    },
+  ],
+};
+
 export default defineConfig(
   {
     ignores: [
@@ -248,36 +282,37 @@ export default defineConfig(
   {
     files: ['projects/core/tellma-core-ui/calendar-*/**/*.ts'],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              group: ['@angular/*'],
-              message: 'Calendar entry points must stay free of Angular imports.',
-            },
-            {
-              group: [
-                '@tellma/core-ui/*',
-                '!@tellma/core-ui/l10n',
-                '!@tellma/core-ui/contracts',
-              ],
-              message: 'Calendar entry points may depend on l10n and contracts only.',
-            },
-            {
-              group: ['@jsverse/*', 'rxjs', 'rxjs/*'],
-              message:
-                'Calendar entry points are dependency-free beyond the calendar arithmetic package.',
-            },
-          ],
-        },
-      ],
+      'no-restricted-imports': ['error', CALENDAR_BOUNDARY],
       'no-restricted-syntax': [
         'error',
         {
           selector: "NewExpression[callee.name='InjectionToken']",
           message:
             'Calendar entry points must stay DI-free (registration goes through provideTmCalendar).',
+        },
+      ],
+    },
+  },
+
+  // …and SHIPPED calendar code additionally never climbs out of its own
+  // entry point (a relative sibling import would duplicate that sibling into
+  // the pack's bundle). Specs are exempt: both packs are checked against the
+  // one date-format golden, which lives next to the code that produced it.
+  {
+    files: ['projects/core/tellma-core-ui/calendar-*/**/*.ts'],
+    ignores: ['**/*.spec.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          ...CALENDAR_BOUNDARY,
+          patterns: [
+            ...CALENDAR_BOUNDARY.patterns,
+            {
+              group: ['../*'],
+              message: 'Calendar entry points must not reach into sibling entry points.',
+            },
+          ],
         },
       ],
     },

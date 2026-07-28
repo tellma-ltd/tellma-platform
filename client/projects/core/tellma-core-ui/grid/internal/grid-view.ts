@@ -15,7 +15,7 @@ import {
   ViewContainerRef,
   viewChild,
 } from '@angular/core';
-import { OverlayModule } from '@angular/cdk/overlay';
+import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
 import type { ConnectedPosition } from '@angular/cdk/overlay';
 
 import { TmMenu } from '@tellma/core-ui/menu';
@@ -327,11 +327,17 @@ export class ɵTmGridView {
    * all the same. The message box is statically sized, so no post-attach
    * re-measure is needed.
    */
+  private readonly errorOverlay = viewChild(CdkConnectedOverlay);
+
   protected readonly errorAnchored = tmCreateAnchoredOverlay({
+    overlay: () => this.errorOverlay(),
     origin: () => this.core().errorAnchor(),
     positions: this.errorPositions,
     popoverHost: { type: 'parent', element: inject(ElementRef).nativeElement as Element },
-    remeasure: 'none',
+    // The anchor is written from an afterRender effect and only reaches
+    // CDK on the NEXT change detection, so the re-measure has to cross a
+    // pass boundary — measuring in the same pass reads the old origin.
+    remeasure: 'afterNextRender',
   });
 
   private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
@@ -340,6 +346,23 @@ export class ɵTmGridView {
   private readonly icons = viewChild(ɵTmGridIcons);
 
   constructor() {
+    // The error anchor moves from cell to cell WHILE the overlay stays
+    // attached (arrowing between two invalid cells). CDK re-applies a
+    // position only when its dedicated `origin` INPUT changes; an
+    // object-form config updates the strategy's origin without
+    // re-applying it, so the box would keep the first cell's screen
+    // position while only its text swapped. The helper's
+    // `afterNextRender` strategy defers the measure past the change
+    // detection that hands CDK the new origin.
+    afterRenderEffect(() => {
+      const anchor = this.core().errorAnchor();
+      untracked(() => {
+        if (anchor !== null) {
+          this.errorAnchored.reanchor();
+        }
+      });
+    });
+
     afterRenderEffect(() => {
       const core = this.core();
       const scroller = this.scroller();

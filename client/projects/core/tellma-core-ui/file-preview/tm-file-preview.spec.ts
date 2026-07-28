@@ -11,7 +11,7 @@ import { provideTellmaUi } from '@tellma/core-ui';
 import { TmFilePreviewHarness } from '@tellma/core-ui-testing';
 
 import { tmDetectPreviewKind } from './internal/kind-detection';
-import { TmFilePreview } from './tm-file-preview';
+import { TmFilePreview, type TmPreviewFile } from './tm-file-preview';
 
 async function pngBlob(): Promise<Blob> {
   const canvas = document.createElement('canvas');
@@ -174,21 +174,71 @@ describe('TmFilePreview', () => {
     }
   });
 
-  it('a {url} source with a dangerous scheme falls back to the download-only card', async () => {
+  it('a {url} PDF never reaches the frame — even on a plain https URL', async () => {
+    // The viewer frame is deliberately NOT sandboxed, so it may only ever
+    // render bytes this component fetched and re-typed itself. An endpoint
+    // that echoes a stored `text/html` would otherwise run script in this
+    // origin; the URL's scheme says nothing about what it serves.
     const restore = withPdfViewer(true);
     try {
       const { fixture, preview } = await setup();
       preview.open({
-        name: 'evil.pdf',
+        name: 'invoice.pdf',
         type: 'application/pdf',
-        source: { url: 'javascript:document.title="pwned"' },
+        source: { url: 'https://files.example.com/invoice.pdf' },
       });
       await until(fixture, () => content()?.querySelector('.tm-preview__card') !== null);
       expect(content()!.querySelector('iframe')).toBeNull();
-      expect(document.title).not.toBe('pwned');
     } finally {
       restore();
     }
+  });
+
+  it('the download href is octet-stream for EVERY blob type — no allowlist', async () => {
+    // `download` saves the file, but "Open link in new tab" NAVIGATES to
+    // the href, and a blob URL inherits this origin. The neutralization is
+    // unconditional because the executable set is open-ended: text/html,
+    // any `+xml` type (XSLT, XHTML-namespaced script), and an EMPTY type,
+    // which the browser MIME-SNIFFS straight back to text/html.
+    const payload = '<script>document.title="pwned"</script>';
+    const cases: readonly TmPreviewFile[] = [
+      { name: 'notes.html', type: 'text/html', source: new Blob([payload], { type: 'text/html' }) },
+      {
+        name: 'feed.rss',
+        type: 'application/rss+xml',
+        source: new Blob([payload], { type: 'application/rss+xml' }),
+      },
+      { name: 'mystery.bin', source: new Blob([payload]) },
+    ];
+    const { fixture, preview } = await setup();
+    const anchorAt = (index: number): HTMLAnchorElement | null => {
+      const panel = document.querySelectorAll('tm-file-preview-content')[index];
+      return panel?.querySelector<HTMLAnchorElement>('a[download]') ?? null;
+    };
+
+    for (const [index, file] of cases.entries()) {
+      preview.open(file);
+      await until(fixture, () => anchorAt(index) !== null);
+      const served = await fetch(anchorAt(index)!.href).then((response) => response.blob());
+      expect(served.type).toBe('application/octet-stream');
+    }
+  });
+
+  it('a {url} source with a dangerous scheme cannot reach the download href', async () => {
+    // Every {url} kind lands on the download-only card now, so the card
+    // says nothing about schemes. What the code still decides is that the
+    // consumer's RAW url backs the download anchor — where a `javascript:`
+    // scheme would run in this origin if the binding let it through.
+    const { fixture, preview } = await setup();
+    preview.open({
+      name: 'evil.pdf',
+      type: 'application/pdf',
+      source: { url: 'javascript:document.title="pwned"' },
+    });
+    await until(fixture, () => Boolean(content()?.querySelector('a[download]')));
+    const href = content()!.querySelector<HTMLAnchorElement>('a[download]')!.getAttribute('href')!;
+    expect(href.startsWith('javascript:')).toBe(false);
+    expect(document.title).not.toBe('pwned');
   });
 
   it('PDF renders through a NON-sandboxed iframe only when the browser has a viewer', async () => {

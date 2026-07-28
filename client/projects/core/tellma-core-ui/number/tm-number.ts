@@ -186,6 +186,18 @@ export class TmNumber implements TmFormFieldControl, TmCellEditor<number | null>
   private selfWrite: { readonly value: number | null } | null = null;
 
   /**
+   * Set while {@link reformatDisplay} pushes canonical text through the
+   * raw channel, so its parse writes nothing back to the model.
+   */
+  private displayOnly = false;
+
+  /**
+   * A locale/option switch arrived while the user was typing; the display
+   * still shows the old locale's text and owes a reformat at blur.
+   */
+  private reformatDeferred = false;
+
+  /**
    * The raw text channel, synchronized with the typed `value` model via the
    * locale codec. Parse errors report to the nearest Signal Forms field
    * automatically; `parseErrors` also feeds the standalone invalid state.
@@ -234,27 +246,45 @@ export class TmNumber implements TmFormFieldControl, TmCellEditor<number | null>
     });
 
     // Locale (or display-option) switches reformat the display in place —
-    // while unfocused; a focused instance defers to its blur. Re-parsing
-    // the reformatted text yields the same value, so the model never moves.
+    // while unfocused; a focused instance defers to its blur.
     effect(() => {
       const locale = this.l10n.locale();
       const options = this.formatOptions();
       untracked(() => {
         if (this.focused()) {
+          // The new locale is owed once the user leaves (see `onBlur`).
+          this.reformatDeferred = true;
           return;
         }
-        const value = this.value();
-        if (value === null && this.rawText.parseErrors().length > 0) {
-          // Unreadable text is KEPT for correction — a locale switch must
-          // not silently erase it (the error stays live).
-          return;
-        }
-        const text = value === null ? '' : tmFormatNumber(value, locale, options);
-        if (text !== this.rawText()) {
-          this.rawText.set(text);
-        }
+        this.reformatDisplay(locale, options);
       });
     });
+  }
+
+  /**
+   * Rewrites the displayed text under `locale`/`options` WITHOUT touching
+   * the model. A programmatic value may carry more precision than the
+   * display scale (a server-computed figure, or a column scale above the
+   * entry policy); re-parsing the rounded text would silently persist the
+   * rounding, and a locale switch is not a user edit.
+   */
+  private reformatDisplay(locale: string, options: TmNumberFormatOptions): void {
+    const value = this.value();
+    if (value === null && this.rawText.parseErrors().length > 0) {
+      // Unreadable text is KEPT for correction — a locale switch must
+      // not silently erase it (the error stays live).
+      return;
+    }
+    const text = value === null ? '' : tmFormatNumber(value, locale, options);
+    if (text === this.rawText()) {
+      return;
+    }
+    this.displayOnly = true;
+    try {
+      this.rawText.set(text);
+    } finally {
+      this.displayOnly = false;
+    }
   }
 
   /**
@@ -265,6 +295,11 @@ export class TmNumber implements TmFormFieldControl, TmCellEditor<number | null>
    * to display scale is the blur commit's normalization.
    */
   private parseText(text: string): ParseResult<number | null> {
+    if (this.displayOnly) {
+      // A re-render of the SAME value in a new locale: omitting `value`
+      // is the framework's documented "do not update the model" shape.
+      return {};
+    }
     const locale = untracked(this.l10n.locale);
     const options = untracked(this.formatOptions);
     if (text.trim() === '') {
@@ -400,6 +435,13 @@ export class TmNumber implements TmFormFieldControl, TmCellEditor<number | null>
       // already reported from the keystroke channel).
     }
     this.focused.set(false);
+    if (this.reformatDeferred) {
+      // A locale switch landed mid-edit. Even a PRISTINE field owes the
+      // new locale's text — otherwise stale-locale digits sit there and
+      // the next edit re-parses them under the new locale's separators.
+      this.reformatDeferred = false;
+      this.reformatDisplay(untracked(this.l10n.locale), untracked(this.formatOptions));
+    }
     this.touchedSelf.set(true);
     this.touch.emit();
   }

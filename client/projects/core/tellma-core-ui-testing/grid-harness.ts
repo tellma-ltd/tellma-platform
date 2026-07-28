@@ -398,7 +398,7 @@ export class TmGridHarness extends ComponentHarness {
   /**
    * Commits the open session: Enter commits and moves down (or back to the
    * tab run's origin column), Tab commits and moves the selection to the
-   * next editable cell without opening an editor (§8.2). The key is sent
+   * next editable cell without opening an editor. The key is sent
    * through the editor so it bubbles to the grid exactly like a user's
    * keystroke. Note: an OPEN dropdown panel owns Enter — commit an enum
    * editor by activating an option instead.
@@ -410,13 +410,13 @@ export class TmGridHarness extends ComponentHarness {
   /**
    * Cancels the open session via Escape — the model is never written. On
    * an enum editor with an open panel the first Escape only closes the
-   * panel (the two-stage Esc, §8.4); call again to cancel the session.
+   * panel (Escape is two-stage); call again to cancel the session.
    */
   async cancelEditor(): Promise<void> {
     await this.sendEditorKey(TestKey.ESCAPE);
   }
 
-  // ---- error tally (the editable status bar, §10) ----
+  // ---- error tally (the editable status bar) ----
 
   /**
    * The error count shown by the status-bar tally chip, or 0 while the
@@ -451,7 +451,7 @@ export class TmGridHarness extends ComponentHarness {
     await (await this.locatorFor('[data-tm-status-prev]')()).click();
   }
 
-  // ---- context menu (§8.5) ----
+  // ---- context menu ----
 
   /**
    * Opens the grid's context menu via Shift+F10 — at the given cell after

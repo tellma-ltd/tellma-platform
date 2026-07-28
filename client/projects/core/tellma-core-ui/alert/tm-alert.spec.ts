@@ -5,8 +5,10 @@
 
 import { Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 
 import { provideTellmaUi } from '@tellma/core-ui';
+import { TmAlertHarness } from '@tellma/core-ui-testing';
 
 import { TmAlert, type TmAlertKind, type TmAlertLive } from './tm-alert';
 
@@ -105,5 +107,21 @@ describe('tm-alert', () => {
     fixture.detectChanges();
     expect(region.textContent).toContain('Error:');
     expect(region.textContent).toContain('Save failed.');
+  });
+
+  it('drives the alert through TmAlertHarness', async () => {
+    const { fixture, host } = setup();
+    const alert = await TestbedHarnessEnvironment.loader(fixture).getHarness(TmAlertHarness);
+    expect(await alert.getKind()).toBe('info');
+    expect(await alert.getRole()).toBeNull();
+    expect(await alert.getHeading()).toBeNull();
+    expect(await alert.getText()).toContain('Something happened.');
+
+    host.kind.set('warning');
+    host.live.set('polite');
+    host.heading.set('Heads up');
+    expect(await alert.getKind()).toBe('warning');
+    expect(await alert.getRole()).toBe('status');
+    expect(await alert.getHeading()).toBe('Heads up');
   });
 });

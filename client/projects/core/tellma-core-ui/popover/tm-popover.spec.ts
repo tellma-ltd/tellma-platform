@@ -63,6 +63,37 @@ class Host {
 })
 class NoContentHost {}
 
+/** Two buttons sharing one popover — both carry the same `aria-expanded`. */
+@Component({
+  imports: [TmPopover, TmPopoverContent, TmPopoverTrigger],
+  template: `
+    <button class="trigger-a" [tmPopoverTriggerFor]="popover">A</button>
+    <button class="trigger-b" [tmPopoverTriggerFor]="popover">B</button>
+    <tm-popover #popover aria-label="Shared">
+      <ng-template tmPopoverContent>
+        <button type="button" class="inside-button">Apply</button>
+      </ng-template>
+    </tm-popover>
+  `,
+})
+class SharedTriggerHost {}
+
+/** Two independent popovers — the second attaches on top of the first. */
+@Component({
+  imports: [TmPopover, TmPopoverContent],
+  template: `
+    <input class="anchor" />
+    <button class="other-anchor" type="button">Other</button>
+    <tm-popover #first aria-label="First">
+      <ng-template tmPopoverContent><button type="button">In first</button></ng-template>
+    </tm-popover>
+    <tm-popover #second aria-label="Second">
+      <ng-template tmPopoverContent><button type="button">In second</button></ng-template>
+    </tm-popover>
+  `,
+})
+class TwoPopoverHost {}
+
 async function setup<T>(component: new () => T): Promise<{
   fixture: ComponentFixture<T>;
   host: T;
@@ -195,6 +226,53 @@ describe('tm-popover + tmPopoverTriggerFor', () => {
     );
     await settle(fixture);
     expect(panel()).toBeNull();
+  });
+
+  it('a second trigger sharing the popover collapses it instead of re-opening', async () => {
+    const { fixture, root } = await setup(SharedTriggerHost);
+    const first = root.querySelector('.trigger-a') as HTMLButtonElement;
+    const second = root.querySelector('.trigger-b') as HTMLButtonElement;
+
+    first.click();
+    await settle(fixture);
+    expect(panel()).not.toBeNull();
+    expect(second.getAttribute('aria-expanded')).toBe('true');
+
+    // The CDK reports this as an outside click (the panel sits at the
+    // OTHER trigger, and it detects clicks at document capture) — it must
+    // not close behind the toggle's back, or the toggle reads a false
+    // isOpen() and re-anchors here instead of collapsing.
+    second.click();
+    await settle(fixture);
+    expect(panel()).toBeNull();
+    expect(second.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('the anchor Escape fallback survives a later overlay that never handles keys', async () => {
+    const { fixture, root } = await setup(TwoPopoverHost);
+    const [first, second] = fixture.debugElement
+      .queryAll(By.directive(TmPopover))
+      .map((debug) => debug.componentInstance as TmPopover);
+    const anchor = root.querySelector('.anchor') as HTMLInputElement;
+
+    first.open(anchor);
+    await settle(fixture);
+    anchor.focus(); // stays open by design: the anchor is exempt
+    await settle(fixture);
+
+    // A second overlay attaches ON TOP. Every connected overlay subscribes
+    // to the CDK keyboard dispatcher, which delivers only to the topmost
+    // subscriber — a dispatcher-routed fallback would starve here.
+    second.open(root.querySelector('.other-anchor') as HTMLElement);
+    await settle(fixture);
+    expect(document.querySelectorAll('.tm-popover__panel')).toHaveLength(2);
+
+    anchor.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    await settle(fixture);
+    expect(document.querySelector('.tm-popover__panel[aria-label="First"]')).toBeNull();
+    expect(document.querySelector('.tm-popover__panel[aria-label="Second"]')).not.toBeNull();
   });
 
   it('programmatic open at a rectangle takes focus; close has no anchor to restore to', async () => {

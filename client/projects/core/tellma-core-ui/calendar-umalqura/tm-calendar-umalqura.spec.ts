@@ -76,12 +76,13 @@ describe('tmUmalquraCalendar', () => {
       day: 'numeric',
       timeZone: 'UTC',
     });
-    // The sweep runs to the END of the documented window (AH 1599 ≈ late
-    // 2173 CE) — the upstream table hand-off at AH 1600 is discontinuous
-    // (a whole year off by one day), which is exactly what this gate must
-    // keep OUT of the documented window.
+    // The sweep runs into the LAST year of the documented window: the
+    // final sample is 2173-10-23 = 15/11/1599 AH. It deliberately stops
+    // short of AH 1600, where the upstream table hand-off is
+    // discontinuous (a whole year off by one day) — keeping that year out
+    // is exactly what the documented window is for.
     const start = Date.UTC(1900, 0, 1, 12);
-    const end = Date.UTC(2172, 0, 1, 12);
+    const end = Date.UTC(2173, 11, 7, 12);
     for (let time = start; time < end; time += 97 * 24 * 3600 * 1000) {
       const date = new Date(time);
       const iso = `${String(date.getUTCFullYear()).padStart(4, '0')}-${String(

@@ -103,9 +103,17 @@ test.describe('keyboard matrix (DoD 7)', () => {
       expect(await focusedDay()).toBe('6');
       await page.keyboard.press('ArrowDown'); // +7
       expect(await focusedDay()).toBe('13');
-      await page.keyboard.press('Home'); // week start
-      const afterHome = Number(await focusedDay());
-      expect(afterHome).toBeLessThanOrEqual(13);
+      // Home/End move to the week EDGES. The story locale is en-US, so
+      // the week starts Sunday: from the 13th (a Friday) Home lands on the
+      // 8th and End on the 14th. Asserting the exact day matters — a
+      // bound like "<= 13" also passes for a no-op and for a wrong
+      // jump-to-first-of-month.
+      await page.keyboard.press('Home');
+      expect(await focusedDay()).toBe('8');
+      await page.keyboard.press('End');
+      expect(await focusedDay()).toBe('14');
+      await page.keyboard.press('Home');
+      expect(await focusedDay()).toBe('8');
 
       // PageDown: next month; the heading announces politely.
       await page.keyboard.press('PageDown');
@@ -193,6 +201,64 @@ test.describe('display calendars (DoD 8)', () => {
     await expect(page.getByTestId('model-json')).toContainText('"due":"2026-03-05"');
   });
 
+  // The keyboard model runs on the DISPLAY calendar's arithmetic, so a
+  // 13-month year (Ethiopic) and 29/30-day months (Hijri) exercise paths
+  // the Gregorian matrix above never reaches — this is exactly the class
+  // of bug that produced a ~10,000-year jump earlier in this branch.
+  for (const calendar of ['umalqura', 'ethiopic'] as const) {
+    test(`the grid keyboard model holds under ${calendar}`, async ({ page }) => {
+      await page.goto(storyUrl('date-picker'));
+      await page.getByTestId(`cal-${calendar}`).click();
+      await openViaButton(page, 'picker-due');
+
+      const rovingDay = popup(page).locator('.tm-date-popup__day[tabindex="0"]');
+      const dayNumber = async (): Promise<number> => {
+        await expect(rovingDay).toBeFocused();
+        return Number(await rovingDay.getAttribute('data-tm-day'));
+      };
+      const heading = popup(page).locator('.tm-date-popup__view-switch');
+      const start = await dayNumber();
+
+      await page.keyboard.press('ArrowRight');
+      expect(await dayNumber()).toBe(start + 1);
+      await page.keyboard.press('ArrowDown'); // +7, may cross the month end
+      expect(await dayNumber()).toBeGreaterThan(0);
+      // Home/End are WEEK edges. Asserting day numbers would be wrong
+      // here: an Ethiopic or Hijri week routinely crosses a month end, so
+      // the numbers wrap. The calendar-agnostic invariant is the roving
+      // cell's position within its own week row.
+      const columnOfFocus = async (): Promise<number> => {
+        await expect(rovingDay).toBeFocused();
+        return popup(page)
+          .locator('.tm-date-popup__week', { has: page.locator('[tabindex="0"]') })
+          .first()
+          .evaluate((row) =>
+            [...row.children].findIndex((cell) => cell.getAttribute('tabindex') === '0'),
+          );
+      };
+      await page.keyboard.press('Home');
+      expect(await columnOfFocus()).toBe(0);
+      await page.keyboard.press('End');
+      expect(await columnOfFocus()).toBe(6);
+
+      // Paging must stay inside the calendar's own month/year structure.
+      const before = await heading.textContent();
+      await page.keyboard.press('PageDown');
+      await expect(heading).not.toHaveText(before!);
+      await page.keyboard.press('Shift+PageDown'); // +1 year
+      await expect(rovingDay).toBeFocused();
+      await page.keyboard.press('PageUp');
+      await expect(rovingDay).toBeFocused();
+
+      // Space selects, like Enter (the cells are real buttons).
+      const chosen = await dayNumber();
+      await page.keyboard.press('Space');
+      await expect(popup(page)).toBeHidden();
+      await expect(page.getByTestId('model-json')).toContainText('"due":"');
+      expect(chosen).toBeGreaterThan(0);
+    });
+  }
+
   test('live locale switch re-renders the display; the model never moves', async ({ page }) => {
     await page.goto(storyUrl('date-picker'));
     const input = page.getByTestId('picker-due').locator('.tm-date-picker__input');
@@ -216,10 +282,26 @@ test.describe('forced-colors + reduced-motion gates', () => {
     expect(borderStyle).toBe('solid');
   });
 
-  test('reduced-motion renders the popup without animation surprises', async ({ page }) => {
+  test('reduced-motion leaves no animation or transition running', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(storyUrl('date-picker'));
     await openViaButton(page, 'picker-due');
     await expect(popup(page)).toBeVisible();
+
+    // The popup ships without motion today, so this pins the ABSENCE:
+    // asserting only visibility would pass no matter what anyone adds
+    // later, while this fails the moment an ungated animation or
+    // transition appears on the panel or its cells.
+    const motion = await popup(page).evaluate((host) => {
+      const panel = host.querySelector('.tm-date-popup') ?? host;
+      const cell = panel.querySelector('.tm-date-popup__day') ?? panel;
+      return [panel, cell].map((element) => {
+        const style = getComputedStyle(element);
+        return `${style.animationName}|${style.transitionDuration}`;
+      });
+    });
+    for (const entry of motion) {
+      expect(entry).toBe('none|0s');
+    }
   });
 });

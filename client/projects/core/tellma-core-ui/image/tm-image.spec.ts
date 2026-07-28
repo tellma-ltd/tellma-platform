@@ -38,6 +38,7 @@ async function pngBlob(width: number, height: number): Promise<Blob> {
       [defer]="false"
       [mode]="mode()"
       [editSrc]="editSrc()"
+      [maxFileBytes]="maxFileBytes()"
       (imageChange)="edits.push($event)"
     />
   `,
@@ -47,6 +48,7 @@ class Host {
   readonly etag = signal<string | null>('v1');
   readonly mode = signal<'view' | 'edit'>('view');
   readonly editSrc = signal<string | undefined>(undefined);
+  readonly maxFileBytes = signal(20 * 1024 * 1024);
   readonly edits: (TmImageEdit | null)[] = [];
 }
 
@@ -113,13 +115,22 @@ function query<T extends Element>(fixture: ComponentFixture<unknown>, selector: 
   return (fixture.nativeElement as HTMLElement).querySelector<T>(selector);
 }
 
-async function pickFile(fixture: ComponentFixture<unknown>, blob: Blob): Promise<void> {
-  const file = new File([blob], 'pick.png', { type: blob.type });
+/** The `role="status"` region's current text ('' = nothing announced). */
+function noticeText(fixture: ComponentFixture<unknown>): string {
+  return (query(fixture, '.tm-image__notice')?.textContent ?? '').trim();
+}
+
+/** Feeds one file to the hidden picker input without awaiting an outcome. */
+function dispatchPick(fixture: ComponentFixture<unknown>, file: File): void {
   const transfer = new DataTransfer();
   transfer.items.add(file);
   const input = query<HTMLInputElement>(fixture, '.tm-image__file-input')!;
   input.files = transfer.files;
   input.dispatchEvent(new Event('change'));
+}
+
+async function pickFile(fixture: ComponentFixture<unknown>, blob: Blob): Promise<void> {
+  dispatchPick(fixture, new File([blob], 'pick.png', { type: blob.type }));
   await until(fixture, () => query(fixture, '.tm-image__crop') !== null);
 }
 
@@ -263,19 +274,77 @@ describe('tm-image', () => {
     await fixture.whenStable();
     await until(fixture, () => query(fixture, '.tm-image__file-input') !== null);
 
-    const file = new File(['not an image'], 'nope.png', { type: 'image/png' });
-    const transfer = new DataTransfer();
-    transfer.items.add(file);
-    const input = query<HTMLInputElement>(fixture, '.tm-image__file-input')!;
-    input.files = transfer.files;
-    input.dispatchEvent(new Event('change'));
-    await until(
-      fixture,
-      () => (query(fixture, '.tm-image__notice')?.textContent ?? '').trim() !== '',
-    );
-    expect(query(fixture, '.tm-image__notice')?.textContent?.trim()).toBe(
-      'The file is not a supported image',
-    );
+    dispatchPick(fixture, new File(['not an image'], 'nope.png', { type: 'image/png' }));
+    await until(fixture, () => noticeText(fixture) !== '');
+    expect(noticeText(fixture)).toBe('The file is not a supported image');
     expect(host.edits).toEqual([]); // nothing emitted
+  });
+
+  it('an oversized pick names the ceiling in full, not rounded to whole MB', async () => {
+    setupFetcher();
+    const fixture = TestBed.createComponent(Host);
+    const host = fixture.componentInstance;
+    host.mode.set('edit');
+    host.maxFileBytes.set(512 * 1024);
+    await fixture.whenStable();
+    await until(fixture, () => query(fixture, '.tm-image__file-input') !== null);
+
+    const bytes = new Uint8Array(600 * 1024);
+    dispatchPick(fixture, new File([bytes], 'big.png', { type: 'image/png' }));
+    await until(fixture, () => noticeText(fixture) !== '');
+    expect(noticeText(fixture)).toBe('The file is larger than 0.5 MB');
+  });
+
+  it('a load failure announces through the status region, and recovery retracts it', async () => {
+    const control = setupFetcher();
+    control.fail = true;
+    const fixture = TestBed.createComponent(Host);
+    await fixture.whenStable();
+    // The glyph is silent to a screen reader until it is focused; the
+    // failure has to reach the live region like every other outcome.
+    await until(fixture, () => noticeText(fixture) !== '');
+    expect(noticeText(fixture)).toBe('The image could not be loaded');
+
+    control.fail = false;
+    fixture.componentInstance.etag.set('v2');
+    await until(fixture, () => query(fixture, '.tm-image__img') !== null);
+    expect(noticeText(fixture)).toBe('');
+  });
+
+  it('re-opening a stored image restores its committed crop; a new version does not', async () => {
+    const control = setupFetcher();
+    const fixture = TestBed.createComponent(Host);
+    const host = fixture.componentInstance;
+    host.mode.set('edit');
+    host.editSrc.set('/img/agent-7/original');
+    await fixture.whenStable();
+    await until(fixture, () => query(fixture, '[data-tm-image-action="adjust"]') !== null);
+
+    const openPane = async (): Promise<HTMLInputElement> => {
+      query<HTMLButtonElement>(fixture, '[data-tm-image-action="adjust"]')!.click();
+      await until(fixture, () => query(fixture, '.tm-image__zoom') !== null);
+      return query<HTMLInputElement>(fixture, '.tm-image__zoom')!;
+    };
+    const closePane = async (): Promise<void> => {
+      query<HTMLButtonElement>(fixture, '.tm-image__edit-bar button')!.click();
+      await until(fixture, () => query(fixture, '.tm-image__zoom') === null);
+    };
+
+    const slider = await openPane();
+    slider.value = '2';
+    slider.dispatchEvent(new Event('input'));
+    slider.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    await closePane();
+
+    // Seconds later the user re-opens the pane — their crop is still theirs.
+    expect((await openPane()).value).toBe('2');
+    await closePane();
+
+    // A different image behind the same box starts at the cover fit again.
+    const fetches = control.urls.length;
+    host.etag.set('v2');
+    await until(fixture, () => control.urls.length > fetches);
+    expect((await openPane()).value).toBe('1');
   });
 });

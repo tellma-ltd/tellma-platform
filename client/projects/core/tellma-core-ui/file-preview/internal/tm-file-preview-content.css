@@ -107,7 +107,7 @@
   display: inline-flex;
   align-items: center;
   block-size: var(--field-height-sm);
-  padding-inline: var(--button-padding-x-sm);
+  padding-inline: var(--button-padding-xsm);
   border: var(--border-width) solid var(--button-secondary-border);
   border-radius: var(--button-radius);
   background: var(--button-secondary-bg);
@@ -122,10 +122,11 @@
 }
 
 .tm-preview__download:focus-visible {
-  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
-     The token focus ring below is the equally-visible substitute; the UA
-     outline would double up against it. */
-  outline: none;
+  /* A transparent REAL outline beneath the token ring: forced colors strip
+     box-shadows but repaint outline-color in a system color, so the outline
+     is the only thing left carrying focus there. */
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
   box-shadow: var(--focus-ring);
 }
 
@@ -133,4 +134,17 @@
   .tm-preview__download {
     border-color: ButtonText;
   }
+}
+
+/* The permanent live region: present for announcements, never seen — the
+   same message is already rendered visibly by the state it belongs to. */
+.tm-preview__live {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

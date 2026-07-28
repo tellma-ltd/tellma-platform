@@ -69,6 +69,25 @@ describe('tmParseDate', () => {
     expect(parse('5 xyz 2026', 'en-US')).toBe(TM_PARSE_ERROR);
   });
 
+  it('matches all-caps Turkish month names across the dotless ı', () => {
+    // Uppercasing 'Mayıs' yields 'MAYIS', and lowercasing that back
+    // locale-insensitively yields 'mayis' — a different letter from the
+    // table's 'ı', which has no decomposition to strip either.
+    expect(parse('20 MAYIS 2026', 'tr')).toBe('2026-05-20');
+    expect(parse('20 KASIM 2026', 'tr')).toBe('2026-11-20');
+    expect(parse('20 ARALIK 2026', 'tr')).toBe('2026-12-20');
+    // The fold must not blur two months into one another.
+    expect(parse('20 MART 2026', 'tr')).toBe('2026-03-20');
+  });
+
+  it('treats parentheses as segment separators', () => {
+    // Several locales bracket a grammatical suffix or the era onto a
+    // field ('2026(e)ko … 20(a)' in Basque, '1448 (hijriy)' in Uzbek);
+    // once split off, the bracketed word is shed like any other particle.
+    expect(parse('5 (mar) 2026', 'en-US')).toBe('2026-03-05');
+    expect(parse('5/3/2026 (AD)', 'en-GB')).toBe('2026-03-05');
+  });
+
   it('completes omitted trailing segments from today', () => {
     // One segment: that day of the current month.
     expect(parse('3', 'en-US')).toBe('2026-07-03');

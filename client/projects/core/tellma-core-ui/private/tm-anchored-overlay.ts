@@ -108,9 +108,11 @@ export interface TmAnchoredOverlay {
   /** Wire to `(overlayOutsideClick)`: runs `onOutsideClick`. */
   handleOutsideClick(event: MouseEvent): void;
   /**
-   * Re-measures after the next render without re-running `onAttach` — for
-   * re-anchoring an already-open overlay (one continuous open, not a fresh
-   * one).
+   * Re-measures without re-running `onAttach` — for re-anchoring an
+   * already-open overlay (one continuous open, not a fresh one). Honors
+   * the configured `remeasure` strategy, and measures IMMEDIATELY under
+   * `'none'`: that setting governs the automatic post-attach measure, so
+   * an explicit call must never be silently dropped.
    */
   reanchor(): void;
 }
@@ -188,6 +190,10 @@ export function tmCreateAnchoredOverlay(config: TmAnchoredOverlayConfig): TmAnch
       config.onOutsideClick?.(event);
     },
     reanchor(): void {
+      if ((config.remeasure ?? 'none') === 'none') {
+        remeasureNow();
+        return;
+      }
       scheduleRemeasure();
     },
   };

@@ -56,22 +56,70 @@ export class TmDatePickerHarness extends ComponentHarness {
 
   /** Activates a day cell of the open popup by its in-calendar day number. */
   async selectDay(day: number): Promise<void> {
-    const popup = await this.popup();
-    if (popup === null) {
-      throw new Error('TmDatePickerHarness.selectDay: the popup is not open');
+    return this.activate('selectDay', `[data-tm-day="${day}"]`);
+  }
+
+  /**
+   * Activates the header's view switch, cycling the open popup's view
+   * day → month → year → day.
+   */
+  async switchView(): Promise<void> {
+    if ((await this.popup()) === null) {
+      throw new Error('TmDatePickerHarness.switchView: the popup is not open');
     }
-    const cell = await this.documentRootLocatorFactory().locatorFor(
-      `.tm-date-popup [data-tm-day="${day}"]`,
+    const button = await this.documentRootLocatorFactory().locatorFor(
+      '.tm-date-popup__view-switch',
     )();
-    return cell.click();
+    return button.click();
+  }
+
+  /**
+   * Activates a month cell of the open popup's month view by its 1-based
+   * in-calendar month number (13 in thirteen-month calendars). The month
+   * view drills down: this navigates to that month's day view.
+   */
+  async selectMonth(month: number): Promise<void> {
+    return this.activate('selectMonth', `[data-tm-month="${month}"]`);
+  }
+
+  /**
+   * Activates a year cell of the open popup's year view by its
+   * display-calendar year number. The year view drills down: this
+   * navigates to that year's month view.
+   */
+  async selectYear(year: number): Promise<void> {
+    return this.activate('selectYear', `[data-tm-year="${year}"]`);
   }
 
   /** Activates the localized Today action of the open popup. */
   async selectToday(): Promise<void> {
-    const action = await this.documentRootLocatorFactory().locatorFor(
+    // Today is disabled whenever today itself falls outside min/max.
+    return this.activate(
+      'selectToday',
       '.tm-date-popup__footer .tm-date-popup__action:first-child',
+    );
+  }
+
+  /**
+   * Clicks a control of the open popup. Fails loudly when the popup is
+   * closed, the control is not on the displayed page, or it is disabled —
+   * a disabled button swallows the click, so the caller would otherwise
+   * see a silent no-op instead of a failure.
+   */
+  private async activate(method: string, selector: string): Promise<void> {
+    if ((await this.popup()) === null) {
+      throw new Error(`TmDatePickerHarness.${method}: the popup is not open`);
+    }
+    const control = await this.documentRootLocatorFactory().locatorForOptional(
+      `.tm-date-popup ${selector}`,
     )();
-    return action.click();
+    if (control === null) {
+      throw new Error(`TmDatePickerHarness.${method}: nothing matching ${selector} is displayed`);
+    }
+    if (await control.getProperty<boolean>('disabled')) {
+      throw new Error(`TmDatePickerHarness.${method}: ${selector} is disabled`);
+    }
+    return control.click();
   }
 
   /** Activates the localized Clear action of the open popup. */

@@ -46,10 +46,12 @@
 
 .tm-select__trigger:focus-visible {
   border-color: var(--field-border-focus);
+  /* A transparent REAL outline beneath the token ring: forced colors strip
+     box-shadows but repaint outline-color in a system color, so the outline
+     is the only thing left carrying focus there. */
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
   box-shadow: var(--focus-ring);
-  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
-     the box-shadow focus ring above is the equally-visible substitute (§6). */
-  outline: none;
 }
 
 :host(.tm-select--invalid) .tm-select__trigger {

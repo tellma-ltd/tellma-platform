@@ -58,6 +58,13 @@
    wrapper's, not a border on the empty <input> element (§3). */
 .tm-form-field__box:focus-within {
   border-color: var(--field-border-focus);
+  /* A transparent REAL outline beneath the token ring: forced colors strip
+     box-shadows but repaint outline-color in a system color, so the outline
+     is the only thing left carrying focus there. The focus border alone
+     cannot stand in — forced colors flattens it to the same FieldText the
+     unfocused box already uses. */
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
   box-shadow: var(--focus-ring);
 }
 

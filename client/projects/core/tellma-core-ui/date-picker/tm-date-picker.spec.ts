@@ -5,6 +5,7 @@
 
 import { Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { TranslocoService } from '@jsverse/transloco';
 import { form, FormField, required } from '@angular/forms/signals';
 
@@ -13,6 +14,7 @@ import { tmUmalquraCalendar } from '@tellma/core-ui/calendar-umalqura';
 import type { TmCellEditor } from '@tellma/core-ui/contracts';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import type { TmCalendar } from '@tellma/core-ui/l10n';
+import { TmDatePickerHarness } from '@tellma/core-ui-testing';
 
 import { TmDatePicker } from './tm-date-picker';
 
@@ -224,6 +226,31 @@ describe('tm-date-picker', () => {
     expect(input.getAttribute('aria-expanded')).toBe('false'); // Esc still works
   });
 
+  it('day-stepping past the ISO ceiling clamps instead of throwing', async () => {
+    // 9999-12-31 is a Friday and a standard "no end date" sentinel, so
+    // ArrowRight/ArrowDown/End all step past the ceiling. Serializing the
+    // stepped date first would produce a 5-digit year, which slips through
+    // the lexicographic clamp and then throws in the calendar adapter.
+    const { fixture, host, input } = await setup();
+    await type(fixture, input, '9999-12-31');
+    await blur(fixture, input);
+    (fixture.nativeElement.querySelector('.tm-date-picker__toggle') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    const popup = document.querySelector('.tm-date-popup') as HTMLElement;
+    const grid = popup.querySelector('[role="grid"]') as HTMLElement;
+
+    for (const key of ['ArrowRight', 'ArrowDown', 'End']) {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      grid.dispatchEvent(event);
+      await fixture.whenStable();
+      expect(event.defaultPrevented).toBe(true); // consumed, so the page never scrolls
+      const stop = popup.querySelector<HTMLButtonElement>('button[tabindex="0"]');
+      expect(stop).not.toBeNull();
+      expect(stop!.disabled).toBe(false);
+    }
+    expect(host.model().due).toBe('9999-12-31'); // navigation never commits
+  });
+
   it('opens the popup on Alt+ArrowDown, commits pending text first, and Esc closes it', async () => {
     const { fixture, input } = await setup();
     await type(fixture, input, '3/5/2026');
@@ -320,6 +347,41 @@ describe('tm-date-picker', () => {
     expect(popup.querySelector('[data-tm-day="5"]')).not.toBeNull(); // back on days
   });
 
+  it('months wholly outside the bounds are disabled, and Today is too', async () => {
+    // A month view that let you drill into an out-of-range month landed
+    // the roving stop on a disabled day; focus then fell to <body>, where
+    // the dialog's Escape handler no longer hears anything.
+    const { fixture, host, input } = await setup();
+    host.min.set('2026-03-01');
+    host.max.set('2026-03-20');
+    await type(fixture, input, '3/5/2026');
+    await blur(fixture, input);
+    (fixture.nativeElement.querySelector('.tm-date-picker__toggle') as HTMLButtonElement).click();
+    await fixture.whenStable();
+
+    const popup = document.querySelector('.tm-date-popup') as HTMLElement;
+    // Today is outside [2026-03-01, 2026-03-20], so it commits nothing.
+    const today = popup.querySelector<HTMLButtonElement>('.tm-date-popup__action')!;
+    expect(today.disabled).toBe(true);
+
+    (popup.querySelector('.tm-date-popup__view-switch') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    const january = popup.querySelector<HTMLButtonElement>('[data-tm-month="1"]')!;
+    const march = popup.querySelector<HTMLButtonElement>('[data-tm-month="3"]')!;
+    expect(january.disabled).toBe(true); // wholly before the lower bound
+    expect(january.getAttribute('aria-disabled')).toBe('true');
+    expect(march.disabled).toBe(false); // the bounds live inside it
+
+    march.click();
+    await fixture.whenStable();
+    expect(popup.contains(document.activeElement)).toBe(true);
+    popup.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    await fixture.whenStable();
+    expect(input.getAttribute('aria-expanded')).toBe('false');
+  });
+
   it('disabled/readonly also disable the calendar button and popup', async () => {
     @Component({
       imports: [TmDatePicker],
@@ -378,5 +440,37 @@ describe('tm-date-picker', () => {
       expect(input.value).toBe('3/5/2026');
       expect(editor.text()).toBe('3/5/2026');
     });
+  });
+});
+
+describe('tm-date-picker (harness)', () => {
+  it('drives text, the popup, and every view of the ladder', async () => {
+    const { fixture } = await setup();
+    const loader = TestbedHarnessEnvironment.loader(fixture);
+    const picker = await loader.getHarness(TmDatePickerHarness);
+
+    await picker.setText('3/5/2026');
+    await picker.blur();
+    expect(await picker.getText()).toBe('3/5/2026');
+
+    // The ladder: day → month → year, then drill back down to a day.
+    await picker.openPopup();
+    expect(await picker.isPopupOpen()).toBe(true);
+    await picker.switchView(); // → month
+    await picker.selectMonth(6);
+    await picker.selectDay(11);
+    expect(await picker.getText()).toBe('6/11/2026');
+
+    await picker.openPopup();
+    await picker.switchView(); // → month
+    await picker.switchView(); // → year
+    await picker.selectYear(2027);
+    await picker.selectMonth(6);
+    await picker.selectDay(11);
+    expect(await picker.getText()).toBe('6/11/2027');
+
+    await picker.openPopup();
+    await picker.clear();
+    expect(await picker.getText()).toBe('');
   });
 });

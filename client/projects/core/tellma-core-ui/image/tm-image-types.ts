@@ -10,6 +10,15 @@
  * lossless re-editing; `focal` is the rect center, which survives a future
  * change of the box aspect — the DAM-industry convention for automatic
  * recropping.
+ *
+ * Both are expressed in the image's DISPLAY orientation: the frame a
+ * browser shows AFTER applying the file's EXIF orientation tag, which is
+ * how the user framed the crop. A JPEG's stored pixel grid may be rotated
+ * or mirrored relative to that frame, so anything cropping the raw bytes
+ * of {@link TmImageEdit.blob} must apply the orientation tag first (and
+ * `rect` is then also the wrong shape for the unoriented grid whenever the
+ * tag transposes the axes). Cropping the stored grid directly cuts the
+ * wrong region.
  */
 export interface TmImageFit {
   /** The crop window, as fractions of the source image. */
@@ -35,7 +44,11 @@ export interface TmImageFit {
  * the bytes never round-trip.
  */
 export interface TmImageEdit {
-  /** The newly picked file's bytes, or `null` for a re-fit. */
+  /**
+   * The newly picked file's bytes, or `null` for a re-fit. Untouched
+   * whenever the picked file needed no re-encoding — its EXIF orientation
+   * tag included, which {@link TmImageFit} requires the cropper to apply.
+   */
   readonly blob: Blob | null;
   /** The fit, normalized against the image being fitted. */
   readonly fit: TmImageFit;

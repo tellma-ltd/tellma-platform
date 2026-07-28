@@ -7,6 +7,7 @@ import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 
+import { tmMaxMegabytes } from './internal/byte-size';
 import { tmAcquireDocumentDragGuard } from './internal/document-drag-guard';
 import { TmFilePicker } from './tm-file-picker';
 
@@ -101,7 +102,7 @@ export class TmDropzone {
   /** The localized per-file size-limit line. */
   protected readonly sizeLine = computed(() =>
     this.translate('filePicker.maxSize', {
-      maxMb: Math.round(this.picker.maxFileSize() / (1024 * 1024)),
+      maxMb: tmMaxMegabytes(this.picker.maxFileSize()),
     })(),
   );
 

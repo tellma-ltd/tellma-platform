@@ -10,6 +10,7 @@ import {
   contentChild,
   Directive,
   DestroyRef,
+  effect,
   type ElementRef,
   inject,
   input,
@@ -86,7 +87,6 @@ const FOCUSABLE =
       (attach)="anchored.handleAttach()"
       (detach)="anchored.handleDetach()"
       (overlayOutsideClick)="anchored.handleOutsideClick($event)"
-      (overlayKeydown)="onOverlayKeydown($event)"
     >
       <div
         #panel
@@ -143,11 +143,21 @@ export class TmPopover {
   private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
   private focusedOnOpen = false;
   private destroyed = false;
+  /** Host elements of the triggers currently bound to this popover. */
+  private readonly triggers = new Set<Element>();
+
+  /** This instance's stable anchor handler — its identity keys the removal. */
+  private readonly onAnchorKeydown = (event: Event): void => {
+    if (event instanceof KeyboardEvent && event.key === 'Escape' && !event.defaultPrevented) {
+      event.preventDefault();
+      this.close();
+    }
+  };
 
   /**
    * The shared anchored-overlay wiring. Outside clicks landing on the
-   * current anchor element are left to the trigger's own toggle — closing
-   * here too would close-then-reopen on every trigger click.
+   * current anchor or on any registered trigger are left to that trigger's
+   * own toggle — closing here too would close-then-reopen on a click.
    */
   protected readonly anchored = tmCreateAnchoredOverlay({
     overlay: () => this.overlay(),
@@ -157,8 +167,7 @@ export class TmPopover {
     onAttach: () => this.opened.emit(),
     onDetach: () => this.onOverlayDetach(),
     onOutsideClick: (event) => {
-      const anchor = untracked(this.overlayOrigin);
-      if (anchor instanceof Element && event.target instanceof Node && anchor.contains(event.target)) {
+      if (event.target instanceof Node && this.ownsClick(event.target)) {
         return;
       }
       this.close();
@@ -181,6 +190,25 @@ export class TmPopover {
       }
       this.focusedOnOpen = true;
       untracked(() => (panel.querySelector<HTMLElement>(FOCUSABLE) ?? panel).focus());
+    });
+
+    // The Escape fallback for keys pressed OUTSIDE the panel while open —
+    // focus resting on a programmatic anchor, which neither the panel's
+    // own keydown nor a trigger's covers. It is scoped to the anchor
+    // element instead of routed through the CDK keyboard dispatcher: that
+    // dispatcher delivers only to the TOPMOST overlay with a subscriber,
+    // and every connected overlay subscribes, so any overlay attached
+    // after this one — even a purely passive one that handles no keys —
+    // would silently starve the fallback. Listening in the bubble phase on
+    // the anchor keeps the innermost-first Escape precedence intact:
+    // handlers nearer the event's target still consume it first.
+    effect((onCleanup) => {
+      const anchor = this.overlayOrigin();
+      if (!this.expanded() || !(anchor instanceof Element)) {
+        return;
+      }
+      anchor.addEventListener('keydown', this.onAnchorKeydown);
+      onCleanup(() => anchor.removeEventListener('keydown', this.onAnchorKeydown));
     });
   }
 
@@ -233,6 +261,19 @@ export class TmPopover {
     }
   }
 
+  /**
+   * Records a trigger's host element so a click on it is never treated as
+   * an outside click, and returns the callback that releases it again.
+   * Called by `TmPopoverTrigger` for that directive's lifetime.
+   * @internal
+   */
+  ɵregisterTrigger(element: Element): () => void {
+    this.triggers.add(element);
+    return (): void => {
+      this.triggers.delete(element);
+    };
+  }
+
   // ---- internals ----
 
   /** Escape closes (unless an inner overlay already consumed it). */
@@ -244,19 +285,28 @@ export class TmPopover {
   }
 
   /**
-   * The Escape fallback for keys pressed OUTSIDE the panel while the
-   * popover is open (focus resting on a programmatic anchor): the CDK
-   * dispatcher routes document keydowns to the topmost overlay with
-   * observers — without this handler the event would die here unhandled,
-   * starving outer layers (a modal) of their Escape too. The
-   * `defaultPrevented` guard keeps the panel-keydown path from double
-   * handling the same event.
+   * Whether a click on `target` belongs to this popover's own toggling
+   * surface: the current anchor, or ANY registered trigger.
+   *
+   * Every trigger counts, not just the one the panel currently sits at.
+   * The CDK reports outside clicks from a document-level CAPTURE listener,
+   * so it runs before the trigger's bubble-phase click handler; matching on
+   * anchor identity alone would let a click on a second trigger close the
+   * popover first, leaving `toggle()` to read an already-false `isOpen()`
+   * and re-anchor instead of collapsing — a trigger showing
+   * `aria-expanded="true"` would never close the panel.
    */
-  protected onOverlayKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Escape' && !event.defaultPrevented) {
-      event.preventDefault();
-      this.close();
+  private ownsClick(target: Node): boolean {
+    const anchor = untracked(this.overlayOrigin);
+    if (anchor instanceof Element && anchor.contains(target)) {
+      return true;
     }
+    for (const trigger of this.triggers) {
+      if (trigger.contains(target)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

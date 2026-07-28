@@ -4,14 +4,17 @@
 // LICENSE file in the root directory of this source tree.
 
 import { ComponentHarness } from '@angular/cdk/testing';
-import { TabHarness, TabsHarness } from '@angular/aria/tabs/testing';
+import { TabsHarness } from '@angular/aria/tabs/testing';
 
-/** Harness for one tab of a `tm-tab-group` (composes the aria `TabHarness`). */
+/**
+ * Harness for one tab of a `tm-tab-group`. The host element IS the aria
+ * `[ngTab]` button, so the state is read off it directly — a nested aria
+ * `TabHarness` could never resolve (harness locators match descendants of
+ * the host, never the host itself).
+ */
 export class TmTabHarness extends ComponentHarness {
   /** The selector for a rendered tab of the strip. */
   static hostSelector = '.tm-tab-group__tab';
-
-  private readonly aria = this.locatorFor(TabHarness);
 
   /** Gets the tab's visible label text, trimmed. */
   async getLabel(): Promise<string> {
@@ -20,17 +23,17 @@ export class TmTabHarness extends ComponentHarness {
 
   /** Whether the tab is selected. */
   async isSelected(): Promise<boolean> {
-    return (await this.aria()).isSelected();
+    return (await (await this.host()).getAttribute('aria-selected')) === 'true';
   }
 
   /** Whether the tab is disabled. */
   async isDisabled(): Promise<boolean> {
-    return (await this.aria()).isDisabled();
+    return (await (await this.host()).getAttribute('aria-disabled')) === 'true';
   }
 
   /** Clicks the tab to select it. */
   async select(): Promise<void> {
-    return (await this.aria()).select();
+    return (await this.host()).click();
   }
 }
 

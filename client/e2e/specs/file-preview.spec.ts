@@ -189,6 +189,22 @@ test.describe('pick-and-preview over fixture bytes', () => {
     await close(page);
   });
 
+  test('a picked SVG fixture renders through img — its script never runs', async ({ page }) => {
+    await page.goto(storyUrl('file-preview'));
+    const titleBefore = await page.title();
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByTestId('pick-and-preview').click();
+    await (await chooser).setFiles(join(FIXTURES, 'sample.svg'));
+    await expect(page.locator('.tm-modal__title')).toHaveText('sample.svg');
+    // The fixture carries <script>document.title="pwned"</script>. An <img>
+    // sink is inert for SVG script content; inlining the markup (or framing
+    // it same-origin) would run it, so both the sink and the title are pinned.
+    await expect(viewer(page).locator('img.tm-preview__media')).toBeVisible();
+    expect(await viewer(page).locator('svg.tm-preview__media, iframe').count()).toBe(0);
+    expect(await page.title()).toBe(titleBefore);
+    await close(page);
+  });
+
   test('a picked CSV fixture renders as text', async ({ page }) => {
     await page.goto(storyUrl('file-preview'));
     const chooser = page.waitForEvent('filechooser');

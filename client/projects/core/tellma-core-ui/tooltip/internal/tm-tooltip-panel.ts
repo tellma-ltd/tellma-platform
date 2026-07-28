@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component, signal, viewChild } from '@angular/core';
+import { afterRenderEffect, Component, signal, untracked, viewChild } from '@angular/core';
 import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
 
 import { tmCreateAnchoredOverlay, tmLogicalPositions } from '@tellma/core-ui/private';
@@ -67,4 +67,19 @@ export class ɵTmTooltipPanel {
     positions: tmLogicalPositions('block-start', 'center'),
     remeasure: 'none',
   });
+
+  constructor() {
+    // Text swapped while the surface is up: the CDK positioned the pane
+    // from its OLD box and writes an exact inline offset, so the centered
+    // placement stays pinned to the former center and the longer text
+    // spills to one side — off-center, and able to run past the viewport
+    // edge. Re-anchor once the new text has actually rendered.
+    afterRenderEffect(() => {
+      this.text();
+      if (!this.expanded()) {
+        return;
+      }
+      untracked(() => this.anchored.reanchor());
+    });
+  }
 }

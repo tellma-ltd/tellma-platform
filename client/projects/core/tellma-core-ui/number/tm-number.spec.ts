@@ -5,12 +5,14 @@
 
 import { Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { form, FormField, min } from '@angular/forms/signals';
 import { TranslocoService } from '@jsverse/transloco';
 
 import { provideTellmaUi, TM_CELL_EDITOR_HOST } from '@tellma/core-ui';
 import type { TmCellEditor } from '@tellma/core-ui/contracts';
 import { TmFormField } from '@tellma/core-ui/form-field';
+import { TmNumberHarness } from '@tellma/core-ui-testing';
 
 import { TmNumber } from './tm-number';
 
@@ -152,6 +154,50 @@ describe('tmNumber', () => {
     expect(host.model().amount).toBe(1234.56);
   });
 
+  it('a locale switch never rounds an over-precision programmatic value', async () => {
+    // The reformat is a DISPLAY concern. Routing it through the parse
+    // channel would re-read the rounded text and persist 1.23 — a server
+    // figure silently truncated by a language toggle.
+    const { fixture, host, input } = await setup();
+    host.maxDecimals.set(2);
+    host.model.set({ amount: 1.23456 });
+    await fixture.whenStable();
+    expect(input.value).toBe('1.23');
+
+    TestBed.inject(TranslocoService).setActiveLang('de');
+    await fixture.whenStable();
+    expect(input.value).toBe('1,23');
+    expect(host.model().amount).toBe(1.23456);
+  });
+
+  it('a late-resolving maxDecimals never rounds the value either', async () => {
+    // Same write-back, reached without any locale switch: the options are
+    // a tracked read of the same effect.
+    const { fixture, host, input } = await setup();
+    host.model.set({ amount: 1.23456 });
+    await fixture.whenStable();
+    host.maxDecimals.set(2);
+    await fixture.whenStable();
+    expect(input.value).toBe('1.23');
+    expect(host.model().amount).toBe(1.23456);
+  });
+
+  it('a locale switch WHILE FOCUSED completes at blur, even with pristine text', async () => {
+    const { fixture, host, input } = await setup();
+    await type(fixture, input, '1234.56');
+    await blur(fixture, input);
+
+    input.focus();
+    input.dispatchEvent(new FocusEvent('focus'));
+    TestBed.inject(TranslocoService).setActiveLang('de');
+    await fixture.whenStable();
+    expect(input.value).toBe('1,234.56'); // untouched while the caret is in
+
+    await blur(fixture, input); // pristine — but the new locale is owed
+    expect(input.value).toBe('1.234,56');
+    expect(host.model().amount).toBe(1234.56);
+  });
+
   it('unparseable text: model null, text kept for correction, localized parse message', async () => {
     const { fixture, host, input } = await setup();
     await type(fixture, input, 'abc');
@@ -262,5 +308,26 @@ describe('tmNumber', () => {
       expect(input.value).toBe('1234.567'); // no canonical rewrite in a cell
       expect(editor.text()).toBe('1234.567');
     });
+  });
+
+  it('drives the input through TmNumberHarness', async () => {
+    const { fixture, host } = await setup();
+    const number = await TestbedHarnessEnvironment.loader(fixture).getHarness(TmNumberHarness);
+    expect(await number.isDisabled()).toBe(false);
+    expect(await number.isInvalid()).toBe(false);
+    expect(await number.getPlaceholder()).toBe('');
+
+    await number.setText('1234.5');
+    expect(host.model().amount).toBe(1234.5);
+    expect(await number.getText()).toBe('1234.5'); // focused: never rewritten
+
+    await number.blur();
+    expect(await number.getText()).toBe('1,234.5');
+
+    await number.focus();
+    await number.setText('abc');
+    await number.blur();
+    expect(host.model().amount).toBeNull();
+    expect(await number.isInvalid()).toBe(true);
   });
 });

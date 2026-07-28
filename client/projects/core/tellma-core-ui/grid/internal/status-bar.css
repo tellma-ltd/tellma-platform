@@ -46,7 +46,7 @@
 }
 
 .tm-grid__status-chip {
-  color: var(--status-error-fg);
+  color: var(--error);
 }
 
 .tm-grid__status-chip:hover,
@@ -78,7 +78,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--status-error-fg);
+  color: var(--error);
 }
 
 @media (forced-colors: active) {

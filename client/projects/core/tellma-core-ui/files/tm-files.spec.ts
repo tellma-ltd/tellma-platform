@@ -10,6 +10,7 @@ import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { provideTellmaUi } from '@tellma/core-ui';
 import { TmDropzoneHarness, TmFilePickerHarness } from '@tellma/core-ui-testing';
 
+import { tmMaxMegabytes } from './internal/byte-size';
 import { tmSelectFiles } from './internal/file-selection';
 import { TmDropzone } from './tm-dropzone';
 import { TmFilePicker } from './tm-file-picker';
@@ -96,6 +97,25 @@ describe('tmSelectFiles (the shared engine)', () => {
   });
 });
 
+describe('tmMaxMegabytes (the announced ceiling)', () => {
+  it('never rounds a real ceiling to 0 MB, nor 512 KiB up to a whole MB', () => {
+    expect(tmMaxMegabytes(512 * 1024)).toBe(0.5);
+    expect(tmMaxMegabytes(100 * 1024)).toBe(0.098);
+    expect(tmMaxMegabytes(1.4 * 1024 * 1024)).toBe(1.4);
+  });
+
+  it('keeps whole megabytes whole and drops the noise above 10 MB', () => {
+    expect(tmMaxMegabytes(1024 * 1024)).toBe(1);
+    expect(tmMaxMegabytes(20 * 1024 * 1024)).toBe(20);
+    expect(tmMaxMegabytes(100 * 1024 * 1024)).toBe(100);
+  });
+
+  it('degrades to 0 for a ceiling that has no megabyte value', () => {
+    expect(tmMaxMegabytes(0)).toBe(0);
+    expect(tmMaxMegabytes(Number.NaN)).toBe(0);
+  });
+});
+
 @Component({
   imports: [TmFilePicker, TmDropzone],
   template: `
@@ -118,6 +138,12 @@ class Host {
     this.selections.push(selection);
   }
 }
+
+@Component({
+  imports: [TmDropzone],
+  template: `<tm-dropzone [maxFileSize]="512 * 1024" />`,
+})
+class SmallCapHost {}
 
 async function setup(): Promise<{ fixture: ComponentFixture<Host>; host: Host; root: HTMLElement }> {
   TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
@@ -305,5 +331,13 @@ describe('tm-dropzone', () => {
     const meta = await dropzone.getMetaLines();
     expect(meta[0]).toBe('Accepted: .txt,image/*');
     expect(meta[1]).toBe('Up to 1 MB each');
+  });
+
+  it('states a sub-megabyte ceiling as itself, not as "0 MB"', async () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(SmallCapHost);
+    await fixture.whenStable();
+    const dropzone = await TestbedHarnessEnvironment.loader(fixture).getHarness(TmDropzoneHarness);
+    expect(await dropzone.getMetaLines()).toEqual(['Up to 0.5 MB each']);
   });
 });

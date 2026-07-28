@@ -24,8 +24,10 @@ export interface TmPreviewFile {
    * for STREAMABLE MEDIA — video/audio use the URL directly so the
    * browser range-requests instead of buffering whole blobs. URL sources
    * require ambient auth (cookies under a BFF, or presigned URLs under
-   * bearer tokens); plain-text previews need bytes, so a `{ url }` text
-   * source falls back to the download-only card.
+   * bearer tokens). Every other kind needs bytes, so a `{ url }` text,
+   * image-less or PDF source falls back to the download-only card — the
+   * PDF viewer's frame is not sandboxed and may only ever render bytes
+   * this component fetched and re-typed itself.
    */
   readonly source: Blob | (() => Promise<Blob>) | { readonly url: string };
 }

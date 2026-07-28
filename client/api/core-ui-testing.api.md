@@ -56,8 +56,11 @@ export class TmDatePickerHarness extends ComponentHarness {
     isPopupOpen(): Promise<boolean>;
     openPopup(): Promise<void>;
     selectDay(day: number): Promise<void>;
+    selectMonth(month: number): Promise<void>;
     selectToday(): Promise<void>;
+    selectYear(year: number): Promise<void>;
     setText(text: string): Promise<void>;
+    switchView(): Promise<void>;
 }
 
 // @public

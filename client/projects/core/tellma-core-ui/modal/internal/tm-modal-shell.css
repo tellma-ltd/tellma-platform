@@ -81,7 +81,7 @@
   flex: none;
   padding-block: var(--space-4);
   padding-inline: var(--modal-padding-x);
-  border-block-end: var(--border-width) solid var(--border-divider);
+  border-block-end: var(--border-width) solid var(--divider);
 }
 
 .tm-modal__title {
@@ -118,10 +118,11 @@
 }
 
 .tm-modal__close:focus-visible {
-  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
-     The token focus ring below is the equally-visible substitute; the UA
-     outline would double up against it. */
-  outline: none;
+  /* A transparent REAL outline beneath the token ring: forced colors strip
+     box-shadows but repaint outline-color in a system color, so the outline
+     is the only thing left carrying focus there. */
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
   box-shadow: var(--focus-ring);
 }
 
@@ -150,7 +151,7 @@
   padding-block: var(--space-3);
   padding-inline: var(--modal-padding-x);
   background: var(--surface-card);
-  border-block-start: var(--border-width) solid var(--border-divider);
+  border-block-start: var(--border-width) solid var(--divider);
 }
 
 @keyframes tm-modal-enter {

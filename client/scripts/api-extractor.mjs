@@ -18,7 +18,7 @@
 import { createRequire } from 'node:module';
 
 import { discoverLibraries } from '../tools/workspace.mjs';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -281,6 +281,21 @@ for (const entryPoint of ENTRY_POINTS) {
     failed = true;
   } else {
     console.log(`ok ${entryPoint.report}`);
+  }
+}
+
+// The loop only ever ADDS to the report folder, so a golden whose entry point
+// was deleted (or newly excluded) survives untouched and keeps presenting a
+// dead surface as if it were still reviewed. Reconcile the folder against the
+// entry points that actually exist.
+const expected = new Set(ENTRY_POINTS.map((entryPoint) => entryPoint.report));
+for (const file of readdirSync(reportFolder)) {
+  if (file.endsWith('.api.md') && !expected.has(file)) {
+    console.error(
+      `ORPHAN GOLDEN: api/${file} belongs to no entry point — its entry point was removed ` +
+        `or excluded from golden scope. Delete the file and commit the deletion.`,
+    );
+    failed = true;
   }
 }
 

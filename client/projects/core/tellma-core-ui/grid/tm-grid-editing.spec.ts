@@ -9,7 +9,14 @@ import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { applyEach, disabled, form, readonly, required } from '@angular/forms/signals';
 
 import type { TmCellEditor } from '@tellma/core-ui/contracts';
-import { provideTellmaUi, TM_CELL_EDITOR_HOST, TM_ERROR_DISPLAY } from '@tellma/core-ui';
+import {
+  provideTellmaUi,
+  provideTmCalendar,
+  TM_CELL_EDITOR_HOST,
+  TM_ERROR_DISPLAY,
+} from '@tellma/core-ui';
+import { tmUmalquraCalendar } from '@tellma/core-ui/calendar-umalqura';
+import type { TmCalendar } from '@tellma/core-ui/l10n';
 import { TmGridHarness } from '@tellma/core-ui-testing';
 
 import { TmGrid } from './tm-grid';
@@ -125,6 +132,8 @@ class TestCellEditor implements TmCellEditor<string | null> {
       <tm-grid-column key="name" header="Name" [width]="140">
         <tm-test-cell-editor *tmGridEditor />
       </tm-grid-column>
+      <!-- A built-in text editor alongside, so a session of each kind can run. -->
+      <tm-grid-column key="unit" header="Unit" [width]="140" />
     </tm-grid>
   `,
 })
@@ -340,6 +349,38 @@ describe('tm-grid (editing)', () => {
     cell = cellAt(scroller, 0, 1) as HTMLElement;
     const message = document.getElementById(cell.getAttribute('aria-describedby')!);
     expect(message?.textContent).toContain('at most 15 digits');
+  });
+
+  it('a PASTE rounds to the column scale and rejects over-precision the same way', async () => {
+    // The typed-commit path is covered above; paste is a second, separate
+    // call site of the same normalizeValue closure, and only engine-level
+    // stubs covered it — a wiring regression there would let a spreadsheet
+    // paste write full precision straight past the invariant.
+    const { fixture, host, scroller } = await setup();
+    host.qtyMaxDecimals.set(2);
+    await stable(fixture);
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'ArrowRight'); // (0,1) qty
+    await stable(fixture);
+
+    const rounding = new DataTransfer();
+    rounding.setData('text/plain', '1.005678\r\n');
+    scroller.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: rounding, bubbles: true, cancelable: true }),
+    );
+    await stable(fixture);
+    expect(host.model()[0].qty).toBe(1.01);
+    expect(cellAt(scroller, 0, 1)!.textContent!.trim()).toBe('1.01');
+
+    const overflow = new DataTransfer();
+    overflow.setData('text/plain', '12345678901234567\r\n');
+    scroller.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: overflow, bubbles: true, cancelable: true }),
+    );
+    await stable(fixture);
+    expect(host.model()[0].qty).toBeNull();
+    const cell = cellAt(scroller, 0, 1) as HTMLElement;
+    expect(cell.classList.contains('tm-grid__cell--error')).toBe(true);
   });
 
   it('IME composition keydown opens an UNSEEDED editor without consuming the key', async () => {
@@ -756,6 +797,45 @@ describe('tm-grid (editing)', () => {
     expect(host.model()[0].name).toBe('Custom');
     expect(scroller.querySelector('[data-tm-editor]')).toBeNull();
   });
+
+  it('a template editor commits a value equal to the PREVIOUS session’s open text', async () => {
+    // The pristine-baseline check exists so F2 + Enter never rewrites a
+    // display-rounded cell. It must not survive its own session: a stale
+    // baseline would make the next editor's genuine edit look pristine and
+    // silently drop the write.
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(CustomEditorHost);
+    await stable(fixture);
+    const host = fixture.componentInstance;
+    const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+      '.tm-grid__scroller',
+    ) as HTMLElement;
+    await activateOrigin(fixture, scroller);
+
+    // Session 1: F2 the EMPTY unit cell (baseline ''), then abandon it.
+    keydown(scroller, 'ArrowRight'); // (0,1) unit — null, so the open text is ''
+    await stable(fixture);
+    keydown(scroller, 'F2');
+    await stable(fixture);
+    const builtIn = scroller.querySelector<HTMLInputElement>('[data-tm-editor] input');
+    expect(builtIn?.value).toBe('');
+    keydown(builtIn!, 'Escape');
+    await stable(fixture);
+
+    // Session 2: clear the populated name cell through the template editor.
+    keydown(scroller, 'ArrowLeft'); // back to (0,0) name — 'Alpha'
+    await stable(fixture);
+    keydown(scroller, 'F2');
+    await stable(fixture);
+    const custom = scroller.querySelector<HTMLInputElement>('[data-tm-editor] .test-editor');
+    expect(custom).not.toBeNull();
+    custom!.value = '';
+    custom!.dispatchEvent(new Event('input', { bubbles: true }));
+    keydown(custom!, 'Enter');
+    await stable(fixture);
+
+    expect(host.model()[0].name).toBe(''); // the clear reached the model
+  });
 });
 
 describe('tm-grid (editing harness)', () => {
@@ -862,8 +942,13 @@ describe('tm-grid date columns (built-in defaults)', () => {
     readonly rowId = (row: DateLine): number => row.id;
   }
 
-  async function setupDates() {
-    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+  async function setupDates(calendar?: TmCalendar) {
+    TestBed.configureTestingModule({
+      providers: [
+        provideTellmaUi(),
+        ...(calendar === undefined ? [] : [provideTmCalendar(calendar)]),
+      ],
+    });
     const fixture = TestBed.createComponent(DateHost);
     await stable(fixture);
     const scroller = (fixture.nativeElement as HTMLElement).querySelector(
@@ -920,6 +1005,38 @@ describe('tm-grid date columns (built-in defaults)', () => {
     );
     await stable(fixture);
     expect(host.model()[0].due).toBe('2027-12-25'); // en-GB day-first order honored
+  });
+
+  it('a foreign paste reads as GREGORIAN even when the grid displays Umm al-Qura', async () => {
+    // Excel and friends carry no metadata and serialize Gregorian dates.
+    // Read in the ambient Hijri calendar instead, `9/23/2024` would be
+    // Hijri year 2024 — centuries away — and be written silently. The
+    // display stays Hijri; only the READING is Gregorian.
+    const { fixture, host, scroller } = await setupDates(tmUmalquraCalendar());
+    await activateOrigin(fixture, scroller);
+
+    const foreign = new DataTransfer();
+    foreign.setData('text/plain', '9/23/2024\r\n'); // no text/html, no meta
+    scroller.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: foreign, bubbles: true, cancelable: true }),
+    );
+    await stable(fixture);
+    expect(host.model()[0].due).toBe('2024-09-23');
+  });
+
+  it('a foreign paste the Gregorian rung cannot read falls back to the display calendar', async () => {
+    // Hijri-only text (month 13 does not exist in Gregorian) still lands:
+    // the foreign rung yields only to a reading that actually works.
+    const { fixture, host, scroller } = await setupDates(tmUmalquraCalendar());
+    await activateOrigin(fixture, scroller);
+
+    const hijriOnly = new DataTransfer();
+    hijriOnly.setData('text/plain', '13/16/1447\r\n');
+    scroller.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: hijriOnly, bubbles: true, cancelable: true }),
+    );
+    await stable(fixture);
+    expect(host.model()[0].due).not.toBe('2024-09-23');
   });
 
   it('mounts tm-date-picker as the editor; typed text commits through the built-in parse', async () => {

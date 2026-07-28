@@ -27,6 +27,7 @@ import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmTooltip } from '@tellma/core-ui/tooltip';
 
 import { ɵTmImageBlobCache } from './internal/blob-cache';
+import { tmMaxMegabytes } from './internal/byte-size';
 import { tmCoverFit } from './internal/fit';
 import { tmDefaultSrcForSize, tmSizeBucket } from './internal/size-buckets';
 import { tmProcessPickedFile } from './internal/image-processing';
@@ -87,10 +88,10 @@ interface FittingSession {
  *
  * @tmGroup media
  * @tmA11yNotes `alt` is required (`''` only for decorative images); the
- *   error state is announced through its accessible label; the crop
+ *   error state carries its own accessible label AND announces; the crop
  *   surface pans with arrow keys and zooms with `+`/`-` and the
- *   always-visible slider; rejections announce via a `role="status"`
- *   region.
+ *   always-visible slider; rejections and load failures announce via a
+ *   `role="status"` region.
  */
 @Component({
   selector: 'tm-image',
@@ -372,6 +373,9 @@ export class TmImage {
       untracked(() => {
         this.discardPreview();
         this.deleted.set(false);
+        // The fit is normalized against THIS record's image — a different
+        // record must never re-open the previous one's crop.
+        this.lastCommittedFit = null;
       });
     });
 
@@ -387,6 +391,7 @@ export class TmImage {
         if (src === '') {
           this.status.set('empty');
           this.setDisplayUrl(null);
+          this.clearLoadError();
           return;
         }
         if (this.status() !== 'ready') {
@@ -412,10 +417,7 @@ export class TmImage {
       });
       await this.swapIn(blob, token);
     } catch {
-      if (token === this.loadToken) {
-        this.status.set('error');
-        this.setDisplayUrl(null);
-      }
+      this.failLoad(token);
     }
   }
 
@@ -428,10 +430,7 @@ export class TmImage {
       await probe.decode();
     } catch {
       URL.revokeObjectURL(url);
-      if (token === this.loadToken) {
-        this.status.set('error');
-        this.setDisplayUrl(null);
-      }
+      this.failLoad(token);
       return;
     }
     if (token !== this.loadToken) {
@@ -440,6 +439,32 @@ export class TmImage {
     }
     this.setDisplayUrl(url);
     this.status.set('ready');
+    this.clearLoadError();
+  }
+
+  /**
+   * Fails the pipeline (stale tokens no-op). The error glyph is silent to
+   * a screen reader until it is focused, so the failure also goes through
+   * the status region — the channel pick rejections already announce on.
+   */
+  private failLoad(token: number): void {
+    if (token !== this.loadToken) {
+      return;
+    }
+    this.status.set('error');
+    this.setDisplayUrl(null);
+    this.noticeKey.set({ key: 'image.error' });
+  }
+
+  /**
+   * Retracts a load failure once one succeeds — matched on the key so a
+   * pending pick rejection (a different message) is never wiped by a
+   * background revalidation landing behind it.
+   */
+  private clearLoadError(): void {
+    if (untracked(this.noticeKey)?.key === 'image.error') {
+      this.noticeKey.set(null);
+    }
   }
 
   /** Swaps the display URL, revoking the replaced object URL. */
@@ -471,7 +496,7 @@ export class TmImage {
     if (result.kind === 'tooLarge') {
       this.noticeKey.set({
         key: 'image.tooLarge',
-        params: { maxMb: Math.round(untracked(this.maxFileBytes) / (1024 * 1024)) },
+        params: { maxMb: tmMaxMegabytes(untracked(this.maxFileBytes)) },
       });
       return;
     }
@@ -536,7 +561,9 @@ export class TmImage {
         width: probe.naturalWidth,
         height: probe.naturalHeight,
         pickedBlob: null,
-        initialFit: null,
+        // Re-opening restores the fit committed against this same
+        // original; only a record change (which clears it) starts at cover.
+        initialFit: this.lastCommittedFit,
       });
       url = null; // ownership transferred to the fitting session
     } catch {
