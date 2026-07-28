@@ -9,6 +9,8 @@ import { By } from '@angular/platform-browser';
 import { form } from '@angular/forms/signals';
 
 import { provideTellmaUi } from '@tellma/core-ui';
+import { TmAlert } from '@tellma/core-ui/alert';
+import { TmButton } from '@tellma/core-ui/button';
 import { TmCheckbox } from '@tellma/core-ui/checkbox';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import {
@@ -24,6 +26,8 @@ import { TmOption, TmSelect } from '@tellma/core-ui/select';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 import { TmTreeGrid } from '@tellma/core-ui/tree-grid';
 
+import * as alertExamples from './alert/tm-alert.examples';
+import * as buttonExamples from './button/tm-button.examples';
 import * as checkboxExamples from './checkbox/tm-checkbox.examples';
 import * as gridExamples from './grid/tm-grid.examples';
 import * as inputExamples from './input/tm-input.examples';
@@ -74,6 +78,8 @@ interface ExampleTreeRow {
  */
 @Component({
   imports: [
+    TmAlert,
+    TmButton,
     TmCheckbox,
     TmContextMenuTrigger,
     TmFormField,
@@ -91,6 +97,8 @@ interface ExampleTreeRow {
   ],
   template: `
     <tm-form-field label="placeholder"><input tmInput /></tm-form-field>
+    <button tmButton>placeholder</button>
+    <tm-alert kind="info">placeholder</tm-alert>
     <tm-checkbox>placeholder</tm-checkbox>
     <tm-select><tm-option [value]="0">placeholder</tm-option></tm-select>
     <tm-spinner />
@@ -184,6 +192,11 @@ const MARKERS: {
     instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmInput)).length > 0,
   },
   {
+    name: 'TmButton',
+    pattern: /\btmButton\b/,
+    instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmButton)).length > 0,
+  },
+  {
     name: 'TmContextMenuTrigger',
     pattern: /\btmContextMenuTrigger\b/,
     instantiated: (fixture) =>
@@ -232,6 +245,8 @@ const MARKERS: {
 
 const SUITES = [
   { source: 'input/tm-input.examples.ts', examples: inputExamples },
+  { source: 'alert/tm-alert.examples.ts', examples: alertExamples },
+  { source: 'button/tm-button.examples.ts', examples: buttonExamples },
   { source: 'checkbox/tm-checkbox.examples.ts', examples: checkboxExamples },
   { source: 'select/tm-select.examples.ts', examples: selectExamples },
   { source: 'spinner/tm-spinner.examples.ts', examples: spinnerExamples },

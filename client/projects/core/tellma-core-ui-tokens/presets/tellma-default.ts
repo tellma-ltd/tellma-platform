@@ -254,6 +254,38 @@ export const tmTokensDefault: TmTokens = {
     },
   },
   component: {
+    // tm-alert: page/section status wrapper — geometry only; per-kind
+    // colors ride the status semantic tokens in the component CSS.
+    alert: {
+      gap: '8px',
+      paddingX: '12px',
+      paddingY: '10px',
+      radius: '{radius.sm}',
+      iconSize: '16px',
+    },
+    // tmButton: heights ride the shared field-height scale (buttons align
+    // with form fields in toolbars); per-variant colors resolve per scheme
+    // through the semantic action/field/status roles.
+    button: {
+      radius: '{radius.sm}',
+      gap: '8px',
+      paddingXSm: '10px',
+      paddingX: '14px',
+      paddingXLg: '18px',
+      disabledOpacity: '0.55',
+      primaryBg: '{action.primary}',
+      primaryText: '{action.onPrimary}',
+      primaryHoverBg: '{action.primaryHover}',
+      primaryActiveBg: '{action.primaryActive}',
+      secondaryBg: '{field.bg}',
+      secondaryText: '{text.body}',
+      secondaryBorder: '{field.border}',
+      secondaryHoverBg: '{surface.hover}',
+      ghostText: '{text.body}',
+      ghostHoverBg: '{surface.hover}',
+      dangerBg: '{status.error.fg}',
+      dangerText: '{action.onPrimary}',
+    },
     // tm-checkbox (§3.3): the visible box renders at the brand 18px while
     // the hit target is padded past the 24px minimum.
     checkbox: { boxSize: '18px' },

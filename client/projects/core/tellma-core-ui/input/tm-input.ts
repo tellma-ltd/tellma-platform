@@ -30,10 +30,10 @@ import { TM_FORM_FIELD_CONTROL, TmFormField } from '@tellma/core-ui/form-field';
 let nextUniqueId = 0;
 
 /**
- * Single-line text field — a bare directive on the native `<input>` (the
- * matInput model): the native element IS the control, so it drops into
- * a grid cell with nothing to strip. Adornment chrome (bordered box, focus
- * ring, prefix/suffix) belongs to the enclosing `tm-form-field`.
+ * Text field — a bare directive on the native `<input>` or `<textarea>`
+ * (the matInput model): the native element IS the control, so it drops
+ * into a grid cell with nothing to strip. Adornment chrome (bordered box,
+ * focus ring, prefix/suffix) belongs to the enclosing `tm-form-field`.
  *
  * Signal Forms native: implements `FormValueControl<string>` (`value`
  * model) plus the optional state inputs `[formField]` binds; reports touch
@@ -41,22 +41,31 @@ let nextUniqueId = 0;
  * disabled/readonly/required — template-binding those on a bound control is
  * forbidden by lint.
  *
+ * A `<textarea>` host is the same control at every layer that matters —
+ * value channel, chrome, bidi, Signal Forms — with fixed sizing: height
+ * comes from the authored `rows` attribute and never changes over the
+ * control's lifetime (the stylesheet sets `resize: none` as an ordinary
+ * overridable class rule; a user-draggable handle would shift the layout
+ * below). Textareas are not grid cell editors (cells are single-line) and
+ * never register with a cell host.
+ *
  * Bidi: `dir="auto"` picks each field's base direction from its own content,
  * independent of page direction; alignment follows via
  * `text-align: start`.
  *
  * @tmGroup form-control
- * @tmA11yNotes Native input semantics; aria-invalid/aria-required/
+ * @tmA11yNotes Native input/textarea semantics; aria-invalid/aria-required/
  *   aria-describedby/aria-busy host-bound from field state.
  */
 @Directive({
-  selector: 'input[tmInput]',
+  selector: 'input[tmInput], textarea[tmInput]',
   providers: [{ provide: TM_FORM_FIELD_CONTROL, useExisting: TmInput }],
   host: {
     class: 'tm-input',
     dir: 'auto',
     '[id]': 'controlId()',
     '[class.tm-input--in-field]': '!!formField',
+    '[class.tm-input--multiline]': 'isTextarea',
     '[disabled]': 'disabled()',
     '[readOnly]': 'readonly()',
     '[required]': 'required()',
@@ -69,7 +78,10 @@ let nextUniqueId = 0;
   },
 })
 export class TmInput implements TmFormFieldControl, TmCellEditor<string> {
-  private readonly element = inject<ElementRef<HTMLInputElement>>(ElementRef).nativeElement;
+  private readonly element = inject<ElementRef<HTMLInputElement | HTMLTextAreaElement>>(ElementRef)
+    .nativeElement;
+  /** Whether the host is a `<textarea>` (multi-line box; never a cell editor). */
+  protected readonly isTextarea = this.element.tagName === 'TEXTAREA';
   private readonly translate = inject(TM_UI_TRANSLATE);
   private readonly errorDisplay = inject(TM_ERROR_DISPLAY);
   /** The enclosing grid cell's registration sink, if any — absent standalone. */
@@ -163,7 +175,12 @@ export class TmInput implements TmFormFieldControl, TmCellEditor<string> {
   private selfWrite: { readonly value: string } | null = null;
 
   constructor() {
-    this.cellHost?.register(this);
+    // Grid cells are single-line: only the <input> host registers as a cell
+    // editor; a textarea inside a cell (a consumer template accident) must
+    // not hijack the cell's text channel.
+    if (!this.isTextarea) {
+      this.cellHost?.register(this);
+    }
 
     // Reflect external value writes into the native input without clobbering
     // the caret on the user's own keystrokes; external writes also move the
@@ -222,7 +239,7 @@ export class TmInput implements TmFormFieldControl, TmCellEditor<string> {
 
   /** Mirrors native input events into the `value` model. */
   protected onInput(event: Event): void {
-    const value = (event.target as HTMLInputElement).value;
+    const value = (event.target as HTMLInputElement | HTMLTextAreaElement).value;
     this.selfWrite = { value };
     this.value.set(value);
   }

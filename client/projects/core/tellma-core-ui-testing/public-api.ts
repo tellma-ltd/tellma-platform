@@ -12,6 +12,8 @@
 //
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
+export * from './alert-harness';
+export * from './button-harness';
 export * from './input-harness';
 export * from './checkbox-harness';
 export * from './select-harness';

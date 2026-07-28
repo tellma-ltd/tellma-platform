@@ -128,3 +128,35 @@ test.describe('bidi dir="auto" (§7, DoD 15)', () => {
     });
   }
 });
+
+test.describe('textarea host (DoD 3)', () => {
+  test('grows the field box, pins resize: none, and wires label/hint/focus ring', async ({
+    page,
+  }) => {
+    await page.goto(storyUrl('input'));
+    const field = page.getByTestId('ff-notes');
+    const textarea = page.getByTestId('textarea-notes');
+    const box = field.locator('.tm-form-field__box');
+
+    // Fixed size: no user resize handle; height driven by the authored rows.
+    await expect(textarea).toHaveCSS('resize', 'none');
+    await expect(textarea).toHaveJSProperty('rows', 4);
+
+    // The box grew past the single-line field height to hold four rows.
+    const singleLineBox = await page
+      .getByTestId('ff-email')
+      .locator('.tm-form-field__box')
+      .boundingBox();
+    const grownBox = await box.boundingBox();
+    expect(grownBox!.height).toBeGreaterThan(singleLineBox!.height * 2);
+
+    // Label click focuses the textarea (label[for] association).
+    await field.locator('label').click();
+    await expect(textarea).toBeFocused();
+
+    // The focus ring wraps the grown box.
+    await expect
+      .poll(() => box.evaluate((el) => getComputedStyle(el).boxShadow))
+      .not.toBe('none');
+  });
+});

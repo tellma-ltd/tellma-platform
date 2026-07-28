@@ -123,6 +123,12 @@ export const TM_UI_STRINGS_EN: {
             readonly close: "Close find";
         };
     };
+    readonly alert: {
+        readonly info: "Info:";
+        readonly success: "Success:";
+        readonly warning: "Warning:";
+        readonly error: "Error:";
+    };
 };
 
 // @public

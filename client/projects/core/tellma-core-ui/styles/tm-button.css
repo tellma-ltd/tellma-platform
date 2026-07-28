@@ -1,0 +1,179 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tmButton — the directive's global stylesheet (directives cannot carry
+   component styles). Heights ride the form-field height tokens so buttons
+   align with fields in toolbars; every color comes from the --button-*
+   component tokens (per-scheme values resolve at token-emit time). */
+
+.tm-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--button-gap);
+  box-sizing: border-box;
+  block-size: var(--field-height);
+  padding-inline: var(--button-padding-x);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--button-radius);
+  font-family: var(--font-ui);
+  font-size: var(--field-font-size);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+.tm-button--sm {
+  block-size: var(--field-height-sm);
+  padding-inline: var(--button-padding-x-sm);
+}
+
+.tm-button--lg {
+  block-size: var(--field-height-lg);
+  padding-inline: var(--button-padding-x-lg);
+}
+
+.tm-button:focus-visible {
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     The token focus ring below is the equally-visible substitute; the UA
+     outline would double up against it. */
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tm-button:disabled {
+  opacity: var(--button-disabled-opacity);
+  cursor: default;
+}
+
+/* Variants. */
+
+.tm-button--primary {
+  background: var(--button-primary-bg);
+  color: var(--button-primary-text);
+}
+
+.tm-button--primary:hover:not(:disabled):not(.tm-button--pending) {
+  background: var(--button-primary-hover-bg);
+}
+
+.tm-button--primary:active:not(:disabled):not(.tm-button--pending) {
+  background: var(--button-primary-active-bg);
+}
+
+.tm-button--secondary {
+  background: var(--button-secondary-bg);
+  border-color: var(--button-secondary-border);
+  color: var(--button-secondary-text);
+}
+
+.tm-button--secondary:hover:not(:disabled):not(.tm-button--pending) {
+  background: var(--button-secondary-hover-bg);
+}
+
+.tm-button--ghost {
+  background: transparent;
+  color: var(--button-ghost-text);
+}
+
+.tm-button--ghost:hover:not(:disabled):not(.tm-button--pending) {
+  background: var(--button-ghost-hover-bg);
+}
+
+.tm-button--danger {
+  background: var(--button-danger-bg);
+  color: var(--button-danger-text);
+}
+
+/* The status palette has no hover/active steps; a small uniform brightness
+   shift reads as press feedback in both schemes without inventing new
+   semantic slots for a single variant. */
+.tm-button--danger:hover:not(:disabled):not(.tm-button--pending) {
+  filter: brightness(0.94);
+}
+
+.tm-button--danger:active:not(:disabled):not(.tm-button--pending) {
+  filter: brightness(0.86);
+}
+
+/* Projected icons ride the text color and never intercept the click. */
+.tm-button > svg {
+  flex: none;
+  pointer-events: none;
+}
+
+/* Pending: the box keeps its exact size — text stays in layout but renders
+   transparent (metrics preserved), element children (icons) hide, and the
+   centered spinner overlays. Focus is retained; activation is swallowed by
+   the directive's capture-phase guard. These rules sit last so the plain
+   single-class selectors win their specificity ties with the variants. */
+
+.tm-button--pending {
+  color: transparent;
+  cursor: default;
+}
+
+.tm-button--pending > :not(.tm-button__spinner) {
+  visibility: hidden;
+}
+
+.tm-button__spinner {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+}
+
+.tm-button--primary.tm-button--pending > .tm-button__spinner {
+  color: var(--button-primary-text);
+}
+
+.tm-button--secondary.tm-button--pending > .tm-button__spinner {
+  color: var(--button-secondary-text);
+}
+
+.tm-button--ghost.tm-button--pending > .tm-button__spinner {
+  color: var(--button-ghost-text);
+}
+
+.tm-button--danger.tm-button--pending > .tm-button__spinner {
+  color: var(--button-danger-text);
+}
+
+@media (forced-colors: active) {
+  /* Variant boundaries survive via system colors: every variant keeps a
+     real border (backgrounds are forced to ButtonFace). */
+  .tm-button {
+    border-color: ButtonText;
+  }
+
+  /* `color: transparent` is overridden by forced colors, so the label
+     would reappear — an opaque ButtonFace overlay covers the content and
+     the spinner sits above it. */
+  .tm-button--pending::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: ButtonFace;
+    border-radius: inherit;
+  }
+
+  .tm-button--pending > .tm-button__spinner {
+    z-index: 1;
+    color: ButtonText;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-button {
+    transition: none;
+  }
+}

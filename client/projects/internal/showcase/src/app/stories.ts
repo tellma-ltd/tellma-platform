@@ -5,6 +5,8 @@
 
 import { Component, Type } from '@angular/core';
 
+import { AlertStory } from './alert/alert-story';
+import { ButtonStory } from './button/button-story';
 import { CheckboxStory } from './checkbox/checkbox-story';
 import { GridCustomEditorStory } from './grid/grid-custom-editor-story';
 import { GridEditableStory } from './grid/grid-editable-story';
@@ -47,6 +49,8 @@ export class WelcomeStory {}
 export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'welcome', title: 'Welcome', component: WelcomeStory },
   { id: 'theming', title: 'Tokens & theming', component: ThemingStory },
+  { id: 'button', title: 'Button (tmButton)', component: ButtonStory },
+  { id: 'alert', title: 'Alert (tm-alert)', component: AlertStory },
   { id: 'input', title: 'Text input (tmInput + tm-form-field)', component: InputStory },
   { id: 'checkbox', title: 'Checkbox (tm-checkbox)', component: CheckboxStory },
   { id: 'select', title: 'Select (tm-select)', component: SelectStory },

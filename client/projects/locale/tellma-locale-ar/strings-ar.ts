@@ -130,4 +130,10 @@ export const TM_LOCALE_AR_STRINGS = {
       close: 'إغلاق البحث',
     },
   },
+  alert: {
+    info: 'معلومة:',
+    success: 'نجاح:',
+    warning: 'تحذير:',
+    error: 'خطأ:',
+  },
 } as const;

@@ -98,6 +98,12 @@ export const TM_LOCALE_AR_STRINGS: {
             readonly close: "إغلاق البحث";
         };
     };
+    readonly alert: {
+        readonly info: "معلومة:";
+        readonly success: "نجاح:";
+        readonly warning: "تحذير:";
+        readonly error: "خطأ:";
+    };
 };
 
 ```

@@ -41,3 +41,26 @@
      substitute (§6); a second UA outline inside the box would double up. */
   outline: none;
 }
+
+/* Textarea host: height comes from the authored rows and the size-stability
+   rule pins it — a user-draggable resize handle would shift the layout
+   below. An ordinary class rule, so a consumer stylesheet can re-enable
+   resizing where a growable comment box is genuinely wanted. */
+textarea.tm-input {
+  resize: none;
+  line-height: var(--leading-ui);
+}
+
+/* A multi-line control changes the enclosing field box from a fixed-height
+   centered row to a grown box with first-line alignment for adornments.
+   These rules live HERE (the global sheet) deliberately: the projected
+   textarea carries the consumer's encapsulation attribute, so the field's
+   own scoped stylesheet could never match it inside :has(). The extra
+   type selector in the :has() argument also outweighs the scoped
+   block-size rule on specificity ties. */
+.tm-form-field__box:has(> textarea.tm-input--multiline) {
+  block-size: auto;
+  min-block-size: var(--field-height);
+  align-items: flex-start;
+  padding-block: var(--field-padding-y);
+}

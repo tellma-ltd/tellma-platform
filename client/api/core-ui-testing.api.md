@@ -11,6 +11,28 @@ import { TestElement } from '@angular/cdk/testing';
 import { TestKey } from '@angular/cdk/testing';
 
 // @public
+export class TmAlertHarness extends ComponentHarness {
+    getHeading(): Promise<string | null>;
+    getKind(): Promise<'info' | 'success' | 'warning' | 'error'>;
+    getRole(): Promise<string | null>;
+    getText(): Promise<string>;
+    static hostSelector: string;
+}
+
+// @public
+export class TmButtonHarness extends ComponentHarness {
+    click(): Promise<void>;
+    focus(): Promise<void>;
+    getSize(): Promise<'sm' | 'md' | 'lg'>;
+    getText(): Promise<string>;
+    getVariant(): Promise<'primary' | 'secondary' | 'ghost' | 'danger'>;
+    static hostSelector: string;
+    isDisabled(): Promise<boolean>;
+    isFocused(): Promise<boolean>;
+    isPending(): Promise<boolean>;
+}
+
+// @public
 export class TmCheckboxHarness extends ComponentHarness {
     blur(): Promise<void>;
     focus(): Promise<void>;
@@ -123,6 +145,7 @@ export class TmInputHarness extends ComponentHarness {
     getPlaceholder(): Promise<string>;
     getValue(): Promise<string>;
     static hostSelector: string;
+    hostTagName(): Promise<string>;
     isBusy(): Promise<boolean>;
     isDisabled(): Promise<boolean>;
     isFocused(): Promise<boolean>;

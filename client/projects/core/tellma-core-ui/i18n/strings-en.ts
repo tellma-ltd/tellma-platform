@@ -104,4 +104,10 @@ export const TM_UI_STRINGS_EN = {
       close: 'Close find',
     },
   },
+  alert: {
+    info: 'Info:',
+    success: 'Success:',
+    warning: 'Warning:',
+    error: 'Error:',
+  },
 } as const;

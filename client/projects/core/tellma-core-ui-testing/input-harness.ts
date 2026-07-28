@@ -7,11 +7,17 @@ import { ComponentHarness } from '@angular/cdk/testing';
 
 /**
  * Harness for the `tmInput` directive — the typed, implementation-independent
- * automation surface for tests and agents.
+ * automation surface for tests and agents. Works for both host kinds:
+ * `input[tmInput]` and `textarea[tmInput]`.
  */
 export class TmInputHarness extends ComponentHarness {
-  /** The selector for the `input[tmInput]` host element. */
-  static hostSelector = 'input[tmInput]';
+  /** The selector for the `input[tmInput]` / `textarea[tmInput]` host element. */
+  static hostSelector = 'input[tmInput], textarea[tmInput]';
+
+  /** The host's tag name ('INPUT' or 'TEXTAREA'). */
+  async hostTagName(): Promise<string> {
+    return (await this.host()).getProperty<string>('tagName');
+  }
 
   /** Gets the current value of the input. */
   async getValue(): Promise<string> {
