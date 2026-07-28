@@ -72,7 +72,9 @@ test.describe('dialog paths (DoD 12)', () => {
 
   test('the dropzone is one focusable button: Enter opens the dialog', async ({ page }) => {
     await page.goto(storyUrl('files'));
-    await page.getByTestId('dropzone').focus();
+    const zone = page.getByTestId('dropzone');
+    await zone.focus();
+    await expect(zone).toBeFocused(); // settle before the key lands
     const chooser = page.waitForEvent('filechooser');
     await page.keyboard.press('Enter');
     await (await chooser).setFiles({

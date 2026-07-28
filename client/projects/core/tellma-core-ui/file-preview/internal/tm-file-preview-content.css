@@ -34,7 +34,7 @@
 
 .tm-preview__audio {
   inline-size: 100%;
-  max-inline-size: 480px;
+  max-inline-size: var(--preview-audio-max-width);
 }
 
 .tm-preview__frame {

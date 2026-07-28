@@ -8,11 +8,17 @@ import { TestBed } from '@angular/core/testing';
 import { TranslocoService } from '@jsverse/transloco';
 import { email, form, FormField, minLength, required } from '@angular/forms/signals';
 
-import { provideTellmaUi, TM_UI_MESSAGE_CONTEXT, TM_UI_TRANSLATE } from '@tellma/core-ui';
+import {
+  provideTellmaUi,
+  TM_UI_MESSAGE_CONTEXT,
+  TM_UI_STRINGS_EN,
+  TM_UI_TRANSLATE,
+} from '@tellma/core-ui';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmInput } from '@tellma/core-ui/input';
 
 import { provideTellmaLocaleAr } from './provide-tellma-locale-ar';
+import { TM_LOCALE_AR_STRINGS } from './strings-ar';
 
 @Component({
   imports: [TmInput, TmFormField, FormField],
@@ -65,6 +71,27 @@ function errorText(fixture: ReturnType<typeof TestBed.createComponent<Host>>): s
     ''
   ).trim();
 }
+
+/** Every leaf key path of a nested string table, sorted. */
+function keyPaths(node: unknown, prefix = ''): string[] {
+  if (typeof node === 'string') {
+    return [prefix];
+  }
+  if (node === null || typeof node !== 'object') {
+    return [`${prefix}<invalid>`];
+  }
+  return Object.entries(node)
+    .flatMap(([key, value]) => keyPaths(value, prefix === '' ? key : `${prefix}.${key}`))
+    .sort();
+}
+
+describe('EN↔AR string parity (DoD 18)', () => {
+  it('the Arabic pack covers exactly the built-in English key set', () => {
+    // A key missing from AR silently falls back to English mid-sentence;
+    // a key missing from EN is dead weight the fallback path can't serve.
+    expect(keyPaths(TM_LOCALE_AR_STRINGS)).toEqual(keyPaths(TM_UI_STRINGS_EN));
+  });
+});
 
 describe('@tellma/locale-ar (DoD 13)', () => {
   it('WITH the pack: Arabic locale renders Arabic library strings', async () => {

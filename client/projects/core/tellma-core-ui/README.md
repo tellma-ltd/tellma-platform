@@ -9,13 +9,32 @@ disabled/readonly/required).
 
 | Import | Contents |
 |---|---|
-| `@tellma/core-ui` | `provideTellmaUi()` / `provideTellmaForms()`, the `TM_UI_TRANSLATE` i18n seam + `TM_UI_MESSAGE_CONTEXT`, field-error resolution, self-hosted Latin/Mono fonts (`fonts/fonts.css`) |
-| `@tellma/core-ui/contracts` | Dependency-free contracts: `SignalLike`, `TmFormFieldControl`, the draft grid cell interfaces |
-| `@tellma/core-ui/input` | `tmInput` — a bare directive on the native `<input>` |
+| `@tellma/core-ui` | `provideTellmaUi()` / `provideTellmaForms()`, the `TM_UI_TRANSLATE` i18n seam + `TM_UI_MESSAGE_CONTEXT`, `TM_ACTIVE_LOCALE`, the `TmL10n` formatting facade, `TM_CALENDAR` + `provideTmCalendar()`, `TmClientCache`, the `tmMinDate`/`tmMaxDate` validators, field-error resolution, self-hosted Latin/Mono fonts (`fonts/fonts.css`) |
+| `@tellma/core-ui/contracts` | Dependency-free contracts: `SignalLike`, `TmFormFieldControl`, the grid cell interfaces |
+| `@tellma/core-ui/l10n` | Framework-free number/date codecs (`tmFormatNumber`, `tmParseNumber`, `tmFormatDate`, `tmParseDate`, …) and the `TmCalendar` seam with the Gregorian default |
+| `@tellma/core-ui/calendar-umalqura` | `tmUmalquraCalendar()` — the Umm al-Qura (Hijri) calendar pack |
+| `@tellma/core-ui/calendar-ethiopic` | `tmEthiopicCalendar()` — the Ethiopic (Amete Mihret) calendar pack |
+| `@tellma/core-ui/input` | `tmInput` — a bare directive on the native `<input>` and `<textarea>` |
+| `@tellma/core-ui/number` | `tmNumber` — locale-aware numeric input (percent mode, display rounding) |
+| `@tellma/core-ui/date-picker` | `tm-date-picker` — calendar-aware date input + popup (ISO `YYYY-MM-DD` model) |
 | `@tellma/core-ui/checkbox` | `tm-checkbox` — native-input tri-state checkbox |
 | `@tellma/core-ui/form-field` | `tm-form-field` — label/hint/error chrome around any control |
 | `@tellma/core-ui/select` | `tm-select` + `tm-option` — overlay single-select |
+| `@tellma/core-ui/button` | `tmButton` — variants, sizes, and the `pending` suppressed-activation state |
+| `@tellma/core-ui/tabs` | `tm-tab-group` + `tm-tab` — active-only-DOM tabs with `preserveContent` |
+| `@tellma/core-ui/modal` | `TmModal` + `TmModalRef` — service-opened dialogs with a typed result channel |
+| `@tellma/core-ui/popover` | `tm-popover` + `tmPopoverTriggerFor` — anchored non-modal dialog panels |
+| `@tellma/core-ui/tooltip` | `tmTooltip` — plain-text tooltips with an always-available description |
+| `@tellma/core-ui/alert` | `tm-alert` — page/section status messaging with live announcement |
+| `@tellma/core-ui/image` | `tm-image` — cached record images with an edit (replace/re-fit/delete) mode |
+| `@tellma/core-ui/files` | `tmFilePicker` + `tm-dropzone` — file selection over one guardrail engine |
+| `@tellma/core-ui/file-preview` | `TmFilePreview` — the modal file viewer (download-only for HTML/unknown) |
+| `@tellma/core-ui/menu` | `tm-menu` + `tmContextMenuTrigger` — programmatic and context menus |
+| `@tellma/core-ui/grid` | `tm-grid` — the editable data grid |
+| `@tellma/core-ui/tree-grid` | `tm-tree-grid` — the hierarchical grid |
+| `@tellma/core-ui/grid-engine` | The framework-free grid engine behind `tm-grid` |
 | `@tellma/core-ui/spinner` | `tm-spinner` — the shared decorative pending/progress glyph |
+| `@tellma/core-ui/private` | Unstable wiring shared between Tellma libraries — no API goldens, never for app code |
 
 ## Consuming
 

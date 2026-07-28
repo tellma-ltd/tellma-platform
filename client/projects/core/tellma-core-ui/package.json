@@ -20,7 +20,7 @@
   "type": "module",
   "tellma": {
     "budgetsInKb": {
-      ".": 4,
+      ".": 5,
       "./alert": 2,
       "./button": 2,
       "./calendar-ethiopic": 2,

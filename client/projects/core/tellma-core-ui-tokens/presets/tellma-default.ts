@@ -358,6 +358,7 @@ export const tmTokensDefault: TmTokens = {
     // tm-file-preview: viewer-region geometry inside the lg modal.
     preview: {
       minHeight: '320px',
+      audioMaxWidth: '480px',
     },
     // tm-popover: panel geometry; colors ride the surface/border semantics
     // in the component CSS.
