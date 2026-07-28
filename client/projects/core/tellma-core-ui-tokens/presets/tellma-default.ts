@@ -324,6 +324,13 @@ export const tmTokensDefault: TmTokens = {
       minColWidth: '48px',
       handleSize: '24px',
     },
+    // tm-dropzone: drop-region geometry; colors ride the field/surface
+    // semantics in the component CSS.
+    files: {
+      dropzoneMinHeight: '120px',
+      dropzonePadding: '16px',
+      dropzoneRadius: '{radius.md}',
+    },
     // tm-image: fixed-box chrome. The chrome fill is a static ink veil
     // that reads over any image on both schemes.
     image: {

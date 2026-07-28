@@ -130,6 +130,20 @@ export const TM_UI_STRINGS_EN = {
   modal: {
     close: 'Close',
   },
+  filePicker: {
+    hint: 'Drag and drop here, paste, or',
+    browse: 'browse',
+    acceptedTypes: 'Accepted: {types}',
+    maxSize: 'Up to {maxMb} MB each',
+    announce:
+      '{accepted, plural, =0 {No files added} one {1 file added} other {# files added}}{rejectedCount, plural, =0 {} one {, 1 file rejected} other {, # files rejected}}',
+    rejected: {
+      size: '{name} is larger than {maxMb} MB',
+      type: '{name} is not an accepted file type',
+      count: 'Only {maxFiles, plural, one {# file} other {# files}} can be added',
+      folder: 'Folders cannot be dropped — drop files only',
+    },
+  },
   image: {
     replace: 'Replace image',
     adjust: 'Adjust crop',

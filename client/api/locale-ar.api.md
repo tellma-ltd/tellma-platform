@@ -120,6 +120,30 @@ export const TM_LOCALE_AR_STRINGS: {
     readonly modal: {
         readonly close: "إغلاق";
     };
+    readonly filePicker: {
+        readonly hint: "اسحب الملفات وأفلتها هنا، أو الصق، أو";
+        readonly browse: "تصفح";
+        readonly acceptedTypes: "الأنواع المقبولة: {types}";
+        readonly maxSize: "حتى {maxMb} ميغابايت لكل ملف";
+        readonly announce: "{accepted, plural, =0 {لم تتم إضافة ملفات} one {تمت إضافة ملف واحد} two {تمت إضافة ملفين} few {تمت إضافة # ملفات} many {تمت إضافة # ملفًا} other {تمت إضافة # ملف}}{rejectedCount, plural, =0 {} one {، ورُفض ملف واحد} two {، ورُفض ملفان} few {، ورُفضت # ملفات} many {، ورُفض # ملفًا} other {، ورُفض # ملف}}";
+        readonly rejected: {
+            readonly size: "{name} أكبر من {maxMb} ميغابايت";
+            readonly type: "{name} ليس نوع ملف مقبولًا";
+            readonly count: "يمكن إضافة {maxFiles, plural, one {ملف واحد فقط} two {ملفين فقط} few {# ملفات فقط} many {# ملفًا فقط} other {# ملف فقط}}";
+            readonly folder: "لا يمكن إفلات المجلدات — أفلت الملفات فقط";
+        };
+    };
+    readonly image: {
+        readonly replace: "استبدال الصورة";
+        readonly adjust: "ضبط الاقتصاص";
+        readonly remove: "إزالة الصورة";
+        readonly error: "تعذر تحميل الصورة";
+        readonly cropSurface: "منطقة الاقتصاص — مفاتيح الأسهم للتحريك، و+ و- للتكبير";
+        readonly zoom: "التكبير";
+        readonly done: "تم";
+        readonly tooLarge: "حجم الملف أكبر من {maxMb} ميغابايت";
+        readonly unsupported: "الملف ليس صورة مدعومة";
+    };
 };
 
 ```

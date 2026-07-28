@@ -19,6 +19,7 @@ export * from './input-harness';
 export * from './number-harness';
 export * from './checkbox-harness';
 export * from './select-harness';
+export * from './files-harness';
 export * from './form-field-harness';
 export * from './image-harness';
 export * from './menu-harness';

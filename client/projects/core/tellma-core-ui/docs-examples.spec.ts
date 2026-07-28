@@ -14,6 +14,7 @@ import { TmAlert } from '@tellma/core-ui/alert';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmCheckbox } from '@tellma/core-ui/checkbox';
 import { TmDatePicker } from '@tellma/core-ui/date-picker';
+import { TmDropzone, TmFilePicker } from '@tellma/core-ui/files';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import {
   TmGrid,
@@ -38,6 +39,8 @@ import * as alertExamples from './alert/tm-alert.examples';
 import * as buttonExamples from './button/tm-button.examples';
 import * as checkboxExamples from './checkbox/tm-checkbox.examples';
 import * as datePickerExamples from './date-picker/tm-date-picker.examples';
+import * as dropzoneExamples from './files/tm-dropzone.examples';
+import * as filePickerExamples from './files/tm-file-picker.examples';
 import * as gridExamples from './grid/tm-grid.examples';
 import * as imageExamples from './image/tm-image.examples';
 import * as inputExamples from './input/tm-input.examples';
@@ -98,6 +101,8 @@ interface ExampleTreeRow {
     TmCheckbox,
     TmContextMenuTrigger,
     TmDatePicker,
+    TmDropzone,
+    TmFilePicker,
     TmFormField,
     TmGrid,
     TmGridColumn,
@@ -144,6 +149,8 @@ interface ExampleTreeRow {
     <tm-image src="" alt="" [width]="24" [height]="24">
       <ng-template tmImagePlaceholder>placeholder</ng-template>
     </tm-image>
+    <button tmFilePicker (filesSelected)="onFiles($event)">placeholder</button>
+    <tm-dropzone (filesSelected)="onFiles($event)" />
     <button [tmPopoverTriggerFor]="placeholderPopover">placeholder</button>
     <tm-popover #placeholderPopover aria-label="placeholder">
       <ng-template tmPopoverContent>placeholder</ng-template>
@@ -185,6 +192,7 @@ class ExampleHost {
   protected readonly treeRowId = (row: ExampleTreeRow): number => row.id;
   protected readonly treeParentId = (row: ExampleTreeRow): number | null => row.parentId;
   protected readonly onImageChange = (): void => undefined;
+  protected readonly onFiles = (selection: unknown): void => void selection;
   protected readonly treeHasChildren = (row: ExampleTreeRow): boolean => row.parentId === null;
   protected readonly loadTreeChildren = (): Promise<void> => Promise.resolve();
 
@@ -283,6 +291,12 @@ const MARKERS: {
       fixture.debugElement.queryAll(By.directive(TmModalFooter)).length > 0,
   },
   {
+    name: 'TmFilePicker',
+    pattern: /\btmFilePicker\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement.queryAll(By.directive(TmFilePicker)).length > 0,
+  },
+  {
     // The placeholder ng-template is unprojected content of tm-image (the
     // tm-option caveat), so the marker reads the component's content-query
     // signal instead of the debug tree.
@@ -363,6 +377,8 @@ const SUITES = [
   { source: 'alert/tm-alert.examples.ts', examples: alertExamples },
   { source: 'button/tm-button.examples.ts', examples: buttonExamples },
   { source: 'image/tm-image.examples.ts', examples: imageExamples },
+  { source: 'files/tm-file-picker.examples.ts', examples: filePickerExamples },
+  { source: 'files/tm-dropzone.examples.ts', examples: dropzoneExamples },
   { source: 'checkbox/tm-checkbox.examples.ts', examples: checkboxExamples },
   { source: 'select/tm-select.examples.ts', examples: selectExamples },
   { source: 'spinner/tm-spinner.examples.ts', examples: spinnerExamples },

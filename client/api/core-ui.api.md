@@ -155,6 +155,30 @@ export const TM_UI_STRINGS_EN: {
     readonly modal: {
         readonly close: "Close";
     };
+    readonly filePicker: {
+        readonly hint: "Drag and drop here, paste, or";
+        readonly browse: "browse";
+        readonly acceptedTypes: "Accepted: {types}";
+        readonly maxSize: "Up to {maxMb} MB each";
+        readonly announce: "{accepted, plural, =0 {No files added} one {1 file added} other {# files added}}{rejectedCount, plural, =0 {} one {, 1 file rejected} other {, # files rejected}}";
+        readonly rejected: {
+            readonly size: "{name} is larger than {maxMb} MB";
+            readonly type: "{name} is not an accepted file type";
+            readonly count: "Only {maxFiles, plural, one {# file} other {# files}} can be added";
+            readonly folder: "Folders cannot be dropped — drop files only";
+        };
+    };
+    readonly image: {
+        readonly replace: "Replace image";
+        readonly adjust: "Adjust crop";
+        readonly remove: "Remove image";
+        readonly error: "The image could not be loaded";
+        readonly cropSurface: "Crop area — arrow keys pan, plus and minus zoom";
+        readonly zoom: "Zoom";
+        readonly done: "Done";
+        readonly tooLarge: "The file is larger than {maxMb} MB";
+        readonly unsupported: "The file is not a supported image";
+    };
 };
 
 // @public

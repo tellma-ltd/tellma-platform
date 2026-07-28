@@ -13,6 +13,7 @@ import { GridCustomEditorStory } from './grid/grid-custom-editor-story';
 import { GridEditableStory } from './grid/grid-editable-story';
 import { GridListScreenStory } from './grid/grid-list-screen-story';
 import { GridReadonlyStory } from './grid/grid-readonly-story';
+import { FilesStory } from './files/files-story';
 import { GridStatesStory } from './grid/grid-states-story';
 import { TreeGridStory } from './grid/tree-grid-story';
 import { I18nStory } from './i18n/i18n-story';
@@ -63,6 +64,7 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'date-picker', title: 'Date picker (tm-date-picker)', component: DatePickerStory },
   { id: 'checkbox', title: 'Checkbox (tm-checkbox)', component: CheckboxStory },
   { id: 'image', title: 'Image (tm-image)', component: ImageStory },
+  { id: 'files', title: 'Files (tmFilePicker + tm-dropzone)', component: FilesStory },
   { id: 'select', title: 'Select (tm-select)', component: SelectStory },
   { id: 'tabs', title: 'Tabs (tm-tab-group)', component: TabsStory },
   { id: 'modal', title: 'Modal (TmModal)', component: ModalStory },

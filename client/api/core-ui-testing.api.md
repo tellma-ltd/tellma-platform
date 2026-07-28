@@ -61,6 +61,21 @@ export class TmDatePickerHarness extends ComponentHarness {
 }
 
 // @public
+export class TmDropzoneHarness extends ComponentHarness {
+    focus(): Promise<void>;
+    getHintText(): Promise<string>;
+    getMetaLines(): Promise<string[]>;
+    static hostSelector: string;
+}
+
+// @public
+export class TmFilePickerHarness extends ComponentHarness {
+    click(): Promise<void>;
+    getLabel(): Promise<string>;
+    static hostSelector: string;
+}
+
+// @public
 export class TmFormFieldHarness extends ComponentHarness {
     getErrorText(): Promise<string | null>;
     getHintText(): Promise<string | null>;

@@ -154,6 +154,20 @@ export const TM_LOCALE_AR_STRINGS = {
   modal: {
     close: 'إغلاق',
   },
+  filePicker: {
+    hint: 'اسحب الملفات وأفلتها هنا، أو الصق، أو',
+    browse: 'تصفح',
+    acceptedTypes: 'الأنواع المقبولة: {types}',
+    maxSize: 'حتى {maxMb} ميغابايت لكل ملف',
+    announce:
+      '{accepted, plural, =0 {لم تتم إضافة ملفات} one {تمت إضافة ملف واحد} two {تمت إضافة ملفين} few {تمت إضافة # ملفات} many {تمت إضافة # ملفًا} other {تمت إضافة # ملف}}{rejectedCount, plural, =0 {} one {، ورُفض ملف واحد} two {، ورُفض ملفان} few {، ورُفضت # ملفات} many {، ورُفض # ملفًا} other {، ورُفض # ملف}}',
+    rejected: {
+      size: '{name} أكبر من {maxMb} ميغابايت',
+      type: '{name} ليس نوع ملف مقبولًا',
+      count: 'يمكن إضافة {maxFiles, plural, one {ملف واحد فقط} two {ملفين فقط} few {# ملفات فقط} many {# ملفًا فقط} other {# ملف فقط}}',
+      folder: 'لا يمكن إفلات المجلدات — أفلت الملفات فقط',
+    },
+  },
   image: {
     replace: 'استبدال الصورة',
     adjust: 'ضبط الاقتصاص',
