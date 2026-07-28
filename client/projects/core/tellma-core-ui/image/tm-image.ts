@@ -55,6 +55,13 @@ interface LocalPreview {
   readonly fit: TmImageFit;
 }
 
+/**
+ * The four mutually exclusive box renderings. Named so the emitted
+ * declaration carries the alias — a literal union's print order follows
+ * the compiler's type interning and churns the API golden.
+ */
+type DisplayState = 'preview' | 'image' | 'error' | 'placeholder';
+
 /** An active fitting session. */
 interface FittingSession {
   readonly url: string;
@@ -282,7 +289,7 @@ export class TmImage {
   });
 
   /** Which of the four mutually exclusive box renderings is active. */
-  protected readonly displayState = computed<'preview' | 'image' | 'error' | 'placeholder'>(() => {
+  protected readonly displayState = computed<DisplayState>(() => {
     if (this.preview() !== null) {
       return 'preview';
     }
