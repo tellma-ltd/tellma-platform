@@ -829,6 +829,636 @@
       "dateStyle": "long",
       "iso": "1999-12-31",
       "expected": "31 ዲሴምበር 1999"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "numeric",
+      "iso": "2026-03-05",
+      "expected": "9/16/1447 AH"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "numeric",
+      "iso": "2024-02-29",
+      "expected": "8/19/1445 AH"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "numeric",
+      "iso": "1999-12-31",
+      "expected": "9/23/1420 AH"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "medium",
+      "iso": "2026-03-05",
+      "expected": "Ram. 16, 1447 AH"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "medium",
+      "iso": "2024-02-29",
+      "expected": "Sha. 19, 1445 AH"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "medium",
+      "iso": "1999-12-31",
+      "expected": "Ram. 23, 1420 AH"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "long",
+      "iso": "2026-03-05",
+      "expected": "Ramadan 16, 1447 AH"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "long",
+      "iso": "2024-02-29",
+      "expected": "Shaʻban 19, 1445 AH"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "long",
+      "iso": "1999-12-31",
+      "expected": "Ramadan 23, 1420 AH"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "numeric",
+      "iso": "2026-03-05",
+      "expected": "16/09/1447 AH"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "numeric",
+      "iso": "2024-02-29",
+      "expected": "19/08/1445 AH"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "numeric",
+      "iso": "1999-12-31",
+      "expected": "23/09/1420 AH"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "medium",
+      "iso": "2026-03-05",
+      "expected": "16 Ram. 1447 AH"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "medium",
+      "iso": "2024-02-29",
+      "expected": "19 Sha. 1445 AH"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "medium",
+      "iso": "1999-12-31",
+      "expected": "23 Ram. 1420 AH"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "long",
+      "iso": "2026-03-05",
+      "expected": "16 Ramadan 1447 AH"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "long",
+      "iso": "2024-02-29",
+      "expected": "19 Shaʻban 1445 AH"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "long",
+      "iso": "1999-12-31",
+      "expected": "23 Ramadan 1420 AH"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "numeric",
+      "iso": "2026-03-05",
+      "expected": "16.9.1447 AH"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "numeric",
+      "iso": "2024-02-29",
+      "expected": "19.8.1445 AH"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "numeric",
+      "iso": "1999-12-31",
+      "expected": "23.9.1420 AH"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "medium",
+      "iso": "2026-03-05",
+      "expected": "16. Ram. 1447 AH"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "medium",
+      "iso": "2024-02-29",
+      "expected": "19. Sha. 1445 AH"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "medium",
+      "iso": "1999-12-31",
+      "expected": "23. Ram. 1420 AH"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "long",
+      "iso": "2026-03-05",
+      "expected": "16. Ramadan 1447 AH"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "long",
+      "iso": "2024-02-29",
+      "expected": "19. Shaʻban 1445 AH"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "long",
+      "iso": "1999-12-31",
+      "expected": "23. Ramadan 1420 AH"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "numeric",
+      "iso": "2026-03-05",
+      "expected": "١٦‏/٩‏/١٤٤٧ هـ"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "numeric",
+      "iso": "2024-02-29",
+      "expected": "١٩‏/٨‏/١٤٤٥ هـ"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "numeric",
+      "iso": "1999-12-31",
+      "expected": "٢٣‏/٩‏/١٤٢٠ هـ"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "medium",
+      "iso": "2026-03-05",
+      "expected": "١٦ رمضان ١٤٤٧ هـ"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "medium",
+      "iso": "2024-02-29",
+      "expected": "١٩ شعبان ١٤٤٥ هـ"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "medium",
+      "iso": "1999-12-31",
+      "expected": "٢٣ رمضان ١٤٢٠ هـ"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "long",
+      "iso": "2026-03-05",
+      "expected": "١٦ رمضان ١٤٤٧ هـ"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "long",
+      "iso": "2024-02-29",
+      "expected": "١٩ شعبان ١٤٤٥ هـ"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "long",
+      "iso": "1999-12-31",
+      "expected": "٢٣ رمضان ١٤٢٠ هـ"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "numeric",
+      "iso": "2026-03-05",
+      "expected": "16/9/1447"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "numeric",
+      "iso": "2024-02-29",
+      "expected": "19/8/1445"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "numeric",
+      "iso": "1999-12-31",
+      "expected": "23/9/1420"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "medium",
+      "iso": "2026-03-05",
+      "expected": "16 Ram. 1447"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "medium",
+      "iso": "2024-02-29",
+      "expected": "19 Sha. 1445"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "medium",
+      "iso": "1999-12-31",
+      "expected": "23 Ram. 1420"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "long",
+      "iso": "2026-03-05",
+      "expected": "16 ረመዳን 1447"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "long",
+      "iso": "2024-02-29",
+      "expected": "19 ሻእባን 1445"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "islamic-umalqura",
+      "dateStyle": "long",
+      "iso": "1999-12-31",
+      "expected": "23 ረመዳን 1420"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "ethiopic",
+      "dateStyle": "numeric",
+      "iso": "2026-03-05",
+      "expected": "6/26/2018 AM"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "ethiopic",
+      "dateStyle": "numeric",
+      "iso": "2024-02-29",
+      "expected": "6/21/2016 AM"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "ethiopic",
+      "dateStyle": "numeric",
+      "iso": "1999-12-31",
+      "expected": "4/21/1992 AM"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "ethiopic",
+      "dateStyle": "medium",
+      "iso": "2026-03-05",
+      "expected": "Yekatit 26, 2018 AM"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "ethiopic",
+      "dateStyle": "medium",
+      "iso": "2024-02-29",
+      "expected": "Yekatit 21, 2016 AM"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "ethiopic",
+      "dateStyle": "medium",
+      "iso": "1999-12-31",
+      "expected": "Tahsas 21, 1992 AM"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "ethiopic",
+      "dateStyle": "long",
+      "iso": "2026-03-05",
+      "expected": "Yekatit 26, 2018 AM"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "ethiopic",
+      "dateStyle": "long",
+      "iso": "2024-02-29",
+      "expected": "Yekatit 21, 2016 AM"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "ethiopic",
+      "dateStyle": "long",
+      "iso": "1999-12-31",
+      "expected": "Tahsas 21, 1992 AM"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "ethiopic",
+      "dateStyle": "numeric",
+      "iso": "2026-03-05",
+      "expected": "26/06/2018 AM"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "ethiopic",
+      "dateStyle": "numeric",
+      "iso": "2024-02-29",
+      "expected": "21/06/2016 AM"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "ethiopic",
+      "dateStyle": "numeric",
+      "iso": "1999-12-31",
+      "expected": "21/04/1992 AM"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "ethiopic",
+      "dateStyle": "medium",
+      "iso": "2026-03-05",
+      "expected": "26 Yekatit 2018 AM"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "ethiopic",
+      "dateStyle": "medium",
+      "iso": "2024-02-29",
+      "expected": "21 Yekatit 2016 AM"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "ethiopic",
+      "dateStyle": "medium",
+      "iso": "1999-12-31",
+      "expected": "21 Tahsas 1992 AM"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "ethiopic",
+      "dateStyle": "long",
+      "iso": "2026-03-05",
+      "expected": "26 Yekatit 2018 AM"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "ethiopic",
+      "dateStyle": "long",
+      "iso": "2024-02-29",
+      "expected": "21 Yekatit 2016 AM"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "ethiopic",
+      "dateStyle": "long",
+      "iso": "1999-12-31",
+      "expected": "21 Tahsas 1992 AM"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "ethiopic",
+      "dateStyle": "numeric",
+      "iso": "2026-03-05",
+      "expected": "26.6.2018 AM"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "ethiopic",
+      "dateStyle": "numeric",
+      "iso": "2024-02-29",
+      "expected": "21.6.2016 AM"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "ethiopic",
+      "dateStyle": "numeric",
+      "iso": "1999-12-31",
+      "expected": "21.4.1992 AM"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "ethiopic",
+      "dateStyle": "medium",
+      "iso": "2026-03-05",
+      "expected": "26. Yäkatit 2018 AM"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "ethiopic",
+      "dateStyle": "medium",
+      "iso": "2024-02-29",
+      "expected": "21. Yäkatit 2016 AM"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "ethiopic",
+      "dateStyle": "medium",
+      "iso": "1999-12-31",
+      "expected": "21. Taḫśaś 1992 AM"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "ethiopic",
+      "dateStyle": "long",
+      "iso": "2026-03-05",
+      "expected": "26. Yäkatit 2018 AM"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "ethiopic",
+      "dateStyle": "long",
+      "iso": "2024-02-29",
+      "expected": "21. Yäkatit 2016 AM"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "ethiopic",
+      "dateStyle": "long",
+      "iso": "1999-12-31",
+      "expected": "21. Taḫśaś 1992 AM"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "ethiopic",
+      "dateStyle": "numeric",
+      "iso": "2026-03-05",
+      "expected": "٢٦‏/٦‏/٢٠١٨ AM"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "ethiopic",
+      "dateStyle": "numeric",
+      "iso": "2024-02-29",
+      "expected": "٢١‏/٦‏/٢٠١٦ AM"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "ethiopic",
+      "dateStyle": "numeric",
+      "iso": "1999-12-31",
+      "expected": "٢١‏/٤‏/١٩٩٢ AM"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "ethiopic",
+      "dateStyle": "medium",
+      "iso": "2026-03-05",
+      "expected": "٢٦ يكتت ٢٠١٨ AM"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "ethiopic",
+      "dateStyle": "medium",
+      "iso": "2024-02-29",
+      "expected": "٢١ يكتت ٢٠١٦ AM"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "ethiopic",
+      "dateStyle": "medium",
+      "iso": "1999-12-31",
+      "expected": "٢١ تهساس ١٩٩٢ AM"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "ethiopic",
+      "dateStyle": "long",
+      "iso": "2026-03-05",
+      "expected": "٢٦ يكتت ٢٠١٨ AM"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "ethiopic",
+      "dateStyle": "long",
+      "iso": "2024-02-29",
+      "expected": "٢١ يكتت ٢٠١٦ AM"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "ethiopic",
+      "dateStyle": "long",
+      "iso": "1999-12-31",
+      "expected": "٢١ تهساس ١٩٩٢ AM"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "ethiopic",
+      "dateStyle": "numeric",
+      "iso": "2026-03-05",
+      "expected": "26/6/2018"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "ethiopic",
+      "dateStyle": "numeric",
+      "iso": "2024-02-29",
+      "expected": "21/6/2016"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "ethiopic",
+      "dateStyle": "numeric",
+      "iso": "1999-12-31",
+      "expected": "21/4/1992"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "ethiopic",
+      "dateStyle": "medium",
+      "iso": "2026-03-05",
+      "expected": "26 የካቲት 2018"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "ethiopic",
+      "dateStyle": "medium",
+      "iso": "2024-02-29",
+      "expected": "21 የካቲት 2016"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "ethiopic",
+      "dateStyle": "medium",
+      "iso": "1999-12-31",
+      "expected": "21 ታኅሣሥ 1992"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "ethiopic",
+      "dateStyle": "long",
+      "iso": "2026-03-05",
+      "expected": "26 የካቲት 2018"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "ethiopic",
+      "dateStyle": "long",
+      "iso": "2024-02-29",
+      "expected": "21 የካቲት 2016"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "ethiopic",
+      "dateStyle": "long",
+      "iso": "1999-12-31",
+      "expected": "21 ታኅሣሥ 1992"
     }
   ]
 }

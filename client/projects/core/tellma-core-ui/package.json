@@ -23,6 +23,8 @@
       ".": 4,
       "./alert": 2,
       "./button": 2,
+      "./calendar-ethiopic": 2,
+      "./calendar-umalqura": 5,
       "./contracts": 1,
       "./grid-engine": 15,
       "./grid": 34,

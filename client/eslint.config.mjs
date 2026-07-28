@@ -243,6 +243,46 @@ export default defineConfig(
     },
   },
 
+  // Calendar entry-point boundary: the same pure posture as l10n (no
+  // Angular, no DOM, no DI), plus l10n itself for the shared adapter.
+  {
+    files: ['projects/core/tellma-core-ui/calendar-*/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@angular/*'],
+              message: 'Calendar entry points must stay free of Angular imports.',
+            },
+            {
+              group: [
+                '@tellma/core-ui/*',
+                '!@tellma/core-ui/l10n',
+                '!@tellma/core-ui/contracts',
+              ],
+              message: 'Calendar entry points may depend on l10n and contracts only.',
+            },
+            {
+              group: ['@jsverse/*', 'rxjs', 'rxjs/*'],
+              message:
+                'Calendar entry points are dependency-free beyond the calendar arithmetic package.',
+            },
+          ],
+        },
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "NewExpression[callee.name='InjectionToken']",
+          message:
+            'Calendar entry points must stay DI-free (registration goes through provideTmCalendar).',
+        },
+      ],
+    },
+  },
+
   // l10n entry-point boundary: pure TypeScript + Intl (+ the calendar
   // arithmetic dependency) — no Angular at all, no DOM, no DI, no other
   // @tellma packages except the contracts types. Formatting/parsing must
