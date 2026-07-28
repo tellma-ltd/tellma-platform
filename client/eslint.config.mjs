@@ -24,6 +24,9 @@ const UNPREFIXED_EXPORTS = [
   // fonts (§7.1)
   'fontPreloadLinks',
   'PreloadLink',
+  // The calendar provider — the name the component-basics spec defines
+  // (`provideTm…` carries the brand inside; only the prefix pattern differs).
+  'provideTmCalendar',
 ];
 
 const tmPlugin = {

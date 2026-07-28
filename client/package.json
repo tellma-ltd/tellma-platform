@@ -18,6 +18,7 @@
     "api:check": "node scripts/api-extractor.mjs --check",
     "api:approve": "node scripts/api-extractor.mjs --approve",
     "docs:build": "tsx tools/docs/build-docs.mts",
+    "golden:approve": "tsx tools/goldens/generate-format-golden.mts",
     "size:check": "node scripts/bundle-size.mjs"
   },
   "private": true,

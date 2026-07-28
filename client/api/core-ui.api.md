@@ -7,6 +7,10 @@
 import { EnvironmentProviders } from '@angular/core';
 import * as i0 from '@angular/core';
 import { InjectionToken } from '@angular/core';
+import { LogicFn } from '@angular/forms/signals';
+import { PathKind } from '@angular/forms/signals';
+import { SchemaPath } from '@angular/forms/signals';
+import { SchemaPathRules } from '@angular/forms/signals';
 import { Signal } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
 
@@ -17,7 +21,13 @@ export function provideTellmaForms(options?: TmFormsOptions): EnvironmentProvide
 export function provideTellmaUi(options?: TmUiOptions): EnvironmentProviders;
 
 // @public
+export function provideTmCalendar(calendar: TmCalendar | Signal<TmCalendar>): EnvironmentProviders;
+
+// @public
 export const TM_ACTIVE_LOCALE: InjectionToken<Signal<string>>;
+
+// @public
+export const TM_CALENDAR: InjectionToken<Signal<TmCalendar>>;
 
 // @public
 export const TM_CELL_EDITOR_HOST: InjectionToken<TmCellEditorHost>;
@@ -184,11 +194,19 @@ export interface TmFormsOptions {
 
 // @public
 export class TmL10n {
+    readonly calendar: Signal<TmCalendar>;
+    formatDate(iso: string | null | undefined, options?: TmDateFormatOptions): string;
     formatNumber(value: unknown, options?: TmNumberFormatOptions): string;
     readonly locale: Signal<string>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmL10n, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmL10n>;
 }
+
+// @public
+export function tmMaxDate<TValue extends string | null, TPathKind extends PathKind = PathKind.Root>(path: SchemaPath<TValue, SchemaPathRules.Supported, TPathKind>, maxDate: string | LogicFn<TValue, string | undefined, TPathKind>): void;
+
+// @public
+export function tmMinDate<TValue extends string | null, TPathKind extends PathKind = PathKind.Root>(path: SchemaPath<TValue, SchemaPathRules.Supported, TPathKind>, minDate: string | LogicFn<TValue, string | undefined, TPathKind>): void;
 
 // @public
 export function tmResolveFieldErrors(errors: Signal<readonly ValidationError.WithOptionalFieldTree[]>, translate: TmUiTranslateFn): Signal<readonly TmFieldError[]>;

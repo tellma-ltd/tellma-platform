@@ -1,0 +1,834 @@
+{
+  "$comment": "Cross-platform formatting golden: (params -> expected) rows asserted by the client suite and consumed verbatim by the server-side implementation tests. Regenerate via `pnpm run build && pnpm run golden:approve`; review the diff like an API golden.",
+  "number": [
+    {
+      "locale": "en-US",
+      "minDecimals": 2,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": 1234.5,
+      "expected": "1,234.50"
+    },
+    {
+      "locale": "en-US",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": false,
+      "value": 0,
+      "expected": "0"
+    },
+    {
+      "locale": "en-US",
+      "minDecimals": 0,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": -9876543.21,
+      "expected": "-9,876,543.21"
+    },
+    {
+      "locale": "en-US",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": false,
+      "value": 0.5,
+      "expected": "0.5"
+    },
+    {
+      "locale": "en-US",
+      "minDecimals": 0,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": 1.005,
+      "expected": "1.01"
+    },
+    {
+      "locale": "en-US",
+      "minDecimals": 0,
+      "maxDecimals": 0,
+      "percent": false,
+      "value": 123456789012345,
+      "expected": "123,456,789,012,345"
+    },
+    {
+      "locale": "en-US",
+      "minDecimals": 0,
+      "maxDecimals": 1,
+      "percent": true,
+      "value": 0.155,
+      "expected": "15.5%"
+    },
+    {
+      "locale": "en-US",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": true,
+      "value": 0.75,
+      "expected": "75%"
+    },
+    {
+      "locale": "en-GB",
+      "minDecimals": 2,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": 1234.5,
+      "expected": "1,234.50"
+    },
+    {
+      "locale": "en-GB",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": false,
+      "value": 0,
+      "expected": "0"
+    },
+    {
+      "locale": "en-GB",
+      "minDecimals": 0,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": -9876543.21,
+      "expected": "-9,876,543.21"
+    },
+    {
+      "locale": "en-GB",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": false,
+      "value": 0.5,
+      "expected": "0.5"
+    },
+    {
+      "locale": "en-GB",
+      "minDecimals": 0,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": 1.005,
+      "expected": "1.01"
+    },
+    {
+      "locale": "en-GB",
+      "minDecimals": 0,
+      "maxDecimals": 0,
+      "percent": false,
+      "value": 123456789012345,
+      "expected": "123,456,789,012,345"
+    },
+    {
+      "locale": "en-GB",
+      "minDecimals": 0,
+      "maxDecimals": 1,
+      "percent": true,
+      "value": 0.155,
+      "expected": "15.5%"
+    },
+    {
+      "locale": "en-GB",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": true,
+      "value": 0.75,
+      "expected": "75%"
+    },
+    {
+      "locale": "de-DE",
+      "minDecimals": 2,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": 1234.5,
+      "expected": "1.234,50"
+    },
+    {
+      "locale": "de-DE",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": false,
+      "value": 0,
+      "expected": "0"
+    },
+    {
+      "locale": "de-DE",
+      "minDecimals": 0,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": -9876543.21,
+      "expected": "-9.876.543,21"
+    },
+    {
+      "locale": "de-DE",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": false,
+      "value": 0.5,
+      "expected": "0,5"
+    },
+    {
+      "locale": "de-DE",
+      "minDecimals": 0,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": 1.005,
+      "expected": "1,01"
+    },
+    {
+      "locale": "de-DE",
+      "minDecimals": 0,
+      "maxDecimals": 0,
+      "percent": false,
+      "value": 123456789012345,
+      "expected": "123.456.789.012.345"
+    },
+    {
+      "locale": "de-DE",
+      "minDecimals": 0,
+      "maxDecimals": 1,
+      "percent": true,
+      "value": 0.155,
+      "expected": "15,5 %"
+    },
+    {
+      "locale": "de-DE",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": true,
+      "value": 0.75,
+      "expected": "75 %"
+    },
+    {
+      "locale": "fr-FR",
+      "minDecimals": 2,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": 1234.5,
+      "expected": "1 234,50"
+    },
+    {
+      "locale": "fr-FR",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": false,
+      "value": 0,
+      "expected": "0"
+    },
+    {
+      "locale": "fr-FR",
+      "minDecimals": 0,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": -9876543.21,
+      "expected": "-9 876 543,21"
+    },
+    {
+      "locale": "fr-FR",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": false,
+      "value": 0.5,
+      "expected": "0,5"
+    },
+    {
+      "locale": "fr-FR",
+      "minDecimals": 0,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": 1.005,
+      "expected": "1,01"
+    },
+    {
+      "locale": "fr-FR",
+      "minDecimals": 0,
+      "maxDecimals": 0,
+      "percent": false,
+      "value": 123456789012345,
+      "expected": "123 456 789 012 345"
+    },
+    {
+      "locale": "fr-FR",
+      "minDecimals": 0,
+      "maxDecimals": 1,
+      "percent": true,
+      "value": 0.155,
+      "expected": "15,5 %"
+    },
+    {
+      "locale": "fr-FR",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": true,
+      "value": 0.75,
+      "expected": "75 %"
+    },
+    {
+      "locale": "ar-SA",
+      "minDecimals": 2,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": 1234.5,
+      "expected": "١٬٢٣٤٫٥٠"
+    },
+    {
+      "locale": "ar-SA",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": false,
+      "value": 0,
+      "expected": "٠"
+    },
+    {
+      "locale": "ar-SA",
+      "minDecimals": 0,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": -9876543.21,
+      "expected": "؜-٩٬٨٧٦٬٥٤٣٫٢١"
+    },
+    {
+      "locale": "ar-SA",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": false,
+      "value": 0.5,
+      "expected": "٠٫٥"
+    },
+    {
+      "locale": "ar-SA",
+      "minDecimals": 0,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": 1.005,
+      "expected": "١٫٠١"
+    },
+    {
+      "locale": "ar-SA",
+      "minDecimals": 0,
+      "maxDecimals": 0,
+      "percent": false,
+      "value": 123456789012345,
+      "expected": "١٢٣٬٤٥٦٬٧٨٩٬٠١٢٬٣٤٥"
+    },
+    {
+      "locale": "ar-SA",
+      "minDecimals": 0,
+      "maxDecimals": 1,
+      "percent": true,
+      "value": 0.155,
+      "expected": "١٥٫٥٪؜"
+    },
+    {
+      "locale": "ar-SA",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": true,
+      "value": 0.75,
+      "expected": "٧٥٪؜"
+    },
+    {
+      "locale": "ar-EG",
+      "minDecimals": 2,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": 1234.5,
+      "expected": "١٬٢٣٤٫٥٠"
+    },
+    {
+      "locale": "ar-EG",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": false,
+      "value": 0,
+      "expected": "٠"
+    },
+    {
+      "locale": "ar-EG",
+      "minDecimals": 0,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": -9876543.21,
+      "expected": "؜-٩٬٨٧٦٬٥٤٣٫٢١"
+    },
+    {
+      "locale": "ar-EG",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": false,
+      "value": 0.5,
+      "expected": "٠٫٥"
+    },
+    {
+      "locale": "ar-EG",
+      "minDecimals": 0,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": 1.005,
+      "expected": "١٫٠١"
+    },
+    {
+      "locale": "ar-EG",
+      "minDecimals": 0,
+      "maxDecimals": 0,
+      "percent": false,
+      "value": 123456789012345,
+      "expected": "١٢٣٬٤٥٦٬٧٨٩٬٠١٢٬٣٤٥"
+    },
+    {
+      "locale": "ar-EG",
+      "minDecimals": 0,
+      "maxDecimals": 1,
+      "percent": true,
+      "value": 0.155,
+      "expected": "١٥٫٥٪؜"
+    },
+    {
+      "locale": "ar-EG",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": true,
+      "value": 0.75,
+      "expected": "٧٥٪؜"
+    },
+    {
+      "locale": "hi-IN",
+      "minDecimals": 2,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": 1234.5,
+      "expected": "1,234.50"
+    },
+    {
+      "locale": "hi-IN",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": false,
+      "value": 0,
+      "expected": "0"
+    },
+    {
+      "locale": "hi-IN",
+      "minDecimals": 0,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": -9876543.21,
+      "expected": "-98,76,543.21"
+    },
+    {
+      "locale": "hi-IN",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": false,
+      "value": 0.5,
+      "expected": "0.5"
+    },
+    {
+      "locale": "hi-IN",
+      "minDecimals": 0,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": 1.005,
+      "expected": "1.01"
+    },
+    {
+      "locale": "hi-IN",
+      "minDecimals": 0,
+      "maxDecimals": 0,
+      "percent": false,
+      "value": 123456789012345,
+      "expected": "12,34,56,78,90,12,345"
+    },
+    {
+      "locale": "hi-IN",
+      "minDecimals": 0,
+      "maxDecimals": 1,
+      "percent": true,
+      "value": 0.155,
+      "expected": "15.5%"
+    },
+    {
+      "locale": "hi-IN",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": true,
+      "value": 0.75,
+      "expected": "75%"
+    },
+    {
+      "locale": "tr-TR",
+      "minDecimals": 2,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": 1234.5,
+      "expected": "1.234,50"
+    },
+    {
+      "locale": "tr-TR",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": false,
+      "value": 0,
+      "expected": "0"
+    },
+    {
+      "locale": "tr-TR",
+      "minDecimals": 0,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": -9876543.21,
+      "expected": "-9.876.543,21"
+    },
+    {
+      "locale": "tr-TR",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": false,
+      "value": 0.5,
+      "expected": "0,5"
+    },
+    {
+      "locale": "tr-TR",
+      "minDecimals": 0,
+      "maxDecimals": 2,
+      "percent": false,
+      "value": 1.005,
+      "expected": "1,01"
+    },
+    {
+      "locale": "tr-TR",
+      "minDecimals": 0,
+      "maxDecimals": 0,
+      "percent": false,
+      "value": 123456789012345,
+      "expected": "123.456.789.012.345"
+    },
+    {
+      "locale": "tr-TR",
+      "minDecimals": 0,
+      "maxDecimals": 1,
+      "percent": true,
+      "value": 0.155,
+      "expected": "%15,5"
+    },
+    {
+      "locale": "tr-TR",
+      "minDecimals": 0,
+      "maxDecimals": 20,
+      "percent": true,
+      "value": 0.75,
+      "expected": "%75"
+    }
+  ],
+  "date": [
+    {
+      "locale": "en-US",
+      "calendar": "gregory",
+      "dateStyle": "numeric",
+      "iso": "2026-03-05",
+      "expected": "3/5/2026"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "gregory",
+      "dateStyle": "numeric",
+      "iso": "2024-02-29",
+      "expected": "2/29/2024"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "gregory",
+      "dateStyle": "numeric",
+      "iso": "1999-12-31",
+      "expected": "12/31/1999"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "gregory",
+      "dateStyle": "medium",
+      "iso": "2026-03-05",
+      "expected": "Mar 5, 2026"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "gregory",
+      "dateStyle": "medium",
+      "iso": "2024-02-29",
+      "expected": "Feb 29, 2024"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "gregory",
+      "dateStyle": "medium",
+      "iso": "1999-12-31",
+      "expected": "Dec 31, 1999"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "gregory",
+      "dateStyle": "long",
+      "iso": "2026-03-05",
+      "expected": "March 5, 2026"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "gregory",
+      "dateStyle": "long",
+      "iso": "2024-02-29",
+      "expected": "February 29, 2024"
+    },
+    {
+      "locale": "en-US",
+      "calendar": "gregory",
+      "dateStyle": "long",
+      "iso": "1999-12-31",
+      "expected": "December 31, 1999"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "gregory",
+      "dateStyle": "numeric",
+      "iso": "2026-03-05",
+      "expected": "05/03/2026"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "gregory",
+      "dateStyle": "numeric",
+      "iso": "2024-02-29",
+      "expected": "29/02/2024"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "gregory",
+      "dateStyle": "numeric",
+      "iso": "1999-12-31",
+      "expected": "31/12/1999"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "gregory",
+      "dateStyle": "medium",
+      "iso": "2026-03-05",
+      "expected": "5 Mar 2026"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "gregory",
+      "dateStyle": "medium",
+      "iso": "2024-02-29",
+      "expected": "29 Feb 2024"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "gregory",
+      "dateStyle": "medium",
+      "iso": "1999-12-31",
+      "expected": "31 Dec 1999"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "gregory",
+      "dateStyle": "long",
+      "iso": "2026-03-05",
+      "expected": "5 March 2026"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "gregory",
+      "dateStyle": "long",
+      "iso": "2024-02-29",
+      "expected": "29 February 2024"
+    },
+    {
+      "locale": "en-GB",
+      "calendar": "gregory",
+      "dateStyle": "long",
+      "iso": "1999-12-31",
+      "expected": "31 December 1999"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "gregory",
+      "dateStyle": "numeric",
+      "iso": "2026-03-05",
+      "expected": "5.3.2026"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "gregory",
+      "dateStyle": "numeric",
+      "iso": "2024-02-29",
+      "expected": "29.2.2024"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "gregory",
+      "dateStyle": "numeric",
+      "iso": "1999-12-31",
+      "expected": "31.12.1999"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "gregory",
+      "dateStyle": "medium",
+      "iso": "2026-03-05",
+      "expected": "5. März 2026"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "gregory",
+      "dateStyle": "medium",
+      "iso": "2024-02-29",
+      "expected": "29. Feb. 2024"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "gregory",
+      "dateStyle": "medium",
+      "iso": "1999-12-31",
+      "expected": "31. Dez. 1999"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "gregory",
+      "dateStyle": "long",
+      "iso": "2026-03-05",
+      "expected": "5. März 2026"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "gregory",
+      "dateStyle": "long",
+      "iso": "2024-02-29",
+      "expected": "29. Februar 2024"
+    },
+    {
+      "locale": "de-DE",
+      "calendar": "gregory",
+      "dateStyle": "long",
+      "iso": "1999-12-31",
+      "expected": "31. Dezember 1999"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "gregory",
+      "dateStyle": "numeric",
+      "iso": "2026-03-05",
+      "expected": "٥‏/٣‏/٢٠٢٦"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "gregory",
+      "dateStyle": "numeric",
+      "iso": "2024-02-29",
+      "expected": "٢٩‏/٢‏/٢٠٢٤"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "gregory",
+      "dateStyle": "numeric",
+      "iso": "1999-12-31",
+      "expected": "٣١‏/١٢‏/١٩٩٩"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "gregory",
+      "dateStyle": "medium",
+      "iso": "2026-03-05",
+      "expected": "٥ مارس ٢٠٢٦"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "gregory",
+      "dateStyle": "medium",
+      "iso": "2024-02-29",
+      "expected": "٢٩ فبراير ٢٠٢٤"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "gregory",
+      "dateStyle": "medium",
+      "iso": "1999-12-31",
+      "expected": "٣١ ديسمبر ١٩٩٩"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "gregory",
+      "dateStyle": "long",
+      "iso": "2026-03-05",
+      "expected": "٥ مارس ٢٠٢٦"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "gregory",
+      "dateStyle": "long",
+      "iso": "2024-02-29",
+      "expected": "٢٩ فبراير ٢٠٢٤"
+    },
+    {
+      "locale": "ar-SA",
+      "calendar": "gregory",
+      "dateStyle": "long",
+      "iso": "1999-12-31",
+      "expected": "٣١ ديسمبر ١٩٩٩"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "gregory",
+      "dateStyle": "numeric",
+      "iso": "2026-03-05",
+      "expected": "5/3/2026"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "gregory",
+      "dateStyle": "numeric",
+      "iso": "2024-02-29",
+      "expected": "29/2/2024"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "gregory",
+      "dateStyle": "numeric",
+      "iso": "1999-12-31",
+      "expected": "31/12/1999"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "gregory",
+      "dateStyle": "medium",
+      "iso": "2026-03-05",
+      "expected": "ማርች 5 2026"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "gregory",
+      "dateStyle": "medium",
+      "iso": "2024-02-29",
+      "expected": "ፌብ 29 2024"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "gregory",
+      "dateStyle": "medium",
+      "iso": "1999-12-31",
+      "expected": "ዲሴም 31 1999"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "gregory",
+      "dateStyle": "long",
+      "iso": "2026-03-05",
+      "expected": "5 ማርች 2026"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "gregory",
+      "dateStyle": "long",
+      "iso": "2024-02-29",
+      "expected": "29 ፌብሩዋሪ 2024"
+    },
+    {
+      "locale": "am-ET",
+      "calendar": "gregory",
+      "dateStyle": "long",
+      "iso": "1999-12-31",
+      "expected": "31 ዲሴምበር 1999"
+    }
+  ]
+}

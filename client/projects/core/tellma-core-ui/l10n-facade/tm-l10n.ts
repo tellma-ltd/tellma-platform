@@ -5,9 +5,16 @@
 
 import { inject, Injectable, type Signal } from '@angular/core';
 
-import { tmFormatNumber, type TmNumberFormatOptions } from '@tellma/core-ui/l10n';
+import {
+  tmFormatDate,
+  tmFormatNumber,
+  type TmCalendar,
+  type TmDateFormatOptions,
+  type TmNumberFormatOptions,
+} from '@tellma/core-ui/l10n';
 
 import { TM_ACTIVE_LOCALE } from '../i18n/tm-active-locale';
+import { TM_CALENDAR } from '../providers/tm-calendar';
 
 /**
  * The reactive formatting facade: the pure `@tellma/core-ui/l10n` functions
@@ -25,6 +32,8 @@ import { TM_ACTIVE_LOCALE } from '../i18n/tm-active-locale';
 export class TmL10n {
   /** The app-ambient formatting locale (see `TM_ACTIVE_LOCALE`). */
   readonly locale: Signal<string> = inject(TM_ACTIVE_LOCALE);
+  /** The app-ambient display calendar (see `TM_CALENDAR`). */
+  readonly calendar: Signal<TmCalendar> = inject(TM_CALENDAR);
 
   /**
    * Formats a number in the active locale — reading `locale` first, so a
@@ -33,5 +42,18 @@ export class TmL10n {
    */
   formatNumber(value: unknown, options?: TmNumberFormatOptions): string {
     return tmFormatNumber(value, this.locale(), options);
+  }
+
+  /**
+   * Formats an ISO date in the active locale and the ambient display
+   * calendar (an explicit `calendar` option overrides the ambient one) —
+   * reading both signals first, so a reactive caller re-renders on either
+   * switch. Delegates to `tmFormatDate`.
+   */
+  formatDate(iso: string | null | undefined, options?: TmDateFormatOptions): string {
+    return tmFormatDate(iso, this.locale(), {
+      calendar: options?.calendar ?? this.calendar(),
+      dateStyle: options?.dateStyle,
+    });
   }
 }

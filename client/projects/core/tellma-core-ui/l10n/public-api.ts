@@ -23,3 +23,20 @@ export {
   type TmNumberFormatOptions,
   type TmNumberParseOptions,
 } from './tm-number-codec';
+export {
+  tmGregorianCalendar,
+  ɵtmAdaptCalendar,
+  ɵtmParseIsoDate,
+  ɵtmToIsoDate,
+  type TmCalendar,
+  type TmCalendarParts,
+} from './tm-calendar';
+export {
+  tmDatePlaceholder,
+  tmFormatDate,
+  tmParseDate,
+  type TmDateFormatOptions,
+  type TmDateParseOptions,
+  type TmDateStyle,
+} from './tm-date-engine';
+export { tmFirstDayOfWeek } from './tm-week-info';
