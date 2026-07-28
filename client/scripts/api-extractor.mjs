@@ -18,7 +18,7 @@
 import { createRequire } from 'node:module';
 
 import { discoverLibraries } from '../tools/workspace.mjs';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -87,6 +87,74 @@ function prepareDts(dtsFullPath, publicApiFullPath) {
   }
 }
 
+/**
+ * Matches a report line that DECLARES an `ɵ`-prefixed export — the
+ * private-by-convention surface shared entry points expose (the tree grid
+ * builds on the grid's ɵ internals), excluded from the API goldens by
+ * spec. Anchored to a declaration keyword so a public declaration that
+ * merely REFERENCES a ɵ type (`class TmGrid extends ɵTmGridBase`) never
+ * matches.
+ */
+const INTERNAL_DECLARATION = /^export\s+(?:declare\s+)?(?:abstract\s+)?(?:class|interface|type|const|enum|function|let|var|namespace)\s+ɵ/mu;
+
+/**
+ * Matches an `ɵ`-prefixed INSTANCE member inside a (public) class body — the
+ * private-by-convention fields/methods a shared class exposes for its
+ * siblings. These must leave the golden too (and with them their references
+ * to internal types). The Angular compiler's `static ɵcmp/ɵfac/ɵprov`
+ * metadata is deliberately NOT matched — `static` sits before the `ɵ`, so it
+ * stays (documented by the generated-member note).
+ */
+const INTERNAL_MEMBER = /^[ \t]+(?:readonly\s+|get\s+|set\s+|abstract\s+|protected\s+)*ɵ\w/u;
+
+/**
+ * Drops every `ɵ`-declaring block from a generated .api.md report. The
+ * report's fenced ```ts section is a sequence of blank-line-separated
+ * blocks — imports first, then declarations, each led by its `// @public`
+ * (or warning) marker comments — so filtering groups the fence body into
+ * blank-line-separated blocks and drops the ones whose declaration line
+ * exports a ɵ name; everything outside the fence passes through
+ * untouched. The input is normalized to LF first (the extractor emits
+ * CRLF on Windows), which also keeps the committed goldens byte-identical
+ * across platforms. Applied to BOTH the approve and the check path, so
+ * the goldens and the comparison always see the same shape.
+ */
+function stripPrivateByConvention(report) {
+  const lines = report.replaceAll('\r\n', '\n').split('\n');
+  const open = lines.indexOf('```ts');
+  const close = lines.lastIndexOf('```');
+  if (open === -1 || close <= open) {
+    return lines.join('\n');
+  }
+  const kept = lines.slice(0, open + 1);
+  let block = [];
+  const flush = () => {
+    if (!block.some((line) => INTERNAL_DECLARATION.test(line))) {
+      // Within a kept (public) block, still drop any ɵ instance members and
+      // the generated-member note that would immediately precede one.
+      for (let i = 0; i < block.length; i++) {
+        if (INTERNAL_MEMBER.test(block[i])) {
+          if (kept.length > 0 && kept[kept.length - 1].includes(GENERATED_MEMBER_NOTE)) {
+            kept.pop();
+          }
+          continue;
+        }
+        kept.push(block[i]);
+      }
+    }
+    block = [];
+  };
+  for (const line of lines.slice(open + 1, close)) {
+    block.push(line);
+    if (line === '') {
+      flush(); // blocks are blank-line-separated; the blank stays with its block
+    }
+  }
+  flush();
+  kept.push(...lines.slice(close));
+  return kept.join('\n');
+}
+
 const approve = process.argv.includes('--approve');
 const reportFolder = join(clientDir, 'api');
 const tempFolder = join(clientDir, '.artifacts', 'api');
@@ -125,7 +193,10 @@ for (const entryPoint of ENTRY_POINTS) {
       apiReport: {
         enabled: true,
         reportFileName: entryPoint.report,
-        reportFolder,
+        // The extractor always writes to the temp folder; the committed
+        // golden is written/compared AFTER the ɵ filter below, so both
+        // paths see the same filtered shape.
+        reportFolder: tempFolder,
         reportTempFolder: tempFolder,
       },
       docModel: { enabled: false },
@@ -145,17 +216,28 @@ for (const entryPoint of ENTRY_POINTS) {
   });
 
   const result = Extractor.invoke(config, {
-    // localBuild=true updates the committed report; false = CI compare mode
-    // that fails when the temp report differs from the committed golden.
-    localBuild: approve,
+    // localBuild keeps the temp report current; the golden itself is
+    // managed below, after the ɵ filter.
+    localBuild: true,
     messageCallback: (message) => {
       message.handled = false;
     },
   });
+  if (!result.succeeded) {
+    console.error(`api-extractor failed for ${entryPoint.report}`);
+    failed = true;
+    continue;
+  }
+
+  // The golden-shaped report: the generated surface minus the ɵ blocks
+  // (private-by-convention, excluded from the goldens by spec).
+  const report = stripPrivateByConvention(
+    readFileSync(join(tempFolder, entryPoint.report), 'utf8'),
+  );
 
   // Documentation gate: every public member carries TSDoc and every entry
   // point a @packageDocumentation — neither marker may reach a golden.
-  const report = readFileSync(join(reportFolder, entryPoint.report), 'utf8');
+  // (ɵ blocks are already filtered out, so the gate never counts them.)
   const undocumented = (report.match(/\/\/ \(undocumented\)/g) ?? []).length;
   if (undocumented > 0) {
     console.error(
@@ -168,16 +250,19 @@ for (const entryPoint of ENTRY_POINTS) {
     failed = true;
   }
 
+  const goldenPath = join(reportFolder, entryPoint.report);
   if (approve) {
+    writeFileSync(goldenPath, report);
     console.log(`approved ${entryPoint.report}`);
-  } else if (result.apiReportChanged) {
+  } else if (
+    !existsSync(goldenPath) ||
+    // EOL-normalized compare: goldens are LF, but a checkout may not be.
+    readFileSync(goldenPath, 'utf8').replaceAll('\r\n', '\n') !== report
+  ) {
     console.error(
       `API DRIFT: ${entryPoint.report} no longer matches the public surface. ` +
         `Review the change and run \`pnpm run api:approve\` to accept it.`,
     );
-    failed = true;
-  } else if (!result.succeeded) {
-    console.error(`api-extractor failed for ${entryPoint.report}`);
     failed = true;
   } else {
     console.log(`ok ${entryPoint.report}`);

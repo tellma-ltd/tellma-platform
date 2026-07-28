@@ -85,9 +85,29 @@ test.describe('forced-colors + reduced-motion gates (DoD 15)', () => {
     await page.goto(storyUrl('input'));
     const username = page.getByTestId('input-username');
     await username.fill('valid-name');
-    const spinner = page.getByTestId('ff-username').locator('.tm-form-field__spinner');
-    await expect(spinner).toBeVisible();
-    const animation = await spinner.evaluate((el) => getComputedStyle(el).animationName);
+    // The spinner is TRANSIENT — it lives only while the story's mock
+    // async validator is pending (~800ms) — so the style must be read the
+    // moment the element appears, in ONE page-side call anchored on the
+    // stable field root: a visible-check followed by a separate
+    // locator.evaluate can lose the element between the two calls on a
+    // loaded machine and stall until the test times out.
+    const animation = await page.getByTestId('ff-username').evaluate(
+      (field) =>
+        new Promise<string | null>((resolve) => {
+          const deadline = performance.now() + 15_000;
+          const read = (): void => {
+            const spinner = field.querySelector('.tm-form-field__spinner');
+            if (spinner !== null) {
+              resolve(getComputedStyle(spinner).animationName);
+            } else if (performance.now() > deadline) {
+              resolve(null); // never appeared — fail with a value, not a stall
+            } else {
+              requestAnimationFrame(read);
+            }
+          };
+          read();
+        }),
+    );
     expect(animation).toBe('none');
   });
 });

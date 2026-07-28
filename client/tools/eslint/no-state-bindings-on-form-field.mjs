@@ -12,7 +12,7 @@
  */
 const FORBIDDEN = new Set(['disabled', 'readonly', 'required']);
 
-export default {
+export default /** @type {import('eslint').Rule.RuleModule} */ ({
   meta: {
     type: 'problem',
     docs: {
@@ -56,4 +56,4 @@ export default {
       Element$1: checkElement, // older template-parser AST node name
     };
   },
-};
+});

@@ -1,0 +1,3 @@
+"tab	here"	12
+"line
+break"	"quote ""q"""

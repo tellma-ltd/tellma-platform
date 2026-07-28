@@ -5,6 +5,13 @@
 
 import { expect, test } from '@playwright/test';
 
+import {
+  activateCell,
+  cell,
+  gotoGrid,
+  liveRegion,
+  statusChip,
+} from '../support/grid';
 import { storyUrl } from '../support/story-map';
 
 /**
@@ -62,6 +69,39 @@ test('runtime locale switch re-renders visible errors; Arabic font loads on dema
   await page.getByTestId('lang-en').click();
   await expect(error).toHaveText('This field is required');
   expect(await page.evaluate(() => getComputedStyle(document.body).lineHeight)).toBe('25.6px');
+});
+
+/**
+ * DoD 13 on the GRID's built-in strings: a runtime locale switch re-renders
+ * the already-visible status-bar tally in Arabic, the context menu's
+ * built-ins come out Arabic, and the live region announces in Arabic from
+ * then on.
+ */
+test('a live locale switch re-renders visible grid strings and announcements in Arabic', async ({
+  page,
+}) => {
+  await gotoGrid(page, 'grid-editable');
+
+  // Surface a built-in grid string: the tally chip after one field error.
+  await activateCell(page, 3, 0);
+  await page.keyboard.press('Delete');
+  await expect(statusChip(page)).toContainText('1 error');
+
+  // Switch the locale at runtime: the SAME visible tally re-renders Arabic
+  // ('خطأ واحد' — the ar plural `one` branch from the locale pack).
+  await page.getByTestId('lang-ar').click();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
+  await expect(statusChip(page)).toContainText('خطأ واحد');
+
+  // The context menu's built-in items are Arabic too ('انسخ' = Copy).
+  await cell(page, 1, 0).click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'انسخ', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // And announcements now come out of the live region in Arabic.
+  await activateCell(page, 1, 0);
+  await cell(page, 2, 1).click({ modifiers: ['Shift'] });
+  await expect(liveRegion(page)).toContainText('تم تحديد');
 });
 
 test('leading islands are real BELOW the root: marked subtrees re-lead both ways', async ({

@@ -31,6 +31,7 @@ import type { ValidationError } from '@angular/forms/signals';
 
 import type { TmCellEditor, TmFieldError, TmFormFieldControl } from '@tellma/core-ui/contracts';
 import {
+  TM_CELL_EDITOR_HOST,
   TM_ERROR_DISPLAY,
   TM_FORM_FIELD_DEFAULTS,
   TM_UI_TRANSLATE,
@@ -196,6 +197,8 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   private readonly translate = inject(TM_UI_TRANSLATE);
   private readonly errorDisplay = inject(TM_ERROR_DISPLAY);
   private readonly defaults = inject(TM_FORM_FIELD_DEFAULTS);
+  /** The enclosing grid cell's registration sink, if any — absent standalone. */
+  private readonly cellHost = inject(TM_CELL_EDITOR_HOST, { optional: true });
 
   // ---- FormValueControl<T | undefined> + optional state inputs (§5) ----
   /** The selected domain value — THE source of truth. */
@@ -359,6 +362,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   });
 
   constructor() {
+    this.cellHost?.register(this);
     inject(DestroyRef).onDestroy(() => clearTimeout(this.pendingRemeasure));
 
     // The ONE-DIRECTIONAL value bridge (§3.4): mirror the model into aria's
@@ -554,7 +558,27 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     this.focus();
   }
 
-  // ---- TmCellEditor<T | undefined> (DRAFT — §9; hardened with the grid) ----
+  // ---- TmCellEditor<T | undefined> ----
+  /**
+   * The committed-text view of the selection: the resolved label of the
+   * current value (`displayWith` first, else the matching option's label),
+   * or the empty string while no value is selected. Never `null` — a
+   * select's content is always representable.
+   */
+  readonly text: Signal<string | null> = computed(() => {
+    const value = this.value();
+    if (value === undefined || value === null) {
+      return '';
+    }
+    const displayWith = this.displayWith();
+    if (displayWith) {
+      return displayWith(value);
+    }
+    const key = this.keyOf(value);
+    const option = this.options().find((o) => this.keyOf(o.value()) === key);
+    return option?.effectiveLabel() ?? '';
+  });
+
   /** Accepts the current value as the revert baseline and closes the panel. */
   commit(): void {
     this.lastCommitted = this.value();
@@ -577,11 +601,34 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     untracked(() => this.combobox()).element.focus(options);
   }
 
-  /** Grid-editor seam: hosts forward keys; the trigger's own listeners consume them. */
-  onKeydown(event: KeyboardEvent): void {
-    // Draft grid seam: the host forwards keys; aria's own host listener on
-    // the trigger handles everything this control consumes. Nothing to do
-    // standalone.
-    void event;
+  /**
+   * Opens the options panel programmatically — how a grid host translates
+   * Enter / Alt+ArrowDown on the cell into the dropdown opening. Focuses
+   * the trigger first: the combobox keeps its popup open only while it owns
+   * focus. A no-op while disabled or readonly.
+   */
+  open(): void {
+    if (!this.disabled() && !this.readonly()) {
+      this.focus();
+      this.expanded.set(true);
+    }
+  }
+
+  /**
+   * Type-to-edit seed: opens the panel and feeds the first character into
+   * the typeahead, moving the active option to the first match — the same
+   * behavior as typing that character on the closed trigger. Committing
+   * stays an explicit activation; seeding never changes the value.
+   */
+  seed(text: string): void {
+    if (this.disabled() || this.readonly()) {
+      return;
+    }
+    const first = text[0];
+    if (first !== undefined && first !== ' ') {
+      this.pendingTypeaheadKey = first;
+    }
+    this.focus();
+    this.expanded.set(true);
   }
 }

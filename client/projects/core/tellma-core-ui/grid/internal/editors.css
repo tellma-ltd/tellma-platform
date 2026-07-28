@@ -1,0 +1,49 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* Built-in cell editors — both fill the cell box the session mounts them
+   into (.tm-grid__editor, an absolute overlay of the cell). The text input
+   inherits the cell's font and padding so the glyphs do not jump when the
+   editor opens; the select re-points the field-height custom properties at
+   the cell height so its trigger is size-matched without new tokens. */
+
+:host {
+  display: flex;
+  align-items: stretch;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.tm-grid__editor-input {
+  flex: 1 1 auto;
+  inline-size: 100%;
+  min-inline-size: 0;
+  box-sizing: border-box;
+  margin: 0;
+  border: none;
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     the editor fills a cell that already draws the active-cell ring; a
+     second ring inside it would double-draw the same affordance. */
+  outline: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  padding-block: 0;
+  padding-inline: var(--space-2); /* the cell's own inline padding */
+}
+
+:host(.tm-grid-enum-editor) {
+  --field-height: 100%;
+  --field-height-sm: 100%;
+  --field-height-lg: 100%;
+}
+
+:host(.tm-grid-enum-editor) tm-select {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  block-size: 100%;
+}

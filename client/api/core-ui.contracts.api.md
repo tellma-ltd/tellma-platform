@@ -8,9 +8,19 @@
 export type SignalLike<T> = () => T;
 
 // @public
+export const TM_PARSE_ERROR: unique symbol;
+
+// @public
 export interface TmCellDisplay<T> {
-    formatValue(value: T): string;
-    readonlyClass?(value: T): string;
+    displayClass?(value: T): string;
+    formatValue(value: T, locale: string): string;
+}
+
+// @public
+export interface TmCellEdit {
+    readonly key: string;
+    readonly rowId: TmRowId;
+    readonly value: unknown;
 }
 
 // @public
@@ -18,8 +28,14 @@ export interface TmCellEditor<T> {
     cancel(): void;
     commit(): void;
     focus(): void;
-    onKeydown(e: KeyboardEvent): void;
+    seed?(text: string): void;
+    readonly text: SignalLike<string | null>;
     readonly value: WritableSignalLike<T>;
+}
+
+// @public
+export interface TmCellEditorHost {
+    register(editor: TmCellEditor<unknown>): void;
 }
 
 // @public
@@ -45,6 +61,66 @@ export interface TmFormFieldControl {
     setLabelId?(id: string | null): void;
     readonly touched: SignalLike<boolean>;
 }
+
+// @public
+export type TmGridColumnWidths = Readonly<Record<string, number>>;
+
+// @public
+export interface TmGridContentState {
+    readonly expandedRowIds?: ReadonlySet<TmRowId>;
+    readonly history?: unknown;
+    readonly scroll?: TmGridScrollPosition;
+    readonly selection?: TmGridSelectionSnapshot;
+}
+
+// @public
+export interface TmGridRangeSnapshot {
+    readonly anchorColumnKey: string | null;
+    readonly anchorRowId: TmRowId | null;
+    readonly focusColumnKey: string | null;
+    readonly focusRowId: TmRowId | null;
+    readonly kind: 'cells' | 'rows' | 'cols' | 'all';
+}
+
+// @public
+export interface TmGridScrollPosition {
+    readonly x: number;
+    readonly y: number;
+}
+
+// @public
+export interface TmGridSelectionSnapshot {
+    readonly activeColumnKey: string | null;
+    readonly activeRowId: TmRowId | null;
+    readonly activeViewRow?: number;
+    readonly ranges: readonly TmGridRangeSnapshot[];
+}
+
+// @public
+export type TmLabelResolution<V> = {
+    value: V;
+} | {
+    error: 'notFound' | 'ambiguous';
+};
+
+// @public
+export interface TmParseContext {
+    readonly locale: string;
+    readonly sourceLocale?: string;
+}
+
+// @public
+export type TmParseError = typeof TM_PARSE_ERROR;
+
+// @public
+export interface TmPasteContext extends TmParseContext {
+    readonly signal: AbortSignal;
+    readonly sourceDistributionKey?: string;
+    readonly sourceTenantId?: string;
+}
+
+// @public
+export type TmRowId = string | number;
 
 // @public
 export interface WritableSignalLike<T> extends SignalLike<T> {

@@ -20,7 +20,7 @@ import { SHOWCASE_STORIES } from './stories';
   template: `
     @let s = story();
     @if (s) {
-      <main class="story-main" [attr.data-story]="s.id">
+      <main class="story-main" [class.story-main--wide]="s.wide" [attr.data-story]="s.id">
         <ng-container [ngComponentOutlet]="s.component" />
       </main>
     } @else {
@@ -31,6 +31,9 @@ import { SHOWCASE_STORIES } from './stories';
     .story-main {
       padding: 24px;
       max-inline-size: 720px;
+    }
+    .story-main--wide {
+      max-inline-size: none;
     }
   `,
 })

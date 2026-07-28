@@ -1,0 +1,112 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-grid-find-bar — the Sheets-style find overlay, floated at the grid's
+   top inline-end corner (logical inset, so it mirrors in RTL). Styled from
+   the field tokens; z-index sits above the sticky header band (2) and the
+   transient notice strip (3). */
+
+:host {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-end: var(--space-2);
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  padding: var(--space-1);
+  background: var(--field-bg);
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--field-radius);
+  box-shadow: var(--shadow-md);
+  font-family: var(--font-ui);
+  font-size: var(--field-font-size);
+}
+
+.tm-grid__find-input {
+  box-sizing: border-box;
+  inline-size: calc(var(--space-24) * 2);
+  block-size: var(--field-height-sm);
+  padding-inline: var(--space-2);
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--radius-xs);
+  background: var(--field-bg);
+  color: var(--text-body);
+  font-family: var(--font-ui);
+  font-size: var(--field-font-size);
+}
+
+.tm-grid__find-input:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: calc(-1 * var(--focus-ring-width));
+}
+
+.tm-grid__find-counter {
+  min-inline-size: var(--space-12);
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.tm-grid__find-nav,
+.tm-grid__find-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--field-height-sm);
+  block-size: var(--field-height-sm);
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.tm-grid__find-nav:hover:not(:disabled),
+.tm-grid__find-close:hover {
+  background: var(--surface-hover);
+}
+
+.tm-grid__find-nav:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.tm-grid__find-nav:focus-visible,
+.tm-grid__find-close:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: calc(-1 * var(--focus-ring-width));
+}
+
+.tm-grid__find-nav svg,
+.tm-grid__find-close svg {
+  inline-size: var(--space-4);
+  block-size: var(--space-4);
+}
+
+@media (forced-colors: active) {
+  :host {
+    background: Canvas;
+    border-color: CanvasText;
+  }
+
+  .tm-grid__find-input {
+    background: Field;
+    color: FieldText;
+    border-color: FieldText;
+  }
+
+  .tm-grid__find-nav:disabled {
+    color: GrayText;
+  }
+}

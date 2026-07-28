@@ -43,9 +43,23 @@ export class App {
   // Query params are route-global, so the root route sees every page's.
   private readonly query = toSignal(inject(ActivatedRoute).queryParamMap);
 
-  protected readonly theme = computed(() =>
-    this.query()?.get('theme') === 'dark' ? 'dark' : 'light',
-  );
+  /**
+   * Until the router resolves, the theme comes from the RAW url: the query
+   * signal starts `undefined`, and falling back to light would flip a cold
+   * ?theme=dark load light→dark across the first paint — WebKit sometimes
+   * fails to re-resolve custom properties on part of the tree after such a
+   * post-paint flip, leaving stale light-theme colors on a dark page.
+   */
+  private readonly urlDark =
+    new URLSearchParams(this.document.location.search).get('theme') === 'dark';
+
+  protected readonly theme = computed(() => {
+    const query = this.query();
+    if (query === undefined) {
+      return this.urlDark ? 'dark' : 'light';
+    }
+    return query.get('theme') === 'dark' ? 'dark' : 'light';
+  });
   protected readonly dir = computed(() =>
     (this.query()?.get('dir') ?? (this.lang() === 'ar' ? 'rtl' : 'ltr')) === 'rtl'
       ? ('rtl' as const)

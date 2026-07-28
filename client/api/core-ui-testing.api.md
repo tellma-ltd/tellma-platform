@@ -4,8 +4,10 @@
 
 ```ts
 
+import { BaseHarnessFilters } from '@angular/cdk/testing';
 import { ComponentHarness } from '@angular/cdk/testing';
 import { HarnessPredicate } from '@angular/cdk/testing';
+import { TestElement } from '@angular/cdk/testing';
 import { TestKey } from '@angular/cdk/testing';
 
 // @public
@@ -32,6 +34,88 @@ export class TmFormFieldHarness extends ComponentHarness {
 }
 
 // @public
+export interface TmGridCellCoordinate {
+    readonly col: number;
+    readonly row: number;
+}
+
+// @public
+export class TmGridCellHarness extends ComponentHarness {
+    click(): Promise<void>;
+    doubleClick(): Promise<void>;
+    getAlign(): Promise<string>;
+    getColIndex(): Promise<number>;
+    getRowIndex(): Promise<number>;
+    getText(): Promise<string>;
+    static hostSelector: string;
+    isActive(): Promise<boolean>;
+    isSelected(): Promise<boolean>;
+    static with(options?: TmGridCellHarnessFilters): HarnessPredicate<TmGridCellHarness>;
+}
+
+// @public
+export interface TmGridCellHarnessFilters extends BaseHarnessFilters {
+    colIndex?: number;
+    rowIndex?: number;
+}
+
+// @public
+export type TmGridEditorCommitVia = 'enter' | 'tab';
+
+// @public
+export type TmGridEditorOpenVia = 'enter' | 'f2' | 'type';
+
+// @public
+export class TmGridHarness extends ComponentHarness {
+    cancelEditor(): Promise<void>;
+    clickCell(rowIndex: number, colIndex: number): Promise<void>;
+    clickColumnHeader(colIndex: number): Promise<void>;
+    clickCorner(): Promise<void>;
+    clickRowHeader(rowIndex: number): Promise<void>;
+    commitEditor(via?: TmGridEditorCommitVia): Promise<void>;
+    getActiveCell(): Promise<TmGridCellCoordinate | null>;
+    getCell(rowIndex: number, colIndex: number): Promise<TmGridCellHarness>;
+    getCellText(rowIndex: number, colIndex: number): Promise<string>;
+    getColCount(): Promise<number>;
+    getEditorText(): Promise<string>;
+    getEmptyText(): Promise<string | null>;
+    getErrorCount(): Promise<number>;
+    getHeaderTexts(): Promise<string[]>;
+    getPendingCount(): Promise<number>;
+    getRenderedRowCount(): Promise<number>;
+    getRowCount(): Promise<number>;
+    protected readonly gridElement: () => Promise<TestElement>;
+    hasPlaceholderRow(): Promise<boolean>;
+    static hostSelector: string;
+    isEditorOpen(): Promise<boolean>;
+    isLoading(): Promise<boolean>;
+    modClickCell(rowIndex: number, colIndex: number): Promise<void>;
+    openContextMenu(rowIndex?: number, colIndex?: number): Promise<TmMenuHarness>;
+    openEditor(rowIndex: number, colIndex: number, via?: TmGridEditorOpenVia, seed?: string): Promise<void>;
+    pressKeys(...keys: (string | TestKey)[]): Promise<void>;
+    selectRange(from: TmGridCellCoordinate, to: TmGridCellCoordinate): Promise<void>;
+    shiftClickCell(rowIndex: number, colIndex: number): Promise<void>;
+    tallyNext(): Promise<void>;
+    tallyPrevious(): Promise<void>;
+    typeInEditor(text: string): Promise<void>;
+}
+
+// @public
+export class TmGridRowHarness extends ComponentHarness {
+    getAriaRowIndex(): Promise<number>;
+    getCells(filter?: HarnessPredicate<TmGridCellHarness>): Promise<TmGridCellHarness[]>;
+    getRowHeaderText(): Promise<string>;
+    static hostSelector: string;
+    isPlaceholder(): Promise<boolean>;
+    static with(options?: TmGridRowHarnessFilters): HarnessPredicate<TmGridRowHarness>;
+}
+
+// @public
+export interface TmGridRowHarnessFilters extends BaseHarnessFilters {
+    ariaRowIndex?: number;
+}
+
+// @public
 export class TmInputHarness extends ComponentHarness {
     blur(): Promise<void>;
     focus(): Promise<void>;
@@ -46,6 +130,23 @@ export class TmInputHarness extends ComponentHarness {
     isReadonly(): Promise<boolean>;
     isRequired(): Promise<boolean>;
     setValue(value: string): Promise<void>;
+}
+
+// @public
+export class TmMenuHarness extends ComponentHarness {
+    clickItem(label: string): Promise<void>;
+    getItemLabels(): Promise<string[]>;
+    getItems(filter?: HarnessPredicate<TmMenuItemHarness>): Promise<TmMenuItemHarness[]>;
+    static hostSelector: string;
+}
+
+// @public
+export class TmMenuItemHarness extends ComponentHarness {
+    click(): Promise<void>;
+    getText(): Promise<string>;
+    static hostSelector: string;
+    isActive(): Promise<boolean>;
+    isDisabled(): Promise<boolean>;
 }
 
 // @public
@@ -71,6 +172,18 @@ export class TmSelectHarness extends ComponentHarness {
     open(): Promise<void>;
     selectOption(text: string): Promise<void>;
     sendTriggerKeys(...keys: (string | TestKey)[]): Promise<void>;
+}
+
+// @public
+export class TmTreeGridHarness extends TmGridHarness {
+    clickExpander(rowIndex: number): Promise<void>;
+    collapse(rowIndex: number): Promise<void>;
+    expand(rowIndex: number): Promise<void>;
+    getLevel(rowIndex: number): Promise<number>;
+    getVisibleRowCount(): Promise<number>;
+    static hostSelector: string;
+    isExpanded(rowIndex: number): Promise<boolean>;
+    isLoadingChildren(rowIndex: number): Promise<boolean>;
 }
 
 ```

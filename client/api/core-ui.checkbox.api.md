@@ -9,6 +9,9 @@ import { Signal } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
 
 // @public
+export const TM_CHECKBOX_CELL_DISPLAY: TmCellDisplay<boolean | null>;
+
+// @public
 export class TmCheckbox implements TmFormFieldControl {
     readonly ariaDescribedby: _angular_core.InputSignal<string | null>;
     readonly ariaLabel: _angular_core.InputSignal<string | null>;
