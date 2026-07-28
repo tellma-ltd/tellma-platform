@@ -1,0 +1,137 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-image — the fixed box. The box never changes size between modes or
+   states (zero CLS); everything else overlays inside it. */
+
+:host {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: var(--image-radius);
+  background: var(--surface-subtle);
+}
+
+:host(.tm-image--circle) {
+  border-radius: var(--radius-full);
+}
+
+.tm-image__img {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+
+/* The local-preview crop window: the picked image, positioned by the fit
+   rect. Physical left/top on purpose — the transform math is computed in
+   physical pixels and must not flip under RTL. */
+.tm-image__crop-view {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.tm-image__crop-view img {
+  position: absolute;
+  /* stylelint-disable-next-line liberty/use-logical-spec -- physical
+     coordinates: the fit transform is computed in physical px. */
+  left: 0;
+  /* stylelint-disable-next-line liberty/use-logical-spec -- see above. */
+  top: 0;
+  display: block;
+  max-inline-size: none;
+  user-select: none;
+}
+
+.tm-image__glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 100%;
+  block-size: 100%;
+  color: var(--text-muted);
+}
+
+.tm-image__glyph svg {
+  inline-size: var(--image-glyph-size);
+  block-size: var(--image-glyph-size);
+}
+
+.tm-image__glyph--error {
+  color: var(--error);
+}
+
+.tm-image__glyph--error:focus-visible {
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     The token focus ring below is the equally-visible substitute; the UA
+     outline would double up against it. */
+  outline: none;
+  box-shadow: inset var(--focus-ring);
+}
+
+.tm-image__chrome {
+  position: absolute;
+  inset-inline: var(--space-1);
+  inset-block-end: var(--space-1);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-1);
+}
+
+.tm-image__chrome-button {
+  border: none;
+  border-radius: var(--radius-xs);
+  background: var(--image-chrome-bg);
+  color: var(--image-chrome-text);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  padding-block: var(--space-1);
+  padding-inline: var(--space-2);
+  cursor: pointer;
+}
+
+.tm-image__chrome-button:focus-visible {
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     The token focus ring below is the equally-visible substitute; the UA
+     outline would double up against it. */
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tm-image__file-input {
+  display: none;
+}
+
+/* The status region exists from the start (a populated-later live region
+   announces dependably); it only paints once it has text. */
+.tm-image__notice {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+
+.tm-image__notice--visible {
+  background: var(--error-bg);
+  color: var(--error);
+  padding-block: var(--space-1);
+  padding-inline: var(--space-2);
+}
+
+@media (forced-colors: active) {
+  /* The box outline survives where the subtle fill flattens to Canvas. */
+  :host {
+    border: var(--border-width) solid CanvasText;
+  }
+
+  .tm-image__chrome-button {
+    border: var(--border-width) solid ButtonText;
+  }
+}

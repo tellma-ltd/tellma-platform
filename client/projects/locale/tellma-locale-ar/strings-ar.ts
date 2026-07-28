@@ -154,4 +154,15 @@ export const TM_LOCALE_AR_STRINGS = {
   modal: {
     close: 'إغلاق',
   },
+  image: {
+    replace: 'استبدال الصورة',
+    adjust: 'ضبط الاقتصاص',
+    remove: 'إزالة الصورة',
+    error: 'تعذر تحميل الصورة',
+    cropSurface: 'منطقة الاقتصاص — مفاتيح الأسهم للتحريك، و+ و- للتكبير',
+    zoom: 'التكبير',
+    done: 'تم',
+    tooLarge: 'حجم الملف أكبر من {maxMb} ميغابايت',
+    unsupported: 'الملف ليس صورة مدعومة',
+  },
 } as const;

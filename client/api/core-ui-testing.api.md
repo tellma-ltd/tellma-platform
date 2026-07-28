@@ -153,6 +153,15 @@ export interface TmGridRowHarnessFilters extends BaseHarnessFilters {
 }
 
 // @public
+export class TmImageHarness extends ComponentHarness {
+    clickRemove(): Promise<void>;
+    getAltText(): Promise<string | null>;
+    static hostSelector: string;
+    isShowingError(): Promise<boolean>;
+    isShowingImage(): Promise<boolean>;
+}
+
+// @public
 export class TmInputHarness extends ComponentHarness {
     blur(): Promise<void>;
     focus(): Promise<void>;

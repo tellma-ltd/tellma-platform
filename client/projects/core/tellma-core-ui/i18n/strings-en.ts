@@ -130,4 +130,15 @@ export const TM_UI_STRINGS_EN = {
   modal: {
     close: 'Close',
   },
+  image: {
+    replace: 'Replace image',
+    adjust: 'Adjust crop',
+    remove: 'Remove image',
+    error: 'The image could not be loaded',
+    cropSurface: 'Crop area — arrow keys pan, plus and minus zoom',
+    zoom: 'Zoom',
+    done: 'Done',
+    tooLarge: 'The file is larger than {maxMb} MB',
+    unsupported: 'The file is not a supported image',
+  },
 } as const;

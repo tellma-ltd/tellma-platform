@@ -11,6 +11,7 @@ import {
   provideBrowserGlobalErrorListeners,
   signal,
 } from '@angular/core';
+import { provideHttpClient } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
 import { TranslocoService } from '@jsverse/transloco';
 
@@ -23,6 +24,8 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes),
+    // Backs tm-image's default TM_BLOB_FETCHER.
+    provideHttpClient(),
     // The zero-config default path + the reference Arabic pack (its font
     // stylesheet rides the styles array in angular.json).
     provideTellmaUi(),

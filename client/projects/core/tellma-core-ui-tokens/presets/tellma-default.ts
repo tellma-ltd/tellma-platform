@@ -324,6 +324,14 @@ export const tmTokensDefault: TmTokens = {
       minColWidth: '48px',
       handleSize: '24px',
     },
+    // tm-image: fixed-box chrome. The chrome fill is a static ink veil
+    // that reads over any image on both schemes.
+    image: {
+      radius: '{radius.sm}',
+      glyphSize: '32px',
+      chromeBg: 'rgba(8, 18, 24, 0.62)',
+      chromeText: '{white}',
+    },
     // tm-menu: panel + item-row geometry; colors ride the field/surface
     // semantic tokens in the component CSS.
     menu: { minWidth: '180px', itemHeight: '32px', iconSize: '16px' },

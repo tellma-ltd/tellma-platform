@@ -1,0 +1,85 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* The fit surface + zoom bar of tm-image edit mode, filling the fixed box. */
+
+:host {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.tm-image__crop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--surface-sunken);
+  cursor: move;
+  /* The surface owns panning and pinching. */
+  touch-action: none;
+}
+
+.tm-image__crop:focus-visible {
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     The token focus ring below is the equally-visible substitute; the UA
+     outline would double up against it. */
+  outline: none;
+  box-shadow: inset var(--focus-ring);
+}
+
+.tm-image__crop-img {
+  position: absolute;
+  /* stylelint-disable-next-line liberty/use-logical-spec -- physical
+     coordinates: the fit transform is computed in physical px. */
+  left: 0;
+  /* stylelint-disable-next-line liberty/use-logical-spec -- see above. */
+  top: 0;
+  display: block;
+  max-inline-size: none;
+  user-select: none;
+}
+
+.tm-image__edit-bar {
+  position: absolute;
+  inset-inline: var(--space-1);
+  inset-block-end: var(--space-1);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.tm-image__zoom {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  accent-color: var(--color-primary);
+}
+
+.tm-image__chrome-button {
+  border: none;
+  border-radius: var(--radius-xs);
+  background: var(--image-chrome-bg);
+  color: var(--image-chrome-text);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  padding-block: var(--space-1);
+  padding-inline: var(--space-2);
+  cursor: pointer;
+}
+
+.tm-image__chrome-button:focus-visible {
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     The token focus ring below is the equally-visible substitute; the UA
+     outline would double up against it. */
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@media (forced-colors: active) {
+  .tm-image__chrome-button {
+    border: var(--border-width) solid ButtonText;
+  }
+}

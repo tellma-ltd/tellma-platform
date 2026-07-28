@@ -6,6 +6,7 @@
 import { Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { provideHttpClient } from '@angular/common/http';
 import { form } from '@angular/forms/signals';
 
 import { provideTellmaUi } from '@tellma/core-ui';
@@ -21,6 +22,7 @@ import {
   TmGridEmptyDef,
   TmGridLoadingDef,
 } from '@tellma/core-ui/grid';
+import { TmImage, TmImagePlaceholder } from '@tellma/core-ui/image';
 import { TmInput } from '@tellma/core-ui/input';
 import { TmContextMenuTrigger, TmMenu } from '@tellma/core-ui/menu';
 import { TmModalFooter } from '@tellma/core-ui/modal';
@@ -37,6 +39,7 @@ import * as buttonExamples from './button/tm-button.examples';
 import * as checkboxExamples from './checkbox/tm-checkbox.examples';
 import * as datePickerExamples from './date-picker/tm-date-picker.examples';
 import * as gridExamples from './grid/tm-grid.examples';
+import * as imageExamples from './image/tm-image.examples';
 import * as inputExamples from './input/tm-input.examples';
 import * as menuExamples from './menu/tm-menu.examples';
 import * as modalFooterExamples from './modal/tm-modal-footer.examples';
@@ -101,6 +104,8 @@ interface ExampleTreeRow {
     TmGridDisplayDef,
     TmGridEmptyDef,
     TmGridLoadingDef,
+    TmImage,
+    TmImagePlaceholder,
     TmInput,
     TmMenu,
     TmModalFooter,
@@ -136,6 +141,9 @@ interface ExampleTreeRow {
     <div [tmContextMenuTrigger]="placeholderMenu">placeholder</div>
     <tm-menu #placeholderMenu [items]="[]" />
     <div tmModalFooter>placeholder</div>
+    <tm-image src="" alt="" [width]="24" [height]="24">
+      <ng-template tmImagePlaceholder>placeholder</ng-template>
+    </tm-image>
     <button [tmPopoverTriggerFor]="placeholderPopover">placeholder</button>
     <tm-popover #placeholderPopover aria-label="placeholder">
       <ng-template tmPopoverContent>placeholder</ng-template>
@@ -176,6 +184,7 @@ class ExampleHost {
   ];
   protected readonly treeRowId = (row: ExampleTreeRow): number => row.id;
   protected readonly treeParentId = (row: ExampleTreeRow): number | null => row.parentId;
+  protected readonly onImageChange = (): void => undefined;
   protected readonly treeHasChildren = (row: ExampleTreeRow): boolean => row.parentId === null;
   protected readonly loadTreeChildren = (): Promise<void> => Promise.resolve();
 
@@ -274,6 +283,17 @@ const MARKERS: {
       fixture.debugElement.queryAll(By.directive(TmModalFooter)).length > 0,
   },
   {
+    // The placeholder ng-template is unprojected content of tm-image (the
+    // tm-option caveat), so the marker reads the component's content-query
+    // signal instead of the debug tree.
+    name: 'TmImagePlaceholder',
+    pattern: /\btmImagePlaceholder\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement
+        .queryAll(By.directive(TmImage))
+        .some((el) => (el.componentInstance as TmImage).placeholder() !== undefined),
+  },
+  {
     name: 'TmPopoverTrigger',
     pattern: /\btmPopoverTriggerFor\b/,
     instantiated: (fixture) =>
@@ -342,6 +362,7 @@ const SUITES = [
   { source: 'date-picker/tm-date-picker.examples.ts', examples: datePickerExamples },
   { source: 'alert/tm-alert.examples.ts', examples: alertExamples },
   { source: 'button/tm-button.examples.ts', examples: buttonExamples },
+  { source: 'image/tm-image.examples.ts', examples: imageExamples },
   { source: 'checkbox/tm-checkbox.examples.ts', examples: checkboxExamples },
   { source: 'select/tm-select.examples.ts', examples: selectExamples },
   { source: 'spinner/tm-spinner.examples.ts', examples: spinnerExamples },
@@ -360,7 +381,8 @@ describe('co-located docs examples compile against the live API (§11)', () => {
       for (const [title, { template }] of Object.entries(examples)) {
         it(`'${title}' compiles, renders, and instantiates what it names`, async () => {
           TestBed.configureTestingModule({
-            providers: [provideTellmaUi()],
+            // provideHttpClient backs tm-image's default TM_BLOB_FETCHER.
+            providers: [provideTellmaUi(), provideHttpClient()],
             errorOnUnknownElements: true,
             errorOnUnknownProperties: true,
           });

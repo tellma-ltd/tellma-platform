@@ -20,6 +20,7 @@ export * from './number-harness';
 export * from './checkbox-harness';
 export * from './select-harness';
 export * from './form-field-harness';
+export * from './image-harness';
 export * from './menu-harness';
 export * from './modal-harness';
 export * from './popover-harness';
