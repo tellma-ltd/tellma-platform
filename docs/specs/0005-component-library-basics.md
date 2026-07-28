@@ -86,7 +86,7 @@ budgets, as before):
 | `@tellma/core-ui/tooltip` | `tmTooltip` directive (uses `private`). |
 | `@tellma/core-ui/alert` | `tm-alert`. |
 | `@tellma/core-ui/private` | Shared overlay-composition helper (§2.1). Importable but carries no stability guarantees and is excluded from the API goldens — the `@angular/aria` `private`-entry-point pattern spec 0002 reserved. |
-| `@tellma/core-ui` (primary) | Gains `TmClientCache` (§2.3), the `TmL10n` reactive formatting facade (§2.2), and the new validator/message kinds' English strings. Stays component-free. |
+| `@tellma/core-ui` (primary) | Gains `TmClientCache` (§2.3), the `TmL10n` reactive formatting facade and the `TM_CALENDAR` token + `provideTmCalendar()` (§2.2), and the new validator/message kinds' English strings. Stays component-free. |
 | `@tellma/core-ui-testing` | New harnesses (§17). |
 
 **New third-party dependency:** `@internationalized/date` (Adobe; Apache-2.0; `sideEffects: false`;
@@ -123,7 +123,8 @@ TypeScript + `Intl` (+ `@internationalized/date` for calendar math): no DOM, no 
 **Number codec — hoisted, not rewritten.** The grid's `tm-number-codec.ts` (`tmFormatNumber`,
 `tmParseNumber`: `Intl.NumberFormat` formatting; parsing with symbols derived via `formatToParts`,
 so localized separators, non-Latin numerals, and format-control marks round-trip) moves here
-verbatim, gaining one options bag:
+behavior-intact; the one signature change is folding the fraction-digit arguments into an options
+bag and adding `percent`:
 
 ```ts
 export interface TmNumberFormatOptions {
@@ -139,10 +140,11 @@ export function tmParseNumber(text: string, locale: string,
 The grid deletes its internal copy and imports these — the spec-0004 "replaced internally when the
 adapter ships, no API change" note, honored: identical behavior, same `TM_PARSE_ERROR` sentinel
 from `contracts`. In percent mode, formatting uses `Intl.NumberFormat` `style: 'percent'`
-(`minDecimals`/`maxDecimals` bound the *displayed percent* digits), and parsing strips a trailing
-percent sign (`%`, `٪` U+066A, `％` U+FF05) if present, parses the remainder as a plain number,
-and divides by 100 — typed `75` and `75%` both parse to `0.75`; a bare number is never treated as
-an already-scaled fraction.
+(`minDecimals`/`maxDecimals` bound the *displayed percent* digits), and parsing strips one
+percent sign (`%`, `٪` U+066A, `％` U+FF05) at **either end** — several locales (Turkish,
+Basque) format with a leading percent sign, and formatted output must round-trip — then parses
+the remainder as a plain number and divides by 100: typed `75`, `75%`, and `%75` all parse to
+`0.75`; a bare number is never treated as an already-scaled fraction.
 
 **Date engine.** ISO 8601 date strings are the value currency (§6.1). The engine formats and
 parses them per locale × calendar × precision:
@@ -151,7 +153,7 @@ parses them per locale × calendar × precision:
 export type TmDatePrecision = 'day' | 'month' | 'year';
 export type TmDateStyle = 'numeric' | 'medium' | 'long';
 export function tmFormatDate(iso: string, locale: string,
-  options?: { calendar?: TmCalendar; precision?: TmDatePrecision; style?: TmDateStyle }): string;
+  options?: { calendar?: TmCalendar; precision?: TmDatePrecision; dateStyle?: TmDateStyle }): string;
 export function tmParseDate(text: string, locale: string,
   options?: { calendar?: TmCalendar; precision?: TmDatePrecision; today?: string }): string | null | TmParseError;
 export function tmDatePlaceholder(locale: string,
@@ -160,9 +162,9 @@ export function tmDatePlaceholder(locale: string,
 
 Formatting delegates to `Intl.DateTimeFormat` with the calendar's Intl identifier; month and era
 names come from Intl/CLDR at runtime, so **no name tables ship in any package**, and every
-calendar renders localized in every UI language. `style` maps per precision to a fixed CLDR
-skeleton — `day`: `yMd` / `yMMMd` / `yMMMMd`; `month`: `yM` / `yMMM` / `yMMMM`; `year`: `y` —
-fixed in code, not configurable.
+calendar renders localized in every UI language. `dateStyle` (one name, shared with the
+`tm-date-picker` input) maps per precision to a fixed CLDR skeleton — `day`: `yMd` / `yMMMd` /
+`yMMMMd`; `month`: `yM` / `yMMM` / `yMMMM`; `year`: `y` — fixed in code, not configurable.
 
 **Cross-platform formatting contract.** Formatted values also originate server-side (validation
 messages, documents), so the option surface is deliberately a small closed set — number:
@@ -172,6 +174,11 @@ formatting is CLDR-locale digits/separators with fraction-digit bounds and half-
 rounding (Intl `halfExpand` ↔ .NET `MidpointRounding.AwayFromZero`; .NET has been ICU-backed
 since .NET 5, so both ends draw on the same CLDR data). The contract is *consistent output for
 the same parameters*, not byte equality (platforms differ in invisible spacing/bidi marks).
+It is pinned by a **committed golden** — `format-golden.json` in `l10n`, rows of
+(locale, calendar, precision, dateStyle → expected) and (locale, minDecimals, maxDecimals,
+percent, value → expected) — asserted by the client suite and consumed verbatim by the future
+C# implementation's tests; CLDR-driven drift on engine updates is an explicit, reviewed
+regeneration, like an API golden.
 Documented backend caveats: .NET ships no Ethiopic calendar (backend Ethiopic formatting needs an
 ICU-based implementation), and .NET's `UmAlQuraCalendar` covers a narrower range (1900–2077 CE)
 than the ICU tables the client uses.
@@ -189,11 +196,12 @@ export interface TmCalendar {
   daysInMonth(year: number, month: number): number;
   today(): string;                                    // ISO, local time zone
 }
-export const TM_CALENDAR: InjectionToken<Signal<TmCalendar>>;   // app-ambient display calendar
-export function provideTmCalendar(calendar: TmCalendar | Signal<TmCalendar>): Provider;
 ```
 
-`l10n` ships the Gregorian implementation and the `TM_CALENDAR` default (Gregorian). All three
+`l10n` ships the Gregorian implementation; the **DI seam lives in the primary entry point**,
+keeping `l10n` genuinely DI-free: `TM_CALENDAR: InjectionToken<Signal<TmCalendar>>` (the
+app-ambient display calendar, defaulting to Gregorian) and
+`provideTmCalendar(calendar: TmCalendar | Signal<TmCalendar>)`. All three calendar
 implementations are thin adapters over `@internationalized/date`'s `CalendarDate`/`toCalendar`;
 the interface exists so the library's public surface never leaks the dependency (native `Temporal`
 can replace it later without an API change). Dates are pure calendar dates — no time-of-day, no
@@ -291,9 +299,10 @@ field chrome, bidi, Signal Forms), so the existing directive's selector extends 
   errors surface with the framework's `min`/`max` kinds through the spec-0002 message resolver.
 - **Host:** `type="text"` guarded (never `type="number"` — its spinner, scroll-to-increment, and
   locale quirks are the reason this control exists) + `inputmode="decimal"` for the numeric mobile
-  keypad; `text-align: right` — physical, not logical, so numerals stay right-aligned in RTL
-  locales too (the grid's `number`-column default); the same `aria-*`/state host bindings as
-  `tmInput`.
+  keypad (known limitation: the iOS decimal keypad has no minus key, so negative amounts there
+  need the standard keyboard — accepted and documented); `text-align: right` — physical, not
+  logical, so numerals stay right-aligned in RTL locales too (the grid's `number`-column
+  default); the same `aria-*`/state host bindings as `tmInput`.
 - **Format/parse loop.** Built on Signal Forms' `transformedValue` (stable in v22): the typed
   `value` model is the source of truth; the raw text signal parses through `tmParseNumber` and
   formats through `tmFormatNumber` (§2.2) with the active locale (+ `percent`). **Gaining focus
@@ -375,8 +384,9 @@ The algorithm is deterministic — forgiving on separators and completion, stric
 4. **Month names** (long and short forms from Intl for the active locale + calendar,
    case/diacritic-insensitively) may replace the numeric month: `5 mar 2026`, `١٥ صفر`.
 5. **Omitted trailing parts complete from today** (in the display calendar): at `day` precision,
-   one segment = that day of the current month, two = day+month of the current year — the
-   fast-entry accelerator. Extra segments beyond the precision are an error, not ignored.
+   one segment = that day of the current month; two segments = day and month, read in the
+   locale's field order (en-US `3/15` is March 15), of the current year — the fast-entry
+   accelerator. Extra segments beyond the precision are an error, not ignored.
 6. **Two-digit years** resolve in the sliding window [today − 80, today + 19] years — the
    documented convention, applied in the display calendar's year numbering.
 7. Anything else — a segment out of range for its slot (month 14, day 31 in a 30-day month), a
@@ -392,8 +402,9 @@ Valid input reformats to the display form on commit. Empty input commits `null`.
 An anchored, non-modal `role="dialog"` popup (via the §2.1 helper; lazily created), implementing
 the APG date-picker-dialog pattern with the APG combobox-datepicker's focus/opening model:
 
-- **Opening** (button click, `Alt+ArrowDown`/`ArrowDown` per §6.2) moves focus into the active
-  view — onto the day matching the field's value, else today. **Esc** closes without committing
+- **Opening** (button click, `Alt+ArrowDown`/`ArrowDown` per §6.2) first commits any pending
+  typed text through the §6.3 parse, then moves focus into the active view — onto the day
+  matching the field's (just-committed) value, else today. **Esc** closes without committing
   and returns focus to the input; selection commits, closes, and returns focus to the input.
 - **Views:** day grid → month grid → year grid, cycled by the header button exactly as the mode
   ladder requires: the header shows "month year" in day view (clicking it switches to month
@@ -490,11 +501,16 @@ shape: 'rect' | 'circle';          // default 'rect'
 width/height: number;              // CSS px of the box — fixed for the component's lifetime
 srcForSize?: (src: string, size: number) => string;  // default: appends ?size=<bucket>
 defer: boolean;                    // default true — IntersectionObserver-deferred fetch
+editSrc?: string;                  // URL of the stored ORIGINAL — enables re-fitting an existing
+                                   //   image; absent = an existing image can only be replaced/deleted
 // Content
 <ng-template tmImagePlaceholder>   // no-image state; default: a generic image glyph
 // Edit-mode output
 imageChange: OutputRef<TmImageEdit | null>;   // null = user deleted the image
-interface TmImageEdit { blob: Blob; fit: TmImageFit; }
+interface TmImageEdit {
+  blob: Blob | null;               // a newly picked file, or null = re-fit of the existing image
+  fit: TmImageFit;
+}
 interface TmImageFit {              // normalized to the ORIGINAL image, all 0..1
   rect: { x: number; y: number; width: number; height: number };  // aspect = box aspect
   focal: { x: number; y: number };  // rect center — survives future aspect changes
@@ -504,7 +520,11 @@ interface TmImageFit {              // normalized to the ORIGINAL image, all 0..
 The component talks to the network through a `TM_BLOB_FETCHER` token (default implementation:
 `HttpClient` with the app's interceptors — so auth headers, and later BFF cookies, apply without
 any component knowledge). The consumer sends `TmImageEdit` to the server (multipart, §8.3); the
-backend standardizes format, crops to `rect`, and generates renditions. `fit` carries both the
+backend standardizes format, crops to `rect`, and generates renditions. **Re-fitting an existing
+image emits `blob: null`** — what the component holds for display is a rendition (already
+cropped/downscaled), so re-emitting it would silently downgrade the stored original; the server
+re-crops from the original it holds, and the bytes never round-trip. `fit` is always normalized
+against the image being fitted: the picked file, or the original fetched from `editSrc`. `fit` carries both the
 exact rect (lossless re-edit) and the focal point (automatic recrop if the product later changes
 the box aspect) — the DAM-industry convention. Whether the backend retains the original for later
 re-fitting is a backend policy decision; the component docs note that **cropping is presentation,
@@ -535,9 +555,11 @@ by platform convention (a distribution hosts multiple tenants on one origin, §2
   duplicate fetch across tabs is a bandwidth footnote, not a correctness issue).
 - **Failure & quota:** fetch/decode failure renders a small error glyph (fixed box, no layout
   shift) with a localized tooltip; `QuotaExceededError` on `put` deletes the whole cache and
-  continues uncached (the cache is an accelerator, never required). The cache carries the `tm-`
-  prefix and is swept by `TmClientCache.clearAll()` on logout (§2.3). Browser eviction (LRU,
-  Safari's 7-day script-storage cap) is tolerated by design — every entry is re-fetchable.
+  continues uncached (the cache is an accelerator, never required). Where the Cache API itself is
+  unavailable (insecure context, restrictive browser profile), the pipeline runs cache-less from
+  the start — direct fetches, with the in-flight map still coalescing. The cache carries the
+  `tm-` prefix and is swept by `TmClientCache.clearAll()` on logout (§2.3). Browser eviction
+  (LRU, Safari's 7-day script-storage cap) is tolerated by design — every entry is re-fetchable.
 
 ### 7.3 Size hints
 
@@ -563,14 +585,19 @@ empty).
   localized message. Guardrail: files over **20 MB** are rejected before any processing (a limit
   only realistically hit by abuse); after fitting, output larger than **4096 px** on its longest
   edge is downscaled via `createImageBitmap` + canvas (EXIF orientation applies automatically),
-  re-encoded (JPEG 0.9; PNG when the source has alpha). Both limits are inputs with these
-  defaults.
-- **Fit:** the new (or existing) image renders under a fixed viewport of the box's aspect; the
-  user pans (pointer drag / touch drag) and zooms (wheel, pinch, and an always-visible zoom
-  slider — the accessible path; arrow keys pan when the crop surface is focused, `+`/`-` zoom).
-  The fit state is the `TmImageFit` rect (clamped so the rect never leaves the image). Output
-  emits on every committed adjustment (`imageChange`), carrying the **original** blob + fit —
-  the component never crops pixels client-side beyond the downscale guardrail.
+  re-encoded (JPEG 0.9; PNG when the source has alpha). **GIFs are exempt from the downscale** —
+  a canvas pass keeps only the first frame, silently de-animating them — and pass through at
+  original resolution, with the byte-size limit still applying. Both limits are inputs with
+  these defaults.
+- **Fit:** the image being fitted — the newly picked file, or for an existing image the
+  original fetched from `editSrc` (renditions are already cropped, so re-fitting requires the
+  original; without `editSrc` the re-fit affordance is absent) — renders under a fixed viewport
+  of the box's aspect; the user pans (pointer drag / touch drag) and zooms (wheel, pinch, and an
+  always-visible zoom slider — the accessible path; arrow keys pan when the crop surface is
+  focused, `+`/`-` zoom). The fit state is the `TmImageFit` rect (clamped so the rect never
+  leaves the image). Output emits on every committed adjustment (`imageChange`), carrying the
+  fit plus the blob only when a new file was picked (`blob: null` on re-fits, §7.1) — the
+  component never crops pixels client-side beyond the downscale guardrail.
 - **Delete:** a labeled control emits `imageChange(null)`; the box returns to the placeholder.
 - Edit affordances live inside the fixed box (overlay chrome) — the component's size never
   changes between modes or states.
@@ -588,14 +615,19 @@ button ("Attach") and a visual drop target, and neither wants the other's DOM:
   `multiple` (default `false`), `maxFileSize` (bytes, default **100 MB**), `maxFiles`
   (default unbounded). Output: `filesSelected: OutputRef<TmFileSelection>`.
 - **`tm-dropzone`** — a component rendering a bordered drop region (dashed border, icon,
-  localized hint text showing the accepted types/size limit, and a browse affordance): the whole
-  region is a single focusable control (`role="button"`, Enter/Space opens the dialog — keyboard
-  users' full-fidelity path, since drag-and-drop has no keyboard equivalent). It applies
-  `tmFilePicker` as a **host directive** — the browse path, the guardrail inputs, and
-  `filesSelected` are literally the directive's, re-exposed — and adds only the drop-target
-  handling and visuals. Drag-over highlights via tokens; drops of folders/directories are
-  rejected with a localized reason (flat file lists only); dropping when `multiple` is false
-  takes the first file and rejects the rest.
+  localized hint text showing the accepted types/size limit, and a browse affordance —
+  presentational styled text, never a nested interactive element): the whole region is a single
+  focusable control (`role="button"`, Enter/Space opens the dialog — keyboard users'
+  full-fidelity path, since drag-and-drop has no keyboard equivalent). It applies `tmFilePicker`
+  as a **host directive** — the browse path, the guardrail inputs, and `filesSelected` are
+  literally the directive's, re-exposed — and adds only the drop-target handling and visuals.
+  Drag-over highlights via tokens; drops of folders/directories are rejected with a localized
+  reason (flat file lists only); dropping when `multiple` is false takes the first file and
+  rejects the rest. The focused zone also accepts **paste**: `Ctrl+V` with files on the
+  clipboard (a screenshot) runs the same guardrail pipeline, and the hint mentions it. Because
+  a missed drop navigates the browser away from the SPA, the first connected `tm-dropzone`
+  installs a document-level guard canceling `dragover`/`drop` defaults outside designated drop
+  targets; the guard is removed when the last dropzone disconnects.
 
 ```ts
 interface TmFileSelection {
@@ -723,6 +755,7 @@ interface TmModalConfig {
   showClose?: boolean;               // default true — the X button
   backdropDismiss?: boolean;         // default true — click on the backdrop closes
   escapeDismiss?: boolean;           // default true
+  canDismiss?: () => boolean | Promise<boolean>;  // guards user-initiated dismissals
 }
 class TmModalRef<R> {
   close(value?: R): void;                          // programmatic dismissal ('api')
@@ -742,6 +775,11 @@ type TmModalResult<R> =
   read alike; for the rare modal they genuinely don't fit, `panelClass` styles the panel
   (dimensions included) without forking the shell. A modal never resizes itself while open
   (size-stability rule); on small viewports all sizes converge to near-full-screen.
+- **Dismissal guard:** `canDismiss` (sync or async) is consulted before every user-initiated
+  dismissal — close button, backdrop, Esc; returning or resolving `false` keeps the modal open.
+  The unsaved-changes pattern: the guard opens a confirm modal (stacking below) and resolves
+  with the user's answer. Programmatic `close()` is not guarded — consumer code owns its own
+  calls.
 - **Stacking:** a modal may open another (the CDK dialog stack): each layer gets its own
   backdrop and focus trap; Esc and backdrop-click dismiss the **topmost** layer only; closing a
   layer restores focus into the layer beneath, ultimately back to the original opener. The
@@ -783,7 +821,10 @@ type TmModalResult<R> =
   live only in a tooltip (documented).
 - **A11y:** the panel is `role="tooltip"`; the host is described via the CDK `AriaDescriber`
   (the text is available to AT even when the tooltip has never opened — the Material-proven
-  mechanism). Never focus-stealing; no arrow-key interaction.
+  mechanism). Never focus-stealing; no arrow-key interaction. Known limitation, stated in the
+  docs: natively `disabled` controls fire no pointer events in most engines, so a tooltip on a
+  disabled button never shows on hover — use suppressed-activation states instead (what
+  `tmButton`'s `pending` does) or place the tooltip on a wrapper element.
 - **Positioning:** §2.1 helper, `block-start` preferred with flip, small token offset;
   `--tooltip-*` token group; `prefers-reduced-motion` removes the fade. One tooltip visible at
   a time (a module-level coordinator closes the previous).
@@ -799,8 +840,12 @@ type TmModalResult<R> =
   precedes the content so the severity survives screen-reader linearization; color is never the
   only signal.
 - **Announcement:** `live: 'polite'` renders `role="status"`, `'assertive'` renders
-  `role="alert"` — for alerts inserted dynamically (a failed save). The default `'off'` keeps
-  statically-present alerts silent. No dismiss affordance (visibility is the consumer's state).
+  `role="alert"` — for alerts inserted dynamically (a failed save). Because an element that
+  arrives in the DOM *with* its content is unreliably announced across screen-reader/browser
+  pairs, the live region is inserted **empty** and its text populated in a follow-up
+  microtask — a content change inside an existing region is the dependable trigger. The default
+  `'off'` keeps statically-present alerts silent. No dismiss affordance (visibility is the
+  consumer's state).
 - **Field and grid errors stay as they are.** Form-field errors remain the compact
   `aria-describedby` + live-region text of spec 0002, and grid cell errors remain the spec-0004
   overlay: wrapping every field error in an icon box would add visual bulk to dense forms and
@@ -836,8 +881,8 @@ outside the DoD). Per-component semantics live in §3–§13; the cross-cutting 
 - Direction from CDK `Directionality`; all new geometry is logical (calendar grid column order,
   tab strip, popover/tooltip positions, dropzone layout, modal header). The date popup's arrow
   keys are direction-mapped (inline-start/end) like the grid's. Numerals in `tmNumber` and date
-  displays render via `Intl` with the locale's numbering system; `text-align: end` on numeric
-  fields is direction-stable.
+  displays render via `Intl` with the locale's numbering system; numeric fields align
+  physically right (§5), so numerals stay right-aligned under RTL too.
 - Every built-in string resolves through `TM_UI_TRANSLATE` with English in-package:
   button/modal/preview/image/file affordance labels, dropzone hints and rejection reasons,
   date-picker labels (choose date, previous/next month, view-switch buttons, Today, Clear),
@@ -856,7 +901,13 @@ outside the DoD). Per-component semantics live in §3–§13; the cross-cutting 
   `calendar-ethiopic` ≤ 2, `l10n` ≤ 8 (codecs + Gregorian engine), `image` ≤ 10, `files` ≤ 5,
   `file-preview` ≤ 8, `tabs` ≤ 4, `modal` ≤ 6, `popover` ≤ 4, `tooltip` ≤ 3, `alert` ≤ 2,
   `private` ≤ 4. Grid budget is unchanged by the codec hoist (imports move, weight moves to
-  `l10n`).
+  `l10n`). **What the numbers count:** third-party code outside the measurement's externalized
+  set (`@angular/*`, `rxjs`, `tslib`, `@jsverse/*`, `@tellma/*`) is bundled into the importing
+  entry point's measured weight, and every entry point measures in isolation — so
+  `@internationalized/date`'s core is counted inside `l10n` *and again* inside each calendar
+  entry point. The ceilings above are sized with that in mind: `l10n` absorbs the dep core +
+  Gregorian on top of both codecs; each calendar entry point carries its calendar class plus the
+  shared core.
 - **Lazy everything that floats:** date popup, popover, tooltip, modal content, and preview
   renderers are created on first open and torn down on close; closed instances cost their
   trigger DOM only.
@@ -880,7 +931,12 @@ outside the DoD). Per-component semantics live in §3–§13; the cross-cutting 
   date format/parse across locale × calendar × precision (field order, month names, completion
   from today, two-digit pivot, ISO fast path, every §6.3 rejection rule), calendar adapters
   (Ethiopic month 13 / leap Pagume, Umm al-Qura conversions inside the table window, bounds),
-  `tmFirstDayOfWeek` fallback. Component units: Signal Forms binding + `transformedValue` error
+  `tmFirstDayOfWeek` fallback; a **cross-implementation agreement gate** asserting each
+  adapter's `toParts` matches `Intl.DateTimeFormat.formatToParts` numeric year/month/day over
+  sampled dates per calendar (arithmetic runs in `@internationalized/date` while names and
+  formatting come from the browser's ICU — separate codebases that must not drift at
+  table-window edges or in era numbering); and the committed `format-golden.json` (§2.2)
+  asserted row by row. Component units: Signal Forms binding + `transformedValue` error
   flow for `tmNumber`/`tm-date-picker`, modal result channel per dismissal path, tabs
   destroy/preserve semantics, file selection guardrails, image cache logic against a mocked
   `CacheStorage` (hit/mismatch/ignoreSearch purge/revalidate/coalescing/quota fallback).
@@ -938,7 +994,8 @@ outside the DoD). Per-component semantics live in §3–§13; the cross-cutting 
 8. Calendars: Gregorian default via `TM_CALENDAR`; Umm al-Qura and Ethiopic entry points
    register via `provideTmCalendar`; runtime calendar switch re-renders text and popup with the
    model unchanged; Ethiopic shows 13 selectable months incl. leap Pagume; Umm al-Qura window
-   documented; month/era names verified to come from Intl (no bundled tables).
+   documented; month/era names verified to come from Intl (no bundled tables); the adapter↔Intl
+   agreement gate and the committed formatting golden (§2.2, §17) pass.
 9. Grid `date` columns: built-in format/parse defaults active (consumer overrides still win);
    `tm-date-picker` is the built-in editor (cell-anchored popup, `Alt+ArrowDown`, two-stage
    Esc, type-to-edit seeding); the grid showcase's editable story includes a date column
@@ -949,12 +1006,15 @@ outside the DoD). Per-component semantics live in §3–§13; the cross-cutting 
     coalesces N concurrent instances into one request (Playwright-verified), survives quota
     failure uncached, and is swept by `TmClientCache.clearAll()`.
 11. `tm-image` edit mode: replace (format/size guardrails, decode-failure rejection,
-    downscale + EXIF), pan/zoom fitting with pointer and keyboard+slider paths, delete →
-    `imageChange(null)`; output = original blob + normalized `rect`+`focal` fit; box size
-    constant across modes.
+    downscale + EXIF, GIFs exempt from the downscale), pan/zoom fitting with pointer and
+    keyboard+slider paths (re-fit of an existing image sourced from `editSrc`), delete →
+    `imageChange(null)`; a new pick emits the blob + normalized `rect`+`focal` fit, a re-fit
+    emits `blob: null` + fit; box size constant across modes.
 12. Files: `tmFilePicker` and `tm-dropzone` share the engine and emit identical
     `TmFileSelection`; guardrails (`size`/`type`/`count`/`folder`) reject with localized,
-    announced reasons; dropzone keyboard path complete; multipart guidance in docs.
+    announced reasons; dropzone keyboard path complete; clipboard paste of files into the
+    focused zone works; the document-level missed-drop guard installs with the first dropzone
+    and uninstalls with the last; transport guidance in docs.
 13. `tm-file-preview`: per-kind rendering per §8.4 — PDF via non-sandboxed iframe gated on
     `navigator.pdfViewerEnabled`, media via `{url}` streaming or blob with explicit play,
     SVG via `<img>` only, HTML/unknown always download-only (spec-pinned by a test); download
@@ -964,17 +1024,18 @@ outside the DoD). Per-component semantics live in §3–§13; the cross-cutting 
     definition-directive pattern renders correctly (no NG0201); strip scrolls on overflow.
 15. `tm-modal`: service-opened component/template content with `TM_MODAL_DATA` and typed
     `TmModalRef`; `closed` resolves with the correct `via` for all four dismissal paths;
-    `showClose`/`backdropDismiss`/`escapeDismiss` honored; sizes incl. `lg` margins and the
-    `panelClass` hatch; focus trap + restore; stacked modals dismiss topmost-first with chained
-    focus restore (Playwright-pinned); `tm-select` inside a modal renders above it (top-layer,
+    `showClose`/`backdropDismiss`/`escapeDismiss` honored; the `canDismiss` guard (sync and
+    async) blocks user dismissals; sizes incl. `lg` margins and the `panelClass` hatch; focus
+    trap + restore; stacked modals dismiss topmost-first with chained focus restore
+    (Playwright-pinned); `tm-select` inside a modal renders above it (top-layer,
     Playwright-pinned).
 16. `tm-popover` and `tmTooltip`: positioning + RTL mirroring via the shared helper; popover
     focus in/out and non-modal Tab-out close; tooltip hover/focus/long-press show, Esc
     dismiss, hoverable surface, `AriaDescriber` description present without opening; single
     open tooltip invariant.
 17. `tm-alert`: four kinds themed in both schemes with visually-hidden kind prefixes;
-    `live` renders `role="status"`/`role="alert"` and announces on dynamic insertion; axe
-    clean; forced-colors keeps kind distinction.
+    `live` renders `role="status"`/`role="alert"` and announces on dynamic insertion via the
+    empty-then-populate live region; axe clean; forced-colors keeps kind distinction.
 18. Cross-cutting: every new built-in string resolves through `TM_UI_TRANSLATE`, ships English
     in-package, and lands translated in `@tellma/locale-ar` (live locale switch re-renders);
     axe + behavioral Playwright + RTL + forced-colors/reduced-motion gates green across new
@@ -1005,9 +1066,11 @@ Answers to the design brief's open questions, where not already evident above:
    an internal swap (§6.5).
 8. **ISO bounds** — `0001-01-01`–`9999-12-31`, not `0000-01-01`: ISO 8601 admits year 0000 but
    .NET and SQL Server `date` do not (§6.1).
-9. **Image crop privacy** — the component emits the original + fit metadata (non-destructive,
-   the industry norm: re-editable crops, focal-point recrops). Whether the server retains the
-   original is backend policy; crop is documented as presentation, not redaction (§7.1, §7.5).
+9. **Image crop privacy** — non-destructive, the industry norm: a new upload emits the original
+   blob + fit metadata; a re-fit of an existing image emits fit metadata alone (`blob: null`),
+   so the client never regenerates bytes and a rendition can never overwrite the original.
+   Whether the server retains originals is backend policy; crop is documented as presentation,
+   not redaction (§7.1, §7.5).
 10. **Fit metadata vs future dimension changes** — normalized `rect` (exact re-edit) plus
     `focal` (automatic recrop at any future aspect), both 0..1 relative to the original (§7.1).
 11. **Image cache storage** — the Cache API, not IndexedDB/localStorage: Response+headers
