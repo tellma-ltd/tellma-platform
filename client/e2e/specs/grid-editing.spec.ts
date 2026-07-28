@@ -331,7 +331,8 @@ test.describe('new-row placeholder', () => {
   }) => {
     await activateCell(page, 0, 0);
     await page.keyboard.press('Control+End');
-    await expect(cell(page, 39, 7)).toBeFocused();
+    // The last data column is Due (col 8) since the date column landed.
+    await expect(cell(page, 39, 8)).toBeFocused();
   });
 });
 

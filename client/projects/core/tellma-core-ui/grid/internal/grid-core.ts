@@ -54,9 +54,12 @@ import {
 } from '@tellma/core-ui/grid-engine';
 import {
   TM_NUMBER_MAX_DIGITS,
+  tmFormatDate,
   tmFormatNumber,
   tmNumberDigitCount,
+  tmParseDate,
   tmParseNumber,
+  type TmCalendar,
 } from '@tellma/core-ui/l10n';
 import {
   ɵtmObserveLongPress,
@@ -102,6 +105,7 @@ const EDGE_SCROLL_STEP_PX = 16;
 const BUILT_IN_EDIT_TYPES: ReadonlySet<TmGridColumnType> = new Set([
   'text',
   'number',
+  'date',
   'boolean',
   'enum',
 ]);
@@ -445,6 +449,8 @@ export interface ɵTmGridCoreDeps<T> {
    * parse contexts read the value at event time.
    */
   readonly locale: Signal<string>;
+  /** The app-ambient display calendar — date cells repaint when it switches. */
+  readonly calendar: Signal<TmCalendar>;
   /** The current tenant id (clipboard metadata + cross-tenant paste guard). */
   readonly tenantId: Signal<string | undefined>;
   /** The distribution key (metadata + guard) — tenant ids are unique only within one. */
@@ -1483,7 +1489,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         event.preventDefault();
         return;
       case 'openDropdown':
-        if (mounted !== null && mounted.kind === 'enum') {
+        if (mounted !== null && (mounted.kind === 'enum' || mounted.kind === 'date')) {
           mounted.openDropdown();
           event.preventDefault();
         }
@@ -2178,7 +2184,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (
       isDevMode() &&
       format === undefined &&
-      (type === 'entity' || type === 'date') &&
+      type === 'entity' &&
       !this.warnedColumns.has(id)
     ) {
       this.warnedColumns.add(id);
@@ -2191,11 +2197,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
 
     const minDecimals = dir.minDecimals();
     const maxDecimals = dir.maxDecimals();
+    const calendar = this.deps.calendar;
     const fallbackText = (value: unknown): string =>
       value === null || value === undefined ? '' : String(value);
-    // `locale` is read INSIDE the closures (not captured as a value): the
-    // cell view model is computed-driven, so display text re-renders in
-    // place when the ambient locale switches.
+    // `locale`/`calendar` are read INSIDE the closures (not captured as
+    // values): the cell view model is computed-driven, so display text
+    // re-renders in place when the ambient locale or calendar switches.
     const typeText = (value: unknown): string => {
       switch (type) {
         case 'number':
@@ -2204,6 +2211,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           return TM_CHECKBOX_CELL_DISPLAY.formatValue((value ?? null) as boolean | null, locale());
         case 'enum':
           return enumLabels?.get(value) ?? fallbackText(value);
+        case 'date':
+          return typeof value === 'string' && value !== ''
+            ? tmFormatDate(value, locale(), { calendar: calendar() })
+            : fallbackText(value);
         default:
           return fallbackText(value);
       }
@@ -2218,7 +2229,23 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         ? (value) => tmFormatNumber(value, locale())
         : undefined;
 
-    const parse = customParse ?? defaultParseFor(type, enumLabels);
+    // The built-in date parse: the paste `sourceLocale` hint is tried first
+    // (Gregorian source calendar assumed for foreign pastes — clipboards
+    // carry Gregorian-locale text), then the active locale in the ambient
+    // display calendar. Column-level [parse] still overrides.
+    const dateParse =
+      type === 'date'
+        ? (text: string, ctx: TmParseContext): unknown | TmParseError => {
+            if (ctx.sourceLocale !== undefined && ctx.sourceLocale !== ctx.locale) {
+              const foreign = tmParseDate(text, ctx.sourceLocale);
+              if (typeof foreign === 'string' || foreign === null) {
+                return foreign;
+              }
+            }
+            return tmParseDate(text, ctx.locale, { calendar: untracked(calendar) });
+          }
+        : undefined;
+    const parse = customParse ?? dateParse ?? defaultParseFor(type, enumLabels);
     // The model-equals-display invariant for number columns: user commits
     // and pastes round to the column's display scale, and a committed
     // value must fit the numeric precision envelope (an IEEE-754 double
@@ -3175,6 +3202,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       };
     } else if (column.type === 'number') {
       config = { kind: 'number', label: header };
+    } else if (column.type === 'date') {
+      config = { kind: 'date', label: header };
     } else {
       config = { kind: 'text', label: header };
     }
@@ -3211,7 +3240,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       // is still a user edit, so the pristine baseline is what the cell
       // held before, never the seed.
       this.editorOpenText = null;
-    } else if (mounted.kind === 'text' || mounted.kind === 'number') {
+    } else if (mounted.kind === 'text' || mounted.kind === 'number' || mounted.kind === 'date') {
       // Edit mode edits the cell's CURRENT DISPLAY TEXT (Excel edits the
       // formatted text; for an invalid-input cell that is the raw text) — but a
       // number column edits its full-precision value, not the rounded display.

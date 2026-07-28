@@ -59,6 +59,7 @@ interface InvoiceLine {
   readonly quantity: number | null;
   readonly unitPrice: number | null;
   readonly discount: number | null;
+  readonly dueDate: string | null;
   readonly isPosted: boolean;
   readonly category: string | null;
   readonly agentId: number | null;
@@ -76,6 +77,13 @@ function makeSeedLine(i: number): InvoiceLine {
     quantity: 1 + Math.floor(random() * 20),
     unitPrice: Math.round(random() * 90000) / 100,
     discount: Math.round(random() * 1000) / 100,
+    // A deterministic ISO date in 2026 (day of year 1..365 from the seed).
+    dueDate: (() => {
+      const date = new Date(Date.UTC(2026, 0, 1 + Math.floor(random() * 365)));
+      return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(
+        date.getUTCDate(),
+      ).padStart(2, '0')}`;
+    })(),
     isPosted: i % 5 === 0,
     category: CATEGORIES[i % CATEGORIES.length].value,
     agentId: AGENTS[i % AGENTS.length].id,
@@ -251,6 +259,7 @@ export class DemoAgentEditor implements TmCellEditor<number | null> {
         <app-demo-agent-editor *tmGridEditor />
       </tm-grid-column>
       <tm-grid-column type="number" header="Total" [value]="total" [width]="110" />
+      <tm-grid-column key="dueDate" type="date" header="Due" [width]="120" />
     </tm-grid>
 
     <h3>Model</h3>
@@ -315,6 +324,7 @@ export class GridEditableStory {
     quantity: null,
     unitPrice: null,
     discount: null,
+    dueDate: null,
     isPosted: false,
     category: null,
     agentId: null,

@@ -24,7 +24,7 @@ import { Directionality } from '@angular/cdk/bidi';
 import type { FieldTree } from '@angular/forms/signals';
 
 import type { TmCellEdit, TmRowId } from '@tellma/core-ui/contracts';
-import { TM_ACTIVE_LOCALE, TM_UI_TRANSLATE } from '@tellma/core-ui';
+import { TM_ACTIVE_LOCALE, TM_CALENDAR, TM_UI_TRANSLATE } from '@tellma/core-ui';
 import type { TmMenuItem } from '@tellma/core-ui/menu';
 
 import { TmGridColumn } from '../tm-grid-column';
@@ -127,6 +127,7 @@ export abstract class ɵTmGridBase<T> {
     const translate = inject(TM_UI_TRANSLATE);
     const store = inject(TmGridStateStore);
     const locale = inject(TM_ACTIVE_LOCALE);
+    const calendar = inject(TM_CALENDAR);
     // Tenant identity is ambient (single tenant per app), not a per-grid input.
     const gridContext = inject(TM_GRID_CONTEXT);
 
@@ -145,6 +146,7 @@ export abstract class ɵTmGridBase<T> {
       translate,
       store,
       locale,
+      calendar,
       gridId: this.gridId,
       contentKey: this.contentKey,
       data: this.data,

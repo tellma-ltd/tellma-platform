@@ -57,7 +57,8 @@ export class TmGridColumn<T = unknown, V = unknown> {
   readonly format = input<((value: V, row: T) => string) | undefined>(undefined);
   /**
    * Text→value conversion for typed paste and text-editor commits.
-   * Required for `date` columns (no date adapter exists yet).
+   * Overrides the built-in defaults (`date` columns parse locale text in
+   * the ambient display calendar into ISO `YYYY-MM-DD` out of the box).
    */
   readonly parse = input<((text: string, ctx: TmParseContext) => V | TmParseError) | undefined>(
     undefined,

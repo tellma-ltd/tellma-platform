@@ -838,3 +838,126 @@ describe('tm-grid (editing harness)', () => {
     expect(host.model()[0].id).toBe(1); // row 2 (id 2) was deleted
   });
 });
+
+describe('tm-grid date columns (built-in defaults)', () => {
+  interface DateLine {
+    readonly id: number;
+    readonly due: string | null;
+  }
+
+  @Component({
+    imports: [TmGrid, TmGridColumn],
+    template: `
+      <tm-grid gridId="date-spec-grid" [field]="f" [rowId]="rowId" style="block-size: 300px">
+        <tm-grid-column key="due" type="date" header="Due" [width]="140" />
+      </tm-grid>
+    `,
+  })
+  class DateHost {
+    readonly model = signal<DateLine[]>([
+      { id: 1, due: '2026-03-05' },
+      { id: 2, due: null },
+    ]);
+    readonly f = form(this.model, () => {});
+    readonly rowId = (row: DateLine): number => row.id;
+  }
+
+  async function setupDates() {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(DateHost);
+    await stable(fixture);
+    const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+      '.tm-grid__scroller',
+    ) as HTMLElement;
+    return { fixture, host: fixture.componentInstance, scroller };
+  }
+
+  it('displays via the built-in format (locale numeric, no [format] required)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { scroller } = await setupDates();
+    expect(cellAt(scroller, 0, 0)!.textContent!.trim()).toBe('3/5/2026');
+    expect(cellAt(scroller, 1, 0)!.textContent!.trim()).toBe('');
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining("type 'date' has no [format]"));
+    warn.mockRestore();
+  });
+
+  it('mounts tm-date-picker as the editor; typed text commits through the built-in parse', async () => {
+    const { fixture, host, scroller } = await setupDates();
+    await activateOrigin(fixture, scroller);
+
+    // Type-to-edit seeds the picker's input.
+    keydown(scroller, '3');
+    await stable(fixture);
+    const input = scroller.querySelector<HTMLInputElement>('.tm-date-picker__input');
+    expect(input).not.toBeNull();
+    expect(input!.value).toBe('3');
+
+    typeInto(input!, '3/12/2026');
+    await stable(fixture);
+    keydown(input!, 'Enter');
+    await stable(fixture);
+    expect(host.model()[0].due).toBe('2026-03-12'); // ISO in the model
+    expect(cellAt(scroller, 0, 0)!.textContent!.trim()).toBe('3/12/2026');
+  });
+
+  it('unreadable text becomes a parse invalid input with the model cleared', async () => {
+    const { fixture, host, scroller } = await setupDates();
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'x');
+    await stable(fixture);
+    const input = scroller.querySelector<HTMLInputElement>('.tm-date-picker__input')!;
+    typeInto(input, 'not a date');
+    await stable(fixture);
+    keydown(input, 'Enter');
+    await stable(fixture);
+    expect(host.model()[0].due).toBeNull();
+    const cell = cellAt(scroller, 0, 0) as HTMLElement;
+    expect(cell.textContent!.trim()).toBe('not a date');
+    expect(cell.classList.contains('tm-grid__cell--error')).toBe(true);
+  });
+
+  it('Alt+ArrowDown opens the cell-anchored popup; the two-stage Esc composes', async () => {
+    const { fixture, host, scroller } = await setupDates();
+    await activateOrigin(fixture, scroller);
+
+    // Open the editor (F2 edit mode: display text seeded), then the popup.
+    keydown(scroller, 'F2');
+    await stable(fixture);
+    const input = scroller.querySelector<HTMLInputElement>('.tm-date-picker__input')!;
+    keydown(input, 'ArrowDown', { altKey: true });
+    await stable(fixture);
+    const popup = document.querySelector('.tm-date-popup') as HTMLElement;
+    expect(popup).not.toBeNull();
+    expect(popup.querySelector('[data-tm-day="5"][aria-selected="true"]')).not.toBeNull();
+
+    // Esc №1: the popup consumes it — the session stays open.
+    keydown(popup, 'Escape');
+    await stable(fixture);
+    expect(document.querySelector('.tm-date-popup')).toBeNull();
+    expect(scroller.querySelector('.tm-date-picker__input')).not.toBeNull();
+
+    // Esc №2 reaches the grid and cancels the session without writing.
+    keydown(scroller.querySelector('.tm-date-picker__input')!, 'Escape');
+    await stable(fixture);
+    expect(scroller.querySelector('.tm-date-picker__input')).toBeNull();
+    expect(host.model()[0].due).toBe('2026-03-05');
+  });
+
+  it('a popup day selection fills the editor text; Enter commits it', async () => {
+    const { fixture, host, scroller } = await setupDates();
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'F2');
+    await stable(fixture);
+    const input = scroller.querySelector<HTMLInputElement>('.tm-date-picker__input')!;
+    keydown(input, 'ArrowDown', { altKey: true });
+    await stable(fixture);
+
+    (document.querySelector('.tm-date-popup [data-tm-day="20"]') as HTMLButtonElement).click();
+    await stable(fixture);
+    const reopened = scroller.querySelector<HTMLInputElement>('.tm-date-picker__input')!;
+    expect(reopened.value).toBe('3/20/2026');
+    keydown(reopened, 'Enter');
+    await stable(fixture);
+    expect(host.model()[0].due).toBe('2026-03-20');
+  });
+});
