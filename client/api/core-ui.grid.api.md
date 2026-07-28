@@ -5,10 +5,11 @@
 ```ts
 
 import * as _angular_core from '@angular/core';
+import { CdkConnectedOverlay } from '@angular/cdk/overlay';
+import { CdkConnectedOverlayConfig } from '@angular/cdk/overlay';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { DestroyRef } from '@angular/core';
 import { FieldTree } from '@angular/forms/signals';
-import { FlexibleConnectedPositionStrategyOrigin } from '@angular/cdk/overlay';
 import { FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
 import { InjectionToken } from '@angular/core';
 import { Injector } from '@angular/core';

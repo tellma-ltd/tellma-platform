@@ -13,6 +13,7 @@
     "@jsverse/transloco-messageformat": "^8.4.0"
   },
   "dependencies": {
+    "@internationalized/date": "^3.12.2",
     "tslib": "^2.3.0"
   },
   "sideEffects": false,
@@ -28,8 +29,12 @@
       "./menu": 6,
       "./checkbox": 4,
       "./form-field": 4,
+      "./private": 4,
       "./select": 8,
       "./spinner": 1
+    },
+    "apiGoldens": {
+      "exclude": ["./private"]
     },
     "docs": {
       "globalStyles": {

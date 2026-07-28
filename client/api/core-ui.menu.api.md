@@ -5,8 +5,10 @@
 ```ts
 
 import * as _angular_core from '@angular/core';
+import { CdkConnectedOverlay } from '@angular/cdk/overlay';
+import { CdkConnectedOverlayConfig } from '@angular/cdk/overlay';
 import { ConnectedPosition } from '@angular/cdk/overlay';
-import { FlexibleConnectedPositionStrategyOrigin } from '@angular/cdk/overlay';
+import { FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
 import { Signal } from '@angular/core';
 import { TemplateRef } from '@angular/core';
 
@@ -23,6 +25,7 @@ export class TmContextMenuTrigger {
 // @public
 export class TmMenu {
     constructor();
+    protected readonly anchored: _tellma_core_ui_private.TmAnchoredOverlay;
     readonly ariaLabel: _angular_core.InputSignal<string | null>;
     close(options?: {
         restoreFocus?: boolean;
@@ -35,12 +38,10 @@ export class TmMenu {
     readonly itemSelected: _angular_core.OutputEmitterRef<TmMenuItem>;
     protected labelOf(item: TmMenuItem): Signal<string>;
     protected onItemSelected(id: string): void;
-    protected onOverlayAttach(): void;
-    protected onOverlayDetach(): void;
     protected onPanelKeydown(event: KeyboardEvent): void;
     open(anchor: TmMenuAnchor, options?: TmMenuOpenOptions): void;
     readonly opened: _angular_core.OutputEmitterRef<void>;
-    protected readonly overlayOrigin: _angular_core.WritableSignal<FlexibleConnectedPositionStrategyOrigin | null>;
+    protected readonly overlayOrigin: _angular_core.WritableSignal<TmMenuAnchor | null>;
     protected readonly positions: ConnectedPosition[];
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmMenu, "tm-menu", never, { "items": { "alias": "items"; "required": true; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; }, { "opened": "opened"; "closed": "closed"; "itemSelected": "itemSelected"; }, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmMenu, never>;

@@ -32,10 +32,25 @@ const { Extractor, ExtractorConfig } = require('@microsoft/api-extractor');
  * of golden scope by construction. `publicApi` is the source entry point
  * whose `@packageDocumentation` header is restored into the flattened d.ts
  * (see `prepareDts`).
+ *
+ * A library may opt individual entry points out of golden scope via its
+ * package.json policy field `"tellma".apiGoldens.exclude` — the mechanism
+ * behind the no-stability-guarantee `private` entry point. Exclusions are
+ * validated against the discovered entry points (mirroring the budgets
+ * script's bidirectional coverage check) so a typo can never silently
+ * orphan an exclusion.
  */
-const ENTRY_POINTS = discoverLibraries(
-  resolve(dirname(fileURLToPath(import.meta.url)), '..'),
-).flatMap((library) => library.entryPoints);
+const ENTRY_POINTS = discoverLibraries(clientDir).flatMap((library) => {
+  const excluded = new Set(library.tellma?.apiGoldens?.exclude ?? []);
+  for (const id of excluded) {
+    if (!library.entryPoints.some((entryPoint) => entryPoint.id === id)) {
+      throw new Error(
+        `${library.name}: "tellma".apiGoldens.exclude lists '${id}', which is not an entry point.`,
+      );
+    }
+  }
+  return library.entryPoints.filter((entryPoint) => !excluded.has(entryPoint.id));
+});
 
 /** The fixed note injected above Angular's generated static members. */
 const GENERATED_MEMBER_NOTE =

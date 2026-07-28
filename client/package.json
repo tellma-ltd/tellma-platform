@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@angular/aria": "22.0.3",
+    "@internationalized/date": "3.12.2",
     "@angular/cdk": "22.0.3",
     "@angular/common": "22.0.5",
     "@angular/compiler": "22.0.5",

@@ -5,7 +5,10 @@
 ```ts
 
 import * as _angular_core from '@angular/core';
+import { CdkConnectedOverlay } from '@angular/cdk/overlay';
+import { CdkConnectedOverlayConfig } from '@angular/cdk/overlay';
 import { ConnectedPosition } from '@angular/cdk/overlay';
+import { FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
 import { Signal } from '@angular/core';
 import { TemplateRef } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
@@ -25,6 +28,7 @@ export class TmOption<T> {
 // @public
 export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefined> {
     constructor();
+    protected readonly anchored: _tellma_core_ui_private.TmAnchoredOverlay;
     readonly ariaDescribedby: _angular_core.InputSignal<string | null>;
     readonly ariaLabel: _angular_core.InputSignal<string | null>;
     protected readonly ariaLabelledBy: Signal<string | null>;
@@ -48,7 +52,6 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     readonly localizedErrors: () => readonly TmFieldError[];
     onContainerClick(): void;
     protected onListboxClick(event: MouseEvent): void;
-    protected onOverlayAttach(): void;
     protected onSpaceKey(): void;
     protected onTriggerKeydown(event: KeyboardEvent): void;
     open(): void;

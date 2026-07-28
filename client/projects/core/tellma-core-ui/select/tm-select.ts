@@ -10,7 +10,6 @@ import {
   Component,
   computed,
   contentChildren,
-  DestroyRef,
   effect,
   ElementRef,
   inject,
@@ -38,6 +37,7 @@ import {
   tmResolveFieldErrors,
 } from '@tellma/core-ui';
 import { TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/form-field';
+import { tmCreateAnchoredOverlay } from '@tellma/core-ui/private';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
 import { TmOption } from './tm-option';
@@ -47,10 +47,11 @@ let nextUniqueId = 0;
 /**
  * Single-select dropdown: a custom `<div>` trigger composed with
  * `@angular/aria`'s combobox/listbox directives, panel positioned by CDK
- * Overlay (`usePopover:'inline'` — native top layer, escapes clipping;
- * `matchWidth`; `[bottom-start, top-start]` flip; `disableClose` so aria
- * alone owns Esc; `updatePosition()`-on-attach macrotask so flip measures
- * the real panel). The aria directives own keyboard nav, typeahead,
+ * Overlay via the shared anchored-overlay helper (`usePopover:'inline'` —
+ * native top layer, escapes clipping; `matchWidth`; `[bottom-start,
+ * top-start]` flip; `disableClose` so aria alone owns Esc;
+ * `updatePosition()`-on-attach macrotask so flip measures the real
+ * panel). The aria directives own keyboard nav, typeahead,
  * active-descendant and all aria-* wiring; `tm-select` owns the brand
  * chrome, the Signal Forms glue, the scalar↔array key bridge, and label
  * resolution.
@@ -125,15 +126,9 @@ let nextUniqueId = 0;
     </div>
 
     <ng-template
-      [cdkConnectedOverlay]="{
-        origin: cb.element,
-        usePopover: 'inline',
-        matchWidth: true,
-        disableClose: true,
-        positions: positions,
-      }"
+      [cdkConnectedOverlay]="anchored.overlayConfig()"
       [cdkConnectedOverlayOpen]="expanded()"
-      (attach)="onOverlayAttach()"
+      (attach)="anchored.handleAttach()"
     >
       <ng-template ngComboboxPopup [combobox]="cb">
         <div class="tm-select__panel">
@@ -268,12 +263,26 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom' },
   ];
 
-  private readonly combobox = viewChild.required(Combobox);
+  private readonly combobox = viewChild(Combobox);
   private readonly overlay = viewChild(CdkConnectedOverlay);
   private readonly listbox = viewChild(Listbox);
   private readonly optionRows = viewChildren('optionRow', { read: ElementRef });
   /** aria's rendered `[ngOption]` directives — activation guards read active/disabled. */
   private readonly ariaOptions = viewChildren(Option);
+
+  /**
+   * The shared anchored-overlay wiring (config + macrotask re-measure —
+   * aria's DeferredContent inserts the panel one render pass after the CDK
+   * attaches and measures, so flip-up would otherwise measure a zero-height
+   * panel and never flip).
+   */
+  protected readonly anchored = tmCreateAnchoredOverlay({
+    overlay: () => this.overlay(),
+    origin: () => this.combobox()?.element ?? null,
+    positions: this.positions,
+    matchWidth: true,
+    remeasure: 'macrotask',
+  });
 
   /**
    * A printable character typed on the CLOSED trigger, held until the panel
@@ -363,7 +372,6 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
 
   constructor() {
     this.cellHost?.register(this);
-    inject(DestroyRef).onDestroy(() => clearTimeout(this.pendingRemeasure));
 
     // The ONE-DIRECTIONAL value bridge (§3.4): mirror the model into aria's
     // listbox (as the stable key), re-applied whenever the option set
@@ -451,20 +459,6 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
       }
       listbox?.scrollActiveItemIntoView();
     });
-  }
-
-  // ---- Overlay plumbing (§3.4, proven by the stage-3 spike) ----
-  private pendingRemeasure: ReturnType<typeof setTimeout> | undefined;
-
-  /** Re-measures the overlay position one macrotask after attach, so flip-up can work. */
-  protected onOverlayAttach(): void {
-    // DeferredContent inserts the panel one render pass after CDK attaches
-    // and measures; without a MACROTASK re-measure, flip-up would measure a
-    // zero-height panel and never flip (spike-verified). The timer must not
-    // outlive the component — updatePosition() on a disposed overlay throws
-    // — so destroy clears it (registered once in the constructor).
-    clearTimeout(this.pendingRemeasure);
-    this.pendingRemeasure = setTimeout(() => this.overlay()?.overlayRef?.updatePosition());
   }
 
   // ---- Commit path: activation events ONLY, never valueChange (§3.4) ----
@@ -598,7 +592,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
 
   /** Focuses the trigger; Signal Forms calls this when asked to focus the field. */
   focus(options?: FocusOptions): void {
-    untracked(() => this.combobox()).element.focus(options);
+    untracked(() => this.combobox())?.element.focus(options);
   }
 
   /**

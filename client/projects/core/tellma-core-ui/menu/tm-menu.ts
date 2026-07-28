@@ -5,14 +5,11 @@
 
 import { NgTemplateOutlet } from '@angular/common';
 import {
-  afterNextRender,
   afterRenderEffect,
-  type AfterRenderRef,
   Component,
   computed,
   DestroyRef,
   inject,
-  Injector,
   input,
   isDevMode,
   output,
@@ -24,9 +21,10 @@ import {
 } from '@angular/core';
 import { Menu, MenuItem } from '@angular/aria/menu';
 import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
-import type { ConnectedPosition, FlexibleConnectedPositionStrategyOrigin } from '@angular/cdk/overlay';
+import type { ConnectedPosition } from '@angular/cdk/overlay';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
+import { tmCreateAnchoredOverlay } from '@tellma/core-ui/private';
 
 /** One actionable menu item. */
 export interface TmMenuItem {
@@ -94,16 +92,11 @@ const openMenuStack: TmMenu[] = [];
   imports: [Menu, MenuItem, NgTemplateOutlet, OverlayModule],
   template: `
     <ng-template
-      [cdkConnectedOverlay]="{
-        origin: overlayOrigin()!,
-        usePopover: 'inline',
-        disableClose: true,
-        positions: positions,
-      }"
+      [cdkConnectedOverlay]="anchored.overlayConfig()"
       [cdkConnectedOverlayOpen]="expanded()"
-      (attach)="onOverlayAttach()"
-      (detach)="onOverlayDetach()"
-      (overlayOutsideClick)="close({ restoreFocus: false })"
+      (attach)="anchored.handleAttach()"
+      (detach)="anchored.handleDetach()"
+      (overlayOutsideClick)="anchored.handleOutsideClick($event)"
     >
       <div
         class="tm-menu__panel"
@@ -173,7 +166,7 @@ export class TmMenu {
   /** Whether the overlay is attached. */
   protected readonly expanded = signal(false);
   /** Where the overlay anchors (element, rect, or point). */
-  protected readonly overlayOrigin = signal<FlexibleConnectedPositionStrategyOrigin | null>(null);
+  protected readonly overlayOrigin = signal<TmMenuAnchor | null>(null);
 
   /** Standard context-menu placement: below-start first, then flips. */
   protected readonly positions: ConnectedPosition[] = [
@@ -185,10 +178,26 @@ export class TmMenu {
 
   private readonly overlay = viewChild(CdkConnectedOverlay);
   private readonly menu = viewChild(Menu);
-  private readonly injector = inject(Injector);
   private restoreFocusTarget: HTMLElement | null = null;
-  private pendingRemeasure: AfterRenderRef | undefined;
   private focusedOnOpen = false;
+
+  /**
+   * The shared anchored-overlay wiring. The re-measure runs after the NEXT
+   * render so flexible positioning re-flips at the new anchor: the origin
+   * reaches the CDK overlay directive only when change detection flushes
+   * the config binding, so measuring before that (a bare timer racing CD)
+   * would re-measure against the OLD origin — intermittently, on slower
+   * machines.
+   */
+  protected readonly anchored = tmCreateAnchoredOverlay({
+    overlay: () => this.overlay(),
+    origin: () => this.overlayOrigin(),
+    positions: this.positions,
+    remeasure: 'afterNextRender',
+    onAttach: () => this.opened.emit(),
+    onDetach: () => this.onOverlayDetach(),
+    onOutsideClick: () => this.close({ restoreFocus: false }),
+  });
   /** Per-item label signals, cached by item reference. */
   private readonly labelCache = new WeakMap<TmMenuItem, Signal<string>>();
 
@@ -230,7 +239,6 @@ export class TmMenu {
   constructor() {
     this.isOpen = this.expanded.asReadonly();
     inject(DestroyRef).onDestroy(() => {
-      this.pendingRemeasure?.destroy();
       this.disarmDismissal();
     });
 
@@ -262,7 +270,7 @@ export class TmMenu {
       return;
     }
     this.restoreFocusTarget = options?.restoreFocus ?? null;
-    this.overlayOrigin.set(toOverlayOrigin(anchor));
+    this.overlayOrigin.set(anchor);
     this.focusedOnOpen = false;
     this.armDismissal();
 
@@ -275,7 +283,7 @@ export class TmMenu {
     // — drive the re-measure explicitly.
     if (untracked(this.expanded) || (this.overlay()?.overlayRef?.hasAttached() ?? false)) {
       this.expanded.set(true);
-      this.reanchor();
+      this.anchored.reanchor();
       return;
     }
     this.expanded.set(true);
@@ -339,35 +347,13 @@ export class TmMenu {
     }
   }
 
-  /** Emits `opened` on the fresh CDK attach, then re-measures the overlay. */
-  protected onOverlayAttach(): void {
-    this.opened.emit();
-    this.reanchor();
-  }
-
   /** Keeps `expanded` honest when the overlay detaches out-of-band. */
-  protected onOverlayDetach(): void {
+  private onOverlayDetach(): void {
     if (untracked(this.expanded)) {
       this.disarmDismissal();
       this.expanded.set(false);
     }
     this.closed.emit();
-  }
-
-  /**
-   * Re-measures the overlay after the NEXT render so flexible positioning
-   * re-flips at the new anchor — without re-emitting `opened` (a re-anchor is
-   * one continuous open, not a fresh one). The render barrier matters: the
-   * new origin reaches the CDK overlay directive only when change detection
-   * flushes the `[cdkConnectedOverlayOrigin]` binding, so measuring before
-   * that (a bare timer racing CD) re-measures against the OLD origin and the
-   * menu sticks at its previous point — intermittently, on slower machines.
-   */
-  private reanchor(): void {
-    this.pendingRemeasure?.destroy();
-    this.pendingRemeasure = afterNextRender(() => this.overlay()?.overlayRef?.updatePosition(), {
-      injector: this.injector,
-    });
   }
 
   /** Whether the menu has at least one non-separator entry to show. */
@@ -398,15 +384,4 @@ export class TmMenu {
       openMenuStack.splice(index, 1);
     }
   }
-}
-
-/** Maps the public anchor union onto the CDK origin union. */
-function toOverlayOrigin(anchor: TmMenuAnchor): FlexibleConnectedPositionStrategyOrigin {
-  if (anchor instanceof Element) {
-    return anchor;
-  }
-  if (anchor instanceof DOMRect) {
-    return { x: anchor.x, y: anchor.y, width: anchor.width, height: anchor.height };
-  }
-  return { x: anchor.x, y: anchor.y };
 }
