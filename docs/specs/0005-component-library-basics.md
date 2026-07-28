@@ -183,7 +183,7 @@ rounds differently as a binary double than as an exact decimal); and the
 **15-significant-digit envelope** (§5), inside which every client number is exactly the decimal
 the server parses.
 It is pinned by a **committed golden** — `format-golden.json` in `l10n`, rows of
-(locale, calendar, precision, dateStyle → expected) and (locale, minDecimals, maxDecimals,
+(locale, calendar, precision, dateStyle, iso → expected) and (locale, minDecimals, maxDecimals,
 percent, value → expected) — asserted by the client suite and consumed verbatim by the future
 C# implementation's tests; CLDR-driven drift on engine updates is an explicit, reviewed
 regeneration, like an API golden.
@@ -324,10 +324,11 @@ field chrome, bidi, Signal Forms), so the existing directive's selector extends 
   differ from what the field shows. The grid's `number` columns follow the same rule (superseding
   spec 0004's display-only rounding): editor commits and pasted values round to the column's
   `maxDecimals` before the field write — one platform-wide invariant, grid cells and form fields
-  agreeing. The invariant governs **user commits**: `maxDecimals` is an entry/display policy, not
-  the storage scale, so a stored value carrying more precision (a server-computed figure, or a
-  column scale above the display policy) displays rounded while the model keeps the stored value —
-  until the user edits it, at which point the commit normalizes to display scale. The server
+  agreeing. The invariant governs **user commits only — a programmatic write to `value` is never
+  mutated by the control**: `maxDecimals` is an entry/display policy, not the storage scale, so an
+  externally written value carrying more precision (a server-computed figure, or a column scale
+  above the display policy) displays rounded while the model keeps the written value — until the
+  user edits it, at which point the commit normalizes to display scale. The server
   remains the final authority on storage scale (it re-rounds to the column's scale on write);
   the docs advise setting `maxDecimals` to the column scale on entry fields.
 - **Precision envelope — exact by construction.** `value` is an IEEE-754 double while the backend
@@ -615,8 +616,8 @@ empty).
   original resolution, with the byte-size limit still applying. Both limits are inputs with
   these defaults.
 - **Fit:** the image being fitted — the newly picked file, or for an existing image the
-  original fetched from `editSrc` (renditions are already cropped, so re-fitting requires the
-  original; without `editSrc` the re-fit affordance is absent) — renders under a fixed viewport
+  original fetched from `editSrc` (§7.1; without `editSrc` the re-fit affordance is absent) —
+  renders under a fixed viewport
   of the box's aspect; the user pans (pointer drag / touch drag) and zooms (wheel, pinch, and an
   always-visible zoom slider — the accessible path; arrow keys pan when the crop surface is
   focused, `+`/`-` zoom). The fit state is the `TmImageFit` rect (clamped so the rect never
@@ -802,7 +803,7 @@ type TmModalResult<R> =
   (size-stability rule); on small viewports all sizes converge to near-full-screen.
 - **Dismissal guard:** `canDismiss` (sync or async) is consulted before every user-initiated
   dismissal — close button, backdrop, Esc; returning or resolving `false` keeps the modal open.
-  The unsaved-changes pattern: the guard opens a confirm modal (stacking below) and resolves
+  The unsaved-changes pattern: the guard opens a confirm modal (see **Stacking**) and resolves
   with the user's answer. Programmatic `close()` is not guarded — consumer code owns its own
   calls.
 - **Stacking:** a modal may open another (the CDK dialog stack): each layer gets its own
