@@ -279,9 +279,67 @@ describe('tm-grid (editing)', () => {
     const input = editorInput(scroller) as HTMLInputElement;
     expect(input.value).toBe('1.2345');
 
+    // A PRISTINE Enter (nothing typed) commits nothing — the programmatic
+    // precision survives an F2 + Enter pass untouched.
     keydown(input, 'Enter');
     await stable(fixture);
     expect(host.model()[0].qty).toBe(1.2345);
+  });
+
+  it('number cells mount tmNumber, and an EDITED commit rounds to the column scale', async () => {
+    const { fixture, host, scroller } = await setup();
+    host.qtyMaxDecimals.set(2);
+    await stable(fixture);
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'ArrowRight'); // (0,1) qty
+    await stable(fixture);
+    keydown(scroller, 'F2');
+
+    const input = editorInput(scroller) as HTMLInputElement;
+    // The built-in number editor: numeric mobile keypad + text type guard.
+    expect(input.getAttribute('inputmode')).toBe('decimal');
+    expect(input.type).toBe('text');
+
+    input.focus();
+    input.value = '1.005678';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await stable(fixture);
+    keydown(input, 'Enter');
+    await stable(fixture);
+    // Model = display: the commit is the display-rounded value.
+    expect(host.model()[0].qty).toBe(1.01);
+    expect(cellAt(scroller, 0, 1)!.textContent!.trim()).toBe('1.01');
+  });
+
+  it('an over-precision number commit becomes a precision invalid input', async () => {
+    const { fixture, host, scroller } = await setup();
+    await stable(fixture);
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'ArrowRight'); // (0,1) qty
+    await stable(fixture);
+    keydown(scroller, 'F2');
+
+    const input = editorInput(scroller) as HTMLInputElement;
+    input.focus();
+    input.value = '12345678901234567';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await stable(fixture);
+    keydown(input, 'Enter');
+    await stable(fixture);
+
+    expect(host.model()[0].qty).toBeNull();
+    let cell = cellAt(scroller, 0, 1) as HTMLElement;
+    expect(cell.textContent!.trim()).toBe('12345678901234567');
+    expect(cell.classList.contains('tm-grid__cell--error')).toBe(true);
+
+    // Enter moved the active cell down; return so the error overlay
+    // describes the errored cell, and assert the message names the actual
+    // problem, not a generic parse failure.
+    keydown(scroller, 'ArrowUp');
+    await stable(fixture);
+    cell = cellAt(scroller, 0, 1) as HTMLElement;
+    const message = document.getElementById(cell.getAttribute('aria-describedby')!);
+    expect(message?.textContent).toContain('at most 15 digits');
   });
 
   it('IME composition keydown opens an UNSEEDED editor without consuming the key', async () => {

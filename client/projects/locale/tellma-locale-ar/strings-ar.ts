@@ -113,6 +113,7 @@ export const TM_LOCALE_AR_STRINGS = {
     },
     cellErrors: {
       invalidInput: '«{text}» ليست قيمة {column} صالحة.',
+      precision: `«{text}» يحتوي على خانات أكثر من اللازم — ${enter} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}}.`,
       notFound: 'لا يوجد {collection} باسم «{label}»',
       ambiguous: '«{label}» يطابق أكثر من {collection}',
       resolutionFailed: 'تعذر التحقق من «{label}» في {collection} — الصقها مجددا لإعادة المحاولة',

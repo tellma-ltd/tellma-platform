@@ -23,10 +23,10 @@ import type { TmCellEditor, TmCellEditorHost } from '@tellma/core-ui/contracts';
 import { TM_CELL_EDITOR_HOST } from '@tellma/core-ui';
 
 import type { TmGridEditorContext } from '../tm-grid-templates';
-import { ɵTmGridEnumEditor, ɵTmGridTextEditor } from './editors';
+import { ɵTmGridEnumEditor, ɵTmGridNumberEditor, ɵTmGridTextEditor } from './editors';
 
 /** Which editor source a mount resolved to. */
-export type ɵTmGridEditorKind = 'text' | 'enum' | 'template';
+export type ɵTmGridEditorKind = 'text' | 'number' | 'enum' | 'template';
 
 /** What the session mounts for one open editor. */
 export type ɵTmGridEditorMountConfig =
@@ -39,6 +39,11 @@ export type ɵTmGridEditorMountConfig =
     }
   | {
       readonly kind: 'text';
+      /** The accessible name (column header). */
+      readonly label: string;
+    }
+  | {
+      readonly kind: 'number';
       /** The accessible name (column header). */
       readonly label: string;
     }
@@ -138,6 +143,11 @@ export class ɵTmGridEditorSession {
       this.destroyView = () => view.destroy();
     } else if (config.kind === 'text') {
       const ref = outlet.createComponent(ɵTmGridTextEditor, { injector: cellInjector });
+      ref.setInput('label', config.label);
+      ref.changeDetectorRef.detectChanges();
+      this.destroyView = () => ref.destroy();
+    } else if (config.kind === 'number') {
+      const ref = outlet.createComponent(ɵTmGridNumberEditor, { injector: cellInjector });
       ref.setInput('label', config.label);
       ref.changeDetectorRef.detectChanges();
       this.destroyView = () => ref.destroy();

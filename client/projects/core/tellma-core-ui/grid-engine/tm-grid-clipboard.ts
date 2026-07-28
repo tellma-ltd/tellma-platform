@@ -823,12 +823,26 @@ export class TmGridClipboard<T = unknown> {
         const base = { rowId, columnId: column.id, columnKey: column.key, before, invalidBefore };
 
         // (1) Typed fast path: same column type + same origin (distribution
-        //     key AND tenant id) + a raw value.
+        //     key AND tenant id) + a raw value. The TARGET column's
+        //     display-scale normalization still applies — its scale may be
+        //     narrower than the source's, and pasted values obey the same
+        //     model-equals-display invariant as typed ones.
         const raw = rawValues?.[sr]?.[sc];
         const metaCol = meta?.cols?.[sc];
         if (raw !== undefined && sameOrigin && metaCol?.type === column.type) {
-          writes.push({ ...base, after: raw.value, invalidAfter: null });
-          valueWrites++;
+          const normalized =
+            column.normalizeValue === undefined ? raw.value : column.normalizeValue(raw.value);
+          if (normalized === TM_PARSE_ERROR) {
+            writes.push({
+              ...base,
+              after: column.clearedValue,
+              invalidAfter: { rawText: text, reason: 'precision' satisfies TmGridInvalidInputReason },
+            });
+            errors++;
+          } else {
+            writes.push({ ...base, after: normalized, invalidAfter: null });
+            valueWrites++;
+          }
           continue;
         }
         // (2) Empty text writes the cleared value (never hits the resolver).
@@ -837,11 +851,25 @@ export class TmGridClipboard<T = unknown> {
           valueWrites++;
           continue;
         }
-        // (3) The synchronous parse.
+        // (3) The synchronous parse, then the display-scale normalization.
         if (column.parse !== undefined) {
           const parsed = column.parse(text, { locale, sourceLocale });
           if (parsed !== TM_PARSE_ERROR) {
-            writes.push({ ...base, after: parsed, invalidAfter: null });
+            const normalized =
+              column.normalizeValue === undefined ? parsed : column.normalizeValue(parsed);
+            if (normalized === TM_PARSE_ERROR) {
+              writes.push({
+                ...base,
+                after: column.clearedValue,
+                invalidAfter: {
+                  rawText: text,
+                  reason: 'precision' satisfies TmGridInvalidInputReason,
+                },
+              });
+              errors++;
+              continue;
+            }
+            writes.push({ ...base, after: normalized, invalidAfter: null });
             valueWrites++;
             continue;
           }

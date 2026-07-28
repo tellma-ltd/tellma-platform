@@ -276,6 +276,7 @@ export interface TmGridEngineColumn<T = unknown> {
     readonly id: string;
     isCellReadonly(row: T): boolean;
     readonly key: string | null;
+    normalizeValue?(value: unknown): unknown | TmParseError;
     parse?(text: string, ctx: TmParseContext): unknown | TmParseError;
     readonly type: TmGridColumnType;
 }
@@ -356,7 +357,7 @@ export interface TmGridInvalidInput {
 }
 
 // @public
-export type TmGridInvalidInputReason = 'parse' | 'notFound' | 'ambiguous' | 'resolutionFailed';
+export type TmGridInvalidInputReason = 'parse' | 'precision' | 'notFound' | 'ambiguous' | 'resolutionFailed';
 
 // @public
 export interface TmGridMarquee {

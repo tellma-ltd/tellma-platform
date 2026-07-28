@@ -35,6 +35,8 @@ export interface TestColumnSpec {
   readonly cellReadonly?: (row: TestRow) => boolean;
   /** Custom parse; the default trims and fails on the literal 'BAD'. */
   readonly parse?: (text: string) => unknown | typeof TM_PARSE_ERROR;
+  /** Display-scale normalization for committed/pasted values (absent by default). */
+  readonly normalizeValue?: (value: unknown) => unknown | typeof TM_PARSE_ERROR;
   readonly hasResolver?: boolean;
   readonly clearedValue?: unknown;
 }
@@ -60,6 +62,7 @@ export function makeColumns(specs: readonly TestColumnSpec[]): TmGridEngineColum
     editable: spec.editable ?? true,
     isCellReadonly: (row: TestRow) => spec.cellReadonly?.(row) ?? false,
     parse: spec.parse ?? ((text: string) => (text === 'BAD' ? TM_PARSE_ERROR : text)),
+    ...(spec.normalizeValue !== undefined ? { normalizeValue: spec.normalizeValue } : {}),
     hasResolver: spec.hasResolver ?? false,
     clearedValue: spec.clearedValue ?? ((spec.type ?? 'text') === 'boolean' ? false : null),
   }));

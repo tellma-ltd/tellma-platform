@@ -14,7 +14,12 @@ import type { TmGridDataModel } from './tm-grid-data-model';
  * is distinct from `notFound`: the resolver rejected (a transient failure),
  * so the label was never actually checked — the message invites a retry.
  */
-export type TmGridInvalidInputReason = 'parse' | 'notFound' | 'ambiguous' | 'resolutionFailed';
+export type TmGridInvalidInputReason =
+  | 'parse'
+  | 'precision'
+  | 'notFound'
+  | 'ambiguous'
+  | 'resolutionFailed';
 
 /**
  * A raw text the grid holds for a cell whose content could not be turned

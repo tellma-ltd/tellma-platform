@@ -7,7 +7,10 @@ import { signal, untracked, type Signal } from '@angular/core';
 
 import { TM_PARSE_ERROR, type SignalLike, type TmRowId } from '@tellma/core-ui/contracts';
 
-import type { TmGridCellAnnotations } from './tm-grid-cell-annotations';
+import type {
+  TmGridCellAnnotations,
+  TmGridInvalidInputReason,
+} from './tm-grid-cell-annotations';
 import type { TmGridDataModel } from './tm-grid-data-model';
 import type { TmGridCellWrite, TmGridHistory } from './tm-grid-history';
 import type { TmRowCol } from './tm-grid-types';
@@ -89,18 +92,31 @@ export class TmGridEditState<T = unknown> {
   }
 
   /**
-   * Commits a typed value (editors that own a value channel). Clears any
+   * Commits a typed value (editors that own a value channel), normalized
+   * by the column's display-scale policy when one exists. Clears any
    * invalid input on the cell. Returns whether a commit happened.
    */
   commitValue(value: unknown): boolean {
-    return this.commitInternal((rowId, cell) => this.buildWrite(rowId, cell, value, null));
+    return this.commitInternal((rowId, cell) => {
+      const column = this.options.model.columnAt(cell.col);
+      const normalized =
+        column.normalizeValue === undefined ? value : column.normalizeValue(value);
+      if (normalized === TM_PARSE_ERROR) {
+        return this.buildWrite(rowId, cell, column.clearedValue, {
+          rawText: String(value),
+          reason: 'precision',
+        });
+      }
+      return this.buildWrite(rowId, cell, normalized, null);
+    });
   }
 
   /**
-   * Commits editor text through the column's parse. Unparseable text writes
-   * the column's cleared value and records the raw text as an invalid input
-   * — the model and the display never silently disagree. Columns without a
-   * parse take the text as-is. Returns whether a commit happened.
+   * Commits editor text through the column's parse, then the column's
+   * display-scale normalization. Unparseable text writes the column's
+   * cleared value and records the raw text as an invalid input — the model
+   * and the display never silently disagree. Columns without a parse take
+   * the text as-is. Returns whether a commit happened.
    */
   commitText(text: string): boolean {
     return this.commitInternal((rowId, cell) => {
@@ -115,7 +131,15 @@ export class TmGridEditState<T = unknown> {
           reason: 'parse',
         });
       }
-      return this.buildWrite(rowId, cell, parsed, null);
+      const normalized =
+        column.normalizeValue === undefined ? parsed : column.normalizeValue(parsed);
+      if (normalized === TM_PARSE_ERROR) {
+        return this.buildWrite(rowId, cell, column.clearedValue, {
+          rawText: text,
+          reason: 'precision',
+        });
+      }
+      return this.buildWrite(rowId, cell, normalized, null);
     });
   }
 
@@ -233,7 +257,7 @@ export class TmGridEditState<T = unknown> {
     rowId: TmRowId,
     cell: TmRowCol,
     after: unknown,
-    invalidAfter: { rawText: string; reason: 'parse' } | null,
+    invalidAfter: { rawText: string; reason: TmGridInvalidInputReason } | null,
   ): TmGridCellWrite | null {
     const model = this.options.model;
     const column = model.columnAt(cell.col);

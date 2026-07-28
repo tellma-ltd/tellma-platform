@@ -52,7 +52,12 @@ import {
   type TmGridTreeOptions,
   type TmRowCol,
 } from '@tellma/core-ui/grid-engine';
-import { tmFormatNumber, tmParseNumber } from '@tellma/core-ui/l10n';
+import {
+  TM_NUMBER_MAX_DIGITS,
+  tmFormatNumber,
+  tmNumberDigitCount,
+  tmParseNumber,
+} from '@tellma/core-ui/l10n';
 import {
   ɵtmObserveLongPress,
   type TmMenu,
@@ -434,8 +439,12 @@ export interface ɵTmGridCoreDeps<T> {
   readonly translate: TmUiTranslateFn;
   /** The grid state store. */
   readonly store: TmGridStateStore;
-  /** The active locale (formatting, parse context, clipboard metadata). */
-  readonly locale: string;
+  /**
+   * The active locale (formatting, parse context, clipboard metadata) as a
+   * signal — display text re-renders when the ambient locale switches;
+   * parse contexts read the value at event time.
+   */
+  readonly locale: Signal<string>;
   /** The current tenant id (clipboard metadata + cross-tenant paste guard). */
   readonly tenantId: Signal<string | undefined>;
   /** The distribution key (metadata + guard) — tenant ids are unique only within one. */
@@ -1181,6 +1190,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
             return deps.translate('grid.cellErrors.invalidInput', {
               text: invalid.rawText,
               column: header,
+            })();
+          case 'precision':
+            return deps.translate('grid.cellErrors.precision', {
+              text: invalid.rawText,
+              maxDigits: TM_NUMBER_MAX_DIGITS,
             })();
           case 'notFound':
             return deps.translate('grid.cellErrors.notFound', {
@@ -2073,7 +2087,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       columns: () => this.engineColumns(),
       editable: () => this.editable(),
       canAddRows: () => this.deps.newRow() !== undefined,
-      locale: () => this.deps.locale,
+      locale: () => this.deps.locale(),
       tenantId: () => this.deps.tenantId(),
       distributionKey: this.deps.distributionKey,
       direction: () => this.deps.direction(),
@@ -2179,12 +2193,15 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     const maxDecimals = dir.maxDecimals();
     const fallbackText = (value: unknown): string =>
       value === null || value === undefined ? '' : String(value);
+    // `locale` is read INSIDE the closures (not captured as a value): the
+    // cell view model is computed-driven, so display text re-renders in
+    // place when the ambient locale switches.
     const typeText = (value: unknown): string => {
       switch (type) {
         case 'number':
-          return tmFormatNumber(value, locale, { minDecimals, maxDecimals });
+          return tmFormatNumber(value, locale(), { minDecimals, maxDecimals });
         case 'boolean':
-          return TM_CHECKBOX_CELL_DISPLAY.formatValue((value ?? null) as boolean | null, locale);
+          return TM_CHECKBOX_CELL_DISPLAY.formatValue((value ?? null) as boolean | null, locale());
         case 'enum':
           return enumLabels?.get(value) ?? fallbackText(value);
         default:
@@ -2197,9 +2214,36 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     // (possibly rounded) display text, so `maxDecimals` never writes its
     // rounding back to the model. A custom [format] owns display AND edit text.
     const editSeedText: ((value: unknown) => string) | undefined =
-      type === 'number' && format === undefined ? (value) => tmFormatNumber(value, locale) : undefined;
+      type === 'number' && format === undefined
+        ? (value) => tmFormatNumber(value, locale())
+        : undefined;
 
     const parse = customParse ?? defaultParseFor(type, enumLabels);
+    // The model-equals-display invariant for number columns: user commits
+    // and pastes round to the column's display scale, and a committed
+    // value must fit the numeric precision envelope (an IEEE-754 double
+    // round-trips at most 15 significant digits against an exact decimal).
+    // Custom-parse columns own their values; programmatic writes never
+    // pass through here.
+    const normalizeValue: ((value: unknown) => unknown | TmParseError) | undefined =
+      type === 'number' && customParse === undefined
+        ? (value) => {
+            if (typeof value !== 'number' || !Number.isFinite(value)) {
+              return value;
+            }
+            const activeLocale = locale();
+            const bounds = { minDecimals, maxDecimals };
+            const rounded = tmParseNumber(
+              tmFormatNumber(value, activeLocale, bounds),
+              activeLocale,
+              bounds,
+            );
+            if (typeof rounded !== 'number') {
+              return value;
+            }
+            return tmNumberDigitCount(rounded) > TM_NUMBER_MAX_DIGITS ? TM_PARSE_ERROR : rounded;
+          }
+        : undefined;
     const readonlyFn = typeof readonlyOption === 'function' ? readonlyOption : null;
     const alwaysReadonly = readonlyOption === true;
 
@@ -2220,6 +2264,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         (readonlyFn !== null && readonlyFn(row)) ||
         (key !== null && this.isFieldCellReadonly(row, key)),
       ...(parse !== undefined ? { parse } : {}),
+      ...(normalizeValue !== undefined ? { normalizeValue } : {}),
       hasResolver: resolveLabels !== undefined,
       clearedValue: defaultValue !== undefined ? defaultValue : type === 'boolean' ? false : null,
     };
@@ -3128,6 +3173,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         optionValue: column.optionValue,
         onActivation: () => this.onEnumActivation(),
       };
+    } else if (column.type === 'number') {
+      config = { kind: 'number', label: header };
     } else {
       config = { kind: 'text', label: header };
     }
@@ -3145,6 +3192,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     editor.focus();
     if (opts?.ime === true) {
       // IME opens UNSEEDED: the composition itself supplies the content.
+      this.editorOpenText = '';
     } else if (mounted.kind === 'enum') {
       editor.value.set(valueAtOpen);
       if (seedText !== undefined) {
@@ -3159,7 +3207,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       } else {
         editor.value.set(seedText);
       }
-    } else if (mounted.kind === 'text') {
+      // A type-to-edit seed REPLACES the content — committing it unchanged
+      // is still a user edit, so the pristine baseline is what the cell
+      // held before, never the seed.
+      this.editorOpenText = null;
+    } else if (mounted.kind === 'text' || mounted.kind === 'number') {
       // Edit mode edits the cell's CURRENT DISPLAY TEXT (Excel edits the
       // formatted text; for an invalid-input cell that is the raw text) — but a
       // number column edits its full-precision value, not the rounded display.
@@ -3168,6 +3220,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       } else {
         editor.value.set(editText);
       }
+      this.editorOpenText = editText;
     } else {
       // Consumer template editor: the grid owns the value channel and
       // seeds it with the raw cell value (also carried in the context).
@@ -3184,10 +3237,21 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   }
 
   /**
+   * The text a text-channel editor was OPENED with (edit mode's display
+   * text), or `null` when there is no pristine baseline (seeded opens,
+   * enum/template editors). A commit whose text still equals this baseline
+   * writes nothing — opening and closing an editor never rewrites the
+   * model, so a display-rounded cell's underlying precision survives an
+   * F2 + Enter pass untouched.
+   */
+  private editorOpenText: string | null = null;
+
+  /**
    * Commits the open session through the engine: the enum select commits
    * its VALUE; text-path editors commit their text through the column's
    * parse — unless `text()` is `null` (content not representable as text),
-   * which commits the value channel directly.
+   * which commits the value channel directly. A pristine text editor (the
+   * text still equals what it opened with) commits nothing.
    */
   private commitEditor(opts: { refocus: boolean }): void {
     const engine = this.engine;
@@ -3200,6 +3264,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       const text = untracked(() => mounted.editor.text());
       if (text === null) {
         engine.edit.commitValue(untracked(() => mounted.editor.value()));
+      } else if (text === this.editorOpenText) {
+        engine.edit.cancel();
       } else {
         engine.edit.commitText(text);
       }

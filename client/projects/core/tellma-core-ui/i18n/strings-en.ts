@@ -90,6 +90,8 @@ export const TM_UI_STRINGS_EN = {
     },
     cellErrors: {
       invalidInput: '‘{text}’ is not a valid {column}.',
+      precision:
+        '‘{text}’ has too many digits — enter a number with at most {maxDigits, plural, one {# digit} other {# digits}}.',
       notFound: 'No {collection} named ‘{label}’',
       ambiguous: '‘{label}’ matches more than one {collection}',
       resolutionFailed: 'Could not check ‘{label}’ in {collection} — paste it again to retry',

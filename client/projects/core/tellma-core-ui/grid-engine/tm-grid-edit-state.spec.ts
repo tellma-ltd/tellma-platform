@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { TM_PARSE_ERROR } from '@tellma/core-ui/contracts';
+
 import { makeEngine, makeRows } from './tm-grid-testing.util';
 
 describe('TmGridEditState', () => {
@@ -115,6 +117,42 @@ describe('TmGridEditState', () => {
       h.engine.history.undo();
       expect(h.rows()[0]['a']).toBe('a1');
       expect(h.engine.annotations.invalidInput(1, 'a')).toBeUndefined();
+    });
+
+    it('applies the column normalization to the parsed value (model = display)', () => {
+      const h = makeEngine([{ id: 1, a: 1 }], {
+        columns: [
+          {
+            key: 'a',
+            type: 'number',
+            parse: (text) => Number(text),
+            normalizeValue: (value) => Math.round((value as number) * 100) / 100,
+          },
+        ],
+      });
+      h.engine.edit.openEdit({ row: 0, col: 0 }, 'edit');
+      expect(h.engine.edit.commitText('1.005678')).toBe(true);
+      expect(h.rows()[0]['a']).toBe(1.01);
+    });
+
+    it('a normalization rejection clears the model and records reason precision', () => {
+      const h = makeEngine([{ id: 1, a: 1 }], {
+        columns: [
+          {
+            key: 'a',
+            type: 'number',
+            parse: (text) => Number(text),
+            normalizeValue: (value) => ((value as number) > 1e15 ? TM_PARSE_ERROR : value),
+          },
+        ],
+      });
+      h.engine.edit.openEdit({ row: 0, col: 0 }, 'edit');
+      expect(h.engine.edit.commitText('12345678901234567')).toBe(true);
+      expect(h.rows()[0]['a']).toBeNull();
+      expect(h.engine.annotations.invalidInput(1, 'a')).toMatchObject({
+        rawText: '12345678901234567',
+        reason: 'precision',
+      });
     });
 
     it('a column without a parse takes the text as-is', () => {

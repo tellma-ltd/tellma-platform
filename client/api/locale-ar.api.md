@@ -83,6 +83,7 @@ export const TM_LOCALE_AR_STRINGS: {
         };
         readonly cellErrors: {
             readonly invalidInput: "«{text}» ليست قيمة {column} صالحة.";
+            readonly precision: "«{text}» يحتوي على خانات أكثر من اللازم — {gender, select, female {أدخلي} other {أدخل}} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}}.";
             readonly notFound: "لا يوجد {collection} باسم «{label}»";
             readonly ambiguous: "«{label}» يطابق أكثر من {collection}";
             readonly resolutionFailed: "تعذر التحقق من «{label}» في {collection} — الصقها مجددا لإعادة المحاولة";

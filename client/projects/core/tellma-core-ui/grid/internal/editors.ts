@@ -12,11 +12,12 @@
 import { Component, input, output, signal, viewChild } from '@angular/core';
 
 import { TmInput } from '@tellma/core-ui/input';
+import { TmNumber } from '@tellma/core-ui/number';
 import { TmOption, TmSelect } from '@tellma/core-ui/select';
 
 /**
- * The built-in text editor (`text`/`number`/`date`/`custom` columns): a
- * bare `tmInput` filling the cell box. The input registers itself with the
+ * The built-in text editor (`text`/`date`/`custom` columns): a bare
+ * `tmInput` filling the cell box. The input registers itself with the
  * session through TM_CELL_EDITOR_HOST; parsing the committed text is the
  * engine's concern (§ the column's parse), never the editor's.
  */
@@ -28,6 +29,25 @@ import { TmOption, TmSelect } from '@tellma/core-ui/select';
   host: { class: 'tm-grid-text-editor' },
 })
 export class ɵTmGridTextEditor {
+  /** The accessible name (the column's header text). */
+  readonly label = input('');
+}
+
+/**
+ * The built-in number editor (`number` columns): a bare `tmNumber` filling
+ * the cell box. The grid owns the value channel and the parse (the
+ * control's own commit loop stands down in a cell); what the editor
+ * contributes is `inputmode="decimal"`, the physical right alignment, and
+ * one control to theme.
+ */
+@Component({
+  selector: 'tm-grid-number-editor',
+  imports: [TmNumber],
+  template: `<input tmNumber class="tm-grid__editor-input" [attr.aria-label]="label()" />`,
+  styleUrl: './editors.css',
+  host: { class: 'tm-grid-number-editor' },
+})
+export class ɵTmGridNumberEditor {
   /** The accessible name (the column's header text). */
   readonly label = input('');
 }

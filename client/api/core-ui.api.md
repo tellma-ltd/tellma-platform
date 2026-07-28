@@ -108,6 +108,7 @@ export const TM_UI_STRINGS_EN: {
         };
         readonly cellErrors: {
             readonly invalidInput: "‘{text}’ is not a valid {column}.";
+            readonly precision: "‘{text}’ has too many digits — enter a number with at most {maxDigits, plural, one {# digit} other {# digits}}.";
             readonly notFound: "No {collection} named ‘{label}’";
             readonly ambiguous: "‘{label}’ matches more than one {collection}";
             readonly resolutionFailed: "Could not check ‘{label}’ in {collection} — paste it again to retry";
