@@ -27,5 +27,10 @@ export function tmSizeBucket(width: number, height: number, devicePixelRatio: nu
 
 /** The default size-hint URL: appends `?size=<bucket>` (or `&size=`). */
 export function tmDefaultSrcForSize(src: string, size: number): string {
-  return `${src}${src.includes('?') ? '&' : '?'}size=${size}`;
+  // The query must land BEFORE any fragment — and a `?` inside the
+  // fragment must not be mistaken for an existing query.
+  const hashAt = src.indexOf('#');
+  const base = hashAt === -1 ? src : src.slice(0, hashAt);
+  const fragment = hashAt === -1 ? '' : src.slice(hashAt);
+  return `${base}${base.includes('?') ? '&' : '?'}size=${size}${fragment}`;
 }

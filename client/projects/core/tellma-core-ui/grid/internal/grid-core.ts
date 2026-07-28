@@ -56,6 +56,7 @@ import {
   TM_NUMBER_MAX_DIGITS,
   tmFormatDate,
   tmFormatNumber,
+  tmGregorianCalendar,
   tmNumberDigitCount,
   tmParseDate,
   tmParseNumber,
@@ -2094,6 +2095,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       editable: () => this.editable(),
       canAddRows: () => this.deps.newRow() !== undefined,
       locale: () => this.deps.locale(),
+      calendar: () => this.deps.calendar().id,
       tenantId: () => this.deps.tenantId(),
       distributionKey: this.deps.distributionKey,
       direction: () => this.deps.direction(),
@@ -2229,20 +2231,44 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         ? (value) => tmFormatNumber(value, locale())
         : undefined;
 
-    // The built-in date parse: the paste `sourceLocale` hint is tried first
-    // (Gregorian source calendar assumed for foreign pastes — clipboards
-    // carry Gregorian-locale text), then the active locale in the ambient
-    // display calendar. Column-level [parse] still overrides.
+    // The built-in date parse: the paste source hints are tried first —
+    // in the SOURCE's display calendar when the clipboard carries one
+    // (Hijri `23/9/1445` copied from an ar-SA grid is a valid-looking
+    // Gregorian date; reading it as Gregorian would silently write year
+    // 1445). A known-but-unavailable source calendar skips the foreign
+    // rung entirely: failing honestly beats a plausible misparse. A
+    // foreign clipboard (no meta) keeps the Gregorian assumption. Then
+    // the active locale in the ambient display calendar. Column-level
+    // [parse] still overrides.
     const dateParse =
       type === 'date'
         ? (text: string, ctx: TmParseContext): unknown | TmParseError => {
-            if (ctx.sourceLocale !== undefined && ctx.sourceLocale !== ctx.locale) {
-              const foreign = tmParseDate(text, ctx.sourceLocale);
-              if (typeof foreign === 'string' || foreign === null) {
-                return foreign;
+            const active = untracked(calendar);
+            if (ctx.sourceLocale !== undefined) {
+              const sourceCalendar =
+                ctx.sourceCalendar === undefined || ctx.sourceCalendar === 'gregory'
+                  ? tmGregorianCalendar()
+                  : ctx.sourceCalendar === active.id
+                    ? active
+                    : null;
+              if (
+                sourceCalendar !== null &&
+                (ctx.sourceLocale !== ctx.locale || sourceCalendar.id !== active.id)
+              ) {
+                const foreign = tmParseDate(text, ctx.sourceLocale, {
+                  calendar: sourceCalendar,
+                });
+                if (typeof foreign === 'string' || foreign === null) {
+                  return foreign;
+                }
+              }
+              if (sourceCalendar === null && ctx.sourceCalendar !== undefined) {
+                // The source's calendar pack is not installed here — the
+                // active-calendar rung below would misread its digits.
+                return TM_PARSE_ERROR;
               }
             }
-            return tmParseDate(text, ctx.locale, { calendar: untracked(calendar) });
+            return tmParseDate(text, ctx.locale, { calendar: active });
           }
         : undefined;
     const parse = customParse ?? dateParse ?? defaultParseFor(type, enumLabels);

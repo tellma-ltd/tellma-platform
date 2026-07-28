@@ -17,6 +17,7 @@ import {
 import { AriaDescriber } from '@angular/cdk/a11y';
 
 import { ɵtmObserveLongPress } from '@tellma/core-ui/menu';
+import { tmPushEscapeDismissal } from '@tellma/core-ui/private';
 
 import { ɵTmTooltipPanel } from './internal/tm-tooltip-panel';
 
@@ -67,7 +68,7 @@ function parseCssTime(value: string, fallback: number): number {
     // stable hook harnesses and styles can rely on.
     class: 'tm-tooltip-host',
     '(pointerenter)': 'onPointerEnter($event)',
-    '(pointerleave)': 'onPointerLeave()',
+    '(pointerleave)': 'onPointerLeave($event)',
     '(focus)': 'onFocus()',
     '(blur)': 'onBlur()',
   },
@@ -88,14 +89,12 @@ export class TmTooltip implements OnDestroy {
   /** This instance's stable hide handle — its identity keys the coordinator. */
   private readonly hide = (): void => this.hideNow();
 
-  /** Document-capture Escape while visible: dismiss and consume. */
-  private readonly onDocumentKeydownCapture = (event: KeyboardEvent): void => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      event.stopPropagation();
-      this.hideNow();
-    }
-  };
+  /**
+   * The shared Escape-dismissal registration while visible — dismisses
+   * this layer only (a visible tooltip over an open menu takes the first
+   * Escape; the menu takes the second).
+   */
+  private releaseEscape: (() => void) | null = null;
 
   /** Armed by a long-press show: the next tap anywhere dismisses. */
   private readonly onDocumentPointerDownCapture = (): void => {
@@ -147,7 +146,13 @@ export class TmTooltip implements OnDestroy {
     this.showTimer = setTimeout(() => this.showNow(), this.showDelayMs());
   }
 
-  protected onPointerLeave(): void {
+  protected onPointerLeave(event: PointerEvent): void {
+    // Non-hover devices fire pointerleave right after the finger lifts —
+    // hiding there would dismiss a long-press tooltip ~100ms after
+    // release. Touch dismissal belongs to the next tap (armed on show).
+    if (event.pointerType === 'touch') {
+      return;
+    }
     clearTimeout(this.showTimer);
     this.scheduleHide();
   }
@@ -188,7 +193,7 @@ export class TmTooltip implements OnDestroy {
     }
     if (!untracked(this.panelRef.instance.expanded)) {
       this.panelRef.instance.expanded.set(true);
-      document.addEventListener('keydown', this.onDocumentKeydownCapture, true);
+      this.releaseEscape ??= tmPushEscapeDismissal(() => this.hideNow());
     }
   }
 
@@ -201,7 +206,8 @@ export class TmTooltip implements OnDestroy {
   private hideNow(): void {
     clearTimeout(this.showTimer);
     clearTimeout(this.hideTimer);
-    document.removeEventListener('keydown', this.onDocumentKeydownCapture, true);
+    this.releaseEscape?.();
+    this.releaseEscape = null;
     document.removeEventListener('pointerdown', this.onDocumentPointerDownCapture, true);
     if (hideActiveTooltip === this.hide) {
       hideActiveTooltip = null;

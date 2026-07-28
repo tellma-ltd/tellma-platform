@@ -1,7 +1,7 @@
 /**
  * Public API Surface of @tellma/core-ui/private — shared composition
- * machinery the library's own entry points build on (currently the anchored
- * overlay helper).
+ * machinery the library's own entry points build on (the anchored overlay
+ * helper and the Escape-dismissal coordinator).
  *
  * This entry point is importable but carries NO stability guarantees: its
  * surface is excluded from the API goldens and may change in any release
@@ -23,3 +23,4 @@ export {
   type TmOverlayAlign,
   type TmOverlaySide,
 } from './tm-anchored-overlay';
+export { tmPushEscapeDismissal } from './tm-dismiss-stack';

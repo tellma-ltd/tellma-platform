@@ -246,6 +246,8 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
   private lastCommitted: string | null = null;
   /** Marks this control's own model writes (see the baseline effect). */
   private selfWrite: { readonly value: string | null } | null = null;
+  /** Picker-authored text with its known value; see `setCanonicalText`. */
+  private displayOverride: { readonly text: string; readonly value: string | null } | null = null;
 
   /** The raw text channel over the date engine (see `tmParseDate`). */
   private readonly rawText = transformedValue<string | null, string>(this.value, {
@@ -285,7 +287,8 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
     });
 
     // Locale/calendar/style switches re-render the display in place; the
-    // model never changes (re-parsing the reformatted text is identity).
+    // model never changes (the display override pins the value, so the
+    // reformat can never corrupt it through a lossy re-parse).
     effect(() => {
       const locale = this.l10n.locale();
       const calendar = this.activeCalendar();
@@ -295,12 +298,30 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
           return;
         }
         const value = this.value();
+        if (value === null && this.rawText.parseErrors().length > 0) {
+          // Unreadable text is KEPT for correction — a locale switch must
+          // not silently erase it (the error stays live).
+          return;
+        }
         const text = value === null ? '' : tmFormatDate(value, locale, { calendar, dateStyle });
         if (text !== this.rawText()) {
-          this.rawText.set(text);
+          this.setCanonicalText(text, value);
         }
       });
     });
+  }
+
+  /**
+   * Writes picker-authored display text whose VALUE is already known —
+   * canonical reformat, locale switch, popup selection. The override makes
+   * the accompanying parse an identity by construction: formatted output
+   * is not universally re-parseable (two-digit-year pivots, exotic
+   * locale/calendar pairs), and a lossy re-parse here would corrupt or
+   * wipe the model.
+   */
+  private setCanonicalText(text: string, value: string | null): void {
+    this.displayOverride = { text, value };
+    this.rawText.set(text);
   }
 
   /** The rendered input — event handlers only run once the view exists. */
@@ -314,6 +335,11 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
    * example.
    */
   private parseText(text: string): ParseResult<string | null> {
+    const override = this.displayOverride;
+    if (override !== null && override.text === text) {
+      this.selfWrite = { value: override.value };
+      return { value: override.value };
+    }
     const locale = untracked(this.l10n.locale);
     const calendar = untracked(this.activeCalendar);
     if (text.trim() === '') {
@@ -471,11 +497,11 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
         calendar,
         dateStyle: untracked(this.dateStyle),
       });
-      this.rawText.set(canonical);
+      this.setCanonicalText(canonical, parsed);
       element.value = canonical;
       this.textAtFocus = canonical;
     } else if (parsed === null) {
-      this.rawText.set('');
+      this.setCanonicalText('', null);
       element.value = '';
       this.textAtFocus = '';
     }
@@ -531,7 +557,7 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
             calendar: untracked(this.activeCalendar),
             dateStyle: untracked(this.dateStyle),
           });
-    this.rawText.set(text);
+    this.setCanonicalText(text, iso);
     const element = this.elementOrThrow;
     element.value = text;
     this.textAtFocus = text;

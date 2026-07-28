@@ -244,6 +244,11 @@ export class TmNumber implements TmFormFieldControl, TmCellEditor<number | null>
           return;
         }
         const value = this.value();
+        if (value === null && this.rawText.parseErrors().length > 0) {
+          // Unreadable text is KEPT for correction — a locale switch must
+          // not silently erase it (the error stays live).
+          return;
+        }
         const text = value === null ? '' : tmFormatNumber(value, locale, options);
         if (text !== this.rawText()) {
           this.rawText.set(text);

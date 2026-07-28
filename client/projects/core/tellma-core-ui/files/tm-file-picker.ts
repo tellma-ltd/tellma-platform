@@ -60,6 +60,7 @@ export class TmFilePicker implements OnDestroy {
   readonly filesSelected = output<TmFileSelection>();
 
   private fileInput: HTMLInputElement | null = null;
+  private destroyed = false;
 
   constructor() {
     // Keep the (lazily created) hidden input's dialog options current.
@@ -74,6 +75,7 @@ export class TmFilePicker implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.destroyed = true;
     this.fileInput?.remove();
     this.fileInput = null;
   }
@@ -89,6 +91,9 @@ export class TmFilePicker implements OnDestroy {
    * @internal
    */
   ɵprocess(files: readonly File[], folderFlags: readonly boolean[] | null): void {
+    if (this.destroyed) {
+      return; // an OS dialog that resolved after teardown
+    }
     const maxFileSize = untracked(this.maxFileSize);
     const maxFiles = untracked(this.maxFiles);
     const selection = tmSelectFiles(files, folderFlags, {

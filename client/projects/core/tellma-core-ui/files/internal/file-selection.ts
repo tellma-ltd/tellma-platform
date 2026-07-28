@@ -39,8 +39,17 @@ function parseAccept(accept: string): AcceptPattern[] {
     });
 }
 
+/** A bare `*` and the star-slash-star wildcard are legal accept-all values. */
+function acceptsEverything(patterns: readonly AcceptPattern[]): boolean {
+  return patterns.some(
+    (pattern) =>
+      (pattern.kind === 'mimeExact' && pattern.type === '*') ||
+      (pattern.kind === 'mimePrefix' && pattern.prefix === '*/'),
+  );
+}
+
 function matches(file: File, patterns: readonly AcceptPattern[]): boolean {
-  if (patterns.length === 0) {
+  if (patterns.length === 0 || acceptsEverything(patterns)) {
     return true;
   }
   const name = file.name.toLowerCase();

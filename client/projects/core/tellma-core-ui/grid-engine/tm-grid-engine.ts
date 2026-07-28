@@ -107,6 +107,7 @@ export class TmGridEngine<T = unknown> {
       editable: options.editable,
       canAddRows: options.canAddRows,
       locale: options.locale,
+      calendar: options.calendar,
       tenantId: options.tenantId,
       distributionKey: options.distributionKey,
       parentIdKey: options.tree?.parentIdKey,

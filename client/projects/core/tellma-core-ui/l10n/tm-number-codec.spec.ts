@@ -116,6 +116,40 @@ describe('tm-number-codec', () => {
       expect(tmParseNumber('%', 'en', { percent: true })).toBe(TM_PARSE_ERROR);
       expect(tmParseNumber('', 'en', { percent: true })).toBeNull();
     });
+
+    it('every two-decimal percent entry parses drift-free and round-trips exactly', () => {
+      // The ÷100 float path double-rounds one ulp off for ~28% of these,
+      // drifting the value AND inflating its digit count past the
+      // 15-digit envelope — the division must happen textually.
+      for (let cents = 1; cents <= 9999; cents += 1) {
+        const text = `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
+        const parsed = tmParseNumber(text, 'en', { percent: true });
+        expect(typeof parsed, text).toBe('number');
+        const value = parsed as number;
+        expect(tmNumberDigitCount(value), text).toBeLessThanOrEqual(6);
+        expect(
+          tmFormatNumber(value, 'en', { percent: true, minDecimals: 2, maxDecimals: 2 }),
+          text,
+        ).toBe(`${text}%`);
+      }
+    });
+
+    it('negative and high-precision percent entries stay exact too', () => {
+      expect(tmParseNumber('-51.46', 'en', { percent: true })).toBe(-0.5146);
+      expect(tmParseNumber('93.883', 'en', { percent: true })).toBe(0.93883);
+      expect(tmParseNumber('0.5', 'en', { percent: true })).toBe(0.005);
+      expect(tmParseNumber('99.99%', 'en', { percent: true })).toBe(0.9999);
+    });
+  });
+
+  describe('the machine-text fallback shape', () => {
+    it('accepts plain decimals and exponent forms, never JavaScript exotica', () => {
+      expect(tmParseNumber('1e5', 'en')).toBe(100000);
+      expect(tmParseNumber('-2.5e-3', 'en')).toBe(-0.0025);
+      expect(tmParseNumber('0x1A', 'en')).toBe(TM_PARSE_ERROR);
+      expect(tmParseNumber('Infinity', 'en')).toBe(TM_PARSE_ERROR);
+      expect(tmParseNumber('1e5', 'en', { percent: true })).toBe(1000);
+    });
   });
 
   describe('tmNumberDigitCount', () => {

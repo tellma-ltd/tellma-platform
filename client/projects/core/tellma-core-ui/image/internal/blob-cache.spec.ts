@@ -10,6 +10,12 @@ import { provideTellmaUi } from '@tellma/core-ui';
 import { TM_BLOB_FETCHER, type TmBlobFetchOptions } from '../tm-blob-fetcher';
 import { ɵTM_CACHE_STORAGE, ɵTmImageBlobCache } from './blob-cache';
 
+/** The real Cache API keys by ABSOLUTE request URL — the fake must too. */
+function absolute(url: RequestInfo | URL): string {
+  const raw = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url;
+  return new URL(raw, document.baseURI).toString();
+}
+
 /** An in-memory Cache — enough of the contract for the cache logic. */
 class FakeCache {
   readonly entries = new Map<string, Response>();
@@ -17,29 +23,38 @@ class FakeCache {
 
   async match(url: string): Promise<Response | undefined> {
     // Response bodies are one-shot: hand out clones, keep the original.
-    return this.entries.get(url)?.clone();
+    return this.entries.get(absolute(url))?.clone();
   }
 
   async put(url: string, response: Response): Promise<void> {
     if (this.failPuts) {
       throw new DOMException('quota', 'QuotaExceededError');
     }
-    this.entries.set(url, response);
+    this.entries.set(absolute(url), response);
   }
 
-  async delete(url: string, options?: CacheQueryOptions): Promise<boolean> {
+  async delete(url: RequestInfo | URL, options?: CacheQueryOptions): Promise<boolean> {
+    const key = absolute(url);
     if (options?.ignoreSearch === true) {
-      const base = url.split('?')[0];
+      const base = key.split('?')[0];
       let any = false;
-      for (const key of [...this.entries.keys()]) {
-        if (key.split('?')[0] === base) {
-          this.entries.delete(key);
+      for (const existing of [...this.entries.keys()]) {
+        if (existing.split('?')[0] === base) {
+          this.entries.delete(existing);
           any = true;
         }
       }
       return any;
     }
-    return this.entries.delete(url);
+    return this.entries.delete(key);
+  }
+
+  async keys(): Promise<Request[]> {
+    return [...this.entries.keys()].map((url) => new Request(url));
+  }
+
+  has(url: string): boolean {
+    return this.entries.has(absolute(url));
   }
 }
 
@@ -146,12 +161,56 @@ describe('ɵTmImageBlobCache', () => {
     expect(fetcher.calls).toHaveLength(4);
 
     const fake = storage.caches.get('tm-images-v1')!;
-    expect(fake.entries.has('/img/1?size=512')).toBe(false); // variant purged
-    expect(fake.entries.has('/img/2?size=128')).toBe(true); // stranger kept
+    expect(fake.has('/img/1?size=512')).toBe(false); // variant purged
+    expect(fake.has('/img/2?size=128')).toBe(true); // stranger kept
 
     // The refreshed entry now carries v2: hitting again stays offline.
     await cache.getImage('/img/1?size=128', 'v2');
     expect(fetcher.calls).toHaveLength(4);
+  });
+
+  it('a mismatch on a QUERY-KEYED src purges only that record, not path-mates', async () => {
+    // Query-keyed endpoints put the record id in the query — the Cache
+    // API's ignoreSearch would blast every record under the path.
+    const storage = new FakeCacheStorage();
+    const { cache, fetcher } = setup(storage);
+    await cache.getImage('/api/images?id=7&size=64', 'v1');
+    await cache.getImage('/api/images?id=7&size=512', 'v1');
+    await cache.getImage('/api/images?id=9&size=64', 'v1');
+    expect(fetcher.calls).toHaveLength(3);
+
+    await cache.getImage('/api/images?id=7&size=64', 'v2'); // record 7 moved
+    const fake = storage.caches.get('tm-images-v1')!;
+    expect(fake.has('/api/images?id=7&size=512')).toBe(false); // 7's variant purged
+    expect(fake.has('/api/images?id=9&size=64')).toBe(true); // record 9 UNTOUCHED
+    await cache.getImage('/api/images?id=9&size=64', 'v1');
+    expect(fetcher.calls).toHaveLength(4); // only 7's refetch — 9 stayed cached
+  });
+
+  it('concurrent null-stamp reads coalesce to ONE background revalidation', async () => {
+    const storage = new FakeCacheStorage();
+    const { cache, fetcher } = setup(storage);
+    await cache.getImage('/img/1?size=128', 'v1');
+    expect(fetcher.calls).toHaveLength(1);
+
+    let releaseRevalidation!: () => void;
+    fetcher.script(
+      () =>
+        new Promise((resolve) => {
+          releaseRevalidation = () => resolve({ status: 304, blob: null, etag: null });
+        }),
+    );
+    // All three reads start before any revalidation finishes — the dedup
+    // must hold across the overlap, not merely in sequence.
+    await Promise.all([
+      cache.getImage('/img/1?size=128', null),
+      cache.getImage('/img/1?size=128', null),
+      cache.getImage('/img/1?size=128', null),
+    ]);
+    expect(fetcher.calls).toHaveLength(2); // one conditional GET, not three
+    releaseRevalidation();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fetcher.calls).toHaveLength(2);
   });
 
   it('a null stamp serves the cached entry immediately and revalidates in the background', async () => {

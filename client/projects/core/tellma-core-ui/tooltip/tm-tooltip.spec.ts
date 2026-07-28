@@ -9,6 +9,7 @@ import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 import { TmTooltipHarness } from '@tellma/core-ui-testing';
+import { TmMenu } from '@tellma/core-ui/menu';
 
 import { TmTooltip } from './tm-tooltip';
 
@@ -162,7 +163,12 @@ describe('tmTooltip', () => {
     button.dispatchEvent(
       new PointerEvent('pointerup', { pointerType: 'touch', pointerId: 7, bubbles: true }),
     );
-    await tick(fixture, 100);
+    // Non-hover devices fire pointerleave immediately after the lift —
+    // the tooltip must survive it (touch dismissal is the next tap).
+    button.dispatchEvent(
+      new PointerEvent('pointerleave', { pointerType: 'touch', pointerId: 7 }),
+    );
+    await tick(fixture, 200);
     expect(panel()).not.toBeNull(); // persists after the finger lifts
 
     document.body.dispatchEvent(
@@ -182,6 +188,47 @@ describe('tmTooltip', () => {
     button.dispatchEvent(new FocusEvent('blur'));
     await tick(fixture);
     expect(panel()).toBeNull();
+  });
+
+  it('one Escape dismisses ONE layer: the tooltip first, an open menu second', async () => {
+    @Component({
+      imports: [TmTooltip, TmMenu],
+      template: `
+        <button class="host" tmTooltip="Refresh the list" style="--tooltip-delay: 0ms">Go</button>
+        <tm-menu #menu [items]="items" aria-label="Actions" />
+        <button class="opener" (click)="menu.open($any($event.target))">Menu</button>
+      `,
+    })
+    class Layered {
+      readonly items = [{ id: 'a', label: 'Alpha', action: (): void => undefined }];
+    }
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(Layered);
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+
+    // Open the menu, THEN show a tooltip over it.
+    (root.querySelector('.opener') as HTMLButtonElement).click();
+    await tick(fixture, 20);
+    expect(document.querySelector('.tm-menu__panel')).not.toBeNull();
+    pointerEnter(root.querySelector('.host') as HTMLElement);
+    await tick(fixture, 20);
+    expect(panel()).not.toBeNull();
+
+    // Escape #1: only the tooltip goes; the menu SURVIVES.
+    document.body.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    await tick(fixture, 20);
+    expect(panel()).toBeNull();
+    expect(document.querySelector('.tm-menu__panel')).not.toBeNull();
+
+    // Escape #2 closes the menu.
+    document.body.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    await tick(fixture, 20);
+    expect(document.querySelector('.tm-menu__panel')).toBeNull();
   });
 
   it('reads the description and drives hover through TmTooltipHarness', async () => {

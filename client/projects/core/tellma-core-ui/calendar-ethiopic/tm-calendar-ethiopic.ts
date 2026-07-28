@@ -53,6 +53,11 @@ let singleton: TmCalendar | undefined;
  * 5 days (6 in leap years) — `monthsInYear`/`daysInMonth` report it with
  * no special-casing needed at call sites. Month and era names render from
  * Intl in the active UI language.
+ *
+ * Supported window: dates from the Amete Mihret epoch (ISO `0008-08-27`)
+ * onward. Earlier ISO dates belong to the preceding Amete Alem era and
+ * surface here with zero/negative year numbers — outside the supported
+ * window; the picker treats them as out of range.
  */
 export function tmEthiopicCalendar(): TmCalendar {
   singleton ??= {

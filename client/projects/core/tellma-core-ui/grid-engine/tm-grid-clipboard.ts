@@ -118,6 +118,8 @@ export interface TmGridClipboardOptions<T = unknown> {
   readonly canAddRows: SignalLike<boolean>;
   /** The active locale. */
   readonly locale: SignalLike<string>;
+  /** The active display calendar id (metadata + source-calendar hint). */
+  readonly calendar?: SignalLike<string>;
   /** The tenant id (metadata + cross-tenant guard). */
   readonly tenantId?: SignalLike<string | undefined>;
   /** The distribution key (metadata + guard) — tenant ids are unique only within one. */
@@ -258,6 +260,7 @@ export class TmGridClipboard<T = unknown> {
       tenantId: untracked(() => this.options.tenantId?.()),
       distributionKey: this.options.distributionKey,
       locale: untracked(() => this.options.locale()),
+      calendar: untracked(() => this.options.calendar?.()),
       cols: shape.cols.map((col) => {
         const column = model.columnAt(col);
         return { key: column.key, type: column.type };
@@ -777,6 +780,7 @@ export class TmGridClipboard<T = unknown> {
     };
 
     const sourceLocale = meta?.locale;
+    const sourceCalendar = meta?.calendar;
     const sourceTenantId = meta?.tenantId;
     const sourceDistributionKey = meta?.distributionKey;
     const tenantId = untracked(() => this.options.tenantId?.());
@@ -853,7 +857,7 @@ export class TmGridClipboard<T = unknown> {
         }
         // (3) The synchronous parse, then the display-scale normalization.
         if (column.parse !== undefined) {
-          const parsed = column.parse(text, { locale, sourceLocale });
+          const parsed = column.parse(text, { locale, sourceLocale, sourceCalendar });
           if (parsed !== TM_PARSE_ERROR) {
             const normalized =
               column.normalizeValue === undefined ? parsed : column.normalizeValue(parsed);

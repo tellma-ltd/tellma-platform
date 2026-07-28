@@ -82,6 +82,7 @@ export class TmGridClipboard<T = unknown> {
 
 // @public
 export interface TmGridClipboardMeta {
+    readonly calendar?: string;
     readonly cols?: ReadonlyArray<{
         readonly key: string | null;
         readonly type: TmGridColumnType;
@@ -96,6 +97,7 @@ export interface TmGridClipboardMeta {
 // @public
 export interface TmGridClipboardOptions<T = unknown> {
     readonly annotations: TmGridCellAnnotations;
+    readonly calendar?: SignalLike<string>;
     readonly canAddRows: SignalLike<boolean>;
     displayText(cell: TmRowCol): string;
     readonly distributionKey?: string;
@@ -291,6 +293,7 @@ export interface TmGridEngineHost<T = unknown> {
 
 // @public
 export interface TmGridEngineOptions<T = unknown> {
+    readonly calendar?: SignalLike<string>;
     readonly canAddRows: SignalLike<boolean>;
     readonly columns: SignalLike<ReadonlyArray<TmGridEngineColumn<T>>>;
     readonly direction: SignalLike<'ltr' | 'rtl'>;

@@ -22,8 +22,19 @@ function insideDropTarget(target: EventTarget | null): boolean {
   );
 }
 
+/**
+ * Whether the guard applies: FILE drags only. Text dragged between inputs
+ * is ordinary editing — cancelling it app-wide would break native
+ * drag-and-drop wherever a dropzone happens to be mounted.
+ */
+function guarded(event: DragEvent): boolean {
+  return (
+    event.dataTransfer?.types.includes('Files') === true && !insideDropTarget(event.target)
+  );
+}
+
 function onDragOver(event: DragEvent): void {
-  if (insideDropTarget(event.target)) {
+  if (!guarded(event)) {
     return;
   }
   event.preventDefault();
@@ -33,7 +44,7 @@ function onDragOver(event: DragEvent): void {
 }
 
 function onDrop(event: DragEvent): void {
-  if (insideDropTarget(event.target)) {
+  if (!guarded(event)) {
     return;
   }
   event.preventDefault();

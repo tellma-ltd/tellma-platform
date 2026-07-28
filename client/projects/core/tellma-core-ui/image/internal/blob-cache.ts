@@ -27,6 +27,26 @@ const VERSION_HEADER = 'x-tm-version';
 const ETAG_HEADER = 'x-tm-etag';
 
 /**
+ * A URL with its `size` rendition param removed — the identity that
+ * groups one image's size variants. Purging by this (instead of the Cache
+ * API's `ignoreSearch`, which drops the WHOLE query) keeps query-keyed
+ * endpoints safe: `/api/images?id=7&size=64` must never purge
+ * `/api/images?id=9&size=64`.
+ */
+function withoutSizeParam(url: string): string {
+  try {
+    // Resolved against the document base: cache keys come back absolute,
+    // while callers may pass app-relative URLs — both sides must compare
+    // in the same shape.
+    const parsed = new URL(url, document.baseURI);
+    parsed.searchParams.delete('size');
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+/**
  * The origin-scoped image blob cache (`tm-images-v1`) — entries are
  * tenant-scoped through their keys, because the cache key is the full
  * request URL and the tenant id is part of every API URL by platform
@@ -50,6 +70,8 @@ export class ɵTmImageBlobCache {
   private readonly storage = inject(ɵTM_CACHE_STORAGE);
   private readonly fetcher = inject(TM_BLOB_FETCHER);
   private readonly inflight = new Map<string, Promise<Blob>>();
+  /** URLs with a background revalidation in flight (dedup, not identity). */
+  private readonly revalidating = new Set<string>();
   /** Set on a failed put: the pipeline continues uncached from then on. */
   private cacheBroken = false;
 
@@ -62,6 +84,11 @@ export class ɵTmImageBlobCache {
     version: string | null,
     onRefresh?: (blob: Blob) => void,
   ): Promise<Blob> {
+    if (version === '') {
+      // An empty stamp is "unknown", never a value: storing/comparing ''
+      // would turn two unknowns into a permanent, unrevalidated hit.
+      version = null;
+    }
     const cache = await this.openCache();
     if (cache === null) {
       return this.fetchCoalesced(url, version, null);
@@ -83,7 +110,15 @@ export class ɵTmImageBlobCache {
         return blob;
       }
       try {
-        await cache.delete(url, { ignoreSearch: true });
+        // Purge the SIZE VARIANTS of this src only — never every entry
+        // sharing the path (query-keyed endpoints put the record id in
+        // the query, where the Cache API's ignoreSearch would blast it).
+        const target = withoutSizeParam(url);
+        for (const request of await cache.keys()) {
+          if (withoutSizeParam(request.url) === target) {
+            await cache.delete(request);
+          }
+        }
       } catch {
         // Purge is best-effort; the refetch below overwrites this key.
       }
@@ -130,7 +165,11 @@ export class ɵTmImageBlobCache {
     etag: string | null,
   ): Promise<void> {
     const headers = new Headers({ 'content-type': blob.type || 'application/octet-stream' });
-    headers.set(VERSION_HEADER, version ?? '');
+    if (version !== null && version !== '') {
+      // An absent header means "stamp unknown" — never store '' where a
+      // later '' input could turn two unknowns into a permanent hit.
+      headers.set(VERSION_HEADER, version);
+    }
     if (etag !== null) {
       headers.set(ETAG_HEADER, etag);
     }
@@ -152,6 +191,10 @@ export class ɵTmImageBlobCache {
     storedEtag: string | null,
     onRefresh?: (blob: Blob) => void,
   ): Promise<void> {
+    if (this.revalidating.has(url)) {
+      return; // one conditional GET per URL — N instances, one request
+    }
+    this.revalidating.add(url);
     try {
       const response = await this.fetcher(
         url,
@@ -164,6 +207,8 @@ export class ɵTmImageBlobCache {
       onRefresh?.(response.blob);
     } catch {
       // Background refresh is best-effort; the stale entry stays valid.
+    } finally {
+      this.revalidating.delete(url);
     }
   }
 }

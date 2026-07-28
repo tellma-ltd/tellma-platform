@@ -141,7 +141,7 @@ export class ɵTmFilePreviewContent implements OnDestroy {
   protected readonly text = signal('');
   protected readonly truncated = signal(false);
 
-  private objectUrl: string | null = null;
+  private readonly objectUrls = new Set<string>();
   private destroyed = false;
 
   /** The kind the template renders — PDF needs the browser's own viewer. */
@@ -183,10 +183,10 @@ export class ɵTmFilePreviewContent implements OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
-    if (this.objectUrl !== null) {
-      URL.revokeObjectURL(this.objectUrl);
-      this.objectUrl = null;
+    for (const url of this.objectUrls) {
+      URL.revokeObjectURL(url);
     }
+    this.objectUrls.clear();
   }
 
   /** A media element that cannot play its source becomes the card. */
@@ -213,11 +213,15 @@ export class ɵTmFilePreviewContent implements OnDestroy {
     }
     const img = doc.createElement('img');
     img.style.maxWidth = '100%';
+    // The frame is torn down on EVERY outcome — a load failure must not
+    // leave a detached iframe behind.
+    const cleanup = (): void => frame.remove();
     img.addEventListener('load', () => {
       frame.contentWindow?.focus();
       frame.contentWindow?.print();
-      setTimeout(() => frame.remove(), 1000);
+      setTimeout(cleanup, 1000);
     });
+    img.addEventListener('error', cleanup);
     img.src = url;
     doc.body.appendChild(img);
   }
@@ -246,13 +250,30 @@ export class ɵTmFilePreviewContent implements OnDestroy {
     this.presentUrl(source.url);
   }
 
+  /** Whether a consumer URL is safe for the NON-SANDBOXED iframe sink. */
+  private static safeFrameUrl(url: string): boolean {
+    try {
+      const protocol = new URL(url, document.baseURI).protocol;
+      return protocol === 'https:' || protocol === 'http:' || protocol === 'blob:';
+    } catch {
+      return false;
+    }
+  }
+
   /** Direct URLs: media streams (range requests); text needs bytes. */
   private presentUrl(url: string): void {
     this.downloadUrl.set(url);
     const kind = this.effectiveKind();
     switch (kind) {
       case 'pdf':
-        this.pdfUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
+        // The iframe bypasses Angular's resource-URL sanitizer, and a
+        // `javascript:` frame executes in THIS origin — allowlist the
+        // scheme or fall back to the download-only card.
+        if (ɵTmFilePreviewContent.safeFrameUrl(url)) {
+          this.pdfUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
+        } else {
+          this.effectiveKind.set('unsupported');
+        }
         break;
       case 'image':
       case 'svg':
@@ -276,11 +297,12 @@ export class ɵTmFilePreviewContent implements OnDestroy {
     if (kind === 'text') {
       this.truncated.set(blob.size > TEXT_CAP_BYTES);
       this.text.set(await blob.slice(0, TEXT_CAP_BYTES).text());
+      if (this.destroyed) {
+        return; // minting after this await would orphan the URL
+      }
       // The download link still carries the FULL bytes.
       this.downloadUrl.set(this.mintObjectUrl(blob));
-      if (!this.destroyed) {
-        this.state.set('ready');
-      }
+      this.state.set('ready');
       return;
     }
     const url = this.mintObjectUrl(blob);
@@ -299,9 +321,17 @@ export class ɵTmFilePreviewContent implements OnDestroy {
         }
         break;
       }
-      case 'pdf':
-        this.pdfUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
+      case 'pdf': {
+        // The DECLARED kind chose the pdf renderer, but the object URL
+        // serves the blob's OWN Content-Type — an attacker uploading HTML
+        // as 'invoice.pdf' would otherwise execute same-origin in the
+        // non-sandboxed frame. Re-wrap so the URL is application/pdf no
+        // matter what the bytes claim.
+        const pdfBlob =
+          blob.type === 'application/pdf' ? blob : new Blob([blob], { type: 'application/pdf' });
+        this.pdfUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(this.mintObjectUrl(pdfBlob)));
         break;
+      }
       case 'video':
       case 'audio':
         this.displayUrl.set(url);
@@ -327,11 +357,14 @@ export class ɵTmFilePreviewContent implements OnDestroy {
     }
   }
 
+  /**
+   * Mints an object URL this component owns — every one is revoked on
+   * close. (A viewer can hold two: the download link keeps the ORIGINAL
+   * bytes while the PDF frame gets a type-pinned re-wrap.)
+   */
   private mintObjectUrl(blob: Blob): string {
-    if (this.objectUrl !== null) {
-      URL.revokeObjectURL(this.objectUrl);
-    }
-    this.objectUrl = URL.createObjectURL(blob);
-    return this.objectUrl;
+    const url = URL.createObjectURL(blob);
+    this.objectUrls.add(url);
+    return url;
   }
 }

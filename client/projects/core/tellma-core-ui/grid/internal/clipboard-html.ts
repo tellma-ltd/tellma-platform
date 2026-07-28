@@ -63,6 +63,7 @@ function parseMeta(raw: string | null): TmGridClipboardMeta | undefined {
     distributionKey:
       typeof record['distributionKey'] === 'string' ? record['distributionKey'] : undefined,
     locale: typeof record['locale'] === 'string' ? record['locale'] : undefined,
+    calendar: typeof record['calendar'] === 'string' ? record['calendar'] : undefined,
     cols,
     headers: record['headers'] === true,
   };

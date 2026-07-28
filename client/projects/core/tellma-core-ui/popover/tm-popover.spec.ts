@@ -173,6 +173,30 @@ describe('tm-popover + tmPopoverTriggerFor', () => {
     expect(document.activeElement).toBe(outside);
   });
 
+  it('Escape closes even when focus rests on a programmatic anchor (overlay fallback)', async () => {
+    const { fixture, root } = await setup(Host);
+    const popover = fixture.debugElement.query(By.directive(TmPopover))
+      .componentInstance as TmPopover;
+    const anchor = root.querySelector('.outside-field') as HTMLInputElement;
+    popover.open(anchor);
+    await settle(fixture);
+    expect(panel()).not.toBeNull();
+
+    // Focus moves back onto the anchor: the popover stays open by design
+    // (the anchor is exempt from focus-out and outside-click closes).
+    anchor.focus();
+    await settle(fixture);
+    expect(panel()).not.toBeNull();
+
+    // Escape pressed THERE must still close: it reaches the popover via
+    // the CDK dispatcher (topmost overlay), not the panel's own keydown.
+    anchor.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    await settle(fixture);
+    expect(panel()).toBeNull();
+  });
+
   it('programmatic open at a rectangle takes focus; close has no anchor to restore to', async () => {
     const { fixture, root } = await setup(Host);
     const popover = fixture.debugElement.query(By.directive(TmPopover))

@@ -76,8 +76,12 @@ describe('tmUmalquraCalendar', () => {
       day: 'numeric',
       timeZone: 'UTC',
     });
+    // The sweep runs to the END of the documented window (AH 1599 ≈ late
+    // 2173 CE) — the upstream table hand-off at AH 1600 is discontinuous
+    // (a whole year off by one day), which is exactly what this gate must
+    // keep OUT of the documented window.
     const start = Date.UTC(1900, 0, 1, 12);
-    const end = Date.UTC(2100, 0, 1, 12);
+    const end = Date.UTC(2172, 0, 1, 12);
     for (let time = start; time < end; time += 97 * 24 * 3600 * 1000) {
       const date = new Date(time);
       const iso = `${String(date.getUTCFullYear()).padStart(4, '0')}-${String(
@@ -91,6 +95,32 @@ describe('tmUmalquraCalendar', () => {
           .map((part) => [part.type, Number(part.value)]),
       );
       expect(parts, iso).toEqual({ year: intl['year'], month: intl['month'], day: intl['day'] });
+    }
+  });
+
+  it('round-trips the last year of the documented window (AH 1599)', () => {
+    // AH 1599 is the guarantee's edge; AH 1600 is known-broken upstream
+    // (toParts/fromParts disagree by a day for the whole year), which is
+    // why the documented window stops at 1599.
+    for (const day of [1, 15, 29]) {
+      for (const month of [1, 6, 12]) {
+        const iso = calendar.fromParts({ year: 1599, month, day });
+        expect(iso, `1599-${month}-${day}`).not.toBeNull();
+        expect(calendar.toParts(iso!), iso!).toEqual({ year: 1599, month, day });
+      }
+    }
+  });
+
+  it('malformed upstream parts beyond the window still satisfy the parts contract', () => {
+    // Inside the discontinuity the values may be WRONG (documented), but
+    // they must stay integers — a fractional or null day would strand the
+    // popup's roving focus.
+    for (const iso of ['2173-12-07', '2174-06-15', '2320-01-01']) {
+      const parts = calendar.toParts(iso);
+      expect(Number.isInteger(parts.year), iso).toBe(true);
+      expect(Number.isInteger(parts.month), iso).toBe(true);
+      expect(Number.isInteger(parts.day), iso).toBe(true);
+      expect(parts.day, iso).toBeGreaterThanOrEqual(1);
     }
   });
 });

@@ -5,6 +5,7 @@
 
 import { Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { TranslocoService } from '@jsverse/transloco';
 import { form, FormField, required } from '@angular/forms/signals';
 
 import { provideTellmaUi, TM_CELL_EDITOR_HOST, tmMaxDate, tmMinDate } from '@tellma/core-ui';
@@ -120,6 +121,59 @@ describe('tm-date-picker', () => {
     expect(
       (fixture.nativeElement.querySelector('.tm-form-field__error') as HTMLElement).textContent,
     ).toContain('Enter a date like');
+  });
+
+  it('canonicalization never corrupts the model — a year the pivot would rewrite', async () => {
+    const { fixture, host, input } = await setup();
+    // ISO fast path commits year 44; the canonical display is '3/15/44',
+    // which a RE-PARSE would pivot into 2044 — the display override must
+    // pin the committed value instead.
+    await type(fixture, input, '0044-03-15');
+    expect(host.model().due).toBe('0044-03-15');
+    await blur(fixture, input);
+    expect(input.value).toBe('3/15/44');
+    expect(host.model().due).toBe('0044-03-15'); // NOT 2044-03-15
+  });
+
+  it('a locale switch keeps unreadable text for correction', async () => {
+    const { fixture, host, input } = await setup();
+    await type(fixture, input, 'not a date');
+    await blur(fixture, input);
+    expect(input.value).toBe('not a date');
+
+    TestBed.inject(TranslocoService).setActiveLang('ar');
+    await fixture.whenStable();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await fixture.whenStable();
+    expect(input.value).toBe('not a date'); // never silently erased
+    expect(host.model().due).toBeNull();
+  });
+
+  it('paging past the ISO ceiling clamps focus to the bound; the keyboard stays alive', async () => {
+    const { fixture, host, input } = await setup();
+    await type(fixture, input, '9999-12-31');
+    await blur(fixture, input);
+    expect(host.model().due).toBe('9999-12-31');
+    (
+      fixture.nativeElement.querySelector('.tm-date-picker__toggle') as HTMLButtonElement
+    ).click();
+    await fixture.whenStable();
+
+    const popup = document.querySelector('.tm-date-popup') as HTMLElement;
+    const grid = popup.querySelector('[role="grid"]') as HTMLElement;
+    grid.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true }));
+    await fixture.whenStable();
+
+    // Focus clamped to the ceiling: a reachable, enabled roving stop.
+    const stop = popup.querySelector('[role="gridcell"] [tabindex="0"], [tabindex="0"][role="gridcell"], button[tabindex="0"]');
+    expect(stop).not.toBeNull();
+    expect((stop as HTMLButtonElement).disabled).toBe(false);
+
+    popup.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    await fixture.whenStable();
+    expect(input.getAttribute('aria-expanded')).toBe('false'); // Esc still works
   });
 
   it('opens the popup on Alt+ArrowDown, commits pending text first, and Esc closes it', async () => {

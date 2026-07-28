@@ -175,21 +175,67 @@ export function tmParseNumber(
       return TM_PARSE_ERROR;
     }
   }
-  const scale = options?.percent === true ? 100 : 1;
+  const percent = options?.percent === true;
   const sourceLocale = options?.sourceLocale;
   const locales =
     sourceLocale !== undefined && sourceLocale !== locale ? [sourceLocale, locale] : [locale];
   for (const candidate of locales) {
-    const parsed = parseWithLocale(trimmed, candidate);
-    if (parsed !== TM_PARSE_ERROR) {
-      return parsed / scale;
+    const normalized = normalizeWithLocale(trimmed, candidate);
+    if (normalized !== TM_PARSE_ERROR) {
+      return finishParse(normalized, percent);
     }
   }
-  // Last resort: plain JavaScript number syntax (machine-formatted text).
-  // Strip invisible format/bidi-control marks first — `String.trim` leaves
-  // them, so `Number('‎-12')` would otherwise be NaN.
-  const plain = Number(trimmed.replace(FORMAT_CONTROL, ''));
-  return Number.isFinite(plain) ? plain / scale : TM_PARSE_ERROR;
+  // Last resort: machine-formatted text — a strict decimal shape (optional
+  // exponent), never JavaScript's full `Number` grammar: `0x1A` or
+  // `Infinity` in a business numeric field must reject, not surprise.
+  // Invisible format/bidi-control marks are stripped first — `String.trim`
+  // leaves them, so `'‎-12'` would otherwise be unrecognizable.
+  const plain = trimmed.replace(FORMAT_CONTROL, '');
+  return MACHINE_DECIMAL.test(plain) ? finishParse(plain, percent) : TM_PARSE_ERROR;
+}
+
+/** The machine-text fallback shape: plain decimal, optional exponent. */
+const MACHINE_DECIMAL = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+/**
+ * Converts a normalized machine string to the final number. Percent mode
+ * divides by 100 TEXTUALLY — shifting the decimal point in the digit
+ * string — because `Number('51.46') / 100` double-rounds one ulp off the
+ * double nearest to `0.5146`, which both drifts the value and inflates
+ * its digit count past precision ceilings.
+ */
+function finishParse(normalized: string, percent: boolean): number | TmParseError {
+  const value = Number(percent ? shiftDecimalLeft(normalized, 2) : normalized);
+  return Number.isFinite(value) ? value : TM_PARSE_ERROR;
+}
+
+/**
+ * Shifts the decimal point of a plain decimal string `places` to the left
+ * (`'51.46'` → `'0.5146'`). Exponent forms shift the exponent instead.
+ */
+function shiftDecimalLeft(text: string, places: number): string {
+  const exponentMatch = /^(.*?)[eE]([+-]?\d+)$/.exec(text);
+  if (exponentMatch !== null) {
+    return `${exponentMatch[1]}e${Number(exponentMatch[2]) - places}`;
+  }
+  let sign = '';
+  let digits = text;
+  if (digits.startsWith('-') || digits.startsWith('+')) {
+    sign = digits[0] === '-' ? '-' : '';
+    digits = digits.slice(1);
+  }
+  const dot = digits.indexOf('.');
+  const integer = dot === -1 ? digits : digits.slice(0, dot);
+  const fraction = dot === -1 ? '' : digits.slice(dot + 1);
+  const pointAt = integer.length - places;
+  const all = integer + fraction;
+  const shifted =
+    pointAt <= 0
+      ? `0.${'0'.repeat(-pointAt)}${all}`
+      : `${all.slice(0, pointAt)}.${all.slice(pointAt)}`;
+  // Trim a trailing point ('75' → '0.75' never hits this; '7500' → '75.00'
+  // keeps digits, harmless) and preserve the sign.
+  return sign + (shifted.endsWith('.') ? shifted.slice(0, -1) : shifted);
 }
 
 /**
@@ -228,7 +274,13 @@ function isPercentSign(ch: string): boolean {
   return ch === '%' || ch === '٪' || ch === '％';
 }
 
-function parseWithLocale(text: string, locale: string): number | TmParseError {
+/**
+ * Normalizes localized numeric text to a plain machine digit string
+ * (`'-1234.56'`) — digits mapped to ASCII, group separators dropped,
+ * decimal and minus normalized. The NUMBER conversion happens later so
+ * percent scaling can operate on the text (see {@link shiftDecimalLeft}).
+ */
+function normalizeWithLocale(text: string, locale: string): string | TmParseError {
   const symbols = symbolsFor(locale);
   // Drop invisible format/bidi-control marks up front. `Intl.NumberFormat`
   // prefixes a NEGATIVE with one in RTL / non-Latin-minus locales (ar/fa/he
@@ -267,6 +319,5 @@ function parseWithLocale(text: string, locale: string): number | TmParseError {
   if (normalized === '' || normalized === '-') {
     return TM_PARSE_ERROR;
   }
-  const value = Number(normalized);
-  return Number.isFinite(value) ? value : TM_PARSE_ERROR;
+  return Number.isFinite(Number(normalized)) ? normalized : TM_PARSE_ERROR;
 }

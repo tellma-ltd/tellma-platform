@@ -256,6 +256,7 @@ export class TmImage {
   protected readonly displayUrl = signal<string | null>(null);
   private readonly visible = signal(false);
   private loadToken = 0;
+  private destroyed = false;
 
   /** Local edit overrides. */
   protected readonly fitting = signal<FittingSession | null>(null);
@@ -314,6 +315,12 @@ export class TmImage {
     const destroyRef = inject(DestroyRef);
     let observer: IntersectionObserver | null = null;
     destroyRef.onDestroy(() => {
+      // Invalidate in-flight loads FIRST: a fetch/decode resolving after
+      // this point must revoke its own object URL (the token check in
+      // swapIn), not adopt it — otherwise the URL and the blob it pins
+      // leak for the life of the tab.
+      this.loadToken += 1;
+      this.destroyed = true;
       observer?.disconnect();
       this.setDisplayUrl(null);
       this.discardPreview();
@@ -437,6 +444,9 @@ export class TmImage {
       maxBytes: untracked(this.maxFileBytes),
       maxEdgePx: untracked(this.maxEdgePx),
     });
+    if (this.destroyed) {
+      return; // the dialog resolved after the component was gone
+    }
     if (result.kind === 'tooLarge') {
       this.noticeKey.set({
         key: 'image.tooLarge',
@@ -487,12 +497,19 @@ export class TmImage {
     if (editSrc === undefined) {
       return;
     }
+    let url: string | null = null;
     try {
       const blob = await this.cache.getImage(editSrc, untracked(this.etag));
-      const url = URL.createObjectURL(blob);
+      if (this.destroyed) {
+        return;
+      }
+      url = URL.createObjectURL(blob);
       const probe = new Image();
       probe.src = url;
       await probe.decode();
+      if (this.destroyed) {
+        return;
+      }
       this.fitting.set({
         url,
         width: probe.naturalWidth,
@@ -500,8 +517,13 @@ export class TmImage {
         pickedBlob: null,
         initialFit: null,
       });
+      url = null; // ownership transferred to the fitting session
     } catch {
       this.noticeKey.set({ key: 'image.error' });
+    } finally {
+      if (url !== null) {
+        URL.revokeObjectURL(url); // failure/destroy exits own the revoke
+      }
     }
   }
 

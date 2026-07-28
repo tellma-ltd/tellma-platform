@@ -76,7 +76,7 @@ function clampTo(value: number, max: number): number {
         (input)="onSlider($event)"
         (change)="commit()"
       />
-      <button type="button" class="tm-image__chrome-button" (click)="done.emit()">
+      <button type="button" class="tm-image__chrome-button" (click)="onDone()">
         {{ doneLabel() }}
       </button>
     </div>
@@ -142,20 +142,28 @@ export class ɵTmImageEditPane {
   private readonly rectWidth = computed(() => this.coverRect().width / this.zoom());
   private readonly rectHeight = computed(() => this.coverRect().height / this.zoom());
 
-  /** Crop-rect origin in SOURCE pixels (clamped inside the image). */
+  /**
+   * Crop-rect origin in SOURCE pixels (clamped inside the image). An
+   * `initialFit` restores around its FOCAL point — the fit contract's
+   * aspect-survival rule: when the box aspect changed since the fit was
+   * made, the old center is what must be preserved, not the old corner.
+   * (Same aspect ⇒ focal-centered equals the original rect exactly.)
+   */
   private readonly rectX = computed(() => {
+    const fit = this.initialFit();
     const raw =
       this.rectXOverride() ??
-      (this.initialFit() !== null
-        ? this.initialFit()!.rect.x * this.naturalWidth()
+      (fit !== null
+        ? fit.focal.x * this.naturalWidth() - this.rectWidth() / 2
         : (this.naturalWidth() - this.rectWidth()) / 2);
     return clampTo(raw, this.naturalWidth() - this.rectWidth());
   });
   private readonly rectY = computed(() => {
+    const fit = this.initialFit();
     const raw =
       this.rectYOverride() ??
-      (this.initialFit() !== null
-        ? this.initialFit()!.rect.y * this.naturalHeight()
+      (fit !== null
+        ? fit.focal.y * this.naturalHeight() - this.rectHeight() / 2
         : (this.naturalHeight() - this.rectHeight()) / 2);
     return clampTo(raw, this.naturalHeight() - this.rectHeight());
   });
@@ -207,6 +215,11 @@ export class ɵTmImageEditPane {
       this.dragging = false;
     } else if (this.pointers.size === 1) {
       this.dragging = true;
+    } else {
+      // 3+ pointers: no gesture — a stale pinch baseline would jump on
+      // the way back down to two.
+      this.pinchDistance = null;
+      this.dragging = false;
     }
   }
 
@@ -235,8 +248,15 @@ export class ɵTmImageEditPane {
 
   protected onPointerEnd(event: PointerEvent): void {
     const wasInteracting = this.pointers.delete(event.pointerId);
-    if (this.pointers.size < 2) {
+    if (this.pointers.size === 2) {
+      // Back down from 3+: a fresh pinch baseline for the surviving pair.
+      this.pinchDistance = this.currentPinchDistance();
+    } else {
       this.pinchDistance = null;
+    }
+    if (this.pointers.size === 1) {
+      // The finger that remains after a pinch pans from where it stands.
+      this.dragging = true;
     }
     if (this.pointers.size === 0 && wasInteracting) {
       this.dragging = false;
@@ -292,6 +312,18 @@ export class ɵTmImageEditPane {
     clearTimeout(this.commitTimer);
     this.commitTimer = undefined;
     this.fitCommitted.emit(this.currentFit());
+  }
+
+  /**
+   * Done flushes any pending debounced adjustment BEFORE reporting —
+   * wheel/keyboard tweaks inside the debounce window must not be
+   * discarded with the pane (the keyboard path is the accessible one).
+   */
+  protected onDone(): void {
+    if (this.commitTimer !== undefined) {
+      this.commit();
+    }
+    this.done.emit();
   }
 
   // ---- internals ----

@@ -94,7 +94,14 @@ export function ɵtmAdaptCalendar(calendar: Calendar, id: string): TmCalendar {
       if (date === null) {
         throw new Error(`TmCalendar(${id}): '${iso}' is not a YYYY-MM-DD date`);
       }
-      return { year: date.year, month: date.month, day: date.day };
+      // Defensive integer coercion: beyond a table-backed calendar's
+      // accuracy window the underlying library can emit malformed parts
+      // (a null/fractional day at the Umm al-Qura table hand-off). The
+      // VALUES may be off out there — documented — but the parts contract
+      // (integers ≥ 1) must hold or the popup's roving focus strands.
+      const safe = (value: unknown, fallback: number): number =>
+        typeof value === 'number' && Number.isInteger(value) ? value : fallback;
+      return { year: safe(date.year, 1), month: safe(date.month, 1), day: safe(date.day, 1) };
     },
     fromParts(parts: TmCalendarParts): string | null {
       if (

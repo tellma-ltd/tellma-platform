@@ -147,6 +147,48 @@ describe('TmFilePreview', () => {
     expect(await harness.hasPrintButton()).toBe(false);
   });
 
+  it('a .pdf-named file whose BLOB is text/html never reaches the frame as HTML', async () => {
+    // Detection reads the declared metadata, but the object URL serves the
+    // blob's own Content-Type — an attacker uploading HTML as
+    // 'invoice.pdf' would otherwise execute same-origin in the
+    // deliberately non-sandboxed frame.
+    const restore = withPdfViewer(true);
+    try {
+      const { fixture, preview } = await setup();
+      preview.open({
+        name: 'invoice.pdf',
+        type: 'application/pdf',
+        source: new Blob(['<script>document.title="pwned"</script>'], { type: 'text/html' }),
+      });
+      await until(fixture, () => content()?.querySelector('iframe.tm-preview__frame') !== null);
+      const frameUrl = content()!
+        .querySelector('iframe.tm-preview__frame')!
+        .getAttribute('src')!;
+      const served = await fetch(frameUrl).then((response) => response.blob());
+      expect(served.type).toBe('application/pdf'); // re-wrapped, never text/html
+      expect(document.title).not.toBe('pwned');
+    } finally {
+      restore();
+    }
+  });
+
+  it('a {url} source with a dangerous scheme falls back to the download-only card', async () => {
+    const restore = withPdfViewer(true);
+    try {
+      const { fixture, preview } = await setup();
+      preview.open({
+        name: 'evil.pdf',
+        type: 'application/pdf',
+        source: { url: 'javascript:document.title="pwned"' },
+      });
+      await until(fixture, () => content()?.querySelector('.tm-preview__card') !== null);
+      expect(content()!.querySelector('iframe')).toBeNull();
+      expect(document.title).not.toBe('pwned');
+    } finally {
+      restore();
+    }
+  });
+
   it('PDF renders through a NON-sandboxed iframe only when the browser has a viewer', async () => {
     const restore = withPdfViewer(true);
     try {

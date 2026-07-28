@@ -17,7 +17,7 @@ export class TmTooltip implements OnDestroy {
     protected onFocus(): void;
     protected onPointerEnter(event: PointerEvent): void;
     // (undocumented)
-    protected onPointerLeave(): void;
+    protected onPointerLeave(event: PointerEvent): void;
     readonly text: i0.InputSignal<string>;
     static ɵdir: i0.ɵɵDirectiveDeclaration<TmTooltip, "[tmTooltip]", never, { "text": { "alias": "tmTooltip"; "required": true; "isSignal": true; }; }, {}, never, never, true, never>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmTooltip, never>;

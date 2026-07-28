@@ -253,18 +253,44 @@ describe('tm-dropzone', () => {
     expect(zone.classList.contains('tm-dropzone--dragover')).toBe(false);
   });
 
-  it('the document guard cancels missed drops while a dropzone is connected', async () => {
+  it('the document guard cancels missed FILE drops while a dropzone is connected', async () => {
     const { fixture } = await setup();
-    const missed = new DragEvent('dragover', { bubbles: true, cancelable: true });
+    const withFiles = (): DataTransfer => makeTransfer(file('missed.txt', 'text/plain'));
+
+    const missed = new DragEvent('dragover', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer: withFiles(),
+    });
     document.body.dispatchEvent(missed);
     expect(missed.defaultPrevented).toBe(true); // the guard is armed
 
-    const drop = new DragEvent('drop', { bubbles: true, cancelable: true });
+    const drop = new DragEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer: withFiles(),
+    });
     document.body.dispatchEvent(drop);
     expect(drop.defaultPrevented).toBe(true);
 
+    // A TEXT drag (dragging between inputs) is ordinary editing — the
+    // guard must leave native drag-and-drop alone.
+    const textTransfer = new DataTransfer();
+    textTransfer.setData('text/plain', 'dragged words');
+    const textDrag = new DragEvent('dragover', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer: textTransfer,
+    });
+    document.body.dispatchEvent(textDrag);
+    expect(textDrag.defaultPrevented).toBe(false);
+
     fixture.destroy(); // the last dropzone leaves → the guard uninstalls
-    const after = new DragEvent('dragover', { bubbles: true, cancelable: true });
+    const after = new DragEvent('dragover', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer: withFiles(),
+    });
     document.body.dispatchEvent(after);
     expect(after.defaultPrevented).toBe(false);
   });

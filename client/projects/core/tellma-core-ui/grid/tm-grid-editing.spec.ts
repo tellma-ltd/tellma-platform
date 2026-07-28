@@ -881,6 +881,47 @@ describe('tm-grid date columns (built-in defaults)', () => {
     warn.mockRestore();
   });
 
+  it('a paste copied under an unavailable source calendar never misparses as Gregorian', async () => {
+    const { fixture, host, scroller } = await setupDates();
+    await activateOrigin(fixture, scroller);
+
+    // Hijri 23/9/1445 from an ar-SA Umm al-Qura grid: year 1445 is a
+    // PLAUSIBLE Gregorian year — without the calendar stamp this would
+    // silently write 1445-09-23. The pack is not installed here, so the
+    // honest outcome is an invalid input.
+    const hijri = new DataTransfer();
+    hijri.setData('text/plain', '23/9/1445\r\n');
+    hijri.setData(
+      'text/html',
+      `<table data-tm-grid='{"v":1,"locale":"ar-SA","calendar":"islamic-umalqura",` +
+        `"cols":[{"key":"due","type":"date"}]}'>` +
+        `<tbody><tr><td>23/9/1445</td></tr></tbody></table>`,
+    );
+    scroller.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: hijri, bubbles: true, cancelable: true }),
+    );
+    await stable(fixture);
+    // The honest outcome: an invalid input (model cleared, text kept in
+    // error) — NEVER the plausible-Gregorian 1445-09-23 write.
+    expect(host.model()[0].due).toBeNull();
+    expect(cellAt(scroller, 0, 0)!.classList.contains('tm-grid__cell--error')).toBe(true);
+
+    // The same shape stamped 'gregory' parses through the source-locale rung.
+    const gregorian = new DataTransfer();
+    gregorian.setData('text/plain', '25/12/2027\r\n');
+    gregorian.setData(
+      'text/html',
+      `<table data-tm-grid='{"v":1,"locale":"en-GB","calendar":"gregory",` +
+        `"cols":[{"key":"due","type":"date"}]}'>` +
+        `<tbody><tr><td>25/12/2027</td></tr></tbody></table>`,
+    );
+    scroller.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: gregorian, bubbles: true, cancelable: true }),
+    );
+    await stable(fixture);
+    expect(host.model()[0].due).toBe('2027-12-25'); // en-GB day-first order honored
+  });
+
   it('mounts tm-date-picker as the editor; typed text commits through the built-in parse', async () => {
     const { fixture, host, scroller } = await setupDates();
     await activateOrigin(fixture, scroller);

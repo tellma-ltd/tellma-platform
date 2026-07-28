@@ -24,7 +24,7 @@ import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
 import type { ConnectedPosition } from '@angular/cdk/overlay';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
-import { tmCreateAnchoredOverlay } from '@tellma/core-ui/private';
+import { tmCreateAnchoredOverlay, tmPushEscapeDismissal } from '@tellma/core-ui/private';
 
 /** One actionable menu item. */
 export interface TmMenuItem {
@@ -67,9 +67,10 @@ export interface TmMenuOpenOptions {
 }
 
 /**
- * Open menus, most-recently-opened last. Every open instance handles Escape
- * at the document capture phase; gating on the front of this stack keeps a
- * single Escape from closing more than the top-most menu.
+ * Open menus, most-recently-opened last — the front-most gate for the
+ * outside-POINTERDOWN dismissal (Escape rides the shared cross-component
+ * dismissal stack in `@tellma/core-ui/private` instead, so a tooltip
+ * showing over an open menu never makes one Escape close both).
  */
 const openMenuStack: TmMenu[] = [];
 
@@ -202,19 +203,14 @@ export class TmMenu {
   private readonly labelCache = new WeakMap<TmMenuItem, Signal<string>>();
 
   /**
-   * Capture-phase Escape interception while open: the aria menu registers
-   * its own Escape handler (a no-op for a parentless menu) that consumes
-   * the event before it could bubble to the panel, so the close key must
-   * be caught ahead of it. Only the front-most open menu acts, so one
-   * Escape never closes menus stacked behind it.
+   * The shared Escape-dismissal registration while open (document capture
+   * — the aria menu registers its own Escape handler, a no-op for a
+   * parentless menu, that consumes the event before it could bubble to
+   * the panel, so the close key must be caught ahead of it). The SHARED
+   * stack coordinates with the other capture-phase dismissers (tooltips):
+   * one Escape, one layer.
    */
-  private readonly onDocumentKeydownCapture = (event: KeyboardEvent): void => {
-    if (event.key === 'Escape' && openMenuStack[openMenuStack.length - 1] === this) {
-      event.preventDefault();
-      event.stopPropagation();
-      this.close();
-    }
-  };
+  private releaseEscape: (() => void) | null = null;
 
   /**
    * Dismiss on an outside POINTERDOWN, not the trailing click: Excel/Sheets
@@ -232,6 +228,25 @@ export class TmMenu {
     const panel = this.overlay()?.overlayRef?.overlayElement ?? null;
     if (target instanceof Node && panel !== null && panel.contains(target)) {
       return;
+    }
+    // A press on a MODAL SCRIM must dismiss only the menu: the press's
+    // un-consumed trailing click would also fire the modal's backdrop
+    // dismissal — one gesture, two layers. Swallow that single click at
+    // document capture (backdrop targets only, one-shot, time-boxed).
+    if (target instanceof Element && target.classList.contains('cdk-overlay-backdrop')) {
+      const swallow = (click: Event): void => {
+        if (click.target === target) {
+          click.preventDefault();
+          click.stopPropagation();
+        }
+        disarm();
+      };
+      const disarm = (): void => {
+        document.removeEventListener('click', swallow, true);
+        clearTimeout(timer);
+      };
+      const timer = setTimeout(disarm, 600); // no trailing click arrived
+      document.addEventListener('click', swallow, true);
     }
     this.close({ restoreFocus: false });
   };
@@ -368,7 +383,7 @@ export class TmMenu {
    * double-registers (the listeners de-dupe by reference).
    */
   private armDismissal(): void {
-    document.addEventListener('keydown', this.onDocumentKeydownCapture, true);
+    this.releaseEscape ??= tmPushEscapeDismissal(() => this.close());
     document.addEventListener('pointerdown', this.onDocumentPointerDownCapture, true);
     if (!openMenuStack.includes(this)) {
       openMenuStack.push(this);
@@ -377,7 +392,8 @@ export class TmMenu {
 
   /** Stops the document dismissal handlers and leaves the open-menu stack. */
   private disarmDismissal(): void {
-    document.removeEventListener('keydown', this.onDocumentKeydownCapture, true);
+    this.releaseEscape?.();
+    this.releaseEscape = null;
     document.removeEventListener('pointerdown', this.onDocumentPointerDownCapture, true);
     const index = openMenuStack.indexOf(this);
     if (index !== -1) {

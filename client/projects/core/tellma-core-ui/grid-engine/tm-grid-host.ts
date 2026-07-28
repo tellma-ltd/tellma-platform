@@ -122,6 +122,8 @@ export interface TmGridEngineOptions<T = unknown> {
   readonly canAddRows: SignalLike<boolean>;
   /** The active locale (clipboard metadata + parse context). */
   readonly locale: SignalLike<string>;
+  /** The active display calendar id (clipboard metadata + source hint). */
+  readonly calendar?: SignalLike<string>;
   /** The tenant id (clipboard metadata + cross-tenant paste guard). */
   readonly tenantId?: SignalLike<string | undefined>;
   /**

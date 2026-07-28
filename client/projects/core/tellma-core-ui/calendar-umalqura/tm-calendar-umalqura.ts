@@ -15,12 +15,14 @@ let singleton: TmCalendar | undefined;
  * via `provideTmCalendar(tmUmalquraCalendar())`, or pass it per instance;
  * the backing values stay ISO (proleptic Gregorian) either way.
  *
- * Accuracy window: the underlying tables cover AH 1300–1600 (≈ 1882–2174
+ * Accuracy window: the underlying tables cover AH 1300–1599 (≈ 1882–2173
  * CE); outside that window the implementation degrades to the arithmetic
- * Islamic calendar, silently and continuously — everyday ERP dates live
- * comfortably inside the window, and the ISO model value is exact
- * regardless. Years are Anno Hegirae (AH); month and era names render
- * from Intl in the active UI language.
+ * Islamic calendar — everyday ERP dates live comfortably inside the
+ * window, and the ISO model value is exact regardless. (The upstream
+ * table hand-off at AH 1600 is discontinuous — off by one day for that
+ * whole year — so the guaranteed window ends at 1599; the agreement gate
+ * pins the boundary.) Years are Anno Hegirae (AH); month and era names
+ * render from Intl in the active UI language.
  */
 export function tmUmalquraCalendar(): TmCalendar {
   singleton ??= ɵtmAdaptCalendar(new IslamicUmalquraCalendar(), 'islamic-umalqura');

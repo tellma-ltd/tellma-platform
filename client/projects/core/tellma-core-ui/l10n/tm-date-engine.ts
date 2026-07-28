@@ -101,8 +101,17 @@ export function tmFormatDate(
 /** Unicode format / bidi-control marks (the `Cf` category) — always invisible. */
 const FORMAT_CONTROL = /\p{Cf}/gu;
 
-/** Segment separators: slash, dot, dash, comma, Arabic date/decimal marks, spaces. */
-const SEPARATORS = /[/.\-,،٫؍\s]+/u;
+/**
+ * Segment separators: slash, dash, comma, Arabic date/decimal marks,
+ * spaces, and the CJK date-unit suffixes (`2026年7月27日`, `2026년 7월 27일`
+ * tokenize to their numbers). Dots are NOT global separators — they split
+ * only between digits (`27.03.2026`), because they also live inside month
+ * abbreviations (`Rab. I`, `juil.`) and dotted era names (`ฮ.ศ.`).
+ */
+const SEPARATORS = /[/\-,،٫؍\s年月日号號년월일]+/u;
+
+/** A dot acting as a numeric date separator (digit on both sides). */
+const NUMERIC_DOT = /(?<=\d)\.(?=\s*\d)/gu;
 
 const digitZeroCache = new Map<string, number>();
 
@@ -130,16 +139,24 @@ function normalizeDigits(text: string, locale: string): string {
   return out;
 }
 
-/** The locale's field order (subset of year/month/day), cached per locale × calendar. */
+/**
+ * The locale's field order (subset of year/month/day), cached per
+ * locale × calendar × style. The NUMERIC and NAMED-MONTH patterns can
+ * disagree (fa formats numeric dates year-first but medium dates
+ * day-first), so all-numeric input reads in the numeric order while
+ * named-month input reads in the medium order.
+ */
 const fieldOrderCache = new Map<string, readonly ('year' | 'month' | 'day')[]>();
 
-function fieldOrderFor(locale: string, calendarId: string): readonly ('year' | 'month' | 'day')[] {
-  const key = `${locale}|${calendarId}`;
+function fieldOrderFor(
+  locale: string,
+  calendarId: string,
+  style: TmDateStyle,
+): readonly ('year' | 'month' | 'day')[] {
+  const key = `${locale}|${calendarId}|${style}`;
   let order = fieldOrderCache.get(key);
   if (order === undefined) {
-    const parts = formatterFor(locale, calendarId, 'numeric').formatToParts(
-      utcDateOf(2001, 2, 3),
-    );
+    const parts = formatterFor(locale, calendarId, style).formatToParts(utcDateOf(2001, 2, 3));
     order = parts
       .map((part) => part.type)
       .filter((type): type is 'year' | 'month' | 'day' =>
@@ -153,13 +170,19 @@ function fieldOrderFor(locale: string, calendarId: string): readonly ('year' | '
   return order;
 }
 
-/** Case/diacritic-insensitive folding for month-name matching. */
+/**
+ * Case/diacritic-insensitive folding for month/era-name matching. Spaces
+ * and hyphens are removed entirely — separator splitting may have cut a
+ * hyphenated month name (`רביע אל-אוול`) into pieces that re-join with
+ * spaces, so both sides must compare joint-free. Invisible format
+ * controls fold too (some era names embed a ZWJ/ZWNJ; the input side
+ * strips Cf globally, so the table side must match).
+ */
 function foldName(name: string): string {
   return name
     .normalize('NFD')
-    .replace(/[\p{M}ـ.]/gu, '') // marks, tatweel, abbreviation dots
-    .toLowerCase()
-    .trim();
+    .replace(/[\p{M}\p{Cf}ـ.\-־\s]/gu, '')
+    .toLowerCase();
 }
 
 /** Folded era names per locale × calendar — tolerated (skipped) in parsed input. */
@@ -193,6 +216,44 @@ function eraNamesFor(locale: string, calendarId: string): ReadonlySet<string> {
   return names;
 }
 
+/**
+ * Folded literal WORDS of the locale's date patterns (`de`, `г`, `de`-style
+ * connective particles) per locale × calendar — carried by formatted
+ * output, informationless for the segment slots, so tolerated (skipped).
+ * Words that collide with a month name are NOT included.
+ */
+const literalWordCache = new Map<string, ReadonlySet<string>>();
+
+function literalWordsFor(
+  locale: string,
+  calendar: TmCalendar,
+  referenceYear: number,
+): ReadonlySet<string> {
+  const key = `${locale}|${calendar.id}`;
+  let words = literalWordCache.get(key);
+  if (words === undefined) {
+    const set = new Set<string>();
+    const months = monthNamesFor(locale, calendar, referenceYear);
+    const reference = utcDateOf(2001, 2, 3);
+    for (const style of ['numeric', 'medium', 'long'] as const) {
+      for (const part of formatterFor(locale, calendar.id, style).formatToParts(reference)) {
+        if (part.type !== 'literal') {
+          continue;
+        }
+        for (const match of part.value.matchAll(/\p{L}+/gu)) {
+          const folded = foldName(match[0]);
+          if (folded !== '' && !months.has(folded)) {
+            set.add(folded);
+          }
+        }
+      }
+    }
+    words = set;
+    literalWordCache.set(key, words);
+  }
+  return words;
+}
+
 /** Folded month name (long + short forms) → month number, per locale × calendar. */
 const monthNameCache = new Map<string, ReadonlyMap<string, number>>();
 
@@ -205,20 +266,35 @@ function monthNamesFor(
   let names = monthNameCache.get(key);
   if (names === undefined) {
     const table = new Map<string, number>();
-    for (const form of ['long', 'short'] as const) {
-      const formatter = new Intl.DateTimeFormat(locale, {
-        month: form,
-        calendar: calendar.id,
-        timeZone: 'UTC',
-      });
-      const months = calendar.monthsInYear(referenceYear);
-      for (let month = 1; month <= months; month++) {
-        const iso = calendar.fromParts({ year: referenceYear, month, day: 1 });
-        if (iso === null) {
-          continue;
+    const standalone = (['long', 'short'] as const).map(
+      (form) =>
+        new Intl.DateTimeFormat(locale, { month: form, calendar: calendar.id, timeZone: 'UTC' }),
+    );
+    const months = calendar.monthsInYear(referenceYear);
+    for (let month = 1; month <= months; month++) {
+      const iso = calendar.fromParts({ year: referenceYear, month, day: 1 });
+      if (iso === null) {
+        continue;
+      }
+      const parts = ɵtmParseIsoDate(iso)!;
+      const date = utcDateOf(parts.year, parts.month, parts.day);
+      const candidates: string[] = [];
+      for (const formatter of standalone) {
+        candidates.push(formatter.format(date));
+      }
+      // The IN-DATE forms too: several languages inflect the month inside
+      // a date (ru genitive) or abbreviate it differently there (vi
+      // 'Tháng 11' standalone vs 'thg 11' in a date) — formatted output
+      // must round-trip, so the format-context spelling joins the table.
+      for (const style of ['medium', 'long'] as const) {
+        for (const part of formatterFor(locale, calendar.id, style).formatToParts(date)) {
+          if (part.type === 'month') {
+            candidates.push(part.value);
+          }
         }
-        const parts = ɵtmParseIsoDate(iso)!;
-        const name = foldName(formatter.format(utcDateOf(parts.year, parts.month, parts.day)));
+      }
+      for (const candidate of candidates) {
+        const name = foldName(candidate);
         if (name !== '' && !table.has(name)) {
           table.set(name, month);
         }
@@ -275,22 +351,78 @@ export function tmParseDate(
     return iso !== null && iso >= MIN_ISO && iso <= MAX_ISO ? iso : TM_PARSE_ERROR;
   }
 
-  // Era literals ("AH", "ዓ/ም") ride along in some calendars' formatted
-  // output; they carry no information a segment slot needs, so they are
-  // tolerated — formatted output must round-trip through the parser.
-  const eraNames = eraNamesFor(locale, calendar.id);
-  const segments = cleaned
-    .split(SEPARATORS)
-    .filter((segment) => segment !== '' && !eraNames.has(foldName(segment)));
-  if (segments.length === 0 || segments.length > 3) {
-    return TM_PARSE_ERROR;
-  }
-
   const today = calendar.toParts(
     options?.today !== undefined && ɵtmParseIsoDate(options.today) !== null
       ? options.today
       : calendar.today(),
   );
+
+  // Era literals ("AH", "ዓ/ም") and pattern particles ("de", "г") ride
+  // along in some locales' formatted output; they carry no information a
+  // segment slot needs, so they are tolerated — formatted output must
+  // round-trip through the parser. Some engines glue the era to the year
+  // ("AM2018"), so a mixed token sheds a leading/trailing era name. What
+  // remains of a multi-word month name ("Rab. I") is re-joined.
+  const eraNames = eraNamesFor(locale, calendar.id);
+  const literalWords = literalWordsFor(locale, calendar, today.year);
+  const rawTokens = cleaned
+    .replace(NUMERIC_DOT, '/')
+    .split(SEPARATORS)
+    .map((token) => token.replace(/^\.+|\.+$/g, ''))
+    .filter((token) => token !== '');
+  const tokens: string[] = [];
+  for (const token of rawTokens) {
+    const folded = foldName(token);
+    if (eraNames.has(folded) || literalWords.has(folded)) {
+      continue;
+    }
+    if (!/^\d{1,4}$/.test(token)) {
+      // An era glued onto a year: shed it, keep the digits.
+      const glued = [...eraNames].find(
+        (era) =>
+          (folded.startsWith(era) && /^\d{1,4}$/.test(folded.slice(era.length))) ||
+          (folded.endsWith(era) && /^\d{1,4}$/.test(folded.slice(0, -era.length))),
+      );
+      if (glued !== undefined) {
+        tokens.push(
+          folded.startsWith(glued) ? folded.slice(glued.length) : folded.slice(0, -glued.length),
+        );
+        continue;
+      }
+    }
+    tokens.push(token);
+  }
+  // Re-join multi-word month names: adjacent word tokens merge into one
+  // segment (after the filters above, at most one word field remains).
+  const segments: string[] = [];
+  for (const token of tokens) {
+    const isWord = !/^\d{1,4}$/.test(token);
+    const previous = segments.length === 0 ? null : segments[segments.length - 1];
+    if (isWord && previous !== null && !/^\d{1,4}$/.test(previous)) {
+      segments[segments.length - 1] = `${previous} ${token}`;
+    } else {
+      segments.push(token);
+    }
+  }
+  // A month name that is itself word + number ('thg 7' in vi): when one
+  // segment too many remains, a word/number pair that matches the month
+  // table as a whole merges into the month segment.
+  if (segments.length === 4) {
+    const monthTable = monthNamesFor(locale, calendar, today.year);
+    for (let i = 0; i < segments.length - 1; i += 1) {
+      if (
+        !/^\d{1,4}$/.test(segments[i]) &&
+        /^\d{1,4}$/.test(segments[i + 1]) &&
+        monthTable.has(foldName(`${segments[i]} ${segments[i + 1]}`))
+      ) {
+        segments.splice(i, 2, `${segments[i]} ${segments[i + 1]}`);
+        break;
+      }
+    }
+  }
+  if (segments.length === 0 || segments.length > 3) {
+    return TM_PARSE_ERROR;
+  }
 
   const numeric: number[] = [];
   const numericRaw: string[] = [];
@@ -300,7 +432,22 @@ export function tmParseDate(
       numeric.push(Number(segment));
       numericRaw.push(segment);
     } else if (namedMonth === null) {
-      const month = monthNamesFor(locale, calendar, today.year).get(foldName(segment));
+      const table = monthNamesFor(locale, calendar, today.year);
+      const folded = foldName(segment);
+      let month = table.get(folded);
+      if (month === undefined) {
+        // Some patterns GLUE a literal particle onto the month (Hebrew's
+        // one-letter prepositions: 'ברביע' = 'ב' + the month) — shed one
+        // leading literal word and retry.
+        for (const word of literalWords) {
+          if (folded.startsWith(word)) {
+            month = table.get(folded.slice(word.length));
+            if (month !== undefined) {
+              break;
+            }
+          }
+        }
+      }
       if (month === undefined) {
         return TM_PARSE_ERROR;
       }
@@ -310,7 +457,10 @@ export function tmParseDate(
     }
   }
 
-  const order = fieldOrderFor(locale, calendar.id);
+  // All-numeric input reads in the NUMERIC pattern's field order; input
+  // with a month name reads in the MEDIUM pattern's (they disagree in
+  // some locales — fa is year-first numeric, day-first medium).
+  const order = fieldOrderFor(locale, calendar.id, namedMonth === null ? 'numeric' : 'medium');
   let year: number | null = null;
   let month: number | null = namedMonth;
   let day: number | null = null;

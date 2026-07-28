@@ -70,9 +70,31 @@
      The token focus ring below is the equally-visible substitute; the UA
      outline would double up against it. */
   outline: none;
+  /* Ring only: a focused-but-unselected tab (explicit selection mode)
+     must stay visually distinct from the selected one. */
+  box-shadow: var(--focus-ring);
+}
+
+.tm-tab-group__tab[aria-selected='true']:focus-visible {
   box-shadow:
     var(--focus-ring),
     inset 0 calc(-1 * var(--tabs-indicator-thickness)) 0 var(--color-primary);
+}
+
+/* Vertical strips: the indicator moves to the inline-end edge (adjacent
+   to the panel). The transparent border reserves its space on every tab,
+   so selecting never reflows. */
+.tm-tab-group__list[aria-orientation='vertical'] .tm-tab-group__tab {
+  border-inline-end: var(--tabs-indicator-thickness) solid transparent;
+  box-shadow: none;
+}
+
+.tm-tab-group__list[aria-orientation='vertical'] .tm-tab-group__tab[aria-selected='true'] {
+  border-inline-end-color: var(--color-primary);
+}
+
+.tm-tab-group__list[aria-orientation='vertical'] .tm-tab-group__tab:focus-visible {
+  box-shadow: var(--focus-ring);
 }
 
 .tm-tab-group__panel {
@@ -89,6 +111,11 @@
      border there (a slight box growth is functionality-over-fidelity). */
   .tm-tab-group__tab[aria-selected='true'] {
     border-block-end: var(--tabs-indicator-thickness) solid Highlight;
+  }
+
+  .tm-tab-group__list[aria-orientation='vertical'] .tm-tab-group__tab[aria-selected='true'] {
+    border-block-end: none;
+    border-inline-end-color: Highlight;
   }
 }
 

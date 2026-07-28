@@ -23,6 +23,7 @@ export class TmPopover {
     readonly contentTemplate: Signal<TmPopoverContent | undefined>;
     protected readonly expanded: _angular_core.WritableSignal<boolean>;
     readonly isOpen: Signal<boolean>;
+    protected onOverlayKeydown(event: KeyboardEvent): void;
     protected onPanelFocusOut(event: FocusEvent): void;
     protected onPanelKeydown(event: KeyboardEvent): void;
     open(anchor: TmPopoverAnchor): void;

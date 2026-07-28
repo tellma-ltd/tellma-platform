@@ -677,7 +677,14 @@ export class ɵTmDatePopup {
     const calendar = untracked(this.calendar);
     const iso = calendar.fromParts(parts);
     if (iso === null) {
-      return parts;
+      // Beyond the calendar's window entirely (paging past the ISO
+      // ceiling): pin to the NEARER bound — accepting the raw parts would
+      // strand the roving focus on an unreachable, fully-disabled grid,
+      // taking the dialog's keyboard (Escape included) down with it.
+      const focused = untracked(this.focused);
+      const upper = calendar.toParts(untracked(this.upperBound));
+      const lower = calendar.toParts(untracked(this.lowerBound));
+      return parts.year >= focused.year ? upper : lower;
     }
     const clamped = this.clampIso(iso);
     return clamped === iso ? parts : calendar.toParts(clamped);

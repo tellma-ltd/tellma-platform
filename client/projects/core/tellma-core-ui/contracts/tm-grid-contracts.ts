@@ -71,6 +71,12 @@ export interface TmParseContext {
   readonly locale: string;
   /** During paste: the copying grid's locale, from clipboard metadata. */
   readonly sourceLocale?: string;
+  /**
+   * During paste: the copying grid's display calendar id, from clipboard
+   * metadata — date text serialized under a non-Gregorian display
+   * calendar must not be read as Gregorian.
+   */
+  readonly sourceCalendar?: string;
 }
 
 /** Context handed to a column's batched label resolver during paste. */

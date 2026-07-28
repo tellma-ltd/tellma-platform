@@ -86,6 +86,7 @@ const FOCUSABLE =
       (attach)="anchored.handleAttach()"
       (detach)="anchored.handleDetach()"
       (overlayOutsideClick)="anchored.handleOutsideClick($event)"
+      (overlayKeydown)="onOverlayKeydown($event)"
     >
       <div
         #panel
@@ -236,6 +237,22 @@ export class TmPopover {
 
   /** Escape closes (unless an inner overlay already consumed it). */
   protected onPanelKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && !event.defaultPrevented) {
+      event.preventDefault();
+      this.close();
+    }
+  }
+
+  /**
+   * The Escape fallback for keys pressed OUTSIDE the panel while the
+   * popover is open (focus resting on a programmatic anchor): the CDK
+   * dispatcher routes document keydowns to the topmost overlay with
+   * observers — without this handler the event would die here unhandled,
+   * starving outer layers (a modal) of their Escape too. The
+   * `defaultPrevented` guard keeps the panel-keydown path from double
+   * handling the same event.
+   */
+  protected onOverlayKeydown(event: KeyboardEvent): void {
     if (event.key === 'Escape' && !event.defaultPrevented) {
       event.preventDefault();
       this.close();

@@ -25,26 +25,13 @@ export interface TmImageLimits {
 }
 
 /**
- * Probes the drawn bitmap for translucent pixels on a tiny sample — the
- * full frame at guardrail sizes would be a multi-megapixel scan.
+ * Whether the source FORMAT can carry transparency — the deterministic
+ * signal for choosing the re-encode target. (A sampled-pixel probe would
+ * miss small transparent regions once smoothing averages them out, and
+ * flattening real alpha to JPEG black is the worse failure.)
  */
-function hasAlpha(bitmap: ImageBitmap): boolean {
-  const sample = 32;
-  const canvas = document.createElement('canvas');
-  canvas.width = sample;
-  canvas.height = sample;
-  const context = canvas.getContext('2d');
-  if (context === null) {
-    return true; // cannot tell — PNG is the lossless-safe answer
-  }
-  context.drawImage(bitmap, 0, 0, sample, sample);
-  const { data } = context.getImageData(0, 0, sample, sample);
-  for (let i = 3; i < data.length; i += 4) {
-    if (data[i] < 255) {
-      return true;
-    }
-  }
-  return false;
+function formatCarriesAlpha(type: string): boolean {
+  return type === 'image/png' || type === 'image/webp' || type === 'image/avif' || type === 'image/gif';
 }
 
 /** Draws the bitmap at the given size and encodes it. */
@@ -101,7 +88,13 @@ export async function tmProcessPickedFile(
   try {
     const { width, height } = bitmap;
     if (file.type === 'image/gif') {
-      // De-animate: keep the first frame at original resolution.
+      // De-animate: keep the first frame at original resolution (exempt
+      // from the downscale by policy) — but never attempt a canvas past
+      // engine area limits: reject upfront instead of allocating one
+      // that yields a null encode anyway.
+      if (width * height > 64_000_000) {
+        return { kind: 'undecodable' };
+      }
       const blob = await reencode(bitmap, width, height, true);
       return blob === null ? { kind: 'undecodable' } : { kind: 'ok', blob, width, height };
     }
@@ -112,7 +105,7 @@ export async function tmProcessPickedFile(
     const scale = limits.maxEdgePx / longest;
     const scaledWidth = Math.max(1, Math.round(width * scale));
     const scaledHeight = Math.max(1, Math.round(height * scale));
-    const blob = await reencode(bitmap, scaledWidth, scaledHeight, hasAlpha(bitmap));
+    const blob = await reencode(bitmap, scaledWidth, scaledHeight, formatCarriesAlpha(file.type));
     return blob === null
       ? { kind: 'undecodable' }
       : { kind: 'ok', blob, width: scaledWidth, height: scaledHeight };

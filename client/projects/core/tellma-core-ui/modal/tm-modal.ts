@@ -117,7 +117,9 @@ export class TmModal {
     content: Type<unknown> | TemplateRef<unknown>,
     config: TmModalConfig = {},
   ): TmModalRef<R> {
-    const title = config.title;
+    // An empty title is "no title": a present-but-empty aria-labelledby
+    // target is worse for AT heuristics than an unnamed dialog.
+    const title = config.title === '' ? undefined : config.title;
     if (title === undefined && isDevMode()) {
       console.warn(
         '[tellma-ui] TmModal.open called without a title — the dialog has no accessible ' +
