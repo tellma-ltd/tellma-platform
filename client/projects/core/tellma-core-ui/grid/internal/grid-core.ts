@@ -52,6 +52,7 @@ import {
   type TmGridTreeOptions,
   type TmRowCol,
 } from '@tellma/core-ui/grid-engine';
+import { tmFormatNumber, tmParseNumber } from '@tellma/core-ui/l10n';
 import {
   ɵtmObserveLongPress,
   type TmMenu,
@@ -82,7 +83,6 @@ import {
   type TmGridIntent,
 } from './grid-keymap';
 import type { ɵTmGridIconTemplates } from './icons';
-import { tmFormatNumber, tmParseNumber } from './tm-number-codec';
 
 /** Row height fallback (px) while the `--grid-row-height` token is unresolvable. */
 const DEFAULT_ROW_HEIGHT = 32;
@@ -206,7 +206,7 @@ function defaultParseFor(
     case 'text':
       return (text) => text;
     case 'number':
-      return (text, ctx) => tmParseNumber(text, ctx.locale, ctx.sourceLocale);
+      return (text, ctx) => tmParseNumber(text, ctx.locale, { sourceLocale: ctx.sourceLocale });
     case 'boolean':
       return (text) => {
         const normalized = text.trim().toLowerCase();
@@ -2182,7 +2182,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     const typeText = (value: unknown): string => {
       switch (type) {
         case 'number':
-          return tmFormatNumber(value, locale, minDecimals, maxDecimals);
+          return tmFormatNumber(value, locale, { minDecimals, maxDecimals });
         case 'boolean':
           return TM_CHECKBOX_CELL_DISPLAY.formatValue((value ?? null) as boolean | null, locale);
         case 'enum':

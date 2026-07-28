@@ -26,6 +26,7 @@
       "./grid": 34,
       "./tree-grid": 8,
       "./input": 3,
+      "./l10n": 8,
       "./menu": 6,
       "./checkbox": 4,
       "./form-field": 4,

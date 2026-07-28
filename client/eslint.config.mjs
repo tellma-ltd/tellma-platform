@@ -240,6 +240,90 @@ export default defineConfig(
     },
   },
 
+  // l10n entry-point boundary: pure TypeScript + Intl (+ the calendar
+  // arithmetic dependency) — no Angular at all, no DOM, no DI, no other
+  // @tellma packages except the contracts types. Formatting/parsing must
+  // stay deterministic per (input, locale, options) and constructible in a
+  // plain vitest test.
+  {
+    files: ['projects/core/tellma-core-ui/l10n/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@tellma/core-ui',
+              message: 'The l10n entry point may depend on @tellma/core-ui/contracts only.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['@angular/*'],
+              message: 'The l10n entry point must stay free of Angular imports.',
+            },
+            {
+              // Gitignore semantics: exclude the entry points, re-include
+              // contracts (its parent directory itself stays includable).
+              group: ['@tellma/core-ui/*', '!@tellma/core-ui/contracts'],
+              message: 'The l10n entry point may depend on @tellma/core-ui/contracts only.',
+            },
+            {
+              group: ['@tellma/core-ui-*', '@tellma/core-ui-*/**', '@tellma/locale-*', '@tellma/locale-*/**'],
+              message: 'The l10n entry point may depend on @tellma/core-ui/contracts only.',
+            },
+            {
+              group: ['@jsverse/*', 'rxjs', 'rxjs/*'],
+              message:
+                'The l10n entry point is dependency-free beyond Intl, contracts, and the calendar arithmetic package.',
+            },
+            {
+              group: ['../*'],
+              message: 'The l10n entry point must not reach into sibling entry points.',
+            },
+          ],
+        },
+      ],
+      'no-restricted-globals': [
+        'error',
+        ...[
+          'document',
+          'window',
+          'navigator',
+          'DOMParser',
+          'HTMLElement',
+          'Element',
+          'Node',
+          'Event',
+          'KeyboardEvent',
+          'MouseEvent',
+          'PointerEvent',
+          'ClipboardEvent',
+          'DataTransfer',
+          'MutationObserver',
+          'ResizeObserver',
+          'IntersectionObserver',
+          'getComputedStyle',
+          'requestAnimationFrame',
+          'cancelAnimationFrame',
+          'localStorage',
+          'sessionStorage',
+          'customElements',
+        ].map((name) => ({
+          name,
+          message: 'The l10n entry point is DOM-free; DOM work belongs to the component layer.',
+        })),
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "NewExpression[callee.name='InjectionToken']",
+          message: 'The l10n entry point must stay DI-free (the calendar token lives in the primary entry point).',
+        },
+      ],
+    },
+  },
+
   // Templates — inline templates are extracted by the processor above.
   {
     files: ['projects/**/*.html'],
