@@ -9,8 +9,10 @@ import { TranslocoService } from '@jsverse/transloco';
 import { form, FormField, required } from '@angular/forms/signals';
 
 import { provideTellmaUi, TM_CELL_EDITOR_HOST, tmMaxDate, tmMinDate } from '@tellma/core-ui';
+import { tmUmalquraCalendar } from '@tellma/core-ui/calendar-umalqura';
 import type { TmCellEditor } from '@tellma/core-ui/contracts';
 import { TmFormField } from '@tellma/core-ui/form-field';
+import type { TmCalendar } from '@tellma/core-ui/l10n';
 
 import { TmDatePicker } from './tm-date-picker';
 
@@ -18,7 +20,13 @@ import { TmDatePicker } from './tm-date-picker';
   imports: [TmDatePicker, TmFormField, FormField],
   template: `
     <tm-form-field label="Due date" data-testid="ff">
-      <tm-date-picker [formField]="f.due" [minDate]="min()" [maxDate]="max()" data-testid="picker" />
+      <tm-date-picker
+        [formField]="f.due"
+        [minDate]="min()"
+        [maxDate]="max()"
+        [calendar]="calendar()"
+        data-testid="picker"
+      />
     </tm-form-field>
   `,
 })
@@ -26,6 +34,7 @@ class Host {
   readonly model = signal<{ due: string | null }>({ due: null });
   readonly min = signal<string | undefined>(undefined);
   readonly max = signal<string | undefined>(undefined);
+  readonly calendar = signal<TmCalendar | undefined>(undefined);
   readonly f = form(this.model, (p) => {
     required(p.due);
     tmMinDate(p.due, '2020-01-01');
@@ -133,6 +142,45 @@ describe('tm-date-picker', () => {
     await blur(fixture, input);
     expect(input.value).toBe('3/15/44');
     expect(host.model().due).toBe('0044-03-15'); // NOT 2044-03-15
+  });
+
+  it('the pin survives a pristine Enter and a pristine popup open', async () => {
+    const { fixture, host, input } = await setup();
+    await type(fixture, input, '0044-03-15');
+    await blur(fixture, input);
+    expect(input.value).toBe('3/15/44');
+
+    // Enter with NO typing: the unconditional commit must not re-parse
+    // its own canonical text (the pivot would rewrite 44 → 2044).
+    input.focus();
+    input.dispatchEvent(new FocusEvent('focus'));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await fixture.whenStable();
+    expect(host.model().due).toBe('0044-03-15');
+    expect(input.value).toBe('3/15/44');
+
+    // Opening the popup commits pending text first — same pin applies.
+    (
+      fixture.nativeElement.querySelector('.tm-date-picker__toggle') as HTMLButtonElement
+    ).click();
+    await fixture.whenStable();
+    expect(host.model().due).toBe('0044-03-15');
+  });
+
+  it('a calendar switch retires the pin: the same text re-reads in the new calendar', async () => {
+    const { fixture, host, input } = await setup();
+    await type(fixture, input, '0044-03-15');
+    await blur(fixture, input);
+    expect(host.model().due).toBe('0044-03-15');
+
+    // Switch the display calendar, then type the OLD canonical text: it
+    // must be read in the NEW calendar, never pinned to the dead one.
+    host.calendar.set(tmUmalquraCalendar());
+    await fixture.whenStable();
+    await type(fixture, input, '3/15/44');
+    expect(host.model().due).not.toBe('0044-03-15');
+    await blur(fixture, input);
+    expect(host.model().due).not.toBe('0044-03-15');
   });
 
   it('a locale switch keeps unreadable text for correction', async () => {

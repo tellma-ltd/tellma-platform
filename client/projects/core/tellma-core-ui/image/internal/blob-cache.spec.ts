@@ -213,6 +213,32 @@ describe('ɵTmImageBlobCache', () => {
     expect(fetcher.calls).toHaveLength(2);
   });
 
+  it('a coalesced revalidation swaps in for EVERY waiting instance', async () => {
+    const storage = new FakeCacheStorage();
+    const { cache, fetcher } = setup(storage);
+    await cache.getImage('/img/1?size=128', 'v1');
+
+    let release!: () => void;
+    fetcher.script(
+      (url) =>
+        new Promise((resolve) => {
+          release = () => resolve({ status: 200, blob: makeBlob(`fresh:${url}`), etag: 'W/"e2"' });
+        }),
+    );
+    const swaps: string[] = [];
+    await Promise.all([
+      cache.getImage('/img/1?size=128', null, (blob) => swaps.push(`a:${blob.size}`)),
+      cache.getImage('/img/1?size=128', null, (blob) => swaps.push(`b:${blob.size}`)),
+      cache.getImage('/img/1?size=128', null, (blob) => swaps.push(`c:${blob.size}`)),
+    ]);
+    expect(fetcher.calls).toHaveLength(2); // still ONE conditional GET
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    // All three instances refresh — otherwise same-URL siblings would
+    // show two different images until their next full load.
+    expect(swaps).toHaveLength(3);
+  });
+
   it('a null stamp serves the cached entry immediately and revalidates in the background', async () => {
     const storage = new FakeCacheStorage();
     const { cache, fetcher } = setup(storage);

@@ -234,6 +234,16 @@ export class TmMenu {
     // dismissal — one gesture, two layers. Swallow that single click at
     // document capture (backdrop targets only, one-shot, time-boxed).
     if (target instanceof Element && target.classList.contains('cdk-overlay-backdrop')) {
+      // The trailing click arrives on RELEASE, which the user can defer
+      // indefinitely — so the disarm window opens at pointerup (or
+      // pointercancel, which produces no click at all), never at press.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const disarm = (): void => {
+        clearTimeout(timer);
+        document.removeEventListener('click', swallow, true);
+        document.removeEventListener('pointerup', armDisarmWindow, true);
+        document.removeEventListener('pointercancel', disarm, true);
+      };
       const swallow = (click: Event): void => {
         if (click.target === target) {
           click.preventDefault();
@@ -241,12 +251,13 @@ export class TmMenu {
         }
         disarm();
       };
-      const disarm = (): void => {
-        document.removeEventListener('click', swallow, true);
+      const armDisarmWindow = (): void => {
         clearTimeout(timer);
+        timer = setTimeout(disarm, 600); // the trailing click never came
       };
-      const timer = setTimeout(disarm, 600); // no trailing click arrived
       document.addEventListener('click', swallow, true);
+      document.addEventListener('pointerup', armDisarmWindow, true);
+      document.addEventListener('pointercancel', disarm, true);
     }
     this.close({ restoreFocus: false });
   };

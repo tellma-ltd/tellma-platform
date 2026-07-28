@@ -647,13 +647,15 @@ export class ɵTmDatePopup {
       month -= calendar.monthsInYear(year);
       year += 1;
     }
-    this.focused.set(this.clampParts(this.constrainDay({ year, month, day: focused.day })));
+    this.focused.set(
+      this.clampParts(this.constrainDay({ year, month, day: focused.day }), Math.sign(months)),
+    );
   }
 
   private moveYears(years: number): void {
     const focused = untracked(this.focused);
     const year = Math.max(1, focused.year + years);
-    this.focused.set(this.clampParts(this.constrainDay({ ...focused, year })));
+    this.focused.set(this.clampParts(this.constrainDay({ ...focused, year }), Math.sign(years)));
   }
 
   /** Clamps a day into the (possibly shorter) target month. */
@@ -672,19 +674,31 @@ export class ɵTmDatePopup {
     return iso < lower ? lower : iso > upper ? upper : iso;
   }
 
-  /** Clamps parts into the effective bounds (via their ISO image). */
-  private clampParts(parts: TmCalendarParts): TmCalendarParts {
+  /**
+   * Clamps parts into the effective bounds (via their ISO image).
+   * `direction` is the sign of the requested move: non-representable
+   * parts are pinned by the DIRECTION OF TRAVEL, never by comparing
+   * years (equal-year candidates go null too — an Ethiopic pre-epoch
+   * value pages backward within year −3 — and a year comparison would
+   * then teleport a backward gesture to the maximum bound).
+   */
+  private clampParts(parts: TmCalendarParts, direction: number): TmCalendarParts {
     const calendar = untracked(this.calendar);
     const iso = calendar.fromParts(parts);
     if (iso === null) {
-      // Beyond the calendar's window entirely (paging past the ISO
-      // ceiling): pin to the NEARER bound — accepting the raw parts would
-      // strand the roving focus on an unreachable, fully-disabled grid,
-      // taking the dialog's keyboard (Escape included) down with it.
+      // Beyond what the calendar can represent (past the ISO ceiling, or
+      // before its era's epoch): accepting the raw parts would strand the
+      // roving focus on an unreachable, fully-disabled grid, taking the
+      // dialog's keyboard (Escape included) down with it. Stand still if
+      // the current focus is representable; otherwise fall back to a
+      // bound, and last of all to today.
       const focused = untracked(this.focused);
-      const upper = calendar.toParts(untracked(this.upperBound));
-      const lower = calendar.toParts(untracked(this.lowerBound));
-      return parts.year >= focused.year ? upper : lower;
+      const candidates = [
+        focused,
+        calendar.toParts(direction < 0 ? untracked(this.lowerBound) : untracked(this.upperBound)),
+        calendar.toParts(this.clampIso(calendar.today())),
+      ];
+      return candidates.find((candidate) => calendar.fromParts(candidate) !== null) ?? focused;
     }
     const clamped = this.clampIso(iso);
     return clamped === iso ? parts : calendar.toParts(clamped);

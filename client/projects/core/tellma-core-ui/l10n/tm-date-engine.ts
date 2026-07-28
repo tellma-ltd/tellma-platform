@@ -110,8 +110,13 @@ const FORMAT_CONTROL = /\p{Cf}/gu;
  */
 const SEPARATORS = /[/\-,،٫؍\s年月日号號년월일]+/u;
 
-/** A dot acting as a numeric date separator (digit on both sides). */
-const NUMERIC_DOT = /(?<=\d)\.(?=\s*\d)/gu;
+/**
+ * A dot acting as a date separator: one whose neighbours are not BOTH
+ * letters. Abbreviation dots always sit inside or after a letter run
+ * (`juil.`, `Rab. I`, `ฮ.ศ.`), so a dot with a digit on either side is a
+ * separator — `27.03.2026`, and the German ordinal habit `5.März 2026`.
+ */
+const SEPARATING_DOT = /(?<=\d)\.(?=\s*[\p{L}\d])|(?<=\p{L})\.(?=\s*\d)/gu;
 
 const digitZeroCache = new Map<string, number>();
 
@@ -171,17 +176,35 @@ function fieldOrderFor(
 }
 
 /**
- * Case/diacritic-insensitive folding for month/era-name matching. Spaces
- * and hyphens are removed entirely — separator splitting may have cut a
- * hyphenated month name (`רביע אל-אוול`) into pieces that re-join with
- * spaces, so both sides must compare joint-free. Invisible format
- * controls fold too (some era names embed a ZWJ/ZWNJ; the input side
- * strips Cf globally, so the table side must match).
+ * The joiners both sides shed before comparing names: dots, spaces,
+ * hyphens (separator splitting may cut a hyphenated month name like
+ * `רביע אל-אוול` into pieces that re-join with spaces, so both sides
+ * must compare joint-free), tatweel, and invisible format controls (some
+ * era names embed a ZWJ/ZWNJ, and the input side strips Cf globally).
+ */
+const NAME_JOINERS = /[\p{Cf}ـ.\-־\s]/gu;
+
+/**
+ * Exact name folding: case-insensitive and joiner-free, but MARKS ARE
+ * KEPT — Indic and Thai vowel signs are marks that carry the whole
+ * distinction between month names (Bengali জুন vs জানু, Thai มี.ค. vs
+ * ม.ค.), so mark-stripping must never be the primary match tier.
+ */
+function foldExact(name: string): string {
+  return name.normalize('NFC').replace(NAME_JOINERS, '').toLowerCase();
+}
+
+/**
+ * Diacritic-insensitive folding — the FALLBACK tier, so a Latin name
+ * typed without its accents (`marz 2026`) still matches. Keys that
+ * become AMBIGUOUS under this fold are dropped from the fallback table
+ * rather than resolved by insertion order.
  */
 function foldName(name: string): string {
   return name
     .normalize('NFD')
-    .replace(/[\p{M}\p{Cf}ـ.\-־\s]/gu, '')
+    .replace(/\p{M}/gu, '')
+    .replace(NAME_JOINERS, '')
     .toLowerCase();
 }
 
@@ -242,7 +265,7 @@ function literalWordsFor(
         }
         for (const match of part.value.matchAll(/\p{L}+/gu)) {
           const folded = foldName(match[0]);
-          if (folded !== '' && !months.has(folded)) {
+          if (folded !== '' && !months.hasFolded(folded)) {
             set.add(folded);
           }
         }
@@ -254,18 +277,32 @@ function literalWordsFor(
   return words;
 }
 
-/** Folded month name (long + short forms) → month number, per locale × calendar. */
-const monthNameCache = new Map<string, ReadonlyMap<string, number>>();
+/**
+ * The month-name lookup for one locale × calendar: an EXACT tier
+ * (mark-preserving) consulted first, then a diacritic-insensitive
+ * fallback whose ambiguous keys have been removed.
+ */
+interface MonthTable {
+  /** The month a segment names, or `undefined`. */
+  lookup(segment: string): number | undefined;
+  /** Whether a diacritic-folded word is a month name in either tier. */
+  hasFolded(folded: string): boolean;
+}
+
+const monthNameCache = new Map<string, MonthTable>();
 
 function monthNamesFor(
   locale: string,
   calendar: TmCalendar,
   referenceYear: number,
-): ReadonlyMap<string, number> {
+): MonthTable {
   const key = `${locale}|${calendar.id}`;
-  let names = monthNameCache.get(key);
-  if (names === undefined) {
-    const table = new Map<string, number>();
+  let table = monthNameCache.get(key);
+  if (table === undefined) {
+    const exact = new Map<string, number>();
+    const loose = new Map<string, number>();
+    /** Loose keys that named more than one month — never guessed at. */
+    const ambiguous = new Set<string>();
     const standalone = (['long', 'short'] as const).map(
       (form) =>
         new Intl.DateTimeFormat(locale, { month: form, calendar: calendar.id, timeZone: 'UTC' }),
@@ -294,16 +331,33 @@ function monthNamesFor(
         }
       }
       for (const candidate of candidates) {
-        const name = foldName(candidate);
-        if (name !== '' && !table.has(name)) {
-          table.set(name, month);
+        const exactKey = foldExact(candidate);
+        if (exactKey !== '' && !exact.has(exactKey)) {
+          exact.set(exactKey, month);
+        }
+        const looseKey = foldName(candidate);
+        if (looseKey === '' || ambiguous.has(looseKey)) {
+          continue;
+        }
+        const claimed = loose.get(looseKey);
+        if (claimed === undefined) {
+          loose.set(looseKey, month);
+        } else if (claimed !== month) {
+          // Mark-stripping collapsed two DIFFERENT months onto one key
+          // (Bengali জুন/জানু, Thai มี.ค./ม.ค.) — drop it rather than let
+          // insertion order silently pick a month.
+          loose.delete(looseKey);
+          ambiguous.add(looseKey);
         }
       }
     }
-    names = table;
-    monthNameCache.set(key, names);
+    table = {
+      lookup: (segment) => exact.get(foldExact(segment)) ?? loose.get(foldName(segment)),
+      hasFolded: (folded) => loose.has(folded) || ambiguous.has(folded) || exact.has(folded),
+    };
+    monthNameCache.set(key, table);
   }
-  return names;
+  return table;
 }
 
 /**
@@ -365,60 +419,75 @@ export function tmParseDate(
   // remains of a multi-word month name ("Rab. I") is re-joined.
   const eraNames = eraNamesFor(locale, calendar.id);
   const literalWords = literalWordsFor(locale, calendar, today.year);
+  const monthTable = monthNamesFor(locale, calendar, today.year);
+  const isNumber = (token: string): boolean => /^\d{1,4}$/.test(token);
   const rawTokens = cleaned
-    .replace(NUMERIC_DOT, '/')
+    .replace(SEPARATING_DOT, '/')
     .split(SEPARATORS)
     .map((token) => token.replace(/^\.+|\.+$/g, ''))
     .filter((token) => token !== '');
-  const tokens: string[] = [];
-  for (const token of rawTokens) {
+
+  // (a) Re-join multi-word month names FIRST — before any era/literal
+  // filtering, because a name's own words can collide with them (the
+  // French Umm al-Qura short month is 'dhou. h.' while the narrow era is
+  // 'H'). Adjacent words always merge; a trailing NUMBER merges only when
+  // the joint is itself a month name (Vietnamese 'thg 7').
+  const isParticle = (token: string): boolean => {
     const folded = foldName(token);
-    if (eraNames.has(folded) || literalWords.has(folded)) {
+    return eraNames.has(folded) || literalWords.has(folded);
+  };
+  const merged: string[] = [];
+  for (const token of rawTokens) {
+    const previous = merged.length === 0 ? null : merged[merged.length - 1];
+    const joint = previous === null ? '' : `${previous} ${token}`;
+    const jointNamesMonth = previous !== null && monthTable.lookup(joint) !== undefined;
+    // Words merge freely, EXCEPT across a standalone particle (Spanish
+    // '3 de enero de 2026' must not glue its `de`s onto the month) — and
+    // a particle or a number joins only when the joint is itself a name.
+    const mergeable =
+      previous !== null &&
+      !isNumber(previous) &&
+      (jointNamesMonth ||
+        (!isNumber(token) && !isParticle(token) && !isParticle(previous)));
+    if (mergeable) {
+      merged[merged.length - 1] = joint;
+    } else {
+      merged.push(token);
+    }
+  }
+
+  // (b) Era literals ("AH", "ዓ/ም") and pattern particles ("de", "г") ride
+  // along in formatted output; they carry no information a segment slot
+  // needs, so they are tolerated — formatted output must round-trip
+  // through the parser. Some engines glue the era onto the year
+  // ("AM2018"): a mixed token sheds it and keeps the digits.
+  const segments: string[] = [];
+  for (const token of merged) {
+    const folded = foldName(token);
+    if (
+      (eraNames.has(folded) || literalWords.has(folded)) &&
+      monthTable.lookup(token) === undefined
+    ) {
       continue;
     }
-    if (!/^\d{1,4}$/.test(token)) {
-      // An era glued onto a year: shed it, keep the digits.
+    // Only in multi-token input, which is the formatted-output shape the
+    // shed exists for: in a lone token the digits would land in the DAY
+    // slot and manufacture a plausible wrong completion ('AD26' is a year
+    // to a human, not the 26th).
+    if (!isNumber(token) && merged.length > 1) {
       const glued = [...eraNames].find(
         (era) =>
-          (folded.startsWith(era) && /^\d{1,4}$/.test(folded.slice(era.length))) ||
-          (folded.endsWith(era) && /^\d{1,4}$/.test(folded.slice(0, -era.length))),
+          (folded.startsWith(era) && isNumber(folded.slice(era.length))) ||
+          (folded.endsWith(era) && isNumber(folded.slice(0, -era.length))),
       );
       if (glued !== undefined) {
-        tokens.push(
+        segments.push(
           folded.startsWith(glued) ? folded.slice(glued.length) : folded.slice(0, -glued.length),
         );
         continue;
       }
     }
-    tokens.push(token);
-  }
-  // Re-join multi-word month names: adjacent word tokens merge into one
-  // segment (after the filters above, at most one word field remains).
-  const segments: string[] = [];
-  for (const token of tokens) {
-    const isWord = !/^\d{1,4}$/.test(token);
-    const previous = segments.length === 0 ? null : segments[segments.length - 1];
-    if (isWord && previous !== null && !/^\d{1,4}$/.test(previous)) {
-      segments[segments.length - 1] = `${previous} ${token}`;
-    } else {
-      segments.push(token);
-    }
-  }
-  // A month name that is itself word + number ('thg 7' in vi): when one
-  // segment too many remains, a word/number pair that matches the month
-  // table as a whole merges into the month segment.
-  if (segments.length === 4) {
-    const monthTable = monthNamesFor(locale, calendar, today.year);
-    for (let i = 0; i < segments.length - 1; i += 1) {
-      if (
-        !/^\d{1,4}$/.test(segments[i]) &&
-        /^\d{1,4}$/.test(segments[i + 1]) &&
-        monthTable.has(foldName(`${segments[i]} ${segments[i + 1]}`))
-      ) {
-        segments.splice(i, 2, `${segments[i]} ${segments[i + 1]}`);
-        break;
-      }
-    }
+    segments.push(token);
   }
   if (segments.length === 0 || segments.length > 3) {
     return TM_PARSE_ERROR;
@@ -432,19 +501,21 @@ export function tmParseDate(
       numeric.push(Number(segment));
       numericRaw.push(segment);
     } else if (namedMonth === null) {
-      const table = monthNamesFor(locale, calendar, today.year);
-      const folded = foldName(segment);
-      let month = table.get(folded);
+      let month = monthTable.lookup(segment);
       if (month === undefined) {
-        // Some patterns GLUE a literal particle onto the month (Hebrew's
+        // Some patterns GLUE a particle or era onto the month (Hebrew's
         // one-letter prepositions: 'ברביע' = 'ב' + the month) — shed one
-        // leading literal word and retry.
-        for (const word of literalWords) {
+        // affix and retry.
+        const folded = foldName(segment);
+        for (const word of [...literalWords, ...eraNames]) {
           if (folded.startsWith(word)) {
-            month = table.get(folded.slice(word.length));
-            if (month !== undefined) {
-              break;
-            }
+            month = monthTable.lookup(folded.slice(word.length));
+          }
+          if (month === undefined && folded.endsWith(word)) {
+            month = monthTable.lookup(folded.slice(0, -word.length));
+          }
+          if (month !== undefined) {
+            break;
           }
         }
       }

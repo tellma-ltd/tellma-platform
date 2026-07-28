@@ -70,8 +70,13 @@ export class ɵTmImageBlobCache {
   private readonly storage = inject(ɵTM_CACHE_STORAGE);
   private readonly fetcher = inject(TM_BLOB_FETCHER);
   private readonly inflight = new Map<string, Promise<Blob>>();
-  /** URLs with a background revalidation in flight (dedup, not identity). */
-  private readonly revalidating = new Set<string>();
+  /**
+   * URLs with a background revalidation in flight, each holding EVERY
+   * waiting caller's refresh callback — one conditional GET, but all
+   * instances swap in the fresh bytes (else same-URL siblings show two
+   * different images).
+   */
+  private readonly revalidating = new Map<string, ((blob: Blob) => void)[]>();
   /** Set on a failed put: the pipeline continues uncached from then on. */
   private cacheBroken = false;
 
@@ -191,10 +196,16 @@ export class ɵTmImageBlobCache {
     storedEtag: string | null,
     onRefresh?: (blob: Blob) => void,
   ): Promise<void> {
-    if (this.revalidating.has(url)) {
-      return; // one conditional GET per URL — N instances, one request
+    const waiting = this.revalidating.get(url);
+    if (waiting !== undefined) {
+      // One conditional GET per URL — but every caller still gets the swap.
+      if (onRefresh !== undefined) {
+        waiting.push(onRefresh);
+      }
+      return;
     }
-    this.revalidating.add(url);
+    const callbacks = onRefresh === undefined ? [] : [onRefresh];
+    this.revalidating.set(url, callbacks);
     try {
       const response = await this.fetcher(
         url,
@@ -204,7 +215,9 @@ export class ɵTmImageBlobCache {
         return; // still current
       }
       await this.put(cache, url, response.blob, response.etag, response.etag);
-      onRefresh?.(response.blob);
+      for (const callback of callbacks) {
+        callback(response.blob);
+      }
     } catch {
       // Background refresh is best-effort; the stale entry stays valid.
     } finally {

@@ -294,6 +294,11 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
       const calendar = this.activeCalendar();
       const dateStyle = this.dateStyle();
       untracked(() => {
+        // The override is keyed to the formatting context that produced
+        // it: a locale/calendar/style change retires it on EVERY path,
+        // including the two early returns below — a stale override would
+        // otherwise pin freshly typed text to the dead context's value.
+        this.displayOverride = null;
         if (this.focused()) {
           return;
         }
@@ -427,6 +432,9 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
 
   /** Type-to-edit seed: replaces the content with `text`, caret at the end. */
   seed(text: string): void {
+    // Host-authored text with no value attached — any pin from an earlier
+    // session must not claim it.
+    this.displayOverride = null;
     this.rawText.set(text);
     const element = this.elementOrThrow;
     element.value = text;
@@ -491,6 +499,16 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
     const element = this.elementOrThrow;
     const locale = untracked(this.l10n.locale);
     const calendar = untracked(this.activeCalendar);
+    const override = this.displayOverride;
+    if (override !== null && override.text === element.value) {
+      // Picker-authored text with a known value — re-parsing it here
+      // would undo the very pinning the override exists for (Enter and
+      // popup-open both commit unconditionally, including pristine text).
+      this.selfWrite = { value: override.value };
+      this.value.set(override.value);
+      this.textAtFocus = override.text;
+      return;
+    }
     const parsed = tmParseDate(element.value, locale, { calendar });
     if (typeof parsed === 'string') {
       const canonical = tmFormatDate(parsed, locale, {

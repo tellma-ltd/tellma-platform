@@ -216,7 +216,13 @@ function finishParse(normalized: string, percent: boolean): number | TmParseErro
 function shiftDecimalLeft(text: string, places: number): string {
   const exponentMatch = /^(.*?)[eE]([+-]?\d+)$/.exec(text);
   if (exponentMatch !== null) {
-    return `${exponentMatch[1]}e${Number(exponentMatch[2]) - places}`;
+    const shifted = Number(exponentMatch[2]) - places;
+    // An exponent past the safe-integer range would re-render in
+    // scientific notation and synthesize a malformed literal; the value
+    // is a zero/overflow either way, so shift the MANTISSA instead.
+    return Number.isSafeInteger(shifted)
+      ? `${exponentMatch[1]}e${shifted}`
+      : `${shiftDecimalLeft(exponentMatch[1], places)}e${exponentMatch[2]}`;
   }
   let sign = '';
   let digits = text;
