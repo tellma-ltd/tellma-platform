@@ -26,6 +26,7 @@ import { TmContextMenuTrigger, TmMenu } from '@tellma/core-ui/menu';
 import { TmNumber } from '@tellma/core-ui/number';
 import { TmOption, TmSelect } from '@tellma/core-ui/select';
 import { TmSpinner } from '@tellma/core-ui/spinner';
+import { TmTab, TmTabContent, TmTabGroup, TmTabLabel } from '@tellma/core-ui/tabs';
 import { TmTreeGrid } from '@tellma/core-ui/tree-grid';
 
 import * as alertExamples from './alert/tm-alert.examples';
@@ -38,6 +39,7 @@ import * as menuExamples from './menu/tm-menu.examples';
 import * as numberExamples from './number/tm-number.examples';
 import * as selectExamples from './select/tm-select.examples';
 import * as spinnerExamples from './spinner/tm-spinner.examples';
+import * as tabsExamples from './tabs/tm-tabs.examples';
 import * as treeGridExamples from './tree-grid/tm-tree-grid.examples';
 
 /**
@@ -99,6 +101,10 @@ interface ExampleTreeRow {
     TmOption,
     TmSelect,
     TmSpinner,
+    TmTab,
+    TmTabContent,
+    TmTabGroup,
+    TmTabLabel,
     TmTreeGrid,
   ],
   template: `
@@ -107,6 +113,12 @@ interface ExampleTreeRow {
     <tm-form-field label="placeholder"><tm-date-picker /></tm-form-field>
     <button tmButton>placeholder</button>
     <tm-alert kind="info">placeholder</tm-alert>
+    <tm-tab-group>
+      <tm-tab id="placeholder" label="placeholder">
+        <ng-template tmTabLabel>placeholder</ng-template>
+        <ng-template tmTabContent>placeholder</ng-template>
+      </tm-tab>
+    </tm-tab-group>
     <tm-checkbox>placeholder</tm-checkbox>
     <tm-select><tm-option [value]="0">placeholder</tm-option></tm-select>
     <tm-spinner />
@@ -210,6 +222,29 @@ const MARKERS: {
     instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmNumber)).length > 0,
   },
   {
+    // Projected ng-template directives never surface in the debug tree
+    // (the tm-option caveat above), so the markers assert the RENDERED
+    // effect: a matched tmTabContent template fills the active panel.
+    name: 'TmTabContent',
+    pattern: /\btmTabContent\b/,
+    instantiated: (fixture) =>
+      Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+          '.tm-tab-group__panel:not([inert])',
+        ),
+      ).some((panel) => (panel.textContent ?? '').trim() !== ''),
+  },
+  {
+    // A matched tmTabLabel template renders the strip button's content —
+    // unmatched, its tab would show an empty label.
+    name: 'TmTabLabel',
+    pattern: /\btmTabLabel\b/,
+    instantiated: (fixture) =>
+      Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.tm-tab-group__tab'),
+      ).every((tab) => (tab.textContent ?? '').trim() !== ''),
+  },
+  {
     name: 'TmContextMenuTrigger',
     pattern: /\btmContextMenuTrigger\b/,
     instantiated: (fixture) =>
@@ -265,6 +300,7 @@ const SUITES = [
   { source: 'checkbox/tm-checkbox.examples.ts', examples: checkboxExamples },
   { source: 'select/tm-select.examples.ts', examples: selectExamples },
   { source: 'spinner/tm-spinner.examples.ts', examples: spinnerExamples },
+  { source: 'tabs/tm-tabs.examples.ts', examples: tabsExamples },
   { source: 'menu/tm-menu.examples.ts', examples: menuExamples },
   { source: 'grid/tm-grid.examples.ts', examples: gridExamples },
   { source: 'tree-grid/tm-tree-grid.examples.ts', examples: treeGridExamples },

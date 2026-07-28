@@ -20,6 +20,7 @@ import { InputStory } from './input/input-story';
 import { MenuStory } from './menu/menu-story';
 import { NumberStory } from './number/number-story';
 import { SelectStory } from './select/select-story';
+import { TabsStory } from './tabs/tabs-story';
 import { ThemingStory } from './theming/theming-story';
 
 /**
@@ -58,6 +59,7 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'date-picker', title: 'Date picker (tm-date-picker)', component: DatePickerStory },
   { id: 'checkbox', title: 'Checkbox (tm-checkbox)', component: CheckboxStory },
   { id: 'select', title: 'Select (tm-select)', component: SelectStory },
+  { id: 'tabs', title: 'Tabs (tm-tab-group)', component: TabsStory },
   { id: 'menu', title: 'Menu', component: MenuStory },
   { id: 'grid-readonly', title: 'Grid (readonly)', component: GridReadonlyStory, wide: true },
   {

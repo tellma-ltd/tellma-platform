@@ -38,7 +38,8 @@
       "./form-field": 4,
       "./private": 4,
       "./select": 8,
-      "./spinner": 1
+      "./spinner": 1,
+      "./tabs": 4
     },
     "apiGoldens": {
       "exclude": ["./private"]

@@ -225,6 +225,24 @@ export class TmSelectHarness extends ComponentHarness {
 }
 
 // @public
+export class TmTabGroupHarness extends ComponentHarness {
+    getActivePanelText(): Promise<string>;
+    getSelectedTab(): Promise<TmTabHarness | null>;
+    getTabs(): Promise<TmTabHarness[]>;
+    static hostSelector: string;
+    selectTab(label: string): Promise<void>;
+}
+
+// @public
+export class TmTabHarness extends ComponentHarness {
+    getLabel(): Promise<string>;
+    static hostSelector: string;
+    isDisabled(): Promise<boolean>;
+    isSelected(): Promise<boolean>;
+    select(): Promise<void>;
+}
+
+// @public
 export class TmTreeGridHarness extends TmGridHarness {
     clickExpander(rowIndex: number): Promise<void>;
     collapse(rowIndex: number): Promise<void>;

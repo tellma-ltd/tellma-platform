@@ -327,5 +327,13 @@ export const tmTokensDefault: TmTokens = {
     // tm-menu: panel + item-row geometry; colors ride the field/surface
     // semantic tokens in the component CSS.
     menu: { minWidth: '180px', itemHeight: '32px', iconSize: '16px' },
+    // tm-tab-group: strip geometry; the active indicator draws inside the
+    // tab box so activation never reflows.
+    tabs: {
+      height: '38px',
+      indicatorThickness: '2px',
+      gap: '4px',
+      labelPaddingX: '12px',
+    },
   },
 };

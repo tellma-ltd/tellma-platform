@@ -1,0 +1,99 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-tab-group — the strip + panels. The active indicator is an inset
+   border that never shifts sibling layout; the strip scrolls on overflow. */
+
+:host {
+  display: block;
+  font-family: var(--font-ui);
+}
+
+.tm-tab-group__list {
+  display: flex;
+  gap: var(--tabs-gap);
+  overflow-x: auto;
+  border-block-end: var(--border-width) solid var(--border-subtle);
+}
+
+.tm-tab-group__list[aria-orientation='vertical'] {
+  flex-direction: column;
+  overflow-x: visible;
+  overflow-y: auto;
+  border-block-end: none;
+  border-inline-end: var(--border-width) solid var(--border-subtle);
+}
+
+.tm-tab-group__tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  flex: none;
+  block-size: var(--tabs-height);
+  padding-inline: var(--tabs-label-padding-x);
+  border: none;
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  cursor: pointer;
+  /* The indicator draws inside the tab box — activating never reflows. */
+  box-shadow: inset 0 calc(-1 * var(--tabs-indicator-thickness)) 0 transparent;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.tm-tab-group__tab:hover:not(:disabled) {
+  color: var(--text-body);
+  background: var(--surface-hover);
+}
+
+.tm-tab-group__tab[aria-selected='true'] {
+  color: var(--text-strong);
+  box-shadow: inset 0 calc(-1 * var(--tabs-indicator-thickness)) 0 var(--color-primary);
+}
+
+.tm-tab-group__tab:disabled {
+  color: var(--field-text-disabled);
+  cursor: default;
+}
+
+.tm-tab-group__tab:focus-visible {
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     The token focus ring below is the equally-visible substitute; the UA
+     outline would double up against it. */
+  outline: none;
+  box-shadow:
+    var(--focus-ring),
+    inset 0 calc(-1 * var(--tabs-indicator-thickness)) 0 var(--color-primary);
+}
+
+.tm-tab-group__panel {
+  padding-block-start: var(--space-3);
+}
+
+/* aria applies `inert` to hidden panels; the visual hiding is ours. */
+.tm-tab-group__panel[inert] {
+  display: none;
+}
+
+@media (forced-colors: active) {
+  /* Forced-colors strips box-shadows, so the indicator becomes a real
+     border there (a slight box growth is functionality-over-fidelity). */
+  .tm-tab-group__tab[aria-selected='true'] {
+    border-block-end: var(--tabs-indicator-thickness) solid Highlight;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-tab-group__tab {
+    transition: none;
+  }
+}
