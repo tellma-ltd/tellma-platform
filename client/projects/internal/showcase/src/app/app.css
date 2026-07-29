@@ -69,6 +69,30 @@
   border-radius: var(--radius-sm);
 }
 
+/* On a narrow viewport a fixed rail would eat half the width, leaving the
+   story less room than the shell around it — there it lies back down as a
+   scrolling strip. */
+@media (width <= 48rem) {
+  .shell-body {
+    flex-direction: column;
+  }
+
+  .shell-nav {
+    flex-direction: row;
+    inline-size: auto;
+    max-block-size: none;
+    position: static;
+    align-self: stretch;
+    overflow-x: auto;
+    border-inline-end: none;
+    border-block-end: 1px solid var(--divider);
+  }
+
+  .shell-nav__link {
+    white-space: nowrap;
+  }
+}
+
 .shell-nav__link:hover {
   background: var(--surface-hover);
 }

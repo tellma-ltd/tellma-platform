@@ -217,6 +217,10 @@ test.describe('display calendars (DoD 8)', () => {
         return Number(await rovingDay.getAttribute('data-tm-day'));
       };
       const heading = popup(page).locator('.tm-date-popup__view-switch');
+      // The calendar swap re-renders the grid under the open popup, so
+      // settle on the roving cell BEFORE the first key: a press that
+      // lands mid-render goes to a cell that is about to be replaced.
+      await expect(rovingDay).toBeFocused();
       const start = await dayNumber();
 
       await page.keyboard.press('ArrowRight');
