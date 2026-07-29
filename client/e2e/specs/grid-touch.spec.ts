@@ -204,10 +204,17 @@ test.describe('touch editing (grid-editable)', () => {
   });
 
   test('a double-tap opens the editor; the handles hide while it is open', async ({ page }) => {
-    await cell(page, 2, 0).tap(); // activate (and summon the handles)
+    // Handles are proven on a NEIGHBOURING cell, so the pair below can go
+    // out back to back: the two taps have to land inside the double-tap
+    // threshold, and an assertion between them can outlast it under load.
+    // A third tap is not an option either — it would close what the pair
+    // just opened.
+    await cell(page, 1, 0).tap();
     await expect(handles(page)).toHaveCount(2);
 
-    await cell(page, 2, 0).tap(); // the second tap of the pair → dblclick → edit
+    const target = cell(page, 2, 0);
+    await target.tap(); // activates this cell, and opens the pair
+    await target.tap(); // …closes it → dblclick → edit
     await expect(editorInput(page)).toBeVisible();
     await expect(editorInput(page)).toBeFocused();
     await expect(handles(page)).toHaveCount(0); // hidden behind the editor
