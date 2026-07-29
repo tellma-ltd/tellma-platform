@@ -85,6 +85,7 @@ export class TmFilePicker implements OnDestroy {
   /** Removes the body-appended hidden input. */
   ngOnDestroy(): void {
     this.destroyed = true;
+    window.removeEventListener('focus', this.settleDialog);
     this.fileInput?.remove();
     this.fileInput = null;
   }
@@ -96,23 +97,27 @@ export class TmFilePicker implements OnDestroy {
    * moves — the host reflects this as `aria-busy` and a wait cursor so
    * the click is visibly acknowledged.
    *
-   * It clears on the window regaining focus, which happens whether the
-   * user picked a file or dismissed the dialog; `change` alone would
-   * stay stuck on a cancel.
+   * It clears on the window regaining focus — which happens whether the
+   * user picked a file or dismissed the dialog — and, belt and braces, on
+   * the pick itself: an embedder that never returns focus to the window
+   * would otherwise leave the control disabled for good.
    */
   readonly awaitingDialog = signal(false);
 
+  /** Stops waiting for the OS dialog, however it ended. */
+  private settleDialog = (): void => {
+    window.removeEventListener('focus', this.settleDialog);
+    this.awaitingDialog.set(false);
+  };
+
   /** Opens the OS file dialog. */
   open(): void {
-    if (untracked(this.awaitingDialog)) {
-      return; // a second click while the dialog is on its way
-    }
+    // No re-entrancy guard here on purpose: refusing to re-open is the
+    // job of the DISABLED attribute the state drives, and swallowing the
+    // call outright would strand the control if a host ever left the flag
+    // set (asking the OS for the dialog twice is merely redundant).
     this.awaitingDialog.set(true);
-    const settle = (): void => {
-      window.removeEventListener('focus', settle);
-      this.awaitingDialog.set(false);
-    };
-    window.addEventListener('focus', settle);
+    window.addEventListener('focus', this.settleDialog);
     this.ensureInput().click();
   }
 
@@ -169,6 +174,7 @@ export class TmFilePicker implements OnDestroy {
       element.setAttribute('aria-hidden', 'true');
       element.style.display = 'none';
       element.addEventListener('change', () => {
+        this.settleDialog();
         const files = element.files === null ? [] : [...element.files];
         element.value = '';
         if (files.length > 0) {

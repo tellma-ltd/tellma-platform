@@ -172,10 +172,13 @@ test.describe('state lifetimes (§12 walk on grid-states)', () => {
 
     await page.getByTestId('remove-rows').click(); // removes rows 20..29 by id
 
-    await expect(activeCell(page)).toHaveAttribute('data-row', '22');
+    // "Nearest" is measured in the BEFORE order, outward from the row that
+    // vanished: row 19 is three away, the first survivor after the block
+    // (id 30) is eight, so activation lands on row 19 — not on whatever
+    // slid into view index 22.
+    await expect(activeCell(page)).toHaveAttribute('data-row', '19');
     await expect(activeCell(page)).toHaveAttribute('data-col', '0');
-    // View row 22 now holds the nearest surviving row (id 32).
-    expect(await cellText(page, 22, 0)).toBe('Row 32');
+    expect(await cellText(page, 19, 0)).toBe('Row 19');
     await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '41');
   });
 

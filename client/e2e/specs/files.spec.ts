@@ -73,10 +73,12 @@ test.describe('dialog paths (DoD 12)', () => {
   test('the dropzone is one focusable button: Enter opens the dialog', async ({ page }) => {
     await page.goto(storyUrl('files'));
     const zone = page.getByTestId('dropzone');
-    await zone.focus();
-    await expect(zone).toBeFocused(); // settle before the key lands
+    await expect(page.getByTestId('selection-readout')).toBeAttached();
     const chooser = page.waitForEvent('filechooser');
-    await page.keyboard.press('Enter');
+    // locator.press() focuses and types as ONE actionable step, so the key
+    // cannot land in the gap between a separate focus() and the element
+    // becoming ready — that gap is what made this flake under load.
+    await zone.press('Enter');
     await (await chooser).setFiles({
       name: 'kbd.txt',
       mimeType: 'text/plain',
