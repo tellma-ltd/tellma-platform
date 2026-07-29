@@ -11,6 +11,7 @@ import {
   input,
   type OnDestroy,
   output,
+  signal,
   untracked,
 } from '@angular/core';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
@@ -42,7 +43,11 @@ import type { TmFileSelection } from './tm-file-selection';
  */
 @Directive({
   selector: 'button[tmFilePicker]',
-  host: { '(click)': 'open()' },
+  host: {
+    '(click)': 'open()',
+    '[attr.aria-busy]': 'awaitingDialog() ? "true" : null',
+    '[class.tm-file-picker--awaiting]': 'awaitingDialog()',
+  },
 })
 export class TmFilePicker implements OnDestroy {
   private readonly translate = inject(TM_UI_TRANSLATE);
@@ -82,8 +87,30 @@ export class TmFilePicker implements OnDestroy {
     this.fileInput = null;
   }
 
+  /**
+   * Whether the OS file dialog has been asked for and has not yet come
+   * back. Opening it is the operating system's work, and on a loaded
+   * machine that can take seconds during which nothing on the page
+   * moves — the host reflects this as `aria-busy` and a wait cursor so
+   * the click is visibly acknowledged.
+   *
+   * It clears on the window regaining focus, which happens whether the
+   * user picked a file or dismissed the dialog; `change` alone would
+   * stay stuck on a cancel.
+   */
+  readonly awaitingDialog = signal(false);
+
   /** Opens the OS file dialog. */
   open(): void {
+    if (untracked(this.awaitingDialog)) {
+      return; // a second click while the dialog is on its way
+    }
+    this.awaitingDialog.set(true);
+    const settle = (): void => {
+      window.removeEventListener('focus', settle);
+      this.awaitingDialog.set(false);
+    };
+    window.addEventListener('focus', settle);
     this.ensureInput().click();
   }
 

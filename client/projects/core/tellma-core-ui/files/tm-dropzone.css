@@ -71,3 +71,8 @@
     border-color: Highlight;
   }
 }
+
+/* Same acknowledgement as the picker button — the zone IS the button. */
+:host(.tm-file-picker--awaiting) {
+  cursor: progress;
+}

@@ -49,7 +49,15 @@ test.describe('mouse interaction (angular/components#32504 guard, real events)',
 
   test('clicking outside closes the panel', async ({ page }) => {
     const { panel } = await openSelect(page, 'select-country');
-    await page.mouse.click(600, 400);
+    // Derived from the panel rather than a fixed point: the shell's
+    // layout decides where "outside" is, and a hard-coded coordinate
+    // silently starts landing INSIDE the panel when that layout moves.
+    const box = (await panel.boundingBox())!;
+    const viewport = page.viewportSize()!;
+    await page.mouse.click(
+      Math.min(box.x + box.width + 40, viewport.width - 5),
+      Math.max(box.y - 40, 5),
+    );
     await expect(panel).toBeHidden();
   });
 

@@ -64,3 +64,17 @@ textarea.tm-input {
   align-items: flex-start;
   padding-block: var(--field-padding-y);
 }
+
+/* A trailing icon button inside a field (the date picker's calendar
+   toggle) reads as crowded when it sits closer to the end border than to
+   the top and bottom ones. Centering already leaves it
+   (field height - button)/2 from those, so the end padding shrinks to
+   match; the button's own hit area still spans the full field height.
+   Global, like the textarea rules above: the button is PROJECTED into
+   the field, which scoped field styles cannot select. */
+/* The doubled class outranks the field's own scoped `padding-inline`,
+   which Angular emits with an equal-specificity attribute and injects
+   after this sheet. */
+.tm-form-field__box.tm-form-field__box:has(.tm-form-field__trailing-icon) {
+  padding-inline-end: calc((var(--tm-field-block-size) - var(--space-6)) / 2 - var(--border-width));
+}

@@ -15,9 +15,14 @@ import { TmTooltip } from './tm-tooltip';
 
 @Component({
   imports: [TmTooltip],
+  // Inset from the viewport edges: a tooltip centered on a host near an
+  // edge is deliberately pushed back on-screen, which would mask the
+  // centering these tests are about.
   template: `
-    <button class="first" [tmTooltip]="firstText()" style="--tooltip-delay: 0ms">Refresh</button>
-    <button class="second" tmTooltip="Second tooltip" style="--tooltip-delay: 0ms">Post</button>
+    <div style="padding-inline: 200px">
+      <button class="first" [tmTooltip]="firstText()" style="--tooltip-delay: 0ms">Refresh</button>
+      <button class="second" tmTooltip="Second tooltip" style="--tooltip-delay: 0ms">Post</button>
+    </div>
   `,
 })
 class Host {

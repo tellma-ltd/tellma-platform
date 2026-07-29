@@ -63,6 +63,9 @@ export class TmFilePreview {
       size: 'lg',
       title: file.name,
       data: file,
+      // Full-bleed: every pixel the chrome does not need belongs to the
+      // file being looked at.
+      panelClass: 'tm-modal-panel--flush',
     });
   }
 }

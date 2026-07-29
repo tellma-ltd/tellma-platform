@@ -8,11 +8,17 @@
 /* Showcase shell chrome — painted from the tokens so the toggles restyle it
    live like everything else. */
 
+:host {
+  /* Shared by the header (its own height) and the rail (the viewport it
+     must subtract), so it lives on their common ancestor. */
+  --shell-header-height: 3rem;
+}
+
 .shell-header {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: var(--space-3);
+  block-size: var(--shell-header-height);
   padding-block: var(--space-2);
   padding-inline: var(--space-4);
   background: var(--surface-subtle);
@@ -25,10 +31,34 @@
   text-decoration: none;
 }
 
+/* Rail + content. The rail scrolls on its own so a long story never
+   pushes the story list out of reach. */
+.shell-body {
+  display: flex;
+  align-items: stretch;
+  min-block-size: calc(100vh - var(--shell-header-height));
+}
+
 .shell-nav {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: none;
+  inline-size: 13rem;
+  padding-block: var(--space-3);
+  padding-inline: var(--space-2);
+  border-inline-end: 1px solid var(--divider);
+  background: var(--surface-subtle);
+  position: sticky;
+  inset-block-start: 0;
+  align-self: flex-start;
+  max-block-size: 100vh;
+  overflow-y: auto;
+}
+
+.shell-main {
+  flex: 1;
+  min-inline-size: 0; /* a wide story scrolls itself instead of the rail */
 }
 
 .shell-nav__link {

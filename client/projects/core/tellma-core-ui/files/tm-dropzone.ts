@@ -99,9 +99,9 @@ export class TmDropzone {
     const accept = this.picker.accept().trim();
     return accept === '' ? null : this.translate('filePicker.acceptedTypes', { types: accept })();
   });
-  /** The localized per-file size-limit line. */
+  /** The localized size-limit line — "each" only when there can be more than one. */
   protected readonly sizeLine = computed(() =>
-    this.translate('filePicker.maxSize', {
+    this.translate(this.picker.multiple() ? 'filePicker.maxSize' : 'filePicker.maxSizeSingle', {
       maxMb: tmMaxMegabytes(this.picker.maxFileSize()),
     })(),
   );

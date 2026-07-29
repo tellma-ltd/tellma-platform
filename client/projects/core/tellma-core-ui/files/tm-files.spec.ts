@@ -338,6 +338,7 @@ describe('tm-dropzone', () => {
     const fixture = TestBed.createComponent(SmallCapHost);
     await fixture.whenStable();
     const dropzone = await TestbedHarnessEnvironment.loader(fixture).getHarness(TmDropzoneHarness);
-    expect(await dropzone.getMetaLines()).toEqual(['Up to 0.5 MB each']);
+    // No "each": this zone takes one file, so there is nothing to count.
+    expect(await dropzone.getMetaLines()).toEqual(['Up to 0.5 MB']);
   });
 });

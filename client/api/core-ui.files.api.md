@@ -29,6 +29,7 @@ export class TmDropzone {
 export class TmFilePicker implements OnDestroy {
     constructor();
     readonly accept: _angular_core.InputSignal<string>;
+    readonly awaitingDialog: _angular_core.WritableSignal<boolean>;
     readonly filesSelected: _angular_core.OutputEmitterRef<TmFileSelection>;
     readonly maxFiles: _angular_core.InputSignal<number | null>;
     readonly maxFileSize: _angular_core.InputSignal<number>;

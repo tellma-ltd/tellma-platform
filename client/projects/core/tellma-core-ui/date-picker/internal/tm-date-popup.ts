@@ -26,6 +26,7 @@ import { Directionality } from '@angular/cdk/bidi';
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import {
   tmFirstDayOfWeek,
+  ɵtmFormatWithoutEra,
   ɵtmParseIsoDate,
   type TmCalendar,
   type TmCalendarParts,
@@ -322,9 +323,13 @@ export class ɵTmDatePopup {
 
     // Focus follows the roving cell: on open and after every navigation.
     afterRenderEffect(() => {
+      // ONLY the explicit request moves focus. Tracking `focused()` here
+      // would also fire for the header's paging buttons, yanking focus
+      // out of the button the user is clicking — so a second Enter would
+      // do nothing until they Tab back. Every path that genuinely wants
+      // focus in the grid (open, arrow keys, drilling down a view) bumps
+      // `pendingFocus` itself.
       this.pendingFocus();
-      this.view();
-      this.focused();
       untracked(() => {
         const target = this.hostElement.querySelector<HTMLElement>('[tabindex="0"]');
         // A disabled (or absent) roving cell would silently drop focus to
@@ -354,11 +359,14 @@ export class ɵTmDatePopup {
       return null;
     }
     const calendar = this.calendar();
-    return new Intl.DateTimeFormat(this.locale(), {
-      dateStyle: 'long',
-      calendar: calendar.id,
-      timeZone: 'UTC',
-    }).format(this.utcOf(iso));
+    return ɵtmFormatWithoutEra(
+      new Intl.DateTimeFormat(this.locale(), {
+        dateStyle: 'long',
+        calendar: calendar.id,
+        timeZone: 'UTC',
+      }),
+      this.utcOf(iso),
+    );
   }
 
   /** The header label: "month year" (day view), "year", or the 24-year range. */
@@ -368,12 +376,15 @@ export class ɵTmDatePopup {
     const focused = this.focused();
     if (this.view() === 'day') {
       const iso = calendar.fromParts({ ...focused, day: 1 }) ?? calendar.today();
-      return new Intl.DateTimeFormat(locale, {
-        year: 'numeric',
-        month: 'long',
-        calendar: calendar.id,
-        timeZone: 'UTC',
-      }).format(this.utcOf(iso));
+      return ɵtmFormatWithoutEra(
+        new Intl.DateTimeFormat(locale, {
+          year: 'numeric',
+          month: 'long',
+          calendar: calendar.id,
+          timeZone: 'UTC',
+        }),
+        this.utcOf(iso),
+      );
     }
     if (this.view() === 'month') {
       return this.yearName(focused.year);
@@ -389,11 +400,14 @@ export class ɵTmDatePopup {
     if (iso === null) {
       return String(year);
     }
-    return new Intl.DateTimeFormat(untracked(this.locale), {
-      year: 'numeric',
-      calendar: calendar.id,
-      timeZone: 'UTC',
-    }).format(this.utcOf(iso));
+    return ɵtmFormatWithoutEra(
+      new Intl.DateTimeFormat(untracked(this.locale), {
+        year: 'numeric',
+        calendar: calendar.id,
+        timeZone: 'UTC',
+      }),
+      this.utcOf(iso),
+    );
   }
 
   private utcOf(iso: string): Date {
@@ -419,21 +433,33 @@ export class ɵTmDatePopup {
     } else {
       this.moveYears(direction * 24);
     }
-    this.pendingFocus.update((n) => n + 1);
+    // Focus stays on the pressed button so it can be pressed again —
+    // paging is the button's job, not a request to enter the grid.
   }
 
   // ---- Day view ----
 
-  /** Weekday header names, ordered from the locale's first day of week. */
+  /**
+   * Weekday header names, ordered from the locale's first day of week.
+   *
+   * `short` where CLDR actually abbreviates (`Sun`), `narrow` where it
+   * does not — Arabic's short form IS the full name (`الأحد`), which
+   * would force the columns far wider than the cells they head. The
+   * choice is made from the data, never from a hand-written table: the
+   * engine ships no name lists.
+   */
   protected readonly weekdayNames = computed(() => {
     const locale = this.locale();
     const first = tmFirstDayOfWeek(locale);
-    const formatter = new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: 'UTC' });
     // 2024-01-01 is a Monday (ISO day 1).
-    return Array.from({ length: 7 }, (_, i) => {
-      const isoDay = ((first - 1 + i) % 7) + 1;
-      return formatter.format(new Date(Date.UTC(2024, 0, isoDay, 12)));
-    });
+    const dayOf = (isoDay: number): Date => new Date(Date.UTC(2024, 0, isoDay, 12));
+    const named = (weekday: 'long' | 'short' | 'narrow'): string[] => {
+      const formatter = new Intl.DateTimeFormat(locale, { weekday, timeZone: 'UTC' });
+      return Array.from({ length: 7 }, (_, i) => formatter.format(dayOf(((first - 1 + i) % 7) + 1)));
+    };
+    const short = named('short');
+    const long = named('long');
+    return short.every((name, i) => name === long[i]) ? named('narrow') : short;
   });
 
   /** The fixed six-week day grid of the focused display-calendar month. */
@@ -456,8 +482,13 @@ export class ɵTmDatePopup {
       const isoWeekday = utcDay === 0 ? 7 : utcDay;
       leading = (isoWeekday - firstOfWeek + 7) % 7;
     }
+    // Only the weeks the month actually occupies: 4 (a 28-day month
+    // starting on the week's first day) to 6. The popup is a top-layer
+    // overlay, so its height is never part of the page's layout and a
+    // shorter month may simply be shorter.
+    const rows = Math.ceil((leading + days) / 7);
     const cells: DayCell[] = [];
-    for (let i = 0; i < 42; i++) {
+    for (let i = 0; i < rows * 7; i++) {
       const day = i - leading + 1;
       if (day < 1 || day > days) {
         cells.push({
@@ -481,7 +512,7 @@ export class ɵTmDatePopup {
       });
     }
     const weeks: DayCell[][] = [];
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < rows; i++) {
       weeks.push(cells.slice(i * 7, i * 7 + 7));
     }
     return weeks;
@@ -526,20 +557,20 @@ export class ɵTmDatePopup {
       });
       cells.push({
         month,
-        label: iso === null ? String(month) : formatter.format(this.utcOf(iso)),
+        label: iso === null ? String(month) : ɵtmFormatWithoutEra(formatter, this.utcOf(iso)),
         // `last === null` means the month's END is past what the calendar
         // can represent (the ISO ceiling) — its earlier days are still
         // reachable, so that alone must not disable it.
         disabled: iso === null || iso > upper || (last !== null && last < lower),
       });
     }
-    // A fixed five-row layout holds 13 months without a size change
-    // between years; short years pad with blanks.
-    while (cells.length < 15) {
+    // Pad only the last row (an Ethiopic 13-month year leaves two gaps),
+    // never to a fixed row count — the popup sizes to its content.
+    while (cells.length % 3 !== 0) {
       cells.push(null);
     }
     const rows: MonthCell[][] = [];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < cells.length / 3; i++) {
       rows.push(cells.slice(i * 3, i * 3 + 3));
     }
     return rows;
@@ -813,7 +844,11 @@ export class ɵTmDatePopup {
   }
 
   /**
-   * Clamps parts into the effective bounds (via their ISO image).
+   * Clamps parts into what the CALENDAR can represent — deliberately not
+   * into `min`/`max`. Navigation ranges freely and out-of-range days
+   * simply render disabled: an arrow button that silently refuses to
+   * move is a worse answer than a month the user can see is unavailable.
+   *
    * `direction` is the sign of the requested move: non-representable
    * parts are pinned by the DIRECTION OF TRAVEL, never by comparing
    * years (equal-year candidates go null too — an Ethiopic pre-epoch
@@ -833,12 +868,12 @@ export class ɵTmDatePopup {
       const focused = untracked(this.focused);
       const candidates = [
         focused,
-        calendar.toParts(direction < 0 ? untracked(this.lowerBound) : untracked(this.upperBound)),
+        calendar.toParts(direction < 0 ? MIN_ISO : MAX_ISO),
         calendar.toParts(this.clampIso(calendar.today())),
       ];
       return candidates.find((candidate) => calendar.fromParts(candidate) !== null) ?? focused;
     }
-    const clamped = this.clampIso(iso);
+    const clamped = iso < MIN_ISO ? MIN_ISO : iso > MAX_ISO ? MAX_ISO : iso;
     return clamped === iso ? parts : calendar.toParts(clamped);
   }
 }

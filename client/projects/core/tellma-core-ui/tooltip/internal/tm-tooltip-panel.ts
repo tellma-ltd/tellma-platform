@@ -65,6 +65,11 @@ export class ɵTmTooltipPanel {
     overlay: () => this.overlay(),
     origin: () => this.origin(),
     positions: tmLogicalPositions('block-start', 'center'),
+    // A tooltip is centered on its host by preference, not by meaning, so
+    // near a window edge it slides back into view rather than being
+    // clipped — the first words are the ones that matter most.
+    keepOnScreen: true,
+    viewportMargin: 8,
     remeasure: 'none',
   });
 

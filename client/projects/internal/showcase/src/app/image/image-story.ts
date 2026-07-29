@@ -111,6 +111,22 @@ import { TmImage, TmImagePlaceholder, type TmImageEdit } from '@tellma/core-ui/i
       />
       <output data-testid="image-change">{{ lastChange() }}</output>
     </section>
+
+    <section>
+      <h3>Edit (empty)</h3>
+      <!-- The empty edit state: only the pick action shows, and it offers
+           to ADD rather than to replace something that is not there. -->
+      <tm-image
+        data-testid="edit-empty-image"
+        mode="edit"
+        src=""
+        alt=""
+        [width]="160"
+        [height]="160"
+        [defer]="false"
+        (imageChange)="onImageChange($event)"
+      />
+    </section>
   `,
   styles: `
     section {

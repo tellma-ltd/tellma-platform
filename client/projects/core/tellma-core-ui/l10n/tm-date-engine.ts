@@ -91,9 +91,53 @@ export function tmFormatDate(
     return iso;
   }
   const calendar = options?.calendar ?? tmGregorianCalendar();
-  return formatterFor(locale, calendar.id, options?.dateStyle ?? 'numeric').format(
+  return ɵtmFormatWithoutEra(
+    formatterFor(locale, calendar.id, options?.dateStyle ?? 'numeric'),
     utcDateOf(parts.year, parts.month, parts.day),
   );
+}
+
+/**
+ * Formats a date with the calendar's ERA SUFFIX removed (`9/16/1447 AH`
+ * becomes `9/16/1447`).
+ *
+ * ICU appends an era to non-Gregorian calendars whether or not one was
+ * requested, but inside a field whose calendar the user chose there is
+ * only ever one era in play, so the suffix is noise that costs width in
+ * every cell and input. The literal that joined it goes with it.
+ *
+ * @internal Shared with the calendar popup, which builds its own headers.
+ */
+export function ɵtmFormatWithoutEra(formatter: Intl.DateTimeFormat, date: Date): string {
+  const parts = formatter.formatToParts(date);
+  if (!parts.some((part) => part.type === 'era')) {
+    return parts.map((part) => part.value).join('');
+  }
+  const isField = (part: Intl.DateTimeFormatPart | undefined): boolean =>
+    part !== undefined && part.type !== 'literal' && part.type !== 'era';
+  const kept: Intl.DateTimeFormatPart[] = [];
+  for (let index = 0; index < parts.length; index++) {
+    const part = parts[index];
+    if (part.type === 'era') {
+      continue;
+    }
+    if (part.type === 'literal' && (parts[index - 1]?.type === 'era' || parts[index + 1]?.type === 'era')) {
+      // Some locales put the era BETWEEN two fields (Thai writes the
+      // month, the era, then the year). Dropping both of its separators
+      // would weld those fields together — keep exactly one.
+      const joinsFields =
+        parts.slice(0, index).some(isField) && parts.slice(index + 1).some(isField);
+      if (joinsFields && parts[index + 1]?.type === 'era') {
+        kept.push(part);
+      }
+      continue;
+    }
+    kept.push(part);
+  }
+  return kept
+    .map((part) => part.value)
+    .join('')
+    .trim();
 }
 
 // ---- Parsing ----
@@ -203,9 +247,17 @@ function isoShapeIsAmbiguous(locale: string, calendarId: string): boolean {
   let ambiguous = isoCollisionCache.get(key);
   if (ambiguous === undefined) {
     const order = fieldOrderFor(locale, calendarId, 'numeric');
+    const rendered = ɵtmFormatWithoutEra(
+      formatterFor(locale, calendarId, 'numeric'),
+      utcDateOf(2001, 2, 3),
+    );
+    // Ambiguous when this locale's OWN numeric output wears the ISO
+    // shape and would not mean the same thing read as ISO: either the
+    // fields are in another order, or they count a different calendar's
+    // years (Kannada writes a Hijri date as `1406-03-07`).
     ambiguous =
-      (order[0] !== 'year' || order[1] !== 'month') &&
-      ISO_SHAPE.test(formatterFor(locale, calendarId, 'numeric').format(utcDateOf(2001, 2, 3)));
+      ISO_SHAPE.test(rendered) &&
+      (calendarId !== 'gregory' || order[0] !== 'year' || order[1] !== 'month');
     isoCollisionCache.set(key, ambiguous);
   }
   return ambiguous;
@@ -740,8 +792,13 @@ export function tmDatePlaceholder(
       out += 'mm';
     } else if (part.type === 'day') {
       out += 'dd';
-    } else {
-      out += part.value.replace(FORMAT_CONTROL, '');
+    } else if (part.type !== 'era') {
+      // The separators keep ICU's directional marks: without them an
+      // ASCII hint lays out left-to-right inside an RTL field, so the
+      // fields would read in the opposite order to the value that
+      // replaces them. The era is dropped for the same reason it is
+      // dropped from values.
+      out += part.value;
     }
   }
   return out.trim();

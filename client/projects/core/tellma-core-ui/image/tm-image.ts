@@ -156,23 +156,37 @@ interface FittingSession {
         }
       }
       @if (mode() === 'edit') {
+        <!-- Icon-only actions tucked into one corner: the chrome sits ON
+             the image, so anything wider hides the thing being edited.
+             Each carries its label as the accessible name and as a
+             tooltip, so the wording is still reachable. -->
         <div class="tm-image__chrome">
           <button
             type="button"
             class="tm-image__chrome-button"
             data-tm-image-action="replace"
+            [attr.aria-label]="replaceLabel()"
+            [tmTooltip]="replaceLabel()"
             (click)="pickerInput.click()"
           >
-            {{ replaceLabel() }}
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M4 7h3.2l1.3-2h7l1.3 2H20a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+              <circle cx="12" cy="12.5" r="3.2" stroke="currentColor" stroke-width="1.6" />
+            </svg>
           </button>
           @if (canRefit()) {
             <button
               type="button"
               class="tm-image__chrome-button"
               data-tm-image-action="adjust"
+              [attr.aria-label]="adjustLabel()"
+              [tmTooltip]="adjustLabel()"
               (click)="onRefit()"
             >
-              {{ adjustLabel() }}
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M7 3v14h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M17 21V7H3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
             </button>
           }
           @if (hasImage()) {
@@ -180,9 +194,13 @@ interface FittingSession {
               type="button"
               class="tm-image__chrome-button"
               data-tm-image-action="remove"
+              [attr.aria-label]="removeLabel()"
+              [tmTooltip]="removeLabel()"
               (click)="onDelete()"
             >
-              {{ removeLabel() }}
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M5 7h14M10 7V5h4v2M8 7l.8 12h6.4L16 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
             </button>
           }
         </div>
@@ -258,8 +276,15 @@ export class TmImage {
   protected readonly accept = ACCEPT;
   /** Localized label of the load-error glyph. */
   protected readonly errorLabel = this.translate('image.error');
-  /** Localized label of the replace button. */
-  protected readonly replaceLabel = this.translate('image.replace');
+  private readonly replaceExistingLabel = this.translate('image.replace');
+  private readonly addLabel = this.translate('image.add');
+  /**
+   * Localized label of the pick button: there is nothing to "replace"
+   * until the box holds something, so an empty one offers to ADD.
+   */
+  protected readonly replaceLabel = computed(() =>
+    this.hasImage() ? this.replaceExistingLabel() : this.addLabel(),
+  );
   /** Localized label of the re-fit button. */
   protected readonly adjustLabel = this.translate('image.adjust');
   /** Localized label of the delete button. */

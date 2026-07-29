@@ -4,6 +4,10 @@
   "extends": "../../../tsconfig.json",
   "compilerOptions": {
     "outDir": "../../../out-tsc/spec",
+    /* The spec pulls in library sources through the workspace path
+       mappings, so the inferred common source directory climbs above this
+       project; pin it here as the sibling core-ui config does. */
+    "rootDir": ".",
     "types": ["vitest/globals"]
   },
   "include": ["**/*.spec.ts"]

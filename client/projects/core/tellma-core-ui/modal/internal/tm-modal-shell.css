@@ -79,7 +79,7 @@
   align-items: center;
   gap: var(--space-2);
   flex: none;
-  padding-block: var(--space-4);
+  padding-block: var(--space-3);
   padding-inline: var(--modal-padding-x);
   border-block-end: var(--border-width) solid var(--divider);
 }
@@ -134,6 +134,32 @@
   padding: var(--space-4) var(--modal-padding-x);
 }
 
+/* Full-bleed content (a file preview) owns the whole scrollport: the
+   body's own padding would only shrink the area the content is there to
+   fill. The header and footer keep theirs. */
+.tm-modal-panel--flush .tm-modal__body {
+  padding-inline: 0;
+  padding-block-start: 0;
+}
+
+/* With a footer present the body becomes the column that carries it:
+   the projected content fills the scrollport so `margin-block-start:
+   auto` can hold the footer against the bottom even when the content is
+   far shorter than the panel — the pinned footer the size variants
+   promise. The end padding goes with it, so the bar sits flush. */
+.tm-modal__body:has(.tm-modal__footer) {
+  display: flex;
+  flex-direction: column;
+  padding-block-end: 0;
+}
+
+.tm-modal__body:has(.tm-modal__footer) > * {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
 /* The footer lives inside the CONSUMER's content (the TmModalFooter
    directive applies this class); sticky pins it to the scrollport bottom
    while the negative margins cancel the body padding so it runs edge to
@@ -145,10 +171,9 @@
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
-  margin-block-start: var(--space-4);
-  margin-block-end: calc(-1 * var(--space-4));
+  margin-block-start: auto;
   margin-inline: calc(-1 * var(--modal-padding-x));
-  padding-block: var(--space-3);
+  padding-block: var(--space-2);
   padding-inline: var(--modal-padding-x);
   background: var(--surface-card);
   border-block-start: var(--border-width) solid var(--divider);

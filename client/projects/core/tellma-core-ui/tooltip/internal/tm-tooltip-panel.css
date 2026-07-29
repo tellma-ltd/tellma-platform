@@ -9,6 +9,15 @@
    both schemes; the block margin is the visual offset from the host on
    either preferred side. */
 
+/* The panel host holds only the overlay template, yet it is a real
+   element sitting next to the tooltip's host — as a flex or grid item it
+   would draw its parent's `gap` on both sides and nudge the siblings
+   across as soon as a tooltip is first shown. `contents` gives it no box
+   at all, so the surface can only ever live in the top layer. */
+:host {
+  display: contents;
+}
+
 .tm-tooltip__panel {
   margin-block: var(--tooltip-offset);
   background: var(--surface-inverse);

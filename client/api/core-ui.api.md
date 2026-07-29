@@ -168,6 +168,7 @@ export const TM_UI_STRINGS_EN: {
         readonly browse: "browse";
         readonly acceptedTypes: "Accepted: {types}";
         readonly maxSize: "Up to {maxMb} MB each";
+        readonly maxSizeSingle: "Up to {maxMb} MB";
         readonly announce: "{accepted, plural, =0 {No files added} one {1 file added} other {# files added}}{rejectedCount, plural, =0 {} one {, 1 file rejected} other {, # files rejected}}";
         readonly rejected: {
             readonly size: "{name} is larger than {maxMb} MB";
@@ -177,6 +178,7 @@ export const TM_UI_STRINGS_EN: {
         };
     };
     readonly image: {
+        readonly add: "Add image";
         readonly replace: "Replace image";
         readonly adjust: "Adjust crop";
         readonly remove: "Remove image";

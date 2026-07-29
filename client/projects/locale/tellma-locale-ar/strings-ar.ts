@@ -167,6 +167,7 @@ export const TM_LOCALE_AR_STRINGS = {
     browse: 'تصفح',
     acceptedTypes: 'الأنواع المقبولة: {types}',
     maxSize: 'حتى {maxMb} ميغابايت لكل ملف',
+    maxSizeSingle: 'حتى {maxMb} ميغابايت',
     announce:
       '{accepted, plural, =0 {لم تتم إضافة ملفات} one {تمت إضافة ملف واحد} two {تمت إضافة ملفين} few {تمت إضافة # ملفات} many {تمت إضافة # ملفًا} other {تمت إضافة # ملف}}{rejectedCount, plural, =0 {} one {، ورُفض ملف واحد} two {، ورُفض ملفان} few {، ورُفضت # ملفات} many {، ورُفض # ملفًا} other {، ورُفض # ملف}}',
     rejected: {
@@ -177,6 +178,7 @@ export const TM_LOCALE_AR_STRINGS = {
     },
   },
   image: {
+    add: 'إضافة صورة',
     replace: 'استبدال الصورة',
     adjust: 'ضبط الاقتصاص',
     remove: 'إزالة الصورة',

@@ -35,6 +35,7 @@ export {
   tmDatePlaceholder,
   tmFormatDate,
   tmParseDate,
+  ɵtmFormatWithoutEra,
   type TmDateFormatOptions,
   type TmDateParseOptions,
   type TmDateStyle,

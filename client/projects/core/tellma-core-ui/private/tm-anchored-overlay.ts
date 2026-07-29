@@ -62,6 +62,16 @@ export interface TmAnchoredOverlayConfig {
    */
   readonly positions: readonly ConnectedPosition[] | (() => readonly ConnectedPosition[]);
   /**
+   * Slide the surface back inside the viewport when none of `positions`
+   * fits — for surfaces whose alignment is a preference rather than a
+   * meaning (a centered tooltip), so one near the window edge stays
+   * readable instead of being clipped. Leave off where the connection
+   * point carries meaning and a shifted panel would mislead.
+   */
+  readonly keepOnScreen?: boolean;
+  /** Gap to keep from the viewport edge when `keepOnScreen` pushes. */
+  readonly viewportMargin?: number;
+  /**
    * The top-layer host. `'inline'` (the default) inserts the popover next
    * to the origin — right for most anchors, and it keeps the panel inside
    * the component's DOM so emulated-encapsulation styles apply. Pass
@@ -165,6 +175,10 @@ export function tmCreateAnchoredOverlay(config: TmAnchoredOverlayConfig): TmAnch
       disableClose: true,
       positions: [...positions],
     };
+    if (config.keepOnScreen === true) {
+      result.push = true;
+      result.viewportMargin = config.viewportMargin ?? 0;
+    }
     if (origin !== null) {
       result.origin =
         origin instanceof DOMRect

@@ -53,10 +53,22 @@ test.describe('date column defaults (DoD 9)', () => {
 
     const popup = page.locator('.tm-date-popup');
     await expect(popup).toBeVisible();
-    // Anchored to the cell: the popup opens adjacent to the cell rect.
-    const cellBox = await cell(page, 0, DUE_COL).boundingBox();
-    const popupBox = await popup.boundingBox();
-    expect(Math.abs(popupBox!.x - cellBox!.x)).toBeLessThan(cellBox!.width + 60);
+    // Anchored to the cell, on the edge the DATE sits against: a
+    // right-aligned column opens a right-aligned calendar, so the popup
+    // appears under the text it edits rather than off the far side.
+    const cellBox = (await cell(page, 0, DUE_COL).boundingBox())!;
+    const popupBox = (await popup.boundingBox())!;
+    const alignedToEnd = await cell(page, 0, DUE_COL).evaluate((el) => {
+      const style = getComputedStyle(el);
+      const end = style.direction === 'rtl' ? 'left' : 'right';
+      return style.textAlign === 'end' || style.textAlign === end;
+    });
+    const delta = alignedToEnd
+      ? popupBox.x + popupBox.width - (cellBox.x + cellBox.width)
+      : popupBox.x - cellBox.x;
+    expect(Math.abs(delta)).toBeLessThan(2);
+    // Vertically it hangs off the cell, not somewhere else on the page.
+    expect(Math.abs(popupBox.y - (cellBox.y + cellBox.height))).toBeLessThan(2);
 
     // Esc №1 closes the popup only; the editor stays.
     await page.keyboard.press('Escape');

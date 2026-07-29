@@ -133,6 +133,7 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly browse: "تصفح";
         readonly acceptedTypes: "الأنواع المقبولة: {types}";
         readonly maxSize: "حتى {maxMb} ميغابايت لكل ملف";
+        readonly maxSizeSingle: "حتى {maxMb} ميغابايت";
         readonly announce: "{accepted, plural, =0 {لم تتم إضافة ملفات} one {تمت إضافة ملف واحد} two {تمت إضافة ملفين} few {تمت إضافة # ملفات} many {تمت إضافة # ملفًا} other {تمت إضافة # ملف}}{rejectedCount, plural, =0 {} one {، ورُفض ملف واحد} two {، ورُفض ملفان} few {، ورُفضت # ملفات} many {، ورُفض # ملفًا} other {، ورُفض # ملف}}";
         readonly rejected: {
             readonly size: "{name} أكبر من {maxMb} ميغابايت";
@@ -142,6 +143,7 @@ export const TM_LOCALE_AR_STRINGS: {
         };
     };
     readonly image: {
+        readonly add: "إضافة صورة";
         readonly replace: "استبدال الصورة";
         readonly adjust: "ضبط الاقتصاص";
         readonly remove: "إزالة الصورة";

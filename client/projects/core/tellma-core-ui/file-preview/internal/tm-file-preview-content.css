@@ -106,8 +106,10 @@
 .tm-preview__download {
   display: inline-flex;
   align-items: center;
-  block-size: var(--field-height-sm);
-  padding-inline: var(--button-padding-xsm);
+  /* Matches the default tmButton next to it — the Print action is one,
+     and two adjacent actions of different heights read as a mistake. */
+  block-size: var(--field-height);
+  padding-inline: var(--button-padding-x);
   border: var(--border-width) solid var(--button-secondary-border);
   border-radius: var(--button-radius);
   background: var(--button-secondary-bg);

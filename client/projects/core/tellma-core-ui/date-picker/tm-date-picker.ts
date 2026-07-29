@@ -87,7 +87,6 @@ let nextUniqueId = 0;
       #textInput
       type="text"
       class="tm-input tm-date-picker__input"
-      dir="auto"
       autocomplete="off"
       role="combobox"
       [id]="controlId()"
@@ -110,7 +109,7 @@ let nextUniqueId = 0;
     />
     <button
       type="button"
-      class="tm-date-picker__toggle"
+      class="tm-date-picker__toggle tm-form-field__trailing-icon"
       tabindex="-1"
       [disabled]="disabled() || readonly()"
       [attr.aria-label]="toggleLabel()"
@@ -231,13 +230,42 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
   private readonly textInput = viewChild<ElementRef<HTMLInputElement>>('textInput');
   private readonly overlay = viewChild(CdkConnectedOverlay);
 
-  /** The shared anchored-overlay wiring (popup anchored to the whole host). */
+  /**
+   * The shared anchored-overlay wiring. The origin is the CHROME the user
+   * sees as the field — the bordered box when this control sits in one,
+   * or the grid cell when it is an editor — not this bare host, which
+   * lives inside that chrome and would let the popup overlap its border.
+   */
   protected readonly anchored = tmCreateAnchoredOverlay({
     overlay: () => this.overlay(),
-    origin: () => this.hostElement,
-    positions: tmLogicalPositions('block-end', 'start'),
+    origin: () => this.originElement(),
+    // Aligned to the edge the DATE ITSELF sits against, so the calendar
+    // opens under the text it edits — a right-aligned grid column gets a
+    // right-aligned popup instead of one hanging off the far side.
+    positions: () => tmLogicalPositions('block-end', this.popupAlign()),
     remeasure: 'macrotask',
   });
+
+  /** Which edge of the origin the popup aligns to; refreshed on each open. */
+  private readonly popupAlign = signal<'start' | 'end'>('start');
+
+  /**
+   * The chrome the popup anchors to: the field's bordered box, or the
+   * grid cell's editor host. Falls back to this bare host standalone.
+   */
+  private originElement(): HTMLElement {
+    return (
+      this.hostElement.closest<HTMLElement>('.tm-form-field__box, [data-tm-editor]') ??
+      this.hostElement
+    );
+  }
+
+  /** The origin's text edge, as a logical overlay alignment. */
+  private alignOfOrigin(): 'start' | 'end' {
+    const style = getComputedStyle(this.originElement());
+    const physicalEnd = style.direction === 'rtl' ? 'left' : 'right';
+    return style.textAlign === 'end' || style.textAlign === physicalEnd ? 'end' : 'start';
+  }
 
   /** Whether the input currently has focus (gates display rewrites). */
   private readonly focused = signal(false);
@@ -554,6 +582,7 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
     if (this.elementOrThrow.value !== this.rawText() || this.cellHost === null) {
       this.commitTypedText();
     }
+    this.popupAlign.set(this.alignOfOrigin()); // measured while the origin is laid out
     this.popupOpen.set(true);
   }
 

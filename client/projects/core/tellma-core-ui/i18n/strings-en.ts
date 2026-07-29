@@ -143,6 +143,7 @@ export const TM_UI_STRINGS_EN = {
     browse: 'browse',
     acceptedTypes: 'Accepted: {types}',
     maxSize: 'Up to {maxMb} MB each',
+    maxSizeSingle: 'Up to {maxMb} MB',
     announce:
       '{accepted, plural, =0 {No files added} one {1 file added} other {# files added}}{rejectedCount, plural, =0 {} one {, 1 file rejected} other {, # files rejected}}',
     rejected: {
@@ -153,6 +154,7 @@ export const TM_UI_STRINGS_EN = {
     },
   },
   image: {
+    add: 'Add image',
     replace: 'Replace image',
     adjust: 'Adjust crop',
     remove: 'Remove image',
