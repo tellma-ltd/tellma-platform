@@ -51,7 +51,9 @@ number formatter/parser (no grid API change), and `tm-date-picker` becomes the g
 
 **Non-goals (explicitly out of scope)**
 
-- Currency input (`TmCurrencyAdapter`), entity picker, time / date-time / date-range pickers.
+- Currency input (`TmCurrencyAdapter`), entity picker, time / date-time / date-range pickers, and
+  date values coarser than a day — a month or a year does not map 1:1 onto the months of a
+  non-Gregorian calendar, so the value stays `YYYY-MM-DD` throughout.
 - Toast/snackbar notifications, drawer/side panel, accordion, wizard/stepper, segmented
   (per-part) date editing, week numbers, in-picker calendar-system switcher UI.
 - Anchor tags styled as buttons (`a[tmButton]`) — deferred until a consumer needs one.
@@ -85,7 +87,7 @@ budgets, as before):
 | `@tellma/core-ui/popover` | `tm-popover` + `tmPopoverTriggerFor` (uses `private`). |
 | `@tellma/core-ui/tooltip` | `tmTooltip` directive (uses `private`). |
 | `@tellma/core-ui/alert` | `tm-alert`. |
-| `@tellma/core-ui/private` | Shared overlay-composition helper (§2.1). Importable but carries no stability guarantees and is excluded from the API goldens — the `@angular/aria` `private`-entry-point pattern spec 0002 reserved. |
+| `@tellma/core-ui/private` | Shared overlay-composition helper (§2.1). Importable but carries no stability guarantees, and excluded from the API goldens through a new per-package `"tellma".apiGoldens.exclude` list the extractor script honors — the `@angular/aria` `private`-entry-point pattern spec 0002 reserved. |
 | `@tellma/core-ui` (primary) | Gains `TmClientCache` (§2.3), the `TmL10n` reactive formatting facade and the `TM_CALENDAR` token + `provideTmCalendar()` (§2.2), and the new validator/message kinds' English strings. Stays component-free. |
 | `@tellma/core-ui-testing` | New harnesses (§17). |
 
@@ -107,8 +109,13 @@ picker), so the proven composition is extracted once into `@tellma/core-ui/priva
   creation, `usePopover: 'inline'` (top-layer, clipping-escape) with a `{ type: 'parent', element }`
   override for hosts where sibling insertion violates ARIA structure (the spec-0004 grid lesson),
   `disableClose: true` (the consumer owns Esc), logical `[bottom-start, top-start]`-style position
-  sets resolved through `Directionality`, `matchWidth` opt-in, and the `updatePosition()`-on-attach
-  macrotask fix for flip measurement.
+  sets resolved through `Directionality`, `matchWidth` opt-in, an optional keep-on-screen push for
+  surfaces whose alignment is a preference rather than a meaning, and a re-measure strategy for
+  flip measurement: the `updatePosition()`-on-attach macrotask fix, or `afterNextRender` where the
+  anchor itself is written from a render effect and reaches CDK only on the next pass (`tm-menu`
+  and the grid's error overlay need that one). Each consumer keeps its own
+  `<ng-template cdkConnectedOverlay>` and open state — the helper centralizes the config and the
+  measurement, not the template.
 - Consumers in this phase: `tm-popover`, `tmTooltip`, `tm-date-picker` — and the three existing
   wirings (**`tm-select`, `tm-menu`, and the grid's error overlay**) migrate onto it,
   consolidating identical behavior behind one function; every existing overlay spec passes
@@ -147,28 +154,33 @@ the remainder as a plain number and divides by 100: typed `75`, `75%`, and `%75`
 `0.75`; a bare number is never treated as an already-scaled fraction.
 
 **Date engine.** ISO 8601 date strings are the value currency (§6.1). The engine formats and
-parses them per locale × calendar × precision:
+parses them per locale × calendar:
 
 ```ts
-export type TmDatePrecision = 'day' | 'month' | 'year';
 export type TmDateStyle = 'numeric' | 'medium' | 'long';
 export function tmFormatDate(iso: string, locale: string,
-  options?: { calendar?: TmCalendar; precision?: TmDatePrecision; dateStyle?: TmDateStyle }): string;
+  options?: { calendar?: TmCalendar; dateStyle?: TmDateStyle }): string;
 export function tmParseDate(text: string, locale: string,
-  options?: { calendar?: TmCalendar; precision?: TmDatePrecision; today?: string }): string | null | TmParseError;
+  options?: { calendar?: TmCalendar; today?: string }): string | null | TmParseError;
 export function tmDatePlaceholder(locale: string,
-  options?: { calendar?: TmCalendar; precision?: TmDatePrecision }): string;  // e.g. "dd/mm/yyyy"
+  options?: { calendar?: TmCalendar }): string;  // e.g. "dd/mm/yyyy"
 ```
 
-Formatting delegates to `Intl.DateTimeFormat` with the calendar's Intl identifier; month and era
-names come from Intl/CLDR at runtime, so **no name tables ship in any package**, and every
-calendar renders localized in every UI language. `dateStyle` (one name, shared with the
-`tm-date-picker` input) maps per precision to a fixed CLDR skeleton — `day`: `yMd` / `yMMMd` /
-`yMMMMd`; `month`: `yM` / `yMMM` / `yMMMM`; `year`: `y` — fixed in code, not configurable.
+Formatting delegates to `Intl.DateTimeFormat` with the calendar's Intl identifier; month names
+come from Intl/CLDR at runtime, so **no name tables ship in any package**, and every calendar
+renders localized in every UI language. `dateStyle` (one name, shared with the `tm-date-picker`
+input) maps to a fixed CLDR skeleton — `yMd` / `yMMMd` / `yMMMMd` — fixed in code, not
+configurable.
+
+**The era suffix is stripped.** Intl appends one to non-Gregorian calendars whether or not it is
+asked for (`9/16/1447 AH`), but inside a field whose calendar the user chose there is only ever
+one era in play, so the suffix is noise that costs width in every cell and input. It is removed
+from the formatted parts along with the literal that joined it, keeping one separator where a
+locale places the era *between* two fields.
 
 **Cross-platform formatting contract.** Formatted values also originate server-side (validation
 messages, documents), so the option surface is deliberately a small closed set — number:
-locale × `minDecimals`/`maxDecimals`/`percent`; date: locale × calendar × precision × style —
+locale × `minDecimals`/`maxDecimals`/`percent`; date: locale × calendar × style —
 that a C# implementation can reproduce: the date styles are the CLDR skeletons above, and number
 formatting is CLDR-locale digits/separators with fraction-digit bounds and half-away-from-zero
 rounding (Intl `halfExpand` ↔ .NET `MidpointRounding.AwayFromZero`; .NET has been ICU-backed
@@ -183,7 +195,7 @@ rounds differently as a binary double than as an exact decimal); and the
 **15-significant-digit envelope** (§5), inside which every client number is exactly the decimal
 the server parses.
 It is pinned by a **committed golden** — `format-golden.json` in `l10n`, rows of
-(locale, calendar, precision, dateStyle, iso → expected) and (locale, minDecimals, maxDecimals,
+(locale, calendar, dateStyle, iso → expected) and (locale, minDecimals, maxDecimals,
 percent, value → expected) — asserted by the client suite and consumed verbatim by the future
 C# implementation's tests; CLDR-driven drift on engine updates is an explicit, reviewed
 regeneration, like an API golden.
@@ -209,11 +221,10 @@ export interface TmCalendar {
 `l10n` ships the Gregorian implementation; the **DI seam lives in the primary entry point**,
 keeping `l10n` genuinely DI-free: `TM_CALENDAR: InjectionToken<Signal<TmCalendar>>` (the
 app-ambient display calendar, defaulting to Gregorian) and
-`provideTmCalendar(calendar: TmCalendar | Signal<TmCalendar>)`. All three calendar
-implementations are thin adapters over `@internationalized/date`'s `CalendarDate`/`toCalendar`;
-the interface exists so the library's public surface never leaks the dependency (native `Temporal`
-can replace it later without an API change). Dates are pure calendar dates — no time-of-day, no
-time zone; `today()` is the user's local date.
+`provideTmCalendar(calendar: TmCalendar | Signal<TmCalendar>)`. The interface exists so the
+library's public surface never leaks its backing arithmetic (§6.5), and so native `Temporal` can
+replace it later without an API change. Dates are pure calendar dates — no time-of-day, no time
+zone; `today()` is the user's local date.
 
 **Week info.** `tmFirstDayOfWeek(locale)` resolves via `Intl.Locale.prototype.getWeekInfo()` where
 available, with a small region fallback table — the day-grid's column order (§6.4).
@@ -235,7 +246,7 @@ or web-storage key). A root `TmClientCache` service in the primary entry point e
 operation distributions need:
 
 ```ts
-@Service class TmClientCache {
+@Injectable({ providedIn: 'root' }) class TmClientCache {
   clearAll(): Promise<void>;   // best-effort, parallel, never throws
 }
 ```
@@ -317,8 +328,11 @@ field chrome, bidi, Signal Forms), so the existing directive's selector extends 
   never rewrites the text** (no flicker, stable caret): the user edits the formatted string in
   place — the parser accepts group separators anyway. On **blur/commit** the text reformats to
   the canonical display form (group separators, `minDecimals`/`maxDecimals` bounds, percent sign
-  in percent mode); external model changes reformat immediately while unfocused. A commit fires
-  only when the text actually changed — focusing and leaving a field never rewrites its model.
+  in percent mode); external model changes reformat immediately while unfocused. The model
+  follows the text live — `transformedValue`'s own semantics, the same as `tmInput` — so a
+  keystroke writes the parsed (unrounded) value straight through and commit is where
+  normalization happens, not where the write happens. Text and rounding still commit only when
+  the text actually changed: focusing and leaving a field never rewrites its model.
 - **Rounding — the model equals the display.** On commit, the parsed value is rounded to
   `maxDecimals` (the display formatter's own rounding), so the persisted value can never silently
   differ from what the field shows. The grid's `number` columns follow the same rule (superseding
@@ -338,8 +352,10 @@ field chrome, bidi, Signal Forms), so the existing directive's selector extends 
   present) exceeds 15 is rejected as a parse-level error with a localized message — never
   silently corrupted. The rule is per-value, so it composes with any `maxDecimals`, including
   the unbounded default (`0.12345678901234` passes on a default field; a 17-digit amount fails).
-  The grid's `number` columns enforce the same guard at editor commit and paste (an overflowing
-  pasted cell becomes an invalid input via spec 0004's error machinery). Values that genuinely
+  The grid's `number` columns enforce the same guard at editor commit and paste, through a
+  dedicated `precision` invalid-input reason (its own cell message, so an overflowing cell does
+  not claim to be unreadable) added to spec 0004's error machinery — an additive union member in
+  **grid-engine**'s cell annotations, where the other reasons live. Values that genuinely
   need more than 15 significant digits — hyperinflated-currency amounts — are the future
   string-backed currency control's territory (Non-goals).
 - **Invalid input:** unparseable text reports through `transformedValue`'s parse-error channel
@@ -357,23 +373,24 @@ field chrome, bidi, Signal Forms), so the existing directive's selector extends 
 
 ## 6. Date picker — `tm-date-picker`
 
-### 6.1 Value, precision, bounds
+### 6.1 Value, bounds
 
-- **Value:** `value = model<string | null>()` — an ISO 8601 date string, shaped by
-  `precision: 'day' | 'month' | 'year'` (default `day`): `YYYY-MM-DD`, `YYYY-MM`, `YYYY`.
-  Implements `FormValueControl<string | null>` + `TmFormFieldControl`. The value is always
-  Gregorian ISO regardless of the display calendar; no `Date` objects cross the API (no time
-  zone ambiguity).
+- **Value:** `value = model<string | null>()` — an ISO 8601 `YYYY-MM-DD` date string. Implements
+  `FormValueControl<string | null>` + `TmFormFieldControl`. The value is always Gregorian ISO
+  regardless of the display calendar; no `Date` objects cross the API (no time zone ambiguity).
 - **Bounds:** the control rejects (as parse/validation errors) anything outside
   **`0001-01-01`–`9999-12-31`** — the intersection of ISO 8601 with .NET `DateOnly`/`DateTime`
   and SQL Server `date`, all proleptic Gregorian. (ISO 8601 also admits year `0000`; .NET and SQL
   Server do not, so `0001` is the floor.) The popup cannot navigate outside the bounds.
-- **`min`/`max` validation:** the library ships `tmMinDate`/`tmMaxDate` schema validators
-  operating on the ISO strings (lexicographic comparison is correct for this shape), reporting
-  the framework's `minDate`/`maxDate` kinds so the spec-0002 resolver supplies localized defaults.
-  (The framework's own `minDate`/`maxDate` validators are typed for `Date | null` and don't apply
-  to string-valued fields.) The control also declares the optional `min`/`max` state inputs
-  (ISO strings) and clamps popup navigation to them.
+- **`minDate`/`maxDate` validation:** the primary entry point's `forms/` ships `tmMinDate`/
+  `tmMaxDate` schema validators — component-free schema code — operating on the ISO strings
+  (lexicographic comparison is correct for this shape) and reporting the framework's
+  `minDate`/`maxDate` kinds so the spec-0002 resolver supplies localized defaults. (The
+  framework's own `minDate`/`maxDate` validators are typed for `Date | null` and don't apply to
+  string-valued fields.) The control declares the matching `minDate`/`maxDate` inputs (ISO
+  strings), which the popup renders as disabled cells (§6.4). They are spelled in full because
+  `[min]`/`[max]` are forbidden bindings on a `[formField]` host (NG8022) — the validator kinds
+  keep the framework's names.
 
 ### 6.2 Anatomy & form-field integration
 
@@ -400,8 +417,11 @@ locale or calendar change; the model never changes.
 Typed text commits on blur and on Enter, through `transformedValue` with `tmParseDate` (§2.2).
 The algorithm is deterministic — forgiving on separators and completion, strict on ambiguity:
 
-1. **ISO fast path:** input matching the value shape for the precision (`2026-03-05`, `2026-03`,
-   `2026`) is accepted in any locale (unambiguous by construction).
+1. **ISO fast path:** input in the value's own shape (`2026-03-05`) is accepted in any locale —
+   except where that shape is also the locale's own numeric rendering in a *different* field
+   order, and there the locale's reading wins. Two cases exist: Kyrgyz writes numeric dates as
+   `yyyy-dd-MM`, and several locales render a Hijri date as `1406-03-07`. Taking those as ISO
+   would mean the engine could not read back the text it had just written.
 2. **Field order** comes from `formatToParts` on the active locale + calendar (numeric reference
    date) — `5/3` is day-month in en-GB and ar-SA, month-day in en-US. Any of `/ . - ٫` and spaces
    separate segments.
@@ -409,10 +429,10 @@ The algorithm is deterministic — forgiving on separators and completion, stric
    al-Qura display calendar, `15/2/1448` is 15 Safar 1448 AH.
 4. **Month names** (long and short forms from Intl for the active locale + calendar,
    case/diacritic-insensitively) may replace the numeric month: `5 mar 2026`, `١٥ صفر`.
-5. **Omitted trailing parts complete from today** (in the display calendar): at `day` precision,
-   one segment = that day of the current month; two segments = day and month, read in the
-   locale's field order (en-US `3/15` is March 15), of the current year — the fast-entry
-   accelerator. Extra segments beyond the precision are an error, not ignored.
+5. **Omitted trailing parts complete from today** (in the display calendar): one segment = that
+   day of the current month; two segments = day and month, read in the locale's field order
+   (en-US `3/15` is March 15), of the current year — the fast-entry accelerator. Extra segments
+   are an error, not ignored.
 6. **Two-digit years** resolve in the sliding window [today − 80, today + 19] years — the
    documented convention, applied in the display calendar's year numbering.
 7. Anything else — a segment out of range for its slot (month 14, day 31 in a 30-day month), a
@@ -437,28 +457,27 @@ the APG date-picker-dialog pattern with the APG combobox-datepicker's focus/open
   view and the label becomes the year), "year" in month view (clicking switches to year view,
   label becomes the 24-year range), and clicking again returns to day view. Two header arrow
   buttons page the active view (month / year / 24-year block); all three buttons are in the
-  popup's Tab cycle (`tabindex` normal inside the dialog). The initial view matches `precision`
-  (`day` → day view; `month` → month view, no day view exists; `year` → year view only, and the
-  header button is a static label — nothing to switch to). Selecting in a coarser view than the
-  precision drills down (year → month → day); selecting at the precision commits.
+  popup's Tab cycle (`tabindex` normal inside the dialog). The popup always opens on the day
+  view; the coarser views are drill-down navigation (year → month → day), and only a day commits.
 - **Day view:** a `role="grid"` of the display-calendar month — 7 columns, weekday headers from
   Intl (narrow/short names), first day of week from `tmFirstDayOfWeek` (§2.2); no out-of-month
-  days — cells before the month's first day and after its last are empty and non-interactive,
-  inside the fixed 6-row grid. Roving `tabindex` (one tabbable cell);
-  keyboard per APG: arrows ±1 day/week (direction-mapped: inline-start/end), `Home`/`End` week
+  days — cells before the month's first day and after its last are empty and non-interactive.
+  The grid holds only the weeks the month occupies (four to six). Roving `tabindex` (one tabbable
+  cell); keyboard per APG: arrows ±1 day/week (direction-mapped: inline-start/end), `Home`/`End` week
   edges, `PageUp`/`PageDown` ±1 month, `Shift+PageUp`/`Shift+PageDown` ±1 year, `Enter`/`Space`
   select. The month/year header text is `aria-live="polite"`. Today is visibly marked
   (`aria-current="date"`); the selected day carries `aria-selected`.
-- **Month view:** a grid of the year's months (12 cells — or **13 for Ethiopic**, whose Pagume
-  is a real, selectable month; the layout accommodates the extra cell without size change
-  between years). **Year view:** a 24-year grid, paged in 24-year blocks. Arrows move by
-  cell/row; the same select-to-drill semantics.
-- **Footer:** localized **Today** and **Clear** buttons (Today commits today at the field's
-  precision; Clear commits `null`).
-- Navigation clamps to §6.1 bounds ∩ `min`/`max`; out-of-range cells render disabled
-  (`aria-disabled`).
-- The popup never resizes across months/views (fixed 6-row day grid; fixed-size month/year
-  grids) — no reflow while flipping months.
+- **Month view:** a grid of the year's months, three per row (12 cells — or **13 for Ethiopic**,
+  whose Pagume is a real, selectable month). **Year view:** a 24-year grid, paged in 24-year
+  blocks. Arrows move by cell/row; the same select-to-drill semantics.
+- **Footer:** localized **Today** and **Clear** buttons (Today commits today; Clear commits
+  `null`). Today is disabled when today itself lies outside the bounds.
+- Navigation ranges over the whole calendar within the §6.1 bounds; `minDate`/`maxDate` appear as
+  disabled cells (`aria-disabled`), never as a navigation stop — an arrow that swallows input
+  reads as a broken control, while a month you can see is unavailable explains itself.
+- **The popup's width is fixed** across months and views — a calendar that changed width under
+  the pointer would walk off its field. Its height follows the month's week count: as a top-layer
+  overlay it is never part of the page's layout, and a padded month is just a blank band.
 
 ### 6.5 Calendar systems
 
@@ -470,21 +489,26 @@ the APG date-picker-dialog pattern with the APG combobox-datepicker's focus/open
   (an English UI can display Umm al-Qura; Arabic UIs routinely show Gregorian), and per-entry-
   point packaging keeps the tables out of apps that don't need them while month/era names come
   from Intl at no bundle cost.
-- **Implementation:** adapters over `@internationalized/date` (`GregorianCalendar`,
-  `IslamicUmalquraCalendar` — the ICU-ported Umm al-Qura tables — and `EthiopicCalendar`),
+- **Implementation:** Gregorian and Umm al-Qura are adapters over `@internationalized/date`
+  (`GregorianCalendar`, and `IslamicUmalquraCalendar` — the ICU-ported Umm al-Qura tables),
   chosen over the alternatives because native `Temporal` is still absent from stable Safari
   (mid-2026), Temporal polyfills cost ~20–45 KB gzipped against ~8 KB for the whole library
   (~3 KB Gregorian-only), and hand-porting the Umm al-Qura almanac tables is exactly the risk a
   maintained port removes. The `TmCalendar` seam (§2.2) keeps it swappable for native Temporal
   later; the adapter source carries a `TODO` marker to re-evaluate replacing the dependency with
   native `Temporal` once it ships in stable Safari.
-- **Umm al-Qura accuracy window:** the underlying tables cover AH 1300–1600 (≈ 1882–2174 CE);
+- **Umm al-Qura accuracy window:** the underlying tables cover AH 1300–1599 (≈ 1882–2174 CE);
   outside that window the implementation degrades to the arithmetic Islamic calendar, silently
   and continuously (the ICU behavior). Documented in the component docs; no guard is added —
-  ERP dates live comfortably inside the window, and the ISO model value is exact regardless.
-- **Ethiopic specifics:** 13 months (Pagume, 5–6 days), Amete Mihret era numbering — both come
-  from the calendar implementation + Intl names; the month grid and `daysInMonth` handle them
-  with no special-casing at call sites.
+  ERP dates live comfortably inside the window, and the ISO model value is exact regardless. The
+  window ends at 1599 because the library's table has a one-day discontinuity at the AH 1600
+  boundary (an upstream defect, worth reporting); the drift gate pins that boundary.
+- **Ethiopic ships its own arithmetic** rather than an adapter: `@internationalized/date`'s
+  `EthiopicCalendar` starts the Ethiopic year one Gregorian day late in every non-leap year — two
+  Gregorian days map to Pagume 5, roughly 150 wrong days per century — which the
+  adapter↔Intl agreement gate catches. The pack implements the conversion directly (13 months,
+  Pagume of 5–6 days, Amete Mihret era numbering); month and era NAMES still come from Intl, and
+  the month grid and `daysInMonth` need no special-casing at call sites.
 
 ### 6.6 Grid integration
 
@@ -494,12 +518,24 @@ the APG date-picker-dialog pattern with the APG combobox-datepicker's focus/open
   at the inline end, popup anchored to the cell rect via the §2.1 helper. `Alt+ArrowDown` opens
   the popup (extending the spec-0004 keymap's dropdown row to date cells); while the popup is
   open the editor consumes navigation keys (the spec-0004 dropdown gate), and its Esc closes the
-  popup first — the grid's two-stage Esc composes unchanged.
+  popup first — the grid's two-stage Esc composes unchanged. **Picking a day IS the edit:** the
+  pick commits the cell and closes the editor without a move, the same contract an enum option
+  activation has, because a user who reached for the calendar has no reason to press Enter
+  afterwards. Typed text still commits the grid's way.
 - **`date` columns gain built-in defaults** (superseding spec 0004's "consumer `format`/`parse`
-  required"): display = `tmFormatDate` at `day` precision, `numeric` style, active locale +
-  ambient `TM_CALENDAR`; parse = `tmParseDate` (with the paste `sourceLocale` hint, Gregorian
-  source calendar assumed for foreign pastes). Column-level `format`/`parse` still override;
-  non-`day` precisions in a grid use overrides.
+  required"): display = `tmFormatDate`, `numeric` style, active locale + ambient `TM_CALENDAR`;
+  parse = `tmParseDate`. Column-level `format`/`parse` still override.
+- **The grid's display locale and calendar are reactive**: date cells re-render in place when the
+  ambient locale or `TM_CALENDAR` changes, and because display flows through a single internal
+  locale seam, number cells follow (spec 0004's was static). Internal only — the public grid API
+  is untouched.
+- **Foreign pastes state their provenance.** `TmParseContext` gains `foreignSource` (additive):
+  the paste path marks text that came from outside this grid, and the column's parse decides what
+  to do with it. A built-in `date` column reads such text as Gregorian when the clipboard carries
+  no calendar id — the spreadsheet case is the common one. Documented limitation: text both
+  calendars can read (`9/23/2024`, or this grid's own display text round-tripped through
+  something that dropped the metadata) therefore resolves in Gregorian's favour. Grid-to-grid
+  pastes are unaffected — the clipboard metadata carries the display calendar id.
 - The grid showcase gains a date column in the editable story (typed edit, popup edit, paste,
   invalid-input state) — the DoD covers it.
 
@@ -569,9 +605,12 @@ by platform convention (a distribution hosts multiple tenants on one origin, §2
 - **Lookup:** cache key = the full sized URL. On hit, compare the entry's stored version stamp
   (the `etag` input, persisted on the cached response as a header at put-time) against the
   current `etag` input: equal → serve from cache with **no network**; different → delete every
-  size variant of that `src` (`ignoreSearch` match) and refetch. When `etag` is `null`, serve
-  the cached entry immediately and revalidate in the background with `If-None-Match`
-  (304 → keep; 200 → replace + swap in).
+  size variant of that `src` and refetch. Variants are matched by the URL with its `size`
+  parameter removed, not by the Cache API's `ignoreSearch` (which drops the whole query and
+  would purge unrelated images on a query-keyed endpoint). When `etag` is `null`, serve the
+  cached entry immediately and revalidate in the background with `If-None-Match` (304 → keep;
+  200 → replace and swap in, stamped with the response's own ETag — the record stamp is
+  unknowable on that path, and the next stamped read heals it).
 - **No serial ETags needed:** entries are written as matched `(blob, etag)` pairs from one
   response, so any interleaving of writes leaves a coherent entry; the worst race outcome is a
   stale-but-valid entry that the next mismatch/revalidation heals. Compare-and-replace on opaque
@@ -697,7 +736,7 @@ converge on the same two shapes.
 A modal viewer (hosted on `tm-modal`, size `lg`) opened through a service:
 
 ```ts
-@Service class TmFilePreview {
+@Injectable({ providedIn: 'root' }) class TmFilePreview {
   open(file: TmPreviewFile): TmModalRef<void>;
 }
 interface TmPreviewFile {
@@ -712,7 +751,8 @@ interface TmPreviewFile {
 a lazy loader (the consumer fetches with its own auth — interceptors/BFF cookies apply there),
 or `{ url }` for **streamable media** (video/audio use the URL directly so the browser range-
 requests instead of buffering whole blobs; URL sources require ambient auth — cookies under the
-BFF model, or presigned URLs under bearer tokens — documented).
+BFF model, or presigned URLs under bearer tokens — documented). Streaming is the whole of a
+`{ url }` source's job: every other kind renders from bytes this component holds.
 
 **Rendering by kind** (detected from MIME, else extension; no client-side content sniffing —
 anything undetected is unsupported):
@@ -721,7 +761,7 @@ anything undetected is unsupported):
 |---|---|
 | Raster image | `<img>` from an object URL; `decode()` before display; error → unsupported card |
 | SVG | `<img>` only (no inline/iframe SVG — scripts never execute in `<img>`) |
-| PDF | `navigator.pdfViewerEnabled` → a **non-sandboxed** `<iframe>` with the blob URL (the browser's own viewer is trusted UI and supplies print/download chrome; sandboxed iframes never render PDFs, per the HTML spec's plugins rule); else the unsupported card. The viewer chrome varies per browser and is not brand-themed — accepted for full fidelity at zero maintenance |
+| PDF | `navigator.pdfViewerEnabled` → a **non-sandboxed** `<iframe>` with the blob URL (the browser's own viewer is trusted UI and supplies print/download chrome; sandboxed iframes never render PDFs, per the HTML spec's plugins rule); else the unsupported card. The viewer chrome varies per browser and is not brand-themed — accepted for full fidelity at zero maintenance. **Only for bytes this component fetched and re-typed itself**: a `{ url }` PDF is download-only, because its endpoint's real content type is unknowable here and one echoing a stored `text/html` would run script in the app's origin |
 | Video / audio | native element with `controls`, `preload="metadata"`, no autoplay — playback starts only on the user's play action; `canPlayType()` gates; unplayable → unsupported card |
 | Plain text (MIME allowlist: `text/plain`, `text/csv`, JSON, XML) | escaped `<pre>` (capped at 1 MB, tail truncated with a notice) |
 | HTML and everything else | **never rendered** — the unsupported card ("Preview not available") with the download button. Blob URLs inherit the app origin, so user-authored active content is a same-origin XSS vector; download-only is the policy, not a limitation to engineer around. |
@@ -748,7 +788,10 @@ Object URLs are revoked on close. A loading state (spinner, `aria-busy`) shows w
   `preserveContent` (default `false`).
 - **Only the active tab is in the DOM** — the headline requirement, delivered by aria's
   `ngTabContent` deferred-content mechanism: a panel's content instantiates on first activation
-  and is **destroyed on deactivation** by default; `preserveContent` (per tab) keeps an
+  and is **destroyed on deactivation** by default. A tab's content is therefore an
+  `<ng-template tmTabContent>`, never projected elements — projected content belongs to the
+  consumer's view and cannot be destroyed by the panel, which would defeat both active-only DOM
+  and lazy instantiation. A missing template warns in dev mode; `preserveContent` (per tab) keeps an
   activated panel's DOM alive (hidden + `inert`) for expensive tabs whose state must survive
   switching. Grid state inside tabs survives destroy/recreate via spec 0004's `TmGridStateStore`
   regardless.
@@ -770,7 +813,7 @@ Object URLs are revoked on close. A loading state (spinner, `aria-busy`) shows w
 - **API — service-first** (the result-channel requirement):
 
 ```ts
-@Service class TmModal {
+@Injectable({ providedIn: 'root' }) class TmModal {
   open<R = void>(content: Type<unknown> | TemplateRef<unknown>, config?: TmModalConfig): TmModalRef<R>;
 }
 interface TmModalConfig {
@@ -795,7 +838,10 @@ type TmModalResult<R> =
 - **Shell:** the service wraps the content in a standard shell — header (title + optional X),
   scrollable body, and a footer slot (`[tmModalFooter]` content projection for
   action buttons) — so every Tellma modal reads alike. Content components inject `TmModalRef`
-  to close themselves with a result and `TM_MODAL_DATA` for input.
+  to close themselves with a result and `TM_MODAL_DATA` for input. The footer holds the bottom
+  of the scrollport even when the content is short. A built-in **`--flush` panel variant** drops
+  the body's padding (header and footer keep theirs) for content that must own the whole
+  scrollport — the file preview's viewing area.
 - **Sizes:** `sm`/`md` are fixed token widths with `max-height` + body scroll; `lg` fills the
   viewport minus a constant margin on all sides. Semantic buckets are the norm so Tellma modals
   read alike; for the rare modal they genuinely don't fit, `panelClass` styles the panel
@@ -818,8 +864,10 @@ type TmModalResult<R> =
 
 ## 11. Popover — `tm-popover`
 
-- **Shape:** `tm-popover` (a template-content component, like `tm-menu`) + a
-  `button[tmPopoverTriggerFor]` trigger directive. Click toggles; `Esc` and outside-click
+- **Shape:** `tm-popover` + a `button[tmPopoverTriggerFor]` trigger directive. The panel's
+  content is an `<ng-template tmPopoverContent>` (like `tm-menu`), for the reason tab content is
+  one (§9): only a template can be instantiated on first open and destroyed on close. A missing
+  template warns in dev mode. Click toggles; `Esc` and outside-click
   close; `Tab` past the popover's content closes (non-modal). The trigger carries
   `aria-expanded` + `aria-haspopup="dialog"`; the panel is `role="dialog"` (non-modal, no focus
   trap). On open, focus moves to the first tabbable element inside (else the panel itself,
@@ -908,12 +956,18 @@ outside the DoD). Per-component semantics live in §3–§13; the cross-cutting 
   tab strip, popover/tooltip positions, dropzone layout, modal header). The date popup's arrow
   keys are direction-mapped (inline-start/end) like the grid's. Numerals in `tmNumber` and date
   displays render via `Intl` with the locale's numbering system; numeric fields align
-  physically right (§5), so numerals stay right-aligned under RTL too.
+  physically right (§5), so numerals stay right-aligned under RTL too. The date placeholder
+  keeps the directional marks ICU puts in the pattern: without them an ASCII hint (`dd/mm/yyyy`)
+  lays out left-to-right inside an RTL field and its fields read in the opposite order to the
+  value that replaces them.
 - Every built-in string resolves through `TM_UI_TRANSLATE` with English in-package:
   button/modal/preview/image/file affordance labels, dropzone hints and rejection reasons,
   date-picker labels (choose date, previous/next month, view-switch buttons, Today, Clear),
   parse-error messages (number, percent, date — with the expected-pattern parameter),
-  `minDate`/`maxDate` defaults, alert kind prefixes, tooltip-dismiss documentation strings.
+  `minDate`/`maxDate` defaults, alert kind prefixes, tooltip-dismiss documentation strings. A
+  date carried in a message is formatted in the field's own locale and calendar, never printed
+  as raw ISO — the resolver formats every date-shaped parameter, so this holds for any message,
+  not just the two bounds.
   **`@tellma/locale-ar` is extended with all of them** (DoD).
 - Calendar names, month names, weekday names, and era labels come from Intl at runtime in the
   active UI language — locale packs ship no calendar data, and calendar entry points ship no
@@ -923,11 +977,13 @@ outside the DoD). Per-component semantics live in §3–§13; the cross-cutting 
 
 - **Budgets** (gzipped self-weight ratchets in each package's `"tellma".budgetsInKb`, the
   established mechanism): `button` ≤ 2, `input` ≤ 4 (textarea addition), `number` ≤ 4,
-  `date-picker` ≤ 14 (three views + parse + overlay wiring), `calendar-umalqura` ≤ 4 (tables),
-  `calendar-ethiopic` ≤ 2, `l10n` ≤ 8 (codecs + Gregorian engine), `image` ≤ 10, `files` ≤ 5,
-  `file-preview` ≤ 8, `tabs` ≤ 4, `modal` ≤ 6, `popover` ≤ 4, `tooltip` ≤ 3, `alert` ≤ 2,
-  `private` ≤ 4. Grid budget is unchanged by the codec hoist (imports move, weight moves to
-  `l10n`). **What the numbers count:** third-party code outside the measurement's externalized
+  `date-picker` ≤ 14 (three views + parse + overlay wiring), `calendar-umalqura` ≤ 5 (tables +
+  the re-bundled dependency core), `calendar-ethiopic` ≤ 2, `l10n` ≤ 8 (codecs + Gregorian
+  engine), `image` ≤ 10, `files` ≤ 5, `file-preview` ≤ 8, `tabs` ≤ 4, `modal` ≤ 6, `popover` ≤ 4,
+  `tooltip` ≤ 3, `alert` ≤ 2, `private` ≤ 4. Two existing ceilings rise with what this phase adds
+  to them: the primary entry point 4 → 5 (`TmL10n`, `TM_CALENDAR`, the date validators, the
+  active-locale signal) and `grid` 34 → 35 (the date-editor machinery). The codec hoist itself
+  leaves the grid budget alone — imports move, and the weight moves to `l10n`. **What the numbers count:** third-party code outside the measurement's externalized
   set (`@angular/*`, `rxjs`, `tslib`, `@jsverse/*`, `@tellma/*`) is bundled into the importing
   entry point's measured weight, and every entry point measures in isolation — so
   `@internationalized/date`'s core is counted inside `l10n` *and again* inside each calendar
@@ -937,35 +993,39 @@ outside the DoD). Per-component semantics live in §3–§13; the cross-cutting 
 - **Lazy everything that floats:** date popup, popover, tooltip, modal content, and preview
   renderers are created on first open and torn down on close; closed instances cost their
   trigger DOM only.
-- **`@defer` for heavy cold branches:** the date popup's views (`@defer` until first open),
-  `tm-image`'s edit-mode chrome (view mode is the hot path in lists), and `tm-file-preview`'s
-  per-kind renderers sit behind Angular defer blocks, so consuming apps keep their common-path
-  chunks lean; budgets still bind per entry point.
+- **`@defer` for heavy cold branches:** the date popup's views (`@defer` until first open) and
+  `tm-image`'s edit-mode chrome (view mode is the hot path in lists) sit behind Angular defer
+  blocks, so consuming apps keep their common-path chunks lean; budgets still bind per entry
+  point. The preview's and edit pane's per-kind renderers do NOT — the heavy step is the content
+  component itself, which already instantiates lazily on open, and the renderers under it are
+  native `img`/`video`/`pre` elements with no dependency graph to split.
 - **Image pipeline:** deferred fetch (IO), one in-flight request per URL per tab, decode
   off-DOM, fixed boxes (zero CLS), bucketed renditions (bounded server/cache cardinality),
   object-URL hygiene (no blob leaks in long SPA sessions).
 - **No layout shift** invariants (Playwright-pinned where cheap): pending buttons keep their
-  size; date popup fixed 6-row grid across months; image/preview error and loading states render
-  inside the reserved box; alert/tooltip/popover never displace surrounding content (overlay or
-  reserved space).
+  size; the date popup keeps one width across months and views (§6.4); image/preview error and
+  loading states render inside the reserved box; alert/tooltip/popover never displace
+  surrounding content (overlay or reserved space).
 - Zoneless + OnPush throughout; signal-driven re-render only on the changed control.
 
 ## 17. Testing
 
 - **Unit (vitest, zoneless):** the `l10n` codecs get the bulk — number round-trips across
   locales/numbering systems (reusing the grid codec's suite, moved with it), percent mode,
-  date format/parse across locale × calendar × precision (field order, month names, completion
-  from today, two-digit pivot, ISO fast path, every §6.3 rejection rule), calendar adapters
+  date format/parse across locale × calendar (field order, month names, completion from today,
+  two-digit pivot, ISO fast path and the locales it yields to, every §6.3 rejection rule) —
+  including a sweep proving the engine reads back its own formatted output for every month of
+  every calendar across a wide locale set; calendar implementations
   (Ethiopic month 13 / leap Pagume, Umm al-Qura conversions inside the table window, bounds),
   `tmFirstDayOfWeek` fallback; a **cross-implementation agreement gate** asserting each
-  adapter's `toParts` matches `Intl.DateTimeFormat.formatToParts` numeric year/month/day over
-  sampled dates per calendar (arithmetic runs in `@internationalized/date` while names and
-  formatting come from the browser's ICU — separate codebases that must not drift at
-  table-window edges or in era numbering); and the committed `format-golden.json` (§2.2)
+  implementation's `toParts` matches `Intl.DateTimeFormat.formatToParts` numeric year/month/day
+  over sampled dates per calendar (the arithmetic and the browser's ICU are separate codebases
+  that must not drift at table-window edges or in era numbering — this is the gate that caught
+  the Ethiopic new-year defect of §6.5); and the committed `format-golden.json` (§2.2)
   asserted row by row. Component units: Signal Forms binding + `transformedValue` error
   flow for `tmNumber`/`tm-date-picker`, modal result channel per dismissal path, tabs
   destroy/preserve semantics, file selection guardrails, image cache logic against a mocked
-  `CacheStorage` (hit/mismatch/ignoreSearch purge/revalidate/coalescing/quota fallback).
+  `CacheStorage` (hit/mismatch/size-variant purge/revalidate/coalescing/quota fallback).
 - **Harnesses** (`@tellma/core-ui-testing`): `TmButtonHarness`, `TmNumberHarness`,
   `TmDatePickerHarness` (read/type text, open popup, navigate/select in each view),
   `TmImageHarness`, `TmFilePickerHarness`, `TmDropzoneHarness`, `TmFilePreviewHarness`,
@@ -973,9 +1033,9 @@ outside the DoD). Per-component semantics live in §3–§13; the cross-cutting 
   `TmModalHarness`, `TmPopoverHarness`, `TmTooltipHarness`, `TmAlertHarness`; `TmInputHarness`
   extended for textarea hosts.
 - **Playwright (showcase story pages):** the date-picker keyboard matrix (§6.4 grid keys, view
-  ladder, focus in/out, Esc, Today/Clear, bounds clamping) in LTR and RTL and per calendar;
-  grid date-column story (type-to-edit, `Alt+ArrowDown` popup anchored to the cell, two-stage
-  Esc, paste); modal focus trap/restore + stacked-Esc order + result-by-dismissal; tabs
+  ladder, focus in/out, Esc, Today/Clear, out-of-range cells) in LTR and RTL and per calendar;
+  grid date-column story (type-to-edit, `Alt+ArrowDown` popup anchored to the cell, pick-commits-
+  the-cell by pointer and by keyboard, two-stage Esc, paste); modal focus trap/restore + stacked-Esc order + result-by-dismissal; tabs
   active-only-DOM assertion + `preserveContent`; tooltip 1.4.13 behaviors (Esc dismiss,
   hoverable surface) + `AriaDescriber` wiring; popover flip/RTL mirror; image caching behaviors
   (single network request for N instances, etag-mismatch refetch, error glyph), edit-mode
@@ -983,7 +1043,10 @@ outside the DoD). Per-component semantics live in §3–§13; the cross-cutting 
   `DataTransfer`, with the known Firefox/WebKit shims); preview per-kind rendering including
   the PDF iframe path and the HTML-is-never-rendered policy; pending-button size stability;
   axe on every new component in every state (open popups included), light/dark, LTR/RTL;
-  forced-colors + reduced-motion gates.
+  forced-colors + reduced-motion gates. The showcase maps its UI languages to regional
+  formatting locales (`en → en-US`, `ar → ar-SA`): bare `ar` resolves to Latin digits in ICU,
+  which would leave the live locale-switch assertions proving nothing. Library behavior is
+  unaffected — distributions nominate their own regional locales.
 - **Fixtures are committed and offline** — tiny generated files (1×1 PNGs, a minimal valid PDF,
   a beep WAV, text/CSV samples) live in the repo; no test fetches the network.
 - API goldens + `api:approve` cover every new entry point; co-located `*.examples.ts` feed
@@ -1010,23 +1073,25 @@ outside the DoD). Per-component semantics live in §3–§13; the cross-cutting 
    grid-owned parse path (§5), and grid number commits **and pastes** round to the column's
    `maxDecimals` and enforce the envelope — the grid suite is updated for the editor swap and
    both invariants, and green.
-5. `tm-date-picker` value integrity: ISO shapes per precision; bounds `0001-01-01`–`9999-12-31`
-   enforced; `tmMinDate`/`tmMaxDate` validate and localize; no `Date` objects in the public API.
+5. `tm-date-picker` value integrity: the value is always ISO `YYYY-MM-DD`; bounds
+   `0001-01-01`–`9999-12-31` enforced; `tmMinDate`/`tmMaxDate` validate and localize per §15;
+   no `Date` objects in the public API.
 6. Date parsing per §6.3: locale field order, active-calendar interpretation, month names,
    completion-from-today, two-digit pivot, ISO fast path, and every rejection rule — unit-
    covered per locale × calendar; parse errors show the expected-pattern message.
-7. Date popup per §6.4: APG keyboard matrix green; view ladder (day↔month↔year, precision-
-   dependent initial view and availability); focus moves in on open and back on close; fixed
-   6-row grid with empty out-of-month cells (no resize across months); Today/Clear;
-   bounds/min/max clamp navigation; month/year heading announces politely.
+7. Date popup per §6.4: APG keyboard matrix green; view ladder (day↔month↔year, opening on the
+   day view and drilling down); focus moves in on open and back on close; empty out-of-month
+   cells, one width across months and views; Today/Clear; navigation reaches out-of-range months
+   and renders their cells disabled; month/year heading announces politely.
 8. Calendars: Gregorian default via `TM_CALENDAR`; Umm al-Qura and Ethiopic entry points
    register via `provideTmCalendar`; runtime calendar switch re-renders text and popup with the
    model unchanged; Ethiopic shows 13 selectable months incl. leap Pagume; Umm al-Qura window
-   documented; month/era names verified to come from Intl (no bundled tables); the adapter↔Intl
-   agreement gate and the committed formatting golden (§2.2, §17) pass.
+   documented; month/era names verified to come from Intl (no bundled tables); the
+   implementation↔Intl agreement gate and the committed formatting golden (§2.2, §17) pass.
 9. Grid `date` columns: built-in format/parse defaults active (consumer overrides still win);
    `tm-date-picker` is the built-in editor (cell-anchored popup, `Alt+ArrowDown`, two-stage
-   Esc, type-to-edit seeding); the grid showcase's editable story includes a date column
+   Esc, type-to-edit seeding, pick-commits-the-cell); cells re-render in place on an ambient
+   locale or calendar switch; the grid showcase's editable story includes a date column
    exercising typing, popup, paste, and invalid input.
 10. `tm-image` view mode: fixed-box rendering (rect + circle), deferred fetch, decode-before-
     swap, placeholder and error states, `alt` enforced; the cache serves a matching etag with
@@ -1089,9 +1154,9 @@ Answers to the design brief's open questions, where not already evident above:
 6. **Calendar packaging** — calendars are neither baked into the component nor shipped in
    locale packs (a calendar is not a language): each non-Gregorian calendar is its own opt-in
    entry point; names come from Intl at runtime (§6.5).
-7. **Calendar math** — `@internationalized/date` behind the `TmCalendar` seam; native Temporal
-   is not yet in stable Safari and polyfills are 3–6× heavier; the seam keeps Temporal adoption
-   an internal swap (§6.5).
+7. **Calendar math** — `@internationalized/date` behind the `TmCalendar` seam for Gregorian and
+   Umm al-Qura (Ethiopic is implemented directly, §6.5); native Temporal is not yet in stable
+   Safari and polyfills are 3–6× heavier; the seam keeps Temporal adoption an internal swap.
 8. **ISO bounds** — `0001-01-01`–`9999-12-31`, not `0000-01-01`: ISO 8601 admits year 0000 but
    .NET and SQL Server `date` do not (§6.1).
 9. **Image crop privacy** — non-destructive, the industry norm: a new upload emits the original
