@@ -41,6 +41,45 @@ test.describe('date column defaults (DoD 9)', () => {
     await expect(cell(page, 0, DUE_COL)).toContainText('3/12/2026');
   });
 
+  // Row 0's seeded dueDate is 2026-06-26, so the calendar opens on June
+  // 2026 and day 12 of it is 2026-06-12. Picking IS the edit: it commits
+  // and closes without an Enter, exactly like activating an enum option.
+  // The popup renders in the top layer but lives in the cell's own DOM, so
+  // both paths also prove the grid leaves events inside it alone — a
+  // pointerdown there is not a click-away commit, and Enter there is not
+  // the grid's commit-and-move.
+  test('clicking a day in the popup commits it and closes the editor', async ({ page }) => {
+    await gotoGrid(page, 'grid-editable');
+    await activateCell(page, 0, DUE_COL);
+    await page.keyboard.press('F2');
+    await page.keyboard.press('Alt+ArrowDown');
+    const popup = page.locator('.tm-date-popup');
+    await expect(popup).toBeVisible();
+
+    await popup.locator('[data-tm-day="12"]').click();
+
+    await expect(popup).toBeHidden();
+    await expect(page.locator('.tm-date-picker__input')).toHaveCount(0);
+    await expect(page.getByTestId('model-json')).toContainText('"dueDate":"2026-06-12"');
+    await expect(cell(page, 0, DUE_COL)).toContainText('6/12/2026');
+    await expect(cell(page, 0, DUE_COL)).toBeFocused(); // no move (Sheets)
+  });
+
+  test('Enter on a day in the popup commits that day, not a move', async ({ page }) => {
+    await gotoGrid(page, 'grid-editable');
+    await activateCell(page, 0, DUE_COL);
+    await page.keyboard.press('F2');
+    await page.keyboard.press('Alt+ArrowDown');
+    await expect(page.locator('.tm-date-popup')).toBeVisible();
+
+    await page.keyboard.press('ArrowLeft'); // the 26th → the 25th
+    await page.keyboard.press('Enter');
+
+    await expect(page.getByTestId('model-json')).toContainText('"dueDate":"2026-06-25"');
+    await expect(cell(page, 0, DUE_COL)).toContainText('6/25/2026');
+    await expect(cell(page, 0, DUE_COL)).toBeFocused();
+  });
+
   test('Alt+ArrowDown opens the popup anchored to the cell; two-stage Esc composes', async ({
     page,
   }) => {

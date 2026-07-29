@@ -59,12 +59,14 @@ export class ɵTmGridNumberEditor {
  * overlay helper. The grid owns the value channel and the parse; the
  * picker contributes typed entry, the cell-anchored calendar popup
  * (`Alt+ArrowDown` per the dropdown-cell convention), and stage one of
- * the two-stage Esc.
+ * the two-stage Esc. Picking a day in the popup emits `activated`, which
+ * the session turns into commit-and-close — the same shape as activating
+ * an enum option.
  */
 @Component({
   selector: 'tm-grid-date-editor',
   imports: [TmDatePicker],
-  template: `<tm-date-picker [aria-label]="label()" />`,
+  template: `<tm-date-picker [aria-label]="label()" (picked)="activated.emit()" />`,
   styleUrl: './editors-date.css',
   // Encapsulation OFF: the picker's inner input carries the picker's own
   // scope attribute, which a scoped stylesheet here could never match.
@@ -74,6 +76,8 @@ export class ɵTmGridNumberEditor {
 export class ɵTmGridDateEditor {
   /** The accessible name (the column's header text). */
   readonly label = input('');
+  /** Emits when the user picks a date in the calendar popup (not by typing). */
+  readonly activated = output<void>();
 
   private readonly picker = viewChild.required(TmDatePicker);
 

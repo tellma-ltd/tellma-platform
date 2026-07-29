@@ -1397,8 +1397,23 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.scrollLeft.set(element.scrollLeft);
   }
 
+  /**
+   * Whether a node sits inside an overlay surface hosted in the grid's own
+   * DOM. Top-layer overlays render IN PLACE — a popup anchored to a cell
+   * (the date editor's calendar) is a child of that cell, so its events
+   * bubble through the scroller. They belong to the overlay: a press on a
+   * calendar day is not a click-away, and a key inside the calendar is not
+   * a grid key. The overlay's own dismiss logic owns the gesture.
+   */
+  private inOverlay(node: Element | null): boolean {
+    return node !== null && node.closest('.cdk-overlay-pane') !== null;
+  }
+
   /** The scroller's keydown handler: resolve to an intent, execute, consume. */
   onKeydown(event: KeyboardEvent): void {
+    if (event.target instanceof Element && this.inOverlay(event.target)) {
+      return;
+    }
     const engine = this.engine;
     const session = untracked(() => engine.edit.session());
     // `keyCode` is deprecated as a key IDENTIFIER (layout-tied), but 229 is the
@@ -1546,6 +1561,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       return;
     }
     const target = event.target;
+    if (this.inOverlay(target)) {
+      return; // a cell-anchored overlay surface (see `inOverlay`)
+    }
     if (target.closest('[data-tm-resize]') !== null) {
       return; // the resize controller owns the gesture
     }
@@ -1691,6 +1709,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       return;
     }
     const target = event.target;
+    if (this.inOverlay(target)) {
+      return; // a cell-anchored overlay surface (see `inOverlay`)
+    }
     if (target.closest('[data-tm-resize]') !== null) {
       return;
     }
@@ -1801,6 +1822,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (hit === null) {
       return;
     }
+    if (this.inOverlay(hit)) {
+      return; // a cell-anchored overlay surface (see `inOverlay`)
+    }
     if (hit.closest('[data-tm-editor]') !== null) {
       return; // double-clicks inside the editor select words natively
     }
@@ -1826,6 +1850,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
    * sourced events, which carry no real coordinates).
    */
   onContextMenu(event: MouseEvent): void {
+    if (event.target instanceof Element && this.inOverlay(event.target)) {
+      return; // a cell-anchored overlay surface keeps its native menu
+    }
     event.preventDefault();
     const menu = this.menuRef;
     if (menu === null) {
@@ -3258,12 +3285,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         options: column.enumOptions ?? [],
         optionLabel: column.optionLabel,
         optionValue: column.optionValue,
-        onActivation: () => this.onEnumActivation(),
+        onActivation: () => this.onEditorActivation(),
       };
     } else if (column.type === 'number') {
       config = { kind: 'number', label: header };
     } else if (column.type === 'date') {
-      config = { kind: 'date', label: header };
+      config = { kind: 'date', label: header, onActivation: () => this.onEditorActivation() };
     } else {
       config = { kind: 'text', label: header };
     }
@@ -3322,8 +3349,13 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     return true;
   }
 
-  /** An enum option was activated: commit and CLOSE, no move (Sheets). */
-  private onEnumActivation(): void {
+  /**
+   * A dropdown editor produced a value by pointing at it — an enum option
+   * activated, or a day picked in a date cell's calendar. Commit and CLOSE,
+   * no move (Sheets): the pick IS the edit, so it must not sit uncommitted
+   * waiting for an Enter that a mouse user has no reason to press.
+   */
+  private onEditorActivation(): void {
     if (untracked(() => this.engine.edit.session()) !== null) {
       this.commitEditor({ refocus: true });
     }
@@ -4283,7 +4315,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     // header row and there is no key to activate into it, so neutralizing
     // their content would make a rich/interactive header pointer-only. Runs
     // per render so recycled window rows are re-stamped. Editor content is
-    // exempt (it must hold focus).
+    // exempt (it must hold focus), and so is anything inside a cell-anchored
+    // overlay — a top-layer surface renders in place, and its own roving
+    // tabindex must survive this pass.
     afterRenderEffect(
       () => {
         this.renderRows();
@@ -4300,6 +4334,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           for (const element of interactive) {
             if (
               element.closest('[data-tm-editor]') === null &&
+              !this.inOverlay(element) &&
               element.getAttribute('tabindex') !== '-1'
             ) {
               element.setAttribute('tabindex', '-1');

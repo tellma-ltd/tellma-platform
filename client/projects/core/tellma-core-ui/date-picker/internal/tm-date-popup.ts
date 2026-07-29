@@ -462,7 +462,7 @@ export class ɵTmDatePopup {
     return short.every((name, i) => name === long[i]) ? named('narrow') : short;
   });
 
-  /** The fixed six-week day grid of the focused display-calendar month. */
+  /** The week rows of the focused display-calendar month (4 to 6 of them). */
   protected readonly dayGrid = computed<DayCell[][]>(() => {
     const calendar = this.calendar();
     const focused = this.focused();
@@ -476,9 +476,7 @@ export class ɵTmDatePopup {
     // The month's first day's ISO weekday (1 = Monday … 7 = Sunday).
     let leading = 0;
     if (firstIso !== null) {
-      const parts = ɵtmParseIsoDate(firstIso)!;
       const utcDay = this.utcOf(firstIso).getUTCDay(); // 0 = Sunday
-      void parts;
       const isoWeekday = utcDay === 0 ? 7 : utcDay;
       leading = (isoWeekday - firstOfWeek + 7) % 7;
     }

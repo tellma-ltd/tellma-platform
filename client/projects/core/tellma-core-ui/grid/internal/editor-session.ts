@@ -56,6 +56,8 @@ export type ɵTmGridEditorMountConfig =
       readonly kind: 'date';
       /** The accessible name (column header). */
       readonly label: string;
+      /** Called when the user picks a date in the calendar popup. */
+      onActivation(): void;
     }
   | {
       readonly kind: 'enum';
@@ -167,6 +169,7 @@ export class ɵTmGridEditorSession {
       ref.changeDetectorRef.detectChanges();
       // The dropdown hooks make the editing keymap's dropdown gate and the
       // two-stage Esc compose for date cells exactly as for enum cells.
+      this.activationSub = ref.instance.activated.subscribe(() => config.onActivation());
       isDropdownOpen = () => ref.instance.isPopupOpen();
       openDropdown = () => ref.instance.openPopup();
       this.destroyView = () => ref.destroy();

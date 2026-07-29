@@ -70,7 +70,9 @@ let nextUniqueId = 0;
  *
  * Inside `tm-form-field` the field supplies the bordered box and wiring
  * (`ownsChrome: false`); in a grid cell the bare input + button fill the
- * host and the grid owns commit and parse.
+ * host and the grid owns commit and parse — there, picking a day IS the
+ * edit (`picked` closes the cell), while typed text still commits the
+ * grid's way.
  *
  * @tmGroup form-control
  * @tmA11yNotes The input carries aria-haspopup="dialog"/aria-expanded;
@@ -191,6 +193,14 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
   readonly errors = input<readonly ValidationError.WithOptionalFieldTree[]>([]);
   /** Touch reporting on native blur — `debounce('blur')` relies on it. */
   readonly touch = output<void>();
+  /**
+   * Emits the chosen ISO date the moment the user picks one in the calendar
+   * popup — a day cell, `Today`, or `Clear` (which emits `null`). Typed
+   * entry does NOT emit; use `valueChange` for every write regardless of
+   * source. Hosts that treat a pick as a finished edit (the grid commits
+   * and closes the cell on it) listen here.
+   */
+  readonly picked = output<string | null>();
 
   // ---- Own API ----
   /** Per-instance display calendar; defaults to the app-ambient `TM_CALENDAR`. */
@@ -631,5 +641,9 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
     element.value = text;
     this.textAtFocus = text;
     this.closePopup(true);
+    // Last: a host may treat the pick as a finished edit and tear this
+    // control down (the grid commits and closes the cell), so nothing may
+    // touch instance state after the emit.
+    this.picked.emit(iso);
   }
 }

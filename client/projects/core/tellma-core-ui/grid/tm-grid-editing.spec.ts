@@ -1101,7 +1101,7 @@ describe('tm-grid date columns (built-in defaults)', () => {
     expect(host.model()[0].due).toBe('2026-03-05');
   });
 
-  it('a popup day selection fills the editor text; Enter commits it', async () => {
+  it('a popup day selection commits and closes — no Enter needed', async () => {
     const { fixture, host, scroller } = await setupDates();
     await activateOrigin(fixture, scroller);
     keydown(scroller, 'F2');
@@ -1110,12 +1110,12 @@ describe('tm-grid date columns (built-in defaults)', () => {
     keydown(input, 'ArrowDown', { altKey: true });
     await stable(fixture);
 
+    // Pointing at a day IS the edit (the enum option's contract): a mouse
+    // user has no reason to press Enter afterwards, so the pick must not
+    // sit uncommitted waiting for one.
     (document.querySelector('.tm-date-popup [data-tm-day="20"]') as HTMLButtonElement).click();
     await stable(fixture);
-    const reopened = scroller.querySelector<HTMLInputElement>('.tm-date-picker__input')!;
-    expect(reopened.value).toBe('3/20/2026');
-    keydown(reopened, 'Enter');
-    await stable(fixture);
+    expect(scroller.querySelector('.tm-date-picker__input')).toBeNull();
     expect(host.model()[0].due).toBe('2026-03-20');
   });
 });

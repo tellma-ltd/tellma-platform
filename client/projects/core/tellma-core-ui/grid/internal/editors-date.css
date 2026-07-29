@@ -43,7 +43,11 @@
   padding-inline-end: 0;
 }
 
+/* The toggle keeps the picker's own square box: these class selectors tie
+   with the picker's scoped rules on specificity and lose the ordering, so
+   only properties the picker leaves alone can be set from here. The end
+   inset is one of them — without it the button sits against the cell's
+   edge while carrying air above and below. */
 .tm-grid-date-editor .tm-date-picker__toggle {
-  block-size: 100%;
-  border-radius: 0;
+  margin-inline-end: var(--space-1);
 }
