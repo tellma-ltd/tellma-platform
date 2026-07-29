@@ -75,6 +75,9 @@ import { TmFilePicker } from './tm-file-picker';
     class: 'tm-dropzone',
     role: 'button',
     tabindex: '0',
+    // The zone IS the button, and it is not a <button> element — the ARIA
+    // state is what says "already opening" here.
+    '[attr.aria-disabled]': 'picker.awaitingDialog() ? "true" : null',
     '[class.tm-dropzone--dragover]': 'dragOver()',
     '(keydown)': 'onKeydown($event)',
     '(dragenter)': 'onDragEnter($event)',
@@ -87,7 +90,7 @@ import { TmFilePicker } from './tm-file-picker';
 export class TmDropzone {
   private readonly translate = inject(TM_UI_TRANSLATE);
   /** The host-directive picker — the shared engine + browse path. */
-  private readonly picker = inject(TmFilePicker);
+  protected readonly picker = inject(TmFilePicker);
 
   /** Localized drop-or-paste hint line. */
   protected readonly hintLabel = this.translate('filePicker.hint');

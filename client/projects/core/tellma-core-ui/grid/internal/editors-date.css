@@ -22,7 +22,9 @@
   flex: 1 1 auto;
   min-inline-size: 0;
   block-size: 100%;
-  gap: 0;
+  /* A hair of air between the value and the calendar button — a
+     right-aligned date would otherwise run straight into the glyph. */
+  gap: var(--space-1);
 }
 
 .tm-grid-date-editor .tm-date-picker__input {

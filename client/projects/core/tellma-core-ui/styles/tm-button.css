@@ -183,13 +183,3 @@
   }
 }
 
-/* A picker button whose OS dialog has not appeared yet: opening it is
-   the operating system's work and can take seconds on a loaded machine,
-   so the click gets a visible acknowledgement rather than nothing. */
-.tm-file-picker--awaiting {
-  cursor: progress;
-}
-
-.tm-file-picker--awaiting > * {
-  opacity: var(--opacity-muted, 0.65);
-}

@@ -9,6 +9,7 @@ import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet } fr
 import { Dir } from '@angular/cdk/bidi';
 import { TranslocoService } from '@jsverse/transloco';
 
+import { ShowcaseCalendar, type ShowcaseCalendarId } from './i18n/showcase-calendar';
 import { SHOWCASE_STORIES } from './stories';
 
 /**
@@ -36,6 +37,9 @@ export class App {
   private readonly document = inject(DOCUMENT);
   private readonly router = inject(Router);
   private readonly transloco = inject(TranslocoService);
+  private readonly calendars = inject(ShowcaseCalendar);
+  /** The ambient display calendar's id, for the shell's picker. */
+  protected readonly calendarId = this.calendars.id.asReadonly();
 
   protected readonly stories = SHOWCASE_STORIES;
   protected readonly lang = signal('en');
@@ -89,5 +93,10 @@ export class App {
   protected setLang(lang: string): void {
     this.transloco.setActiveLang(lang);
     this.lang.set(lang);
+  }
+
+  /** Switches the ambient display calendar for every story at once. */
+  protected setCalendar(event: Event): void {
+    this.calendars.id.set((event.target as HTMLSelectElement).value as ShowcaseCalendarId);
   }
 }

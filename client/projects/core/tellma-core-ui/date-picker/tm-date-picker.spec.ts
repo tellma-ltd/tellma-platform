@@ -121,7 +121,21 @@ describe('tm-date-picker', () => {
     await type(fixture, input, '1/1/2019'); // below the schema min
     await blur(fixture, input);
     const error = fixture.nativeElement.querySelector('.tm-form-field__error') as HTMLElement;
-    expect(error.textContent).toContain('Enter a date on or after 2020-01-01');
+    // The bound is shown the way the field shows dates — the ISO value is
+    // machine currency, not something to put in front of a user.
+    expect(error.textContent).toContain('Enter a date on or after 1/1/2020');
+  });
+
+  it('a bound in an error message follows the display calendar', async () => {
+    const { fixture, host, input } = await setup();
+    host.calendar.set(tmUmalquraCalendar());
+    await fixture.whenStable();
+    await type(fixture, input, '1/1/1300'); // below the schema min, in Hijri
+    await blur(fixture, input);
+    const error = fixture.nativeElement.querySelector('.tm-form-field__error') as HTMLElement;
+    // 2020-01-01 is 6 Jumada I 1441 AH; the message must not read 2020.
+    expect(error.textContent).toContain('1441');
+    expect(error.textContent).not.toContain('2020');
   });
 
   it('hard bounds are parse errors: year 0000 never becomes a value', async () => {

@@ -15,8 +15,10 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
 import { TranslocoService } from '@jsverse/transloco';
 
-import { provideTellmaUi, TM_ACTIVE_LOCALE } from '@tellma/core-ui';
+import { provideTellmaUi, TM_ACTIVE_LOCALE, TM_CALENDAR } from '@tellma/core-ui';
 import { provideTellmaLocaleAr } from '@tellma/locale-ar';
+
+import { ShowcaseCalendar } from './i18n/showcase-calendar';
 
 import { routes } from './app.routes';
 
@@ -34,6 +36,12 @@ export const appConfig: ApplicationConfig = {
     // UI language tags are bare (en/ar), but formatting nominates REGIONAL
     // locales — bare 'ar' resolves to Latin digits in ICU, ar-SA to
     // Arabic-Indic ones, which is also what the locale-switch e2e asserts.
+    // The ambient display calendar, switchable from the shell's top bar so
+    // every story can be seen under a non-Gregorian one.
+    {
+      provide: TM_CALENDAR,
+      useFactory: () => inject(ShowcaseCalendar).calendar,
+    },
     {
       provide: TM_ACTIVE_LOCALE,
       useFactory: () => {

@@ -45,8 +45,10 @@ import type { TmFileSelection } from './tm-file-selection';
   selector: 'button[tmFilePicker]',
   host: {
     '(click)': 'open()',
+    // Disabled, not just busy: the OS dialog is already on its way, and a
+    // second click cannot bring it any sooner.
     '[attr.aria-busy]': 'awaitingDialog() ? "true" : null',
-    '[class.tm-file-picker--awaiting]': 'awaitingDialog()',
+    '[attr.disabled]': 'awaitingDialog() ? "" : null',
   },
 })
 export class TmFilePicker implements OnDestroy {

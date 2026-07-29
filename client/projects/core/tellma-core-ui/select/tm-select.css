@@ -98,7 +98,9 @@
 .tm-select__panel {
   box-sizing: border-box;
   inline-size: 100%;
-  margin-block-start: var(--space-1);
+  /* Flush against the trigger, like the date picker's calendar: the panel
+     belongs to the field it drops from, and a gap reads as a detached
+     surface floating over the page. */
   background: var(--field-bg);
   border: var(--border-width) solid var(--field-border);
   border-radius: var(--field-radius);

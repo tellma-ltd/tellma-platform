@@ -142,6 +142,13 @@
   padding-block-start: 0;
 }
 
+/* With that padding gone there is nothing left for the footer's negative
+   inline margin to cancel — it would simply overhang the panel and put a
+   horizontal scrollbar under the content. */
+.tm-modal-panel--flush .tm-modal__footer {
+  margin-inline: 0;
+}
+
 /* With a footer present the body becomes the column that carries it:
    the projected content fills the scrollport so `margin-block-start:
    auto` can hold the footer against the bottom even when the content is

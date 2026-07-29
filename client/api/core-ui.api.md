@@ -225,7 +225,7 @@ export interface TmErrorDisplayState {
 }
 
 // @public
-export function tmErrorParams(error: ValidationError): Record<string, unknown>;
+export function tmErrorParams(error: ValidationError, formatDate?: (iso: string) => string): Record<string, unknown>;
 
 // @public
 export interface TmFormFieldDefaults {
@@ -256,7 +256,7 @@ export function tmMaxDate<TValue extends string | null, TPathKind extends PathKi
 export function tmMinDate<TValue extends string | null, TPathKind extends PathKind = PathKind.Root>(path: SchemaPath<TValue, SchemaPathRules.Supported, TPathKind>, minDate: string | LogicFn<TValue, string | undefined, TPathKind>): void;
 
 // @public
-export function tmResolveFieldErrors(errors: Signal<readonly ValidationError.WithOptionalFieldTree[]>, translate: TmUiTranslateFn): Signal<readonly TmFieldError[]>;
+export function tmResolveFieldErrors(errors: Signal<readonly ValidationError.WithOptionalFieldTree[]>, translate: TmUiTranslateFn, formatDate?: (iso: string) => string): Signal<readonly TmFieldError[]>;
 
 // @public
 export type TmUiMessageContext = Record<string, unknown>;

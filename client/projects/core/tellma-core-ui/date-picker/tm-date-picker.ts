@@ -425,6 +425,12 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
   readonly localizedErrors: () => readonly TmFieldError[] = tmResolveFieldErrors(
     this.errors,
     this.translate,
+    // Date bounds in a message are shown the way the field shows dates.
+    (iso) =>
+      tmFormatDate(iso, this.l10n.locale(), {
+        calendar: this.activeCalendar(),
+        dateStyle: this.dateStyle(),
+      }),
   );
   /** The merged aria-describedby attribute value, or null when no ids apply. */
   protected readonly describedByAttr = computed(() => this.describedByIds().join(' ') || null);

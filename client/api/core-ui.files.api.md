@@ -19,6 +19,7 @@ export class TmDropzone {
     protected onDrop(event: DragEvent): void;
     protected onKeydown(event: KeyboardEvent): void;
     protected onPaste(event: ClipboardEvent): void;
+    protected readonly picker: TmFilePicker;
     protected readonly sizeLine: _angular_core.Signal<string>;
     protected readonly typesLine: _angular_core.Signal<string | null>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmDropzone, "tm-dropzone", never, {}, {}, never, never, true, [{ directive: typeof TmFilePicker; inputs: { "accept": "accept"; "multiple": "multiple"; "maxFileSize": "maxFileSize"; "maxFiles": "maxFiles"; }; outputs: { "filesSelected": "filesSelected"; }; }]>;

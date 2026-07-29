@@ -1176,6 +1176,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.activeCellResolvedErrors = tmResolveFieldErrors(
       this.activeCellFieldErrors,
       deps.translate,
+      // Cells show dates in the ambient locale and calendar; so must the
+      // messages about them.
+      (iso) => tmFormatDate(iso, deps.locale(), { calendar: deps.calendar() }),
     );
     this.errorMessage = computed(() => {
       const active = this.engine.nav.activeCell();
