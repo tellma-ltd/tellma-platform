@@ -148,18 +148,30 @@ test.describe('keyboard matrix (DoD 7)', () => {
 });
 
 test.describe('fixed geometry (DoD 7)', () => {
-  test('the popup never resizes across month flips or views', async ({ page }) => {
+  test('the popup keeps its width and takes only the rows a month needs', async ({ page }) => {
     await page.goto(storyUrl('date-picker'));
     await openViaButton(page, 'picker-due');
-    const before = await popup(page).boundingBox();
-    await popup(page).locator('.tm-date-popup__nav').last().click(); // next month
-    const afterFlip = await popup(page).boundingBox();
-    expect(afterFlip!.height).toBeCloseTo(before!.height, 1);
-    expect(afterFlip!.width).toBeCloseTo(before!.width, 1);
+    const next = popup(page).locator('.tm-date-popup__nav').last();
+    const heading = popup(page).locator('.tm-date-popup__view-switch');
+    const march = (await popup(page).boundingBox())!; // March 2026 needs 5 rows
 
-    await popup(page).locator('.tm-date-popup__view-switch').click(); // month view
-    const monthView = await popup(page).boundingBox();
-    expect(monthView!.width).toBeCloseTo(before!.width, 1);
+    // Height follows the content: May 2026 spills into a sixth week. The
+    // popup is a top-layer overlay, so its height was never part of the
+    // page's layout to hold still, and padding it to a fixed six rows
+    // just left a blank band under most months.
+    await next.click();
+    await next.click();
+    await expect(heading).toContainText('May');
+    const may = (await popup(page).boundingBox())!;
+    expect(may.height).toBeGreaterThan(march.height);
+
+    // Width, though, never moves — in any month or view. A calendar that
+    // changed width under the pointer would walk off its field.
+    expect(may.width).toBeCloseTo(march.width, 1);
+    await heading.click(); // month view
+    expect((await popup(page).boundingBox())!.width).toBeCloseTo(march.width, 1);
+    await heading.click(); // year view
+    expect((await popup(page).boundingBox())!.width).toBeCloseTo(march.width, 1);
   });
 
   test('bounds clamp navigation and disable out-of-range days', async ({ page }) => {
