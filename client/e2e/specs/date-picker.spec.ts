@@ -87,33 +87,36 @@ test.describe('keyboard matrix (DoD 7)', () => {
 
       // Every navigation re-renders the grid and re-focuses the roving cell
       // a beat later; a key pressed inside that beat lands on a detached
-      // cell (or the input) and dies. Real fingers cannot race a render —
-      // wait for document focus before every press, starting with the open.
+      // cell (or the input) and dies. Real fingers cannot race a render, so
+      // each step waits for the day it EXPECTS to hold focus before the next
+      // press. Waiting on "whichever cell is roving" would not do: until the
+      // re-render lands, that is still the cell the key was pressed from, so
+      // the assertion passes against the old state and the next press goes
+      // out early.
       const rovingDay = popup(page).locator('.tm-date-popup__day[tabindex="0"]');
-      const focusedDay = async (): Promise<string | null> => {
-        await expect(rovingDay).toBeFocused();
-        return rovingDay.getAttribute('data-tm-day');
+      const expectFocusedDay = async (day: string): Promise<void> => {
+        await expect(popup(page).locator(`.tm-date-popup__day[data-tm-day="${day}"]`)).toBeFocused();
       };
 
       // Focus landed on the committed day (3/5/2026).
-      expect(await focusedDay()).toBe('5');
+      await expectFocusedDay('5');
 
       // inline-end arrow: +1 day in LTR terms — ArrowRight in LTR, ArrowLeft in RTL.
       await page.keyboard.press(dir === 'ltr' ? 'ArrowRight' : 'ArrowLeft');
-      expect(await focusedDay()).toBe('6');
+      await expectFocusedDay('6');
       await page.keyboard.press('ArrowDown'); // +7
-      expect(await focusedDay()).toBe('13');
+      await expectFocusedDay('13');
       // Home/End move to the week EDGES. The story locale is en-US, so
       // the week starts Sunday: from the 13th (a Friday) Home lands on the
       // 8th and End on the 14th. Asserting the exact day matters — a
       // bound like "<= 13" also passes for a no-op and for a wrong
       // jump-to-first-of-month.
       await page.keyboard.press('Home');
-      expect(await focusedDay()).toBe('8');
+      await expectFocusedDay('8');
       await page.keyboard.press('End');
-      expect(await focusedDay()).toBe('14');
+      await expectFocusedDay('14');
       await page.keyboard.press('Home');
-      expect(await focusedDay()).toBe('8');
+      await expectFocusedDay('8');
 
       // PageDown: next month; the heading announces politely.
       await page.keyboard.press('PageDown');
@@ -121,10 +124,10 @@ test.describe('keyboard matrix (DoD 7)', () => {
       await expect(
         popup(page).locator('.tm-date-popup__view-switch [aria-live="polite"]'),
       ).toBeVisible();
-      await expect(rovingDay).toBeFocused();
+      await expectFocusedDay('8'); // the day carries across the month page
       await page.keyboard.press('Shift+PageDown'); // +1 year
       await expect(popup(page).locator('.tm-date-popup__view-switch')).toContainText('2027');
-      await expect(rovingDay).toBeFocused();
+      await expectFocusedDay('8');
 
       // Enter selects the focused day and returns focus to the input.
       await page.keyboard.press('Enter');
@@ -224,47 +227,54 @@ test.describe('display calendars (DoD 8)', () => {
       await openViaButton(page, 'picker-due');
 
       const rovingDay = popup(page).locator('.tm-date-popup__day[tabindex="0"]');
-      const dayNumber = async (): Promise<number> => {
-        await expect(rovingDay).toBeFocused();
-        return Number(await rovingDay.getAttribute('data-tm-day'));
-      };
+      const dayNumber = async (): Promise<number> =>
+        Number(await rovingDay.getAttribute('data-tm-day'));
       const heading = popup(page).locator('.tm-date-popup__view-switch');
       // The calendar swap re-renders the grid under the open popup, so
-      // settle on the roving cell BEFORE the first key: a press that
-      // lands mid-render goes to a cell that is about to be replaced.
+      // settle on the roving cell BEFORE the first key: a press that lands
+      // mid-render goes to a cell that is about to be replaced. Every later
+      // step POLLS for the position it expects — reading once after "some
+      // cell is roving" would read the cell the key was pressed from, since
+      // that one still holds focus until the re-render lands.
       await expect(rovingDay).toBeFocused();
       const start = await dayNumber();
 
       await page.keyboard.press('ArrowRight');
-      expect(await dayNumber()).toBe(start + 1);
-      await page.keyboard.press('ArrowDown'); // +7, may cross the month end
-      expect(await dayNumber()).toBeGreaterThan(0);
+      await expect(
+        popup(page).locator(`.tm-date-popup__day[data-tm-day="${start + 1}"]`),
+      ).toBeFocused();
+      // +7 may cross the month end, so the day number is not predictable —
+      // but it must MOVE, which is what a dropped key would not do.
+      await page.keyboard.press('ArrowDown');
+      await expect.poll(dayNumber).not.toBe(start + 1);
       // Home/End are WEEK edges. Asserting day numbers would be wrong
       // here: an Ethiopic or Hijri week routinely crosses a month end, so
       // the numbers wrap. The calendar-agnostic invariant is the roving
       // cell's position within its own week row.
-      const columnOfFocus = async (): Promise<number> => {
-        await expect(rovingDay).toBeFocused();
-        return popup(page)
+      const columnOfFocus = (): Promise<number> =>
+        popup(page)
           .locator('.tm-date-popup__week', { has: page.locator('[tabindex="0"]') })
           .first()
           .evaluate((row) =>
             [...row.children].findIndex((cell) => cell.getAttribute('tabindex') === '0'),
           );
-      };
       await page.keyboard.press('Home');
-      expect(await columnOfFocus()).toBe(0);
+      await expect.poll(columnOfFocus).toBe(0);
       await page.keyboard.press('End');
-      expect(await columnOfFocus()).toBe(6);
+      await expect.poll(columnOfFocus).toBe(6);
 
       // Paging must stay inside the calendar's own month/year structure.
-      const before = await heading.textContent();
+      // The heading is the barrier for each step: it is the one thing that
+      // provably changed, so the next key cannot go out early.
+      const beforeMonth = await heading.textContent();
       await page.keyboard.press('PageDown');
-      await expect(heading).not.toHaveText(before!);
+      await expect(heading).not.toHaveText(beforeMonth!);
+      const beforeYear = await heading.textContent();
       await page.keyboard.press('Shift+PageDown'); // +1 year
-      await expect(rovingDay).toBeFocused();
+      await expect(heading).not.toHaveText(beforeYear!);
+      const beforeBack = await heading.textContent();
       await page.keyboard.press('PageUp');
-      await expect(rovingDay).toBeFocused();
+      await expect(heading).not.toHaveText(beforeBack!);
 
       // Space selects, like Enter (the cells are real buttons).
       const chosen = await dayNumber();

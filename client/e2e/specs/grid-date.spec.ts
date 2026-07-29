@@ -70,9 +70,16 @@ test.describe('date column defaults (DoD 9)', () => {
     await activateCell(page, 0, DUE_COL);
     await page.keyboard.press('F2');
     await page.keyboard.press('Alt+ArrowDown');
-    await expect(page.locator('.tm-date-popup')).toBeVisible();
+    const popup = page.locator('.tm-date-popup');
+    await expect(popup).toBeVisible();
 
+    // Focus reaches the calendar a render after it paints; a key pressed
+    // inside that beat lands in the input behind it. Wait for the day cell
+    // the popup opens on — and for the one the arrow moves to — before
+    // pressing on.
+    await expect(popup.locator('[data-tm-day="26"]')).toBeFocused();
     await page.keyboard.press('ArrowLeft'); // the 26th → the 25th
+    await expect(popup.locator('[data-tm-day="25"]')).toBeFocused();
     await page.keyboard.press('Enter');
 
     await expect(page.getByTestId('model-json')).toContainText('"dueDate":"2026-06-25"');
