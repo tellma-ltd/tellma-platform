@@ -7,9 +7,11 @@ import { ɵtmParseIsoDate, ɵtmToIsoDate, type TmCalendar, type TmCalendarParts 
 
 // Self-contained Ethiopic arithmetic, NOT the @internationalized/date
 // adapter: that library's EthiopicCalendar maps TWO Gregorian days onto
-// Pagume 5 in every non-leap year (its new year lands one day late — 150
+// Pagume 5 in every non-leap year (its new year lands one day late — 151
 // wrong days across 1900–2100), which the adapter↔Intl agreement gate
-// caught against Chromium's ICU. The calendar's rules are exact and tiny —
+// caught against Chromium's ICU. Reported upstream as
+// https://github.com/adobe/react-spectrum/issues/10390; revisit this pack
+// if it lands. The calendar's rules are exact and tiny —
 // twelve 30-day months plus Pagume (5 days, 6 when `year % 4 == 3`) — so
 // the arithmetic lives here, anchored on an ICU-verified epoch and pinned
 // by the agreement gate's year-boundary sweep.
