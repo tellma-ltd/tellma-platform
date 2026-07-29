@@ -4,10 +4,13 @@
   "extends": "../../../tsconfig.json",
   "compilerOptions": {
     "outDir": "../../../out-tsc/spec",
-    /* The spec pulls in library sources through the workspace path
-       mappings, so the inferred common source directory climbs above this
-       project; pin it here as the sibling core-ui config does. */
-    "rootDir": ".",
+    /* These specs import library SOURCES through the workspace path
+       mappings, so the program's common source directory sits two levels
+       up. Stating it keeps the editor from guessing (and complaining);
+       nothing is emitted from this config, so the layout it implies is
+       inert. Do NOT narrow this to "." — the Angular compiler then drops
+       referenced files and the unit build fails outright. */
+    "rootDir": "../..",
     "types": ["vitest/globals"]
   },
   "include": ["**/*.spec.ts"]
