@@ -523,7 +523,10 @@ the APG date-picker-dialog pattern with the APG combobox-datepicker's focus/open
   cell it opens the editor AND the calendar in ONE press, the way it reaches an enum cell's
   panel; `F2` opens the editor alone, since typing is a date cell's primary path. While the popup is
   open the editor consumes navigation keys (the spec-0004 dropdown gate), and its Esc closes the
-  popup first — the grid's two-stage Esc composes unchanged. **Picking a day IS the edit:** the
+  popup first — the grid's two-stage Esc composes unchanged. Drilling through the popup's views
+  keeps the session open: swapping views destroys the button that was clicked, and the resulting
+  focus drop to nowhere is a re-render artifact, not a blur (§8.4's commit-on-blur reads the
+  press that precedes a real departure, not the focus event alone). **Picking a day IS the edit:** the
   pick commits the cell and closes the editor without a move, the same contract an enum option
   activation has, because a user who reached for the calendar has no reason to press Enter
   afterwards. Typed text still commits the grid's way.

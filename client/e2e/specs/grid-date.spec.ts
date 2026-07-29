@@ -107,6 +107,33 @@ test.describe('date column defaults (DoD 9)', () => {
     await expect(page.locator('.tm-date-popup')).toHaveCount(0);
   });
 
+  test('drilling year → month → day in the popup keeps the editor open', async ({ page }) => {
+    await gotoGrid(page, 'grid-editable');
+    await activateCell(page, 0, DUE_COL);
+    await page.keyboard.press('Alt+ArrowDown');
+    const popup = page.locator('.tm-date-popup');
+    await expect(popup).toBeVisible();
+    const heading = popup.locator('.tm-date-popup__view-switch');
+
+    // Each of these clicks destroys the button it lands on (the view it
+    // opens replaces the grid holding it), so focus drops to <body> with no
+    // relatedTarget — which the grid must not read as the user leaving.
+    await heading.click();
+    await heading.click();
+    await expect(popup.locator('.tm-date-popup__years')).toBeVisible();
+    await popup.locator('.tm-date-popup__year').first().click();
+    await expect(popup.locator('.tm-date-popup__months')).toBeVisible();
+    await popup.locator('.tm-date-popup__month').first().click();
+    await expect(popup.locator('.tm-date-popup__grid')).toBeVisible();
+
+    // Still editing, and the drilled-to day still commits into the cell.
+    await expect(page.locator('.tm-date-picker__input')).toBeVisible();
+    await popup.locator('[data-tm-day="15"]').click();
+    await expect(popup).toBeHidden();
+    await expect(page.getByTestId('model-json')).toContainText('-01-15"');
+    await expect(cell(page, 0, DUE_COL)).toBeFocused();
+  });
+
   test('arrowing onto the last column clears the scrollbar gutter', async ({ page }) => {
     await gotoGrid(page, 'grid-editable');
     await activateCell(page, 0, 0);

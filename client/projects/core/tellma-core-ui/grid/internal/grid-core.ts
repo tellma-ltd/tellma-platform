@@ -1947,6 +1947,22 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   }
 
   /**
+   * Whether a focus drop to NOWHERE is a re-render artifact rather than the
+   * user leaving. Swapping views inside an open overlay — picking a month
+   * in the calendar — destroys the very element that had focus, and the
+   * browser then drops focus to `<body>` with no `relatedTarget`: at the
+   * event itself, indistinguishable from a click onto inert page content.
+   * The tell is the press that precedes a real departure — a click-away
+   * lands outside the host first, and the document-level capture records
+   * it. (A window switch is not one either: the document loses focus.)
+   */
+  private focusDroppedByRerender(): boolean {
+    return (
+      this.gridOwnsFocus && document.hasFocus() && Date.now() - this.lastOutsidePointerDown > 200
+    );
+  }
+
+  /**
    * Commit-on-blur (§8.4): when focus leaves the grid — and lands outside
    * every overlay surface (select panel, error overlay, context menu,
    * calendar popup) — an open editor commits. Safer for forms than
@@ -1962,6 +1978,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       if (this.deps.host.contains(next) || this.inOverlay(next)) {
         return; // focus stayed inside the grid or one of its overlay surfaces
       }
+    } else if (this.focusDroppedByRerender()) {
+      return; // the editor's own overlay re-rendered under the pointer
     }
     this.commitEditor({ refocus: false });
   }
@@ -4292,10 +4310,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
             return;
           }
           const droppedByDomMove =
-            this.gridOwnsFocus &&
-            document.hasFocus() &&
-            document.activeElement === document.body &&
-            Date.now() - this.lastOutsidePointerDown > 200;
+            this.focusDroppedByRerender() && document.activeElement === document.body;
           const shouldFocus =
             this.pendingGestureFocus ||
             scroller.contains(document.activeElement) ||
