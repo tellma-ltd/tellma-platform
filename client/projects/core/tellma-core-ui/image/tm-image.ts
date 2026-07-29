@@ -88,10 +88,11 @@ interface FittingSession {
  *
  * @tmGroup media
  * @tmA11yNotes `alt` is required (`''` only for decorative images); the
- *   error state carries its own accessible label AND announces; the crop
- *   surface pans with arrow keys and zooms with `+`/`-` and the
- *   always-visible slider; rejections and load failures announce via a
- *   `role="status"` region.
+ *   edit affordances are icon-only buttons, each named by the label it
+ *   also shows as a tooltip; the error state carries its own accessible
+ *   label AND announces; the crop surface pans with arrow keys and zooms
+ *   with `+`/`-` and the always-visible slider; rejections and load
+ *   failures announce via a `role="status"` region.
  */
 @Component({
   selector: 'tm-image',

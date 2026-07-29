@@ -1252,8 +1252,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     const onDocumentFocusIn = (event: Event): void => {
       const target = event.target;
       this.gridOwnsFocus =
-        target instanceof Element &&
-        (deps.host.contains(target) || target.closest('.cdk-overlay-container') !== null);
+        target instanceof Element && (deps.host.contains(target) || this.inOverlay(target));
     };
     document.addEventListener('pointerdown', onDocumentPointerDown, true);
     document.addEventListener('focusin', onDocumentFocusIn, true);
@@ -1398,10 +1397,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   }
 
   /**
-   * Whether a node sits inside an overlay surface hosted in the grid's own
-   * DOM. Top-layer overlays render IN PLACE — a popup anchored to a cell
-   * (the date editor's calendar) is a child of that cell, so its events
-   * bubble through the scroller. They belong to the overlay: a press on a
+   * Whether a node sits inside an overlay surface. Every overlay puts its
+   * content in a `.cdk-overlay-pane`, wherever the surface is hosted —
+   * top-layer overlays render IN PLACE, so a popup anchored to a cell (the
+   * date editor's calendar) is a child of that cell and its events bubble
+   * through the scroller. They belong to the overlay: a press on a
    * calendar day is not a click-away, and a key inside the calendar is not
    * a grid key. The overlay's own dismiss logic owns the gesture.
    */
@@ -1948,9 +1948,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
 
   /**
    * Commit-on-blur (§8.4): when focus leaves the grid — and lands outside
-   * every owned overlay surface (select panel, error overlay, context
-   * menu; the CDK keeps popover panes inside its overlay container) — an
-   * open editor commits. Safer for forms than Excel's keep-editing.
+   * every overlay surface (select panel, error overlay, context menu,
+   * calendar popup) — an open editor commits. Safer for forms than
+   * Excel's keep-editing.
    */
   onFocusOut(event: FocusEvent): void {
     const engine = this.engineInstance;
@@ -1959,7 +1959,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     }
     const next = event.relatedTarget;
     if (next instanceof Element) {
-      if (this.deps.host.contains(next) || next.closest('.cdk-overlay-container') !== null) {
+      if (this.deps.host.contains(next) || this.inOverlay(next)) {
         return; // focus stayed inside the grid or one of its overlay surfaces
       }
     }

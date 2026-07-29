@@ -32,7 +32,7 @@ import {
   type TmCalendarParts,
 } from '@tellma/core-ui/l10n';
 
-/** One cell of the month view; `null` pads the fixed five-row layout. */
+/** One cell of the month view; `null` pads the last row out to three. */
 type MonthCell = { month: number; label: string; disabled: boolean } | null;
 
 /** The hard ISO window (the intersection of ISO 8601 with SQL/BCL dates). */
