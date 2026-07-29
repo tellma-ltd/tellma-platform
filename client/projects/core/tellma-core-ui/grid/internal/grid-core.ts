@@ -2717,7 +2717,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         // F2 / Alt+ArrowDown / type-to-edit. A readonly cell is a NO-OP,
         // not a swallow — the key may still mean something to the browser.
         const active = untracked(() => engine.nav.activeCell());
-        return active !== null && this.openEditor(active, intent.mode, intent.seed);
+        return (
+          active !== null &&
+          this.openEditor(active, intent.mode, intent.seed, { dropdown: intent.dropdown === true })
+        );
       }
       case 'toggleBoolean': {
         const active = untracked(() => engine.nav.activeCell());
@@ -3234,7 +3237,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     cell: TmRowCol,
     mode: 'edit' | 'enter',
     seedText?: string,
-    opts?: { ime?: boolean },
+    opts?: { ime?: boolean; dropdown?: boolean },
   ): boolean {
     const engine = this.engine;
     const column = untracked(this.columnsInternal)[cell.col];
@@ -3345,6 +3348,14 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       // Consumer template editor: the grid owns the value channel and
       // seeds it with the raw cell value (also carried in the context).
       editor.value.set(valueAtOpen);
+    }
+    // Alt+ArrowDown means "show me the choices": one press reaches them,
+    // whatever the cell's editor is. An enum's panel is already open above
+    // (it has nothing to type, so every open shows it); a date's calendar
+    // is not, because typing is that cell's primary path and F2 must not
+    // pop it. Type-to-edit is exempt — the seed IS the intent.
+    if (opts?.dropdown === true && seedText === undefined && !mounted.isDropdownOpen()) {
+      mounted.openDropdown();
     }
     return true;
   }
@@ -3621,11 +3632,20 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (element !== null) {
       const cellRect = element.getBoundingClientRect();
       const scrollerRect = scroller.getBoundingClientRect();
-      if (cellRect.right > scrollerRect.right) {
-        scroller.scrollLeft += cellRect.right - scrollerRect.right;
+      // The rect is the BORDER box, so it counts the vertical scrollbar's
+      // gutter as visible space — the last column would come to rest half
+      // underneath it. Classic scrollbars take the inline-end edge (the
+      // start edge under RTL); overlay scrollbars take none, and the
+      // difference is then zero.
+      const gutter = scroller.offsetWidth - scroller.clientWidth;
+      const rtl = untracked(this.deps.direction) === 'rtl';
+      const viewLeft = scrollerRect.left + (rtl ? gutter : 0);
+      const viewRight = scrollerRect.right - (rtl ? 0 : gutter);
+      if (cellRect.right > viewRight) {
+        scroller.scrollLeft += cellRect.right - viewRight;
       }
-      if (cellRect.left < scrollerRect.left) {
-        scroller.scrollLeft += cellRect.left - scrollerRect.left;
+      if (cellRect.left < viewLeft) {
+        scroller.scrollLeft += cellRect.left - viewLeft;
       }
     }
     this.scrollTop.set(scroller.scrollTop);

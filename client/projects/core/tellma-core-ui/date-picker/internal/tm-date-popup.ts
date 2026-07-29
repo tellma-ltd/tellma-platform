@@ -32,7 +32,7 @@ import {
   type TmCalendarParts,
 } from '@tellma/core-ui/l10n';
 
-/** One cell of the month view; `null` pads the last row out to three. */
+/** One cell of the month view; `null` pads the fixed five-row layout. */
 type MonthCell = { month: number; label: string; disabled: boolean } | null;
 
 /** The hard ISO window (the intersection of ISO 8601 with SQL/BCL dates). */
@@ -462,7 +462,14 @@ export class ɵTmDatePopup {
     return short.every((name, i) => name === long[i]) ? named('narrow') : short;
   });
 
-  /** The week rows of the focused display-calendar month (4 to 6 of them). */
+  /**
+   * The FIXED six-week day grid of the focused display-calendar month.
+   * Sizing to the month instead would move everything the user is aiming
+   * at: a popup that opens upward keeps its bottom edge, so its header
+   * arrows would jump vertically on every page, and one that fitted the
+   * viewport when it opened could grow past the edge. A blank row on a
+   * short month is the cheaper compromise.
+   */
   protected readonly dayGrid = computed<DayCell[][]>(() => {
     const calendar = this.calendar();
     const focused = this.focused();
@@ -480,13 +487,8 @@ export class ɵTmDatePopup {
       const isoWeekday = utcDay === 0 ? 7 : utcDay;
       leading = (isoWeekday - firstOfWeek + 7) % 7;
     }
-    // Only the weeks the month actually occupies: 4 (a 28-day month
-    // starting on the week's first day) to 6. The popup is a top-layer
-    // overlay, so its height is never part of the page's layout and a
-    // shorter month may simply be shorter.
-    const rows = Math.ceil((leading + days) / 7);
     const cells: DayCell[] = [];
-    for (let i = 0; i < rows * 7; i++) {
+    for (let i = 0; i < 42; i++) {
       const day = i - leading + 1;
       if (day < 1 || day > days) {
         cells.push({
@@ -510,7 +512,7 @@ export class ɵTmDatePopup {
       });
     }
     const weeks: DayCell[][] = [];
-    for (let i = 0; i < rows; i++) {
+    for (let i = 0; i < 6; i++) {
       weeks.push(cells.slice(i * 7, i * 7 + 7));
     }
     return weeks;
@@ -562,13 +564,13 @@ export class ɵTmDatePopup {
         disabled: iso === null || iso > upper || (last !== null && last < lower),
       });
     }
-    // Pad only the last row (an Ethiopic 13-month year leaves two gaps),
-    // never to a fixed row count — the popup sizes to its content.
-    while (cells.length % 3 !== 0) {
+    // A fixed five-row layout holds 13 months (Ethiopic) without a size
+    // change between years or calendars; short years pad with blanks.
+    while (cells.length < 15) {
       cells.push(null);
     }
     const rows: MonthCell[][] = [];
-    for (let i = 0; i < cells.length / 3; i++) {
+    for (let i = 0; i < 5; i++) {
       rows.push(cells.slice(i * 3, i * 3 + 3));
     }
     return rows;

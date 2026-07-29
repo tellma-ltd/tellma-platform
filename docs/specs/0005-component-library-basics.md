@@ -461,23 +461,26 @@ the APG date-picker-dialog pattern with the APG combobox-datepicker's focus/open
   view; the coarser views are drill-down navigation (year → month → day), and only a day commits.
 - **Day view:** a `role="grid"` of the display-calendar month — 7 columns, weekday headers from
   Intl (narrow/short names), first day of week from `tmFirstDayOfWeek` (§2.2); no out-of-month
-  days — cells before the month's first day and after its last are empty and non-interactive.
-  The grid holds only the weeks the month occupies (four to six). Roving `tabindex` (one tabbable
+  days — cells before the month's first day and after its last are empty and non-interactive,
+  inside the fixed six-row grid. Roving `tabindex` (one tabbable
   cell); keyboard per APG: arrows ±1 day/week (direction-mapped: inline-start/end), `Home`/`End` week
   edges, `PageUp`/`PageDown` ±1 month, `Shift+PageUp`/`Shift+PageDown` ±1 year, `Enter`/`Space`
   select. The month/year header text is `aria-live="polite"`. Today is visibly marked
   (`aria-current="date"`); the selected day carries `aria-selected`.
-- **Month view:** a grid of the year's months, three per row (12 cells — or **13 for Ethiopic**,
-  whose Pagume is a real, selectable month). **Year view:** a 24-year grid, paged in 24-year
+- **Month view:** a fixed five-row grid of the year's months, three per row (12 cells — or **13
+  for Ethiopic**, whose Pagume is a real, selectable month; the layout holds the extra cell with
+  no size change between years or calendars). **Year view:** a 24-year grid, paged in 24-year
   blocks. Arrows move by cell/row; the same select-to-drill semantics.
 - **Footer:** localized **Today** and **Clear** buttons (Today commits today; Clear commits
   `null`). Today is disabled when today itself lies outside the bounds.
 - Navigation ranges over the whole calendar within the §6.1 bounds; `minDate`/`maxDate` appear as
   disabled cells (`aria-disabled`), never as a navigation stop — an arrow that swallows input
   reads as a broken control, while a month you can see is unavailable explains itself.
-- **The popup's width is fixed** across months and views — a calendar that changed width under
-  the pointer would walk off its field. Its height follows the month's week count: as a top-layer
-  overlay it is never part of the page's layout, and a padded month is just a blank band.
+- **The popup never resizes** across months or views (the fixed six-row day grid above, the fixed
+  month/year grids). A calendar that resized under the pointer would move the controls the user
+  is aiming at — opened upward it keeps its bottom edge, so its header arrows would climb the
+  screen with every page — and one that fitted the viewport when it opened could grow past it.
+  Blank rows on a short month are the cheaper compromise.
 
 ### 6.5 Calendar systems
 
@@ -516,7 +519,9 @@ the APG date-picker-dialog pattern with the APG combobox-datepicker's focus/open
   text; `seed()` replaces it; `commit()` parses; `cancel()` restores) and becomes the **built-in
   editor for `date` columns** — mounted in the cell box, input filling the cell, calendar button
   at the inline end, popup anchored to the cell rect via the §2.1 helper. `Alt+ArrowDown` opens
-  the popup (extending the spec-0004 keymap's dropdown row to date cells); while the popup is
+  the popup (extending the spec-0004 keymap's dropdown row to date cells) — from an unedited
+  cell it opens the editor AND the calendar in ONE press, the way it reaches an enum cell's
+  panel; `F2` opens the editor alone, since typing is a date cell's primary path. While the popup is
   open the editor consumes navigation keys (the spec-0004 dropdown gate), and its Esc closes the
   popup first — the grid's two-stage Esc composes unchanged. **Picking a day IS the edit:** the
   pick commits the cell and closes the editor without a move, the same contract an enum option
@@ -1003,7 +1008,7 @@ outside the DoD). Per-component semantics live in §3–§13; the cross-cutting 
   off-DOM, fixed boxes (zero CLS), bucketed renditions (bounded server/cache cardinality),
   object-URL hygiene (no blob leaks in long SPA sessions).
 - **No layout shift** invariants (Playwright-pinned where cheap): pending buttons keep their
-  size; the date popup keeps one width across months and views (§6.4); image/preview error and
+  size; the date popup never resizes across months or views (§6.4); image/preview error and
   loading states render inside the reserved box; alert/tooltip/popover never displace
   surrounding content (overlay or reserved space).
 - Zoneless + OnPush throughout; signal-driven re-render only on the changed control.
@@ -1080,9 +1085,9 @@ outside the DoD). Per-component semantics live in §3–§13; the cross-cutting 
    completion-from-today, two-digit pivot, ISO fast path, and every rejection rule — unit-
    covered per locale × calendar; parse errors show the expected-pattern message.
 7. Date popup per §6.4: APG keyboard matrix green; view ladder (day↔month↔year, opening on the
-   day view and drilling down); focus moves in on open and back on close; empty out-of-month
-   cells, one width across months and views; Today/Clear; navigation reaches out-of-range months
-   and renders their cells disabled; month/year heading announces politely.
+   day view and drilling down); focus moves in on open and back on close; fixed six-row grid with
+   empty out-of-month cells and no resize across months or views; Today/Clear; navigation reaches
+   out-of-range months and renders their cells disabled; month/year heading announces politely.
 8. Calendars: Gregorian default via `TM_CALENDAR`; Umm al-Qura and Ethiopic entry points
    register via `provideTmCalendar`; runtime calendar switch re-renders text and popup with the
    model unchanged; Ethiopic shows 13 selectable months incl. leap Pagume; Umm al-Qura window

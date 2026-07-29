@@ -5,7 +5,7 @@
 
 import { expect, test } from '@playwright/test';
 
-import { activateCell, cell, cellText, gotoGrid } from '../support/grid';
+import { activateCell, cell, cellText, gotoGrid, gridScroller } from '../support/grid';
 import { syntheticPaste } from '../support/clipboard';
 
 /**
@@ -85,6 +85,47 @@ test.describe('date column defaults (DoD 9)', () => {
     await expect(page.getByTestId('model-json')).toContainText('"dueDate":"2026-06-25"');
     await expect(cell(page, 0, DUE_COL)).toContainText('6/25/2026');
     await expect(cell(page, 0, DUE_COL)).toBeFocused();
+  });
+
+  test('one Alt+ArrowDown reaches the calendar, like an enum cell reaches its panel', async ({
+    page,
+  }) => {
+    await gotoGrid(page, 'grid-editable');
+    await activateCell(page, 0, DUE_COL);
+    await page.keyboard.press('Alt+ArrowDown'); // ONE press: editor + calendar
+
+    await expect(page.locator('.tm-date-picker__input')).toBeVisible();
+    await expect(page.locator('.tm-date-popup')).toBeVisible();
+
+    // F2 is the other half of the contract: it edits without popping the
+    // calendar, because typing is a date cell's primary path.
+    await page.keyboard.press('Escape'); // popup
+    await page.keyboard.press('Escape'); // session
+    await expect(page.locator('.tm-date-picker__input')).toHaveCount(0);
+    await page.keyboard.press('F2');
+    await expect(page.locator('.tm-date-picker__input')).toBeVisible();
+    await expect(page.locator('.tm-date-popup')).toHaveCount(0);
+  });
+
+  test('arrowing onto the last column clears the scrollbar gutter', async ({ page }) => {
+    await gotoGrid(page, 'grid-editable');
+    await activateCell(page, 0, 0);
+    for (let col = 0; col < DUE_COL; col++) {
+      await page.keyboard.press('ArrowRight');
+    }
+    await expect(cell(page, 0, DUE_COL)).toBeFocused();
+
+    // The scroller's border box counts the vertical scrollbar's gutter as
+    // visible space; the cell has to clear the CLIENT box.
+    const viewport = await gridScroller(page).evaluate((element: HTMLElement) => {
+      const rect = element.getBoundingClientRect();
+      const gutter = element.offsetWidth - element.clientWidth;
+      const rtl = getComputedStyle(element).direction === 'rtl';
+      return { left: rect.left + (rtl ? gutter : 0), right: rect.right - (rtl ? 0 : gutter) };
+    });
+    const box = (await cell(page, 0, DUE_COL).boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(viewport.left - 1);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.right + 1);
   });
 
   test('Alt+ArrowDown opens the popup anchored to the cell; two-stage Esc composes', async ({

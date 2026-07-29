@@ -151,30 +151,38 @@ test.describe('keyboard matrix (DoD 7)', () => {
 });
 
 test.describe('fixed geometry (DoD 7)', () => {
-  test('the popup keeps its width and takes only the rows a month needs', async ({ page }) => {
+  test('the popup keeps its exact box across months and views', async ({ page }) => {
     await page.goto(storyUrl('date-picker'));
     await openViaButton(page, 'picker-due');
     const next = popup(page).locator('.tm-date-popup__nav').last();
     const heading = popup(page).locator('.tm-date-popup__view-switch');
     const march = (await popup(page).boundingBox())!; // March 2026 needs 5 rows
 
-    // Height follows the content: May 2026 spills into a sixth week. The
-    // popup is a top-layer overlay, so its height was never part of the
-    // page's layout to hold still, and padding it to a fixed six rows
-    // just left a blank band under most months.
+    // May 2026 spills into a sixth week; the box must not notice. A popup
+    // that resizes under the pointer moves the very controls the user is
+    // clicking (opened upward, its header arrows walk up the screen with
+    // every page), and one that fitted the viewport on open can grow out
+    // of it. A blank row on a short month is the cheaper compromise.
     await next.click();
     await next.click();
     await expect(heading).toContainText('May');
     const may = (await popup(page).boundingBox())!;
-    expect(may.height).toBeGreaterThan(march.height);
-
-    // Width, though, never moves — in any month or view. A calendar that
-    // changed width under the pointer would walk off its field.
+    expect(may.height).toBeCloseTo(march.height, 1);
     expect(may.width).toBeCloseTo(march.width, 1);
-    await heading.click(); // month view
-    expect((await popup(page).boundingBox())!.width).toBeCloseTo(march.width, 1);
-    await heading.click(); // year view
-    expect((await popup(page).boundingBox())!.width).toBeCloseTo(march.width, 1);
+
+    // Same box in the coarser views. Wait for each view to actually render
+    // before measuring — a box read in the click's own beat is the previous
+    // view's, which is how a resizing popup passed this test once already.
+    await heading.click();
+    await expect(popup(page).locator('.tm-date-popup__months')).toBeVisible();
+    const months = (await popup(page).boundingBox())!;
+    expect(months.width).toBeCloseTo(march.width, 1);
+    expect(months.height).toBeCloseTo(march.height, 1);
+    await heading.click();
+    await expect(popup(page).locator('.tm-date-popup__years')).toBeVisible();
+    const years = (await popup(page).boundingBox())!;
+    expect(years.width).toBeCloseTo(march.width, 1);
+    expect(years.height).toBeCloseTo(march.height, 1);
   });
 
   test('bounds clamp navigation and disable out-of-range days', async ({ page }) => {

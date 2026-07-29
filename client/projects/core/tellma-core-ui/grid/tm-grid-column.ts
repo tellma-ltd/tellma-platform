@@ -18,6 +18,14 @@ import { TmGridDisplayDef, TmGridEditorDef, TmGridHeaderDef } from './tm-grid-te
 let nextColumnId = 0;
 
 /**
+ * Cell alignment — logical (`start`/`end`/`center`) or physical
+ * (`left`/`right`). Named so the emitted declaration carries the alias: a
+ * bare literal union prints in the compiler's type-interning order, which
+ * differs between builds and churns the API golden.
+ */
+export type TmGridColumnAlign = 'start' | 'end' | 'center' | 'left' | 'right';
+
+/**
  * One grid column, declared as a content child of `tm-grid`/`tm-tree-grid`
  * in display order. Definition-only: it renders nothing itself.
  *
@@ -94,12 +102,11 @@ export class TmGridColumn<T = unknown, V = unknown> {
   /** Minimum width in px for proportional columns. */
   readonly minWidth = input<number | undefined>(undefined);
   /**
-   * Cell alignment — logical (`start`/`end`/`center`) or physical
-   * (`left`/`right`; numerals stay right-aligned in RTL locales too).
+   * Cell alignment (numerals stay right-aligned in RTL locales too).
    * Defaults by type: `number`/`date` → `right`, `boolean` → `center`,
    * else `start`.
    */
-  readonly align = input<'start' | 'end' | 'center' | 'left' | 'right' | undefined>(undefined);
+  readonly align = input<TmGridColumnAlign | undefined>(undefined);
   /**
    * `number` columns: the fewest fraction digits to display, zero-padded
    * (e.g. `2` renders `5` as `5.00`). Defaults to `0`. Ignored when a custom

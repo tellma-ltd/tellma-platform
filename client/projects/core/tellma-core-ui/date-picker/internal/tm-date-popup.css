@@ -78,6 +78,15 @@
   display: flex;
   flex-direction: column;
   gap: var(--date-picker-cell-gap);
+  /* Every view reserves the day grid's box — a weekday row plus six weeks —
+     so neither paging a month nor climbing the view ladder resizes the
+     popup. It is the controls that matter: a popup opened upward keeps its
+     bottom edge, so any change in height walks its header arrows up the
+     screen, out from under the pointer that is clicking them. The month
+     and year grids simply leave the difference blank. */
+  min-block-size: calc(
+    7 * var(--date-picker-cell-size) + 6 * var(--date-picker-cell-gap)
+  );
 }
 
 .tm-date-popup__weekdays,
