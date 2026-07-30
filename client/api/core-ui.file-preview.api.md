@@ -18,7 +18,7 @@ export class TmFilePreview {
 export interface TmPreviewFile {
     readonly name: string;
     readonly size?: number;
-    readonly source: Blob | (() => Promise<Blob>) | {
+    readonly source: Blob | ((signal: AbortSignal) => Promise<Blob>) | {
         readonly url: string;
     };
     readonly type?: string;

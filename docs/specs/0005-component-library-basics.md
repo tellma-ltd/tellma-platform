@@ -751,7 +751,7 @@ interface TmPreviewFile {
   name: string;                     // drives kind detection (extension) and the title bar
   type?: string;                    // MIME when known
   size?: number;                    // bytes, for the header
-  source: Blob | (() => Promise<Blob>) | { url: string };
+  source: Blob | ((signal: AbortSignal) => Promise<Blob>) | { url: string };
 }
 ```
 
@@ -774,10 +774,16 @@ anything undetected is unsupported):
 | Plain text (MIME allowlist: `text/plain`, `text/csv`, JSON, XML) | escaped `<pre>` (capped at 1 MB, tail truncated with a notice) |
 | HTML and everything else | **never rendered** — the unsupported card ("Preview not available") with the download button. Blob URLs inherit the app origin, so user-authored active content is a same-origin XSS vector; download-only is the policy, not a limitation to engineer around. |
 
-Toolbar: file name + size, **Download** (always; `<a download>` with the object URL), **Print**
-for images only (PDF printing is the built-in viewer's toolbar; other kinds have none), Close.
-Object URLs are revoked on close. A loading state (spinner, `aria-busy`) shows while a lazy
-`source` resolves; load failure shows a localized error state inside the modal.
+Toolbar: file name + size, **Download** (`<a download>` with the object URL), **Print** for
+images only, Close. A **PDF carries no toolbar of ours** — the browser's viewer already has
+print and download, and a size line does not earn a band across the page being read. (That
+viewer's own chrome is not ours to label: it titles the document from the PDF's `/Title`
+metadata and names its download after the blob URL, neither of which a page can set.)
+
+Closing releases what the view held: the loader's `AbortSignal` fires, media elements are
+paused and emptied — a detached `<video>` keeps streaming otherwise — and every object URL is
+revoked. A loading state (spinner, `aria-busy`) shows while a lazy `source` resolves; load
+failure shows a localized error state inside the modal.
 
 ## 9. Tabs — `tm-tab-group` + `tm-tab`
 

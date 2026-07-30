@@ -350,6 +350,75 @@ describe('TmFilePreview', () => {
     );
   });
 
+  it('the PDF branch drops the footer — the browser viewer owns that chrome', async () => {
+    const restore = withPdfViewer(true);
+    try {
+      const { fixture, preview } = await setup();
+      preview.open({
+        name: 'doc.pdf',
+        type: 'application/pdf',
+        size: 1024,
+        source: new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
+      });
+      await until(fixture, () => content()?.querySelector('iframe.tm-preview__frame') !== null);
+      expect(content()!.querySelector('.tm-preview__footer')).toBeNull();
+      // Every other kind keeps it — the branch is the PDF's, not a removal.
+      expect(content()!.querySelector('[data-tm-preview-action="download"]')).toBeNull();
+    } finally {
+      restore();
+    }
+
+    TestBed.resetTestingModule();
+    const { fixture, preview } = await setup();
+    preview.open({
+      name: 'photo.png',
+      type: 'image/png',
+      size: 1024,
+      source: await pngBlob(),
+    });
+    await until(fixture, () => content()?.querySelector('img.tm-preview__media') !== null);
+    expect(content()!.querySelector('.tm-preview__footer')).not.toBeNull();
+    expect(content()!.querySelector('[data-tm-preview-action="download"]')).not.toBeNull();
+  });
+
+  it('closing aborts the loader — no cache is warmed by finishing', async () => {
+    const { fixture, preview } = await setup();
+    let seen: AbortSignal | undefined;
+    const ref = preview.open({
+      name: 'slow.png',
+      type: 'image/png',
+      source: (signal) => {
+        seen = signal;
+        // Never settles: the abort is the only way out.
+        return new Promise<Blob>(() => undefined);
+      },
+    });
+    await until(fixture, () => seen !== undefined);
+    expect(seen!.aborted).toBe(false);
+
+    ref.close();
+    await until(fixture, () => content() === null);
+    expect(seen!.aborted).toBe(true);
+  });
+
+  it('closing stops a media element streaming — detaching it does not', async () => {
+    const { fixture, preview } = await setup();
+    const ref = preview.open({
+      name: 'clip.wav',
+      type: 'audio/wav',
+      source: { url: '/nonexistent-audio.wav' },
+    });
+    await until(fixture, () => content()?.querySelector('audio') !== null);
+    const audio = content()!.querySelector('audio')!;
+    expect(audio.getAttribute('src')).toBe('/nonexistent-audio.wav');
+
+    ref.close();
+    await until(fixture, () => content() === null);
+    // Source cleared and reloaded: the element holds no stream to finish.
+    expect(audio.hasAttribute('src')).toBe(false);
+    expect(audio.paused).toBe(true);
+  });
+
   it('revokes its object URLs when the modal closes', async () => {
     const { fixture, preview } = await setup();
     const revoke = vi.spyOn(URL, 'revokeObjectURL');

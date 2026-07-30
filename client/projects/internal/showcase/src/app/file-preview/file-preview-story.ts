@@ -212,10 +212,19 @@ export class FilePreviewStory {
     this.preview.open({
       name: 'slow.txt',
       type: 'text/plain',
-      source: () =>
-        new Promise((resolve) =>
-          setTimeout(() => resolve(new Blob(['finally here'], { type: 'text/plain' })), 700),
-        ),
+      // Honors the teardown signal, as a real loader should: closing the
+      // viewer while this is in flight settles nothing and fetches nothing.
+      source: (signal) =>
+        new Promise((resolve, reject) => {
+          const timer = setTimeout(
+            () => resolve(new Blob(['finally here'], { type: 'text/plain' })),
+            700,
+          );
+          signal.addEventListener('abort', () => {
+            clearTimeout(timer);
+            reject(new DOMException('Aborted', 'AbortError'));
+          });
+        }),
     });
   }
 

@@ -28,8 +28,15 @@ export interface TmPreviewFile {
    * image-less or PDF source falls back to the download-only card — the
    * PDF viewer's frame is not sandboxed and may only ever render bytes
    * this component fetched and re-typed itself.
+   *
+   * A loader is handed an `AbortSignal` that fires when the viewer closes:
+   * nothing downstream wants those bytes any more — no cache is warmed by
+   * finishing — so forward it (`fetch(url, { signal })`, or
+   * `HttpClient` + `takeUntil`) and the transfer stops with the modal. The
+   * parameter is optional to accept: a loader that ignores it still
+   * compiles, and its result is discarded either way.
    */
-  readonly source: Blob | (() => Promise<Blob>) | { readonly url: string };
+  readonly source: Blob | ((signal: AbortSignal) => Promise<Blob>) | { readonly url: string };
 }
 
 /**

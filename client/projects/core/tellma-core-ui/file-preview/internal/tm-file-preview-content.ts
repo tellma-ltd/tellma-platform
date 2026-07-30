@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component, computed, inject, type OnDestroy, signal } from '@angular/core';
+import { Component, computed, ElementRef, inject, type OnDestroy, signal } from '@angular/core';
 import { DomSanitizer, type SafeResourceUrl } from '@angular/platform-browser';
 
 import { TM_UI_TRANSLATE, TmL10n } from '@tellma/core-ui';
@@ -20,8 +20,12 @@ const TEXT_CAP_BYTES = 1024 * 1024;
 /**
  * The modal body of `TmFilePreview`: resolves the source (blob, lazy
  * loader with a spinner, or a direct URL for streamable media), renders
- * per kind, and pins the size/print/download footer. Every object URL it
- * mints is revoked on destroy (= modal close).
+ * per kind, and pins the size/print/download footer — except under a PDF,
+ * where the browser's own viewer already carries that chrome.
+ *
+ * Closing (= destroy) releases everything the view was holding: the
+ * loader's `AbortSignal` fires, media elements are paused and emptied, and
+ * every object URL it minted is revoked.
  *
  * @internal Opened exclusively by `TmFilePreview`; never use directly.
  */
@@ -94,29 +98,35 @@ const TEXT_CAP_BYTES = 1024 * 1024;
            the modal is already open and focused when a lazy load fails. -->
       <div class="tm-preview__live" role="status">{{ liveMessage() }}</div>
     </div>
-    <div tmModalFooter class="tm-preview__footer">
-      <span class="tm-preview__size">{{ sizeText() }}</span>
-      @if (canPrint()) {
-        <button
-          tmButton
-          variant="ghost"
-          data-tm-preview-action="print"
-          (click)="print()"
-        >
-          {{ printLabel() }}
-        </button>
-      }
-      @if (downloadUrl(); as url) {
-        <a
-          class="tm-preview__download"
-          data-tm-preview-action="download"
-          [href]="url"
-          [download]="file.name"
-        >
-          {{ downloadLabel() }}
-        </a>
-      }
-    </div>
+    <!-- The PDF branch has NO footer: the browser's viewer brings its own
+         print and download chrome, so ours would only repeat it — and a
+         size line alone does not earn a band across a document the user is
+         trying to read. Every other kind keeps it. -->
+    @if (viewKind() !== 'pdf') {
+      <div tmModalFooter class="tm-preview__footer">
+        <span class="tm-preview__size">{{ sizeText() }}</span>
+        @if (canPrint()) {
+          <button
+            tmButton
+            variant="ghost"
+            data-tm-preview-action="print"
+            (click)="print()"
+          >
+            {{ printLabel() }}
+          </button>
+        }
+        @if (downloadUrl(); as url) {
+          <a
+            class="tm-preview__download"
+            data-tm-preview-action="download"
+            [href]="url"
+            [download]="file.name"
+          >
+            {{ downloadLabel() }}
+          </a>
+        }
+      </div>
+    }
   `,
   styleUrl: './tm-file-preview-content.css',
   host: { class: 'tm-file-preview' },
@@ -148,6 +158,9 @@ export class ɵTmFilePreviewContent implements OnDestroy {
 
   private readonly objectUrls = new Set<string>();
   private destroyed = false;
+  /** Aborted on close: the loader's fetch stops with the viewer. */
+  private readonly teardown = new AbortController();
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   /** The kind the template renders — PDF needs the browser's own viewer. */
   protected readonly viewKind = computed<TmPreviewKind>(() => {
@@ -196,6 +209,20 @@ export class ɵTmFilePreviewContent implements OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    // Stop the bytes still coming in. A closed viewer wants none of them,
+    // and unlike the image cache nothing downstream keeps them: a loader's
+    // signal ends its fetch, and a media element hands its stream back only
+    // when it is paused and its source is cleared — removing it from the
+    // DOM does NOT abort the transfer (Chromium keeps streaming a detached
+    // <video> until it is collected).
+    this.teardown.abort();
+    for (const media of this.host.nativeElement.querySelectorAll<HTMLMediaElement>(
+      'video, audio',
+    )) {
+      media.pause();
+      media.removeAttribute('src');
+      media.load();
+    }
     for (const url of this.objectUrls) {
       URL.revokeObjectURL(url);
     }
@@ -249,7 +276,7 @@ export class ɵTmFilePreviewContent implements OnDestroy {
     }
     if (typeof source === 'function') {
       try {
-        const blob = await source();
+        const blob = await source(this.teardown.signal);
         if (!this.destroyed) {
           await this.presentBlob(blob);
         }
