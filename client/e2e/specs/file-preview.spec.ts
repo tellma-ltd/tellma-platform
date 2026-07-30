@@ -143,6 +143,27 @@ test.describe('PDF dual path (DoD 13)', () => {
     expect(await frame.getAttribute('src')).toMatch(/^blob:/);
     await close(page);
   });
+
+  test('with a viewer: the document reaches the panel edge — no footer, no dead band', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(Navigator.prototype, 'pdfViewerEnabled', { get: () => true });
+    });
+    await page.goto(storyUrl('file-preview'));
+    await open(page, 'preview-pdf');
+    const frame = viewer(page).locator('iframe.tm-preview__frame');
+    await expect(frame).toBeVisible();
+
+    // The browser's viewer brings its own print/download chrome, so ours is
+    // absent — and with it the body padding that would show as a band of
+    // dead space under the document.
+    await expect(viewer(page).locator('.tm-preview__footer')).toHaveCount(0);
+    const panel = (await page.locator('.cdk-overlay-pane.tm-modal-panel--flush').boundingBox())!;
+    const box = (await frame.boundingBox())!;
+    expect(Math.abs(panel.y + panel.height - (box.y + box.height))).toBeLessThan(2);
+    await close(page);
+  });
 });
 
 test.describe('lazy sources (DoD 13)', () => {

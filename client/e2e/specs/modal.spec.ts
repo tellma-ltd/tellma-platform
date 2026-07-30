@@ -228,6 +228,27 @@ test.describe('top-layer interplay (DoD 15, Playwright-pinned)', () => {
 });
 
 test.describe('appearance gates', () => {
+  test('the close button sits the same distance from all three edges it touches', async ({
+    page,
+  }) => {
+    await page.goto(storyUrl('modal'));
+    await openBasic(page);
+    const gaps = await shell(page).evaluate((el) => {
+      const header = el.querySelector('.tm-modal__header')!.getBoundingClientRect();
+      const close = el.querySelector('.tm-modal__close')!.getBoundingClientRect();
+      return {
+        end: header.right - close.right,
+        top: close.top - header.top,
+        bottom: header.bottom - close.bottom,
+      };
+    });
+    // The end padding is the air around the BUTTON, not the text inset the
+    // start edge carries, so it matches the block padding rather than
+    // --modal-padding-x.
+    expect(Math.abs(gaps.end - gaps.top)).toBeLessThan(2);
+    expect(Math.abs(gaps.end - gaps.bottom)).toBeLessThan(2);
+  });
+
   test('forced-colors: the panel keeps a visible border', async ({ page }) => {
     await page.emulateMedia({ forcedColors: 'active' });
     await page.goto(storyUrl('modal'));

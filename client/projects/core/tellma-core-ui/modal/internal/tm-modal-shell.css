@@ -80,7 +80,11 @@
   gap: var(--space-2);
   flex: none;
   padding-block: var(--space-3);
-  padding-inline: var(--modal-padding-x);
+  padding-inline-start: var(--modal-padding-x);
+  /* The close button sits in this corner, so the end padding is the air
+     AROUND it, not the text inset the start edge carries: matching the
+     block padding puts the same gap on all three sides it touches. */
+  padding-inline-end: var(--space-3);
   border-block-end: var(--border-width) solid var(--divider);
 }
 
@@ -136,10 +140,12 @@
 
 /* Full-bleed content (a file preview) owns the whole scrollport: the
    body's own padding would only shrink the area the content is there to
-   fill. The header and footer keep theirs. */
+   fill. The header and footer keep theirs. The block-end padding goes too
+   — with a footer the `:has()` rule below already drops it, and without
+   one (a PDF, whose viewer carries its own chrome) it would show as a
+   band of dead space under the document. */
 .tm-modal-panel--flush .tm-modal__body {
-  padding-inline: 0;
-  padding-block-start: 0;
+  padding: 0;
 }
 
 /* With that padding gone there is nothing left for the footer's negative
