@@ -16,8 +16,8 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly email: "{gender, select, female {أدخلي} other {أدخل}} عنوان بريد إلكتروني صحيحا";
         readonly minLength: "{gender, select, female {أدخلي} other {أدخل}} {minLength, plural, one {حرفا واحدا على الأقل} two {حرفين على الأقل} few {# أحرف على الأقل} many {# حرفا على الأقل} other {# حرف على الأقل}}";
         readonly maxLength: "{gender, select, female {أدخلي} other {أدخل}} {maxLength, plural, one {حرفا واحدا كحد أقصى} two {حرفين كحد أقصى} few {# أحرف كحد أقصى} many {# حرفا كحد أقصى} other {# حرف كحد أقصى}}";
-        readonly min: "{gender, select, female {أدخلي} other {أدخل}} قيمة لا تقل عن {min}";
-        readonly max: "{gender, select, female {أدخلي} other {أدخل}} قيمة لا تزيد عن {max}";
+        readonly min: "{gender, select, female {أدخلي} other {أدخل}} قيمة لا تقل عن {min, number}";
+        readonly max: "{gender, select, female {أدخلي} other {أدخل}} قيمة لا تزيد عن {max, number}";
         readonly pattern: "القيمة لا تطابق التنسيق المطلوب";
         readonly minDate: "{gender, select, female {أدخلي} other {أدخل}} تاريخا لا يسبق {minDate}";
         readonly maxDate: "{gender, select, female {أدخلي} other {أدخل}} تاريخا لا يتجاوز {maxDate}";
@@ -66,7 +66,7 @@ export const TM_LOCALE_AR_STRINGS: {
             readonly transaction: "التغيير";
         };
         readonly announce: {
-            readonly selection: "تم تحديد {rows} × {cols}";
+            readonly selection: "تم تحديد {rows, number} × {cols, number}";
             readonly selectionAll: "تم تحديد كل الخلايا";
             readonly copied: "تم نسخ {cells, plural, zero {# خلية} one {خلية واحدة} two {خليتين} few {# خلايا} many {# خلية} other {# خلية}}";
             readonly copyRefused: "يتعذر نسخ تحديد متعدد النطاقات بهذا الشكل";
@@ -86,8 +86,8 @@ export const TM_LOCALE_AR_STRINGS: {
             readonly editorCancelledRowRemoved: "تم إلغاء التحرير — تمت إزالة الصف";
             readonly resolved: "تمت مطابقة {count, plural, zero {# تسمية} one {تسمية واحدة} two {تسميتين} few {# تسميات} many {# تسمية} other {# تسمية}}{errors, plural, =0 {} one {، واحدة لم تتطابق} two {، اثنتان لم تتطابقا} few {، # لم تتطابق} many {، # لم تتطابق} other {، # لم تتطابق}}";
             readonly lazyLoadFailed: "تعذر تحميل الصفوف الفرعية";
-            readonly errorJump: "الخطأ {index} من {count}";
-            readonly checkedCount: "تم تحديد {selected} من {total}";
+            readonly errorJump: "الخطأ {index, number} من {count, number}";
+            readonly checkedCount: "تم تحديد {selected, number} من {total, number}";
             readonly loaded: "{count, plural, =0 {لا توجد سجلات} one {تم تحميل سجل واحد} two {تم تحميل سجلين} few {تم تحميل # سجلات} many {تم تحميل # سجلا} other {تم تحميل # سجل}}";
             readonly loading: "جار التحميل";
         };
@@ -104,7 +104,7 @@ export const TM_LOCALE_AR_STRINGS: {
         };
         readonly find: {
             readonly label: "البحث في الجدول";
-            readonly counter: "{index} من {count}";
+            readonly counter: "{index, number} من {count, number}";
             readonly noMatches: "لا توجد تطابقات";
             readonly next: "التطابق التالي";
             readonly previous: "التطابق السابق";
@@ -132,11 +132,11 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly hint: "اسحب الملفات وأفلتها هنا، أو الصق، أو";
         readonly browse: "تصفح";
         readonly acceptedTypes: "الأنواع المقبولة: {types}";
-        readonly maxSize: "حتى {maxMb} ميغابايت لكل ملف";
-        readonly maxSizeSingle: "حتى {maxMb} ميغابايت";
+        readonly maxSize: "حتى {maxMb, number} ميغابايت لكل ملف";
+        readonly maxSizeSingle: "حتى {maxMb, number} ميغابايت";
         readonly announce: "{accepted, plural, =0 {لم تتم إضافة ملفات} one {تمت إضافة ملف واحد} two {تمت إضافة ملفين} few {تمت إضافة # ملفات} many {تمت إضافة # ملفًا} other {تمت إضافة # ملف}}{rejectedCount, plural, =0 {} one {، ورُفض ملف واحد} two {، ورُفض ملفان} few {، ورُفضت # ملفات} many {، ورُفض # ملفًا} other {، ورُفض # ملف}}";
         readonly rejected: {
-            readonly size: "{name} أكبر من {maxMb} ميغابايت";
+            readonly size: "{name} أكبر من {maxMb, number} ميغابايت";
             readonly type: "{name} ليس نوع ملف مقبولًا";
             readonly count: "يمكن إضافة {maxFiles, plural, one {ملف واحد فقط} two {ملفين فقط} few {# ملفات فقط} many {# ملفًا فقط} other {# ملف فقط}}";
             readonly folder: "لا يمكن إفلات المجلدات — أفلت الملفات فقط";
@@ -151,7 +151,7 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly cropSurface: "منطقة الاقتصاص — مفاتيح الأسهم للتحريك، و+ و- للتكبير";
         readonly zoom: "التكبير";
         readonly done: "تم";
-        readonly tooLarge: "حجم الملف أكبر من {maxMb} ميغابايت";
+        readonly tooLarge: "حجم الملف أكبر من {maxMb, number} ميغابايت";
         readonly unsupported: "الملف ليس صورة مدعومة";
     };
 };

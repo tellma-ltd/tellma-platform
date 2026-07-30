@@ -10,9 +10,9 @@ import {
   provideEnvironmentInitializer,
   type EnvironmentProviders,
 } from '@angular/core';
-import { provideTransloco, TranslocoService } from '@jsverse/transloco';
-import { provideTranslocoMessageformat } from '@jsverse/transloco-messageformat';
+import { provideTransloco, TRANSLOCO_TRANSPILER, TranslocoService } from '@jsverse/transloco';
 
+import { ɵTmMessageFormatTranspiler } from '../i18n/tm-message-transpiler';
 import { TM_UI_I18N_SCOPE } from '../i18n/tm-ui-translate';
 import { TM_UI_STRINGS_EN } from '../i18n/strings-en';
 import { provideTellmaForms, type TmFormsOptions } from '../forms/provide-tellma-forms';
@@ -59,7 +59,9 @@ export function provideTellmaUi(options: TmUiOptions = {}): EnvironmentProviders
         prodMode: !isDevMode(),
       },
     }),
-    provideTranslocoMessageformat(),
+    // ICU MessageFormat, compiled against the formatting locale rather than
+    // the language tag — see the transpiler's own docs.
+    { provide: TRANSLOCO_TRANSPILER, useClass: ɵTmMessageFormatTranspiler },
     provideEnvironmentInitializer(() => {
       // The library's built-in English strings, merged under the tmUi
       // namespace of the English language resources.

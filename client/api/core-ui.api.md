@@ -51,8 +51,8 @@ export const TM_UI_STRINGS_EN: {
         readonly email: "Enter a valid email address";
         readonly minLength: "Enter at least {minLength, plural, one {# character} other {# characters}}";
         readonly maxLength: "Enter no more than {maxLength, plural, one {# character} other {# characters}}";
-        readonly min: "Enter a value of at least {min}";
-        readonly max: "Enter a value of at most {max}";
+        readonly min: "Enter a value of at least {min, number}";
+        readonly max: "Enter a value of at most {max, number}";
         readonly pattern: "The value does not match the expected format";
         readonly minDate: "Enter a date on or after {minDate}";
         readonly maxDate: "Enter a date on or before {maxDate}";
@@ -101,7 +101,7 @@ export const TM_UI_STRINGS_EN: {
             readonly transaction: "change";
         };
         readonly announce: {
-            readonly selection: "{rows} × {cols} selected";
+            readonly selection: "{rows, number} × {cols, number} selected";
             readonly selectionAll: "All cells selected";
             readonly copied: "{cells, plural, one {1 cell} other {# cells}} copied";
             readonly copyRefused: "Cannot copy a multi-range selection of this shape";
@@ -121,8 +121,8 @@ export const TM_UI_STRINGS_EN: {
             readonly editorCancelledRowRemoved: "Editing cancelled — the row was removed";
             readonly resolved: "{count, plural, one {1 label} other {# labels}} resolved{errors, plural, =0 {} one {, 1 not matched} other {, # not matched}}";
             readonly lazyLoadFailed: "Could not load child rows";
-            readonly errorJump: "Error {index} of {count}";
-            readonly checkedCount: "{selected} of {total} selected";
+            readonly errorJump: "Error {index, number} of {count, number}";
+            readonly checkedCount: "{selected, number} of {total, number} selected";
             readonly loaded: "{count, plural, =0 {No records} one {1 record} other {# records}} loaded";
             readonly loading: "Loading";
         };
@@ -139,7 +139,7 @@ export const TM_UI_STRINGS_EN: {
         };
         readonly find: {
             readonly label: "Find in grid";
-            readonly counter: "{index} of {count}";
+            readonly counter: "{index, number} of {count, number}";
             readonly noMatches: "No matches";
             readonly next: "Next match";
             readonly previous: "Previous match";
@@ -167,11 +167,11 @@ export const TM_UI_STRINGS_EN: {
         readonly hint: "Drag and drop here, paste, or";
         readonly browse: "browse";
         readonly acceptedTypes: "Accepted: {types}";
-        readonly maxSize: "Up to {maxMb} MB each";
-        readonly maxSizeSingle: "Up to {maxMb} MB";
+        readonly maxSize: "Up to {maxMb, number} MB each";
+        readonly maxSizeSingle: "Up to {maxMb, number} MB";
         readonly announce: "{accepted, plural, =0 {No files added} one {1 file added} other {# files added}}{rejectedCount, plural, =0 {} one {, 1 file rejected} other {, # files rejected}}";
         readonly rejected: {
-            readonly size: "{name} is larger than {maxMb} MB";
+            readonly size: "{name} is larger than {maxMb, number} MB";
             readonly type: "{name} is not an accepted file type";
             readonly count: "Only {maxFiles, plural, one {# file} other {# files}} can be added";
             readonly folder: "Folders cannot be dropped — drop files only";
@@ -186,7 +186,7 @@ export const TM_UI_STRINGS_EN: {
         readonly cropSurface: "Crop area — arrow keys pan, plus and minus zoom";
         readonly zoom: "Zoom";
         readonly done: "Done";
-        readonly tooLarge: "The file is larger than {maxMb} MB";
+        readonly tooLarge: "The file is larger than {maxMb, number} MB";
         readonly unsupported: "The file is not a supported image";
     };
 };

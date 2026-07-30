@@ -21,12 +21,22 @@ function fakeOverlay(): { directive: CdkConnectedOverlay; updatePosition: Return
   return { directive, updatePosition };
 }
 
+/**
+ * The config the next `createHost` mounts. ONE host class serves every
+ * test: declaring a fresh anonymous component per call — each with the same
+ * name, selector and template — makes Angular derive the same component id
+ * for all of them and warn about the collision (NG0912).
+ */
+let pendingConfig: TmAnchoredOverlayConfig | null = null;
+
+@Component({ selector: 'tm-anchored-overlay-host', template: `` })
+class Host {
+  readonly anchored: TmAnchoredOverlay = tmCreateAnchoredOverlay(pendingConfig!);
+}
+
 /** Hosts the helper so DestroyRef cleanup ties to the fixture's lifetime. */
 function createHost(config: TmAnchoredOverlayConfig) {
-  @Component({ template: `` })
-  class Host {
-    readonly anchored: TmAnchoredOverlay = tmCreateAnchoredOverlay(config);
-  }
+  pendingConfig = config;
   const fixture = TestBed.createComponent(Host);
   return { fixture, anchored: fixture.componentInstance.anchored };
 }
