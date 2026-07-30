@@ -82,6 +82,7 @@ export class TmGridClipboard<T = unknown> {
 
 // @public
 export interface TmGridClipboardMeta {
+    readonly calendar?: string;
     readonly cols?: ReadonlyArray<{
         readonly key: string | null;
         readonly type: TmGridColumnType;
@@ -96,6 +97,7 @@ export interface TmGridClipboardMeta {
 // @public
 export interface TmGridClipboardOptions<T = unknown> {
     readonly annotations: TmGridCellAnnotations;
+    readonly calendar?: SignalLike<string>;
     readonly canAddRows: SignalLike<boolean>;
     displayText(cell: TmRowCol): string;
     readonly distributionKey?: string;
@@ -276,6 +278,7 @@ export interface TmGridEngineColumn<T = unknown> {
     readonly id: string;
     isCellReadonly(row: T): boolean;
     readonly key: string | null;
+    normalizeValue?(value: unknown): unknown | TmParseError;
     parse?(text: string, ctx: TmParseContext): unknown | TmParseError;
     readonly type: TmGridColumnType;
 }
@@ -290,6 +293,7 @@ export interface TmGridEngineHost<T = unknown> {
 
 // @public
 export interface TmGridEngineOptions<T = unknown> {
+    readonly calendar?: SignalLike<string>;
     readonly canAddRows: SignalLike<boolean>;
     readonly columns: SignalLike<ReadonlyArray<TmGridEngineColumn<T>>>;
     readonly direction: SignalLike<'ltr' | 'rtl'>;
@@ -356,7 +360,7 @@ export interface TmGridInvalidInput {
 }
 
 // @public
-export type TmGridInvalidInputReason = 'parse' | 'notFound' | 'ambiguous' | 'resolutionFailed';
+export type TmGridInvalidInputReason = 'parse' | 'precision' | 'notFound' | 'ambiguous' | 'resolutionFailed';
 
 // @public
 export interface TmGridMarquee {

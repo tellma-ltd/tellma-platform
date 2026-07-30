@@ -5,14 +5,11 @@
 
 import { NgTemplateOutlet } from '@angular/common';
 import {
-  afterNextRender,
   afterRenderEffect,
-  type AfterRenderRef,
   Component,
   computed,
   DestroyRef,
   inject,
-  Injector,
   input,
   isDevMode,
   output,
@@ -24,9 +21,10 @@ import {
 } from '@angular/core';
 import { Menu, MenuItem } from '@angular/aria/menu';
 import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
-import type { ConnectedPosition, FlexibleConnectedPositionStrategyOrigin } from '@angular/cdk/overlay';
+import type { ConnectedPosition } from '@angular/cdk/overlay';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
+import { tmCreateAnchoredOverlay, tmPushEscapeDismissal } from '@tellma/core-ui/private';
 
 /** One actionable menu item. */
 export interface TmMenuItem {
@@ -69,9 +67,10 @@ export interface TmMenuOpenOptions {
 }
 
 /**
- * Open menus, most-recently-opened last. Every open instance handles Escape
- * at the document capture phase; gating on the front of this stack keeps a
- * single Escape from closing more than the top-most menu.
+ * Open menus, most-recently-opened last — the front-most gate for the
+ * outside-POINTERDOWN dismissal (Escape rides the shared cross-component
+ * dismissal stack in `@tellma/core-ui/private` instead, so a tooltip
+ * showing over an open menu never makes one Escape close both).
  */
 const openMenuStack: TmMenu[] = [];
 
@@ -94,16 +93,11 @@ const openMenuStack: TmMenu[] = [];
   imports: [Menu, MenuItem, NgTemplateOutlet, OverlayModule],
   template: `
     <ng-template
-      [cdkConnectedOverlay]="{
-        origin: overlayOrigin()!,
-        usePopover: 'inline',
-        disableClose: true,
-        positions: positions,
-      }"
+      [cdkConnectedOverlay]="anchored.overlayConfig()"
       [cdkConnectedOverlayOpen]="expanded()"
-      (attach)="onOverlayAttach()"
-      (detach)="onOverlayDetach()"
-      (overlayOutsideClick)="close({ restoreFocus: false })"
+      (attach)="anchored.handleAttach()"
+      (detach)="anchored.handleDetach()"
+      (overlayOutsideClick)="anchored.handleOutsideClick($event)"
     >
       <div
         class="tm-menu__panel"
@@ -173,7 +167,7 @@ export class TmMenu {
   /** Whether the overlay is attached. */
   protected readonly expanded = signal(false);
   /** Where the overlay anchors (element, rect, or point). */
-  protected readonly overlayOrigin = signal<FlexibleConnectedPositionStrategyOrigin | null>(null);
+  protected readonly overlayOrigin = signal<TmMenuAnchor | null>(null);
 
   /** Standard context-menu placement: below-start first, then flips. */
   protected readonly positions: ConnectedPosition[] = [
@@ -185,27 +179,38 @@ export class TmMenu {
 
   private readonly overlay = viewChild(CdkConnectedOverlay);
   private readonly menu = viewChild(Menu);
-  private readonly injector = inject(Injector);
   private restoreFocusTarget: HTMLElement | null = null;
-  private pendingRemeasure: AfterRenderRef | undefined;
   private focusedOnOpen = false;
+
+  /**
+   * The shared anchored-overlay wiring. The re-measure runs after the NEXT
+   * render so flexible positioning re-flips at the new anchor: the origin
+   * reaches the CDK overlay directive only when change detection flushes
+   * the config binding, so measuring before that (a bare timer racing CD)
+   * would re-measure against the OLD origin — intermittently, on slower
+   * machines.
+   */
+  protected readonly anchored = tmCreateAnchoredOverlay({
+    overlay: () => this.overlay(),
+    origin: () => this.overlayOrigin(),
+    positions: this.positions,
+    remeasure: 'afterNextRender',
+    onAttach: () => this.opened.emit(),
+    onDetach: () => this.onOverlayDetach(),
+    onOutsideClick: () => this.close({ restoreFocus: false }),
+  });
   /** Per-item label signals, cached by item reference. */
   private readonly labelCache = new WeakMap<TmMenuItem, Signal<string>>();
 
   /**
-   * Capture-phase Escape interception while open: the aria menu registers
-   * its own Escape handler (a no-op for a parentless menu) that consumes
-   * the event before it could bubble to the panel, so the close key must
-   * be caught ahead of it. Only the front-most open menu acts, so one
-   * Escape never closes menus stacked behind it.
+   * The shared Escape-dismissal registration while open (document capture
+   * — the aria menu registers its own Escape handler, a no-op for a
+   * parentless menu, that consumes the event before it could bubble to
+   * the panel, so the close key must be caught ahead of it). The SHARED
+   * stack coordinates with the other capture-phase dismissers (tooltips):
+   * one Escape, one layer.
    */
-  private readonly onDocumentKeydownCapture = (event: KeyboardEvent): void => {
-    if (event.key === 'Escape' && openMenuStack[openMenuStack.length - 1] === this) {
-      event.preventDefault();
-      event.stopPropagation();
-      this.close();
-    }
-  };
+  private releaseEscape: (() => void) | null = null;
 
   /**
    * Dismiss on an outside POINTERDOWN, not the trailing click: Excel/Sheets
@@ -224,13 +229,42 @@ export class TmMenu {
     if (target instanceof Node && panel !== null && panel.contains(target)) {
       return;
     }
+    // A press on a MODAL SCRIM must dismiss only the menu: the press's
+    // un-consumed trailing click would also fire the modal's backdrop
+    // dismissal — one gesture, two layers. Swallow that single click at
+    // document capture (backdrop targets only, one-shot, time-boxed).
+    if (target instanceof Element && target.classList.contains('cdk-overlay-backdrop')) {
+      // The trailing click arrives on RELEASE, which the user can defer
+      // indefinitely — so the disarm window opens at pointerup (or
+      // pointercancel, which produces no click at all), never at press.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const disarm = (): void => {
+        clearTimeout(timer);
+        document.removeEventListener('click', swallow, true);
+        document.removeEventListener('pointerup', armDisarmWindow, true);
+        document.removeEventListener('pointercancel', disarm, true);
+      };
+      const swallow = (click: Event): void => {
+        if (click.target === target) {
+          click.preventDefault();
+          click.stopPropagation();
+        }
+        disarm();
+      };
+      const armDisarmWindow = (): void => {
+        clearTimeout(timer);
+        timer = setTimeout(disarm, 600); // the trailing click never came
+      };
+      document.addEventListener('click', swallow, true);
+      document.addEventListener('pointerup', armDisarmWindow, true);
+      document.addEventListener('pointercancel', disarm, true);
+    }
     this.close({ restoreFocus: false });
   };
 
   constructor() {
     this.isOpen = this.expanded.asReadonly();
     inject(DestroyRef).onDestroy(() => {
-      this.pendingRemeasure?.destroy();
       this.disarmDismissal();
     });
 
@@ -262,7 +296,7 @@ export class TmMenu {
       return;
     }
     this.restoreFocusTarget = options?.restoreFocus ?? null;
-    this.overlayOrigin.set(toOverlayOrigin(anchor));
+    this.overlayOrigin.set(anchor);
     this.focusedOnOpen = false;
     this.armDismissal();
 
@@ -275,7 +309,7 @@ export class TmMenu {
     // — drive the re-measure explicitly.
     if (untracked(this.expanded) || (this.overlay()?.overlayRef?.hasAttached() ?? false)) {
       this.expanded.set(true);
-      this.reanchor();
+      this.anchored.reanchor();
       return;
     }
     this.expanded.set(true);
@@ -339,35 +373,13 @@ export class TmMenu {
     }
   }
 
-  /** Emits `opened` on the fresh CDK attach, then re-measures the overlay. */
-  protected onOverlayAttach(): void {
-    this.opened.emit();
-    this.reanchor();
-  }
-
   /** Keeps `expanded` honest when the overlay detaches out-of-band. */
-  protected onOverlayDetach(): void {
+  private onOverlayDetach(): void {
     if (untracked(this.expanded)) {
       this.disarmDismissal();
       this.expanded.set(false);
     }
     this.closed.emit();
-  }
-
-  /**
-   * Re-measures the overlay after the NEXT render so flexible positioning
-   * re-flips at the new anchor — without re-emitting `opened` (a re-anchor is
-   * one continuous open, not a fresh one). The render barrier matters: the
-   * new origin reaches the CDK overlay directive only when change detection
-   * flushes the `[cdkConnectedOverlayOrigin]` binding, so measuring before
-   * that (a bare timer racing CD) re-measures against the OLD origin and the
-   * menu sticks at its previous point — intermittently, on slower machines.
-   */
-  private reanchor(): void {
-    this.pendingRemeasure?.destroy();
-    this.pendingRemeasure = afterNextRender(() => this.overlay()?.overlayRef?.updatePosition(), {
-      injector: this.injector,
-    });
   }
 
   /** Whether the menu has at least one non-separator entry to show. */
@@ -382,7 +394,7 @@ export class TmMenu {
    * double-registers (the listeners de-dupe by reference).
    */
   private armDismissal(): void {
-    document.addEventListener('keydown', this.onDocumentKeydownCapture, true);
+    this.releaseEscape ??= tmPushEscapeDismissal(() => this.close());
     document.addEventListener('pointerdown', this.onDocumentPointerDownCapture, true);
     if (!openMenuStack.includes(this)) {
       openMenuStack.push(this);
@@ -391,22 +403,12 @@ export class TmMenu {
 
   /** Stops the document dismissal handlers and leaves the open-menu stack. */
   private disarmDismissal(): void {
-    document.removeEventListener('keydown', this.onDocumentKeydownCapture, true);
+    this.releaseEscape?.();
+    this.releaseEscape = null;
     document.removeEventListener('pointerdown', this.onDocumentPointerDownCapture, true);
     const index = openMenuStack.indexOf(this);
     if (index !== -1) {
       openMenuStack.splice(index, 1);
     }
   }
-}
-
-/** Maps the public anchor union onto the CDK origin union. */
-function toOverlayOrigin(anchor: TmMenuAnchor): FlexibleConnectedPositionStrategyOrigin {
-  if (anchor instanceof Element) {
-    return anchor;
-  }
-  if (anchor instanceof DOMRect) {
-    return { x: anchor.x, y: anchor.y, width: anchor.width, height: anchor.height };
-  }
-  return { x: anchor.x, y: anchor.y };
 }

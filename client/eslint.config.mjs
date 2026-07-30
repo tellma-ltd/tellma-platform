@@ -24,6 +24,9 @@ const UNPREFIXED_EXPORTS = [
   // fonts (§7.1)
   'fontPreloadLinks',
   'PreloadLink',
+  // The calendar provider — the name the component-basics spec defines
+  // (`provideTm…` carries the brand inside; only the prefix pattern differs).
+  'provideTmCalendar',
 ];
 
 const tmPlugin = {
@@ -31,6 +34,40 @@ const tmPlugin = {
     'prefix-exports': tmPrefixExports,
     'no-state-bindings-on-form-field': noStateBindingsOnFormField,
   },
+};
+
+/**
+ * What a calendar pack may import, shared by the two config blocks below
+ * (spec files get this list; shipped files get it plus the sibling-climb
+ * ban). The bare '@tellma/core-ui' specifier needs its own `paths` entry —
+ * a `group` pattern only ever matches subpaths, so without it a pack could
+ * pull the whole primary entry point in and still lint clean.
+ */
+const CALENDAR_BOUNDARY = {
+  paths: [
+    {
+      name: '@tellma/core-ui',
+      message: 'Calendar entry points may depend on l10n and contracts only.',
+    },
+  ],
+  patterns: [
+    {
+      group: ['@angular/*'],
+      message: 'Calendar entry points must stay free of Angular imports.',
+    },
+    {
+      group: ['@tellma/core-ui/*', '!@tellma/core-ui/l10n', '!@tellma/core-ui/contracts'],
+      message: 'Calendar entry points may depend on l10n and contracts only.',
+    },
+    {
+      group: ['@tellma/core-ui-*', '@tellma/core-ui-*/**', '@tellma/locale-*', '@tellma/locale-*/**'],
+      message: 'Calendar entry points may depend on l10n and contracts only.',
+    },
+    {
+      group: ['@jsverse/*', 'rxjs', 'rxjs/*'],
+      message: 'Calendar entry points are dependency-free beyond the calendar arithmetic package.',
+    },
+  ],
 };
 
 export default defineConfig(
@@ -235,6 +272,131 @@ export default defineConfig(
         {
           selector: "NewExpression[callee.name='InjectionToken']",
           message: 'The grid engine must stay DI-free.',
+        },
+      ],
+    },
+  },
+
+  // Calendar entry-point boundary: the same pure posture as l10n (no
+  // Angular, no DOM, no DI), plus l10n itself for the shared adapter.
+  {
+    files: ['projects/core/tellma-core-ui/calendar-*/**/*.ts'],
+    rules: {
+      'no-restricted-imports': ['error', CALENDAR_BOUNDARY],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "NewExpression[callee.name='InjectionToken']",
+          message:
+            'Calendar entry points must stay DI-free (registration goes through provideTmCalendar).',
+        },
+      ],
+    },
+  },
+
+  // …and SHIPPED calendar code additionally never climbs out of its own
+  // entry point (a relative sibling import would duplicate that sibling into
+  // the pack's bundle). Specs are exempt: both packs are checked against the
+  // one date-format golden, which lives next to the code that produced it.
+  {
+    files: ['projects/core/tellma-core-ui/calendar-*/**/*.ts'],
+    ignores: ['**/*.spec.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          ...CALENDAR_BOUNDARY,
+          patterns: [
+            ...CALENDAR_BOUNDARY.patterns,
+            {
+              group: ['../*'],
+              message: 'Calendar entry points must not reach into sibling entry points.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // l10n entry-point boundary: pure TypeScript + Intl (+ the calendar
+  // arithmetic dependency) — no Angular at all, no DOM, no DI, no other
+  // @tellma packages except the contracts types. Formatting/parsing must
+  // stay deterministic per (input, locale, options) and constructible in a
+  // plain vitest test.
+  {
+    files: ['projects/core/tellma-core-ui/l10n/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@tellma/core-ui',
+              message: 'The l10n entry point may depend on @tellma/core-ui/contracts only.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['@angular/*'],
+              message: 'The l10n entry point must stay free of Angular imports.',
+            },
+            {
+              // Gitignore semantics: exclude the entry points, re-include
+              // contracts (its parent directory itself stays includable).
+              group: ['@tellma/core-ui/*', '!@tellma/core-ui/contracts'],
+              message: 'The l10n entry point may depend on @tellma/core-ui/contracts only.',
+            },
+            {
+              group: ['@tellma/core-ui-*', '@tellma/core-ui-*/**', '@tellma/locale-*', '@tellma/locale-*/**'],
+              message: 'The l10n entry point may depend on @tellma/core-ui/contracts only.',
+            },
+            {
+              group: ['@jsverse/*', 'rxjs', 'rxjs/*'],
+              message:
+                'The l10n entry point is dependency-free beyond Intl, contracts, and the calendar arithmetic package.',
+            },
+            {
+              group: ['../*'],
+              message: 'The l10n entry point must not reach into sibling entry points.',
+            },
+          ],
+        },
+      ],
+      'no-restricted-globals': [
+        'error',
+        ...[
+          'document',
+          'window',
+          'navigator',
+          'DOMParser',
+          'HTMLElement',
+          'Element',
+          'Node',
+          'Event',
+          'KeyboardEvent',
+          'MouseEvent',
+          'PointerEvent',
+          'ClipboardEvent',
+          'DataTransfer',
+          'MutationObserver',
+          'ResizeObserver',
+          'IntersectionObserver',
+          'getComputedStyle',
+          'requestAnimationFrame',
+          'cancelAnimationFrame',
+          'localStorage',
+          'sessionStorage',
+          'customElements',
+        ].map((name) => ({
+          name,
+          message: 'The l10n entry point is DOM-free; DOM work belongs to the component layer.',
+        })),
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "NewExpression[callee.name='InjectionToken']",
+          message: 'The l10n entry point must stay DI-free (the calendar token lives in the primary entry point).',
         },
       ],
     },

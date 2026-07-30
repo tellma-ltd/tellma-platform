@@ -57,3 +57,12 @@ export const NonFormError = {
 export const BareInGridCell = {
   template: `<input tmInput placeholder="Bare input" />`,
 };
+
+/** A textarea host: same control, fixed rows (no resize handle). */
+export const Textarea = {
+  template: `
+    <tm-form-field label="Notes" hint="Visible to the whole team">
+      <textarea tmInput rows="4" placeholder="Add a note"></textarea>
+    </tm-form-field>
+  `,
+};

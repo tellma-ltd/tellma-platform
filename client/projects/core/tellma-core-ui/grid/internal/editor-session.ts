@@ -23,10 +23,15 @@ import type { TmCellEditor, TmCellEditorHost } from '@tellma/core-ui/contracts';
 import { TM_CELL_EDITOR_HOST } from '@tellma/core-ui';
 
 import type { TmGridEditorContext } from '../tm-grid-templates';
-import { ɵTmGridEnumEditor, ɵTmGridTextEditor } from './editors';
+import {
+  ɵTmGridDateEditor,
+  ɵTmGridEnumEditor,
+  ɵTmGridNumberEditor,
+  ɵTmGridTextEditor,
+} from './editors';
 
 /** Which editor source a mount resolved to. */
-export type ɵTmGridEditorKind = 'text' | 'enum' | 'template';
+export type ɵTmGridEditorKind = 'text' | 'number' | 'date' | 'enum' | 'template';
 
 /** What the session mounts for one open editor. */
 export type ɵTmGridEditorMountConfig =
@@ -41,6 +46,18 @@ export type ɵTmGridEditorMountConfig =
       readonly kind: 'text';
       /** The accessible name (column header). */
       readonly label: string;
+    }
+  | {
+      readonly kind: 'number';
+      /** The accessible name (column header). */
+      readonly label: string;
+    }
+  | {
+      readonly kind: 'date';
+      /** The accessible name (column header). */
+      readonly label: string;
+      /** Called when the user picks a date in the calendar popup. */
+      onActivation(): void;
     }
   | {
       readonly kind: 'enum';
@@ -140,6 +157,21 @@ export class ɵTmGridEditorSession {
       const ref = outlet.createComponent(ɵTmGridTextEditor, { injector: cellInjector });
       ref.setInput('label', config.label);
       ref.changeDetectorRef.detectChanges();
+      this.destroyView = () => ref.destroy();
+    } else if (config.kind === 'number') {
+      const ref = outlet.createComponent(ɵTmGridNumberEditor, { injector: cellInjector });
+      ref.setInput('label', config.label);
+      ref.changeDetectorRef.detectChanges();
+      this.destroyView = () => ref.destroy();
+    } else if (config.kind === 'date') {
+      const ref = outlet.createComponent(ɵTmGridDateEditor, { injector: cellInjector });
+      ref.setInput('label', config.label);
+      ref.changeDetectorRef.detectChanges();
+      // The dropdown hooks make the editing keymap's dropdown gate and the
+      // two-stage Esc compose for date cells exactly as for enum cells.
+      this.activationSub = ref.instance.activated.subscribe(() => config.onActivation());
+      isDropdownOpen = () => ref.instance.isPopupOpen();
+      openDropdown = () => ref.instance.openPopup();
       this.destroyView = () => ref.destroy();
     } else {
       const ref = outlet.createComponent(ɵTmGridEnumEditor, { injector: cellInjector });

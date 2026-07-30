@@ -381,6 +381,66 @@ describe('TmGridClipboard paste conversion ladder', () => {
     expect(h.engine.displayText({ row: 0, col: 0 })).toBe('BAD');
   });
 
+  it('normalizes the parse result to the TARGET column scale (model = display)', () => {
+    const h = makeEngine([{ id: 1, a: 1 }], {
+      columns: [
+        {
+          key: 'a',
+          type: 'number',
+          parse: (text) => Number(text),
+          normalizeValue: (value) => Math.round((value as number) * 100) / 100,
+        },
+      ],
+    });
+    h.engine.clickCell({ row: 0, col: 0 });
+    h.engine.clipboard.paste({ matrix: [['1.005678']] });
+    expect(h.rows()[0]['a']).toBe(1.01);
+  });
+
+  it('normalizes raw fast-path values too — the target scale may be narrower than the source', () => {
+    const h = makeEngine([{ id: 1, a: 1 }], {
+      tenantId: 't1',
+      columns: [
+        {
+          key: 'a',
+          type: 'number',
+          parse: () => {
+            throw new Error('parse must not run on the typed fast path');
+          },
+          normalizeValue: (value) => Math.round((value as number) * 100) / 100,
+        },
+      ],
+    });
+    h.engine.clickCell({ row: 0, col: 0 });
+    h.engine.clipboard.paste({
+      matrix: [['1.005678']],
+      meta: { v: 1, tenantId: 't1', locale: 'en', cols: [{ key: 'a', type: 'number' }] },
+      rawValues: [[{ value: 1.005678 }]],
+    });
+    expect(h.rows()[0]['a']).toBe(1.01);
+  });
+
+  it('a normalization rejection on paste records reason precision with the cell text', () => {
+    const h = makeEngine([{ id: 1, a: 1 }], {
+      columns: [
+        {
+          key: 'a',
+          type: 'number',
+          parse: (text) => Number(text),
+          normalizeValue: (value) => ((value as number) > 1e15 ? TM_PARSE_ERROR : value),
+        },
+      ],
+    });
+    h.engine.clickCell({ row: 0, col: 0 });
+    const result = h.engine.clipboard.paste({ matrix: [['12345678901234567']] });
+    expect(result.errors).toBe(1);
+    expect(h.rows()[0]['a']).toBeNull();
+    expect(h.engine.annotations.invalidInput(1, 'a')).toMatchObject({
+      rawText: '12345678901234567',
+      reason: 'precision',
+    });
+  });
+
   it('batches resolver columns into one deduped request instead of failing', () => {
     const h = makeEngine(
       [

@@ -9,7 +9,14 @@ import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { applyEach, disabled, form, readonly, required } from '@angular/forms/signals';
 
 import type { TmCellEditor } from '@tellma/core-ui/contracts';
-import { provideTellmaUi, TM_CELL_EDITOR_HOST, TM_ERROR_DISPLAY } from '@tellma/core-ui';
+import {
+  provideTellmaUi,
+  provideTmCalendar,
+  TM_CELL_EDITOR_HOST,
+  TM_ERROR_DISPLAY,
+} from '@tellma/core-ui';
+import { tmUmalquraCalendar } from '@tellma/core-ui/calendar-umalqura';
+import type { TmCalendar } from '@tellma/core-ui/l10n';
 import { TmGridHarness } from '@tellma/core-ui-testing';
 
 import { TmGrid } from './tm-grid';
@@ -125,6 +132,8 @@ class TestCellEditor implements TmCellEditor<string | null> {
       <tm-grid-column key="name" header="Name" [width]="140">
         <tm-test-cell-editor *tmGridEditor />
       </tm-grid-column>
+      <!-- A built-in text editor alongside, so a session of each kind can run. -->
+      <tm-grid-column key="unit" header="Unit" [width]="140" />
     </tm-grid>
   `,
 })
@@ -279,9 +288,99 @@ describe('tm-grid (editing)', () => {
     const input = editorInput(scroller) as HTMLInputElement;
     expect(input.value).toBe('1.2345');
 
+    // A PRISTINE Enter (nothing typed) commits nothing — the programmatic
+    // precision survives an F2 + Enter pass untouched.
     keydown(input, 'Enter');
     await stable(fixture);
     expect(host.model()[0].qty).toBe(1.2345);
+  });
+
+  it('number cells mount tmNumber, and an EDITED commit rounds to the column scale', async () => {
+    const { fixture, host, scroller } = await setup();
+    host.qtyMaxDecimals.set(2);
+    await stable(fixture);
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'ArrowRight'); // (0,1) qty
+    await stable(fixture);
+    keydown(scroller, 'F2');
+
+    const input = editorInput(scroller) as HTMLInputElement;
+    // The built-in number editor: numeric mobile keypad + text type guard.
+    expect(input.getAttribute('inputmode')).toBe('decimal');
+    expect(input.type).toBe('text');
+
+    input.focus();
+    input.value = '1.005678';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await stable(fixture);
+    keydown(input, 'Enter');
+    await stable(fixture);
+    // Model = display: the commit is the display-rounded value.
+    expect(host.model()[0].qty).toBe(1.01);
+    expect(cellAt(scroller, 0, 1)!.textContent!.trim()).toBe('1.01');
+  });
+
+  it('an over-precision number commit becomes a precision invalid input', async () => {
+    const { fixture, host, scroller } = await setup();
+    await stable(fixture);
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'ArrowRight'); // (0,1) qty
+    await stable(fixture);
+    keydown(scroller, 'F2');
+
+    const input = editorInput(scroller) as HTMLInputElement;
+    input.focus();
+    input.value = '12345678901234567';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await stable(fixture);
+    keydown(input, 'Enter');
+    await stable(fixture);
+
+    expect(host.model()[0].qty).toBeNull();
+    let cell = cellAt(scroller, 0, 1) as HTMLElement;
+    expect(cell.textContent!.trim()).toBe('12345678901234567');
+    expect(cell.classList.contains('tm-grid__cell--error')).toBe(true);
+
+    // Enter moved the active cell down; return so the error overlay
+    // describes the errored cell, and assert the message names the actual
+    // problem, not a generic parse failure.
+    keydown(scroller, 'ArrowUp');
+    await stable(fixture);
+    cell = cellAt(scroller, 0, 1) as HTMLElement;
+    const message = document.getElementById(cell.getAttribute('aria-describedby')!);
+    expect(message?.textContent).toContain('at most 15 digits');
+  });
+
+  it('a PASTE rounds to the column scale and rejects over-precision the same way', async () => {
+    // The typed-commit path is covered above; paste is a second, separate
+    // call site of the same normalizeValue closure, and only engine-level
+    // stubs covered it — a wiring regression there would let a spreadsheet
+    // paste write full precision straight past the invariant.
+    const { fixture, host, scroller } = await setup();
+    host.qtyMaxDecimals.set(2);
+    await stable(fixture);
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'ArrowRight'); // (0,1) qty
+    await stable(fixture);
+
+    const rounding = new DataTransfer();
+    rounding.setData('text/plain', '1.005678\r\n');
+    scroller.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: rounding, bubbles: true, cancelable: true }),
+    );
+    await stable(fixture);
+    expect(host.model()[0].qty).toBe(1.01);
+    expect(cellAt(scroller, 0, 1)!.textContent!.trim()).toBe('1.01');
+
+    const overflow = new DataTransfer();
+    overflow.setData('text/plain', '12345678901234567\r\n');
+    scroller.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: overflow, bubbles: true, cancelable: true }),
+    );
+    await stable(fixture);
+    expect(host.model()[0].qty).toBeNull();
+    const cell = cellAt(scroller, 0, 1) as HTMLElement;
+    expect(cell.classList.contains('tm-grid__cell--error')).toBe(true);
   });
 
   it('IME composition keydown opens an UNSEEDED editor without consuming the key', async () => {
@@ -698,6 +797,45 @@ describe('tm-grid (editing)', () => {
     expect(host.model()[0].name).toBe('Custom');
     expect(scroller.querySelector('[data-tm-editor]')).toBeNull();
   });
+
+  it('a template editor commits a value equal to the PREVIOUS session’s open text', async () => {
+    // The pristine-baseline check exists so F2 + Enter never rewrites a
+    // display-rounded cell. It must not survive its own session: a stale
+    // baseline would make the next editor's genuine edit look pristine and
+    // silently drop the write.
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(CustomEditorHost);
+    await stable(fixture);
+    const host = fixture.componentInstance;
+    const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+      '.tm-grid__scroller',
+    ) as HTMLElement;
+    await activateOrigin(fixture, scroller);
+
+    // Session 1: F2 the EMPTY unit cell (baseline ''), then abandon it.
+    keydown(scroller, 'ArrowRight'); // (0,1) unit — null, so the open text is ''
+    await stable(fixture);
+    keydown(scroller, 'F2');
+    await stable(fixture);
+    const builtIn = scroller.querySelector<HTMLInputElement>('[data-tm-editor] input');
+    expect(builtIn?.value).toBe('');
+    keydown(builtIn!, 'Escape');
+    await stable(fixture);
+
+    // Session 2: clear the populated name cell through the template editor.
+    keydown(scroller, 'ArrowLeft'); // back to (0,0) name — 'Alpha'
+    await stable(fixture);
+    keydown(scroller, 'F2');
+    await stable(fixture);
+    const custom = scroller.querySelector<HTMLInputElement>('[data-tm-editor] .test-editor');
+    expect(custom).not.toBeNull();
+    custom!.value = '';
+    custom!.dispatchEvent(new Event('input', { bubbles: true }));
+    keydown(custom!, 'Enter');
+    await stable(fixture);
+
+    expect(host.model()[0].name).toBe(''); // the clear reached the model
+  });
 });
 
 describe('tm-grid (editing harness)', () => {
@@ -778,5 +916,206 @@ describe('tm-grid (editing harness)', () => {
     await stable(fixture);
     expect(host.model().length).toBe(2);
     expect(host.model()[0].id).toBe(1); // row 2 (id 2) was deleted
+  });
+});
+
+describe('tm-grid date columns (built-in defaults)', () => {
+  interface DateLine {
+    readonly id: number;
+    readonly due: string | null;
+  }
+
+  @Component({
+    imports: [TmGrid, TmGridColumn],
+    template: `
+      <tm-grid gridId="date-spec-grid" [field]="f" [rowId]="rowId" style="block-size: 300px">
+        <tm-grid-column key="due" type="date" header="Due" [width]="140" />
+      </tm-grid>
+    `,
+  })
+  class DateHost {
+    readonly model = signal<DateLine[]>([
+      { id: 1, due: '2026-03-05' },
+      { id: 2, due: null },
+    ]);
+    readonly f = form(this.model, () => {});
+    readonly rowId = (row: DateLine): number => row.id;
+  }
+
+  async function setupDates(calendar?: TmCalendar) {
+    TestBed.configureTestingModule({
+      providers: [
+        provideTellmaUi(),
+        ...(calendar === undefined ? [] : [provideTmCalendar(calendar)]),
+      ],
+    });
+    const fixture = TestBed.createComponent(DateHost);
+    await stable(fixture);
+    const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+      '.tm-grid__scroller',
+    ) as HTMLElement;
+    return { fixture, host: fixture.componentInstance, scroller };
+  }
+
+  it('displays via the built-in format (locale numeric, no [format] required)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { scroller } = await setupDates();
+    expect(cellAt(scroller, 0, 0)!.textContent!.trim()).toBe('3/5/2026');
+    expect(cellAt(scroller, 1, 0)!.textContent!.trim()).toBe('');
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining("type 'date' has no [format]"));
+    warn.mockRestore();
+  });
+
+  it('a paste copied under an unavailable source calendar never misparses as Gregorian', async () => {
+    const { fixture, host, scroller } = await setupDates();
+    await activateOrigin(fixture, scroller);
+
+    // Hijri 23/9/1445 from an ar-SA Umm al-Qura grid: year 1445 is a
+    // PLAUSIBLE Gregorian year — without the calendar stamp this would
+    // silently write 1445-09-23. The pack is not installed here, so the
+    // honest outcome is an invalid input.
+    const hijri = new DataTransfer();
+    hijri.setData('text/plain', '23/9/1445\r\n');
+    hijri.setData(
+      'text/html',
+      `<table data-tm-grid='{"v":1,"locale":"ar-SA","calendar":"islamic-umalqura",` +
+        `"cols":[{"key":"due","type":"date"}]}'>` +
+        `<tbody><tr><td>23/9/1445</td></tr></tbody></table>`,
+    );
+    scroller.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: hijri, bubbles: true, cancelable: true }),
+    );
+    await stable(fixture);
+    // The honest outcome: an invalid input (model cleared, text kept in
+    // error) — NEVER the plausible-Gregorian 1445-09-23 write.
+    expect(host.model()[0].due).toBeNull();
+    expect(cellAt(scroller, 0, 0)!.classList.contains('tm-grid__cell--error')).toBe(true);
+
+    // The same shape stamped 'gregory' parses through the source-locale rung.
+    const gregorian = new DataTransfer();
+    gregorian.setData('text/plain', '25/12/2027\r\n');
+    gregorian.setData(
+      'text/html',
+      `<table data-tm-grid='{"v":1,"locale":"en-GB","calendar":"gregory",` +
+        `"cols":[{"key":"due","type":"date"}]}'>` +
+        `<tbody><tr><td>25/12/2027</td></tr></tbody></table>`,
+    );
+    scroller.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: gregorian, bubbles: true, cancelable: true }),
+    );
+    await stable(fixture);
+    expect(host.model()[0].due).toBe('2027-12-25'); // en-GB day-first order honored
+  });
+
+  it('a foreign paste reads as GREGORIAN even when the grid displays Umm al-Qura', async () => {
+    // Excel and friends carry no metadata and serialize Gregorian dates.
+    // Read in the ambient Hijri calendar instead, `9/23/2024` would be
+    // Hijri year 2024 — centuries away — and be written silently. The
+    // display stays Hijri; only the READING is Gregorian.
+    const { fixture, host, scroller } = await setupDates(tmUmalquraCalendar());
+    await activateOrigin(fixture, scroller);
+
+    const foreign = new DataTransfer();
+    foreign.setData('text/plain', '9/23/2024\r\n'); // no text/html, no meta
+    scroller.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: foreign, bubbles: true, cancelable: true }),
+    );
+    await stable(fixture);
+    expect(host.model()[0].due).toBe('2024-09-23');
+  });
+
+  it('a foreign paste the Gregorian rung cannot read falls back to the display calendar', async () => {
+    // Hijri-only text (month 13 does not exist in Gregorian) still lands:
+    // the foreign rung yields only to a reading that actually works.
+    const { fixture, host, scroller } = await setupDates(tmUmalquraCalendar());
+    await activateOrigin(fixture, scroller);
+
+    const hijriOnly = new DataTransfer();
+    hijriOnly.setData('text/plain', '13/16/1447\r\n');
+    scroller.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: hijriOnly, bubbles: true, cancelable: true }),
+    );
+    await stable(fixture);
+    expect(host.model()[0].due).not.toBe('2024-09-23');
+  });
+
+  it('mounts tm-date-picker as the editor; typed text commits through the built-in parse', async () => {
+    const { fixture, host, scroller } = await setupDates();
+    await activateOrigin(fixture, scroller);
+
+    // Type-to-edit seeds the picker's input.
+    keydown(scroller, '3');
+    await stable(fixture);
+    const input = scroller.querySelector<HTMLInputElement>('.tm-date-picker__input');
+    expect(input).not.toBeNull();
+    expect(input!.value).toBe('3');
+
+    typeInto(input!, '3/12/2026');
+    await stable(fixture);
+    keydown(input!, 'Enter');
+    await stable(fixture);
+    expect(host.model()[0].due).toBe('2026-03-12'); // ISO in the model
+    expect(cellAt(scroller, 0, 0)!.textContent!.trim()).toBe('3/12/2026');
+  });
+
+  it('unreadable text becomes a parse invalid input with the model cleared', async () => {
+    const { fixture, host, scroller } = await setupDates();
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'x');
+    await stable(fixture);
+    const input = scroller.querySelector<HTMLInputElement>('.tm-date-picker__input')!;
+    typeInto(input, 'not a date');
+    await stable(fixture);
+    keydown(input, 'Enter');
+    await stable(fixture);
+    expect(host.model()[0].due).toBeNull();
+    const cell = cellAt(scroller, 0, 0) as HTMLElement;
+    expect(cell.textContent!.trim()).toBe('not a date');
+    expect(cell.classList.contains('tm-grid__cell--error')).toBe(true);
+  });
+
+  it('Alt+ArrowDown opens the cell-anchored popup; the two-stage Esc composes', async () => {
+    const { fixture, host, scroller } = await setupDates();
+    await activateOrigin(fixture, scroller);
+
+    // Open the editor (F2 edit mode: display text seeded), then the popup.
+    keydown(scroller, 'F2');
+    await stable(fixture);
+    const input = scroller.querySelector<HTMLInputElement>('.tm-date-picker__input')!;
+    keydown(input, 'ArrowDown', { altKey: true });
+    await stable(fixture);
+    const popup = document.querySelector('.tm-date-popup') as HTMLElement;
+    expect(popup).not.toBeNull();
+    expect(popup.querySelector('[data-tm-day="5"][aria-selected="true"]')).not.toBeNull();
+
+    // Esc №1: the popup consumes it — the session stays open.
+    keydown(popup, 'Escape');
+    await stable(fixture);
+    expect(document.querySelector('.tm-date-popup')).toBeNull();
+    expect(scroller.querySelector('.tm-date-picker__input')).not.toBeNull();
+
+    // Esc №2 reaches the grid and cancels the session without writing.
+    keydown(scroller.querySelector('.tm-date-picker__input')!, 'Escape');
+    await stable(fixture);
+    expect(scroller.querySelector('.tm-date-picker__input')).toBeNull();
+    expect(host.model()[0].due).toBe('2026-03-05');
+  });
+
+  it('a popup day selection commits and closes — no Enter needed', async () => {
+    const { fixture, host, scroller } = await setupDates();
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'F2');
+    await stable(fixture);
+    const input = scroller.querySelector<HTMLInputElement>('.tm-date-picker__input')!;
+    keydown(input, 'ArrowDown', { altKey: true });
+    await stable(fixture);
+
+    // Pointing at a day IS the edit (the enum option's contract): a mouse
+    // user has no reason to press Enter afterwards, so the pick must not
+    // sit uncommitted waiting for one.
+    (document.querySelector('.tm-date-popup [data-tm-day="20"]') as HTMLButtonElement).click();
+    await stable(fixture);
+    expect(scroller.querySelector('.tm-date-picker__input')).toBeNull();
+    expect(host.model()[0].due).toBe('2026-03-20');
   });
 });

@@ -5,10 +5,11 @@
 ```ts
 
 import * as _angular_core from '@angular/core';
+import { CdkConnectedOverlay } from '@angular/cdk/overlay';
+import { CdkConnectedOverlayConfig } from '@angular/cdk/overlay';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { DestroyRef } from '@angular/core';
 import { FieldTree } from '@angular/forms/signals';
-import { FlexibleConnectedPositionStrategyOrigin } from '@angular/cdk/overlay';
 import { FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
 import { InjectionToken } from '@angular/core';
 import { Injector } from '@angular/core';
@@ -29,7 +30,7 @@ export class TmGrid<T> extends ɵTmGridBase<T> {
 
 // @public
 export class TmGridColumn<T = unknown, V = unknown> {
-    readonly align: _angular_core.InputSignal<"start" | "end" | "center" | "left" | "right" | undefined>;
+    readonly align: _angular_core.InputSignal<TmGridColumnAlign | undefined>;
     readonly defaultValue: _angular_core.InputSignal<V | undefined>;
     readonly displayDef: _angular_core.Signal<TmGridDisplayDef<any, any> | undefined>;
     readonly editorDef: _angular_core.Signal<TmGridEditorDef<any, any> | undefined>;
@@ -55,6 +56,9 @@ export class TmGridColumn<T = unknown, V = unknown> {
     static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmGridColumn<any, any>, "tm-grid-column", never, { "key": { "alias": "key"; "required": false; "isSignal": true; }; "type": { "alias": "type"; "required": false; "isSignal": true; }; "header": { "alias": "header"; "required": false; "isSignal": true; }; "value": { "alias": "value"; "required": false; "isSignal": true; }; "format": { "alias": "format"; "required": false; "isSignal": true; }; "parse": { "alias": "parse"; "required": false; "isSignal": true; }; "defaultValue": { "alias": "defaultValue"; "required": false; "isSignal": true; }; "options": { "alias": "options"; "required": false; "isSignal": true; }; "optionLabel": { "alias": "optionLabel"; "required": false; "isSignal": true; }; "optionValue": { "alias": "optionValue"; "required": false; "isSignal": true; }; "resolvePastedLabels": { "alias": "resolvePastedLabels"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "width": { "alias": "width"; "required": false; "isSignal": true; }; "flex": { "alias": "flex"; "required": false; "isSignal": true; }; "minWidth": { "alias": "minWidth"; "required": false; "isSignal": true; }; "align": { "alias": "align"; "required": false; "isSignal": true; }; "minDecimals": { "alias": "minDecimals"; "required": false; "isSignal": true; }; "maxDecimals": { "alias": "maxDecimals"; "required": false; "isSignal": true; }; "hierarchy": { "alias": "hierarchy"; "required": false; "isSignal": true; }; }, {}, ["displayDef", "editorDef", "headerDef"], never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmGridColumn<any, any>, never>;
 }
+
+// @public
+export type TmGridColumnAlign = 'start' | 'end' | 'center' | 'left' | 'right';
 
 // @public
 export interface TmGridContext {

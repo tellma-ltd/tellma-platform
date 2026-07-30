@@ -6,10 +6,15 @@
 import { Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { provideHttpClient } from '@angular/common/http';
 import { form } from '@angular/forms/signals';
 
 import { provideTellmaUi } from '@tellma/core-ui';
+import { TmAlert } from '@tellma/core-ui/alert';
+import { TmButton } from '@tellma/core-ui/button';
 import { TmCheckbox } from '@tellma/core-ui/checkbox';
+import { TmDatePicker } from '@tellma/core-ui/date-picker';
+import { TmDropzone, TmFilePicker } from '@tellma/core-ui/files';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import {
   TmGrid,
@@ -18,18 +23,35 @@ import {
   TmGridEmptyDef,
   TmGridLoadingDef,
 } from '@tellma/core-ui/grid';
+import { TmImage, TmImagePlaceholder } from '@tellma/core-ui/image';
 import { TmInput } from '@tellma/core-ui/input';
 import { TmContextMenuTrigger, TmMenu } from '@tellma/core-ui/menu';
+import { TmModalFooter } from '@tellma/core-ui/modal';
+import { TmNumber } from '@tellma/core-ui/number';
+import { TmPopover, TmPopoverContent, TmPopoverTrigger } from '@tellma/core-ui/popover';
 import { TmOption, TmSelect } from '@tellma/core-ui/select';
 import { TmSpinner } from '@tellma/core-ui/spinner';
+import { TmTab, TmTabContent, TmTabGroup, TmTabLabel } from '@tellma/core-ui/tabs';
+import { TmTooltip } from '@tellma/core-ui/tooltip';
 import { TmTreeGrid } from '@tellma/core-ui/tree-grid';
 
+import * as alertExamples from './alert/tm-alert.examples';
+import * as buttonExamples from './button/tm-button.examples';
 import * as checkboxExamples from './checkbox/tm-checkbox.examples';
+import * as datePickerExamples from './date-picker/tm-date-picker.examples';
+import * as dropzoneExamples from './files/tm-dropzone.examples';
+import * as filePickerExamples from './files/tm-file-picker.examples';
 import * as gridExamples from './grid/tm-grid.examples';
+import * as imageExamples from './image/tm-image.examples';
 import * as inputExamples from './input/tm-input.examples';
 import * as menuExamples from './menu/tm-menu.examples';
+import * as modalFooterExamples from './modal/tm-modal-footer.examples';
+import * as numberExamples from './number/tm-number.examples';
+import * as popoverExamples from './popover/tm-popover.examples';
 import * as selectExamples from './select/tm-select.examples';
 import * as spinnerExamples from './spinner/tm-spinner.examples';
+import * as tabsExamples from './tabs/tm-tabs.examples';
+import * as tooltipExamples from './tooltip/tm-tooltip.examples';
 import * as treeGridExamples from './tree-grid/tm-tree-grid.examples';
 
 /**
@@ -74,28 +96,66 @@ interface ExampleTreeRow {
  */
 @Component({
   imports: [
+    TmAlert,
+    TmButton,
     TmCheckbox,
     TmContextMenuTrigger,
+    TmDatePicker,
+    TmDropzone,
+    TmFilePicker,
     TmFormField,
     TmGrid,
     TmGridColumn,
     TmGridDisplayDef,
     TmGridEmptyDef,
     TmGridLoadingDef,
+    TmImage,
+    TmImagePlaceholder,
     TmInput,
     TmMenu,
+    TmModalFooter,
+    TmNumber,
     TmOption,
+    TmPopover,
+    TmPopoverContent,
+    TmPopoverTrigger,
     TmSelect,
     TmSpinner,
+    TmTab,
+    TmTabContent,
+    TmTabGroup,
+    TmTabLabel,
+    TmTooltip,
     TmTreeGrid,
   ],
   template: `
     <tm-form-field label="placeholder"><input tmInput /></tm-form-field>
+    <tm-form-field label="placeholder"><input tmNumber /></tm-form-field>
+    <tm-form-field label="placeholder"><tm-date-picker /></tm-form-field>
+    <button tmButton>placeholder</button>
+    <tm-alert kind="info">placeholder</tm-alert>
+    <tm-tab-group>
+      <tm-tab id="placeholder" label="placeholder">
+        <ng-template tmTabLabel>placeholder</ng-template>
+        <ng-template tmTabContent>placeholder</ng-template>
+      </tm-tab>
+    </tm-tab-group>
     <tm-checkbox>placeholder</tm-checkbox>
     <tm-select><tm-option [value]="0">placeholder</tm-option></tm-select>
     <tm-spinner />
     <div [tmContextMenuTrigger]="placeholderMenu">placeholder</div>
     <tm-menu #placeholderMenu [items]="[]" />
+    <div tmModalFooter>placeholder</div>
+    <tm-image src="" alt="" [width]="24" [height]="24">
+      <ng-template tmImagePlaceholder>placeholder</ng-template>
+    </tm-image>
+    <button tmFilePicker (filesSelected)="onFiles($event)">placeholder</button>
+    <tm-dropzone (filesSelected)="onFiles($event)" />
+    <button [tmPopoverTriggerFor]="placeholderPopover">placeholder</button>
+    <tm-popover #placeholderPopover aria-label="placeholder">
+      <ng-template tmPopoverContent>placeholder</ng-template>
+    </tm-popover>
+    <span tmTooltip="placeholder">placeholder</span>
     <tm-grid gridId="placeholder-grid" [data]="rows" [rowId]="rowId" style="block-size: 120px">
       <tm-grid-column key="name" header="placeholder">
         <span *tmGridDisplay="let value">{{ value }}</span>
@@ -131,6 +191,8 @@ class ExampleHost {
   ];
   protected readonly treeRowId = (row: ExampleTreeRow): number => row.id;
   protected readonly treeParentId = (row: ExampleTreeRow): number | null => row.parentId;
+  protected readonly onImageChange = (): void => undefined;
+  protected readonly onFiles = (selection: unknown): void => void selection;
   protected readonly treeHasChildren = (row: ExampleTreeRow): boolean => row.parentId === null;
   protected readonly loadTreeChildren = (): Promise<void> => Promise.resolve();
 
@@ -184,10 +246,88 @@ const MARKERS: {
     instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmInput)).length > 0,
   },
   {
+    name: 'TmButton',
+    pattern: /\btmButton\b/,
+    instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmButton)).length > 0,
+  },
+  {
+    name: 'TmNumber',
+    pattern: /\btmNumber\b/,
+    instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmNumber)).length > 0,
+  },
+  {
+    // Projected ng-template directives never surface in the debug tree
+    // (the tm-option caveat above), so the markers assert the RENDERED
+    // effect: a matched tmTabContent template fills the active panel.
+    name: 'TmTabContent',
+    pattern: /\btmTabContent\b/,
+    instantiated: (fixture) =>
+      Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+          '.tm-tab-group__panel:not([inert])',
+        ),
+      ).some((panel) => (panel.textContent ?? '').trim() !== ''),
+  },
+  {
+    // A matched tmTabLabel template renders the strip button's content —
+    // unmatched, its tab would show an empty label.
+    name: 'TmTabLabel',
+    pattern: /\btmTabLabel\b/,
+    instantiated: (fixture) =>
+      Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.tm-tab-group__tab'),
+      ).every((tab) => (tab.textContent ?? '').trim() !== ''),
+  },
+  {
     name: 'TmContextMenuTrigger',
     pattern: /\btmContextMenuTrigger\b/,
     instantiated: (fixture) =>
       fixture.debugElement.queryAll(By.directive(TmContextMenuTrigger)).length > 0,
+  },
+  {
+    name: 'TmModalFooter',
+    pattern: /\btmModalFooter\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement.queryAll(By.directive(TmModalFooter)).length > 0,
+  },
+  {
+    name: 'TmFilePicker',
+    pattern: /\btmFilePicker\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement.queryAll(By.directive(TmFilePicker)).length > 0,
+  },
+  {
+    // The placeholder ng-template is unprojected content of tm-image (the
+    // tm-option caveat), so the marker reads the component's content-query
+    // signal instead of the debug tree.
+    name: 'TmImagePlaceholder',
+    pattern: /\btmImagePlaceholder\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement
+        .queryAll(By.directive(TmImage))
+        .some((el) => (el.componentInstance as TmImage).placeholder() !== undefined),
+  },
+  {
+    name: 'TmPopoverTrigger',
+    pattern: /\btmPopoverTriggerFor\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement.queryAll(By.directive(TmPopoverTrigger)).length > 0,
+  },
+  {
+    // The content ng-template is unprojected content of tm-popover (the
+    // tm-option caveat), so the marker reads the component's content-query
+    // signal instead of the debug tree.
+    name: 'TmPopoverContent',
+    pattern: /\btmPopoverContent\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement
+        .queryAll(By.directive(TmPopover))
+        .some((el) => (el.componentInstance as TmPopover).contentTemplate() !== undefined),
+  },
+  {
+    name: 'TmTooltip',
+    pattern: /\btmTooltip\b/,
+    instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmTooltip)).length > 0,
   },
   {
     name: 'TmGridDisplayDef',
@@ -232,9 +372,20 @@ const MARKERS: {
 
 const SUITES = [
   { source: 'input/tm-input.examples.ts', examples: inputExamples },
+  { source: 'number/tm-number.examples.ts', examples: numberExamples },
+  { source: 'date-picker/tm-date-picker.examples.ts', examples: datePickerExamples },
+  { source: 'alert/tm-alert.examples.ts', examples: alertExamples },
+  { source: 'button/tm-button.examples.ts', examples: buttonExamples },
+  { source: 'image/tm-image.examples.ts', examples: imageExamples },
+  { source: 'files/tm-file-picker.examples.ts', examples: filePickerExamples },
+  { source: 'files/tm-dropzone.examples.ts', examples: dropzoneExamples },
   { source: 'checkbox/tm-checkbox.examples.ts', examples: checkboxExamples },
   { source: 'select/tm-select.examples.ts', examples: selectExamples },
   { source: 'spinner/tm-spinner.examples.ts', examples: spinnerExamples },
+  { source: 'tabs/tm-tabs.examples.ts', examples: tabsExamples },
+  { source: 'modal/tm-modal-footer.examples.ts', examples: modalFooterExamples },
+  { source: 'popover/tm-popover.examples.ts', examples: popoverExamples },
+  { source: 'tooltip/tm-tooltip.examples.ts', examples: tooltipExamples },
   { source: 'menu/tm-menu.examples.ts', examples: menuExamples },
   { source: 'grid/tm-grid.examples.ts', examples: gridExamples },
   { source: 'tree-grid/tm-tree-grid.examples.ts', examples: treeGridExamples },
@@ -246,7 +397,8 @@ describe('co-located docs examples compile against the live API (§11)', () => {
       for (const [title, { template }] of Object.entries(examples)) {
         it(`'${title}' compiles, renders, and instantiates what it names`, async () => {
           TestBed.configureTestingModule({
-            providers: [provideTellmaUi()],
+            // provideHttpClient backs tm-image's default TM_BLOB_FETCHER.
+            providers: [provideTellmaUi(), provideHttpClient()],
             errorOnUnknownElements: true,
             errorOnUnknownProperties: true,
           });

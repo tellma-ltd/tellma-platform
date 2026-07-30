@@ -71,6 +71,21 @@ export interface TmParseContext {
   readonly locale: string;
   /** During paste: the copying grid's locale, from clipboard metadata. */
   readonly sourceLocale?: string;
+  /**
+   * During paste: the copying grid's display calendar id, from clipboard
+   * metadata — date text serialized under a non-Gregorian display
+   * calendar must not be read as Gregorian.
+   */
+  readonly sourceCalendar?: string;
+  /**
+   * During paste: `true` when the payload carried NO Tellma metadata, so
+   * it came from outside the app (a spreadsheet, an editor, a browser).
+   * Such a source states neither its locale nor its calendar; the
+   * built-in `date` parse reads it as Gregorian, since that is what
+   * spreadsheets serialize. Absent for typed commits and for pastes
+   * whose provenance is known.
+   */
+  readonly foreignSource?: boolean;
 }
 
 /** Context handed to a column's batched label resolver during paste. */

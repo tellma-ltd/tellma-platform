@@ -9,14 +9,16 @@
 // consumer `*tmGridEditor` template uses, so the session drives built-ins
 // and custom editors identically.
 
-import { Component, input, output, signal, viewChild } from '@angular/core';
+import { Component, input, output, signal, viewChild, ViewEncapsulation } from '@angular/core';
 
+import { TmDatePicker } from '@tellma/core-ui/date-picker';
 import { TmInput } from '@tellma/core-ui/input';
+import { TmNumber } from '@tellma/core-ui/number';
 import { TmOption, TmSelect } from '@tellma/core-ui/select';
 
 /**
- * The built-in text editor (`text`/`number`/`date`/`custom` columns): a
- * bare `tmInput` filling the cell box. The input registers itself with the
+ * The built-in text editor (`text`/`date`/`custom` columns): a bare
+ * `tmInput` filling the cell box. The input registers itself with the
  * session through TM_CELL_EDITOR_HOST; parsing the committed text is the
  * engine's concern (§ the column's parse), never the editor's.
  */
@@ -30,6 +32,64 @@ import { TmOption, TmSelect } from '@tellma/core-ui/select';
 export class ɵTmGridTextEditor {
   /** The accessible name (the column's header text). */
   readonly label = input('');
+}
+
+/**
+ * The built-in number editor (`number` columns): a bare `tmNumber` filling
+ * the cell box. The grid owns the value channel and the parse (the
+ * control's own commit loop stands down in a cell); what the editor
+ * contributes is `inputmode="decimal"`, the physical right alignment, and
+ * one control to theme.
+ */
+@Component({
+  selector: 'tm-grid-number-editor',
+  imports: [TmNumber],
+  template: `<input tmNumber class="tm-grid__editor-input" [attr.aria-label]="label()" />`,
+  styleUrl: './editors.css',
+  host: { class: 'tm-grid-number-editor' },
+})
+export class ɵTmGridNumberEditor {
+  /** The accessible name (the column's header text). */
+  readonly label = input('');
+}
+
+/**
+ * The built-in date editor (`date` columns): a `tm-date-picker` filling
+ * the cell box, its popup anchored to the cell rect through the shared
+ * overlay helper. The grid owns the value channel and the parse; the
+ * picker contributes typed entry, the cell-anchored calendar popup
+ * (`Alt+ArrowDown` per the dropdown-cell convention), and stage one of
+ * the two-stage Esc. Picking a day in the popup emits `activated`, which
+ * the session turns into commit-and-close — the same shape as activating
+ * an enum option.
+ */
+@Component({
+  selector: 'tm-grid-date-editor',
+  imports: [TmDatePicker],
+  template: `<tm-date-picker [aria-label]="label()" (picked)="activated.emit()" />`,
+  styleUrl: './editors-date.css',
+  // Encapsulation OFF: the picker's inner input carries the picker's own
+  // scope attribute, which a scoped stylesheet here could never match.
+  encapsulation: ViewEncapsulation.None,
+  host: { class: 'tm-grid-date-editor' },
+})
+export class ɵTmGridDateEditor {
+  /** The accessible name (the column's header text). */
+  readonly label = input('');
+  /** Emits when the user picks a date in the calendar popup (not by typing). */
+  readonly activated = output<void>();
+
+  private readonly picker = viewChild.required(TmDatePicker);
+
+  /** Whether the calendar popup is open (the editing keymap's dropdown gate). */
+  isPopupOpen(): boolean {
+    return this.picker().isPopupOpen();
+  }
+
+  /** Opens the calendar popup (Alt+ArrowDown on the cell). */
+  openPopup(): void {
+    this.picker().openPopup();
+  }
 }
 
 /**

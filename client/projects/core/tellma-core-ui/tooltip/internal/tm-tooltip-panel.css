@@ -1,0 +1,54 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tmTooltip — the floating text surface. Inverse-surface styling reads on
+   both schemes; the block margin is the visual offset from the host on
+   either preferred side. */
+
+/* The panel host holds only the overlay template, yet it is a real
+   element sitting next to the tooltip's host — as a flex or grid item it
+   would draw its parent's `gap` on both sides and nudge the siblings
+   across as soon as a tooltip is first shown. `contents` gives it no box
+   at all, so the surface can only ever live in the top layer. */
+:host {
+  display: contents;
+}
+
+.tm-tooltip__panel {
+  margin-block: var(--tooltip-offset);
+  background: var(--surface-inverse);
+  color: var(--text-on-dark);
+  padding-block: var(--tooltip-padding-y);
+  padding-inline: var(--tooltip-padding-x);
+  border-radius: var(--tooltip-radius);
+  max-inline-size: var(--tooltip-max-inline-size);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  box-shadow: var(--shadow-sm);
+  animation: tm-tooltip-enter var(--duration-fast) var(--ease-out);
+}
+
+@keyframes tm-tooltip-enter {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-tooltip__panel {
+    animation: none;
+  }
+}
+
+@media (forced-colors: active) {
+  /* The inverse fill flattens to Canvas — a real border keeps the surface
+     distinguishable from the page. */
+  .tm-tooltip__panel {
+    border: var(--border-width) solid CanvasText;
+  }
+}

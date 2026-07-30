@@ -13,27 +13,48 @@
     "@jsverse/transloco-messageformat": "^8.4.0"
   },
   "dependencies": {
+    "@internationalized/date": "^3.12.2",
     "tslib": "^2.3.0"
   },
   "sideEffects": false,
   "type": "module",
   "tellma": {
     "budgetsInKb": {
-      ".": 4,
+      ".": 5,
+      "./alert": 2,
+      "./button": 2,
+      "./calendar-ethiopic": 2,
+      "./calendar-umalqura": 5,
       "./contracts": 1,
+      "./date-picker": 14,
+      "./file-preview": 8,
+      "./files": 5,
       "./grid-engine": 15,
-      "./grid": 34,
+      "./grid": 35,
+      "./image": 10,
       "./tree-grid": 8,
-      "./input": 3,
+      "./input": 4,
+      "./l10n": 8,
       "./menu": 6,
+      "./modal": 6,
+      "./number": 4,
+      "./popover": 4,
+      "./tooltip": 3,
       "./checkbox": 4,
       "./form-field": 4,
+      "./private": 4,
       "./select": 8,
-      "./spinner": 1
+      "./spinner": 1,
+      "./tabs": 4
+    },
+    "apiGoldens": {
+      "exclude": ["./private"]
     },
     "docs": {
       "globalStyles": {
-        "./input": "styles/tm-input.css"
+        "./button": "styles/tm-button.css",
+        "./input": "styles/tm-input.css",
+        "./number": "styles/tm-number.css"
       }
     }
   }

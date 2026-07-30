@@ -1,0 +1,54 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-popover — the anchored dialog panel. The panel nodes are stamped from
+   this component's template into the top-layer overlay, so the emulated
+   encapsulation scope still applies. */
+
+.tm-popover__panel {
+  background: var(--surface-card);
+  color: var(--text-body);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--popover-radius);
+  box-shadow: var(--shadow-md);
+  padding: var(--popover-padding);
+  max-inline-size: var(--popover-max-inline-size);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  animation: tm-popover-enter var(--duration-fast) var(--ease-out);
+}
+
+.tm-popover__panel:focus-visible {
+  /* A transparent REAL outline beneath the token ring: forced colors strip
+     box-shadows but repaint outline-color in a system color, so the outline
+     is the only thing left carrying focus there. */
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow:
+    var(--focus-ring),
+    var(--shadow-md);
+}
+
+@keyframes tm-popover-enter {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-1 * var(--space-1)));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-popover__panel {
+    animation: none;
+  }
+}
+
+@media (forced-colors: active) {
+  /* The shadow is stripped — the real border keeps the panel edge visible. */
+  .tm-popover__panel {
+    border-color: CanvasText;
+  }
+}

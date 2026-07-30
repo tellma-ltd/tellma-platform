@@ -118,6 +118,8 @@ export interface TmGridClipboardOptions<T = unknown> {
   readonly canAddRows: SignalLike<boolean>;
   /** The active locale. */
   readonly locale: SignalLike<string>;
+  /** The active display calendar id (metadata + source-calendar hint). */
+  readonly calendar?: SignalLike<string>;
   /** The tenant id (metadata + cross-tenant guard). */
   readonly tenantId?: SignalLike<string | undefined>;
   /** The distribution key (metadata + guard) — tenant ids are unique only within one. */
@@ -258,6 +260,7 @@ export class TmGridClipboard<T = unknown> {
       tenantId: untracked(() => this.options.tenantId?.()),
       distributionKey: this.options.distributionKey,
       locale: untracked(() => this.options.locale()),
+      calendar: untracked(() => this.options.calendar?.()),
       cols: shape.cols.map((col) => {
         const column = model.columnAt(col);
         return { key: column.key, type: column.type };
@@ -777,6 +780,12 @@ export class TmGridClipboard<T = unknown> {
     };
 
     const sourceLocale = meta?.locale;
+    const sourceCalendar = meta?.calendar;
+    // No metadata at all = the payload came from outside the app. Say so
+    // rather than inventing a calendar id: the column's parse decides
+    // what to assume, and a custom parse can tell "unknown provenance"
+    // from "the source told us it was Gregorian".
+    const foreignSource = meta === undefined;
     const sourceTenantId = meta?.tenantId;
     const sourceDistributionKey = meta?.distributionKey;
     const tenantId = untracked(() => this.options.tenantId?.());
@@ -823,12 +832,26 @@ export class TmGridClipboard<T = unknown> {
         const base = { rowId, columnId: column.id, columnKey: column.key, before, invalidBefore };
 
         // (1) Typed fast path: same column type + same origin (distribution
-        //     key AND tenant id) + a raw value.
+        //     key AND tenant id) + a raw value. The TARGET column's
+        //     display-scale normalization still applies — its scale may be
+        //     narrower than the source's, and pasted values obey the same
+        //     model-equals-display invariant as typed ones.
         const raw = rawValues?.[sr]?.[sc];
         const metaCol = meta?.cols?.[sc];
         if (raw !== undefined && sameOrigin && metaCol?.type === column.type) {
-          writes.push({ ...base, after: raw.value, invalidAfter: null });
-          valueWrites++;
+          const normalized =
+            column.normalizeValue === undefined ? raw.value : column.normalizeValue(raw.value);
+          if (normalized === TM_PARSE_ERROR) {
+            writes.push({
+              ...base,
+              after: column.clearedValue,
+              invalidAfter: { rawText: text, reason: 'precision' satisfies TmGridInvalidInputReason },
+            });
+            errors++;
+          } else {
+            writes.push({ ...base, after: normalized, invalidAfter: null });
+            valueWrites++;
+          }
           continue;
         }
         // (2) Empty text writes the cleared value (never hits the resolver).
@@ -837,11 +860,25 @@ export class TmGridClipboard<T = unknown> {
           valueWrites++;
           continue;
         }
-        // (3) The synchronous parse.
+        // (3) The synchronous parse, then the display-scale normalization.
         if (column.parse !== undefined) {
-          const parsed = column.parse(text, { locale, sourceLocale });
+          const parsed = column.parse(text, { locale, sourceLocale, sourceCalendar, foreignSource });
           if (parsed !== TM_PARSE_ERROR) {
-            writes.push({ ...base, after: parsed, invalidAfter: null });
+            const normalized =
+              column.normalizeValue === undefined ? parsed : column.normalizeValue(parsed);
+            if (normalized === TM_PARSE_ERROR) {
+              writes.push({
+                ...base,
+                after: column.clearedValue,
+                invalidAfter: {
+                  rawText: text,
+                  reason: 'precision' satisfies TmGridInvalidInputReason,
+                },
+              });
+              errors++;
+              continue;
+            }
+            writes.push({ ...base, after: normalized, invalidAfter: null });
             valueWrites++;
             continue;
           }
@@ -949,6 +986,8 @@ export class TmGridClipboard<T = unknown> {
           context: {
             locale,
             sourceLocale,
+            sourceCalendar,
+            foreignSource,
             sourceTenantId,
             sourceDistributionKey,
             signal: controller.signal,

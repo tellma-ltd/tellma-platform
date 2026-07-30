@@ -40,11 +40,25 @@ export const TM_LOCALE_AR_STRINGS = {
     email: `${enter} عنوان بريد إلكتروني صحيحا`,
     minLength: `${enter} {minLength, plural, one {حرفا واحدا على الأقل} two {حرفين على الأقل} few {# أحرف على الأقل} many {# حرفا على الأقل} other {# حرف على الأقل}}`,
     maxLength: `${enter} {maxLength, plural, one {حرفا واحدا كحد أقصى} two {حرفين كحد أقصى} few {# أحرف كحد أقصى} many {# حرفا كحد أقصى} other {# حرف كحد أقصى}}`,
-    min: `${enter} قيمة لا تقل عن {min}`,
-    max: `${enter} قيمة لا تزيد عن {max}`,
+    min: `${enter} قيمة لا تقل عن {min, number}`,
+    max: `${enter} قيمة لا تزيد عن {max, number}`,
     pattern: 'القيمة لا تطابق التنسيق المطلوب',
     minDate: `${enter} تاريخا لا يسبق {minDate}`,
     maxDate: `${enter} تاريخا لا يتجاوز {maxDate}`,
+    parse: `${enter} رقما صالحا، مثل {example}`,
+    numberPrecision: `${enter} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}}`,
+    parseDate: `${enter} تاريخا مثل {example}`,
+  },
+  datePicker: {
+    chooseDate: 'اختيار التاريخ',
+    dialogLabel: 'اختيار التاريخ',
+    previous:
+      '{view, select, day {الشهر السابق} month {السنة السابقة} other {السنوات السابقة}}',
+    next: '{view, select, day {الشهر التالي} month {السنة التالية} other {السنوات التالية}}',
+    switchView:
+      '{view, select, day {اختيار الشهر} month {اختيار السنة} other {العودة إلى عرض الأيام}}',
+    today: 'اليوم',
+    clear: 'مسح',
   },
   select: {
     placeholder: '{gender, select, female {حددي خيارا} other {حدد خيارا}}',
@@ -78,7 +92,7 @@ export const TM_LOCALE_AR_STRINGS = {
       transaction: 'التغيير',
     },
     announce: {
-      selection: 'تم تحديد {rows} × {cols}',
+      selection: 'تم تحديد {rows, number} × {cols, number}',
       selectionAll: 'تم تحديد كل الخلايا',
       copied:
         'تم نسخ {cells, plural, zero {# خلية} one {خلية واحدة} two {خليتين} few {# خلايا} many {# خلية} other {# خلية}}',
@@ -103,14 +117,15 @@ export const TM_LOCALE_AR_STRINGS = {
       resolved:
         'تمت مطابقة {count, plural, zero {# تسمية} one {تسمية واحدة} two {تسميتين} few {# تسميات} many {# تسمية} other {# تسمية}}{errors, plural, =0 {} one {، واحدة لم تتطابق} two {، اثنتان لم تتطابقا} few {، # لم تتطابق} many {، # لم تتطابق} other {، # لم تتطابق}}',
       lazyLoadFailed: 'تعذر تحميل الصفوف الفرعية',
-      errorJump: 'الخطأ {index} من {count}',
-      checkedCount: 'تم تحديد {selected} من {total}',
+      errorJump: 'الخطأ {index, number} من {count, number}',
+      checkedCount: 'تم تحديد {selected, number} من {total, number}',
       loaded:
         '{count, plural, =0 {لا توجد سجلات} one {تم تحميل سجل واحد} two {تم تحميل سجلين} few {تم تحميل # سجلات} many {تم تحميل # سجلا} other {تم تحميل # سجل}}',
       loading: 'جار التحميل',
     },
     cellErrors: {
       invalidInput: '«{text}» ليست قيمة {column} صالحة.',
+      precision: `«{text}» يحتوي على خانات أكثر من اللازم — ${enter} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}}.`,
       notFound: 'لا يوجد {collection} باسم «{label}»',
       ambiguous: '«{label}» يطابق أكثر من {collection}',
       resolutionFailed: 'تعذر التحقق من «{label}» في {collection} — الصقها مجددا لإعادة المحاولة',
@@ -123,11 +138,55 @@ export const TM_LOCALE_AR_STRINGS = {
     },
     find: {
       label: 'البحث في الجدول',
-      counter: '{index} من {count}',
+      counter: '{index, number} من {count, number}',
       noMatches: 'لا توجد تطابقات',
       next: 'التطابق التالي',
       previous: 'التطابق السابق',
       close: 'إغلاق البحث',
     },
+  },
+  alert: {
+    info: 'معلومة:',
+    success: 'نجاح:',
+    warning: 'تحذير:',
+    error: 'خطأ:',
+  },
+  modal: {
+    close: 'إغلاق',
+  },
+  preview: {
+    download: 'تنزيل',
+    print: 'طباعة',
+    unsupported: 'المعاينة غير متاحة',
+    unsupportedHint: 'نزّل الملف لعرضه',
+    loadError: 'تعذر تحميل الملف',
+    truncated: 'يعرض أول 1 ميغابايت — نزّل الملف للباقي',
+  },
+  filePicker: {
+    hint: 'اسحب الملفات وأفلتها هنا، أو الصق، أو',
+    browse: 'تصفح',
+    acceptedTypes: 'الأنواع المقبولة: {types}',
+    maxSize: 'حتى {maxMb, number} ميغابايت لكل ملف',
+    maxSizeSingle: 'حتى {maxMb, number} ميغابايت',
+    announce:
+      '{accepted, plural, =0 {لم تتم إضافة ملفات} one {تمت إضافة ملف واحد} two {تمت إضافة ملفين} few {تمت إضافة # ملفات} many {تمت إضافة # ملفًا} other {تمت إضافة # ملف}}{rejectedCount, plural, =0 {} one {، ورُفض ملف واحد} two {، ورُفض ملفان} few {، ورُفضت # ملفات} many {، ورُفض # ملفًا} other {، ورُفض # ملف}}',
+    rejected: {
+      size: '{name} أكبر من {maxMb, number} ميغابايت',
+      type: '{name} ليس نوع ملف مقبولًا',
+      count: 'يمكن إضافة {maxFiles, plural, one {ملف واحد فقط} two {ملفين فقط} few {# ملفات فقط} many {# ملفًا فقط} other {# ملف فقط}}',
+      folder: 'لا يمكن إفلات المجلدات — أفلت الملفات فقط',
+    },
+  },
+  image: {
+    add: 'إضافة صورة',
+    replace: 'استبدال الصورة',
+    adjust: 'ضبط الاقتصاص',
+    remove: 'إزالة الصورة',
+    error: 'تعذر تحميل الصورة',
+    cropSurface: 'منطقة الاقتصاص — مفاتيح الأسهم للتحريك، و+ و- للتكبير',
+    zoom: 'التكبير',
+    done: 'تم',
+    tooLarge: 'حجم الملف أكبر من {maxMb, number} ميغابايت',
+    unsupported: 'الملف ليس صورة مدعومة',
   },
 } as const;

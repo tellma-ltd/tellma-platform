@@ -15,6 +15,7 @@ import {
 import { TRANSLOCO_TRANSPILER, TranslocoService } from '@jsverse/transloco';
 
 import { TM_UI_STRINGS_EN } from './strings-en';
+import { TM_ACTIVE_LOCALE } from './tm-active-locale';
 
 /**
  * The thin one-function i18n seam: resolves a library string key to a
@@ -128,6 +129,7 @@ export function tmDefaultUiTranslate(): TmUiTranslateFn {
   }
 
   const transloco = inject(TranslocoService);
+  const locale = inject(TM_ACTIVE_LOCALE);
   const version = signal(0);
   const bump = () => version.update((v) => v + 1);
   const langSub = transloco.langChanges$.subscribe(bump);
@@ -140,6 +142,11 @@ export function tmDefaultUiTranslate(): TmUiTranslateFn {
   return (key, params) =>
     computed(() => {
       version();
+      // The numbers a message carries are formatted in the FORMATTING
+      // locale (the transpiler compiles against it), which a distribution
+      // may switch independently of the language — so a message depends on
+      // it as much as on the translations themselves.
+      locale();
       const merged = { ...context(), ...params };
       const namespacedKey = `${TM_UI_I18N_SCOPE}.${key}`;
       const text = transloco.translate<string>(namespacedKey, merged);

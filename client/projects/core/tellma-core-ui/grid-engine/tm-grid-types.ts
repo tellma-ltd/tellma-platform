@@ -96,6 +96,17 @@ export interface TmGridEngineColumn<T = unknown> {
    */
   parse?(text: string, ctx: TmParseContext): unknown | TmParseError;
   /**
+   * Display-scale normalization applied to committed and pasted VALUES
+   * (not text): the engine runs it on value-channel commits, on successful
+   * parse results, and on same-origin raw pasted values — so a user-
+   * originated write can never land in the model carrying more precision
+   * than the column's display admits (the model equals the display).
+   * Returning `TM_PARSE_ERROR` marks the write an invalid input (reason
+   * `precision`). Absent when the column has no normalization policy —
+   * programmatic writes never pass through here.
+   */
+  normalizeValue?(value: unknown): unknown | TmParseError;
+  /**
    * Whether the column has an async label resolver — unresolvable pasted
    * text is collected for one batched resolution call instead of failing.
    */

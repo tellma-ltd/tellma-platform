@@ -5,7 +5,7 @@ The Angular workspace for the `@tellma/*` npm package family (spec
 
 | Package | Folder |
 |---|---|
-| `@tellma/core-ui` (+ `/contracts`, `/input`, `/checkbox`, `/form-field`, `/select`, `/spinner`) | `projects/core/tellma-core-ui` |
+| `@tellma/core-ui` (+ `/contracts`, `/l10n`, `/calendar-umalqura`, `/calendar-ethiopic`, `/input`, `/number`, `/date-picker`, `/checkbox`, `/form-field`, `/select`, `/button`, `/tabs`, `/modal`, `/popover`, `/tooltip`, `/alert`, `/image`, `/files`, `/file-preview`, `/menu`, `/grid`, `/tree-grid`, `/grid-engine`, `/spinner`, `/private`) | `projects/core/tellma-core-ui` |
 | `@tellma/core-ui-tokens` | `projects/core/tellma-core-ui-tokens` |
 | `@tellma/core-ui-testing` | `projects/core/tellma-core-ui-testing` |
 | `@tellma/core-ui-mcp` | `projects/core/tellma-core-ui-mcp` |

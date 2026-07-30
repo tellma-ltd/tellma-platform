@@ -88,14 +88,19 @@ test.describe('real system clipboard (Chromium permissions)', () => {
 
   test('a 2×2 copy writes spreadsheet TSV: CRLF rows and a trailing CRLF', async ({ page }) => {
     const texts = await selectTwoByTwo(page);
+    // Let the SELECTION announcement land first, and read the copy's own
+    // before the clipboard poll: the live region holds one message at a
+    // time, so a debounced "2 × 2 selected" arriving late would overwrite
+    // "4 cells copied" and the assertion would read the wrong message.
+    await expect(liveRegion(page)).toContainText('selected');
     await page.keyboard.press('Control+c');
+    await expect(liveRegion(page)).toContainText('4 cells copied');
 
     // Retrying read: the clipboard write is async, so a one-shot read can
     // beat it to the payload under CI load.
     await expect
       .poll(async () => (await readClipboard(page)).text)
       .toBe(`${texts[0][0]}\t${texts[0][1]}\r\n${texts[1][0]}\t${texts[1][1]}\r\n`);
-    await expect(liveRegion(page)).toContainText('4 cells copied');
   });
 
   test('both flavors always land: text/html rides alongside the TSV', async ({ page }) => {
@@ -273,6 +278,11 @@ test.describe('paste, cut & menu round-trips (real system clipboard, editable)',
     // Copy the 2×2 qty × unit-price block of rows 1–2…
     await cell(page, 1, 1).click();
     await cell(page, 2, 2).click({ modifiers: ['Shift'] });
+    // Let the SELECTION announcement land first: the live region holds one
+    // message at a time, so a debounced "2 × 2 selected" arriving after the
+    // copy would overwrite it and the next assertion would read the wrong
+    // message through no fault of the copy.
+    await expect(liveRegion(page)).toContainText('selected');
     await page.keyboard.press('Control+c');
     await expect(liveRegion(page)).toContainText('4 cells copied');
     await waitForClipboardWrite(page, clipboardBefore);

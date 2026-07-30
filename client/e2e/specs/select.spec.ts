@@ -49,7 +49,15 @@ test.describe('mouse interaction (angular/components#32504 guard, real events)',
 
   test('clicking outside closes the panel', async ({ page }) => {
     const { panel } = await openSelect(page, 'select-country');
-    await page.mouse.click(600, 400);
+    // Derived from the panel rather than a fixed point: the shell's
+    // layout decides where "outside" is, and a hard-coded coordinate
+    // silently starts landing INSIDE the panel when that layout moves.
+    const box = (await panel.boundingBox())!;
+    const viewport = page.viewportSize()!;
+    await page.mouse.click(
+      Math.min(box.x + box.width + 40, viewport.width - 5),
+      Math.max(box.y - 40, 5),
+    );
     await expect(panel).toBeHidden();
   });
 
@@ -66,6 +74,10 @@ test.describe('mouse interaction (angular/components#32504 guard, real events)',
 
 test.describe('overlay composition (§3.4/DoD 6)', () => {
   test('the top-layer panel escapes the overflow:hidden ancestor', async ({ page }) => {
+    // The wrapping story nav grows with the library and pushes the trigger
+    // down; keep room BELOW it so the panel opens downward — this escape
+    // assertion measures a downward-opening panel crossing the clip edge.
+    await page.setViewportSize({ width: 1280, height: 1400 });
     const clipbox = page.getByTestId('ff-country').locator('..'); // .clipbox
     const clipBounds = (await clipbox.boundingBox())!;
     const { panel } = await openSelect(page, 'select-country');

@@ -9,6 +9,15 @@
  * The port is handed to playwright.config.ts via the SHOWCASE_PORT env var;
  * the config's webServer starts `ng serve` on it.
  *
+ * Locally the four browser projects run one AFTER another (CI, whose
+ * runners are sized for it, keeps the single parallel invocation). Run
+ * together, a headless Firefox or WebKit that loses the CPU stops
+ * painting rather than merely slowing down, so Playwright's actionability
+ * check never sees the two stable frames it waits for and a click on a
+ * perfectly settled page times out. Sequential projects cost a few
+ * minutes of wall-clock and buy a suite whose failures mean something.
+ * Pass --project to run just one; the sequencing then steps aside.
+ *
  * Usage: node scripts/e2e.mjs [playwright args...]
  */
 import { spawn } from 'node:child_process';
@@ -23,13 +32,35 @@ const require = createRequire(import.meta.url);
 const playwrightCli = require.resolve('@playwright/test/cli', { paths: [clientDir] });
 
 const port = await getPort('CLIENT_SHOWCASE_E2E');
-const child = spawn(
-  process.execPath,
-  [playwrightCli, 'test', '--config', 'e2e/playwright.config.ts', ...process.argv.slice(2)],
-  {
-    cwd: clientDir,
-    stdio: 'inherit',
-    env: { ...process.env, SHOWCASE_PORT: String(port) },
-  },
-);
-child.on('exit', (code) => process.exit(code ?? 0));
+const args = process.argv.slice(2);
+
+/** One Playwright invocation; resolves with its exit code. */
+function runPlaywright(extraArgs) {
+  return new Promise((resolve) => {
+    const child = spawn(
+      process.execPath,
+      [playwrightCli, 'test', '--config', 'e2e/playwright.config.ts', ...args, ...extraArgs],
+      {
+        cwd: clientDir,
+        stdio: 'inherit',
+        env: { ...process.env, SHOWCASE_PORT: String(port) },
+      },
+    );
+    child.on('exit', (code) => resolve(code ?? 0));
+  });
+}
+
+const PROJECTS = ['chromium', 'firefox', 'webkit', 'touch'];
+const sequential = !process.env['CI'] && !args.some((arg) => arg.startsWith('--project'));
+
+let failed = 0;
+if (sequential) {
+  for (const project of PROJECTS) {
+    console.log(`
+[e2e] ${project}`);
+    failed = (await runPlaywright(['--project', project])) || failed;
+  }
+} else {
+  failed = await runPlaywright([]);
+}
+process.exit(failed);

@@ -53,6 +53,16 @@ import {
   type TmRowCol,
 } from '@tellma/core-ui/grid-engine';
 import {
+  TM_NUMBER_MAX_DIGITS,
+  tmFormatDate,
+  tmFormatNumber,
+  tmGregorianCalendar,
+  tmNumberDigitCount,
+  tmParseDate,
+  tmParseNumber,
+  type TmCalendar,
+} from '@tellma/core-ui/l10n';
+import {
   ɵtmObserveLongPress,
   type TmMenu,
   type TmMenuEntry,
@@ -82,7 +92,6 @@ import {
   type TmGridIntent,
 } from './grid-keymap';
 import type { ɵTmGridIconTemplates } from './icons';
-import { tmFormatNumber, tmParseNumber } from './tm-number-codec';
 
 /** Row height fallback (px) while the `--grid-row-height` token is unresolvable. */
 const DEFAULT_ROW_HEIGHT = 32;
@@ -97,6 +106,7 @@ const EDGE_SCROLL_STEP_PX = 16;
 const BUILT_IN_EDIT_TYPES: ReadonlySet<TmGridColumnType> = new Set([
   'text',
   'number',
+  'date',
   'boolean',
   'enum',
 ]);
@@ -206,7 +216,7 @@ function defaultParseFor(
     case 'text':
       return (text) => text;
     case 'number':
-      return (text, ctx) => tmParseNumber(text, ctx.locale, ctx.sourceLocale);
+      return (text, ctx) => tmParseNumber(text, ctx.locale, { sourceLocale: ctx.sourceLocale });
     case 'boolean':
       return (text) => {
         const normalized = text.trim().toLowerCase();
@@ -434,8 +444,14 @@ export interface ɵTmGridCoreDeps<T> {
   readonly translate: TmUiTranslateFn;
   /** The grid state store. */
   readonly store: TmGridStateStore;
-  /** The active locale (formatting, parse context, clipboard metadata). */
-  readonly locale: string;
+  /**
+   * The active locale (formatting, parse context, clipboard metadata) as a
+   * signal — display text re-renders when the ambient locale switches;
+   * parse contexts read the value at event time.
+   */
+  readonly locale: Signal<string>;
+  /** The app-ambient display calendar — date cells repaint when it switches. */
+  readonly calendar: Signal<TmCalendar>;
   /** The current tenant id (clipboard metadata + cross-tenant paste guard). */
   readonly tenantId: Signal<string | undefined>;
   /** The distribution key (metadata + guard) — tenant ids are unique only within one. */
@@ -1160,6 +1176,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.activeCellResolvedErrors = tmResolveFieldErrors(
       this.activeCellFieldErrors,
       deps.translate,
+      // Cells show dates in the ambient locale and calendar; so must the
+      // messages about them.
+      (iso) => tmFormatDate(iso, deps.locale(), { calendar: deps.calendar() }),
     );
     this.errorMessage = computed(() => {
       const active = this.engine.nav.activeCell();
@@ -1181,6 +1200,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
             return deps.translate('grid.cellErrors.invalidInput', {
               text: invalid.rawText,
               column: header,
+            })();
+          case 'precision':
+            return deps.translate('grid.cellErrors.precision', {
+              text: invalid.rawText,
+              maxDigits: TM_NUMBER_MAX_DIGITS,
             })();
           case 'notFound':
             return deps.translate('grid.cellErrors.notFound', {
@@ -1228,8 +1252,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     const onDocumentFocusIn = (event: Event): void => {
       const target = event.target;
       this.gridOwnsFocus =
-        target instanceof Element &&
-        (deps.host.contains(target) || target.closest('.cdk-overlay-container') !== null);
+        target instanceof Element && (deps.host.contains(target) || this.inOverlay(target));
     };
     document.addEventListener('pointerdown', onDocumentPointerDown, true);
     document.addEventListener('focusin', onDocumentFocusIn, true);
@@ -1373,8 +1396,24 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.scrollLeft.set(element.scrollLeft);
   }
 
+  /**
+   * Whether a node sits inside an overlay surface. Every overlay puts its
+   * content in a `.cdk-overlay-pane`, wherever the surface is hosted —
+   * top-layer overlays render IN PLACE, so a popup anchored to a cell (the
+   * date editor's calendar) is a child of that cell and its events bubble
+   * through the scroller. They belong to the overlay: a press on a
+   * calendar day is not a click-away, and a key inside the calendar is not
+   * a grid key. The overlay's own dismiss logic owns the gesture.
+   */
+  private inOverlay(node: Element | null): boolean {
+    return node !== null && node.closest('.cdk-overlay-pane') !== null;
+  }
+
   /** The scroller's keydown handler: resolve to an intent, execute, consume. */
   onKeydown(event: KeyboardEvent): void {
+    if (event.target instanceof Element && this.inOverlay(event.target)) {
+      return;
+    }
     const engine = this.engine;
     const session = untracked(() => engine.edit.session());
     // `keyCode` is deprecated as a key IDENTIFIER (layout-tied), but 229 is the
@@ -1469,7 +1508,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         event.preventDefault();
         return;
       case 'openDropdown':
-        if (mounted !== null && mounted.kind === 'enum') {
+        if (mounted !== null && (mounted.kind === 'enum' || mounted.kind === 'date')) {
           mounted.openDropdown();
           event.preventDefault();
         }
@@ -1522,6 +1561,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       return;
     }
     const target = event.target;
+    if (this.inOverlay(target)) {
+      return; // a cell-anchored overlay surface (see `inOverlay`)
+    }
     if (target.closest('[data-tm-resize]') !== null) {
       return; // the resize controller owns the gesture
     }
@@ -1667,6 +1709,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       return;
     }
     const target = event.target;
+    if (this.inOverlay(target)) {
+      return; // a cell-anchored overlay surface (see `inOverlay`)
+    }
     if (target.closest('[data-tm-resize]') !== null) {
       return;
     }
@@ -1777,6 +1822,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (hit === null) {
       return;
     }
+    if (this.inOverlay(hit)) {
+      return; // a cell-anchored overlay surface (see `inOverlay`)
+    }
     if (hit.closest('[data-tm-editor]') !== null) {
       return; // double-clicks inside the editor select words natively
     }
@@ -1802,6 +1850,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
    * sourced events, which carry no real coordinates).
    */
   onContextMenu(event: MouseEvent): void {
+    if (event.target instanceof Element && this.inOverlay(event.target)) {
+      return; // a cell-anchored overlay surface keeps its native menu
+    }
     event.preventDefault();
     const menu = this.menuRef;
     if (menu === null) {
@@ -1896,10 +1947,26 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   }
 
   /**
+   * Whether a focus drop to NOWHERE is a re-render artifact rather than the
+   * user leaving. Swapping views inside an open overlay — picking a month
+   * in the calendar — destroys the very element that had focus, and the
+   * browser then drops focus to `<body>` with no `relatedTarget`: at the
+   * event itself, indistinguishable from a click onto inert page content.
+   * The tell is the press that precedes a real departure — a click-away
+   * lands outside the host first, and the document-level capture records
+   * it. (A window switch is not one either: the document loses focus.)
+   */
+  private focusDroppedByRerender(): boolean {
+    return (
+      this.gridOwnsFocus && document.hasFocus() && Date.now() - this.lastOutsidePointerDown > 200
+    );
+  }
+
+  /**
    * Commit-on-blur (§8.4): when focus leaves the grid — and lands outside
-   * every owned overlay surface (select panel, error overlay, context
-   * menu; the CDK keeps popover panes inside its overlay container) — an
-   * open editor commits. Safer for forms than Excel's keep-editing.
+   * every overlay surface (select panel, error overlay, context menu,
+   * calendar popup) — an open editor commits. Safer for forms than
+   * Excel's keep-editing.
    */
   onFocusOut(event: FocusEvent): void {
     const engine = this.engineInstance;
@@ -1908,9 +1975,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     }
     const next = event.relatedTarget;
     if (next instanceof Element) {
-      if (this.deps.host.contains(next) || next.closest('.cdk-overlay-container') !== null) {
+      if (this.deps.host.contains(next) || this.inOverlay(next)) {
         return; // focus stayed inside the grid or one of its overlay surfaces
       }
+    } else if (this.focusDroppedByRerender()) {
+      return; // the editor's own overlay re-rendered under the pointer
     }
     this.commitEditor({ refocus: false });
   }
@@ -2073,7 +2142,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       columns: () => this.engineColumns(),
       editable: () => this.editable(),
       canAddRows: () => this.deps.newRow() !== undefined,
-      locale: () => this.deps.locale,
+      locale: () => this.deps.locale(),
+      calendar: () => this.deps.calendar().id,
       tenantId: () => this.deps.tenantId(),
       distributionKey: this.deps.distributionKey,
       direction: () => this.deps.direction(),
@@ -2164,7 +2234,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (
       isDevMode() &&
       format === undefined &&
-      (type === 'entity' || type === 'date') &&
+      type === 'entity' &&
       !this.warnedColumns.has(id)
     ) {
       this.warnedColumns.add(id);
@@ -2177,16 +2247,24 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
 
     const minDecimals = dir.minDecimals();
     const maxDecimals = dir.maxDecimals();
+    const calendar = this.deps.calendar;
     const fallbackText = (value: unknown): string =>
       value === null || value === undefined ? '' : String(value);
+    // `locale`/`calendar` are read INSIDE the closures (not captured as
+    // values): the cell view model is computed-driven, so display text
+    // re-renders in place when the ambient locale or calendar switches.
     const typeText = (value: unknown): string => {
       switch (type) {
         case 'number':
-          return tmFormatNumber(value, locale, minDecimals, maxDecimals);
+          return tmFormatNumber(value, locale(), { minDecimals, maxDecimals });
         case 'boolean':
-          return TM_CHECKBOX_CELL_DISPLAY.formatValue((value ?? null) as boolean | null, locale);
+          return TM_CHECKBOX_CELL_DISPLAY.formatValue((value ?? null) as boolean | null, locale());
         case 'enum':
           return enumLabels?.get(value) ?? fallbackText(value);
+        case 'date':
+          return typeof value === 'string' && value !== ''
+            ? tmFormatDate(value, locale(), { calendar: calendar() })
+            : fallbackText(value);
         default:
           return fallbackText(value);
       }
@@ -2194,12 +2272,103 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     const getText: (row: T) => string =
       format !== undefined ? (row) => format(getValue(row), row) : (row) => typeText(getValue(row));
     // A number column's editor opens on the FULL-PRECISION value, not the
-    // (possibly rounded) display text, so `maxDecimals` never writes its
-    // rounding back to the model. A custom [format] owns display AND edit text.
+    // (possibly rounded) display text, so the user edits what the cell
+    // holds rather than a rendering of it. The COMMIT still rounds to the
+    // column's display scale (see `normalizeValue` below) — only a
+    // programmatic write keeps precision the display drops. A custom
+    // [format] owns display AND edit text.
     const editSeedText: ((value: unknown) => string) | undefined =
-      type === 'number' && format === undefined ? (value) => tmFormatNumber(value, locale) : undefined;
+      type === 'number' && format === undefined
+        ? (value) => tmFormatNumber(value, locale())
+        : undefined;
 
-    const parse = customParse ?? defaultParseFor(type, enumLabels);
+    // The built-in date parse, in three rungs. A payload from OUTSIDE the
+    // app is Gregorian unless the ambient calendar reads it too, in which
+    // case it is ambiguous and errors. A payload from another Tellma grid
+    // is read in the SOURCE's display calendar (Hijri `23/9/1445` copied
+    // from an ar-SA grid is a valid-looking Gregorian date; reading it as
+    // Gregorian would silently write year 1445), and a known-but-
+    // unavailable source calendar errors rather than guess. Everything
+    // else — typed commits above all — reads in the ambient display
+    // calendar. Column-level [parse] still overrides all of it.
+    const dateParse =
+      type === 'date'
+        ? (text: string, ctx: TmParseContext): unknown | TmParseError => {
+            const active = untracked(calendar);
+            if (ctx.foreignSource === true && active.id !== 'gregory') {
+              // Outside the app, dates are Gregorian — spreadsheets and
+              // editors have no other calendar — so a foreign payload is
+              // read that way first, and only falls back to the ambient
+              // calendar if Gregorian cannot read it at all.
+              //
+              // KNOWN AMBIGUITY: text that BOTH calendars can read is
+              // decided in Gregorian's favour. That is right for the
+              // spreadsheet case this rung exists for, but wrong if the
+              // payload is really this grid's own display text pasted
+              // back through a route that dropped the metadata (a mobile
+              // keyboard, a clipboard manager, a hop through a text
+              // editor). Nothing in the text distinguishes the two.
+              const asGregorian = tmParseDate(text, ctx.locale, {
+                calendar: tmGregorianCalendar(),
+              });
+              if (typeof asGregorian === 'string' || asGregorian === null) {
+                return asGregorian;
+              }
+            }
+            if (ctx.sourceLocale !== undefined) {
+              const sourceLocale = ctx.sourceLocale;
+              const sourceCalendar =
+                ctx.sourceCalendar === undefined || ctx.sourceCalendar === 'gregory'
+                  ? tmGregorianCalendar()
+                  : ctx.sourceCalendar === active.id
+                    ? active
+                    : null;
+              if (
+                sourceCalendar !== null &&
+                (sourceLocale !== ctx.locale || sourceCalendar.id !== active.id)
+              ) {
+                const foreign = tmParseDate(text, sourceLocale, {
+                  calendar: sourceCalendar,
+                });
+                if (typeof foreign === 'string' || foreign === null) {
+                  return foreign;
+                }
+              }
+              if (sourceCalendar === null && ctx.sourceCalendar !== undefined) {
+                // The source's calendar pack is not installed here — the
+                // active-calendar rung below would misread its digits.
+                return TM_PARSE_ERROR;
+              }
+            }
+            return tmParseDate(text, ctx.locale, { calendar: active });
+          }
+        : undefined;
+    const parse = customParse ?? dateParse ?? defaultParseFor(type, enumLabels);
+    // The model-equals-display invariant for number columns: user commits
+    // and pastes round to the column's display scale, and a committed
+    // value must fit the numeric precision envelope (an IEEE-754 double
+    // round-trips at most 15 significant digits against an exact decimal).
+    // Custom-parse columns own their values; programmatic writes never
+    // pass through here.
+    const normalizeValue: ((value: unknown) => unknown | TmParseError) | undefined =
+      type === 'number' && customParse === undefined
+        ? (value) => {
+            if (typeof value !== 'number' || !Number.isFinite(value)) {
+              return value;
+            }
+            const activeLocale = locale();
+            const bounds = { minDecimals, maxDecimals };
+            const rounded = tmParseNumber(
+              tmFormatNumber(value, activeLocale, bounds),
+              activeLocale,
+              bounds,
+            );
+            if (typeof rounded !== 'number') {
+              return value;
+            }
+            return tmNumberDigitCount(rounded) > TM_NUMBER_MAX_DIGITS ? TM_PARSE_ERROR : rounded;
+          }
+        : undefined;
     const readonlyFn = typeof readonlyOption === 'function' ? readonlyOption : null;
     const alwaysReadonly = readonlyOption === true;
 
@@ -2220,6 +2389,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         (readonlyFn !== null && readonlyFn(row)) ||
         (key !== null && this.isFieldCellReadonly(row, key)),
       ...(parse !== undefined ? { parse } : {}),
+      ...(normalizeValue !== undefined ? { normalizeValue } : {}),
       hasResolver: resolveLabels !== undefined,
       clearedValue: defaultValue !== undefined ? defaultValue : type === 'boolean' ? false : null,
     };
@@ -2318,6 +2488,13 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     const win = this.window();
     const columns = this.columnsInternal();
     // Reactive dependencies read once; per-cell helpers below are untracked.
+    // The per-cell display text is deliberately NOT one of them: it runs
+    // tracked, through the column's text closure, which reads the ambient
+    // locale and display calendar at call time. That is the only thing that
+    // re-renders every formatted cell in place when the user switches
+    // language or calendar — wrapping the cell-text path in `untracked()`
+    // would silently freeze each cell at whatever was in force when its row
+    // was last rendered for some other reason.
     engine.selection.ranges();
     engine.model.viewRows();
     const active = engine.nav.activeCell();
@@ -2558,7 +2735,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         // F2 / Alt+ArrowDown / type-to-edit. A readonly cell is a NO-OP,
         // not a swallow — the key may still mean something to the browser.
         const active = untracked(() => engine.nav.activeCell());
-        return active !== null && this.openEditor(active, intent.mode, intent.seed);
+        return (
+          active !== null &&
+          this.openEditor(active, intent.mode, intent.seed, { dropdown: intent.dropdown === true })
+        );
       }
       case 'toggleBoolean': {
         const active = untracked(() => engine.nav.activeCell());
@@ -3075,7 +3255,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     cell: TmRowCol,
     mode: 'edit' | 'enter',
     seedText?: string,
-    opts?: { ime?: boolean },
+    opts?: { ime?: boolean; dropdown?: boolean },
   ): boolean {
     const engine = this.engine;
     const column = untracked(this.columnsInternal)[cell.col];
@@ -3126,8 +3306,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         options: column.enumOptions ?? [],
         optionLabel: column.optionLabel,
         optionValue: column.optionValue,
-        onActivation: () => this.onEnumActivation(),
+        onActivation: () => this.onEditorActivation(),
       };
+    } else if (column.type === 'number') {
+      config = { kind: 'number', label: header };
+    } else if (column.type === 'date') {
+      config = { kind: 'date', label: header, onActivation: () => this.onEditorActivation() };
     } else {
       config = { kind: 'text', label: header };
     }
@@ -3143,8 +3327,14 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
 
     const editor = mounted.editor;
     editor.focus();
+    // Every open starts WITHOUT a pristine baseline; only the branches that
+    // seed a known text install one. Leaving the previous session's baseline
+    // in place would make a later commit of a coincidentally equal string
+    // (an emptied cell after an emptied cell) look pristine and be dropped.
+    this.editorOpenText = null;
     if (opts?.ime === true) {
       // IME opens UNSEEDED: the composition itself supplies the content.
+      this.editorOpenText = '';
     } else if (mounted.kind === 'enum') {
       editor.value.set(valueAtOpen);
       if (seedText !== undefined) {
@@ -3159,7 +3349,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       } else {
         editor.value.set(seedText);
       }
-    } else if (mounted.kind === 'text') {
+      // A type-to-edit seed REPLACES the content — committing it unchanged
+      // is still a user edit, so the baseline stays null (set above), never
+      // the seed.
+    } else if (mounted.kind === 'text' || mounted.kind === 'number' || mounted.kind === 'date') {
       // Edit mode edits the cell's CURRENT DISPLAY TEXT (Excel edits the
       // formatted text; for an invalid-input cell that is the raw text) — but a
       // number column edits its full-precision value, not the rounded display.
@@ -3168,26 +3361,51 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       } else {
         editor.value.set(editText);
       }
+      this.editorOpenText = editText;
     } else {
       // Consumer template editor: the grid owns the value channel and
       // seeds it with the raw cell value (also carried in the context).
       editor.value.set(valueAtOpen);
     }
+    // Alt+ArrowDown means "show me the choices": one press reaches them,
+    // whatever the cell's editor is. An enum's panel is already open above
+    // (it has nothing to type, so every open shows it); a date's calendar
+    // is not, because typing is that cell's primary path and F2 must not
+    // pop it. Type-to-edit is exempt — the seed IS the intent.
+    if (opts?.dropdown === true && seedText === undefined && !mounted.isDropdownOpen()) {
+      mounted.openDropdown();
+    }
     return true;
   }
 
-  /** An enum option was activated: commit and CLOSE, no move (Sheets). */
-  private onEnumActivation(): void {
+  /**
+   * A dropdown editor produced a value by pointing at it — an enum option
+   * activated, or a day picked in a date cell's calendar. Commit and CLOSE,
+   * no move (Sheets): the pick IS the edit, so it must not sit uncommitted
+   * waiting for an Enter that a mouse user has no reason to press.
+   */
+  private onEditorActivation(): void {
     if (untracked(() => this.engine.edit.session()) !== null) {
       this.commitEditor({ refocus: true });
     }
   }
 
   /**
+   * The text a text-channel editor was OPENED with (edit mode's display
+   * text), or `null` when there is no pristine baseline (seeded opens,
+   * enum/template editors). A commit whose text still equals this baseline
+   * writes nothing — opening and closing an editor never rewrites the
+   * model, so a display-rounded cell's underlying precision survives an
+   * F2 + Enter pass untouched.
+   */
+  private editorOpenText: string | null = null;
+
+  /**
    * Commits the open session through the engine: the enum select commits
    * its VALUE; text-path editors commit their text through the column's
    * parse — unless `text()` is `null` (content not representable as text),
-   * which commits the value channel directly.
+   * which commits the value channel directly. A pristine text editor (the
+   * text still equals what it opened with) commits nothing.
    */
   private commitEditor(opts: { refocus: boolean }): void {
     const engine = this.engine;
@@ -3200,6 +3418,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       const text = untracked(() => mounted.editor.text());
       if (text === null) {
         engine.edit.commitValue(untracked(() => mounted.editor.value()));
+      } else if (text === this.editorOpenText) {
+        engine.edit.cancel();
       } else {
         engine.edit.commitText(text);
       }
@@ -3430,11 +3650,20 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (element !== null) {
       const cellRect = element.getBoundingClientRect();
       const scrollerRect = scroller.getBoundingClientRect();
-      if (cellRect.right > scrollerRect.right) {
-        scroller.scrollLeft += cellRect.right - scrollerRect.right;
+      // The rect is the BORDER box, so it counts the vertical scrollbar's
+      // gutter as visible space — the last column would come to rest half
+      // underneath it. Classic scrollbars take the inline-end edge (the
+      // start edge under RTL); overlay scrollbars take none, and the
+      // difference is then zero.
+      const gutter = scroller.offsetWidth - scroller.clientWidth;
+      const rtl = untracked(this.deps.direction) === 'rtl';
+      const viewLeft = scrollerRect.left + (rtl ? gutter : 0);
+      const viewRight = scrollerRect.right - (rtl ? 0 : gutter);
+      if (cellRect.right > viewRight) {
+        scroller.scrollLeft += cellRect.right - viewRight;
       }
-      if (cellRect.left < scrollerRect.left) {
-        scroller.scrollLeft += cellRect.left - scrollerRect.left;
+      if (cellRect.left < viewLeft) {
+        scroller.scrollLeft += cellRect.left - viewLeft;
       }
     }
     this.scrollTop.set(scroller.scrollTop);
@@ -4081,10 +4310,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
             return;
           }
           const droppedByDomMove =
-            this.gridOwnsFocus &&
-            document.hasFocus() &&
-            document.activeElement === document.body &&
-            Date.now() - this.lastOutsidePointerDown > 200;
+            this.focusDroppedByRerender() && document.activeElement === document.body;
           const shouldFocus =
             this.pendingGestureFocus ||
             scroller.contains(document.activeElement) ||
@@ -4124,7 +4350,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     // header row and there is no key to activate into it, so neutralizing
     // their content would make a rich/interactive header pointer-only. Runs
     // per render so recycled window rows are re-stamped. Editor content is
-    // exempt (it must hold focus).
+    // exempt (it must hold focus), and so is anything inside a cell-anchored
+    // overlay — a top-layer surface renders in place, and its own roving
+    // tabindex must survive this pass.
     afterRenderEffect(
       () => {
         this.renderRows();
@@ -4141,6 +4369,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           for (const element of interactive) {
             if (
               element.closest('[data-tm-editor]') === null &&
+              !this.inOverlay(element) &&
               element.getAttribute('tabindex') !== '-1'
             ) {
               element.setAttribute('tabindex', '-1');

@@ -136,7 +136,9 @@
             "styles": [
               "projects/core/tellma-core-ui-tokens/css/tellma-default.css",
               "projects/core/tellma-core-ui/fonts/fonts.css",
+              "projects/core/tellma-core-ui/styles/tm-button.css",
               "projects/core/tellma-core-ui/styles/tm-input.css",
+              "projects/core/tellma-core-ui/styles/tm-number.css",
               "projects/locale/tellma-locale-ar/fonts/fonts.css",
               "projects/internal/showcase/src/styles.css"
             ]

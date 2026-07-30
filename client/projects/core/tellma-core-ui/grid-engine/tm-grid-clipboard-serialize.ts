@@ -21,6 +21,13 @@ export interface TmGridClipboardMeta {
   readonly distributionKey?: string;
   /** The copying grid's locale (source-locale parse hint). */
   readonly locale?: string;
+  /**
+   * The copying grid's display calendar id (`gregory`,
+   * `islamic-umalqura`, …) — without it, date text copied under a
+   * non-Gregorian display calendar would mis-parse as plausible Gregorian
+   * on paste (Hijri `23/9/1445` is a valid Gregorian date of year 1445).
+   */
+  readonly calendar?: string;
   /** The copied columns' keys and types, in copy order. */
   readonly cols?: ReadonlyArray<{ readonly key: string | null; readonly type: TmGridColumnType }>;
   /** Whether the first row is a header row (copy-with-headers). */

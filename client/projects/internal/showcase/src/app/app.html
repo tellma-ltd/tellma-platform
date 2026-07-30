@@ -7,6 +7,38 @@
 
 <header class="shell-header">
   <a class="shell-brand" routerLink="/">Tellma UI</a>
+  <div class="shell-controls">
+    <button type="button" data-testid="toggle-theme" (click)="toggleTheme()">
+      {{ theme() === 'dark' ? 'Light' : 'Dark' }}
+    </button>
+    <!-- Latin labels on purpose: Arabic glyphs here would eagerly fetch the
+         Arabic face on every page and defeat the on-demand loading the
+         showcase exists to demonstrate. -->
+    <!-- The ambient TM_CALENDAR, so every story can be seen under a
+         non-Gregorian calendar (the date picker's own buttons override it
+         per instance). Latin labels for the same reason as the languages. -->
+    <label class="shell-lang" for="shell-calendar">Calendar</label>
+    <select
+      id="shell-calendar"
+      data-testid="shell-calendar"
+      [value]="calendarId()"
+      (change)="setCalendar($event)"
+    >
+      <option value="gregory">Gregorian</option>
+      <option value="islamic-umalqura">Umm al-Qura</option>
+      <option value="ethiopic">Ethiopic</option>
+    </select>
+    <button type="button" data-testid="lang-en" (click)="setLang('en')">EN</button>
+    <button type="button" data-testid="lang-ar" (click)="setLang('ar')" aria-label="Arabic">
+      AR
+    </button>
+    <span class="shell-lang" data-testid="active-lang">{{ lang() }}</span>
+  </div>
+</header>
+<!-- The rail stays OUTSIDE the dir wrapper below, so it keeps its side
+     when a story is previewed in RTL — the shell is a dev tool, not part
+     of what is being demonstrated. -->
+<div class="shell-body">
   <nav class="shell-nav" aria-label="Stories">
     @for (story of stories; track story.id) {
       <a
@@ -18,24 +50,11 @@
       >
     }
   </nav>
-  <div class="shell-controls">
-    <button type="button" data-testid="toggle-theme" (click)="toggleTheme()">
-      {{ theme() === 'dark' ? 'Light' : 'Dark' }}
-    </button>
-    <!-- Latin labels on purpose: Arabic glyphs here would eagerly fetch the
-         Arabic face on every page and defeat the on-demand loading the
-         showcase exists to demonstrate. -->
-    <button type="button" data-testid="lang-en" (click)="setLang('en')">EN</button>
-    <button type="button" data-testid="lang-ar" (click)="setLang('ar')" aria-label="Arabic">
-      AR
-    </button>
-    <span class="shell-lang" data-testid="active-lang">{{ lang() }}</span>
+  <!-- Dir wrapper: a LIVE Directionality for CDK overlays; the root service
+       reads <html dir> only once at construction and would go stale on the
+       shell's runtime dir toggle. A <div>, not <main> — story pages render
+       their own main landmark. -->
+  <div class="shell-main" [dir]="dir()">
+    <router-outlet />
   </div>
-</header>
-<!-- Dir wrapper: a LIVE Directionality for CDK overlays; the root service
-     reads <html dir> only once at construction and would go stale on the
-     shell's runtime dir toggle. A <div>, not <main> — story pages render
-     their own main landmark. -->
-<div class="shell-main" [dir]="dir()">
-  <router-outlet />
 </div>

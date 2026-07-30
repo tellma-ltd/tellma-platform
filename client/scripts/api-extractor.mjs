@@ -18,7 +18,7 @@
 import { createRequire } from 'node:module';
 
 import { discoverLibraries } from '../tools/workspace.mjs';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -32,10 +32,25 @@ const { Extractor, ExtractorConfig } = require('@microsoft/api-extractor');
  * of golden scope by construction. `publicApi` is the source entry point
  * whose `@packageDocumentation` header is restored into the flattened d.ts
  * (see `prepareDts`).
+ *
+ * A library may opt individual entry points out of golden scope via its
+ * package.json policy field `"tellma".apiGoldens.exclude` — the mechanism
+ * behind the no-stability-guarantee `private` entry point. Exclusions are
+ * validated against the discovered entry points (mirroring the budgets
+ * script's bidirectional coverage check) so a typo can never silently
+ * orphan an exclusion.
  */
-const ENTRY_POINTS = discoverLibraries(
-  resolve(dirname(fileURLToPath(import.meta.url)), '..'),
-).flatMap((library) => library.entryPoints);
+const ENTRY_POINTS = discoverLibraries(clientDir).flatMap((library) => {
+  const excluded = new Set(library.tellma?.apiGoldens?.exclude ?? []);
+  for (const id of excluded) {
+    if (!library.entryPoints.some((entryPoint) => entryPoint.id === id)) {
+      throw new Error(
+        `${library.name}: "tellma".apiGoldens.exclude lists '${id}', which is not an entry point.`,
+      );
+    }
+  }
+  return library.entryPoints.filter((entryPoint) => !excluded.has(entryPoint.id));
+});
 
 /** The fixed note injected above Angular's generated static members. */
 const GENERATED_MEMBER_NOTE =
@@ -266,6 +281,21 @@ for (const entryPoint of ENTRY_POINTS) {
     failed = true;
   } else {
     console.log(`ok ${entryPoint.report}`);
+  }
+}
+
+// The loop only ever ADDS to the report folder, so a golden whose entry point
+// was deleted (or newly excluded) survives untouched and keeps presenting a
+// dead surface as if it were still reviewed. Reconcile the folder against the
+// entry points that actually exist.
+const expected = new Set(ENTRY_POINTS.map((entryPoint) => entryPoint.report));
+for (const file of readdirSync(reportFolder)) {
+  if (file.endsWith('.api.md') && !expected.has(file)) {
+    console.error(
+      `ORPHAN GOLDEN: api/${file} belongs to no entry point — its entry point was removed ` +
+        `or excluded from golden scope. Delete the file and commit the deletion.`,
+    );
+    failed = true;
   }
 }
 

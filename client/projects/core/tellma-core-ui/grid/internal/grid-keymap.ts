@@ -31,7 +31,13 @@ export type TmGridIntent =
   | { readonly kind: 'move'; readonly motion: TmGridMotion; readonly extend: boolean; readonly jump: boolean }
   | { readonly kind: 'tab'; readonly backward: boolean }
   | { readonly kind: 'enter'; readonly backward: boolean }
-  | { readonly kind: 'edit'; readonly mode: 'edit' | 'enter'; readonly seed?: string }
+  | {
+      readonly kind: 'edit';
+      readonly mode: 'edit' | 'enter';
+      readonly seed?: string;
+      /** The key asked for the cell's dropdown, not just its editor. */
+      readonly dropdown?: boolean;
+    }
   | { readonly kind: 'toggleBoolean' }
   | { readonly kind: 'toggleCheck' }
   | { readonly kind: 'toggleSelectAllCheckbox' }
@@ -73,8 +79,10 @@ export function tmResolveGridKey(event: KeyboardEvent, ctx: TmGridKeyContext): T
     return { kind: key === 'ArrowRight' ? 'expand' : 'collapse' };
   }
   if (key === 'ArrowDown' && event.altKey && !mod) {
-    // Alt+ArrowDown opens dropdown editors — routed as an edit intent.
-    return ctx.editable ? { kind: 'edit', mode: 'edit' } : null;
+    // Alt+ArrowDown opens the cell's dropdown — routed as an edit intent
+    // that carries the ask, so ONE press reaches the panel or calendar
+    // (F2 on the same cell opens the editor without it).
+    return ctx.editable ? { kind: 'edit', mode: 'edit', dropdown: true } : null;
   }
 
   const arrowMotion = ARROW_MOTIONS[key];

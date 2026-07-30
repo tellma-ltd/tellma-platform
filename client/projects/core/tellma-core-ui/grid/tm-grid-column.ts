@@ -18,6 +18,14 @@ import { TmGridDisplayDef, TmGridEditorDef, TmGridHeaderDef } from './tm-grid-te
 let nextColumnId = 0;
 
 /**
+ * Cell alignment — logical (`start`/`end`/`center`) or physical
+ * (`left`/`right`). Named so the emitted declaration carries the alias: a
+ * bare literal union prints in the compiler's type-interning order, which
+ * differs between builds and churns the API golden.
+ */
+export type TmGridColumnAlign = 'start' | 'end' | 'center' | 'left' | 'right';
+
+/**
  * One grid column, declared as a content child of `tm-grid`/`tm-tree-grid`
  * in display order. Definition-only: it renders nothing itself.
  *
@@ -57,7 +65,8 @@ export class TmGridColumn<T = unknown, V = unknown> {
   readonly format = input<((value: V, row: T) => string) | undefined>(undefined);
   /**
    * Text→value conversion for typed paste and text-editor commits.
-   * Required for `date` columns (no date adapter exists yet).
+   * Overrides the built-in defaults (`date` columns parse locale text in
+   * the ambient display calendar into ISO `YYYY-MM-DD` out of the box).
    */
   readonly parse = input<((text: string, ctx: TmParseContext) => V | TmParseError) | undefined>(
     undefined,
@@ -93,12 +102,11 @@ export class TmGridColumn<T = unknown, V = unknown> {
   /** Minimum width in px for proportional columns. */
   readonly minWidth = input<number | undefined>(undefined);
   /**
-   * Cell alignment — logical (`start`/`end`/`center`) or physical
-   * (`left`/`right`; numerals stay right-aligned in RTL locales too).
+   * Cell alignment (numerals stay right-aligned in RTL locales too).
    * Defaults by type: `number`/`date` → `right`, `boolean` → `center`,
    * else `start`.
    */
-  readonly align = input<'start' | 'end' | 'center' | 'left' | 'right' | undefined>(undefined);
+  readonly align = input<TmGridColumnAlign | undefined>(undefined);
   /**
    * `number` columns: the fewest fraction digits to display, zero-padded
    * (e.g. `2` renders `5` as `5.00`). Defaults to `0`. Ignored when a custom
@@ -108,9 +116,11 @@ export class TmGridColumn<T = unknown, V = unknown> {
   /**
    * `number` columns: the most fraction digits to display, rounding the rest
    * away (e.g. `2` renders `1.005` as `1.01`). Defaults to unbounded. The
-   * displayed rounding never reaches the model — editing a cell seeds the
-   * editor with the full-precision value. Ignored when a custom [format] is
-   * bound.
+   * model follows the display: a value the USER enters — a committed edit or
+   * a paste — is rounded to this scale before it reaches the model, so what
+   * is stored is what is shown. A programmatic write is never rounded, so a
+   * cell can still hold more precision than it displays. Ignored when a
+   * custom [format] is bound.
    */
   readonly maxDecimals = input<number | undefined>(undefined);
   /** Marks the column that renders the tree hierarchy (defaults to the first). */

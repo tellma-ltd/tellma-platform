@@ -26,6 +26,14 @@ export interface TmLongPressOptions {
  * spawns is suppressed once so the page doesn't double-react. Returns the
  * cleanup function.
  */
+/**
+ * Pointer ids whose CURRENT gesture already fired a long-press somewhere —
+ * nested observers (a tooltip host inside a context-menu area) each run
+ * their own timer for the same press, and only the innermost (whose
+ * pointerdown listener ran first) may fire.
+ */
+const firedGestures = new Set<number>();
+
 export function tmObserveLongPress(
   element: HTMLElement,
   onLongPress: (point: { x: number; y: number }) => void,
@@ -62,6 +70,11 @@ export function tmObserveLongPress(
     if (event.pointerType === 'mouse' || !event.isPrimary || !enabled()) {
       return;
     }
+    // A fresh press with a (reused) pointer id starts a NEW gesture — the
+    // stale latch must not suppress it. Safe for nested observers: every
+    // observer's pointerdown runs before ANY timer can fire, so the
+    // deletes land while the latch is still unset.
+    firedGestures.delete(event.pointerId);
     // A fresh press supersedes any suppression still armed from a prior one.
     disarm();
     startX = event.clientX;
@@ -74,6 +87,11 @@ export function tmObserveLongPress(
         cancel();
         return;
       }
+      if (firedGestures.has(pointerId)) {
+        cancel();
+        return; // an inner observer already consumed this gesture
+      }
+      firedGestures.add(pointerId);
       // The browser may fire contextmenu and/or a synthetic click after the
       // press releases (engine-dependent); arm a one-shot swallow of that
       // trailing burst so the page doesn't double-react.
@@ -93,6 +111,7 @@ export function tmObserveLongPress(
   };
 
   const onPointerEnd = (event: PointerEvent): void => {
+    firedGestures.delete(event.pointerId); // the gesture ends with the lift
     if (pointerId === event.pointerId) {
       cancel();
     }
