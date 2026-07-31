@@ -1,0 +1,618 @@
+# Spec: UI Component Library — Entity Picker
+
+- **Author:** Ahmad Akra
+- **Date:** 30 July 2026
+
+**Status:** Frozen **historical** record of the design and its reasoning at authoring time. It is not
+updated as the code or its dependencies evolve.
+
+## Context
+
+Phase 4 of the Tellma component library delivers **`tm-entity-picker`** — the server-searched
+foreign-key selector every ERP screen leans on (Supplier on a purchase invoice, Account on a journal
+line). It is the component spec 0002 §3.4 explicitly carved out of `tm-select` ("server-side search
+on the typed string, an inline create-new affordance, a launch-advanced-search-modal escape") and the
+one spec 0004 §6.2 promised as the built-in editor for `entity` grid columns. Both promissory notes
+come due here.
+
+All foundation decisions apply unchanged: Angular v22+, zoneless, signal-first, Signal Forms only,
+CSS logical properties + CDK `Directionality` for RTL, Transloco behind `TM_UI_TRANSLATE`,
+token-driven styling with the `@layer tm.base, tm.theme` cascade, static inline-SVG glyphs, the
+showcase + vitest + Playwright pipeline, per-entry-point budgets and API goldens, worktree-isolated
+port-free tooling. The picker embeds in the grid through the hardened `TmCellEditor` contract and
+`TM_CELL_EDITOR_HOST` self-registration of spec 0004, launches its modals through `tm-modal`
+(spec 0005 §10), and composes its dropdown from the shared anchored-overlay helper (spec 0005 §2.1).
+Implementers must use the Angular CLI MCP (`get_best_practices`, `search_documentation`) rather than
+memory for framework conventions, and verify `@angular/aria`/CDK APIs against the installed types
+(angular.dev docs are known to run ahead of npm).
+
+The component is the library's first **editable** `@angular/aria` combobox — `ngCombobox` on an
+`<input>` — where `tm-select` proved the non-editable mode. The overlay wiring, the
+activedescendant/explicit listbox configuration, the activation-commit rule, and the portaled ARIA
+id chain all carry over from spec 0002 §3.4 unchanged; what is new is the async search lifecycle,
+the text↔value resolution semantics, and the two consumer-supplied modal pages.
+
+## Goals / Non-goals
+
+**Goals**
+
+- Ship `tm-entity-picker` to production quality: a11y-complete (WCAG 2.1 AA, APG editable-combobox
+  conformant), RTL-complete, brand-themed, Signal-Forms-native, harness-tested, budgeted.
+- Define the consumer contract: the search function, the id/label accessors, the committed-value
+  display resolver, and the advanced-search / create modal page contracts.
+- Make the picker the grid's **built-in editor for `entity` columns**, configured on the column,
+  with typed-commit text resolving through the same async pipeline pasted labels already use.
+- Extend `@tellma/locale-ar` with every new built-in string.
+
+**Non-goals (explicitly out of scope)**
+
+- Multi-select (tag/chip input) — a future component; the picker stays a scalar FK selector.
+- Rich option templates — options render the consumer's label string, one line, ellipsized. A
+  content-template slot can be added later without breaking the string path.
+- Match highlighting (bolding the typed substring inside labels) — the consumer's search may match
+  on code, synonym, or fuzzy rules the picker cannot see; bolding would guess wrong.
+- Built-in recents/MRU, client-side result caching, or client-side filtering/re-ranking — the
+  picker renders exactly what `search` returns, in the returned order. Recents are expressible by
+  the consumer inside `search('')`.
+- Minimum-query-length gating — the consumer's search decides what an empty or short query returns.
+- Virtual scroll in the dropdown — the search contract imposes a result limit (Context in the task
+  brief); a dev-mode warning fires above 200 results.
+- A built-in clear button — select-all + Delete clears the text (committing `null`); grid Delete
+  clears the cell.
+- The advanced-search and create **pages themselves** — consumer-supplied; distributions will grow
+  standard ones.
+- A `label`/`label2`/`label3` multilingual-field convention — see the Decisions record (#1).
+
+## 1. Package & entry points
+
+| Entry point | Contents |
+|---|---|
+| `@tellma/core-ui/entity-picker` | `tm-entity-picker`, the consumer contract types (§2), the internal panel. Imports `@tellma/core-ui/modal` (page launching) and `@tellma/core-ui/private` (overlay helper). |
+| `@tellma/core-ui/grid` | Entity-column picker configuration + the built-in entity editor mount (§7); imports the entry point above, the same one-directional dependency it has on the select and date-picker editors. |
+| `@tellma/core-ui` (primary) | The new built-in strings (English). No new services or contracts — `TmCellEditor`, `TM_CELL_EDITOR_HOST`, and `TmLabelResolution` are reused as-is. |
+| `@tellma/core-ui-tokens` | The `entityPicker` component token group (§10). |
+| `@tellma/core-ui-testing` | `TmEntityPickerHarness` (§11). |
+| `@tellma/locale-ar` | Arabic translations for the new strings. |
+
+No addition to `@tellma/core-ui/contracts`: the picker's contract types need `Type<unknown>`
+(Angular) and are consumed only by the picker and the grid, which already depends on the picker's
+entry point.
+
+## 2. The consumer contract
+
+The picker owns interaction; the consumer owns data. Four inputs carry the whole data seam:
+
+```ts
+export type TmEntityId = string | number;
+
+/**
+ * The search facility. Called with the query text and an AbortSignal that fires when the
+ * request is superseded, the dropdown closes, or the picker is destroyed. May return the
+ * results synchronously (in-memory/cache source — renders instantly, no spinner) or as a
+ * Promise. The implementation is expected to impose a result limit; the picker renders what
+ * it gets, in order, without filtering or re-ranking.
+ */
+export type TmEntitySearchFn<T> = (query: string, signal: AbortSignal) => readonly T[] | Promise<readonly T[]>;
+
+/** A selection returned by an advanced-search or create page. */
+export interface TmEntityPick<Id extends TmEntityId = TmEntityId> {
+  readonly id: Id;
+  readonly label: string;   // display text at pick time; §5's memo fallback
+}
+
+/** A consumer page the picker launches in a tm-modal. */
+export type TmEntityPickerPage =
+  | Type<unknown>
+  | { component: Type<unknown>; size?: 'sm' | 'md' | 'lg'; title?: string };
+
+/** Injected into the page component via TM_MODAL_DATA. */
+export interface TmEntityPickerPageData {
+  readonly query: string;   // the picker's text at launch — prefills the page's own search/name field
+}
+```
+
+Component API (`tm-entity-picker<T, Id extends TmEntityId>`):
+
+```ts
+value = model<Id | null>(null);                       // FormValueControl value — the FK id
+search = input.required<TmEntitySearchFn<T>>();
+itemId = input.required<(item: T) => Id>();           // result → id
+itemLabel = input.required<(item: T) => string>();    // result → display text (reactive, see below)
+displayWith = input<((id: Id) => string | null) | undefined>();  // committed id → display text (reactive)
+advancedSearch = input<TmEntityPickerPage | undefined>();  // absent ⇒ no magnifier, no footer row
+create = input<TmEntityPickerPage | undefined>();          // absent ⇒ no Create row
+createLabel = input<string | undefined>();            // overrides the localized "Create…" row label
+placeholder = input('');
+searchDebounce = input(50);                           // ms; see §4.2
+picked = output<TmEntityPicked<T, Id>>();
+// + the standard optional Signal Forms state inputs (disabled, readonly, required, errors,
+//   touched, dirty, invalid, pending, name, …) and the `touch` output on blur, per spec 0002 §5.
+
+export interface TmEntityPicked<T, Id extends TmEntityId> {
+  readonly id: Id;
+  readonly label: string;
+  readonly item?: T;        // present for 'list' and 'auto' (the search result); absent for modal sources
+  readonly source: 'list' | 'auto' | 'advanced' | 'create';
+}
+```
+
+**Locale-reactive labels — functions, not field conventions.** `itemLabel` and `displayWith` are
+called in a **reactive context**: an implementation that reads signals — the ambient locale, a
+workspace entity cache — re-renders every visible label in place when those signals change. This is
+how "the display updates on the fly with the ambient locale" is delivered without the library
+knowing anything about multilingual entity shapes: a Tellma distribution writes one
+`getMultilingualLabel(entity)` against its own `Name`/`Name2`/`Name3` convention and passes it
+everywhere. The core stays domain-free, exactly as `tm-select.displayWith` and the grid's column
+`format` already are (Decisions #1).
+
+**`displayWith` resolves the committed value; a memo covers the gap.** A form arrives with
+`value` set before any search ran (the edit-screen case), so the input's text for a committed id
+resolves in order: (1) **`displayWith(id)`** when provided and non-null — the reactive,
+recommended path, typically backed by the consumer's entity cache; (2) else the **memoized label**
+of the pick that produced the value in this component's lifetime (`itemLabel(item)` at list-pick
+time; the returned `label` for modal picks) — correct at pick time but frozen, so it does not
+re-render on locale switch; (3) else `String(id)` with a dev-mode warning naming `displayWith` —
+visible and honest, never a silently empty field that claims to hold a value. `picked` gives
+cache-less consumers the full item at pick time, which is also how a distribution keeps its cache
+(and therefore `displayWith`) warm.
+
+## 3. Anatomy & form-field integration
+
+The component renders an internal native `<input>` plus an optional trailing **magnifier button**
+(present only when `advancedSearch` is configured), and reports `ownsChrome: false` — inside
+`tm-form-field` the field supplies the bordered box, focus ring, label (`<label for>` targets the
+internal input via `controlId`), hint/error wiring; standalone or in a grid cell the bare input +
+button fill the host. This is the `tm-date-picker` anatomy (spec 0005 §6.2) with a magnifier in
+place of the calendar button.
+
+- The input carries `role="combobox"` semantics via `ngCombobox` (`aria-expanded`,
+  `aria-controls`, `aria-activedescendant` into the portaled listbox), `aria-autocomplete="list"`,
+  `dir="auto"` (foundation bidi rule), and `autocomplete="off"`/`spellcheck="false"` so browser
+  autofill and spellcheck never fight the dropdown.
+- **The magnifier is not a tab stop** (`tabindex="-1"`), the calendar-button precedent: one Tab per
+  field is the ERP data-entry contract, in forms and grid cells alike. It stays pointer- and
+  AT-activatable (localized `aria-label`); the keyboard path to the same modal is the
+  **Advanced search… footer row** in the dropdown (§4.4), so WCAG 2.1.1 holds without a bespoke
+  shortcut (Decisions #7).
+- While the picker is resolving text (§5.2) it surfaces `pending` to the field —
+  `pending() = fieldPending() || resolving()` — so the field shows the standard trailing
+  `tm-spinner` and the error-display policy holds errors until resolution lands (spec 0002 §5).
+  The control sets `aria-busy` while resolving.
+- **Size stability:** the control never changes size across states — the spinner renders in the
+  field's existing pending slot, the magnifier is always present when configured (disabled state
+  included), and the dropdown is top-layer overlay content outside the page flow.
+- `disabled`/`readonly` (field-authoritative when bound) suppress the dropdown, the search, and
+  the magnifier.
+
+## 4. The dropdown
+
+### 4.1 Composition
+
+The proven spec 0002 §3.4 stack, in editable mode: `ngCombobox` on the **input**,
+`cdkConnectedOverlay` + `ngComboboxPopup` nested per the official pattern, and inside the popup a
+status area plus an `ngListbox ngComboboxWidget` with `focusMode="activedescendant"` (DOM focus
+never leaves the input) and `selectionMode="explicit"`. Commit is **activation-driven** —
+`(click)`/`(keydown.enter)` on the listbox — never `valueChange` (the auto-prune lesson). The
+overlay is created lazily on first open through the shared anchored-overlay helper (spec 0005
+§2.1): `disableClose` (the control owns Esc), logical `block-end/start` positions with flip,
+`matchWidth`, macrotask re-measure. The known upstream aria-in-overlay **mouse** bug guard of
+spec 0002 §3.4 applies verbatim: the suite pins option-click commit, outside-click close, and
+magnifier click with real mouse events.
+
+**Anchor = the chrome the user reads as the field**, not the bare input: the `tm-form-field`
+bordered box when wrapped, the **cell box** when grid-hosted, the host element standalone — the
+date-picker's rule, which is what "anchored to the cell border rather than the input" requires
+in the grid. `matchWidth` therefore matches the box/cell; a `--entity-picker-panel-min-width`
+token keeps the panel readable when a narrow grid column would make matched width unusable
+(the panel may exceed the cell width, never undershoot the token).
+
+The popup contains, in order:
+
+1. **The listbox** — one option per search result, single line, ellipsized; the option whose id
+   equals the committed `value` renders `aria-selected` + the check glyph (the listbox mirrors the
+   committed id; aria's unmatched-value prune is harmless under activation-commit).
+2. **The status area** (outside the listbox — it holds no options): the `tm-spinner` while an
+   async search is outstanding, the localized **"No results"** when a fresh search returned empty,
+   or the localized **search-failed message** when it rejected. Presentational; announcements go
+   through the live region (§8).
+3. **The footer rows**, when configured: a visual separator (`aria-hidden`), then
+   **Advanced search…** and **Create…** — real `role="option"` rows *inside* the listbox (ARIA
+   listbox children must be options), reachable by arrow keys, never auto-highlighted, activating
+   their modal instead of committing a value. They render in **every** popup state — results,
+   empty, error, loading — so "no results → Create…" is always one arrow + Enter away.
+
+### 4.2 Search lifecycle
+
+- **Open triggers:** typing (any text change, including clearing to empty); pointer click/tap on
+  the input (the touch path — no keyboard chord exists there); `Alt+ArrowDown` (the platform
+  dropdown chord, grid and form alike); plain `ArrowDown`/`ArrowUp` **standalone only** (APG
+  editable-combobox behavior — in a grid, plain arrows belong to the grid's commit-and-move model,
+  the spec 0005 §6.2 branching rule, detected via the optional `TM_CELL_EDITOR_HOST` injection).
+  Keyboard focus alone never opens it.
+- **The query:** the input's current text — except when that text is **pristine** (empty, or
+  exactly the committed value's display text), where the query is `''`: opening a populated field
+  is a browse-alternatives intent, not a search for the label already chosen. First keystroke into
+  a pristine field replaces per type-to-edit (grid) or edits in place (form) and searches the
+  edited text.
+- **Debounce — leading + trailing, default 50 ms.** The first change after idle fires
+  immediately (single keystrokes pay zero added latency); subsequent changes inside the window
+  coalesce and fire once on the trailing edge. The window exists solely to absorb key-autorepeat
+  and paste bursts: Windows' fastest repeat is ~33 ms/char, which is why a 10 ms window would
+  coalesce nothing (Decisions #5). `searchDebounce` tunes it; `0` disables coalescing.
+- **Supersession:** every text change aborts the in-flight request (`AbortSignal`) and clears the
+  stale results + highlight — the dropdown shows the spinner until a fresh, uninterrupted result
+  set returns. A stale response that arrives anyway (a consumer ignoring the signal) is discarded
+  by sequence token. Honoring the signal is an optimization; discard-on-arrival is the
+  correctness guarantee (the §9.4 posture of spec 0004).
+- **Synchronous fast path:** when `search` returns an array (not a thenable), results render in
+  the same turn — no spinner, no flicker. The debounce window is skipped while the source is
+  known-synchronous (the previous invocation returned an array), so in-memory sources are
+  keystroke-instant; the coalescing exists for server traffic, which an in-memory source has none
+  of.
+- **Search failure** (rejected promise / thrown sync): the status area shows the localized
+  failure message where results would render; footer rows stay; the next text change retries.
+  Abort-caused rejections are not failures.
+- **Close triggers:** selection commit, Esc (§4.3), outside pointer press, opening a modal
+  (§6), blur (§5.2), `disabled`/`readonly` becoming true, destroy. Closing aborts any in-flight
+  search except the blur-resolution case (§5.2). Destroy also closes any modal the picker opened.
+
+### 4.3 Keyboard model
+
+The aria directives own the combobox/listbox keyboard model and the ARIA wiring; the picker adds:
+
+- **After every fresh result render, the first result is auto-highlighted**
+  (`aria-activedescendant`; the public listbox first-item navigation API) — so
+  type-then-Enter is the zero-arrow happy path. Footer rows are never the auto-highlight target;
+  a fresh empty result set highlights nothing.
+- **Enter** — with a highlighted option: commits it (§5.1) and closes; on a footer row: opens its
+  modal; with the popup open, Enter is always consumed (never submits the form). With the popup
+  open but results still loading, Enter requests **resolution** of the current text (§5.2) with
+  focus retained. With the popup closed, Enter is not consumed (native form submit applies).
+- **Tab** — with a highlighted option: commits it, closes the popup, and does **not** consume the
+  key — focus proceeds to the next field (form) or the grid handles commit-and-move (§7.3). The
+  brief's Enter/Tab-select requirement; a documented, deliberate strengthening of the APG
+  baseline (Decisions #2).
+- **Esc** — closes the popup, text intact; innermost-first against modals and the grid's
+  two-stage Esc. Standalone, a second Esc does nothing (`tm-select` posture: no revert state
+  exists outside a grid).
+- **Arrow Up/Down** — navigate options (wrapping per aria defaults) through results and footer
+  rows; the input's caret is untouched while browsing (APG manual/highlight model — the text
+  never mutates during navigation). Home/End move the caret (editable-combobox APG), not the
+  highlight.
+- Printable typing always returns to filtering — the highlight resets with the next result set.
+
+### 4.4 Touch
+
+Tap opens the browse list (`search('')`) alongside the soft keyboard; option rows and the
+magnifier meet the WCAG 2.2 AA 24 px floor with the ≈44 px comfortable target on touch-primary
+forms (`--entity-picker-option-height`, matching the select's row sizing); the panel's max-height
+token keeps it inside small viewports (scrollable list). No hover-only affordances exist.
+
+## 5. Text, value & resolution semantics
+
+### 5.1 The value channel
+
+`value` is the FK id (`FormValueControl<Id | null>`); the text is a **query surface, not the
+value** — typing never writes the model. Writes happen at exactly these points:
+
+- **Pick** (option activation, Tab-commit, modal selection, blur auto-resolution): writes the id,
+  sets the input to the canonical display text (§2's resolution order), memoizes the label, emits
+  `picked`, clears any resolution error.
+- **Empty commit** (blur/Enter with empty text): writes `null` — clearing text clears the value;
+  `required` is the field's concern.
+- **Failed resolution** (§5.2): writes `null` and raises the error — the model and the display
+  are never silently out of sync (the grid's invalid-input principle applied to forms: a value
+  the form could save must never sit behind text that claims something else).
+
+The text channel rides the same machinery as the date picker (spec 0005 §6.7): a raw-text channel
+over the value model whose parse reports kind `parse` with an inline localized message, and whose
+canonical writes (picks, locale reformat) pin their known value so a reformat can never corrupt
+the model through a lossy re-parse. External model writes reformat the text immediately while
+unfocused; while focused the user's text wins until their next commit point. Locale/calendar-free:
+switching locale re-renders the display text via `displayWith` with the model unchanged; kept
+error text (below) is never erased by a locale switch.
+
+### 5.2 Resolution — blur and Enter on unresolved text
+
+*Resolution* maps the current text to at most one entity, reusing the search already in flight:
+
+1. Take the freshest results for the current text — awaiting the in-flight request if one is
+   outstanding (blur does **not** abort it; it is the resolution input). If no search is current
+   (e.g. Esc closed the popup earlier), one is issued.
+2. **Exactly one result → auto-pick it** (`picked` with `source: 'auto'`).
+3. **Zero → error** *"No match for ‹text›"*; **two or more → error** *"‹text› matches more than
+   one item"*; **search failure → error** *"Search failed"*. In every error case the **text is
+   kept** for correction, the model holds `null`, and the field is invalid (kind `parse`, inline
+   localized message).
+
+Triggers: **blur** with non-pristine, non-empty text (the popup closes immediately; resolution
+continues behind it); **Enter** while results are loading (focus retained). While resolution is
+pending the control reports `pending` and the raw-text channel already carries the unresolved
+error — so the field is **invalid from the moment of blur** (a submit racing the resolution is
+blocked, never saved with a phantom value), while the standard display policy
+(`!pending && invalid && (touched || dirty)`) keeps the message visually held until the outcome
+lands: a fast unique match paints the label with no error flash at all.
+
+Interleaving guards: refocusing and editing the text, an external `value` write, or destroy
+supersedes/aborts the pending resolution (sequence token; late results discarded). A pristine or
+empty blur resolves trivially (no-op / `null`) with no request.
+
+**Why this pair of behaviors** (Decisions #3, #4): unique-match auto-resolve on blur is the
+long-standing ERP lookup convention (heads-down entry: type a fragment, Tab, keep typing) and is
+exactly the grid's pasted-label semantics — `TmLabelResolution`'s value/notFound/ambiguous — so
+forms and grids agree on what unresolved text means. Keep-text-plus-error (rather than
+silently clearing the field) matches the platform's invalid-input posture everywhere else
+(`tmNumber`, `tm-date-picker`, grid cells keep unparseable text for correction); discarding the
+user's query on a stray click is the classic lookup-field frustration this rule exists to avoid.
+
+## 6. The modals — advanced search & create
+
+Both pages follow one launch contract. The picker opens the consumer's component via the `TmModal`
+service — advanced search defaults to size `lg`, create to `md`; `title` from the page config,
+else the localized defaults — passing `TmEntityPickerPageData { query }` (the current text, so the
+page can prefill its own filter or the new entity's name). The page closes itself through its
+`TmModalRef<TmEntityPick<Id>>`:
+
+- `close({ id, label })` → the picker applies the pick (§5.1, `source: 'advanced' | 'create'`),
+  focuses the input, and clears any error. The label seeds the memo; `displayWith` wins over it
+  wherever it resolves (§2).
+- `close()` / close-button / backdrop / Esc → no change: text, value, and error state are exactly
+  as they were; focus returns to the picker (the modal's focus restore).
+
+Launch paths: the magnifier (pointer/AT) and the **Advanced search…** footer row open the
+advanced-search page; the **Create…** footer row opens the create page (`createLabel` overrides
+its caption — *"Create supplier…"* reads better than a generic *"Create…"*). Opening a modal
+closes the dropdown and cancels any in-flight search; the input's text survives for
+`TmEntityPickerPageData` and for the user's return. Modal stacking, focus trapping, Esc ordering,
+and top-layer interplay are `tm-modal`'s (spec 0005 §10) — a picker **inside** a modal works, and
+its own pages stack above per the CDK dialog stack.
+
+## 7. Grid integration
+
+### 7.1 Column configuration — the built-in `entity` editor
+
+`tm-grid-column` gains the picker's data seam, mirroring how `enum` columns carry
+`options`/`optionLabel`/`optionValue`:
+
+| New column input | Meaning |
+|---|---|
+| `search?: TmEntitySearchFn<unknown>` | Enables the built-in `tm-entity-picker` editor for this `entity` column. |
+| `itemId?`, `itemLabel?` | The result accessors (§2), required alongside `search`. |
+| `advancedSearch?`, `create?: TmEntityPickerPage` | Optional modal pages; absent ⇒ no magnifier / no Create row in this column's editor. |
+
+The column's existing **`format` doubles as the editor's `displayWith`** (the id→label duty it
+already owns for display cells) — no duplicate configuration; `resolvePastedLabels` keeps its
+paste duty unchanged. Precedence: a consumer `*tmGridEditor` template still wins over the
+built-in; an `entity` column with neither `search` nor a template remains the spec 0004 dev-mode
+error unless readonly. Display cells stay static DOM formatted by `format` — the picker
+contributes no `TmCellDisplay` because the column already owns that text.
+
+### 7.2 Mounting — no chrome, cell-anchored
+
+The grid mounts the picker bare (no `tm-form-field`): the input fills the cell box exactly like
+the text editor, with only the magnifier at the inline end (when configured) — no bordered box in
+either display or edit mode. The dropdown anchors to the **cell box** (§4.1's anchor rule) with
+`matchWidth` against the cell and the min-width token as the floor. The picker registers itself
+via `TM_CELL_EDITOR_HOST` on construction and implements the mounted-editor dropdown hooks the
+enum and date editors established: `isDropdownOpen()`/`openDropdown()` wired to the grid keymap's
+`Alt+ArrowDown` and dropdown gate, and the `activated`-style output for pick-commits.
+
+### 7.3 Editing semantics
+
+- **Opening:** `Enter`/`F2`/double-click open the editor on the cell's display text (edit mode,
+  caret at end, dropdown closed); typing opens it seeded (enter mode) and immediately searches
+  the seed; `Alt+ArrowDown` opens editor **and** dropdown in one press (the pristine rule ⇒
+  browse list). IME composition follows spec 0004 §8.4 (open unseeded, compose inside).
+- **While the dropdown is open the grid stays out** (the established dropdown gate): arrows
+  navigate results, Esc №1 closes the dropdown, Esc №2 is the grid's cancel — the two-stage Esc
+  composes unchanged.
+- **Enter on a highlighted option = the pick IS the edit** (the enum/date contract): the picker
+  consumes Enter, commits the cell, and the editor closes with **no move**.
+- **Tab with a highlighted option** selects it, closes the dropdown, and lets the key bubble —
+  the dropdown gate sees a closed dropdown and the grid performs its normal commit-and-move.
+  Excel's dropdown-cell behavior, one keystroke.
+- **Commit with unresolved text** (blur-commit, click-elsewhere, Enter with no highlight): the
+  synchronous part of the §5.2 rule applies — a fresh **unique** result auto-picks; otherwise the
+  editor reports the raw text and the grid runs its **§9.3 conversion chain**, which this spec
+  extends to editor commits on `entity` columns: consumer `parse` if any → **`resolvePastedLabels`**
+  with the single text (the §9.4 pending-cell affordance, sequence tokens, and undo semantics
+  apply as for a one-cell paste) → definitive failures become invalid inputs with the §9.4
+  messages. Typed commit and pasted text thus share one resolution pipeline and one UX
+  (Decisions #8); a column with no resolver records the invalid input directly. Grid commit
+  stays synchronous — the picker never holds a cell open awaiting a server round-trip.
+- **Modals from a cell:** the magnifier and footer rows work mid-edit. The activating press is
+  inside the editor, so the grid's commit-on-blur — which reads the press that precedes a real
+  departure, the spec 0005 §6.6 rule — holds the edit session open while the modal traps focus.
+  A pick applies through the still-open editor and commits the cell (no move); a dismissal
+  returns focus to the editor input with the session intact.
+- `cancel()` restores the value present at open; `seed()` replaces content and searches;
+  `text` reports the committed pick's label, or the raw unresolved text for the invalid-input
+  path. Copy of an errored cell exports that raw text (spec 0004 §10, unchanged).
+
+## 8. Accessibility
+
+Target WCAG 2.1 AA — axe static floor + behavioral Playwright specs, per the foundation posture.
+The design was audited against the APG editable-combobox pattern; conformance and the two
+deliberate strengthenings:
+
+- **Pattern:** combobox (input) + listbox popup, `aria-autocomplete="list"`,
+  `aria-activedescendant` with DOM focus pinned to the input, `aria-expanded`, `aria-controls`
+  across the overlay portal — the id chain is asserted across the portal exactly as for
+  `tm-select` (spec 0002 §6). Browsing never mutates the input text (APG list-autocomplete
+  manual/highlight model); there is no inline completion.
+- **Auto-highlighted first result + Enter commits** is the APG's automatic-selection variant of
+  list autocomplete — conformant, and the announced active option tracks it.
+- **Tab commits the highlighted option** (APG baseline: Tab merely closes). Deliberate,
+  documented: the brief requires it and it is the Excel/ERP data-entry convention; the popup
+  is closed either way and Tab always leaves the field, so no keyboard trap arises.
+- **Create…/Advanced search… are options** (`role="option"` inside the listbox — the only
+  children ARIA permits), with accessible names from their captions; the separator above them is
+  `aria-hidden` decoration. Activating them opens a `role="dialog"` modal; APG has no rule
+  against command options, and arrow-reachability is what makes the magnifier's `tabindex="-1"`
+  legitimate under WCAG 2.1.1.
+- **Async status is announced, not rendered as fake options:** the spinner/no-results/failure
+  area is presentational inside the popup; a visually-hidden `aria-live="polite"` region (the
+  official aria-autocomplete example's mechanism) announces result counts (*"5 results"* — ICU
+  plural), *"No results"*, search failure, and the auto-resolution outcome on blur. Announcements
+  fire on fetch completion, never per keystroke. The popup carries `aria-busy` while loading.
+- Resolution errors surface through the standard field error machinery (persistent polite live
+  region in `tm-form-field`; cell error overlay + `aria-describedby` in the grid).
+- Focus chains: modal focus trap/restore per `tm-modal`; the dropdown never takes DOM focus, so
+  there is nothing to restore on close; Esc dismisses innermost-first (dropdown → modal → grid
+  edit).
+- Forced-colors and reduced-motion honored and Playwright-gated (active-option ring, selected
+  check, separator, spinner all survive `forced-colors: active`; fades collapse under reduced
+  motion).
+- Touch targets per §4.4; the magnifier ≥ 24 px with the ≈44 px comfortable posture on
+  touch-primary forms.
+
+## 9. RTL & i18n
+
+- All geometry is logical: the magnifier sits at the inline end, the panel positions flip via
+  `Directionality`, option padding/ellipsis are logical, the check glyph mirrors position with
+  the layout. The input is `dir="auto"` (foundation bidi rule); option rows inherit the ambient
+  direction and rely on the Unicode bidi algorithm for mixed-script labels.
+- New built-in strings, resolved through `TM_UI_TRANSLATE` with English in-package and Arabic in
+  `@tellma/locale-ar`: the Create… and Advanced search… captions and default modal titles, the
+  magnifier `aria-label`, "No results", "Search failed", the ICU results-count announcement, and
+  the resolution errors (*no match* / *more than one match* / *unresolved — select an item*).
+  Live locale switch re-renders every visible string and label (reactive `itemLabel`/
+  `displayWith`, §2) with the model untouched; grid cell messages reuse the spec 0004 §9.4
+  strings.
+
+## 10. Performance budget
+
+- **Budget:** `entity-picker` ≤ 10 KB gzipped self-weight (between `select`'s 8 and
+  `date-picker`'s 14: the same overlay/combobox wiring plus resolution logic and modal glue,
+  minus select's projection machinery); `grid` 35 → 36 (column inputs + editor mount + the
+  commit-resolution chain). Primary entry point unchanged (strings only). The usual
+  `"tellma".budgetsInKb` ratchets.
+- **Lazy everything that floats:** the overlay and panel are created on first open and torn down
+  on close; a closed picker costs its input + button DOM only. The modal pages are consumer
+  components instantiated by `tm-modal` on open. `@defer` mirrors the date-picker's popup split
+  where the panel subtree earns it.
+- **No per-keystroke layout thrash:** typing mutates only the panel's content (overlay layer);
+  the field never resizes (§3); the spinner is transform-animated; results replace a single list.
+- **Network discipline:** leading+trailing coalescing (§4.2), abort-on-supersede, one request per
+  settled query, zero requests for pristine/empty blurs and for the synchronous fast path.
+- Component tokens: `--entity-picker-panel-max-height`, `--entity-picker-option-height`,
+  `--entity-picker-panel-min-width` (validated by the schema + missing-ref gate, both schemes).
+
+## 11. Testing
+
+- **Unit (vitest, zoneless):** search lifecycle — leading/trailing coalescing, autorepeat burst ⇒
+  ≤ 2 requests, abort-on-supersede, stale-response discard, sync fast path (no spinner, no
+  debounce), failure + retry; resolution — unique auto-pick (including results arriving after
+  blur), zero/ambiguous/failed errors with kept text and `null` model, pending suppression (no
+  error flash on a fast unique match), Enter-while-loading, pristine/empty blur no-ops,
+  supersession by refocus-edit/external write/destroy; display — `displayWith` > memo >
+  `String(id)` + dev warning, live locale re-label; Signal Forms — `[formField]` binding, invalid
+  blocks submit during resolution, required-on-null, touch on blur; modal contract — pick applies
+  and focuses, every dismissal path is a no-op, `query` payload; footer rows — presence by
+  config, never auto-highlighted, error-state persistence.
+- **Harness:** `TmEntityPickerHarness` (+ option sub-harness): read/type query, open state,
+  option labels, active option, select by label, spinner/status text, magnifier click, committed
+  text. Composes the aria combobox/listbox harnesses; the panel is portaled (document-root
+  locator, the select-harness precedent).
+- **Playwright (showcase stories):** keyboard matrix (type→auto-highlight→Enter; arrows through
+  results and footer rows; Tab-commit; Esc; Enter-never-submits-while-open); **real-mouse specs**
+  (option click commits, outside click closes, magnifier opens the modal) guarding the upstream
+  aria-in-overlay mouse bug; blur auto-resolution and error states with live-region assertions;
+  modal round-trips (pick and dismiss, focus restore, picker-inside-a-modal stacking); grid story
+  — entity column on the built-in editor: type-to-edit, `Alt+ArrowDown` cell-anchored dropdown,
+  pick-commits-no-move, Tab-commit-move, two-stage Esc, typed-commit resolution through the
+  resolver (pending affordance → value/invalid), paste unchanged, mid-edit modal holding the
+  session; RTL mirroring; axe on every state (open popup, error, loading) in light/dark;
+  forced-colors + reduced-motion gates. The showcase story offers sync and artificial-latency
+  async search modes, both modals, and an `ar` locale switch.
+- API golden + `api:approve`, `components.json`/`llms.txt`/MCP docs, co-located examples, budget
+  and boundary lints — the standard gates.
+
+## 12. Definition of done
+
+1. `@tellma/core-ui/entity-picker` builds, lints, ships within budget with API golden approved;
+   docs pipeline and showcase story updated; no `contracts` changes.
+2. Standalone and `tm-form-field`-wrapped rendering per §3: `ownsChrome: false`, label/hint/error
+   wiring, magnifier only when configured and never a tab stop, size stability across every state.
+3. Search lifecycle per §4.2 green: immediate spinner + dropdown on typing, leading+trailing
+   coalescing (autorepeat ⇒ no request barrage), cancel-on-change, sync fast path with zero
+   spinner, failure state showing footer rows, dev-mode warning above 200 results.
+4. Keyboard model per §4.3 green, including first-result auto-highlight, Enter/Tab commit,
+   Enter consumed only while open, standalone ArrowDown vs grid branching, Esc ordering.
+5. Resolution per §5 green: unique auto-pick with no error flash, notFound/ambiguous/failed keep
+   the text with `null` model and localized kind-`parse` errors, submits blocked while resolving,
+   all supersession races pinned.
+6. Committed-value display per §2: `displayWith` reactive path, memo fallback, `String(id)` +
+   dev warning; live locale switch re-renders labels, options, and kept errors.
+7. Modal contract per §6: `TM_MODAL_DATA` payload, typed `TmModalRef` result, pick applies +
+   memoizes + focuses, every dismissal is a no-op, size/title defaults and overrides.
+8. Grid: entity columns configured with `search` mount the picker as the built-in editor —
+   bare-input chrome, magnifier only, cell-anchored `matchWidth` panel with min-width floor,
+   `Alt+ArrowDown`, dropdown gate, pick-IS-the-edit, Tab-commit-move, two-stage Esc, `seed`/
+   `cancel`/`text` per the `TmCellEditor` contract; consumer `*tmGridEditor` still wins; the
+   no-config dev error remains.
+9. Grid typed-commit resolution per §7.3: unresolved commit text flows through parse →
+   `resolvePastedLabels` with the single-cell pending affordance and §9.4 messages; no resolver ⇒
+   invalid input; grid commit stays synchronous; the grid suite is updated and green.
+10. Mid-edit modals hold the grid edit session open and commit on pick (Playwright-pinned).
+11. A11y per §8: axe clean in every state; the portaled ARIA id chain resolves; live-region
+    announcements (counts, no-results, failure, auto-resolution) fire on completion only;
+    real-mouse specs green; forced-colors/reduced-motion gates green.
+12. RTL per §9 verified under `dir="rtl"` (panel mirroring, magnifier at inline end, bidi text);
+    every new string resolves through `TM_UI_TRANSLATE`, ships English in-package, and lands in
+    `@tellma/locale-ar`.
+13. `TmEntityPickerHarness` shipped; unit + Playwright suites of §11 green; budgets and goldens
+    enforced.
+
+## Decisions record
+
+Answers to the design brief's open questions, where not already evident above:
+
+1. **Locale-dependent labels** — caller-supplied functions evaluated in a reactive context
+   (`itemLabel`, `displayWith`), not a `label`/`label2`/`label3` convention with global language
+   mapping: the core stays domain-free, the same seam `tm-select.displayWith` and the grid's
+   column `format` already established, and one distribution-level helper closure delivers the
+   on-the-fly ambient-locale behavior everywhere (§2).
+2. **APG conformance** — no contradictions found; two deliberate strengthenings documented in §8:
+   Tab commits the highlighted option (APG baseline only closes), and command options
+   (Create…/Advanced search…) live inside the listbox as `role="option"` rows. Auto-highlighting
+   the first result is APG's automatic-selection variant; async status is announced via a polite
+   live region rather than rendered as options.
+3. **Blur before results return** — the brief's option B: the search continues as the resolution
+   input; exactly one result auto-selects, zero or many becomes an error (§5.2). Rationale: the
+   ERP unique-match auto-resolve convention, and it is precisely the grid's pasted-label
+   semantics (`value`/`notFound`/`ambiguous`), so forms and grids agree. The pending +
+   display-policy interplay eliminates the error-flash cost that usually argues for option A, and
+   the field is invalid throughout the window so a racing submit can never save a phantom value.
+4. **Blur without selecting** — the brief's option B: keep the text, enter the error state (never
+   silently clear). Consistent with `tmNumber`, `tm-date-picker`, and grid invalid inputs, which
+   all preserve unparseable text for correction; clearing discards user work on a stray click
+   (§5.2). The auto-resolve rule above means this state is reached only for genuinely
+   zero/ambiguous text.
+5. **Debounce** — 50 ms leading + trailing, not the brief's 10 ms: the fastest OS key-repeat
+   interval is ~33 ms, so a 10 ms trailing window coalesces nothing; leading-edge firing keeps
+   single keystrokes latency-free, and the immediate spinner keeps the UX responsive either way
+   (§4.2). Tunable via `searchDebounce`.
+6. **Synchronous sources** — supported first-class: array returns render in the same turn with no
+   spinner, and the debounce window is skipped while the source is known-synchronous (§4.2).
+7. **Advanced-search keyboard path** — the magnifier follows the calendar-button precedent
+   (`tabindex="-1"`, one Tab per field); its keyboard/touch equivalent is the Advanced search…
+   footer option, reachable by arrows in every popup state — no new shortcut, no second tab stop
+   on every FK field (§3, §4.1).
+8. **Grid typed-commit resolution** — unresolved editor text on `entity` columns flows through
+   the same §9.3/§9.4 pipeline as pasted labels (pending affordance, sequence tokens, localized
+   notFound/ambiguous messages), extending spec 0004's chain — which previously ran it for paste
+   only — to editor commits on entity columns. Grid commits stay synchronous; the picker never
+   holds a cell open on a server round-trip (§7.3).
+9. **Grid keyboard divergence from forms** — pick-IS-the-edit on Enter (no move, the enum/date
+   contract) and Tab select-close-bubble so the grid's own commit-and-move runs; plain arrows
+   belong to the grid when the dropdown is closed, per the spec 0005 branching rule (§7.3).
+10. **Modals mid-cell-edit** — the edit session stays open while a picker-launched modal is up
+    (the commit-on-blur press rule already reads the activating press as internal); a pick
+    commits through the still-open editor, a dismissal resumes editing (§7.3).
+11. **Dropdown anchor** — the chrome the user reads as the field (form-field box / grid cell /
+    bare host), the date-picker's rule, with `matchWidth` plus a min-width token floor for
+    narrow cells (§4.1).
+12. **Open-on-click with a pristine browse query** — pointer opening a populated field searches
+    `''` (browse alternatives) rather than the committed label (which would only find the current
+    entity); an edited text always searches itself (§4.2). Click-to-open is also the touch path.
