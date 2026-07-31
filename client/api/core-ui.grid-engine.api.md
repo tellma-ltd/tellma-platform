@@ -78,6 +78,7 @@ export class TmGridClipboard<T = unknown> {
     paste(source: TmGridPasteSource, sourceFingerprint?: string): TmGridPasteResult;
     readonly pendingCut: Signal<TmGridPendingCut | null>;
     reconcileCut(): void;
+    trackCommitResolution(commit: TmGridPendingLabelCommit, label: string): TmGridResolutionRequest;
 }
 
 // @public
@@ -209,6 +210,7 @@ export interface TmGridEditSession {
 export class TmGridEditState<T = unknown> {
     constructor(options: TmGridEditStateOptions<T>);
     cancel(): void;
+    commitLabel(text: string): TmGridPendingLabelCommit | null;
     commitText(text: string): boolean;
     commitValue(value: unknown): boolean;
     openEdit(cell: TmRowCol, mode: 'edit' | 'enter', seedText?: string): boolean;
@@ -240,6 +242,7 @@ export class TmGridEngine<T = unknown> {
         mod?: boolean;
     }): void;
     readonly clipboard: TmGridClipboard<T>;
+    commitEditorLabel(text: string): TmGridResolutionRequest | null;
     deleteSelectedRows(): void;
     displayText(cell: TmRowCol): string;
     dispose(): void;
@@ -487,6 +490,14 @@ export interface TmGridPendingCut {
     readonly fingerprint: string;
     readonly isFullRows: boolean;
     readonly rowIds: readonly TmRowId[];
+}
+
+// @public
+export interface TmGridPendingLabelCommit {
+    readonly columnId: string;
+    readonly columnKey: string;
+    readonly handle: TmGridCompoundHandle;
+    readonly rowId: TmRowId;
 }
 
 // @public

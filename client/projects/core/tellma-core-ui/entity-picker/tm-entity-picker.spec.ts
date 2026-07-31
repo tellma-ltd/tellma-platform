@@ -5,12 +5,15 @@
 
 import { Component, inject, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { form, FormField, required } from '@angular/forms/signals';
+import { TranslocoService } from '@jsverse/transloco';
 
 import { provideTellmaUi, TM_CELL_EDITOR_HOST } from '@tellma/core-ui';
 import type { TmCellEditor, TmCellEditorHost } from '@tellma/core-ui/contracts';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TM_MODAL_DATA, TmModalRef } from '@tellma/core-ui/modal';
+import { TmEntityPickerHarness } from '@tellma/core-ui-testing';
 
 import { TmEntityPicker } from './tm-entity-picker';
 import type {
@@ -452,6 +455,33 @@ describe('tm-entity-picker', () => {
       expect(search.calls).toHaveLength(2);
     });
 
+    it('announcements fire on fetch completion only — never per keystroke', async () => {
+      const { fixture, host, input } = await setup();
+      const search = manualSearch();
+      host.search.set(search.fn);
+      await settle(fixture);
+      await type(fixture, input, 'Al');
+      expect(liveText(fixture)).toBe(''); // nothing announced while loading
+      search.answer();
+      await settle(fixture);
+      expect(liveText(fixture)).toBe('2 results');
+    });
+
+    it('warns in dev mode when a search returns more than 200 results', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const { fixture, host, input } = await setup();
+        host.search.set(() =>
+          Array.from({ length: 201 }, (_, i) => ({ id: i + 1000, name: `Agent ${i}` })),
+        );
+        await settle(fixture);
+        await type(fixture, input, 'A');
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('201 results'));
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
     it('the hasMore object form renders the truncation hint and the open-ended announcement', async () => {
       const { fixture, host, input } = await setup();
       host.search.set((q) => ({ items: [...filterAgents(q)], hasMore: true }));
@@ -704,6 +734,10 @@ describe('tm-entity-picker', () => {
       host.createPage.set(pageOf(FakePage));
       await settle(fixture);
       await type(fixture, input, 'Zebra');
+      await settle(fixture);
+      // A fresh empty set highlights nothing — footer rows are never the
+      // auto-highlight target.
+      expect(activeRow()).toBeNull();
       await press(fixture, input, 'Enter');
       expect(host.model().agentId).toBeNull();
       expect(panel()).not.toBeNull();
@@ -792,6 +826,34 @@ describe('tm-entity-picker', () => {
       host.displayWith.set(() => 'Overridden');
       await settle(fixture);
       expect(input.value).toBe('Overridden');
+    });
+
+    it('a live locale switch re-renders a KEPT resolution error in the new language', async () => {
+      // A minimal Arabic table registered directly (importing the real
+      // @tellma/locale-ar package across projects breaks the unit-test
+      // builder's program construction); the full pack's live switch is
+      // covered by the e2e battery, and its key parity by its own suite.
+      const { fixture, host, input, outside } = await setup();
+      const transloco = TestBed.inject(TranslocoService);
+      transloco.setTranslation(
+        { tmUi: { entityPicker: { errors: { noMatch: 'لا يوجد تطابق مع «{text}»' } } } },
+        'ar',
+        { merge: true },
+      );
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      await type(fixture, input, 'Zebra');
+      outside.focus();
+      await settle(fixture);
+      expect(errorText(fixture)).toBe('No match for ‘Zebra’');
+
+      transloco.setActiveLang('ar');
+      await settle(fixture);
+      // The text and the null model are KEPT; the message re-renders in Arabic.
+      expect(input.value).toBe('Zebra');
+      expect(host.model().agentId).toBeNull();
+      expect(errorText(fixture)).toContain('لا يوجد تطابق');
+      expect(errorText(fixture)).toContain('Zebra');
     });
 
     it('a live displayWith switch re-renders the committed text with the model untouched', async () => {
@@ -892,6 +954,63 @@ describe('tm-entity-picker', () => {
       expect(input.value).toBe('');
     });
 
+    it('the magnifier press keeps focus in the input (its pointerdown is consumed)', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.advancedPage.set(pageOf(FakePage));
+      await settle(fixture);
+      input.focus();
+      const magnifier = fixture.nativeElement.querySelector(
+        '.tm-entity-picker__magnifier',
+      ) as HTMLButtonElement;
+      const press = new PointerEvent('pointerdown', { bubbles: true, cancelable: true });
+      magnifier.dispatchEvent(press);
+      expect(press.defaultPrevented).toBe(true); // focus never leaves the input
+      expect(document.activeElement).toBe(input);
+    });
+
+    it('Esc and backdrop dismissals are no-ops; destroy closes an open modal', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.advancedPage.set(pageOf(FakePage));
+      host.displayWith.set((id) => DIRECTORY.find((a) => a.id === id)?.name ?? null);
+      host.model.set({ agentId: 5 });
+      await settle(fixture);
+      const magnifier = fixture.nativeElement.querySelector(
+        '.tm-entity-picker__magnifier',
+      ) as HTMLButtonElement;
+
+      // Esc dismissal: everything survives untouched.
+      magnifier.click();
+      await settle(fixture);
+      // CDK's overlay keyboard dispatcher listens on <body>.
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
+      await settle(fixture);
+      await settle(fixture);
+      expect(document.querySelector('[data-testid="page-pick"]')).toBeNull();
+      expect(host.model().agentId).toBe(5);
+      expect(input.value).toBe('Bob Stone');
+
+      // Backdrop dismissal: same.
+      magnifier.click();
+      await settle(fixture);
+      (document.querySelector('.cdk-overlay-backdrop') as HTMLElement).click();
+      await settle(fixture);
+      await settle(fixture);
+      expect(document.querySelector('[data-testid="page-pick"]')).toBeNull();
+      expect(host.model().agentId).toBe(5);
+
+      // Destroy while the modal is open: the picker closes it on teardown.
+      magnifier.click();
+      await settle(fixture);
+      expect(document.querySelector('[data-testid="page-pick"]')).not.toBeNull();
+      fixture.destroy();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(document.querySelector('[data-testid="page-pick"]')).toBeNull();
+    });
+
     it('every dismissal path is a strict no-op: text, value, and error state survive', async () => {
       const { fixture, host, input } = await setup();
       host.search.set(syncSearch().fn);
@@ -911,6 +1030,37 @@ describe('tm-entity-picker', () => {
       expect(host.model().agentId).toBeNull();
       expect(input.value).toBe('Zebra');
       expect(errorText(fixture)).toBe('No match for ‘Zebra’');
+    });
+  });
+
+  describe('harness', () => {
+    it('drives the picker: type, read options and status, select by label', async () => {
+      const { fixture, host } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      const loader = TestbedHarnessEnvironment.loader(fixture);
+      const picker = await loader.getHarness(TmEntityPickerHarness);
+      expect(await picker.isOpen()).toBe(false);
+      expect(await picker.hasMagnifier()).toBe(false);
+
+      await picker.typeQuery('Al');
+      await settle(fixture);
+      expect(await picker.isOpen()).toBe(true);
+      expect(await picker.getOptionLabels()).toEqual(['Alice Green', 'Alan Grey']);
+      expect(await picker.getActiveOptionLabel()).toBe('Alice Green');
+      expect(await picker.isSpinnerShown()).toBe(false);
+
+      await picker.selectOptionByLabel('Alan Grey');
+      await settle(fixture);
+      expect(host.model().agentId).toBe(4);
+      expect(await picker.getQueryText()).toBe('Alan Grey');
+      expect(await picker.isOpen()).toBe(false);
+
+      await picker.typeQuery('zzz');
+      await settle(fixture);
+      expect(await picker.getStatusText()).toBe('No results');
+      await picker.close();
+      expect(await picker.isOpen()).toBe(false);
     });
   });
 

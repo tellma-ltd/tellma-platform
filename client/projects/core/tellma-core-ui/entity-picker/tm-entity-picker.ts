@@ -650,11 +650,16 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     effect(() => {
       const id = this.value();
       // Tracked reads: the consumer's displayWith closure (and whatever
-      // signals it reads — the ambient locale, an entity cache) plus one
-      // built-in string as the locale proxy for the error messages.
+      // signals it reads — the ambient locale, an entity cache) plus the
+      // LIVE error message itself, so a locale switch that translates it
+      // re-triggers the re-issue below.
       const display = id === null ? '' : this.displayFor(id);
-      this.translate('entityPicker.errors.unresolved')();
-      this.resolutionFailure();
+      const failure = this.resolutionFailure();
+      if (failure !== null) {
+        this.failureMessage(failure)();
+      } else {
+        this.translate('entityPicker.errors.unresolved')();
+      }
       untracked(() => {
         // The pin is keyed to the display context that produced it: retire
         // it on EVERY path — a stale pin would bind fresh text to a dead
@@ -664,8 +669,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
           return;
         }
         const raw = this.rawText();
-        const hasLiveError =
-          this.rawText.parseErrors().length > 0 || this.resolutionFailure() !== null;
+        const hasLiveError = this.rawText.parseErrors().length > 0 || failure !== null;
         if (id === null && hasLiveError) {
           // Kept error text is never erased by a locale switch — but its
           // message must re-render in the new locale, so the parse is

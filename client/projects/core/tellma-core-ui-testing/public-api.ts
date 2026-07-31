@@ -15,6 +15,7 @@
 export * from './alert-harness';
 export * from './button-harness';
 export * from './date-picker-harness';
+export * from './entity-picker-harness';
 export * from './input-harness';
 export * from './number-harness';
 export * from './checkbox-harness';

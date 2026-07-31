@@ -15,6 +15,7 @@ import { Injector } from '@angular/core';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { Signal } from '@angular/core';
 import { TemplateRef } from '@angular/core';
+import { Type } from '@angular/core';
 import { ViewContainerRef } from '@angular/core';
 import { WritableSignal } from '@angular/core';
 

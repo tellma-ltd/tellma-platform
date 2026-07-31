@@ -72,6 +72,31 @@ export const TM_UI_STRINGS_EN: {
     readonly select: {
         readonly placeholder: "Select an option";
     };
+    readonly entityPicker: {
+        readonly advancedSearch: "Advanced search…";
+        readonly create: "Create…";
+        readonly edit: "Edit…";
+        readonly advancedTitle: "Advanced search";
+        readonly createTitle: "Create";
+        readonly editTitle: "Edit";
+        readonly magnifier: "Advanced search";
+        readonly noResults: "No results";
+        readonly searchFailed: "Search failed";
+        readonly moreResults: "More results — refine your search";
+        readonly announce: {
+            readonly results: "{count, plural, one {1 result} other {# results}}";
+            readonly resultsMore: "{count, number}+ results — more available";
+            readonly noResults: "No results";
+            readonly searchFailed: "Search failed";
+            readonly picked: "{label} selected";
+        };
+        readonly errors: {
+            readonly unresolved: "Select an item from the list";
+            readonly noMatch: "No match for ‘{text}’";
+            readonly ambiguous: "‘{text}’ matches more than one item";
+            readonly searchFailed: "Search failed";
+        };
+    };
     readonly grid: {
         readonly loading: "Loading…";
         readonly empty: "No records to display";
