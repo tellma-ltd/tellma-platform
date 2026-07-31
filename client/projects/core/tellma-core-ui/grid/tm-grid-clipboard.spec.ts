@@ -815,3 +815,109 @@ describe('tm-grid (clipboard menu)', () => {
     }
   });
 });
+
+describe('tm-grid (entity typed commits through a consumer template editor)', () => {
+  // Decision: typed commits on entity columns share the paste resolution
+  // pipeline, WHATEVER editor produced the text — a consumer *tmGridEditor
+  // template included. These pins document the three behavior changes that
+  // follow from routing editor commits through the label ladder.
+
+  it('unparseable commit text resolves through the paste pipeline (one call, pending, value)', async () => {
+    const { fixture, host, scroller } = await setup();
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'ArrowRight');
+    keydown(scroller, 'ArrowRight'); // (0,2) agentId
+    await stable(fixture);
+
+    keydown(scroller, 'A'); // type-to-edit seeds the consumer editor
+    await stable(fixture);
+    const editor = scroller.querySelector<HTMLInputElement>('.agent-editor')!;
+    editor.value = 'Adam';
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
+    keydown(editor, 'Enter');
+    await stable(fixture);
+
+    // The editor closed; exactly one resolver call runs with the single text.
+    expect(scroller.querySelector('.agent-editor')).toBeNull();
+    expect(host.resolveCalls).toHaveLength(1);
+    expect(host.resolveCalls[0].labels).toEqual(['Adam']);
+    expect(host.resolveCalls[0].ctx.sourceLocale).toBeUndefined(); // typed commits are local
+    expect(scroller.querySelector('.tm-grid__cell-spin')).not.toBeNull();
+
+    host.resolveCalls[0].deferred.resolve(new Map([['Adam', { value: 3 }]]));
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(3);
+
+    // ONE undo restores the pre-edit value.
+    keydown(scroller, 'z', { ctrlKey: true });
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(7);
+  });
+
+  it('an editor commit over a pending paste supersedes it by sequence token', async () => {
+    const { fixture, host, scroller } = await setup();
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'ArrowRight');
+    keydown(scroller, 'ArrowRight');
+    await stable(fixture);
+    dispatchPaste(scroller, { text: 'Zed\r\n' });
+    await stable(fixture);
+    expect(host.resolveCalls).toHaveLength(1);
+
+    // Re-edit while the paste's resolution is pending: #N parses instantly.
+    keydown(scroller, '#');
+    await stable(fixture);
+    const editor = scroller.querySelector<HTMLInputElement>('.agent-editor')!;
+    editor.value = '#4';
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
+    keydown(editor, 'Enter');
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(4);
+
+    // The paste's late outcome is stale — the manual edit owns the cell.
+    host.resolveCalls[0].deferred.resolve(new Map([['Zed', { value: 3 }]]));
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(4);
+  });
+
+  it('an emptied editor clears the entity cell instead of parsing the empty string', async () => {
+    const { fixture, host, scroller } = await setup();
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'ArrowRight');
+    keydown(scroller, 'ArrowRight');
+    await stable(fixture);
+    keydown(scroller, 'F2');
+    await stable(fixture);
+    const editor = scroller.querySelector<HTMLInputElement>('.agent-editor')!;
+    editor.value = '';
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
+    keydown(editor, 'Enter');
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBeNull();
+    expect(host.resolveCalls).toHaveLength(0);
+    expect(cellAt(scroller, 0, 2)!.classList.contains('tm-grid__cell--error')).toBe(false);
+  });
+
+  it('copy of an errored entity cell exports the raw text, not the cleared model', async () => {
+    const { fixture, host, scroller } = await setup();
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'ArrowRight');
+    keydown(scroller, 'ArrowRight');
+    await stable(fixture);
+    keydown(scroller, 'Z');
+    await stable(fixture);
+    const editor = scroller.querySelector<HTMLInputElement>('.agent-editor')!;
+    editor.value = 'Zed';
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
+    keydown(editor, 'Enter');
+    await stable(fixture);
+    host.resolveCalls[0].deferred.resolve(new Map([['Zed', { error: 'notFound' }]]));
+    await stable(fixture);
+    expect(cellAt(scroller, 0, 2)!.classList.contains('tm-grid__cell--error')).toBe(true);
+
+    // Enter committed-and-moved DOWN — navigate back to the errored cell.
+    keydown(scroller, 'ArrowUp');
+    const data = dispatchClipboard(scroller, 'copy');
+    expect(data.getData('text/plain').trim()).toBe('Zed');
+  });
+});

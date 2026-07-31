@@ -8,7 +8,11 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { applyEach, disabled, form, readonly, required } from '@angular/forms/signals';
 
-import type { TmCellEditor } from '@tellma/core-ui/contracts';
+import {
+  TM_PARSE_ERROR,
+  type TmCellEditor,
+  type TmLabelResolution,
+} from '@tellma/core-ui/contracts';
 import {
   provideTellmaUi,
   provideTmCalendar,
@@ -17,6 +21,7 @@ import {
 } from '@tellma/core-ui';
 import { tmUmalquraCalendar } from '@tellma/core-ui/calendar-umalqura';
 import type { TmCalendar } from '@tellma/core-ui/l10n';
+import { TmModalRef } from '@tellma/core-ui/modal';
 import { TmGridHarness } from '@tellma/core-ui-testing';
 
 import { TmGrid } from './tm-grid';
@@ -1117,5 +1122,449 @@ describe('tm-grid date columns (built-in defaults)', () => {
     await stable(fixture);
     expect(scroller.querySelector('.tm-date-picker__input')).toBeNull();
     expect(host.model()[0].due).toBe('2026-03-20');
+  });
+});
+
+describe('tm-grid entity columns (built-in tm-entity-picker editor)', () => {
+  interface Agent {
+    readonly id: number;
+    readonly name: string;
+  }
+  const AGENTS: readonly Agent[] = [
+    { id: 1, name: 'Adam Brown' },
+    { id: 2, name: 'Adam Brown' },
+    { id: 3, name: 'Alice Green' },
+    { id: 4, name: 'Alan Grey' },
+    { id: 5, name: 'Bob Stone' },
+  ];
+  const searchAgents = (query: string): readonly Agent[] => {
+    const q = query.trim().toLowerCase();
+    return q === '' ? AGENTS : AGENTS.filter((a) => a.name.toLowerCase().includes(q));
+  };
+
+  interface AgentLine {
+    readonly id: number;
+    readonly name: string | null;
+    readonly agentId: number | null;
+    readonly otherId: number | null;
+  }
+
+  interface ResolveDeferred {
+    resolve(results: ReadonlyMap<string, TmLabelResolution<number>>): void;
+    reject(reason: unknown): void;
+  }
+
+  /** A minimal modal page for the mid-edit modal round trip. */
+  @Component({
+    template: `
+      <button data-testid="page-pick" (click)="pick()">pick</button>
+      <button data-testid="page-close" (click)="ref.close()">close</button>
+    `,
+  })
+  class AgentPage {
+    readonly ref = inject(TmModalRef) as TmModalRef<{ id: number; label: string } | null>;
+    pick(): void {
+      this.ref.close({ id: 3, label: 'Alice Green' });
+    }
+  }
+
+  @Component({
+    imports: [TmGrid, TmGridColumn],
+    template: `
+      <tm-grid
+        gridId="entity-spec-grid"
+        [field]="f"
+        [rowId]="rowId"
+        [newRow]="makeRow"
+        style="block-size: 300px"
+      >
+        <tm-grid-column key="name" header="Name" [width]="120" />
+        <tm-grid-column
+          key="agentId"
+          type="entity"
+          header="Agent"
+          [search]="recordedSearch"
+          [itemId]="agentId"
+          [itemLabel]="agentLabel"
+          [format]="agentFormat"
+          [parse]="agentParse"
+          [resolvePastedLabels]="resolveAgents"
+          [advancedSearch]="advancedPage"
+          [width]="160"
+        />
+        <tm-grid-column
+          key="otherId"
+          type="entity"
+          header="Other"
+          [search]="recordedSearch"
+          [itemId]="agentId"
+          [itemLabel]="agentLabel"
+          [format]="agentFormat"
+          [width]="160"
+        />
+      </tm-grid>
+      <input id="outside-entity" />
+    `,
+  })
+  class EntityHost {
+    readonly model = signal<AgentLine[]>([
+      { id: 1, name: 'Alpha', agentId: 5, otherId: null },
+      { id: 2, name: 'Beta', agentId: null, otherId: null },
+    ]);
+    readonly f = form(this.model);
+    private nextId = 100;
+    readonly rowId = (row: AgentLine): number => row.id;
+    readonly makeRow = (): AgentLine => ({
+      id: this.nextId++,
+      name: null,
+      agentId: null,
+      otherId: null,
+    });
+
+    readonly advancedPage = AgentPage;
+    readonly agentId = (item: Agent): number => item.id;
+    readonly agentLabel = (item: Agent): string => item.name;
+    readonly agentFormat = (value: number | null): string =>
+      value === null ? '' : (AGENTS.find((a) => a.id === value)?.name ?? `#${String(value)}`);
+    /** Parses only the manual `#N` form; anything else falls to the resolver. */
+    readonly agentParse = (text: string): number | typeof TM_PARSE_ERROR => {
+      const match = /^#(\d+)$/.exec(text.trim());
+      return match === null ? TM_PARSE_ERROR : Number(match[1]);
+    };
+
+    /** Every search call's query, recorded. */
+    readonly searchCalls: string[] = [];
+    readonly recordedSearch = (query: string): readonly Agent[] => {
+      this.searchCalls.push(query);
+      return searchAgents(query);
+    };
+
+    /** Every resolver call, recorded; each returns a spec-controlled promise. */
+    readonly resolveCalls: Array<{ labels: string[]; deferred: ResolveDeferred }> = [];
+    readonly resolveAgents = (
+      labels: string[],
+    ): Promise<ReadonlyMap<string, TmLabelResolution<number>>> =>
+      new Promise((resolve, reject) => {
+        this.resolveCalls.push({ labels, deferred: { resolve, reject } });
+      });
+  }
+
+  async function setupEntity(): Promise<{
+    fixture: ComponentFixture<EntityHost>;
+    host: EntityHost;
+    scroller: HTMLElement;
+  }> {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(EntityHost);
+    await stable(fixture);
+    const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+      '.tm-grid__scroller',
+    ) as HTMLElement;
+    return { fixture, host: fixture.componentInstance, scroller };
+  }
+
+  /** The mounted picker's input, if an editor session is open. */
+  function pickerInput(scroller: HTMLElement): HTMLInputElement | null {
+    return scroller.querySelector<HTMLInputElement>('.tm-entity-picker__input');
+  }
+
+  /** Navigates to the agent cell (0,1) from the origin. */
+  async function activateAgentCell(
+    fixture: ComponentFixture<unknown>,
+    scroller: HTMLElement,
+  ): Promise<void> {
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'ArrowRight');
+    await stable(fixture);
+  }
+
+  it('F2 opens the picker quietly on the display text; a pristine Enter commits nothing', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'F2');
+    await stable(fixture);
+    const input = pickerInput(scroller);
+    expect(input).not.toBeNull();
+    expect(input!.value).toBe('Bob Stone'); // the column format's display text
+    expect(document.querySelector('.tm-entity-picker__panel')).toBeNull(); // no dropdown
+    expect(host.searchCalls).toHaveLength(0); // …and no search
+    // Pristine Enter: the editor closes, nothing is written, no resolution.
+    keydown(input!, 'Enter');
+    await stable(fixture);
+    await stable(fixture);
+    expect(pickerInput(scroller)).toBeNull();
+    expect(host.model()[0].agentId).toBe(5);
+    expect(host.resolveCalls).toHaveLength(0);
+    expect(host.searchCalls).toHaveLength(0);
+  });
+
+  it('type-to-edit seeds the picker and searches the seed immediately', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A');
+    await stable(fixture);
+    const input = pickerInput(scroller);
+    expect(input!.value).toBe('A');
+    expect(host.searchCalls).toEqual(['A']);
+    expect(document.querySelector('.tm-entity-picker__panel')).not.toBeNull();
+  });
+
+  it('Enter on the auto-highlighted result commits the pick and closes with NO move', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A');
+    await stable(fixture);
+    const input = pickerInput(scroller)!;
+    typeInto(input, 'Alice');
+    await stable(fixture);
+    await stable(fixture);
+    keydown(input, 'Enter');
+    await stable(fixture);
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(3);
+    expect(pickerInput(scroller)).toBeNull(); // closed…
+    expect(document.activeElement).toBe(cellAt(scroller, 0, 1)); // …no move
+    expect(host.resolveCalls).toHaveLength(0); // the pick IS the edit
+  });
+
+  it('Tab with a highlighted result commits AND moves to the next cell', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A');
+    await stable(fixture);
+    const input = pickerInput(scroller)!;
+    typeInto(input, 'Alice');
+    await stable(fixture);
+    await stable(fixture);
+    keydown(input, 'Tab');
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(3);
+    expect(pickerInput(scroller)).toBeNull();
+    expect(document.activeElement).toBe(cellAt(scroller, 0, 2)); // commit-and-move
+  });
+
+  it('Alt+ArrowDown from navigation opens editor AND browse dropdown in one press', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'ArrowDown', { altKey: true });
+    await stable(fixture);
+    await stable(fixture);
+    expect(pickerInput(scroller)).not.toBeNull();
+    expect(document.querySelector('.tm-entity-picker__panel')).not.toBeNull();
+    expect(host.searchCalls).toEqual(['']); // the pristine browse query
+    // The committed row mirrors as selected in the browse list.
+    const selected = document.querySelector('[aria-selected="true"]');
+    expect(selected?.textContent).toContain('Bob Stone');
+  });
+
+  it('Alt+ArrowDown mid-session opens the dropdown; the two-stage Esc composes', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'F2');
+    await stable(fixture);
+    const input = pickerInput(scroller)!;
+    keydown(input, 'ArrowDown', { altKey: true });
+    await stable(fixture);
+    await stable(fixture);
+    expect(document.querySelector('.tm-entity-picker__panel')).not.toBeNull();
+
+    // Esc №1: the picker consumes it — the dropdown closes, the session stays.
+    keydown(input, 'Escape');
+    await stable(fixture);
+    expect(document.querySelector('.tm-entity-picker__panel')).toBeNull();
+    expect(pickerInput(scroller)).not.toBeNull();
+
+    // Esc №2 reaches the grid and cancels the session without writing.
+    keydown(pickerInput(scroller)!, 'Escape');
+    await stable(fixture);
+    expect(pickerInput(scroller)).toBeNull();
+    expect(host.model()[0].agentId).toBe(5);
+  });
+
+  it('a commit with a fresh unique on-screen result auto-picks with NO resolver call', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, 'Alice Gr');
+    await stable(fixture);
+    // Blur-commit: the unique on-screen result is read synchronously.
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(3);
+    expect(pickerInput(scroller)).toBeNull();
+    expect(host.resolveCalls).toHaveLength(0);
+    expect(cellAt(scroller, 0, 1)!.textContent!.trim()).toBe('Alice Green');
+  });
+
+  it('unresolved commit text flows through the resolver — exactly one call, after teardown', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, 'Adam Brown'); // two on-screen matches — no fast path
+    await stable(fixture);
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    // The editor tore down BEFORE the resolver ran; the cell shows pending.
+    expect(pickerInput(scroller)).toBeNull();
+    expect(host.resolveCalls).toHaveLength(1);
+    expect(host.resolveCalls[0].labels).toEqual(['Adam Brown']);
+    expect(scroller.querySelector('.tm-grid__cell-spin')).not.toBeNull();
+    expect(host.model()[0].agentId).toBeNull(); // cleared while pending
+
+    host.resolveCalls[0].deferred.resolve(new Map([['Adam Brown', { value: 1 }]]));
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(1);
+    expect(scroller.querySelector('.tm-grid__cell-spin')).toBeNull();
+
+    // ONE undo restores the pre-edit value.
+    keydown(scroller, 'z', { ctrlKey: true });
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(5);
+  });
+
+  it('notFound keeps the raw text as an invalid input with the localized message', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'Z');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, 'Zebra');
+    await stable(fixture);
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    host.resolveCalls[0].deferred.resolve(new Map([['Zebra', { error: 'notFound' }]]));
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBeNull();
+    const cell = cellAt(scroller, 0, 1)!;
+    expect(cell.textContent!.trim()).toBe('Zebra'); // raw text kept in place
+    expect(cell.classList.contains('tm-grid__cell--error')).toBe(true);
+  });
+
+  it('the consumer parse rung commits #N synchronously with no resolver call', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, '#');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, '#4');
+    await stable(fixture);
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(4);
+    expect(host.resolveCalls).toHaveLength(0);
+  });
+
+  it('a column with no resolver records the invalid input directly — never a raw-text write', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'ArrowRight'); // (0,2) otherId — search, no parse, no resolver
+    await stable(fixture);
+    keydown(scroller, 'Z');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, 'Zebra');
+    await stable(fixture);
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    expect(host.model()[0].otherId).toBeNull();
+    expect(scroller.querySelector('.tm-grid__cell-spin')).toBeNull(); // no pending
+    const cell = cellAt(scroller, 0, 2)!;
+    expect(cell.textContent!.trim()).toBe('Zebra');
+    expect(cell.classList.contains('tm-grid__cell--error')).toBe(true);
+  });
+
+  it('an emptied editor clears the cell (never parses or resolves the empty string)', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'F2');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, '');
+    await stable(fixture);
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBeNull();
+    expect(host.resolveCalls).toHaveLength(0);
+    expect(cellAt(scroller, 0, 1)!.classList.contains('tm-grid__cell--error')).toBe(false);
+  });
+
+  it('undo while the resolution is pending aborts it and restores the value', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, 'Adam Brown');
+    await stable(fixture);
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    expect(host.resolveCalls).toHaveLength(1);
+    scroller.focus();
+    keydown(scroller, 'z', { ctrlKey: true });
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(5);
+    expect(scroller.querySelector('.tm-grid__cell-spin')).toBeNull();
+    // The late outcome is discarded.
+    host.resolveCalls[0].deferred.resolve(new Map([['Adam Brown', { value: 1 }]]));
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(5);
+  });
+
+  it('a manual re-edit over the pending cell supersedes the late resolution', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, 'Adam Brown');
+    await stable(fixture);
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    // Re-edit while pending: the parse rung commits #4 synchronously.
+    scroller.focus();
+    keydown(scroller, '#');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, '#4');
+    await stable(fixture);
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(4);
+    host.resolveCalls[0].deferred.resolve(new Map([['Adam Brown', { value: 1 }]]));
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(4); // the stale outcome never landed
+  });
+
+  it('a mid-edit modal holds the session open; a pick commits through it with no move', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'F2');
+    await stable(fixture);
+    const magnifier = scroller.querySelector<HTMLButtonElement>('.tm-entity-picker__magnifier');
+    expect(magnifier).not.toBeNull();
+    magnifier!.click();
+    await stable(fixture);
+    // The modal is up and the edit session is still open behind it.
+    expect(document.querySelector('[data-testid="page-pick"]')).not.toBeNull();
+    expect(pickerInput(scroller)).not.toBeNull();
+
+    (document.querySelector('[data-testid="page-pick"]') as HTMLButtonElement).click();
+    await stable(fixture);
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(3); // the pick committed the cell…
+    expect(pickerInput(scroller)).toBeNull(); // …and closed the editor
+    expect(document.activeElement).toBe(cellAt(scroller, 0, 1)); // no move
+  });
+
+  it('a modal dismissal returns to the intact edit session', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'F2');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, 'Ali');
+    await stable(fixture);
+    scroller.querySelector<HTMLButtonElement>('.tm-entity-picker__magnifier')!.click();
+    await stable(fixture);
+    (document.querySelector('[data-testid="page-close"]') as HTMLButtonElement).click();
+    await stable(fixture);
+    await stable(fixture);
+    expect(pickerInput(scroller)).not.toBeNull(); // the session survived
+    expect(pickerInput(scroller)!.value).toBe('Ali'); // the text survived
+    expect(host.model()[0].agentId).toBe(5); // nothing was written
   });
 });
