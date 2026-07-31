@@ -16,6 +16,7 @@ import {
 import type { TmGridCellAnnotations, TmGridInvalidInputReason } from './tm-grid-cell-annotations';
 import type { TmGridClipboardMeta } from './tm-grid-clipboard-serialize';
 import type { TmGridDataModel } from './tm-grid-data-model';
+import type { TmGridPendingLabelCommit } from './tm-grid-edit-state';
 import type { TmGridEngineHost } from './tm-grid-host';
 import type { TmGridCellWrite, TmGridCompoundHandle, TmGridHistory } from './tm-grid-history';
 import type { TmGridNav } from './tm-grid-nav';
@@ -486,6 +487,65 @@ export class TmGridClipboard<T = unknown> {
         errors: paste.errors,
       });
     }
+  }
+
+  /**
+   * Registers a single-cell resolution for a label commit an editor made
+   * (see `TmGridEditState.commitLabel`): the cell's sequence token is
+   * bumped and its pending mark set — exactly the accounting a one-cell
+   * paste performs — and the returned request is run through the column's
+   * resolver, with the outcome handed to `applyResolution` (stale-token
+   * discard, undo-mid-pending, and the completion notice all reuse the
+   * paste machinery unchanged). The eventual write lands in the commit's
+   * still-open history entry, so ONE undo restores the pre-edit state.
+   */
+  trackCommitResolution(commit: TmGridPendingLabelCommit, label: string): TmGridResolutionRequest {
+    const annotations = this.options.annotations;
+    const paste: OpenPaste = { handle: commit.handle, outstanding: 1, resolved: 0, errors: 0 };
+    const controller = new AbortController();
+    // The token is established with an explicit bump (not merely read): the
+    // commit's cleared-value write may have been elided by the history's
+    // write elision (the cell was already clear), and a stale token would
+    // let a later request share it.
+    const cell: AwaitingCell = {
+      rowId: commit.rowId,
+      columnId: commit.columnId,
+      columnKey: commit.columnKey,
+      label,
+      token: annotations.bumpToken(commit.rowId, commit.columnId),
+    };
+    annotations.setPending(commit.rowId, commit.columnId, true);
+    const request: OutstandingRequest = {
+      id: this.nextRequestId++,
+      columnId: commit.columnId,
+      cells: [cell],
+      controller,
+      paste,
+    };
+    this.outstanding.set(request.id, request);
+    // Undo while the resolution is pending aborts it and clears the mark.
+    commit.handle.onCancel(() => {
+      for (const [id, outstanding] of [...this.outstanding]) {
+        if (outstanding.paste === paste) {
+          outstanding.controller.abort();
+          for (const awaiting of outstanding.cells) {
+            annotations.setPending(awaiting.rowId, awaiting.columnId, false);
+          }
+          this.outstanding.delete(id);
+        }
+      }
+      paste.outstanding = 0;
+    });
+    // A typed commit is local: no source locale/calendar/tenant metadata.
+    return {
+      id: request.id,
+      columnId: commit.columnId,
+      labels: [label],
+      context: {
+        locale: untracked(() => this.options.locale()),
+        signal: controller.signal,
+      },
+    };
   }
 
   /**

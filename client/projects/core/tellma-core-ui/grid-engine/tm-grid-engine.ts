@@ -8,7 +8,7 @@ import { untracked } from '@angular/core';
 import type { TmCellEdit, TmGridSelectionSnapshot, TmRowId } from '@tellma/core-ui/contracts';
 
 import { TmGridCellAnnotations } from './tm-grid-cell-annotations';
-import { TmGridClipboard } from './tm-grid-clipboard';
+import { TmGridClipboard, type TmGridResolutionRequest } from './tm-grid-clipboard';
 import { TmGridDataModel, type TmGridOrderSnapshot } from './tm-grid-data-model';
 import { TmGridEditState } from './tm-grid-edit-state';
 import type { TmGridEngineOptions } from './tm-grid-host';
@@ -136,6 +136,19 @@ export class TmGridEngine<T = unknown> {
       }
     }
     return this.model.cellText(cell);
+  }
+
+  /**
+   * Commits an editor's unresolved text through the label-resolution
+   * ladder (`TmGridEditState.commitLabel`) and — when the column has a
+   * resolver — registers the single-cell resolution with the clipboard's
+   * request machinery. Returns the request to run against the column's
+   * resolver (the outcome goes to `clipboard.applyResolution`), or `null`
+   * when the sync rungs settled the commit.
+   */
+  commitEditorLabel(text: string): TmGridResolutionRequest | null {
+    const pending = this.edit.commitLabel(text);
+    return pending === null ? null : this.clipboard.trackCommitResolution(pending, text);
   }
 
   // ---- Gesture-level intents ----
