@@ -22,16 +22,23 @@ import {
 import type { TmCellEditor, TmCellEditorHost } from '@tellma/core-ui/contracts';
 import { TM_CELL_EDITOR_HOST } from '@tellma/core-ui';
 
+import type {
+  TmEntityId,
+  TmEntityPickerPage,
+  TmEntitySearchFn,
+} from '@tellma/core-ui/entity-picker';
+
 import type { TmGridEditorContext } from '../tm-grid-templates';
 import {
   ɵTmGridDateEditor,
+  ɵTmGridEntityEditor,
   ɵTmGridEnumEditor,
   ɵTmGridNumberEditor,
   ɵTmGridTextEditor,
 } from './editors';
 
 /** Which editor source a mount resolved to. */
-export type ɵTmGridEditorKind = 'text' | 'number' | 'date' | 'enum' | 'template';
+export type ɵTmGridEditorKind = 'text' | 'number' | 'date' | 'enum' | 'entity' | 'template';
 
 /** What the session mounts for one open editor. */
 export type ɵTmGridEditorMountConfig =
@@ -71,6 +78,27 @@ export type ɵTmGridEditorMountConfig =
       readonly optionValue: ((option: unknown) => unknown) | undefined;
       /** Called when the user activates an option (commit-and-close). */
       onActivation(): void;
+    }
+  | {
+      readonly kind: 'entity';
+      /** The accessible name (column header). */
+      readonly label: string;
+      /** The column's search facility. */
+      readonly search: TmEntitySearchFn<unknown>;
+      /** Maps a search result to its id. */
+      readonly itemId: (item: unknown) => TmEntityId;
+      /** Maps a search result to its display text. */
+      readonly itemLabel: (item: unknown) => string;
+      /** The committed-id display resolver (the column's `format`, adapted). */
+      readonly displayWith: ((id: unknown) => string | null) | undefined;
+      /** The column's advanced-search page, if any. */
+      readonly advancedSearch: TmEntityPickerPage | undefined;
+      /** The column's create page, if any. */
+      readonly create: TmEntityPickerPage | undefined;
+      /** The column's edit page, if any. */
+      readonly edit: TmEntityPickerPage | undefined;
+      /** Called on pick-commits that close the cell (commit-and-close). */
+      onActivation(): void;
     };
 
 /** One mounted editor: the registered control plus its view's lifetime. */
@@ -79,10 +107,16 @@ export interface ɵTmGridMountedEditor {
   readonly kind: ɵTmGridEditorKind;
   /** The control registered through TM_CELL_EDITOR_HOST. */
   readonly editor: TmCellEditor<unknown>;
-  /** Whether the editor's dropdown panel is open (enum only, else false). */
+  /** Whether the editor's dropdown panel is open (dropdown editors, else false). */
   isDropdownOpen(): boolean;
-  /** Opens the editor's dropdown panel (enum only, else a no-op). */
+  /** Opens the editor's dropdown panel (dropdown editors, else a no-op). */
   openDropdown(): void;
+  /**
+   * Entity only: installs text WITHOUT searching or opening the dropdown —
+   * edit-mode opens show the display text (or an errored cell's raw text)
+   * quietly, where `seed()` would search.
+   */
+  setTextQuiet?(text: string): void;
 }
 
 /**
@@ -147,6 +181,7 @@ export class ɵTmGridEditorSession {
 
     let isDropdownOpen: () => boolean = () => false;
     let openDropdown: () => void = () => undefined;
+    let setTextQuiet: ((text: string) => void) | undefined;
 
     if (config.kind === 'template') {
       const view: EmbeddedViewRef<TmGridEditorContext<unknown, unknown>> =
@@ -173,6 +208,22 @@ export class ɵTmGridEditorSession {
       isDropdownOpen = () => ref.instance.isPopupOpen();
       openDropdown = () => ref.instance.openPopup();
       this.destroyView = () => ref.destroy();
+    } else if (config.kind === 'entity') {
+      const ref = outlet.createComponent(ɵTmGridEntityEditor, { injector: cellInjector });
+      ref.setInput('label', config.label);
+      ref.setInput('search', config.search);
+      ref.setInput('itemId', config.itemId);
+      ref.setInput('itemLabel', config.itemLabel);
+      ref.setInput('displayWith', config.displayWith);
+      ref.setInput('advancedSearch', config.advancedSearch);
+      ref.setInput('create', config.create);
+      ref.setInput('edit', config.edit);
+      ref.changeDetectorRef.detectChanges();
+      this.activationSub = ref.instance.activated.subscribe(() => config.onActivation());
+      isDropdownOpen = () => ref.instance.isDropdownOpen();
+      openDropdown = () => ref.instance.openDropdown();
+      setTextQuiet = (text) => ref.instance.setText(text);
+      this.destroyView = () => ref.destroy();
     } else {
       const ref = outlet.createComponent(ɵTmGridEnumEditor, { injector: cellInjector });
       ref.setInput('label', config.label);
@@ -198,7 +249,13 @@ export class ɵTmGridEditorSession {
       }
       return null;
     }
-    this.mounted = { kind: config.kind, editor: registered, isDropdownOpen, openDropdown };
+    this.mounted = {
+      kind: config.kind,
+      editor: registered,
+      isDropdownOpen,
+      openDropdown,
+      ...(setTextQuiet !== undefined ? { setTextQuiet } : {}),
+    };
     return this.mounted;
   }
 

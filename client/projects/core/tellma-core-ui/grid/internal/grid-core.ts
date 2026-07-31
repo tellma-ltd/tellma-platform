@@ -41,6 +41,11 @@ import {
   type TmUiTranslateFn,
 } from '@tellma/core-ui';
 import { TM_CHECKBOX_CELL_DISPLAY } from '@tellma/core-ui/checkbox';
+import type {
+  TmEntityId,
+  TmEntityPickerPage,
+  TmEntitySearchFn,
+} from '@tellma/core-ui/entity-picker';
 import {
   TmGridEngine,
   tmComputeAxisWindow,
@@ -315,6 +320,15 @@ interface ColumnInternal<T> extends ɵTmGridColumnVm {
    * the display text is already the edit text (every non-number column).
    */
   readonly editSeedText: ((value: unknown) => string) | undefined;
+  /** The raw display-format override (the entity editor adapts it id-first). */
+  readonly format: ((value: unknown, row: T) => string) | undefined;
+  /** `entity` columns: the built-in picker's data seam; `search` absent ⇒ no built-in editor. */
+  readonly entitySearch: TmEntitySearchFn<unknown> | undefined;
+  readonly entityItemId: ((item: unknown) => TmEntityId) | undefined;
+  readonly entityItemLabel: ((item: unknown) => string) | undefined;
+  readonly entityAdvancedSearch: TmEntityPickerPage | undefined;
+  readonly entityCreate: TmEntityPickerPage | undefined;
+  readonly entityEdit: TmEntityPickerPage | undefined;
 }
 
 /** One rendered cell's view model. */
@@ -1508,7 +1522,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         event.preventDefault();
         return;
       case 'openDropdown':
-        if (mounted !== null && (mounted.kind === 'enum' || mounted.kind === 'date')) {
+        if (
+          mounted !== null &&
+          (mounted.kind === 'enum' || mounted.kind === 'date' || mounted.kind === 'entity')
+        ) {
           mounted.openDropdown();
           event.preventDefault();
         }
@@ -2211,6 +2228,21 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           ? (row) => accessor(row)
           : () => null;
 
+    let entitySearch: TmEntitySearchFn<unknown> | undefined;
+    let entityItemId: ((item: unknown) => TmEntityId) | undefined;
+    let entityItemLabel: ((item: unknown) => string) | undefined;
+    let entityAdvancedSearch: TmEntityPickerPage | undefined;
+    let entityCreate: TmEntityPickerPage | undefined;
+    let entityEdit: TmEntityPickerPage | undefined;
+    if (type === 'entity') {
+      entitySearch = dir.search();
+      entityItemId = dir.itemId() as ((item: unknown) => TmEntityId) | undefined;
+      entityItemLabel = dir.itemLabel() as ((item: unknown) => string) | undefined;
+      entityAdvancedSearch = dir.advancedSearch();
+      entityCreate = dir.create();
+      entityEdit = dir.edit();
+    }
+
     let enumLabels: ReadonlyMap<unknown, string> | null = null;
     let enumOptions: readonly unknown[] | undefined;
     let optionLabel: ((option: unknown) => string) | undefined;
@@ -2381,7 +2413,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       getText,
       editable:
         key !== null &&
-        (BUILT_IN_EDIT_TYPES.has(type) || customParse !== undefined || editorDef !== undefined),
+        (BUILT_IN_EDIT_TYPES.has(type) ||
+          customParse !== undefined ||
+          editorDef !== undefined ||
+          entitySearch !== undefined),
       // The bound field's per-cell disabled/readonly state WINS over the
       // column setting (§5.1 — the field is authoritative when bound).
       isCellReadonly: (row) =>
@@ -2416,6 +2451,13 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       optionValue,
       resolveLabels,
       editSeedText,
+      format,
+      entitySearch,
+      entityItemId,
+      entityItemLabel,
+      entityAdvancedSearch,
+      entityCreate,
+      entityEdit,
     };
   }
 
@@ -3262,14 +3304,31 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (column === undefined) {
       return false;
     }
-    if (column.editorDef === undefined && column.type === 'entity') {
+    if (
+      column.editorDef === undefined &&
+      column.type === 'entity' &&
+      column.entitySearch === undefined
+    ) {
       if (isDevMode() && untracked(() => engine.model.isCellEditable(cell))) {
         throw new Error(
-          `tm-grid: column "${column.id}" of type 'entity' has no built-in editor — ` +
-            `project a *tmGridEditor template hosting a control that implements TmCellEditor.`,
+          `tm-grid: column "${column.id}" of type 'entity' has no editor — bind ` +
+            `[search]/[itemId]/[itemLabel] for the built-in tm-entity-picker, or project ` +
+            `a *tmGridEditor template hosting a control that implements TmCellEditor.`,
         );
       }
       return false;
+    }
+    if (
+      isDevMode() &&
+      column.type === 'entity' &&
+      column.editorDef === undefined &&
+      column.entitySearch !== undefined &&
+      (column.entityItemId === undefined || column.entityItemLabel === undefined)
+    ) {
+      throw new Error(
+        `tm-grid: column "${column.id}" binds [search] without [itemId]/[itemLabel] — ` +
+          `both are required alongside [search] for the built-in tm-entity-picker editor.`,
+      );
     }
     if (!engine.edit.openEdit(cell, mode, seedText)) {
       return false;
@@ -3298,6 +3357,35 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         kind: 'template',
         template: column.editorDef.template as TemplateRef<TmGridEditorContext<unknown, unknown>>,
         context: { $implicit: valueAtOpen, row: view?.row },
+      };
+    } else if (column.type === 'entity') {
+      const format = column.format;
+      // The session row snapshot: `undefined` on the placeholder row — the
+      // same exposure a template editor's context carries.
+      const row = view?.row as T;
+      config = {
+        kind: 'entity',
+        label: header,
+        search: column.entitySearch!,
+        // Prod fallbacks for a half-config (dev throws above): String(item)
+        // keeps the editor honest instead of crashing the picker's
+        // required inputs.
+        itemId: column.entityItemId ?? ((item: unknown) => String(item)),
+        itemLabel: column.entityItemLabel ?? ((item: unknown) => String(item)),
+        // The column's `format` doubles as the picker's committed-id display
+        // resolver; an empty string defers to the picker's own fallbacks
+        // (label memo, then String(id) with the dev warning).
+        displayWith:
+          format === undefined
+            ? undefined
+            : (id: unknown) => {
+                const text = format(id, row);
+                return text === '' ? null : text;
+              },
+        advancedSearch: column.entityAdvancedSearch,
+        create: column.entityCreate,
+        edit: column.entityEdit,
+        onActivation: () => this.onEditorActivation(),
       };
     } else if (column.type === 'enum') {
       config = {
@@ -3335,6 +3423,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (opts?.ime === true) {
       // IME opens UNSEEDED: the composition itself supplies the content.
       this.editorOpenText = '';
+      if (mounted.kind === 'entity') {
+        // The committed id still mirrors into the (empty-texted) dropdown.
+        editor.value.set(valueAtOpen);
+        mounted.setTextQuiet?.('');
+      }
     } else if (mounted.kind === 'enum') {
       editor.value.set(valueAtOpen);
       if (seedText !== undefined) {
@@ -3342,6 +3435,21 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         editor.seed?.(seedText);
       } else {
         mounted.openDropdown();
+      }
+    } else if (mounted.kind === 'entity') {
+      // The committed id first: the dropdown mirrors it (check glyph) and
+      // the Edit… footer row targets it.
+      editor.value.set(valueAtOpen);
+      if (seedText !== undefined) {
+        // Type-to-edit: replaces the content and searches the seed at once.
+        editor.seed?.(seedText);
+      } else {
+        // Edit mode shows the display text (or an errored cell's raw text)
+        // with the dropdown CLOSED — `seed()` would search; the quiet
+        // install does not. The pristine baseline makes F2 + Enter commit
+        // nothing (no re-resolution of the committed label).
+        mounted.setTextQuiet?.(editText);
+        this.editorOpenText = editText;
       }
     } else if (seedText !== undefined) {
       if (editor.seed !== undefined) {
@@ -3370,8 +3478,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     // Alt+ArrowDown means "show me the choices": one press reaches them,
     // whatever the cell's editor is. An enum's panel is already open above
     // (it has nothing to type, so every open shows it); a date's calendar
-    // is not, because typing is that cell's primary path and F2 must not
-    // pop it. Type-to-edit is exempt — the seed IS the intent.
+    // and an entity's dropdown are not, because typing is those cells'
+    // primary path and F2 must not pop them. Type-to-edit is exempt — the
+    // seed IS the intent.
     if (opts?.dropdown === true && seedText === undefined && !mounted.isDropdownOpen()) {
       mounted.openDropdown();
     }
@@ -3403,9 +3512,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   /**
    * Commits the open session through the engine: the enum select commits
    * its VALUE; text-path editors commit their text through the column's
-   * parse — unless `text()` is `null` (content not representable as text),
-   * which commits the value channel directly. A pristine text editor (the
-   * text still equals what it opened with) commits nothing.
+   * parse — unless `text()` is `null` (content not representable as text,
+   * or an entity picker whose value channel is authoritative), which
+   * commits the value channel directly. A pristine text editor (the text
+   * still equals what it opened with) commits nothing. Unresolved text on
+   * an `entity` column takes the label-resolution ladder instead of the
+   * plain text commit (see `commitEditorText`).
    */
   private commitEditor(opts: { refocus: boolean }): void {
     const engine = this.engine;
@@ -3415,16 +3527,48 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     } else if (mounted.kind === 'enum') {
       engine.edit.commitValue(untracked(() => mounted.editor.value()));
     } else {
+      if (mounted.kind === 'entity') {
+        // The picker's synchronous fast path: a fresh unique on-screen
+        // result for the current unresolved text auto-picks (no request)
+        // before the channels are read. PULLED here — a push through the
+        // activation output would re-enter this commit mid-flight.
+        mounted.editor.commit();
+      }
       const text = untracked(() => mounted.editor.text());
       if (text === null) {
         engine.edit.commitValue(untracked(() => mounted.editor.value()));
       } else if (text === this.editorOpenText) {
         engine.edit.cancel();
       } else {
-        engine.edit.commitText(text);
+        this.commitEditorText(text);
       }
     }
     this.closeEditor(opts);
+  }
+
+  /**
+   * Text commits: `entity` columns route through the label-resolution
+   * ladder — the same conversion chain pasted labels take (consumer parse,
+   * then `resolvePastedLabels` with the single text under the grid's
+   * pending affordance and sequence tokens, else a definitive invalid
+   * input) — applying to consumer template editors on entity columns too.
+   * Every other column commits through the column's parse as before. The
+   * resolver runs in a microtask, after the editor's teardown completes —
+   * exactly one authoritative resolution, under the GRID's pending state.
+   */
+  private commitEditorText(text: string): void {
+    const engine = this.engine;
+    const session = untracked(() => engine.edit.session());
+    const column =
+      session === null ? undefined : untracked(this.columnsInternal)[session.cell.col];
+    if (column?.type === 'entity') {
+      const request = engine.commitEditorLabel(text);
+      if (request !== null) {
+        this.runResolutions([request]);
+      }
+    } else {
+      engine.edit.commitText(text);
+    }
   }
 
   /** Cancels the open session: the model is never written (§8.2 Esc, §5.1). */
