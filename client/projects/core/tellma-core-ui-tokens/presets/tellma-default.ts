@@ -299,6 +299,14 @@ export const tmTokensDefault: TmTokens = {
     },
     // tm-select (§3.4): panel + option-row geometry (touch-comfortable rows).
     select: { panelMaxHeight: '280px', optionHeight: '36px' },
+    // tm-entity-picker (spec 0006 §10): dropdown geometry — rows share the
+    // select's touch-comfortable sizing; the min-width floor keeps the panel
+    // readable when a narrow grid cell would make matched width unusable.
+    entityPicker: {
+      panelMaxHeight: '280px',
+      optionHeight: '36px',
+      panelMinWidth: '200px',
+    },
     // tm-grid / tm-tree-grid: row density mirrors the field-height scale
     // one notch tighter (data rows, not form fields); selection fill is a
     // translucent brand teal so gridlines and text stay readable under it.

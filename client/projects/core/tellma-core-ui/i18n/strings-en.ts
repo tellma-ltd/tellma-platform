@@ -41,6 +41,31 @@ export const TM_UI_STRINGS_EN = {
   select: {
     placeholder: 'Select an option',
   },
+  entityPicker: {
+    advancedSearch: 'Advanced search…',
+    create: 'Create…',
+    edit: 'Edit…',
+    advancedTitle: 'Advanced search',
+    createTitle: 'Create',
+    editTitle: 'Edit',
+    magnifier: 'Advanced search',
+    noResults: 'No results',
+    searchFailed: 'Search failed',
+    moreResults: 'More results — refine your search',
+    announce: {
+      results: '{count, plural, one {1 result} other {# results}}',
+      resultsMore: '{count, number}+ results — more available',
+      noResults: 'No results',
+      searchFailed: 'Search failed',
+      picked: '{label} selected',
+    },
+    errors: {
+      unresolved: 'Select an item from the list',
+      noMatch: 'No match for ‘{text}’',
+      ambiguous: '‘{text}’ matches more than one item',
+      searchFailed: 'Search failed',
+    },
+  },
   grid: {
     loading: 'Loading…',
     empty: 'No records to display',
