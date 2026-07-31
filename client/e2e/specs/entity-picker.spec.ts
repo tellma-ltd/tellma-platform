@@ -302,6 +302,36 @@ test.describe('blur resolution', () => {
   });
 });
 
+test.describe('size stability', () => {
+  test('the field box keeps its size across loading, resolving, resolved, and error states', async ({
+    page,
+  }) => {
+    await setSearchDelay(page, 800);
+    const box = page.getByTestId('ff').locator('.tm-form-field__box');
+    const before = (await box.boundingBox())!;
+
+    await input(page).fill('Alice Gr'); // loading — dropdown-only churn
+    const loading = (await box.boundingBox())!;
+
+    await page.getByTestId('submit').focus(); // resolving — the spinner slot fills
+    await expect(page.getByTestId('ff').locator('.tm-form-field__spinner')).toBeVisible();
+    const resolving = (await box.boundingBox())!;
+
+    await expect(input(page)).toHaveValue('Alice Green'); // the pick lands
+    const resolved = (await box.boundingBox())!;
+
+    await input(page).fill('Zebra'); // kept-error state
+    await page.getByTestId('submit').focus();
+    await expect(fieldError(page)).toContainText('No match for');
+    const errored = (await box.boundingBox())!;
+
+    for (const rect of [loading, resolving, resolved, errored]) {
+      expect(rect.width).toBe(before.width);
+      expect(rect.height).toBe(before.height);
+    }
+  });
+});
+
 test.describe('modal round-trips', () => {
   test('an advanced-search pick applies, focuses the input, and closes the loop', async ({
     page,
@@ -476,21 +506,42 @@ test.describe('forced-colors & reduced motion', () => {
       .locator('.tm-entity-picker__separator')
       .evaluate((el) => getComputedStyle(el).borderBlockStartStyle);
     expect(separator).toBe('solid');
-    // The committed row's check glyph is visible.
-    await expect(
-      page.locator('[aria-selected="true"] .tm-entity-picker__check'),
-    ).toBeVisible();
+    // The committed row's check glyph is visible AND carries the row's
+    // honored HighlightText (its own brand color would be forced to
+    // CanvasText and could vanish against the Highlight fill).
+    const check = page.locator('[aria-selected="true"] .tm-entity-picker__check');
+    await expect(check).toBeVisible();
+    const [checkColor, rowColor] = await Promise.all([
+      check.evaluate((el) => getComputedStyle(el).color),
+      page
+        .locator('[aria-selected="true"]')
+        .evaluate((el) => getComputedStyle(el).color),
+    ]);
+    expect(checkColor).toBe(rowColor);
   });
 
-  test('reduced motion collapses the option transitions', async ({ page }) => {
+  test('reduced motion: the picker declares no animation or transition at all', async ({
+    page,
+  }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(storyUrl('entity-picker'));
     await useSyncSearch(page);
     await input(page).fill('Al');
     await expect(options(page).first()).toBeVisible();
-    const transition = await options(page)
-      .first()
-      .evaluate((el) => getComputedStyle(el).transitionDuration);
-    expect(transition).toBe('0s');
+    // Absence is the assertion (the date-picker gate's pattern): if motion
+    // is ever added without a reduced-motion collapse, this goes red — the
+    // probes cover every interactive surface, hover chrome included.
+    const probes = [
+      input(page),
+      page.getByTestId('picker-field').locator('.tm-entity-picker__magnifier'),
+      panel(page),
+      options(page).first(),
+    ];
+    for (const locator of probes) {
+      const motion = await locator.evaluate(
+        (el) => `${getComputedStyle(el).animationName}|${getComputedStyle(el).transitionDuration}`,
+      );
+      expect(motion).toBe('none|0s');
+    }
   });
 });

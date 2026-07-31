@@ -450,6 +450,7 @@ describe('tm-entity-picker', () => {
       await settle(fixture);
       const status = document.querySelector('.tm-entity-picker__status') as HTMLElement;
       expect(status.textContent?.trim()).toBe('Search failed');
+      expect(liveText(fixture)).toBe('Search failed'); // announced on completion
       expect(actionRows().length).toBeGreaterThan(0);
       await type(fixture, input, 'Ali');
       expect(search.calls).toHaveLength(2);
@@ -508,6 +509,32 @@ describe('tm-entity-picker', () => {
   });
 
   describe('keyboard model', () => {
+    it('a reopened dropdown never re-applies the previous open highlight request', async () => {
+      const { fixture, host, input } = await setup();
+      const search = manualSearch();
+      host.search.set(search.fn);
+      host.createPage.set(pageOf(FakePage));
+      host.debounce.set(0);
+      await settle(fixture);
+      await type(fixture, input, 'Al');
+      search.answer();
+      await settle(fixture);
+      expect(activeRow()?.textContent?.trim()).toBe('Alice Green');
+      await press(fixture, input, 'Enter'); // pick — the popup closes
+      expect(panel()).toBeNull();
+      // Reopen as a pristine browse. While the fresh search is in flight,
+      // only footer rows exist — the LAST open's typed-query highlight
+      // request must not re-apply against the new listbox.
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      await settle(fixture);
+      expect(panel()).not.toBeNull();
+      expect(activeRow()).toBeNull();
+      search.answer();
+      await settle(fixture);
+      expect(activeRow()).toBeNull(); // pristine browse highlights nothing
+    });
+
     it('a typed query auto-highlights the first result; Enter commits it', async () => {
       const { fixture, host, input } = await setup();
       host.search.set(syncSearch().fn);
@@ -803,6 +830,134 @@ describe('tm-entity-picker', () => {
       expect(optionRows().map((r) => r.textContent?.trim())).toEqual(['Bob Stone']);
     });
 
+    it('a display-context tick during a pending resolution never clobbers the unresolved text', async () => {
+      const { fixture, host, input, outside } = await setup();
+      const search = manualSearch();
+      host.search.set(search.fn);
+      const cacheVersion = signal(0);
+      host.displayWith.set((id) => {
+        cacheVersion(); // an entity cache the display closure reads
+        return DIRECTORY.find((a) => a.id === id)?.name ?? null;
+      });
+      host.model.set({ agentId: 5 });
+      await settle(fixture);
+      expect(input.value).toBe('Bob Stone');
+      await type(fixture, input, 'Alice Gr');
+      outside.focus(); // the resolution is now pending over the OLD id
+      await settle(fixture);
+      cacheVersion.set(1); // a cache warm / locale tick mid-window
+      await settle(fixture);
+      // The user's unresolved text and the submit block both survive.
+      expect(input.value).toBe('Alice Gr');
+      expect(host.f.agentId().invalid()).toBe(true);
+      search.answer();
+      await settle(fixture);
+      expect(host.model().agentId).toBe(3);
+      expect(input.value).toBe('Alice Green');
+    });
+
+    it('Enter-while-loading is not superseded by its own trailing coalesced query', async () => {
+      const { fixture, host, input } = await setup(); // default 50ms window
+      const search = manualSearch();
+      host.search.set(search.fn);
+      await settle(fixture);
+      input.focus();
+      input.value = 'Alice';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.value = 'Alice Gr';
+      input.dispatchEvent(new Event('input', { bubbles: true })); // coalesces
+      await fixture.whenStable();
+      await press(fixture, input, 'Enter'); // resolution owns 'Alice Gr' now
+      await sleep(80); // past the (cancelled) trailing window
+      expect(search.calls.map((c) => c.query)).toEqual(['Alice', 'Alice Gr']);
+      search.answer(1);
+      await settle(fixture);
+      expect(host.model().agentId).toBe(3);
+      expect(input.value).toBe('Alice Green');
+      // The pending state cleared — no stuck field spinner.
+      expect(fixture.nativeElement.querySelector('.tm-form-field__spinner')).toBeNull();
+    });
+
+    it('a failed Enter resolution leaves the popup on the fetched candidates, never the spinner', async () => {
+      const { fixture, host, input } = await setup();
+      const search = manualSearch();
+      host.search.set(search.fn);
+      host.debounce.set(0);
+      await settle(fixture);
+      await type(fixture, input, 'Adam Brown');
+      await press(fixture, input, 'Enter'); // resolves against the in-flight request
+      search.answer();
+      await settle(fixture);
+      expect(errorText(fixture)).toBe('‘Adam Brown’ matches more than one item');
+      expect(panel()).not.toBeNull();
+      // The two candidates render as the recovery surface; no eternal spinner.
+      expect(optionRows()).toHaveLength(2);
+      expect(document.querySelector('.tm-entity-picker__status tm-spinner')).toBeNull();
+    });
+
+    it('Enter with cleared text commits the empty value', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.displayWith.set((id) => DIRECTORY.find((a) => a.id === id)?.name ?? null);
+      host.model.set({ agentId: 5 });
+      await settle(fixture);
+      await type(fixture, input, '');
+      await press(fixture, input, 'Enter');
+      expect(host.model().agentId).toBeNull();
+      expect(input.value).toBe('');
+      expect(panel()).toBeNull();
+      expect(errorText(fixture)).toBe('');
+    });
+
+    it('reopening the dropdown supersedes a pending resolution instead of failing it', async () => {
+      const { fixture, host, input, outside } = await setup();
+      // An abort-HONORING source: reopening aborts the request the pending
+      // resolution awaits — that abort must read as supersession, never as
+      // a search failure that nulls the committed value.
+      const responders: Deferred<TmEntitySearchResult<Agent>>[] = [];
+      host.search.set((query, signal) => {
+        const d = deferred<TmEntitySearchResult<Agent>>();
+        responders.push(d);
+        signal.addEventListener('abort', () => d.reject(new Error('aborted')));
+        return d.promise;
+      });
+      host.displayWith.set((id) => DIRECTORY.find((a) => a.id === id)?.name ?? null);
+      host.model.set({ agentId: 5 });
+      await settle(fixture);
+      await type(fixture, input, 'Alice Gr'); // request 0 in flight
+      outside.focus(); // blur → the resolution awaits request 0
+      await settle(fixture);
+      input.focus();
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true })); // reopen
+      await settle(fixture);
+      await settle(fixture);
+      // The committed value survives, and the aborted request never reads
+      // as a failure. (The generic unresolved-text error may legitimately
+      // show — the field is touched with a typed query.)
+      expect(host.model().agentId).toBe(5);
+      expect(errorText(fixture)).not.toContain('Search failed');
+      expect(errorText(fixture)).not.toContain('No match');
+      // The fresh search proceeds normally.
+      responders[1].resolve(filterAgents('Alice Gr'));
+      await settle(fixture);
+      expect(optionRows()).toHaveLength(1);
+    });
+
+    it('destroy supersedes a pending resolution and aborts its request', async () => {
+      const { fixture, host, input, outside } = await setup();
+      const search = manualSearch();
+      host.search.set(search.fn);
+      await settle(fixture);
+      await type(fixture, input, 'Alice Gr');
+      outside.focus();
+      await settle(fixture);
+      fixture.destroy();
+      expect(search.calls[0].signal.aborted).toBe(true);
+      // A late answer from a consumer ignoring the signal must be inert.
+      search.responders[0].resolve(filterAgents('Alice Gr'));
+      await sleep(10);
+    });
+
     it('an external value write supersedes a pending resolution', async () => {
       const { fixture, host, input, outside } = await setup();
       const search = manualSearch();
@@ -824,13 +979,17 @@ describe('tm-entity-picker', () => {
 
   describe('committed-value display', () => {
     it('displayWith wins, the pick memo covers the gap, String(id) is the last resort', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const { fixture, host, input } = await setup();
       host.search.set(syncSearch().fn);
       await settle(fixture);
-      // No displayWith: an external write has no memo — String(id).
+      // No displayWith: an external write has no memo — String(id), with
+      // the dev warning naming the missing input.
       host.model.set({ agentId: 4 });
       await settle(fixture);
       expect(input.value).toBe('4');
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('displayWith'));
+      warn.mockRestore();
       // A pick memoizes its label.
       await type(fixture, input, 'Alice');
       await settle(fixture);
@@ -928,6 +1087,10 @@ describe('tm-entity-picker', () => {
       expect(panel()).toBeNull(); // the dropdown closed for the modal
       expect(lastPageData?.query).toBe('Ali');
       expect(lastPageData?.id).toBeUndefined();
+      // Advanced search defaults to the large bucket with the localized title.
+      const pane = document.querySelector('.tm-modal-panel--lg') as HTMLElement;
+      expect(pane).not.toBeNull();
+      expect(pane.textContent).toContain('Advanced search');
       (document.querySelector('[data-testid="page-pick"]') as HTMLButtonElement).click();
       await settle(fixture);
       await settle(fixture);
@@ -952,6 +1115,10 @@ describe('tm-entity-picker', () => {
       editRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await settle(fixture);
       expect(lastPageData?.id).toBe(3);
+      // Edit defaults to the medium bucket with the localized title.
+      const pane = document.querySelector('.tm-modal-panel--md') as HTMLElement;
+      expect(pane).not.toBeNull();
+      expect(pane.textContent).toContain('Edit');
       (document.querySelector('[data-testid="page-rename"]') as HTMLButtonElement).click();
       await settle(fixture);
       await settle(fixture);

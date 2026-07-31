@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, computed, ErrorHandler, inject, signal, viewChild } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { applyEach, disabled, form, readonly, required } from '@angular/forms/signals';
@@ -1549,6 +1549,100 @@ describe('tm-grid entity columns (built-in tm-entity-picker editor)', () => {
     expect(host.model()[0].agentId).toBe(3); // the pick committed the cell…
     expect(pickerInput(scroller)).toBeNull(); // …and closed the editor
     expect(document.activeElement).toBe(cellAt(scroller, 0, 1)); // no move
+  });
+
+  it('dev mode throws for a no-config entity column and for search without accessors', async () => {
+    @Component({
+      imports: [TmGrid, TmGridColumn],
+      template: `
+        <tm-grid gridId="entity-noconfig-grid" [field]="f" [rowId]="rowId" style="block-size: 200px">
+          <!-- [parse] makes the column editable, so the open reaches the guard. -->
+          <tm-grid-column key="agentId" type="entity" header="Agent" [format]="fmt" [parse]="parse" />
+        </tm-grid>
+      `,
+    })
+    class NoConfigHost {
+      readonly model = signal<AgentLine[]>([
+        { id: 1, name: null, agentId: 5, otherId: null },
+      ]);
+      readonly f = form(this.model);
+      readonly rowId = (row: AgentLine): number => row.id;
+      readonly fmt = (value: number | null): string => String(value ?? '');
+      readonly parse = (): number | typeof TM_PARSE_ERROR => TM_PARSE_ERROR;
+    }
+    // The throw happens inside an Angular-wrapped keydown listener, so it
+    // routes through ErrorHandler rather than surfacing here.
+    const captured: unknown[] = [];
+    TestBed.configureTestingModule({
+      rethrowApplicationErrors: false, // the capture below IS the assertion
+      providers: [
+        provideTellmaUi(),
+        {
+          provide: ErrorHandler,
+          useValue: {
+            handleError: (error: unknown) => captured.push(error),
+          } satisfies ErrorHandler,
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(NoConfigHost);
+    await stable(fixture);
+    const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+      '.tm-grid__scroller',
+    ) as HTMLElement;
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'Enter');
+    await stable(fixture);
+    expect(captured.some((e) => String(e).includes("of type 'entity' has no editor"))).toBe(true);
+    expect(scroller.querySelector('[data-tm-editor] input')).toBeNull();
+  });
+
+  it('dev mode throws when [search] is bound without [itemId]/[itemLabel]', async () => {
+    @Component({
+      imports: [TmGrid, TmGridColumn],
+      template: `
+        <tm-grid gridId="entity-halfconfig-grid" [field]="f" [rowId]="rowId" style="block-size: 200px">
+          <tm-grid-column
+            key="agentId"
+            type="entity"
+            header="Agent"
+            [format]="fmt"
+            [search]="search"
+          />
+        </tm-grid>
+      `,
+    })
+    class HalfConfigHost {
+      readonly model = signal<AgentLine[]>([
+        { id: 1, name: null, agentId: 5, otherId: null },
+      ]);
+      readonly f = form(this.model);
+      readonly rowId = (row: AgentLine): number => row.id;
+      readonly fmt = (value: number | null): string => String(value ?? '');
+      readonly search = (query: string): readonly Agent[] => searchAgents(query);
+    }
+    const captured: unknown[] = [];
+    TestBed.configureTestingModule({
+      rethrowApplicationErrors: false, // the capture below IS the assertion
+      providers: [
+        provideTellmaUi(),
+        {
+          provide: ErrorHandler,
+          useValue: {
+            handleError: (error: unknown) => captured.push(error),
+          } satisfies ErrorHandler,
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(HalfConfigHost);
+    await stable(fixture);
+    const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+      '.tm-grid__scroller',
+    ) as HTMLElement;
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'Enter');
+    await stable(fixture);
+    expect(captured.some((e) => String(e).includes('without [itemId]/[itemLabel]'))).toBe(true);
   });
 
   it('a modal dismissal returns to the intact edit session', async () => {

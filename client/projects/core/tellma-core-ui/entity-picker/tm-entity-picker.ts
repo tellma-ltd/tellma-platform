@@ -97,7 +97,7 @@ interface InFlightSearch<T> {
   readonly settled: Promise<NormalizedResult<T> | 'failed'>;
 }
 
-/** A recorded text-resolution failure — the §5.2 error states. */
+/** A recorded text-resolution failure — the no-match/ambiguous/failed error states. */
 interface ResolutionFailure {
   /** The exact text the failure was recorded for. */
   readonly text: string;
@@ -437,12 +437,21 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   /** Whether a blur/Enter resolution is pending — drives `pending` + aria-busy. */
   private readonly resolving = signal(false);
   /**
-   * One monotonic supersession token shared by searches and resolutions:
-   * whoever holds the latest token owns the outcome; anything older is
-   * discarded on arrival. Honoring the AbortSignal is an optimization —
-   * this discard is the correctness guarantee.
+   * Monotonic supersession token for SEARCHES: whoever holds the latest
+   * token owns the result rendering; anything older is discarded on
+   * arrival. Honoring the AbortSignal is an optimization — this discard is
+   * the correctness guarantee.
    */
-  private epoch = 0;
+  private searchEpoch = 0;
+  /**
+   * Monotonic supersession token for RESOLUTIONS, deliberately separate
+   * from the search token: an external value write must kill a pending
+   * resolution WITHOUT discarding an in-flight search (the grid's
+   * open-editor sequence writes the value and then seeds a search in the
+   * same task — one shared token would let the write's deferred effect
+   * strand that search's spinner forever).
+   */
+  private resolutionEpoch = 0;
   /** Pick-time labels by id — the display fallback when `displayWith` is absent. */
   private readonly memo = new Map<Id, string>();
   /** One-shot guard for the missing-display dev warning. */
@@ -626,8 +635,12 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       untracked(() => {
         // A pin from a previous pick must not claim re-typed old text after
         // an external write; a pending resolution must not land over one.
+        // An in-flight SEARCH is deliberately left alone (its own token
+        // still stands): the write may be the grid installing the value
+        // right before seeding a search, and killing it here would strand
+        // the dropdown's spinner.
         this.displayOverride = null;
-        ++this.epoch;
+        ++this.resolutionEpoch;
         this.resolutionController?.abort();
         this.resolutionController = null;
         this.resolving.set(false);
@@ -652,7 +665,12 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       // Tracked reads: the consumer's displayWith closure (and whatever
       // signals it reads — the ambient locale, an entity cache) plus the
       // LIVE error message itself, so a locale switch that translates it
-      // re-triggers the re-issue below.
+      // re-triggers the re-issue below. `resolving` is tracked too: while a
+      // resolution is pending the model still holds the OLD id behind
+      // unresolved text, and a reformat here would clobber that text AND
+      // clear the submit-blocking error — the effect stands down until the
+      // outcome lands (and re-evaluates the display then).
+      const resolving = this.resolving();
       const display = id === null ? '' : this.displayFor(id);
       const failure = this.resolutionFailure();
       if (failure !== null) {
@@ -665,7 +683,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
         // it on EVERY path — a stale pin would bind fresh text to a dead
         // context's value.
         this.displayOverride = null;
-        if (this.focused()) {
+        if (this.focused() || resolving) {
           return;
         }
         const raw = this.rawText();
@@ -758,7 +776,8 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
 
     this.destroyRef.onDestroy(() => {
       this.destroyed = true;
-      ++this.epoch;
+      ++this.searchEpoch;
+      ++this.resolutionEpoch;
       this.inFlight?.controller.abort();
       this.inFlight = null;
       this.resolutionController?.abort();
@@ -940,7 +959,13 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * key-autorepeat and paste bursts against async sources.
    */
   private queueSearch(query: string): void {
-    ++this.epoch; // a late response of the superseded request must not land
+    ++this.searchEpoch; // a late response of the superseded request must not land
+    // A fresh search RESUMES OWNERSHIP from any pending resolution too: the
+    // abort below may kill the very request a resolution is awaiting, and
+    // without this supersession the abort would surface as a spurious
+    // "search failed" that nulls the model (reopen-while-resolving).
+    ++this.resolutionEpoch;
+    this.resolving.set(false);
     this.inFlight?.controller.abort();
     this.inFlight = null;
     this.clearHighlight();
@@ -981,7 +1006,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
 
   /** Issues one search request; sync returns render in the same turn. */
   private executeSearch(query: string): void {
-    const token = ++this.epoch;
+    const token = ++this.searchEpoch;
     const controller = new AbortController();
     let result: TmEntitySearchResult<T> | Promise<TmEntitySearchResult<T>>;
     try {
@@ -999,7 +1024,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       const settled = this.settle(result);
       this.inFlight = { query, controller, settled };
       void settled.then((outcome) => {
-        if (token !== this.epoch) {
+        if (token !== this.searchEpoch) {
           return; // superseded — discard on arrival, whatever the signal did
         }
         this.inFlight = null;
@@ -1092,12 +1117,17 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     this.cancelDebounce();
     if (!untracked(this.resolving)) {
       // Closing aborts the in-flight search — EXCEPT when a blur
-      // resolution owns it as its input (§5.2).
-      ++this.epoch;
+      // resolution owns it as its input (§5.2), where the request is KEPT
+      // so a later destroy/supersession can still abort it.
+      ++this.searchEpoch;
       this.inFlight?.controller.abort();
+      this.inFlight = null;
     }
-    this.inFlight = null;
     this.searchState.set({ kind: 'idle' });
+    // A request left over from this open must not re-apply against the
+    // NEXT open's fresh listbox (it would auto-highlight whatever renders
+    // first — footer rows included — before the browse results arrive).
+    this.highlightRequest.set(null);
   }
 
   // ---- Resolution (§5.2) — form path only, never in a cell ----
@@ -1109,7 +1139,14 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * text, write `null`, raise the specific localized error.
    */
   private async resolveText(text: string, keepPopup: boolean): Promise<void> {
-    const token = ++this.epoch;
+    const token = ++this.resolutionEpoch;
+    // The resolution owns the outcome now: silence the awaited search's own
+    // continuation (it must not double-render what this method consumes)…
+    ++this.searchEpoch;
+    // …and cancel the coalescing window — a trailing query firing mid-await
+    // would supersede this commit and silently drop it (with `resolving`
+    // stuck true).
+    this.cancelDebounce();
     this.resolving.set(true);
     let outcome: NormalizedResult<T> | 'failed';
     const state = untracked(this.searchState);
@@ -1123,12 +1160,31 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     } else {
       outcome = await this.issueResolutionRequest(text);
     }
-    if (token !== this.epoch) {
-      return; // superseded: refocus+edit, external write, destroy, modal launch
+    if (token !== this.resolutionEpoch) {
+      // Superseded: refocus+edit, a fresh search, external write, destroy,
+      // modal launch. A superseder that left the popup showing THIS
+      // resolution's loading state (an external write issues no search of
+      // its own) must not strand the spinner — nothing else will ever
+      // resolve it.
+      const current = untracked(this.searchState);
+      if (untracked(this.expanded) && current.kind === 'loading' && current.query === text) {
+        this.searchState.set({ kind: 'idle' });
+        this.inFlight = null;
+      }
+      return;
     }
+    // The awaited request is consumed (its own continuation was superseded
+    // by the search-epoch bump above and will not run these repairs).
+    this.inFlight = null;
     this.resolutionController = null;
     if (outcome === 'failed') {
       this.failResolution('searchFailed', text);
+      if (untracked(this.expanded)) {
+        // The Enter path keeps the popup open: the status must not stay
+        // frozen on the loading spinner.
+        this.searchState.set({ kind: 'error', query: text });
+        this.announceKey('entityPicker.announce.searchFailed');
+      }
       return;
     }
     if (outcome.items.length === 1) {
@@ -1151,6 +1207,12 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       return;
     }
     this.failResolution(outcome.items.length === 0 ? 'noMatch' : 'ambiguous', text);
+    if (untracked(this.expanded)) {
+      // The Enter path keeps the popup open as the recovery surface: show
+      // the fetched candidates (or the honest empty status) instead of a
+      // spinner that nothing will ever resolve.
+      this.applyResults(text, outcome);
+    }
   }
 
   /** Issues a fresh request for a resolution with no current search. */
@@ -1227,6 +1289,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   protected onInput(): void {
     const text = this.inputElement.value;
     // Editing resumes ownership from any pending resolution.
+    ++this.resolutionEpoch;
     this.resolving.set(false);
     const failure = untracked(this.resolutionFailure);
     if (failure !== null && failure.text !== text) {
@@ -1359,7 +1422,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     }
   }
 
-  /** The relayed Enter on the listbox — activation plus the §4.3 fallbacks. */
+  /** The relayed Enter on the listbox — activation plus the no-highlight fallbacks. */
   protected onListboxEnter(): void {
     this.activateActive({ enterFallbacks: true });
   }
@@ -1411,6 +1474,15 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     }
     const text = this.inputElement.value;
     const state = untracked(this.searchState);
+    if (text === '' && untracked(this.value) !== null) {
+      // Enter with cleared text is a commit gesture: clearing the text
+      // clears the value, exactly like the blur empty commit.
+      this.touchedSelf.set(true);
+      this.touch.emit();
+      this.setCanonicalText('', null);
+      this.expanded.set(false);
+      return;
+    }
     if (!this.isBrowseText(text) && (state.kind === 'loading' || state.kind === 'error')) {
       // Enter while results are loading (or after a failure — retry):
       // request resolution with focus retained; touch is reported so a
@@ -1450,7 +1522,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     }
   }
 
-  /** An outside pointer press closes the dropdown (§4.2). */
+  /** An outside pointer press closes the dropdown (the text is kept). */
   protected onOutsideClick(): void {
     this.expanded.set(false);
   }
@@ -1489,7 +1561,8 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     };
     // Supersede the search AND any pending resolution; the modal outcome
     // governs from here.
-    ++this.epoch;
+    ++this.searchEpoch;
+    ++this.resolutionEpoch;
     this.inFlight?.controller.abort();
     this.inFlight = null;
     this.cancelDebounce();
@@ -1600,8 +1673,8 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   /**
    * Accepts the edit: in a cell, a fresh unique on-screen result for the
    * current unresolved text auto-picks synchronously first (no request —
-   * the §7.3 fast path; anything else is the grid's resolver's job), then
-   * the value baseline moves and the dropdown closes.
+   * anything else is the grid's resolver's job), then the value baseline
+   * moves and the dropdown closes.
    */
   commit(): void {
     if (this.cellHost !== null) {

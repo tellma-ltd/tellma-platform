@@ -77,7 +77,8 @@ export const TM_LOCALE_AR_STRINGS = {
     announce: {
       results:
         '{count, plural, zero {لا توجد نتائج} one {نتيجة واحدة} two {نتيجتان} few {# نتائج} many {# نتيجة} other {# نتيجة}}',
-      resultsMore: 'أكثر من {count, number} نتيجة — هناك المزيد',
+      resultsMore:
+        'أكثر من {count, plural, zero {# نتيجة} one {نتيجة واحدة} two {نتيجتين} few {# نتائج} many {# نتيجة} other {# نتيجة}} — هناك المزيد',
       noResults: 'لا توجد نتائج',
       searchFailed: 'فشل البحث',
       picked: 'تم اختيار {label}',

@@ -88,7 +88,11 @@ test('Alt+ArrowDown opens editor + browse dropdown anchored to the cell box', as
   const cellBox = (await cell(page, 0, 1).boundingBox())!;
   const panelBox = (await panel(page).boundingBox())!;
   expect(Math.abs(panelBox.x - cellBox.x)).toBeLessThanOrEqual(2);
-  expect(panelBox.width).toBeGreaterThanOrEqual(cellBox.width - 2);
+  // The 180px column sits BELOW the token floor, so this open exercises the
+  // floor branch — pin the floor itself, not just matchWidth.
+  const floor = await panel(page).evaluate((el) => parseFloat(getComputedStyle(el).minInlineSize));
+  expect(floor).toBeGreaterThan(cellBox.width);
+  expect(panelBox.width).toBeGreaterThanOrEqual(floor - 1);
 });
 
 test('Tab with a highlighted result commits and the grid moves to the next cell', async ({

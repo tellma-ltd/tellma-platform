@@ -215,11 +215,15 @@
     background: Highlight;
     color: HighlightText;
   }
-}
 
-@media (prefers-reduced-motion: reduce) {
-  .tm-entity-picker__magnifier,
-  .tm-entity-picker__option {
-    transition: none;
+  /* The glyph's own --color-primary would be forced to CanvasText, which
+     can vanish against the Highlight row fill — repoint it at the row's
+     honored system color. */
+  .tm-entity-picker__option[aria-selected='true'] .tm-entity-picker__check {
+    color: HighlightText;
   }
 }
+
+/* No reduced-motion block: the picker declares no transitions or
+   animations of its own (the shared spinner handles its own motion), and
+   the e2e gate pins that absence. */

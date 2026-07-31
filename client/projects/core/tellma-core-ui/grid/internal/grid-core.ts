@@ -3360,9 +3360,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       };
     } else if (column.type === 'entity') {
       const format = column.format;
-      // The session row snapshot: `undefined` on the placeholder row — the
-      // same exposure a template editor's context carries.
-      const row = view?.row as T;
+      // The session row snapshot: `undefined` on the placeholder row.
+      const row: T | undefined = view?.row;
       config = {
         kind: 'entity',
         label: header,
@@ -3374,11 +3373,17 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         itemLabel: column.entityItemLabel ?? ((item: unknown) => String(item)),
         // The column's `format` doubles as the picker's committed-id display
         // resolver; an empty string defers to the picker's own fallbacks
-        // (label memo, then String(id) with the dev warning).
+        // (label memo, then String(id) with the dev warning). On the
+        // placeholder row there is no row to hand a consumer `format`
+        // (whose signature promises one) — defer to the fallbacks instead
+        // of calling it with undefined.
         displayWith:
           format === undefined
             ? undefined
             : (id: unknown) => {
+                if (row === undefined) {
+                  return null;
+                }
                 const text = format(id, row);
                 return text === '' ? null : text;
               },
