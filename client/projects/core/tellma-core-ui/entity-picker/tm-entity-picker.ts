@@ -739,12 +739,17 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
         if (request === null || listbox === undefined || !untracked(this.expanded)) {
           return;
         }
-        if (request.query !== '' && request.count > 0) {
-          listbox.gotoFirst();
-          listbox.scrollActiveItemIntoView();
-        } else {
-          listbox._pattern.listBehavior.unfocus();
-        }
+        // Untracked: gotoFirst() READS aria's item/active signals internally —
+        // tracked, this effect would re-run on every arrow-key move and snap
+        // the highlight back to the first result.
+        untracked(() => {
+          if (request.query !== '' && request.count > 0) {
+            listbox.gotoFirst();
+            listbox.scrollActiveItemIntoView();
+          } else {
+            listbox._pattern.listBehavior.unfocus();
+          }
+        });
       },
     });
 
@@ -1205,8 +1210,11 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       untracked(() => this.ariaOptions().find((o) => o.active())) === undefined
     ) {
       // Enter with no highlight in a cell is the GRID's commit — aria would
-      // consume it for the (empty) relay; hand the grid a clean clone.
+      // consume it for the (empty) relay, and the grid's dropdown gate
+      // stands down only once the dropdown is closed, so close it first and
+      // hand the grid a clean clone.
       event.stopPropagation();
+      this.expanded.set(false);
       this.hostElement.parentElement?.dispatchEvent(new KeyboardEvent(event.type, event));
       return;
     }

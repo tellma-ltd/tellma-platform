@@ -155,11 +155,16 @@ test('a value typed into a pending cell survives the late resolution', async ({ 
   await syntheticPaste(page, { text: 'Alice Green\r\nAlice Green\r\n' });
   await expect(cell(page, 1, 6).locator('.tm-grid__cell-spin')).toBeVisible();
 
-  // Type-to-edit into the still-pending anchor cell: 'D' seeds the story's
-  // agent select to 'Dana Reed' (id 16); Enter commits — a LATER write that
-  // bumps the cell's sequence token (§9.4 interleaving guard).
+  // Type-to-edit into the still-pending anchor cell: 'Dana' seeds the
+  // built-in picker, whose unique match auto-highlights 'Dana Reed' (id
+  // 16); Enter picks it — a LATER write that bumps the cell's sequence
+  // token (§9.4 interleaving guard).
   await page.keyboard.press('D');
   await expect(editor(page)).toBeVisible();
+  await page.keyboard.type('ana');
+  await expect(
+    page.locator('.tm-entity-picker__option[data-active="true"]'),
+  ).toContainText('Dana Reed');
   await page.keyboard.press('Enter');
   await expect.poll(async () => (await lines(page))[1].agentId).toBe(16);
 

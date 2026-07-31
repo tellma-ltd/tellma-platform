@@ -545,6 +545,23 @@ describe('tm-entity-picker', () => {
       expect(panel()).toBeNull();
     });
 
+    it('arrows move the highlight off a typed query auto-highlight (no re-clamp)', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.createPage.set(pageOf(FakePage));
+      await settle(fixture);
+      await type(fixture, input, 'Al');
+      await settle(fixture);
+      expect(activeRow()?.textContent?.trim()).toBe('Alice Green');
+      // The auto-highlight is a one-shot per result set — arrows own the
+      // highlight afterwards (a re-clamping highlight effect would snap
+      // this back to the first result).
+      await press(fixture, input, 'ArrowDown');
+      expect(activeRow()?.textContent?.trim()).toBe('Alan Grey');
+      await press(fixture, input, 'ArrowDown');
+      expect(activeRow()?.classList.contains('tm-entity-picker__action')).toBe(true);
+    });
+
     it('arrows highlight explicitly in a browse list and reach the footer rows', async () => {
       const { fixture, host, input } = await setup();
       host.search.set(syncSearch().fn);

@@ -1,0 +1,496 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+import { expect, test, type Locator, type Page } from '@playwright/test';
+
+import { expectNoAxeViolations } from '../support/axe';
+import { storyUrl } from '../support/story-map';
+
+/**
+ * The tm-entity-picker form-path battery over the entity-picker story: the
+ * search lifecycle (sync fast path, async spinner/coalescing, failure,
+ * hasMore), the keyboard matrix with the pristine-browse rules, blur/Enter
+ * resolution, the three modal pages, the aria-in-overlay real-mouse guard,
+ * axe/RTL/forced-colors/reduced-motion gates, and the live locale switch.
+ *
+ * Story fixtures: 'Adam Brown' ×2 (ambiguous), 'Alice Green'/'Alan Grey'
+ * (shared 'Al' prefix), browse capped at 5 with `hasMore`. The field picker
+ * sits in a native form whose submit count proves Enter-consumption.
+ */
+
+/** The field-wrapped picker's input. */
+function input(page: Page, testid = 'picker-field'): Locator {
+  return page.getByTestId(testid).locator('.tm-entity-picker__input');
+}
+
+/** The open dropdown panel (top-layer). */
+function panel(page: Page): Locator {
+  return page.locator('.tm-entity-picker__panel');
+}
+
+/** The entity result rows (footer rows excluded). */
+function options(page: Page): Locator {
+  return page.locator('.tm-entity-picker__option:not(.tm-entity-picker__action)');
+}
+
+/** The command footer rows. */
+function actions(page: Page): Locator {
+  return page.locator('.tm-entity-picker__action');
+}
+
+/** The highlighted option, if any. */
+function activeOption(page: Page): Locator {
+  return page.locator('.tm-entity-picker__option[data-active="true"]');
+}
+
+/** The dropdown's status row (spinner / no results / failed). */
+function status(page: Page): Locator {
+  return page.locator('.tm-entity-picker__status');
+}
+
+/** The field's error element. */
+function fieldError(page: Page): Locator {
+  return page.getByTestId('ff').locator('.tm-form-field__error');
+}
+
+/** The story's committed-model oracle. */
+async function model(page: Page): Promise<{ supplierId: number | null; populatedId: number | null }> {
+  const text = await page.getByTestId('model-json').textContent();
+  return JSON.parse(text ?? '{}') as { supplierId: number | null; populatedId: number | null };
+}
+
+/** Switches the story's search to the synchronous fast path. */
+async function useSyncSearch(page: Page): Promise<void> {
+  await page.getByTestId('search-async').uncheck();
+}
+
+async function setSearchDelay(page: Page, ms: number): Promise<void> {
+  await page.getByTestId('search-delay').fill(String(ms));
+}
+
+async function searchCalls(page: Page): Promise<number> {
+  return Number(await page.getByTestId('search-calls').textContent());
+}
+
+test.beforeEach(async ({ page }) => {
+  await page.goto(storyUrl('entity-picker'));
+  await expect(input(page)).toBeVisible();
+});
+
+test.describe('search lifecycle', () => {
+  test('sync source renders keystroke-instant with no spinner; async shows the immediate spinner', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).fill('Al');
+    await expect(options(page)).toHaveText(['Alice Green', 'Alan Grey']);
+    await expect(status(page)).toHaveCount(0); // no spinner ever appeared
+
+    // Async: the spinner shows at once and holds until the fresh set lands.
+    await page.getByTestId('search-async').check();
+    await setSearchDelay(page, 400);
+    await input(page).fill('Alice');
+    await expect(status(page).locator('tm-spinner')).toBeVisible();
+    await expect(options(page)).toHaveCount(0); // stale rows cleared immediately
+    await expect(options(page)).toHaveText(['Alice Green']);
+    await expect(status(page)).toHaveCount(0);
+  });
+
+  test('a keystroke burst against an async source coalesces into few requests', async ({
+    page,
+  }) => {
+    await setSearchDelay(page, 200);
+    const before = await searchCalls(page);
+    await input(page).pressSequentially('Alice', { delay: 5 });
+    await expect(options(page)).toHaveText(['Alice Green']);
+    // Leading + trailing per window — a 5-keystroke burst must cost fewer
+    // requests than keystrokes (scheduler jitter decides the exact count).
+    expect((await searchCalls(page)) - before).toBeLessThan(5);
+  });
+
+  test('a failed search shows the status row with footer rows intact; the next change retries', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await page.getByTestId('toggle-fail').check();
+    await input(page).fill('Alice');
+    await expect(status(page)).toHaveText('Search failed');
+    await expect(actions(page).first()).toBeVisible(); // recovery stays reachable
+    await input(page).fill('Alice Gr');
+    await expect(options(page)).toHaveText(['Alice Green']);
+  });
+
+  test('a truncated browse renders the hasMore hint above the footer rows', async ({ page }) => {
+    await useSyncSearch(page);
+    await input(page).click();
+    await expect(options(page)).toHaveCount(5); // capped
+    const hint = page.locator('.tm-entity-picker__hint');
+    await expect(hint).toContainText('More results');
+    await expect(hint).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  test('the portaled ARIA id chain resolves: combobox → listbox → active option', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).fill('Al');
+    await expect(options(page)).toHaveCount(2);
+    const controls = await input(page).getAttribute('aria-controls');
+    expect(controls).toBeTruthy();
+    await expect(page.locator(`[id="${controls}"]`)).toHaveRole('listbox');
+    await expect(input(page)).toHaveAttribute('aria-autocomplete', 'list');
+    const active = await input(page).getAttribute('aria-activedescendant');
+    expect(active).toBeTruthy();
+    await expect(page.locator(`[id="${active}"]`)).toHaveRole('option');
+  });
+});
+
+test.describe('mouse interaction (angular/components#32504 guard, real events)', () => {
+  test('clicking an option commits it and closes the panel', async ({ page }) => {
+    await useSyncSearch(page);
+    await input(page).fill('Al');
+    await options(page).filter({ hasText: 'Alan Grey' }).click();
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Alan Grey');
+    expect((await model(page)).supplierId).toBe(4);
+    await expect(input(page)).toBeFocused(); // the press never blurred the input
+  });
+
+  test('clicking outside closes a pristine browse panel without changing anything', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page, 'picker-populated').click();
+    await expect(panel(page)).toBeVisible();
+    // Derive the outside point from the panel's own box — a hard-coded
+    // coordinate silently starts landing INSIDE the panel when layout moves.
+    const box = (await panel(page).boundingBox())!;
+    await page.mouse.click(box.x + box.width + 60, Math.max(8, box.y - 40));
+    await expect(panel(page)).toHaveCount(0);
+    expect((await model(page)).populatedId).toBe(5);
+    await expect(input(page, 'picker-populated')).toHaveValue('Bob Stone');
+  });
+
+  test('the magnifier opens the advanced-search page with the typed text preserved', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).fill('Ali');
+    await page.getByTestId('picker-field').locator('.tm-entity-picker__magnifier').click();
+    await expect(page.getByTestId('page-query')).toHaveText('Ali');
+    await expect(panel(page)).toHaveCount(0); // the dropdown yielded to the modal
+    await page.getByTestId('adv-cancel').click();
+    await expect(input(page)).toHaveValue('Ali'); // dismissal is a strict no-op
+    await expect(input(page)).toBeFocused();
+  });
+});
+
+test.describe('keyboard matrix', () => {
+  test('type → first result auto-highlights → Enter commits; Enter never submits while open', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).fill('Al');
+    await expect(activeOption(page)).toHaveText('Alice Green');
+    await input(page).press('Enter');
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Alice Green');
+    expect((await model(page)).supplierId).toBe(3);
+    await expect(page.getByTestId('submit-count')).toHaveText('0'); // consumed while open
+    await input(page).press('Enter'); // closed: the native form submit applies
+    await expect(page.getByTestId('submit-count')).toHaveText('1');
+  });
+
+  test('a pristine browse highlights nothing; open-then-Tab changes nothing', async ({ page }) => {
+    await useSyncSearch(page);
+    const populated = input(page, 'picker-populated');
+    await populated.click();
+    await expect(options(page).first()).toBeVisible();
+    await expect(activeOption(page)).toHaveCount(0);
+    // The committed row still mirrors as selected.
+    await expect(page.locator('[aria-selected="true"]')).toHaveText(/Bob Stone/);
+    await populated.press('Tab');
+    await expect(panel(page)).toHaveCount(0);
+    expect((await model(page)).populatedId).toBe(5);
+    await expect(populated).toHaveValue('Bob Stone');
+  });
+
+  test('Space types into the query instead of activating the highlight', async ({ page }) => {
+    await useSyncSearch(page);
+    await input(page).fill('Adam');
+    await expect(activeOption(page)).toHaveCount(1);
+    await input(page).press('Space');
+    await expect(panel(page)).toBeVisible();
+    await expect(input(page)).toHaveValue('Adam ');
+    expect((await model(page)).supplierId).toBeNull();
+  });
+
+  test('arrows walk the results into the footer rows; Esc closes with the text intact', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).fill('Alice Gr');
+    await expect(activeOption(page)).toHaveText('Alice Green');
+    await input(page).press('ArrowDown'); // past the last result…
+    await expect(activeOption(page)).toHaveText('Advanced search…');
+    await input(page).press('ArrowDown');
+    await expect(activeOption(page)).toHaveText('Create supplier…');
+    await input(page).press('Escape');
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Alice Gr');
+  });
+
+  test('Tab commits the highlighted result and focus proceeds to the next control', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).fill('Alice Gr');
+    await expect(activeOption(page)).toHaveText('Alice Green');
+    await input(page).press('Tab');
+    await expect(panel(page)).toHaveCount(0);
+    expect((await model(page)).supplierId).toBe(3);
+    await expect(page.getByTestId('submit')).toBeFocused();
+  });
+
+  test('Enter on a fresh empty typed set fails fast with the popup open for recovery', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).fill('Zebra');
+    await expect(status(page)).toHaveText('No results');
+    await expect(activeOption(page)).toHaveCount(0);
+    await input(page).press('Enter');
+    await expect(panel(page)).toBeVisible();
+    await expect(fieldError(page)).toContainText('No match for');
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+    expect((await model(page)).supplierId).toBeNull();
+  });
+});
+
+test.describe('blur resolution', () => {
+  test('a unique match auto-picks even when the response lands after the departure', async ({
+    page,
+  }) => {
+    await setSearchDelay(page, 500);
+    await input(page).fill('Alice Gr');
+    await page.getByTestId('submit').focus(); // real departure mid-flight
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Alice Green');
+    expect((await model(page)).supplierId).toBe(3);
+    await expect(fieldError(page)).toHaveText(''); // no error flash
+    await expect(
+      page.getByTestId('picker-field').locator('.tm-entity-picker__live'),
+    ).toHaveText('Alice Green selected');
+  });
+
+  test('ambiguous and no-match departures keep the text with the localized error', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).fill('Adam Brown');
+    await page.getByTestId('submit').focus();
+    await expect(fieldError(page)).toContainText('matches more than one item');
+    await expect(input(page)).toHaveValue('Adam Brown');
+    expect((await model(page)).supplierId).toBeNull();
+
+    await input(page).fill('Zebra');
+    await page.getByTestId('submit').focus();
+    await expect(fieldError(page)).toContainText('No match for');
+    await expect(input(page)).toHaveValue('Zebra');
+  });
+});
+
+test.describe('modal round-trips', () => {
+  test('an advanced-search pick applies, focuses the input, and closes the loop', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await page.getByTestId('picker-field').locator('.tm-entity-picker__magnifier').click();
+    await page.getByTestId('adv-pick-4').click();
+    await expect(input(page)).toHaveValue('Alan Grey');
+    expect((await model(page)).supplierId).toBe(4);
+    await expect(input(page)).toBeFocused();
+  });
+
+  test('the create page prefills the query; its pick applies with the fresh label', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).fill('Newco');
+    await expect(status(page)).toHaveText('No results');
+    await input(page).press('ArrowDown'); // → Advanced search…
+    await input(page).press('ArrowDown'); // → Create supplier…
+    await expect(activeOption(page)).toHaveText('Create supplier…');
+    await input(page).press('Enter');
+    await expect(page.getByTestId('create-name')).toHaveValue('Newco');
+    await page.getByTestId('create-save').click();
+    await expect(input(page)).toHaveValue('Newco');
+    expect((await model(page)).supplierId).toBeGreaterThanOrEqual(100);
+  });
+
+  test('the edit page targets the committed id; rename re-applies, delete clears', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    const populated = input(page, 'picker-populated');
+    await populated.click();
+    await populated.press('ArrowDown'); // highlight the first option…
+    await populated.press('ArrowUp'); // …then wrap to the LAST — Edit…
+    await expect(activeOption(page)).toHaveText('Edit…');
+    await populated.press('Enter');
+    await expect(page.getByTestId('edit-id')).toHaveText('5');
+    await page.getByTestId('edit-name').fill('Bob S. (renamed)');
+    await page.getByTestId('edit-save').click();
+    await expect(populated).toHaveValue('Bob S. (renamed)');
+    expect((await model(page)).populatedId).toBe(5); // same id, fresh label
+
+    // Round 2: the page deletes the entity — close(null) clears the field.
+    await populated.click();
+    await populated.press('ArrowDown');
+    await populated.press('ArrowUp');
+    await expect(activeOption(page)).toHaveText('Edit…');
+    await populated.press('Enter');
+    await page.getByTestId('edit-delete').click();
+    await expect(populated).toHaveValue('');
+    expect((await model(page)).populatedId).toBeNull();
+  });
+
+  test('a picker inside a modal stacks its pages and Esc dismisses innermost-first', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await page.getByTestId('open-host-modal').click();
+    const inner = page.getByTestId('picker-in-modal').locator('.tm-entity-picker__input');
+    await inner.fill('Al');
+    await expect(options(page)).toHaveCount(2);
+    // Esc №1: the dropdown; the host modal stays.
+    await inner.press('Escape');
+    await expect(panel(page)).toHaveCount(0);
+    await expect(inner).toBeVisible();
+    // The picker's own page stacks ABOVE the host modal and closes first.
+    await page.getByTestId('picker-in-modal').locator('.tm-entity-picker__magnifier').click();
+    await expect(page.getByTestId('adv-filter')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('adv-filter')).toHaveCount(0);
+    await expect(inner).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(inner).toHaveCount(0);
+  });
+});
+
+test.describe('RTL & locale', () => {
+  test('under dir=rtl the magnifier sits at the inline end and the panel mirrors', async ({
+    page,
+  }) => {
+    await page.goto(storyUrl('entity-picker', { dir: 'rtl' }));
+    await useSyncSearch(page);
+    const field = input(page);
+    const magnifier = page.getByTestId('picker-field').locator('.tm-entity-picker__magnifier');
+    const inputBox = (await field.boundingBox())!;
+    const magnifierBox = (await magnifier.boundingBox())!;
+    // Inline end in RTL is the PHYSICAL LEFT.
+    expect(magnifierBox.x).toBeLessThan(inputBox.x);
+    await field.fill('Al');
+    await expect(options(page)).toHaveCount(2);
+    await expect(
+      page.locator('.cdk-overlay-connected-position-bounding-box'),
+    ).toHaveAttribute('dir', 'rtl');
+  });
+
+  test('a live locale switch re-renders captions and a KEPT error with the model untouched', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).fill('Zebra');
+    await page.getByTestId('submit').focus();
+    await expect(fieldError(page)).toContainText('No match for');
+
+    await page.getByTestId('lang-ar').click();
+    await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+    // The kept error re-renders in Arabic; text and model stay put.
+    await expect(fieldError(page)).toContainText('لا يوجد تطابق');
+    await expect(fieldError(page)).toContainText('Zebra');
+    await expect(input(page)).toHaveValue('Zebra');
+    expect((await model(page)).supplierId).toBeNull();
+    // The footer captions re-render too.
+    await input(page, 'picker-populated').click();
+    await expect(actions(page).last()).toHaveText('تعديل…');
+  });
+});
+
+test.describe('axe floor', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`no violations across popup states (${theme})`, async ({ page }) => {
+      await page.goto(storyUrl('entity-picker', { theme }));
+      await useSyncSearch(page);
+
+      // Results + footer rows.
+      await input(page).fill('Al');
+      await expect(options(page)).toHaveCount(2);
+      await expectNoAxeViolations(page);
+
+      // The truncated browse (hasMore hint) — aria-hidden rows must stay
+      // clean inside the listbox.
+      await input(page).fill('');
+      await expect(options(page)).toHaveCount(5);
+      await expectNoAxeViolations(page);
+
+      // Empty set.
+      await input(page).fill('Zebra');
+      await expect(status(page)).toHaveText('No results');
+      await expectNoAxeViolations(page);
+
+      // Kept resolution error on the field.
+      await page.getByTestId('submit').focus();
+      await expect(fieldError(page)).toContainText('No match for');
+      await expectNoAxeViolations(page);
+
+      // The loading state (a long-latency async search).
+      await page.getByTestId('search-async').check();
+      await setSearchDelay(page, 5000);
+      await input(page).fill('Alice');
+      await expect(status(page).locator('tm-spinner')).toBeVisible();
+      await expectNoAxeViolations(page);
+    });
+  }
+});
+
+test.describe('forced-colors & reduced motion', () => {
+  test('the active ring, selected check, and separator survive forced colors', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ forcedColors: 'active' });
+    await page.goto(storyUrl('entity-picker'));
+    await useSyncSearch(page);
+    await input(page, 'picker-populated').click();
+    await expect(options(page).first()).toBeVisible();
+    await input(page, 'picker-populated').press('ArrowDown');
+    await expect(activeOption(page)).toHaveCount(1);
+    const outline = await activeOption(page).evaluate(
+      (el) => getComputedStyle(el).outlineStyle,
+    );
+    expect(outline).toBe('solid');
+    const separator = await page
+      .locator('.tm-entity-picker__separator')
+      .evaluate((el) => getComputedStyle(el).borderBlockStartStyle);
+    expect(separator).toBe('solid');
+    // The committed row's check glyph is visible.
+    await expect(
+      page.locator('[aria-selected="true"] .tm-entity-picker__check'),
+    ).toBeVisible();
+  });
+
+  test('reduced motion collapses the option transitions', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(storyUrl('entity-picker'));
+    await useSyncSearch(page);
+    await input(page).fill('Al');
+    await expect(options(page).first()).toBeVisible();
+    const transition = await options(page)
+      .first()
+      .evaluate((el) => getComputedStyle(el).transitionDuration);
+    expect(transition).toBe('0s');
+  });
+});
