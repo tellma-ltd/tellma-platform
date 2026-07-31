@@ -55,8 +55,8 @@ the text↔value resolution semantics, and the two consumer-supplied modal pages
   picker renders exactly what `search` returns, in the returned order. Recents are expressible by
   the consumer inside `search('')`.
 - Minimum-query-length gating — the consumer's search decides what an empty or short query returns.
-- Virtual scroll in the dropdown — the search contract imposes a result limit (Context in the task
-  brief); a dev-mode warning fires above 200 results.
+- Virtual scroll in the dropdown — the search contract imposes a result limit (§2); a dev-mode
+  warning fires above 200 results.
 - A built-in clear button — select-all + Delete clears the text (committing `null`); grid Delete
   clears the cell.
 - A standalone Delete affordance — deletion (confirmation, lifecycle, server refusal) belongs to
@@ -108,9 +108,10 @@ export type TmEntitySearchFn<T> =
   (query: string, signal: AbortSignal) => TmEntitySearchResult<T> | Promise<TmEntitySearchResult<T>>;
 
 /** A selection returned by a modal page. */
-export interface TmEntityPick<Id extends TmEntityId = TmEntityId> {
+export interface TmEntityPick<Id extends TmEntityId = TmEntityId, T = unknown> {
   readonly id: Id;
   readonly label: string;   // display text at pick time; §5's memo fallback
+  readonly item?: T;        // the full entity, when the page has it — relayed through `picked`
 }
 
 /** A consumer page the picker launches in a tm-modal. */
@@ -147,7 +148,7 @@ picked = output<TmEntityPicked<T, Id>>();
 export interface TmEntityPicked<T, Id extends TmEntityId> {
   readonly id: Id;
   readonly label: string;
-  readonly item?: T;        // present for 'list' and 'auto' (the search result); absent for modal sources
+  readonly item?: T;        // the search result for 'list'/'auto'; the page-returned entity for modal sources
   readonly source: 'list' | 'auto' | 'advanced' | 'create' | 'edit';
 }
 ```
@@ -169,8 +170,9 @@ of the pick that produced the value in this component's lifetime (`itemLabel(ite
 time; the returned `label` for modal picks) — correct at pick time but frozen, so it does not
 re-render on locale switch; (3) else `String(id)` with a dev-mode warning naming `displayWith` —
 visible and honest, never a silently empty field that claims to hold a value. `picked` gives
-cache-less consumers the full item at pick time, which is also how a distribution keeps its cache
-(and therefore `displayWith`) warm.
+cache-less consumers the full item at pick time — list picks carry the search result, and modal
+pages include the entity in their pick (§6) — which is also how a distribution keeps its cache
+(and therefore `displayWith`) warm across every source.
 
 ## 3. Anatomy & form-field integration
 
@@ -262,13 +264,20 @@ The popup contains, in order:
   and paste bursts: Windows' fastest repeat is ~33 ms/char, which is why a 10 ms window would
   coalesce nothing (Decisions #5). `searchDebounce` tunes it; `0` disables coalescing.
 - **Supersession:** every text change aborts the in-flight request (`AbortSignal`) and clears the
-  stale results + highlight — the dropdown shows the spinner until a fresh, uninterrupted result
-  set returns. A stale response that arrives anyway (a consumer ignoring the signal) is discarded
-  by sequence token. Honoring the signal is an optimization; discard-on-arrival is the
-  correctness guarantee (the §9.4 posture of spec 0004).
-- **Synchronous fast path:** when `search` returns an array (not a thenable), results render in
-  the same turn — no spinner, no flicker. The debounce window is skipped while the source is
-  known-synchronous (the previous invocation returned an array), so in-memory sources are
+  stale results + highlight immediately — the spinner shows at once and holds until a fresh,
+  uninterrupted result set returns; results on screen always correspond to the text in the field,
+  and Enter/Tab meanwhile fall back to resolution (§5.2), so a stale row can never be committed.
+  A stale response that arrives anyway (a consumer ignoring the signal) is discarded by sequence
+  token. Honoring the signal is an optimization; discard-on-arrival is the correctness guarantee
+  (the §9.4 posture of spec 0004).
+- **Height stability.** The status area (spinner / no results / failure) reserves a fixed
+  block-size — a small multiple of the option-height token — so the list↔spinner↔list churn of
+  fast typing over a fast server moves the panel edge minimally, and the empty/error states never
+  collapse the panel (Decisions #15).
+- **Synchronous fast path:** when `search` returns synchronously (either §2 result form — an
+  array or the `{ items, hasMore }` object — rather than a thenable), results render in the same
+  turn: no spinner, no flicker. The debounce window is skipped while the source is
+  known-synchronous (the previous invocation returned synchronously), so in-memory sources are
   keystroke-instant; the coalescing exists for server traffic, which an in-memory source has none
   of.
 - **Search failure** (rejected promise / thrown sync): the status area shows the localized
@@ -282,18 +291,27 @@ The popup contains, in order:
 
 The aria directives own the combobox/listbox keyboard model and the ARIA wiring; the picker adds:
 
-- **After every fresh result render, the first result is auto-highlighted**
-  (`aria-activedescendant`; the public listbox first-item navigation API) — so
-  type-then-Enter is the zero-arrow happy path. Footer rows are never the auto-highlight target;
-  a fresh empty result set highlights nothing.
+- **After every fresh result render for a typed (non-pristine) query, the first result is
+  auto-highlighted** (`aria-activedescendant`; the public listbox first-item navigation API) — so
+  type-then-Enter is the zero-arrow happy path. A **pristine browse list highlights nothing**:
+  clicking a populated field to look at it and tabbing on must never change the selection —
+  there, arrows highlight explicitly. Footer rows are never the auto-highlight target; a fresh
+  empty result set highlights nothing.
 - **Enter** — with a highlighted option: commits it (§5.1) and closes; on a footer row: opens its
   modal; with the popup open, Enter is always consumed (never submits the form). With the popup
   open but results still loading, Enter requests **resolution** of the current text (§5.2) with
-  focus retained. With the popup closed, Enter is not consumed (native form submit applies).
+  focus retained; on a fresh **empty** set for a typed query, that resolution fails fast to the
+  no-match error (§5.2), the popup staying open with its footer rows as the recovery path. With
+  pristine text and no highlight, Enter simply closes the popup. With the popup closed, Enter is
+  not consumed (native form submit applies).
 - **Tab** — with a highlighted option: commits it, closes the popup, and does **not** consume the
-  key — focus proceeds to the next field (form) or the grid handles commit-and-move (§7.3). The
-  brief's Enter/Tab-select requirement; a documented, deliberate strengthening of the APG
-  baseline (Decisions #2).
+  key — focus proceeds to the next field (form) or the grid handles commit-and-move (§7.3). A
+  documented, deliberate strengthening of the APG baseline — the Excel/ERP data-entry convention
+  (Decisions #2). With no highlight, Tab closes the popup and leaves; §5.2 blur resolution covers
+  any typed text.
+- **Space** types into the input like any printable character — it **never** activates or selects
+  an option (the bare listbox's Space-select does not apply inside an editable combobox;
+  activation is Enter, Tab, or a pointer press).
 - **Esc** — closes the popup, text intact; innermost-first against modals and the grid's
   two-stage Esc. Standalone, a second Esc does nothing (`tm-select` posture: no revert state
   exists outside a grid).
@@ -348,7 +366,11 @@ error text (below) is never erased by a locale switch.
    localized message).
 
 Triggers: **blur** with non-pristine, non-empty text (the popup closes immediately; resolution
-continues behind it); **Enter** while results are loading (focus retained). While resolution is
+continues behind it) — where blur means a **real departure**: pointer presses inside the popup or
+on the magnifier keep focus in the input and are their own interactions (a pick, a modal launch),
+never a resolution trigger; and **Enter** while results are loading or on a fresh empty set for a
+typed query (focus retained; `touch` is reported so a failure displays without waiting for blur).
+While resolution is
 pending the control reports `pending` and the raw-text channel already carries the unresolved
 error — so the field is **invalid from the moment of blur** (a submit racing the resolution is
 blocked, never saved with a phantom value), while the standard display policy
@@ -376,10 +398,11 @@ current text, so the page can prefill its own filter or the new entity's name; `
 committed value, edit launches only). The page closes itself through its
 `TmModalRef<TmEntityPick<Id> | null>`:
 
-- `close({ id, label })` → the picker applies the pick (§5.1, `source: 'advanced' | 'create' |
-  'edit'`), focuses the input, and clears any error. The label seeds the memo; `displayWith` wins
-  over it wherever it resolves (§2). An edit that only renamed re-applies the same id with the
-  fresh label.
+- `close({ id, label, item? })` → the picker applies the pick (§5.1, `source: 'advanced' |
+  'create' | 'edit'`), focuses the input, and clears any error. The label seeds the memo;
+  `displayWith` wins over it wherever it resolves (§2). `item`, when the page supplies it, rides
+  through `picked` so cache-warming (§2) works from modal picks too. An edit that only renamed
+  re-applies the same id with the fresh label.
 - `close(null)` — meaningful from the **edit page only** — the entity no longer exists (the page
   deleted or deactivated it): the picker clears to `null` with empty text and focuses the input.
 - `close()` / close-button / backdrop / Esc → no change: text, value, and error state are exactly
@@ -426,10 +449,13 @@ contributes no `TmCellDisplay` because the column already owns that text.
 The grid mounts the picker bare (no `tm-form-field`): the input fills the cell box exactly like
 the text editor, with only the magnifier at the inline end (when configured) — no bordered box in
 either display or edit mode. The dropdown anchors to the **cell box** (§4.1's anchor rule) with
-`matchWidth` against the cell and the min-width token as the floor. The picker registers itself
-via `TM_CELL_EDITOR_HOST` on construction and implements the mounted-editor dropdown hooks the
-enum and date editors established: `isDropdownOpen()`/`openDropdown()` wired to the grid keymap's
-`Alt+ArrowDown` and dropdown gate, and the `activated`-style output for pick-commits.
+`matchWidth` against the cell and the min-width token as the floor. In the grid's editor session
+this is a new built-in **`entity` mount kind** alongside the text, number, date, and enum
+editors, its mount-config variant carrying the column's §7.1 picker configuration. The picker
+registers itself via `TM_CELL_EDITOR_HOST` on construction and implements the mounted-editor
+dropdown hooks the enum and date editors established: `isDropdownOpen()`/`openDropdown()` wired
+to the grid keymap's `Alt+ArrowDown` and dropdown gate, and the `activated`-style output for
+pick-commits.
 
 ### 7.3 Editing semantics
 
@@ -484,10 +510,12 @@ deliberate strengthenings:
   `tm-select` (spec 0002 §6). Browsing never mutates the input text (APG list-autocomplete
   manual/highlight model); there is no inline completion.
 - **Auto-highlighted first result + Enter commits** is the APG's automatic-selection variant of
-  list autocomplete — conformant, and the announced active option tracks it.
+  list autocomplete — conformant, and the announced active option tracks it. It applies to typed
+  queries only; pristine browse lists highlight nothing (§4.3), so opening a populated field and
+  tabbing away can never mutate the value.
 - **Tab commits the highlighted option** (APG baseline: Tab merely closes). Deliberate,
-  documented: the brief requires it and it is the Excel/ERP data-entry convention; the popup
-  is closed either way and Tab always leaves the field, so no keyboard trap arises.
+  documented: the Excel/ERP data-entry convention this control exists to serve; the popup is
+  closed either way and Tab always leaves the field, so no keyboard trap arises.
 - **Create…/Advanced search… are options** (`role="option"` inside the listbox — the only
   children ARIA permits), with accessible names from their captions; the separator above them is
   `aria-hidden` decoration. Activating them opens a `role="dialog"` modal; APG has no rule
@@ -538,7 +566,8 @@ deliberate strengthenings:
   components instantiated by `tm-modal` on open. `@defer` mirrors the date-picker's popup split
   where the panel subtree earns it.
 - **No per-keystroke layout thrash:** typing mutates only the panel's content (overlay layer);
-  the field never resizes (§3); the spinner is transform-animated; results replace a single list.
+  the field never resizes (§3); the spinner is transform-animated; results replace a single list;
+  the §4.2 reserved status-area height bounds panel-edge movement across fast re-searches.
 - **Network discipline:** leading+trailing coalescing (§4.2), abort on supersession, close, and
   destroy (the §2 signal contract — destroy also aborts a pending §5.2 resolution), one request
   per settled query, zero requests for pristine/empty blurs and for the synchronous fast path.
@@ -548,8 +577,9 @@ deliberate strengthenings:
 ## 11. Testing
 
 - **Unit (vitest, zoneless):** search lifecycle — leading/trailing coalescing, autorepeat burst ⇒
-  ≤ 2 requests, abort-on-supersede, stale-response discard, sync fast path (no spinner, no
-  debounce), failure + retry; resolution — unique auto-pick (including results arriving after
+  ≤ 2 requests, abort-on-supersede, stale-response discard, immediate spinner + immediate
+  stale-result clearing on every async change, the reserved status-area height, sync fast path
+  (no spinner, no debounce), failure + retry; resolution — unique auto-pick (including results arriving after
   blur), zero/ambiguous/failed errors with kept text and `null` model, pending suppression (no
   error flash on a fast unique match), Enter-while-loading, pristine/empty blur no-ops,
   supersession by refocus-edit/external write/destroy; display — `displayWith` > memo >
@@ -563,8 +593,10 @@ deliberate strengthenings:
   option labels, active option, select by label, spinner/status text, magnifier click, committed
   text. Composes the aria combobox/listbox harnesses; the panel is portaled (document-root
   locator, the select-harness precedent).
-- **Playwright (showcase stories):** keyboard matrix (type→auto-highlight→Enter; arrows through
-  results and footer rows; Tab-commit; Esc; Enter-never-submits-while-open); **real-mouse specs**
+- **Playwright (showcase stories):** keyboard matrix (type→auto-highlight→Enter; pristine browse
+  highlights nothing — open-then-Tab changes nothing; Space types; Enter fails fast on an empty
+  typed set; arrows through results and footer rows; Tab-commit; Esc;
+  Enter-never-submits-while-open); **real-mouse specs**
   (option click commits, outside click closes, magnifier opens the modal) guarding the upstream
   aria-in-overlay mouse bug; blur auto-resolution and error states with live-region assertions;
   modal round-trips (pick and dismiss, focus restore, picker-inside-a-modal stacking); grid story
@@ -583,12 +615,15 @@ deliberate strengthenings:
    docs pipeline and showcase story updated; no `contracts` changes.
 2. Standalone and `tm-form-field`-wrapped rendering per §3: `ownsChrome: false`, label/hint/error
    wiring, magnifier only when configured and never a tab stop, size stability across every state.
-3. Search lifecycle per §4.2 green: immediate spinner + dropdown on typing, leading+trailing
-   coalescing (autorepeat ⇒ no request barrage), cancel-on-change, sync fast path with zero
-   spinner, failure state showing footer rows, the `hasMore` truncation hint + open-ended
-   announcement, dev-mode warning above 200 results.
-4. Keyboard model per §4.3 green, including first-result auto-highlight, Enter/Tab commit,
-   Enter consumed only while open, standalone ArrowDown vs grid branching, Esc ordering.
+3. Search lifecycle per §4.2 green: immediate spinner + dropdown on typing with stale results
+   cleared on change and the reserved status-area height, leading+trailing coalescing
+   (autorepeat ⇒ no request barrage), cancel-on-change, sync fast path with zero spinner,
+   failure state showing footer rows, the `hasMore` truncation hint + open-ended announcement,
+   dev-mode warning above 200 results.
+4. Keyboard model per §4.3 green, including non-pristine first-result auto-highlight (pristine
+   browse highlights nothing), Space-always-types, Enter/Tab commit, Enter failing fast on an
+   empty typed set, Enter consumed only while open, standalone ArrowDown vs grid branching, Esc
+   ordering.
 5. Resolution per §5 green: unique auto-pick with no error flash, notFound/ambiguous/failed keep
    the text with `null` model and localized kind-`parse` errors, submits blocked while resolving,
    all supersession races pinned.
@@ -620,7 +655,7 @@ deliberate strengthenings:
 
 ## Decisions record
 
-Answers to the design brief's open questions, where not already evident above:
+The load-bearing decisions, where not already evident above:
 
 1. **Locale-dependent labels** — caller-supplied functions evaluated in a reactive context
    (`itemLabel`, `displayWith`), not a `label`/`label2`/`label3` convention with global language
@@ -630,23 +665,22 @@ Answers to the design brief's open questions, where not already evident above:
 2. **APG conformance** — no contradictions found; two deliberate strengthenings documented in §8:
    Tab commits the highlighted option (APG baseline only closes), and command options
    (Create…/Advanced search…) live inside the listbox as `role="option"` rows. Auto-highlighting
-   the first result is APG's automatic-selection variant; async status is announced via a polite
-   live region rather than rendered as options.
-3. **Blur before results return** — the brief's option B: the search continues as the resolution
-   input; exactly one result auto-selects, zero or many becomes an error (§5.2). Rationale: the
+   the first result is APG's automatic-selection variant (typed queries only, §4.3); async
+   status is announced via a polite live region rather than rendered as options.
+3. **Blur before results return** — the search continues as the resolution input; exactly one
+   result auto-selects, zero or many becomes an error (§5.2). Rationale: the
    ERP unique-match auto-resolve convention, and it is precisely the grid's pasted-label
    semantics (`value`/`notFound`/`ambiguous`), so forms and grids agree. The pending +
    display-policy interplay eliminates the error-flash cost that usually argues for option A, and
    the field is invalid throughout the window so a racing submit can never save a phantom value.
-4. **Blur without selecting** — the brief's option B: keep the text, enter the error state (never
-   silently clear). Consistent with `tmNumber`, `tm-date-picker`, and grid invalid inputs, which
+4. **Blur without selecting** — keep the text, enter the error state (never silently clear).
+   Consistent with `tmNumber`, `tm-date-picker`, and grid invalid inputs, which
    all preserve unparseable text for correction; clearing discards user work on a stray click
    (§5.2). The auto-resolve rule above means this state is reached only for genuinely
    zero/ambiguous text.
-5. **Debounce** — 50 ms leading + trailing, not the brief's 10 ms: the fastest OS key-repeat
-   interval is ~33 ms, so a 10 ms trailing window coalesces nothing; leading-edge firing keeps
-   single keystrokes latency-free, and the immediate spinner keeps the UX responsive either way
-   (§4.2). Tunable via `searchDebounce`.
+5. **Debounce** — 50 ms leading + trailing: anything below the fastest OS key-repeat interval
+   (~33 ms) coalesces nothing; leading-edge firing keeps single keystrokes latency-free, and the
+   first-open spinner keeps the UX responsive either way (§4.2). Tunable via `searchDebounce`.
 6. **Synchronous sources** — supported first-class: array returns render in the same turn with no
    spinner, and the debounce window is skipped while the source is known-synchronous (§4.2).
 7. **Advanced-search keyboard path** — the magnifier follows the calendar-button precedent
@@ -672,6 +706,7 @@ Answers to the design brief's open questions, where not already evident above:
 12. **Open-on-click with a pristine browse query** — pointer opening a populated field searches
     `''` (browse alternatives) rather than the committed label (which would only find the current
     entity); an edited text always searches itself (§4.2). Click-to-open is also the touch path.
+    Browse lists auto-highlight nothing (§4.3), so open-then-Tab can never change the selection.
 13. **The create-typo loop** — an optional **Edit… footer row** opens a consumer edit page on the
     committed value, and deletion is that page's business, reported back as `close(null)` (§6) —
     not a separate Delete affordance, whose confirmation and lifecycle semantics the picker
@@ -683,3 +718,10 @@ Answers to the design brief's open questions, where not already evident above:
     the count announcement to its open-ended variant (§2, §4.1). An explicit consumer flag was
     chosen over inferring truncation from a result-count input, which guesses wrong exactly at
     the boundary; showing "top N + refine/search-more" is the prevailing lookup convention.
+15. **Immediate spinner, reserved status height** — every async (re-)search clears the stale rows
+    and shows the spinner at once: what is on screen always corresponds to the text in the field,
+    and the instant spinner reads as a responsive system. The height churn fast typing over a
+    fast server invites is damped structurally instead: the status area reserves a fixed
+    block-size, so the panel edge barely moves across list↔spinner swaps (§4.2). The
+    deferred-spinner alternative (a grace period with stale rows kept visible) was rejected — it
+    reads as a slow system, and stale rows invite stale picks.
