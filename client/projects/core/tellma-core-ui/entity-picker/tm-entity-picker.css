@@ -1,11 +1,16 @@
-/* Copyright (c) Tellma Ltd. All rights reserved.
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
  *
  * This source code is licensed under the Apache-2.0 license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-/* Bare anatomy: the input (plus the optional magnifier) fills the host; the
- * form field supplies the bordered box when wrapped. */
+/* tm-entity-picker — bare anatomy (input + trailing magnifier button); the
+   bordered box, focus ring, and labels belong to the enclosing
+   tm-form-field (ownsChrome: false), or to the grid cell. The dropdown
+   panel is overlay content; every size rides a token and every property is
+   logical so RTL mirrors for free. */
+
 :host {
   display: flex;
   flex: 1;
@@ -17,4 +22,204 @@
 .tm-entity-picker__input {
   flex: 1;
   min-inline-size: 0;
+}
+
+/* The magnifier follows the calendar-button anatomy: never a tab stop,
+   pointer/AT-activatable, always present when configured (disabled state
+   included) so the control never changes size across states. */
+.tm-entity-picker__magnifier {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  inline-size: var(--space-6);
+  block-size: var(--space-6);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--field-icon);
+  cursor: pointer;
+}
+
+.tm-entity-picker__magnifier:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--field-text);
+}
+
+.tm-entity-picker__magnifier:disabled {
+  cursor: default;
+  color: var(--field-text-disabled);
+}
+
+.tm-entity-picker__magnifier > svg {
+  inline-size: var(--space-4);
+  block-size: var(--space-4);
+}
+
+/* The polite live region: visually hidden, never display:none (a hidden
+   region announces nothing). */
+.tm-entity-picker__live {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The dropdown panel. matchWidth sizes the overlay to the anchor (field box
+   or grid cell); the min-width floor keeps the panel readable when a narrow
+   cell would make matched width unusable — the panel may exceed the cell
+   width, never undershoot the token. */
+.tm-entity-picker__panel {
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-inline-size: var(--entity-picker-panel-min-width);
+  background: var(--field-bg);
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--field-radius);
+  box-shadow: var(--shadow-md);
+  color: var(--field-text);
+  font-family: var(--font-ui);
+  font-size: var(--field-font-size);
+}
+
+.tm-entity-picker__listbox {
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  /* Scroll lives on the LISTBOX (role=listbox): keyboard users scroll it
+     via active-descendant navigation + scrollActiveItemIntoView. */
+  max-block-size: var(--entity-picker-panel-max-height);
+  overflow: auto;
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     focus stays on the input (activedescendant model); the listbox itself
+     is never the visible focus target and the active OPTION carries the
+     visible indication below. */
+  outline: none;
+}
+
+/* Option rows — entity results and the command footer rows share the
+   geometry; rows are single-line, ellipsized, touch-comfortable via the
+   option-height token. */
+.tm-entity-picker__option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-block-size: var(--entity-picker-option-height);
+  box-sizing: border-box;
+  padding-inline: var(--space-3);
+  padding-block: var(--space-1);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+.tm-entity-picker__option:hover:not([aria-selected='true']) {
+  background: var(--surface-hover);
+}
+
+.tm-entity-picker__option[data-active='true'] {
+  background: var(--surface-hover);
+  box-shadow: inset 0 0 0 var(--focus-ring-width) var(--focus-ring-color);
+}
+
+.tm-entity-picker__option[aria-selected='true'] {
+  background: var(--surface-selected);
+  color: var(--text-strong);
+}
+
+.tm-entity-picker__option-label {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-entity-picker__check {
+  flex: none;
+  inline-size: var(--space-4);
+  block-size: var(--space-4);
+  color: var(--color-primary);
+  visibility: hidden;
+}
+
+.tm-entity-picker__option[aria-selected='true'] .tm-entity-picker__check {
+  visibility: visible;
+}
+
+/* Command footer rows (Advanced search…, Create…, Edit…): the same option
+   geometry with a quieter voice than data rows. */
+.tm-entity-picker__action {
+  color: var(--text-secondary);
+}
+
+.tm-entity-picker__action[data-active='true'] {
+  color: var(--field-text);
+}
+
+/* The truncation hint — presentational, quieter than data rows. */
+.tm-entity-picker__hint {
+  display: flex;
+  align-items: center;
+  min-block-size: var(--entity-picker-option-height);
+  box-sizing: border-box;
+  padding-inline: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+/* The status area (spinner / no results / search failed) reserves a FIXED
+   block-size — a small multiple of the option height — so the
+   list↔spinner↔list churn of fast typing moves the panel edge minimally
+   and the empty/error states never collapse the panel. */
+.tm-entity-picker__status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  block-size: calc(2 * var(--entity-picker-option-height));
+  padding-inline: var(--space-3);
+  color: var(--text-secondary);
+}
+
+/* The separator above the footer rows — decoration only (aria-hidden). */
+.tm-entity-picker__separator {
+  margin-block: var(--space-1);
+  margin-inline: var(--space-2);
+  border-block-start: 1px solid var(--border-subtle);
+}
+
+@media (forced-colors: active) {
+  .tm-entity-picker__magnifier {
+    color: ButtonText;
+  }
+
+  .tm-entity-picker__panel {
+    border-color: FieldText;
+  }
+
+  .tm-entity-picker__separator {
+    border-block-start-color: FieldText;
+  }
+
+  .tm-entity-picker__option[data-active='true'] {
+    outline: var(--focus-ring-width) solid Highlight;
+    outline-offset: 0;
+  }
+
+  .tm-entity-picker__option[aria-selected='true'] {
+    background: Highlight;
+    color: HighlightText;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-entity-picker__magnifier,
+  .tm-entity-picker__option {
+    transition: none;
+  }
 }
