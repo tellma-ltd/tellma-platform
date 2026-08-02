@@ -82,7 +82,7 @@ export const TM_UI_STRINGS_EN: {
         readonly magnifier: "Advanced search";
         readonly noResults: "No results";
         readonly searchFailed: "Search failed";
-        readonly moreResults: "More results — refine your search";
+        readonly moreResults: "{count, plural, one {Showing the top match. Keep typing to refine.} other {Showing top # matches. Keep typing to refine.}}";
         readonly announce: {
             readonly results: "{count, plural, one {1 result} other {# results}}";
             readonly resultsMore: "{count, number}+ results — more available";

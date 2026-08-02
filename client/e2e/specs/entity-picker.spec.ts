@@ -249,6 +249,44 @@ test.describe('keyboard matrix', () => {
     await expect(input(page)).toHaveValue('Alice Gr');
   });
 
+  test('arrowing past the fold scrolls the highlighted row into view, both directions', async ({
+    page,
+  }) => {
+    // DOM focus never leaves the input, so nothing scrolls the list on its
+    // own — the highlight would otherwise walk out of sight.
+    await useSyncSearch(page);
+    const long = input(page, 'picker-long');
+    const listbox = page.locator('.tm-entity-picker__listbox');
+    /** Whether the highlighted row lies inside the scroll window. */
+    const activeIsInView = async (): Promise<boolean> => {
+      const list = (await listbox.boundingBox())!;
+      const active = (await activeOption(page).boundingBox())!;
+      return active.y >= list.y - 1 && active.y + active.height <= list.y + list.height + 1;
+    };
+
+    await long.click();
+    await expect(options(page).first()).toBeVisible();
+    const scrollTop = (): Promise<number> => listbox.evaluate((el) => el.scrollTop);
+    expect(await scrollTop()).toBe(0);
+
+    // Walk down past the visible window: the list follows the highlight.
+    for (let i = 0; i < 12; i++) {
+      await long.press('ArrowDown');
+    }
+    await expect(activeOption(page)).toHaveText('Supplier 12');
+    const scrolled = await scrollTop();
+    expect(scrolled).toBeGreaterThan(0);
+    expect(await activeIsInView()).toBe(true);
+
+    // …and back up again.
+    for (let i = 0; i < 11; i++) {
+      await long.press('ArrowUp');
+    }
+    await expect(activeOption(page)).toHaveText('Supplier 01');
+    expect(await scrollTop()).toBeLessThan(scrolled);
+    expect(await activeIsInView()).toBe(true);
+  });
+
   test('Tab commits the highlighted result and focus proceeds to the next control', async ({
     page,
   }) => {

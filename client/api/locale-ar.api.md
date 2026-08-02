@@ -47,7 +47,7 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly magnifier: "بحث متقدم";
         readonly noResults: "لا توجد نتائج";
         readonly searchFailed: "فشل البحث";
-        readonly moreResults: "{gender, select, female {ضيقي} other {ضيق}} نطاق البحث — هناك نتائج أخرى";
+        readonly moreResults: "يتم عرض أفضل {count, plural, zero {# نتيجة} one {نتيجة} two {نتيجتين} few {# نتائج} many {# نتيجة} other {# نتيجة}}. {gender, select, female {واصلي} other {واصل}} الكتابة للتصفية.";
         readonly announce: {
             readonly results: "{count, plural, zero {لا توجد نتائج} one {نتيجة واحدة} two {نتيجتان} few {# نتائج} many {# نتيجة} other {# نتيجة}}";
             readonly resultsMore: "أكثر من {count, plural, zero {# نتيجة} one {نتيجة واحدة} two {نتيجتين} few {# نتائج} many {# نتيجة} other {# نتيجة}} — هناك المزيد";

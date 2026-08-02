@@ -303,6 +303,17 @@ export class DemoPickerModalPage {
         [itemId]="agentId"
         [itemLabel]="agentName"
       />
+
+      <!-- An uncapped, longer directory: the panel overflows its max height,
+           so arrow navigation has somewhere to scroll to. -->
+      <tm-form-field label="Long list (scrolls)">
+        <tm-entity-picker
+          data-testid="picker-long"
+          [search]="longSearch"
+          [itemId]="agentId"
+          [itemLabel]="agentName"
+        />
+      </tm-form-field>
     </div>
 
     <h3>Model</h3>
@@ -423,6 +434,18 @@ export class EntityPickerStory {
         });
       }
     });
+  };
+
+  /** A 24-entry directory returned uncapped — enough rows to scroll. */
+  private readonly longDirectory: readonly Agent[] = Array.from({ length: 24 }, (_, i) => ({
+    id: 1000 + i,
+    name: `Supplier ${String(i + 1).padStart(2, '0')}`,
+  }));
+  readonly longSearch = (query: string): readonly Agent[] => {
+    const q = query.trim().toLowerCase();
+    return q === ''
+      ? this.longDirectory
+      : this.longDirectory.filter((a) => a.name.toLowerCase().includes(q));
   };
 
   protected onSubmit(event: Event): void {

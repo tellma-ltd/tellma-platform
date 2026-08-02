@@ -901,6 +901,23 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       },
     });
 
+    // Keep the highlighted row on screen. DOM focus never leaves the input
+    // (the activedescendant model), so nothing scrolls the list on its own:
+    // arrowing past the fold would walk the highlight out of sight and
+    // leave the user scrolling by hand to see what they are selecting.
+    // The active descendant is read TRACKED — that is the whole point, and
+    // it is why this cannot live in the highlight effect above, whose body
+    // must stay untracked to avoid re-clamping the highlight it just set.
+    afterRenderEffect({
+      write: () => {
+        const listbox = this.listbox();
+        if (listbox === undefined || listbox.activeDescendant() === undefined) {
+          return;
+        }
+        untracked(() => listbox.scrollActiveItemIntoView());
+      },
+    });
+
     // The capture-phase keyboard layer (see onCaptureKeydown).
     this.hostElement.addEventListener('keydown', this.onCaptureKeydown, { capture: true });
 
