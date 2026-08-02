@@ -3,7 +3,12 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { ComponentHarness, TestKey, type HarnessPredicate } from '@angular/cdk/testing';
+import {
+  ComponentHarness,
+  HarnessPredicate,
+  TestKey,
+  type TestElement,
+} from '@angular/cdk/testing';
 
 /** Harness for one option row of an open `tm-entity-picker` dropdown. */
 export class TmEntityPickerOptionHarness extends ComponentHarness {
@@ -43,10 +48,27 @@ export class TmEntityPickerHarness extends ComponentHarness {
 
   private readonly input = this.locatorFor('.tm-entity-picker__input');
   private readonly magnifier = this.locatorForOptional('.tm-entity-picker__magnifier');
-  /** The dropdown renders in the top layer — anchor its locators at the document root. */
-  private readonly panel = this.documentRootLocatorFactory().locatorForOptional(
-    '.tm-entity-picker__panel',
-  );
+
+  /**
+   * The dropdown renders in the top layer, so its locators anchor at the
+   * document root — but they must still find THIS picker's dropdown. The
+   * combobox points at its own popup through `aria-controls`, so that id
+   * scopes every panel query to the right one even when a second picker
+   * (one inside a modal this picker launched, say) is also on the page.
+   * Returns `null` when this picker's dropdown is closed.
+   */
+  private async panelSelector(): Promise<string | null> {
+    const id = await (await this.input()).getAttribute('aria-controls');
+    return id === null || id === '' ? null : `#${id}`;
+  }
+
+  /** This picker's open listbox element, or `null` when the dropdown is closed. */
+  private async panelElement(): Promise<TestElement | null> {
+    const selector = await this.panelSelector();
+    return selector === null
+      ? null
+      : this.documentRootLocatorFactory().locatorForOptional(selector)();
+  }
 
   /** The input's current text (the query, or the committed display text). */
   async getQueryText(): Promise<string> {
@@ -74,7 +96,7 @@ export class TmEntityPickerHarness extends ComponentHarness {
 
   /** Whether the dropdown is open. */
   async isOpen(): Promise<boolean> {
-    return (await this.panel()) !== null;
+    return (await this.panelElement()) !== null;
   }
 
   /** Opens the dropdown by clicking the input (the pristine browse path). */
@@ -93,9 +115,24 @@ export class TmEntityPickerHarness extends ComponentHarness {
   async getOptions(
     filter?: HarnessPredicate<TmEntityPickerOptionHarness>,
   ): Promise<TmEntityPickerOptionHarness[]> {
-    return this.documentRootLocatorFactory().locatorForAll(
-      filter ?? TmEntityPickerOptionHarness,
-    )();
+    const selector = await this.panelSelector();
+    if (selector === null) {
+      return [];
+    }
+    const scoped = new HarnessPredicate(TmEntityPickerOptionHarness, { ancestor: selector });
+    const rows = await this.documentRootLocatorFactory().locatorForAll(scoped)();
+    if (filter === undefined) {
+      return rows;
+    }
+    // The caller's predicate narrows WITHIN this picker's panel — it never
+    // widens the search back out to the document.
+    const matched: TmEntityPickerOptionHarness[] = [];
+    for (const row of rows) {
+      if (await filter.evaluate(row)) {
+        matched.push(row);
+      }
+    }
+    return matched;
   }
 
   /** The visible entity-result labels, in order (footer rows excluded). */
@@ -126,7 +163,7 @@ export class TmEntityPickerHarness extends ComponentHarness {
    * masquerade as a pick.
    */
   async selectOptionByLabel(label: string): Promise<void> {
-    if ((await this.panel()) === null) {
+    if ((await this.panelElement()) === null) {
       throw new Error('TmEntityPickerHarness.selectOptionByLabel: the dropdown is not open');
     }
     for (const option of await this.getOptions()) {
@@ -139,16 +176,24 @@ export class TmEntityPickerHarness extends ComponentHarness {
 
   /** Whether the open dropdown currently shows the loading spinner. */
   async isSpinnerShown(): Promise<boolean> {
+    const selector = await this.panelSelector();
+    if (selector === null) {
+      return false;
+    }
     const spinner = await this.documentRootLocatorFactory().locatorForOptional(
-      '.tm-entity-picker__status tm-spinner',
+      `${selector} .tm-entity-picker__status tm-spinner`,
     )();
     return spinner !== null;
   }
 
   /** The status row's text ("No results" / "Search failed"), or `null`. */
   async getStatusText(): Promise<string | null> {
+    const selector = await this.panelSelector();
+    if (selector === null) {
+      return null;
+    }
     const status = await this.documentRootLocatorFactory().locatorForOptional(
-      '.tm-entity-picker__status',
+      `${selector} .tm-entity-picker__status`,
     )();
     if (status === null) {
       return null;
@@ -181,7 +226,11 @@ export class TmEntityPickerHarness extends ComponentHarness {
     return (await (await this.input()).getAttribute('aria-invalid')) === 'true';
   }
 
-  /** Whether the control reports busy (searching or resolving). */
+  /**
+   * Whether the control reports busy (`aria-busy`) — that is, whether it is
+   * mapping the typed text to an entity. A dropdown search in progress is
+   * NOT busy: the panel's own spinner reports that (`isSpinnerShown`).
+   */
   async isBusy(): Promise<boolean> {
     return (await (await this.input()).getAttribute('aria-busy')) === 'true';
   }

@@ -182,8 +182,9 @@ function isThenable<T>(
       [class.tm-input--in-field]="!!formField"
       [(expanded)]="expanded"
       [(value)]="comboText"
-      [disabled]="disabled() || readonly()"
+      [disabled]="disabled()"
       [softDisabled]="readonly() && !disabled()"
+      [readOnly]="readonly()"
       [required]="required()"
       [placeholder]="placeholder()"
       [attr.aria-label]="ariaLabel()"
@@ -234,6 +235,7 @@ function isThenable<T>(
           class="tm-entity-picker__panel"
           [attr.aria-busy]="statusKind() === 'loading' ? 'true' : null"
           (pointerdown)="onPanelPointerdown($event)"
+          (focusin)="onPanelFocusin()"
         >
           <ul
             ngListbox
@@ -500,6 +502,13 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   private destroyed = false;
   /** Suppresses blur handling while a picker-launched modal owns focus. */
   private suppressBlur = false;
+  /**
+   * Whether the user has typed since focus arrived. A visit that typed
+   * nothing must not resolve on the way out: the text on screen is the
+   * picker's own, and the reformat effect — which stands down while the
+   * field is focused — is what owes it a refresh, not a search.
+   */
+  private editedSinceFocus = false;
   /** The picker-launched modal currently open, if any (destroy closes it). */
   private openModal: TmModalRef<TmEntityPick<Id, T> | null> | null = null;
 
@@ -658,6 +667,10 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * arrive, shift, and re-order under the user's cursor a moment later —
    * stay out of it. They return the instant the state settles (results,
    * empty, or failure), so "no results → Create…" is still one arrow away.
+   *
+   * This is a deliberate departure from §4.1's "they render in every popup
+   * state — results, empty, error, loading": the loading exclusion was
+   * requested against the working build, after the spec froze, and it wins.
    */
   protected readonly showsFooterRows = computed(
     () =>
@@ -795,10 +808,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
         // right before seeding a search, and killing it here would strand
         // the dropdown's spinner.
         this.displayOverride = null;
-        ++this.resolutionEpoch;
-        this.resolutionController?.abort();
-        this.resolutionController = null;
-        this.resolving.set(false);
+        this.supersedeResolution();
         this.resolutionFailure.set(null);
       });
     });
@@ -826,6 +836,12 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       // clear the submit-blocking error — the effect stands down until the
       // outcome lands (and re-evaluates the display then).
       const resolving = this.resolving();
+      // `focused` is TRACKED: the reformat below stands down for a focused
+      // field, and something has to run it once focus leaves — otherwise a
+      // display context that changed mid-visit (a warmed entity cache, a
+      // rename, a locale switch) leaves the older rendering on screen
+      // indefinitely.
+      const focused = this.focused();
       const display = id === null ? '' : this.displayFor(id);
       const failure = this.resolutionFailure();
       if (failure !== null) {
@@ -834,11 +850,16 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
         this.translate('entityPicker.errors.unresolved')();
       }
       untracked(() => {
-        // The pin is keyed to the display context that produced it: retire
-        // it on EVERY path — a stale pin would bind fresh text to a dead
-        // context's value.
+        // The pin is keyed to the display context that produced it, and it
+        // is retired on EVERY path — a stale pin would bind fresh text to a
+        // dead context's value. It cannot be kept across the stand-down
+        // below on the theory that "the pin's value is still the model's":
+        // a fail-fast Enter writes `null` through the parse, whose own
+        // self-write marker stops the echo-guard effect from retiring it,
+        // so the pin outlives the value it names. Re-typing its text would
+        // then resurrect that value with no search and no `picked`.
         this.displayOverride = null;
-        if (this.focused() || resolving) {
+        if (focused || resolving) {
           return;
         }
         const raw = this.rawText();
@@ -943,6 +964,36 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       },
     });
 
+    // Two attributes ngCombobox host-binds wrongly for this control. Its
+    // host bindings run AFTER every template binding, so a template
+    // override loses; the correction has to come after the render.
+    //
+    // - `aria-autocomplete`: aria derives it from the LIVE popup, so a
+    //   closed picker would announce a combobox with no autocomplete at all
+    //   — the opposite of what typing here does.
+    // - `readonly`: aria owns that attribute too, and clears it whenever
+    //   its own `disabled` input is false. This control deliberately does
+    //   NOT route readonly through that input (it would announce the value
+    //   as unavailable), so the native read-only state is ours to assert.
+    //
+    // Tracked reads = every transition that can make aria rewrite either
+    // one: the popup registering and unregistering, and the state inputs.
+    afterRenderEffect({
+      write: () => {
+        this.expanded();
+        this.listbox();
+        const readonly = this.readonly();
+        this.disabled();
+        untracked(() => {
+          const element = this.inputElement;
+          element.setAttribute('aria-autocomplete', 'list');
+          if (element.readOnly !== readonly) {
+            element.readOnly = readonly;
+          }
+        });
+      },
+    });
+
     // The capture-phase keyboard layer (see onCaptureKeydown).
     this.hostElement.addEventListener('keydown', this.onCaptureKeydown, { capture: true });
 
@@ -1015,7 +1066,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     // identity by construction, a lossy re-parse can never corrupt the model.
     const pin = this.displayOverride;
     if (pin !== null && pin.text === text) {
-      this.selfWrite = { value: pin.value };
+      this.markSelfWrite(pin.value);
       return { value: pin.value };
     }
     // (2) Pristine text: exactly the committed value's display text (the
@@ -1023,14 +1074,13 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     // model; clears any stale unresolved error.
     const current = untracked(this.value);
     if (text === untracked(() => this.displayFor(current))) {
-      this.selfWrite = { value: current };
-      return { value: current };
+      return { value: current }; // identity — nothing to mark, nothing will echo
     }
     // (3) A recorded resolution failure for exactly this text: NOW the null
     // write happens, with the specific localized message (§5.2).
     const failure = untracked(this.resolutionFailure);
     if (failure !== null && failure.text === text) {
-      this.selfWrite = { value: null };
+      this.markSelfWrite(null);
       return {
         value: null,
         error: {
@@ -1057,6 +1107,19 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
         [TRANSIENT]: true,
       } as ValidationError.WithoutFieldTree,
     };
+  }
+
+  /**
+   * Arms the echo guard for a parse-driven model write — but ONLY when the
+   * write can actually change the model. A marker armed for a value the
+   * model already holds is never consumed (the echo-guard effect re-runs on
+   * value CHANGES), so it would sit there and swallow the next genuinely
+   * external write instead, leaving the revert baseline behind.
+   */
+  private markSelfWrite(value: Id | null): void {
+    if (!Object.is(value, untracked(this.value))) {
+      this.selfWrite = { value };
+    }
   }
 
   /** The localized message for a recorded resolution failure. */
@@ -1144,8 +1207,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     // abort below may kill the very request a resolution is awaiting, and
     // without this supersession the abort would surface as a spurious
     // "search failed" that nulls the model (reopen-while-resolving).
-    ++this.resolutionEpoch;
-    this.resolving.set(false);
+    this.supersedeResolution();
     this.inFlight?.controller.abort();
     this.inFlight = null;
     this.clearHighlight();
@@ -1304,7 +1366,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   /** The dropdown just opened: run the initial (browse or seeded) search. */
   private onPopupOpened(): void {
     if (untracked(this.searchState).kind === 'idle') {
-      this.queueSearch(this.queryFor(this.inputElement.value));
+      this.queueSearch(this.queryFor(this.currentText()));
     }
   }
 
@@ -1335,10 +1397,23 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * text, write `null`, raise the specific localized error.
    */
   private async resolveText(text: string, keepPopup: boolean): Promise<void> {
-    const token = ++this.resolutionEpoch;
+    // Take over from a resolution already pending: its answer is discarded
+    // by the epoch bump, and its request is aborted — UNLESS that request is
+    // the one THIS resolution is about to await. A second commit gesture on
+    // the same text (Enter while loading, then leaving) reuses the very
+    // request the first one adopted, and aborting it there would fail the
+    // round trip this resolution just asked for.
+    const reused =
+      this.inFlight !== null && this.inFlight.query === text ? this.inFlight.controller : null;
+    ++this.resolutionEpoch;
+    if (this.resolutionController !== null && this.resolutionController !== reused) {
+      this.resolutionController.abort();
+    }
+    this.resolutionController = null;
+    const token = this.resolutionEpoch;
     // The resolution owns the outcome now: silence the awaited search's own
     // continuation (it must not double-render what this method consumes)…
-    ++this.searchEpoch;
+    const searchToken = ++this.searchEpoch;
     // …and cancel the coalescing window — a trailing query firing mid-await
     // would supersede this commit and silently drop it (with `resolving`
     // stuck true).
@@ -1352,6 +1427,11 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
           ? { items: state.items, hasMore: state.hasMore }
           : { items: [], hasMore: false };
     } else if (this.inFlight !== null && this.inFlight.query === text) {
+      // ADOPT the request: it is this resolution's input now, so this
+      // resolution's abort handle is the one it already has. Without that,
+      // a supersession that starts nothing of its own (an external value
+      // write) would leave the consumer working on an answer no one reads.
+      this.resolutionController = this.inFlight.controller;
       outcome = await this.inFlight.settled;
     } else {
       outcome = await this.issueResolutionRequest(text);
@@ -1362,8 +1442,19 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       // resolution's loading state (an external write issues no search of
       // its own) must not strand the spinner — nothing else will ever
       // resolve it.
+      //
+      // The search token gates the repair. A superseder that started its
+      // OWN search bumps it, and that search may well be for the same text
+      // — the reopen-while-resolving path does exactly that — in which case
+      // the loading state on screen belongs to a live request, and clearing
+      // it here would blank a running search and drop its abort handle.
       const current = untracked(this.searchState);
-      if (untracked(this.expanded) && current.kind === 'loading' && current.query === text) {
+      if (
+        searchToken === this.searchEpoch &&
+        untracked(this.expanded) &&
+        current.kind === 'loading' &&
+        current.query === text
+      ) {
         this.searchState.set({ kind: 'idle' });
         this.inFlight = null;
       }
@@ -1375,7 +1466,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     this.resolutionController = null;
     if (outcome === 'failed') {
       this.failResolution('searchFailed', text);
-      if (untracked(this.expanded)) {
+      if (this.popupOwnsStatus(keepPopup)) {
         // The Enter path keeps the popup open: the status must not stay
         // frozen on the loading spinner.
         this.searchState.set({ kind: 'error', query: text });
@@ -1403,12 +1494,43 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       return;
     }
     this.failResolution(outcome.items.length === 0 ? 'noMatch' : 'ambiguous', text);
-    if (untracked(this.expanded)) {
+    if (this.popupOwnsStatus(keepPopup)) {
       // The Enter path keeps the popup open as the recovery surface: show
       // the fetched candidates (or the honest empty status) instead of a
       // spinner that nothing will ever resolve.
       this.applyResults(text, outcome);
     }
+  }
+
+  /**
+   * Hands ownership away from any pending resolution. The epoch bump is what
+   * makes a late answer harmless, but the abort is what the CONSUMER was
+   * promised: the signal handed to `search` fires when the request is
+   * superseded, and a consumer that cancels on it must not be left holding
+   * a round trip nobody will ever read.
+   */
+  private supersedeResolution(): void {
+    ++this.resolutionEpoch;
+    this.resolutionController?.abort();
+    this.resolutionController = null;
+    this.resolving.set(false);
+  }
+
+  /**
+   * Whether a resolution outcome should be painted into the popup's status
+   * area. BOTH tests are needed and neither is sufficient:
+   *
+   * - The caller's intent, because a departure resolves before aria's
+   *   close-on-blur effect has flushed — `expanded` still reads true there,
+   *   and a blur would re-render and announce a popup that is leaving.
+   * - The popup's actual state, because an Enter-while-loading keeps focus
+   *   and the popup open, and the user can still close it (Escape) before
+   *   the answer lands — writing the status then would leave the NEXT open
+   *   showing a stale failure, with no search of its own (the initial
+   *   search only runs from the `idle` state).
+   */
+  private popupOwnsStatus(keepPopup: boolean): boolean {
+    return keepPopup && untracked(this.expanded);
   }
 
   /** Issues a fresh request for a resolution with no current search. */
@@ -1432,6 +1554,22 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   }
 
   /**
+   * The text this control currently holds — the picker's OWN channel, never
+   * the DOM's.
+   *
+   * The native input lags the picker by a render pass on every
+   * picker-authored write: aria mirrors the combobox text model into
+   * `element.value` from an after-render effect, and a commit gesture that
+   * moves focus in the same task (Tab, above all) is read back before that
+   * mirror runs. The raw channel is updated synchronously by every writer —
+   * typing, picks, seeds, quiet cell installs — so it is the only reading
+   * that is true at every instant.
+   */
+  private currentText(): string {
+    return untracked(this.rawText);
+  }
+
+  /**
    * The capture-phase keyboard layer on the host — the only reliable
    * pre-emption point against aria's own input listeners:
    *
@@ -1449,6 +1587,14 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    */
   private readonly onCaptureKeydown = (event: KeyboardEvent): void => {
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+      return;
+    }
+    if (this.readonly() && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+      // A read-only picker offers no choices. aria's collapsed ArrowDown
+      // expands unconditionally and it is only stood down by its OWN
+      // `disabled` input — which this control does not use for readonly,
+      // because that would announce the value as unavailable.
+      event.stopPropagation();
       return;
     }
     const isExpanded = untracked(this.expanded);
@@ -1503,10 +1649,9 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
 
   /** Mirrors keystrokes into the raw channel and queues the search. */
   protected onInput(): void {
-    const text = this.inputElement.value;
-    // Editing resumes ownership from any pending resolution.
-    ++this.resolutionEpoch;
-    this.resolving.set(false);
+    const text = this.inputElement.value; // the DOM IS the source here
+    this.editedSinceFocus = true;
+    this.supersedeResolution(); // editing resumes ownership from any pending resolution
     const failure = untracked(this.resolutionFailure);
     if (failure !== null && failure.text !== text) {
       this.resolutionFailure.set(null);
@@ -1527,6 +1672,14 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
 
   /** Focus bookkeeping. */
   protected onFocusin(): void {
+    if (!untracked(this.focused)) {
+      // Only a genuine arrival resets the edited bookkeeping. Focus also
+      // comes BACK here without the control ever having lost it — the panel
+      // handing it over after a press that missed a row, a modal page
+      // returning it — and those must not erase the fact that the user
+      // typed before they happened.
+      this.editedSinceFocus = false;
+    }
     this.focused.set(true);
   }
 
@@ -1556,11 +1709,29 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     if (this.cellHost !== null) {
       return; // the grid owns commit; the picker's resolution never runs in a cell
     }
-    const text = this.inputElement.value;
+    if (!this.editedSinceFocus) {
+      // A visit that typed nothing can never change the value. The text on
+      // screen may nevertheless no longer be the value's CURRENT display
+      // text — the reformat stands down for a focused field, so a warmed
+      // entity cache, a rename, or a locale switch during the visit leaves
+      // the older rendering in place. Resolving that text would search for
+      // a label the picker itself wrote and null the model over it; the
+      // reformat effect picks it up instead, now that focus has left.
+      return;
+    }
+    const text = this.currentText();
     if (text === '') {
       // Empty commit: clearing the text clears the value (required is the
       // field's concern). Trivial for an already-null model.
       this.setCanonicalText('', null);
+      return;
+    }
+    const pin = this.displayOverride;
+    if (pin !== null && pin.text === text) {
+      // Picker-authored canonical text whose value is known by construction
+      // — a pick from the list, a Tab commit, a modal outcome. There is
+      // nothing to resolve, and re-resolving it would re-emit `picked` and
+      // hand an ambiguous label back its own error.
       return;
     }
     if (text === untracked(() => this.displayFor(untracked(this.value)))) {
@@ -1688,7 +1859,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     if (opts?.enterFallbacks !== true || this.cellHost !== null) {
       return;
     }
-    const text = this.inputElement.value;
+    const text = this.currentText();
     const state = untracked(this.searchState);
     if (text === '' && untracked(this.value) !== null) {
       // Enter with cleared text is a commit gesture: clearing the text
@@ -1724,8 +1895,9 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   /**
    * Panel presses on rows keep focus in the input — a press inside the
    * popup is its own interaction (a pick, a modal launch), never a blur
-   * departure. Presses on the panel/scrollbar itself fall through to the
-   * listbox's tabindex="-1", which aria's widget-focus tracking absorbs.
+   * departure. Presses that miss every row (the listbox's padding band, its
+   * scroll gutter) are deliberately left alone so scrollbar drags behave
+   * natively; the focusin handler below catches the focus they move.
    */
   protected onPanelPointerdown(event: PointerEvent): void {
     const target = event.target as Element;
@@ -1735,6 +1907,20 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       ) !== null
     ) {
       event.preventDefault();
+    }
+  }
+
+  /**
+   * The activedescendant model puts DOM focus on the input and nowhere else.
+   * Anything inside the panel receiving focus anyway — a programmatic move,
+   * a press this component did not see — hands it straight back, because
+   * aria keeps the popup open while its widget holds focus and the input
+   * would sit there un-typable with the picker still believing it is
+   * focused.
+   */
+  protected onPanelFocusin(): void {
+    if (document.activeElement !== this.inputElement) {
+      this.inputElement.focus({ preventScroll: true });
     }
   }
 
@@ -1768,7 +1954,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   ): Promise<void> {
     const config: { component: Type<unknown>; size?: TmModalSize; title?: string } =
       typeof page === 'function' ? { component: page } : page;
-    const text = this.inputElement.value;
+    const text = this.currentText();
     const data: TmEntityPickerPageData<Id> = {
       // Pristine text is a browse intent, not a query — a create page must
       // not prefill the OLD entity's label as the new entity's name.
@@ -1778,13 +1964,17 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     // Supersede the search AND any pending resolution; the modal outcome
     // governs from here.
     ++this.searchEpoch;
-    ++this.resolutionEpoch;
+    this.supersedeResolution();
     this.inFlight?.controller.abort();
     this.inFlight = null;
     this.cancelDebounce();
-    this.resolving.set(false);
     this.suppressBlur = true; // focus moves into the dialog — not a departure
     this.expanded.set(false);
+    // The modal captures whatever holds focus RIGHT NOW as its restore
+    // target. A magnifier press suppresses its own focus transfer, so on a
+    // picker that was never focused that target would be document.body and
+    // dismissing the page would drop the user outside the control entirely.
+    this.focus();
     const titleKey =
       source === 'advanced'
         ? 'entityPicker.advancedTitle'

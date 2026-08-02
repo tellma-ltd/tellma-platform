@@ -25,6 +25,7 @@ import type { FieldTree, ValidationError } from '@angular/forms/signals';
 import {
   TM_PARSE_ERROR,
   type SignalLike,
+  type TmCellEditor,
   type TmGridContentState,
   type TmGridScrollPosition,
   type TmLabelResolution,
@@ -138,6 +139,12 @@ const GRID_MENU_SHORTCUTS = IS_MAC_PLATFORM
 
 /** Natively-focusable content consumers may project into cells/headers. */
 const INTERACTIVE_CONTENT_SELECTOR = 'a[href], button, input, select, textarea, [tabindex]';
+
+/**
+ * "This session recorded no value baseline" — distinct from every value a
+ * cell can hold, `undefined` and `null` included.
+ */
+const NO_VALUE_BASELINE: unique symbol = Symbol('tmNoValueBaseline');
 
 /** Rows whose field nodes one error-tally warm-up slice touches (§16). */
 const WARMUP_ROWS_PER_SLICE = 500;
@@ -3319,16 +3326,22 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       return false;
     }
     if (
-      isDevMode() &&
       column.type === 'entity' &&
       column.editorDef === undefined &&
       column.entitySearch !== undefined &&
       (column.entityItemId === undefined || column.entityItemLabel === undefined)
     ) {
-      throw new Error(
-        `tm-grid: column "${column.id}" binds [search] without [itemId]/[itemLabel] — ` +
-          `both are required alongside [search] for the built-in tm-entity-picker editor.`,
-      );
+      if (isDevMode()) {
+        throw new Error(
+          `tm-grid: column "${column.id}" binds [search] without [itemId]/[itemLabel] — ` +
+            `both are required alongside [search] for the built-in tm-entity-picker editor.`,
+        );
+      }
+      // In production the cell stays non-editable, exactly like the
+      // no-editor case above. Opening anyway would render every option as
+      // "[object Object]" through the String(item) fallbacks and commit
+      // that string into the foreign-key field.
+      return false;
     }
     if (!engine.edit.openEdit(cell, mode, seedText)) {
       return false;
@@ -3366,9 +3379,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         kind: 'entity',
         label: header,
         search: column.entitySearch!,
-        // Prod fallbacks for a half-config (dev throws above): String(item)
-        // keeps the editor honest instead of crashing the picker's
-        // required inputs.
+        // Both are guaranteed by the half-config guard above (which throws
+        // in dev and refuses the open in prod); the `??` only satisfies the
+        // picker's required inputs, and its branch is unreachable.
         itemId: column.entityItemId ?? ((item: unknown) => String(item)),
         itemLabel: column.entityItemLabel ?? ((item: unknown) => String(item)),
         // The column's `format` doubles as the picker's committed-id display
@@ -3425,6 +3438,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     // in place would make a later commit of a coincidentally equal string
     // (an emptied cell after an emptied cell) look pristine and be dropped.
     this.editorOpenText = null;
+    this.editorOpenValue = NO_VALUE_BASELINE;
     if (opts?.ime === true) {
       // IME opens UNSEEDED: the composition itself supplies the content.
       this.editorOpenText = '';
@@ -3455,6 +3469,20 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         // nothing (no re-resolution of the committed label).
         mounted.setTextQuiet?.(editText);
         this.editorOpenText = editText;
+        // An entity editor owns BOTH channels, and on a clean cell the text
+        // channel stands down (it reports null so the id commits). The text
+        // baseline alone can therefore never recognize an untouched
+        // session; the value baseline is what makes F2 + Enter a no-op.
+        //
+        // An INVALID-INPUT cell gets no value baseline: it opens on raw
+        // text that is not the value's display text, so "the value channel
+        // is authoritative again" means the user cleared the bad text —
+        // a real edit, and the only way to clear the annotation from the
+        // editor. Its own pristine case (the raw text still unchanged) is
+        // covered by the text baseline above.
+        if (!hasInvalidInput) {
+          this.editorOpenValue = valueAtOpen;
+        }
       }
     } else if (seedText !== undefined) {
       if (editor.seed !== undefined) {
@@ -3515,6 +3543,15 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   private editorOpenText: string | null = null;
 
   /**
+   * The VALUE an entity editor was opened with, or `NO_VALUE_BASELINE` when
+   * the session has none. Entity editors are the only ones that own both
+   * channels, and a clean entity cell hands the commit to the value channel
+   * — so the text baseline above cannot see an untouched session and the
+   * value baseline has to.
+   */
+  private editorOpenValue: unknown = NO_VALUE_BASELINE;
+
+  /**
    * Commits the open session through the engine: the enum select commits
    * its VALUE; text-path editors commit their text through the column's
    * parse — unless `text()` is `null` (content not representable as text,
@@ -3538,6 +3575,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         // before the channels are read. PULLED here — a push through the
         // activation output would re-enter this commit mid-flight.
         mounted.editor.commit();
+        if (this.isPristineEntitySession(mounted.editor)) {
+          engine.edit.cancel();
+          this.closeEditor(opts);
+          return;
+        }
       }
       const text = untracked(() => mounted.editor.text());
       if (text === null) {
@@ -3549,6 +3591,29 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       }
     }
     this.closeEditor(opts);
+  }
+
+  /**
+   * Whether an entity session is still exactly as it opened — neither
+   * channel moved. Such a commit must write NOTHING: on a real row the
+   * value write would be elided anyway, but on the new-row placeholder any
+   * commit at all materializes the row, so opening an editor on the `*` row
+   * and closing it would append a blank row the user never typed into.
+   *
+   * Only "the value is unchanged" is checked here, never "the value write
+   * would be a no-op": a commit also clears the cell's invalid input, and a
+   * session that opened on one has no value baseline for exactly that
+   * reason.
+   */
+  private isPristineEntitySession(editor: TmCellEditor<unknown>): boolean {
+    if (this.editorOpenValue === NO_VALUE_BASELINE) {
+      return false; // a seeded/IME open, or an errored cell: an edit by construction
+    }
+    const text = untracked(() => editor.text());
+    if (text !== null) {
+      return text === this.editorOpenText; // an errored cell's raw text, unchanged
+    }
+    return Object.is(untracked(() => editor.value()), this.editorOpenValue);
   }
 
   /**

@@ -87,6 +87,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
     protected onListboxEnter(): void;
     protected onMagnifierClick(): void;
     protected onOutsideClick(): void;
+    protected onPanelFocusin(): void;
     protected onPanelPointerdown(event: PointerEvent): void;
     openDropdown(): void;
     readonly ownsChrome = false;

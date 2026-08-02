@@ -48,6 +48,10 @@
       "./spinner": 1,
       "./tabs": 4
     },
+    "budgetNotes": {
+      "./entity-picker": "Deliberately raised from 10 to 11. The picker measures ~10.5 KB as one eager surface: it is an editable combobox that also carries an async search lifecycle, a text/value resolution channel, three modal pages, and a grid cell-editor implementation. The remaining lever is deferring the popup into its own chunk (the date-picker's shape), which is a change to the mounting sequence this control's overlay placement and highlight protocol are sensitive to — not worth reopening for 0.5 KB. Revisit if the popup is extracted for other reasons.",
+      "_": "Ceilings are ratchets. Any raise belongs here with its reason; a raise with no note is a bug."
+    },
     "apiGoldens": {
       "exclude": ["./private"]
     },

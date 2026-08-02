@@ -1278,6 +1278,36 @@ describe('tm-grid entity columns (built-in tm-entity-picker editor)', () => {
     await stable(fixture);
   }
 
+  it('opening and closing the picker on the NEW-ROW placeholder materializes nothing', async () => {
+    // Any commit at all on a placeholder session materializes the row, so a
+    // clean entity cell — whose value channel is authoritative and would
+    // otherwise take the commitValue branch — must be recognized as
+    // untouched and cancel instead. Otherwise F2 + Enter on the `*` row
+    // appends a blank row the user never typed into, with an undo entry.
+    const { fixture, host, scroller } = await setupEntity();
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'ArrowDown');
+    keydown(scroller, 'ArrowDown'); // (2,0) = the placeholder row
+    keydown(scroller, 'ArrowRight'); // its agent cell
+    await stable(fixture);
+    expect(host.model()).toHaveLength(2);
+
+    keydown(scroller, 'F2');
+    await stable(fixture);
+    const input = pickerInput(scroller);
+    expect(input).not.toBeNull();
+    expect(input!.value).toBe('');
+    keydown(input!, 'Enter');
+    await stable(fixture);
+    await stable(fixture);
+    expect(pickerInput(scroller)).toBeNull();
+    expect(host.model()).toHaveLength(2); // no phantom row
+    // …and nothing was pushed onto the history either.
+    keydown(scroller, 'z', { ctrlKey: true });
+    await stable(fixture);
+    expect(host.model()).toHaveLength(2);
+  });
+
   it('F2 opens the picker quietly on the display text; a pristine Enter commits nothing', async () => {
     const { fixture, host, scroller } = await setupEntity();
     await activateAgentCell(fixture, scroller);
@@ -1439,6 +1469,42 @@ describe('tm-grid entity columns (built-in tm-entity-picker editor)', () => {
     const cell = cellAt(scroller, 0, 1)!;
     expect(cell.textContent!.trim()).toBe('Zebra'); // raw text kept in place
     expect(cell.classList.contains('tm-grid__cell--error')).toBe(true);
+  });
+
+  it('an errored entity cell can be CLEARED from its own editor', async () => {
+    // The invalid input is the only thing left to clear: the cell's value is
+    // already null, so emptying the editor moves no value at all. A pristine
+    // check that only compares values would read that as "nothing happened"
+    // and cancel — leaving the user with a red cell full of text they cannot
+    // get rid of without leaving the editor.
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'Z');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, 'Zebra');
+    await stable(fixture);
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    host.resolveCalls[0].deferred.resolve(new Map([['Zebra', { error: 'notFound' }]]));
+    await stable(fixture);
+    expect(cellAt(scroller, 0, 1)!.classList.contains('tm-grid__cell--error')).toBe(true);
+
+    // F2 on the errored cell (still the active one) opens on its RAW text;
+    // emptying it commits.
+    scroller.focus();
+    keydown(scroller, 'F2');
+    await stable(fixture);
+    expect(pickerInput(scroller)!.value).toBe('Zebra');
+    typeInto(pickerInput(scroller)!, '');
+    await stable(fixture);
+    keydown(pickerInput(scroller)!, 'Enter');
+    await stable(fixture);
+    await stable(fixture);
+    const cell = cellAt(scroller, 0, 1)!;
+    expect(cell.textContent!.trim()).toBe('');
+    expect(cell.classList.contains('tm-grid__cell--error')).toBe(false);
+    expect(host.model()[0].agentId).toBeNull();
+    expect(host.resolveCalls).toHaveLength(1); // the empty string never resolves
   });
 
   it('the consumer parse rung commits #N synchronously with no resolver call', async () => {

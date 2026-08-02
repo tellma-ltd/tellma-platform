@@ -150,6 +150,38 @@ class Host {
   readonly picks: TmEntityPicked<Agent, number>[] = [];
 }
 
+/**
+ * A standalone variant for the disabled/readonly matrix — Signal Forms owns
+ * those states on a `[formField]`-bound control, so they are driven directly
+ * here.
+ */
+@Component({
+  imports: [TmEntityPicker],
+  template: `
+    <tm-entity-picker
+      aria-label="Agent"
+      [search]="search"
+      [itemId]="id"
+      [itemLabel]="label"
+      [advancedSearch]="advancedPage"
+      [disabled]="disabled()"
+      [readonly]="readonly()"
+    />
+  `,
+})
+class StateHost {
+  readonly calls: string[] = [];
+  readonly search: TmEntitySearchFn<Agent> = (q) => {
+    this.calls.push(q);
+    return filterAgents(q);
+  };
+  readonly id = (item: Agent): number => item.id;
+  readonly label = (item: Agent): string => item.name;
+  readonly advancedPage = FakePage as never;
+  readonly disabled = signal(false);
+  readonly readonly = signal(false);
+}
+
 /** A required-field variant for the required-on-null case. */
 @Component({
   imports: [TmEntityPicker, TmFormField, FormField],
@@ -221,6 +253,22 @@ async function setup(): Promise<{
     '[data-testid="outside"]',
   ) as HTMLInputElement;
   return { fixture, host: fixture.componentInstance, input, outside };
+}
+
+async function setupState(): Promise<{
+  fixture: ComponentFixture<StateHost>;
+  host: StateHost;
+  input: HTMLInputElement;
+}> {
+  TestBed.configureTestingModule({
+    providers: [provideTellmaUi({ availableLangs: ['en', 'ar'] })],
+  });
+  const fixture = TestBed.createComponent(StateHost);
+  await settle(fixture);
+  const input = fixture.nativeElement.querySelector(
+    '.tm-entity-picker__input',
+  ) as HTMLInputElement;
+  return { fixture, host: fixture.componentInstance, input };
 }
 
 /** Types `text` into the focused input (replacing the content) and settles. */
@@ -301,11 +349,74 @@ describe('tm-entity-picker', () => {
       // aria derives list autocomplete from the registered listbox popup —
       // the popup template lives in the overlay, so the attribute
       // materializes once the dropdown opens.
+      // aria derives the attribute from the LIVE popup, so it would read
+      // "none" on the closed control it describes; the picker states it.
+      expect(input.getAttribute('aria-autocomplete')).toBe('list');
       host.search.set(syncSearch().fn);
       await settle(fixture);
       await type(fixture, input, 'Al');
       expect(input.getAttribute('aria-autocomplete')).toBe('list');
       expect(input.getAttribute('aria-controls')).toBeTruthy();
+    });
+
+    it('disabled: no dropdown, no search, a disabled magnifier — and it announces disabled', async () => {
+      const { fixture, host, input } = await setupState();
+      host.disabled.set(true);
+      await settle(fixture);
+      expect(input.disabled).toBe(true);
+      expect(input.getAttribute('aria-disabled')).toBe('true');
+      const magnifier = fixture.nativeElement.querySelector(
+        '.tm-entity-picker__magnifier',
+      ) as HTMLButtonElement;
+      expect(magnifier.disabled).toBe(true); // present, so the box never changes size
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await press(fixture, input, 'ArrowDown', { altKey: true });
+      expect(panel()).toBeNull();
+      expect(host.calls).toHaveLength(0);
+    });
+
+    it('readonly: focusable and non-typable, no dropdown — and it never announces disabled', async () => {
+      const { fixture, host, input } = await setupState();
+      host.readonly.set(true);
+      await settle(fixture);
+      // A read-only control still conveys its value: it is reachable, and it
+      // is read-only — NOT disabled, which would tell assistive tech the
+      // value is unavailable.
+      expect(input.disabled).toBe(false);
+      expect(input.readOnly).toBe(true);
+      expect(input.tabIndex).toBe(0);
+      expect(input.getAttribute('aria-disabled')).toBe('false');
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await press(fixture, input, 'ArrowDown', { altKey: true });
+      expect(panel()).toBeNull();
+      expect(host.calls).toHaveLength(0);
+    });
+
+    it('readonly holds from the FIRST render, not only after a flip', async () => {
+      // The native read-only attribute is ours; aria host-binds the same
+      // attribute (to null, since its own `disabled` input is false here)
+      // and its host bindings run AFTER every template binding. If that
+      // removal ever won, a read-only picker would be freely typable.
+      TestBed.configureTestingModule({
+        providers: [provideTellmaUi({ availableLangs: ['en', 'ar'] })],
+      });
+      const fixture = TestBed.createComponent(StateHost);
+      fixture.componentInstance.readonly.set(true); // before the first render
+      await settle(fixture);
+      const input = fixture.nativeElement.querySelector(
+        '.tm-entity-picker__input',
+      ) as HTMLInputElement;
+      expect(input.readOnly).toBe(true);
+      expect(input.getAttribute('readonly')).not.toBeNull();
+    });
+
+    it('going disabled with the dropdown open closes it', async () => {
+      const { fixture, host, input } = await setupState();
+      await type(fixture, input, 'Al');
+      expect(panel()).not.toBeNull();
+      host.disabled.set(true);
+      await settle(fixture);
+      expect(panel()).toBeNull();
     });
 
     it('shows the magnifier only when advancedSearch is configured, and never as a tab stop', async () => {
@@ -689,18 +800,76 @@ describe('tm-entity-picker', () => {
       expect(panel()).not.toBeNull();
     });
 
-    it('Esc closes the popup with the text intact; Enter while open is consumed, closed is not', async () => {
+    it('Esc closes the popup with the text intact; Enter is consumed while open, not while closed', async () => {
       const { fixture, host, input } = await setup();
       host.search.set(syncSearch().fn);
       await settle(fixture);
       await type(fixture, input, 'Alice');
-      const openEnter = await press(fixture, input, 'Escape');
+      // Enter on the highlighted row is aria's to consume, so it never
+      // reaches a surrounding form's submit.
+      const openEnter = await press(fixture, input, 'Enter');
       expect(openEnter.defaultPrevented).toBe(true);
+      expect(host.model().agentId).toBe(3);
+
+      await type(fixture, input, 'Alice');
+      const escape = await press(fixture, input, 'Escape');
+      expect(escape.defaultPrevented).toBe(true);
       expect(panel()).toBeNull();
       expect(input.value).toBe('Alice');
       // Closed: Enter is left to the platform (native submit applies).
       const closedEnter = await press(fixture, input, 'Enter');
       expect(closedEnter.defaultPrevented).toBe(false);
+    });
+
+    it('a Tab commit is not undone by the blur it triggers', async () => {
+      // Tab's focus move is the keydown's own default action: it runs in the
+      // same task, BEFORE aria has mirrored the committed label into the
+      // native input. A departure that read the DOM there would find the
+      // query that is now stale, re-resolve it — 'Adam' names two suppliers
+      // — and write null over the row the user just took.
+      const { fixture, host, input, outside } = await setup();
+      host.search.set(syncSearch().fn);
+      host.displayWith.set((id) => DIRECTORY.find((a) => a.id === id)?.name ?? null);
+      await settle(fixture);
+      await type(fixture, input, 'Adam');
+      expect(optionRows()).toHaveLength(2);
+      await press(fixture, input, 'Tab');
+      // The real focus move Tab's default action would have performed.
+      outside.focus();
+      await settle(fixture);
+      expect(host.model().agentId).toBe(1);
+      expect(input.value).toBe('Adam Brown');
+      expect(errorText(fixture)).toBe('');
+      expect(host.picks).toHaveLength(1); // ONE gesture, ONE picked
+    });
+
+    it('a focus visit that types nothing never resolves — even if the label changed meanwhile', async () => {
+      // The display context can move while the field is focused (an entity
+      // cache warming, a rename); the reformat deliberately stands down
+      // there, so the older rendering stays on screen. Searching for it on
+      // the way out would find nothing and null a value the user never
+      // touched.
+      const { fixture, host, input, outside } = await setup();
+      const search = syncSearch();
+      host.search.set(search.fn);
+      host.displayWith.set(() => null); // cold: displayFor falls back to String(id)
+      await settle(fixture);
+      host.model.set({ agentId: 3 });
+      await settle(fixture);
+      expect(input.value).toBe('3');
+
+      input.focus();
+      await settle(fixture);
+      host.displayWith.set((id) => DIRECTORY.find((a) => a.id === id)?.name ?? null);
+      await settle(fixture);
+      expect(input.value).toBe('3'); // the focused field is not rewritten under the user
+
+      outside.focus();
+      await settle(fixture);
+      expect(host.model().agentId).toBe(3); // survived
+      expect(errorText(fixture)).toBe('');
+      expect(search.calls).toHaveLength(0); // and cost no request
+      expect(input.value).toBe('Alice Green'); // the deferred reformat lands on the way out
     });
 
     it('Alt+ArrowDown opens the browse dropdown; plain ArrowUp opens it standalone', async () => {
@@ -1023,10 +1192,110 @@ describe('tm-entity-picker', () => {
       expect(host.model().agentId).toBe(5);
       expect(errorText(fixture)).not.toContain('Search failed');
       expect(errorText(fixture)).not.toContain('No match');
+      // The reopened search is LIVE while the superseded resolution's
+      // continuation lands. The stranded-spinner repair must recognize that
+      // the loading state on screen — same query, same text — belongs to
+      // the new request and leave it alone.
+      expect(panel()?.querySelector('.tm-entity-picker__status tm-spinner')).not.toBeNull();
       // The fresh search proceeds normally.
       responders[1].resolve(filterAgents('Alice Gr'));
       await settle(fixture);
       expect(optionRows()).toHaveLength(1);
+    });
+
+    it('Enter while loading, then leaving, still resolves — the second commit reuses the first request', async () => {
+      // The first gesture's resolution ADOPTS the in-flight search as its
+      // input. The second must not abort what it is itself about to await.
+      const { fixture, host, input, outside } = await setup();
+      // An abort-HONORING source: the whole point is that an abort here is
+      // not a discard, it kills the answer both gestures are waiting for.
+      const responders: Deferred<TmEntitySearchResult<Agent>>[] = [];
+      host.search.set((query, signal) => {
+        const d = deferred<TmEntitySearchResult<Agent>>();
+        responders.push(d);
+        signal.addEventListener('abort', () => d.reject(new Error('aborted')));
+        return d.promise;
+      });
+      host.displayWith.set((id) => DIRECTORY.find((a) => a.id === id)?.name ?? null);
+      await settle(fixture);
+      await type(fixture, input, 'Alice Gr');
+      await press(fixture, input, 'Enter'); // resolve #1: adopts request 0
+      outside.focus(); // resolve #2: reuses request 0
+      await settle(fixture);
+      responders[0].resolve(filterAgents('Alice Gr'));
+      await settle(fixture);
+      expect(host.model().agentId).toBe(3);
+      expect(errorText(fixture)).toBe('');
+      expect(responders).toHaveLength(1); // and it cost ONE round trip
+    });
+
+    it('closing the popup before the answer lands leaves the NEXT open clean', async () => {
+      // Enter-while-loading keeps the popup open, so the outcome is painted
+      // into it — but the user can still close it first, and a status
+      // written into a closed popup survives into the next open, which then
+      // shows a stale failure and never searches (the initial search only
+      // runs from the idle state).
+      const { fixture, host, input } = await setup();
+      const search = manualSearch();
+      host.search.set(search.fn);
+      await settle(fixture);
+      await type(fixture, input, 'Alice Gr');
+      await press(fixture, input, 'Enter');
+      await press(fixture, input, 'Escape');
+      expect(panel()).toBeNull();
+      search.responders[0].reject(new Error('boom'));
+      await settle(fixture);
+      await settle(fixture);
+
+      input.focus();
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      expect(panel()).not.toBeNull();
+      expect(panel()?.textContent).not.toContain('Search failed');
+      expect(search.calls).toHaveLength(2); // the reopen ran its own browse
+    });
+
+    it('a superseder that issues no search of its own still clears the stranded spinner', async () => {
+      // The other half of the repair: an external value write supersedes the
+      // resolution without starting anything, so nothing else would ever
+      // resolve the spinner it leaves behind.
+      const { fixture, host, input } = await setup();
+      const search = manualSearch();
+      host.search.set(search.fn);
+      host.displayWith.set((id) => DIRECTORY.find((a) => a.id === id)?.name ?? null);
+      await settle(fixture);
+      await type(fixture, input, 'Alice Gr');
+      await press(fixture, input, 'Enter'); // Enter-while-loading: resolve, popup stays open
+      expect(panel()?.querySelector('.tm-entity-picker__status tm-spinner')).not.toBeNull();
+      host.model.set({ agentId: 4 }); // external write supersedes it
+      await settle(fixture);
+      search.responders[0].resolve(filterAgents('Alice Gr'));
+      await settle(fixture);
+      expect(host.model().agentId).toBe(4);
+      expect(panel()?.querySelector('.tm-entity-picker__status tm-spinner') ?? null).toBeNull();
+    });
+
+    it('focus landing inside the panel is handed straight back to the input', async () => {
+      // The activedescendant model keeps DOM focus on the input. A press
+      // that misses every row (the listbox padding, the scroll gutter) or a
+      // programmatic move would otherwise park focus on the listbox, which
+      // aria counts as "the widget still has focus" — leaving the popup
+      // open above an input that no longer receives keystrokes.
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      await type(fixture, input, 'Al');
+      const listbox = panel()?.querySelector('.tm-entity-picker__listbox') as HTMLElement;
+      expect(listbox.tabIndex).toBe(-1);
+      listbox.focus();
+      await settle(fixture);
+      expect(document.activeElement).toBe(input);
+      expect(panel()).not.toBeNull();
+      // …and the visit's typing is still remembered: leaving now resolves.
+      await type(fixture, input, 'Alice Gr');
+      input.blur();
+      await settle(fixture);
+      expect(host.model().agentId).toBe(3);
     });
 
     it('destroy supersedes a pending resolution and aborts its request', async () => {
@@ -1039,9 +1308,87 @@ describe('tm-entity-picker', () => {
       await settle(fixture);
       fixture.destroy();
       expect(search.calls[0].signal.aborted).toBe(true);
-      // A late answer from a consumer ignoring the signal must be inert.
+      // A late answer from a consumer ignoring the signal must be inert:
+      // the resolution's continuation runs on a torn-down component, and it
+      // must neither throw nor write the model it no longer owns.
       search.responders[0].resolve(filterAgents('Alice Gr'));
       await sleep(10);
+      expect(host.model().agentId).toBeNull();
+      expect(host.picks).toHaveLength(0);
+    });
+
+    it('a pick that was later cleared cannot be resurrected by re-typing its label', async () => {
+      // The canonical-text pin says "this exact string IS that value". A
+      // fail-fast Enter then writes null through the parse, and the parse's
+      // own self-write marker stops the echo guard from retiring the pin —
+      // so nothing but the reformat effect can, and it must, on every path.
+      // Otherwise re-typing the old label rebinds it to the old id with no
+      // search, no ambiguity check, and no `picked`.
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.displayWith.set((id) => DIRECTORY.find((a) => a.id === id)?.name ?? null);
+      await settle(fixture);
+      await type(fixture, input, 'Adam Brown');
+      await press(fixture, input, 'Enter'); // 'Adam Brown' names two: highlight #1 commits
+      expect(host.model().agentId).toBe(1);
+
+      await type(fixture, input, 'Zed');
+      await press(fixture, input, 'Enter'); // fail fast: no match, model → null, focus kept
+      expect(host.model().agentId).toBeNull();
+
+      await type(fixture, input, 'Adam Brown'); // the old pin's exact text
+      expect(host.model().agentId).toBeNull(); // still null — nothing was picked
+      expect(host.picks).toHaveLength(1);
+    });
+
+    it('every supersession ABORTS the resolution request, not just discards its answer', async () => {
+      // The consumer is promised a signal that fires when the request is
+      // superseded — a discard the consumer never hears about still costs
+      // them the round trip they were told they could cancel.
+      const paths: readonly {
+        name: string;
+        act: (ctx: Awaited<ReturnType<typeof setup>>) => Promise<void>;
+      }[] = [
+        {
+          name: 'resuming the edit',
+          act: async ({ fixture, input }) => {
+            await type(fixture, input, 'Alice Green');
+          },
+        },
+        {
+          name: 'an external value write',
+          act: async ({ fixture, host }) => {
+            host.model.set({ agentId: 4 });
+            await settle(fixture);
+          },
+        },
+        {
+          name: 'launching a modal page',
+          act: async ({ fixture, host }) => {
+            host.advancedPage.set(pageOf(FakePage));
+            await settle(fixture);
+            (
+              fixture.nativeElement.querySelector(
+                '.tm-entity-picker__magnifier',
+              ) as HTMLButtonElement
+            ).click();
+            await settle(fixture);
+          },
+        },
+      ];
+      for (const path of paths) {
+        TestBed.resetTestingModule(); // each path gets its own fixture
+        const ctx = await setup();
+        const search = manualSearch();
+        ctx.host.search.set(search.fn);
+        await settle(ctx.fixture);
+        await type(ctx.fixture, ctx.input, 'Alice Gr');
+        ctx.outside.focus(); // blur → a resolution now owns request 0
+        await settle(ctx.fixture);
+        await path.act(ctx);
+        expect(search.calls[0].signal.aborted, path.name).toBe(true);
+        ctx.fixture.destroy();
+      }
     });
 
     it('an external value write supersedes a pending resolution', async () => {
@@ -1157,6 +1504,51 @@ describe('tm-entity-picker', () => {
       ]);
       // Footer rows are real options inside the listbox.
       expect(actionRows().every((r) => r.getAttribute('role') === 'option')).toBe(true);
+    });
+
+    it('the object page form overrides the default size and title', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.advancedPage.set(
+        pageOf({ component: FakePage, size: 'sm', title: 'Find an agent' }),
+      );
+      await settle(fixture);
+      await type(fixture, input, 'Ali');
+      (
+        fixture.nativeElement.querySelector('.tm-entity-picker__magnifier') as HTMLButtonElement
+      ).click();
+      await settle(fixture);
+      // 'sm' instead of advanced search's 'lg' default, and the page's own
+      // title instead of the localized one.
+      expect(document.querySelector('.tm-modal-panel--lg')).toBeNull();
+      const pane = document.querySelector('.tm-modal-panel--sm') as HTMLElement;
+      expect(pane).not.toBeNull();
+      expect(pane.textContent).toContain('Find an agent');
+      expect(pane.textContent).not.toContain('Advanced search');
+      (document.querySelector('[data-testid="page-close"]') as HTMLButtonElement).click();
+      await settle(fixture);
+    });
+
+    it('a magnifier press from an UNFOCUSED picker returns focus to the input on dismissal', async () => {
+      // The modal captures the focused element as its restore target, and
+      // the magnifier suppresses its own focus transfer — so without an
+      // explicit focus the target would be document.body and a dismissal
+      // would leave the user outside the control.
+      const { fixture, host, outside } = await setup();
+      host.search.set(syncSearch().fn);
+      host.advancedPage.set(pageOf(FakePage));
+      await settle(fixture);
+      outside.focus();
+      (
+        fixture.nativeElement.querySelector('.tm-entity-picker__magnifier') as HTMLButtonElement
+      ).click();
+      await settle(fixture);
+      (document.querySelector('[data-testid="page-close"]') as HTMLButtonElement).click();
+      await settle(fixture);
+      await settle(fixture);
+      expect(document.activeElement).toBe(
+        fixture.nativeElement.querySelector('.tm-entity-picker__input'),
+      );
     });
 
     it('an advanced-search pick applies, memoizes, focuses the input, and closes the loop', async () => {
@@ -1472,6 +1864,25 @@ describe('tm-entity-picker', () => {
       expect(editor.value()).toBe(5);
       expect(input.value).toBe('5');
       expect(panel()).toBeNull();
+    });
+
+    it("cancel() restores the value after the GRID's edit-mode open sequence", async () => {
+      // The grid opens an entity editor by writing the value and installing
+      // the display text in ONE task. The text install parses back to the
+      // value just written, and a self-write marker armed for that
+      // already-current value would never be consumed — it would swallow
+      // the value write's own echo instead, leaving the revert baseline on
+      // its initializer and Esc reverting to null.
+      const { fixture, editor, picker, input } = await setupCell();
+      editor.value.set(5);
+      picker.ɵsetCellText('5'); // same task, exactly as the grid does it
+      await settle(fixture);
+      editor.seed?.('Alice');
+      await settle(fixture);
+      editor.cancel();
+      await settle(fixture);
+      expect(editor.value()).toBe(5);
+      expect(input.value).toBe('5');
     });
 
     it('plain vertical arrows are re-dispatched above the host for the grid, unconsumed', async () => {

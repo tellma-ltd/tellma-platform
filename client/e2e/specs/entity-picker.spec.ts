@@ -305,12 +305,46 @@ test.describe('keyboard matrix', () => {
     page,
   }) => {
     await useSyncSearch(page);
+    const before = Number(await page.getByTestId('picked-count').textContent());
     await input(page).fill('Alice Gr');
     await expect(activeOption(page)).toHaveText('Alice Green');
     await input(page).press('Tab');
     await expect(panel(page)).toHaveCount(0);
     expect((await model(page)).supplierId).toBe(3);
     await expect(page.getByTestId('submit')).toBeFocused();
+    // ONE commit gesture, one `picked`. The blur that Tab triggers arrives
+    // before the native input has been repainted with the committed label,
+    // so a departure that resolved what it read there would re-pick the same
+    // row and report the edit twice.
+    expect(Number(await page.getByTestId('picked-count').textContent()) - before).toBe(1);
+  });
+
+  test('Tab commits out of a MULTI-row set — the blur behind it resolves nothing', async ({
+    page,
+  }) => {
+    // The row is committed while the field still reads the query that found
+    // it, and that query names two suppliers. Nothing about the departure
+    // may re-open the question the Tab just answered.
+    await useSyncSearch(page);
+    await input(page).fill('Adam');
+    await expect(options(page)).toHaveCount(2);
+    await expect(activeOption(page)).toHaveText('Adam Brown');
+    await input(page).press('Tab');
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Adam Brown');
+    expect((await model(page)).supplierId).toBe(1);
+    await expect(fieldError(page)).toHaveText('');
+    await expect(input(page)).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  test('an arrowed row Tab-commits the row the user chose, not the first one', async ({ page }) => {
+    await useSyncSearch(page);
+    await input(page).fill('Adam');
+    await expect(activeOption(page)).toHaveText('Adam Brown');
+    await input(page).press('ArrowDown'); // the SECOND 'Adam Brown', id 2
+    await input(page).press('Tab');
+    await expect(input(page)).toHaveValue('Adam Brown');
+    expect((await model(page)).supplierId).toBe(2);
   });
 
   test('Enter on a fresh empty typed set fails fast with the popup open for recovery', async ({
@@ -355,7 +389,9 @@ test.describe('blur resolution', () => {
     const plain = input(page, 'picker-plain');
     const field = page.locator('tm-form-field', { has: page.getByTestId('picker-plain') });
     await plain.fill('Adam');
-    await plain.press('Tab');
+    // A departure that carries no commit gesture of its own — Tab would
+    // commit the highlighted row and there would be nothing left to resolve.
+    await page.getByTestId('submit').focus();
     await expect(plain).toHaveValue('Adam'); // kept for correction
     await expect(field.locator('.tm-form-field__error')).toContainText('matches more than one item');
     await expect(field).toHaveClass(/tm-form-field--invalid/);
@@ -375,7 +411,7 @@ test.describe('blur resolution', () => {
     await expect(long).not.toHaveAttribute('aria-invalid', 'true');
     await expect(field).not.toHaveClass(/tm-form-field--invalid/);
 
-    await long.press('Tab'); // a real departure on unresolvable text reports
+    await page.getByTestId('submit').focus(); // a real departure on unresolvable text reports
     await expect(error).toContainText('matches more than one item');
     await expect(field).toHaveClass(/tm-form-field--invalid/);
 

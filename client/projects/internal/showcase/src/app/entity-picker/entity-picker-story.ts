@@ -239,6 +239,7 @@ export class DemoPickerModalPage {
         />
       </label>
       <span>Search calls: <span data-testid="search-calls">{{ searchCalls() }}</span></span>
+      <span>Picked: <span data-testid="picked-count">{{ pickedCount() }}</span></span>
       <label>
         <input
           type="checkbox"
@@ -277,6 +278,7 @@ export class DemoPickerModalPage {
           [searchDebounce]="searchDebounce()"
           createLabel="Create supplier…"
           placeholder="Search suppliers"
+          (picked)="pickedCount.set(pickedCount() + 1)"
         />
       </tm-form-field>
       <button type="submit" tmButton data-testid="submit">
@@ -392,6 +394,8 @@ export class EntityPickerStory {
   /** The picker's coalescing window, exposed so the burst behavior is drivable. */
   readonly searchDebounce = signal(50);
   readonly searchCalls = signal(0);
+  /** Every `picked` emit from the field picker — one commit gesture must cost one. */
+  readonly pickedCount = signal(0);
   readonly failNext = signal(false);
   readonly ignoreAbort = signal(false);
 
