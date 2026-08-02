@@ -489,7 +489,9 @@ describe('tm-entity-picker', () => {
       await settle(fixture);
       await type(fixture, input, 'Al');
       const hint = document.querySelector('.tm-entity-picker__hint') as HTMLElement;
-      expect(hint.textContent).toContain('More results');
+      // The hint names how many results are on screen and stays out of the
+      // accessibility tree (the count announcement carries it for AT).
+      expect(hint.textContent?.trim()).toBe('Showing top 2 matches. Keep typing to refine.');
       expect(hint.getAttribute('aria-hidden')).toBe('true');
       expect(liveText(fixture)).toBe('2+ results — more available');
     });
@@ -587,6 +589,42 @@ describe('tm-entity-picker', () => {
       expect(activeRow()?.textContent?.trim()).toBe('Alan Grey');
       await press(fixture, input, 'ArrowDown');
       expect(activeRow()?.classList.contains('tm-entity-picker__action')).toBe(true);
+    });
+
+    it('ArrowUp with nothing highlighted wraps to the LAST option, not the one before it', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.advancedPage.set(pageOf(FakePage));
+      host.createPage.set(pageOf(FakePage));
+      await settle(fixture);
+      input.focus();
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      await settle(fixture);
+      expect(activeRow()).toBeNull(); // a pristine browse highlights nothing
+      await press(fixture, input, 'ArrowUp');
+      // Create… is last; aria's own prev() would have skipped it and landed
+      // on Advanced search….
+      expect(activeRow()?.textContent?.trim()).toBe('Create…');
+    });
+
+    it('the command rows stand down while the spinner is up, and return when it settles', async () => {
+      const { fixture, host, input } = await setup();
+      const search = manualSearch();
+      host.search.set(search.fn);
+      host.advancedPage.set(pageOf(FakePage));
+      host.createPage.set(pageOf(FakePage));
+      await settle(fixture);
+      await type(fixture, input, 'Al');
+      expect(document.querySelector('.tm-entity-picker__status tm-spinner')).not.toBeNull();
+      expect(actionRows()).toHaveLength(0);
+      expect(document.querySelector('.tm-entity-picker__separator')).toBeNull();
+      search.answer();
+      await settle(fixture);
+      expect(actionRows().map((r) => r.textContent?.trim())).toEqual([
+        'Advanced search…',
+        'Create…',
+      ]);
     });
 
     it('arrows highlight explicitly in a browse list and reach the footer rows', async () => {

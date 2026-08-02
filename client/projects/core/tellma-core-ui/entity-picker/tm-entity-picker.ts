@@ -263,38 +263,38 @@ function isThenable<T>(
                 }
               </li>
             }
-            @if (hasFooterRows()) {
+            @if (showsFooterRows()) {
               <li class="tm-entity-picker__separator" aria-hidden="true"></li>
-            }
-            @if (advancedSearch() !== undefined) {
-              <li
-                ngOption
-                class="tm-entity-picker__option tm-entity-picker__action"
-                [value]="actionAdvanced"
-                [label]="advancedRowLabel()"
-              >
-                <span class="tm-entity-picker__option-label">{{ advancedRowLabel() }}</span>
-              </li>
-            }
-            @if (create() !== undefined) {
-              <li
-                ngOption
-                class="tm-entity-picker__option tm-entity-picker__action"
-                [value]="actionCreate"
-                [label]="createRowLabel()"
-              >
-                <span class="tm-entity-picker__option-label">{{ createRowLabel() }}</span>
-              </li>
-            }
-            @if (edit() !== undefined && value() !== null) {
-              <li
-                ngOption
-                class="tm-entity-picker__option tm-entity-picker__action"
-                [value]="actionEdit"
-                [label]="editRowLabel()"
-              >
-                <span class="tm-entity-picker__option-label">{{ editRowLabel() }}</span>
-              </li>
+              @if (advancedSearch() !== undefined) {
+                <li
+                  ngOption
+                  class="tm-entity-picker__option tm-entity-picker__action"
+                  [value]="actionAdvanced"
+                  [label]="advancedRowLabel()"
+                >
+                  <span class="tm-entity-picker__option-label">{{ advancedRowLabel() }}</span>
+                </li>
+              }
+              @if (create() !== undefined) {
+                <li
+                  ngOption
+                  class="tm-entity-picker__option tm-entity-picker__action"
+                  [value]="actionCreate"
+                  [label]="createRowLabel()"
+                >
+                  <span class="tm-entity-picker__option-label">{{ createRowLabel() }}</span>
+                </li>
+              }
+              @if (edit() !== undefined && value() !== null) {
+                <li
+                  ngOption
+                  class="tm-entity-picker__option tm-entity-picker__action"
+                  [value]="actionEdit"
+                  [label]="editRowLabel()"
+                >
+                  <span class="tm-entity-picker__option-label">{{ editRowLabel() }}</span>
+                </li>
+              }
             }
           </ul>
         </div>
@@ -310,6 +310,7 @@ function isThenable<T>(
     '[attr.aria-describedby]': 'null',
     '[class.tm-entity-picker--disabled]': 'disabled()',
     '[class.tm-entity-picker--open]': 'expanded()',
+    '[class.tm-entity-picker--invalid]': 'showsInvalid()',
   },
 })
 export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
@@ -334,21 +335,32 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   readonly readonly = input(false, { transform: booleanAttribute });
   /** Required state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly required = input(false, { transform: booleanAttribute });
-  /** Validity state for non-form usage — the bound field is authoritative when bound via [formField]. */
-  readonly invalid = input(false, { transform: booleanAttribute });
-  /** Touched state for non-form usage — the bound field is authoritative when bound via [formField]. */
-  readonly touched = input(false, { transform: booleanAttribute });
   /** Dirty state for non-form usage — the bound field is authoritative when bound via [formField]. */
   readonly dirty = input(false, { transform: booleanAttribute });
+  // Three state inputs live under an alias for one reason: Signal Forms binds
+  // field state by PUBLIC input name, while the form-field contract reads
+  // same-named MEMBERS — and for these three the picker has state of its own
+  // to merge in (an unresolved query is invalid, a real departure is a touch,
+  // a running resolution is pending) that a bound field cannot know about.
+  // Without the merge, a picker used WITHOUT [formField] would keep
+  // unresolvable text with no visible error at all.
+  /**
+   * The bound field's validity state. Aliased to the public name `invalid`;
+   * the `invalid` member ORs it with the picker's own unresolved-text state.
+   */
+  // eslint-disable-next-line @angular-eslint/no-input-rename -- see above
+  readonly fieldInvalid = input(false, { alias: 'invalid', transform: booleanAttribute });
+  /**
+   * The bound field's touched state. Aliased to the public name `touched`;
+   * the `touched` member ORs it with the picker's own departure tracking.
+   */
+  // eslint-disable-next-line @angular-eslint/no-input-rename -- see above
+  readonly fieldTouched = input(false, { alias: 'touched', transform: booleanAttribute });
   /**
    * The bound field's async-validation-pending state. Aliased to the public
-   * name `pending` so `[formField]` binds it; the contract's `pending`
-   * member merges it with the picker's own resolution state.
+   * name `pending`; the `pending` member ORs it with the picker's own text
+   * resolution.
    */
-  // Signal Forms binds field state by PUBLIC input name ('pending'), while
-  // the form-field contract needs a `pending` MEMBER merging that state with
-  // the picker's own resolution pending — one name, two channels, so the
-  // input must live under an alias.
   // eslint-disable-next-line @angular-eslint/no-input-rename -- see above
   readonly fieldPending = input(false, { alias: 'pending', transform: booleanAttribute });
   /** The raw framework errors, bound by [formField] and localized into `localizedErrors`. */
@@ -547,12 +559,20 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     const kind = this.searchState().kind;
     return kind === 'loading' || kind === 'empty' || kind === 'error' ? kind : null;
   });
-  /** Whether any footer row is configured (renders the separator). */
-  protected readonly hasFooterRows = computed(
+  /**
+   * Whether the command footer rows render. They are configured-and-shown in
+   * every popup state EXCEPT loading: while the spinner is up the panel says
+   * one thing only ("results are coming"), and the commands — which would
+   * arrive, shift, and re-order under the user's cursor a moment later —
+   * stay out of it. They return the instant the state settles (results,
+   * empty, or failure), so "no results → Create…" is still one arrow away.
+   */
+  protected readonly showsFooterRows = computed(
     () =>
-      this.advancedSearch() !== undefined ||
-      this.create() !== undefined ||
-      (this.edit() !== undefined && this.value() !== null),
+      this.statusKind() !== 'loading' &&
+      (this.advancedSearch() !== undefined ||
+        this.create() !== undefined ||
+        (this.edit() !== undefined && this.value() !== null)),
   );
 
   /** The localized magnifier aria-label. */
@@ -561,8 +581,10 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   protected readonly noResultsText = this.translate('entityPicker.noResults');
   /** The localized search-failure status text. */
   protected readonly searchFailedText = this.translate('entityPicker.searchFailed');
-  /** The localized truncation hint. */
-  protected readonly moreResultsText = this.translate('entityPicker.moreResults');
+  /** The localized truncation hint, naming how many results are shown. */
+  protected readonly moreResultsText = computed(() =>
+    this.translate('entityPicker.moreResults', { count: this.resultItems().length })(),
+  );
   private readonly defaultAdvancedLabel = this.translate('entityPicker.advancedSearch');
   private readonly defaultCreateLabel = this.translate('entityPicker.create');
   private readonly defaultEditLabel = this.translate('entityPicker.edit');
@@ -585,11 +607,41 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     ...(this.ariaDescribedby()?.split(/\s+/).filter(Boolean) ?? []),
     ...this.fieldDescribedBy(),
   ]);
-  /** Already-localized error messages resolved from `errors` — read by the enclosing field. */
-  readonly localizedErrors: () => readonly TmFieldError[] = tmResolveFieldErrors(
+  private readonly fieldErrors: () => readonly TmFieldError[] = tmResolveFieldErrors(
     this.errors,
     this.translate,
   );
+  private readonly ownErrors: () => readonly TmFieldError[] = tmResolveFieldErrors(
+    computed(() => this.rawText.parseErrors()),
+    this.translate,
+  );
+  /**
+   * Already-localized error messages read by the enclosing field: the bound
+   * field's errors PLUS the picker's own text errors (an unresolved query,
+   * a failed resolution). Without the second source, a picker used without
+   * `[formField]` would keep unresolvable text with nothing to show for it —
+   * the field's message comes from here. When a field IS bound the same
+   * error arrives through both channels, so identical entries collapse.
+   */
+  readonly localizedErrors: Signal<readonly TmFieldError[]> = computed(() => {
+    const merged = [...this.fieldErrors()];
+    for (const own of this.ownErrors()) {
+      if (!merged.some((e) => e.kind === own.kind && e.message === own.message)) {
+        merged.push(own);
+      }
+    }
+    return merged;
+  });
+  /**
+   * The validity the field reads: the bound field's own state OR the
+   * picker's unresolved text (typed text that names no entity is invalid
+   * whether or not a form is watching).
+   */
+  readonly invalid: Signal<boolean> = computed(
+    () => this.fieldInvalid() || this.rawText.parseErrors().length > 0,
+  );
+  /** The touched state the field reads: the bound field's OR a real departure. */
+  readonly touched: Signal<boolean> = computed(() => this.fieldTouched() || this.touchedSelf());
   /**
    * The pending state the field reads: the bound field's own pending OR the
    * picker's text resolution — the field shows its trailing spinner and the
@@ -599,11 +651,11 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
 
   /** The merged aria-describedby attribute value, or null when no ids apply. */
   protected readonly describedByAttr = computed(() => this.describedByIds().join(' ') || null);
-  /** aria-invalid follows the error-DISPLAY policy; own parse errors count. */
+  /** aria-invalid follows the error-DISPLAY policy over the merged state. */
   protected readonly showsInvalid = computed(() =>
     this.errorDisplay({
-      invalid: this.invalid() || this.rawText.parseErrors().length > 0,
-      touched: this.touched() || this.touchedSelf(),
+      invalid: this.invalid(),
+      touched: this.touched(),
       dirty: this.dirty(),
       pending: this.pending(),
     }),
@@ -709,7 +761,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     effect(() => {
       const id = this.value();
       this.resultItems(); // re-apply on option turnover
-      this.hasFooterRows(); // …including footer-row turnover
+      this.showsFooterRows(); // …including footer-row turnover
       const current = this.listboxValue();
       const desired: unknown[] = id === null ? [] : [id];
       if (current.length !== desired.length || current[0] !== desired[0]) {
@@ -1282,6 +1334,26 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     }
     if (isExpanded && (event.key === 'Home' || event.key === 'End')) {
       event.stopPropagation();
+      return;
+    }
+    if (
+      isExpanded &&
+      event.key === 'ArrowUp' &&
+      untracked(() => this.ariaOptions().find((o) => o.active())) === undefined
+    ) {
+      // ArrowUp with nothing highlighted must wrap to the LAST option.
+      // aria's prev() steps from an active index of -1, so it lands on the
+      // second-to-last row instead — skipping whatever sits at the bottom
+      // (Create…, or Edit… when a value is committed).
+      const listbox = untracked(() => this.listbox());
+      if (listbox !== undefined) {
+        event.stopPropagation();
+        event.preventDefault();
+        untracked(() => {
+          listbox._pattern.listBehavior.last();
+          listbox.scrollActiveItemIntoView();
+        });
+      }
     }
   };
 

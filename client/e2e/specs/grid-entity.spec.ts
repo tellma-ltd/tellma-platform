@@ -239,8 +239,7 @@ test('a mid-edit modal dismissal returns to the intact session; close(null) clea
   // clears; committing writes null through the value channel.
   await page.keyboard.press('Alt+ArrowDown');
   await expect(panel(page)).toBeVisible();
-  await page.keyboard.press('ArrowDown'); // highlight the first option…
-  await page.keyboard.press('ArrowUp'); // …then wrap to the last — Edit…
+  await page.keyboard.press('ArrowUp'); // wraps straight to the last — Edit…
   await expect(activeOption(page)).toHaveText('Edit…');
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('gp-null')).toBeVisible();

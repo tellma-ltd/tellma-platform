@@ -24,6 +24,14 @@
   min-inline-size: 0;
 }
 
+/* Text that names no entity must LOOK wrong wherever the picker is used.
+   Inside a field the bordered box carries the invalid state (and the field
+   renders the message); standalone, the input's own border is the only
+   chrome there is, so it carries it. */
+:host(.tm-entity-picker--invalid) .tm-entity-picker__input:not(.tm-input--in-field) {
+  border-color: var(--field-border-invalid);
+}
+
 /* The magnifier follows the calendar-button anatomy: never a tab stop,
    pointer/AT-activatable, always present when configured (disabled state
    included) so the control never changes size across states. */
@@ -161,15 +169,23 @@
   color: var(--field-text);
 }
 
-/* The truncation hint — presentational, quieter than data rows. */
+/* The truncation hint — presentational, and deliberately unlike the command
+   rows below it: centered, smallest type, muted, no row-height reservation,
+   so nothing about it reads as clickable. */
 .tm-entity-picker__hint {
   display: flex;
   align-items: center;
-  min-block-size: var(--entity-picker-option-height);
+  justify-content: center;
   box-sizing: border-box;
   padding-inline: var(--space-3);
+  padding-block: var(--space-1);
+  /* --text-muted reads quieter still, but fails the AA contrast floor on
+     this surface at this size (the axe gate catches it); --text-secondary
+     is the quietest accessible tone, and the centering plus the smallest
+     type already carry the "not a command row" signal. */
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: var(--text-xs);
+  text-align: center;
 }
 
 /* The status area (spinner / no results / search failed) reserves a FIXED

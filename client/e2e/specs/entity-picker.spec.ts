@@ -127,8 +127,15 @@ test.describe('search lifecycle', () => {
     await input(page).click();
     await expect(options(page)).toHaveCount(5); // capped
     const hint = page.locator('.tm-entity-picker__hint');
-    await expect(hint).toContainText('More results');
+    await expect(hint).toHaveText('Showing top 5 matches. Keep typing to refine.');
     await expect(hint).toHaveAttribute('aria-hidden', 'true');
+    // Visually distinct from the command rows below it: smaller and muted,
+    // so nothing about it reads as clickable.
+    const [hintSize, actionSize] = await Promise.all([
+      hint.evaluate((el) => parseFloat(getComputedStyle(el).fontSize)),
+      actions(page).first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize)),
+    ]);
+    expect(hintSize).toBeLessThan(actionSize);
   });
 
   test('the portaled ARIA id chain resolves: combobox → listbox → active option', async ({
@@ -285,6 +292,24 @@ test.describe('blur resolution', () => {
     ).toHaveText('Alice Green selected');
   });
 
+  test('a picker with no bound field still shows its unresolved text as an error', async ({
+    page,
+  }) => {
+    // The 'no magnifier' picker is field-wrapped but NOT [formField]-bound:
+    // its own resolution errors are the only error channel there is, so the
+    // control must surface them itself — text that names no entity may never
+    // sit there looking like a valid selection.
+    await useSyncSearch(page);
+    const plain = input(page, 'picker-plain');
+    const field = page.locator('tm-form-field', { has: page.getByTestId('picker-plain') });
+    await plain.fill('Adam');
+    await plain.press('Tab');
+    await expect(plain).toHaveValue('Adam'); // kept for correction
+    await expect(field.locator('.tm-form-field__error')).toContainText('matches more than one item');
+    await expect(field).toHaveClass(/tm-form-field--invalid/);
+    await expect(plain).toHaveAttribute('aria-invalid', 'true');
+  });
+
   test('ambiguous and no-match departures keep the text with the localized error', async ({
     page,
   }) => {
@@ -366,8 +391,8 @@ test.describe('modal round-trips', () => {
     await useSyncSearch(page);
     const populated = input(page, 'picker-populated');
     await populated.click();
-    await populated.press('ArrowDown'); // highlight the first option…
-    await populated.press('ArrowUp'); // …then wrap to the LAST — Edit…
+    // ArrowUp with nothing highlighted wraps straight to the LAST option.
+    await populated.press('ArrowUp');
     await expect(activeOption(page)).toHaveText('Edit…');
     await populated.press('Enter');
     await expect(page.getByTestId('edit-id')).toHaveText('5');
@@ -378,7 +403,6 @@ test.describe('modal round-trips', () => {
 
     // Round 2: the page deletes the entity — close(null) clears the field.
     await populated.click();
-    await populated.press('ArrowDown');
     await populated.press('ArrowUp');
     await expect(activeOption(page)).toHaveText('Edit…');
     await populated.press('Enter');

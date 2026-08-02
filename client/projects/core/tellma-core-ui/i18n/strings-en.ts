@@ -51,7 +51,8 @@ export const TM_UI_STRINGS_EN = {
     magnifier: 'Advanced search',
     noResults: 'No results',
     searchFailed: 'Search failed',
-    moreResults: 'More results — refine your search',
+    moreResults:
+      '{count, plural, one {Showing the top match. Keep typing to refine.} other {Showing top # matches. Keep typing to refine.}}',
     announce: {
       results: '{count, plural, one {1 result} other {# results}}',
       resultsMore: '{count, number}+ results — more available',

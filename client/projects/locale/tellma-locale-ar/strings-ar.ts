@@ -73,7 +73,8 @@ export const TM_LOCALE_AR_STRINGS = {
     magnifier: 'بحث متقدم',
     noResults: 'لا توجد نتائج',
     searchFailed: 'فشل البحث',
-    moreResults: '{gender, select, female {ضيقي} other {ضيق}} نطاق البحث — هناك نتائج أخرى',
+    moreResults:
+      'يتم عرض أفضل {count, plural, zero {# نتيجة} one {نتيجة} two {نتيجتين} few {# نتائج} many {# نتيجة} other {# نتيجة}}. {gender, select, female {واصلي} other {واصل}} الكتابة للتصفية.',
     announce: {
       results:
         '{count, plural, zero {لا توجد نتائج} one {نتيجة واحدة} two {نتيجتان} few {# نتائج} many {# نتيجة} other {# نتيجة}}',
