@@ -348,6 +348,29 @@ test.describe('blur resolution', () => {
     await expect(plain).toHaveAttribute('aria-invalid', 'true');
   });
 
+  test('a query in progress paints no error; the departure does, and resuming clears it', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    const long = input(page, 'picker-long');
+    const field = page.locator('tm-form-field', { has: page.getByTestId('picker-long') });
+    const error = field.locator('.tm-form-field__error');
+
+    await long.fill('Supp'); // half-typed: a query, not a mistake
+    await expect(error).toBeEmpty();
+    await expect(long).not.toHaveAttribute('aria-invalid', 'true');
+    await expect(field).not.toHaveClass(/tm-form-field--invalid/);
+
+    await long.press('Tab'); // a real departure on unresolvable text reports
+    await expect(error).toContainText('matches more than one item');
+    await expect(field).toHaveClass(/tm-form-field--invalid/);
+
+    await long.click(); // …and resuming the edit clears it again
+    await long.fill('Supplier 03');
+    await expect(error).toBeEmpty();
+    await expect(field).not.toHaveClass(/tm-form-field--invalid/);
+  });
+
   test('ambiguous and no-match departures keep the text with the localized error', async ({
     page,
   }) => {

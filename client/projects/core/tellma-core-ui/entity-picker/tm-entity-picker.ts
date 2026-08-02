@@ -109,6 +109,20 @@ interface ResolutionFailure {
   readonly kind: 'noMatch' | 'ambiguous' | 'searchFailed';
 }
 
+/**
+ * Marks a validation error as a state the user is passing THROUGH rather
+ * than a mistake they made: it counts for validity (the form cannot be
+ * saved on it) but is never rendered as an inline message. Carried on the
+ * error object so it survives the round trip through a bound field's error
+ * list, which spreads the original error.
+ */
+const TRANSIENT = 'ɵtmTransient';
+
+/** Whether a validation error is a pass-through state, not a mistake. */
+function isTransient(error: ValidationError.WithOptionalFieldTree): boolean {
+  return (error as unknown as Record<string, unknown>)[TRANSIENT] === true;
+}
+
 /** The gap the panel keeps from the viewport edge when its height is capped. */
 const VIEWPORT_MARGIN = 8;
 /** Panel chrome outside the scrolling list (border + listbox padding). */
@@ -685,12 +699,16 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     ...(this.ariaDescribedby()?.split(/\s+/).filter(Boolean) ?? []),
     ...this.fieldDescribedBy(),
   ]);
+  // Both error channels drop transient entries before localization: an
+  // in-progress query must not put a message under the field on every
+  // keystroke. The bound channel is filtered too — the same transient error
+  // comes back through `errors` once a field is bound, carrying its marker.
   private readonly fieldErrors: () => readonly TmFieldError[] = tmResolveFieldErrors(
-    this.errors,
+    computed(() => this.errors().filter((error) => !isTransient(error))),
     this.translate,
   );
   private readonly ownErrors: () => readonly TmFieldError[] = tmResolveFieldErrors(
-    computed(() => this.rawText.parseErrors()),
+    computed(() => this.rawText.parseErrors().filter((error) => !isTransient(error))),
     this.translate,
   );
   /**
@@ -729,14 +747,21 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
 
   /** The merged aria-describedby attribute value, or null when no ids apply. */
   protected readonly describedByAttr = computed(() => this.describedByIds().join(' ') || null);
-  /** aria-invalid follows the error-DISPLAY policy over the merged state. */
-  protected readonly showsInvalid = computed(() =>
-    this.errorDisplay({
-      invalid: this.invalid(),
-      touched: this.touched(),
-      dirty: this.dirty(),
-      pending: this.pending(),
-    }),
+  /**
+   * aria-invalid (and the standalone invalid border) follow the display
+   * policy AND the presence of something worth showing — a query still
+   * being typed is invalid for the form's purposes but must not paint the
+   * control red while the user works.
+   */
+  protected readonly showsInvalid = computed(
+    () =>
+      this.localizedErrors().length > 0 &&
+      this.errorDisplay({
+        invalid: this.invalid(),
+        touched: this.touched(),
+        dirty: this.dirty(),
+        pending: this.pending(),
+      }),
   );
   private readonly touchedSelf = signal(false);
 
@@ -1016,12 +1041,20 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     }
     // (4) Anything else is an unresolved query: model UNTOUCHED (omitted
     // value), error carried so a racing submit is blocked from the first
-    // divergent keystroke (§5.1/§5.2). The display policy keeps it
-    // invisible until touched/dirty.
+    // divergent keystroke (§5.1/§5.2).
+    //
+    // TRANSIENT: half-typed text is not a mistake, it is a query in
+    // progress, and every keystroke on the way to a valid pick passes
+    // through this branch. It must therefore never reach an inline
+    // message — the marker below keeps it out of `localizedErrors` while
+    // leaving it in the validity channel, so the form still cannot be
+    // saved on it. What the user eventually sees is the RESOLUTION
+    // outcome (branch 3), recorded only once they try to commit.
     return {
       error: {
         kind: 'parse',
         message: untracked(this.translate('entityPicker.errors.unresolved')),
+        [TRANSIENT]: true,
       } as ValidationError.WithoutFieldTree,
     };
   }

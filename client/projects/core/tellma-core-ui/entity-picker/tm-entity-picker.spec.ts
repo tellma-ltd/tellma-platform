@@ -760,6 +760,33 @@ describe('tm-entity-picker', () => {
       expect(errorText(fixture)).toBe('No match for ‘Zebra’');
     });
 
+    it('a query in progress never shows a message, even once the field is touched', async () => {
+      const { fixture, host, input, outside } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      // A real departure on unresolvable text reports — that is a mistake.
+      await type(fixture, input, 'Zebra');
+      outside.focus();
+      await settle(fixture);
+      expect(errorText(fixture)).toBe('No match for ‘Zebra’');
+
+      // Resuming the edit clears it: half-typed text is a query in
+      // progress, not a mistake, and the field is now touched forever.
+      await type(fixture, input, 'Alic');
+      expect(errorText(fixture)).toBe('');
+      expect(input.getAttribute('aria-invalid')).toBeNull();
+      // The form still cannot be saved on it, displayed or not.
+      expect(host.f.agentId().invalid()).toBe(true);
+
+      // Completing the pick clears the invalidity too.
+      await type(fixture, input, 'Alice');
+      await settle(fixture);
+      await press(fixture, input, 'Enter');
+      expect(host.model().agentId).toBe(3);
+      expect(host.f.agentId().invalid()).toBe(false);
+      expect(errorText(fixture)).toBe('');
+    });
+
     it('a failed resolution shows the search-failed message and keeps the text', async () => {
       const { fixture, host, input, outside } = await setup();
       const search = manualSearch();
