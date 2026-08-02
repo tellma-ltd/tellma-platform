@@ -1157,21 +1157,37 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     if (!this.windowOpen) {
       this.executeSearch(query); // leading edge — single keystrokes pay zero latency
       this.windowOpen = true;
-      this.debounceTimer = setTimeout(() => {
-        this.windowOpen = false;
-        this.debounceTimer = undefined;
-        const pending = this.pendingQuery;
-        this.pendingQuery = undefined;
-        if (pending !== undefined) {
-          this.queueSearch(pending);
-        }
-      }, debounceMs);
+      this.armDebounceWindow(debounceMs);
     } else {
       this.pendingQuery = query;
       // Immediate spinner + immediate stale-row clear even while coalescing:
       // what is on screen always corresponds to the text in the field.
       this.searchState.set({ kind: 'loading', query });
+      // The window SLIDES: it must go quiet for a full interval before the
+      // coalesced query fires. A fixed window would re-fire on every
+      // expiry, so a held key — repeating faster than the window is long —
+      // would cost a request per window instead of one for the whole
+      // burst, which is the entire reason the window exists.
+      this.armDebounceWindow(debounceMs);
     }
+  }
+
+  /**
+   * (Re)starts the coalescing window. Each change inside the window pushes
+   * the deadline out, so the trailing query fires once, after the typing
+   * actually stops.
+   */
+  private armDebounceWindow(debounceMs: number): void {
+    clearTimeout(this.debounceTimer);
+    this.debounceTimer = setTimeout(() => {
+      this.windowOpen = false;
+      this.debounceTimer = undefined;
+      const pending = this.pendingQuery;
+      this.pendingQuery = undefined;
+      if (pending !== undefined) {
+        this.queueSearch(pending);
+      }
+    }, debounceMs);
   }
 
   /** Cancels the debounce window and any coalesced trailing query. */

@@ -228,6 +228,16 @@ export class DemoPickerModalPage {
           (input)="onDelayChange($event)"
         />
       </label>
+      <label>
+        Debounce (ms)
+        <input
+          type="number"
+          min="0"
+          data-testid="search-debounce"
+          [value]="searchDebounce()"
+          (input)="onDebounceChange($event)"
+        />
+      </label>
       <span>Search calls: <span data-testid="search-calls">{{ searchCalls() }}</span></span>
       <label>
         <input
@@ -264,6 +274,7 @@ export class DemoPickerModalPage {
           [advancedSearch]="advancedPage"
           [create]="createPage"
           [edit]="editPage"
+          [searchDebounce]="searchDebounce()"
           createLabel="Create supplier…"
           placeholder="Search suppliers"
         />
@@ -378,6 +389,8 @@ export class EntityPickerStory {
 
   readonly asyncMode = signal(true);
   readonly searchDelay = signal(200);
+  /** The picker's coalescing window, exposed so the burst behavior is drivable. */
+  readonly searchDebounce = signal(50);
   readonly searchCalls = signal(0);
   readonly failNext = signal(false);
   readonly ignoreAbort = signal(false);
@@ -460,6 +473,11 @@ export class EntityPickerStory {
   protected onDelayChange(event: Event): void {
     const value = Number((event.target as HTMLInputElement).value);
     this.searchDelay.set(Number.isFinite(value) && value >= 0 ? value : 0);
+  }
+
+  protected onDebounceChange(event: Event): void {
+    const value = Number((event.target as HTMLInputElement).value);
+    this.searchDebounce.set(Number.isFinite(value) && value >= 0 ? value : 0);
   }
 
   protected onFailChange(event: Event): void {

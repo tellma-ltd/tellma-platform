@@ -98,16 +98,30 @@ test.describe('search lifecycle', () => {
     await expect(status(page)).toHaveCount(0);
   });
 
-  test('a keystroke burst against an async source coalesces into few requests', async ({
+  test('a held key costs ONE trailing request, however long it repeats', async ({ page }) => {
+    // The window slides: every keystroke inside it pushes the deadline out,
+    // so a sustained burst costs the leading request plus one trailing one
+    // — not one per window, which is what a fixed window would charge.
+    // The window is widened here only so the assertion cannot be decided
+    // by CDP round-trip jitter; the semantics under test are the default's.
+    await setSearchDelay(page, 200);
+    await page.getByTestId('search-debounce').fill('300');
+    const before = await searchCalls(page);
+    await input(page).pressSequentially('aaaaaaaaaaaaaaaaaaaa', { delay: 33 });
+    await page.waitForTimeout(600);
+    expect((await searchCalls(page)) - before).toBe(2);
+  });
+
+  test('normal typing pays no added latency — every settled keystroke searches', async ({
     page,
   }) => {
-    await setSearchDelay(page, 200);
+    // The window only absorbs bursts: at human typing speed each keystroke
+    // is its own leading edge and fires immediately.
+    await setSearchDelay(page, 100);
     const before = await searchCalls(page);
-    await input(page).pressSequentially('Alice', { delay: 5 });
+    await input(page).pressSequentially('Ali', { delay: 120 });
     await expect(options(page)).toHaveText(['Alice Green']);
-    // Leading + trailing per window — a 5-keystroke burst must cost fewer
-    // requests than keystrokes (scheduler jitter decides the exact count).
-    expect((await searchCalls(page)) - before).toBeLessThan(5);
+    expect((await searchCalls(page)) - before).toBe(3);
   });
 
   test('a failed search shows the status row with footer rows intact; the next change retries', async ({

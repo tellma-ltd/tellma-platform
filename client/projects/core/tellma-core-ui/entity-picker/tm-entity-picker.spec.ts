@@ -390,7 +390,7 @@ describe('tm-entity-picker', () => {
       expect(optionRows().map((r) => r.textContent?.trim())).toEqual(['Bob Stone']);
     });
 
-    it('coalesces an autorepeat burst into at most two requests (leading + trailing)', async () => {
+    it('coalesces a simultaneous burst into two requests (leading + trailing)', async () => {
       const { fixture, host, input } = await setup();
       const search = manualSearch();
       host.search.set(search.fn);
@@ -403,6 +403,27 @@ describe('tm-entity-picker', () => {
       await sleep(120); // past the 50ms window
       await settle(fixture);
       expect(search.calls.map((c) => c.query)).toEqual(['A', 'Adam']);
+    });
+
+    it('a held key costs ONE trailing request however long it repeats', async () => {
+      const { fixture, host, input } = await setup(); // the default 50ms window
+      const search = manualSearch();
+      host.search.set(search.fn);
+      await settle(fixture);
+      input.focus();
+      // Autorepeat: each keystroke lands well inside the window, but the
+      // burst runs across SEVERAL windows' worth of time. A fixed window
+      // fires once per window here; a sliding one fires once, at the end.
+      for (let i = 1; i <= 16; i++) {
+        input.value = 'a'.repeat(i);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        await sleep(15);
+      }
+      await sleep(140);
+      await settle(fixture);
+      expect(search.calls.length).toBeLessThanOrEqual(3);
+      expect(search.calls[0].query).toBe('a');
+      expect(search.calls.at(-1)?.query).toBe('a'.repeat(16));
     });
 
     it('a known-synchronous source skips the window: every keystroke searches instantly', async () => {
