@@ -182,6 +182,45 @@ test('the unique on-screen result commits synchronously with zero resolver calls
   await expect(page.getByTestId('resolver-calls')).toHaveText('0');
 });
 
+test('dismissing the dropdown does not un-fetch its answer: the commit still costs no resolver call', async ({
+  page,
+}) => {
+  // Esc #1 in a cell closes the LIST, it does not cancel the edit — and the
+  // unique result the user just saw is still the answer. Paying a resolver
+  // round trip for it (and, for a partial query, getting notFound back) is
+  // a regression the user experiences as "it found it a second ago".
+  await activateCell(page, 2, 1);
+  await page.keyboard.press('A');
+  await page.keyboard.type('lice');
+  await expect(activeOption(page)).toHaveText('Alice Green');
+  await page.keyboard.press('Escape'); // list dismissed, session alive
+  await expect(panel(page)).toHaveCount(0);
+  await expect(pickerInput(page)).toBeVisible();
+  await activateCell(page, 2, 3); // click-elsewhere commit
+  await expect(editor(page)).toHaveCount(0);
+  await expect.poll(async () => (await lines(page))[2].agentId).toBe(3);
+  await expect(page.getByTestId('resolver-calls')).toHaveText('0');
+  expect(await cellText(page, 2, 1)).toBe('Alice Green');
+});
+
+test('a cell awaiting resolution shows the text being resolved, not an empty cell', async ({
+  page,
+}) => {
+  await page.getByTestId('resolver-delay').fill('700');
+  await activateCell(page, 2, 1);
+  await page.keyboard.press('A');
+  await page.keyboard.type('dam Brown'); // ambiguous — the resolver path
+  await activateCell(page, 2, 3);
+  await expect(editor(page)).toHaveCount(0);
+  // Mid-flight: the spinner AND what the user committed.
+  await expect(cell(page, 2, 1).locator('.tm-grid__cell-spin')).toBeVisible();
+  expect(await cellText(page, 2, 1)).toBe('Adam Brown');
+  // The cell is not errored YET — the answer has not come back.
+  await expect(cell(page, 2, 1)).not.toHaveClass(/tm-grid__cell--error/);
+  await expect(cell(page, 2, 1)).toHaveClass(/tm-grid__cell--error/);
+  expect(await cellText(page, 2, 1)).toBe('Adam Brown');
+});
+
 test('a no-resolver entity column records the invalid input directly', async ({ page }) => {
   await activateCell(page, 1, 2); // otherId: search, no resolver
   await page.keyboard.press('Z');

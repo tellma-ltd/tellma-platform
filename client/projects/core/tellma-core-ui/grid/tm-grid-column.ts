@@ -104,6 +104,15 @@ export class TmGridColumn<T = unknown, V = unknown> {
   /**
    * Batched async label→value resolution for `enum`/`entity` paste: one
    * call per column per paste with the distinct unresolved labels.
+   *
+   * On `entity` columns it also resolves text a user TYPED into a cell and
+   * committed without picking from the dropdown — which, unlike a pasted
+   * label, is usually a partial query ("Alice" for "Alice Green"). An
+   * implementation that matches labels exactly will report `notFound` for
+   * such text even when the column's own `search` would have found exactly
+   * one entity; resolve by search-then-uniqueness if that is not what you
+   * want. (Text the picker already resolved from its own results never
+   * reaches here — it commits with no call at all.)
    */
   readonly resolvePastedLabels = input<
     ((labels: string[], ctx: TmPasteContext) => Promise<ReadonlyMap<string, TmLabelResolution<V>>>) | undefined

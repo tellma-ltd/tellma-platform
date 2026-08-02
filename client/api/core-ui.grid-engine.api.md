@@ -39,9 +39,10 @@ export class TmGridCellAnnotations {
     invalidInput(rowId: TmRowId, columnId: string): TmGridInvalidInput | undefined;
     isPending(rowId: TmRowId, columnId: string): boolean;
     readonly pendingCount: Signal<number>;
+    pendingLabel(rowId: TmRowId, columnId: string): string | null;
     prune(model: Pick<TmGridDataModel, 'modelIndexOfRow' | 'columnIndexOf'>): void;
     setInvalid(rowId: TmRowId, columnId: string, entry: TmGridInvalidInput | null): void;
-    setPending(rowId: TmRowId, columnId: string, pending: boolean): void;
+    setPending(rowId: TmRowId, columnId: string, pending: boolean, label?: string | null): void;
 }
 
 // @public

@@ -514,7 +514,7 @@ export class TmGridClipboard<T = unknown> {
       label,
       token: annotations.bumpToken(commit.rowId, commit.columnId),
     };
-    annotations.setPending(commit.rowId, commit.columnId, true);
+    annotations.setPending(commit.rowId, commit.columnId, true, label);
     const request: OutstandingRequest = {
       id: this.nextRequestId++,
       columnId: commit.columnId,
@@ -1028,7 +1028,7 @@ export class TmGridClipboard<T = unknown> {
           token: this.options.annotations.bumpToken(cell.rowId, cell.columnId),
         }));
         for (const cell of cells) {
-          this.options.annotations.setPending(cell.rowId, cell.columnId, true);
+          this.options.annotations.setPending(cell.rowId, cell.columnId, true, cell.label);
         }
         pendingCells += cells.length;
         const request: OutstandingRequest = {

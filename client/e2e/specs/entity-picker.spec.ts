@@ -347,6 +347,39 @@ test.describe('keyboard matrix', () => {
     expect((await model(page)).supplierId).toBe(2);
   });
 
+  test('clearing the text stops the field claiming a selection it no longer shows', async ({
+    page,
+  }) => {
+    // Emptying the box does not write null until the commit gesture, so the
+    // model still holds the id — but nothing on screen may go on saying
+    // "this is your supplier" while the box reads empty.
+    await useSyncSearch(page);
+    await input(page).fill('Alice Gr');
+    await input(page).press('Enter');
+    await expect(input(page)).toHaveValue('Alice Green');
+
+    await input(page).click();
+    await expect(actions(page)).toHaveText([
+      'Advanced search…',
+      'Create supplier…',
+      'Edit…',
+    ]);
+    await expect(page.locator('.tm-entity-picker__option[aria-selected="true"]')).toHaveCount(1);
+
+    await input(page).fill('');
+    await expect(panel(page)).toBeVisible();
+    await expect(actions(page)).toHaveText(['Advanced search…', 'Create supplier…']);
+    await expect(page.locator('.tm-entity-picker__option[aria-selected="true"]')).toHaveCount(0);
+
+    // …and typing the label back brings both affordances back.
+    await input(page).fill('Alice Green');
+    await expect(actions(page)).toHaveText([
+      'Advanced search…',
+      'Create supplier…',
+      'Edit…',
+    ]);
+  });
+
   test('Enter on a fresh empty typed set fails fast with the popup open for recovery', async ({
     page,
   }) => {

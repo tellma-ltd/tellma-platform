@@ -76,6 +76,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
     readonly localizedErrors: Signal<readonly TmFieldError[]>;
     protected readonly magnifierLabel: Signal<string>;
     protected readonly moreResultsText: Signal<string>;
+    protected readonly namesEntity: Signal<boolean>;
     protected readonly noResultsText: Signal<string>;
     onContainerClick(): void;
     protected onFocusin(): void;
@@ -102,6 +103,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
     protected readonly searchFailedText: Signal<string>;
     seed(text: string): void;
     setDescribedByIds(ids: readonly string[]): void;
+    protected readonly showsEditRow: Signal<boolean>;
     protected readonly showsFooterRows: Signal<boolean>;
     protected readonly showsHasMore: Signal<boolean>;
     protected readonly showsInvalid: Signal<boolean>;

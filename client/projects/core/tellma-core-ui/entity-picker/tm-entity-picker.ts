@@ -315,7 +315,7 @@ function isThenable<T>(
                   <span class="tm-entity-picker__option-label">{{ createRowLabel() }}</span>
                 </li>
               }
-              @if (edit() !== undefined && value() !== null) {
+              @if (showsEditRow()) {
                 <li
                   ngOption
                   class="tm-entity-picker__option tm-entity-picker__action"
@@ -519,6 +519,13 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   private inFlight: InFlightSearch<T> | null = null;
   /** The abort controller of a resolution-issued request, if any. */
   private resolutionController: AbortController | null = null;
+  /**
+   * The most recent SETTLED result set and the query that produced it.
+   * Outlives the popup: the search state machine resets when the dropdown
+   * closes, but a cell commit still has to be able to say "I already know
+   * the answer for this exact text" without paying for it twice.
+   */
+  private settledResult: { readonly query: string; readonly items: readonly T[] } | null = null;
   /** The debounce window timer. */
   private debounceTimer: ReturnType<typeof setTimeout> | undefined;
   /** Whether the debounce window is currently open. */
@@ -675,9 +682,25 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   protected readonly showsFooterRows = computed(
     () =>
       this.statusKind() !== 'loading' &&
-      (this.advancedSearch() !== undefined ||
-        this.create() !== undefined ||
-        (this.edit() !== undefined && this.value() !== null)),
+      (this.advancedSearch() !== undefined || this.create() !== undefined || this.showsEditRow()),
+  );
+
+  /**
+   * Whether the field currently NAMES an entity — as opposed to merely
+   * holding one in the value channel.
+   *
+   * Emptying the text does not write `null` until the commit gesture, so the
+   * model still holds the old id while the box reads empty. Everything that
+   * tells the user "this is your selection" — the Edit… command and the
+   * check glyph — follows what the field names, because otherwise a cleared
+   * field offers to edit an entity it is no longer showing, with a tick
+   * beside a row the user just removed.
+   */
+  protected readonly namesEntity = computed(() => this.value() !== null && this.rawText() !== '');
+
+  /** Whether the Edit… footer row renders. */
+  protected readonly showsEditRow = computed(
+    () => this.edit() !== undefined && this.namesEntity(),
   );
 
   /** The localized magnifier aria-label. */
@@ -884,10 +907,13 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     // activation only (see the mouse-bug guard around angular/components#32504).
     effect(() => {
       const id = this.value();
+      // A cleared field ticks nothing: the model still holds the old id
+      // until the commit gesture, but the box no longer names it.
+      const names = this.namesEntity();
       this.resultItems(); // re-apply on option turnover
       this.showsFooterRows(); // …including footer-row turnover
       const current = this.listboxValue();
-      const desired: unknown[] = id === null ? [] : [id];
+      const desired: unknown[] = id === null || !names ? [] : [id];
       if (current.length !== desired.length || current[0] !== desired[0]) {
         this.listboxValue.set(desired);
       }
@@ -1333,6 +1359,11 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
           `has no virtual scroll).`,
       );
     }
+    // The answer outlives the popup that displayed it. Closing the dropdown
+    // resets the state machine, but the fetch still happened: a cell commit
+    // must not pay a second round trip (or fail against a resolver that
+    // never saw the query) for a set the picker already holds.
+    this.settledResult = { query, items };
     if (items.length === 0) {
       this.searchState.set({ kind: 'empty', query });
       this.announceKey('entityPicker.announce.noResults');
@@ -2086,9 +2117,12 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     if (this.cellHost !== null) {
       const raw = untracked(this.rawText);
       if (raw !== '' && this.text() !== null) {
-        const state = untracked(this.searchState);
-        if (state.kind === 'results' && state.query === raw && state.items.length === 1) {
-          const item = state.items[0];
+        // The last SETTLED set for exactly this text, whether or not the
+        // popup still shows it: dismissing the list with Escape closes a
+        // dropdown, it does not un-fetch what the user already saw.
+        const settled = this.settledResult;
+        if (settled !== null && settled.query === raw && settled.items.length === 1) {
+          const item = settled.items[0];
           this.applyPick(
             untracked(this.itemId)(item),
             untracked(this.itemLabel)(item),

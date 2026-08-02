@@ -133,6 +133,14 @@ export class TmGridEngine<T = unknown> {
         if (invalid !== undefined) {
           return invalid.rawText;
         }
+        // A resolution in flight cleared the cell's value the moment it
+        // started; the label being resolved stands in for it until the
+        // answer lands, so the user keeps seeing what they committed
+        // instead of a cell that reads empty for the whole round trip.
+        const pending = this.annotations.pendingLabel(view.id, column.id);
+        if (pending !== null) {
+          return pending;
+        }
       }
     }
     return this.model.cellText(cell);
