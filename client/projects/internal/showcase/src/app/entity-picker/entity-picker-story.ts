@@ -307,6 +307,18 @@ export class DemoPickerModalPage {
 
     <h3>Model</h3>
     <output class="model-dump" data-testid="model-json">{{ modelJson() }}</output>
+
+    <!-- Pinned near the viewport bottom: the panel must open UPWARD from the
+         first paint and stay there as results replace the spinner. -->
+    <div class="flip-anchor">
+      <tm-entity-picker
+        data-testid="picker-flip"
+        aria-label="Flip demo"
+        [search]="search"
+        [itemId]="agentId"
+        [itemLabel]="agentName"
+      />
+    </div>
   `,
   styles: `
     .toolbar {
@@ -334,6 +346,12 @@ export class DemoPickerModalPage {
       display: block;
       font-size: 12px;
       font-family: var(--font-mono, monospace);
+    }
+    .flip-anchor {
+      position: fixed;
+      inset-block-end: 8px;
+      inset-inline-start: 24px;
+      inline-size: 260px;
     }
   `,
 })

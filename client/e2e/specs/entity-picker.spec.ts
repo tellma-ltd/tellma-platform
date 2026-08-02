@@ -327,6 +327,64 @@ test.describe('blur resolution', () => {
   });
 });
 
+test.describe('panel placement', () => {
+  test('a bottom-anchored picker opens UPWARD from the first paint — no downward flash', async ({
+    page,
+  }) => {
+    // The side is chosen from the anchor's room, before the panel exists —
+    // so the very first painted position is the final one. (Choosing it
+    // from the panel instead means measuring an empty panel, which always
+    // "fits below" and then gets yanked up a frame later.)
+    await setSearchDelay(page, 600); // the panel is still a spinner when it attaches
+    const flip = input(page, 'picker-flip');
+    const anchor = (await flip.boundingBox())!;
+    await flip.click();
+    await expect(panel(page)).toBeVisible();
+
+    const whileLoading = (await panel(page).boundingBox())!;
+    expect(whileLoading.y + whileLoading.height).toBeLessThanOrEqual(anchor.y + 2);
+
+    // …and it stays above once the results replace the spinner.
+    await expect(options(page).first()).toBeVisible();
+    const withResults = (await panel(page).boundingBox())!;
+    expect(withResults.y + withResults.height).toBeLessThanOrEqual(anchor.y + 2);
+  });
+
+  test('a growing result set never re-orients the panel or overflows the viewport', async ({
+    page,
+  }) => {
+    await setSearchDelay(page, 400);
+    const flip = input(page, 'picker-flip');
+    await flip.click();
+    await expect(panel(page)).toBeVisible();
+    const loadingTop = (await panel(page).boundingBox())!.y;
+
+    // The full directory is the longest set this picker can show.
+    await expect(options(page).first()).toBeVisible();
+    const grown = (await panel(page).boundingBox())!;
+    const viewport = page.viewportSize()!;
+    // Same side (the panel grew upward from the same anchored edge, so its
+    // top moved UP, never across the field), and fully on screen.
+    expect(grown.y).toBeLessThanOrEqual(loadingTop + 1);
+    expect(grown.y).toBeGreaterThanOrEqual(0);
+    expect(grown.y + grown.height).toBeLessThanOrEqual(viewport.height + 1);
+    // The list scrolls inside the clamp instead of running off the top.
+    const listbox = page.locator('.tm-entity-picker__listbox');
+    const maxHeight = await listbox.evaluate((el) => parseFloat(getComputedStyle(el).maxBlockSize));
+    expect(maxHeight).toBeGreaterThan(0);
+    expect(maxHeight).toBeLessThanOrEqual(viewport.height);
+  });
+
+  test('a picker with room below still opens downward', async ({ page }) => {
+    await useSyncSearch(page);
+    const anchor = (await input(page).boundingBox())!;
+    await input(page).click();
+    await expect(panel(page)).toBeVisible();
+    const box = (await panel(page).boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(anchor.y + anchor.height - 2);
+  });
+});
+
 test.describe('size stability', () => {
   test('the field box keeps its size across loading, resolving, resolved, and error states', async ({
     page,

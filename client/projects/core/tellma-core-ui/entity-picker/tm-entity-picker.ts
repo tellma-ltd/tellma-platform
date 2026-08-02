@@ -42,7 +42,11 @@ import {
 } from '@tellma/core-ui';
 import { TM_FORM_FIELD_CONTROL, TmFormField } from '@tellma/core-ui/form-field';
 import { TmModal, type TmModalRef, type TmModalSize } from '@tellma/core-ui/modal';
-import { tmCreateAnchoredOverlay, tmLogicalPositions } from '@tellma/core-ui/private';
+import {
+  tmCreateAnchoredOverlay,
+  tmLogicalPositions,
+  type TmOverlaySide,
+} from '@tellma/core-ui/private';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
 import type {
@@ -104,6 +108,15 @@ interface ResolutionFailure {
   /** Which localized message the failure carries. */
   readonly kind: 'noMatch' | 'ambiguous' | 'searchFailed';
 }
+
+/** The gap the panel keeps from the viewport edge when its height is capped. */
+const VIEWPORT_MARGIN = 8;
+/** Panel chrome outside the scrolling list (border + listbox padding). */
+const PANEL_CHROME = 10;
+/** Panel cap assumed when the token stylesheet is absent (unit environments). */
+const FALLBACK_PANEL_MAX_HEIGHT = 280;
+/** The clamp never goes below this — a panel too short to read helps nobody. */
+const MIN_PANEL_HEIGHT = 96;
 
 /** Whether a search return is a promise (async) or a plain result (sync). */
 function isThenable<T>(
@@ -213,6 +226,7 @@ function isThenable<T>(
             ngComboboxWidget
             #lb="ngListbox"
             class="tm-entity-picker__listbox"
+            [style.max-block-size]="listboxMaxHeight()"
             [tabindex]="-1"
             focusMode="activedescendant"
             selectionMode="explicit"
@@ -528,13 +542,77 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    */
   protected readonly anchored = tmCreateAnchoredOverlay({
     overlay: () => this.overlay(),
-    origin: () =>
-      this.hostElement.closest<HTMLElement>('.tm-form-field__box, [data-tm-editor]') ??
-      this.hostElement,
-    positions: tmLogicalPositions('block-end', 'start'),
+    origin: () => this.originElement(),
+    // ONE position, decided per open (see `placement`) — never a flip pair.
+    // The panel's content arrives in stages (spinner, then results, then a
+    // different result set), and a position list would let the CDK re-pick
+    // the side on every one of those measurements: the panel would jump
+    // above and below the field while the user types.
+    positions: () => [tmLogicalPositions(this.placement().side, 'start')[0]],
     matchWidth: true,
     remeasure: 'macrotask',
   });
+
+  /**
+   * Where the panel opens and how tall it may be, decided ONCE per open
+   * against the anchor's room in the viewport and the panel's own maximum
+   * height — never against the content, which is not there yet at attach
+   * time and changes repeatedly afterwards.
+   *
+   * This is what makes the panel stable: the CDK's own flip logic measures
+   * the overlay it is about to attach, which (aria renders the popup one
+   * pass later) is empty — so it always says "below fits", paints there,
+   * and the post-attach re-measure yanks it up a frame later. Deciding from
+   * the anchor instead means the first paint is already right, and content
+   * growing afterwards can never re-open the question: the chosen side has
+   * room for the panel at its cap, and the height below clamps to the room
+   * that is actually there, so the list scrolls instead of overflowing.
+   */
+  private readonly placement = computed<{ side: TmOverlaySide; maxHeightPx: number }>(() => {
+    this.expanded(); // re-measure on every open, and only then
+    return untracked(() => this.measurePlacement());
+  });
+
+  /** The listbox's fitted max height — the clamp half of `placement`. */
+  protected readonly listboxMaxHeight = computed(() => `${this.placement().maxHeightPx}px`);
+
+  /**
+   * The chrome the panel anchors to: the field's bordered box, or the grid
+   * cell's editor host. Falls back to this bare host standalone.
+   */
+  private originElement(): HTMLElement {
+    return (
+      this.hostElement.closest<HTMLElement>('.tm-form-field__box, [data-tm-editor]') ??
+      this.hostElement
+    );
+  }
+
+  /**
+   * Picks the side and the height cap from the anchor's room in the
+   * viewport. Below is preferred (it reads with the field) and taken
+   * whenever it can hold a full-height panel or simply beats above;
+   * otherwise the panel opens upward. The height then clamps to the room
+   * actually there, so the chosen side fits BY CONSTRUCTION and a long
+   * result set scrolls inside the list rather than running off-screen.
+   */
+  private measurePlacement(): { side: TmOverlaySide; maxHeightPx: number } {
+    const rect = this.originElement().getBoundingClientRect();
+    const cap = this.panelMaxHeightToken();
+    const below = window.innerHeight - rect.bottom - VIEWPORT_MARGIN - PANEL_CHROME;
+    const above = rect.top - VIEWPORT_MARGIN - PANEL_CHROME;
+    const side: TmOverlaySide = below >= cap || below >= above ? 'block-end' : 'block-start';
+    const room = side === 'block-end' ? below : above;
+    return { side, maxHeightPx: Math.max(MIN_PANEL_HEIGHT, Math.min(cap, room)) };
+  }
+
+  /** The panel's height cap, read from its component token. */
+  private panelMaxHeightToken(): number {
+    const raw = getComputedStyle(this.hostElement).getPropertyValue(
+      '--entity-picker-panel-max-height',
+    );
+    const parsed = Number.parseFloat(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : FALLBACK_PANEL_MAX_HEIGHT;
+  }
 
   // ---- Template helpers ----
   /** Footer-row sentinel exposed to the template. */
