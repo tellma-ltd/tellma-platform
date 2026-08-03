@@ -631,10 +631,12 @@ deliberate strengthenings:
   variant when `hasMore`), *"No results"*, search failure while the popup is open, and the
   auto-resolution outcome on blur. Announcements fire on fetch completion, never per keystroke.
   The popup carries `aria-busy` while loading.
-- Resolution FAILURES surface through the standard field error machinery only (persistent polite
-  live region in `tm-form-field`; cell error overlay + `aria-describedby` in the grid) — one
-  message in one place, never also announced by the picker. Only the success auto-resolution
-  announces through the picker's own region, having no other channel.
+- Resolution FAILURES surface through the standard field error machinery (persistent polite live
+  region in `tm-form-field`; cell error overlay + `aria-describedby` in the grid) — one message in
+  one place. The picker's own region adds nothing on a blur, whose popup is already leaving; it
+  announces the failure only where the popup STAYS (Enter while results are loading, §4.3), so the
+  status the user is still looking at is spoken rather than silently swapped. Success
+  auto-resolution announces there too, having no other channel.
 - Focus chains: modal focus trap/restore per `tm-modal`; the dropdown never takes DOM focus, so
   there is nothing to restore on close; Esc dismisses innermost-first (dropdown → modal → grid
   edit).
@@ -797,8 +799,12 @@ The load-bearing decisions, where not already evident above:
    spinner, and the debounce window is skipped while the source is known-synchronous (§4.2).
 7. **Advanced-search keyboard path** — the magnifier follows the calendar-button precedent
    (`tabindex="-1"`, one Tab per field); its keyboard/touch equivalent is the Advanced search…
-   footer option, reachable by arrows in every popup state — no new shortcut, no second tab stop
-   on every FK field (§3, §4.1).
+   footer option, reachable by arrows in every SETTLED popup state — no new shortcut, no second
+   tab stop on every FK field (§3, §4.1). §4.1's loading exclusion narrows this: while a search is
+   outstanding there is no keyboard route to the page. Accepted, because the window is transient
+   and self-clearing — it ends when the response lands, and the user reaches the row by waiting
+   rather than by discovering anything. WCAG 2.1.1 asks that the functionality be operable from
+   the keyboard, not that it be reachable at every instant of a load.
 8. **Grid typed-commit resolution** — unresolved editor text on `entity` columns flows through
    the same §9.3/§9.4 pipeline as pasted labels (pending affordance, sequence tokens, localized
    notFound/ambiguous messages), extending spec 0004's chain to editor commits. Grid commits stay
