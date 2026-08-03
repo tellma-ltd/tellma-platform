@@ -585,8 +585,11 @@ test.describe('modal round-trips', () => {
     await useSyncSearch(page);
     await input(page).fill('Newco');
     await expect(status(page)).toHaveText('No results');
-    await input(page).press('ArrowDown'); // → Advanced search…
-    await input(page).press('ArrowDown'); // → Create supplier…
+    // Each arrow waits for the row it asked for: a burst measures how fast
+    // the runner is, not where the highlight goes.
+    await input(page).press('ArrowDown');
+    await expect(activeOption(page)).toHaveText('Advanced search…');
+    await input(page).press('ArrowDown');
     await expect(activeOption(page)).toHaveText('Create supplier…');
     await input(page).press('Enter');
     await expect(page.getByTestId('create-name')).toHaveValue('Newco');

@@ -121,8 +121,13 @@ test.describe('keyboard + focus (§6)', () => {
   }) => {
     const { trigger, panel } = await openSelect(page, 'select-country');
 
+    const before = await trigger.getAttribute('aria-activedescendant');
     await trigger.press('ArrowDown');
     await expect(trigger).toBeFocused(); // activedescendant model — no focus move
+    // The highlight is read out of the DOM, so the keypress's render has to
+    // have landed first — otherwise this reads the PREVIOUS option and the
+    // Enter below commits a different one.
+    await expect(trigger).not.toHaveAttribute('aria-activedescendant', before ?? '');
 
     const activeId = await trigger.getAttribute('aria-activedescendant');
     const activeText = (await page.locator(`[id="${activeId}"]`).textContent())!.trim();

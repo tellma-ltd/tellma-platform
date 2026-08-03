@@ -63,6 +63,7 @@ test('type-to-edit searches the seed; Enter on the highlight commits with NO mov
   await expect(pickerInput(page)).toBeVisible();
   await expect(pickerInput(page)).toHaveValue('A');
   await page.keyboard.type('lice');
+  await expect(pickerInput(page)).toHaveValue('Alice'); // every keystroke landed
   await expect(activeOption(page)).toHaveText('Alice Green');
   await page.keyboard.press('Enter');
   await expect(editor(page)).toHaveCount(0);
