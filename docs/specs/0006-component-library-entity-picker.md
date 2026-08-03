@@ -3,8 +3,10 @@
 - **Author:** Ahmad Akra
 - **Date:** 30 July 2026
 
-**Status:** Frozen **historical** record of the design and its reasoning at authoring time. It is not
-updated as the code or its dependencies evolve.
+**Status:** Frozen **historical** record of the design and its reasoning at authoring time. The body
+is not updated as the code or its dependencies evolve. **Appendix A**, added once the implementation
+landed, records where the shipped code departs from it — including two clauses of §7 that were
+reversed outright. Read them together.
 
 ## Context
 
@@ -725,3 +727,195 @@ The load-bearing decisions, where not already evident above:
     block-size, so the panel edge barely moves across list↔spinner swaps (§4.2). The
     deferred-spinner alternative (a grace period with stale rows kept visible) was rejected — it
     reads as a slow system, and stale rows invite stale picks.
+
+---
+
+## Appendix A — Implementation deviations
+
+**Added 3 August 2026, after the implementation landed.** The body above is unchanged and stays the
+frozen record of the design as authored. This appendix records every place the shipped code departs
+from it, so the two can be read together without either being rewritten.
+
+Three kinds of departure appear here: calls made while implementing (the spec was under-specified or
+wrong), changes requested against the running build after the freeze, and open gaps.
+
+### A.1 Departures decided while implementing
+
+**A.1.1 `TmCellEditor.text()` reports `null`, not the label, once a pick lands.**
+§7.3 says "`text` reports the committed pick's label". It reports `null` whenever the VALUE channel
+is authoritative (picker-authored canonical text, or the pristine display of the set value), and the
+raw string only for user-edited unresolved text. Committing a label as text would send it back
+through the resolution ladder and break "exactly one resolver call". §7.3's intent — the label is
+what the user sees and what copy exports — is delivered by the visible input text and by the copy
+path, which exports `displayText`.
+
+**A.1.2 Clearing the text does not write `null` until the commit gesture.**
+§5.1 lists the value-write points exhaustively and live typing is not among them, so an emptied box
+carries the unresolved-text error until the blur/Enter empty commit rather than nulling the model
+mid-edit. Cost: a committed field the user is clearing is briefly "invalid" rather than "empty". See
+A.2.4, which stops that interim state from *claiming* a selection.
+
+**A.1.3 The truncation hint, status area and separator are `aria-hidden` rows INSIDE the listbox.**
+§4.1 orders them relative to the options and describes the status area as outside the listbox.
+Rendering them as `aria-hidden` `<li>`s inside the `<ul>` is the only arrangement that honors BOTH
+the visual order and the options-only ARIA contract, since the footer commands must be real options
+in the same listbox. `<li>` children of `role="listbox"` carry no implicit role and `aria-hidden`
+removes them from the tree, so the owned-options set and `setsize`/`posinset` are unaffected. Gated
+empirically by the axe run over every popup state in both themes.
+
+**A.1.4 Resolution failures announce through the field error machinery only.**
+§8 could be read as requiring a live-region announcement for every async outcome. Failures ride the
+standard error surface (one message, one place); only the success auto-resolution announces
+"{label} selected" through the picker's live region, because that one has no other channel.
+
+**A.1.5 Home/End move the caret, overriding aria's relay.**
+aria relays Home/End to the listbox while the popup is open, which freezes the caret and moves the
+highlight. §4.3 follows the APG editable-combobox model, where they belong to the text cursor. The
+relay is suppressed with a capture-phase `stopPropagation` — a version-locked override with a
+dedicated guard test.
+
+**A.1.6 Grid plain arrows are re-dispatched as cloned events.**
+aria's collapsed `ArrowDown`-expands behavior is unconditional and has no opt-out input, but in a
+grid cell plain arrows belong to the grid's commit-and-move. The original is stopped at capture
+phase and an identical clone is dispatched from the host's parent so the grid receives it
+unconsumed. Contained and unit-guarded; the code carries a `// TODO` naming the upstream gap so it
+is swapped for a plain pass-through the moment `@angular/aria` ships an input for it.
+
+**A.1.7 `TmEntityPickerPageData.query` is pristine-mapped.**
+A page opened from a field showing its committed label receives `''`, not the label — prefilling a
+create page's name with the OLD entity's label would be wrong. Consistent with §4.2's browse-intent
+reading of pristine text.
+
+**A.1.8 Tab with a footer row highlighted closes without launching.**
+Spec-silent. Tab is a navigation gesture; opening a modal on the way out of a field would be a
+surprise. Treated as "no highlight": close, let focus proceed, let blur resolution handle any typed
+text.
+
+**A.1.9 Kept error messages re-render on a live locale switch.**
+Beyond the date-picker precedent, which keeps a stale-locale message until the next keystroke. The
+parse is re-issued for the same text so the message re-localizes without disturbing the model.
+
+**A.1.10 Entity columns route CONSUMER-template editor commits through the same ladder.**
+§7 mandates the ladder for "editor commits on entity columns", which includes projected
+`*tmGridEditor` templates. Three behaviors change for those: unparseable text reaches the resolver
+(was an invalid parse), a column with neither parse nor resolver records an invalid input (was a
+raw-text value write — a string in a foreign-key field), and empty text clears the cell. Each is
+pinned.
+
+**A.1.11 The dropdown opens on ONE position, not a flip list.**
+§4.1 calls for logical positions with flip. The CDK re-picks a side on every measurement, and this
+panel's content arrives in stages (overlay attach, then aria's deferred content, then results) —
+which made it open downward, measure, and flip up in view. The side is decided once from the
+anchor's own geometry, with a height clamp that makes the chosen side fit by construction.
+
+**A.1.12 Internal `@angular/aria` seams are used, version-locked.**
+`_pattern.hasBeenInteracted` (disarms aria's default-highlight machinery, which the picker replaces
+wholesale), `_pattern.listBehavior.unfocus()` (clears the highlight at each search-state change) and
+`_pattern.listBehavior.last()` (ArrowUp from no highlight must reach the LAST option; aria's
+`prev()` steps from index -1 and lands second-to-last). The `tm-select` `_pattern` precedent; each
+has a guard test that fails loudly if the seam moves.
+
+**A.1.13 `readonly` is not routed through aria's `disabled` input.**
+The obvious wiring — `disabled: disabled() || readonly()` — is what makes an editable combobox
+non-typable, but aria host-binds `aria-disabled` from that same input unconditionally, so a
+read-only picker announced itself as disabled. A read-only control must still convey its value.
+The native read-only state is the picker's own, the arrow-expands behavior is suppressed in the
+capture layer, and both `readonly` and `aria-autocomplete` are re-asserted after render — aria's
+host bindings run after every template binding, so a template override loses to them.
+
+### A.2 Departures requested after the freeze
+
+Raised against the running build. Where they contradict the body above, they win.
+
+**A.2.1 The command footer rows are hidden while a search is loading.**
+§4.1 item 4 says they render in every popup state, loading included, so "no results → Create…" is
+always one arrow away. Requested otherwise: while the spinner is up the panel says one thing only,
+and commands that would arrive, shift and re-order under the user's cursor a moment later stay out
+of it. They return the instant the state settles.
+
+**A.2.2 A standalone picker surfaces its OWN errors.**
+Text that names no entity must look wrong wherever the control is used, including with no
+`[formField]` binding — where the field's message machinery has nothing to read. The control merges
+its own parse errors into `localizedErrors` and aliases `invalid`/`touched`/`pending` so a bound
+field can still drive them.
+
+**A.2.3 …but never mid-edit.**
+Half-typed text is a query in progress, not a mistake, and every keystroke toward a valid pick
+passes through the "unresolved" error. That error is marked transient: filtered out of both message
+channels, kept in the VALIDITY channel so a racing submit is still blocked. Validity and
+displayability are separated. (Material and PrimeNG land here too: state on the control, message in
+a container, never mid-edit.)
+
+**A.2.4 A cleared box stops claiming a selection.**
+Following A.1.2 the model still holds the old id while the box reads empty — and the Edit… footer
+row and the `aria-selected` check both went on reporting it. Both now follow whether the field NAMES
+an entity (a value AND non-empty text). Deliberately not gated on pristineness, which would make
+Edit… flicker away on the first keystroke of an ordinary refine.
+
+**A.2.5 The highlighted option scrolls into view.**
+DOM focus never leaves the input under the activedescendant model, so nothing scrolls the list on
+its own and arrowing past the fold walked the highlight out of sight.
+
+**A.2.6 A cell awaiting resolution shows the text being resolved.**
+The resolver rung clears the cell's value the moment it starts, so the cell sat blank for the whole
+round trip. The pending annotation now carries the label. Pasted cells get the same treatment.
+
+### A.3 The typed-commit search rung — a reversal of §7.3 and Decision #8
+
+**Requested and agreed after the freeze; it changes the two clauses below outright.**
+
+§7.3 states that the picker's async resolution is "a form-path mechanism and never runs in a cell",
+that "its in-flight search aborts with it", and that "exactly one resolver call performs the
+authoritative resolution". Decision #8 repeats it. The synchronous on-screen unique-result fast path
+was the only shortcut.
+
+In practice that produced the following: a user types `Alice`, the picker finds exactly one
+supplier, the user leaves before the response paints — and the commit hands `Alice` to
+`resolvePastedLabels`, whose natural implementation matches labels exactly, which answers "no match"
+for text the column's own search had already resolved. The system spent a round trip to get a worse
+answer than the one it was already holding.
+
+**What ships instead.** At commit the grid ADOPTS the editor's search for that text — the set it
+already settled, the request still in flight, or the query still inside the coalescing window
+(flushed rather than cancelled). The adopted request is detached from the editor's lifetime, so it
+survives the teardown that follows; the grid holds the only abort handle from then on, and undo
+while pending fires it. The existing pending affordance, sequence token, one-undo history entry and
+localized messages are untouched — the request is opened exactly as before, and the only new thing
+is who answers it first.
+
+**Which outcomes the search decides.** The two functions ask different questions: `search` asks
+"what matches this query?" (ranked, capped, typically scoped to what a user may pick today);
+`resolvePastedLabels` asks "which entity IS this label?" (identity — and it may reach codes,
+aliases, or inactive records). So the search is authoritative about MULTIPLICITY and the resolver
+about IDENTITY OF SOMETHING THE SEARCH CANNOT SEE:
+
+| search outcome | decided by | why |
+|---|---|---|
+| exactly one result | the search | the answer, at no further cost |
+| several, exactly one label EQUALS the text | the search | identity, not ranking |
+| several, no unique exact match | the search — `ambiguous` | handing it to an identity resolver turns a true and useful message ("'Al' matches more than one Agent") into a misleading one ("no match for 'Al'"), and pays a round trip to do it |
+| nothing found | the resolver | a search miss is not proof of no match |
+| the search threw or rejected | the resolver | an independent path, possibly transient; if both fail, the retryable `resolutionFailed` state stands |
+
+**Consequences.**
+
+- "Exactly one resolver call" becomes **at most one**, and in the common case zero.
+- An entity column with `search` but NO resolver now resolves typed text through its own search.
+  Previously any typed text the synchronous fast path missed was a definitive invalid input.
+- `resolvePastedLabels` is documented as receiving typed partial queries, not only pasted labels, so
+  an exact-match implementation becomes a deliberate choice rather than an accident.
+- The picker's own §5.2 resolution still never runs in a cell. What crosses the boundary is the
+  SEARCH, not the resolution: the grid decides, using data the picker fetched.
+
+### A.4 Open gaps
+
+**A.4.1 The entry point ships over its budget.** §10 sets `entity-picker` ≤ 10 KB gzipped
+self-weight; it measures ~10.5 KB against a ratchet of 11. The remaining lever is deferring the
+popup into its own chunk, which changes the mounting sequence this control's overlay placement and
+highlight protocol are demonstrably sensitive to — two shipped defects came from exactly that
+timing. Recorded with its reason in the library's `"tellma".budgetNotes`.
+
+**A.4.2 The grid's ceiling has never met ITS spec.** Spec 0004 set `grid` ≤ 24 KB. The measured
+surface has never been close: the ratchet has climbed 34 → 35 → 36 → 37 across three specs, the last
+increment for A.3's search rung. Worth a dedicated pass rather than another increment, and out of
+scope for this spec.
