@@ -887,15 +887,21 @@ is who answers it first.
 "what matches this query?" (ranked, capped, typically scoped to what a user may pick today);
 `resolvePastedLabels` asks "which entity IS this label?" (identity — and it may reach codes,
 aliases, or inactive records). So the search is authoritative about MULTIPLICITY and the resolver
-about IDENTITY OF SOMETHING THE SEARCH CANNOT SEE:
+about IDENTITY OF SOMETHING THE SEARCH CANNOT SEE.
+
+The line between deciding and deferring is whether the search's answer is an IDENTITY fact or only
+a ranking one. A **fallback** verdict asks the resolver anyway and is used only if the resolver
+cannot name the text either — which keeps the resolver's answer when it has one and the search's
+better message when it does not.
 
 | search outcome | decided by | why |
 |---|---|---|
-| exactly one result | the search | the answer, at no further cost |
-| several, exactly one label EQUALS the text | the search | identity, not ranking |
-| several, no unique exact match | the search — `ambiguous` | handing it to an identity resolver turns a true and useful message ("'Al' matches more than one Agent") into a misleading one ("no match for 'Al'"), and pays a round trip to do it |
+| exactly one result, or exactly one whose label EQUALS the text | the search | identity, at no further cost |
+| several rows all carrying the text AS their label | the search | two entities really are named this; no lookup can undo it |
+| several rows, the text is none of their labels | the resolver, **fallback** `ambiguous` | a dead end for the search but still an open identity question: a type-ahead that matches codes returns several rows for a code, and that code is exactly what the resolver knows. The fallback keeps the better message — "'Al' matches more than one Agent" is true and useful where "no match for 'Al'" is neither |
+| a TRUNCATED page (`hasMore`), unless already ambiguous by label | the resolver | a capped page can be trusted about what it contains and never about what it does not: the duplicate that would make a lone exact match ambiguous may sit past the cap |
 | nothing found | the resolver | a search miss is not proof of no match |
-| the search threw or rejected | the resolver | an independent path, possibly transient; if both fail, the retryable `resolutionFailed` state stands |
+| the search threw, rejected, or was ABORTED | the resolver — except on abort, where nothing runs at all | an independent path, possibly transient; if both fail, the retryable `resolutionFailed` state stands. An abort reaches this seam as a failure, so it is checked for explicitly: undo, disposal and a readonly flip must not start the round trip they are cancelling |
 
 **Consequences.**
 
