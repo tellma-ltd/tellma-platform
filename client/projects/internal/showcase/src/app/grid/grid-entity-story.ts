@@ -15,22 +15,26 @@ import { TmModalFooter, TmModalRef } from '@tellma/core-ui/modal';
 interface Agent {
   readonly id: number;
   readonly name: string;
+  /** The resolver's second key — the name search never looks at it. */
+  readonly code: string;
 }
 
 /**
- * The demo directory: 'Adam Brown' appears twice (the resolver's ambiguous
- * case); 'Alice Green'/'Alan Grey' share the 'Al' prefix so a typed commit
- * of 'Al' is a multi-match (the resolver path) while 'Alice Gr' is unique
- * (the on-screen fast path).
+ * The demo directory: 'Adam Brown' appears twice (the ambiguous case);
+ * 'Alice Green'/'Alan Grey' share the 'Al' prefix so a typed commit of 'Al'
+ * is a multi-match while 'Alice' is unique. Every agent also carries a
+ * CODE, which the name search does not look at and the resolver does — the
+ * reason a typed commit the search cannot answer still goes to the
+ * resolver rather than being reported as "no match".
  */
 const AGENTS: readonly Agent[] = [
-  { id: 1, name: 'Adam Brown' },
-  { id: 2, name: 'Adam Brown' },
-  { id: 3, name: 'Alice Green' },
-  { id: 4, name: 'Alan Grey' },
-  { id: 5, name: 'Bob Stone' },
-  { id: 6, name: 'Carol White' },
-  { id: 7, name: 'Dana Reed' },
+  { id: 1, name: 'Adam Brown', code: 'AG-001' },
+  { id: 2, name: 'Adam Brown', code: 'AG-002' },
+  { id: 3, name: 'Alice Green', code: 'AG-003' },
+  { id: 4, name: 'Alan Grey', code: 'AG-004' },
+  { id: 5, name: 'Bob Stone', code: 'AG-005' },
+  { id: 6, name: 'Carol White', code: 'AG-006' },
+  { id: 7, name: 'Dana Reed', code: 'AG-007' },
 ];
 
 interface OrderLine {
@@ -237,7 +241,12 @@ export class GridEntityStory {
     return new Promise((resolve) => setTimeout(() => resolve(matches), delay));
   };
 
-  /** The typed-commit/paste resolver: exact-label match after the delay. */
+  /**
+   * The typed-commit/paste resolver: an IDENTITY lookup, matching the exact
+   * label or the agent's code — deliberately not the same question the
+   * name search answers, which is why it still runs for text the search
+   * could not decide.
+   */
   readonly resolveAgents = async (
     labels: string[],
   ): Promise<ReadonlyMap<string, TmLabelResolution<number | null>>> => {
@@ -245,8 +254,9 @@ export class GridEntityStory {
     await new Promise((resolve) => setTimeout(resolve, this.resolverDelay()));
     const map = new Map<string, TmLabelResolution<number | null>>();
     for (const label of labels) {
+      const key = label.trim().toLowerCase();
       const matches = AGENTS.filter(
-        (agent) => agent.name.toLowerCase() === label.trim().toLowerCase(),
+        (agent) => agent.name.toLowerCase() === key || agent.code.toLowerCase() === key,
       );
       if (matches.length === 1) {
         map.set(label, { value: matches[0].id });

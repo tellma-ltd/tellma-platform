@@ -89,7 +89,11 @@ import type { TmGridStateHandle, TmGridStateStore } from '../tm-grid-state-store
 import { ɵTmGridAnnouncements } from './announcements';
 import { ɵTmGridClipboardDom, ɵtmGridResolvePasteSource } from './clipboard-dom';
 import { ɵTmGridColumnResize } from './column-resize';
-import { ɵTmGridEditorSession, type ɵTmGridEditorMountConfig } from './editor-session';
+import {
+  ɵTmGridEditorSession,
+  type ɵTmGridEditorMountConfig,
+  type ɵTmGridMountedEditor,
+} from './editor-session';
 import { ɵTmGridFieldWriter, ɵtmChildField, ɵtmRowField } from './field-writer';
 import {
   tmResolveEditingKey,
@@ -145,6 +149,12 @@ const INTERACTIVE_CONTENT_SELECTOR = 'a[href], button, input, select, textarea, 
  * cell can hold, `undefined` and `null` included.
  */
 const NO_VALUE_BASELINE: unique symbol = Symbol('tmNoValueBaseline');
+
+/**
+ * A search taken over from an entity editor at commit time. Detached from
+ * the editor's lifetime, so whoever holds it owns aborting it.
+ */
+type AdoptedSearch = NonNullable<ReturnType<NonNullable<ɵTmGridMountedEditor['adoptSearch']>>>;
 
 /** Rows whose field nodes one error-tally warm-up slice touches (§16). */
 const WARMUP_ROWS_PER_SLICE = 500;
@@ -3569,13 +3579,22 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     } else if (mounted.kind === 'enum') {
       engine.edit.commitValue(untracked(() => mounted.editor.value()));
     } else {
+      let adopted: AdoptedSearch | null = null;
       if (mounted.kind === 'entity') {
-        // The picker's synchronous fast path: a fresh unique on-screen
-        // result for the current unresolved text auto-picks (no request)
-        // before the channels are read. PULLED here — a push through the
-        // activation output would re-enter this commit mid-flight.
+        // Take the editor's search over FIRST: `commit()` below closes the
+        // dropdown, and a closing popup aborts what it was fetching. What
+        // is adopted here is detached from the editor's lifetime, so it
+        // survives the teardown that follows — and every early exit past
+        // this point has to abort it, or the request leaks.
+        const pending = untracked(() => mounted.editor.text());
+        adopted = pending === null ? null : (mounted.adoptSearch?.(pending) ?? null);
+        // The picker's synchronous fast path: a fresh unique result for the
+        // current unresolved text auto-picks (no request) before the
+        // channels are read. PULLED here — a push through the activation
+        // output would re-enter this commit mid-flight.
         mounted.editor.commit();
         if (this.isPristineEntitySession(mounted.editor)) {
+          adopted?.abort();
           engine.edit.cancel();
           this.closeEditor(opts);
           return;
@@ -3583,11 +3602,13 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       }
       const text = untracked(() => mounted.editor.text());
       if (text === null) {
+        adopted?.abort(); // the fast path answered it
         engine.edit.commitValue(untracked(() => mounted.editor.value()));
       } else if (text === this.editorOpenText) {
+        adopted?.abort();
         engine.edit.cancel();
       } else {
-        this.commitEditorText(text);
+        this.commitEditorText(text, adopted);
       }
     }
     this.closeEditor(opts);
@@ -3626,19 +3647,82 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
    * resolver runs in a microtask, after the editor's teardown completes —
    * exactly one authoritative resolution, under the GRID's pending state.
    */
-  private commitEditorText(text: string): void {
+  private commitEditorText(text: string, adopted: AdoptedSearch | null): void {
     const engine = this.engine;
     const session = untracked(() => engine.edit.session());
     const column =
       session === null ? undefined : untracked(this.columnsInternal)[session.cell.col];
-    if (column?.type === 'entity') {
-      const request = engine.commitEditorLabel(text);
-      if (request !== null) {
+    if (column?.type !== 'entity') {
+      adopted?.abort();
+      engine.edit.commitText(text);
+      return;
+    }
+    const request = engine.commitEditorLabel(text, { deferToHost: adopted !== null });
+    if (request === null) {
+      adopted?.abort(); // an earlier rung settled it — the search is nobody's input now
+      return;
+    }
+    if (adopted === null) {
+      this.runResolutions([request]);
+      return;
+    }
+    // Undo while pending aborts the request; the adopted search is part of
+    // that request now, so it goes with it.
+    request.context.signal.addEventListener('abort', adopted.abort, { once: true });
+    void adopted.settled.then((outcome) => {
+      const decided = this.decideFromSearch(outcome, text, column);
+      if (decided !== null) {
+        engine.clipboard.applyResolution(request.id, new Map([[text, decided]]));
+      } else {
+        // The search cannot answer this one. The SAME request carries on to
+        // the column's resolver — same pending mark, same sequence token,
+        // same open history entry.
         this.runResolutions([request]);
       }
-    } else {
-      engine.edit.commitText(text);
+    });
+  }
+
+  /**
+   * What the editor's own search says about the committed text, or `null`
+   * to hand the question to the column's resolver.
+   *
+   * The two are not the same question. `search` asks "what matches this
+   * query?" — ranked, capped, and typically scoped to what a user may pick
+   * today. `resolvePastedLabels` asks "which entity IS this label?" — an
+   * identity lookup that may reach codes, aliases, or records the picker
+   * would never offer. So the search is authoritative about MULTIPLICITY
+   * and the resolver about IDENTITY OF SOMETHING THE SEARCH CANNOT SEE:
+   *
+   * - one result, or exactly one whose label IS the text: the answer.
+   * - several, none of them an exact-label match: ambiguous, decided here.
+   *   Handing this to an exact-match resolver would turn a true and useful
+   *   message ("'Al' matches more than one Agent") into a misleading one
+   *   ("no match for 'Al'"), and pay a round trip to do it.
+   * - nothing found: NOT proof of no match — the resolver indexes things
+   *   the type-ahead does not.
+   * - the search failed: an independent path, possibly transient.
+   */
+  private decideFromSearch(
+    outcome: readonly unknown[] | 'failed',
+    text: string,
+    column: ColumnInternal<T>,
+  ): TmLabelResolution<unknown> | null {
+    if (outcome === 'failed' || outcome.length === 0) {
+      return null;
     }
+    const itemId = column.entityItemId;
+    const itemLabel = column.entityItemLabel;
+    if (itemId === undefined || itemLabel === undefined) {
+      return null; // half-configured column: the editor never mounts, but stay honest
+    }
+    const exact = outcome.filter((item: unknown) => itemLabel(item as never) === text);
+    if (exact.length === 1) {
+      return { value: itemId(exact[0] as never) };
+    }
+    if (exact.length === 0 && outcome.length === 1) {
+      return { value: itemId(outcome[0] as never) };
+    }
+    return { error: 'ambiguous' };
   }
 
   /** Cancels the open session: the model is never written (§8.2 Esc, §5.1). */

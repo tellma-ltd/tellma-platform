@@ -101,3 +101,21 @@ export interface TmEntityPicked<T, Id extends TmEntityId> {
    */
   readonly source: 'list' | 'auto' | 'advanced' | 'create' | 'edit';
 }
+
+/**
+ * A search handed from a picker to its host at commit time — the grid's
+ * cell-editor seam.
+ *
+ * The request it describes has been DETACHED from the picker: nothing the
+ * picker does afterwards (a new search, the popup closing, its own
+ * destruction) will abort it, because the host needs the answer to outlive
+ * the editor. `abort` is therefore the only remaining handle, and a host
+ * that drops it leaks the request.
+ * @internal
+ */
+export interface ɵTmEntityAdoptedSearch<T> {
+  /** The result items, or `'failed'` when the search threw or rejected. */
+  readonly settled: Promise<readonly T[] | 'failed'>;
+  /** Cancels the request; the only handle now that the picker has let go. */
+  readonly abort: () => void;
+}

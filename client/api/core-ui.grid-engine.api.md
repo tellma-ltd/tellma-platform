@@ -211,7 +211,9 @@ export interface TmGridEditSession {
 export class TmGridEditState<T = unknown> {
     constructor(options: TmGridEditStateOptions<T>);
     cancel(): void;
-    commitLabel(text: string): TmGridPendingLabelCommit | null;
+    commitLabel(text: string, opts?: {
+        readonly deferToHost?: boolean;
+    }): TmGridPendingLabelCommit | null;
     commitText(text: string): boolean;
     commitValue(value: unknown): boolean;
     openEdit(cell: TmRowCol, mode: 'edit' | 'enter', seedText?: string): boolean;
@@ -243,7 +245,9 @@ export class TmGridEngine<T = unknown> {
         mod?: boolean;
     }): void;
     readonly clipboard: TmGridClipboard<T>;
-    commitEditorLabel(text: string): TmGridResolutionRequest | null;
+    commitEditorLabel(text: string, opts?: {
+        readonly deferToHost?: boolean;
+    }): TmGridResolutionRequest | null;
     deleteSelectedRows(): void;
     displayText(cell: TmRowCol): string;
     dispose(): void;

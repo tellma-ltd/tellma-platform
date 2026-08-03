@@ -14,6 +14,7 @@ import { Component, input, output, signal, viewChild, ViewEncapsulation } from '
 import { TmDatePicker } from '@tellma/core-ui/date-picker';
 import {
   TmEntityPicker,
+  type ɵTmEntityAdoptedSearch,
   type TmEntityId,
   type TmEntityPickerPage,
   type TmEntitySearchFn,
@@ -164,6 +165,15 @@ export class ɵTmGridEntityEditor {
   /** Installs text WITHOUT searching or opening (edit-mode opens). */
   setText(text: string): void {
     this.picker().ɵsetCellText(text);
+  }
+
+  /**
+   * Takes over the picker's own search for `text` so the grid can decide a
+   * typed commit from it. The request detaches from this editor's lifetime;
+   * `null` when the picker has nothing for that exact text.
+   */
+  adoptSearch(text: string): ɵTmEntityAdoptedSearch<unknown> | null {
+    return this.picker().ɵadoptSearch(text);
   }
 }
 

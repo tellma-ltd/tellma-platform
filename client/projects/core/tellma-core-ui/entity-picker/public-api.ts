@@ -13,6 +13,7 @@
 // LICENSE file in the root directory of this source tree.
 export { TmEntityPicker } from './tm-entity-picker';
 export type {
+  ɵTmEntityAdoptedSearch,
   TmEntityId,
   TmEntityPick,
   TmEntityPicked,

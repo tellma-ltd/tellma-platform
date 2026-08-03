@@ -171,8 +171,18 @@ export class TmGridEditState<T = unknown> {
    * resolver, the text becomes a definitive invalid input (never a
    * raw-text value write). Returns `null` when no async resolution is
    * needed (the sync rungs handled the commit).
+   *
+   * `deferToHost` says the CALLER has an async answer of its own to try
+   * (the editor's own search, on an entity column). It suspends only the
+   * no-resolver rung's verdict — the cell is cleared inside an open entry
+   * and the pending commit is returned exactly as for a resolver column, so
+   * "this column cannot resolve" stops being decided here while another
+   * rung is still live.
    */
-  commitLabel(text: string): TmGridPendingLabelCommit | null {
+  commitLabel(
+    text: string,
+    opts?: { readonly deferToHost?: boolean },
+  ): TmGridPendingLabelCommit | null {
     const session = untracked(this.sessionSignal);
     if (session === null) {
       return null;
@@ -210,7 +220,7 @@ export class TmGridEditState<T = unknown> {
     }
     // (3) No resolver: a definitive invalid input — the raw text is never
     // written as the value.
-    if (!column.hasResolver) {
+    if (!column.hasResolver && opts?.deferToHost !== true) {
       this.commitInternal((rowId, cell) =>
         this.buildWrite(rowId, cell, column.clearedValue, { rawText: text, reason: 'parse' }),
       );

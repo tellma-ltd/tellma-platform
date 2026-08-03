@@ -23,6 +23,7 @@ import type { TmCellEditor, TmCellEditorHost } from '@tellma/core-ui/contracts';
 import { TM_CELL_EDITOR_HOST } from '@tellma/core-ui';
 
 import type {
+  ɵTmEntityAdoptedSearch,
   TmEntityId,
   TmEntityPickerPage,
   TmEntitySearchFn,
@@ -117,6 +118,15 @@ export interface ɵTmGridMountedEditor {
    * quietly, where `seed()` would search.
    */
   setTextQuiet?(text: string): void;
+  /**
+   * Entity only: takes over the editor's own search for `text` — the set it
+   * already settled, or the request still in flight for it — so the grid
+   * can decide a typed commit from the search the user already paid for.
+   * The request is detached from the editor's lifetime, so the returned
+   * `abort` becomes the only handle; returns `null` when the editor has
+   * nothing for this exact text.
+   */
+  adoptSearch?(text: string): ɵTmEntityAdoptedSearch<unknown> | null;
 }
 
 /**
@@ -182,6 +192,7 @@ export class ɵTmGridEditorSession {
     let isDropdownOpen: () => boolean = () => false;
     let openDropdown: () => void = () => undefined;
     let setTextQuiet: ((text: string) => void) | undefined;
+    let adoptSearch: ɵTmGridMountedEditor['adoptSearch'];
 
     if (config.kind === 'template') {
       const view: EmbeddedViewRef<TmGridEditorContext<unknown, unknown>> =
@@ -223,6 +234,7 @@ export class ɵTmGridEditorSession {
       isDropdownOpen = () => ref.instance.isDropdownOpen();
       openDropdown = () => ref.instance.openDropdown();
       setTextQuiet = (text) => ref.instance.setText(text);
+      adoptSearch = (text) => ref.instance.adoptSearch(text);
       this.destroyView = () => ref.destroy();
     } else {
       const ref = outlet.createComponent(ɵTmGridEnumEditor, { injector: cellInjector });
@@ -255,6 +267,7 @@ export class ɵTmGridEditorSession {
       isDropdownOpen,
       openDropdown,
       ...(setTextQuiet !== undefined ? { setTextQuiet } : {}),
+      ...(adoptSearch !== undefined ? { adoptSearch } : {}),
     };
     return this.mounted;
   }

@@ -1234,7 +1234,19 @@ describe('tm-grid entity columns (built-in tm-entity-picker editor)', () => {
 
     /** Every search call's query, recorded. */
     readonly searchCalls: string[] = [];
-    readonly recordedSearch = (query: string): readonly Agent[] => {
+    /** Swaps the synchronous directory search for a spec-controlled one. */
+    readonly searchOverride = signal<
+      | ((query: string, signal: AbortSignal) => readonly Agent[] | Promise<readonly Agent[]>)
+      | null
+    >(null);
+    readonly recordedSearch = (
+      query: string,
+      signal: AbortSignal,
+    ): readonly Agent[] | Promise<readonly Agent[]> => {
+      const override = this.searchOverride();
+      if (override !== null) {
+        return override(query, signal);
+      }
       this.searchCalls.push(query);
       return searchAgents(query);
     };
@@ -1427,23 +1439,158 @@ describe('tm-grid entity columns (built-in tm-entity-picker editor)', () => {
     expect(cellAt(scroller, 0, 1)!.textContent!.trim()).toBe('Alice Green');
   });
 
+  it('a commit whose search is still IN FLIGHT is decided by that search, not the resolver', async () => {
+    // The editor's own search is the same question the user was asking; it
+    // is already paid for, and its answer outlives the editor. Handing a
+    // partial query to a label resolver instead spends a second round trip
+    // to get a worse answer.
+    const { fixture, host, scroller } = await setupEntity();
+    const pendingSearches: Array<(items: readonly Agent[]) => void> = [];
+    host.searchOverride.set((query) => {
+      host.searchCalls.push(query);
+      return new Promise((resolve) => pendingSearches.push(resolve));
+    });
+    await stable(fixture);
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, 'Alice'); // unique, but nothing has come back yet
+    await stable(fixture);
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    expect(pickerInput(scroller)).toBeNull(); // the editor is gone…
+    expect(scroller.querySelector('.tm-grid__cell-spin')).not.toBeNull();
+    expect(cellAt(scroller, 0, 1)!.textContent!.trim()).toBe('Alice');
+
+    // …and the search it left behind was NOT aborted with it.
+    pendingSearches[pendingSearches.length - 1](searchAgents('Alice'));
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(3);
+    expect(host.resolveCalls).toHaveLength(0);
+    expect(scroller.querySelector('.tm-grid__cell-spin')).toBeNull();
+    expect(cellAt(scroller, 0, 1)!.classList.contains('tm-grid__cell--error')).toBe(false);
+  });
+
+  it('undo while an ADOPTED search is still running aborts it', async () => {
+    // Adoption detaches the request from the editor, so the picker's own
+    // abort sites no longer reach it. The grid took ownership; undo while
+    // pending is where it has to prove it.
+    const { fixture, host, scroller } = await setupEntity();
+    const signals: AbortSignal[] = [];
+    host.searchOverride.set(
+      (query, signal) => (
+        host.searchCalls.push(query),
+        signals.push(signal),
+        new Promise<readonly Agent[]>(() => undefined)
+      ),
+    );
+    await stable(fixture);
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, 'Alice');
+    await stable(fixture);
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    const adopted = signals[signals.length - 1];
+    expect(adopted.aborted).toBe(false); // it survived the editor's teardown…
+    expect(scroller.querySelector('.tm-grid__cell-spin')).not.toBeNull();
+
+    scroller.focus();
+    keydown(scroller, 'z', { ctrlKey: true });
+    await stable(fixture);
+    expect(adopted.aborted).toBe(true); // …and the undo it belongs to killed it
+    expect(host.model()[0].agentId).toBe(5);
+    expect(scroller.querySelector('.tm-grid__cell-spin')).toBeNull();
+  });
+
+  it('several matches are ambiguous by the SEARCH, with no resolver round trip', async () => {
+    // 'Al' names two agents. The resolver's answer for it would be "no
+    // match" — true of an exact-label lookup, useless to the user, and a
+    // round trip to say it.
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, 'Al');
+    await stable(fixture);
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    await stable(fixture);
+    expect(host.resolveCalls).toHaveLength(0);
+    expect(host.model()[0].agentId).toBeNull();
+    const cell = cellAt(scroller, 0, 1)!;
+    expect(cell.textContent!.trim()).toBe('Al');
+    expect(cell.classList.contains('tm-grid__cell--error')).toBe(true);
+  });
+
+  it('a unique EXACT-label match wins over the ranking when several rows match', async () => {
+    // 'Adam Brown' matches two rows and both ARE that label: still
+    // ambiguous. 'Bob Stone' matches one. The discriminator is identity,
+    // not the size of the result set.
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, 'Adam Brown');
+    await stable(fixture);
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    await stable(fixture);
+    expect(host.resolveCalls).toHaveLength(0);
+    expect(host.model()[0].agentId).toBeNull();
+    expect(cellAt(scroller, 0, 1)!.classList.contains('tm-grid__cell--error')).toBe(true);
+  });
+
+  it('an entity column with NO resolver still resolves typed text through its search', async () => {
+    // The otherId column has search but no resolver. Before the search
+    // rung, ANY typed text on it that the SYNCHRONOUS fast path could not
+    // catch was a definitive invalid input — including text its own search
+    // resolves uniquely a moment later.
+    const { fixture, host, scroller } = await setupEntity();
+    const pendingSearches: Array<(items: readonly Agent[]) => void> = [];
+    host.searchOverride.set((query) => {
+      host.searchCalls.push(query);
+      return new Promise((resolve) => pendingSearches.push(resolve));
+    });
+    await stable(fixture);
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'ArrowRight'); // (0,2) otherId
+    await stable(fixture);
+    keydown(scroller, 'A');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, 'lice Gre');
+    await stable(fixture);
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    expect(scroller.querySelector('.tm-grid__cell-spin')).not.toBeNull();
+    pendingSearches[pendingSearches.length - 1](searchAgents('lice Gre'));
+    await stable(fixture);
+    expect(host.model()[0].otherId).toBe(3);
+    expect(cellAt(scroller, 0, 2)!.classList.contains('tm-grid__cell--error')).toBe(false);
+  });
+
   it('unresolved commit text flows through the resolver — exactly one call, after teardown', async () => {
     const { fixture, host, scroller } = await setupEntity();
     await activateAgentCell(fixture, scroller);
     keydown(scroller, 'A');
     await stable(fixture);
-    typeInto(pickerInput(scroller)!, 'Adam Brown'); // two on-screen matches — no fast path
+    // A CODE: the name search finds nothing for it, so the editor's own
+    // search cannot decide the commit and the resolver — which may index
+    // codes, aliases, and inactive records the type-ahead never offers — is
+    // the authority.
+    typeInto(pickerInput(scroller)!, 'AG-0001');
     await stable(fixture);
     (document.getElementById('outside-entity') as HTMLInputElement).focus();
     await stable(fixture);
     // The editor tore down BEFORE the resolver ran; the cell shows pending.
     expect(pickerInput(scroller)).toBeNull();
     expect(host.resolveCalls).toHaveLength(1);
-    expect(host.resolveCalls[0].labels).toEqual(['Adam Brown']);
+    expect(host.resolveCalls[0].labels).toEqual(['AG-0001']);
     expect(scroller.querySelector('.tm-grid__cell-spin')).not.toBeNull();
     expect(host.model()[0].agentId).toBeNull(); // cleared while pending
 
-    host.resolveCalls[0].deferred.resolve(new Map([['Adam Brown', { value: 1 }]]));
+    host.resolveCalls[0].deferred.resolve(new Map([['AG-0001', { value: 1 }]]));
     await stable(fixture);
     expect(host.model()[0].agentId).toBe(1);
     expect(scroller.querySelector('.tm-grid__cell-spin')).toBeNull();
@@ -1557,7 +1704,7 @@ describe('tm-grid entity columns (built-in tm-entity-picker editor)', () => {
     await activateAgentCell(fixture, scroller);
     keydown(scroller, 'A');
     await stable(fixture);
-    typeInto(pickerInput(scroller)!, 'Adam Brown');
+    typeInto(pickerInput(scroller)!, 'AG-0001'); // a code: only the resolver knows it
     await stable(fixture);
     (document.getElementById('outside-entity') as HTMLInputElement).focus();
     await stable(fixture);
@@ -1568,7 +1715,7 @@ describe('tm-grid entity columns (built-in tm-entity-picker editor)', () => {
     expect(host.model()[0].agentId).toBe(5);
     expect(scroller.querySelector('.tm-grid__cell-spin')).toBeNull();
     // The late outcome is discarded.
-    host.resolveCalls[0].deferred.resolve(new Map([['Adam Brown', { value: 1 }]]));
+    host.resolveCalls[0].deferred.resolve(new Map([['AG-0001', { value: 1 }]]));
     await stable(fixture);
     expect(host.model()[0].agentId).toBe(5);
   });
@@ -1578,7 +1725,7 @@ describe('tm-grid entity columns (built-in tm-entity-picker editor)', () => {
     await activateAgentCell(fixture, scroller);
     keydown(scroller, 'A');
     await stable(fixture);
-    typeInto(pickerInput(scroller)!, 'Adam Brown');
+    typeInto(pickerInput(scroller)!, 'AG-0001'); // a code: only the resolver knows it
     await stable(fixture);
     (document.getElementById('outside-entity') as HTMLInputElement).focus();
     await stable(fixture);
@@ -1591,7 +1738,7 @@ describe('tm-grid entity columns (built-in tm-entity-picker editor)', () => {
     (document.getElementById('outside-entity') as HTMLInputElement).focus();
     await stable(fixture);
     expect(host.model()[0].agentId).toBe(4);
-    host.resolveCalls[0].deferred.resolve(new Map([['Adam Brown', { value: 1 }]]));
+    host.resolveCalls[0].deferred.resolve(new Map([['AG-0001', { value: 1 }]]));
     await stable(fixture);
     expect(host.model()[0].agentId).toBe(4); // the stale outcome never landed
   });

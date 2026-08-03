@@ -131,9 +131,8 @@ test('unresolved commit text resolves through the column resolver AFTER editor t
 }) => {
   await page.getByTestId('resolver-delay').fill('600');
   await activateCell(page, 2, 1);
-  await page.keyboard.press('A');
-  await page.keyboard.type('dam Brown'); // two on-screen matches — no fast path
-  await expect(activeOption(page)).toBeVisible();
+  await page.keyboard.press('Z');
+  await page.keyboard.type('ebra'); // the search finds nothing — the resolver's question
   const searchesBefore = await searchCalls(page);
   await activateCell(page, 2, 3); // click-elsewhere commit
   // The editor tore down while the resolution is still pending — the
@@ -144,9 +143,9 @@ test('unresolved commit text resolves through the column resolver AFTER editor t
   // No duplicate round-trip through the picker either.
   expect(await searchCalls(page)).toBe(searchesBefore);
 
-  // 'Adam Brown' is ambiguous: raw text kept, error-tinted, model cleared.
+  // 'Zebra' is neither a label nor a code: raw text kept, error-tinted.
   await expect(cell(page, 2, 1)).toHaveClass(/tm-grid__cell--error/);
-  expect(await cellText(page, 2, 1)).toBe('Adam Brown');
+  expect(await cellText(page, 2, 1)).toBe('Zebra');
   expect((await lines(page))[2].agentId).toBeNull();
   await expect(page.getByTestId('resolver-calls')).toHaveText('1');
 
@@ -157,17 +156,54 @@ test('unresolved commit text resolves through the column resolver AFTER editor t
   expect((await lines(page))[2].agentId).toBeNull();
 });
 
-test('a commit while the search is in flight resolves the raw text to a value', async ({
+test('a commit while the search is in flight is decided BY that search, not the resolver', async ({
   page,
 }) => {
-  await page.getByTestId('search-delay').fill('1500'); // the search never lands in time
-  await page.getByTestId('resolver-delay').fill('100');
+  // The search the user was already waiting for outlives the editor: the
+  // cell shows what they typed, the answer lands, and the column's resolver
+  // — which asks a different question — is never troubled.
+  await page.getByTestId('search-delay').fill('700');
   await activateCell(page, 2, 1);
   await page.keyboard.press('D');
-  await page.keyboard.type('ana Reed');
-  await activateCell(page, 2, 3); // commit with no on-screen results
+  await page.keyboard.type('ana Ree'); // unique, but nothing is on screen yet
+  await activateCell(page, 2, 3);
+  await expect(editor(page)).toHaveCount(0);
+  await expect(cell(page, 2, 1).locator('.tm-grid__cell-spin')).toBeVisible();
+  expect(await cellText(page, 2, 1)).toBe('Dana Ree');
   await expect.poll(async () => (await lines(page))[2].agentId).toBe(7);
   expect(await cellText(page, 2, 1)).toBe('Dana Reed');
+  await expect(page.getByTestId('resolver-calls')).toHaveText('0');
+});
+
+test('text the search cannot answer still reaches the resolver, which knows codes', async ({
+  page,
+}) => {
+  // A search miss is not proof of no match: the resolver is an identity
+  // lookup over labels AND codes, so it resolves what the name-search
+  // type-ahead never offers.
+  await page.getByTestId('resolver-delay').fill('100');
+  await activateCell(page, 2, 1);
+  await page.keyboard.press('A');
+  await page.keyboard.type('G-007');
+  await activateCell(page, 2, 3);
+  await expect(editor(page)).toHaveCount(0);
+  await expect(page.getByTestId('resolver-calls')).toHaveText('1');
+  await expect.poll(async () => (await lines(page))[2].agentId).toBe(7);
+  expect(await cellText(page, 2, 1)).toBe('Dana Reed');
+});
+
+test('several matches are ambiguous by the SEARCH, at no resolver cost', async ({ page }) => {
+  // 'Al' names two agents. An identity resolver would answer "no match" —
+  // true of itself, useless to the user, and a round trip to say it.
+  await activateCell(page, 2, 1);
+  await page.keyboard.press('A');
+  await page.keyboard.type('l');
+  await activateCell(page, 2, 3);
+  await expect(editor(page)).toHaveCount(0);
+  await expect(cell(page, 2, 1)).toHaveClass(/tm-grid__cell--error/);
+  expect(await cellText(page, 2, 1)).toBe('Al');
+  expect((await lines(page))[2].agentId).toBeNull();
+  await expect(page.getByTestId('resolver-calls')).toHaveText('0');
 });
 
 test('the unique on-screen result commits synchronously with zero resolver calls', async ({
@@ -208,17 +244,17 @@ test('a cell awaiting resolution shows the text being resolved, not an empty cel
 }) => {
   await page.getByTestId('resolver-delay').fill('700');
   await activateCell(page, 2, 1);
-  await page.keyboard.press('A');
-  await page.keyboard.type('dam Brown'); // ambiguous — the resolver path
+  await page.keyboard.press('Z');
+  await page.keyboard.type('ebra'); // no search match — the resolver path
   await activateCell(page, 2, 3);
   await expect(editor(page)).toHaveCount(0);
   // Mid-flight: the spinner AND what the user committed.
   await expect(cell(page, 2, 1).locator('.tm-grid__cell-spin')).toBeVisible();
-  expect(await cellText(page, 2, 1)).toBe('Adam Brown');
+  expect(await cellText(page, 2, 1)).toBe('Zebra');
   // The cell is not errored YET — the answer has not come back.
   await expect(cell(page, 2, 1)).not.toHaveClass(/tm-grid__cell--error/);
   await expect(cell(page, 2, 1)).toHaveClass(/tm-grid__cell--error/);
-  expect(await cellText(page, 2, 1)).toBe('Adam Brown');
+  expect(await cellText(page, 2, 1)).toBe('Zebra');
 });
 
 test('a no-resolver entity column records the invalid input directly', async ({ page }) => {

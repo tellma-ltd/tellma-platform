@@ -154,8 +154,11 @@ export class TmGridEngine<T = unknown> {
    * resolver (the outcome goes to `clipboard.applyResolution`), or `null`
    * when the sync rungs settled the commit.
    */
-  commitEditorLabel(text: string): TmGridResolutionRequest | null {
-    const pending = this.edit.commitLabel(text);
+  commitEditorLabel(
+    text: string,
+    opts?: { readonly deferToHost?: boolean },
+  ): TmGridResolutionRequest | null {
+    const pending = this.edit.commitLabel(text, opts);
     return pending === null ? null : this.clipboard.trackCommitResolution(pending, text);
   }
 

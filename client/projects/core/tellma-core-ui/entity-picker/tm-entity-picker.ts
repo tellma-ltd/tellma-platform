@@ -50,6 +50,7 @@ import {
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
 import type {
+  ɵTmEntityAdoptedSearch,
   TmEntityId,
   TmEntityPick,
   TmEntityPicked,
@@ -2182,6 +2183,51 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     const element = this.inputElement;
     element.value = text;
     element.setSelectionRange(text.length, text.length);
+  }
+
+  /**
+   * Hands the host the picker's own answer for `text` — the settled result
+   * set, or the request already in flight for it — so a cell commit can be
+   * decided by the search the user already paid for instead of by a second,
+   * differently-shaped round trip.
+   *
+   * The adopted request is DETACHED: it is removed from the picker's
+   * in-flight slot, so nothing the picker does from here on (a new search,
+   * the popup closing, a modal launch, its own destruction) aborts it. That
+   * is the point — the editor's lifetime ends at commit and the answer has
+   * to outlive it. Ownership passes with it: the returned `abort` is now
+   * the only handle, and a host that drops it leaks the request.
+   *
+   * Returns `null` when the picker has nothing for this exact text, which
+   * is the host's signal to fall back to its own resolution path.
+   * @internal
+   */
+  ɵadoptSearch(text: string): ɵTmEntityAdoptedSearch<T> | null {
+    // A query still sitting inside the coalescing window was going to be
+    // searched a few milliseconds from now. Leaving the cell early is not a
+    // reason to discard it and ask a different question instead, so the
+    // window is flushed rather than cancelled — the quiet period simply
+    // arrived sooner than the timer did.
+    if (this.pendingQuery === text) {
+      this.cancelDebounce();
+      this.executeSearch(text);
+    }
+    const settled = this.settledResult;
+    if (settled !== null && settled.query === text) {
+      const items = settled.items;
+      return { settled: Promise.resolve(items), abort: () => {} };
+    }
+    const inFlight = this.inFlight;
+    if (inFlight === null || inFlight.query !== text) {
+      return null;
+    }
+    this.inFlight = null; // detached — see above
+    return {
+      settled: inFlight.settled.then((outcome) =>
+        outcome === 'failed' ? ('failed' as const) : outcome.items,
+      ),
+      abort: () => inFlight.controller.abort(),
+    };
   }
 
   /** Whether the dropdown is open — a grid host's dropdown gate. */
