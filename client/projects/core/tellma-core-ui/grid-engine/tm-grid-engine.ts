@@ -148,11 +148,17 @@ export class TmGridEngine<T = unknown> {
 
   /**
    * Commits an editor's unresolved text through the label-resolution
-   * ladder (`TmGridEditState.commitLabel`) and — when the column has a
-   * resolver — registers the single-cell resolution with the clipboard's
-   * request machinery. Returns the request to run against the column's
-   * resolver (the outcome goes to `clipboard.applyResolution`), or `null`
-   * when the sync rungs settled the commit.
+   * ladder (`TmGridEditState.commitLabel`) and registers the single-cell
+   * resolution with the clipboard's request machinery. Returns the request
+   * still awaiting an answer, or `null` when the sync rungs settled the
+   * commit.
+   *
+   * WHO answers the request is the caller's business — the column's
+   * resolver, or anything else that can produce a `TmLabelResolution` for
+   * the label. However it is answered, the outcome goes to
+   * `clipboard.applyResolution`, which owns the stale-token discard, the
+   * pending mark, and the open history entry. `deferToHost` is passed
+   * through to `commitLabel`.
    */
   commitEditorLabel(
     text: string,

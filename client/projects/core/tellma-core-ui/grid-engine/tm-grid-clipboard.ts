@@ -493,10 +493,10 @@ export class TmGridClipboard<T = unknown> {
    * Registers a single-cell resolution for a label commit an editor made
    * (see `TmGridEditState.commitLabel`): the cell's sequence token is
    * bumped and its pending mark set — exactly the accounting a one-cell
-   * paste performs — and the returned request is run through the column's
-   * resolver, with the outcome handed to `applyResolution` (stale-token
+   * paste performs — and the returned request is handed back for the caller
+   * to answer, with the outcome given to `applyResolution` (stale-token
    * discard, undo-mid-pending, and the completion notice all reuse the
-   * paste machinery unchanged). The eventual write lands in the commit's
+   * paste machinery unchanged). This class does not care who answers it. The eventual write lands in the commit's
    * still-open history entry, so ONE undo restores the pre-edit state.
    */
   trackCommitResolution(commit: TmGridPendingLabelCommit, label: string): TmGridResolutionRequest {

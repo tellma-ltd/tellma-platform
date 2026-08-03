@@ -106,13 +106,12 @@ export class TmGridColumn<T = unknown, V = unknown> {
    * call per column per paste with the distinct unresolved labels.
    *
    * On `entity` columns it also resolves text a user TYPED into a cell and
-   * committed without picking from the dropdown — which, unlike a pasted
-   * label, is usually a partial query ("Alice" for "Alice Green"). An
-   * implementation that matches labels exactly will report `notFound` for
-   * such text even when the column's own `search` would have found exactly
-   * one entity; resolve by search-then-uniqueness if that is not what you
-   * want. (Text the picker already resolved from its own results never
-   * reaches here — it commits with no call at all.)
+   * committed without picking from the dropdown — but only what the
+   * column's own `search` could not settle. The grid consults that search
+   * first and commits a unique match itself, so what arrives here is text
+   * the search found nothing for, could not narrow, or failed on. Answer it
+   * as an IDENTITY question: this is where a code, an alias, or an inactive
+   * record the type-ahead never offers gets its chance.
    */
   readonly resolvePastedLabels = input<
     ((labels: string[], ctx: TmPasteContext) => Promise<ReadonlyMap<string, TmLabelResolution<V>>>) | undefined

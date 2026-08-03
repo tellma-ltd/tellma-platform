@@ -120,8 +120,10 @@ export interface ɵTmGridMountedEditor {
   setTextQuiet?(text: string): void;
   /**
    * Entity only: takes over the editor's own search for `text` — the set it
-   * already settled, or the request still in flight for it — so the grid
-   * can decide a typed commit from the search the user already paid for.
+   * already settled, the request still in flight for it, or the query still
+   * inside its coalescing window (flushed rather than dropped) — so the
+   * grid can decide a typed commit from the search the user already asked
+   * for.
    * The request is detached from the editor's lifetime, so the returned
    * `abort` becomes the only handle; returns `null` when the editor has
    * nothing for this exact text.

@@ -421,9 +421,12 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   /** The create page; absent ⇒ no Create… footer row. */
   readonly create = input<TmEntityPickerPage | undefined>(undefined);
   /**
-   * The edit page; absent ⇒ no Edit… footer row. The row shows only while a
-   * value is committed, opens the page on that value, and honors the page's
-   * `close(null)` by clearing the field (the entity no longer exists).
+   * The edit page; absent ⇒ no Edit… footer row. The row shows only while
+   * the field NAMES an entity — a committed value AND the text that goes
+   * with it, so a box the user has cleared stops offering to edit what it
+   * has stopped showing. It opens the page on that value and honors the
+   * page's `close(null)` by clearing the field (the entity no longer
+   * exists).
    */
   readonly edit = input<TmEntityPickerPage | undefined>(undefined);
   /** Overrides the localized Create… footer-row caption. */
@@ -843,8 +846,11 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       }
       this.lastCommitted = value;
       untracked(() => {
-        // A pin from a previous pick must not claim re-typed old text after
-        // an external write; a pending resolution must not land over one.
+        // Neither text record may outlive the value they describe: a pin
+        // from a previous pick must not claim re-typed old text after an
+        // external write, and the authored-text record must not tell the
+        // departure check that a value someone else replaced is still the
+        // one on screen. A pending resolution must not land over one either.
         // An in-flight SEARCH is deliberately left alone (its own token
         // still stands): the write may be the grid installing the value
         // right before seeding a search, and killing it here would strand
@@ -900,7 +906,9 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
         // a fail-fast Enter writes `null` through the parse, whose own
         // self-write marker stops the echo-guard effect from retiring it,
         // so the pin outlives the value it names. Re-typing its text would
-        // then resurrect that value with no search and no `picked`.
+        // then resurrect that value with no search and no `picked`. What
+        // keeps a PICK safe across this retirement is the separate
+        // `authoredText` record, which the parse never reads.
         this.displayOverride = null;
         if (focused || resolving) {
           return;
@@ -1481,10 +1489,11 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   // ---- Resolution (§5.2) — form path only, never in a cell ----
   /**
    * Maps the current text to at most one entity, reusing the freshest
-   * search: on-screen results for exactly this text (synchronous, no
+   * search: results already settled for exactly this text (synchronous, no
    * request), else the in-flight request (awaited, NOT aborted), else one
-   * fresh request. Exactly one → auto-pick; zero/many/failed → keep the
-   * text, write `null`, raise the specific localized error.
+   * fresh request. Exactly one, from a set that is not truncated →
+   * auto-pick; zero, many, a capped page, or a failure → keep the text,
+   * write `null`, raise the specific localized error.
    */
   private async resolveText(text: string, keepPopup: boolean): Promise<void> {
     // Take over from a resolution already pending: its answer is discarded
@@ -1673,19 +1682,28 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
 
   /**
    * The capture-phase keyboard layer on the host — the only reliable
-   * pre-emption point against aria's own input listeners:
+   * pre-emption point against aria's own input listeners. Five cases, all
+   * version-locked to aria's current behavior and each guarded by a test:
    *
-   * - Grid mode, dropdown closed, plain vertical arrows: aria would
-   *   unconditionally expand on ArrowDown (no opt-out input exists), but in
-   *   a grid plain arrows belong to the grid's commit-and-move model — the
-   *   original is stopped and an identical clone is re-dispatched ABOVE the
-   *   host so it reaches the grid unconsumed.
+   * - Readonly, plain vertical arrows: aria expands the collapsed popup on
+   *   ArrowDown and is stood down only by its OWN `disabled` input, which
+   *   this control does not use for readonly (it would announce the value
+   *   as unavailable). Swallowed here instead.
+   * - Grid mode, dropdown closed, plain vertical arrows: same unconditional
+   *   expand, but in a grid plain arrows belong to the grid's
+   *   commit-and-move model — the original is stopped and an identical
+   *   clone is re-dispatched ABOVE the host so it reaches the grid
+   *   unconsumed, with the grid's verdict mirrored back onto the original.
    *   TODO: replace this re-dispatch with a plain pass-through once
    *   @angular/aria ships an input to suppress the collapsed
    *   ArrowDown-expands behavior.
+   * - Grid mode, dropdown open, Enter with no highlight: the grid's commit,
+   *   which aria would consume for its own empty relay.
    * - Dropdown open, plain Home/End: aria's relay would consume them and
    *   move the highlight; the APG editable-combobox model gives them to the
    *   CARET, so the relay is suppressed and the native caret motion runs.
+   * - Dropdown open, ArrowUp from no highlight: must reach the LAST option,
+   *   where aria's own stepping lands second-to-last.
    */
   private readonly onCaptureKeydown = (event: KeyboardEvent): void => {
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
@@ -1736,7 +1754,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       // ArrowUp with nothing highlighted must wrap to the LAST option.
       // aria's prev() steps from an active index of -1, so it lands on the
       // second-to-last row instead — skipping whatever sits at the bottom
-      // (Create…, or Edit… when a value is committed).
+      // (Create…, or Edit… while the field names an entity).
       const listbox = untracked(() => this.listbox());
       if (listbox !== undefined) {
         event.stopPropagation();
@@ -2199,8 +2217,8 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * The committed-text view the grid commits by: `null` while the VALUE
    * channel is authoritative (the text is picker-authored canonical text or
    * the pristine display of the set value — the grid then commits the id),
-   * else the raw unresolved text (the grid resolves it through the column's
-   * label-resolution pipeline).
+   * else the raw unresolved text, which the host resolves — through this
+   * control's own adopted search first, then the column's label resolver.
    */
   readonly text: SignalLike<string | null> = () => {
     const raw = untracked(this.rawText);
@@ -2216,10 +2234,11 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   };
 
   /**
-   * Accepts the edit: in a cell, a fresh unique on-screen result for the
-   * current unresolved text auto-picks synchronously first (no request —
-   * anything else is the grid's resolver's job), then the value baseline
-   * moves and the dropdown closes.
+   * Accepts the edit: in a cell, a unique result already settled for the
+   * current unresolved text auto-picks synchronously first (no request),
+   * then the value baseline moves and the dropdown closes. Anything else is
+   * the HOST's question — it adopts this control's search for that text and
+   * decides from it, falling back to the column's resolver.
    */
   commit(): void {
     if (this.cellHost !== null) {

@@ -218,8 +218,8 @@ export class TmGridEditState<T = unknown> {
         return null;
       }
     }
-    // (3) No resolver: a definitive invalid input — the raw text is never
-    // written as the value.
+    // (3) No resolver and no host rung to try: a definitive invalid input
+    // — the raw text is never written as the value.
     if (!column.hasResolver && opts?.deferToHost !== true) {
       this.commitInternal((rowId, cell) =>
         this.buildWrite(rowId, cell, column.clearedValue, { rawText: text, reason: 'parse' }),

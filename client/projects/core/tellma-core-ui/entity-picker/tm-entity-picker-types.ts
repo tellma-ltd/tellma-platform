@@ -21,8 +21,12 @@ export type TmEntitySearchResult<T> =
 /**
  * The consumer's search facility. Called with the query text and an
  * `AbortSignal` that fires when the request is superseded, the dropdown
- * closes, or the picker is destroyed. May return the results synchronously
- * (in-memory/cache source — renders instantly, no spinner) or as a Promise.
+ * closes, or the picker is destroyed — unless a host has taken the request
+ * over (a grid cell does, so the answer can outlive the editor), in which
+ * case the host aborts it instead and the guarantee is unchanged: the
+ * signal fires when nobody is left to read the answer. May return the
+ * results synchronously (in-memory/cache source — renders instantly, no
+ * spinner) or as a Promise.
  * The implementation is expected to impose a result limit; the picker
  * renders what it gets, in order, without filtering or re-ranking.
  */
