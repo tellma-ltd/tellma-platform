@@ -43,6 +43,7 @@ import {
 } from '@tellma/core-ui';
 import { TM_CHECKBOX_CELL_DISPLAY } from '@tellma/core-ui/checkbox';
 import type {
+  ɵTmEntityAdoptedSearch,
   TmEntityId,
   TmEntityPickerPage,
   TmEntitySearchFn,
@@ -89,11 +90,7 @@ import type { TmGridStateHandle, TmGridStateStore } from '../tm-grid-state-store
 import { ɵTmGridAnnouncements } from './announcements';
 import { ɵTmGridClipboardDom, ɵtmGridResolvePasteSource } from './clipboard-dom';
 import { ɵTmGridColumnResize } from './column-resize';
-import {
-  ɵTmGridEditorSession,
-  type ɵTmGridEditorMountConfig,
-  type ɵTmGridMountedEditor,
-} from './editor-session';
+import { ɵTmGridEditorSession, type ɵTmGridEditorMountConfig } from './editor-session';
 import { ɵTmGridFieldWriter, ɵtmChildField, ɵtmRowField } from './field-writer';
 import {
   tmResolveEditingKey,
@@ -154,7 +151,7 @@ const NO_VALUE_BASELINE: unique symbol = Symbol('tmNoValueBaseline');
  * A search taken over from an entity editor at commit time. Detached from
  * the editor's lifetime, so whoever holds it owns aborting it.
  */
-type AdoptedSearch = NonNullable<ReturnType<NonNullable<ɵTmGridMountedEditor['adoptSearch']>>>;
+type AdoptedSearch = ɵTmEntityAdoptedSearch<unknown>;
 
 /** What an adopted search settles to. */
 type AdoptedResult = Awaited<AdoptedSearch['settled']>;
@@ -3379,7 +3376,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       column.entitySearch !== undefined &&
       (column.entityItemId === undefined || column.entityItemLabel === undefined)
     ) {
-      if (isDevMode()) {
+      // Gated on cell editability exactly like the no-editor guard above: a
+      // cell that could never have opened an editor must not be the thing
+      // that reports the column's misconfiguration.
+      if (isDevMode() && untracked(() => engine.model.isCellEditable(cell))) {
         throw new Error(
           `tm-grid: column "${column.id}" binds [search] without [itemId]/[itemLabel] — ` +
             `both are required alongside [search] for the built-in tm-entity-picker editor.`,
@@ -3421,8 +3421,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       };
     } else if (column.type === 'entity') {
       const format = column.format;
-      // The session row snapshot: `undefined` on the placeholder row.
-      const row: T | undefined = view?.row;
+      // The row is addressed by IDENTITY, not captured: an immutable model
+      // replaces the row object on every write, so a snapshot taken here
+      // would render the committed id through the row as it stood when the
+      // editor opened — and would pin that object for the editor's whole
+      // lifetime. `null` on the placeholder row, which has no identity yet.
+      const rowId: TmRowId | null = view?.id ?? null;
       config = {
         kind: 'entity',
         label: header,
@@ -3442,6 +3446,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           format === undefined
             ? undefined
             : (id: unknown) => {
+                const row = rowId === null ? undefined : engine.model.rowById(rowId);
                 if (row === undefined) {
                   return null;
                 }
@@ -3720,6 +3725,16 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         const verdict = this.decideFromSearch(outcome, text, column);
         if (verdict.decided !== undefined) {
           engine.clipboard.applyResolution(request.id, new Map([[text, verdict.decided]]));
+          return;
+        }
+        if (outcome === 'failed' && column.resolveLabels === undefined) {
+          // The search FAILED and there is no identity authority to ask
+          // instead — so nothing ever examined this text. Left to
+          // `runResolutions`, the unanswered label would default to the
+          // definitive `notFound` ("there is no Alice"), which is a verdict
+          // no one reached; a dropped round trip is retryable and must say
+          // so, exactly as a REJECTED resolver does.
+          engine.clipboard.applyResolution(request.id, new Map(), { failed: true });
           return;
         }
         // The search could not settle it. The SAME request carries on to

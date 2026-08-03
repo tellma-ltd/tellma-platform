@@ -100,8 +100,12 @@
   padding: var(--space-1);
   list-style: none;
   /* Scroll lives on the LISTBOX (role=listbox): keyboard users scroll it
-     via active-descendant navigation + scrollActiveItemIntoView. */
-  max-block-size: var(--entity-picker-panel-max-height);
+     via active-descendant navigation + scrollActiveItemIntoView. The cap
+     itself is NOT set here — the component fits it to the room the anchor
+     has and writes the result as an inline max-block-size, which would win
+     over any rule at this specificity anyway. The
+     --entity-picker-panel-max-height token is that fit's ceiling and is
+     read from the component. */
   overflow: auto;
   /* stylelint-disable-next-line declaration-property-value-disallowed-list --
      focus stays on the input (activedescendant model); the listbox itself

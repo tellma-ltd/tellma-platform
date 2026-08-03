@@ -524,18 +524,7 @@ export class TmGridClipboard<T = unknown> {
     };
     this.outstanding.set(request.id, request);
     // Undo while the resolution is pending aborts it and clears the mark.
-    commit.handle.onCancel(() => {
-      for (const [id, outstanding] of [...this.outstanding]) {
-        if (outstanding.paste === paste) {
-          outstanding.controller.abort();
-          for (const awaiting of outstanding.cells) {
-            annotations.setPending(awaiting.rowId, awaiting.columnId, false);
-          }
-          this.outstanding.delete(id);
-        }
-      }
-      paste.outstanding = 0;
-    });
+    commit.handle.onCancel(() => this.withdrawRequests(paste));
     // A typed commit is local: no source locale/calendar/tenant metadata.
     return {
       id: request.id,
@@ -596,6 +585,27 @@ export class TmGridClipboard<T = unknown> {
       }
     }
     this.options.history.runCellWrites('fillDown', writes);
+  }
+
+  /**
+   * Withdraws every request still outstanding for one open entry: aborts
+   * it, clears the pending marks it owns, and drops it, so a late outcome
+   * finds nothing to apply. The undo of a paste and the undo of an editor
+   * label commit both come through here — the entry is being rolled back
+   * either way, and the withdrawal protocol must not drift between them.
+   * The handle is NOT finalized: undo owns that.
+   */
+  private withdrawRequests(paste: OpenPaste): void {
+    for (const [id, request] of [...this.outstanding]) {
+      if (request.paste === paste) {
+        request.controller.abort();
+        for (const cell of request.cells) {
+          this.options.annotations.setPending(cell.rowId, cell.columnId, false);
+        }
+        this.outstanding.delete(id);
+      }
+    }
+    paste.outstanding = 0;
   }
 
   /** Aborts every outstanding resolution (dispose, mode flips). */
@@ -1054,18 +1064,7 @@ export class TmGridClipboard<T = unknown> {
           },
         });
       }
-      handle.onCancel(() => {
-        for (const [id, request] of [...this.outstanding]) {
-          if (request.paste === paste) {
-            request.controller.abort();
-            for (const cell of request.cells) {
-              this.options.annotations.setPending(cell.rowId, cell.columnId, false);
-            }
-            this.outstanding.delete(id);
-          }
-        }
-        paste.outstanding = 0;
-      });
+      handle.onCancel(() => this.withdrawRequests(paste));
     }
 
     // Select the pasted block (Excel/Sheets behavior). A full-column paste thus

@@ -412,8 +412,8 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   readonly itemLabel = input.required<(item: T) => string>();
   /**
    * Resolves a committed id to display text (reactive, like `itemLabel`);
-   * `null` defers to the pick-time label memo, then to `String(id)` with a
-   * dev-mode warning.
+   * `null` — or the empty string, which is not a label — defers to the
+   * pick-time label memo, then to `String(id)` with a dev-mode warning.
    */
   readonly displayWith = input<((id: Id) => string | null) | undefined>(undefined);
   /** The advanced-search page; absent ⇒ no magnifier and no footer row. */
@@ -679,11 +679,10 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * arrive, shift, and re-order under the user's cursor a moment later —
    * stay out of it. They return the instant the state settles (results,
    * empty, or failure), so "no results → Create…" is still one arrow away.
-   *
-   * This is a deliberate departure from §4.1's "they render in every popup
-   * state — results, empty, error, loading": the loading exclusion was
-   * requested against the working build, after the spec froze, and it wins.
    */
+  // The loading exclusion is a deliberate departure from §4.1's "they render
+  // in every popup state — results, empty, error, loading": it was requested
+  // against the working build, after the spec froze, and it wins.
   protected readonly showsFooterRows = computed(
     () =>
       this.statusKind() !== 'loading' &&
@@ -1056,7 +1055,11 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     const displayWith = this.displayWith();
     if (displayWith !== undefined) {
       const text = displayWith(id);
-      if (text !== null) {
+      // The empty string is not a label. Taking it as one would blank a
+      // field that holds a value — and empty text is this control's own
+      // clear-the-value gesture, so the next departure would commit the
+      // clear. It defers to the memo exactly as `null` does.
+      if (text !== null && text !== '') {
         return text;
       }
     }
@@ -1205,7 +1208,10 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     this.memo.set(id, label);
     this.resolutionFailure.set(null);
     this.resolving.set(false);
-    const text = untracked(() => this.displayWith()?.(id) ?? null) ?? label;
+    // Same rule as `displayFor`: `null` AND the empty string defer to the
+    // label the pick itself carries.
+    const resolved = untracked(() => this.displayWith()?.(id) ?? null);
+    const text = resolved === null || resolved === '' ? label : resolved;
     this.setCanonicalText(text, id);
     const emitActivate =
       this.cellHost !== null && source !== 'auto' && opts?.suppressCellActivate !== true;
@@ -1343,20 +1349,51 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     );
   }
 
-  /** Normalizes both result forms to the object form. */
+  /**
+   * Normalizes both result forms to the object form — the ONE funnel every
+   * result set passes through (rendering, resolution, and the host's adopted
+   * search alike), which is why the id de-duplication belongs here too.
+   */
   private normalizeResult(result: TmEntitySearchResult<T>): NormalizedResult<T> {
     if (Array.isArray(result)) {
-      return { items: result as readonly T[], hasMore: false };
+      return { items: this.distinctById(result as readonly T[]), hasMore: false };
     }
     // Array.isArray does not narrow the readonly-array member out of the
     // union in the false branch, so the object form is asserted.
     const objectForm = result as { readonly items: readonly T[]; readonly hasMore?: boolean };
-    return { items: objectForm.items, hasMore: objectForm.hasMore === true };
+    return { items: this.distinctById(objectForm.items), hasMore: objectForm.hasMore === true };
+  }
+
+  /**
+   * Drops repeated ids, keeping the first occurrence. The search contract
+   * does not promise distinct ids — a joined or unioned query can fan one
+   * entity out across rows — while the listbox tracks rows BY id, and
+   * duplicate track keys abort the render of the whole dropdown. Dropping
+   * the repeat is the only rendering that can be right: the rows name the
+   * same entity, so a pick on either commits the same value — and it is
+   * also the only honest COUNT, since two rows for one entity make the text
+   * that found them unique, not ambiguous.
+   */
+  private distinctById(items: readonly T[]): readonly T[] {
+    if (items.length < 2) {
+      return items;
+    }
+    const itemId = untracked(this.itemId);
+    const seen = new Set<Id>();
+    const distinct: T[] = [];
+    for (const item of items) {
+      const id = itemId(item);
+      if (!seen.has(id)) {
+        seen.add(id);
+        distinct.push(item);
+      }
+    }
+    return distinct.length === items.length ? items : distinct;
   }
 
   /** Renders a fresh result set and schedules the highlight protocol. */
   private applyResults(query: string, result: NormalizedResult<T>): void {
-    const items = result.items;
+    const items = result.items; // already de-duplicated by `normalizeResult`
     if (isDevMode() && items.length > 200) {
       console.warn(
         `tm-entity-picker: the search returned ${items.length} results — the search ` +
@@ -1441,6 +1478,14 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     // round trip this resolution just asked for.
     const reused =
       this.inFlight !== null && this.inFlight.query === text ? this.inFlight.controller : null;
+    if (this.inFlight !== null && reused === null) {
+      // A search for a DIFFERENT query is nobody's input: this resolution
+      // asks its own question instead, and the epoch bump below would leave
+      // that request answering into the void. The consumer was promised the
+      // signal fires when a request is superseded — this is that moment.
+      this.inFlight.controller.abort();
+      this.inFlight = null;
+    }
     ++this.resolutionEpoch;
     if (this.resolutionController !== null && this.resolutionController !== reused) {
       this.resolutionController.abort();
@@ -1510,7 +1555,11 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       }
       return;
     }
-    if (outcome.items.length === 1) {
+    // A TRUNCATED set can be trusted about what it contains and never about
+    // what it does not: the second entity that makes this text ambiguous may
+    // be sitting past the server's cap. Auto-resolution needs the whole
+    // answer, so a capped page falls through to `ambiguous` below.
+    if (outcome.items.length === 1 && !outcome.hasMore) {
       const item = outcome.items[0];
       this.resolving.set(false);
       this.applyPick(
@@ -1640,7 +1689,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       (event.key === 'ArrowDown' || event.key === 'ArrowUp')
     ) {
       event.stopPropagation();
-      this.hostElement.parentElement?.dispatchEvent(new KeyboardEvent(event.type, event));
+      this.redispatchAbove(event);
       return;
     }
     if (
@@ -1655,7 +1704,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       // hand the grid a clean clone.
       event.stopPropagation();
       this.expanded.set(false);
-      this.hostElement.parentElement?.dispatchEvent(new KeyboardEvent(event.type, event));
+      this.redispatchAbove(event);
       return;
     }
     if (isExpanded && (event.key === 'Home' || event.key === 'End')) {
@@ -1682,6 +1731,24 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       }
     }
   };
+
+  /**
+   * Re-dispatches a stopped keystroke ABOVE the host so it reaches the grid
+   * unconsumed, then mirrors the grid's verdict back onto the ORIGINAL: the
+   * grid can only `preventDefault` the clone, and the original — still
+   * targeting the input — keeps its default action otherwise. For Enter
+   * inside a `<form>` that default is implicit submission, which would
+   * navigate the page out from under the edit.
+   */
+  private redispatchAbove(event: KeyboardEvent): void {
+    const parent = this.hostElement.parentElement;
+    if (parent === null) {
+      return;
+    }
+    if (!parent.dispatchEvent(new KeyboardEvent(event.type, event))) {
+      event.preventDefault();
+    }
+  }
 
   /** Mirrors keystrokes into the raw channel and queues the search. */
   protected onInput(): void {
@@ -2018,15 +2085,24 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
           ? 'entityPicker.createTitle'
           : 'entityPicker.editTitle';
     const size: TmModalSize = config.size ?? (source === 'advanced' ? 'lg' : 'md');
-    const ref = this.modal.open<TmEntityPick<Id, T> | null>(config.component, {
-      size,
-      title: config.title ?? untracked(this.translate(titleKey)),
-      data,
-    });
-    this.openModal = ref;
-    const result = await ref.closed;
-    this.openModal = null;
-    this.suppressBlur = false;
+    // The flag is released in a `finally`: a page whose construction throws
+    // takes the throw out through `modal.open`, and a latched `suppressBlur`
+    // would retire this control's departure handling for good — no touch
+    // reporting, no empty commit, no blur resolution, and a reformat effect
+    // stuck standing down for a field it still believes is focused.
+    let result: Awaited<TmModalRef<TmEntityPick<Id, T> | null>['closed']>;
+    try {
+      const ref = this.modal.open<TmEntityPick<Id, T> | null>(config.component, {
+        size,
+        title: config.title ?? untracked(this.translate(titleKey)),
+        data,
+      });
+      this.openModal = ref;
+      result = await ref.closed;
+    } finally {
+      this.openModal = null;
+      this.suppressBlur = false;
+    }
     if (this.destroyed) {
       return;
     }
@@ -2125,8 +2201,19 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
         // The last SETTLED set for exactly this text, whether or not the
         // popup still shows it: dismissing the list with Escape closes a
         // dropdown, it does not un-fetch what the user already saw.
+        //
+        // A TRUNCATED page never decides it: the duplicate that would make
+        // this text ambiguous may be sitting past the server's cap, and this
+        // fast path runs BEFORE the host's own verdict — auto-picking here
+        // would settle the commit off a partial answer and the host would
+        // never get to refuse it.
         const settled = this.settledResult;
-        if (settled !== null && settled.query === raw && settled.items.length === 1) {
+        if (
+          settled !== null &&
+          settled.query === raw &&
+          settled.items.length === 1 &&
+          !settled.hasMore
+        ) {
           const item = settled.items[0];
           this.applyPick(
             untracked(this.itemId)(item),
@@ -2190,6 +2277,19 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   }
 
   /**
+   * The already-settled answer for exactly `text`, wrapped as an adopted
+   * search with a no-op abort — there is no request left to cancel.
+   */
+  private settledFor(text: string): ɵTmEntityAdoptedSearch<T> | null {
+    const settled = this.settledResult;
+    if (settled === null || settled.query !== text) {
+      return null;
+    }
+    const answer = { items: settled.items, hasMore: settled.hasMore };
+    return { settled: Promise.resolve(answer), abort: () => {} };
+  }
+
+  /**
    * Hands the host the picker's own answer for `text` — the settled result
    * set, or the request already in flight for it — so a cell commit can be
    * decided by the search the user already paid for instead of by a second,
@@ -2212,16 +2312,23 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     // reason to discard it and ask a different question instead, so the
     // window is flushed rather than cancelled — the quiet period simply
     // arrived sooner than the timer did.
-    const settled = this.settledResult;
-    if (settled !== null && settled.query === text) {
-      // Checked BEFORE the window flush below: an answer already in hand
-      // must not send a fresh request that nothing will ever read.
-      const answer = { items: settled.items, hasMore: settled.hasMore };
-      return { settled: Promise.resolve(answer), abort: () => {} };
+    //
+    // Checked BEFORE the window flush below: an answer already in hand must
+    // not send a fresh request that nothing will ever read. Checked AGAIN
+    // after it, because a synchronous source (a warm cache) settles inside
+    // `executeSearch` and leaves nothing in the in-flight slot to adopt —
+    // the answer would be sitting right here and get thrown away.
+    const inHand = this.settledFor(text);
+    if (inHand !== null) {
+      return inHand;
     }
     if (this.pendingQuery === text) {
       this.cancelDebounce();
       this.executeSearch(text);
+      const flushed = this.settledFor(text);
+      if (flushed !== null) {
+        return flushed;
+      }
     }
     const inFlight = this.inFlight;
     if (inFlight === null || inFlight.query !== text) {
