@@ -3496,9 +3496,15 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       // IME opens UNSEEDED: the composition itself supplies the content.
       this.editorOpenText = '';
       if (mounted.kind === 'entity') {
-        // The committed id still mirrors into the (empty-texted) dropdown.
+        // The committed id is installed even though the text is empty: the
+        // Edit… row still targets it, and an abandoned composition must
+        // leave the cell exactly as it was — which on the new-row
+        // placeholder means not materializing a row at all, so the value
+        // baseline is recorded here as well. (The dropdown's own selection
+        // mirror follows the TEXT, so it shows nothing until one is typed.)
         editor.value.set(valueAtOpen);
         mounted.setTextQuiet?.('');
+        this.editorOpenValue = valueAtOpen;
       }
     } else if (mounted.kind === 'enum') {
       editor.value.set(valueAtOpen);
@@ -3630,7 +3636,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         // survives the teardown that follows — and every early exit past
         // this point has to abort it, or the request leaks.
         const pending = untracked(() => mounted.editor.text());
-        adopted = pending === null ? null : (mounted.adoptSearch?.(pending) ?? null);
+        // Text the session opened with is not a commit to resolve, so
+        // adopting for it would issue a request only to abort it below.
+        adopted =
+          pending === null || pending === this.editorOpenText
+            ? null
+            : (mounted.adoptSearch?.(pending) ?? null);
         // The picker's synchronous fast path: a fresh unique result for the
         // current unresolved text auto-picks (no request) before the
         // channels are read. PULLED here — a push through the activation

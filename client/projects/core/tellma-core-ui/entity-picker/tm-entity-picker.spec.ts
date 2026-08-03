@@ -388,6 +388,11 @@ describe('tm-entity-picker', () => {
       expect(input.getAttribute('aria-disabled')).toBe('false');
       input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await press(fixture, input, 'ArrowDown', { altKey: true });
+      // PLAIN arrows too: aria opens the collapsed popup on ArrowDown with
+      // no opt-out input, and this control does not use aria's `disabled`
+      // to stand that down — so the keyboard layer has to.
+      await press(fixture, input, 'ArrowDown');
+      await press(fixture, input, 'ArrowUp');
       expect(panel()).toBeNull();
       expect(host.calls).toHaveLength(0);
     });
@@ -821,12 +826,11 @@ describe('tm-entity-picker', () => {
       expect(closedEnter.defaultPrevented).toBe(false);
     });
 
-    it('a Tab commit is not undone by the blur it triggers', async () => {
-      // Tab's focus move is the keydown's own default action: it runs in the
-      // same task, BEFORE aria has mirrored the committed label into the
-      // native input. A departure that read the DOM there would find the
-      // query that is now stale, re-resolve it — 'Adam' names two suppliers
-      // — and write null over the row the user just took.
+    it('a Tab commit writes the id, the label, and exactly one picked', async () => {
+      // That the commit survives the blur Tab triggers is pinned by e2e,
+      // which is where the two text sources can actually diverge: this
+      // fixture settles between the keydown and the departure, so aria has
+      // already mirrored the label into the native input by then.
       const { fixture, host, input, outside } = await setup();
       host.search.set(syncSearch().fn);
       host.displayWith.set((id) => DIRECTORY.find((a) => a.id === id)?.name ?? null);
@@ -1283,16 +1287,18 @@ describe('tm-entity-picker', () => {
       // open above an input that no longer receives keystrokes.
       const { fixture, host, input } = await setup();
       host.search.set(syncSearch().fn);
+      host.displayWith.set((id) => DIRECTORY.find((a) => a.id === id)?.name ?? null);
       await settle(fixture);
-      await type(fixture, input, 'Al');
+      await type(fixture, input, 'Alice Gr');
       const listbox = panel()?.querySelector('.tm-entity-picker__listbox') as HTMLElement;
       expect(listbox.tabIndex).toBe(-1);
       listbox.focus();
       await settle(fixture);
       expect(document.activeElement).toBe(input);
       expect(panel()).not.toBeNull();
-      // …and the visit's typing is still remembered: leaving now resolves.
-      await type(fixture, input, 'Alice Gr');
+      // …and the typing that happened BEFORE the bounce is still remembered:
+      // handing focus back is not a fresh visit, so leaving now still
+      // resolves what was typed.
       input.blur();
       await settle(fixture);
       expect(host.model().agentId).toBe(3);
@@ -1315,6 +1321,54 @@ describe('tm-entity-picker', () => {
       await sleep(10);
       expect(host.model().agentId).toBeNull();
       expect(host.picks).toHaveLength(0);
+    });
+
+    it('a pick survives a display context that moves before the user leaves', async () => {
+      // The recommended pattern: the host warms a store from `picked`, so
+      // `displayWith` starts formatting the picked id differently from the
+      // row label it was picked BY. Nothing the user did changed, but the
+      // pristine test compares against the CURRENT display text and fails —
+      // and the text they are looking at is the picker's own.
+      const { fixture, host, input, outside } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      await type(fixture, input, 'Adam');
+      expect(optionRows()).toHaveLength(2); // 'Adam Brown' twice: re-resolving is ambiguous
+      optionRows()[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      expect(host.model().agentId).toBe(1);
+
+      host.displayWith.set((id) => (id === 1 ? 'A-001 — Adam Brown' : null));
+      await settle(fixture);
+      expect(input.value).toBe('Adam Brown'); // the focused field is not rewritten
+
+      outside.focus();
+      await settle(fixture);
+      expect(host.model().agentId).toBe(1); // survived
+      expect(host.picks).toHaveLength(1); // ONE gesture, ONE picked
+      expect(errorText(fixture)).toBe('');
+    });
+
+    it('a blur failure does not paint or announce into a popup that is leaving', async () => {
+      // The status area belongs to a popup the user can still see. A
+      // departure closes it, so painting and announcing there duplicates the
+      // field's own error into a surface nobody is looking at — and the
+      // popup is still technically open at that instant, because aria's
+      // close-on-blur effect has not flushed yet.
+      const { fixture, host, input, outside } = await setup();
+      const search = manualSearch();
+      host.search.set(search.fn);
+      await settle(fixture);
+      await type(fixture, input, 'Alice Gr');
+      const announcedBefore = liveText(fixture);
+      expect(panel()).not.toBeNull();
+
+      outside.focus(); // the blur resolution adopts request 0…
+      search.responders[0].reject(new Error('boom')); // …which fails in the SAME task
+      await settle(fixture);
+      await settle(fixture);
+      expect(errorText(fixture)).toContain('Search failed'); // the field reports it
+      expect(liveText(fixture)).toBe(announcedBefore); // the picker does not
     });
 
     it('a pick that was later cleared cannot be resurrected by re-typing its label', async () => {

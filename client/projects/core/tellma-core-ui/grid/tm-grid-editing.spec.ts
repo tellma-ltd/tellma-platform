@@ -1324,6 +1324,30 @@ describe('tm-grid entity columns (built-in tm-entity-picker editor)', () => {
     expect(host.model()).toHaveLength(2);
   });
 
+  it('an abandoned IME composition on the placeholder materializes nothing either', async () => {
+    // The IME opens the editor UNSEEDED, so it records no text baseline —
+    // which left the value baseline unset too, and the phantom-row gate saw
+    // an edit where there was none.
+    const { fixture, host, scroller } = await setupEntity();
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'ArrowDown');
+    keydown(scroller, 'ArrowDown'); // (2,0) = the placeholder row
+    keydown(scroller, 'ArrowRight'); // its agent cell
+    await stable(fixture);
+    expect(host.model()).toHaveLength(2);
+
+    keydown(scroller, 'Process', { isComposing: true }); // the IME open path
+    await stable(fixture);
+    expect(pickerInput(scroller)).not.toBeNull();
+    expect(pickerInput(scroller)!.value).toBe(''); // unseeded
+    // Abandoned by leaving, which COMMITS — Escape would cancel and never
+    // reach the commit path this guards.
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    await stable(fixture);
+    expect(host.model()).toHaveLength(2); // no phantom row
+  });
+
   it('F2 opens the picker quietly on the display text; a pristine Enter commits nothing', async () => {
     const { fixture, host, scroller } = await setupEntity();
     await activateAgentCell(fixture, scroller);
@@ -1606,10 +1630,33 @@ describe('tm-grid entity columns (built-in tm-entity-picker editor)', () => {
     expect(host.resolveCalls).toHaveLength(1); // handed to the identity authority
   });
 
-  it('a unique EXACT-label match wins over the ranking when several rows match', async () => {
-    // 'Adam Brown' matches two rows and both ARE that label: still
-    // ambiguous. 'Bob Stone' matches one. The discriminator is identity,
-    // not the size of the result set.
+  it('a unique EXACT-label match is taken even when the search returned several', async () => {
+    // The discriminator is identity, not the size of the result set: among
+    // rows the query merely matched, the one the text NAMES is the answer —
+    // and it need not be the one the search ranked first.
+    const { fixture, host, scroller } = await setupEntity();
+    host.searchOverride.set((query) => {
+      host.searchCalls.push(query);
+      // Alan Grey ranks first; Alice Green is the exact-label match.
+      return query === 'Alice Green' ? [AGENTS[3], AGENTS[2]] : searchAgents(query);
+    });
+    await stable(fixture);
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, 'Alice Green');
+    await stable(fixture);
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(3); // NOT 4, the first row
+    expect(host.resolveCalls).toHaveLength(0);
+    expect(cellAt(scroller, 0, 1)!.classList.contains('tm-grid__cell--error')).toBe(false);
+  });
+
+  it('several rows all CARRYING the typed label are ambiguous outright', async () => {
+    // Two agents really are named 'Adam Brown'. No identity lookup can undo
+    // that, so the resolver is not asked.
     const { fixture, host, scroller } = await setupEntity();
     await activateAgentCell(fixture, scroller);
     keydown(scroller, 'A');

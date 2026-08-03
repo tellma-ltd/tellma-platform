@@ -475,6 +475,20 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   private selfWrite: { readonly value: Id | null } | null = null;
   /** Picker-authored text with its known value; see `setCanonicalText`. */
   private displayOverride: { readonly text: string; readonly value: Id | null } | null = null;
+  /**
+   * The last text this control AUTHORED, and the value it authored it for.
+   *
+   * Deliberately separate from `displayOverride`, which answers a different
+   * question for a different reader. The pin is consulted by `parseText`, so
+   * it must be retired the moment the display context moves — otherwise
+   * re-typed old text resurrects a dead value. This record is read ONLY by
+   * the departure check, which asks the narrower question "is the text on
+   * screen still the text I wrote, for the value the model still holds?" —
+   * true regardless of how the display context has moved since, and false
+   * the moment the user edits. Nothing can resurrect through it, because
+   * the parse never sees it.
+   */
+  private authoredText: { readonly text: string; readonly value: Id | null } | null = null;
   /** The recorded resolution failure, keyed to its exact text. */
   private readonly resolutionFailure = signal<ResolutionFailure | null>(null);
   /** Whether a blur/Enter resolution is pending — drives `pending` + aria-busy. */
@@ -680,9 +694,10 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * stay out of it. They return the instant the state settles (results,
    * empty, or failure), so "no results → Create…" is still one arrow away.
    */
-  // The loading exclusion is a deliberate departure from §4.1's "they render
-  // in every popup state — results, empty, error, loading": it was requested
-  // against the working build, after the spec froze, and it wins.
+  // §4.1 states the loading exclusion as the design; the reasoning above is
+  // why. Note the cost it accepts: while a search is loading there is no
+  // keyboard path to Advanced search…, the magnifier not being a tab stop.
+  // The window closes as soon as the state settles.
   protected readonly showsFooterRows = computed(
     () =>
       this.statusKind() !== 'loading' &&
@@ -835,6 +850,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
         // right before seeding a search, and killing it here would strand
         // the dropdown's spinner.
         this.displayOverride = null;
+        this.authoredText = null;
         this.supersedeResolution();
         this.resolutionFailure.set(null);
       });
@@ -1175,6 +1191,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    */
   private setCanonicalText(text: string, value: Id | null): void {
     this.displayOverride = { text, value };
+    this.authoredText = { text, value };
     this.rawText.set(text);
     this.comboText.set(text);
   }
@@ -1754,6 +1771,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   protected onInput(): void {
     const text = this.inputElement.value; // the DOM IS the source here
     this.editedSinceFocus = true;
+    this.authoredText = null; // whatever is on screen is the user's now
     this.supersedeResolution(); // editing resumes ownership from any pending resolution
     const failure = untracked(this.resolutionFailure);
     if (failure !== null && failure.text !== text) {
@@ -1829,12 +1847,21 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       this.setCanonicalText('', null);
       return;
     }
-    const pin = this.displayOverride;
-    if (pin !== null && pin.text === text) {
-      // Picker-authored canonical text whose value is known by construction
-      // — a pick from the list, a Tab commit, a modal outcome. There is
-      // nothing to resolve, and re-resolving it would re-emit `picked` and
-      // hand an ambiguous label back its own error.
+    const authored = this.authoredText;
+    if (
+      authored !== null &&
+      authored.text === text &&
+      Object.is(authored.value, untracked(this.value))
+    ) {
+      // The text on screen is the text this control WROTE, for the value the
+      // model still holds — a pick from the list, a Tab commit, a modal
+      // outcome. There is nothing to resolve, and re-resolving it would
+      // re-emit `picked` and hand an ambiguous label back its own error.
+      // Note this survives a display-context change: `displayWith` may have
+      // started formatting that id differently since the pick (a cache the
+      // host warms from `picked` is the pattern the contract recommends),
+      // which makes the pristine test below false while the user has done
+      // nothing at all.
       return;
     }
     if (text === untracked(() => this.displayFor(untracked(this.value)))) {
@@ -2250,6 +2277,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       return;
     }
     this.displayOverride = null;
+    this.authoredText = null;
     this.resolutionFailure.set(null);
     this.rawText.set(text);
     this.comboText.set(text);
@@ -2269,6 +2297,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    */
   ɵsetCellText(text: string): void {
     this.displayOverride = null;
+    this.authoredText = null;
     this.rawText.set(text);
     this.comboText.set(text);
     const element = this.inputElement;
