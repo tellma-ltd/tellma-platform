@@ -156,6 +156,9 @@ const NO_VALUE_BASELINE: unique symbol = Symbol('tmNoValueBaseline');
  */
 type AdoptedSearch = NonNullable<ReturnType<NonNullable<ɵTmGridMountedEditor['adoptSearch']>>>;
 
+/** What an adopted search settles to. */
+type AdoptedResult = Awaited<AdoptedSearch['settled']>;
+
 /** Rows whose field nodes one error-tally warm-up slice touches (§16). */
 const WARMUP_ROWS_PER_SLICE = 500;
 
@@ -2085,23 +2088,58 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
    * engine only collects for resolver-carrying columns) short-circuits with
    * an empty answered map.
    */
-  private runResolutions(requests: readonly TmGridResolutionRequest[]): void {
+  private runResolutions(
+    requests: readonly TmGridResolutionRequest[],
+    fallback?: TmLabelResolution<unknown>,
+  ): void {
     for (const request of requests) {
       const column = untracked(this.columnsInternal).find(
         (candidate) => candidate.id === request.columnId,
       );
       const resolver = column?.resolveLabels;
       if (resolver === undefined) {
-        this.engine.clipboard.applyResolution(request.id, new Map());
+        this.engine.clipboard.applyResolution(request.id, this.withFallback(request, new Map(), fallback));
         continue;
       }
       Promise.resolve()
         .then(() => resolver([...request.labels], request.context))
         .then(
-          (results) => this.engine.clipboard.applyResolution(request.id, results),
+          (results) =>
+            this.engine.clipboard.applyResolution(
+              request.id,
+              this.withFallback(request, results, fallback),
+            ),
           () => this.engine.clipboard.applyResolution(request.id, new Map(), { failed: true }),
         );
     }
+  }
+
+  /**
+   * Substitutes a caller's verdict for labels the resolver could not name.
+   * Used when the editor's own search already reached a conclusion the
+   * resolver was merely being given a chance to improve on: the resolver
+   * wins wherever it names something, and the search's verdict stands where
+   * it answers "I don't know this" — a `notFound` from an identity lookup
+   * does not contradict "the search matched several", and the search's
+   * message is the more useful of the two. A resolver that FAILED never
+   * lands here: that path is retryable and must stay so.
+   */
+  private withFallback(
+    request: TmGridResolutionRequest,
+    results: ReadonlyMap<string, TmLabelResolution<unknown>>,
+    fallback: TmLabelResolution<unknown> | undefined,
+  ): ReadonlyMap<string, TmLabelResolution<unknown>> {
+    if (fallback === undefined) {
+      return results;
+    }
+    const merged = new Map(results);
+    for (const label of request.labels) {
+      const answer = merged.get(label);
+      if (answer === undefined || (!('value' in answer) && answer.error === 'notFound')) {
+        merged.set(label, fallback);
+      }
+    }
+    return merged;
   }
 
   /**
@@ -3669,60 +3707,90 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     // Undo while pending aborts the request; the adopted search is part of
     // that request now, so it goes with it.
     request.context.signal.addEventListener('abort', adopted.abort, { once: true });
-    void adopted.settled.then((outcome) => {
-      const decided = this.decideFromSearch(outcome, text, column);
-      if (decided !== null) {
-        engine.clipboard.applyResolution(request.id, new Map([[text, decided]]));
-      } else {
-        // The search cannot answer this one. The SAME request carries on to
+    void adopted.settled
+      .then((outcome) => {
+        if (request.context.signal.aborted) {
+          // Undone, or the grid was disposed. An abort surfaces here as a
+          // search FAILURE (the picker cannot tell the two apart), and
+          // falling through on a failure would start the very round trip
+          // the abort was cancelling — against a request that is already
+          // gone, from a grid that may already be destroyed.
+          return;
+        }
+        const verdict = this.decideFromSearch(outcome, text, column);
+        if (verdict.decided !== undefined) {
+          engine.clipboard.applyResolution(request.id, new Map([[text, verdict.decided]]));
+          return;
+        }
+        // The search could not settle it. The SAME request carries on to
         // the column's resolver — same pending mark, same sequence token,
-        // same open history entry.
-        this.runResolutions([request]);
-      }
-    });
+        // same open history entry — carrying whatever the search DID
+        // conclude as the fallback, for a resolver that cannot name it
+        // either.
+        this.runResolutions([request], verdict.fallback);
+      })
+      .catch(() => {
+        // A consumer accessor threw inside the decision. The request must
+        // still be answered: an unanswered one leaves the cell pending
+        // forever inside a history entry that never finalizes.
+        this.engine.clipboard.applyResolution(request.id, new Map(), { failed: true });
+      });
   }
 
   /**
-   * What the editor's own search says about the committed text, or `null`
-   * to hand the question to the column's resolver.
+   * What the editor's own search says about the committed text.
    *
-   * The two are not the same question. `search` asks "what matches this
-   * query?" — ranked, capped, and typically scoped to what a user may pick
-   * today. `resolvePastedLabels` asks "which entity IS this label?" — an
-   * identity lookup that may reach codes, aliases, or records the picker
-   * would never offer. So the search is authoritative about MULTIPLICITY
-   * and the resolver about IDENTITY OF SOMETHING THE SEARCH CANNOT SEE:
+   * The two facilities answer different questions. `search` asks "what
+   * matches this query?" — ranked, capped, typically scoped to what a user
+   * may pick today. `resolvePastedLabels` asks "which entity IS this
+   * label?" — an identity lookup that may reach codes, aliases, or records
+   * the type-ahead never offers. So the search is authoritative about
+   * MULTIPLICITY and the resolver about IDENTITY OF SOMETHING THE SEARCH
+   * CANNOT SEE. Three answers:
    *
-   * - one result, or exactly one whose label IS the text: the answer.
-   * - several, none of them an exact-label match: ambiguous, decided here.
-   *   Handing this to an exact-match resolver would turn a true and useful
-   *   message ("'Al' matches more than one Agent") into a misleading one
-   *   ("no match for 'Al'"), and pay a round trip to do it.
-   * - nothing found: NOT proof of no match — the resolver indexes things
-   *   the type-ahead does not.
-   * - the search failed: an independent path, possibly transient.
+   * The line between the two verdicts is whether the search's answer is an
+   * IDENTITY fact or only a ranking one:
+   *
+   * - `decided` — the text names exactly one entity, or names several BY
+   *   LABEL. Both are identity facts the resolver cannot improve on, so it
+   *   is not consulted at all.
+   * - `fallback` — the search matched several rows and the text is none of
+   *   their labels. That is a dead end for the search and still an open
+   *   identity question: a consumer type-ahead that matches codes as well
+   *   as names returns several rows for a code, and that code is exactly
+   *   what the resolver knows. So the resolver is asked, and this verdict
+   *   is used only if it cannot name the text either — which is what keeps
+   *   the better message ("'Al' matches more than one Agent" is true and
+   *   useful; "no match for 'Al'" is neither).
+   *
+   * A TRUNCATED result set (`hasMore`) can be trusted about what it
+   * contains and never about what it does not: the duplicate that would
+   * make a lone exact match ambiguous may be sitting past the cap.
    */
   private decideFromSearch(
-    outcome: readonly unknown[] | 'failed',
+    outcome: AdoptedResult,
     text: string,
     column: ColumnInternal<T>,
-  ): TmLabelResolution<unknown> | null {
-    if (outcome === 'failed' || outcome.length === 0) {
-      return null;
+  ): { readonly decided?: TmLabelResolution<unknown>; readonly fallback?: TmLabelResolution<unknown> } {
+    if (outcome === 'failed' || outcome.items.length === 0) {
+      return {};
     }
     const itemId = column.entityItemId;
     const itemLabel = column.entityItemLabel;
     if (itemId === undefined || itemLabel === undefined) {
-      return null; // half-configured column: the editor never mounts, but stay honest
+      return {}; // half-configured column: the editor never mounts, but stay honest
     }
-    const exact = outcome.filter((item: unknown) => itemLabel(item as never) === text);
-    if (exact.length === 1) {
-      return { value: itemId(exact[0] as never) };
+    const items = outcome.items;
+    const exact = items.filter((item: unknown) => itemLabel(item as never) === text);
+    if (exact.length > 1) {
+      // Two entities carry this exact label. Rows past a cap could only
+      // agree, and no identity lookup can undo it.
+      return { decided: { error: 'ambiguous' } };
     }
-    if (exact.length === 0 && outcome.length === 1) {
-      return { value: itemId(outcome[0] as never) };
+    if (!outcome.hasMore && (exact.length === 1 || items.length === 1)) {
+      return { decided: { value: itemId((exact[0] ?? items[0]) as never) } };
     }
-    return { error: 'ambiguous' };
+    return { fallback: { error: 'ambiguous' } };
   }
 
   /** Cancels the open session: the model is never written (§8.2 Esc, §5.1). */

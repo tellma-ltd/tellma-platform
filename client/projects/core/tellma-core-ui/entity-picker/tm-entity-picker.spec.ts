@@ -1738,6 +1738,7 @@ describe('tm-entity-picker', () => {
             [search]="search()"
             [itemId]="id"
             [itemLabel]="label"
+            [searchDebounce]="debounce()"
             aria-label="Agent"
           />
         </div>
@@ -1747,6 +1748,7 @@ describe('tm-entity-picker', () => {
       readonly search = signal<TmEntitySearchFn<Agent>>((q) => filterAgents(q));
       readonly id = (item: Agent): number => item.id;
       readonly label = (item: Agent): string => item.name;
+      readonly debounce = signal(50);
       readonly keys: string[] = [];
     }
 
@@ -1864,6 +1866,41 @@ describe('tm-entity-picker', () => {
       expect(editor.value()).toBe(5);
       expect(input.value).toBe('5');
       expect(panel()).toBeNull();
+    });
+
+    it('adopting an answer already in hand issues no request', async () => {
+      // The coalescing window is flushed on adoption so a query the picker
+      // was about to search is not thrown away. But an answer the picker
+      // ALREADY holds has to be checked first — otherwise a text that is
+      // both settled and re-queued (type 'Ali', let it settle, then 'Alic'
+      // and back to 'Ali' inside the window) starts a request that nothing
+      // will ever read.
+      const { fixture, host, picker, input } = await setupCell();
+      const search = manualSearch();
+      host.search.set(search.fn);
+      host.debounce.set(5_000); // the window must still be open at adoption
+      await settle(fixture);
+      input.focus(); // as the grid does — an unfocused picker's popup closes itself
+      picker.seed('Ali'); // leading edge: one request, and the window opens
+      await settle(fixture);
+      expect(search.calls).toHaveLength(1);
+      search.responders[0].resolve(filterAgents('Ali'));
+      await settle(fixture); // …now settled for 'Ali'
+
+      // Re-queue the SAME text inside the still-open window.
+      input.focus();
+      input.value = 'Alic';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.value = 'Ali';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+
+      const adopted = picker.ɵadoptSearch('Ali');
+      expect(adopted).not.toBeNull();
+      expect(search.calls).toHaveLength(1); // nothing fresh was issued
+      await expect(adopted!.settled).resolves.toEqual({
+        items: filterAgents('Ali'),
+        hasMore: false,
+      });
     });
 
     it("cancel() restores the value after the GRID's edit-mode open sequence", async () => {

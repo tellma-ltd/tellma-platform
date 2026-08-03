@@ -526,7 +526,11 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * closes, but a cell commit still has to be able to say "I already know
    * the answer for this exact text" without paying for it twice.
    */
-  private settledResult: { readonly query: string; readonly items: readonly T[] } | null = null;
+  private settledResult: {
+    readonly query: string;
+    readonly items: readonly T[];
+    readonly hasMore: boolean;
+  } | null = null;
   /** The debounce window timer. */
   private debounceTimer: ReturnType<typeof setTimeout> | undefined;
   /** Whether the debounce window is currently open. */
@@ -1364,7 +1368,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     // resets the state machine, but the fetch still happened: a cell commit
     // must not pay a second round trip (or fail against a resolver that
     // never saw the query) for a set the picker already holds.
-    this.settledResult = { query, items };
+    this.settledResult = { query, items, hasMore: result.hasMore };
     if (items.length === 0) {
       this.searchState.set({ kind: 'empty', query });
       this.announceKey('entityPicker.announce.noResults');
@@ -2208,14 +2212,16 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     // reason to discard it and ask a different question instead, so the
     // window is flushed rather than cancelled — the quiet period simply
     // arrived sooner than the timer did.
+    const settled = this.settledResult;
+    if (settled !== null && settled.query === text) {
+      // Checked BEFORE the window flush below: an answer already in hand
+      // must not send a fresh request that nothing will ever read.
+      const answer = { items: settled.items, hasMore: settled.hasMore };
+      return { settled: Promise.resolve(answer), abort: () => {} };
+    }
     if (this.pendingQuery === text) {
       this.cancelDebounce();
       this.executeSearch(text);
-    }
-    const settled = this.settledResult;
-    if (settled !== null && settled.query === text) {
-      const items = settled.items;
-      return { settled: Promise.resolve(items), abort: () => {} };
     }
     const inFlight = this.inFlight;
     if (inFlight === null || inFlight.query !== text) {
@@ -2224,7 +2230,9 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     this.inFlight = null; // detached — see above
     return {
       settled: inFlight.settled.then((outcome) =>
-        outcome === 'failed' ? ('failed' as const) : outcome.items,
+        outcome === 'failed'
+          ? ('failed' as const)
+          : { items: outcome.items, hasMore: outcome.hasMore },
       ),
       abort: () => inFlight.controller.abort(),
     };

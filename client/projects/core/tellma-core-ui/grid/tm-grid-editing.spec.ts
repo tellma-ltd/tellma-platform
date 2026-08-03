@@ -21,6 +21,7 @@ import {
 } from '@tellma/core-ui';
 import { tmUmalquraCalendar } from '@tellma/core-ui/calendar-umalqura';
 import type { TmCalendar } from '@tellma/core-ui/l10n';
+import type { TmEntitySearchResult } from '@tellma/core-ui/entity-picker';
 import { TmModalRef } from '@tellma/core-ui/modal';
 import { TmGridHarness } from '@tellma/core-ui-testing';
 
@@ -1236,13 +1237,16 @@ describe('tm-grid entity columns (built-in tm-entity-picker editor)', () => {
     readonly searchCalls: string[] = [];
     /** Swaps the synchronous directory search for a spec-controlled one. */
     readonly searchOverride = signal<
-      | ((query: string, signal: AbortSignal) => readonly Agent[] | Promise<readonly Agent[]>)
+      | ((
+          query: string,
+          signal: AbortSignal,
+        ) => TmEntitySearchResult<Agent> | Promise<TmEntitySearchResult<Agent>>)
       | null
     >(null);
     readonly recordedSearch = (
       query: string,
       signal: AbortSignal,
-    ): readonly Agent[] | Promise<readonly Agent[]> => {
+    ): TmEntitySearchResult<Agent> | Promise<TmEntitySearchResult<Agent>> => {
       const override = this.searchOverride();
       if (override !== null) {
         return override(query, signal);
@@ -1504,24 +1508,102 @@ describe('tm-grid entity columns (built-in tm-entity-picker editor)', () => {
     expect(scroller.querySelector('.tm-grid__cell-spin')).toBeNull();
   });
 
-  it('several matches are ambiguous by the SEARCH, with no resolver round trip', async () => {
-    // 'Al' names two agents. The resolver's answer for it would be "no
-    // match" — true of an exact-label lookup, useless to the user, and a
-    // round trip to say it.
+  it('an ABORTED adopted search does not then start the round trip it cancelled', async () => {
+    // An abort reaches the continuation as a search FAILURE — the picker
+    // cannot tell the two apart — and a failure normally falls through to
+    // the resolver. Undo must not therefore invoke the consumer's resolver
+    // after cancelling, against a request that no longer exists.
+    const { fixture, host, scroller } = await setupEntity();
+    host.searchOverride.set(
+      (query, signal) =>
+        new Promise<readonly Agent[]>((_, reject) => {
+          host.searchCalls.push(query);
+          signal.addEventListener('abort', () => reject(new Error('aborted')));
+        }),
+    );
+    await stable(fixture);
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, 'Alice');
+    await stable(fixture);
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    expect(scroller.querySelector('.tm-grid__cell-spin')).not.toBeNull();
+
+    scroller.focus();
+    keydown(scroller, 'z', { ctrlKey: true });
+    await stable(fixture);
+    await stable(fixture);
+    expect(host.resolveCalls).toHaveLength(0); // nothing was started by the cancellation
+    expect(host.model()[0].agentId).toBe(5);
+    expect(scroller.querySelector('.tm-grid__cell-spin')).toBeNull();
+  });
+
+  it('a multi-hit the resolver CAN name still reaches it — ambiguity is only the fallback', async () => {
+    // A consumer type-ahead that matches codes as well as names returns
+    // several rows for a code, none of them labelled with it. That code is
+    // exactly what the identity resolver knows, so a search dead end must
+    // not be the last word.
+    const { fixture, host, scroller } = await setupEntity();
+    host.searchOverride.set((query) => {
+      host.searchCalls.push(query);
+      return query === 'AG-1' ? [AGENTS[0], AGENTS[2]] : searchAgents(query);
+    });
+    await stable(fixture);
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, 'AG-1');
+    await stable(fixture);
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    expect(host.resolveCalls).toHaveLength(1);
+    host.resolveCalls[0].deferred.resolve(new Map([['AG-1', { value: 4 }]]));
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(4);
+    expect(cellAt(scroller, 0, 1)!.classList.contains('tm-grid__cell--error')).toBe(false);
+  });
+
+  it("…and the search's ambiguous verdict stands when the resolver comes back empty", async () => {
+    // The fallback is what keeps the better message: "matches more than
+    // one" is true and useful where the resolver's "no match" is neither.
     const { fixture, host, scroller } = await setupEntity();
     await activateAgentCell(fixture, scroller);
     keydown(scroller, 'A');
     await stable(fixture);
-    typeInto(pickerInput(scroller)!, 'Al');
+    typeInto(pickerInput(scroller)!, 'Al'); // two names, neither labelled 'Al'
     await stable(fixture);
     (document.getElementById('outside-entity') as HTMLInputElement).focus();
     await stable(fixture);
+    expect(host.resolveCalls).toHaveLength(1);
+    host.resolveCalls[0].deferred.resolve(new Map([['Al', { error: 'notFound' }]]));
     await stable(fixture);
-    expect(host.resolveCalls).toHaveLength(0);
     expect(host.model()[0].agentId).toBeNull();
-    const cell = cellAt(scroller, 0, 1)!;
-    expect(cell.textContent!.trim()).toBe('Al');
-    expect(cell.classList.contains('tm-grid__cell--error')).toBe(true);
+    const message = fixture.nativeElement.textContent as string;
+    expect(message).toContain('more than one');
+  });
+
+  it('a TRUNCATED page never commits: the duplicate may be past the cap', async () => {
+    // 'Adam Brown' names two agents. A capped page showing one of them and
+    // an unrelated row looks like a unique exact match and is not one.
+    const { fixture, host, scroller } = await setupEntity();
+    host.searchOverride.set((query) => {
+      host.searchCalls.push(query);
+      return query === 'Adam Brown'
+        ? { items: [AGENTS[0], AGENTS[3]], hasMore: true }
+        : searchAgents(query);
+    });
+    await stable(fixture);
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A');
+    await stable(fixture);
+    typeInto(pickerInput(scroller)!, 'Adam Brown');
+    await stable(fixture);
+    (document.getElementById('outside-entity') as HTMLInputElement).focus();
+    await stable(fixture);
+    expect(host.model()[0].agentId).not.toBe(1); // NOT committed off a partial page
+    expect(host.resolveCalls).toHaveLength(1); // handed to the identity authority
   });
 
   it('a unique EXACT-label match wins over the ranking when several rows match', async () => {

@@ -114,8 +114,13 @@ export interface TmEntityPicked<T, Id extends TmEntityId> {
  * @internal
  */
 export interface ɵTmEntityAdoptedSearch<T> {
-  /** The result items, or `'failed'` when the search threw or rejected. */
-  readonly settled: Promise<readonly T[] | 'failed'>;
+  /**
+   * The result set, or `'failed'` when the search threw or rejected —
+   * which an ABORT also surfaces as, since the two are indistinguishable
+   * from here. `hasMore` is carried because a truncated page can be
+   * trusted about what it contains and never about what it does not.
+   */
+  readonly settled: Promise<{ readonly items: readonly T[]; readonly hasMore: boolean } | 'failed'>;
   /** Cancels the request; the only handle now that the picker has let go. */
   readonly abort: () => void;
 }

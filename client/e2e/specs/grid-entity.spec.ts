@@ -192,16 +192,40 @@ test('text the search cannot answer still reaches the resolver, which knows code
   expect(await cellText(page, 2, 1)).toBe('Dana Reed');
 });
 
-test('several matches are ambiguous by the SEARCH, at no resolver cost', async ({ page }) => {
-  // 'Al' names two agents. An identity resolver would answer "no match" —
-  // true of itself, useless to the user, and a round trip to say it.
+test("a multi-hit still asks the resolver; the search's verdict is only the fallback", async ({
+  page,
+}) => {
+  // 'Al' matches two agents and is neither of their labels. That is a dead
+  // end for the SEARCH and still an open identity question — a consumer
+  // whose type-ahead matches codes would return several rows for a code the
+  // resolver knows. So the resolver is asked, and the search's "more than
+  // one" only stands because this resolver cannot name 'Al' either. It is
+  // the better message: the resolver alone would have said "no match".
+  await page.getByTestId('resolver-delay').fill('100');
   await activateCell(page, 2, 1);
   await page.keyboard.press('A');
   await page.keyboard.type('l');
   await activateCell(page, 2, 3);
   await expect(editor(page)).toHaveCount(0);
+  await expect(page.getByTestId('resolver-calls')).toHaveText('1');
   await expect(cell(page, 2, 1)).toHaveClass(/tm-grid__cell--error/);
   expect(await cellText(page, 2, 1)).toBe('Al');
+  expect((await lines(page))[2].agentId).toBeNull();
+  await activateCell(page, 2, 1);
+  await expect(page.locator('.tm-grid__error-msg')).toContainText('matches more than one');
+});
+
+test('two rows carrying the SAME label are ambiguous outright, at no resolver cost', async ({
+  page,
+}) => {
+  // 'Adam Brown' IS the label of two agents. That is an identity fact, not a
+  // ranking one, so no lookup can improve on it.
+  await activateCell(page, 2, 1);
+  await page.keyboard.press('A');
+  await page.keyboard.type('dam Brown');
+  await activateCell(page, 2, 3);
+  await expect(editor(page)).toHaveCount(0);
+  await expect(cell(page, 2, 1)).toHaveClass(/tm-grid__cell--error/);
   expect((await lines(page))[2].agentId).toBeNull();
   await expect(page.getByTestId('resolver-calls')).toHaveText('0');
 });
