@@ -132,7 +132,9 @@ test('unresolved commit text resolves through the column resolver AFTER editor t
   await page.getByTestId('resolver-delay').fill('600');
   await activateCell(page, 2, 1);
   await page.keyboard.press('Z');
+  await expect(pickerInput(page)).toBeVisible();
   await page.keyboard.type('ebra'); // the search finds nothing — the resolver's question
+  await expect(pickerInput(page)).toHaveValue('Zebra'); // every keystroke landed
   const searchesBefore = await searchCalls(page);
   await activateCell(page, 2, 3); // click-elsewhere commit
   // The editor tore down while the resolution is still pending — the

@@ -284,19 +284,23 @@ test.describe('keyboard matrix', () => {
     expect(await scrollTop()).toBe(0);
 
     // Walk down past the visible window: the list follows the highlight.
-    for (let i = 0; i < 12; i++) {
+    // Each step waits for the highlight it just asked for — a burst of
+    // un-awaited presses measures how fast the runner is, not whether the
+    // list follows. The browse list highlights nothing, so the FIRST press
+    // lands on row 1 rather than advancing from it.
+    for (let i = 1; i <= 12; i++) {
       await long.press('ArrowDown');
+      await expect(activeOption(page)).toHaveText(`Supplier ${String(i).padStart(2, '0')}`);
     }
-    await expect(activeOption(page)).toHaveText('Supplier 12');
     const scrolled = await scrollTop();
     expect(scrolled).toBeGreaterThan(0);
     expect(await activeIsInView()).toBe(true);
 
     // …and back up again.
-    for (let i = 0; i < 11; i++) {
+    for (let i = 11; i >= 1; i--) {
       await long.press('ArrowUp');
+      await expect(activeOption(page)).toHaveText(`Supplier ${String(i).padStart(2, '0')}`);
     }
-    await expect(activeOption(page)).toHaveText('Supplier 01');
     expect(await scrollTop()).toBeLessThan(scrolled);
     expect(await activeIsInView()).toBe(true);
   });
@@ -341,7 +345,11 @@ test.describe('keyboard matrix', () => {
     await useSyncSearch(page);
     await input(page).fill('Adam');
     await expect(activeOption(page)).toHaveText('Adam Brown');
+    // Both rows read 'Adam Brown', so the highlight has to be tracked by
+    // identity: waiting on the TEXT would let Tab race the arrow.
+    const first = await input(page).getAttribute('aria-activedescendant');
     await input(page).press('ArrowDown'); // the SECOND 'Adam Brown', id 2
+    await expect(input(page)).not.toHaveAttribute('aria-activedescendant', first ?? '');
     await input(page).press('Tab');
     await expect(input(page)).toHaveValue('Adam Brown');
     expect((await model(page)).supplierId).toBe(2);
