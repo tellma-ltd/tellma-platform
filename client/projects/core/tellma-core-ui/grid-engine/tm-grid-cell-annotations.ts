@@ -55,7 +55,9 @@ export class TmGridCellAnnotations {
   private readonly invalidMap = signal<ReadonlyMap<string, TmGridInvalidInput & TmGridCellRef>>(
     new Map(),
   );
-  private readonly pendingMap = signal<ReadonlyMap<string, TmGridCellRef>>(new Map());
+  private readonly pendingMap = signal<
+    ReadonlyMap<string, TmGridCellRef & { readonly label: string | null }>
+  >(new Map());
   /** Per-cell sequence tokens, nested by row id so a delete prunes in O(1). */
   private readonly cellTokens = new Map<TmRowId, Map<string, number>>();
   /** Per-row structural tokens: one bump invalidates every cell of the row. */
@@ -75,6 +77,16 @@ export class TmGridCellAnnotations {
   /** Whether a cell awaits an async resolution. */
   isPending(rowId: TmRowId, columnId: string): boolean {
     return this.pendingMap().has(cellKey(rowId, columnId));
+  }
+
+  /**
+   * The label a pending cell is being resolved FROM, if it was recorded.
+   * The cell's own value was cleared the moment the resolution started, so
+   * without this the cell would sit blank until the answer lands — showing
+   * the user nothing of what they typed or pasted.
+   */
+  pendingLabel(rowId: TmRowId, columnId: string): string | null {
+    return this.pendingMap().get(cellKey(rowId, columnId))?.label ?? null;
   }
 
   /** Every cell currently holding an invalid input, in insertion order. */
@@ -136,16 +148,20 @@ export class TmGridCellAnnotations {
     this.invalidMap.set(next);
   }
 
-  /** Marks or unmarks a cell as awaiting an async resolution. */
-  setPending(rowId: TmRowId, columnId: string, pending: boolean): void {
+  /**
+   * Marks or unmarks a cell as awaiting an async resolution. `label` is the
+   * text being resolved — displayed in the cell for the duration, so the
+   * user keeps seeing what they typed or pasted.
+   */
+  setPending(rowId: TmRowId, columnId: string, pending: boolean, label: string | null = null): void {
     const key = cellKey(rowId, columnId);
     const current = untracked(this.pendingMap);
-    if (current.has(key) === pending) {
+    if (current.has(key) === pending && (!pending || current.get(key)?.label === label)) {
       return;
     }
     const next = new Map(current);
     if (pending) {
-      next.set(key, { rowId, columnId });
+      next.set(key, { rowId, columnId, label });
     } else {
       next.delete(key);
     }

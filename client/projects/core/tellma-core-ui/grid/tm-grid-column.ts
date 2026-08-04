@@ -11,6 +11,11 @@ import type {
   TmParseError,
   TmPasteContext,
 } from '@tellma/core-ui/contracts';
+import type {
+  TmEntityId,
+  TmEntityPickerPage,
+  TmEntitySearchFn,
+} from '@tellma/core-ui/entity-picker';
 import type { TmGridColumnType } from '@tellma/core-ui/grid-engine';
 
 import { TmGridDisplayDef, TmGridEditorDef, TmGridHeaderDef } from './tm-grid-templates';
@@ -80,8 +85,33 @@ export class TmGridColumn<T = unknown, V = unknown> {
   /** `enum` columns: maps an option to the value written to the model. */
   readonly optionValue = input<((option: never) => V) | undefined>(undefined);
   /**
+   * `entity` columns: the search facility — binding it enables the
+   * built-in `tm-entity-picker` editor for the column (a projected
+   * `*tmGridEditor` template still wins). The column's `format` doubles as
+   * the picker's committed-id display resolver.
+   */
+  readonly search = input<TmEntitySearchFn<unknown> | undefined>(undefined);
+  /** `entity` columns: maps a search result to its id (required alongside `search`). */
+  readonly itemId = input<((item: never) => TmEntityId) | undefined>(undefined);
+  /** `entity` columns: maps a search result to its display text (required alongside `search`). */
+  readonly itemLabel = input<((item: never) => string) | undefined>(undefined);
+  /** `entity` columns: the advanced-search page; absent ⇒ no magnifier and no footer row. */
+  readonly advancedSearch = input<TmEntityPickerPage | undefined>(undefined);
+  /** `entity` columns: the create page; absent ⇒ no Create… footer row. */
+  readonly create = input<TmEntityPickerPage | undefined>(undefined);
+  /** `entity` columns: the edit page; absent ⇒ no Edit… footer row. */
+  readonly edit = input<TmEntityPickerPage | undefined>(undefined);
+  /**
    * Batched async label→value resolution for `enum`/`entity` paste: one
    * call per column per paste with the distinct unresolved labels.
+   *
+   * On `entity` columns it also resolves text a user TYPED into a cell and
+   * committed without picking from the dropdown — but only what the
+   * column's own `search` could not settle. The grid consults that search
+   * first and commits a unique match itself, so what arrives here is text
+   * the search found nothing for, could not narrow, or failed on. Answer it
+   * as an IDENTITY question: this is where a code, an alias, or an inactive
+   * record the type-ahead never offers gets its chance.
    */
   readonly resolvePastedLabels = input<
     ((labels: string[], ctx: TmPasteContext) => Promise<ReadonlyMap<string, TmLabelResolution<V>>>) | undefined

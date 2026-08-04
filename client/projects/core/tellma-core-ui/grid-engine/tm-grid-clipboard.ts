@@ -16,6 +16,7 @@ import {
 import type { TmGridCellAnnotations, TmGridInvalidInputReason } from './tm-grid-cell-annotations';
 import type { TmGridClipboardMeta } from './tm-grid-clipboard-serialize';
 import type { TmGridDataModel } from './tm-grid-data-model';
+import type { TmGridPendingLabelCommit } from './tm-grid-edit-state';
 import type { TmGridEngineHost } from './tm-grid-host';
 import type { TmGridCellWrite, TmGridCompoundHandle, TmGridHistory } from './tm-grid-history';
 import type { TmGridNav } from './tm-grid-nav';
@@ -489,6 +490,54 @@ export class TmGridClipboard<T = unknown> {
   }
 
   /**
+   * Registers a single-cell resolution for a label commit an editor made
+   * (see `TmGridEditState.commitLabel`): the cell's sequence token is
+   * bumped and its pending mark set — exactly the accounting a one-cell
+   * paste performs — and the returned request is handed back for the caller
+   * to answer, with the outcome given to `applyResolution` (stale-token
+   * discard, undo-mid-pending, and the completion notice all reuse the
+   * paste machinery unchanged). This class does not care who answers it. The eventual write lands in the commit's
+   * still-open history entry, so ONE undo restores the pre-edit state.
+   */
+  trackCommitResolution(commit: TmGridPendingLabelCommit, label: string): TmGridResolutionRequest {
+    const annotations = this.options.annotations;
+    const paste: OpenPaste = { handle: commit.handle, outstanding: 1, resolved: 0, errors: 0 };
+    const controller = new AbortController();
+    // The token is established with an explicit bump (not merely read): the
+    // commit's cleared-value write may have been elided by the history's
+    // write elision (the cell was already clear), and a stale token would
+    // let a later request share it.
+    const cell: AwaitingCell = {
+      rowId: commit.rowId,
+      columnId: commit.columnId,
+      columnKey: commit.columnKey,
+      label,
+      token: annotations.bumpToken(commit.rowId, commit.columnId),
+    };
+    annotations.setPending(commit.rowId, commit.columnId, true, label);
+    const request: OutstandingRequest = {
+      id: this.nextRequestId++,
+      columnId: commit.columnId,
+      cells: [cell],
+      controller,
+      paste,
+    };
+    this.outstanding.set(request.id, request);
+    // Undo while the resolution is pending aborts it and clears the mark.
+    commit.handle.onCancel(() => this.withdrawRequests(paste));
+    // A typed commit is local: no source locale/calendar/tenant metadata.
+    return {
+      id: request.id,
+      columnId: commit.columnId,
+      labels: [label],
+      context: {
+        locale: untracked(() => this.options.locale()),
+        signal: controller.signal,
+      },
+    };
+  }
+
+  /**
    * Fill down: copies the active range's top row into the rows below it; a
    * single-cell selection copies the cell above instead. Model values are
    * copied (never invalid-input raw texts); readonly cells and the
@@ -536,6 +585,27 @@ export class TmGridClipboard<T = unknown> {
       }
     }
     this.options.history.runCellWrites('fillDown', writes);
+  }
+
+  /**
+   * Withdraws every request still outstanding for one open entry: aborts
+   * it, clears the pending marks it owns, and drops it, so a late outcome
+   * finds nothing to apply. The undo of a paste and the undo of an editor
+   * label commit both come through here — the entry is being rolled back
+   * either way, and the withdrawal protocol must not drift between them.
+   * The handle is NOT finalized: undo owns that.
+   */
+  private withdrawRequests(paste: OpenPaste): void {
+    for (const [id, request] of [...this.outstanding]) {
+      if (request.paste === paste) {
+        request.controller.abort();
+        for (const cell of request.cells) {
+          this.options.annotations.setPending(cell.rowId, cell.columnId, false);
+        }
+        this.outstanding.delete(id);
+      }
+    }
+    paste.outstanding = 0;
   }
 
   /** Aborts every outstanding resolution (dispose, mode flips). */
@@ -968,7 +1038,7 @@ export class TmGridClipboard<T = unknown> {
           token: this.options.annotations.bumpToken(cell.rowId, cell.columnId),
         }));
         for (const cell of cells) {
-          this.options.annotations.setPending(cell.rowId, cell.columnId, true);
+          this.options.annotations.setPending(cell.rowId, cell.columnId, true, cell.label);
         }
         pendingCells += cells.length;
         const request: OutstandingRequest = {
@@ -994,18 +1064,7 @@ export class TmGridClipboard<T = unknown> {
           },
         });
       }
-      handle.onCancel(() => {
-        for (const [id, request] of [...this.outstanding]) {
-          if (request.paste === paste) {
-            request.controller.abort();
-            for (const cell of request.cells) {
-              this.options.annotations.setPending(cell.rowId, cell.columnId, false);
-            }
-            this.outstanding.delete(id);
-          }
-        }
-        paste.outstanding = 0;
-      });
+      handle.onCancel(() => this.withdrawRequests(paste));
     }
 
     // Select the pasted block (Excel/Sheets behavior). A full-column paste thus

@@ -12,6 +12,13 @@
 import { Component, input, output, signal, viewChild, ViewEncapsulation } from '@angular/core';
 
 import { TmDatePicker } from '@tellma/core-ui/date-picker';
+import {
+  TmEntityPicker,
+  type ɵTmEntityAdoptedSearch,
+  type TmEntityId,
+  type TmEntityPickerPage,
+  type TmEntitySearchFn,
+} from '@tellma/core-ui/entity-picker';
 import { TmInput } from '@tellma/core-ui/input';
 import { TmNumber } from '@tellma/core-ui/number';
 import { TmOption, TmSelect } from '@tellma/core-ui/select';
@@ -89,6 +96,84 @@ export class ɵTmGridDateEditor {
   /** Opens the calendar popup (Alt+ArrowDown on the cell). */
   openPopup(): void {
     this.picker().openPopup();
+  }
+}
+
+/**
+ * The built-in entity editor (`entity` columns configured with `search`): a
+ * bare `tm-entity-picker` filling the cell box, its dropdown anchored to
+ * the cell rect through the picker's own anchor rule. The picker registers
+ * itself with the session; a pick that closes the cell (pointer or Enter
+ * activation, a modal-page pick) emits `activated`, which the session turns
+ * into commit-and-close — Tab-commits and unique-match auto-picks stay
+ * silent so the grid's own commit paths run exactly once.
+ */
+@Component({
+  selector: 'tm-grid-entity-editor',
+  imports: [TmEntityPicker],
+  template: `
+    <tm-entity-picker
+      [aria-label]="label()"
+      [search]="search()"
+      [itemId]="itemId()"
+      [itemLabel]="itemLabel()"
+      [displayWith]="displayWith()"
+      [advancedSearch]="advancedSearch()"
+      [create]="create()"
+      [edit]="edit()"
+      (ɵcellActivate)="activated.emit()"
+    />
+  `,
+  styleUrl: './editors-entity.css',
+  // Encapsulation OFF: the picker's inner input carries the picker's own
+  // scope attribute, which a scoped stylesheet here could never match.
+  encapsulation: ViewEncapsulation.None,
+  host: { class: 'tm-grid-entity-editor' },
+})
+export class ɵTmGridEntityEditor {
+  /** The accessible name (the column's header text). */
+  readonly label = input('');
+  /** The column's search facility. */
+  readonly search = input.required<TmEntitySearchFn<unknown>>();
+  /** Maps a search result to its id. */
+  readonly itemId = input.required<(item: unknown) => TmEntityId>();
+  /** Maps a search result to its display text. */
+  readonly itemLabel = input.required<(item: unknown) => string>();
+  /** The committed-id display resolver (the column's `format`, adapted). */
+  readonly displayWith = input<((id: unknown) => string | null) | undefined>(undefined);
+  /** The column's advanced-search page, if any. */
+  readonly advancedSearch = input<TmEntityPickerPage | undefined>(undefined);
+  /** The column's create page, if any. */
+  readonly create = input<TmEntityPickerPage | undefined>(undefined);
+  /** The column's edit page, if any. */
+  readonly edit = input<TmEntityPickerPage | undefined>(undefined);
+  /** Emits on pick-commits that close the cell (never Tab or auto picks). */
+  readonly activated = output<void>();
+
+  private readonly picker = viewChild.required(TmEntityPicker);
+
+  /** Whether the dropdown is open (the editing keymap's dropdown gate). */
+  isDropdownOpen(): boolean {
+    return this.picker().isDropdownOpen();
+  }
+
+  /** Opens the dropdown (Alt+ArrowDown on the cell — the pristine browse list). */
+  openDropdown(): void {
+    this.picker().openDropdown();
+  }
+
+  /** Installs text WITHOUT searching or opening (edit-mode opens). */
+  setText(text: string): void {
+    this.picker().ɵsetCellText(text);
+  }
+
+  /**
+   * Takes over the picker's own search for `text` so the grid can decide a
+   * typed commit from it. The request detaches from this editor's lifetime;
+   * `null` when the picker has nothing for that exact text.
+   */
+  adoptSearch(text: string): ɵTmEntityAdoptedSearch<unknown> | null {
+    return this.picker().ɵadoptSearch(text);
   }
 }
 

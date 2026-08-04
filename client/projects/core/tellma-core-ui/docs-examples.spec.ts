@@ -14,6 +14,7 @@ import { TmAlert } from '@tellma/core-ui/alert';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmCheckbox } from '@tellma/core-ui/checkbox';
 import { TmDatePicker } from '@tellma/core-ui/date-picker';
+import { TmEntityPicker } from '@tellma/core-ui/entity-picker';
 import { TmDropzone, TmFilePicker } from '@tellma/core-ui/files';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import {
@@ -39,6 +40,7 @@ import * as alertExamples from './alert/tm-alert.examples';
 import * as buttonExamples from './button/tm-button.examples';
 import * as checkboxExamples from './checkbox/tm-checkbox.examples';
 import * as datePickerExamples from './date-picker/tm-date-picker.examples';
+import * as entityPickerExamples from './entity-picker/tm-entity-picker.examples';
 import * as dropzoneExamples from './files/tm-dropzone.examples';
 import * as filePickerExamples from './files/tm-file-picker.examples';
 import * as gridExamples from './grid/tm-grid.examples';
@@ -84,6 +86,10 @@ interface ExampleTreeRow {
   readonly qty: number;
 }
 
+/** A trivial modal page behind the entity-picker examples' page bindings. */
+@Component({ template: `placeholder` })
+class ExamplePage {}
+
 /**
  * One reusable host: the vitest builder AOT-compiles specs, so a decorator
  * template must be static (NG1010) — each example is swapped in at runtime
@@ -102,6 +108,7 @@ interface ExampleTreeRow {
     TmContextMenuTrigger,
     TmDatePicker,
     TmDropzone,
+    TmEntityPicker,
     TmFilePicker,
     TmFormField,
     TmGrid,
@@ -132,6 +139,12 @@ interface ExampleTreeRow {
     <tm-form-field label="placeholder"><input tmInput /></tm-form-field>
     <tm-form-field label="placeholder"><input tmNumber /></tm-form-field>
     <tm-form-field label="placeholder"><tm-date-picker /></tm-form-field>
+    <tm-entity-picker
+      [search]="searchAgents"
+      [itemId]="agentId"
+      [itemLabel]="agentName"
+      aria-label="placeholder"
+    />
     <button tmButton>placeholder</button>
     <tm-alert kind="info">placeholder</tm-alert>
     <tm-tab-group>
@@ -195,6 +208,21 @@ class ExampleHost {
   protected readonly onFiles = (selection: unknown): void => void selection;
   protected readonly treeHasChildren = (row: ExampleTreeRow): boolean => row.parentId === null;
   protected readonly loadTreeChildren = (): Promise<void> => Promise.resolve();
+
+  // The entity-picker examples' members: an in-memory directory search plus
+  // the accessor closures and a trivial modal page.
+  protected readonly agents: ReadonlyArray<{ id: number; name: string }> = [
+    { id: 1, name: 'Adam Brown' },
+    { id: 2, name: 'Alice Green' },
+    { id: 3, name: 'Bob Stone' },
+  ];
+  protected readonly searchAgents = (query: string): ReadonlyArray<{ id: number; name: string }> =>
+    this.agents.filter((agent) => agent.name.toLowerCase().includes(query.trim().toLowerCase()));
+  protected readonly agentId = (agent: { id: number; name: string }): number => agent.id;
+  protected readonly agentName = (agent: { id: number; name: string }): string => agent.name;
+  protected readonly agentDisplay = (id: number): string | null =>
+    this.agents.find((agent) => agent.id === id)?.name ?? null;
+  protected readonly agentPage = ExamplePage;
 
   // The editable example's members: a Signal Forms field tree over the rows,
   // a new-row factory, and the view/edit toggle bound to `readonly`.
@@ -374,6 +402,7 @@ const SUITES = [
   { source: 'input/tm-input.examples.ts', examples: inputExamples },
   { source: 'number/tm-number.examples.ts', examples: numberExamples },
   { source: 'date-picker/tm-date-picker.examples.ts', examples: datePickerExamples },
+  { source: 'entity-picker/tm-entity-picker.examples.ts', examples: entityPickerExamples },
   { source: 'alert/tm-alert.examples.ts', examples: alertExamples },
   { source: 'button/tm-button.examples.ts', examples: buttonExamples },
   { source: 'image/tm-image.examples.ts', examples: imageExamples },

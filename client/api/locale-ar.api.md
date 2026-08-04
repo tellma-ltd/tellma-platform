@@ -37,6 +37,31 @@ export const TM_LOCALE_AR_STRINGS: {
     readonly select: {
         readonly placeholder: "{gender, select, female {حددي خيارا} other {حدد خيارا}}";
     };
+    readonly entityPicker: {
+        readonly advancedSearch: "بحث متقدم…";
+        readonly create: "إنشاء…";
+        readonly edit: "تعديل…";
+        readonly advancedTitle: "بحث متقدم";
+        readonly createTitle: "إنشاء";
+        readonly editTitle: "تعديل";
+        readonly magnifier: "بحث متقدم";
+        readonly noResults: "لا توجد نتائج";
+        readonly searchFailed: "فشل البحث";
+        readonly moreResults: "يتم عرض أفضل {count, plural, zero {# نتيجة} one {نتيجة} two {نتيجتين} few {# نتائج} many {# نتيجة} other {# نتيجة}}. {gender, select, female {واصلي} other {واصل}} الكتابة للتصفية.";
+        readonly announce: {
+            readonly results: "{count, plural, zero {لا توجد نتائج} one {نتيجة واحدة} two {نتيجتان} few {# نتائج} many {# نتيجة} other {# نتيجة}}";
+            readonly resultsMore: "أكثر من {count, plural, zero {# نتيجة} one {نتيجة واحدة} two {نتيجتين} few {# نتائج} many {# نتيجة} other {# نتيجة}} — هناك المزيد";
+            readonly noResults: "لا توجد نتائج";
+            readonly searchFailed: "فشل البحث";
+            readonly picked: "تم اختيار {label}";
+        };
+        readonly errors: {
+            readonly unresolved: "{gender, select, female {حددي} other {حدد}} عنصرا من القائمة";
+            readonly noMatch: "لا يوجد تطابق مع «{text}»";
+            readonly ambiguous: "«{text}» يطابق أكثر من عنصر واحد";
+            readonly searchFailed: "فشل البحث";
+        };
+    };
     readonly grid: {
         readonly loading: "جار التحميل…";
         readonly empty: "لا توجد سجلات للعرض";

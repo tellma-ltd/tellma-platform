@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { inject, Injector, untracked } from '@angular/core';
+import { inject, Injectable, Injector, untracked } from '@angular/core';
 import type { TranspileParams } from '@jsverse/transloco';
 import { MessageFormatTranspiler } from '@jsverse/transloco-messageformat';
 
@@ -27,7 +27,12 @@ import { TM_ACTIVE_LOCALE } from './tm-active-locale';
  * Reading it late also settles the ordering — `setActiveLang` notifies the
  * transpiler BEFORE it publishes the new language, so at that moment the
  * locale signal still holds the outgoing one.
+ *
+ * Decorated in its own right rather than inheriting the base class's
+ * decorator: Angular deprecated instantiating a token whose `@Injectable`
+ * comes from an ancestor, and it warns on every app that provides this one.
  */
+@Injectable()
 export class ɵTmMessageFormatTranspiler extends MessageFormatTranspiler {
   private readonly injector = inject(Injector);
   private applied: string | null = null;

@@ -63,6 +63,34 @@ export const TM_LOCALE_AR_STRINGS = {
   select: {
     placeholder: '{gender, select, female {حددي خيارا} other {حدد خيارا}}',
   },
+  entityPicker: {
+    advancedSearch: 'بحث متقدم…',
+    create: 'إنشاء…',
+    edit: 'تعديل…',
+    advancedTitle: 'بحث متقدم',
+    createTitle: 'إنشاء',
+    editTitle: 'تعديل',
+    magnifier: 'بحث متقدم',
+    noResults: 'لا توجد نتائج',
+    searchFailed: 'فشل البحث',
+    moreResults:
+      'يتم عرض أفضل {count, plural, zero {# نتيجة} one {نتيجة} two {نتيجتين} few {# نتائج} many {# نتيجة} other {# نتيجة}}. {gender, select, female {واصلي} other {واصل}} الكتابة للتصفية.',
+    announce: {
+      results:
+        '{count, plural, zero {لا توجد نتائج} one {نتيجة واحدة} two {نتيجتان} few {# نتائج} many {# نتيجة} other {# نتيجة}}',
+      resultsMore:
+        'أكثر من {count, plural, zero {# نتيجة} one {نتيجة واحدة} two {نتيجتين} few {# نتائج} many {# نتيجة} other {# نتيجة}} — هناك المزيد',
+      noResults: 'لا توجد نتائج',
+      searchFailed: 'فشل البحث',
+      picked: 'تم اختيار {label}',
+    },
+    errors: {
+      unresolved: '{gender, select, female {حددي} other {حدد}} عنصرا من القائمة',
+      noMatch: 'لا يوجد تطابق مع «{text}»',
+      ambiguous: '«{text}» يطابق أكثر من عنصر واحد',
+      searchFailed: 'فشل البحث',
+    },
+  },
   grid: {
     loading: 'جار التحميل…',
     empty: 'لا توجد سجلات للعرض',

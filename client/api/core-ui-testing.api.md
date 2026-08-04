@@ -72,6 +72,38 @@ export class TmDropzoneHarness extends ComponentHarness {
 }
 
 // @public
+export class TmEntityPickerHarness extends ComponentHarness {
+    blur(): Promise<void>;
+    clickMagnifier(): Promise<void>;
+    close(): Promise<void>;
+    focus(): Promise<void>;
+    getActiveOptionLabel(): Promise<string | null>;
+    getOptionLabels(): Promise<string[]>;
+    getOptions(filter?: HarnessPredicate<TmEntityPickerOptionHarness>): Promise<TmEntityPickerOptionHarness[]>;
+    getQueryText(): Promise<string>;
+    getStatusText(): Promise<string | null>;
+    hasMagnifier(): Promise<boolean>;
+    static hostSelector: string;
+    isBusy(): Promise<boolean>;
+    isInvalid(): Promise<boolean>;
+    isOpen(): Promise<boolean>;
+    isSpinnerShown(): Promise<boolean>;
+    open(): Promise<void>;
+    selectOptionByLabel(label: string): Promise<void>;
+    typeQuery(text: string): Promise<void>;
+}
+
+// @public
+export class TmEntityPickerOptionHarness extends ComponentHarness {
+    click(): Promise<void>;
+    getText(): Promise<string>;
+    static hostSelector: string;
+    isAction(): Promise<boolean>;
+    isActive(): Promise<boolean>;
+    isSelected(): Promise<boolean>;
+}
+
+// @public
 export class TmFilePickerHarness extends ComponentHarness {
     click(): Promise<void>;
     getLabel(): Promise<string>;

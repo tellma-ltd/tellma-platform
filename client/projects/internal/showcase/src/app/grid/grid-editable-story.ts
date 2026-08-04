@@ -3,20 +3,11 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import {
-  Component,
-  computed,
-  ElementRef,
-  inject,
-  signal,
-  viewChild,
-  type Signal,
-} from '@angular/core';
+import { Component, computed, signal, viewChild } from '@angular/core';
 import { applyEach, form, min, required } from '@angular/forms/signals';
 
-import type { TmCellEditor, TmLabelResolution } from '@tellma/core-ui/contracts';
-import { TM_CELL_EDITOR_HOST } from '@tellma/core-ui';
-import { TM_GRID_CONTEXT, TmGrid, TmGridColumn, TmGridEditorDef } from '@tellma/core-ui/grid';
+import type { TmLabelResolution } from '@tellma/core-ui/contracts';
+import { TM_GRID_CONTEXT, TmGrid, TmGridColumn } from '@tellma/core-ui/grid';
 
 import { mulberry32 } from './seeded-random';
 
@@ -91,99 +82,17 @@ function makeSeedLine(i: number): InvoiceLine {
 }
 
 /**
- * A consumer editor for the `agentId` entity column: a native select over
- * the mock directory that implements `TmCellEditor<number | null>` and
- * registers itself through TM_CELL_EDITOR_HOST. Its `text` is `null`
- * (content not representable as text), so the grid commits the VALUE
- * channel — the picked agent id — directly, no column `parse` involved.
- */
-@Component({
-  selector: 'app-demo-agent-editor',
-  template: `
-    <select
-      #select
-      class="agent-editor"
-      aria-label="Agent"
-      [value]="selectValue()"
-      (change)="onChange($event)"
-    >
-      <option value=""></option>
-      @for (agent of agents; track $index) {
-        <option [value]="agent.id">{{ agent.label }} (#{{ agent.id }})</option>
-      }
-    </select>
-  `,
-  styles: `
-    .agent-editor {
-      inline-size: 100%;
-      block-size: 100%;
-      border: none;
-      background: transparent;
-      font: inherit;
-      color: inherit;
-    }
-  `,
-})
-export class DemoAgentEditor implements TmCellEditor<number | null> {
-  private readonly cellHost = inject(TM_CELL_EDITOR_HOST, { optional: true });
-  private readonly select = viewChild.required<ElementRef<HTMLSelectElement>>('select');
-
-  protected readonly agents = AGENTS;
-
-  /** The picked agent id — the grid seeds and commits through this channel. */
-  readonly value = signal<number | null>(null);
-  /** `null`: a picked entity has no text representation — commit by value. */
-  readonly text: Signal<string | null> = computed(() => null);
-  /** The native select's string value. */
-  protected readonly selectValue = computed(() => {
-    const value = this.value();
-    return value === null ? '' : `${value}`;
-  });
-
-  constructor() {
-    this.cellHost?.register(this as TmCellEditor<unknown>);
-  }
-
-  /** Nothing pending to flush — the change handler writes the value live. */
-  commit(): void {}
-
-  /** The grid never reads the editor after cancel; nothing to restore. */
-  cancel(): void {}
-
-  /** Focuses the select so editing keys reach it and bubble to the grid. */
-  focus(): void {
-    this.select().nativeElement.focus();
-  }
-
-  /** Type-to-edit: jump to the first agent whose label starts with `text`. */
-  seed(text: string): void {
-    const query = text.trim().toLowerCase();
-    if (query === '') {
-      return;
-    }
-    const match = AGENTS.find((agent) => agent.label.toLowerCase().startsWith(query));
-    if (match !== undefined) {
-      this.value.set(match.id);
-    }
-  }
-
-  protected onChange(event: Event): void {
-    const raw = (event.target as HTMLSelectElement).value;
-    this.value.set(raw === '' ? null : Number(raw));
-  }
-}
-
-/**
  * Editable tm-grid demo host: an invoice-lines grid over a Signal Forms
  * field tree with consumer validators (`required`, `min`), a per-cell
  * readonly column, a boolean toggle column, a built-in enum editor, an
- * entity column with a consumer editor + async paste resolver, an accessor
+ * entity column on the built-in tm-entity-picker editor + async paste
+ * resolver, an accessor
  * column, and the new-row placeholder. The toolbar exposes the readonly
  * flip, the resolver delay/call-counter, `clearHistory()`, and a live JSON
  * dump of the model the Playwright battery asserts commits against.
  */
 @Component({
-  imports: [TmGrid, TmGridColumn, TmGridEditorDef, DemoAgentEditor],
+  imports: [TmGrid, TmGridColumn],
   // The app supplies the tenant id ambiently (single tenant per app); this
   // story stands in for tenant 't1' (the cross-engine paste e2e keys off it).
   providers: [
@@ -252,12 +161,13 @@ export class DemoAgentEditor implements TmCellEditor<number | null> {
         key="agentId"
         type="entity"
         header="Agent"
+        [search]="searchAgents"
+        [itemId]="agentIdOf"
+        [itemLabel]="agentLabelOf"
         [format]="agentLabel"
         [resolvePastedLabels]="resolveAgents"
         [width]="150"
-      >
-        <app-demo-agent-editor *tmGridEditor />
-      </tm-grid-column>
+      />
       <tm-grid-column type="number" header="Total" [value]="total" [width]="110" />
       <tm-grid-column key="dueDate" type="date" header="Due" [width]="120" />
     </tm-grid>
@@ -342,6 +252,14 @@ export class GridEditableStory {
   /** id → directory label (the entity column's text representation). */
   readonly agentLabel = (value: number | null): string =>
     AGENTS.find((agent) => agent.id === value)?.label ?? '';
+
+  /** The built-in picker's data seam: a synchronous directory search. */
+  readonly searchAgents = (query: string): readonly Agent[] => {
+    const q = query.trim().toLowerCase();
+    return q === '' ? AGENTS : AGENTS.filter((agent) => agent.label.toLowerCase().includes(q));
+  };
+  readonly agentIdOf = (agent: Agent): number => agent.id;
+  readonly agentLabelOf = (agent: Agent): string => agent.label;
 
   /**
    * The async label→value resolver (§9.4 mock): resolves against the

@@ -17,6 +17,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/input` | `tmInput` — a bare directive on the native `<input>` and `<textarea>` |
 | `@tellma/core-ui/number` | `tmNumber` — locale-aware numeric input (percent mode, display rounding) |
 | `@tellma/core-ui/date-picker` | `tm-date-picker` — calendar-aware date input + popup (ISO `YYYY-MM-DD` model) |
+| `@tellma/core-ui/entity-picker` | `tm-entity-picker` — server-searched FK selector with advanced-search/create/edit modal pages |
 | `@tellma/core-ui/checkbox` | `tm-checkbox` — native-input tri-state checkbox |
 | `@tellma/core-ui/form-field` | `tm-form-field` — label/hint/error chrome around any control |
 | `@tellma/core-ui/select` | `tm-select` + `tm-option` — overlay single-select |

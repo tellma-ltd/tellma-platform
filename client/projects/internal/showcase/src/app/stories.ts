@@ -9,8 +9,10 @@ import { AlertStory } from './alert/alert-story';
 import { ButtonStory } from './button/button-story';
 import { CheckboxStory } from './checkbox/checkbox-story';
 import { DatePickerStory } from './date-picker/date-picker-story';
+import { EntityPickerStory } from './entity-picker/entity-picker-story';
 import { GridCustomEditorStory } from './grid/grid-custom-editor-story';
 import { GridEditableStory } from './grid/grid-editable-story';
+import { GridEntityStory } from './grid/grid-entity-story';
 import { GridListScreenStory } from './grid/grid-list-screen-story';
 import { GridReadonlyStory } from './grid/grid-readonly-story';
 import { FilePreviewStory } from './file-preview/file-preview-story';
@@ -68,6 +70,11 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'files', title: 'Files (tmFilePicker + tm-dropzone)', component: FilesStory },
   { id: 'file-preview', title: 'File preview (TmFilePreview)', component: FilePreviewStory },
   { id: 'select', title: 'Select (tm-select)', component: SelectStory },
+  {
+    id: 'entity-picker',
+    title: 'Entity picker (tm-entity-picker)',
+    component: EntityPickerStory,
+  },
   { id: 'tabs', title: 'Tabs (tm-tab-group)', component: TabsStory },
   { id: 'modal', title: 'Modal (TmModal)', component: ModalStory },
   { id: 'popover', title: 'Popover (tm-popover)', component: PopoverStory },
@@ -82,6 +89,12 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   },
   { id: 'grid-states', title: 'Grid (states)', component: GridStatesStory, wide: true },
   { id: 'grid-editable', title: 'Grid (editable)', component: GridEditableStory, wide: true },
+  {
+    id: 'grid-entity',
+    title: 'Grid (entity picker editor)',
+    component: GridEntityStory,
+    wide: true,
+  },
   {
     id: 'grid-custom-editor',
     title: 'Grid (custom editor)',

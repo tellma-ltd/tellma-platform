@@ -25,6 +25,7 @@ import type { FieldTree, ValidationError } from '@angular/forms/signals';
 import {
   TM_PARSE_ERROR,
   type SignalLike,
+  type TmCellEditor,
   type TmGridContentState,
   type TmGridScrollPosition,
   type TmLabelResolution,
@@ -41,6 +42,12 @@ import {
   type TmUiTranslateFn,
 } from '@tellma/core-ui';
 import { TM_CHECKBOX_CELL_DISPLAY } from '@tellma/core-ui/checkbox';
+import type {
+  ɵTmEntityAdoptedSearch,
+  TmEntityId,
+  TmEntityPickerPage,
+  TmEntitySearchFn,
+} from '@tellma/core-ui/entity-picker';
 import {
   TmGridEngine,
   tmComputeAxisWindow,
@@ -133,6 +140,21 @@ const GRID_MENU_SHORTCUTS = IS_MAC_PLATFORM
 
 /** Natively-focusable content consumers may project into cells/headers. */
 const INTERACTIVE_CONTENT_SELECTOR = 'a[href], button, input, select, textarea, [tabindex]';
+
+/**
+ * "This session recorded no value baseline" — distinct from every value a
+ * cell can hold, `undefined` and `null` included.
+ */
+const NO_VALUE_BASELINE: unique symbol = Symbol('tmNoValueBaseline');
+
+/**
+ * A search taken over from an entity editor at commit time. Detached from
+ * the editor's lifetime, so whoever holds it owns aborting it.
+ */
+type AdoptedSearch = ɵTmEntityAdoptedSearch<unknown>;
+
+/** What an adopted search settles to. */
+type AdoptedResult = Awaited<AdoptedSearch['settled']>;
 
 /** Rows whose field nodes one error-tally warm-up slice touches (§16). */
 const WARMUP_ROWS_PER_SLICE = 500;
@@ -315,6 +337,15 @@ interface ColumnInternal<T> extends ɵTmGridColumnVm {
    * the display text is already the edit text (every non-number column).
    */
   readonly editSeedText: ((value: unknown) => string) | undefined;
+  /** The raw display-format override (the entity editor adapts it id-first). */
+  readonly format: ((value: unknown, row: T) => string) | undefined;
+  /** `entity` columns: the built-in picker's data seam; `search` absent ⇒ no built-in editor. */
+  readonly entitySearch: TmEntitySearchFn<unknown> | undefined;
+  readonly entityItemId: ((item: unknown) => TmEntityId) | undefined;
+  readonly entityItemLabel: ((item: unknown) => string) | undefined;
+  readonly entityAdvancedSearch: TmEntityPickerPage | undefined;
+  readonly entityCreate: TmEntityPickerPage | undefined;
+  readonly entityEdit: TmEntityPickerPage | undefined;
 }
 
 /** One rendered cell's view model. */
@@ -1508,7 +1539,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         event.preventDefault();
         return;
       case 'openDropdown':
-        if (mounted !== null && (mounted.kind === 'enum' || mounted.kind === 'date')) {
+        if (
+          mounted !== null &&
+          (mounted.kind === 'enum' || mounted.kind === 'date' || mounted.kind === 'entity')
+        ) {
           mounted.openDropdown();
           event.preventDefault();
         }
@@ -2051,23 +2085,58 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
    * engine only collects for resolver-carrying columns) short-circuits with
    * an empty answered map.
    */
-  private runResolutions(requests: readonly TmGridResolutionRequest[]): void {
+  private runResolutions(
+    requests: readonly TmGridResolutionRequest[],
+    fallback?: TmLabelResolution<unknown>,
+  ): void {
     for (const request of requests) {
       const column = untracked(this.columnsInternal).find(
         (candidate) => candidate.id === request.columnId,
       );
       const resolver = column?.resolveLabels;
       if (resolver === undefined) {
-        this.engine.clipboard.applyResolution(request.id, new Map());
+        this.engine.clipboard.applyResolution(request.id, this.withFallback(request, new Map(), fallback));
         continue;
       }
       Promise.resolve()
         .then(() => resolver([...request.labels], request.context))
         .then(
-          (results) => this.engine.clipboard.applyResolution(request.id, results),
+          (results) =>
+            this.engine.clipboard.applyResolution(
+              request.id,
+              this.withFallback(request, results, fallback),
+            ),
           () => this.engine.clipboard.applyResolution(request.id, new Map(), { failed: true }),
         );
     }
+  }
+
+  /**
+   * Substitutes a caller's verdict for labels the resolver could not name.
+   * Used when the editor's own search already reached a conclusion the
+   * resolver was merely being given a chance to improve on: the resolver
+   * wins wherever it names something, and the search's verdict stands where
+   * it answers "I don't know this" — a `notFound` from an identity lookup
+   * does not contradict "the search matched several", and the search's
+   * message is the more useful of the two. A resolver that FAILED never
+   * lands here: that path is retryable and must stay so.
+   */
+  private withFallback(
+    request: TmGridResolutionRequest,
+    results: ReadonlyMap<string, TmLabelResolution<unknown>>,
+    fallback: TmLabelResolution<unknown> | undefined,
+  ): ReadonlyMap<string, TmLabelResolution<unknown>> {
+    if (fallback === undefined) {
+      return results;
+    }
+    const merged = new Map(results);
+    for (const label of request.labels) {
+      const answer = merged.get(label);
+      if (answer === undefined || (!('value' in answer) && answer.error === 'notFound')) {
+        merged.set(label, fallback);
+      }
+    }
+    return merged;
   }
 
   /**
@@ -2210,6 +2279,21 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         : accessor !== undefined
           ? (row) => accessor(row)
           : () => null;
+
+    let entitySearch: TmEntitySearchFn<unknown> | undefined;
+    let entityItemId: ((item: unknown) => TmEntityId) | undefined;
+    let entityItemLabel: ((item: unknown) => string) | undefined;
+    let entityAdvancedSearch: TmEntityPickerPage | undefined;
+    let entityCreate: TmEntityPickerPage | undefined;
+    let entityEdit: TmEntityPickerPage | undefined;
+    if (type === 'entity') {
+      entitySearch = dir.search();
+      entityItemId = dir.itemId() as ((item: unknown) => TmEntityId) | undefined;
+      entityItemLabel = dir.itemLabel() as ((item: unknown) => string) | undefined;
+      entityAdvancedSearch = dir.advancedSearch();
+      entityCreate = dir.create();
+      entityEdit = dir.edit();
+    }
 
     let enumLabels: ReadonlyMap<unknown, string> | null = null;
     let enumOptions: readonly unknown[] | undefined;
@@ -2381,7 +2465,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       getText,
       editable:
         key !== null &&
-        (BUILT_IN_EDIT_TYPES.has(type) || customParse !== undefined || editorDef !== undefined),
+        (BUILT_IN_EDIT_TYPES.has(type) ||
+          customParse !== undefined ||
+          editorDef !== undefined ||
+          entitySearch !== undefined),
       // The bound field's per-cell disabled/readonly state WINS over the
       // column setting (§5.1 — the field is authoritative when bound).
       isCellReadonly: (row) =>
@@ -2416,6 +2503,13 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       optionValue,
       resolveLabels,
       editSeedText,
+      format,
+      entitySearch,
+      entityItemId,
+      entityItemLabel,
+      entityAdvancedSearch,
+      entityCreate,
+      entityEdit,
     };
   }
 
@@ -3262,13 +3356,39 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (column === undefined) {
       return false;
     }
-    if (column.editorDef === undefined && column.type === 'entity') {
+    if (
+      column.editorDef === undefined &&
+      column.type === 'entity' &&
+      column.entitySearch === undefined
+    ) {
       if (isDevMode() && untracked(() => engine.model.isCellEditable(cell))) {
         throw new Error(
-          `tm-grid: column "${column.id}" of type 'entity' has no built-in editor — ` +
-            `project a *tmGridEditor template hosting a control that implements TmCellEditor.`,
+          `tm-grid: column "${column.id}" of type 'entity' has no editor — bind ` +
+            `[search]/[itemId]/[itemLabel] for the built-in tm-entity-picker, or project ` +
+            `a *tmGridEditor template hosting a control that implements TmCellEditor.`,
         );
       }
+      return false;
+    }
+    if (
+      column.type === 'entity' &&
+      column.editorDef === undefined &&
+      column.entitySearch !== undefined &&
+      (column.entityItemId === undefined || column.entityItemLabel === undefined)
+    ) {
+      // Gated on cell editability exactly like the no-editor guard above: a
+      // cell that could never have opened an editor must not be the thing
+      // that reports the column's misconfiguration.
+      if (isDevMode() && untracked(() => engine.model.isCellEditable(cell))) {
+        throw new Error(
+          `tm-grid: column "${column.id}" binds [search] without [itemId]/[itemLabel] — ` +
+            `both are required alongside [search] for the built-in tm-entity-picker editor.`,
+        );
+      }
+      // In production the cell stays non-editable, exactly like the
+      // no-editor case above. Opening anyway would render every option as
+      // "[object Object]" through the String(item) fallbacks and commit
+      // that string into the foreign-key field.
       return false;
     }
     if (!engine.edit.openEdit(cell, mode, seedText)) {
@@ -3298,6 +3418,45 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         kind: 'template',
         template: column.editorDef.template as TemplateRef<TmGridEditorContext<unknown, unknown>>,
         context: { $implicit: valueAtOpen, row: view?.row },
+      };
+    } else if (column.type === 'entity') {
+      const format = column.format;
+      // The row is addressed by IDENTITY, not captured: an immutable model
+      // replaces the row object on every write, so a snapshot taken here
+      // would render the committed id through the row as it stood when the
+      // editor opened — and would pin that object for the editor's whole
+      // lifetime. `null` on the placeholder row, which has no identity yet.
+      const rowId: TmRowId | null = view?.id ?? null;
+      config = {
+        kind: 'entity',
+        label: header,
+        search: column.entitySearch!,
+        // Both are guaranteed by the half-config guard above (which throws
+        // in dev and refuses the open in prod); the `??` only satisfies the
+        // picker's required inputs, and its branch is unreachable.
+        itemId: column.entityItemId ?? ((item: unknown) => String(item)),
+        itemLabel: column.entityItemLabel ?? ((item: unknown) => String(item)),
+        // The column's `format` doubles as the picker's committed-id display
+        // resolver; an empty string defers to the picker's own fallbacks
+        // (label memo, then String(id) with the dev warning). On the
+        // placeholder row there is no row to hand a consumer `format`
+        // (whose signature promises one) — defer to the fallbacks instead
+        // of calling it with undefined.
+        displayWith:
+          format === undefined
+            ? undefined
+            : (id: unknown) => {
+                const row = rowId === null ? undefined : engine.model.rowById(rowId);
+                if (row === undefined) {
+                  return null;
+                }
+                const text = format(id, row);
+                return text === '' ? null : text;
+              },
+        advancedSearch: column.entityAdvancedSearch,
+        create: column.entityCreate,
+        edit: column.entityEdit,
+        onActivation: () => this.onEditorActivation(),
       };
     } else if (column.type === 'enum') {
       config = {
@@ -3332,9 +3491,21 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     // in place would make a later commit of a coincidentally equal string
     // (an emptied cell after an emptied cell) look pristine and be dropped.
     this.editorOpenText = null;
+    this.editorOpenValue = NO_VALUE_BASELINE;
     if (opts?.ime === true) {
       // IME opens UNSEEDED: the composition itself supplies the content.
       this.editorOpenText = '';
+      if (mounted.kind === 'entity') {
+        // The committed id is installed even though the text is empty: the
+        // Edit… row still targets it, and an abandoned composition must
+        // leave the cell exactly as it was — which on the new-row
+        // placeholder means not materializing a row at all, so the value
+        // baseline is recorded here as well. (The dropdown's own selection
+        // mirror follows the TEXT, so it shows nothing until one is typed.)
+        editor.value.set(valueAtOpen);
+        mounted.setTextQuiet?.('');
+        this.editorOpenValue = valueAtOpen;
+      }
     } else if (mounted.kind === 'enum') {
       editor.value.set(valueAtOpen);
       if (seedText !== undefined) {
@@ -3342,6 +3513,35 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         editor.seed?.(seedText);
       } else {
         mounted.openDropdown();
+      }
+    } else if (mounted.kind === 'entity') {
+      // The committed id first: the dropdown mirrors it (check glyph) and
+      // the Edit… footer row targets it.
+      editor.value.set(valueAtOpen);
+      if (seedText !== undefined) {
+        // Type-to-edit: replaces the content and searches the seed at once.
+        editor.seed?.(seedText);
+      } else {
+        // Edit mode shows the display text (or an errored cell's raw text)
+        // with the dropdown CLOSED — `seed()` would search; the quiet
+        // install does not. The pristine baseline makes F2 + Enter commit
+        // nothing (no re-resolution of the committed label).
+        mounted.setTextQuiet?.(editText);
+        this.editorOpenText = editText;
+        // An entity editor owns BOTH channels, and on a clean cell the text
+        // channel stands down (it reports null so the id commits). The text
+        // baseline alone can therefore never recognize an untouched
+        // session; the value baseline is what makes F2 + Enter a no-op.
+        //
+        // An INVALID-INPUT cell gets no value baseline: it opens on raw
+        // text that is not the value's display text, so "the value channel
+        // is authoritative again" means the user cleared the bad text —
+        // a real edit, and the only way to clear the annotation from the
+        // editor. Its own pristine case (the raw text still unchanged) is
+        // covered by the text baseline above.
+        if (!hasInvalidInput) {
+          this.editorOpenValue = valueAtOpen;
+        }
       }
     } else if (seedText !== undefined) {
       if (editor.seed !== undefined) {
@@ -3370,8 +3570,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     // Alt+ArrowDown means "show me the choices": one press reaches them,
     // whatever the cell's editor is. An enum's panel is already open above
     // (it has nothing to type, so every open shows it); a date's calendar
-    // is not, because typing is that cell's primary path and F2 must not
-    // pop it. Type-to-edit is exempt — the seed IS the intent.
+    // and an entity's dropdown are not, because typing is those cells'
+    // primary path and F2 must not pop them. Type-to-edit is exempt — the
+    // seed IS the intent.
     if (opts?.dropdown === true && seedText === undefined && !mounted.isDropdownOpen()) {
       mounted.openDropdown();
     }
@@ -3401,11 +3602,23 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   private editorOpenText: string | null = null;
 
   /**
+   * The VALUE an entity editor was opened with, or `NO_VALUE_BASELINE` when
+   * the session has none. Entity editors are the only ones that own both
+   * channels, and a clean entity cell hands the commit to the value channel
+   * — so the text baseline above cannot see an untouched session and the
+   * value baseline has to.
+   */
+  private editorOpenValue: unknown = NO_VALUE_BASELINE;
+
+  /**
    * Commits the open session through the engine: the enum select commits
    * its VALUE; text-path editors commit their text through the column's
-   * parse — unless `text()` is `null` (content not representable as text),
-   * which commits the value channel directly. A pristine text editor (the
-   * text still equals what it opened with) commits nothing.
+   * parse — unless `text()` is `null` (content not representable as text,
+   * or an entity picker whose value channel is authoritative), which
+   * commits the value channel directly. A pristine text editor (the text
+   * still equals what it opened with) commits nothing. Unresolved text on
+   * an `entity` column takes the label-resolution ladder instead of the
+   * plain text commit (see `commitEditorText`).
    */
   private commitEditor(opts: { refocus: boolean }): void {
     const engine = this.engine;
@@ -3415,16 +3628,195 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     } else if (mounted.kind === 'enum') {
       engine.edit.commitValue(untracked(() => mounted.editor.value()));
     } else {
+      let adopted: AdoptedSearch | null = null;
+      if (mounted.kind === 'entity') {
+        // Take the editor's search over FIRST: `commit()` below closes the
+        // dropdown, and a closing popup aborts what it was fetching. What
+        // is adopted here is detached from the editor's lifetime, so it
+        // survives the teardown that follows — and every early exit past
+        // this point has to abort it, or the request leaks.
+        const pending = untracked(() => mounted.editor.text());
+        // Text the session opened with is not a commit to resolve, so
+        // adopting for it would issue a request only to abort it below.
+        adopted =
+          pending === null || pending === this.editorOpenText
+            ? null
+            : (mounted.adoptSearch?.(pending) ?? null);
+        // The picker's synchronous fast path: a fresh unique result for the
+        // current unresolved text auto-picks (no request) before the
+        // channels are read. PULLED here — a push through the activation
+        // output would re-enter this commit mid-flight.
+        mounted.editor.commit();
+        if (this.isPristineEntitySession(mounted.editor)) {
+          adopted?.abort();
+          engine.edit.cancel();
+          this.closeEditor(opts);
+          return;
+        }
+      }
       const text = untracked(() => mounted.editor.text());
       if (text === null) {
+        adopted?.abort(); // the fast path answered it
         engine.edit.commitValue(untracked(() => mounted.editor.value()));
       } else if (text === this.editorOpenText) {
+        adopted?.abort();
         engine.edit.cancel();
       } else {
-        engine.edit.commitText(text);
+        this.commitEditorText(text, adopted);
       }
     }
     this.closeEditor(opts);
+  }
+
+  /**
+   * Whether an entity session is still exactly as it opened — neither
+   * channel moved. Such a commit must write NOTHING: on a real row the
+   * value write would be elided anyway, but on the new-row placeholder any
+   * commit at all materializes the row, so opening an editor on the `*` row
+   * and closing it would append a blank row the user never typed into.
+   *
+   * Only "the value is unchanged" is checked here, never "the value write
+   * would be a no-op": a commit also clears the cell's invalid input, and a
+   * session that opened on one has no value baseline for exactly that
+   * reason.
+   */
+  private isPristineEntitySession(editor: TmCellEditor<unknown>): boolean {
+    if (this.editorOpenValue === NO_VALUE_BASELINE) {
+      return false; // a seeded/IME open, or an errored cell: an edit by construction
+    }
+    const text = untracked(() => editor.text());
+    if (text !== null) {
+      return text === this.editorOpenText; // an errored cell's raw text, unchanged
+    }
+    return Object.is(untracked(() => editor.value()), this.editorOpenValue);
+  }
+
+  /**
+   * Text commits: `entity` columns route through the label-resolution
+   * ladder — the same conversion chain pasted labels take (consumer parse,
+   * then `resolvePastedLabels` with the single text under the grid's
+   * pending affordance and sequence tokens, else a definitive invalid
+   * input) — applying to consumer template editors on entity columns too.
+   * Every other column commits through the column's parse as before. The
+   * resolver runs in a microtask, after the editor's teardown completes —
+   * exactly one authoritative resolution, under the GRID's pending state.
+   */
+  private commitEditorText(text: string, adopted: AdoptedSearch | null): void {
+    const engine = this.engine;
+    const session = untracked(() => engine.edit.session());
+    const column =
+      session === null ? undefined : untracked(this.columnsInternal)[session.cell.col];
+    if (column?.type !== 'entity') {
+      adopted?.abort();
+      engine.edit.commitText(text);
+      return;
+    }
+    const request = engine.commitEditorLabel(text, { deferToHost: adopted !== null });
+    if (request === null) {
+      adopted?.abort(); // an earlier rung settled it — the search is nobody's input now
+      return;
+    }
+    if (adopted === null) {
+      this.runResolutions([request]);
+      return;
+    }
+    // Undo while pending aborts the request; the adopted search is part of
+    // that request now, so it goes with it.
+    request.context.signal.addEventListener('abort', adopted.abort, { once: true });
+    void adopted.settled
+      .then((outcome) => {
+        if (request.context.signal.aborted) {
+          // Undone, or the grid was disposed. An abort surfaces here as a
+          // search FAILURE (the picker cannot tell the two apart), and
+          // falling through on a failure would start the very round trip
+          // the abort was cancelling — against a request that is already
+          // gone, from a grid that may already be destroyed.
+          return;
+        }
+        const verdict = this.decideFromSearch(outcome, text, column);
+        if (verdict.decided !== undefined) {
+          engine.clipboard.applyResolution(request.id, new Map([[text, verdict.decided]]));
+          return;
+        }
+        if (outcome === 'failed' && column.resolveLabels === undefined) {
+          // The search FAILED and there is no identity authority to ask
+          // instead — so nothing ever examined this text. Left to
+          // `runResolutions`, the unanswered label would default to the
+          // definitive `notFound` ("there is no Alice"), which is a verdict
+          // no one reached; a dropped round trip is retryable and must say
+          // so, exactly as a REJECTED resolver does.
+          engine.clipboard.applyResolution(request.id, new Map(), { failed: true });
+          return;
+        }
+        // The search could not settle it. The SAME request carries on to
+        // the column's resolver — same pending mark, same sequence token,
+        // same open history entry — carrying whatever the search DID
+        // conclude as the fallback, for a resolver that cannot name it
+        // either.
+        this.runResolutions([request], verdict.fallback);
+      })
+      .catch(() => {
+        // A consumer accessor threw inside the decision. The request must
+        // still be answered: an unanswered one leaves the cell pending
+        // forever inside a history entry that never finalizes.
+        this.engine.clipboard.applyResolution(request.id, new Map(), { failed: true });
+      });
+  }
+
+  /**
+   * What the editor's own search says about the committed text.
+   *
+   * The two facilities answer different questions. `search` asks "what
+   * matches this query?" — ranked, capped, typically scoped to what a user
+   * may pick today. `resolvePastedLabels` asks "which entity IS this
+   * label?" — an identity lookup that may reach codes, aliases, or records
+   * the type-ahead never offers. So the search is authoritative about
+   * MULTIPLICITY and the resolver about IDENTITY OF SOMETHING THE SEARCH
+   * CANNOT SEE. Three answers:
+   *
+   * The line between the two verdicts is whether the search's answer is an
+   * IDENTITY fact or only a ranking one:
+   *
+   * - `decided` — the text names exactly one entity, or names several BY
+   *   LABEL. Both are identity facts the resolver cannot improve on, so it
+   *   is not consulted at all.
+   * - `fallback` — the search matched several rows and the text is none of
+   *   their labels. That is a dead end for the search and still an open
+   *   identity question: a consumer type-ahead that matches codes as well
+   *   as names returns several rows for a code, and that code is exactly
+   *   what the resolver knows. So the resolver is asked, and this verdict
+   *   is used only if it cannot name the text either — which is what keeps
+   *   the better message ("'Al' matches more than one Agent" is true and
+   *   useful; "no match for 'Al'" is neither).
+   *
+   * A TRUNCATED result set (`hasMore`) can be trusted about what it
+   * contains and never about what it does not: the duplicate that would
+   * make a lone exact match ambiguous may be sitting past the cap.
+   */
+  private decideFromSearch(
+    outcome: AdoptedResult,
+    text: string,
+    column: ColumnInternal<T>,
+  ): { readonly decided?: TmLabelResolution<unknown>; readonly fallback?: TmLabelResolution<unknown> } {
+    if (outcome === 'failed' || outcome.items.length === 0) {
+      return {};
+    }
+    const itemId = column.entityItemId;
+    const itemLabel = column.entityItemLabel;
+    if (itemId === undefined || itemLabel === undefined) {
+      return {}; // half-configured column: the editor never mounts, but stay honest
+    }
+    const items = outcome.items;
+    const exact = items.filter((item: unknown) => itemLabel(item as never) === text);
+    if (exact.length > 1) {
+      // Two entities carry this exact label. Rows past a cap could only
+      // agree, and no identity lookup can undo it.
+      return { decided: { error: 'ambiguous' } };
+    }
+    if (!outcome.hasMore && (exact.length === 1 || items.length === 1)) {
+      return { decided: { value: itemId((exact[0] ?? items[0]) as never) } };
+    }
+    return { fallback: { error: 'ambiguous' } };
   }
 
   /** Cancels the open session: the model is never written (§8.2 Esc, §5.1). */

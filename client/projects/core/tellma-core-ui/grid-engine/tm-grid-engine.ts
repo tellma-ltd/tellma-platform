@@ -8,7 +8,7 @@ import { untracked } from '@angular/core';
 import type { TmCellEdit, TmGridSelectionSnapshot, TmRowId } from '@tellma/core-ui/contracts';
 
 import { TmGridCellAnnotations } from './tm-grid-cell-annotations';
-import { TmGridClipboard } from './tm-grid-clipboard';
+import { TmGridClipboard, type TmGridResolutionRequest } from './tm-grid-clipboard';
 import { TmGridDataModel, type TmGridOrderSnapshot } from './tm-grid-data-model';
 import { TmGridEditState } from './tm-grid-edit-state';
 import type { TmGridEngineOptions } from './tm-grid-host';
@@ -133,9 +133,39 @@ export class TmGridEngine<T = unknown> {
         if (invalid !== undefined) {
           return invalid.rawText;
         }
+        // A resolution in flight cleared the cell's value the moment it
+        // started; the label being resolved stands in for it until the
+        // answer lands, so the user keeps seeing what they committed
+        // instead of a cell that reads empty for the whole round trip.
+        const pending = this.annotations.pendingLabel(view.id, column.id);
+        if (pending !== null) {
+          return pending;
+        }
       }
     }
     return this.model.cellText(cell);
+  }
+
+  /**
+   * Commits an editor's unresolved text through the label-resolution
+   * ladder (`TmGridEditState.commitLabel`) and registers the single-cell
+   * resolution with the clipboard's request machinery. Returns the request
+   * still awaiting an answer, or `null` when the sync rungs settled the
+   * commit.
+   *
+   * WHO answers the request is the caller's business — the column's
+   * resolver, or anything else that can produce a `TmLabelResolution` for
+   * the label. However it is answered, the outcome goes to
+   * `clipboard.applyResolution`, which owns the stale-token discard, the
+   * pending mark, and the open history entry. `deferToHost` is passed
+   * through to `commitLabel`.
+   */
+  commitEditorLabel(
+    text: string,
+    opts?: { readonly deferToHost?: boolean },
+  ): TmGridResolutionRequest | null {
+    const pending = this.edit.commitLabel(text, opts);
+    return pending === null ? null : this.clipboard.trackCommitResolution(pending, text);
   }
 
   // ---- Gesture-level intents ----

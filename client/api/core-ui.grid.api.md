@@ -16,6 +16,7 @@ import { Injector } from '@angular/core';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { Signal } from '@angular/core';
 import { TemplateRef } from '@angular/core';
+import { Type } from '@angular/core';
 import { ViewContainerRef } from '@angular/core';
 import { WritableSignal } from '@angular/core';
 
@@ -30,9 +31,12 @@ export class TmGrid<T> extends ɵTmGridBase<T> {
 
 // @public
 export class TmGridColumn<T = unknown, V = unknown> {
+    readonly advancedSearch: _angular_core.InputSignal<TmEntityPickerPage | undefined>;
     readonly align: _angular_core.InputSignal<TmGridColumnAlign | undefined>;
+    readonly create: _angular_core.InputSignal<TmEntityPickerPage | undefined>;
     readonly defaultValue: _angular_core.InputSignal<V | undefined>;
     readonly displayDef: _angular_core.Signal<TmGridDisplayDef<any, any> | undefined>;
+    readonly edit: _angular_core.InputSignal<TmEntityPickerPage | undefined>;
     readonly editorDef: _angular_core.Signal<TmGridEditorDef<any, any> | undefined>;
     readonly flex: _angular_core.InputSignal<number | undefined>;
     readonly format: _angular_core.InputSignal<((value: V, row: T) => string) | undefined>;
@@ -40,6 +44,8 @@ export class TmGridColumn<T = unknown, V = unknown> {
     readonly header: _angular_core.InputSignal<string>;
     readonly headerDef: _angular_core.Signal<TmGridHeaderDef | undefined>;
     readonly hierarchy: _angular_core.InputSignalWithTransform<boolean, unknown>;
+    readonly itemId: _angular_core.InputSignal<((item: never) => TmEntityId) | undefined>;
+    readonly itemLabel: _angular_core.InputSignal<((item: never) => string) | undefined>;
     readonly key: _angular_core.InputSignal<string | undefined>;
     readonly maxDecimals: _angular_core.InputSignal<number | undefined>;
     readonly minDecimals: _angular_core.InputSignal<number | undefined>;
@@ -50,10 +56,11 @@ export class TmGridColumn<T = unknown, V = unknown> {
     readonly parse: _angular_core.InputSignal<((text: string, ctx: TmParseContext) => V | TmParseError) | undefined>;
     readonly readonly: _angular_core.InputSignalWithTransform<boolean | ((row: T) => boolean), string | boolean | ((row: T) => boolean)>;
     readonly resolvePastedLabels: _angular_core.InputSignal<((labels: string[], ctx: TmPasteContext) => Promise<ReadonlyMap<string, TmLabelResolution<V>>>) | undefined>;
+    readonly search: _angular_core.InputSignal<TmEntitySearchFn<unknown> | undefined>;
     readonly type: _angular_core.InputSignal<TmGridColumnType>;
     readonly value: _angular_core.InputSignal<((row: T) => V) | undefined>;
     readonly width: _angular_core.InputSignal<number | undefined>;
-    static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmGridColumn<any, any>, "tm-grid-column", never, { "key": { "alias": "key"; "required": false; "isSignal": true; }; "type": { "alias": "type"; "required": false; "isSignal": true; }; "header": { "alias": "header"; "required": false; "isSignal": true; }; "value": { "alias": "value"; "required": false; "isSignal": true; }; "format": { "alias": "format"; "required": false; "isSignal": true; }; "parse": { "alias": "parse"; "required": false; "isSignal": true; }; "defaultValue": { "alias": "defaultValue"; "required": false; "isSignal": true; }; "options": { "alias": "options"; "required": false; "isSignal": true; }; "optionLabel": { "alias": "optionLabel"; "required": false; "isSignal": true; }; "optionValue": { "alias": "optionValue"; "required": false; "isSignal": true; }; "resolvePastedLabels": { "alias": "resolvePastedLabels"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "width": { "alias": "width"; "required": false; "isSignal": true; }; "flex": { "alias": "flex"; "required": false; "isSignal": true; }; "minWidth": { "alias": "minWidth"; "required": false; "isSignal": true; }; "align": { "alias": "align"; "required": false; "isSignal": true; }; "minDecimals": { "alias": "minDecimals"; "required": false; "isSignal": true; }; "maxDecimals": { "alias": "maxDecimals"; "required": false; "isSignal": true; }; "hierarchy": { "alias": "hierarchy"; "required": false; "isSignal": true; }; }, {}, ["displayDef", "editorDef", "headerDef"], never, true, never>;
+    static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmGridColumn<any, any>, "tm-grid-column", never, { "key": { "alias": "key"; "required": false; "isSignal": true; }; "type": { "alias": "type"; "required": false; "isSignal": true; }; "header": { "alias": "header"; "required": false; "isSignal": true; }; "value": { "alias": "value"; "required": false; "isSignal": true; }; "format": { "alias": "format"; "required": false; "isSignal": true; }; "parse": { "alias": "parse"; "required": false; "isSignal": true; }; "defaultValue": { "alias": "defaultValue"; "required": false; "isSignal": true; }; "options": { "alias": "options"; "required": false; "isSignal": true; }; "optionLabel": { "alias": "optionLabel"; "required": false; "isSignal": true; }; "optionValue": { "alias": "optionValue"; "required": false; "isSignal": true; }; "search": { "alias": "search"; "required": false; "isSignal": true; }; "itemId": { "alias": "itemId"; "required": false; "isSignal": true; }; "itemLabel": { "alias": "itemLabel"; "required": false; "isSignal": true; }; "advancedSearch": { "alias": "advancedSearch"; "required": false; "isSignal": true; }; "create": { "alias": "create"; "required": false; "isSignal": true; }; "edit": { "alias": "edit"; "required": false; "isSignal": true; }; "resolvePastedLabels": { "alias": "resolvePastedLabels"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "width": { "alias": "width"; "required": false; "isSignal": true; }; "flex": { "alias": "flex"; "required": false; "isSignal": true; }; "minWidth": { "alias": "minWidth"; "required": false; "isSignal": true; }; "align": { "alias": "align"; "required": false; "isSignal": true; }; "minDecimals": { "alias": "minDecimals"; "required": false; "isSignal": true; }; "maxDecimals": { "alias": "maxDecimals"; "required": false; "isSignal": true; }; "hierarchy": { "alias": "hierarchy"; "required": false; "isSignal": true; }; }, {}, ["displayDef", "editorDef", "headerDef"], never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmGridColumn<any, any>, never>;
 }
 

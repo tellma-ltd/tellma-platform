@@ -39,9 +39,10 @@ export class TmGridCellAnnotations {
     invalidInput(rowId: TmRowId, columnId: string): TmGridInvalidInput | undefined;
     isPending(rowId: TmRowId, columnId: string): boolean;
     readonly pendingCount: Signal<number>;
+    pendingLabel(rowId: TmRowId, columnId: string): string | null;
     prune(model: Pick<TmGridDataModel, 'modelIndexOfRow' | 'columnIndexOf'>): void;
     setInvalid(rowId: TmRowId, columnId: string, entry: TmGridInvalidInput | null): void;
-    setPending(rowId: TmRowId, columnId: string, pending: boolean): void;
+    setPending(rowId: TmRowId, columnId: string, pending: boolean, label?: string | null): void;
 }
 
 // @public
@@ -78,6 +79,7 @@ export class TmGridClipboard<T = unknown> {
     paste(source: TmGridPasteSource, sourceFingerprint?: string): TmGridPasteResult;
     readonly pendingCut: Signal<TmGridPendingCut | null>;
     reconcileCut(): void;
+    trackCommitResolution(commit: TmGridPendingLabelCommit, label: string): TmGridResolutionRequest;
 }
 
 // @public
@@ -209,6 +211,9 @@ export interface TmGridEditSession {
 export class TmGridEditState<T = unknown> {
     constructor(options: TmGridEditStateOptions<T>);
     cancel(): void;
+    commitLabel(text: string, opts?: {
+        readonly deferToHost?: boolean;
+    }): TmGridPendingLabelCommit | null;
     commitText(text: string): boolean;
     commitValue(value: unknown): boolean;
     openEdit(cell: TmRowCol, mode: 'edit' | 'enter', seedText?: string): boolean;
@@ -240,6 +245,9 @@ export class TmGridEngine<T = unknown> {
         mod?: boolean;
     }): void;
     readonly clipboard: TmGridClipboard<T>;
+    commitEditorLabel(text: string, opts?: {
+        readonly deferToHost?: boolean;
+    }): TmGridResolutionRequest | null;
     deleteSelectedRows(): void;
     displayText(cell: TmRowCol): string;
     dispose(): void;
@@ -487,6 +495,14 @@ export interface TmGridPendingCut {
     readonly fingerprint: string;
     readonly isFullRows: boolean;
     readonly rowIds: readonly TmRowId[];
+}
+
+// @public
+export interface TmGridPendingLabelCommit {
+    readonly columnId: string;
+    readonly columnKey: string;
+    readonly handle: TmGridCompoundHandle;
+    readonly rowId: TmRowId;
 }
 
 // @public
