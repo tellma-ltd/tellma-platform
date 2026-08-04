@@ -6,6 +6,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using OpenIddict.Abstractions;
 using Tellma.Identity.Controllers.Api;
 using Tellma.Identity.Data;
 using Tellma.Identity.Infrastructure;
@@ -54,8 +55,13 @@ namespace Tellma.Identity.Controllers
         [HttpPost("api/identity/users/{sub}/temporary-access-passes")]
         public async Task<ActionResult<TemporaryAccessPassResponse>> IssueTap(string sub)
         {
+            // Audit attribution must not depend on an optional scope: the subject claim (or the
+            // client id for a machine caller) is always present, while the name claim exists only
+            // when the token carries `profile`.
+            string? issuedBy = User.GetClaim(OpenIddictConstants.Claims.Subject)
+                ?? User.GetClaim(OpenIddictConstants.Claims.ClientId);
             IssuedTemporaryAccessPass? issued = await tapService.IssueAsync(
-                sub, User.Identity?.Name, HttpContext.RequestAborted);
+                sub, issuedBy, HttpContext.RequestAborted);
 
             return issued is null
                 ? NotFound()

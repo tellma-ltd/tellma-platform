@@ -30,6 +30,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
     /// <param name="policyService">Allow-list parsing.</param>
     /// <param name="engineOptions">The engine options (password gate).</param>
     /// <param name="auditLogger">Audit emission.</param>
+    /// <param name="metrics">Identity metrics.</param>
     /// <param name="localizer">UI strings.</param>
     [AllowAnonymous]
     public sealed class LoginModel(
@@ -39,6 +40,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         IAuthenticationPolicyService policyService,
         IOptions<TellmaIdentityOptions> engineOptions,
         IAuditLogger auditLogger,
+        IdentityMetrics metrics,
         IStringLocalizer<SharedResources> localizer) : PageModel
     {
         /// <summary>The email the user typed.</summary>
@@ -59,8 +61,25 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         /// <summary>The methods this page may offer.</summary>
         public IReadOnlyList<string> Methods { get; private set; } = AuthenticationMethods.All;
 
+        /// <summary>
+        ///     The offerable-methods list exactly as the authorize redirect sent it, round-tripped
+        ///     through every post so a re-rendered page keeps offering the same methods instead of
+        ///     falling back to the full catalog.
+        /// </summary>
+        public string? MethodsRaw { get; private set; }
+
         /// <summary>Whether the page is confirming an existing session (step-up).</summary>
         public bool StepUp { get; private set; }
+
+        /// <summary>The required assurance tier from the authorize redirect, round-tripped as-is.</summary>
+        public string? Tier { get; private set; }
+
+        /// <summary>
+        ///     Whether the pending request demands the aal3 tier, which only a device-bound
+        ///     (non-synced) passkey reaches — shown as guidance so the user picks the right
+        ///     authenticator instead of bouncing off the authorization endpoint.
+        /// </summary>
+        public bool RequiresDeviceBoundPasskey { get; private set; }
 
         /// <summary>The external providers configured on this deployment (offered when allowed).</summary>
         public IReadOnlySet<string> ConfiguredExternalProviders { get; private set; } = new HashSet<string>();
@@ -72,19 +91,22 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         /// <param name="returnUrl">Where to return after sign-in.</param>
         /// <param name="methods">The offerable methods (space-delimited), from the authorize redirect.</param>
         /// <param name="stepUp">Whether this is a step-up confirmation.</param>
-        public void OnGet(string? returnUrl = null, string? methods = null, bool stepUp = false)
+        /// <param name="tier">The required assurance tier, from the authorize redirect.</param>
+        public void OnGet(string? returnUrl = null, string? methods = null, bool stepUp = false, string? tier = null)
         {
-            Initialize(returnUrl, methods, stepUp);
+            Initialize(returnUrl, methods, stepUp, tier);
         }
 
         /// <summary>Issues an email one-time code and advances to code entry (enumeration-safe).</summary>
         /// <param name="returnUrl">Where to return after sign-in.</param>
         /// <param name="methods">The offerable methods, round-tripped.</param>
         /// <param name="stepUp">Whether this is a step-up confirmation.</param>
+        /// <param name="tier">The required assurance tier, round-tripped.</param>
         /// <returns>A redirect to the code-entry page regardless of account existence.</returns>
-        public async Task<IActionResult> OnPostEmailCodeAsync(string? returnUrl = null, string? methods = null, bool stepUp = false)
+        public async Task<IActionResult> OnPostEmailCodeAsync(
+            string? returnUrl = null, string? methods = null, bool stepUp = false, string? tier = null)
         {
-            Initialize(returnUrl, methods, stepUp);
+            Initialize(returnUrl, methods, stepUp, tier);
 
             if (string.IsNullOrWhiteSpace(Email))
             {
@@ -93,8 +115,8 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
             }
 
             // Enumeration-safe: the code service rate-limits, looks the user up, and dispatches the
-            // mail in the background, so this returns in constant time whether or not the account
-            // exists. The response is identical either way.
+            // mail in the background, so this returns with comparable latency whether or not the
+            // account exists. The response is identical either way.
             await emailCodes.RequestCodeAsync(
                 Email,
                 SingleUseCodePurpose.SignIn,
@@ -107,11 +129,14 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
 
         /// <summary>Completes a passkey (WebAuthn) sign-in from the assertion credential.</summary>
         /// <param name="returnUrl">Where to return after sign-in.</param>
+        /// <param name="methods">The offerable methods, round-tripped.</param>
         /// <param name="stepUp">Whether this is a step-up confirmation.</param>
+        /// <param name="tier">The required assurance tier, round-tripped.</param>
         /// <returns>The post-sign-in redirect, or the page with a generic error.</returns>
-        public async Task<IActionResult> OnPostPasskeyAsync(string? returnUrl = null, bool stepUp = false)
+        public async Task<IActionResult> OnPostPasskeyAsync(
+            string? returnUrl = null, string? methods = null, bool stepUp = false, string? tier = null)
         {
-            Initialize(returnUrl, methods: null, stepUp);
+            Initialize(returnUrl, methods, stepUp, tier);
 
             if (string.IsNullOrWhiteSpace(Credential))
             {
@@ -127,6 +152,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
             if (!assertion.Succeeded || assertion.User is null || assertion.Passkey is null)
             {
                 await auditLogger.LogAsync(new AuditEventEntry { Action = AuditActions.LoginFailed, Outcome = "failure" });
+                metrics.LoginAttempt(AuthenticationMethods.Passkey, "failure", StepUp ? "step_up" : "primary");
                 ModelState.AddModelError(string.Empty, localizer["PasskeyFailed"].Value);
                 return Page();
             }
@@ -137,7 +163,33 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                 return Page();
             }
 
+            // The tier is enforced on the credential actually presented, not merely on what the
+            // user owns: a user holding both a hardware key and a synced passkey (the two-passkey
+            // setup recovery guidance encourages) must not satisfy aal3 with the synced one — and
+            // would otherwise loop here forever, since the authorization endpoint sees a qualifying
+            // credential in the inventory and sends them straight back.
+            //
+            // Refusing is only right when they have something better to present. A user whose
+            // every passkey is synced is signed in as usual, so the authorization endpoint can
+            // answer the relying party with unmet_authentication_requirements — parking them here
+            // would end the flow with the client never hearing why.
             bool deviceBound = PasskeySignals.IsDeviceBound(assertion.Passkey);
+            if (RequiresDeviceBoundPasskey && !deviceBound && await HasDeviceBoundPasskeyAsync(assertion.User))
+            {
+                await auditLogger.LogAsync(new AuditEventEntry
+                {
+                    Action = AuditActions.LoginFailed,
+                    Subject = assertion.User.Id,
+                    IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                    Outcome = "failure",
+                    DetailsJson = System.Text.Json.JsonSerializer.Serialize(
+                        new { method = AuthenticationMethods.Passkey, reason = "not_device_bound", tier = Tier }),
+                });
+                metrics.LoginAttempt(AuthenticationMethods.Passkey, "failure", StepUp ? "step_up" : "primary");
+                ModelState.AddModelError(string.Empty, localizer["DeviceBoundPasskeyRequired"].Value);
+                return Page();
+            }
+
             await signInService.SignInAsync(
                 assertion.User,
                 new SignInEvidence(AuthenticationMethods.Passkey, deviceBound),
@@ -148,16 +200,33 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
             return LocalRedirect(ReturnUrlValidator.Sanitize(ReturnUrl, fallback));
         }
 
+        /// <summary>Whether the user has registered any device-bound (non-synced) passkey.</summary>
+        private async Task<bool> HasDeviceBoundPasskeyAsync(TellmaIdentityUser user)
+        {
+            IList<UserPasskeyInfo> passkeys = await signInManager.UserManager.GetPasskeysAsync(user);
+            return passkeys.Any(PasskeySignals.IsDeviceBound);
+        }
+
         /// <summary>Applies and validates the flow parameters.</summary>
-        private void Initialize(string? returnUrl, string? methods, bool stepUp)
+        private void Initialize(string? returnUrl, string? methods, bool stepUp, string? tier)
         {
             ReturnUrl = ReturnUrlValidator.IsValid(returnUrl) ? returnUrl : null;
             StepUp = stepUp;
+            Tier = string.Equals(tier, AcrTiers.Aal3, StringComparison.Ordinal) ? tier : null;
+            RequiresDeviceBoundPasskey = Tier is not null;
 
+            // An unparseable list offers nothing rather than everything: the authorize endpoint
+            // rejects it before redirecting, so reaching here means the two disagree, and falling
+            // back to the full catalog would invite methods the tenant may have disallowed.
             IReadOnlyList<string> offered = AuthenticationMethods.All;
-            if (policyService.TryParseAllowedMethods(methods, out IReadOnlyList<string>? parsed) && parsed is not null)
+            if (!policyService.TryParseAllowedMethods(methods, out IReadOnlyList<string>? parsed))
+            {
+                offered = [];
+            }
+            else if (parsed is not null)
             {
                 offered = parsed;
+                MethodsRaw = methods;
             }
 
             // Passwords are off by default; the page never offers what the deployment disables.

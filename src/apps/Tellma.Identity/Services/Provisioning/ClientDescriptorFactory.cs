@@ -123,19 +123,27 @@ namespace Tellma.Identity.Services.Provisioning
 
         /// <summary>
         ///     A tenant service account: a confidential client-credentials caller with explicitly
-        ///     named resource permissions and nothing else.
+        ///     named resource permissions and nothing else. The owning distribution's origin is
+        ///     recorded so reads and deletes can be scoped to the distribution that created it.
         /// </summary>
         /// <param name="clientId">The generated client id.</param>
         /// <param name="displayName">Human-readable name.</param>
         /// <param name="secret">The generated client secret.</param>
         /// <param name="resources">The audiences the account may request.</param>
+        /// <param name="ownerOrigin">The creating distribution's origin (the ownership marker).</param>
         /// <param name="createdUtc">Creation timestamp recorded on the registration.</param>
         /// <returns>The descriptor.</returns>
         public static OpenIddictApplicationDescriptor ServiceAccount(
-            string clientId, string displayName, string secret, IEnumerable<string> resources, DateTimeOffset createdUtc)
+            string clientId,
+            string displayName,
+            string secret,
+            IEnumerable<string> resources,
+            string ownerOrigin,
+            DateTimeOffset createdUtc)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(clientId);
             ArgumentNullException.ThrowIfNull(resources);
+            ArgumentException.ThrowIfNullOrWhiteSpace(ownerOrigin);
 
             OpenIddictApplicationDescriptor descriptor = new()
             {
@@ -159,6 +167,7 @@ namespace Tellma.Identity.Services.Provisioning
             }
 
             TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.ServiceAccount, "true");
+            TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.Origin, ownerOrigin);
             TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.CreatedUtc, createdUtc.ToString("O"));
 
             return descriptor;
@@ -189,7 +198,6 @@ namespace Tellma.Identity.Services.Provisioning
                 descriptor.Permissions.Add(Permissions.Prefixes.Resource + resource);
             }
 
-            TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.Platform, "true");
             TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.FirstParty, "true");
 
             return descriptor;

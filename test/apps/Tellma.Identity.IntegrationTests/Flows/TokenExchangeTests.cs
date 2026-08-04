@@ -98,6 +98,93 @@ namespace Tellma.Identity.IntegrationTests.Flows
             Assert.Equal("invalid_scope", document.RootElement.GetProperty("error").GetString());
         }
 
+        [Fact]
+        public async Task A_backend_cannot_exchange_a_token_issued_to_the_browser_client()
+        {
+            // §4 lists a backend acting for a user as a token-exchange case, but a user's token is
+            // issued to the distribution's BFF client, and the exchanging backend is a different
+            // client that is neither its presenter nor its audience — so the exchange is refused
+            // before any of this server's delegation code runs. Recording that here because the
+            // refusal is the whole current behaviour of that case: the `act` claim and the
+            // assurance-carrying branch in the token endpoint are unreachable until a client is
+            // registered that may present these tokens.
+            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idteuser");
+            DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(
+                factory, allowTokenExchange: true);
+            await TestData.CreateActiveUserAsync(factory, "trudy@example.com");
+
+            string userToken = await SignInAndGetAccessTokenAsync(factory, distribution, "trudy@example.com");
+
+            using HttpClient client = factory.CreateClient();
+            using HttpResponseMessage response = await client.PostAsync(
+                new Uri("/connect/token", UriKind.Relative),
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["grant_type"] = "urn:ietf:params:oauth:grant-type:token-exchange",
+                    ["client_id"] = distribution.ServiceClientId,
+                    ["client_secret"] = distribution.ServiceClientSecret,
+                    ["subject_token"] = userToken,
+                    ["subject_token_type"] = "urn:ietf:params:oauth:token-type:access_token",
+                    ["scope"] = "tellma_api",
+                    ["resource"] = "https://acme.app.tellma.com",
+                }),
+                TestContext.Current.CancellationToken);
+
+            Assert.False(response.IsSuccessStatusCode);
+            using var document = JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            Assert.Equal("invalid_grant", document.RootElement.GetProperty("error").GetString());
+        }
+
+        /// <summary>Runs a full auth-code sign-in and returns the user's access token.</summary>
+        private static async Task<string> SignInAndGetAccessTokenAsync(
+            StandaloneFactory factory, DistributionClientCredentials distribution, string email)
+        {
+            using OidcFlowClient flow = new(factory);
+            (string verifier, string challenge) = OidcFlowClient.CreatePkcePair();
+
+            string requestUri = await flow.PushAuthorizationRequestAsync(new Dictionary<string, string>
+            {
+                ["client_id"] = "acme",
+                ["client_secret"] = distribution.BffClientSecret,
+                ["redirect_uri"] = "https://acme.app.tellma.com/signin-oidc",
+                ["response_type"] = "code",
+                ["scope"] = "openid tellma_api",
+                ["code_challenge"] = challenge,
+                ["code_challenge_method"] = "S256",
+            });
+
+            string authorizeUrl = "/connect/authorize?client_id=acme&request_uri=" + Uri.EscapeDataString(requestUri);
+            string loginUrl;
+            using (HttpResponseMessage challengeResponse = await flow.Browser.GetAsync(
+                new Uri(authorizeUrl, UriKind.Relative), TestContext.Current.CancellationToken))
+            {
+                loginUrl = challengeResponse.Headers.Location!.ToString();
+            }
+
+            string returnUrl = await flow.SignInWithEmailCodeAsync(email, loginUrl);
+            string code;
+            using (HttpResponseMessage authorizeResponse = await flow.Browser.GetAsync(
+                new Uri(returnUrl, UriKind.RelativeOrAbsolute), TestContext.Current.CancellationToken))
+            {
+                Dictionary<string, Microsoft.Extensions.Primitives.StringValues> query =
+                    Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(authorizeResponse.Headers.Location!.Query);
+                code = (string?)query["code"] ?? throw new InvalidOperationException("No code returned.");
+            }
+
+            using JsonDocument tokens = await flow.ExchangeAsync(new Dictionary<string, string>
+            {
+                ["grant_type"] = "authorization_code",
+                ["client_id"] = "acme",
+                ["client_secret"] = distribution.BffClientSecret,
+                ["code"] = code,
+                ["redirect_uri"] = "https://acme.app.tellma.com/signin-oidc",
+                ["code_verifier"] = verifier,
+            });
+
+            return tokens.RootElement.GetProperty("access_token").GetString()!;
+        }
+
         /// <summary>Obtains a client-credentials access token.</summary>
         private static async Task<JsonDocument> GetClientCredentialsTokenAsync(
             HttpClient client, string clientId, string clientSecret, string scope, string resource)

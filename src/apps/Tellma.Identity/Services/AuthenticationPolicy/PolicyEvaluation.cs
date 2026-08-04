@@ -9,8 +9,19 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
     /// <param name="Acr">The tier reached (<see cref="AcrTiers" />).</param>
     /// <param name="Amr">The RFC 8176 method references describing the event.</param>
     /// <param name="Methods">The concrete methods used, in the allow-list vocabulary.</param>
-    /// <param name="AuthTime">When the interactive event happened (unix seconds).</param>
-    public sealed record AssuranceResult(string Acr, IReadOnlyList<string> Amr, IReadOnlyList<string> Methods, long AuthTime);
+    /// <param name="AuthTime">When the most recent interactive event happened (unix seconds).</param>
+    /// <param name="PasskeyAuthTime">
+    ///     When the most recent passkey assertion happened (unix seconds), or 0 when the session
+    ///     used none. Tiers above aal1 rest on passkey evidence, so a <c>max_age</c> bound on them
+    ///     is measured against this — an email code cannot refresh the recency of a hardware-key
+    ///     proof.
+    /// </param>
+    public sealed record AssuranceResult(
+        string Acr,
+        IReadOnlyList<string> Amr,
+        IReadOnlyList<string> Methods,
+        long AuthTime,
+        long PasskeyAuthTime = 0);
 
     /// <summary>How an authorization request's authentication requirements were evaluated.</summary>
     public enum PolicyOutcome
@@ -32,9 +43,13 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
         Unsatisfiable = 2,
     }
 
-    /// <summary>The result of evaluating a request's authentication requirements.</summary>
+    /// <summary>
+    ///     The result of evaluating a request's authentication requirements. It carries the
+    ///     decision only, never the assurance behind it: the claims the grant emits are filtered
+    ///     once, where they are assembled (<c>TellmaPrincipalFactory</c>), so there is no second
+    ///     copy of that filter here to drift out of agreement with it.
+    /// </summary>
     /// <param name="Outcome">The evaluation outcome.</param>
-    /// <param name="Assurance">The current session's assurance, when one exists and satisfies the request.</param>
     /// <param name="RequiredTier">The tier interaction must reach, when interaction is required.</param>
     /// <param name="OfferableMethods">
     ///     The methods the login UI may offer: the allow-list filtered down to methods able to
@@ -42,7 +57,6 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
     /// </param>
     public sealed record PolicyEvaluation(
         PolicyOutcome Outcome,
-        AssuranceResult? Assurance = null,
         string? RequiredTier = null,
         IReadOnlyList<string>? OfferableMethods = null);
 }

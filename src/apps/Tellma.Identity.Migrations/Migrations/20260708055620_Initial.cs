@@ -594,14 +594,20 @@ namespace Tellma.Identity.Migrations
 
             // Index supporting the Quartz prune query. OpenIddict prunes rows whose CreationDate is
             // older than a threshold (the query's dominant, most selective bound), so the index
-            // leads with CreationDate to seek them; Status and ExpirationDate are included to cover
-            // the residual predicate without a key lookup. Deliberately unfiltered: OpenIddict never
-            // flips Status on expiry, so expired-but-'valid' access tokens are the prune bulk and a
-            // Status <> 'valid' filter would exclude exactly what the query scans.
+            // leads with CreationDate to seek them; Status, ExpirationDate, and AuthorizationId are
+            // included to cover the residual predicate — which joins to the authorization's status
+            // through AuthorizationId — without a key lookup. Measured on a 50k-row table with the
+            // steady-state shape the prune job sees (a small tail past the threshold, most rows
+            // recent): without AuthorizationId the optimizer chose a clustered scan, with it a
+            // seek. Plan choice is statistics-dependent, so a store whose rows are mostly prunable
+            // may still legitimately scan.
+            // Deliberately unfiltered: OpenIddict never flips Status on expiry, so
+            // expired-but-'valid' access tokens are the prune bulk and a Status <> 'valid' filter
+            // would exclude exactly what the query scans.
             migrationBuilder.Sql(
                 "CREATE NONCLUSTERED INDEX [IX_OpenIddictTokens_CreationDate] " +
                 "ON [idsvr].[OpenIddictTokens] ([CreationDate]) " +
-                "INCLUDE ([Status], [ExpirationDate]);");
+                "INCLUDE ([Status], [ExpirationDate], [AuthorizationId]);");
         }
 
         /// <inheritdoc />

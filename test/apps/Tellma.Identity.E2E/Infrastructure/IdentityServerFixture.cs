@@ -22,8 +22,10 @@ namespace Tellma.Identity.E2E.Infrastructure
     ///     Runs the real identity engine on Kestrel at an ephemeral loopback port (a real socket a
     ///     browser can reach — the in-memory TestServer cannot), backed by a fresh SQL Server
     ///     database and the in-process capturing email sink E2E tests read codes and links from.
+    ///     Concrete fixtures pick the hosting shape (standalone at the root, or in-proc under the
+    ///     reserved path base).
     /// </summary>
-    public sealed class IdentityServerFixture : IAsyncLifetime
+    public abstract class IdentityServerFixtureBase : IAsyncLifetime
     {
         private MsSqlContainer? _container;
         private WebApplication? _app;
@@ -33,6 +35,12 @@ namespace Tellma.Identity.E2E.Infrastructure
 
         /// <summary>The captured outbound email (codes, links).</summary>
         public CapturingEmailSender Emails { get; } = new CapturingEmailSender();
+
+        /// <summary>The deployment mode configured on the engine.</summary>
+        protected abstract string Mode { get; }
+
+        /// <summary>The reserved path base ("" standalone, "/id" in-proc).</summary>
+        protected abstract string PathPrefix { get; }
 
         /// <inheritdoc />
         public async ValueTask InitializeAsync()
@@ -44,8 +52,9 @@ namespace Tellma.Identity.E2E.Infrastructure
             builder.WebHost.UseSetting("urls", "http://127.0.0.1:0");
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["TellmaIdentity:Mode"] = "Standalone",
-                ["TellmaIdentity:Issuer"] = "http://127.0.0.1",
+                ["TellmaIdentity:Mode"] = Mode,
+                ["TellmaIdentity:PathBase"] = PathPrefix,
+                ["TellmaIdentity:Issuer"] = "http://127.0.0.1" + PathPrefix,
                 ["TellmaIdentity:ConnectionString"] = connectionString,
                 ["TellmaIdentity:Keys:Signing:Source"] = "DevelopmentSelfSigned",
                 ["TellmaIdentity:Keys:Encryption:Source"] = "DevelopmentSelfSigned",
@@ -76,6 +85,13 @@ namespace Tellma.Identity.E2E.Infrastructure
                 RequestPath = "/_content/Tellma.Identity",
                 FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(FindEngineWwwRoot()),
             });
+
+            if (Mode == "InProc")
+            {
+                // The "distribution's" own surface, mirroring the in-proc composition shape.
+                _app.MapGet("/", static () => "Distribution host");
+            }
+
             _app.MapTellmaIdentity();
 
             await _app.StartAsync();
@@ -112,9 +128,43 @@ namespace Tellma.Identity.E2E.Infrastructure
             });
         }
 
+        /// <summary>
+        ///     Records a device-bound passkey for a user directly in the store, so a browser test
+        ///     can model a user who <em>owns</em> a hardware key without having to hold one in the
+        ///     ceremony. Removing a virtual authenticator destroys its credentials, so ownership
+        ///     and availability cannot both be arranged through CDP alone.
+        /// </summary>
+        /// <param name="email">The user to give a hardware key.</param>
+        /// <returns>A task that completes when the credential is recorded.</returns>
+        public async Task AddDeviceBoundPasskeyAsync(string email)
+        {
+            await using AsyncServiceScope scope = _app!.Services.CreateAsyncScope();
+            Microsoft.AspNetCore.Identity.UserManager<Data.TellmaIdentityUser> userManager =
+                scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<Data.TellmaIdentityUser>>();
+
+            Data.TellmaIdentityUser user = (await userManager.FindByEmailAsync(email))!;
+            Microsoft.AspNetCore.Identity.UserPasskeyInfo passkey = new(
+                credentialId: System.Security.Cryptography.RandomNumberGenerator.GetBytes(16),
+                publicKey: System.Security.Cryptography.RandomNumberGenerator.GetBytes(32),
+                createdAt: DateTimeOffset.UtcNow,
+                signCount: 0,
+                transports: null,
+                isUserVerified: true,
+
+                // Not backup-eligible is exactly what the engine classifies as device-bound.
+                isBackupEligible: false,
+                isBackedUp: false,
+                attestationObject: [],
+                clientDataJson: []);
+
+            await userManager.AddOrUpdatePasskeyAsync(user, passkey);
+        }
+
         /// <inheritdoc />
         public async ValueTask DisposeAsync()
         {
+            GC.SuppressFinalize(this);
+
             if (_app is not null)
             {
                 await _app.StopAsync();
@@ -174,5 +224,15 @@ namespace Tellma.Identity.E2E.Infrastructure
 
             return new SqlConnectionStringBuilder(masterConnectionString) { InitialCatalog = database }.ConnectionString;
         }
+    }
+
+    /// <summary>The standalone-shaped E2E host: the authority at the origin root.</summary>
+    public sealed class IdentityServerFixture : IdentityServerFixtureBase
+    {
+        /// <inheritdoc />
+        protected override string Mode => "Standalone";
+
+        /// <inheritdoc />
+        protected override string PathPrefix => string.Empty;
     }
 }

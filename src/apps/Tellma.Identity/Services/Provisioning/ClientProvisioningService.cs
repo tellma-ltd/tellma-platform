@@ -7,8 +7,10 @@ using Microsoft.Extensions.Options;
 using OpenIddict.Abstractions;
 using System.Buffers.Text;
 using System.Collections.Immutable;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Tellma.Identity.Infrastructure;
 using Tellma.Identity.Options;
 using Tellma.Identity.Services.Audit;
 using static OpenIddict.Abstractions.OpenIddictConstants;
@@ -82,14 +84,25 @@ namespace Tellma.Identity.Services.Provisioning
             // Audience least-privilege: a service account may only name audiences its creating
             // client owns. Resolving the caller's own origin and rejecting anything else stops one
             // distribution's backend from minting tokens whose `aud` is a foreign distribution.
-            IReadOnlyCollection<string> grantedResources =
-                await ResolveServiceAccountResourcesAsync(resources, createdByClientId, cancellationToken);
+            string callerOrigin = await ResolveClientOriginAsync(createdByClientId, cancellationToken)
+                ?? throw new ProvisioningValidationException(
+                    "The calling client has no distribution origin, so it cannot create service accounts.");
+
+            foreach (string resource in resources)
+            {
+                if (!string.Equals(resource, callerOrigin, StringComparison.Ordinal))
+                {
+                    throw new ProvisioningValidationException(
+                        $"A service account may only be granted its own distribution's audience ('{callerOrigin}').");
+                }
+            }
 
             string clientId = ServiceAccountClientIdPrefix + Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(16));
             string secret = GenerateSecret();
 
             await applicationManager.CreateAsync(
-                ClientDescriptorFactory.ServiceAccount(clientId, displayName, secret, grantedResources, timeProvider.GetUtcNow()),
+                ClientDescriptorFactory.ServiceAccount(
+                    clientId, displayName, secret, [callerOrigin], callerOrigin, timeProvider.GetUtcNow()),
                 cancellationToken);
 
             await auditLogger.LogAsync(
@@ -105,16 +118,16 @@ namespace Tellma.Identity.Services.Provisioning
         }
 
         /// <inheritdoc />
-        public async Task<ServiceAccountDetails?> GetServiceAccountAsync(string clientId, CancellationToken cancellationToken)
+        public async Task<ServiceAccountDetails?> GetServiceAccountAsync(
+            string clientId, ClaimsPrincipal caller, CancellationToken cancellationToken)
         {
-            object? application = await FindServiceAccountAsync(clientId, cancellationToken);
+            (object? application, ImmutableDictionary<string, JsonElement> properties) =
+                await FindVisibleServiceAccountAsync(clientId, caller, cancellationToken);
             if (application is null)
             {
                 return null;
             }
 
-            ImmutableDictionary<string, JsonElement> properties =
-                await applicationManager.GetPropertiesAsync(application, cancellationToken);
             string? created = TellmaClientProperties.Get(properties, TellmaClientProperties.CreatedUtc);
 
             return new ServiceAccountDetails(
@@ -124,9 +137,10 @@ namespace Tellma.Identity.Services.Provisioning
         }
 
         /// <inheritdoc />
-        public async Task<bool> DeleteServiceAccountAsync(string clientId, string? deletedByClientId, CancellationToken cancellationToken)
+        public async Task<bool> DeleteServiceAccountAsync(
+            string clientId, ClaimsPrincipal caller, CancellationToken cancellationToken)
         {
-            object? application = await FindServiceAccountAsync(clientId, cancellationToken);
+            (object? application, _) = await FindVisibleServiceAccountAsync(clientId, caller, cancellationToken);
             if (application is null)
             {
                 return false;
@@ -139,76 +153,31 @@ namespace Tellma.Identity.Services.Provisioning
                 {
                     Action = AuditActions.ServiceAccountDeleted,
                     ClientId = clientId,
-                    DetailsJson = JsonSerializer.Serialize(new { deletedBy = deletedByClientId }),
+                    DetailsJson = JsonSerializer.Serialize(new { deletedBy = CallerClientId(caller) }),
                 },
                 cancellationToken);
 
             return true;
         }
 
-        /// <inheritdoc />
-        public async Task<string?> RegenerateServiceAccountSecretAsync(
-            string clientId, string? requestedByClientId, CancellationToken cancellationToken)
+        /// <summary>The calling client's id, from the validated token.</summary>
+        private static string? CallerClientId(ClaimsPrincipal caller)
         {
-            object? application = await FindServiceAccountAsync(clientId, cancellationToken);
-            if (application is null)
+            return caller.GetClaim(Claims.ClientId) ?? caller.GetClaim(Claims.Subject);
+        }
+
+        /// <summary>Resolves a client's distribution origin from its stored properties.</summary>
+        private async Task<string?> ResolveClientOriginAsync(string? clientId, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(clientId)
+                || await applicationManager.FindByClientIdAsync(clientId, cancellationToken) is not { } client)
             {
                 return null;
             }
 
-            OpenIddictApplicationDescriptor descriptor = new();
-            await applicationManager.PopulateAsync(descriptor, application, cancellationToken);
-
-            string secret = GenerateSecret();
-            descriptor.ClientSecret = secret;
-            await applicationManager.UpdateAsync(application, descriptor, cancellationToken);
-
-            await auditLogger.LogAsync(
-                new AuditEventEntry
-                {
-                    Action = AuditActions.ServiceAccountSecretRegenerated,
-                    ClientId = clientId,
-                    DetailsJson = JsonSerializer.Serialize(new { requestedBy = requestedByClientId }),
-                },
-                cancellationToken);
-
-            return secret;
-        }
-
-        /// <summary>
-        ///     Resolves the audiences a new service account may hold: the creating client's own
-        ///     origin. An empty request defaults to that origin (the common "a service account for
-        ///     my own API" case); any explicitly requested resource that is not the caller's origin
-        ///     is rejected.
-        /// </summary>
-        private async Task<IReadOnlyCollection<string>> ResolveServiceAccountResourcesAsync(
-            IReadOnlyCollection<string> requested, string? createdByClientId, CancellationToken cancellationToken)
-        {
-            string? callerOrigin = null;
-            if (!string.IsNullOrWhiteSpace(createdByClientId)
-                && await applicationManager.FindByClientIdAsync(createdByClientId, cancellationToken) is { } caller)
-            {
-                ImmutableDictionary<string, JsonElement> properties =
-                    await applicationManager.GetPropertiesAsync(caller, cancellationToken);
-                callerOrigin = TellmaClientProperties.Get(properties, TellmaClientProperties.Origin);
-            }
-
-            if (callerOrigin is null)
-            {
-                throw new ProvisioningValidationException(
-                    "The calling client has no distribution origin, so it cannot create service accounts.");
-            }
-
-            foreach (string resource in requested)
-            {
-                if (!string.Equals(resource, callerOrigin, StringComparison.Ordinal))
-                {
-                    throw new ProvisioningValidationException(
-                        $"A service account may only be granted its own distribution's audience ('{callerOrigin}').");
-                }
-            }
-
-            return [callerOrigin];
+            ImmutableDictionary<string, JsonElement> properties =
+                await applicationManager.GetPropertiesAsync(client, cancellationToken);
+            return TellmaClientProperties.Get(properties, TellmaClientProperties.Origin);
         }
 
         /// <summary>Generates a 256-bit URL-safe client secret.</summary>
@@ -217,24 +186,60 @@ namespace Tellma.Identity.Services.Provisioning
             return Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32));
         }
 
-        /// <summary>Finds an application only if it is a runtime-created service account.</summary>
-        private async Task<object?> FindServiceAccountAsync(string clientId, CancellationToken cancellationToken)
+        /// <summary>
+        ///     Finds an application only if it is a runtime-created service account the caller may
+        ///     see: one its own distribution owns, or — for a control-plane caller — any of them.
+        ///     Its stored properties come back with it, so a caller that needs them (the read path
+        ///     wants the creation timestamp) does not pay for a second round trip to re-read what
+        ///     the visibility check already loaded.
+        /// </summary>
+        /// <param name="clientId">The service-account client id.</param>
+        /// <param name="caller">The validated principal of the calling client.</param>
+        /// <param name="cancellationToken">Aborts the operation.</param>
+        /// <returns>The application and its properties, or nulls when the caller may not see it.</returns>
+        private async Task<(object? Application, ImmutableDictionary<string, JsonElement> Properties)>
+            FindVisibleServiceAccountAsync(string clientId, ClaimsPrincipal caller, CancellationToken cancellationToken)
         {
+            ArgumentNullException.ThrowIfNull(caller);
+
+            (object?, ImmutableDictionary<string, JsonElement>) invisible = (null, []);
             if (string.IsNullOrWhiteSpace(clientId) || !clientId.StartsWith(ServiceAccountClientIdPrefix, StringComparison.Ordinal))
             {
-                return null;
+                return invisible;
             }
 
             object? application = await applicationManager.FindByClientIdAsync(clientId, cancellationToken);
             if (application is null)
             {
-                return null;
+                return invisible;
             }
 
-            // The API must never read or delete arbitrary platform clients.
+            // The API must never read or delete arbitrary platform clients, whoever asks.
             ImmutableDictionary<string, JsonElement> properties =
                 await applicationManager.GetPropertiesAsync(application, cancellationToken);
-            return TellmaClientProperties.IsSet(properties, TellmaClientProperties.ServiceAccount) ? application : null;
+            if (!TellmaClientProperties.IsSet(properties, TellmaClientProperties.ServiceAccount))
+            {
+                return invisible;
+            }
+
+            // The control plane administers every service account — including one whose owning
+            // distribution is gone, and one created before ownership was recorded, which no
+            // distribution can claim. The scope is read from the token the server itself issued
+            // and validated, so this cannot be asserted by a caller.
+            if (ApiPolicies.HasScope(caller, TellmaIdentityConstants.ControlPlaneScope))
+            {
+                return (application, properties);
+            }
+
+            // One distribution must never read or delete another's: the account's recorded owner
+            // origin must match the caller's.
+            string? ownerOrigin = TellmaClientProperties.Get(properties, TellmaClientProperties.Origin);
+            string? callerOrigin = await ResolveClientOriginAsync(CallerClientId(caller), cancellationToken);
+            return ownerOrigin is not null
+                && callerOrigin is not null
+                && string.Equals(ownerOrigin, callerOrigin, StringComparison.Ordinal)
+                    ? (application, properties)
+                    : invisible;
         }
 
         /// <summary>Creates or replaces a client registration by client id.</summary>

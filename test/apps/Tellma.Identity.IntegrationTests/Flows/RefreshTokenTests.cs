@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 using Tellma.Identity.Data;
@@ -41,6 +42,22 @@ namespace Tellma.Identity.IntegrationTests.Flows
 
             string? familyError = await RefreshExpectingErrorAsync(context, secondRefreshToken);
             Assert.Equal("invalid_grant", familyError);
+
+            // The replay left an alertable audit row that names the affected user — the subject is
+            // captured during token validation, before the redeemed-token check rejects — and this
+            // assertion also pins the redeemed-marker string the detection matches on.
+            using IServiceScope auditScope = factory.Services.CreateScope();
+            TellmaIdentityDbContext db = auditScope.ServiceProvider.GetRequiredService<TellmaIdentityDbContext>();
+            Microsoft.AspNetCore.Identity.UserManager<TellmaIdentityUser> userManager =
+                auditScope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<TellmaIdentityUser>>();
+            string userId = (await userManager.FindByEmailAsync("carol@example.com"))!.Id;
+
+            Data.Entities.AuditEvent reuseEvent = Assert.Single(
+                await db.Set<Data.Entities.AuditEvent>()
+                    .Where(static e => e.Action == "RefreshReuseDetected")
+                    .ToListAsync(TestContext.Current.CancellationToken));
+            Assert.Equal(userId, reuseEvent.Subject);
+            Assert.Equal("acme", reuseEvent.ClientId);
         }
 
         [Fact]
@@ -84,6 +101,34 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using var document = JsonDocument.Parse(
                 await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             Assert.Equal("invalid_grant", document.RootElement.GetProperty("error").GetString());
+        }
+
+        [Fact]
+        public async Task A_malformed_pushed_allow_list_is_rejected_rather_than_ignored()
+        {
+            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idrtbadlist");
+            RefreshContext context = await SignInAndGetTokensAsync(factory, "grace2@example.com");
+
+            // Unknown vocabulary must be a protocol error here exactly as it is at the
+            // authorization endpoint: silently skipping enforcement would drop the allow-list for
+            // this refresh and persist the malformed value as the next token's snapshot.
+            Dictionary<string, string> parameters = RefreshParameters(context, context.RefreshToken);
+            parameters["tellma_allowed_methods"] = "passkey sms";
+
+            using HttpClient client = factory.CreateClient();
+            using HttpResponseMessage response = await client.PostAsync(
+                new Uri("/connect/token", UriKind.Relative),
+                new FormUrlEncodedContent(parameters),
+                TestContext.Current.CancellationToken);
+
+            Assert.False(response.IsSuccessStatusCode);
+            using var document = JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            Assert.Equal("invalid_request", document.RootElement.GetProperty("error").GetString());
+
+            // The rejection did not consume the token: the legitimate refresh still works.
+            using JsonDocument rotated = await RefreshAsync(context, context.RefreshToken);
+            Assert.False(string.IsNullOrEmpty(rotated.RootElement.GetProperty("access_token").GetString()));
         }
 
         /// <summary>Holds what the refresh calls need: the client secret and the first refresh token.</summary>

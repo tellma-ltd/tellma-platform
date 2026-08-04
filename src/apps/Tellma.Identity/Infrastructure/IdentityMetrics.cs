@@ -41,7 +41,7 @@ namespace Tellma.Identity.Infrastructure
         /// <summary>Records a sign-in attempt.</summary>
         /// <param name="method">The method used.</param>
         /// <param name="result">The outcome (success/failure).</param>
-        /// <param name="step">The step (primary/second_factor/step_up).</param>
+        /// <param name="step">The step: <c>primary</c> for a new session, <c>step_up</c> for one added to an existing session.</param>
         public void LoginAttempt(string method, string result, string step)
         {
             _loginAttempts.Add(1, new KeyValuePair<string, object?>("method", method),

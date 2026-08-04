@@ -84,7 +84,7 @@ namespace Tellma.Identity.Hosting
             services.AddScoped<Services.Email.EmailTemplateService>();
 
             // Outbound mail leaves the request path via a background worker so enumeration-safe
-            // endpoints return in constant time.
+            // endpoints return without an SMTP wait whether or not the account exists.
             services.AddSingleton<Services.Email.EmailDispatcher>();
             services.AddSingleton<Services.Email.IEmailDispatcher>(
                 static provider => provider.GetRequiredService<Services.Email.EmailDispatcher>());

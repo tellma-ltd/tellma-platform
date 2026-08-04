@@ -9,6 +9,11 @@
 
 <partial name="Shared/_StatusMessage" model="@(Model.StatusMessage)" />
 
+@if (Model.RequiresDeviceBoundPasskey)
+{
+    <p class="tl-muted">@L["DeviceBoundPasskeyRequired"]</p>
+}
+
 @{
     string passkeyMethod = Tellma.Identity.Services.AuthenticationPolicy.AuthenticationMethods.Passkey;
     string emailCodeMethod = Tellma.Identity.Services.AuthenticationPolicy.AuthenticationMethods.EmailCode;
@@ -22,7 +27,7 @@
 
 @if (showEmailCode)
 {
-    <form method="post" asp-page-handler="EmailCode" asp-route-returnUrl="@Model.ReturnUrl" asp-route-stepUp="@Model.StepUp">
+    <form method="post" asp-page-handler="EmailCode" asp-route-returnUrl="@Model.ReturnUrl" asp-route-methods="@Model.MethodsRaw" asp-route-stepUp="@Model.StepUp" asp-route-tier="@Model.Tier">
         <div class="tl-field">
             <label class="tl-label" for="email">@L["Email"]</label>
             @* autocomplete carries the webauthn token so passkey conditional UI can attach here. *@
@@ -40,11 +45,18 @@
 @if (showPasskey)
 {
     @* The assertion credential is posted back through this hidden field by passkey.js. *@
-    <form method="post" id="passkey-form" asp-page-handler="Passkey" asp-route-returnUrl="@Model.ReturnUrl" asp-route-stepUp="@Model.StepUp"
+    <form method="post" id="passkey-form" asp-page-handler="Passkey" asp-route-returnUrl="@Model.ReturnUrl" asp-route-methods="@Model.MethodsRaw" asp-route-stepUp="@Model.StepUp" asp-route-tier="@Model.Tier"
           data-assertion-url="@Url.Action("AssertionOptions", "PasskeyCeremony")">
         <input type="hidden" id="passkey-credential" name="Credential" />
         <button class="tl-button tl-button-secondary" type="button" id="passkey-button">@L["SignInWithPasskey"]</button>
     </form>
+}
+
+@if (!showPasskey && !showEmailCode && !showGoogle && !showMicrosoft)
+{
+    @* The allow-list names only methods this deployment does not offer (password sign-in is
+       deferred): say so instead of rendering an empty page. *@
+    <p class="tl-error">@L["NoSignInMethodAvailable"]</p>
 }
 
 @if (showGoogle || showMicrosoft)

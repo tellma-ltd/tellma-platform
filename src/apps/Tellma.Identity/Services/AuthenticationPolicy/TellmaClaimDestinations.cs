@@ -27,7 +27,10 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
             ArgumentNullException.ThrowIfNull(claim);
 
             // Server-side state: never serialized into any token.
-            if (claim.Type is TellmaClaims.AllowedMethods or SecurityStampClaimType or SignInClaims.PasskeyDeviceBound)
+            if (claim.Type is TellmaClaims.AllowedMethods
+                or SecurityStampClaimType
+                or SignInClaims.PasskeyDeviceBound
+                or SignInClaims.PasskeyAuthTime)
             {
                 yield break;
             }
@@ -60,6 +63,7 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                 case Claims.AuthenticationContextReference
                     or Claims.AuthenticationMethodReference
                     or Claims.AuthenticationTime
+                    or TellmaClaims.AcrAuthTime
                     or TellmaClaims.Sid
                     or TellmaClaims.Methods:
                     yield return Destinations.AccessToken;

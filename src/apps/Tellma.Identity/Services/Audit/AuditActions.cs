@@ -101,9 +101,6 @@ namespace Tellma.Identity.Services.Audit
         /// <summary>A service account was deleted.</summary>
         public const string ServiceAccountDeleted = "ServiceAccountDeleted";
 
-        /// <summary>A service account's secret was regenerated.</summary>
-        public const string ServiceAccountSecretRegenerated = "ServiceAccountSecretRegenerated";
-
         /// <summary>An OAuth client was created or provisioned.</summary>
         public const string ClientCreated = "ClientCreated";
 
@@ -127,6 +124,9 @@ namespace Tellma.Identity.Services.Audit
 
         /// <summary>A password reset was requested.</summary>
         public const string PasswordResetRequested = "PasswordResetRequested";
+
+        /// <summary>Password-reset issuance was rate limited.</summary>
+        public const string PasswordResetRateLimited = "PasswordResetRateLimited";
 
         /// <summary>A password was reset.</summary>
         public const string PasswordReset = "PasswordReset";

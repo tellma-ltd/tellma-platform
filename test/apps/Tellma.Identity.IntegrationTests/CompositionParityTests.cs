@@ -83,6 +83,30 @@ namespace Tellma.Identity.IntegrationTests
             Assert.Equal("Distribution host", body);
         }
 
+        [Fact]
+        public async Task Operator_routes_exist_standalone_but_not_in_proc()
+        {
+            using StandaloneFactory standalone = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idpar4");
+            using InProcFactory inProc = await DatabaseBackedFactory.CreateInProcAsync(fixture, "idpar5");
+
+            // Standalone: the route exists, so an anonymous request draws an authentication
+            // challenge, not a 404.
+            using HttpClient standaloneClient = standalone.CreateClient();
+            using HttpResponseMessage standaloneResponse = await standaloneClient.GetAsync(
+                new Uri("/api/identity/users/some-sub", UriKind.Relative), TestContext.Current.CancellationToken);
+            Assert.Equal(System.Net.HttpStatusCode.Unauthorized, standaloneResponse.StatusCode);
+
+            // In-proc: the operator controller is removed from the application model, so the
+            // route does not exist at all — under either path shape.
+            using HttpClient inProcClient = inProc.CreateClient();
+            foreach (string path in (string[])["/id/api/identity/users/some-sub", "/api/identity/users/some-sub"])
+            {
+                using HttpResponseMessage inProcResponse = await inProcClient.GetAsync(
+                    new Uri(path, UriKind.Relative), TestContext.Current.CancellationToken);
+                Assert.Equal(System.Net.HttpStatusCode.NotFound, inProcResponse.StatusCode);
+            }
+        }
+
         /// <summary>Fetches and parses a discovery document.</summary>
         private static async Task<JsonDocument> FetchDiscoveryAsync(HttpClient client, string path)
         {

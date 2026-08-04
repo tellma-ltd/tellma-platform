@@ -57,7 +57,8 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
         }
 
         /// <inheritdoc />
-        public AssuranceResult DeriveAssurance(IReadOnlyCollection<string> methods, bool passkeyIsDeviceBound, long authTime)
+        public AssuranceResult DeriveAssurance(
+            IReadOnlyCollection<string> methods, bool passkeyIsDeviceBound, long authTime, long? passkeyAuthTime = null)
         {
             ArgumentNullException.ThrowIfNull(methods);
 
@@ -101,7 +102,9 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                 }
             }
 
-            return new AssuranceResult(acr, amr, [.. methods], authTime);
+            // Passkey evidence carries its own timestamp: absent an explicit one, the assertion is
+            // as fresh as the event being derived; without a passkey there is nothing to date.
+            return new AssuranceResult(acr, amr, [.. methods], authTime, passkey ? passkeyAuthTime ?? authTime : 0);
         }
 
         /// <inheritdoc />
@@ -118,12 +121,56 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
             bool deviceBound = string.Equals(
                 principal.FindFirst(SignInClaims.PasskeyDeviceBound)?.Value, "true", StringComparison.OrdinalIgnoreCase);
 
-            long authTime = long.TryParse(
-                principal.FindFirst(Claims.AuthenticationTime)?.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsed)
+            long authTime = ReadUnixSeconds(principal, Claims.AuthenticationTime);
+
+            // A session predating the passkey timestamp has none, which reads as infinitely stale
+            // and so fails closed on any max_age asked of a passkey-borne tier: the next passkey
+            // assertion stamps it. Falling back to auth_time instead would let the session's
+            // weakest later factor answer for the passkey indefinitely.
+            return DeriveAssurance(
+                methods, deviceBound, authTime, ReadUnixSeconds(principal, SignInClaims.PasskeyAuthTime));
+        }
+
+        /// <summary>Reads a unix-seconds claim, or 0 when absent or unparseable.</summary>
+        private static long ReadUnixSeconds(ClaimsPrincipal principal, string claimType)
+        {
+            return long.TryParse(
+                principal.FindFirst(claimType)?.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsed)
                 ? parsed
                 : 0;
+        }
 
-            return DeriveAssurance(methods, deviceBound, authTime);
+        /// <inheritdoc />
+        public long TierAuthTime(AssuranceResult assurance)
+        {
+            ArgumentNullException.ThrowIfNull(assurance);
+
+            return FreshnessAnchor(assurance, TierRanks[assurance.Acr]);
+        }
+
+        /// <inheritdoc />
+        public AssuranceResult? FilterAssurance(AssuranceResult assurance, IReadOnlyList<string>? allowedMethods)
+        {
+            ArgumentNullException.ThrowIfNull(assurance);
+
+            if (allowedMethods is null)
+            {
+                return assurance;
+            }
+
+            string[] survivors =
+                [.. assurance.Methods.Where(method => allowedMethods.Contains(method, StringComparer.Ordinal))];
+            if (survivors.Length == 0)
+            {
+                return null;
+            }
+
+            // Only a device-bound passkey derives the aal3 tier, so the device-bound signal is
+            // recoverable from the tier being filtered.
+            return survivors.Length == assurance.Methods.Count
+                ? assurance
+                : DeriveAssurance(
+                    survivors, assurance.Acr == AcrTiers.Aal3, assurance.AuthTime, assurance.PasskeyAuthTime);
         }
 
         /// <inheritdoc />
@@ -133,7 +180,8 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
             IReadOnlyList<string>? allowedMethods,
             AssuranceResult? current,
             bool forceInteraction,
-            long nowUnixSeconds)
+            long nowUnixSeconds,
+            long? interactionSince = null)
         {
             ArgumentNullException.ThrowIfNull(acrValues);
 
@@ -157,75 +205,97 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                 _ => AcrTiers.Aal1,
             };
 
-            // The methods the login UI may offer: those able to participate in a composition of
-            // allowed methods that reaches the tier. An empty set means no composition can.
+            // A satisfying session needs no interaction, so it is checked before offerability:
+            // a session that already reached the tier must never be refused just because no
+            // offerable method could reach it interactively today. A disallowed method stops
+            // counting toward this request's assurance (it is filtered, never a taint): step-up
+            // sign-ins merge the session's accumulated methods, so a session poisoned by a
+            // since-disallowed method could never be cured interactively — the user would loop
+            // through the login page forever.
+            if (current is null
+                || FilterAssurance(current, allowedMethods) is not { } effective
+                || TierRanks[effective.Acr] < requiredRank)
+            {
+                return RequireInteraction(allowedMethods, requiredRank, requiredTier);
+            }
+
+            // The evidence carrying the requested tier — the only evidence whose age can answer a
+            // question asked about that tier.
+            long anchor = FreshnessAnchor(effective, requiredRank);
+
+            // Did this request's own redirect produce that evidence? If so it discharges both the
+            // forced-interaction demand and the max_age bound: the user just did what was asked,
+            // and re-asking would loop. Measuring the discharge against the tier's anchor rather
+            // than the session's last event is what stops a weaker factor from laundering it — an
+            // email code cannot answer a demand made of a hardware key.
+            bool dischargedByThisRequest = interactionSince is { } since && anchor >= since;
+
+            // Either demand outstanding — a forced event not yet produced, or evidence older than
+            // the bound — sends the user to authenticate.
+            bool outstanding = !dischargedByThisRequest
+                && (forceInteraction
+                    || (maxAge is { } bound && (nowUnixSeconds - anchor) > (long)bound.TotalSeconds));
+
+            return outstanding
+                ? RequireInteraction(allowedMethods, requiredRank, requiredTier)
+                : new PolicyEvaluation(PolicyOutcome.Satisfied);
+        }
+
+        /// <summary>
+        ///     The timestamp a <c>max_age</c> bound is measured against: the age of the evidence
+        ///     that actually carries the requested tier. The base tier is carried by any
+        ///     interactive event, so the session-wide <c>auth_time</c> dates it. Every tier above
+        ///     it is dated from the evidence that reaches it, and the session times exactly one
+        ///     such piece of evidence — the passkey assertion — so an email code cannot renew the
+        ///     recency of a hardware-key proof the user never repeated.
+        ///     <para>
+        ///         The password + one-time-code composition also derives the second tier, and the
+        ///         session records no timestamp for it. Crediting <c>auth_time</c> there would
+        ///         reintroduce exactly the laundering this exists to stop — a later, weaker factor
+        ///         refreshing a proof that was not repeated — so it is left undated and reads as
+        ///         infinitely stale, which fails closed. That composition is unreachable while
+        ///         password sign-in is deferred; timing it is part of shipping password sign-in,
+        ///         alongside restoring it to <see cref="OfferableMethods" />.
+        ///     </para>
+        /// </summary>
+        /// <param name="assurance">The assurance whose evidence is being dated.</param>
+        /// <param name="requiredRank">The rank of the tier the question is asked about.</param>
+        /// <returns>Unix seconds; 0 when the tier rests on evidence the session never timed.</returns>
+        private static long FreshnessAnchor(AssuranceResult assurance, int requiredRank)
+        {
+            return requiredRank <= 1 ? assurance.AuthTime : assurance.PasskeyAuthTime;
+        }
+
+        /// <summary>
+        ///     Interaction is needed: offers the methods able to reach the tier through a
+        ///     completable composition, or — when none can — reports the request unsatisfiable
+        ///     (the protocol answer, never a login redirect that could only loop).
+        /// </summary>
+        private static PolicyEvaluation RequireInteraction(
+            IReadOnlyList<string>? allowedMethods, int requiredRank, string requiredTier)
+        {
             List<string> offerable = OfferableMethods(allowedMethods ?? AuthenticationMethods.All, requiredRank);
-            if (offerable.Count == 0)
-            {
-                return new PolicyEvaluation(PolicyOutcome.Unsatisfiable, RequiredTier: requiredTier);
-            }
-
-            if (current is null || forceInteraction)
-            {
-                return new PolicyEvaluation(PolicyOutcome.InteractionRequired, RequiredTier: requiredTier, OfferableMethods: offerable);
-            }
-
-            // The methods actually used must all be inside the allow-list; a method a tenant
-            // disabled stops working at the next authorization or refresh.
-            if (allowedMethods is not null
-                && current.Methods.Any(method => !allowedMethods.Contains(method, StringComparer.Ordinal)))
-            {
-                return new PolicyEvaluation(PolicyOutcome.InteractionRequired, RequiredTier: requiredTier, OfferableMethods: offerable);
-            }
-
-            // Assurance tier reached must satisfy the requested tier.
-            if (TierRanks[current.Acr] < requiredRank)
-            {
-                return new PolicyEvaluation(PolicyOutcome.InteractionRequired, RequiredTier: requiredTier, OfferableMethods: offerable);
-            }
-
-            // Freshness: max_age bounds the age of the last interactive event.
-            return maxAge is { } bound && (nowUnixSeconds - current.AuthTime) > (long)bound.TotalSeconds
-                ? new PolicyEvaluation(PolicyOutcome.InteractionRequired, RequiredTier: requiredTier, OfferableMethods: offerable)
-                : new PolicyEvaluation(PolicyOutcome.Satisfied, Assurance: current);
+            return offerable.Count == 0
+                ? new PolicyEvaluation(PolicyOutcome.Unsatisfiable, RequiredTier: requiredTier)
+                : new PolicyEvaluation(PolicyOutcome.InteractionRequired, RequiredTier: requiredTier, OfferableMethods: offerable);
         }
 
         /// <summary>
         ///     The methods worth offering for a required tier — mirroring how
         ///     <see cref="DeriveAssurance" /> composes: ranks are not per-method. Any method
-        ///     reaches aal1; aal2 needs a passkey OR password plus an OTP factor (a lone password,
-        ///     TOTP, or email code derives only aal1); aal3 needs a device-bound passkey, so only
-        ///     the passkey method is offered — whether the presented authenticator is device-bound
-        ///     is knowable only once the user presents it.
+        ///     reaches aal1. aal2 and above are offered only the passkey (device-bound for aal3 —
+        ///     knowable only once the user presents it): the password + OTP composition also
+        ///     derives aal2, but password sign-in is deferred, so offering its halves would send
+        ///     the user through sign-ins that succeed yet can never raise the tier — an infinite
+        ///     login loop. Restore the composition here when password sign-in ships.
         /// </summary>
         private static List<string> OfferableMethods(IReadOnlyList<string> allowed, int requiredRank)
         {
-            if (requiredRank <= 1)
-            {
-                return [.. allowed];
-            }
-
-            bool passkey = allowed.Contains(AuthenticationMethods.Passkey, StringComparer.Ordinal);
-            if (requiredRank >= 3)
-            {
-                return passkey ? [AuthenticationMethods.Passkey] : [];
-            }
-
-            List<string> offerable = [];
-            if (passkey)
-            {
-                offerable.Add(AuthenticationMethods.Passkey);
-            }
-
-            List<string> otpFactors =
-                [.. allowed.Where(static m => m is AuthenticationMethods.Totp or AuthenticationMethods.EmailCode)];
-            if (allowed.Contains(AuthenticationMethods.Password, StringComparer.Ordinal) && otpFactors.Count > 0)
-            {
-                offerable.Add(AuthenticationMethods.Password);
-                offerable.AddRange(otpFactors);
-            }
-
-            return offerable;
+            return requiredRank <= 1
+                ? [.. allowed]
+                : allowed.Contains(AuthenticationMethods.Passkey, StringComparer.Ordinal)
+                    ? [AuthenticationMethods.Passkey]
+                    : [];
         }
     }
 }

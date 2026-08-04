@@ -15,7 +15,7 @@ namespace Tellma.Identity.IntegrationTests
     /// <summary>
     ///     The committed migration chain produces the full identity schema on a real SQL Server:
     ///     Identity tables including passkeys (schema version 3), OpenIddict's four tables, the
-    ///     engine's own tables, and the prune-supporting filtered index.
+    ///     engine's own tables, and the prune-supporting CreationDate-leading index.
     /// </summary>
     [Collection(SqlServerCollectionDefinition.Name)]
     [Trait("Category", "Integration")]
@@ -79,6 +79,33 @@ namespace Tellma.Identity.IntegrationTests
                 object? leadingColumn = await command.ExecuteScalarAsync(TestContext.Current.CancellationToken);
                 Assert.Equal("CreationDate", leadingColumn);
             }
+
+            // The INCLUDE list covers the prune's residual predicate — including AuthorizationId,
+            // which its authorization-status join needs. Measured on a 50k-row table shaped the way
+            // the prune job finds one: without AuthorizationId the optimizer chose a clustered
+            // scan, with it a seek. Plan choice is statistics-dependent, so a mostly-prunable store
+            // may still legitimately scan.
+            HashSet<string> includedColumns = [];
+            await using (SqlCommand command = connection.CreateCommand())
+            {
+                command.CommandText =
+                    "SELECT c.name FROM sys.indexes i "
+                    + "JOIN sys.tables t ON i.object_id = t.object_id "
+                    + "JOIN sys.schemas s ON t.schema_id = s.schema_id "
+                    + "JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id AND ic.is_included_column = 1 "
+                    + "JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id "
+                    + "WHERE s.name = 'idsvr' AND t.name = 'OpenIddictTokens' "
+                    + "AND i.name = 'IX_OpenIddictTokens_CreationDate'";
+                await using SqlDataReader reader = await command.ExecuteReaderAsync(TestContext.Current.CancellationToken);
+                while (await reader.ReadAsync(TestContext.Current.CancellationToken))
+                {
+                    includedColumns.Add(reader.GetString(0));
+                }
+            }
+
+            Assert.Equal(
+                ["AuthorizationId", "ExpirationDate", "Status"],
+                includedColumns.OrderBy(static c => c, StringComparer.Ordinal));
         }
     }
 }

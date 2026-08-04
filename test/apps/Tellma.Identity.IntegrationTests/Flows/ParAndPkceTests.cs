@@ -105,6 +105,35 @@ namespace Tellma.Identity.IntegrationTests.Flows
         }
 
         [Fact]
+        public async Task Pushing_a_code_challenge_without_a_method_is_rejected()
+        {
+            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idpkcenomethod");
+            DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
+            (string _, string challenge) = OidcFlowClient.CreatePkcePair();
+
+            using HttpClient backchannel = factory.CreateClient();
+            using HttpResponseMessage response = await backchannel.PostAsync(
+                new Uri("/connect/par", UriKind.Relative),
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["client_id"] = "acme",
+                    ["client_secret"] = distribution.BffClientSecret,
+                    ["redirect_uri"] = "https://acme.app.tellma.com/signin-oidc",
+                    ["response_type"] = "code",
+                    ["scope"] = "openid",
+                    // RFC 7636 defaults a method-less challenge to `plain`; with plain removed
+                    // from the accepted set, the omission must be rejected, not silently accepted.
+                    ["code_challenge"] = challenge,
+                }),
+                TestContext.Current.CancellationToken);
+
+            Assert.False(response.IsSuccessStatusCode);
+            using var document = JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            Assert.Equal("invalid_request", document.RootElement.GetProperty("error").GetString());
+        }
+
+        [Fact]
         public async Task Pushing_a_mismatched_redirect_uri_is_rejected()
         {
             using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idredir");

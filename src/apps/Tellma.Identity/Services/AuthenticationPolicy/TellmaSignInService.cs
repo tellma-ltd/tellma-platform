@@ -66,39 +66,20 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                 ?? throw new InvalidOperationException("Sign-in requires an active HTTP request.");
 
             // Merge with the current session only when it belongs to the same user.
-            List<string> methods = [];
-            bool deviceBound = evidence.PasskeyIsDeviceBound;
-            string? sid = null;
-
             ClaimsPrincipal? current = httpContext.User;
-            if (current?.Identity?.IsAuthenticated == true
-                && string.Equals(userManager.GetUserId(current), user.Id, StringComparison.Ordinal))
-            {
-                methods.AddRange(current.FindAll(TellmaClaims.Methods).Select(static claim => claim.Value));
-                deviceBound |= string.Equals(
-                    current.FindFirst(SignInClaims.PasskeyDeviceBound)?.Value, "true", StringComparison.OrdinalIgnoreCase);
-                sid = current.FindFirst(TellmaClaims.Sid)?.Value;
-            }
+            ClaimsPrincipal? sameUserSession =
+                current?.Identity?.IsAuthenticated == true
+                && string.Equals(userManager.GetUserId(current), user.Id, StringComparison.Ordinal)
+                    ? current
+                    : null;
 
-            if (!methods.Contains(evidence.Method, StringComparer.Ordinal))
-            {
-                methods.Add(evidence.Method);
-            }
+            SessionState session = ComposeSession(
+                sameUserSession, evidence, timeProvider.GetUtcNow().ToUnixTimeSeconds());
 
-            // A merge into an existing sid is a step-up; a fresh sid is a new session.
-            bool isNewSession = sid is null;
-            sid ??= Guid.NewGuid().ToString("N");
-            long authTime = timeProvider.GetUtcNow().ToUnixTimeSeconds();
+            bool isNewSession = session.IsNewSession;
+            string sid = session.Sid;
 
-            List<Claim> claims =
-            [
-                new Claim(TellmaClaims.Sid, sid),
-                new Claim(Claims.AuthenticationTime, authTime.ToString(CultureInfo.InvariantCulture)),
-                new Claim(SignInClaims.PasskeyDeviceBound, deviceBound ? "true" : "false"),
-                .. methods.Select(static method => new Claim(TellmaClaims.Methods, method)),
-            ];
-
-            await signInManager.SignInWithClaimsAsync(user, isPersistent, claims);
+            await signInManager.SignInWithClaimsAsync(user, isPersistent, session.Claims);
 
             await sessionRegistry.UpsertSessionAsync(
                 sid,
@@ -137,6 +118,90 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                 cancellationToken);
 
             metrics.LoginAttempt(evidence.Method, "success", isNewSession ? "primary" : "step_up");
+        }
+
+        /// <summary>The session state one authentication event produces.</summary>
+        /// <param name="Sid">The session identifier, reused on step-up and minted otherwise.</param>
+        /// <param name="IsNewSession">Whether a fresh session was minted rather than merged into.</param>
+        /// <param name="Claims">The claims to stamp on the cookie.</param>
+        internal sealed record SessionState(string Sid, bool IsNewSession, IReadOnlyList<Claim> Claims);
+
+        /// <summary>
+        ///     Merges one authentication event into the session's existing evidence. Pure, so the
+        ///     rules that decide what an event carries forward can be examined directly:
+        ///     <list type="bullet">
+        ///         <item>Methods accumulate — the session records every factor it has exercised.</item>
+        ///         <item>
+        ///             The passkey classification describes the <em>most recent</em> assertion. A
+        ///             passkey event replaces it, so presenting a synced credential cannot inherit
+        ///             an earlier hardware key's aal3; any other event leaves it, and its
+        ///             timestamp, untouched.
+        ///         </item>
+        ///         <item>
+        ///             A session with no passkey assertion carries timestamp 0, which reads as
+        ///             infinitely stale rather than as "now" — freshness fails closed.
+        ///         </item>
+        ///     </list>
+        /// </summary>
+        /// <param name="existing">The same user's current session principal, when there is one.</param>
+        /// <param name="evidence">The authentication step just completed.</param>
+        /// <param name="authTime">When it completed (unix seconds).</param>
+        /// <returns>The merged session state.</returns>
+        internal static SessionState ComposeSession(
+            ClaimsPrincipal? existing, SignInEvidence evidence, long authTime)
+        {
+            ArgumentNullException.ThrowIfNull(evidence);
+
+            // The device-bound signal belongs to a passkey assertion, so it is read from the
+            // evidence only when this event is one — otherwise a caller passing the flag alongside
+            // a different method would stamp a passkey classification the session never earned.
+            bool isPasskeyEvent = string.Equals(evidence.Method, AuthenticationMethods.Passkey, StringComparison.Ordinal);
+            List<string> methods = [];
+            bool deviceBound = isPasskeyEvent && evidence.PasskeyIsDeviceBound;
+            long passkeyAuthTime = isPasskeyEvent ? authTime : 0;
+            string? sid = null;
+
+            if (existing is not null)
+            {
+                methods.AddRange(existing.FindAll(TellmaClaims.Methods).Select(static claim => claim.Value));
+                sid = existing.FindFirst(TellmaClaims.Sid)?.Value;
+
+                if (!isPasskeyEvent)
+                {
+                    deviceBound = string.Equals(
+                        existing.FindFirst(SignInClaims.PasskeyDeviceBound)?.Value, "true", StringComparison.OrdinalIgnoreCase);
+                    passkeyAuthTime = ReadUnixSeconds(existing, SignInClaims.PasskeyAuthTime);
+                }
+            }
+
+            if (!methods.Contains(evidence.Method, StringComparer.Ordinal))
+            {
+                methods.Add(evidence.Method);
+            }
+
+            // A merge into an existing sid is a step-up; a fresh sid is a new session.
+            bool isNewSession = sid is null;
+            sid ??= Guid.NewGuid().ToString("N");
+
+            List<Claim> claims =
+            [
+                new Claim(TellmaClaims.Sid, sid),
+                new Claim(Claims.AuthenticationTime, authTime.ToString(CultureInfo.InvariantCulture)),
+                new Claim(SignInClaims.PasskeyDeviceBound, deviceBound ? "true" : "false"),
+                new Claim(SignInClaims.PasskeyAuthTime, passkeyAuthTime.ToString(CultureInfo.InvariantCulture)),
+                .. methods.Select(static method => new Claim(TellmaClaims.Methods, method)),
+            ];
+
+            return new SessionState(sid, isNewSession, claims);
+        }
+
+        /// <summary>Reads a unix-seconds claim, or 0 when absent or unparseable.</summary>
+        private static long ReadUnixSeconds(ClaimsPrincipal principal, string claimType)
+        {
+            return long.TryParse(
+                principal.FindFirst(claimType)?.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsed)
+                ? parsed
+                : 0;
         }
     }
 }

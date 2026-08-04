@@ -132,10 +132,16 @@ namespace Tellma.Identity.Services.Seeding
             // Re-seeding must not wipe the per-distribution resource permissions granted to the CLI
             // and native apps at provisioning time — but only those clients accumulate them, so a
             // client that never names distribution APIs (the control plane) never resurrects a
-            // stale grant.
+            // stale grant. The marker is read from the stored client OR the fresh descriptor:
+            // a client seeded before the marker existed carries it only in the descriptor, and
+            // gating on the stored copy alone would drop its accumulated grants on the first boot
+            // after the upgrade.
             ImmutableDictionary<string, JsonElement> existingProperties =
                 await applicationManager.GetPropertiesAsync(existing, cancellationToken);
-            if (TellmaClientProperties.IsSet(existingProperties, TellmaClientProperties.CallsDistributionApis))
+            bool callsDistributionApis =
+                TellmaClientProperties.IsSet(existingProperties, TellmaClientProperties.CallsDistributionApis)
+                || TellmaClientProperties.IsSet(descriptor.Properties, TellmaClientProperties.CallsDistributionApis);
+            if (callsDistributionApis)
             {
                 OpenIddictApplicationDescriptor current = new();
                 await applicationManager.PopulateAsync(current, existing, cancellationToken);

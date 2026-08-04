@@ -50,13 +50,14 @@ namespace Tellma.Identity.Controllers
             });
         }
 
-        /// <summary>Reads a service account's metadata (never the secret).</summary>
+        /// <summary>Reads a service account's metadata (never the secret); scoped to the caller's own accounts.</summary>
         /// <param name="clientId">The service-account client id.</param>
-        /// <returns>The metadata, or 404.</returns>
+        /// <returns>The metadata, or 404 (including for another distribution's account).</returns>
         [HttpGet("api/identity/service-accounts/{clientId}")]
         public async Task<ActionResult<ServiceAccountResponse>> Get(string clientId)
         {
-            ServiceAccountDetails? details = await provisioning.GetServiceAccountAsync(clientId, HttpContext.RequestAborted);
+            ServiceAccountDetails? details = await provisioning.GetServiceAccountAsync(
+                clientId, User, HttpContext.RequestAborted);
             return details is null
                 ? NotFound()
                 : Ok(new ServiceAccountResponse
@@ -67,17 +68,17 @@ namespace Tellma.Identity.Controllers
                 });
         }
 
-        /// <summary>Deletes a service account.</summary>
+        /// <summary>Deletes a service account; scoped to the caller's own accounts.</summary>
         /// <param name="clientId">The service-account client id.</param>
-        /// <returns>204 on success, 404 when it does not exist.</returns>
+        /// <returns>204 on success, 404 when the caller owns no such account.</returns>
         [HttpDelete("api/identity/service-accounts/{clientId}")]
         public async Task<IActionResult> Delete(string clientId)
         {
-            bool deleted = await provisioning.DeleteServiceAccountAsync(clientId, CallerClientId(), HttpContext.RequestAborted);
+            bool deleted = await provisioning.DeleteServiceAccountAsync(clientId, User, HttpContext.RequestAborted);
             return deleted ? NoContent() : NotFound();
         }
 
-        /// <summary>The calling client's id, for audit attribution.</summary>
+        /// <summary>The calling client's id, for audit attribution on creation.</summary>
         private string? CallerClientId()
         {
             return User.GetClaim(OpenIddictConstants.Claims.ClientId) ?? User.GetClaim(OpenIddictConstants.Claims.Subject);

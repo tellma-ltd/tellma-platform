@@ -108,6 +108,24 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                 return new PrincipalResult(null, Errors.LoginRequired, "The session must be re-established.");
             }
 
+            // The tokens carry only the assurance the allow-list permits — the same filter the
+            // authorization evaluation applied — so a resource server enforcing methods by
+            // set-membership never sees a disallowed method in `tellma_methods`. An unparseable
+            // list is refused rather than skipped: the caller pre-validates it, so reaching here
+            // means the two disagree, and failing open would mint unfiltered tokens.
+            if (!policyService.TryParseAllowedMethods(grant.AllowedMethodsRaw, out IReadOnlyList<string>? allowedMethods))
+            {
+                return new PrincipalResult(
+                    null, Errors.InvalidRequest, "The tellma_allowed_methods parameter contains an unknown method.");
+            }
+
+            assurance = policyService.FilterAssurance(assurance, allowedMethods);
+            if (assurance is null)
+            {
+                return new PrincipalResult(
+                    null, Errors.LoginRequired, "The session must be re-established with a permitted method.");
+            }
+
             ClaimsIdentity identity = new(
                 TokenValidationParameters.DefaultAuthenticationType, Claims.Name, Claims.Role);
 
@@ -118,6 +136,14 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                     .SetClaim(Claims.Locale, user.Locale)
                     .SetClaim(Claims.AuthenticationContextReference, assurance.Acr)
                     .SetClaim(Claims.AuthenticationTime, assurance.AuthTime)
+
+                    // The tier's own freshness travels beside it. `auth_time` keeps its standard
+                    // meaning — the session's most recent authentication — because that is what
+                    // relying parties and their libraries assume, and re-dating it would make the
+                    // server assert a staleness it does not itself enforce. A relying party
+                    // deciding whether a sensitive operation needs a step-up reads this instead,
+                    // which is the only value that answers the question it is actually asking.
+                    .SetClaim(TellmaClaims.AcrAuthTime, policyService.TierAuthTime(assurance))
                     .SetClaim(TellmaClaims.Sid, sid);
             identity.SetClaim(Claims.EmailVerified, user.EmailConfirmed);
             identity.SetClaims(Claims.AuthenticationMethodReference, [.. assurance.Amr]);
@@ -137,13 +163,16 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                 identity.SetClaim(TellmaClaimDestinations.SecurityStampClaimType, securityStamp);
             }
 
-            // The device-bound passkey signal (server-side only) rides the encrypted grant
-            // principal so the refresh path re-derives the aal3 tier instead of silently
-            // downgrading a hardware-key session to aal2.
-            string? passkeyDeviceBound = cookiePrincipal.FindFirst(SignInClaims.PasskeyDeviceBound)?.Value;
-            if (passkeyDeviceBound is not null)
+            // The passkey signals (server-side only) ride the encrypted grant principal so the
+            // refresh path re-derives the aal3 tier — and measures its freshness against the
+            // assertion that carries it — instead of silently downgrading a hardware-key session
+            // to aal2 or dating it from a weaker later factor.
+            foreach (string claimType in (string[])[SignInClaims.PasskeyDeviceBound, SignInClaims.PasskeyAuthTime])
             {
-                identity.SetClaim(SignInClaims.PasskeyDeviceBound, passkeyDeviceBound);
+                if (cookiePrincipal.FindFirst(claimType)?.Value is { } value)
+                {
+                    identity.SetClaim(claimType, value);
+                }
             }
 
             identity.SetScopes(grant.Scopes);

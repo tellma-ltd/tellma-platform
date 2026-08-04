@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
+using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json.Nodes;
 using Tellma.Identity.Data;
@@ -101,13 +102,25 @@ namespace Tellma.Identity.Controllers
                         .SetClaim(Claims.Locale, user.Locale);
                 identity.SetClaim(Claims.EmailVerified, user.EmailConfirmed);
 
-                // Carry the assurance and session claims from the subject token unchanged.
+                // Carry the assurance and session claims from the subject token unchanged. The
+                // numeric ones are copied as numbers: OpenIddict refuses to sign in a principal
+                // whose auth_time is not of a numeric claim type, so copying it as the string the
+                // reader returns would turn every delegation into a 500.
                 foreach (string claimType in (string[])
-                    [Claims.AuthenticationContextReference, Claims.AuthenticationTime, TellmaClaims.Sid])
+                    [Claims.AuthenticationContextReference, TellmaClaims.Sid])
                 {
                     if (subject.GetClaim(claimType) is { } value)
                     {
                         identity.SetClaim(claimType, value);
+                    }
+                }
+
+                foreach (string claimType in (string[])[Claims.AuthenticationTime, TellmaClaims.AcrAuthTime])
+                {
+                    if (long.TryParse(
+                        subject.GetClaim(claimType), NumberStyles.Integer, CultureInfo.InvariantCulture, out long seconds))
+                    {
+                        identity.SetClaim(claimType, seconds);
                     }
                 }
 
@@ -163,9 +176,10 @@ namespace Tellma.Identity.Controllers
                 return ForbidGrant(Errors.InvalidGrant, "The account cannot obtain tokens.");
             }
 
+            AssuranceResult? effectiveAssurance = null;
             if (isRefresh)
             {
-                IActionResult? rejection = await ReevaluatePolicyAsync(request, stored, user);
+                (IActionResult? rejection, effectiveAssurance) = await ReevaluatePolicyAsync(request, stored, user);
                 if (rejection is not null)
                 {
                     return rejection;
@@ -181,6 +195,26 @@ namespace Tellma.Identity.Controllers
                     .SetClaim(Claims.PreferredUsername, user.Email)
                     .SetClaim(Claims.Locale, user.Locale);
             identity.SetClaim(Claims.EmailVerified, user.EmailConfirmed);
+
+            if (effectiveAssurance is not null)
+            {
+                // The refreshed tokens carry only the assurance the current allow-list permits —
+                // a since-disallowed method's contribution is filtered out of the claims here,
+                // mirroring the authorization-time filter — and the tier's freshness is re-dated
+                // with it, since filtering can lower the tier and the pair must stay consistent.
+                identity.SetClaim(Claims.AuthenticationContextReference, effectiveAssurance.Acr);
+                identity.SetClaim(TellmaClaims.AcrAuthTime, policyService.TierAuthTime(effectiveAssurance));
+                identity.SetClaims(Claims.AuthenticationMethodReference, [.. effectiveAssurance.Amr]);
+                identity.SetClaims(TellmaClaims.Methods, [.. effectiveAssurance.Methods]);
+            }
+
+            // A pushed allow-list becomes the rotated token's stored snapshot, so a tightening
+            // pushed once holds for later refreshes that omit the parameter.
+            if (isRefresh && (string?)request[TellmaParameters.AllowedMethods] is { Length: > 0 } pushedAllowedMethods)
+            {
+                identity.SetClaim(TellmaClaims.AllowedMethods, pushedAllowedMethods);
+            }
+
             identity.SetDestinations(TellmaClaimDestinations.Resolve);
 
             return SignIn(new ClaimsPrincipal(identity), OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
@@ -191,7 +225,11 @@ namespace Tellma.Identity.Controllers
         ///     authority (not the resource server) because <c>amr</c> is too coarse to carry the
         ///     allow-list's granularity.
         /// </summary>
-        private async Task<IActionResult?> ReevaluatePolicyAsync(
+        /// <returns>
+        ///     A rejection, or the assurance filtered to the current allow-list — what the rotated
+        ///     token's claims must carry (null when the stored principal has no method evidence).
+        /// </returns>
+        private async Task<(IActionResult? Rejection, AssuranceResult? EffectiveAssurance)> ReevaluatePolicyAsync(
             OpenIddictRequest request, ClaimsPrincipal stored, TellmaIdentityUser user)
         {
             // Security stamp: "sign out everywhere" (UpdateSecurityStampAsync) bumps the stamp,
@@ -202,45 +240,54 @@ namespace Tellma.Identity.Controllers
                 string currentStamp = await userManager.GetSecurityStampAsync(user);
                 if (!string.Equals(storedStamp, currentStamp, StringComparison.Ordinal))
                 {
-                    return ForbidGrant(Errors.InvalidGrant, "The session was terminated.");
+                    return (ForbidGrant(Errors.InvalidGrant, "The session was terminated."), null);
                 }
             }
 
             // The current allow-list: the refresh request may carry an updated tellma_allowed_methods
             // (the confidential BFF pushes the tenant's current policy), else the snapshot stored
-            // at authorization time. Methods actually used must all remain permitted.
+            // at authorization time. Unknown vocabulary is a protocol error (mirroring the
+            // authorization endpoint) — never silently ignored, which would skip enforcement and
+            // persist the malformed value as the next snapshot. A since-disallowed method stops
+            // counting toward the grant's assurance; when no used method remains permitted,
+            // renewal stops.
             string? currentAllowedRaw = (string?)request[TellmaParameters.AllowedMethods]
                 ?? stored.GetClaim(TellmaClaims.AllowedMethods);
-            if (policyService.TryParseAllowedMethods(currentAllowedRaw, out IReadOnlyList<string>? allowedMethods)
-                && allowedMethods is not null)
+            if (!policyService.TryParseAllowedMethods(currentAllowedRaw, out IReadOnlyList<string>? allowedMethods))
             {
-                string[] used = [.. stored.FindAll(TellmaClaims.Methods).Select(static claim => claim.Value)];
-                if (used.Any(method => !allowedMethods.Contains(method, StringComparer.Ordinal)))
+                return (ForbidGrant(Errors.InvalidRequest,
+                    "The tellma_allowed_methods parameter contains an unknown method."), null);
+            }
+
+            AssuranceResult? assurance = policyService.ReadAssurance(stored);
+            if (allowedMethods is not null && assurance is not null)
+            {
+                assurance = policyService.FilterAssurance(assurance, allowedMethods);
+                if (assurance is null)
                 {
-                    return ForbidGrant(Errors.InvalidGrant, "A method used to authenticate is no longer permitted.");
+                    return (ForbidGrant(Errors.InvalidGrant, "No method used to authenticate remains permitted."), null);
                 }
             }
 
             // Assurance: if the refresh request restates an acr_values requirement, the assurance
-            // the session reached must still satisfy it.
+            // the still-allowed methods support must satisfy it.
             IReadOnlyList<string> requestedAcr = [.. request.GetAcrValues()];
             if (requestedAcr.Count > 0)
             {
-                AssuranceResult? current = policyService.ReadAssurance(stored);
                 PolicyEvaluation evaluation = policyService.Evaluate(
                     requestedAcr,
                     maxAge: null,
                     allowedMethods,
-                    current,
+                    assurance,
                     forceInteraction: false,
                     timeProvider.GetUtcNow().ToUnixTimeSeconds());
                 if (evaluation.Outcome != PolicyOutcome.Satisfied)
                 {
-                    return ForbidGrant(Errors.UnmetAuthenticationRequirements, "The authentication no longer meets the requested assurance.");
+                    return (ForbidGrant(Errors.UnmetAuthenticationRequirements, "The authentication no longer meets the requested assurance."), null);
                 }
             }
 
-            return null;
+            return (null, assurance);
         }
 
         /// <summary>Returns a protocol error at the token endpoint.</summary>

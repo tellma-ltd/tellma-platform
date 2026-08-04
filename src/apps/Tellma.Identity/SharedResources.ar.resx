@@ -117,6 +117,12 @@
   <data name="DeviceBound" xml:space="preserve">
     <value>مرتبط بالجهاز</value>
   </data>
+  <data name="DeviceBoundPasskeyRequired" xml:space="preserve">
+    <value>يتطلب هذا الإجراء مفتاح مرور مرتبطًا بالجهاز، مثل مفتاح أمان مادي. لن يُقبل مفتاح مرور متزامن عبر حساب سحابي.</value>
+  </data>
+  <data name="NoSignInMethodAvailable" xml:space="preserve">
+    <value>لا توجد وسيلة تسجيل دخول متاحة لهذا الطلب. يرجى التواصل مع المسؤول.</value>
+  </data>
   <data name="Synced" xml:space="preserve">
     <value>متزامن</value>
   </data>

@@ -117,6 +117,12 @@
   <data name="DeviceBound" xml:space="preserve">
     <value>Device-bound</value>
   </data>
+  <data name="DeviceBoundPasskeyRequired" xml:space="preserve">
+    <value>This action requires a device-bound passkey, such as a hardware security key. A passkey synced through a cloud account will not be accepted.</value>
+  </data>
+  <data name="NoSignInMethodAvailable" xml:space="preserve">
+    <value>No sign-in method is available for this request. Contact your administrator.</value>
+  </data>
   <data name="Synced" xml:space="preserve">
     <value>Synced</value>
   </data>

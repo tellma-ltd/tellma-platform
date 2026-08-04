@@ -25,6 +25,12 @@ Configuration binds to `TellmaIdentityOptions` (see `Options/`). The server runs
 certificate-store or PFX key material, file-system Data Protection, and SMTP email; Azure Key Vault,
 blob-backed Data Protection, and Azure Monitor are config-gated optional paths.
 
+The engine reads the client IP from the connection (`RemoteIpAddress`) for rate limiting and audit.
+A host that sits behind a reverse proxy — standalone or in-proc — must register the ASP.NET Core
+forwarded-headers middleware as its first middleware, restricted to the deployment's known
+proxies/networks; see the [`Tellma.Identity.Web` README](../Tellma.Identity.Web/README.md) for the
+fail-closed configuration pattern.
+
 EF Core migrations for the engine's database (SQL schema `idsvr`) live in the separate
 [`Tellma.Identity.Migrations`](../Tellma.Identity.Migrations/README.md) project.
 

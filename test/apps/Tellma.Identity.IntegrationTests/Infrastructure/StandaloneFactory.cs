@@ -31,6 +31,16 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
         /// <summary>Captures back-channel logout tokens delivered to distributions.</summary>
         public RecordingBackchannelHandler BackchannelLogouts { get; } = new RecordingBackchannelHandler();
 
+        /// <summary>Extra service registrations applied after the test defaults (fault injection).</summary>
+        public IList<Action<IServiceCollection>> ServiceOverrides { get; } = [];
+
+        /// <summary>
+        ///     The client address every test request appears to come from. <c>TestServer</c> sets
+        ///     none, so anything reading the connection address — per-IP rate limits, audit rows —
+        ///     would otherwise be untestable and silently null.
+        /// </summary>
+        public static string RemoteIpAddress => "203.0.113.7";
+
         /// <inheritdoc />
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -43,6 +53,13 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
                 // Route the back-channel logout client through the recording handler.
                 services.AddHttpClient(Identity.Services.BackchannelLogout.BackchannelLogoutService.HttpClientName)
                     .ConfigurePrimaryHttpMessageHandler(() => BackchannelLogouts);
+
+                services.AddSingleton<IStartupFilter>(new RemoteIpStartupFilter(RemoteIpAddress));
+
+                foreach (Action<IServiceCollection> configure in ServiceOverrides)
+                {
+                    configure(services);
+                }
             });
 
             Dictionary<string, string?> settings = new()

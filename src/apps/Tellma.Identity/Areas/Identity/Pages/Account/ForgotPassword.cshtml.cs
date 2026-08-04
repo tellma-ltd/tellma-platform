@@ -13,6 +13,7 @@ using Tellma.Identity.Data.Entities;
 using Tellma.Identity.Options;
 using Tellma.Identity.Services.Audit;
 using Tellma.Identity.Services.Email;
+using Tellma.Identity.Services.RateLimiting;
 using Tellma.Identity.Services.Tokens;
 
 namespace Tellma.Identity.Areas.Identity.Pages.Account
@@ -20,10 +21,12 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
     /// <summary>
     ///     Self-service password reset request (only when passwords are enabled). The response is
     ///     always the same whether or not the account exists (enumeration-safe); a matching active
-    ///     user is emailed a single-use reset link.
+    ///     user is emailed a single-use reset link. Issuance is rate-limited per IP before the
+    ///     user lookup, so the endpoint cannot be used to probe unlimited addresses.
     /// </summary>
     /// <param name="userManager">The Identity user manager.</param>
     /// <param name="tokens">One-time reset tokens.</param>
+    /// <param name="rateLimits">Issuance rate limiting.</param>
     /// <param name="emailQueue">The background mail dispatch queue.</param>
     /// <param name="templates">Localized message construction.</param>
     /// <param name="engineOptions">The engine options (password gate, link base).</param>
@@ -32,11 +35,21 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
     public sealed class ForgotPasswordModel(
         UserManager<TellmaIdentityUser> userManager,
         IOneTimeTokenService tokens,
+        IRateLimitCounterStore rateLimits,
         IEmailDispatcher emailQueue,
         EmailTemplateService templates,
         IOptions<TellmaIdentityOptions> engineOptions,
         IAuditLogger auditLogger) : PageModel
     {
+        /// <summary>
+        ///     Reset requests per IP per hour before issuance is suppressed. The address comes from
+        ///     the connection, so a deployment behind a proxy must configure forwarded headers (see
+        ///     the host README) or every request appears to come from the gateway and this bound
+        ///     becomes a global one — silently, since the suppressed response is deliberately
+        ///     indistinguishable from success.
+        /// </summary>
+        public const int MaxRequestsPerIpPerHour = 10;
+
         /// <summary>The email the reset was requested for.</summary>
         [BindProperty]
         public string? Email { get; set; }
@@ -63,6 +76,23 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
             Submitted = true;
             if (string.IsNullOrWhiteSpace(Email))
             {
+                return Page();
+            }
+
+            // Rate-limit by IP before the user lookup (mirroring email-code issuance), and keep
+            // the response identical when suppressed — the generic confirmation either way.
+            string? ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+            int perIp = ipAddress is null
+                ? 0
+                : await rateLimits.IncrementAsync($"pwreset:ip:{ipAddress}", TimeSpan.FromHours(1), HttpContext.RequestAborted);
+            if (perIp > MaxRequestsPerIpPerHour)
+            {
+                await auditLogger.LogAsync(new AuditEventEntry
+                {
+                    Action = AuditActions.PasswordResetRateLimited,
+                    IpAddress = ipAddress,
+                    Outcome = "failure",
+                });
                 return Page();
             }
 

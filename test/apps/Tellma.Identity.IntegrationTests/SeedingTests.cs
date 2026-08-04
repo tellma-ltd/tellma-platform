@@ -6,6 +6,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using OpenIddict.Abstractions;
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using Tellma.Identity.Services.Provisioning;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace Tellma.Identity.IntegrationTests
@@ -54,6 +55,47 @@ namespace Tellma.Identity.IntegrationTests
             using (secondBoot.CreateClient())
             {
                 await AssertSeededAsync(secondBoot);
+            }
+        }
+
+        [Fact]
+        public async Task Reseeding_preserves_grants_on_a_client_stored_before_the_marker_existed()
+        {
+            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+                fixture, "idseedmarker", SeedConfiguration);
+            CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+            string grant = Permissions.Prefixes.Resource + "https://acme.app.tellma.com";
+
+            using (factory.CreateClient())
+            {
+                // Reshape the stored CLI into what an upgrade encounters: an accumulated
+                // provisioning-time grant, but no calls-distribution-APIs marker (the marker did
+                // not exist when the client was first seeded).
+                using IServiceScope scope = factory.Services.CreateScope();
+                IOpenIddictApplicationManager applicationManager =
+                    scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+                object cli = (await applicationManager.FindByClientIdAsync("tellma-cli", cancellationToken))!;
+                OpenIddictApplicationDescriptor descriptor = new();
+                await applicationManager.PopulateAsync(descriptor, cli, cancellationToken);
+                descriptor.Permissions.Add(grant);
+                descriptor.Properties.Remove(TellmaClientProperties.CallsDistributionApis);
+                await applicationManager.UpdateAsync(cli, descriptor, cancellationToken);
+            }
+
+            // The first boot after the upgrade must carry the grant over, not drop it.
+            using StandaloneFactory secondBoot = new();
+            foreach ((string key, string? value) in factory.ConfigurationOverrides)
+            {
+                secondBoot.ConfigurationOverrides[key] = value;
+            }
+
+            using (secondBoot.CreateClient())
+            {
+                using IServiceScope scope = secondBoot.Services.CreateScope();
+                IOpenIddictApplicationManager applicationManager =
+                    scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+                object cli = (await applicationManager.FindByClientIdAsync("tellma-cli", cancellationToken))!;
+                Assert.True(await applicationManager.HasPermissionAsync(cli, grant, cancellationToken));
             }
         }
 

@@ -14,7 +14,8 @@ namespace Tellma.Identity.Controllers
 {
     /// <summary>
     ///     The distribution-facing bulk-invitation API (machine-to-machine, <c>tellma_identity</c>
-    ///     scope). The whole batch is one operation returning per-user status and <c>sub</c>; the
+    ///     scope). The whole batch is one operation returning per-user status and <c>sub</c> — a
+    ///     refused user carries a per-user error while the rest of the batch proceeds; the
     ///     invitation link is never in the response, in any environment.
     /// </summary>
     /// <param name="invitationService">The bulk invitation service.</param>
@@ -37,15 +38,8 @@ namespace Tellma.Identity.Controllers
             string? clientId = User.GetClaim(OpenIddictConstants.Claims.ClientId)
                 ?? User.GetClaim(OpenIddictConstants.Claims.Subject);
 
-            IReadOnlyList<InvitationResultItem> results;
-            try
-            {
-                results = await invitationService.InviteAsync(items, clientId, HttpContext.RequestAborted);
-            }
-            catch (Services.Provisioning.ProvisioningValidationException exception)
-            {
-                return Problem(detail: exception.Message, statusCode: Microsoft.AspNetCore.Http.StatusCodes.Status400BadRequest);
-            }
+            IReadOnlyList<InvitationResultItem> results =
+                await invitationService.InviteAsync(items, clientId, HttpContext.RequestAborted);
 
             return Ok(new InviteUsersResponse
             {
@@ -53,7 +47,8 @@ namespace Tellma.Identity.Controllers
                 {
                     Email = result.Email,
                     Sub = result.Subject,
-                    Status = result.Status.ToString(),
+                    Status = result.Status?.ToString(),
+                    Error = result.Error,
                 })],
             });
         }

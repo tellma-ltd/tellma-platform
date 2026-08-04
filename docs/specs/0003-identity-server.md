@@ -107,7 +107,10 @@ back-channel fan-out (§7.3); none of this revokes already-issued access tokens 
 | 6 | Control plane → distribution admin surface | None (operator) | Control plane | Confidential | Distribution admin contract (`tellma_control_plane`) | Client Credentials |
 
 Cross-cutting rules (per the OAuth Security BCP): PKCE for every authorization-code client (public and
-confidential); implicit and ROPC grants are disallowed; exact redirect-URI matching; bearer tokens
+confidential), **S256 only** — the `plain` challenge method is removed from the accepted set, so a
+request carrying a `code_challenge` without a `code_challenge_method` is rejected rather than falling
+back to RFC 7636's implicit `plain` default; implicit and ROPC grants are disallowed; exact
+redirect-URI matching; bearer tokens
 never in query strings; `iss` returned in the authorization response to prevent mix-up. Native and CLI
 clients use the system browser, never an embedded web view. Unattended kiosks that act autonomously use
 a dedicated service account (client credentials); per-user kiosks use the Device Grant with short-lived
@@ -345,6 +348,13 @@ urn:tellma:acr:aal3   # phishing-resistant, device-bound (non-synced); a fully s
 tier the event satisfies. Because attestation is off (§8.1), the device-bound vs. synced split — and thus
 the `hwk`/`swk` value and the `aal3` tier — rests on the authenticator's self-asserted
 backup-eligibility flag.
+
+A session accumulates the methods it has used, but the passkey evidence within it is **the most recent
+assertion, not a high-water mark**: presenting a synced credential supersedes an earlier device-bound
+one, so a session cannot keep `aal3` on the strength of a hardware key the user has stopped presenting.
+For the same reason the tiers above aal1 carry their own freshness — a `max_age` bound on them is
+measured against the passkey assertion that reaches them, not against the session-wide `auth_time` that
+any weaker factor refreshes, so an email code cannot renew the recency of a hardware-key proof.
 The server also accepts the `phr` and `phrh` inputs defined by OpenID Connect EAP ACR Values 1.0: `phr`
 (phishing-resistant) maps to the passkey tier (`aal2`), `phrh` (phishing-resistant hardware) to `aal3`.
 
@@ -365,7 +375,13 @@ referenced by an opaque `request_uri` — so a user cannot tamper with them in t
 authorization controller reads `tellma_allowed_methods` from the pushed request, offers only those methods
 in the login UI, and **enforces the allow-list at the authority** — at the initial authorization and again
 at every refresh — so a method a tenant disables stops minting tokens within one access-token lifetime
-(§9.4). Enforcement lives here, not at the resource server, because `amr` (RFC 8176) is deliberately
+(§9.4). Enforcement is a **per-request filter, never a session taint**: a disallowed method simply stops
+counting, and the request's assurance (and the issued tokens' `acr`/`amr`/methods claims) is re-derived
+from the still-allowed methods the session used; when none survive, the user re-authenticates with an
+allowed method. Filtering rather than tainting matters twice over — the SSO session is shared across
+distributions whose allow-lists differ, so one tenant's policy must not invalidate it for the others, and
+step-up sign-ins accumulate the session's methods, so a tainted session could never be cured
+interactively (the login page would loop forever). Enforcement lives here, not at the resource server, because `amr` (RFC 8176) is deliberately
 coarse: its registered values name authenticator *properties*, not product methods, so a single `otp`
 covers both an authenticator-app TOTP and an email code (which is not even RFC 4226/6238 "otp") and cannot
 carry the allow-list's granularity. `amr` is emitted for audit and treated as informational, never as an
@@ -380,9 +396,40 @@ distributions select from and constrain that catalog but do not redefine tier se
 
 The server offers only the allowed methods, drives step-up until the achieved assurance meets the
 requested `acr`, and emits `acr`, `amr`, and `auth_time` as signed claims (returning
-`unmet_authentication_requirements` if it cannot satisfy the request). The distribution verifies the
+`unmet_authentication_requirements` if it cannot satisfy the request). Tiers above aal1 fail closed
+rather than loop, at three points: until password sign-in ships (§17) they are reachable only through a
+passkey, so the login page is offered only the passkey ceremony for them and an allow-list without
+`passkey` is unsatisfiable up front; when the signed-in user holds no qualifying credential (any passkey
+for aal2, a device-bound one for aal3) the authorization endpoint answers
+`unmet_authentication_requirements` immediately, since further interaction cannot help; and the sign-in
+page **refuses an assertion that does not itself reach the tier when the user owns one that does**, so a
+user holding both a hardware key and a synced passkey cannot satisfy aal3 with the synced one. Owning a
+qualifying credential and presenting it are separate checks because only the second is what the tier
+asserts — and without it the browser would bounce between the two endpoints indefinitely. The refusal is
+conditioned on ownership so that a user who has nothing better to offer is still signed in at the tier
+they reached, letting the authorization endpoint answer the relying party rather than stranding them on
+a page it never hears about. A user who can satisfy the request is told on the login page what is
+required.
+
+A demand for a *fresh* interactive event (`prompt=login`, `max_age=0`, or a `max_age` shorter than the
+redirect round trip) is discharged once per authorization request: the request records when it sent the
+browser to authenticate, and evidence dated at or after that instant discharges it. Two properties make
+that safe. It is **anchored in time**, so an abandoned attempt — or one planted by a third party who
+navigated the browser to the same URL — carries an instant the session predates and therefore tightens
+the demand rather than satisfying it. And what counts is **the evidence carrying the requested tier**,
+not merely the session's last event: a demand made of a passkey is answered only by a passkey
+assertion, so re-authenticating with a weaker factor cannot launder the freshness of a stronger one.
+
+The distribution verifies the
 returned `acr` and `auth_time` on each request — because `acr_values` is only advisory, the returned `acr`
-is always re-checked, never assumed; `amr` is carried for audit, not policy (§9.1). For **external logins**, a social sign-in is
+is always re-checked, never assumed; `amr` is carried for audit, not policy (§9.1). `auth_time` keeps its
+standard meaning — when the user last authenticated by any method — and a **separate claim carries when
+the evidence behind `acr` was demonstrated**. A distribution deciding whether a sensitive operation needs
+a step-up (§9.3) checks `acr` against that one, because the two diverge exactly when a session adds a
+weaker factor after a stronger one: an email code refreshes `auth_time` without re-proving the hardware
+key that `acr` rests on. Keeping them separate is what lets the server enforce the same rule it reports;
+folding the tier's age into `auth_time` would make it assert a staleness its own `max_age` handling does
+not apply, and a conformant relying party would re-authenticate forever. For **external logins**, a social sign-in is
 `aal1`; where that is below the required tier the server steps the user up with a local factor before
 issuing tokens.
 
@@ -427,6 +474,19 @@ is one call that returns per-user results and hands the whole batch to email in 
    creates-or-gets each user by email, assigns each a `sub`, sends each a localized single-use
    invitation link, and returns each user's `sub` with a per-user status: `Invited`, `Reinvited` (an
    existing credential-less or orphaned user), or `Active` (already holds a credential; no link is sent).
+   A user that must be refused — administratively `disabled` or `purged` (reactivation is a deliberate
+   operator action, §10.5), or invalid input — comes back with a per-user error instead of a status
+   while the rest of the batch proceeds. The only thing that stops the batch early is the caller
+   abandoning the request, and even then every link already issued is still handed to the mail
+   queue rather than discarded — an issued invitation nobody tried to send is the outcome the
+   design refuses. What a per-user failure does not undo is the writes it already committed: a user
+   created just before the failing step keeps its row, reported with an error and no status, and is
+   left credential-less and `Active` so that re-inviting the address resolves it as `Reinvited` and
+   completes the invitation. A caller that disconnects has no results to read, so results cover a
+   prefix of the request rather than all of it. Delivery itself is best-effort: mail is queued and
+   sent by a background worker that drains on graceful shutdown, so a transport failure or an
+   ungraceful stop is logged rather than reported to the caller, and the remedy is the same as for
+   any lost mail — re-invite, which supersedes the outstanding link (§10.3).
 3. The user opens the link (which proves control of the mailbox):
    - New user → a passkey-setup page → return to the distribution. The user may instead link Google or
      Microsoft immediately (verified, matching email — the link is the ownership proof).
@@ -529,8 +589,12 @@ sees one unified settings experience.
 The server exposes management as APIs; there is no standalone admin SPA.
 
 - **Distribution-facing (called by the distribution backend, M2M):** **invite users** (bulk) and
-  **create / get / delete service account**. These are the only server APIs a tenant admin's workflows
-  need. The server does not list users or service accounts by tenant and does not reset user passwords
+  **create / get / delete service account** — get and delete are ownership-scoped, finding only the
+  accounts the calling distribution created. These are the only server APIs a tenant admin's workflows
+  need. A caller that also holds the control-plane scope reads and deletes every service account,
+  which is the only way to reach one whose owning distribution is gone, or one recorded before
+  ownership was; it cannot *create* one, since a service account's audiences are derived from its
+  creator's own origin and the control plane has none. The server does not list users or service accounts by tenant and does not reset user passwords
   for a distribution admin — user and service-account listings are served from the distribution's own
   tables, and password reset is self-service (§10.3).
 - **Operator-facing (control plane, restricted):** global user lookup and **Temporary Access Pass**
@@ -558,7 +622,9 @@ Optimizations applied now:
 
 - **Token/authorization pruning via `UseQuartz()`** — the single most important operational job, since
   every issued token writes a row. An index leading with `CreationDate` (the prune query's selective
-  bound) supports it; it is deliberately unfiltered, because the server never flips a token's status on
+  bound) supports it, with the residual-predicate columns — including `AuthorizationId`, which the
+  prune's authorization-status join needs for the optimizer to pick the index at all — carried as
+  included columns; it is deliberately unfiltered, because the server never flips a token's status on
   expiry, so expired-but-still-`valid` access tokens are the prune bulk.
 - Discovery/JWKS caching (same-process APIs use `UseLocalServer()`); output-cached discovery/JWKS at the
   edge.
@@ -610,7 +676,7 @@ chooses to rotate, a second secret can be added for a zero-downtime cutover. Con
 | Cross-distribution token replay | Per-distribution audience derived from origin |
 | Key compromise | Key Vault + managed identity; short access-token lifetime; overlap rotation; revocation |
 | Session fixation | Session regenerated on authentication |
-| Account enumeration | Generic, constant-time responses on invite/recovery/reset |
+| Account enumeration | Generic same-shape responses with comparable latency (background email dispatch) plus per-IP issuance limits on recovery/reset |
 | Back-channel logout abuse | `logout_token` signature and `sid` verification |
 | Real-time (SignalR) token exfiltration via XSS | The hub-scoped service token reaches nothing but the hub (`aud` = service endpoint, claims pruned to `sub`), lives ~1 h, and its connections are server-closeable; pushes are thin events, so no data rides the channel (§7.4) |
 | Stale real-time connection outliving logout or a policy change | Session-ending events close the user's connections; `CloseOnAuthenticationExpiration` bounds every connection to its session ticket; thin events mean a missed close leaks event signals, not data (§7.4) |
@@ -647,6 +713,11 @@ service-account and client changes, temporary access passes, and bootstrap event
 `client_id`, and the correlation/trace id. Security alerts cover credential-stuffing patterns,
 refresh-token reuse, and key/certificate expiry.
 
+Per-IP rate limits and audit records use the connection's client address. A deployment behind a
+reverse proxy must enable the forwarded-headers middleware scoped to its known proxies or networks;
+the standalone host refuses to start when forwarding is enabled with none listed, since an empty
+trust list would let any direct caller spoof the client IP.
+
 Keys and secrets live in the configured source (§13) with scheduled rotation; the server is stateless
 and scales horizontally with the shared Data Protection ring and cacheable configuration.
 
@@ -660,15 +731,19 @@ APIs against real SQL via `WebApplicationFactory`), `Tellma.Identity.E2E` (UI vi
   validation; options validation.
 - **Integration (real SQL):** every protocol flow end-to-end — Authorization Code + PKCE + PAR, Client
   Credentials, Device Grant, Refresh with rotation and reuse detection (a reused token revokes the
-  family; a security-stamp change or a newly disallowed method stops renewal), Token Exchange
-  (down-scope only), and back-channel logout — plus discovery parity across the standalone and in-proc
-  compositions, seeding idempotency, migrations, and the invitation and service-account APIs.
+  family and leaves an audit row naming the subject; a security-stamp change or a newly disallowed
+  method stops renewal), Token Exchange (down-scope only), revocation (audited), userinfo
+  (scope-gated claims), and back-channel logout — plus discovery parity across the standalone and
+  in-proc compositions, seeding idempotency (including grant carry-over on re-seed), migrations, and
+  the invitation and service-account APIs.
 - **Security / negative:** front-channel authorization without PAR, PKCE downgrade, redirect-URI
   mismatch, foreign `resource` requests, invalid client secrets, and scope-widening at exchange are all
   rejected; JWKS publishes only asymmetric keys; the invite response never carries the link.
-- **UI (Playwright):** passkey registration and sign-in via the CDP virtual authenticator, driven
-  through email-code sign-in and sign-out with an in-process email-capture harness; plus an assertion
-  that the brand token stylesheet loads and its variables resolve in the rendered page.
+- **UI (Playwright):** passkey registration and sign-in via the CDP virtual authenticator — on both
+  the standalone and in-proc (path-base) compositions, asserting the enrolled credential is
+  classified device-bound — driven through email-code sign-in and sign-out with an in-process
+  email-capture harness; plus an assertion that the brand token stylesheet loads and its variables
+  resolve in the rendered page.
 
 ## 17. Out of scope and deferred
 

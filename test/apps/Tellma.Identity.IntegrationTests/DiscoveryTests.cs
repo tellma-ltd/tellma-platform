@@ -46,6 +46,9 @@ namespace Tellma.Identity.IntegrationTests
 
             string[] challengeMethods = [.. root.GetProperty("code_challenge_methods_supported").EnumerateArray().Select(static e => e.GetString()!)];
             Assert.Contains("S256", challengeMethods);
+            // The plain method is removed outright (S256 only); re-adding it must fail here, in
+            // the advertised contract, not just at the PAR endpoint.
+            Assert.DoesNotContain("plain", challengeMethods);
 
             // RFC 9207: the authorization response carries `iss` to prevent mix-up attacks.
             Assert.True(root.GetProperty("authorization_response_iss_parameter_supported").GetBoolean());

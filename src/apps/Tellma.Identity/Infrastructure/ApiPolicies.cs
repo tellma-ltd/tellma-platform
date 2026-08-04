@@ -39,14 +39,25 @@ namespace Tellma.Identity.Infrastructure
         }
 
         /// <summary>
-        ///     Whether the principal holds a scope. OpenIddict emits the granted scopes as a single
+        ///     Whether a principal holds a scope. OpenIddict emits the granted scopes as a single
         ///     space-delimited <c>scope</c> claim, so membership is checked by splitting it.
         /// </summary>
-        private static bool HasScope(AuthorizationHandlerContext context, string scope)
+        /// <param name="principal">The authenticated principal.</param>
+        /// <param name="scope">The scope to look for.</param>
+        /// <returns>Whether the scope was granted.</returns>
+        public static bool HasScope(System.Security.Claims.ClaimsPrincipal principal, string scope)
         {
-            return context.User.FindAll("scope")
+            ArgumentNullException.ThrowIfNull(principal);
+
+            return principal.FindAll("scope")
                 .SelectMany(static claim => claim.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
                 .Contains(scope, StringComparer.Ordinal);
+        }
+
+        /// <summary>Whether the request's principal holds a scope.</summary>
+        private static bool HasScope(AuthorizationHandlerContext context, string scope)
+        {
+            return HasScope(context.User, scope);
         }
     }
 }

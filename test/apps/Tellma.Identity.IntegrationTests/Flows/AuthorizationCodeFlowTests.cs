@@ -98,9 +98,16 @@ namespace Tellma.Identity.IntegrationTests.Flows
             Assert.True(claims.TryGetProperty("auth_time", out _), "auth_time is missing.");
             Assert.Equal("https://acme.app.tellma.com", ClientCredentialsTests.ReadSingleOrArray(claims, "aud").Single());
 
-            // The private allow-list snapshot and the security stamp never reach tokens.
-            Assert.False(claims.TryGetProperty("tellma_allowed_methods", out _));
-            Assert.False(claims.TryGetProperty("AspNet.Identity.SecurityStamp", out _));
+            // Every server-side-only claim stays server-side: the allow-list snapshot, the security
+            // stamp, and both passkey signals. The passkey pair matters as much as the other two —
+            // they carry how the session's assurance was reached, which is the authority's business
+            // to enforce and not a resource server's to reinterpret.
+            foreach (string serverSideOnly in (string[])
+                ["tellma_allowed_methods", "AspNet.Identity.SecurityStamp",
+                 "tellma_passkey_device_bound", "tellma_passkey_auth_time"])
+            {
+                Assert.False(claims.TryGetProperty(serverSideOnly, out _), $"{serverSideOnly} leaked into a token.");
+            }
         }
     }
 }

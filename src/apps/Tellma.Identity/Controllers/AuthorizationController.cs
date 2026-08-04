@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
+using System.Globalization;
 using System.Security.Claims;
 using Tellma.Identity.Controllers.ViewModels;
 using Tellma.Identity.Data;
@@ -47,8 +48,16 @@ namespace Tellma.Identity.Controllers
         IAuditLogger auditLogger,
         TimeProvider timeProvider) : Controller
     {
-        /// <summary>TempData key breaking the <c>prompt=login</c> re-authentication loop.</summary>
-        private const string ReauthCompletedKey = "tellma.identity.reauth";
+        /// <summary>
+        ///     The single TempData key carrying the pending re-authentication marker that breaks
+        ///     the <c>prompt=login</c> / <c>max_age</c> loop. One entry, never one per request:
+        ///     TempData survives until it is read, and the marker of an abandoned login is keyed
+        ///     to an attempt that never comes back, so a per-request key would accumulate in the
+        ///     browser's cookie for the whole browsing session. The attempt it belongs to travels
+        ///     in the value instead, so a marker left by a different attempt is recognized and
+        ///     ignored rather than mistaken for this one's.
+        /// </summary>
+        private const string ReauthMarkerKey = "tellma.identity.reauth";
 
         /// <summary>Handles the (PAR-resolved) authorization request.</summary>
         /// <returns>The protocol response, a login redirect, or the consent form.</returns>
@@ -90,17 +99,31 @@ namespace Tellma.Identity.Controllers
             AuthenticateResult cookie = await HttpContext.AuthenticateAsync(IdentityConstants.ApplicationScheme);
             AssuranceResult? assurance = cookie.Succeeded ? policyService.ReadAssurance(cookie.Principal) : null;
 
-            // prompt=login forces one fresh interactive event; TempData breaks the loop when the
-            // browser returns to this same (still prompt=login) request afterwards.
-            bool reauthDemanded = request.HasPromptValue(PromptValues.Login) && TempData[ReauthCompletedKey] is null;
+            // A demand for a fresh interactive event — prompt=login, or a max_age bound the login
+            // round trip itself cannot beat — is one-shot per authorization attempt. The marker
+            // records which attempt sent the browser to the login page and *when*, and only an
+            // interactive event at or after that instant, for that same attempt, discharges the
+            // demand. Two things keep another attempt's marker out of it. The attempt id is
+            // per-attempt random — the PAR request_uri, else the PKCE code_challenge, which
+            // RequireProofKeyForCodeExchange makes mandatory for every authorization-code client —
+            // so a marker left behind by an abandoned attempt, or planted by a third party who
+            // navigated the browser to this URL, does not match and is discarded. And it is
+            // anchored in time, so even a matching marker cannot be met by evidence predating the
+            // redirect. The policy engine decides what discharges the demand, because only it
+            // knows which evidence carries the requested tier.
+            string attemptId = request.ClientId
+                + ":" + (request.RequestUri ?? request.CodeChallenge ?? request.State ?? string.Empty);
+            long? interactionSince = ReadReauthMarker(attemptId);
 
+            // max_age=0 is OpenID Connect's equivalent of prompt=login: a demand for a fresh
+            // event outright, not an elapsed-seconds comparison a same-second sign-in would meet
+            // without re-authenticating.
+            bool reauthDemanded = request.HasPromptValue(PromptValues.Login) || request.MaxAge == 0;
+
+            TimeSpan? maxAge = request.MaxAge is { } seconds ? TimeSpan.FromSeconds(seconds) : null;
+            long nowUnixSeconds = timeProvider.GetUtcNow().ToUnixTimeSeconds();
             PolicyEvaluation evaluation = policyService.Evaluate(
-                request.GetAcrValues(),
-                request.MaxAge is { } maxAge ? TimeSpan.FromSeconds(maxAge) : null,
-                allowedMethods,
-                assurance,
-                reauthDemanded,
-                timeProvider.GetUtcNow().ToUnixTimeSeconds());
+                request.GetAcrValues(), maxAge, allowedMethods, assurance, reauthDemanded, nowUnixSeconds, interactionSince);
 
             if (evaluation.Outcome == PolicyOutcome.Unsatisfiable)
             {
@@ -116,9 +139,34 @@ namespace Tellma.Identity.Controllers
                     return ForbidProtocol(Errors.LoginRequired, "The user is not signed in.");
                 }
 
-                if (reauthDemanded)
+                // When the only method the login page can offer is the passkey ceremony and the
+                // known user holds no credential that ceremony could satisfy, more interaction
+                // cannot help: fail closed with the protocol error instead of parking the browser
+                // on a page whose only control leads nowhere. (This covers the aal3 tier, which
+                // needs a device-bound credential specifically, and any tier whose allow-list has
+                // narrowed to the passkey alone. An anonymous user reaches the check on the second
+                // pass, once a first sign-in identifies them.)
+                if (evaluation.OfferableMethods is [AuthenticationMethods.Passkey] && cookie.Succeeded
+                    && await userManager.GetUserAsync(cookie.Principal!) is { } knownUser)
                 {
-                    TempData[ReauthCompletedKey] = true;
+                    IList<UserPasskeyInfo> passkeys = await userManager.GetPasskeysAsync(knownUser);
+                    bool reachable = evaluation.RequiredTier == AcrTiers.Aal3
+                        ? passkeys.Any(PasskeySignals.IsDeviceBound)
+                        : passkeys.Count > 0;
+                    if (!reachable)
+                    {
+                        return ForbidProtocol(Errors.UnmetAuthenticationRequirements,
+                            "The requested assurance requires a passkey the user has not registered.");
+                    }
+                }
+
+                // Record when this attempt sent the browser to authenticate, so the event it
+                // produces can be recognized as this attempt's on return — but only when there is
+                // a freshness demand for it to discharge, so an ordinary login redirect writes no
+                // cookie state at all.
+                if (reauthDemanded || maxAge is not null)
+                {
+                    WriteReauthMarker(attemptId, nowUnixSeconds);
                 }
 
                 return RedirectToLogin(evaluation, stepUp: assurance is not null);
@@ -127,8 +175,32 @@ namespace Tellma.Identity.Controllers
             TellmaIdentityUser? user = await userManager.GetUserAsync(cookie.Principal!);
             if (user is null)
             {
-                // The cookie outlived the user record; force a fresh interaction.
-                return RedirectToLogin(evaluation, stepUp: false);
+                // The cookie outlived the user record: interaction is required, which a
+                // non-interactive client must hear as the protocol error.
+                if (request.HasPromptValue(PromptValues.None))
+                {
+                    return ForbidProtocol(Errors.LoginRequired, "The user is not signed in.");
+                }
+
+                // Force a fresh interaction carrying the same method and tier context an
+                // anonymous visitor would get (the Satisfied evaluation in hand has no
+                // offerable-methods list to give the login page) — unless no method can satisfy
+                // the request at all, which is the protocol error, not a login page offering
+                // methods the tenant disallowed.
+                PolicyEvaluation fresh = policyService.Evaluate(
+                    request.GetAcrValues(), maxAge, allowedMethods, null, false, nowUnixSeconds, interactionSince);
+                if (fresh.Outcome == PolicyOutcome.Unsatisfiable)
+                {
+                    return ForbidProtocol(Errors.UnmetAuthenticationRequirements,
+                        "No allowed authentication method can satisfy the requested assurance level.");
+                }
+
+                if (reauthDemanded || maxAge is not null)
+                {
+                    WriteReauthMarker(attemptId, nowUnixSeconds);
+                }
+
+                return RedirectToLogin(fresh, stepUp: false);
             }
 
             if (user.LifecycleState != UserLifecycleState.Active)
@@ -137,18 +209,20 @@ namespace Tellma.Identity.Controllers
             }
 
             // Consent: first-party clients are implicit; third-party clients need an explicit,
-            // remembered grant.
+            // remembered grant. A non-interactive client cannot be shown the consent form.
             string? consentType = await applicationManager.GetConsentTypeAsync(application);
             if (consentType == ConsentTypes.Explicit)
             {
                 bool hasConsent = await HasPermanentAuthorizationAsync(user, application, request);
                 if (!hasConsent || request.HasPromptValue(PromptValues.Consent))
                 {
-                    return View("Consent", new ConsentViewModel
-                    {
-                        ApplicationName = await applicationManager.GetLocalizedDisplayNameAsync(application),
-                        Scope = request.Scope ?? string.Empty,
-                    });
+                    return request.HasPromptValue(PromptValues.None)
+                        ? ForbidProtocol(Errors.ConsentRequired, "Interactive consent is required.")
+                        : View("Consent", new ConsentViewModel
+                        {
+                            ApplicationName = await applicationManager.GetLocalizedDisplayNameAsync(application),
+                            Scope = request.Scope ?? string.Empty,
+                        });
                 }
             }
 
@@ -207,6 +281,52 @@ namespace Tellma.Identity.Controllers
             return ForbidProtocol(Errors.AccessDenied, "The authorization was denied by the user.");
         }
 
+        /// <summary>
+        ///     Reads — and consumes — the pending re-authentication marker when it belongs to this
+        ///     authorization attempt. A marker written by any other attempt is discarded rather
+        ///     than credited, which is what stops an abandoned attempt from discharging a later
+        ///     demand for a fresh interactive event.
+        /// </summary>
+        /// <param name="attemptId">This attempt's identity.</param>
+        /// <returns>When this attempt sent the browser to authenticate, or null.</returns>
+        private long? ReadReauthMarker(string attemptId)
+        {
+            // Peeked, not read: reading consumes, and a marker belonging to a different attempt —
+            // a second tab part-way through its own login — must be left where its owner can still
+            // find it rather than eaten on its behalf.
+            if (TempData.Peek(ReauthMarkerKey) is not string marker)
+            {
+                return null;
+            }
+
+            // The timestamp is the tail after the last separator; the attempt id may itself contain
+            // one, since `state` is whatever the client chose.
+            int separator = marker.LastIndexOf('|');
+            if (separator <= 0 || !string.Equals(marker[..separator], attemptId, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            // It is this attempt's, and the demand it discharges is one-shot.
+            TempData.Remove(ReauthMarkerKey);
+            return long.TryParse(
+                marker[(separator + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out long redirectedAt)
+                ? redirectedAt
+                : null;
+        }
+
+        /// <summary>
+        ///     Records that this attempt sent the browser to authenticate, replacing any marker a
+        ///     previous attempt left behind.
+        /// </summary>
+        /// <param name="attemptId">This attempt's identity.</param>
+        /// <param name="nowUnixSeconds">The instant of the redirect.</param>
+        private void WriteReauthMarker(string attemptId, long nowUnixSeconds)
+        {
+            // Stored as a string: TempData's serializer accepts no 64-bit integer.
+            TempData[ReauthMarkerKey] = attemptId + "|" + nowUnixSeconds.ToString(CultureInfo.InvariantCulture);
+        }
+
         /// <summary>Builds the protocol principal and completes the authorization.</summary>
         private async Task<IActionResult> SignInProtocolAsync(
             TellmaIdentityUser user, ClaimsPrincipal cookiePrincipal, OpenIddictRequest request, object application)
@@ -261,6 +381,13 @@ namespace Tellma.Identity.Controllers
             if (stepUp)
             {
                 query.Add("stepUp", "true");
+            }
+
+            // The aal3 tier travels to the page so it can tell the user a device-bound passkey is
+            // needed; a synced passkey would only bounce back here.
+            if (evaluation.RequiredTier == AcrTiers.Aal3)
+            {
+                query.Add("tier", evaluation.RequiredTier);
             }
 
             return Redirect(prefix + "/Identity/Account/Login" + query.ToQueryString());

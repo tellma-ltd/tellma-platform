@@ -13,6 +13,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The unit suite exercises internal seams whose rules are worth pinning directly (session
+         evidence composition), rather than only through the HTTP surfaces that consume them. -->
+    <InternalsVisibleTo Include="Tellma.Identity.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Azure packages back config-gated optional paths only (Key Vault certificates, blob-backed
          Data Protection). On-prem deployments run fully without Azure: certificate-store/PFX key
          sources, file-system Data Protection, and SMTP email. -->

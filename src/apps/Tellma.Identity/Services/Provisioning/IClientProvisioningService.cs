@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Security.Claims;
+
 namespace Tellma.Identity.Services.Provisioning
 {
     /// <summary>The credentials produced by provisioning a distribution; secrets are returned exactly once.</summary>
@@ -54,25 +56,32 @@ namespace Tellma.Identity.Services.Provisioning
         Task<ServiceAccountCredentials> CreateServiceAccountAsync(
             string displayName, IReadOnlyCollection<string> resources, string? createdByClientId, CancellationToken cancellationToken);
 
-        /// <summary>Reads a service account's metadata (never the secret).</summary>
+        /// <summary>
+        ///     Reads a service account's metadata (never the secret). Ownership-scoped: an account
+        ///     created by a different distribution is not found.
+        /// </summary>
         /// <param name="clientId">The service-account client id.</param>
+        /// <param name="caller">
+        ///     The validated principal of the calling client. Its own distribution's accounts are
+        ///     visible; holding the control-plane scope makes every account visible, which is the
+        ///     only path to one whose owning distribution is gone or which predates ownership
+        ///     tagging. Taking the principal rather than a flag keeps that decision here, where the
+        ///     scope is read from a token the server issued, instead of at a call site that could
+        ///     simply pass true.
+        /// </param>
         /// <param name="cancellationToken">Aborts the operation.</param>
-        /// <returns>The details, or null when no such service account exists.</returns>
-        Task<ServiceAccountDetails?> GetServiceAccountAsync(string clientId, CancellationToken cancellationToken);
+        /// <returns>The details, or null when the caller may not see that service account.</returns>
+        Task<ServiceAccountDetails?> GetServiceAccountAsync(
+            string clientId, ClaimsPrincipal caller, CancellationToken cancellationToken);
 
-        /// <summary>Deletes a service account (the lost-secret path is delete and recreate).</summary>
+        /// <summary>
+        ///     Deletes a service account (the lost-secret path is delete and recreate).
+        ///     Ownership-scoped: an account created by a different distribution is not found.
+        /// </summary>
         /// <param name="clientId">The service-account client id.</param>
-        /// <param name="deletedByClientId">The calling client, for audit.</param>
+        /// <param name="caller">The validated principal of the calling client (see the read overload).</param>
         /// <param name="cancellationToken">Aborts the operation.</param>
-        /// <returns>Whether a service account was found and deleted.</returns>
-        Task<bool> DeleteServiceAccountAsync(string clientId, string? deletedByClientId, CancellationToken cancellationToken);
-
-        /// <summary>Regenerates a service account's secret (operator path) and returns it once.</summary>
-        /// <param name="clientId">The service-account client id.</param>
-        /// <param name="requestedByClientId">The calling client, for audit.</param>
-        /// <param name="cancellationToken">Aborts the operation.</param>
-        /// <returns>The new secret, or null when no such service account exists.</returns>
-        Task<string?> RegenerateServiceAccountSecretAsync(
-            string clientId, string? requestedByClientId, CancellationToken cancellationToken);
+        /// <returns>Whether such a service account was visible to the caller and was deleted.</returns>
+        Task<bool> DeleteServiceAccountAsync(string clientId, ClaimsPrincipal caller, CancellationToken cancellationToken);
     }
 }

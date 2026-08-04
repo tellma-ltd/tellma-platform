@@ -78,6 +78,16 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
         ///     serialized into tokens) used to re-enforce the list at refresh time.
         /// </summary>
         public const string AllowedMethods = "tellma_allowed_methods";
+
+        /// <summary>
+        ///     When the evidence carrying <c>acr</c> was demonstrated (unix seconds). Standard
+        ///     <c>auth_time</c> answers "when did the user last authenticate", which any factor
+        ///     refreshes; a relying party deciding whether a sensitive operation needs a step-up is
+        ///     asking the narrower question "when was <em>this assurance</em> demonstrated", and
+        ///     that is what this answers. The two differ whenever a session adds a weaker factor
+        ///     after a stronger one.
+        /// </summary>
+        public const string AcrAuthTime = "tellma_acr_auth_time";
     }
 
     /// <summary>Tellma-defined OAuth request parameters.</summary>
@@ -98,8 +108,16 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
     {
         /// <summary>
         ///     Whether the passkey used is device-bound (non-synced), per the authenticator's
-        ///     self-asserted backup-eligibility flag.
+        ///     self-asserted backup-eligibility flag. Describes the session's most recent passkey
+        ///     assertion, so presenting a synced credential supersedes an earlier hardware one.
         /// </summary>
         public const string PasskeyDeviceBound = "tellma_passkey_device_bound";
+
+        /// <summary>
+        ///     When the session's most recent passkey assertion happened (unix seconds). Tiers
+        ///     above aal1 rest on passkey evidence, so their freshness is measured against this
+        ///     rather than the session-wide <c>auth_time</c>, which any weaker factor refreshes.
+        /// </summary>
+        public const string PasskeyAuthTime = "tellma_passkey_auth_time";
     }
 }

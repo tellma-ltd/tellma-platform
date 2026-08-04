@@ -55,21 +55,60 @@ namespace Tellma.Identity.Web
 
             // Behind a reverse proxy (Azure App Service, nginx), the real client IP arrives in
             // X-Forwarded-For. Per-IP rate limiting and audit forensics depend on it, so the proxy
-            // headers are honored when configured. Trust is scoped to the configured known proxies
-            // / networks (empty by default) so the headers cannot be spoofed by a direct caller;
-            // clear the default loopback-only set and list the deployment's proxy explicitly, or
-            // set ASPNETCORE_FORWARDEDHEADERS_ENABLED=true on App Service to trust its front end.
+            // headers are honored when ForwardedHeaders:Enabled is set — but only from the proxies
+            // listed in KnownProxies (addresses) or KnownNetworks (CIDR ranges). The middleware
+            // treats an EMPTY proxy set as "skip the check and trust every caller", which would
+            // make the client IP spoofable by anyone who sends the header, so startup refuses the
+            // enabled-but-empty combination outright. (In-proc hosts that mount the engine behind
+            // a proxy must configure the same middleware themselves.)
+            // ASP.NET Core has its own activation switch for this middleware — the
+            // ForwardedHeaders_Enabled configuration key, set by ASPNETCORE_FORWARDEDHEADERS_ENABLED
+            // and recommended by some App Service guidance — which registers it with BOTH known
+            // lists empty, i.e. the trust-everyone state. Refuse that path outright so there is one
+            // way in and it is the checked one.
+            // Compared the way the framework itself does — an ordinal-ignore-case match on
+            // "true" — so this refuses exactly what it would have enabled, and a value it ignores
+            // (say "1") does not become a startup failure.
+            if (string.Equals(builder.Configuration["ForwardedHeaders_Enabled"], "true", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "ASPNETCORE_FORWARDEDHEADERS_ENABLED (the ForwardedHeaders_Enabled configuration key) is not "
+                    + "supported: it trusts X-Forwarded-For from every caller, making the client IP spoofable. "
+                    + "Unset it and configure the ForwardedHeaders section with the deployment's known proxies "
+                    + "or networks instead.");
+            }
+
             bool useForwardedHeaders = builder.Configuration.GetValue("ForwardedHeaders:Enabled", false);
             if (useForwardedHeaders)
             {
+                // Note: this is a presence check, so an operator can still choose a range as wide
+                // as "0.0.0.0/0" — that is an explicit decision to trust every caller, whereas an
+                // empty set is the silent default that reads as restrictive and is not.
+                string[] proxies = builder.Configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>() ?? [];
+                string[] networks = builder.Configuration.GetSection("ForwardedHeaders:KnownNetworks").Get<string[]>() ?? [];
+                if (proxies.Length == 0 && networks.Length == 0)
+                {
+                    throw new InvalidOperationException(
+                        "ForwardedHeaders:Enabled requires at least one ForwardedHeaders:KnownProxies address or "
+                        + "ForwardedHeaders:KnownNetworks CIDR range: with both empty, X-Forwarded-For would be "
+                        + "accepted from any direct caller and the client IP would be spoofable.");
+                }
+
                 builder.Services.Configure<ForwardedHeadersOptions>(headers =>
                 {
                     headers.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+
+                    // Replace the loopback-only defaults with the deployment's actual proxies.
                     headers.KnownIPNetworks.Clear();
                     headers.KnownProxies.Clear();
-                    foreach (string proxy in builder.Configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>() ?? [])
+                    foreach (string proxy in proxies)
                     {
                         headers.KnownProxies.Add(IPAddress.Parse(proxy));
+                    }
+
+                    foreach (string network in networks)
+                    {
+                        headers.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(network));
                     }
                 });
             }

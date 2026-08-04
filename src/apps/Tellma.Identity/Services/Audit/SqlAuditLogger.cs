@@ -28,8 +28,7 @@ namespace Tellma.Identity.Services.Audit
         {
             ArgumentNullException.ThrowIfNull(entry);
 
-            try
-            {
+            Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry<AuditEvent> added =
                 context.Set<AuditEvent>().Add(new AuditEvent
                 {
                     WhenUtc = timeProvider.GetUtcNow(),
@@ -42,10 +41,19 @@ namespace Tellma.Identity.Services.Audit
                     Outcome = entry.Outcome,
                     DetailsJson = entry.DetailsJson,
                 });
+
+            try
+            {
                 await context.SaveChangesAsync(cancellationToken);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
+                // Detach only this failed row — not the whole tracker, which would discard the
+                // caller's own pending changes. Left tracked, it would be re-flushed by the next
+                // SaveChanges on this scoped context — the second audit write of an interactive
+                // sign-in, or the per-client writes of a back-channel logout fan-out — turning a
+                // swallowed audit failure into a failure of whatever saved next, or a duplicate row.
+                added.State = Microsoft.EntityFrameworkCore.EntityState.Detached;
                 SqlAuditLoggerLog.PersistFailed(logger, exception, entry.Action);
             }
         }

@@ -25,8 +25,20 @@ namespace Tellma.Identity.E2E.Infrastructure
         /// <summary>Attaches a virtual authenticator to a page.</summary>
         /// <param name="context">The browser context the page belongs to.</param>
         /// <param name="page">The page to attach to.</param>
+        /// <param name="backupEligible">
+        ///     Whether credentials report themselves as backup-eligible, i.e. syncable. False (the
+        ///     default) models a hardware key, which is what the engine classifies as device-bound
+        ///     and the only thing the aal3 tier accepts; true models an iCloud/Windows Hello
+        ///     passkey.
+        /// </param>
+        /// <param name="transport">
+        ///     The authenticator transport. Chrome permits only one <c>internal</c> (platform)
+        ///     authenticator per environment, so a test needing a second one alongside it uses
+        ///     <c>usb</c> — which is what a roaming security key is anyway.
+        /// </param>
         /// <returns>The attached authenticator.</returns>
-        public static async Task<VirtualAuthenticator> AttachAsync(IBrowserContext context, IPage page)
+        public static async Task<VirtualAuthenticator> AttachAsync(
+            IBrowserContext context, IPage page, bool backupEligible = false, string transport = "internal")
         {
             ICDPSession session = await context.NewCDPSessionAsync(page);
             await session.SendAsync("WebAuthn.enable");
@@ -35,11 +47,13 @@ namespace Tellma.Identity.E2E.Infrastructure
                 ["options"] = new Dictionary<string, object>
                 {
                     ["protocol"] = "ctap2",
-                    ["transport"] = "internal",
+                    ["transport"] = transport,
                     ["hasResidentKey"] = true,
                     ["hasUserVerification"] = true,
                     ["isUserVerified"] = true,
                     ["automaticPresenceSimulation"] = true,
+                    ["defaultBackupEligibility"] = backupEligible,
+                    ["defaultBackupState"] = backupEligible,
                 },
             });
 

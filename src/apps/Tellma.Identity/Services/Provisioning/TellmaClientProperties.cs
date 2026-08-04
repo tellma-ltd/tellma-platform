@@ -13,7 +13,11 @@ namespace Tellma.Identity.Services.Provisioning
     /// </summary>
     public static class TellmaClientProperties
     {
-        /// <summary>The browser origin of a distribution BFF; drives audience derivation.</summary>
+        /// <summary>
+        ///     The browser origin of a distribution's clients — and, on a service account, the
+        ///     owning distribution's origin. Drives audience derivation and the ownership scope of
+        ///     service-account reads and deletes.
+        /// </summary>
         public const string Origin = "tellma:origin";
 
         /// <summary>The client's OIDC back-channel logout endpoint.</summary>
@@ -21,9 +25,6 @@ namespace Tellma.Identity.Services.Provisioning
 
         /// <summary>Marks first-party clients (consent is implicit for them).</summary>
         public const string FirstParty = "tellma:first_party";
-
-        /// <summary>Marks seeded platform clients (CLI, native apps, control plane).</summary>
-        public const string Platform = "tellma:platform";
 
         /// <summary>
         ///     Marks clients allowed to name per-distribution API audiences via the <c>resource</c>

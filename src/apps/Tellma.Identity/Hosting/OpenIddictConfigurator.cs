@@ -136,11 +136,14 @@ namespace Tellma.Identity.Hosting
                         }
                     }
 
-                    // Custom pipeline handlers: capture the request's subject during authentication,
-                    // then audit every token-endpoint outcome (issuance, rejection, refresh replay)
-                    // including failures the pass-through controller never sees.
+                    // Custom pipeline handlers: capture the presented token's subject during token
+                    // validation (before the expiry/replay checks reject), then audit every
+                    // token-endpoint and revocation-endpoint outcome — issuance, rejection,
+                    // refresh replay, revocation — including failures the pass-through controller
+                    // never sees.
                     server.AddEventHandler(Handlers.CaptureAuditSubjectHandler.Descriptor);
                     server.AddEventHandler(Handlers.AuditTokenResponseHandler.Descriptor);
+                    server.AddEventHandler(Handlers.AuditRevocationResponseHandler.Descriptor);
 
                     // Pass-through: the engine's controllers shape every interactive protocol
                     // response while OpenIddict handles the wire format. The device-authorization

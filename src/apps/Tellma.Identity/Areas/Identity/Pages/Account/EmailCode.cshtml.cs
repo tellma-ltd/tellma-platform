@@ -26,6 +26,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
     /// <param name="emailCodes">Code verification and re-issuance.</param>
     /// <param name="signInService">The engine sign-in (method evidence stamping).</param>
     /// <param name="auditLogger">Audit emission.</param>
+    /// <param name="metrics">Identity metrics.</param>
     /// <param name="localizer">UI strings.</param>
     [AllowAnonymous]
     public sealed class EmailCodeModel(
@@ -33,6 +34,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         IEmailCodeService emailCodes,
         TellmaSignInService signInService,
         IAuditLogger auditLogger,
+        IdentityMetrics metrics,
         IStringLocalizer<SharedResources> localizer) : PageModel
     {
         /// <summary>The submitted code.</summary>
@@ -98,6 +100,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                     IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
                     Outcome = "failure",
                 });
+                metrics.LoginAttempt(AuthenticationMethods.EmailCode, "failure", StepUp ? "step_up" : "primary");
 
                 // One generic message for every failure mode.
                 ModelState.AddModelError(string.Empty, localizer["InvalidCode"]);
