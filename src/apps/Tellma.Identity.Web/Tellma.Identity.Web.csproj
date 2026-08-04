@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <Description>Standalone host for the Tellma Identity Server: composition, configuration, and hosting only — all identity behavior lives in Tellma.Identity.</Description>
+    <UserSecretsId>88d475a6-96ca-47d3-9d9d-e9f1e45c9797</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

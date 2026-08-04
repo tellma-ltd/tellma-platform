@@ -285,7 +285,19 @@ namespace Tellma.Identity.Services.Provisioning
         private async Task GrantResourceToPlatformClientsAsync(string resource, CancellationToken cancellationToken)
         {
             string permission = Permissions.Prefixes.Resource + resource;
+
+            // Read the whole list before writing any of it. The store streams this query over the
+            // request's single connection, and multiple active result sets are not enabled, so an
+            // update issued while that reader is still open fails outright. Only a client carrying
+            // the marker is written, so a registry holding none never reached the write and never
+            // showed the fault.
+            List<object> applications = [];
             await foreach (object application in applicationManager.ListAsync(cancellationToken: cancellationToken))
+            {
+                applications.Add(application);
+            }
+
+            foreach (object application in applications)
             {
                 ImmutableDictionary<string, JsonElement> properties =
                     await applicationManager.GetPropertiesAsync(application, cancellationToken);

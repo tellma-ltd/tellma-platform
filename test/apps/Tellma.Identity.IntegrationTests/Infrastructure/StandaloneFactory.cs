@@ -6,6 +6,8 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -45,6 +47,22 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment(Environments.Development);
+
+            // The host under test is the real entry point, which loads the developer's user secrets
+            // because the environment is Development. Drop that source: a machine-local secret — a
+            // seeded client, another issuer — would otherwise decide what the suite exercises, so a
+            // green run on one machine would say nothing about any other.
+            builder.ConfigureAppConfiguration(configuration =>
+            {
+                foreach (IConfigurationSource source in configuration.Sources.ToList())
+                {
+                    if (source is JsonConfigurationSource { Path: "secrets.json" })
+                    {
+                        configuration.Sources.Remove(source);
+                    }
+                }
+            });
+
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<IEmailSender>();
