@@ -457,6 +457,94 @@ describe('tm-entity-picker', () => {
   });
 
   describe('search lifecycle', () => {
+    it('re-opening on unchanged text re-uses the answer instead of re-fetching', async () => {
+      const { fixture, host, input, outside } = await setup();
+      const search = syncSearch();
+      host.search.set(search.fn);
+      await settle(fixture);
+      await type(fixture, input, 'Adam');
+      expect(optionRows()).toHaveLength(2);
+      outside.focus(); // the departure fails: 'Adam' names two
+      await settle(fixture);
+      expect(errorText(fixture)).toContain('matches more than one');
+      const settledCalls = search.calls.length;
+
+      input.focus();
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      expect(optionRows()).toHaveLength(2); // the rows are back…
+      expect(search.calls).toHaveLength(settledCalls); // …at no cost
+    });
+
+    it('a departure that CONSUMES the response still records it', async () => {
+      // Leaving before the response lands is the case that matters most:
+      // there is no row to commit, so the resolution takes the answer for
+      // itself and nothing ever renders it. That is exactly the state the
+      // user re-opens from — to look at the rows the error is about.
+      const { fixture, host, input, outside } = await setup();
+      const search = manualSearch();
+      host.search.set(search.fn);
+      await settle(fixture);
+      await type(fixture, input, 'Adam');
+      outside.focus(); // departs while the request is still in flight
+      await settle(fixture);
+      search.responders[0].resolve(filterAgents('Adam'));
+      await settle(fixture);
+      expect(errorText(fixture)).toContain('matches more than one');
+      const settledCalls = search.calls.length;
+
+      input.focus();
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      expect(optionRows()).toHaveLength(2); // the rows the error is about
+      expect(search.calls).toHaveLength(settledCalls); // fetched once, in total
+    });
+
+    it('ANY change to the text retires the answer — Adam, Ada, Adam re-asks', async () => {
+      // Keyed on more than the query string. The middle keystroke retires
+      // the answer stored for the FIRST 'Adam', so returning to that text
+      // asks again — and it has to, because the intermediate search never
+      // came back and nothing since has spoken for what is on screen.
+      const { fixture, host, input, outside } = await setup();
+      const search = manualSearch();
+      host.search.set(search.fn);
+      host.debounce.set(0); // every keystroke is its own request
+      await settle(fixture);
+      await type(fixture, input, 'Adam');
+      search.responders[0].resolve(filterAgents('Adam')); // the only one that lands
+      await settle(fixture);
+      await type(fixture, input, 'Ada');
+      await type(fixture, input, 'Adam');
+      outside.focus();
+      await settle(fixture);
+      const before = search.calls.length;
+
+      input.focus();
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      expect(search.calls.length).toBe(before + 1);
+      expect(search.calls[search.calls.length - 1].query).toBe('Adam');
+      expect(optionRows()).toHaveLength(0); // and the OLD rows are not shown
+    });
+
+    it('a different search function retires the answer — it is a different question', async () => {
+      const { fixture, host, input, outside } = await setup();
+      const first = syncSearch();
+      host.search.set(first.fn);
+      await settle(fixture);
+      await type(fixture, input, 'Adam');
+      outside.focus();
+      await settle(fixture);
+
+      const second = syncSearch();
+      host.search.set(second.fn); // a new source: a tenant, a filter, a scope
+      await settle(fixture);
+      input.focus();
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      expect(second.calls.map((c) => c.query)).toEqual(['Adam']);
+    });
+
     it('typing opens the dropdown and renders sync results in the same settle with no spinner', async () => {
       const { fixture, host, input } = await setup();
       const search = syncSearch();
@@ -1922,35 +2010,24 @@ describe('tm-entity-picker', () => {
       expect(panel()).toBeNull();
     });
 
-    it('adopting an answer already in hand issues no request', async () => {
-      // The coalescing window is flushed on adoption so a query the picker
-      // was about to search is not thrown away. But an answer the picker
-      // ALREADY holds has to be checked first — otherwise a text that is
-      // both settled and re-queued (type 'Ali', let it settle, then 'Alic'
-      // and back to 'Ali' inside the window) starts a request that nothing
-      // will ever read.
+    it('a synchronous flush of the coalescing window is adopted, not thrown away', async () => {
+      // The window is flushed rather than dropped when the user leaves
+      // mid-burst. A synchronous source settles inside that flush and never
+      // reaches the in-flight slot, so the answer has to be picked up from
+      // where it actually landed.
       const { fixture, host, picker, input } = await setupCell();
-      const search = manualSearch();
+      const search = syncSearch();
       host.search.set(search.fn);
-      host.debounce.set(5_000); // the window must still be open at adoption
+      host.debounce.set(5_000); // the window is still open at adoption
       await settle(fixture);
-      input.focus(); // as the grid does — an unfocused picker's popup closes itself
-      picker.seed('Ali'); // leading edge: one request, and the window opens
-      await settle(fixture);
-      expect(search.calls).toHaveLength(1);
-      search.responders[0].resolve(filterAgents('Ali'));
-      await settle(fixture); // …now settled for 'Ali'
-
-      // Re-queue the SAME text inside the still-open window.
       input.focus();
-      input.value = 'Alic';
-      input.dispatchEvent(new Event('input', { bubbles: true }));
+      picker.seed('A'); // leading edge opens the window
+      await settle(fixture);
       input.value = 'Ali';
       input.dispatchEvent(new Event('input', { bubbles: true }));
 
       const adopted = picker.ɵadoptSearch('Ali');
       expect(adopted).not.toBeNull();
-      expect(search.calls).toHaveLength(1); // nothing fresh was issued
       await expect(adopted!.settled).resolves.toEqual({
         items: filterAgents('Ali'),
         hasMore: false,

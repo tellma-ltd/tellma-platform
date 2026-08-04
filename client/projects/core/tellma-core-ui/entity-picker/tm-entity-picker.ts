@@ -547,6 +547,12 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     readonly query: string;
     readonly items: readonly T[];
     readonly hasMore: boolean;
+    /**
+     * The `search` function that produced it. A consumer swapping the
+     * closure — a different tenant, a different filter — is a different
+     * question, and its answer must not be served from the old one.
+     */
+    readonly source: TmEntitySearchFn<T>;
   } | null = null;
   /** The debounce window timer. */
   private debounceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1426,11 +1432,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
           `has no virtual scroll).`,
       );
     }
-    // The answer outlives the popup that displayed it. Closing the dropdown
-    // resets the state machine, but the fetch still happened: a cell commit
-    // must not pay a second round trip (or fail against a resolver that
-    // never saw the query) for a set the picker already holds.
-    this.settledResult = { query, items, hasMore: result.hasMore };
+    this.rememberResult(query, { items, hasMore: result.hasMore });
     if (items.length === 0) {
       this.searchState.set({ kind: 'empty', query });
       this.announceKey('entityPicker.announce.noResults');
@@ -1442,6 +1444,26 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       );
     }
     this.scheduleHighlight(query, items.length);
+  }
+
+  /**
+   * Stores an answer the picker actually fetched, so it outlives the popup
+   * that asked for it. Closing the dropdown resets the state machine, but
+   * the round trip happened: re-opening on unchanged text, and a cell
+   * commit, must not pay for it twice.
+   *
+   * Called from BOTH consumers of a result set. Rendering is not the only
+   * one: a departure that resolves while the response is still in flight
+   * consumes it directly and never renders it at all — which is precisely
+   * the case where the user is about to re-open and look at the rows.
+   */
+  private rememberResult(query: string, result: NormalizedResult<T>): void {
+    this.settledResult = {
+      query,
+      items: result.items,
+      hasMore: result.hasMore,
+      source: untracked(this.search),
+    };
   }
 
   /**
@@ -1463,9 +1485,21 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
 
   /** The dropdown just opened: run the initial (browse or seeded) search. */
   private onPopupOpened(): void {
-    if (untracked(this.searchState).kind === 'idle') {
-      this.queueSearch(this.queryFor(this.currentText()));
+    if (untracked(this.searchState).kind !== 'idle') {
+      return;
     }
+    const query = this.queryFor(this.currentText());
+    // Re-opening on unchanged text asks the question that was already
+    // answered: the state machine reset on close, but the fetch happened.
+    // Re-applying paints the rows immediately — no spinner, no second round
+    // trip — and produces exactly what the re-fetch would have, count
+    // announcement and highlight included.
+    const reusable = this.reusableResult(query);
+    if (reusable !== null) {
+      this.applyResults(query, reusable);
+      return;
+    }
+    this.queueSearch(query);
   }
 
   /** The dropdown just closed: cancel the window, abort, reset the state. */
@@ -1568,9 +1602,13 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       return;
     }
     // The awaited request is consumed (its own continuation was superseded
-    // by the search-epoch bump above and will not run these repairs).
+    // by the search-epoch bump above and will not run these repairs) — so
+    // this is the only place its answer can be recorded.
     this.inFlight = null;
     this.resolutionController = null;
+    if (outcome !== 'failed') {
+      this.rememberResult(text, outcome);
+    }
     if (outcome === 'failed') {
       this.failResolution('searchFailed', text);
       if (this.popupOwnsStatus(keepPopup)) {
@@ -1790,6 +1828,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     const text = this.inputElement.value; // the DOM IS the source here
     this.editedSinceFocus = true;
     this.authoredText = null; // whatever is on screen is the user's now
+    this.settledResult = null; // …and the stored answer described the old text
     this.supersedeResolution(); // editing resumes ownership from any pending resolution
     const failure = untracked(this.resolutionFailure);
     if (failure !== null && failure.text !== text) {
@@ -2297,6 +2336,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     }
     this.displayOverride = null;
     this.authoredText = null;
+    this.settledResult = null;
     this.resolutionFailure.set(null);
     this.rawText.set(text);
     this.comboText.set(text);
@@ -2317,6 +2357,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   ɵsetCellText(text: string): void {
     this.displayOverride = null;
     this.authoredText = null;
+    this.settledResult = null;
     this.rawText.set(text);
     this.comboText.set(text);
     const element = this.inputElement;
@@ -2329,12 +2370,28 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * search with a no-op abort — there is no request left to cancel.
    */
   private settledFor(text: string): ɵTmEntityAdoptedSearch<T> | null {
+    const answer = this.reusableResult(text);
+    return answer === null ? null : { settled: Promise.resolve(answer), abort: () => {} };
+  }
+
+  /**
+   * The stored answer for `query`, or `null` when there is none to reuse.
+   *
+   * The entry is dropped by every write to the content (typing, a seed, a
+   * quiet cell install), so what survives can only ever be the answer to
+   * the text exactly as it now stands: `Adam` → `Ada` → `Adam` re-asks,
+   * because the middle keystroke retired the first answer, and it does so
+   * whether or not the `Ada` search ever came back.
+   */
+  private reusableResult(query: string): NormalizedResult<T> | null {
     const settled = this.settledResult;
-    if (settled === null || settled.query !== text) {
+    if (settled === null || settled.query !== query) {
       return null;
     }
-    const answer = { items: settled.items, hasMore: settled.hasMore };
-    return { settled: Promise.resolve(answer), abort: () => {} };
+    if (settled.source !== untracked(this.search)) {
+      return null;
+    }
+    return { items: settled.items, hasMore: settled.hasMore };
   }
 
   /**
@@ -2361,11 +2418,14 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     // window is flushed rather than cancelled — the quiet period simply
     // arrived sooner than the timer did.
     //
-    // Checked BEFORE the window flush below: an answer already in hand must
-    // not send a fresh request that nothing will ever read. Checked AGAIN
-    // after it, because a synchronous source (a warm cache) settles inside
-    // `executeSearch` and leaves nothing in the in-flight slot to adopt —
-    // the answer would be sitting right here and get thrown away.
+    // An answer already in hand is asked for first, being the cheaper one.
+    // It cannot co-exist with a pending query for the same text — every
+    // write to the content retires the stored answer, and a query is only
+    // pending because such a write just queued it — so the order is a
+    // reading convenience, not a guard. The SECOND check, after the flush,
+    // is load-bearing: a synchronous source settles inside `executeSearch`
+    // and leaves nothing in the in-flight slot to adopt, so the answer
+    // would be sitting right here and get thrown away.
     const inHand = this.settledFor(text);
     if (inHand !== null) {
       return inHand;
