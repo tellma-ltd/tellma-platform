@@ -101,13 +101,14 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task A_backend_cannot_exchange_a_token_issued_to_the_browser_client()
         {
-            // §4 lists a backend acting for a user as a token-exchange case, but a user's token is
-            // issued to the distribution's BFF client, and the exchanging backend is a different
-            // client that is neither its presenter nor its audience — so the exchange is refused
-            // before any of this server's delegation code runs. Recording that here because the
-            // refusal is the whole current behaviour of that case: the `act` claim and the
-            // assurance-carrying branch in the token endpoint are unreachable until a client is
-            // registered that may present these tokens.
+            // A user's token is issued to the distribution's BFF client, and the backend client is
+            // neither its presenter nor its audience, so the exchange is refused before any of this
+            // server's delegation code runs. Recording that here because the refusal is the whole
+            // current behaviour of a backend acting for a user: no client provisioned today holds
+            // both a user token and the token-exchange grant, so the assurance-carrying branch in
+            // the token endpoint has no live caller. Granting the BFF client that grant type is
+            // what would open it — the presenter check passes for the client the token was issued
+            // to — and the `act` claim needs an actor_token on top of that.
             using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idteuser");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(
                 factory, allowTokenExchange: true);
