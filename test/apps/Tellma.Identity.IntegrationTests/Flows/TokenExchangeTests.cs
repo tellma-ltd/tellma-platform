@@ -3,15 +3,18 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Extensions.DependencyInjection;
+using OpenIddict.Abstractions;
 using System.Text.Json;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
+using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
     /// <summary>
     ///     Token exchange (RFC 8693): a distribution backend down-scopes its own client-credentials
-    ///     token, and the exchange can never widen scope.
+    ///     token. The exchange can never widen scope, and never carries a user.
     /// </summary>
     [Collection(SqlServerCollectionDefinition.Name)]
     [Trait("Category", "Integration")]
@@ -102,13 +105,9 @@ namespace Tellma.Identity.IntegrationTests.Flows
         public async Task A_backend_cannot_exchange_a_token_issued_to_the_browser_client()
         {
             // A user's token is issued to the distribution's BFF client, and the backend client is
-            // neither its presenter nor its audience, so the exchange is refused before any of this
-            // server's delegation code runs. Recording that here because the refusal is the whole
-            // current behaviour of a backend acting for a user: no client provisioned today holds
-            // both a user token and the token-exchange grant, so the assurance-carrying branch in
-            // the token endpoint has no live caller. Granting the BFF client that grant type is
-            // what would open it — the presenter check passes for the client the token was issued
-            // to — and the `act` claim needs an actor_token on top of that.
+            // neither its presenter nor its audience, so the protocol layer refuses this before the
+            // endpoint runs. That is the outer of the two barriers against impersonation; the inner
+            // one is Endpoint_refuses_a_user_token_even_from_the_client_that_holds_it below.
             using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idteuser");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(
                 factory, allowTokenExchange: true);
@@ -135,6 +134,59 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using var document = JsonDocument.Parse(
                 await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             Assert.Equal("invalid_grant", document.RootElement.GetProperty("error").GetString());
+        }
+
+        [Fact]
+        public async Task Endpoint_refuses_a_user_token_even_from_the_client_that_holds_it()
+        {
+            // The client a user token was issued to *is* its presenter, so the protocol layer would
+            // let that client exchange it. Provisioning never grants the browser client the exchange
+            // grant type — but that is a registration choice, and one edit away from becoming an
+            // impersonation capability, so the endpoint refuses user subjects itself. This test
+            // grants the browser client that permission to reach the refusal, which is otherwise
+            // unreachable and would be untested.
+            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idteself");
+            DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(
+                factory, allowTokenExchange: true);
+            await TestData.CreateActiveUserAsync(factory, "mallory@example.com");
+
+            using (IServiceScope scope = factory.Services.CreateScope())
+            {
+                IOpenIddictApplicationManager manager =
+                    scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+                object application = await manager.FindByClientIdAsync("acme", TestContext.Current.CancellationToken)
+                    ?? throw new InvalidOperationException("The browser client was not provisioned.");
+
+                OpenIddictApplicationDescriptor descriptor = new();
+                await manager.PopulateAsync(descriptor, application, TestContext.Current.CancellationToken);
+                descriptor.Permissions.Add(Permissions.GrantTypes.TokenExchange);
+                await manager.UpdateAsync(application, descriptor, TestContext.Current.CancellationToken);
+            }
+
+            string userToken = await SignInAndGetAccessTokenAsync(factory, distribution, "mallory@example.com");
+
+            using HttpClient client = factory.CreateClient();
+            using HttpResponseMessage response = await client.PostAsync(
+                new Uri("/connect/token", UriKind.Relative),
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["grant_type"] = "urn:ietf:params:oauth:grant-type:token-exchange",
+                    ["client_id"] = "acme",
+                    ["client_secret"] = distribution.BffClientSecret,
+                    ["subject_token"] = userToken,
+                    ["subject_token_type"] = "urn:ietf:params:oauth:token-type:access_token",
+                    ["scope"] = "tellma_api",
+                    ["resource"] = "https://acme.app.tellma.com",
+                }),
+                TestContext.Current.CancellationToken);
+
+            Assert.False(response.IsSuccessStatusCode);
+            using var document = JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            Assert.Equal("invalid_grant", document.RootElement.GetProperty("error").GetString());
+            Assert.Equal(
+                "A token issued to a user cannot be exchanged.",
+                document.RootElement.GetProperty("error_description").GetString());
         }
 
         /// <summary>Runs a full auth-code sign-in and returns the user's access token.</summary>

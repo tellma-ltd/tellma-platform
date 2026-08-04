@@ -10,9 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
-using System.Globalization;
 using System.Security.Claims;
-using System.Text.Json.Nodes;
 using Tellma.Identity.Data;
 using Tellma.Identity.Services.AuthenticationPolicy;
 using static OpenIddict.Abstractions.OpenIddictConstants;
@@ -60,10 +58,11 @@ namespace Tellma.Identity.Controllers
         }
 
         /// <summary>
-        ///     Token exchange (RFC 8693): a trusted backend obtains a token acting for a user (or
-        ///     down-scoping its own). The exchanged token can never widen scope — the requested
-        ///     scopes must be a subset of the subject token's — and when the actor differs from the
-        ///     subject, the delegation is recorded in the standard <c>act</c> claim.
+        ///     Token exchange (RFC 8693): a machine client narrows one of its own tokens, typically
+        ///     to reach a single downstream resource with less authority than it holds. The
+        ///     exchanged token can never widen scope — the requested scopes must be a subset of the
+        ///     subject token's — and it can never carry a user: a client calls other services under
+        ///     its own identity, never on a user's behalf.
         /// </summary>
         private async Task<IActionResult> ExchangeTokenAsync(OpenIddictRequest request)
         {
@@ -72,8 +71,16 @@ namespace Tellma.Identity.Controllers
             ClaimsPrincipal subject = result.Principal
                 ?? throw new InvalidOperationException("The subject token principal cannot be retrieved.");
 
-            ClaimsPrincipal? actor = result.Properties?.GetParameter<ClaimsPrincipal>(
-                OpenIddictServerAspNetCoreConstants.Properties.ActorTokenPrincipal);
+            // Machine-to-machine only. Client registration already keeps user tokens out of this
+            // endpoint — a user token's presenter is the browser client, which holds no exchange
+            // grant — but that is a property of how clients happen to be provisioned, and the rule
+            // is not. Enforced here so granting some future client the exchange grant cannot
+            // silently turn it into an impersonation capability.
+            string subjectId = subject.GetClaim(Claims.Subject)!;
+            if (await userManager.FindByIdAsync(subjectId) is not null)
+            {
+                return ForbidGrant(Errors.InvalidGrant, "A token issued to a user cannot be exchanged.");
+            }
 
             // Down-scoping only: the exchanged token must never gain scopes the subject lacked.
             HashSet<string> subjectScopes = [.. subject.GetScopes()];
@@ -84,58 +91,7 @@ namespace Tellma.Identity.Controllers
             }
 
             ClaimsIdentity identity = new(TokenValidationParameters.DefaultAuthenticationType, Claims.Name, Claims.Role);
-            identity.SetClaim(Claims.Subject, subject.GetClaim(Claims.Subject));
-
-            // When the subject is a user, re-check the lifecycle gate and refresh profile claims.
-            string subjectId = subject.GetClaim(Claims.Subject)!;
-            TellmaIdentityUser? user = await userManager.FindByIdAsync(subjectId);
-            if (user is not null)
-            {
-                if (user.LifecycleState != UserLifecycleState.Active)
-                {
-                    return ForbidGrant(Errors.InvalidGrant, "The account cannot obtain tokens.");
-                }
-
-                identity.SetClaim(Claims.Email, user.Email)
-                        .SetClaim(Claims.Name, user.DisplayName)
-                        .SetClaim(Claims.PreferredUsername, user.Email)
-                        .SetClaim(Claims.Locale, user.Locale);
-                identity.SetClaim(Claims.EmailVerified, user.EmailConfirmed);
-
-                // Carry the assurance and session claims from the subject token unchanged. The
-                // numeric ones are copied as numbers: OpenIddict refuses to sign in a principal
-                // whose auth_time is not of a numeric claim type, so copying it as the string the
-                // reader returns would turn every delegation into a 500.
-                foreach (string claimType in (string[])
-                    [Claims.AuthenticationContextReference, TellmaClaims.Sid])
-                {
-                    if (subject.GetClaim(claimType) is { } value)
-                    {
-                        identity.SetClaim(claimType, value);
-                    }
-                }
-
-                foreach (string claimType in (string[])[Claims.AuthenticationTime, TellmaClaims.AcrAuthTime])
-                {
-                    if (long.TryParse(
-                        subject.GetClaim(claimType), NumberStyles.Integer, CultureInfo.InvariantCulture, out long seconds))
-                    {
-                        identity.SetClaim(claimType, seconds);
-                    }
-                }
-
-                identity.SetClaims(Claims.AuthenticationMethodReference, [.. subject.GetClaims(Claims.AuthenticationMethodReference)]);
-                identity.SetClaims(TellmaClaims.Methods, [.. subject.GetClaims(TellmaClaims.Methods)]);
-            }
-
-            // Record the delegation when the actor differs from the subject.
-            string? actorSubject = actor?.GetClaim(Claims.Subject);
-            if (!string.IsNullOrEmpty(actorSubject)
-                && !string.Equals(actorSubject, subjectId, StringComparison.Ordinal))
-            {
-                identity.SetClaim(Claims.Actor, new JsonObject { [Claims.Subject] = actorSubject });
-            }
-
+            identity.SetClaim(Claims.Subject, subjectId);
             identity.SetScopes(requestedScopes.Length > 0 ? requestedScopes : subject.GetScopes());
 
             List<string> resources = [.. request.GetResources()];

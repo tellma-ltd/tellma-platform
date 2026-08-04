@@ -102,7 +102,7 @@ back-channel fan-out (§7.3); none of this revokes already-issued access tokens 
 | 2a | CLI, browser available | End user | Tellma CLI | Public | Distribution API / server management | Authorization Code + PKCE, loopback `http://127.0.0.1:{ephemeral-port}` redirect |
 | 2b | CLI, headless / SSH | End user | Tellma CLI | Public | Distribution API | Device Authorization Grant |
 | 3 | Job / integration script | None (machine) | Service account | Confidential | Distribution API / server management | Client Credentials (no refresh token) |
-| 4 | Distribution backend → trusted service | None, or a user being acted for | Distribution backend | Confidential | Server management API (`tellma_identity`) | Client Credentials; Token Exchange when propagating a user identity or down-scoping |
+| 4 | Distribution backend → trusted service | None (machine) | Distribution backend | Confidential | Server management API (`tellma_identity`) | Client Credentials; Token Exchange to down-scope its own token |
 | 5 | Native app on kiosk / tablet / device | End user (or device) | Native app | Public | Distribution API | Authorization Code + PKCE via system browser (claimed-`https` > loopback > custom scheme); Device Grant when no browser |
 | 6 | Control plane → distribution admin surface | None (operator) | Control plane | Confidential | Distribution admin contract (`tellma_control_plane`) | Client Credentials |
 
@@ -132,7 +132,7 @@ Distinct clients with least-privilege permissions:
 | Client | Type | Registered by | Grants |
 |---|---|---|---|
 | Distribution BFF (`<slug>`) | Confidential | Onboarding automation | `authorization_code`, `refresh_token` |
-| Distribution backend M2M (`<slug>-svc`) | Confidential | Onboarding automation | `client_credentials` (+ `token_exchange` when it acts for users) |
+| Distribution backend M2M (`<slug>-svc`) | Confidential | Onboarding automation | `client_credentials` (+ `token_exchange` when it down-scopes its own tokens) |
 | Service account | Confidential | Runtime (invitation/service-account API) | `client_credentials` |
 | Tellma CLI | Public | Seeded platform config | `authorization_code` (loopback), `device_code`, `refresh_token` |
 | Native app | Public | Seeded per app | `authorization_code` (system browser), `device_code`, `refresh_token` |
@@ -180,6 +180,11 @@ validates each requested resource against the client's granted resource permissi
 the token's `aud`. Grantable audiences — the per-distribution API audiences plus the fixed platform
 audiences — are assigned per client at provisioning time; because distribution audiences are created at
 runtime there is no static registered-resource list and no general "create a resource" administration.
+
+Token exchange re-targets one of these audiences without acquiring new authority: the requested scopes
+must be a subset of the subject token's, and the subject token must be the calling client's own machine
+token. A token issued to a user is refused — a backend calls other services under its own identity, so
+no client can act on a user's behalf, and a leaked user token is never an impersonation capability.
 
 ### 6.3 Lifetimes
 
