@@ -30,6 +30,12 @@ namespace Tellma.Identity.E2E.Infrastructure
         private MsSqlContainer? _container;
         private WebApplication? _app;
 
+        /// <summary>The supplied server's connection string, when not running a container.</summary>
+        private string? _masterConnectionString;
+
+        /// <summary>The database this fixture created, so teardown can drop it again.</summary>
+        private string? _databaseName;
+
         /// <summary>The base address the browser navigates to.</summary>
         public string BaseAddress { get; private set; } = string.Empty;
 
@@ -173,7 +179,22 @@ namespace Tellma.Identity.E2E.Infrastructure
 
             if (_container is not null)
             {
+                // The container is discarded wholesale; no per-database cleanup needed.
                 await _container.DisposeAsync();
+                return;
+            }
+
+            // Running against a server the developer supplied (TELLMA_TEST_SQL): the database
+            // outlives the process unless this drops it, and one accumulates per fixture per run.
+            if (_masterConnectionString is not null && _databaseName is not null)
+            {
+                await using SqlConnection connection = new(_masterConnectionString);
+                await connection.OpenAsync();
+                await using SqlCommand command = connection.CreateCommand();
+                command.CommandText =
+                    $"IF DB_ID('{_databaseName}') IS NOT NULL BEGIN ALTER DATABASE [{_databaseName}] "
+                    + $"SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{_databaseName}]; END";
+                await command.ExecuteNonQueryAsync();
             }
         }
 
@@ -203,6 +224,7 @@ namespace Tellma.Identity.E2E.Infrastructure
             if (!string.IsNullOrWhiteSpace(overrideConnectionString))
             {
                 masterConnectionString = overrideConnectionString;
+                _masterConnectionString = overrideConnectionString;
             }
             else
             {
@@ -214,6 +236,7 @@ namespace Tellma.Identity.E2E.Infrastructure
             }
 
             string database = $"ide2e_{Guid.NewGuid():N}";
+            _databaseName = database;
             await using (SqlConnection connection = new(masterConnectionString))
             {
                 await connection.OpenAsync(TestContext.Current.CancellationToken);
