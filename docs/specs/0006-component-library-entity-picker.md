@@ -52,9 +52,10 @@ the text↔value resolution semantics, and the two consumer-supplied modal pages
   content-template slot can be added later without breaking the string path.
 - Match highlighting (bolding the typed substring inside labels) — the consumer's search may match
   on code, synonym, or fuzzy rules the picker cannot see; bolding would guess wrong.
-- Built-in recents/MRU, client-side result caching, or client-side filtering/re-ranking — the
+- Built-in recents/MRU, a result cache ACROSS queries, or client-side filtering/re-ranking — the
   picker renders exactly what `search` returns, in the returned order. Recents are expressible by
-  the consumer inside `search('')`.
+  the consumer inside `search('')`. It does hold the answer to the text currently in the box, so
+  re-opening the dropdown on unchanged text costs nothing (§4.2) — one entry, retired by any edit.
 - Minimum-query-length gating — the consumer's search decides what an empty or short query returns.
 - Virtual scroll in the dropdown — the search contract imposes a result limit (§2); a dev-mode
   warning fires above 200 results.
@@ -281,6 +282,15 @@ rule.
   editable-combobox behavior — in a grid, plain arrows belong to the grid's commit-and-move model,
   the spec 0005 §6.2 branching rule, detected via the optional `TM_CELL_EDITOR_HOST` injection).
   Keyboard focus alone never opens it.
+- **Re-opening on unchanged text costs no request.** Closing the dropdown resets the search state,
+  but the fetch happened: the picker keeps the answer to the text currently in the box and
+  re-applies it on the next open — rows immediately, no spinner, and the same count announcement
+  and highlight the re-fetch would have produced. Exactly one answer is held, and it is retired by
+  ANY write to the content — a keystroke, a type-to-edit seed, a quiet cell install — so `Adam` →
+  `Ada` → `Adam` asks again, whether or not the intermediate search ever came back. It is retired
+  by a change of `search` too: a different closure is a different question. Within those rules the
+  answer has no expiry; a consumer whose data turns over faster than a user's visit should say so
+  in `search`, which is the only thing that knows.
 - **The query:** the input's current text — except when that text is **pristine** (empty, or
   exactly the committed value's display text), where the query is `''`: opening a populated field
   is a browse-alternatives intent, not a search for the label already chosen. First keystroke into
