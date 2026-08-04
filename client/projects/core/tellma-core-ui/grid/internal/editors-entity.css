@@ -1,0 +1,49 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* The entity cell editor. Encapsulation is OFF for this component: the
+   picker's inner input carries the picker's own emulated-encapsulation
+   scope, which a scoped editor stylesheet could never match — plain
+   grid-internal class selectors reach it instead (the editors-date.css
+   precedent). */
+
+.tm-grid-entity-editor {
+  display: flex;
+  align-items: stretch;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.tm-grid-entity-editor tm-entity-picker {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  block-size: 100%;
+  /* A hair of air between the text and the magnifier button. */
+  gap: var(--space-1);
+}
+
+.tm-grid-entity-editor .tm-entity-picker__input {
+  box-sizing: border-box;
+  margin: 0;
+  border: none;
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     the editor fills a cell that already draws the active-cell ring; a
+     second ring inside it would double-draw the same affordance. */
+  outline: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  padding-block: 0;
+  padding-inline-start: var(--space-2); /* the cell's own inline padding */
+  padding-inline-end: 0;
+}
+
+/* The magnifier keeps the picker's own square box; only properties the
+   picker leaves alone can be set from here (the date-toggle precedent). */
+.tm-grid-entity-editor .tm-entity-picker__magnifier {
+  margin-inline-end: var(--space-1);
+}

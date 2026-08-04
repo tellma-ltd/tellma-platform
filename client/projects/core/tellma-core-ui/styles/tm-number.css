@@ -1,0 +1,24 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tmNumber — rides the tm-input base rules (the host carries both classes);
+   this sheet adds only the numeric specifics. */
+
+.tm-number {
+  /* Physical right, NOT logical end: numerals stay right-aligned under RTL
+     locales too — the same deliberate alignment as the grid's number
+     columns. */
+  text-align: right;
+}
+
+@media (forced-colors: active) {
+  /* No number-specific chrome: the enclosing field box (or the grid cell)
+     carries the forced-colors boundary. */
+  .tm-number {
+    forced-color-adjust: auto;
+  }
+}

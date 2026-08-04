@@ -1,0 +1,442 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+import { Component } from '@angular/core';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
+
+import { provideTellmaUi } from '@tellma/core-ui';
+import { TmFilePreviewHarness } from '@tellma/core-ui-testing';
+
+import { tmDetectPreviewKind } from './internal/kind-detection';
+import { TmFilePreview, type TmPreviewFile } from './tm-file-preview';
+
+async function pngBlob(): Promise<Blob> {
+  const canvas = document.createElement('canvas');
+  canvas.width = 8;
+  canvas.height = 8;
+  canvas.getContext('2d')!.fillRect(0, 0, 8, 8);
+  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob!), 'image/png'));
+}
+
+@Component({ template: `` })
+class Host {}
+
+async function setup(): Promise<{ fixture: ComponentFixture<Host>; preview: TmFilePreview }> {
+  TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+  const fixture = TestBed.createComponent(Host);
+  await fixture.whenStable();
+  return { fixture, preview: TestBed.inject(TmFilePreview) };
+}
+
+function content(): HTMLElement | null {
+  return document.querySelector('tm-file-preview-content');
+}
+
+// The budget covers a cold CI runner's first decode and defer resolution;
+// a passing run never waits it out.
+async function until(
+  fixture: ComponentFixture<unknown>,
+  predicate: () => boolean,
+  timeoutMs = 15000,
+): Promise<void> {
+  const start = Date.now();
+  for (;;) {
+    await fixture.whenStable();
+    if (predicate()) {
+      return;
+    }
+    if (Date.now() - start > timeoutMs) {
+      throw new Error('condition not met in time');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+/** Temporarily forces `navigator.pdfViewerEnabled`. */
+function withPdfViewer(enabled: boolean): () => void {
+  const descriptor = Object.getOwnPropertyDescriptor(Navigator.prototype, 'pdfViewerEnabled');
+  Object.defineProperty(navigator, 'pdfViewerEnabled', { value: enabled, configurable: true });
+  return () => {
+    delete (navigator as unknown as Record<string, unknown>)['pdfViewerEnabled'];
+    void descriptor; // the prototype getter is visible again after delete
+  };
+}
+
+describe('tmDetectPreviewKind', () => {
+  it('detects from MIME first, extension second, and never sniffs', () => {
+    expect(tmDetectPreviewKind('a.png', 'image/png')).toBe('image');
+    expect(tmDetectPreviewKind('a.png', undefined)).toBe('image');
+    expect(tmDetectPreviewKind('vector.svg', 'image/svg+xml')).toBe('svg');
+    expect(tmDetectPreviewKind('vector.svg', undefined)).toBe('svg');
+    expect(tmDetectPreviewKind('doc.pdf', 'application/pdf')).toBe('pdf');
+    expect(tmDetectPreviewKind('clip.mp4', 'video/mp4')).toBe('video');
+    expect(tmDetectPreviewKind('note.wav', undefined)).toBe('audio');
+    expect(tmDetectPreviewKind('data.csv', 'text/csv')).toBe('text');
+    expect(tmDetectPreviewKind('data.json', undefined)).toBe('text');
+    // MIME wins over a lying extension.
+    expect(tmDetectPreviewKind('actually.png', 'text/plain')).toBe('text');
+    // HTML is never a renderable kind — policy.
+    expect(tmDetectPreviewKind('page.html', 'text/html')).toBe('unsupported');
+    expect(tmDetectPreviewKind('page.html', undefined)).toBe('unsupported');
+    expect(tmDetectPreviewKind('blob.bin', undefined)).toBe('unsupported');
+    // A generic octet-stream falls back to the extension.
+    expect(tmDetectPreviewKind('report.pdf', 'application/octet-stream')).toBe('pdf');
+  });
+});
+
+describe('TmFilePreview', () => {
+  it('opens an lg modal titled with the file name and renders a raster image', async () => {
+    const { fixture, preview } = await setup();
+    const ref = preview.open({
+      name: 'photo.png',
+      type: 'image/png',
+      size: 2048,
+      source: await pngBlob(),
+    });
+    await until(fixture, () => content()?.querySelector('img.tm-preview__media') !== null);
+
+    expect(document.querySelector('.tm-modal-panel--lg')).not.toBeNull();
+    expect(document.querySelector('.tm-modal__title')?.textContent).toBe('photo.png');
+    const img = content()!.querySelector<HTMLImageElement>('img.tm-preview__media')!;
+    expect(img.getAttribute('alt')).toBe('photo.png');
+    expect(img.src.startsWith('blob:')).toBe(true);
+
+    const harness = await TestbedHarnessEnvironment.documentRootLoader(fixture).getHarness(
+      TmFilePreviewHarness,
+    );
+    expect(await harness.hasPrintButton()).toBe(true); // images only
+    expect(await harness.getDownloadName()).toBe('photo.png');
+    ref.close();
+  });
+
+  it('renders plain text escaped, capped at 1 MB with a notice', async () => {
+    const { fixture, preview } = await setup();
+    const payload = `<script>alert(1)</script>\n${'x'.repeat(2 * 1024 * 1024)}`;
+    preview.open({
+      name: 'big.txt',
+      type: 'text/plain',
+      source: new Blob([payload], { type: 'text/plain' }),
+    });
+    await until(fixture, () => content()?.querySelector('.tm-preview__text') !== null);
+
+    const pre = content()!.querySelector('.tm-preview__text')!;
+    expect(pre.innerHTML).toContain('&lt;script&gt;'); // escaped, never markup
+    expect(pre.textContent?.length).toBe(1024 * 1024); // capped
+    expect(content()!.querySelector('.tm-preview__notice')).not.toBeNull();
+  });
+
+  it('NEVER renders HTML — the download-only card, even with an html blob (policy pin)', async () => {
+    const { fixture, preview } = await setup();
+    preview.open({
+      name: 'page.html',
+      type: 'text/html',
+      source: new Blob(['<h1>hi</h1><script>document.title="pwned"</script>'], {
+        type: 'text/html',
+      }),
+    });
+    await until(fixture, () => content()?.querySelector('.tm-preview__card') !== null);
+    expect(content()!.querySelector('iframe')).toBeNull();
+    expect(content()!.querySelector('.tm-preview__text')).toBeNull();
+    expect(document.title).not.toBe('pwned');
+    const harness = await TestbedHarnessEnvironment.documentRootLoader(fixture).getHarness(
+      TmFilePreviewHarness,
+    );
+    expect(await harness.getCardTitle()).toBe('Preview not available');
+    expect(await harness.getDownloadName()).toBe('page.html'); // download still offered
+    expect(await harness.hasPrintButton()).toBe(false);
+  });
+
+  it('a .pdf-named file whose BLOB is text/html never reaches the frame as HTML', async () => {
+    // Detection reads the declared metadata, but the object URL serves the
+    // blob's own Content-Type — an attacker uploading HTML as
+    // 'invoice.pdf' would otherwise execute same-origin in the
+    // deliberately non-sandboxed frame.
+    const restore = withPdfViewer(true);
+    try {
+      const { fixture, preview } = await setup();
+      preview.open({
+        name: 'invoice.pdf',
+        type: 'application/pdf',
+        source: new Blob(['<script>document.title="pwned"</script>'], { type: 'text/html' }),
+      });
+      await until(fixture, () => content()?.querySelector('iframe.tm-preview__frame') !== null);
+      const frameUrl = content()!
+        .querySelector('iframe.tm-preview__frame')!
+        .getAttribute('src')!;
+      const served = await fetch(frameUrl).then((response) => response.blob());
+      expect(served.type).toBe('application/pdf'); // re-wrapped, never text/html
+      expect(document.title).not.toBe('pwned');
+    } finally {
+      restore();
+    }
+  });
+
+  it('a {url} PDF never reaches the frame — even on a plain https URL', async () => {
+    // The viewer frame is deliberately NOT sandboxed, so it may only ever
+    // render bytes this component fetched and re-typed itself. An endpoint
+    // that echoes a stored `text/html` would otherwise run script in this
+    // origin; the URL's scheme says nothing about what it serves.
+    const restore = withPdfViewer(true);
+    try {
+      const { fixture, preview } = await setup();
+      preview.open({
+        name: 'invoice.pdf',
+        type: 'application/pdf',
+        source: { url: 'https://files.example.com/invoice.pdf' },
+      });
+      await until(fixture, () => content()?.querySelector('.tm-preview__card') !== null);
+      expect(content()!.querySelector('iframe')).toBeNull();
+    } finally {
+      restore();
+    }
+  });
+
+  it('the download href is octet-stream for EVERY blob type — no allowlist', async () => {
+    // `download` saves the file, but "Open link in new tab" NAVIGATES to
+    // the href, and a blob URL inherits this origin. The neutralization is
+    // unconditional because the executable set is open-ended: text/html,
+    // any `+xml` type (XSLT, XHTML-namespaced script), and an EMPTY type,
+    // which the browser MIME-SNIFFS straight back to text/html.
+    const payload = '<script>document.title="pwned"</script>';
+    const cases: readonly TmPreviewFile[] = [
+      { name: 'notes.html', type: 'text/html', source: new Blob([payload], { type: 'text/html' }) },
+      {
+        name: 'feed.rss',
+        type: 'application/rss+xml',
+        source: new Blob([payload], { type: 'application/rss+xml' }),
+      },
+      { name: 'mystery.bin', source: new Blob([payload]) },
+    ];
+    const { fixture, preview } = await setup();
+    const anchorAt = (index: number): HTMLAnchorElement | null => {
+      const panel = document.querySelectorAll('tm-file-preview-content')[index];
+      return panel?.querySelector<HTMLAnchorElement>('a[download]') ?? null;
+    };
+
+    for (const [index, file] of cases.entries()) {
+      preview.open(file);
+      await until(fixture, () => anchorAt(index) !== null);
+      const served = await fetch(anchorAt(index)!.href).then((response) => response.blob());
+      expect(served.type).toBe('application/octet-stream');
+    }
+  });
+
+  it('a {url} source with a dangerous scheme cannot reach the download href', async () => {
+    // Every {url} kind lands on the download-only card now, so the card
+    // says nothing about schemes. What the code still decides is that the
+    // consumer's RAW url backs the download anchor — where a `javascript:`
+    // scheme would run in this origin if the binding let it through.
+    const { fixture, preview } = await setup();
+    preview.open({
+      name: 'evil.pdf',
+      type: 'application/pdf',
+      source: { url: 'javascript:document.title="pwned"' },
+    });
+    await until(fixture, () => Boolean(content()?.querySelector('a[download]')));
+    const href = content()!.querySelector<HTMLAnchorElement>('a[download]')!.getAttribute('href')!;
+    expect(href.startsWith('javascript:')).toBe(false);
+    expect(document.title).not.toBe('pwned');
+  });
+
+  it('PDF renders through a NON-sandboxed iframe only when the browser has a viewer', async () => {
+    const restore = withPdfViewer(true);
+    try {
+      const { fixture, preview } = await setup();
+      const ref = preview.open({
+        name: 'doc.pdf',
+        type: 'application/pdf',
+        source: new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
+      });
+      await until(fixture, () => content()?.querySelector('iframe.tm-preview__frame') !== null);
+      const frame = content()!.querySelector('iframe.tm-preview__frame')!;
+      expect(frame.hasAttribute('sandbox')).toBe(false); // sandboxed frames never render PDFs
+      expect(frame.getAttribute('src')?.startsWith('blob:')).toBe(true);
+      ref.close();
+      await fixture.whenStable();
+    } finally {
+      restore();
+    }
+
+    TestBed.resetTestingModule(); // a second, independent open in this test
+    const restoreOff = withPdfViewer(false);
+    try {
+      const { fixture, preview } = await setup();
+      preview.open({
+        name: 'doc.pdf',
+        type: 'application/pdf',
+        source: new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
+      });
+      await until(fixture, () => content()?.querySelector('.tm-preview__card') !== null);
+      expect(content()!.querySelector('iframe')).toBeNull(); // honest fallback
+    } finally {
+      restoreOff();
+    }
+  });
+
+  it('media: a playable audio blob renders controls; an unplayable type is the card upfront', async () => {
+    const { fixture, preview } = await setup();
+    preview.open({
+      name: 'beep.wav',
+      type: 'audio/wav',
+      source: new Blob([new Uint8Array(64)], { type: 'audio/wav' }),
+    });
+    await until(fixture, () => content()?.querySelector('audio') !== null);
+    const audio = content()!.querySelector('audio')!;
+    expect(audio.hasAttribute('controls')).toBe(true);
+    expect(audio.getAttribute('preload')).toBe('metadata');
+
+    preview.open({
+      name: 'clip.fake',
+      type: 'video/x-not-a-real-codec',
+      source: new Blob([new Uint8Array(64)], { type: 'video/x-not-a-real-codec' }),
+    });
+    await until(
+      fixture,
+      () => document.querySelectorAll('tm-file-preview-content').length === 2,
+    );
+    const second = document.querySelectorAll('tm-file-preview-content')[1];
+    await until(fixture, () => second.querySelector('.tm-preview__card') !== null);
+    expect(second.querySelector('video')).toBeNull();
+  });
+
+  it('a {url} media source streams directly — no object URL', async () => {
+    const { fixture, preview } = await setup();
+    preview.open({
+      name: 'song.mp3',
+      type: 'audio/mpeg',
+      source: { url: '/media/song.mp3' },
+    });
+    await until(fixture, () => content()?.querySelector('audio') !== null);
+    const audio = content()!.querySelector('audio')!;
+    expect(audio.getAttribute('src')).toBe('/media/song.mp3');
+  });
+
+  it('a lazy loader shows the busy state, then renders; a rejection shows the error card', async () => {
+    const { fixture, preview } = await setup();
+    let resolveBlob!: (blob: Blob) => void;
+    preview.open({
+      name: 'slow.txt',
+      type: 'text/plain',
+      source: () => new Promise<Blob>((resolve) => (resolveBlob = resolve)),
+    });
+    await until(fixture, () => content() !== null);
+    const harness = await TestbedHarnessEnvironment.documentRootLoader(fixture).getHarness(
+      TmFilePreviewHarness,
+    );
+    expect(await harness.isLoading()).toBe(true);
+
+    resolveBlob(new Blob(['later'], { type: 'text/plain' }));
+    await until(fixture, () => content()?.querySelector('.tm-preview__text') !== null);
+    expect(await harness.getTextContent()).toBe('later');
+
+    preview.open({
+      name: 'broken.txt',
+      type: 'text/plain',
+      source: () => Promise.reject(new Error('auth expired')),
+    });
+    await until(fixture, () =>
+      Boolean(
+        document.querySelectorAll('tm-file-preview-content')[1]?.querySelector(
+          '.tm-preview__card-title',
+        ),
+      ),
+    );
+    const second = document.querySelectorAll('tm-file-preview-content')[1];
+    expect(second.querySelector('.tm-preview__card-title')?.textContent?.trim()).toBe(
+      'The file could not be loaded',
+    );
+  });
+
+  it('the PDF branch drops the footer — the browser viewer owns that chrome', async () => {
+    const restore = withPdfViewer(true);
+    try {
+      const { fixture, preview } = await setup();
+      preview.open({
+        name: 'doc.pdf',
+        type: 'application/pdf',
+        size: 1024,
+        source: new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
+      });
+      await until(fixture, () => content()?.querySelector('iframe.tm-preview__frame') !== null);
+      expect(content()!.querySelector('.tm-preview__footer')).toBeNull();
+      // Every other kind keeps it — the branch is the PDF's, not a removal.
+      expect(content()!.querySelector('[data-tm-preview-action="download"]')).toBeNull();
+    } finally {
+      restore();
+    }
+
+    TestBed.resetTestingModule();
+    const { fixture, preview } = await setup();
+    preview.open({
+      name: 'photo.png',
+      type: 'image/png',
+      size: 1024,
+      source: await pngBlob(),
+    });
+    await until(fixture, () => content()?.querySelector('img.tm-preview__media') !== null);
+    expect(content()!.querySelector('.tm-preview__footer')).not.toBeNull();
+    expect(content()!.querySelector('[data-tm-preview-action="download"]')).not.toBeNull();
+  });
+
+  it('closing aborts the loader — no cache is warmed by finishing', async () => {
+    const { fixture, preview } = await setup();
+    let seen: AbortSignal | undefined;
+    const ref = preview.open({
+      name: 'slow.png',
+      type: 'image/png',
+      source: (signal) => {
+        seen = signal;
+        // Never settles: the abort is the only way out.
+        return new Promise<Blob>(() => undefined);
+      },
+    });
+    await until(fixture, () => seen !== undefined);
+    expect(seen!.aborted).toBe(false);
+
+    ref.close();
+    await until(fixture, () => content() === null);
+    expect(seen!.aborted).toBe(true);
+  });
+
+  it('closing stops a media element streaming — detaching it does not', async () => {
+    const { fixture, preview } = await setup();
+    const ref = preview.open({
+      name: 'clip.wav',
+      type: 'audio/wav',
+      source: { url: '/nonexistent-audio.wav' },
+    });
+    await until(fixture, () => content()?.querySelector('audio') !== null);
+    const audio = content()!.querySelector('audio')!;
+    expect(audio.getAttribute('src')).toBe('/nonexistent-audio.wav');
+
+    ref.close();
+    await until(fixture, () => content() === null);
+    // Source cleared and reloaded: the element holds no stream to finish.
+    expect(audio.hasAttribute('src')).toBe(false);
+    expect(audio.paused).toBe(true);
+  });
+
+  it('revokes its object URLs when the modal closes', async () => {
+    const { fixture, preview } = await setup();
+    const revoke = vi.spyOn(URL, 'revokeObjectURL');
+    try {
+      const ref = preview.open({
+        name: 'photo.png',
+        type: 'image/png',
+        source: await pngBlob(),
+      });
+      await until(fixture, () => content()?.querySelector('img.tm-preview__media') !== null);
+      const url = content()!
+        .querySelector<HTMLImageElement>('img.tm-preview__media')!
+        .getAttribute('src')!;
+      ref.close();
+      await until(fixture, () => content() === null);
+      expect(revoke.mock.calls.map((call) => call[0])).toContain(url);
+    } finally {
+      revoke.mockRestore();
+    }
+  });
+});

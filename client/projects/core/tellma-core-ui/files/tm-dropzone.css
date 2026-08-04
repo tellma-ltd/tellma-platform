@@ -1,0 +1,80 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-dropzone — the bordered drop region; one focusable control. */
+
+:host {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-block-size: var(--files-dropzone-min-height);
+  padding: var(--files-dropzone-padding);
+  border: var(--border-width) dashed var(--border-strong);
+  border-radius: var(--files-dropzone-radius);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  text-align: center;
+  cursor: pointer;
+}
+
+:host(.tm-dropzone--dragover) {
+  border-color: var(--field-border-focus);
+  background: var(--surface-selected);
+}
+
+:host(:focus-visible) {
+  /* A transparent REAL outline beneath the token ring: forced colors strip
+     box-shadows but repaint outline-color in a system color, so the outline
+     is the only thing left carrying focus there. */
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-ring);
+}
+
+.tm-dropzone__icon {
+  inline-size: var(--space-6);
+  block-size: var(--space-6);
+  color: var(--text-muted);
+}
+
+.tm-dropzone__hint {
+  margin: 0;
+  color: var(--text-body);
+}
+
+/* Presentational styled text — never a nested interactive element. */
+.tm-dropzone__browse {
+  color: var(--text-link);
+  text-decoration: underline;
+}
+
+.tm-dropzone__meta {
+  margin: 0;
+  font-size: var(--text-xs);
+  /* Secondary, not muted: the meta lines must clear AA contrast on the
+     subtle surface. */
+  color: var(--text-secondary);
+}
+
+@media (forced-colors: active) {
+  /* The dashed border carries the affordance; the drag highlight becomes
+     a Highlight border since fills are stripped. */
+  :host(.tm-dropzone--dragover) {
+    border-color: Highlight;
+  }
+}
+
+/* While the OS dialog is on its way the zone stops responding — the
+   disabled look has to follow the state, or it reads as still clickable. */
+:host([aria-disabled='true']) {
+  cursor: default;
+  opacity: 0.65;
+}

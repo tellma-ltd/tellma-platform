@@ -8,11 +8,17 @@
 /* Showcase shell chrome — painted from the tokens so the toggles restyle it
    live like everything else. */
 
+:host {
+  /* Shared by the header (its own height) and the rail (the viewport it
+     must subtract), so it lives on their common ancestor. */
+  --shell-header-height: 3rem;
+}
+
 .shell-header {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: var(--space-3);
+  block-size: var(--shell-header-height);
   padding-block: var(--space-2);
   padding-inline: var(--space-4);
   background: var(--surface-subtle);
@@ -25,10 +31,34 @@
   text-decoration: none;
 }
 
+/* Rail + content. The rail scrolls on its own so a long story never
+   pushes the story list out of reach. */
+.shell-body {
+  display: flex;
+  align-items: stretch;
+  min-block-size: calc(100vh - var(--shell-header-height));
+}
+
 .shell-nav {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: none;
+  inline-size: 13rem;
+  padding-block: var(--space-3);
+  padding-inline: var(--space-2);
+  border-inline-end: 1px solid var(--divider);
+  background: var(--surface-subtle);
+  position: sticky;
+  inset-block-start: 0;
+  align-self: flex-start;
+  max-block-size: 100vh;
+  overflow-y: auto;
+}
+
+.shell-main {
+  flex: 1;
+  min-inline-size: 0; /* a wide story scrolls itself instead of the rail */
 }
 
 .shell-nav__link {
@@ -37,6 +67,30 @@
   padding-block: var(--space-1);
   padding-inline: var(--space-2);
   border-radius: var(--radius-sm);
+}
+
+/* On a narrow viewport a fixed rail would eat half the width, leaving the
+   story less room than the shell around it — there it lies back down as a
+   scrolling strip. */
+@media (width <= 48rem) {
+  .shell-body {
+    flex-direction: column;
+  }
+
+  .shell-nav {
+    flex-direction: row;
+    inline-size: auto;
+    max-block-size: none;
+    position: static;
+    align-self: stretch;
+    overflow-x: auto;
+    border-inline-end: none;
+    border-block-end: 1px solid var(--divider);
+  }
+
+  .shell-nav__link {
+    white-space: nowrap;
+  }
 }
 
 .shell-nav__link:hover {
@@ -53,6 +107,17 @@
   align-items: center;
   gap: var(--space-2);
   margin-inline-start: auto;
+}
+
+.shell-controls select {
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-body);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding-block: var(--space-1);
+  padding-inline: var(--space-1);
 }
 
 .shell-controls button {

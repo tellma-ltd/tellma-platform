@@ -85,9 +85,29 @@ test.describe('forced-colors + reduced-motion gates (DoD 15)', () => {
     await page.goto(storyUrl('input'));
     const username = page.getByTestId('input-username');
     await username.fill('valid-name');
-    const spinner = page.getByTestId('ff-username').locator('.tm-form-field__spinner');
-    await expect(spinner).toBeVisible();
-    const animation = await spinner.evaluate((el) => getComputedStyle(el).animationName);
+    // The spinner is TRANSIENT — it lives only while the story's mock
+    // async validator is pending (~800ms) — so the style must be read the
+    // moment the element appears, in ONE page-side call anchored on the
+    // stable field root: a visible-check followed by a separate
+    // locator.evaluate can lose the element between the two calls on a
+    // loaded machine and stall until the test times out.
+    const animation = await page.getByTestId('ff-username').evaluate(
+      (field) =>
+        new Promise<string | null>((resolve) => {
+          const deadline = performance.now() + 15_000;
+          const read = (): void => {
+            const spinner = field.querySelector('.tm-form-field__spinner');
+            if (spinner !== null) {
+              resolve(getComputedStyle(spinner).animationName);
+            } else if (performance.now() > deadline) {
+              resolve(null); // never appeared — fail with a value, not a stall
+            } else {
+              requestAnimationFrame(read);
+            }
+          };
+          read();
+        }),
+    );
     expect(animation).toBe('none');
   });
 });
@@ -107,4 +127,36 @@ test.describe('bidi dir="auto" (§7, DoD 15)', () => {
       expect(await englishFirst.evaluate((el) => getComputedStyle(el).direction)).toBe('ltr');
     });
   }
+});
+
+test.describe('textarea host (DoD 3)', () => {
+  test('grows the field box, pins resize: none, and wires label/hint/focus ring', async ({
+    page,
+  }) => {
+    await page.goto(storyUrl('input'));
+    const field = page.getByTestId('ff-notes');
+    const textarea = page.getByTestId('textarea-notes');
+    const box = field.locator('.tm-form-field__box');
+
+    // Fixed size: no user resize handle; height driven by the authored rows.
+    await expect(textarea).toHaveCSS('resize', 'none');
+    await expect(textarea).toHaveJSProperty('rows', 4);
+
+    // The box grew past the single-line field height to hold four rows.
+    const singleLineBox = await page
+      .getByTestId('ff-email')
+      .locator('.tm-form-field__box')
+      .boundingBox();
+    const grownBox = await box.boundingBox();
+    expect(grownBox!.height).toBeGreaterThan(singleLineBox!.height * 2);
+
+    // Label click focuses the textarea (label[for] association).
+    await field.locator('label').click();
+    await expect(textarea).toBeFocused();
+
+    // The focus ring wraps the grown box.
+    await expect
+      .poll(() => box.evaluate((el) => getComputedStyle(el).boxShadow))
+      .not.toBe('none');
+  });
 });

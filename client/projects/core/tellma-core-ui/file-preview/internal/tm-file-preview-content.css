@@ -1,0 +1,152 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-file-preview — the modal body: a filling viewer region + the pinned
+   size/print/download footer (via the modal footer directive). */
+
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.tm-preview {
+  flex: 1 1 auto;
+  min-block-size: var(--preview-min-height);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  overflow: auto;
+}
+
+.tm-preview__media {
+  max-inline-size: 100%;
+  max-block-size: 100%;
+  object-fit: contain;
+}
+
+.tm-preview__audio {
+  inline-size: 100%;
+  max-inline-size: var(--preview-audio-max-width);
+}
+
+.tm-preview__frame {
+  inline-size: 100%;
+  block-size: 100%;
+  flex: 1 1 auto;
+  border: none;
+  min-block-size: var(--preview-min-height);
+}
+
+.tm-preview__text {
+  align-self: stretch;
+  margin: 0;
+  padding: var(--space-3);
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  background: var(--surface-subtle);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tm-preview__notice {
+  align-self: stretch;
+  margin: 0;
+  padding-block: var(--space-1);
+  padding-inline: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-radius: var(--radius-xs);
+}
+
+.tm-preview__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-8);
+  text-align: center;
+}
+
+.tm-preview__card-title {
+  margin: 0;
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+}
+
+.tm-preview__card-hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.tm-preview__footer {
+  align-items: center;
+}
+
+.tm-preview__size {
+  margin-inline-end: auto;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* The download action is an anchor (the `download` attribute needs one),
+   dressed as a secondary button. */
+.tm-preview__download {
+  display: inline-flex;
+  align-items: center;
+  /* Matches the default tmButton next to it — the Print action is one,
+     and two adjacent actions of different heights read as a mistake. */
+  block-size: var(--field-height);
+  padding-inline: var(--button-padding-x);
+  border: var(--border-width) solid var(--button-secondary-border);
+  border-radius: var(--button-radius);
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.tm-preview__download:hover {
+  background: var(--button-secondary-hover-bg);
+}
+
+.tm-preview__download:focus-visible {
+  /* A transparent REAL outline beneath the token ring: forced colors strip
+     box-shadows but repaint outline-color in a system color, so the outline
+     is the only thing left carrying focus there. */
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-ring);
+}
+
+@media (forced-colors: active) {
+  .tm-preview__download {
+    border-color: ButtonText;
+  }
+}
+
+/* The permanent live region: present for announcements, never seen — the
+   same message is already rendered visibly by the state it belongs to. */
+.tm-preview__live {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

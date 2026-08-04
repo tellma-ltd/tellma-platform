@@ -4,6 +4,9 @@
   "lib": {
     "entryFile": "public-api.ts"
   },
+  "allowedNonPeerDependencies": [
+    "@internationalized/date"
+  ],
   "assets": [
     "fonts/*.woff2",
     "fonts/*.css",

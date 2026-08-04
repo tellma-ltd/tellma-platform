@@ -16,14 +16,168 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly email: "{gender, select, female {أدخلي} other {أدخل}} عنوان بريد إلكتروني صحيحا";
         readonly minLength: "{gender, select, female {أدخلي} other {أدخل}} {minLength, plural, one {حرفا واحدا على الأقل} two {حرفين على الأقل} few {# أحرف على الأقل} many {# حرفا على الأقل} other {# حرف على الأقل}}";
         readonly maxLength: "{gender, select, female {أدخلي} other {أدخل}} {maxLength, plural, one {حرفا واحدا كحد أقصى} two {حرفين كحد أقصى} few {# أحرف كحد أقصى} many {# حرفا كحد أقصى} other {# حرف كحد أقصى}}";
-        readonly min: "{gender, select, female {أدخلي} other {أدخل}} قيمة لا تقل عن {min}";
-        readonly max: "{gender, select, female {أدخلي} other {أدخل}} قيمة لا تزيد عن {max}";
+        readonly min: "{gender, select, female {أدخلي} other {أدخل}} قيمة لا تقل عن {min, number}";
+        readonly max: "{gender, select, female {أدخلي} other {أدخل}} قيمة لا تزيد عن {max, number}";
         readonly pattern: "القيمة لا تطابق التنسيق المطلوب";
         readonly minDate: "{gender, select, female {أدخلي} other {أدخل}} تاريخا لا يسبق {minDate}";
         readonly maxDate: "{gender, select, female {أدخلي} other {أدخل}} تاريخا لا يتجاوز {maxDate}";
+        readonly parse: "{gender, select, female {أدخلي} other {أدخل}} رقما صالحا، مثل {example}";
+        readonly numberPrecision: "{gender, select, female {أدخلي} other {أدخل}} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}}";
+        readonly parseDate: "{gender, select, female {أدخلي} other {أدخل}} تاريخا مثل {example}";
+    };
+    readonly datePicker: {
+        readonly chooseDate: "اختيار التاريخ";
+        readonly dialogLabel: "اختيار التاريخ";
+        readonly previous: "{view, select, day {الشهر السابق} month {السنة السابقة} other {السنوات السابقة}}";
+        readonly next: "{view, select, day {الشهر التالي} month {السنة التالية} other {السنوات التالية}}";
+        readonly switchView: "{view, select, day {اختيار الشهر} month {اختيار السنة} other {العودة إلى عرض الأيام}}";
+        readonly today: "اليوم";
+        readonly clear: "مسح";
     };
     readonly select: {
         readonly placeholder: "{gender, select, female {حددي خيارا} other {حدد خيارا}}";
+    };
+    readonly entityPicker: {
+        readonly advancedSearch: "بحث متقدم…";
+        readonly create: "إنشاء…";
+        readonly edit: "تعديل…";
+        readonly advancedTitle: "بحث متقدم";
+        readonly createTitle: "إنشاء";
+        readonly editTitle: "تعديل";
+        readonly magnifier: "بحث متقدم";
+        readonly noResults: "لا توجد نتائج";
+        readonly searchFailed: "فشل البحث";
+        readonly moreResults: "يتم عرض أفضل {count, plural, zero {# نتيجة} one {نتيجة} two {نتيجتين} few {# نتائج} many {# نتيجة} other {# نتيجة}}. {gender, select, female {واصلي} other {واصل}} الكتابة للتصفية.";
+        readonly announce: {
+            readonly results: "{count, plural, zero {لا توجد نتائج} one {نتيجة واحدة} two {نتيجتان} few {# نتائج} many {# نتيجة} other {# نتيجة}}";
+            readonly resultsMore: "أكثر من {count, plural, zero {# نتيجة} one {نتيجة واحدة} two {نتيجتين} few {# نتائج} many {# نتيجة} other {# نتيجة}} — هناك المزيد";
+            readonly noResults: "لا توجد نتائج";
+            readonly searchFailed: "فشل البحث";
+            readonly picked: "تم اختيار {label}";
+        };
+        readonly errors: {
+            readonly unresolved: "{gender, select, female {حددي} other {حدد}} عنصرا من القائمة";
+            readonly noMatch: "لا يوجد تطابق مع «{text}»";
+            readonly ambiguous: "«{text}» يطابق أكثر من عنصر واحد";
+            readonly searchFailed: "فشل البحث";
+        };
+    };
+    readonly grid: {
+        readonly loading: "جار التحميل…";
+        readonly empty: "لا توجد سجلات للعرض";
+        readonly newRow: "صف جديد";
+        readonly selectAll: "تحديد كل الصفوف";
+        readonly selectRow: "تحديد الصف";
+        readonly menu: {
+            readonly cut: "{gender, select, female {قصي} other {قص}}";
+            readonly copy: "{gender, select, female {انسخي} other {انسخ}}";
+            readonly copyWithHeaders: "{gender, select, female {انسخي} other {انسخ}} مع العناوين";
+            readonly paste: "{gender, select, female {الصقي} other {الصق}}";
+            readonly pasteHint: "{gender, select, female {اضغطي} other {اضغط}} على {shortcut} للصق";
+            readonly insertAbove: "{gender, select, female {أدرجي} other {أدرج}} {count, plural, zero {# صف} one {صفا واحدا} two {صفين} few {# صفوف} many {# صفا} other {# صف}} أعلاه";
+            readonly insertBelow: "{gender, select, female {أدرجي} other {أدرج}} {count, plural, zero {# صف} one {صفا واحدا} two {صفين} few {# صفوف} many {# صفا} other {# صف}} أدناه";
+            readonly insertChild: "{gender, select, female {أدرجي} other {أدرج}} صفا فرعيا";
+            readonly deleteRows: "{gender, select, female {احذفي} other {احذف}} {count, plural, zero {# صف} one {صفا واحدا} two {صفين} few {# صفوف} many {# صفا} other {# صف}}";
+        };
+        readonly op: {
+            readonly cellEdit: "تحرير خلية";
+            readonly clear: "المسح";
+            readonly paste: "اللصق";
+            readonly fillDown: "التعبئة لأسفل";
+            readonly cutMove: "النقل";
+            readonly rowInsert: "إدراج صفوف";
+            readonly rowDelete: "حذف صفوف";
+            readonly rowMove: "نقل صفوف";
+            readonly transaction: "التغيير";
+        };
+        readonly announce: {
+            readonly selection: "تم تحديد {rows, number} × {cols, number}";
+            readonly selectionAll: "تم تحديد كل الخلايا";
+            readonly copied: "تم نسخ {cells, plural, zero {# خلية} one {خلية واحدة} two {خليتين} few {# خلايا} many {# خلية} other {# خلية}}";
+            readonly copyRefused: "يتعذر نسخ تحديد متعدد النطاقات بهذا الشكل";
+            readonly copyFailed: "فشل النسخ — {gender, select, female {حددي} other {حدد}} الخلايا و{gender, select, female {انسخي} other {انسخ}} مرة أخرى";
+            readonly cutCancelled: "تم إلغاء القص";
+            readonly marqueeCleared: "تم مسح التحديد";
+            readonly pasted: "{cells, plural, =0 {لم يتم لصق أي شيء} one {تم لصق خلية واحدة} two {تم لصق خليتين} few {تم لصق # خلايا} many {تم لصق # خلية} other {تم لصق # خلية}}{errors, plural, =0 {} one {، خطأ واحد} two {، خطآن} few {، # أخطاء} many {، # خطأ} other {، # خطأ}}{pending, plural, =0 {} one {، خلية واحدة قيد المطابقة} two {، خليتان قيد المطابقة} few {، # خلايا قيد المطابقة} many {، # خلية قيد المطابقة} other {، # خلية قيد المطابقة}}";
+            readonly pasteRowsDropped: "تعذرت إضافة {count, plural, zero {# صف} one {صف واحد} two {صفين} few {# صفوف} many {# صفا} other {# صف}} — الجدول لا ينشئ صفوفا";
+            readonly undone: "{skipped, plural, =0 {تم التراجع عن {action}} one {تم التراجع عن {action} — صف واحد لم يعد موجودا} two {تم التراجع عن {action} — صفان لم يعودا موجودين} few {تم التراجع عن {action} — # صفوف لم تعد موجودة} many {تم التراجع عن {action} — # صفا لم تعد موجودة} other {تم التراجع عن {action} — # صف لم تعد موجودة}}";
+            readonly redone: "{skipped, plural, =0 {تمت إعادة {action}} one {تمت إعادة {action} — صف واحد لم يعد موجودا} two {تمت إعادة {action} — صفان لم يعودا موجودين} few {تمت إعادة {action} — # صفوف لم تعد موجودة} many {تمت إعادة {action} — # صفا لم تعد موجودة} other {تمت إعادة {action} — # صف لم تعد موجودة}}";
+            readonly undoSkipped: "تم تخطي التراجع — الصفوف المتأثرة لم تعد موجودة";
+            readonly redoSkipped: "تم تخطي الإعادة — الصفوف المتأثرة لم تعد موجودة";
+            readonly rowsInserted: "تم إدراج {count, plural, zero {# صف} one {صف واحد} two {صفين} few {# صفوف} many {# صفا} other {# صف}}";
+            readonly rowsDeleted: "تم حذف {count, plural, zero {# صف} one {صف واحد} two {صفين} few {# صفوف} many {# صفا} other {# صف}}";
+            readonly rowsMoved: "تم نقل {count, plural, zero {# صف} one {صف واحد} two {صفين} few {# صفوف} many {# صفا} other {# صف}}";
+            readonly moveRejected: "يتعذر نقل الصف إلى داخل شجرته الفرعية";
+            readonly editorCancelledRowRemoved: "تم إلغاء التحرير — تمت إزالة الصف";
+            readonly resolved: "تمت مطابقة {count, plural, zero {# تسمية} one {تسمية واحدة} two {تسميتين} few {# تسميات} many {# تسمية} other {# تسمية}}{errors, plural, =0 {} one {، واحدة لم تتطابق} two {، اثنتان لم تتطابقا} few {، # لم تتطابق} many {، # لم تتطابق} other {، # لم تتطابق}}";
+            readonly lazyLoadFailed: "تعذر تحميل الصفوف الفرعية";
+            readonly errorJump: "الخطأ {index, number} من {count, number}";
+            readonly checkedCount: "تم تحديد {selected, number} من {total, number}";
+            readonly loaded: "{count, plural, =0 {لا توجد سجلات} one {تم تحميل سجل واحد} two {تم تحميل سجلين} few {تم تحميل # سجلات} many {تم تحميل # سجلا} other {تم تحميل # سجل}}";
+            readonly loading: "جار التحميل";
+        };
+        readonly cellErrors: {
+            readonly invalidInput: "«{text}» ليست قيمة {column} صالحة.";
+            readonly precision: "«{text}» يحتوي على خانات أكثر من اللازم — {gender, select, female {أدخلي} other {أدخل}} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}}.";
+            readonly notFound: "لا يوجد {collection} باسم «{label}»";
+            readonly ambiguous: "«{label}» يطابق أكثر من {collection}";
+            readonly resolutionFailed: "تعذر التحقق من «{label}» في {collection} — الصقها مجددا لإعادة المحاولة";
+            readonly tally: "{count, plural, zero {# خطأ} one {خطأ واحد} two {خطآن} few {# أخطاء} many {# خطأ} other {# خطأ}}";
+            readonly pending: "{count, plural, zero {# خلية} one {خلية واحدة} two {خليتان} few {# خلايا} many {# خلية} other {# خلية}} قيد المطابقة";
+            readonly next: "الخطأ التالي";
+            readonly previous: "الخطأ السابق";
+        };
+        readonly find: {
+            readonly label: "البحث في الجدول";
+            readonly counter: "{index, number} من {count, number}";
+            readonly noMatches: "لا توجد تطابقات";
+            readonly next: "التطابق التالي";
+            readonly previous: "التطابق السابق";
+            readonly close: "إغلاق البحث";
+        };
+    };
+    readonly alert: {
+        readonly info: "معلومة:";
+        readonly success: "نجاح:";
+        readonly warning: "تحذير:";
+        readonly error: "خطأ:";
+    };
+    readonly modal: {
+        readonly close: "إغلاق";
+    };
+    readonly preview: {
+        readonly download: "تنزيل";
+        readonly print: "طباعة";
+        readonly unsupported: "المعاينة غير متاحة";
+        readonly unsupportedHint: "نزّل الملف لعرضه";
+        readonly loadError: "تعذر تحميل الملف";
+        readonly truncated: "يعرض أول 1 ميغابايت — نزّل الملف للباقي";
+    };
+    readonly filePicker: {
+        readonly hint: "اسحب الملفات وأفلتها هنا، أو الصق، أو";
+        readonly browse: "تصفح";
+        readonly acceptedTypes: "الأنواع المقبولة: {types}";
+        readonly maxSize: "حتى {maxMb, number} ميغابايت لكل ملف";
+        readonly maxSizeSingle: "حتى {maxMb, number} ميغابايت";
+        readonly announce: "{accepted, plural, =0 {لم تتم إضافة ملفات} one {تمت إضافة ملف واحد} two {تمت إضافة ملفين} few {تمت إضافة # ملفات} many {تمت إضافة # ملفًا} other {تمت إضافة # ملف}}{rejectedCount, plural, =0 {} one {، ورُفض ملف واحد} two {، ورُفض ملفان} few {، ورُفضت # ملفات} many {، ورُفض # ملفًا} other {، ورُفض # ملف}}";
+        readonly rejected: {
+            readonly size: "{name} أكبر من {maxMb, number} ميغابايت";
+            readonly type: "{name} ليس نوع ملف مقبولًا";
+            readonly count: "يمكن إضافة {maxFiles, plural, one {ملف واحد فقط} two {ملفين فقط} few {# ملفات فقط} many {# ملفًا فقط} other {# ملف فقط}}";
+            readonly folder: "لا يمكن إفلات المجلدات — أفلت الملفات فقط";
+        };
+    };
+    readonly image: {
+        readonly add: "إضافة صورة";
+        readonly replace: "استبدال الصورة";
+        readonly adjust: "ضبط الاقتصاص";
+        readonly remove: "إزالة الصورة";
+        readonly error: "تعذر تحميل الصورة";
+        readonly cropSurface: "منطقة الاقتصاص — مفاتيح الأسهم للتحريك، و+ و- للتكبير";
+        readonly zoom: "التكبير";
+        readonly done: "تم";
+        readonly tooLarge: "حجم الملف أكبر من {maxMb, number} ميغابايت";
+        readonly unsupported: "الملف ليس صورة مدعومة";
     };
 };
 

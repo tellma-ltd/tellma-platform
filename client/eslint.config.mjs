@@ -24,6 +24,9 @@ const UNPREFIXED_EXPORTS = [
   // fonts (§7.1)
   'fontPreloadLinks',
   'PreloadLink',
+  // The calendar provider — the name the component-basics spec defines
+  // (`provideTm…` carries the brand inside; only the prefix pattern differs).
+  'provideTmCalendar',
 ];
 
 const tmPlugin = {
@@ -31,6 +34,40 @@ const tmPlugin = {
     'prefix-exports': tmPrefixExports,
     'no-state-bindings-on-form-field': noStateBindingsOnFormField,
   },
+};
+
+/**
+ * What a calendar pack may import, shared by the two config blocks below
+ * (spec files get this list; shipped files get it plus the sibling-climb
+ * ban). The bare '@tellma/core-ui' specifier needs its own `paths` entry —
+ * a `group` pattern only ever matches subpaths, so without it a pack could
+ * pull the whole primary entry point in and still lint clean.
+ */
+const CALENDAR_BOUNDARY = {
+  paths: [
+    {
+      name: '@tellma/core-ui',
+      message: 'Calendar entry points may depend on l10n and contracts only.',
+    },
+  ],
+  patterns: [
+    {
+      group: ['@angular/*'],
+      message: 'Calendar entry points must stay free of Angular imports.',
+    },
+    {
+      group: ['@tellma/core-ui/*', '!@tellma/core-ui/l10n', '!@tellma/core-ui/contracts'],
+      message: 'Calendar entry points may depend on l10n and contracts only.',
+    },
+    {
+      group: ['@tellma/core-ui-*', '@tellma/core-ui-*/**', '@tellma/locale-*', '@tellma/locale-*/**'],
+      message: 'Calendar entry points may depend on l10n and contracts only.',
+    },
+    {
+      group: ['@jsverse/*', 'rxjs', 'rxjs/*'],
+      message: 'Calendar entry points are dependency-free beyond the calendar arithmetic package.',
+    },
+  ],
 };
 
 export default defineConfig(
@@ -84,7 +121,13 @@ export default defineConfig(
   // tm/Tm/TM_ prefix on every library export (reviewed allowlist above).
   {
     files: ['projects/core/**/*.ts', 'projects/locale/**/*.ts'],
-    ignores: ['**/*.spec.ts', '**/*.examples.ts', 'projects/core/tellma-core-ui-mcp/**'],
+    ignores: [
+      '**/*.spec.ts',
+      '**/*.examples.ts',
+      // Spec-only helpers (not exported from any entry point).
+      '**/*testing.util.ts',
+      'projects/core/tellma-core-ui-mcp/**',
+    ],
     plugins: { tm: tmPlugin },
     rules: {
       'tm/prefix-exports': ['error', { allow: UNPREFIXED_EXPORTS }],
@@ -118,6 +161,242 @@ export default defineConfig(
               message: "The contracts entry point must not reach into the primary entry point's internals.",
             },
           ],
+        },
+      ],
+    },
+  },
+
+  // Grid-engine entry-point boundary (spec 0004 §1, DoD 14): pure TypeScript
+  // plus @angular/core SIGNALS only — no DOM, no dependency injection, no
+  // components, no other @tellma packages except the contracts types. The
+  // engine must stay constructible in a plain vitest test.
+  {
+    files: ['projects/core/tellma-core-ui/grid-engine/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@angular/core',
+              importNames: [
+                'inject',
+                'Injectable',
+                'InjectionToken',
+                'Injector',
+                'Component',
+                'Directive',
+                'Pipe',
+                'NgModule',
+                'ElementRef',
+                'Renderer2',
+                'DestroyRef',
+                'ChangeDetectorRef',
+                'NgZone',
+                'ApplicationRef',
+                'effect',
+                'afterRenderEffect',
+                'afterNextRender',
+                'DOCUMENT',
+              ],
+              message:
+                'The grid engine uses @angular/core for signals only — no DI, components, or render hooks.',
+            },
+            {
+              name: '@tellma/core-ui',
+              message: 'The grid engine may depend on @tellma/core-ui/contracts only.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['@angular/*', '!@angular/core'],
+              message: 'The grid engine may import @angular/core (signals) only.',
+            },
+            {
+              group: ['@angular/core/*'],
+              message: 'The grid engine may not use @angular/core secondary entry points.',
+            },
+            {
+              // Gitignore semantics: exclude the entry points, re-include
+              // contracts (its parent directory itself stays includable).
+              group: ['@tellma/core-ui/*', '!@tellma/core-ui/contracts'],
+              message: 'The grid engine may depend on @tellma/core-ui/contracts only.',
+            },
+            {
+              group: ['@tellma/core-ui-*', '@tellma/core-ui-*/**', '@tellma/locale-*', '@tellma/locale-*/**'],
+              message: 'The grid engine may depend on @tellma/core-ui/contracts only.',
+            },
+            {
+              group: ['@jsverse/*', 'rxjs', 'rxjs/*'],
+              message: 'The grid engine is dependency-free beyond signals and contracts.',
+            },
+            {
+              group: ['../*'],
+              message: 'The grid engine must not reach into sibling entry points.',
+            },
+          ],
+        },
+      ],
+      'no-restricted-globals': [
+        'error',
+        ...[
+          'document',
+          'window',
+          'navigator',
+          'DOMParser',
+          'HTMLElement',
+          'Element',
+          'Node',
+          'Event',
+          'KeyboardEvent',
+          'MouseEvent',
+          'PointerEvent',
+          'ClipboardEvent',
+          'DataTransfer',
+          'MutationObserver',
+          'ResizeObserver',
+          'IntersectionObserver',
+          'getComputedStyle',
+          'requestAnimationFrame',
+          'cancelAnimationFrame',
+          'localStorage',
+          'sessionStorage',
+          'customElements',
+        ].map((name) => ({
+          name,
+          message: 'The grid engine is DOM-free; DOM work belongs to the grid component layer.',
+        })),
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "NewExpression[callee.name='InjectionToken']",
+          message: 'The grid engine must stay DI-free.',
+        },
+      ],
+    },
+  },
+
+  // Calendar entry-point boundary: the same pure posture as l10n (no
+  // Angular, no DOM, no DI), plus l10n itself for the shared adapter.
+  {
+    files: ['projects/core/tellma-core-ui/calendar-*/**/*.ts'],
+    rules: {
+      'no-restricted-imports': ['error', CALENDAR_BOUNDARY],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "NewExpression[callee.name='InjectionToken']",
+          message:
+            'Calendar entry points must stay DI-free (registration goes through provideTmCalendar).',
+        },
+      ],
+    },
+  },
+
+  // …and SHIPPED calendar code additionally never climbs out of its own
+  // entry point (a relative sibling import would duplicate that sibling into
+  // the pack's bundle). Specs are exempt: both packs are checked against the
+  // one date-format golden, which lives next to the code that produced it.
+  {
+    files: ['projects/core/tellma-core-ui/calendar-*/**/*.ts'],
+    ignores: ['**/*.spec.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          ...CALENDAR_BOUNDARY,
+          patterns: [
+            ...CALENDAR_BOUNDARY.patterns,
+            {
+              group: ['../*'],
+              message: 'Calendar entry points must not reach into sibling entry points.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // l10n entry-point boundary: pure TypeScript + Intl (+ the calendar
+  // arithmetic dependency) — no Angular at all, no DOM, no DI, no other
+  // @tellma packages except the contracts types. Formatting/parsing must
+  // stay deterministic per (input, locale, options) and constructible in a
+  // plain vitest test.
+  {
+    files: ['projects/core/tellma-core-ui/l10n/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@tellma/core-ui',
+              message: 'The l10n entry point may depend on @tellma/core-ui/contracts only.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['@angular/*'],
+              message: 'The l10n entry point must stay free of Angular imports.',
+            },
+            {
+              // Gitignore semantics: exclude the entry points, re-include
+              // contracts (its parent directory itself stays includable).
+              group: ['@tellma/core-ui/*', '!@tellma/core-ui/contracts'],
+              message: 'The l10n entry point may depend on @tellma/core-ui/contracts only.',
+            },
+            {
+              group: ['@tellma/core-ui-*', '@tellma/core-ui-*/**', '@tellma/locale-*', '@tellma/locale-*/**'],
+              message: 'The l10n entry point may depend on @tellma/core-ui/contracts only.',
+            },
+            {
+              group: ['@jsverse/*', 'rxjs', 'rxjs/*'],
+              message:
+                'The l10n entry point is dependency-free beyond Intl, contracts, and the calendar arithmetic package.',
+            },
+            {
+              group: ['../*'],
+              message: 'The l10n entry point must not reach into sibling entry points.',
+            },
+          ],
+        },
+      ],
+      'no-restricted-globals': [
+        'error',
+        ...[
+          'document',
+          'window',
+          'navigator',
+          'DOMParser',
+          'HTMLElement',
+          'Element',
+          'Node',
+          'Event',
+          'KeyboardEvent',
+          'MouseEvent',
+          'PointerEvent',
+          'ClipboardEvent',
+          'DataTransfer',
+          'MutationObserver',
+          'ResizeObserver',
+          'IntersectionObserver',
+          'getComputedStyle',
+          'requestAnimationFrame',
+          'cancelAnimationFrame',
+          'localStorage',
+          'sessionStorage',
+          'customElements',
+        ].map((name) => ({
+          name,
+          message: 'The l10n entry point is DOM-free; DOM work belongs to the component layer.',
+        })),
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "NewExpression[callee.name='InjectionToken']",
+          message: 'The l10n entry point must stay DI-free (the calendar token lives in the primary entry point).',
         },
       ],
     },

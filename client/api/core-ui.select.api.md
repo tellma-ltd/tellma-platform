@@ -5,7 +5,10 @@
 ```ts
 
 import * as _angular_core from '@angular/core';
+import { CdkConnectedOverlay } from '@angular/cdk/overlay';
+import { CdkConnectedOverlayConfig } from '@angular/cdk/overlay';
 import { ConnectedPosition } from '@angular/cdk/overlay';
+import { FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
 import { Signal } from '@angular/core';
 import { TemplateRef } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
@@ -25,6 +28,7 @@ export class TmOption<T> {
 // @public
 export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefined> {
     constructor();
+    protected readonly anchored: _tellma_core_ui_private.TmAnchoredOverlay;
     readonly ariaDescribedby: _angular_core.InputSignal<string | null>;
     readonly ariaLabel: _angular_core.InputSignal<string | null>;
     protected readonly ariaLabelledBy: Signal<string | null>;
@@ -47,11 +51,10 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     protected readonly listboxValue: _angular_core.WritableSignal<unknown[]>;
     readonly localizedErrors: () => readonly TmFieldError[];
     onContainerClick(): void;
-    onKeydown(event: KeyboardEvent): void;
     protected onListboxClick(event: MouseEvent): void;
-    protected onOverlayAttach(): void;
     protected onSpaceKey(): void;
     protected onTriggerKeydown(event: KeyboardEvent): void;
+    open(): void;
     readonly opened: _angular_core.OutputEmitterRef<void>;
     protected readonly options: Signal<readonly TmOption<T>[]>;
     readonly ownsChrome = true;
@@ -60,12 +63,14 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     protected readonly positions: ConnectedPosition[];
     readonly readonly: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly required: _angular_core.InputSignalWithTransform<boolean, unknown>;
+    seed(text: string): void;
     readonly selectionChange: _angular_core.OutputEmitterRef<T>;
     setDescribedByIds(ids: readonly string[]): void;
     setLabelId(id: string | null): void;
     protected readonly showsInvalid: Signal<boolean>;
     protected readonly showsPlaceholder: Signal<boolean>;
     readonly size: _angular_core.InputSignal<"sm" | "md" | "lg">;
+    readonly text: Signal<string | null>;
     readonly touch: _angular_core.OutputEmitterRef<void>;
     readonly touched: _angular_core.InputSignalWithTransform<boolean, unknown>;
     protected readonly triggerLabel: Signal<string>;

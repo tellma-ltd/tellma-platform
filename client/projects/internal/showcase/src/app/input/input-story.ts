@@ -55,6 +55,16 @@ import { TmFormField } from '@tellma/core-ui/form-field';
       <tm-form-field label="Mixed bidi (English-first)" data-testid="ff-bidi-en">
         <input tmInput [formField]="f.bidiEnglish" data-testid="input-bidi-en" />
       </tm-form-field>
+
+      <tm-form-field label="Notes" hint="Visible to the whole team" data-testid="ff-notes">
+        <textarea
+          tmInput
+          rows="4"
+          [formField]="f.notes"
+          placeholder="Add a note"
+          data-testid="textarea-notes"
+        ></textarea>
+      </tm-form-field>
     </div>
   `,
   styles: `
@@ -78,6 +88,7 @@ export class InputStory {
     large: '',
     bidiArabic: 'مرحبا ABC-123',
     bidiEnglish: 'Order رقم 42',
+    notes: '',
   });
 
   readonly f = form(this.model, (p) => {

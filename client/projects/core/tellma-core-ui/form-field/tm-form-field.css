@@ -29,11 +29,16 @@
 }
 
 .tm-form-field__box {
+  /* The height lives in a local so the size variants can restate it once
+     and every rule derived from it (see the trailing-affordance padding
+     below) follows automatically. */
+  --tm-field-block-size: var(--field-height);
+
   display: flex;
   align-items: center;
   gap: var(--space-2);
   box-sizing: border-box;
-  block-size: var(--field-height);
+  block-size: var(--tm-field-block-size);
   padding-inline: var(--field-padding-x);
   background: var(--field-bg);
   border: var(--border-width) solid var(--field-border);
@@ -43,11 +48,11 @@
 }
 
 :host(.tm-form-field--sm) .tm-form-field__box {
-  block-size: var(--field-height-sm);
+  --tm-field-block-size: var(--field-height-sm);
 }
 
 :host(.tm-form-field--lg) .tm-form-field__box {
-  block-size: var(--field-height-lg);
+  --tm-field-block-size: var(--field-height-lg);
 }
 
 .tm-form-field__box:hover {
@@ -58,6 +63,13 @@
    wrapper's, not a border on the empty <input> element (§3). */
 .tm-form-field__box:focus-within {
   border-color: var(--field-border-focus);
+  /* A transparent REAL outline beneath the token ring: forced colors strip
+     box-shadows but repaint outline-color in a system color, so the outline
+     is the only thing left carrying focus there. The focus border alone
+     cannot stand in — forced colors flattens it to the same FieldText the
+     unfocused box already uses. */
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
   box-shadow: var(--focus-ring);
 }
 

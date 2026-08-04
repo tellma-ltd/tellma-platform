@@ -13,8 +13,11 @@
   font-family: var(--font-ui);
   font-size: var(--field-font-size);
   color: var(--field-text);
-  /* Alignment follows the field's own dir="auto" base direction (§7). */
-  text-align: start;
+  /* Inherit the container's alignment: a bare field follows its dir="auto"
+     base direction (start), while a grid cell editor picks up the column's
+     alignment — so a number editor is right-aligned like its committed value,
+     not left while editing then right after commit. */
+  text-align: inherit;
 }
 
 .tm-input::placeholder {
@@ -37,4 +40,41 @@
      The enclosing .tm-form-field__box:focus-within ring is the equally-visible
      substitute (§6); a second UA outline inside the box would double up. */
   outline: none;
+}
+
+/* Textarea host: height comes from the authored rows and the size-stability
+   rule pins it — a user-draggable resize handle would shift the layout
+   below. An ordinary class rule, so a consumer stylesheet can re-enable
+   resizing where a growable comment box is genuinely wanted. */
+textarea.tm-input {
+  resize: none;
+  line-height: var(--leading-ui);
+}
+
+/* A multi-line control changes the enclosing field box from a fixed-height
+   centered row to a grown box with first-line alignment for adornments.
+   These rules live HERE (the global sheet) deliberately: the projected
+   textarea carries the consumer's encapsulation attribute, so the field's
+   own scoped stylesheet could never match it inside :has(). The extra
+   type selector in the :has() argument also outweighs the scoped
+   block-size rule on specificity ties. */
+.tm-form-field__box:has(> textarea.tm-input--multiline) {
+  block-size: auto;
+  min-block-size: var(--field-height);
+  align-items: flex-start;
+  padding-block: var(--field-padding-y);
+}
+
+/* A trailing icon button inside a field (the date picker's calendar
+   toggle) reads as crowded when it sits closer to the end border than to
+   the top and bottom ones. Centering already leaves it
+   (field height - button)/2 from those, so the end padding shrinks to
+   match; the button's own hit area still spans the full field height.
+   Global, like the textarea rules above: the button is PROJECTED into
+   the field, which scoped field styles cannot select. */
+/* The doubled class outranks the field's own scoped `padding-inline`,
+   which Angular emits with an equal-specificity attribute and injects
+   after this sheet. */
+.tm-form-field__box.tm-form-field__box:has(.tm-form-field__trailing-icon) {
+  padding-inline-end: calc((var(--tm-field-block-size) - var(--space-6)) / 2 - var(--border-width));
 }

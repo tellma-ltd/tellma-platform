@@ -1,0 +1,59 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-date-picker — bare anatomy (input + trailing calendar button); the
+   bordered box, focus ring, and labels belong to the enclosing
+   tm-form-field (ownsChrome: false), or to the grid cell. */
+
+:host {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.tm-date-picker__input {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.tm-date-picker__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  inline-size: var(--space-6);
+  block-size: var(--space-6);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--field-icon);
+  cursor: pointer;
+}
+
+.tm-date-picker__toggle:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--field-text);
+}
+
+.tm-date-picker__toggle:disabled {
+  cursor: default;
+  color: var(--field-text-disabled);
+}
+
+.tm-date-picker__toggle > svg {
+  inline-size: var(--space-4);
+  block-size: var(--space-4);
+}
+
+@media (forced-colors: active) {
+  .tm-date-picker__toggle {
+    color: ButtonText;
+  }
+}

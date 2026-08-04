@@ -9,16 +9,18 @@ import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet } fr
 import { Dir } from '@angular/cdk/bidi';
 import { TranslocoService } from '@jsverse/transloco';
 
+import { ShowcaseCalendar, type ShowcaseCalendarId } from './i18n/showcase-calendar';
 import { SHOWCASE_STORIES } from './stories';
 
 /**
- * The showcase shell: a persistent header with the story menu and the
- * light/dark + EN/AR toggles, visible on every page. The URL stays the
- * source of truth for appearance (?theme=dark, ?dir=rtl — every story stays
- * addressable in all combinations for the Playwright matrix): the theme
- * toggle rewrites the query params, and this shell is the ONE place that
- * applies dir/lang/data-theme to <html>. Direction follows the language
- * unless ?dir= forces it.
+ * The showcase shell: a header carrying the light/dark, EN/AR, and
+ * display-calendar toggles over a side rail listing the stories, both
+ * present on every page. The URL stays the source of truth for appearance
+ * (?theme=dark, ?dir=rtl — every story stays addressable in all
+ * combinations for the Playwright matrix): the theme toggle rewrites the
+ * query params, and this shell is the ONE place that applies
+ * dir/lang/data-theme to <html>. Direction follows the language unless
+ * ?dir= forces it.
  *
  * The story outlet is additionally wrapped in the CDK `Dir` directive: the
  * root Directionality reads <html dir> ONCE at construction, so a LIVE dir
@@ -36,6 +38,9 @@ export class App {
   private readonly document = inject(DOCUMENT);
   private readonly router = inject(Router);
   private readonly transloco = inject(TranslocoService);
+  private readonly calendars = inject(ShowcaseCalendar);
+  /** The ambient display calendar's id, for the shell's picker. */
+  protected readonly calendarId = this.calendars.id.asReadonly();
 
   protected readonly stories = SHOWCASE_STORIES;
   protected readonly lang = signal('en');
@@ -43,9 +48,23 @@ export class App {
   // Query params are route-global, so the root route sees every page's.
   private readonly query = toSignal(inject(ActivatedRoute).queryParamMap);
 
-  protected readonly theme = computed(() =>
-    this.query()?.get('theme') === 'dark' ? 'dark' : 'light',
-  );
+  /**
+   * Until the router resolves, the theme comes from the RAW url: the query
+   * signal starts `undefined`, and falling back to light would flip a cold
+   * ?theme=dark load light→dark across the first paint — WebKit sometimes
+   * fails to re-resolve custom properties on part of the tree after such a
+   * post-paint flip, leaving stale light-theme colors on a dark page.
+   */
+  private readonly urlDark =
+    new URLSearchParams(this.document.location.search).get('theme') === 'dark';
+
+  protected readonly theme = computed(() => {
+    const query = this.query();
+    if (query === undefined) {
+      return this.urlDark ? 'dark' : 'light';
+    }
+    return query.get('theme') === 'dark' ? 'dark' : 'light';
+  });
   protected readonly dir = computed(() =>
     (this.query()?.get('dir') ?? (this.lang() === 'ar' ? 'rtl' : 'ltr')) === 'rtl'
       ? ('rtl' as const)
@@ -75,5 +94,10 @@ export class App {
   protected setLang(lang: string): void {
     this.transloco.setActiveLang(lang);
     this.lang.set(lang);
+  }
+
+  /** Switches the ambient display calendar for every story at once. */
+  protected setCalendar(event: Event): void {
+    this.calendars.id.set((event.target as HTMLSelectElement).value as ShowcaseCalendarId);
   }
 }

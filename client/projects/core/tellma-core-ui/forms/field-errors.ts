@@ -16,16 +16,29 @@ import type { TmUiTranslateFn } from '../i18n/tm-ui-translate';
  * interpolate them. Everything except the error envelope fields is a
  * param.
  */
-export function tmErrorParams(error: ValidationError): Record<string, unknown> {
+export function tmErrorParams(
+  error: ValidationError,
+  formatDate?: (iso: string) => string,
+): Record<string, unknown> {
   const params: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(error)) {
     if (key === 'kind' || key === 'message' || key === 'fieldTree' || key === 'formField') {
       continue;
     }
-    params[key] = value;
+    // A date bound travels as the ISO value currency, which is machine
+    // text — a message that shows it raw reads in neither the user's
+    // calendar nor their digits ("on or before 2026-03-31" under an
+    // Arabic Umm al-Qura field).
+    params[key] =
+      formatDate !== undefined && typeof value === 'string' && ISO_DATE.test(value)
+        ? formatDate(value)
+        : value;
   }
   return params;
 }
+
+/** The ISO date shape the value currency uses — see {@link tmErrorParams}. */
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * The validation-message resolver. Message precedence: a schema-inline
@@ -38,6 +51,7 @@ export function tmErrorParams(error: ValidationError): Record<string, unknown> {
 export function tmResolveFieldErrors(
   errors: Signal<readonly ValidationError.WithOptionalFieldTree[]>,
   translate: TmUiTranslateFn,
+  formatDate?: (iso: string) => string,
 ): Signal<readonly TmFieldError[]> {
   return computed(
     () =>
@@ -46,7 +60,7 @@ export function tmResolveFieldErrors(
         // `||`, not `??`: a blank inline message must not beat the localized
         // default — the field would show its invalid state announcing nothing.
         message:
-          error.message || translate(`errors.${error.kind}`, tmErrorParams(error))(),
+          error.message || translate(`errors.${error.kind}`, tmErrorParams(error, formatDate))(),
       })),
     {
       // Errors are recreated per validation run; compare by value so

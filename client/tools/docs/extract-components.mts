@@ -335,8 +335,14 @@ export function extractComponents(): ComponentsJson {
       const template = metaString(meta, 'template') ?? '';
       const { inputs, outputs, formControl } = extractProps(cls);
 
+      // Multi-selectors ('input[tmInput], textarea[tmInput]') derive the
+      // display name from their FIRST part — the whole-string strip would
+      // mangle it into 'tmInput], textarea[tmInput'.
+      const primarySelector = selector.split(',')[0].trim();
       components.push({
-        name: selector.startsWith('input[') ? selector.replace(/^input\[|\]$/g, '') : selector,
+        name: primarySelector.startsWith('input[')
+          ? primarySelector.replace(/^input\[|\]$/g, '')
+          : selector,
         kind,
         group: jsDocTag(cls, 'tmGroup') ?? 'form-control',
         selector,

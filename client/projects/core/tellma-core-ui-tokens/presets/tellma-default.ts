@@ -98,7 +98,11 @@ const dark: TmSchemeColors = {
   },
   surface: {
     page: '#0D181E',
-    subtle: '#0D181E',
+    // A visible step OFF the page (midway to the card surface): the role's
+    // contract is "a subtle panel tint", and everything riding it — grid
+    // zebra stripes, readonly-cell tints, header fills — vanishes if it
+    // collapses onto the page color the way an earlier draft had it.
+    subtle: '#121E25',
     sunken: '#0A1418',
     card: darkNeutral.surface,
     inverse: darkNeutral[25],
@@ -250,10 +254,144 @@ export const tmTokensDefault: TmTokens = {
     },
   },
   component: {
+    // tm-alert: page/section status wrapper — geometry only; per-kind
+    // colors ride the status semantic tokens in the component CSS.
+    alert: {
+      gap: '8px',
+      paddingX: '12px',
+      paddingY: '10px',
+      radius: '{radius.sm}',
+      iconSize: '16px',
+    },
+    // tmButton: heights ride the shared field-height scale (buttons align
+    // with form fields in toolbars); per-variant colors resolve per scheme
+    // through the semantic action/field/status roles.
+    button: {
+      radius: '{radius.sm}',
+      gap: '8px',
+      paddingXSm: '10px',
+      paddingX: '14px',
+      paddingXLg: '18px',
+      disabledOpacity: '0.55',
+      primaryBg: '{action.primary}',
+      primaryText: '{action.onPrimary}',
+      primaryHoverBg: '{action.primaryHover}',
+      primaryActiveBg: '{action.primaryActive}',
+      secondaryBg: '{field.bg}',
+      secondaryText: '{text.body}',
+      secondaryBorder: '{field.border}',
+      secondaryHoverBg: '{surface.hover}',
+      ghostText: '{text.body}',
+      ghostHoverBg: '{surface.hover}',
+      dangerBg: '{status.error.fg}',
+      dangerText: '{action.onPrimary}',
+    },
     // tm-checkbox (§3.3): the visible box renders at the brand 18px while
     // the hit target is padded past the 24px minimum.
     checkbox: { boxSize: '18px' },
+    // tm-date-picker: popup geometry. Cells exceed the 24px touch minimum;
+    // the popup width holds seven cells plus gaps at every view.
+    datePicker: {
+      cellSize: '32px',
+      cellGap: '2px',
+      popupWidth: '280px',
+      popupPadding: '12px',
+    },
     // tm-select (§3.4): panel + option-row geometry (touch-comfortable rows).
     select: { panelMaxHeight: '280px', optionHeight: '36px' },
+    // tm-entity-picker (spec 0006 §10): dropdown geometry — rows share the
+    // select's touch-comfortable sizing; the min-width floor keeps the panel
+    // readable when a narrow grid cell would make matched width unusable.
+    entityPicker: {
+      panelMaxHeight: '280px',
+      optionHeight: '36px',
+      panelMinWidth: '200px',
+    },
+    // tm-grid / tm-tree-grid: row density mirrors the field-height scale
+    // one notch tighter (data rows, not form fields); selection fill is a
+    // translucent brand teal so gridlines and text stay readable under it.
+    grid: {
+      rowHeight: '32px',
+      rowHeightSm: '26px',
+      rowHeightLg: '40px',
+      headerBg: '{surface.subtle}',
+      headerText: '{text.secondary}',
+      line: '{border.subtle}',
+      selectionBg: 'rgba(76, 160, 182, 0.14)',
+      selectionBorder: '{action.accent}',
+      errorBg: '{status.error.bg}',
+      errorBorder: '{status.error.border}',
+      readonlyBg: '{surface.subtle}',
+      zebraBg: '{surface.subtle}',
+      cutBorder: '{action.accent}',
+      findMatchBg: '{status.warning.bg}',
+      findActiveOutline: '{status.warning.fg}',
+      indent: '20px',
+      rowHeaderWidth: '48px',
+      checkColWidth: '36px',
+      minColWidth: '48px',
+      handleSize: '24px',
+    },
+    // tm-dropzone: drop-region geometry; colors ride the field/surface
+    // semantics in the component CSS.
+    files: {
+      dropzoneMinHeight: '120px',
+      dropzonePadding: '16px',
+      dropzoneRadius: '{radius.md}',
+    },
+    // tm-image: fixed-box chrome. The chrome fill is a static ink veil
+    // that reads over any image on both schemes.
+    image: {
+      radius: '{radius.sm}',
+      glyphSize: '32px',
+      chromeBg: 'rgba(8, 18, 24, 0.62)',
+      chromeText: '{white}',
+    },
+    // tm-menu: panel + item-row geometry; colors ride the field/surface
+    // semantic tokens in the component CSS.
+    menu: { minWidth: '180px', itemHeight: '32px', iconSize: '16px' },
+    // tm-modal: panel buckets + shell geometry. The scrim is a static ink
+    // veil that reads correctly over both schemes.
+    modal: {
+      widthSm: '420px',
+      widthMd: '640px',
+      margin: '16px',
+      lgMargin: '48px',
+      radius: '{radius.md}',
+      paddingX: '20px',
+      closeSize: '32px',
+      iconSize: '16px',
+      scrim: 'rgba(4, 18, 24, 0.55)',
+    },
+    // tm-file-preview: viewer-region geometry inside the lg modal.
+    preview: {
+      minHeight: '320px',
+      audioMaxWidth: '480px',
+    },
+    // tm-popover: panel geometry; colors ride the surface/border semantics
+    // in the component CSS.
+    popover: {
+      padding: '12px',
+      radius: '{radius.md}',
+      maxInlineSize: '320px',
+    },
+    // tm-tab-group: strip geometry; the active indicator draws inside the
+    // tab box so activation never reflows.
+    tabs: {
+      height: '38px',
+      indicatorThickness: '2px',
+      gap: '4px',
+      labelPaddingX: '12px',
+    },
+    // tmTooltip: inverse-surface text bubble. The directive reads `delay`
+    // at show time; `offset` is the visual gap from the host.
+    tooltip: {
+      delay: '500ms',
+      offset: '6px',
+      paddingX: '8px',
+      paddingY: '4px',
+      radius: '{radius.xs}',
+      maxInlineSize: '260px',
+    },
   },
 };

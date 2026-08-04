@@ -1,0 +1,218 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-modal — shell + panel + backdrop. Encapsulation is off (see the shell
+   component): these rules must reach the overlay pane, the backdrop, the
+   CDK container, and the consumer-owned footer element. */
+
+.tm-modal-backdrop {
+  background: var(--modal-scrim);
+}
+
+/* The overlay pane carries the size buckets. Every bucket is capped to the
+   viewport minus the small margin — the scroll then happens in the body. */
+.tm-modal-panel {
+  display: flex;
+  max-inline-size: calc(100vw - 2 * var(--modal-margin));
+  max-block-size: calc(100vh - 2 * var(--modal-margin));
+}
+
+.tm-modal-panel--sm {
+  inline-size: var(--modal-width-sm);
+}
+
+.tm-modal-panel--md {
+  inline-size: var(--modal-width-md);
+}
+
+.tm-modal-panel--lg {
+  inline-size: calc(100vw - 2 * var(--modal-lg-margin));
+  block-size: calc(100vh - 2 * var(--modal-lg-margin));
+}
+
+/* Small-viewport convergence: every bucket goes near-full-screen. (A raw
+   600px breakpoint — custom properties don't resolve in media queries.) */
+@media (max-width: 600px) {
+  .tm-modal-panel--sm,
+  .tm-modal-panel--md,
+  .tm-modal-panel--lg {
+    inline-size: calc(100vw - 2 * var(--modal-margin));
+  }
+
+  .tm-modal-panel--lg {
+    block-size: calc(100vh - 2 * var(--modal-margin));
+  }
+}
+
+.tm-modal-panel > cdk-dialog-container {
+  display: flex;
+  flex-direction: column;
+  inline-size: 100%;
+  max-block-size: 100%;
+  background: var(--surface-card);
+  color: var(--text-body);
+  border-radius: var(--modal-radius);
+  box-shadow: var(--shadow-lg);
+  /* Clips the scrolling body to the rounded corners. */
+  overflow: hidden;
+  animation: tm-modal-enter var(--duration-normal) var(--ease-out);
+}
+
+.tm-modal-panel--lg > cdk-dialog-container {
+  block-size: 100%;
+}
+
+.tm-modal {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-block-size: 0;
+  font-family: var(--font-ui);
+}
+
+.tm-modal__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  padding-block: var(--space-3);
+  padding-inline-start: var(--modal-padding-x);
+  /* The close button sits in this corner, so the end padding is the air
+     AROUND it, not the text inset the start edge carries: matching the
+     block padding puts the same gap on all three sides it touches. */
+  padding-inline-end: var(--space-3);
+  border-block-end: var(--border-width) solid var(--divider);
+}
+
+.tm-modal__title {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+}
+
+.tm-modal__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  margin-inline-start: auto;
+  inline-size: var(--modal-close-size);
+  block-size: var(--modal-close-size);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.tm-modal__close svg {
+  inline-size: var(--modal-icon-size);
+  block-size: var(--modal-icon-size);
+}
+
+.tm-modal__close:hover {
+  background: var(--surface-hover);
+  color: var(--text-body);
+}
+
+.tm-modal__close:focus-visible {
+  /* A transparent REAL outline beneath the token ring: forced colors strip
+     box-shadows but repaint outline-color in a system color, so the outline
+     is the only thing left carrying focus there. */
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-ring);
+}
+
+.tm-modal__body {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-4) var(--modal-padding-x);
+}
+
+/* Full-bleed content (a file preview) owns the whole scrollport: the
+   body's own padding would only shrink the area the content is there to
+   fill. The header and footer keep theirs. The block-end padding goes too
+   — with a footer the `:has()` rule below already drops it, and without
+   one (a PDF, whose viewer carries its own chrome) it would show as a
+   band of dead space under the document. */
+.tm-modal-panel--flush .tm-modal__body {
+  padding: 0;
+}
+
+/* With that padding gone there is nothing left for the footer's negative
+   inline margin to cancel — it would simply overhang the panel and put a
+   horizontal scrollbar under the content. */
+.tm-modal-panel--flush .tm-modal__footer {
+  margin-inline: 0;
+}
+
+/* With a footer present the body becomes the column that carries it:
+   the projected content fills the scrollport so `margin-block-start:
+   auto` can hold the footer against the bottom even when the content is
+   far shorter than the panel — the pinned footer the size variants
+   promise. The end padding goes with it, so the bar sits flush. */
+.tm-modal__body:has(.tm-modal__footer) {
+  display: flex;
+  flex-direction: column;
+  padding-block-end: 0;
+}
+
+.tm-modal__body:has(.tm-modal__footer) > * {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+/* The footer lives inside the CONSUMER's content (the TmModalFooter
+   directive applies this class); sticky pins it to the scrollport bottom
+   while the negative margins cancel the body padding so it runs edge to
+   edge and sits flush at rest. */
+.tm-modal__footer {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-block-start: auto;
+  margin-inline: calc(-1 * var(--modal-padding-x));
+  padding-block: var(--space-2);
+  padding-inline: var(--modal-padding-x);
+  background: var(--surface-card);
+  border-block-start: var(--border-width) solid var(--divider);
+}
+
+@keyframes tm-modal-enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-2)) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-modal-panel > cdk-dialog-container {
+    animation: none;
+  }
+
+  .tm-modal-backdrop {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  /* The scrim and shadow are stripped — a real border keeps the modal's
+     edge visible against the page. */
+  .tm-modal-panel > cdk-dialog-container {
+    border: var(--border-width) solid CanvasText;
+  }
+}

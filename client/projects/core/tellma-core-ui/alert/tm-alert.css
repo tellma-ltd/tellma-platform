@@ -1,0 +1,102 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-alert — tinted, bordered status wrapper. Per-kind accent colors come
+   from the status semantic tokens (scheme-aware); geometry from the
+   --alert-* component tokens. */
+
+:host {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--alert-gap);
+  box-sizing: border-box;
+  padding: var(--alert-padding-y) var(--alert-padding-x);
+  border: var(--border-width) solid;
+  border-radius: var(--alert-radius);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  line-height: var(--leading-ui);
+  color: var(--text-body);
+}
+
+:host(.tm-alert--info) {
+  background: var(--info-bg);
+  border-color: var(--info-border);
+}
+
+:host(.tm-alert--success) {
+  background: var(--success-bg);
+  border-color: var(--success-border);
+}
+
+:host(.tm-alert--warning) {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+}
+
+:host(.tm-alert--error) {
+  background: var(--error-bg);
+  border-color: var(--error-border);
+}
+
+.tm-alert__icon {
+  flex: none;
+  inline-size: var(--alert-icon-size);
+  block-size: var(--alert-icon-size);
+  /* Optically center the glyph on the first text line. */
+  margin-block-start: calc((1lh - var(--alert-icon-size)) / 2);
+}
+
+:host(.tm-alert--info) .tm-alert__icon {
+  color: var(--info);
+}
+
+:host(.tm-alert--success) .tm-alert__icon {
+  color: var(--success);
+}
+
+:host(.tm-alert--warning) .tm-alert__icon {
+  color: var(--warning);
+}
+
+:host(.tm-alert--error) .tm-alert__icon {
+  color: var(--error);
+}
+
+.tm-alert__content {
+  min-inline-size: 0;
+}
+
+.tm-alert__heading {
+  display: block;
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+}
+
+/* Visually hidden, present for the screen reader's linearization. */
+.tm-alert__sr-kind {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (forced-colors: active) {
+  /* Tints are forced away; the border plus the hidden prefix keep the kind
+     distinguishable. */
+  :host {
+    border-color: CanvasText;
+  }
+
+  .tm-alert__icon {
+    color: CanvasText;
+  }
+}

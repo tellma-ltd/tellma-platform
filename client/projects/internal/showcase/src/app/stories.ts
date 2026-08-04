@@ -5,10 +5,30 @@
 
 import { Component, Type } from '@angular/core';
 
+import { AlertStory } from './alert/alert-story';
+import { ButtonStory } from './button/button-story';
 import { CheckboxStory } from './checkbox/checkbox-story';
+import { DatePickerStory } from './date-picker/date-picker-story';
+import { EntityPickerStory } from './entity-picker/entity-picker-story';
+import { GridCustomEditorStory } from './grid/grid-custom-editor-story';
+import { GridEditableStory } from './grid/grid-editable-story';
+import { GridEntityStory } from './grid/grid-entity-story';
+import { GridListScreenStory } from './grid/grid-list-screen-story';
+import { GridReadonlyStory } from './grid/grid-readonly-story';
+import { FilePreviewStory } from './file-preview/file-preview-story';
+import { FilesStory } from './files/files-story';
+import { GridStatesStory } from './grid/grid-states-story';
+import { TreeGridStory } from './grid/tree-grid-story';
 import { I18nStory } from './i18n/i18n-story';
+import { ImageStory } from './image/image-story';
 import { InputStory } from './input/input-story';
+import { MenuStory } from './menu/menu-story';
+import { ModalStory } from './modal/modal-story';
+import { NumberStory } from './number/number-story';
+import { PopoverStory } from './popover/popover-story';
+import { TooltipStory } from './tooltip/tooltip-story';
 import { SelectStory } from './select/select-story';
+import { TabsStory } from './tabs/tabs-story';
 import { ThemingStory } from './theming/theming-story';
 
 /**
@@ -22,6 +42,8 @@ export interface ShowcaseStory {
   readonly id: string;
   readonly title: string;
   readonly component: Type<unknown>;
+  /** Lifts the story shell's inline-size cap (data-dense stories like grids). */
+  readonly wide?: boolean;
 }
 
 @Component({
@@ -38,8 +60,47 @@ export class WelcomeStory {}
 export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'welcome', title: 'Welcome', component: WelcomeStory },
   { id: 'theming', title: 'Tokens & theming', component: ThemingStory },
+  { id: 'button', title: 'Button (tmButton)', component: ButtonStory },
+  { id: 'alert', title: 'Alert (tm-alert)', component: AlertStory },
   { id: 'input', title: 'Text input (tmInput + tm-form-field)', component: InputStory },
+  { id: 'number', title: 'Number input (tmNumber)', component: NumberStory },
+  { id: 'date-picker', title: 'Date picker (tm-date-picker)', component: DatePickerStory },
   { id: 'checkbox', title: 'Checkbox (tm-checkbox)', component: CheckboxStory },
+  { id: 'image', title: 'Image (tm-image)', component: ImageStory },
+  { id: 'files', title: 'Files (tmFilePicker + tm-dropzone)', component: FilesStory },
+  { id: 'file-preview', title: 'File preview (TmFilePreview)', component: FilePreviewStory },
   { id: 'select', title: 'Select (tm-select)', component: SelectStory },
+  {
+    id: 'entity-picker',
+    title: 'Entity picker (tm-entity-picker)',
+    component: EntityPickerStory,
+  },
+  { id: 'tabs', title: 'Tabs (tm-tab-group)', component: TabsStory },
+  { id: 'modal', title: 'Modal (TmModal)', component: ModalStory },
+  { id: 'popover', title: 'Popover (tm-popover)', component: PopoverStory },
+  { id: 'tooltip', title: 'Tooltip (tmTooltip)', component: TooltipStory },
+  { id: 'menu', title: 'Menu', component: MenuStory },
+  { id: 'grid-readonly', title: 'Grid (readonly)', component: GridReadonlyStory, wide: true },
+  {
+    id: 'grid-list-screen',
+    title: 'Grid (list screen: selectable + searchable)',
+    component: GridListScreenStory,
+    wide: true,
+  },
+  { id: 'grid-states', title: 'Grid (states)', component: GridStatesStory, wide: true },
+  { id: 'grid-editable', title: 'Grid (editable)', component: GridEditableStory, wide: true },
+  {
+    id: 'grid-entity',
+    title: 'Grid (entity picker editor)',
+    component: GridEntityStory,
+    wide: true,
+  },
+  {
+    id: 'grid-custom-editor',
+    title: 'Grid (custom editor)',
+    component: GridCustomEditorStory,
+    wide: true,
+  },
+  { id: 'tree-grid', title: 'Tree grid', component: TreeGridStory, wide: true },
   { id: 'i18n', title: 'i18n / locale packs', component: I18nStory },
 ];

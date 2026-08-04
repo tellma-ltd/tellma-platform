@@ -18,8 +18,9 @@ import {
 } from '@angular/core';
 import type { ValidationError } from '@angular/forms/signals';
 
-import type { TmFieldError, TmFormFieldControl } from '@tellma/core-ui/contracts';
-import { TM_ERROR_DISPLAY, TM_UI_TRANSLATE, tmResolveFieldErrors } from '@tellma/core-ui';
+import type { TmCellDisplay, TmFieldError, TmFormFieldControl } from '@tellma/core-ui/contracts';
+import { TM_ERROR_DISPLAY, TM_UI_TRANSLATE, TmL10n, tmResolveFieldErrors } from '@tellma/core-ui';
+import { tmFormatDate } from '@tellma/core-ui/l10n';
 import { TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/form-field';
 
 let nextUniqueId = 0;
@@ -108,6 +109,8 @@ let nextUniqueId = 0;
 export class TmCheckbox implements TmFormFieldControl {
   private readonly translate = inject(TM_UI_TRANSLATE);
   private readonly errorDisplay = inject(TM_ERROR_DISPLAY);
+  /** The reactive formatting facade — dates inside error messages. */
+  private readonly l10n = inject(TmL10n);
 
   // ---- FormCheckboxControl + optional state inputs (§5). NO `value`. ----
   /** The checkbox state (the FormCheckboxControl model). */
@@ -163,6 +166,9 @@ export class TmCheckbox implements TmFormFieldControl {
   readonly localizedErrors: () => readonly TmFieldError[] = tmResolveFieldErrors(
     this.errors,
     this.translate,
+    // A checkbox carries no dates of its own, but a schema may still put a
+    // date-bearing error on it; format it like everywhere else.
+    (iso) => tmFormatDate(iso, this.l10n.locale(), { calendar: this.l10n.calendar() }),
   );
 
   /** The merged aria-describedby attribute value, or null when no ids apply. */
@@ -210,3 +216,21 @@ export class TmCheckbox implements TmFormFieldControl {
     this.indeterminate.set(false);
   }
 }
+
+/**
+ * The checkbox's cell-display contract: how a grid paints a boolean cell as
+ * static DOM with no component instance. The text representation is the
+ * spreadsheet-interop literal `TRUE`/`FALSE` (never localized — it is what
+ * copy exports and paste parses); the glyph class renders a checkbox-box
+ * visual driven by the same `--checkbox-box-size` and field tokens the real
+ * control uses, so the two stay in lock-step. A `null` value (a cleared
+ * cell) displays as unchecked.
+ */
+export const TM_CHECKBOX_CELL_DISPLAY: TmCellDisplay<boolean | null> = {
+  formatValue(value: boolean | null): string {
+    return value ? 'TRUE' : 'FALSE';
+  },
+  displayClass(value: boolean | null): string {
+    return value ? 'tm-grid-bool tm-grid-bool--on' : 'tm-grid-bool';
+  },
+};

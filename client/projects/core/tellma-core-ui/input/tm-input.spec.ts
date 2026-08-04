@@ -16,7 +16,7 @@ import {
   validateAsync,
 } from '@angular/forms/signals';
 
-import { provideTellmaUi } from '@tellma/core-ui';
+import { provideTellmaUi, TM_CELL_EDITOR_HOST } from '@tellma/core-ui';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmFormFieldHarness, TmInputHarness } from '@tellma/core-ui-testing';
 
@@ -361,6 +361,71 @@ describe('tmInput + tm-form-field (Signal Forms, §3.1/§3.2/§5)', () => {
       expect(inputEl.getAttribute('aria-busy')).toBeNull();
       expect(fixture.nativeElement.querySelector('.tm-form-field__spinner')).toBeNull();
       expect(errorEl.textContent?.trim()).toBe('Handle is taken');
+    });
+  });
+
+  describe('textarea host (§4)', () => {
+    @Component({
+      imports: [TmInput, TmFormField, FormField],
+      template: `
+        <tm-form-field label="Notes" hint="Team-visible">
+          <textarea tmInput rows="4" [formField]="f.notes"></textarea>
+        </tm-form-field>
+      `,
+    })
+    class TextareaHost {
+      readonly model = signal({ notes: '' });
+      readonly f = form(this.model, (p) => {
+        required(p.notes);
+      });
+    }
+
+    it('the value channel, blur touch, and field wiring apply unchanged', async () => {
+      const { fixture, input } = await setup(TextareaHost);
+      const host = fixture.componentInstance;
+      expect(await input.hostTagName()).toBe('TEXTAREA');
+
+      await input.setValue('First line');
+      expect(host.model().notes).toBe('First line');
+
+      host.model.set({ notes: 'External write' });
+      await fixture.whenStable();
+      expect(await input.getValue()).toBe('External write');
+
+      // Label association still targets the control id.
+      const textarea = fixture.nativeElement.querySelector('textarea') as HTMLTextAreaElement;
+      const label = fixture.nativeElement.querySelector('label') as HTMLLabelElement;
+      expect(label.htmlFor).toBe(textarea.id);
+    });
+
+    it('carries the multiline class and keeps the authored rows', async () => {
+      const { fixture } = await setup(TextareaHost);
+      const textarea = fixture.nativeElement.querySelector('textarea') as HTMLTextAreaElement;
+      expect(textarea.classList).toContain('tm-input--multiline');
+      expect(textarea.rows).toBe(4);
+    });
+
+    it('never registers as a grid cell editor (cells are single-line)', async () => {
+      const registered: unknown[] = [];
+      @Component({
+        imports: [TmInput],
+        template: `<textarea tmInput></textarea><input tmInput data-testid="line" />`,
+      })
+      class CellHostProbe {}
+      TestBed.configureTestingModule({
+        providers: [
+          provideTellmaUi(),
+          {
+            provide: TM_CELL_EDITOR_HOST,
+            useValue: { register: (editor: unknown) => registered.push(editor) },
+          },
+        ],
+      });
+      const fixture = TestBed.createComponent(CellHostProbe);
+      await fixture.whenStable();
+      // Only the single-line input registered — not the textarea.
+      expect(registered).toHaveLength(1);
+      expect((registered[0] as { text(): string | null }).text()).toBe('');
     });
   });
 });

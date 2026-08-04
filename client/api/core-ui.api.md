@@ -5,7 +5,12 @@
 ```ts
 
 import { EnvironmentProviders } from '@angular/core';
+import * as i0 from '@angular/core';
 import { InjectionToken } from '@angular/core';
+import { LogicFn } from '@angular/forms/signals';
+import { PathKind } from '@angular/forms/signals';
+import { SchemaPath } from '@angular/forms/signals';
+import { SchemaPathRules } from '@angular/forms/signals';
 import { Signal } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
 
@@ -14,6 +19,18 @@ export function provideTellmaForms(options?: TmFormsOptions): EnvironmentProvide
 
 // @public
 export function provideTellmaUi(options?: TmUiOptions): EnvironmentProviders;
+
+// @public
+export function provideTmCalendar(calendar: TmCalendar | Signal<TmCalendar>): EnvironmentProviders;
+
+// @public
+export const TM_ACTIVE_LOCALE: InjectionToken<Signal<string>>;
+
+// @public
+export const TM_CALENDAR: InjectionToken<Signal<TmCalendar>>;
+
+// @public
+export const TM_CELL_EDITOR_HOST: InjectionToken<TmCellEditorHost>;
 
 // @public
 export const TM_ERROR_DISPLAY: InjectionToken<TmErrorDisplayPolicy>;
@@ -34,19 +51,183 @@ export const TM_UI_STRINGS_EN: {
         readonly email: "Enter a valid email address";
         readonly minLength: "Enter at least {minLength, plural, one {# character} other {# characters}}";
         readonly maxLength: "Enter no more than {maxLength, plural, one {# character} other {# characters}}";
-        readonly min: "Enter a value of at least {min}";
-        readonly max: "Enter a value of at most {max}";
+        readonly min: "Enter a value of at least {min, number}";
+        readonly max: "Enter a value of at most {max, number}";
         readonly pattern: "The value does not match the expected format";
         readonly minDate: "Enter a date on or after {minDate}";
         readonly maxDate: "Enter a date on or before {maxDate}";
+        readonly parse: "Enter a valid number, like {example}";
+        readonly numberPrecision: "Enter a number with at most {maxDigits, plural, one {# digit} other {# digits}}";
+        readonly parseDate: "Enter a date like {example}";
+    };
+    readonly datePicker: {
+        readonly chooseDate: "Choose date";
+        readonly dialogLabel: "Choose date";
+        readonly previous: "{view, select, day {Previous month} month {Previous year} other {Previous years}}";
+        readonly next: "{view, select, day {Next month} month {Next year} other {Next years}}";
+        readonly switchView: "{view, select, day {Choose month} month {Choose year} other {Back to day view}}";
+        readonly today: "Today";
+        readonly clear: "Clear";
     };
     readonly select: {
         readonly placeholder: "Select an option";
+    };
+    readonly entityPicker: {
+        readonly advancedSearch: "Advanced search…";
+        readonly create: "Create…";
+        readonly edit: "Edit…";
+        readonly advancedTitle: "Advanced search";
+        readonly createTitle: "Create";
+        readonly editTitle: "Edit";
+        readonly magnifier: "Advanced search";
+        readonly noResults: "No results";
+        readonly searchFailed: "Search failed";
+        readonly moreResults: "{count, plural, one {Showing the top match. Keep typing to refine.} other {Showing top # matches. Keep typing to refine.}}";
+        readonly announce: {
+            readonly results: "{count, plural, one {1 result} other {# results}}";
+            readonly resultsMore: "{count, number}+ results — more available";
+            readonly noResults: "No results";
+            readonly searchFailed: "Search failed";
+            readonly picked: "{label} selected";
+        };
+        readonly errors: {
+            readonly unresolved: "Select an item from the list";
+            readonly noMatch: "No match for ‘{text}’";
+            readonly ambiguous: "‘{text}’ matches more than one item";
+            readonly searchFailed: "Search failed";
+        };
+    };
+    readonly grid: {
+        readonly loading: "Loading…";
+        readonly empty: "No records to display";
+        readonly newRow: "New row";
+        readonly selectAll: "Select all rows";
+        readonly selectRow: "Select row";
+        readonly menu: {
+            readonly cut: "Cut";
+            readonly copy: "Copy";
+            readonly copyWithHeaders: "Copy with headers";
+            readonly paste: "Paste";
+            readonly pasteHint: "Press {shortcut} to paste";
+            readonly insertAbove: "Insert {count, plural, one {1 row} other {# rows}} above";
+            readonly insertBelow: "Insert {count, plural, one {1 row} other {# rows}} below";
+            readonly insertChild: "Insert child row";
+            readonly deleteRows: "Delete {count, plural, one {1 row} other {# rows}}";
+        };
+        readonly op: {
+            readonly cellEdit: "cell edit";
+            readonly clear: "clear";
+            readonly paste: "paste";
+            readonly fillDown: "fill down";
+            readonly cutMove: "move";
+            readonly rowInsert: "row insert";
+            readonly rowDelete: "row delete";
+            readonly rowMove: "row move";
+            readonly transaction: "change";
+        };
+        readonly announce: {
+            readonly selection: "{rows, number} × {cols, number} selected";
+            readonly selectionAll: "All cells selected";
+            readonly copied: "{cells, plural, one {1 cell} other {# cells}} copied";
+            readonly copyRefused: "Cannot copy a multi-range selection of this shape";
+            readonly copyFailed: "Copy failed — select the cells and copy again";
+            readonly cutCancelled: "Cut cancelled";
+            readonly marqueeCleared: "Marquee cleared";
+            readonly pasted: "{cells, plural, =0 {Nothing} one {1 cell} other {# cells}} pasted{errors, plural, =0 {} one {, 1 error} other {, # errors}}{pending, plural, =0 {} one {, 1 resolving} other {, # resolving}}";
+            readonly pasteRowsDropped: "{count, plural, one {1 row} other {# rows}} could not be added — the grid does not create rows";
+            readonly undone: "{skipped, plural, =0 {Undid {action}} one {Undid {action} — 1 row no longer exists} other {Undid {action} — # rows no longer exist}}";
+            readonly redone: "{skipped, plural, =0 {Redid {action}} one {Redid {action} — 1 row no longer exists} other {Redid {action} — # rows no longer exist}}";
+            readonly undoSkipped: "Undo skipped — the affected rows no longer exist";
+            readonly redoSkipped: "Redo skipped — the affected rows no longer exist";
+            readonly rowsInserted: "{count, plural, one {1 row} other {# rows}} inserted";
+            readonly rowsDeleted: "{count, plural, one {1 row} other {# rows}} deleted";
+            readonly rowsMoved: "{count, plural, one {1 row} other {# rows}} moved";
+            readonly moveRejected: "Cannot move a row into its own subtree";
+            readonly editorCancelledRowRemoved: "Editing cancelled — the row was removed";
+            readonly resolved: "{count, plural, one {1 label} other {# labels}} resolved{errors, plural, =0 {} one {, 1 not matched} other {, # not matched}}";
+            readonly lazyLoadFailed: "Could not load child rows";
+            readonly errorJump: "Error {index, number} of {count, number}";
+            readonly checkedCount: "{selected, number} of {total, number} selected";
+            readonly loaded: "{count, plural, =0 {No records} one {1 record} other {# records}} loaded";
+            readonly loading: "Loading";
+        };
+        readonly cellErrors: {
+            readonly invalidInput: "‘{text}’ is not a valid {column}.";
+            readonly precision: "‘{text}’ has too many digits — enter a number with at most {maxDigits, plural, one {# digit} other {# digits}}.";
+            readonly notFound: "No {collection} named ‘{label}’";
+            readonly ambiguous: "‘{label}’ matches more than one {collection}";
+            readonly resolutionFailed: "Could not check ‘{label}’ in {collection} — paste it again to retry";
+            readonly tally: "{count, plural, one {1 error} other {# errors}}";
+            readonly pending: "{count, plural, one {1 cell} other {# cells}} resolving";
+            readonly next: "Next error";
+            readonly previous: "Previous error";
+        };
+        readonly find: {
+            readonly label: "Find in grid";
+            readonly counter: "{index, number} of {count, number}";
+            readonly noMatches: "No matches";
+            readonly next: "Next match";
+            readonly previous: "Previous match";
+            readonly close: "Close find";
+        };
+    };
+    readonly alert: {
+        readonly info: "Info:";
+        readonly success: "Success:";
+        readonly warning: "Warning:";
+        readonly error: "Error:";
+    };
+    readonly modal: {
+        readonly close: "Close";
+    };
+    readonly preview: {
+        readonly download: "Download";
+        readonly print: "Print";
+        readonly unsupported: "Preview not available";
+        readonly unsupportedHint: "Download the file to view it";
+        readonly loadError: "The file could not be loaded";
+        readonly truncated: "Showing the first 1 MB — download the file for the rest";
+    };
+    readonly filePicker: {
+        readonly hint: "Drag and drop here, paste, or";
+        readonly browse: "browse";
+        readonly acceptedTypes: "Accepted: {types}";
+        readonly maxSize: "Up to {maxMb, number} MB each";
+        readonly maxSizeSingle: "Up to {maxMb, number} MB";
+        readonly announce: "{accepted, plural, =0 {No files added} one {1 file added} other {# files added}}{rejectedCount, plural, =0 {} one {, 1 file rejected} other {, # files rejected}}";
+        readonly rejected: {
+            readonly size: "{name} is larger than {maxMb, number} MB";
+            readonly type: "{name} is not an accepted file type";
+            readonly count: "Only {maxFiles, plural, one {# file} other {# files}} can be added";
+            readonly folder: "Folders cannot be dropped — drop files only";
+        };
+    };
+    readonly image: {
+        readonly add: "Add image";
+        readonly replace: "Replace image";
+        readonly adjust: "Adjust crop";
+        readonly remove: "Remove image";
+        readonly error: "The image could not be loaded";
+        readonly cropSurface: "Crop area — arrow keys pan, plus and minus zoom";
+        readonly zoom: "Zoom";
+        readonly done: "Done";
+        readonly tooLarge: "The file is larger than {maxMb, number} MB";
+        readonly unsupported: "The file is not a supported image";
     };
 };
 
 // @public
 export const TM_UI_TRANSLATE: InjectionToken<TmUiTranslateFn>;
+
+// @public
+export class TmClientCache {
+    clearAll(): Promise<void>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmClientCache, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmClientCache>;
+}
+
+// @public
+export function tmDefaultActiveLocale(): Signal<string>;
 
 // @public
 export const tmDefaultErrorDisplay: TmErrorDisplayPolicy;
@@ -69,7 +250,7 @@ export interface TmErrorDisplayState {
 }
 
 // @public
-export function tmErrorParams(error: ValidationError): Record<string, unknown>;
+export function tmErrorParams(error: ValidationError, formatDate?: (iso: string) => string): Record<string, unknown>;
 
 // @public
 export interface TmFormFieldDefaults {
@@ -84,7 +265,23 @@ export interface TmFormsOptions {
 }
 
 // @public
-export function tmResolveFieldErrors(errors: Signal<readonly ValidationError.WithOptionalFieldTree[]>, translate: TmUiTranslateFn): Signal<readonly TmFieldError[]>;
+export class TmL10n {
+    readonly calendar: Signal<TmCalendar>;
+    formatDate(iso: string | null | undefined, options?: TmDateFormatOptions): string;
+    formatNumber(value: unknown, options?: TmNumberFormatOptions): string;
+    readonly locale: Signal<string>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmL10n, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmL10n>;
+}
+
+// @public
+export function tmMaxDate<TValue extends string | null, TPathKind extends PathKind = PathKind.Root>(path: SchemaPath<TValue, SchemaPathRules.Supported, TPathKind>, maxDate: string | LogicFn<TValue, string | undefined, TPathKind>): void;
+
+// @public
+export function tmMinDate<TValue extends string | null, TPathKind extends PathKind = PathKind.Root>(path: SchemaPath<TValue, SchemaPathRules.Supported, TPathKind>, minDate: string | LogicFn<TValue, string | undefined, TPathKind>): void;
+
+// @public
+export function tmResolveFieldErrors(errors: Signal<readonly ValidationError.WithOptionalFieldTree[]>, translate: TmUiTranslateFn, formatDate?: (iso: string) => string): Signal<readonly TmFieldError[]>;
 
 // @public
 export type TmUiMessageContext = Record<string, unknown>;

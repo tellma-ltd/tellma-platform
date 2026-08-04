@@ -1,0 +1,207 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* The calendar dialog. Fixed geometry throughout — the 6-row day grid, the
+   5-row (13-capable) month grid, and the 24-cell year grid never resize
+   across months, years, or views: no reflow while flipping. */
+
+:host {
+  display: block;
+}
+
+.tm-date-popup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  inline-size: var(--date-picker-popup-width);
+  padding: var(--date-picker-popup-padding);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--field-text);
+}
+
+.tm-date-popup__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.tm-date-popup__nav,
+.tm-date-popup__view-switch,
+.tm-date-popup__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-xs);
+  color: var(--field-text);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.tm-date-popup__nav:hover,
+.tm-date-popup__view-switch:hover,
+.tm-date-popup__action:hover {
+  background: var(--surface-hover);
+}
+
+.tm-date-popup__nav {
+  inline-size: var(--date-picker-cell-size);
+  block-size: var(--date-picker-cell-size);
+  flex: none;
+}
+
+/* The paging chevrons are direction-mapped like the grid's arrows. */
+:host-context([dir='rtl']) .tm-date-popup__nav-glyph {
+  transform: scaleX(-1);
+}
+
+.tm-date-popup__view-switch {
+  flex: 1;
+  block-size: var(--date-picker-cell-size);
+  font-weight: var(--weight-semibold);
+}
+
+.tm-date-popup__grid,
+.tm-date-popup__months,
+.tm-date-popup__years {
+  display: flex;
+  flex-direction: column;
+  gap: var(--date-picker-cell-gap);
+  /* Every view reserves the day grid's box — a weekday row plus six weeks —
+     so neither paging a month nor climbing the view ladder resizes the
+     popup. It is the controls that matter: a popup opened upward keeps its
+     bottom edge, so any change in height walks its header arrows up the
+     screen, out from under the pointer that is clicking them. The month
+     and year grids simply leave the difference blank. */
+  min-block-size: calc(
+    7 * var(--date-picker-cell-size) + 6 * var(--date-picker-cell-gap)
+  );
+}
+
+.tm-date-popup__weekdays,
+.tm-date-popup__week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--date-picker-cell-gap);
+}
+
+.tm-date-popup__weekday {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  block-size: var(--date-picker-cell-size);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.tm-date-popup__cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  block-size: var(--date-picker-cell-size);
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--field-text);
+  cursor: pointer;
+}
+
+.tm-date-popup__cell--blank {
+  cursor: default;
+}
+
+.tm-date-popup__day:hover:not(:disabled),
+.tm-date-popup__month:hover:not(:disabled),
+.tm-date-popup__year:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.tm-date-popup__day:disabled,
+.tm-date-popup__year:disabled {
+  color: var(--field-text-disabled);
+  cursor: default;
+}
+
+.tm-date-popup__day--today {
+  box-shadow: inset 0 0 0 var(--border-width) var(--accent);
+}
+
+.tm-date-popup__day--selected {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.tm-date-popup__day--selected:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.tm-date-popup__cell:focus-visible {
+  /* A transparent REAL outline beneath the token ring: forced colors strip
+     box-shadows but repaint outline-color in a system color, so the outline
+     is the only thing left carrying focus there — and roving focus is the
+     ONLY cue telling the user which cell the arrow keys will act on. The
+     offset lands it exactly under the ring's colored band, so normal mode
+     is unchanged. */
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-ring);
+}
+
+.tm-date-popup__month-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--date-picker-cell-gap);
+}
+
+.tm-date-popup__year-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--date-picker-cell-gap);
+}
+
+.tm-date-popup__footer {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.tm-date-popup__action {
+  block-size: var(--date-picker-cell-size);
+  padding-inline: var(--space-2);
+  color: var(--text-link);
+}
+
+@media (forced-colors: active) {
+  .tm-date-popup {
+    border-color: CanvasText;
+  }
+
+  .tm-date-popup__day--selected {
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  /* Forced colors DROPS box-shadow entirely, so the today marker has to be
+     redrawn with a property that survives. Underline rather than an outline:
+     the focus indicator IS an outline here and outranks this rule, so an
+     outline marker would vanish on the focused cell — and a focused today
+     cell is exactly how the popup opens on an empty field. Underline sits
+     alongside the focus outline, so both cues read at once. */
+  .tm-date-popup__day--today {
+    box-shadow: none;
+    text-decoration: underline;
+  }
+}
