@@ -49,6 +49,10 @@ namespace Tellma.Identity.Hosting
             localization.RequestCultureProviders.Insert(0, new UiLocalesRequestCultureProvider());
             app.UseRequestLocalization(localization);
 
+            // Ahead of the asset endpoints: a fingerprinted asset URL is safe to cache forever,
+            // and not doing so re-fetches the brand fonts on every reload.
+            app.UseMiddleware<FingerprintedAssetCacheMiddleware>();
+
             return app.UseMiddleware<SecurityHeadersMiddleware>();
         }
     }

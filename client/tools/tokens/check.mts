@@ -9,15 +9,18 @@
  *   2. runs the missing-ref gate (both schemes + the :lang() leading map),
  *   3. emits the generated JSON Schema into the package's assets,
  *   4. verifies the identity server's committed copies (the emitted tokens
- *      stylesheet and the vendored fonts.css) match this workspace's output —
+ *      stylesheet, the composed fonts.css and every woff2 it names) match this
+ *      workspace's output —
  *      the .NET build cannot run the emitter, so those copies are committed
  *      and this gate is what keeps them from drifting.
  * Exits non-zero on any issue. Color-contrast accessibility is covered by
  * the axe browser battery, not here.
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { composeIdentityFontsCss, identityFontFiles } from '../fonts/identity-fonts.mjs';
 import { z } from 'zod';
 
 import { tmEmitCss, tmTokensDefault, tmValidateTokens } from '@tellma/core-ui-tokens';
@@ -62,15 +65,28 @@ const copies: Array<{ name: string; expected: string; actual: string }> = [
   },
   {
     name: 'src/apps/Tellma.Identity/wwwroot/fonts/fonts.css',
-    expected: readFileSync(join(clientDir, 'projects', 'core', 'tellma-core-ui', 'fonts', 'fonts.css'), 'utf8'),
+    expected: composeIdentityFontsCss(),
     actual: join(identityWwwroot, 'fonts', 'fonts.css'),
   },
 ];
+
+// The stylesheet names its woff2 files by relative path, so a stale or missing
+// binary is a broken page that the text comparison above would not catch.
+for (const source of identityFontFiles()) {
+  const copy = join(identityWwwroot, 'fonts', basename(source));
+  if (!existsSync(copy) || !readFileSync(copy).equals(readFileSync(source))) {
+    console.error(
+      `tokens:check FAILED — wwwroot/fonts/${basename(source)} is missing or stale; ` +
+        'run `pnpm run fonts:copy-identity`.',
+    );
+    process.exit(1);
+  }
+}
 for (const copy of copies) {
   const normalize = (s: string) => s.replace(/\r\n/g, '\n');
   if (normalize(readFileSync(copy.actual, 'utf8')) !== normalize(copy.expected)) {
     console.error(
-      `tokens:check FAILED — ${copy.name} is stale; run \`pnpm run tokens:build-css\` and re-copy the emitted output.`,
+      `tokens:check FAILED — ${copy.name} is stale; run \`pnpm run tokens:build-css\` and \`pnpm run fonts:copy-identity\`.`,
     );
     process.exit(1);
   }
