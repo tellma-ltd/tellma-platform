@@ -119,6 +119,10 @@ namespace Tellma.Identity.Hosting
 
             services.AddLocalization();
 
+            // The languages this deployment offers; read by request localization, the sign-in
+            // language picker, and the profile page.
+            services.AddSingleton<LanguageCatalog>();
+
             // The identity store. An in-proc host points the store at its own database through
             // ConfigureDbContext; the engine's tables live in the dedicated schema either way.
             services.AddDbContext<TellmaIdentityDbContext>((provider, builder) =>

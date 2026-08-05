@@ -183,6 +183,12 @@
   <data name="ThisSession" xml:space="preserve">
     <value>this session</value>
   </data>
+  <data name="PrivacyPolicy" xml:space="preserve">
+    <value>Privacy policy</value>
+  </data>
+  <data name="TermsOfService" xml:space="preserve">
+    <value>Terms of service</value>
+  </data>
   <data name="Sessions" xml:space="preserve">
     <value>Sessions</value>
   </data>

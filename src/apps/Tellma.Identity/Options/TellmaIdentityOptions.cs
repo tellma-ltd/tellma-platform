@@ -87,6 +87,9 @@ namespace Tellma.Identity.Options
         /// <summary>Startup seeding: migrations, platform clients, and bootstrap identities.</summary>
         public TellmaIdentitySeedOptions Seed { get; } = new TellmaIdentitySeedOptions();
 
+        /// <summary>Sign-in UI surface: offered languages and legal links.</summary>
+        public TellmaIdentityUiOptions Ui { get; } = new TellmaIdentityUiOptions();
+
         /// <summary>Development affordances; all off by default.</summary>
         public TellmaIdentityDevelopmentOptions Development { get; } = new TellmaIdentityDevelopmentOptions();
 

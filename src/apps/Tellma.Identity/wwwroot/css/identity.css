@@ -212,3 +212,29 @@ body {
 .tmi-inline {
   display: inline;
 }
+
+/* Page chrome below the card's content: the language picker and the legal links. Both are
+   secondary to the task at hand, so they sit quietly under a divider rather than competing
+   with the sign-in controls. */
+.tmi-language,
+.tmi-legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: baseline;
+  margin-block-start: var(--space-4);
+  padding-block-start: var(--space-3);
+  border-block-start: var(--border-width) solid var(--divider);
+  font-size: var(--text-sm);
+}
+
+/* The picker and the links share the edge, so only the first draws the rule. */
+.tmi-language + .tmi-legal {
+  margin-block-start: var(--space-2);
+  padding-block-start: 0;
+  border-block-start: none;
+}
+
+.tmi-language-current {
+  color: var(--text-secondary);
+}

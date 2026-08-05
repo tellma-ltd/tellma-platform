@@ -102,6 +102,29 @@ namespace Tellma.Identity.Options
                 failures.Add("TellmaIdentity:Email:SmtpHost is required (or enable TellmaIdentity:Development:UseEmailSink in development).");
             }
 
+            // A language the engine ships no resources for would render as English while claiming
+            // to be something else, so a typo fails startup instead of shipping a broken picker.
+            foreach (string language in options.Ui.Languages)
+            {
+                if (!Infrastructure.LanguageCatalog.Shipped.Any(
+                    shipped => string.Equals(shipped.Culture, language, StringComparison.OrdinalIgnoreCase)))
+                {
+                    string shipped = string.Join(", ", Infrastructure.LanguageCatalog.Shipped.Select(static l => l.Culture));
+                    failures.Add($"TellmaIdentity:Ui:Languages contains '{language}', which is not one of: {shipped}.");
+                }
+            }
+
+            // Legal links are rendered as-is, so anything that is not an absolute URL is a broken
+            // link on every page rather than a missing one.
+            foreach ((string setting, string? url) in ((string, string?)[])
+                [("PrivacyPolicyUrl", options.Ui.PrivacyPolicyUrl), ("TermsOfServiceUrl", options.Ui.TermsOfServiceUrl)])
+            {
+                if (!string.IsNullOrWhiteSpace(url) && !Uri.TryCreate(url, UriKind.Absolute, out _))
+                {
+                    failures.Add($"TellmaIdentity:Ui:{setting} must be an absolute URL.");
+                }
+            }
+
             // Lifetimes must be positive; the reuse leeway may be zero (tests) but never negative.
             if (options.Lifetimes.AccessToken <= TimeSpan.Zero
                 || options.Lifetimes.IdentityToken <= TimeSpan.Zero

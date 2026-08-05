@@ -1,6 +1,10 @@
 @using System.Globalization
+@using Microsoft.AspNetCore.Http.Extensions
 @using Tellma.Identity.Infrastructure
 @inject Tellma.Identity.Infrastructure.IBrandingResolver Branding
+@inject Tellma.Identity.Infrastructure.LanguageCatalog Languages
+@inject Microsoft.Extensions.Options.IOptions<Tellma.Identity.Options.TellmaIdentityOptions> Ui
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
 @{
     Tellma.Identity.Infrastructure.BrandingInfo brand = Branding.Resolve(clientId: null);
     bool isRtl = CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft;
@@ -37,6 +41,38 @@
                 <span class="tmi-brand-name">@brand.ProductName</span>
             </header>
             @RenderBody()
+            @* The language picker and the legal links are chrome, not page content: every page
+               gets them, and each renders only when there is more than nothing to show. *@
+            @if (Languages.Offered.Count > 1)
+            {
+                <form class="tmi-language" method="post" action="@Url.Action("Set", "Culture")">
+                    <input type="hidden" name="returnUrl" value="@Context.Request.GetEncodedPathAndQuery()" />
+                    @foreach (LanguageChoice language in Languages.Offered)
+                    {
+                        if (string.Equals(language.Culture, CultureInfo.CurrentUICulture.TwoLetterISOLanguageName, StringComparison.Ordinal))
+                        {
+                            <span class="tmi-language-current" lang="@language.Culture">@language.NativeName</span>
+                        }
+                        else
+                        {
+                            <button class="tmi-link" type="submit" name="culture" value="@language.Culture" lang="@language.Culture">@language.NativeName</button>
+                        }
+                    }
+                </form>
+            }
+            @if (Ui.Value.Ui.PrivacyPolicyUrl is { } privacyUrl || Ui.Value.Ui.TermsOfServiceUrl is not null)
+            {
+                <footer class="tmi-legal">
+                    @if (Ui.Value.Ui.PrivacyPolicyUrl is { } privacy)
+                    {
+                        <a class="tmi-link" href="@privacy" target="_blank" rel="noopener">@L["PrivacyPolicy"]</a>
+                    }
+                    @if (Ui.Value.Ui.TermsOfServiceUrl is { } terms)
+                    {
+                        <a class="tmi-link" href="@terms" target="_blank" rel="noopener">@L["TermsOfService"]</a>
+                    }
+                </footer>
+            }
         </div>
     </main>
     @await RenderSectionAsync("Scripts", required: false)

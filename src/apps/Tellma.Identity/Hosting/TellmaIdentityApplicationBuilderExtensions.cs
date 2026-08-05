@@ -14,8 +14,6 @@ namespace Tellma.Identity.Hosting
     /// <summary>Middleware registration for the identity engine.</summary>
     public static class TellmaIdentityApplicationBuilderExtensions
     {
-        /// <summary>The UI cultures the engine ships resources for.</summary>
-        private static readonly string[] SupportedCultures = ["en", "ar"];
 
         /// <summary>
         ///     Adds the engine's middleware: request localization (honoring <c>ui_locales</c>),
@@ -39,10 +37,14 @@ namespace Tellma.Identity.Hosting
                 app.UseStatusCodePagesWithReExecute("/error");
             }
 
+            // The offered set, not everything shipped: narrowing the languages a deployment
+            // presents must also narrow what a query string or a stale cookie can select.
+            LanguageCatalog languages = app.ApplicationServices.GetRequiredService<LanguageCatalog>();
+            string[] cultures = [.. languages.OfferedCultures];
             RequestLocalizationOptions localization = new RequestLocalizationOptions()
-                .SetDefaultCulture(SupportedCultures[0])
-                .AddSupportedCultures(SupportedCultures)
-                .AddSupportedUICultures(SupportedCultures);
+                .SetDefaultCulture(cultures[0])
+                .AddSupportedCultures(cultures)
+                .AddSupportedUICultures(cultures);
 
             // ui_locales (a deep-linking distribution's hint) wins over the culture cookie and
             // Accept-Language defaults.

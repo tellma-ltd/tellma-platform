@@ -4,25 +4,35 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 using Tellma.Identity.Data;
+using Tellma.Identity.Infrastructure;
 
 namespace Tellma.Identity.Areas.Identity.Pages.Manage
 {
     /// <summary>
     ///     The self-service profile page for the fields the server owns: display name and locale.
-    ///     A locale change takes effect for future tokens and localized email immediately.
+    ///     A locale change takes effect for future tokens and localized email immediately, and for
+    ///     the pages the user is looking at — a language setting that leaves the current session in
+    ///     the old language reads as broken.
     /// </summary>
     /// <param name="userManager">The Identity user manager.</param>
     /// <param name="localizer">UI strings.</param>
+    /// <param name="languages">The languages this deployment offers.</param>
     [Authorize]
     public sealed class IndexModel(
         UserManager<TellmaIdentityUser> userManager,
-        IStringLocalizer<SharedResources> localizer) : PageModel
+        IStringLocalizer<SharedResources> localizer,
+        LanguageCatalog languages) : PageModel
     {
+        /// <summary>The languages the picker offers.</summary>
+        public IReadOnlyList<LanguageChoice> Languages => languages.Offered;
+
         /// <summary>The display name emitted as the <c>name</c> claim.</summary>
         [BindProperty]
         public string? DisplayName { get; set; }
@@ -41,6 +51,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
             TellmaIdentityUser user = (await userManager.GetUserAsync(User))!;
             DisplayName = user.DisplayName;
             Locale = user.Locale;
+            StatusMessage = TempData["StatusMessage"] as string;
             return Page();
         }
 
@@ -50,11 +61,27 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
         {
             TellmaIdentityUser user = (await userManager.GetUserAsync(User))!;
             user.DisplayName = DisplayName;
-            user.Locale = Locale is "en" or "ar" ? Locale : "en";
+            user.Locale = languages.IsOffered(Locale) ? Locale : languages.Offered[0].Culture;
             await userManager.UpdateAsync(user);
 
-            StatusMessage = localizer["Saved"].Value;
-            return Page();
+            // Apply it to the browser as well as the profile, so the change is visible where it
+            // was made instead of only in the next token and the next email.
+            Response.Cookies.Append(
+                CookieRequestCultureProvider.DefaultCookieName,
+                CookieRequestCultureProvider.MakeCookieValue(new RequestCulture(user.Locale)),
+                new CookieOptions
+                {
+                    Expires = DateTimeOffset.UtcNow.AddYears(1),
+                    IsEssential = true,
+                    HttpOnly = true,
+                    SameSite = SameSiteMode.Lax,
+                    Secure = Request.IsHttps,
+                });
+
+            // Re-render through a redirect: the culture cookie is read by request localization at
+            // the start of a request, so the saved language only takes effect on the next one.
+            TempData["StatusMessage"] = localizer["Saved"].Value;
+            return RedirectToPage();
         }
     }
 }

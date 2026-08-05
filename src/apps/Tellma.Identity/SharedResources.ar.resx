@@ -183,6 +183,12 @@
   <data name="ThisSession" xml:space="preserve">
     <value>هذه الجلسة</value>
   </data>
+  <data name="PrivacyPolicy" xml:space="preserve">
+    <value>سياسة الخصوصية</value>
+  </data>
+  <data name="TermsOfService" xml:space="preserve">
+    <value>شروط الخدمة</value>
+  </data>
   <data name="Sessions" xml:space="preserve">
     <value>الجلسات</value>
   </data>

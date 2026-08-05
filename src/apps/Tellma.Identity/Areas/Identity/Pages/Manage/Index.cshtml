@@ -17,8 +17,10 @@
     <div class="tmi-field">
         <label class="tmi-label" for="locale">@L["Language"]</label>
         <select class="tmi-input" id="locale" name="Locale">
-            <option value="en" selected="@(Model.Locale == "en")">English</option>
-            <option value="ar" selected="@(Model.Locale == "ar")">العربية</option>
+            @foreach (Tellma.Identity.Infrastructure.LanguageChoice language in Model.Languages)
+            {
+                <option value="@language.Culture" selected="@(Model.Locale == language.Culture)" lang="@language.Culture">@language.NativeName</option>
+            }
         </select>
     </div>
     <button class="tmi-button tmi-button-primary" type="submit">@L["Save"]</button>
