@@ -22,8 +22,10 @@ namespace Tellma.Identity.Services.Invitations
     /// <param name="Email">The user's email.</param>
     /// <param name="DisplayName">The user's display name.</param>
     /// <param name="Locale">The user's preferred language.</param>
+    /// <param name="Gender">How to address the user grammatically, when stated.</param>
     /// <param name="ReturnUrl">Where the accepted invitation returns the user.</param>
-    public sealed record InvitationRequestItem(string Email, string? DisplayName, string? Locale, string? ReturnUrl);
+    public sealed record InvitationRequestItem(
+        string Email, string? DisplayName, string? Locale, string? ReturnUrl, UserGender? Gender = null);
 
     /// <summary>The per-user outcome of a bulk invitation.</summary>
     public enum InvitationStatus
@@ -356,6 +358,7 @@ namespace Tellma.Identity.Services.Invitations
                 EmailConfirmed = false,
                 DisplayName = item.DisplayName,
                 Locale = string.IsNullOrWhiteSpace(item.Locale) ? "en" : item.Locale,
+                Gender = item.Gender,
                 LifecycleState = UserLifecycleState.Active,
                 CreatedUtc = timeProvider.GetUtcNow(),
             };

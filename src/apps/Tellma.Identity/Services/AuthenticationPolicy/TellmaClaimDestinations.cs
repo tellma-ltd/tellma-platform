@@ -40,7 +40,7 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                 // Identity claims are gated on their scope in both tokens: a client not granted
                 // `profile`/`email` gets a token without them, and resource servers receive no
                 // more than the grant allows.
-                case Claims.Name or Claims.PreferredUsername or Claims.Locale:
+                case Claims.Name or Claims.PreferredUsername or Claims.Locale or Claims.Gender:
                     if (claim.Subject!.HasScope(Scopes.Profile))
                     {
                         yield return Destinations.AccessToken;

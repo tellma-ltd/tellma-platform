@@ -23,5 +23,15 @@
             }
         </select>
     </div>
+    <div class="tmi-field">
+        <label class="tmi-label" for="gender">@L["Gender"]</label>
+        @* Optional, and the blank option comes first: the neutral wording is the default, not a
+           fallback the user has to be talked out of. *@
+        <select class="tmi-input" id="gender" name="Gender">
+            <option value="" selected="@(Model.Gender is null)">@L["GenderUnstated"]</option>
+            <option value="Female" selected="@(Model.Gender == Tellma.Identity.Data.UserGender.Female)">@L["GenderFemale"]</option>
+            <option value="Male" selected="@(Model.Gender == Tellma.Identity.Data.UserGender.Male)">@L["GenderMale"]</option>
+        </select>
+    </div>
     <button class="tmi-button tmi-button-primary" type="submit">@L["Save"]</button>
 </form>

@@ -24,6 +24,13 @@ namespace Tellma.Identity.Data
         /// </summary>
         public string Locale { get; set; } = "en";
 
+        /// <summary>
+        ///     How to address the user grammatically, emitted as the standard <c>gender</c> claim.
+        ///     Optional: null means unstated, and every message has a neutral form, so a user who
+        ///     never supplied one is addressed correctly rather than guessed at.
+        /// </summary>
+        public UserGender? Gender { get; set; }
+
         /// <summary>The lifecycle state; only <see cref="UserLifecycleState.Active" /> users obtain tokens.</summary>
         public UserLifecycleState LifecycleState { get; set; }
 

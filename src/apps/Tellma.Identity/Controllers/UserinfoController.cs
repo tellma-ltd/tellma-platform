@@ -85,6 +85,11 @@ namespace Tellma.Identity.Controllers
                     claims[Claims.Name] = user.DisplayName;
                 }
 
+                if (user.Gender is { } gender)
+                {
+                    claims[Claims.Gender] = gender.ToString().ToLowerInvariant();
+                }
+
                 if (user.Locale is not null)
                 {
                     claims[Claims.Locale] = user.Locale;

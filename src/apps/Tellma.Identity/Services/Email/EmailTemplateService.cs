@@ -68,8 +68,16 @@ namespace Tellma.Identity.Services.Email
                 // recipient's stored locale, not the current request's.
                 CultureInfo.CurrentUICulture = ResolveCulture(user.Locale);
 
-                string subject = localizer[subjectKey, subjectArgs];
-                string body = localizer[bodyKey, bodyArgs];
+                // Every template can select on the recipient's grammatical gender, whether or not
+                // it currently does; "other" is the neutral branch an unstated gender lands in.
+                Dictionary<string, object?> gender = new(StringComparer.Ordinal)
+                {
+                    [IcuMessageFormatter.GenderArgument] =
+                        user.Gender?.ToString().ToLowerInvariant() ?? IcuMessageFormatter.NeutralGender,
+                };
+
+                string subject = localizer[subjectKey, [.. subjectArgs, gender]];
+                string body = localizer[bodyKey, [.. bodyArgs, gender]];
                 return new EmailMessage(user.Email!, user.DisplayName, subject, body);
             }
             finally

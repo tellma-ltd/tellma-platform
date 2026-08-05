@@ -22,6 +22,7 @@
     <!-- Azure packages back config-gated optional paths only (Key Vault certificates, blob-backed
          Data Protection). On-prem deployments run fully without Azure: certificate-store/PFX key
          sources, file-system Data Protection, and SMTP email. -->
+    <PackageReference Include="MessageFormat" />
     <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Blobs" />
     <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Keys" />
     <PackageReference Include="Azure.Identity" />

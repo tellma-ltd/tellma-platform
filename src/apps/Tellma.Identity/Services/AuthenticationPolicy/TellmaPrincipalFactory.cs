@@ -134,6 +134,9 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                     .SetClaim(Claims.Name, user.DisplayName)
                     .SetClaim(Claims.PreferredUsername, user.Email)
                     .SetClaim(Claims.Locale, user.Locale)
+                    // Absent rather than empty when unstated: a relying party must be able to
+                    // tell "no preference" from a value, so it can fall back to neutral wording.
+                    .SetClaim(Claims.Gender, user.Gender?.ToString().ToLowerInvariant())
                     .SetClaim(Claims.AuthenticationContextReference, assurance.Acr)
                     .SetClaim(Claims.AuthenticationTime, assurance.AuthTime)
 

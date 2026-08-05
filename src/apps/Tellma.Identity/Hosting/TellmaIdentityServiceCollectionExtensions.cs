@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Options;
 using Tellma.Identity.Data;
 using Tellma.Identity.Infrastructure;
@@ -122,6 +123,20 @@ namespace Tellma.Identity.Hosting
             // The languages this deployment offers; read by request localization, the sign-in
             // language picker, and the profile page.
             services.AddSingleton<LanguageCatalog>();
+
+            // Every resource string is rendered through ICU MessageFormat, so a translation can
+            // select on its own data — grammatical gender today, plurals when they arrive —
+            // instead of the wording being decided by a branch in C#. Decorating rather than
+            // replacing keeps the framework's resx lookup, culture fallback and tooling.
+            // Registered per resource type rather than as an open generic: the closed
+            // registration must win over the open one AddLocalization() already added, and the
+            // inner instance is the framework's own so nothing about resx lookup changes.
+            services.AddSingleton<IStringLocalizer<SharedResources>>(static provider =>
+                new IcuStringLocalizer<SharedResources>(
+                    new StringLocalizer<SharedResources>(provider.GetRequiredService<IStringLocalizerFactory>())));
+            services.AddSingleton<IStringLocalizer<Services.Email.EmailTemplates>>(static provider =>
+                new IcuStringLocalizer<Services.Email.EmailTemplates>(
+                    new StringLocalizer<Services.Email.EmailTemplates>(provider.GetRequiredService<IStringLocalizerFactory>())));
 
             // The identity store. An in-proc host points the store at its own database through
             // ConfigureDbContext; the engine's tables live in the dedicated schema either way.

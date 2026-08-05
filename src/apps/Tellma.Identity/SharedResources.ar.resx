@@ -28,7 +28,7 @@
     <value>تسجيل الدخول بمفتاح مرور</value>
   </data>
   <data name="EnterCode" xml:space="preserve">
-    <value>أدخل الرمز الذي أرسلناه إلى بريدك</value>
+    <value>{gender, select, female{أدخلي} other{أدخل}} الرمز الذي أرسلناه إلى بريدك</value>
   </data>
   <data name="CodeSentIfAccountExists" xml:space="preserve">
     <value>إذا كان هناك حساب مسجل بهذا العنوان، فقد أرسلنا إليه رمز تسجيل الدخول.</value>
@@ -82,7 +82,7 @@
     <value>تفويض جهازك</value>
   </data>
   <data name="DeviceCode" xml:space="preserve">
-    <value>أدخل الرمز الظاهر على جهازك</value>
+    <value>{gender, select, female{أدخلي} other{أدخل}} الرمز الظاهر على جهازك</value>
   </data>
   <data name="DeviceConfirmPrompt" xml:space="preserve">
     <value>يطلب {0} الوصول إلى حسابك. هل توافق على هذا الجهاز؟</value>
@@ -142,7 +142,7 @@
     <value>استعادة حسابك</value>
   </data>
   <data name="TapPrompt" xml:space="preserve">
-    <value>أدخل بريدك الإلكتروني ورمز الوصول الذي منحك إياه المسؤول.</value>
+    <value>{gender, select, female{أدخلي بريدك الإلكتروني ورمز الوصول الذي منحكِ إياه المسؤول.} other{أدخل بريدك الإلكتروني ورمز الوصول الذي منحك إياه المسؤول.}}</value>
   </data>
   <data name="TapPass" xml:space="preserve">
     <value>رمز الوصول</value>
@@ -170,6 +170,18 @@
   </data>
   <data name="Language" xml:space="preserve">
     <value>اللغة</value>
+  </data>
+  <data name="Gender" xml:space="preserve">
+    <value>طريقة مخاطبتك</value>
+  </data>
+  <data name="GenderUnstated" xml:space="preserve">
+    <value>أفضّل عدم التحديد</value>
+  </data>
+  <data name="GenderFemale" xml:space="preserve">
+    <value>بصيغة المؤنث</value>
+  </data>
+  <data name="GenderMale" xml:space="preserve">
+    <value>بصيغة المذكر</value>
   </data>
   <data name="Save" xml:space="preserve">
     <value>حفظ</value>

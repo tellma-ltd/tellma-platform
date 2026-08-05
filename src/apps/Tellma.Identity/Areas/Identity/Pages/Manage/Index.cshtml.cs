@@ -41,6 +41,10 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
         [BindProperty]
         public string Locale { get; set; } = "en";
 
+        /// <summary>How to address the user grammatically; null when unstated.</summary>
+        [BindProperty]
+        public UserGender? Gender { get; set; }
+
         /// <summary>An informational banner, when any.</summary>
         public string? StatusMessage { get; private set; }
 
@@ -51,6 +55,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
             TellmaIdentityUser user = (await userManager.GetUserAsync(User))!;
             DisplayName = user.DisplayName;
             Locale = user.Locale;
+            Gender = user.Gender;
             StatusMessage = TempData["StatusMessage"] as string;
             return Page();
         }
@@ -62,6 +67,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
             TellmaIdentityUser user = (await userManager.GetUserAsync(User))!;
             user.DisplayName = DisplayName;
             user.Locale = languages.IsOffered(Locale) ? Locale : languages.Offered[0].Culture;
+            user.Gender = Gender;
             await userManager.UpdateAsync(user);
 
             // Apply it to the browser as well as the profile, so the change is visible where it

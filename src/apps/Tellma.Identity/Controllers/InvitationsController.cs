@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OpenIddict.Abstractions;
 using Tellma.Identity.Controllers.Api;
+using Tellma.Identity.Data;
 using Tellma.Identity.Infrastructure;
 using Tellma.Identity.Services.Invitations;
 
@@ -33,7 +34,15 @@ namespace Tellma.Identity.Controllers
             ArgumentNullException.ThrowIfNull(request);
 
             IReadOnlyList<InvitationRequestItem> items =
-                [.. request.Users.Select(static user => new InvitationRequestItem(user.Email, user.DisplayName, user.Locale, user.ReturnUrl))];
+                [.. request.Users.Select(static user => new InvitationRequestItem(
+                    user.Email,
+                    user.DisplayName,
+                    user.Locale,
+                    user.ReturnUrl,
+                    // An unrecognized value is treated as unstated rather than refused: gender is
+                    // optional, and a caller sending something we do not model should get a user
+                    // addressed neutrally, not a failed invitation.
+                    Enum.TryParse(user.Gender, ignoreCase: true, out UserGender parsed) ? parsed : null))];
 
             string? clientId = User.GetClaim(OpenIddictConstants.Claims.ClientId)
                 ?? User.GetClaim(OpenIddictConstants.Claims.Subject);

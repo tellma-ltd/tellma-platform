@@ -171,6 +171,18 @@
   <data name="Language" xml:space="preserve">
     <value>Language</value>
   </data>
+  <data name="Gender" xml:space="preserve">
+    <value>How we address you</value>
+  </data>
+  <data name="GenderUnstated" xml:space="preserve">
+    <value>Prefer not to say</value>
+  </data>
+  <data name="GenderFemale" xml:space="preserve">
+    <value>Feminine</value>
+  </data>
+  <data name="GenderMale" xml:space="preserve">
+    <value>Masculine</value>
+  </data>
   <data name="Save" xml:space="preserve">
     <value>Save</value>
   </data>

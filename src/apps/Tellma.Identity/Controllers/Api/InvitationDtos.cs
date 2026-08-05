@@ -31,6 +31,12 @@ namespace Tellma.Identity.Controllers.Api
         /// <summary>The user's preferred language (BCP 47).</summary>
         public string? Locale { get; init; }
 
+        /// <summary>
+        ///     How to address the user grammatically (<c>female</c>, <c>male</c>). Optional:
+        ///     omitted means unstated, and every message has a neutral form.
+        /// </summary>
+        public string? Gender { get; init; }
+
         /// <summary>Where the accepted invitation returns the user (validated against the client).</summary>
         public string? ReturnUrl { get; init; }
     }
