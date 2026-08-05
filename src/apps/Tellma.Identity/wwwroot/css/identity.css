@@ -96,8 +96,15 @@ body {
   box-shadow: var(--focus-ring);
 }
 
+/* Anchors carry this class too (navigation styled as a primary action), so centre the label
+   explicitly and drop the underline: a <button> centres its own label and has none, an <a>
+   does neither, which is what left-aligned underlined button text comes from. */
 .tmi-button {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-decoration: none;
   width: 100%;
   height: var(--field-height);
   padding: var(--field-padding-y) var(--space-4);
@@ -153,6 +160,22 @@ body {
   margin-block: var(--space-2);
 }
 
+/* The validation-summary tag helper always emits a placeholder <li>, hidden with an inline
+   style attribute — which our style-src CSP drops, leaving a bare red bullet on every clean
+   form. Hide the summary by the class the helper itself toggles (it becomes
+   validation-summary-errors once there is something to say) rather than relying on that
+   inline style. */
+.validation-summary-valid {
+  display: none;
+}
+
+/* Errors read as lines of text like the rest of the page, not as an indented bulleted list. */
+.tmi-error ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .tmi-status {
   color: var(--text-secondary);
   font-size: var(--text-sm);
@@ -170,9 +193,16 @@ body {
   margin-block: var(--space-4);
 }
 
+/* Used on <button> as well as <a> — an inline action inside a form ("Remove") is a button for
+   accessibility reasons but must read as a link, so the user-agent button chrome is reset. */
 .tmi-link {
   color: var(--text-link);
   text-decoration: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
 }
 
 .tmi-link:hover {

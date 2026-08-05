@@ -183,6 +183,12 @@
   <data name="ThisSession" xml:space="preserve">
     <value>this session</value>
   </data>
+  <data name="Sessions" xml:space="preserve">
+    <value>Sessions</value>
+  </data>
+  <data name="SignOutEverywhere" xml:space="preserve">
+    <value>Sign out everywhere</value>
+  </data>
   <data name="AuthenticatorApp" xml:space="preserve">
     <value>Authenticator app</value>
   </data>

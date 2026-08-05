@@ -183,6 +183,12 @@
   <data name="ThisSession" xml:space="preserve">
     <value>هذه الجلسة</value>
   </data>
+  <data name="Sessions" xml:space="preserve">
+    <value>الجلسات</value>
+  </data>
+  <data name="SignOutEverywhere" xml:space="preserve">
+    <value>تسجيل الخروج من كل الأجهزة</value>
+  </data>
   <data name="AuthenticatorApp" xml:space="preserve">
     <value>تطبيق المصادقة</value>
   </data>
