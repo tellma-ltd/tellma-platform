@@ -87,14 +87,27 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         /// <summary>An informational banner, when any.</summary>
         public string? StatusMessage { get; private set; }
 
-        /// <summary>Renders the sign-in surface.</summary>
+        /// <summary>Renders the sign-in surface, or sends an already-signed-in user onward.</summary>
         /// <param name="returnUrl">Where to return after sign-in.</param>
         /// <param name="methods">The offerable methods (space-delimited), from the authorize redirect.</param>
         /// <param name="stepUp">Whether this is a step-up confirmation.</param>
         /// <param name="tier">The required assurance tier, from the authorize redirect.</param>
-        public void OnGet(string? returnUrl = null, string? methods = null, bool stepUp = false, string? tier = null)
+        /// <returns>The page, or a redirect when there is nothing left to ask for.</returns>
+        public IActionResult OnGet(string? returnUrl = null, string? methods = null, bool stepUp = false, string? tier = null)
         {
             Initialize(returnUrl, methods, stepUp, tier);
+
+            // A signed-in user has nothing to do here — unless this is a step-up, where the session
+            // exists but does not yet meet what the request demands, and the whole point is to ask
+            // again. Sending them on rather than re-presenting the form keeps a stale bookmark or a
+            // back-button press from looking like a signed-out state.
+            if (!StepUp && User.Identity?.IsAuthenticated == true)
+            {
+                string fallback = Url.Page("/Manage/Index", new { area = "Identity" })!;
+                return LocalRedirect(ReturnUrlValidator.Sanitize(ReturnUrl, fallback));
+            }
+
+            return Page();
         }
 
         /// <summary>Issues an email one-time code and advances to code entry (enumeration-safe).</summary>
