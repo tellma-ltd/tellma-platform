@@ -48,7 +48,7 @@ namespace Tellma.Identity.E2E
                 Assert.Equal("rgb(254, 254, 254)", pageBackground);
 
                 string buttonBackground = await page.EvaluateAsync<string>(
-                    "() => getComputedStyle(document.querySelector('.tl-button-primary')).backgroundColor");
+                    "() => getComputedStyle(document.querySelector('.tmi-button-primary')).backgroundColor");
                 Assert.Equal("rgb(49, 110, 128)", buttonBackground);
 
                 // The multi-script brand font stack is applied (the faces themselves are vendored).

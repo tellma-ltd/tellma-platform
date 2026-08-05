@@ -4,14 +4,14 @@
     ViewData["Title"] = L["ErrorTitle"].Value;
 }
 
-<h1 class="tl-title">@L["ErrorTitle"]</h1>
+<h1 class="tmi-title">@L["ErrorTitle"]</h1>
 
 @if (!string.IsNullOrEmpty(Model.Error))
 {
-    <p class="tl-error">@Model.Error</p>
+    <p class="tmi-error">@Model.Error</p>
 }
 
 @if (!string.IsNullOrEmpty(Model.ErrorDescription))
 {
-    <p class="tl-muted">@Model.ErrorDescription</p>
+    <p class="tmi-muted">@Model.ErrorDescription</p>
 }

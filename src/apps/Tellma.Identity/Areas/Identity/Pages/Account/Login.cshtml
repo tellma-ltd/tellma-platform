@@ -5,13 +5,13 @@
     ViewData["Title"] = Model.StepUp ? L["ConfirmItsYou"].Value : L["SignIn"].Value;
 }
 
-<h1 class="tl-title">@(Model.StepUp ? L["ConfirmItsYou"] : L["SignIn"])</h1>
+<h1 class="tmi-title">@(Model.StepUp ? L["ConfirmItsYou"] : L["SignIn"])</h1>
 
 <partial name="Shared/_StatusMessage" model="@(Model.StatusMessage)" />
 
 @if (Model.RequiresDeviceBoundPasskey)
 {
-    <p class="tl-muted">@L["DeviceBoundPasskeyRequired"]</p>
+    <p class="tmi-muted">@L["DeviceBoundPasskeyRequired"]</p>
 }
 
 @{
@@ -28,17 +28,17 @@
 @if (showEmailCode)
 {
     <form method="post" asp-page-handler="EmailCode" asp-route-returnUrl="@Model.ReturnUrl" asp-route-methods="@Model.MethodsRaw" asp-route-stepUp="@Model.StepUp" asp-route-tier="@Model.Tier">
-        <div class="tl-field">
-            <label class="tl-label" for="email">@L["Email"]</label>
+        <div class="tmi-field">
+            <label class="tmi-label" for="email">@L["Email"]</label>
             @* autocomplete carries the webauthn token so passkey conditional UI can attach here. *@
-            <input class="tl-input" id="email" name="Email" type="email" inputmode="email"
+            <input class="tmi-input" id="email" name="Email" type="email" inputmode="email"
                    autocomplete="username webauthn" required value="@Model.Email" />
         </div>
-        <label class="tl-checkbox">
+        <label class="tmi-checkbox">
             <input type="checkbox" name="RememberMe" value="true" checked="@Model.RememberMe" />
             @L["RememberMe"]
         </label>
-        <button class="tl-button tl-button-primary" type="submit">@L["ContinueWithEmailCode"]</button>
+        <button class="tmi-button tmi-button-primary" type="submit">@L["ContinueWithEmailCode"]</button>
     </form>
 }
 
@@ -48,7 +48,7 @@
     <form method="post" id="passkey-form" asp-page-handler="Passkey" asp-route-returnUrl="@Model.ReturnUrl" asp-route-methods="@Model.MethodsRaw" asp-route-stepUp="@Model.StepUp" asp-route-tier="@Model.Tier"
           data-assertion-url="@Url.Action("AssertionOptions", "PasskeyCeremony")">
         <input type="hidden" id="passkey-credential" name="Credential" />
-        <button class="tl-button tl-button-secondary" type="button" id="passkey-button">@L["SignInWithPasskey"]</button>
+        <button class="tmi-button tmi-button-secondary" type="button" id="passkey-button">@L["SignInWithPasskey"]</button>
     </form>
 }
 
@@ -56,27 +56,27 @@
 {
     @* The allow-list names only methods this deployment does not offer (password sign-in is
        deferred): say so instead of rendering an empty page. *@
-    <p class="tl-error">@L["NoSignInMethodAvailable"]</p>
+    <p class="tmi-error">@L["NoSignInMethodAvailable"]</p>
 }
 
 @if (showGoogle || showMicrosoft)
 {
-    <hr class="tl-divider" />
+    <hr class="tmi-divider" />
     @if (showGoogle)
     {
         <form method="post" asp-page="/Account/ExternalLogin" asp-route-provider="Google" asp-route-returnUrl="@Model.ReturnUrl">
-            <button class="tl-button tl-button-secondary" type="submit">@L["ContinueWithGoogle"]</button>
+            <button class="tmi-button tmi-button-secondary" type="submit">@L["ContinueWithGoogle"]</button>
         </form>
     }
     @if (showMicrosoft)
     {
         <form method="post" asp-page="/Account/ExternalLogin" asp-route-provider="Microsoft" asp-route-returnUrl="@Model.ReturnUrl">
-            <button class="tl-button tl-button-secondary" type="submit">@L["ContinueWithMicrosoft"]</button>
+            <button class="tmi-button tmi-button-secondary" type="submit">@L["ContinueWithMicrosoft"]</button>
         </form>
     }
 }
 
-<div asp-validation-summary="All" class="tl-error"></div>
+<div asp-validation-summary="All" class="tmi-error"></div>
 
 @if (showPasskey)
 {

@@ -5,31 +5,31 @@
     ViewData["Title"] = L["AuthenticatorApp"].Value;
 }
 
-<h1 class="tl-title">@L["AuthenticatorApp"]</h1>
+<h1 class="tmi-title">@L["AuthenticatorApp"]</h1>
 
 @if (Model.RecoveryCodes is { Count: > 0 })
 {
-    <p class="tl-status">@L["RecoveryCodesPrompt"]</p>
+    <p class="tmi-status">@L["RecoveryCodesPrompt"]</p>
     <ul>
         @foreach (string codeValue in Model.RecoveryCodes)
         {
             <li><code>@codeValue</code></li>
         }
     </ul>
-    <a class="tl-button tl-button-primary" asp-area="Identity" asp-page="/Manage/Index">@L["Save"]</a>
+    <a class="tmi-button tmi-button-primary" asp-area="Identity" asp-page="/Manage/Index">@L["Save"]</a>
 }
 else
 {
-    <p class="tl-muted">@L["AuthenticatorEnrollPrompt"]</p>
+    <p class="tmi-muted">@L["AuthenticatorEnrollPrompt"]</p>
     <img src="@Model.QrCodeDataUri" alt="QR code" width="200" height="200" />
-    <p class="tl-muted"><code>@Model.SharedKey</code></p>
+    <p class="tmi-muted"><code>@Model.SharedKey</code></p>
 
     <form method="post">
-        <div class="tl-field">
-            <label class="tl-label" for="code">@L["Code"]</label>
-            <input class="tl-input" id="code" name="Code" type="text" inputmode="numeric" autocomplete="one-time-code" required />
+        <div class="tmi-field">
+            <label class="tmi-label" for="code">@L["Code"]</label>
+            <input class="tmi-input" id="code" name="Code" type="text" inputmode="numeric" autocomplete="one-time-code" required />
         </div>
-        <button class="tl-button tl-button-primary" type="submit">@L["EnableAuthenticator"]</button>
+        <button class="tmi-button tmi-button-primary" type="submit">@L["EnableAuthenticator"]</button>
     </form>
-    <div asp-validation-summary="All" class="tl-error"></div>
+    <div asp-validation-summary="All" class="tmi-error"></div>
 }

@@ -4,7 +4,7 @@
     ViewData["Title"] = L["ConsentTitle"].Value;
 }
 
-<h1 class="tl-title">@L["ConsentTitle"]</h1>
+<h1 class="tmi-title">@L["ConsentTitle"]</h1>
 <p>@L["ConsentPrompt", Model.ApplicationName ?? string.Empty, Model.Scope]</p>
 
 <form method="post">
@@ -20,6 +20,6 @@
             <input type="hidden" name="@parameter.Key" value="@parameter.Value" />
         }
     }
-    <button class="tl-button tl-button-primary" type="submit" name="submit.Accept" value="yes">@L["Accept"]</button>
-    <button class="tl-button tl-button-secondary" type="submit" name="submit.Deny" value="no">@L["Deny"]</button>
+    <button class="tmi-button tmi-button-primary" type="submit" name="submit.Accept" value="yes">@L["Accept"]</button>
+    <button class="tmi-button tmi-button-secondary" type="submit" name="submit.Deny" value="no">@L["Deny"]</button>
 </form>

@@ -5,15 +5,15 @@
     ViewData["Title"] = L["InvitationTitle"].Value;
 }
 
-<h1 class="tl-title">@L["InvitationTitle"]</h1>
+<h1 class="tmi-title">@L["InvitationTitle"]</h1>
 
 @if (!Model.IsValid)
 {
-    <p class="tl-error">@L["InvitationInvalid"]</p>
+    <p class="tmi-error">@L["InvitationInvalid"]</p>
 }
 else
 {
-    <p class="tl-muted">@L["InvitationPrompt"]</p>
-    <a class="tl-button tl-button-primary" asp-area="Identity" asp-page="/Account/RegisterPasskey"
+    <p class="tmi-muted">@L["InvitationPrompt"]</p>
+    <a class="tmi-button tmi-button-primary" asp-area="Identity" asp-page="/Account/RegisterPasskey"
        asp-route-returnUrl="@Model.ReturnUrl">@L["RegisterPasskeyButton"]</a>
 }

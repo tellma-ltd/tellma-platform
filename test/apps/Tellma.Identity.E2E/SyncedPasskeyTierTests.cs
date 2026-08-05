@@ -73,8 +73,8 @@ namespace Tellma.Identity.E2E
                     // specific message is what makes this test about the tier check: a generic
                     // ceremony failure renders into the same validation summary, so "an error
                     // appeared" would pass without the refusal ever running. The summary is the
-                    // only place that string appears inside .tl-error — the standing hint above
-                    // the form is a .tl-muted paragraph.
+                    // only place that string appears inside .tmi-error — the standing hint above
+                    // the form is a .tmi-muted paragraph.
                     await DriveCeremonyUntilRefusedAsync(page);
 
                     // The user was not signed in, so the authorization endpoint is never handed a
@@ -93,7 +93,7 @@ namespace Tellma.Identity.E2E
         /// </summary>
         private static async Task DriveCeremonyUntilRefusedAsync(IPage page)
         {
-            ILocator error = page.Locator(".tl-error li", new() { HasTextString = "device-bound passkey" });
+            ILocator error = page.Locator(".tmi-error li", new() { HasTextString = "device-bound passkey" });
             ILocator button = page.GetByRole(AriaRole.Button, new() { Name = "Sign in with a passkey" });
 
             for (int attempt = 0; attempt < 120; attempt++)

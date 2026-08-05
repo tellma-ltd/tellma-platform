@@ -5,13 +5,13 @@
     ViewData["Title"] = L["Passkeys"].Value;
 }
 
-<h1 class="tl-title">@L["Passkeys"]</h1>
+<h1 class="tmi-title">@L["Passkeys"]</h1>
 
 <partial name="../Shared/_StatusMessage" model="@(Model.StatusMessage)" />
 
 @if (Model.Passkeys.Count == 0)
 {
-    <p class="tl-muted">@L["NoPasskeys"]</p>
+    <p class="tmi-muted">@L["NoPasskeys"]</p>
 }
 else
 {
@@ -20,15 +20,15 @@ else
         {
             <li>
                 <span>@passkey.Label</span>
-                <span class="tl-muted">— @(passkey.IsDeviceBound ? L["DeviceBound"] : L["Synced"])</span>
-                <form class="tl-inline" method="post" asp-page-handler="Remove">
+                <span class="tmi-muted">— @(passkey.IsDeviceBound ? L["DeviceBound"] : L["Synced"])</span>
+                <form class="tmi-inline" method="post" asp-page-handler="Remove">
                     <input type="hidden" name="CredentialId" value="@passkey.CredentialId" />
-                    <button class="tl-link" type="submit">@L["Remove"]</button>
+                    <button class="tmi-link" type="submit">@L["Remove"]</button>
                 </form>
             </li>
         }
     </ul>
 }
 
-<a class="tl-button tl-button-primary" asp-area="Identity" asp-page="/Account/RegisterPasskey"
+<a class="tmi-button tmi-button-primary" asp-area="Identity" asp-page="/Account/RegisterPasskey"
    asp-route-returnUrl="@Url.Page("/Manage/Passkeys", new { area = "Identity" })">@L["AddPasskey"]</a>

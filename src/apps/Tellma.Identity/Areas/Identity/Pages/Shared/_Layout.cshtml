@@ -17,14 +17,14 @@
     <link rel="stylesheet" href="~/_content/Tellma.Identity/css/identity.css" />
 </head>
 <body>
-    <main class="tl-shell">
-        <div class="tl-card">
-            <header class="tl-brand">
+    <main class="tmi-shell">
+        <div class="tmi-card">
+            <header class="tmi-brand">
                 @if (brand.LogoPath is not null)
                 {
                     <img src="@brand.LogoPath" alt="@brand.ProductName" height="28" />
                 }
-                <span class="tl-brand-name">@brand.ProductName</span>
+                <span class="tmi-brand-name">@brand.ProductName</span>
             </header>
             @RenderBody()
         </div>
