@@ -22,7 +22,6 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-3);
   overflow: auto;
 }
 
@@ -77,6 +76,17 @@
   gap: var(--space-1);
   padding: var(--space-8);
   text-align: center;
+  color: var(--text-muted);
+}
+
+.tm-preview__card-icon {
+  flex: none;
+  inline-size: var(--preview-card-icon-size);
+  block-size: var(--preview-card-icon-size);
+}
+
+.tm-preview__card-icon--error {
+  color: var(--error);
 }
 
 .tm-preview__card-title {
@@ -91,52 +101,22 @@
   color: var(--text-secondary);
 }
 
+/* A quieter plate than the viewer above it, so the actions read as a bar
+   rather than as the bottom of the document being previewed. */
 .tm-preview__footer {
   align-items: center;
+  background: var(--preview-footer-bg);
 }
 
 .tm-preview__size {
   margin-inline-end: auto;
-  font-size: var(--text-xs);
+  font-size: var(--preview-footer-font-size);
   color: var(--text-secondary);
 }
 
-/* The download action is an anchor (the `download` attribute needs one),
-   dressed as a secondary button. */
-.tm-preview__download {
-  display: inline-flex;
-  align-items: center;
-  /* Matches the default tmButton next to it — the Print action is one,
-     and two adjacent actions of different heights read as a mistake. */
-  block-size: var(--field-height);
-  padding-inline: var(--button-padding-x);
-  border: var(--border-width) solid var(--button-secondary-border);
-  border-radius: var(--button-radius);
-  background: var(--button-secondary-bg);
-  color: var(--button-secondary-text);
-  font-family: var(--font-ui);
-  font-size: var(--text-sm);
-  text-decoration: none;
-}
-
-.tm-preview__download:hover {
-  background: var(--button-secondary-hover-bg);
-}
-
-.tm-preview__download:focus-visible {
-  /* A transparent REAL outline beneath the token ring: forced colors strip
-     box-shadows but repaint outline-color in a system color, so the outline
-     is the only thing left carrying focus there. */
-  outline: var(--focus-ring-width) solid transparent;
-  outline-offset: var(--focus-ring-offset);
-  box-shadow: var(--focus-ring);
-}
-
-@media (forced-colors: active) {
-  .tm-preview__download {
-    border-color: ButtonText;
-  }
-}
+/* The download action wears tmButton's own classes (see the template), so
+   every button rule reaches it from the global sheet and nothing here has
+   to be kept in step by hand. */
 
 /* The permanent live region: present for announcements, never seen — the
    same message is already rendered visibly by the state it belongs to. */

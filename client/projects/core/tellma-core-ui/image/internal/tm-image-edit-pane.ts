@@ -15,6 +15,7 @@ import {
 } from '@angular/core';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
+import { TmTooltip } from '@tellma/core-ui/tooltip';
 
 import type { TmImageFit } from '../tm-image-types';
 
@@ -42,6 +43,7 @@ function clampTo(value: number, max: number): number {
  */
 @Component({
   selector: 'tm-image-edit-pane',
+  imports: [TmTooltip],
   template: `
     <div
       class="tm-image__crop"
@@ -64,6 +66,15 @@ function clampTo(value: number, max: number): number {
         [style.transform]="imageTransform()"
       />
     </div>
+    <!-- A pill floating clear of the image's edges rather than a bar bolted
+         across its foot: the thing being cropped is what the reader is
+         looking at, and chrome that touches the frame reads as part of it.
+
+         No standing label and a glyph rather than a word on the confirm:
+         the bar sits inside the image box, and every pixel either of them
+         took came out of the slider, which is the only thing here the
+         reader actually has to aim at. Both keep their words as accessible
+         names and tooltips. -->
     <div class="tm-image__edit-bar">
       <input
         class="tm-image__zoom"
@@ -76,8 +87,24 @@ function clampTo(value: number, max: number): number {
         (input)="onSlider($event)"
         (change)="commit()"
       />
-      <button type="button" class="tm-image__chrome-button" (click)="onDone()">
-        {{ doneLabel() }}
+      <button
+        type="button"
+        class="tm-image__done"
+        [attr.aria-label]="doneLabel()"
+        [tmTooltip]="doneLabel()"
+        (click)="onDone()"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.25"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
       </button>
     </div>
   `,

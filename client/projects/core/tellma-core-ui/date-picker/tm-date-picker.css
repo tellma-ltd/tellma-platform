@@ -37,6 +37,13 @@
   cursor: pointer;
 }
 
+/* The picker owns its trailing glyph, so an invalid one tints that as well
+   as drawing the mark beside it — the button is the largest thing in the
+   field and reads as part of its state. */
+:host(.tm-date-picker--invalid) .tm-date-picker__toggle:not(:disabled) {
+  color: var(--error);
+}
+
 .tm-date-picker__toggle:hover:not(:disabled) {
   background: var(--surface-hover);
   color: var(--field-text);
@@ -50,6 +57,21 @@
 .tm-date-picker__toggle > svg {
   inline-size: var(--space-4);
   block-size: var(--space-4);
+}
+
+/* The invalid glyph this control draws for the enclosing field (see the
+   template). The class is the field's, so the look stays identical; the
+   rule has to live here because the element does. */
+.tm-form-field__error-icon {
+  flex: none;
+  inline-size: var(--field-error-icon-size);
+  block-size: var(--field-error-icon-size);
+  color: var(--error);
+  /* Transparent to the pointer, so a press on the glyph lands on the chrome
+     beneath it and focuses the control — which is what shows the message.
+     Reaching for the mark of the problem and having nothing happen is the
+     one thing a reader will certainly try. */
+  pointer-events: none;
 }
 
 @media (forced-colors: active) {

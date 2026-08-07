@@ -42,11 +42,18 @@ import {
   type TmCalendar,
   type TmDateStyle,
 } from '@tellma/core-ui/l10n';
-import { tmCreateAnchoredOverlay, tmLogicalPositions } from '@tellma/core-ui/private';
+import {
+  tmCreateAnchoredOverlay,
+  tmLogicalPositions,
+  type TmOverlaySide,
+} from '@tellma/core-ui/private';
 
 import { ɵTmDatePopup } from './internal/tm-date-popup';
 
 let nextUniqueId = 0;
+
+/** Air kept between the popup and the window edge when choosing a side. */
+const POPUP_VIEWPORT_MARGIN = 8;
 
 /**
  * Date field: a free-text input (the primary entry path) plus a calendar
@@ -109,6 +116,25 @@ let nextUniqueId = 0;
       (blur)="onBlur()"
       (keydown)="onInputKeydown($event)"
     />
+    <!-- Drawn HERE, not by the enclosing field: appended after this whole
+         control it would sit past the button below and shove it sideways
+         every time an error came and went. -->
+    @if (showsInvalid()) {
+      <svg
+        class="tm-form-field__error-icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" x2="12" y1="8" y2="12" />
+        <line x1="12" x2="12.01" y1="16" y2="16" />
+      </svg>
+    }
     <button
       type="button"
       class="tm-date-picker__toggle tm-form-field__trailing-icon"
@@ -117,10 +143,19 @@ let nextUniqueId = 0;
       [attr.aria-label]="toggleLabel()"
       (click)="onToggleClick()"
     >
-      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <rect x="2" y="3" width="12" height="11" rx="1.5" stroke="currentColor" stroke-width="1.5" />
-        <path d="M2 6.5h12" stroke="currentColor" stroke-width="1.5" />
-        <path d="M5.5 1.5v3M10.5 1.5v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M8 2v4" />
+        <path d="M16 2v4" />
+        <rect width="18" height="18" x="3" y="4" rx="2" />
+        <path d="M3 10h18" />
       </svg>
     </button>
 
@@ -150,6 +185,7 @@ let nextUniqueId = 0;
   host: {
     class: 'tm-date-picker',
     '[class.tm-date-picker--disabled]': 'disabled()',
+    '[class.tm-date-picker--invalid]': 'showsInvalid()',
   },
 })
 export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | null> {
@@ -249,15 +285,58 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
   protected readonly anchored = tmCreateAnchoredOverlay({
     overlay: () => this.overlay(),
     origin: () => this.originElement(),
+    // ONE position, decided per open (see `popupSide`) — never a flip pair.
+    // The popup's content lands a render pass AFTER the CDK attaches and
+    // measures, so with a pair the CDK picks "below" against an empty box,
+    // paints there, and only flips up once the calendar has drawn itself:
+    // the popup visibly appears in the wrong place and jumps. Measuring the
+    // room first and handing over a single position makes the choice before
+    // anything is painted.
+    //
     // Aligned to the edge the DATE ITSELF sits against, so the calendar
     // opens under the text it edits — a right-aligned grid column gets a
     // right-aligned popup instead of one hanging off the far side.
-    positions: () => tmLogicalPositions('block-end', this.popupAlign()),
+    positions: () => [tmLogicalPositions(this.popupSide(), this.popupAlign())[0]],
     remeasure: 'macrotask',
   });
 
   /** Which edge of the origin the popup aligns to; refreshed on each open. */
   private readonly popupAlign = signal<'start' | 'end'>('start');
+
+  /** Which side of the origin the popup opens on; refreshed on each open. */
+  private readonly popupSide = signal<TmOverlaySide>('block-end');
+
+  /**
+   * Picks the side from the room the anchor has, against the popup's OWN
+   * height — which is a constant here, because every view reserves the day
+   * grid's six-week box. Below wins ties: a calendar reads as hanging off
+   * the field it belongs to.
+   */
+  private sideOfOrigin(): TmOverlaySide {
+    const rect = this.originElement().getBoundingClientRect();
+    const needed = this.popupHeightEstimate();
+    const below = window.innerHeight - rect.bottom - POPUP_VIEWPORT_MARGIN;
+    const above = rect.top - POPUP_VIEWPORT_MARGIN;
+    return below >= needed || below >= above ? 'block-end' : 'block-start';
+  }
+
+  /**
+   * The popup's height, derived from its own tokens rather than measured:
+   * at the moment the side is chosen the popup does not exist yet. Header
+   * and footer are one slot each, the body is the fixed seven-row grid.
+   */
+  private popupHeightEstimate(): number {
+    const styles = getComputedStyle(this.hostElement);
+    const px = (name: string, fallback: number) => {
+      const parsed = Number.parseFloat(styles.getPropertyValue(name));
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    };
+    const cell = px('--date-picker-cell-height', 30);
+    const gap = px('--date-picker-cell-gap', 1);
+    const slot = px('--date-picker-slot-height', 32);
+    const padding = px('--date-picker-popup-padding', 8);
+    return 7 * cell + 6 * gap + 2 * slot + 2 * padding;
+  }
 
   /**
    * The chrome the popup anchors to: the field's bordered box, or the
@@ -425,6 +504,11 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
   // ---- TmFormFieldControl ----
   /** The field renders the bordered box around this bare anatomy. */
   readonly ownsChrome = false;
+  /**
+   * The picker draws the invalid glyph itself, before its own calendar
+   * button, so the button never shifts when an error appears.
+   */
+  readonly ownsErrorIcon = true;
   private readonly fieldDescribedBy = signal<readonly string[]>([]);
   /** Every exposed describedby id: author-supplied first, then the field's hint/error ids. */
   readonly describedByIds: Signal<readonly string[]> = computed(() => [
@@ -598,7 +682,10 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
     if (this.elementOrThrow.value !== this.rawText() || this.cellHost === null) {
       this.commitTypedText();
     }
-    this.popupAlign.set(this.alignOfOrigin()); // measured while the origin is laid out
+    // Both measured while the origin is laid out and the popup is not yet
+    // in the DOM — the only moment either can be read honestly.
+    this.popupAlign.set(this.alignOfOrigin());
+    this.popupSide.set(this.sideOfOrigin());
     this.popupOpen.set(true);
   }
 

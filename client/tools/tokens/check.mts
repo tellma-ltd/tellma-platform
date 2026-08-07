@@ -7,16 +7,17 @@
  * tokens:check — the build gate (§4, DoD 9):
  *   1. zod-parses the default preset (schema gate),
  *   2. runs the missing-ref gate (both schemes + the :lang() leading map),
- *   3. emits the generated JSON Schema into the package's assets,
- *   4. verifies the identity server's committed copies (the emitted tokens
+ *   3. checks every var() the library stylesheets read against what the
+ *      emitter actually produces (the dangling-var gate),
+ *   4. emits the generated JSON Schema into the package's assets,
+ *   5. verifies the identity server's committed copies (the emitted tokens
  *      stylesheet, the composed fonts.css and every woff2 it names) match this
- *      workspace's output —
- *      the .NET build cannot run the emitter, so those copies are committed
- *      and this gate is what keeps them from drifting.
+ *      workspace's output — the .NET build cannot run the emitter, so those
+ *      copies are committed and this gate is what keeps them from drifting.
  * Exits non-zero on any issue. Color-contrast accessibility is covered by
  * the axe browser battery, not here.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, globSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,6 +25,7 @@ import { composeIdentityFontsCss, identityFontFiles } from '../fonts/identity-fo
 import { z } from 'zod';
 
 import { tmEmitCss, tmTokensDefault, tmValidateTokens } from '@tellma/core-ui-tokens';
+import { tmCheckCssRefs } from './css-refs.mjs';
 import { tmTokensZodSchema } from './zod-schema.mjs';
 
 const clientDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -47,15 +49,34 @@ if (issues.length > 0) {
   process.exit(1);
 }
 
-// 3. Generated JSON Schema (shipped as a package asset).
+// 3. Dangling-var gate: a name that misses is not a fallback — CSS drops the
+//    whole declaration, so the rule silently stops applying.
+const stylesheets = [
+  ...globSync(join(clientDir, 'projects', '**', '*.css')).filter(
+    (file) => !file.includes('tellma-core-ui-tokens'),
+  ),
+  // The identity server consumes the same emitted vocabulary but lives outside the client
+  // workspace, so it would otherwise be the one consumer a renamed token could break in silence.
+  join(clientDir, '..', 'src', 'apps', 'Tellma.Identity', 'wwwroot', 'css', 'identity.css'),
+];
+const dangling = tmCheckCssRefs(tmEmitCss(tmTokensDefault), stylesheets);
+if (dangling.length > 0) {
+  console.error(`tokens:check FAILED — ${dangling.length} dangling var() reference(s):`);
+  for (const problem of dangling) {
+    console.error(`  ${problem}`);
+  }
+  process.exit(1);
+}
+
+// 4. Generated JSON Schema (shipped as a package asset).
 const jsonSchema = z.toJSONSchema(tmTokensZodSchema, { target: 'draft-7' });
 const outDir = join(packageDir, 'generated');
 mkdirSync(outDir, { recursive: true });
 writeFileSync(join(outDir, 'tm-tokens.schema.json'), JSON.stringify(jsonSchema, null, 2) + '\n');
 
-// 4. Identity-server copy gate: the RCL commits the emitted stylesheet (and the
-// vendored fonts.css) because its build has no Node toolchain; regenerate with
-// `pnpm run tokens:build-css` and re-copy when this gate fails.
+// 5. Identity-server copy gate: the RCL commits the emitted stylesheet, the composed
+// font stylesheet and the woff2 files because its build has no Node toolchain.
+// `pnpm run identity:copy-assets` regenerates all of them.
 const identityWwwroot = join(clientDir, '..', 'src', 'apps', 'Tellma.Identity', 'wwwroot');
 const copies: Array<{ name: string; expected: string; actual: string }> = [
   {
@@ -77,7 +98,7 @@ for (const source of identityFontFiles()) {
   if (!existsSync(copy) || !readFileSync(copy).equals(readFileSync(source))) {
     console.error(
       `tokens:check FAILED — wwwroot/fonts/${basename(source)} is missing or stale; ` +
-        'run `pnpm run fonts:copy-identity`.',
+        'run `pnpm run identity:copy-assets`.',
     );
     process.exit(1);
   }
@@ -92,4 +113,7 @@ for (const copy of copies) {
   }
 }
 
-console.log('tokens:check OK — schema, missing-ref (light+dark), identity-server copies.');
+console.log(
+  `tokens:check OK — schema, missing-ref (light+dark), ${stylesheets.length} stylesheets scanned ` +
+    'for dangling var(), identity-server copies.',
+);

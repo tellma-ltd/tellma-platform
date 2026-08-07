@@ -35,6 +35,7 @@ import {
   TM_FORM_FIELD_DEFAULTS,
   TM_UI_TRANSLATE,
   tmResolveFieldErrors,
+  type TmControlSize,
 } from '@tellma/core-ui';
 import { TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/form-field';
 import { tmCreateAnchoredOverlay } from '@tellma/core-ui/private';
@@ -114,14 +115,17 @@ let nextUniqueId = 0;
       @if (pending()) {
         <tm-spinner class="tm-select__spinner" />
       }
-      <svg class="tm-select__caret" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <polyline
-          points="4,6 8,10 12,6"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
+      <svg
+        class="tm-select__caret"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="m6 9 6 6 6-6" />
       </svg>
     </div>
 
@@ -158,14 +162,17 @@ let nextUniqueId = 0;
                 <span class="tm-option__content">
                   <ng-container [ngTemplateOutlet]="option.contentTemplate()" />
                 </span>
-                <svg class="tm-option__check" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <polyline
-                    points="3.5,8.5 6.5,11.5 12.5,4.5"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
+                <svg
+                  class="tm-option__check"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.75"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M20 6 9 17l-5-5" />
                 </svg>
               </li>
             }
@@ -238,8 +245,8 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
    * AFTER them, never over them.
    */
   readonly ariaDescribedby = input<string | null>(null, { alias: 'aria-describedby' });
-  /** Height/density variant; defaults to the workspace-wide form-field default. */
-  readonly size = input<'sm' | 'md' | 'lg'>(this.defaults.size);
+  /** Size step; defaults to the workspace-wide control default. */
+  readonly size = input<TmControlSize>(this.defaults.size);
   /** Emits the committed value whenever the user activates an option. */
   readonly selectionChange = output<T>();
   /** Emits when the options panel opens. */

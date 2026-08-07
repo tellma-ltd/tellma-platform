@@ -124,6 +124,29 @@ test.describe('overflow strip (DoD 14)', () => {
       }, await list.elementHandle());
     expect(lastVisible).toBe(true);
   });
+
+  test('the wheel scrolls the strip, and the fade lifts at the end of it', async ({ page }) => {
+    await page.goto(storyUrl('tabs'));
+    const list = page.getByTestId('overflow-group').getByRole('tablist');
+    await expect(list).toHaveClass(/tm-tab-group__list--faded/);
+
+    // A vertical wheel over a horizontal strip: the tabs past the edge are
+    // reachable with a plain mouse, not only with the keyboard.
+    const box = (await list.boundingBox())!;
+    const before = await list.evaluate((el) => el.scrollLeft);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 400);
+    await expect
+      .poll(() => list.evaluate((el) => el.scrollLeft))
+      .toBeGreaterThan(before);
+
+    // Wheel to the far end: the fade is a promise of more, so it has to stop
+    // once there is none.
+    for (let i = 0; i < 12; i++) {
+      await page.mouse.wheel(0, 400);
+    }
+    await expect(list).not.toHaveClass(/tm-tab-group__list--faded/);
+  });
 });
 
 test.describe('forced-colors gate', () => {

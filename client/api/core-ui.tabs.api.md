@@ -29,11 +29,15 @@ export class TmTabContent {
 
 // @public
 export class TmTabGroup {
+    constructor();
     protected readonly effectiveSelectedId: _angular_core.Signal<string | undefined>;
+    protected measureStrip(strip: EventTarget | null): void;
     protected onSelectedTabChange(id: string | undefined): void;
+    protected onStripWheel(event: WheelEvent): void;
     readonly orientation: _angular_core.InputSignal<"horizontal" | "vertical">;
     readonly selectedId: _angular_core.ModelSignal<string | undefined>;
     readonly selectionMode: _angular_core.InputSignal<TmTabSelectionMode>;
+    protected readonly stripHasMore: _angular_core.WritableSignal<boolean>;
     protected readonly tabs: _angular_core.Signal<readonly TmTab[]>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmTabGroup, "tm-tab-group", never, { "selectedId": { "alias": "selectedId"; "required": false; "isSignal": true; }; "selectionMode": { "alias": "selectionMode"; "required": false; "isSignal": true; }; "orientation": { "alias": "orientation"; "required": false; "isSignal": true; }; }, { "selectedId": "selectedIdChange"; }, ["tabs"], never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmTabGroup, never>;

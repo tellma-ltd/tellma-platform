@@ -1,7 +1,7 @@
 /**
  * Public API Surface of @tellma/core-ui/private — shared composition
  * machinery the library's own entry points build on (the anchored overlay
- * helper and the Escape-dismissal coordinator).
+ * helper, the Escape-dismissal coordinator, and the validation bubble).
  *
  * This entry point is importable but carries NO stability guarantees: its
  * surface is excluded from the API goldens and may change in any release
@@ -24,3 +24,4 @@ export {
   type TmOverlaySide,
 } from './tm-anchored-overlay';
 export { tmPushEscapeDismissal } from './tm-dismiss-stack';
+export { ɵTmErrorPopover } from './tm-error-popover';

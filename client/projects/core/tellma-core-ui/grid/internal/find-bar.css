@@ -50,7 +50,7 @@
   min-inline-size: var(--space-12);
   text-align: center;
   color: var(--text-secondary);
-  font-size: var(--text-xs);
+  font-size: var(--grid-status-font-size);
   white-space: nowrap;
   user-select: none;
 }
@@ -90,8 +90,8 @@
 
 .tm-grid__find-nav svg,
 .tm-grid__find-close svg {
-  inline-size: var(--space-4);
-  block-size: var(--space-4);
+  inline-size: var(--grid-status-icon-size);
+  block-size: var(--grid-status-icon-size);
 }
 
 @media (forced-colors: active) {

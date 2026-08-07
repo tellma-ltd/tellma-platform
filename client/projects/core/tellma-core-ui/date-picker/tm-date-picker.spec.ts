@@ -116,6 +116,26 @@ describe('tm-date-picker', () => {
     expect(error.textContent).toContain('Enter a date like');
   });
 
+  it('draws the invalid glyph itself, BEFORE its calendar button', async () => {
+    const { fixture, input } = await setup();
+    await type(fixture, input, 'not a date');
+    await blur(fixture, input);
+
+    // The field appends its own glyph after the whole control, which would
+    // put it past the calendar button and shove the button sideways every
+    // time an error came and went. The picker draws it instead, so the
+    // button never moves.
+    const picker = fixture.nativeElement.querySelector('tm-date-picker') as HTMLElement;
+    const glyph = picker.querySelector('.tm-form-field__error-icon');
+    const toggle = picker.querySelector('.tm-date-picker__toggle');
+    expect(glyph).not.toBeNull();
+    expect(glyph!.compareDocumentPosition(toggle!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // …and the field did NOT add a second one outside the control.
+    const box = fixture.nativeElement.querySelector('.tm-form-field__box') as HTMLElement;
+    expect(box.querySelectorAll('.tm-form-field__error-icon').length).toBe(1);
+  });
+
   it('tmMinDate/tmMaxDate report the framework kinds with localized defaults', async () => {
     const { fixture, input } = await setup();
     await type(fixture, input, '1/1/2019'); // below the schema min

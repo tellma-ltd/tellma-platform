@@ -31,8 +31,14 @@ import type { ɵTmGridViewCore } from './grid-core';
           [attr.aria-label]="prevLabel()"
           (click)="core().gotoError(-1)"
         >
-          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <polyline points="10,4 6,8 10,12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          <svg viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.75"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true">
+            <path d="m15 18-6-6 6-6" />
           </svg>
         </button>
         <button
@@ -41,7 +47,17 @@ import type { ɵTmGridViewCore } from './grid-core';
           data-tm-status-chip
           (click)="core().gotoError(1)"
         >
-          <span class="tm-grid__status-warn" aria-hidden="true">⚠</span>
+          <svg class="tm-grid__status-warn" viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.75"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" x2="12" y1="8" y2="12" />
+            <line x1="12" x2="12.01" y1="16" y2="16" />
+          </svg>
           {{ tallyText() }}
         </button>
         <button
@@ -51,8 +67,14 @@ import type { ɵTmGridViewCore } from './grid-core';
           [attr.aria-label]="nextLabel()"
           (click)="core().gotoError(1)"
         >
-          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <polyline points="6,4 10,8 6,12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          <svg viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.75"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true">
+            <path d="m9 18 6-6-6-6" />
           </svg>
         </button>
       }

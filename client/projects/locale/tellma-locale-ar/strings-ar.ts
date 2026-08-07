@@ -74,7 +74,7 @@ export const TM_LOCALE_AR_STRINGS = {
     noResults: 'لا توجد نتائج',
     searchFailed: 'فشل البحث',
     moreResults:
-      'يتم عرض أفضل {count, plural, zero {# نتيجة} one {نتيجة} two {نتيجتين} few {# نتائج} many {# نتيجة} other {# نتيجة}}. {gender, select, female {واصلي} other {واصل}} الكتابة للتصفية.',
+      'يتم عرض {count, plural, zero {# نتيجة} one {نتيجة} two {نتيجتين} few {# نتائج} many {# نتيجة} other {# نتيجة}}. {gender, select, female {اكتبي} other {اكتب}} للتصفية.',
     announce: {
       results:
         '{count, plural, zero {لا توجد نتائج} one {نتيجة واحدة} two {نتيجتان} few {# نتائج} many {# نتيجة} other {# نتيجة}}',

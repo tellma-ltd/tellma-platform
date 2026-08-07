@@ -135,10 +135,19 @@ interface FittingSession {
             [attr.aria-label]="errorLabel()"
             [tmTooltip]="errorLabel()"
           >
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <rect x="3.75" y="3.75" width="16.5" height="16.5" rx="2" stroke="currentColor" stroke-width="1.5" />
-              <path d="m8 16 3-4 2.2 2.6L16 11l1.5 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-              <path d="m4.5 4.5 15 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            <svg viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true">
+              <line x1="2" x2="22" y1="2" y2="22" />
+              <path d="M10.41 10.41a2 2 0 1 1-2.83-2.83" />
+              <line x1="13.5" x2="6" y1="13.5" y2="21" />
+              <line x1="18" x2="21" y1="12" y2="15" />
+              <path d="M3.59 3.59A1.99 1.99 0 0 0 3 5v14a2 2 0 0 0 2 2h14c.55 0 1.052-.22 1.41-.59" />
+              <path d="M21 15V5a2 2 0 0 0-2-2H9" />
             </svg>
           </div>
         }
@@ -147,10 +156,16 @@ interface FittingSession {
             <ng-container [ngTemplateOutlet]="marker.template" />
           } @else {
             <div class="tm-image__glyph" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <rect x="3.75" y="3.75" width="16.5" height="16.5" rx="2" stroke="currentColor" stroke-width="1.5" />
-                <circle cx="9" cy="9.5" r="1.4" fill="currentColor" />
-                <path d="m7 16.5 3.2-3.6 2.5 2.8 2-2.2 2.3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              <svg viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true">
+                <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+                <circle cx="9" cy="9" r="2" />
+                <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
               </svg>
             </div>
           }
@@ -170,9 +185,15 @@ interface FittingSession {
             [tmTooltip]="replaceLabel()"
             (click)="pickerInput.click()"
           >
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M4 7h3.2l1.3-2h7l1.3 2H20a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
-              <circle cx="12" cy="12.5" r="3.2" stroke="currentColor" stroke-width="1.6" />
+            <svg viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true">
+              <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+              <circle cx="12" cy="13" r="3" />
             </svg>
           </button>
           @if (canRefit()) {
@@ -184,9 +205,15 @@ interface FittingSession {
               [tmTooltip]="adjustLabel()"
               (click)="onRefit()"
             >
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M7 3v14h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-                <path d="M17 21V7H3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+              <svg viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true">
+                <path d="M6 2v14a2 2 0 0 0 2 2h14" />
+                <path d="M18 22V8a2 2 0 0 0-2-2H2" />
               </svg>
             </button>
           }
@@ -199,8 +226,18 @@ interface FittingSession {
               [tmTooltip]="removeLabel()"
               (click)="onDelete()"
             >
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M5 7h14M10 7V5h4v2M8 7l.8 12h6.4L16 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+              <svg viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true">
+                <path d="M3 6h18" />
+                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                <line x1="10" x2="10" y1="11" y2="17" />
+                <line x1="14" x2="14" y1="11" y2="17" />
               </svg>
             </button>
           }

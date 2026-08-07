@@ -17,6 +17,7 @@ import { GridListScreenStory } from './grid/grid-list-screen-story';
 import { GridReadonlyStory } from './grid/grid-readonly-story';
 import { FilePreviewStory } from './file-preview/file-preview-story';
 import { FilesStory } from './files/files-story';
+import { FormFieldStory } from './form-field/form-field-story';
 import { GridStatesStory } from './grid/grid-states-story';
 import { TreeGridStory } from './grid/tree-grid-story';
 import { I18nStory } from './i18n/i18n-story';
@@ -61,6 +62,7 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'welcome', title: 'Welcome', component: WelcomeStory },
   { id: 'theming', title: 'Tokens & theming', component: ThemingStory },
   { id: 'button', title: 'Button (tmButton)', component: ButtonStory },
+  { id: 'form-field', title: 'Form field (tm-form-field)', component: FormFieldStory },
   { id: 'alert', title: 'Alert (tm-alert)', component: AlertStory },
   { id: 'input', title: 'Text input (tmInput + tm-form-field)', component: InputStory },
   { id: 'number', title: 'Number input (tmNumber)', component: NumberStory },

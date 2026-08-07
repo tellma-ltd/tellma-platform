@@ -16,16 +16,24 @@
 .tm-date-popup {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-1);
+  /* border-box, so the width token is the popup's OUTER width: with the
+     default content-box it was silently 18px wider than the token said,
+     and anything measuring the popup against its anchor was measuring the
+     padding too. */
+  box-sizing: border-box;
   inline-size: var(--date-picker-popup-width);
+  /* Detached from the field by one step, on whichever side it opens — see
+     the same note on tm-select's panel. */
+  margin-block: var(--space-1);
   padding: var(--date-picker-popup-padding);
   background: var(--surface-card);
   border: var(--border-width) solid var(--border-default);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
   font-family: var(--font-ui);
-  font-size: var(--text-sm);
-  color: var(--field-text);
+  font-size: var(--date-picker-cell-font-size);
+  color: var(--text-body);
 }
 
 .tm-date-popup__header {
@@ -56,9 +64,15 @@
 }
 
 .tm-date-popup__nav {
-  inline-size: var(--date-picker-cell-size);
-  block-size: var(--date-picker-cell-size);
+  inline-size: var(--date-picker-slot-height);
+  block-size: var(--date-picker-slot-height);
   flex: none;
+  color: var(--text-body);
+}
+
+.tm-date-popup__nav-glyph {
+  inline-size: var(--date-picker-nav-glyph-size);
+  block-size: var(--date-picker-nav-glyph-size);
 }
 
 /* The paging chevrons are direction-mapped like the grid's arrows. */
@@ -68,8 +82,10 @@
 
 .tm-date-popup__view-switch {
   flex: 1;
-  block-size: var(--date-picker-cell-size);
+  block-size: var(--date-picker-slot-height);
+  font-size: var(--date-picker-header-font-size);
   font-weight: var(--weight-semibold);
+  color: var(--text-strong);
 }
 
 .tm-date-popup__grid,
@@ -85,7 +101,7 @@
      screen, out from under the pointer that is clicking them. The month
      and year grids simply leave the difference blank. */
   min-block-size: calc(
-    7 * var(--date-picker-cell-size) + 6 * var(--date-picker-cell-gap)
+    7 * var(--date-picker-cell-height) + 6 * var(--date-picker-cell-gap)
   );
 }
 
@@ -100,8 +116,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  block-size: var(--date-picker-cell-size);
-  font-size: var(--text-xs);
+  block-size: var(--date-picker-weekday-height);
+  font-size: var(--date-picker-weekday-font-size);
+  font-weight: var(--weight-medium);
   color: var(--text-secondary);
 }
 
@@ -109,14 +126,27 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  block-size: var(--date-picker-cell-size);
+  block-size: var(--date-picker-cell-height);
   border: none;
   border-radius: var(--radius-xs);
   background: transparent;
   font-family: var(--font-ui);
-  font-size: var(--text-sm);
-  color: var(--field-text);
+  font-size: var(--date-picker-cell-font-size);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-body);
   cursor: pointer;
+}
+
+/* A month or year label is a word, not a figure: it takes the slot height
+   the grids reserve and drops the tabular figures the day cells need. */
+.tm-date-popup__month,
+.tm-date-popup__year {
+  block-size: var(--date-picker-slot-height);
+  padding-inline: var(--space-1);
+}
+
+.tm-date-popup__month {
+  font-variant-numeric: normal;
 }
 
 .tm-date-popup__cell--blank {
@@ -139,9 +169,20 @@
   box-shadow: inset 0 0 0 var(--border-width) var(--accent);
 }
 
-.tm-date-popup__day--selected {
+/* Today is an outline, the selection a fill: one says "you are here", the
+   other "this is the value", and a user scanning a month has to be able to
+   tell them apart at a glance. */
+.tm-date-popup__day--today {
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+}
+
+.tm-date-popup__day--selected,
+.tm-date-popup__month[aria-selected='true'],
+.tm-date-popup__year[aria-selected='true'] {
   background: var(--color-primary);
   color: var(--color-on-primary);
+  font-weight: var(--weight-semibold);
 }
 
 .tm-date-popup__day--selected:hover:not(:disabled) {
@@ -172,15 +213,21 @@
   gap: var(--date-picker-cell-gap);
 }
 
+/* Ruled off from the grid: Today and Clear act on the field, not on the
+   month being shown, and an unruled row of them reads as two more cells. */
 .tm-date-popup__footer {
   display: flex;
   justify-content: space-between;
   gap: var(--space-2);
+  margin-block-start: var(--space-1);
+  padding-block-start: var(--space-1);
+  border-block-start: var(--border-width) solid var(--divider);
 }
 
 .tm-date-popup__action {
-  block-size: var(--date-picker-cell-size);
+  block-size: var(--date-picker-slot-height);
   padding-inline: var(--space-2);
+  font-weight: var(--weight-medium);
   color: var(--text-link);
 }
 
@@ -203,5 +250,11 @@
   .tm-date-popup__day--today {
     box-shadow: none;
     text-decoration: underline;
+  }
+
+  .tm-date-popup__month[aria-selected='true'],
+  .tm-date-popup__year[aria-selected='true'] {
+    background: Highlight;
+    color: HighlightText;
   }
 }

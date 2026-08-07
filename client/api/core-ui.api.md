@@ -82,7 +82,7 @@ export const TM_UI_STRINGS_EN: {
         readonly magnifier: "Advanced search";
         readonly noResults: "No results";
         readonly searchFailed: "Search failed";
-        readonly moreResults: "{count, plural, one {Showing the top match. Keep typing to refine.} other {Showing top # matches. Keep typing to refine.}}";
+        readonly moreResults: "{count, plural, one {Showing 1 match. Type to refine.} other {Showing # matches. Type to refine.}}";
         readonly announce: {
             readonly results: "{count, plural, one {1 result} other {# results}}";
             readonly resultsMore: "{count, number}+ results — more available";
@@ -227,6 +227,9 @@ export class TmClientCache {
 }
 
 // @public
+export type TmControlSize = 'sm' | 'md' | 'lg';
+
+// @public
 export function tmDefaultActiveLocale(): Signal<string>;
 
 // @public
@@ -255,7 +258,7 @@ export function tmErrorParams(error: ValidationError, formatDate?: (iso: string)
 // @public
 export interface TmFormFieldDefaults {
     readonly requiredMarker: string;
-    readonly size: 'sm' | 'md' | 'lg';
+    readonly size: TmControlSize;
 }
 
 // @public

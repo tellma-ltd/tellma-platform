@@ -69,7 +69,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     setLabelId(id: string | null): void;
     protected readonly showsInvalid: Signal<boolean>;
     protected readonly showsPlaceholder: Signal<boolean>;
-    readonly size: _angular_core.InputSignal<"sm" | "md" | "lg">;
+    readonly size: _angular_core.InputSignal<TmControlSize>;
     readonly text: Signal<string | null>;
     readonly touch: _angular_core.OutputEmitterRef<void>;
     readonly touched: _angular_core.InputSignalWithTransform<boolean, unknown>;

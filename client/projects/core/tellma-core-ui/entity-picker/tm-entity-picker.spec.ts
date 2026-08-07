@@ -646,8 +646,8 @@ describe('tm-entity-picker', () => {
 
     it('a fresh empty result set shows the reserved-height "No results" status', async () => {
       // The tokens stylesheet is not part of the unit environment — pin the
-      // component token so the reserved-height calc resolves.
-      document.documentElement.style.setProperty('--entity-picker-option-height', '36px');
+      // shared option-height token so the reserved-height calc resolves.
+      document.documentElement.style.setProperty('--field-option-height', '36px');
       try {
         const { fixture, host, input } = await setup();
         host.search.set(syncSearch().fn);
@@ -659,7 +659,7 @@ describe('tm-entity-picker', () => {
         expect(height).toBe(72); // 2 × the 36px option-height token
         expect(liveText(fixture)).toBe('No results');
       } finally {
-        document.documentElement.style.removeProperty('--entity-picker-option-height');
+        document.documentElement.style.removeProperty('--field-option-height');
       }
     });
 
@@ -716,7 +716,7 @@ describe('tm-entity-picker', () => {
       const hint = document.querySelector('.tm-entity-picker__hint') as HTMLElement;
       // The hint names how many results are on screen and stays out of the
       // accessibility tree (the count announcement carries it for AT).
-      expect(hint.textContent?.trim()).toBe('Showing top 2 matches. Keep typing to refine.');
+      expect(hint.textContent?.trim()).toBe('Showing 2 matches. Type to refine.');
       expect(hint.getAttribute('aria-hidden')).toBe('true');
       expect(liveText(fixture)).toBe('2+ results — more available');
     });

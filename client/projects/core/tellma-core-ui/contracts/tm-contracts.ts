@@ -59,6 +59,17 @@ export interface TmFormFieldControl {
    */
   readonly ownsChrome: boolean;
   /**
+   * true = the control draws the invalid glyph itself, and the field skips
+   * its own. Set by controls that carry a TRAILING affordance (the date
+   * picker's calendar button, the entity picker's magnifier): the field can
+   * only append its glyph after the whole control, which would push that
+   * affordance sideways every time an error appeared and back again when it
+   * cleared — a button that moves under the pointer as you are reaching for
+   * it. Drawing the glyph inside the control puts it before the affordance,
+   * which then never moves.
+   */
+  readonly ownsErrorIcon?: boolean;
+  /**
    * Every id the control exposes via aria-describedby: author-supplied ids
    * first, then the ids the field pushed via `setDescribedByIds`.
    */
