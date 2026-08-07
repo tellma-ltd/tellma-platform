@@ -28,6 +28,15 @@
       <option value="islamic-umalqura">Umm al-Qura</option>
       <option value="ethiopic">Ethiopic</option>
     </select>
+    <!-- The workspace-wide control size, so a whole story can be seen at
+         each step of the ladder side by side with the design sheet. It is a
+         provider value, not a class, so switching it reloads the page. -->
+    <label class="shell-lang" for="shell-size">Size</label>
+    <select id="shell-size" data-testid="shell-size" [value]="size()" (change)="setSize($event)">
+      <option value="sm">Small</option>
+      <option value="md">Medium</option>
+      <option value="lg">Large</option>
+    </select>
     <button type="button" data-testid="lang-en" (click)="setLang('en')">EN</button>
     <button type="button" data-testid="lang-ar" (click)="setLang('ar')" aria-label="Arabic">
       AR

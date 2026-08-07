@@ -181,8 +181,12 @@ test.describe('date column defaults (DoD 9)', () => {
       ? popupBox.x + popupBox.width - (cellBox.x + cellBox.width)
       : popupBox.x - cellBox.x;
     expect(Math.abs(delta)).toBeLessThan(2);
-    // Vertically it hangs off the cell, not somewhere else on the page.
-    expect(Math.abs(popupBox.y - (cellBox.y + cellBox.height))).toBeLessThan(2);
+    // Vertically it hangs off the cell, not somewhere else on the page. The
+    // popup is detached from its anchor by one spacing step (a calendar
+    // flush against the field reads as the field having grown), so the gap
+    // is measured against that rather than against zero.
+    const detach = await popup.evaluate((el) => parseFloat(getComputedStyle(el).marginBlockStart));
+    expect(Math.abs(popupBox.y - (cellBox.y + cellBox.height) - detach)).toBeLessThan(2);
 
     // Esc №1 closes the popup only; the editor stays.
     await page.keyboard.press('Escape');

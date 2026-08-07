@@ -8,18 +8,22 @@ import {
   afterRenderEffect,
   Component,
   computed,
+  DestroyRef,
   ElementRef,
   inject,
   input,
+  signal,
   untracked,
   ViewContainerRef,
   viewChild,
 } from '@angular/core';
 import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
-import type { ConnectedPosition } from '@angular/cdk/overlay';
+import { Directionality } from '@angular/cdk/bidi';
+import { CdkScrollable } from '@angular/cdk/scrolling';
+import type { ConnectedOverlayPositionChange, ConnectedPosition } from '@angular/cdk/overlay';
 
 import { TmMenu } from '@tellma/core-ui/menu';
-import { tmCreateAnchoredOverlay } from '@tellma/core-ui/private';
+import { tmCreateAnchoredOverlay, ɵTmErrorPopover } from '@tellma/core-ui/private';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
 import { ɵTmGridFindBar } from './find-bar';
@@ -41,10 +45,12 @@ import { ɵTmGridTouchHandles } from './touch-handles';
 @Component({
   selector: 'tm-grid-view',
   imports: [
+    CdkScrollable,
     NgTemplateOutlet,
     OverlayModule,
     TmMenu,
     TmSpinner,
+    ɵTmErrorPopover,
     ɵTmGridFindBar,
     ɵTmGridIcons,
     ɵTmGridStatusBar,
@@ -53,6 +59,7 @@ import { ɵTmGridTouchHandles } from './touch-handles';
   template: `
     <div
       #scroller
+      cdkScrollable
       class="tm-grid__scroller"
       [attr.role]="core().gridRole()"
       aria-multiselectable="true"
@@ -70,7 +77,7 @@ import { ɵTmGridTouchHandles } from './touch-handles';
       (copy)="core().onCopy($event)"
       (cut)="core().onCut($event)"
       (paste)="core().onPaste($event)"
-      (scroll)="core().onScroll($event)"
+      (scroll)="onScrollerScroll($event)"
     >
       <div class="tm-grid__header" role="row" aria-rowindex="1">
         <div class="tm-grid__corner" role="columnheader" aria-colindex="1" data-tm-corner></div>
@@ -199,13 +206,30 @@ import { ɵTmGridTouchHandles } from './touch-handles';
                     ></span>
                     <span class="tm-grid__twisty" aria-hidden="true">
                       @if (cell.expander !== null) {
+                        <!-- One chevron, rotated: expanded points down, and
+                             collapsed points along the reading direction —
+                             which is the CSS's job, since the glyph itself
+                             cannot know it is in an RTL grid. -->
                         <button
                           type="button"
                           class="tm-grid__expander"
                           data-tm-expander
                           tabindex="-1"
                           [class.tm-grid__expander--open]="cell.expander === 'expanded'"
-                        ></button>
+                        >
+                          <svg
+                            class="tm-grid__expander-glyph"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.75"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                          >
+                            <path d="m6 9 6 6 6-6" />
+                          </svg>
+                        </button>
                       }
                     </span>
                     <span class="tm-grid__childspin" aria-hidden="true">
@@ -250,7 +274,12 @@ import { ɵTmGridTouchHandles } from './touch-handles';
          scroll position — inside the scroller it would flow after the
          full-height row spacer and render off-screen while rows are bound. -->
     @if (core().loading()) {
-      <div class="tm-grid__overlay" data-tm-loading>
+      <div
+        class="tm-grid__overlay"
+        data-tm-loading
+        [style.inset-inline-end.px]="scrollbarInline()"
+        [style.inset-block-end.px]="scrollbarBlock()"
+      >
         @if (core().loadingDef(); as loadingDef) {
           <ng-container [ngTemplateOutlet]="loadingDef.template" />
         } @else {
@@ -259,7 +288,12 @@ import { ɵTmGridTouchHandles } from './touch-handles';
         }
       </div>
     } @else if (core().showEmpty()) {
-      <div class="tm-grid__overlay" data-tm-empty>
+      <div
+        class="tm-grid__overlay"
+        data-tm-empty
+        [style.inset-inline-end.px]="scrollbarInline()"
+        [style.inset-block-end.px]="scrollbarBlock()"
+      >
         @if (core().emptyDef(); as emptyDef) {
           <ng-container [ngTemplateOutlet]="emptyDef.template" />
         } @else {
@@ -289,14 +323,26 @@ import { ɵTmGridTouchHandles } from './touch-handles';
     <tm-grid-icons />
 
     <!-- Active-cell error message: a top-layer overlay so errors appearing
-         or clearing never shift the grid's (or the page's) layout. -->
+         or clearing never shift the grid's (or the page's) layout. The same
+         bubble tm-form-field uses, so a cell error and a field error read as
+         the same object. Unlike the field's, this one is NOT decoration —
+         the cell has no live region of its own, so it carries the tooltip
+         role and the active cell's aria-describedby points here. -->
     <ng-template
       [cdkConnectedOverlay]="errorAnchored.overlayConfig()"
-      [cdkConnectedOverlayOpen]="core().errorAnchor() !== null"
+      [cdkConnectedOverlayOpen]="showErrorBubble()"
+      (positionChange)="onErrorPositionChange($event)"
     >
-      <div class="tm-grid__error-msg" [id]="core().errorMsgId" role="tooltip">
-        {{ core().errorMessage() }}
-      </div>
+      <!-- Wholly inert: it hangs over the next ROW, and a press meant for
+           that cell has to reach it rather than dismissing a bubble first. -->
+      <tm-error-popover
+        class="tm-grid__error-msg"
+        role="tooltip"
+        [id]="core().errorMsgId"
+        [messages]="errorMessages()"
+        [above]="errorPopoverAbove()"
+        [selectable]="false"
+      />
     </ng-template>
   `,
   styleUrl: './grid-view.css',
@@ -317,6 +363,74 @@ export class ɵTmGridView {
     { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top' },
     { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom' },
   ];
+
+  /** The bubble takes a list; a cell reports one message at a time. */
+  protected readonly errorMessages = computed(() => [this.core().errorMessage()]);
+
+  /**
+   * Whether the errored cell is still inside the scroller's viewport. The
+   * bubble is a top-layer overlay, so nothing clips it: scrolled away from
+   * its cell it would keep hanging outside the grid, pointing at a row that
+   * is no longer there.
+   */
+  private readonly errorAnchorInView = signal(true);
+
+  /** The bubble shows for an anchored cell that is still on screen. */
+  protected readonly showErrorBubble = computed(
+    () => this.core().errorAnchor() !== null && this.errorAnchorInView(),
+  );
+
+  /**
+   * Re-checks the anchor against the scroller's viewport. The sticky header
+   * covers the top band, so a cell hidden BEHIND it counts as gone too.
+   */
+  private measureErrorAnchorInView(): void {
+    const anchor = this.core().errorAnchor();
+    const scroller = this.scroller()?.nativeElement;
+    if (anchor === null || scroller === undefined) {
+      return;
+    }
+    const cell = (anchor as Element).getBoundingClientRect();
+    const view = scroller.getBoundingClientRect();
+    const header = scroller.querySelector('.tm-grid__header')?.getBoundingClientRect();
+    const top = header === undefined ? view.top : header.bottom;
+    this.errorAnchorInView.set(
+      cell.bottom > top &&
+        cell.top < view.bottom &&
+        cell.right > view.left &&
+        cell.left < view.right,
+    );
+  }
+
+  /**
+   * The scroller's own scroll: the core drives virtualization from it, and
+   * the bubble re-checks whether the cell it points at is still on screen.
+   */
+  protected onScrollerScroll(event: Event): void {
+    this.core().onScroll(event);
+    this.measureErrorAnchorInView();
+  }
+
+  /** Set when the overlay flips above the cell, to turn the arrow over. */
+  protected readonly errorPopoverAbove = signal(false);
+
+  /**
+   * The scrollbars' thickness. The loading / empty layer is a sibling of the
+   * scroller covering the whole grid box; left flush against the edge it
+   * paints over a classic scrollbar, and the grid looks like it has drawn on
+   * its own chrome. Zero on overlay-scrollbar platforms.
+   */
+  protected readonly scrollbarInline = signal(0);
+  protected readonly scrollbarBlock = signal(0);
+
+  /**
+   * The overlay reports where it actually landed. A bubble that flipped
+   * above the cell must turn its arrow over, or it points at the row below
+   * the one it belongs to.
+   */
+  protected onErrorPositionChange(change: ConnectedOverlayPositionChange): void {
+    this.errorPopoverAbove.set(change.connectionPair.overlayY === 'bottom');
+  }
 
   /**
    * The error overlay's shared anchored-overlay wiring. The popover host
@@ -344,6 +458,7 @@ export class ɵTmGridView {
   private readonly editorOutlet = viewChild('editorOutlet', { read: ViewContainerRef });
   private readonly menu = viewChild(TmMenu);
   private readonly icons = viewChild(ɵTmGridIcons);
+  private readonly direction = inject(Directionality);
 
   constructor() {
     // The error anchor moves from cell to cell WHILE the overlay stays
@@ -358,6 +473,9 @@ export class ɵTmGridView {
       const anchor = this.core().errorAnchor();
       untracked(() => {
         if (anchor !== null) {
+          // A fresh anchor is on screen by construction (the grid scrolled
+          // it into view to activate it); measure anyway rather than assume.
+          this.measureErrorAnchorInView();
           this.errorAnchored.reanchor();
         }
       });
@@ -384,5 +502,28 @@ export class ɵTmGridView {
       const icons = this.icons();
       untracked(() => core.attachMenu(menu ?? null, icons?.templates() ?? null));
     });
+    // Measured only while a layer is actually up, and after render so the
+    // scroller has its final box.
+    afterRenderEffect(() => {
+      const core = this.core();
+      if (!core.loading() && !core.showEmpty()) {
+        return;
+      }
+      const scroller = this.scroller()?.nativeElement;
+      if (scroller === undefined) {
+        return;
+      }
+      untracked(() => {
+        this.scrollbarInline.set(scroller.offsetWidth - scroller.clientWidth);
+        this.scrollbarBlock.set(scroller.offsetHeight - scroller.clientHeight);
+      });
+    });
+    // A live direction flip re-lays the grid, but an already-open overlay
+    // keeps the inline offset the CDK measured against the OLD side, so the
+    // cell's error bubble stays on the edge it opened against.
+    const directionChange = this.direction.change.subscribe(() =>
+      this.errorAnchored.reanchor(),
+    );
+    inject(DestroyRef).onDestroy(() => directionChange.unsubscribe());
   }
 }

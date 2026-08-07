@@ -19,9 +19,13 @@ import { Component } from '@angular/core';
 @Component({
   selector: 'tm-spinner',
   template: `
-    <svg viewBox="0 0 16 16" fill="none">
-      <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-opacity="0.25" />
-      <path d="M8 1.5 A 6.5 6.5 0 0 1 14.5 8" stroke="currentColor" stroke-linecap="round" />
+    <!-- A full track plus the quarter arc that turns on it. Both colors come
+         from CSS, not presentation attributes, so a host can re-point either
+         one — a spinner on a filled button needs a track that reads against
+         the fill, not against the page. -->
+    <svg viewBox="0 0 16 16" fill="none" stroke-width="2">
+      <circle class="tm-spinner__track" cx="8" cy="8" r="7" />
+      <path class="tm-spinner__arc" d="M8 1 A 7 7 0 0 1 15 8" stroke-linecap="round" />
     </svg>
   `,
   styleUrl: './tm-spinner.css',

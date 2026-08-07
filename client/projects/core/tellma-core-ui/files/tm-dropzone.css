@@ -12,7 +12,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-1);
+  gap: var(--files-dropzone-gap);
   min-block-size: var(--files-dropzone-min-height);
   padding: var(--files-dropzone-padding);
   border: var(--border-width) dashed var(--border-strong);
@@ -20,7 +20,7 @@
   background: var(--surface-subtle);
   color: var(--text-secondary);
   font-family: var(--font-ui);
-  font-size: var(--text-sm);
+  font-size: var(--files-dropzone-hint-font-size);
   text-align: center;
   cursor: pointer;
 }
@@ -40,8 +40,8 @@
 }
 
 .tm-dropzone__icon {
-  inline-size: var(--space-6);
-  block-size: var(--space-6);
+  inline-size: var(--files-dropzone-icon-size);
+  block-size: var(--files-dropzone-icon-size);
   color: var(--text-muted);
 }
 
@@ -58,7 +58,7 @@
 
 .tm-dropzone__meta {
   margin: 0;
-  font-size: var(--text-xs);
+  font-size: var(--files-dropzone-meta-font-size);
   /* Secondary, not muted: the meta lines must clear AA contrast on the
      subtle surface. */
   color: var(--text-secondary);

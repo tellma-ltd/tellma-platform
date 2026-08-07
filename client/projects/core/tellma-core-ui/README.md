@@ -19,7 +19,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/date-picker` | `tm-date-picker` — calendar-aware date input + popup (ISO `YYYY-MM-DD` model) |
 | `@tellma/core-ui/entity-picker` | `tm-entity-picker` — server-searched FK selector with advanced-search/create/edit modal pages |
 | `@tellma/core-ui/checkbox` | `tm-checkbox` — native-input tri-state checkbox |
-| `@tellma/core-ui/form-field` | `tm-form-field` — label/hint/error chrome around any control |
+| `@tellma/core-ui/form-field` | `tm-form-field` — label/hint/message chrome around any control. Validation messages are an anchored popover shown while the control holds focus, never a row under the field, so an error can never reflow the page; the words themselves live in a permanently rendered visually-hidden live region |
 | `@tellma/core-ui/select` | `tm-select` + `tm-option` — overlay single-select |
 | `@tellma/core-ui/button` | `tmButton` — variants, sizes, and the `pending` suppressed-activation state |
 | `@tellma/core-ui/tabs` | `tm-tab-group` + `tm-tab` — active-only-DOM tabs with `preserveContent` |

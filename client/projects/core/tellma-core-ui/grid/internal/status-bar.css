@@ -6,18 +6,22 @@
  */
 
 /* tm-grid-status-bar — fixed height by design (§ errors never shift the
-   layout); tallies ride the grid tokens. */
+   layout); tallies ride the grid tokens. Figures are tabular throughout: a
+   tally that reflows its own width as the count crosses 9 draws the eye to
+   the wrong thing. */
 
 :host {
   display: flex;
   align-items: center;
   box-sizing: border-box;
   flex: 0 0 auto;
-  block-size: var(--grid-row-height);
-  border-block-start: var(--border-width) solid var(--grid-line);
+  gap: var(--space-1);
+  block-size: var(--grid-status-height);
+  border-block-start: var(--border-width) solid var(--grid-header-line);
   padding-inline: var(--space-2);
   font-family: var(--font-ui);
-  font-size: var(--text-xs);
+  font-size: var(--grid-status-font-size);
+  font-variant-numeric: tabular-nums;
   color: var(--text-secondary);
   background: var(--grid-header-bg);
 }
@@ -45,7 +49,10 @@
   cursor: pointer;
 }
 
+/* The error tally is the one thing on this bar that must be found without
+   looking for it, so it is the one thing carrying the status color. */
 .tm-grid__status-chip {
+  font-weight: var(--weight-medium);
   color: var(--error);
 }
 
@@ -60,12 +67,14 @@
 }
 
 .tm-grid__status-warn {
-  line-height: 1;
+  flex: none;
+  inline-size: var(--grid-status-icon-size);
+  block-size: var(--grid-status-icon-size);
 }
 
 .tm-grid__status-nav svg {
-  inline-size: var(--space-4);
-  block-size: var(--space-4);
+  inline-size: var(--grid-status-icon-size);
+  block-size: var(--grid-status-icon-size);
 }
 
 .tm-grid__status-spinner {

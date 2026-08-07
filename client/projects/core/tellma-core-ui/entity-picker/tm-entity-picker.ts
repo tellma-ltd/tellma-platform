@@ -198,6 +198,25 @@ function isThenable<T>(
       (focusout)="onFocusout($event)"
       (keydown)="onInputKeydown($event)"
     />
+    <!-- Drawn HERE, not by the enclosing field: appended after this whole
+         control it would sit past the button below and shove it sideways
+         every time an error came and went. -->
+    @if (showsInvalid()) {
+      <svg
+        class="tm-form-field__error-icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" x2="12" y1="8" y2="12" />
+        <line x1="12" x2="12.01" y1="16" y2="16" />
+      </svg>
+    }
     @if (advancedSearch() !== undefined) {
       <button
         type="button"
@@ -208,14 +227,17 @@ function isThenable<T>(
         (pointerdown)="$event.preventDefault()"
         (click)="onMagnifierClick()"
       >
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <circle cx="7" cy="7" r="4.25" stroke="currentColor" stroke-width="1.5" />
-          <path
-            d="M10.5 10.5L14 14"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-          />
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.75"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.3-4.3" />
         </svg>
       </button>
     }
@@ -262,17 +284,15 @@ function isThenable<T>(
                 <span class="tm-entity-picker__option-label">{{ labelOf(item) }}</span>
                 <svg
                   class="tm-entity-picker__check"
-                  viewBox="0 0 16 16"
+                  viewBox="0 0 24 24"
                   fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.75"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
                   aria-hidden="true"
                 >
-                  <polyline
-                    points="3.5,8.5 6.5,11.5 12.5,4.5"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
+                  <path d="M20 6 9 17l-5-5" />
                 </svg>
               </li>
             }
@@ -757,6 +777,11 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   // ---- TmFormFieldControl ----
   /** The field renders the bordered box around this bare anatomy. */
   readonly ownsChrome = false;
+  /**
+   * The picker draws the invalid glyph itself, before its own magnifier
+   * button, so the button never shifts when an error appears.
+   */
+  readonly ownsErrorIcon = true;
   private readonly fieldDescribedBy = signal<readonly string[]>([]);
   /** Every exposed describedby id: author-supplied first, then the field's hint/error ids. */
   readonly describedByIds: Signal<readonly string[]> = computed(() => [

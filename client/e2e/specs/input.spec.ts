@@ -25,7 +25,7 @@ test.describe('axe floor (DoD 4)', () => {
 });
 
 test.describe('error display + live region mechanism (§6)', () => {
-  test('hint swaps to error after blur; the error element is a persistent polite region', async ({
+  test('the error region is persistent and live; the hint stays put beside it', async ({
     page,
   }) => {
     await page.goto(storyUrl('input'));
@@ -44,12 +44,75 @@ test.describe('error display + live region mechanism (§6)', () => {
     await page.keyboard.press('Tab');
 
     await expect(error).toHaveText('This field is required');
-    await expect(hint).toBeHidden();
+    // The hint is the field's standing instruction and does NOT give way to
+    // the error: it is most useful exactly when the value is wrong, and the
+    // error is a popover that needs no room from it.
+    await expect(hint).toBeVisible();
     await expect(input).toHaveAttribute('aria-invalid', 'true');
 
-    // describedby resolves to the element carrying the message.
-    const describedBy = await input.getAttribute('aria-describedby');
-    await expect(page.locator(`[id="${describedBy}"]`)).toHaveText('This field is required');
+    // Both ids are described, hint first, and the last one carries the message.
+    const describedBy = (await input.getAttribute('aria-describedby'))!.split(' ');
+    await expect(page.locator(`[id="${describedBy.at(-1)}"]`)).toHaveText(
+      'This field is required',
+    );
+  });
+
+  test('the bubble follows focus; the message never leaves the accessibility tree', async ({
+    page,
+  }) => {
+    await page.goto(storyUrl('form-field'));
+    const field = page.getByTestId('ff-error-blur');
+    const input = field.locator('input');
+    const bubble = page.locator('tm-error-popover');
+
+    // Invalid from the start, and blurred: the border and the in-field glyph
+    // are what say so, and the words are still described.
+    await expect(field).toHaveClass(/tm-form-field--invalid/);
+    await expect(field.locator('.tm-form-field__error-icon')).toBeAttached();
+    await expect(field.locator('.tm-form-field__error')).toHaveText('Select an account.');
+    await expect(bubble).toHaveCount(0);
+
+    await input.focus();
+    await expect(bubble).toHaveCount(1);
+    // Decoration only: the live region above already carries these words.
+    await expect(bubble).toHaveAttribute('aria-hidden', 'true');
+
+    // Move to a VALID field, not just anywhere: Tab would land on the next
+    // invalid tile and open its bubble, and the locator matches any of them.
+    await page.getByTestId('ff-default').locator('input').focus();
+    await expect(bubble).toHaveCount(0);
+    await expect(field.locator('.tm-form-field__error')).toHaveText('Select an account.');
+  });
+
+  test('pressing the in-field glyph focuses the control and brings the bubble back', async ({
+    page,
+  }) => {
+    await page.goto(storyUrl('form-field'));
+    const field = page.getByTestId('ff-error-blur');
+    const glyph = field.locator('.tm-form-field__error-icon');
+    await expect(page.locator('tm-error-popover')).toHaveCount(0);
+
+    // The glyph is pointer-transparent, so Playwright's own click refuses it;
+    // a press at its coordinates is what a reader actually does, and it has
+    // to land on the field beneath rather than on nothing.
+    const box = (await glyph.boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+
+    await expect(field.locator('input')).toBeFocused();
+    await expect(page.locator('tm-error-popover')).toHaveCount(1);
+  });
+
+  test('a page-shift gate: going invalid moves nothing below the field', async ({ page }) => {
+    await page.goto(storyUrl('form-field'));
+    const later = page.getByTestId('ff-nolabel');
+    const before = (await later.boundingBox())!.y;
+
+    await page.getByTestId('ff-required').locator('input').click();
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('ff-required')).toHaveClass(/tm-form-field--invalid/);
+
+    // The whole reason the message is a popover.
+    expect((await later.boundingBox())!.y).toBe(before);
   });
 });
 

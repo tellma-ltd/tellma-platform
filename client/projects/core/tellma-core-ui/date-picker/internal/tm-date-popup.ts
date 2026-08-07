@@ -78,14 +78,17 @@ interface DayCell {
           [attr.aria-label]="prevLabel()"
           (click)="page(-1)"
         >
-          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" class="tm-date-popup__nav-glyph">
-            <polyline
-              points="10,3 5,8 10,13"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
+          <svg
+            class="tm-date-popup__nav-glyph"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.75"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m15 18-6-6 6-6" />
           </svg>
         </button>
         <button
@@ -102,14 +105,17 @@ interface DayCell {
           [attr.aria-label]="nextLabel()"
           (click)="page(1)"
         >
-          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" class="tm-date-popup__nav-glyph">
-            <polyline
-              points="6,3 11,8 6,13"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
+          <svg
+            class="tm-date-popup__nav-glyph"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.75"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m9 18 6-6-6-6" />
           </svg>
         </button>
       </div>

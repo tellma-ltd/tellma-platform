@@ -5,7 +5,13 @@
 ```ts
 
 import * as _angular_core from '@angular/core';
+import { CdkConnectedOverlay } from '@angular/cdk/overlay';
+import { CdkConnectedOverlayConfig } from '@angular/cdk/overlay';
+import { ConnectedOverlayPositionChange } from '@angular/cdk/overlay';
+import { ConnectedPosition } from '@angular/cdk/overlay';
+import { FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
 import { InjectionToken } from '@angular/core';
+import { Signal } from '@angular/core';
 
 // @public
 export const TM_FORM_FIELD_CONTROL: InjectionToken<TmFormFieldControl>;
@@ -13,24 +19,31 @@ export const TM_FORM_FIELD_CONTROL: InjectionToken<TmFormFieldControl>;
 // @public
 export class TmFormField {
     constructor();
+    protected readonly anchoredError: _tellma_core_ui_private.TmAnchoredOverlay;
     protected readonly chromeless: _angular_core.Signal<boolean>;
     protected readonly control: _angular_core.Signal<TmFormFieldControl | undefined>;
     readonly error: _angular_core.InputSignal<string>;
     protected readonly errorId: string;
-    protected readonly errorText: _angular_core.Signal<string>;
+    protected readonly errorPopoverAbove: _angular_core.WritableSignal<boolean>;
+    protected readonly errorTexts: _angular_core.Signal<readonly string[]>;
     readonly hint: _angular_core.InputSignal<string>;
     protected readonly hintId: string;
     readonly label: _angular_core.InputSignal<string>;
     protected readonly labelFor: _angular_core.Signal<string | null>;
     protected readonly labelId: string;
     protected onContainerClick(event: MouseEvent): void;
+    protected onErrorPositionChange(change: ConnectedOverlayPositionChange): void;
+    protected onFocusIn(): void;
+    protected onFocusOut(event: FocusEvent): void;
     protected onLabelClick(): void;
+    protected readonly ownsErrorIcon: _angular_core.Signal<boolean>;
     protected readonly pending: _angular_core.Signal<boolean>;
     protected readonly requiredMarker: string;
     protected readonly showError: _angular_core.Signal<boolean>;
+    protected readonly showErrorPopover: _angular_core.Signal<boolean>;
     protected readonly showHint: _angular_core.Signal<boolean>;
     protected readonly showRequiredMarker: _angular_core.Signal<boolean>;
-    readonly size: _angular_core.InputSignal<"sm" | "md" | "lg">;
+    readonly size: _angular_core.InputSignal<TmControlSize>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmFormField, "tm-form-field", never, { "label": { "alias": "label"; "required": false; "isSignal": true; }; "hint": { "alias": "hint"; "required": false; "isSignal": true; }; "error": { "alias": "error"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; }, {}, ["control"], ["[tmPrefix]", "*", "[tmSuffix]"], true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmFormField, never>;
 }
