@@ -45,34 +45,109 @@
   user-select: none;
 }
 
+/* A pill floating clear of the frame, not a bar bolted across its foot:
+   the image is the thing being read, and chrome touching its edges reads
+   as part of the picture. */
 .tm-image__edit-bar {
   position: absolute;
-  inset-inline: var(--space-1);
-  inset-block-end: var(--space-1);
+  inset-inline: var(--space-2);
+  inset-block-end: var(--space-2);
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  padding: var(--image-crop-bar-padding-y) var(--image-crop-bar-padding-x);
+  border-radius: var(--radius-full);
+  background: var(--image-chrome-bg);
+  box-shadow: var(--image-crop-bar-shadow);
 }
 
+/* The native range control, dressed as the brand's slider: a hairline
+   track with a teal fill behind a small ringed knob. Every engine needs
+   its own pseudo-element, and `appearance: none` is what stops the UA from
+   drawing its own on top. */
 .tm-image__zoom {
   flex: 1 1 auto;
   min-inline-size: 0;
-  accent-color: var(--color-primary);
-}
-
-.tm-image__chrome-button {
-  border: none;
-  border-radius: var(--radius-xs);
-  background: var(--image-chrome-bg);
-  color: var(--image-chrome-text);
-  font-family: var(--font-ui);
-  font-size: var(--text-xs);
-  padding-block: var(--space-1);
-  padding-inline: var(--space-2);
+  appearance: none;
+  background: transparent;
   cursor: pointer;
 }
 
-.tm-image__chrome-button:focus-visible {
+.tm-image__zoom::-webkit-slider-runnable-track {
+  block-size: var(--image-crop-slider-track);
+  border-radius: var(--radius-full);
+  background: var(--border-default);
+}
+
+.tm-image__zoom::-moz-range-track {
+  block-size: var(--image-crop-slider-track);
+  border-radius: var(--radius-full);
+  background: var(--border-default);
+}
+
+.tm-image__zoom::-moz-range-progress {
+  block-size: var(--image-crop-slider-track);
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+}
+
+.tm-image__zoom::-webkit-slider-thumb {
+  appearance: none;
+  inline-size: var(--image-crop-slider-knob);
+  block-size: var(--image-crop-slider-knob);
+  border-radius: var(--radius-full);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--color-primary);
+  box-shadow: var(--shadow-xs);
+  /* Centers the knob on a track thinner than itself. */
+  margin-block-start: calc(
+    (var(--image-crop-slider-track) - var(--image-crop-slider-knob)) / 2
+  );
+}
+
+.tm-image__zoom::-moz-range-thumb {
+  inline-size: var(--image-crop-slider-knob);
+  block-size: var(--image-crop-slider-knob);
+  border-radius: var(--radius-full);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--color-primary);
+  box-shadow: var(--shadow-xs);
+}
+
+.tm-image__zoom:focus-visible {
+  /* A transparent REAL outline beneath the token ring: forced colors strip
+     box-shadows but repaint outline-color in a system color. */
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-ring);
+}
+
+/* The confirm action is the one filled thing on the bar, so the way out of
+   crop mode is never in doubt — and a round glyph rather than a word,
+   because the bar sits inside the image box and every pixel it takes comes
+   out of the slider. Its wording survives as the accessible name and the
+   tooltip. */
+.tm-image__done {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  inline-size: var(--image-crop-done-height);
+  block-size: var(--image-crop-done-height);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  cursor: pointer;
+}
+
+.tm-image__done > svg {
+  inline-size: var(--image-crop-done-glyph-size);
+  block-size: var(--image-crop-done-glyph-size);
+}
+
+.tm-image__done:focus-visible {
   /* A transparent REAL outline beneath the token ring: forced colors strip
      box-shadows but repaint outline-color in a system color, so the outline
      is the only thing left carrying focus there. */
@@ -82,7 +157,22 @@
 }
 
 @media (forced-colors: active) {
-  .tm-image__chrome-button {
+  /* The veil and the fill are forced away; real borders are what keeps the
+     bar and its knob visible over the image. */
+  .tm-image__edit-bar {
+    background: Canvas;
+    border: var(--border-width) solid CanvasText;
+  }
+
+  .tm-image__done {
     border: var(--border-width) solid ButtonText;
+  }
+
+  .tm-image__zoom::-webkit-slider-thumb {
+    border-color: ButtonText;
+  }
+
+  .tm-image__zoom::-moz-range-thumb {
+    border-color: ButtonText;
   }
 }

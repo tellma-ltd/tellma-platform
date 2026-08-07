@@ -46,20 +46,19 @@ import { TmFilePicker } from './tm-file-picker';
     },
   ],
   template: `
-    <svg class="tm-dropzone__icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 15.5v-9m0 0 -3.5 3.5M12 6.5l3.5 3.5"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
-      <path
-        d="M5 15.75v1.5A1.75 1.75 0 0 0 6.75 19h10.5A1.75 1.75 0 0 0 19 17.25v-1.5"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-      />
+    <svg
+      class="tm-dropzone__icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.75"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" x2="12" y1="3" y2="15" />
     </svg>
     <p class="tm-dropzone__hint">
       {{ hintLabel() }}

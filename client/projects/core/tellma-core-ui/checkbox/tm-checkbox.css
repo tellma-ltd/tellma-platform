@@ -18,7 +18,7 @@
 .tm-checkbox__layout {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--checkbox-gap);
   /* Pads the hit box past 24px while the visible box stays 18px (§6). */
   padding-block: var(--space-1);
   cursor: pointer;
@@ -64,9 +64,12 @@
   pointer-events: none;
 }
 
+/* The mark is inset inside the box rather than filling it: a Lucide check
+   spans nearly its whole viewBox, so drawn edge to edge it would touch the
+   box's own border. */
 .tm-checkbox__glyph {
-  inline-size: 100%;
-  block-size: 100%;
+  inline-size: var(--checkbox-glyph-size);
+  block-size: var(--checkbox-glyph-size);
 }
 
 .tm-checkbox__mark {
@@ -84,16 +87,25 @@
   opacity: 1;
 }
 
+/* The same soft glow the fields use — a checkbox sits in the same column
+   as them, and an offset ring here would be the one control punching a
+   hole in the form. */
 .tm-checkbox__native:focus-visible ~ .tm-checkbox__box {
   border-color: var(--field-border-focus);
-  /* A transparent REAL outline beneath the token ring: forced colors strip
+  /* A transparent REAL outline beneath the token glow: forced colors strip
      box-shadows but repaint outline-color in a system color, so the outline
      is the only thing left carrying focus there. The focus border alone
      cannot stand in — forced colors flattens it to the same FieldText the
      unfocused box already uses. */
   outline: var(--focus-ring-width) solid transparent;
   outline-offset: var(--focus-ring-offset);
-  box-shadow: var(--focus-ring);
+  box-shadow: 0 0 0 var(--focus-ring-halo-width) var(--field-focus-halo);
+}
+
+/* A checked checkbox in an invalid field keeps its fill; an unchecked one
+   is what the message is usually about, so the empty box carries the red. */
+:host(.tm-checkbox--invalid) .tm-checkbox__box {
+  border-color: var(--field-border-invalid);
 }
 
 :host(.tm-checkbox--disabled) .tm-checkbox__box {
@@ -102,16 +114,21 @@
   color: var(--field-text-disabled);
 }
 
+/* A disabled TICKED box still has to read as ticked: an empty disabled box
+   and a ticked one must not collapse into the same grey square. It keeps a
+   fill, just a dead one, with the mark in the disabled ink. */
 :host(.tm-checkbox--disabled.tm-checkbox--checked) .tm-checkbox__box,
 :host(.tm-checkbox--disabled.tm-checkbox--indeterminate) .tm-checkbox__box {
-  background: var(--field-bg-disabled);
-  border-color: var(--field-border);
+  background: var(--border-default);
+  border-color: var(--border-default);
+  color: var(--text-muted);
 }
 
 .tm-checkbox__label {
   font-family: var(--font-ui);
-  font-size: var(--field-font-size);
-  color: var(--field-text);
+  font-size: var(--checkbox-label-font-size);
+  line-height: var(--leading-snug);
+  color: var(--text-body);
   user-select: none;
 }
 

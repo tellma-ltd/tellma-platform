@@ -18,7 +18,7 @@
   border: var(--border-width) solid;
   border-radius: var(--alert-radius);
   font-family: var(--font-ui);
-  font-size: var(--text-sm);
+  font-size: var(--alert-body-font-size);
   line-height: var(--leading-ui);
   color: var(--text-body);
 }
@@ -68,13 +68,26 @@
 }
 
 .tm-alert__content {
+  flex: 1;
   min-inline-size: 0;
 }
 
 .tm-alert__heading {
   display: block;
+  margin-block-end: var(--space-1);
+  font-size: var(--alert-heading-font-size);
   font-weight: var(--weight-semibold);
   color: var(--text-strong);
+}
+
+/* A heading-less alert is a single line, so its glyph centers on the box
+   rather than hanging off a first line that is the only line. */
+:host(:not(:has(.tm-alert__heading))) {
+  align-items: center;
+}
+
+:host(:not(:has(.tm-alert__heading))) .tm-alert__icon {
+  margin-block-start: 0;
 }
 
 /* Visually hidden, present for the screen reader's linearization. */

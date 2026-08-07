@@ -19,6 +19,7 @@ import {
   modelJson,
   renderedRows,
   rowHeader,
+  rowHeightOf,
   setScrollTop,
   syntheticCut,
 } from '../support/grid';
@@ -293,7 +294,10 @@ test.describe('tree row operations', () => {
 
   test('@cross-engine menu Delete rows removes the whole subtree', async ({ page }) => {
     const before = await modelJson<Account[]>(page);
-    await setScrollTop(page, 320); // bring the Liabilities branch into the window
+    // Row-height-derived, not a pixel literal: the workspace size step
+    // decides how tall a row is, so a hard-coded offset lands on a
+    // different row the moment the default density changes.
+    await setScrollTop(page, 10 * (await rowHeightOf(page))); // Liabilities into the window
     await rowHeader(page, 23).click(); // Payables (id 200 + two children)
     await expect(cell(page, 23, 0)).toBeFocused(); // row select activates its first cell
     await page.keyboard.press('Shift+F10');
@@ -320,7 +324,9 @@ test.describe('subtree moves & tree paste', () => {
   }) => {
     const before = await modelJson<Account[]>(page);
 
-    await setScrollTop(page, 640); // rows ~16–38: source and target both rendered
+    // Row-height-derived (see the note above): rows ~16–38, so the source
+    // and the target are both inside the rendered window.
+    await setScrollTop(page, 20 * (await rowHeightOf(page)));
     // Synthetic cut/paste: a row move rides the per-row identities, which
     // Chromium strips from the real clipboard's HTML on read (see syntheticCut).
     await rowHeader(page, 23).click(); // Payables subtree [200, 2000, 2001]

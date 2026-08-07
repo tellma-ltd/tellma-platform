@@ -10,14 +10,14 @@ import * as _angular_core from '@angular/core';
 export class TmButton {
     constructor();
     readonly pending: _angular_core.InputSignalWithTransform<boolean, unknown>;
-    readonly size: _angular_core.InputSignal<TmButtonSize>;
+    readonly size: _angular_core.InputSignal<TmControlSize>;
     readonly variant: _angular_core.InputSignal<TmButtonVariant>;
     static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmButton, "button[tmButton]", never, { "variant": { "alias": "variant"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; "pending": { "alias": "pending"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmButton, never>;
 }
 
 // @public
-export type TmButtonSize = 'sm' | 'md' | 'lg';
+export type TmButtonSize = TmControlSize;
 
 // @public
 export type TmButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';

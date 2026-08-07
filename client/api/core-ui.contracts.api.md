@@ -54,6 +54,7 @@ export interface TmFormFieldControl {
     readonly localizedErrors: SignalLike<readonly TmFieldError[]>;
     onContainerClick?(): void;
     readonly ownsChrome: boolean;
+    readonly ownsErrorIcon?: boolean;
     readonly pending: SignalLike<boolean>;
     readonly readonly: SignalLike<boolean>;
     readonly required: SignalLike<boolean>;

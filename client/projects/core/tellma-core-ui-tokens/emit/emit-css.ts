@@ -174,9 +174,13 @@ function sharedVars(tokens: TmTokens): VarMap {
   }
 
   const { focusRing, formField } = tokens.semantic;
-  set('--focus-ring-width', focusRing.width);
-  set('--focus-ring-color', focusRing.color);
-  set('--focus-ring-offset', focusRing.offset);
+  // Looped, not three hand-written lines: a hand-written list silently drops
+  // any key added to the contract later, and a token that never reaches CSS
+  // fails as an unresolvable var() at computed-value time — invisible to
+  // both the schema gate and stylelint.
+  for (const [key, value] of Object.entries(focusRing)) {
+    set(tmRefToVarName(`focusRing.${key}`), value);
+  }
   // The composite two-layer ring: an inner gap of --focus-ring-offset in the
   // page background, then the ring color.
   vars.set(

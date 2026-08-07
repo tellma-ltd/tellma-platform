@@ -11,7 +11,9 @@
 
 .tm-input {
   font-family: var(--font-ui);
-  font-size: var(--field-font-size);
+  /* The enclosing field publishes its size step as --tm-field-font-size; a
+     bare input with no field around it falls back to the default step. */
+  font-size: var(--tm-field-font-size, var(--field-font-size));
   color: var(--field-text);
   /* Inherit the container's alignment: a bare field follows its dir="auto"
      base direction (start), while a grid cell editor picks up the column's
@@ -60,7 +62,7 @@ textarea.tm-input {
    block-size rule on specificity ties. */
 .tm-form-field__box:has(> textarea.tm-input--multiline) {
   block-size: auto;
-  min-block-size: var(--field-height);
+  min-block-size: var(--tm-field-block-size);
   align-items: flex-start;
   padding-block: var(--field-padding-y);
 }

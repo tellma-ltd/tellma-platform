@@ -7,6 +7,7 @@
 import * as _angular_core from '@angular/core';
 import { CdkConnectedOverlay } from '@angular/cdk/overlay';
 import { CdkConnectedOverlayConfig } from '@angular/cdk/overlay';
+import { ConnectedOverlayPositionChange } from '@angular/cdk/overlay';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
 import { Signal } from '@angular/core';
@@ -92,6 +93,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
     protected onPanelPointerdown(event: PointerEvent): void;
     openDropdown(): void;
     readonly ownsChrome = false;
+    readonly ownsErrorIcon = true;
     readonly pending: Signal<boolean>;
     readonly picked: _angular_core.OutputEmitterRef<TmEntityPicked<T, Id>>;
     readonly placeholder: _angular_core.InputSignal<string>;

@@ -10,12 +10,13 @@
 
 .tm-menu__panel {
   min-inline-size: var(--menu-min-width);
-  padding-block: var(--space-1);
-  background: var(--field-bg);
-  border: var(--border-width) solid var(--field-border);
-  border-radius: var(--field-radius);
+  padding: var(--menu-panel-padding);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
   overflow: hidden;
+  font-family: var(--font-ui);
 }
 
 .tm-menu__list {
@@ -28,13 +29,17 @@
   outline: none;
 }
 
+/* A menu holds ONE dense row height rather than following the control size
+   ladder: it is a pointer surface read in a single pass, not a control
+   sitting in a row of fields that have to line up with it. */
 .tm-menu__item {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--menu-item-gap);
   block-size: var(--menu-item-height);
-  padding-inline: var(--space-3);
-  font-size: var(--text-sm);
+  padding-inline: var(--menu-item-padding-x);
+  border-radius: var(--menu-item-radius);
+  font-size: var(--menu-item-font-size);
   color: var(--text-body);
   cursor: default;
   user-select: none;
@@ -74,6 +79,8 @@
 .tm-menu__shortcut {
   flex: none;
   margin-inline-start: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--menu-shortcut-font-size);
   color: var(--text-muted);
 }
 
@@ -84,6 +91,7 @@
 .tm-menu__separator {
   block-size: 0;
   margin-block: var(--space-1);
+  margin-inline: calc(-1 * var(--menu-panel-padding));
   border-block-start: var(--border-width) solid var(--divider);
 }
 

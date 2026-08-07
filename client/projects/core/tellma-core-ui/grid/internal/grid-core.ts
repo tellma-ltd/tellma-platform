@@ -3903,7 +3903,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         {
           id: 'insertAbove',
           label: translate('grid.menu.insertAbove', { count })(),
-          icon: icons?.listPlus,
+          icon: icons?.plus,
           shortcut: GRID_MENU_SHORTCUTS.insertAbove,
           disabled: !canAddRows,
           action: () => this.engine.insertRows('above'),
@@ -3911,7 +3911,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         {
           id: 'insertBelow',
           label: translate('grid.menu.insertBelow', { count })(),
-          icon: icons?.listPlus,
+          icon: icons?.plus,
           disabled: !canAddRows,
           action: () => this.engine.insertRows('below'),
         },
@@ -3924,7 +3924,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         items.push({
           id: 'insertChild',
           label: translate('grid.menu.insertChild')(),
-          icon: icons?.listPlus,
+          icon: icons?.childRow,
           disabled: !canAddRows || activeView === null,
           action: () => this.insertChildAtActive(),
         });
@@ -3932,7 +3932,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       items.push({
         id: 'deleteRows',
         label: translate('grid.menu.deleteRows', { count })(),
-        icon: icons?.listMinus,
+        icon: icons?.trash,
         shortcut: GRID_MENU_SHORTCUTS.deleteRows,
         // Refocus the surviving active cell: the menu's restoreFocus targets
         // the now-deleted cell, so focus would otherwise fall out of the grid.

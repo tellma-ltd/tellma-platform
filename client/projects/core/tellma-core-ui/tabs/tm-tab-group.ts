@@ -4,7 +4,18 @@
 // LICENSE file in the root directory of this source tree.
 
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, computed, contentChildren, input, model } from '@angular/core';
+import {
+  afterRenderEffect,
+  Component,
+  computed,
+  contentChildren,
+  ElementRef,
+  input,
+  model,
+  signal,
+  untracked,
+  viewChild,
+} from '@angular/core';
 import { Tab, TabContent, TabList, TabPanel, Tabs } from '@angular/aria/tabs';
 
 import { TmTab } from './tm-tab';
@@ -51,7 +62,11 @@ export type TmTabSelectionMode = 'follow' | 'explicit';
         [orientation]="orientation()"
         [selectionMode]="selectionMode()"
         [selectedTab]="effectiveSelectedId()"
+        #strip
+        [class.tm-tab-group__list--faded]="stripHasMore()"
         (selectedTabChange)="onSelectedTabChange($event)"
+        (wheel)="onStripWheel($event)"
+        (scroll)="measureStrip($event.target)"
       >
         @for (tab of tabs(); track tab.id()) {
           <button
@@ -103,6 +118,8 @@ export class TmTabGroup {
   /** The projected tab definitions, in display order. */
   protected readonly tabs = contentChildren(TmTab);
 
+  private readonly stripRef = viewChild<ElementRef<HTMLElement>>('strip');
+
   /** The id the aria list shows selected: the model's when valid, else the first enabled. */
   protected readonly effectiveSelectedId = computed(() => {
     const tabs = this.tabs();
@@ -111,10 +128,75 @@ export class TmTabGroup {
     return (target ?? tabs.find((tab) => !tab.disabled()))?.id();
   });
 
+  constructor() {
+    // The promise has to be right on the FIRST paint too: a strip that fits
+    // must never render faded, and one that overflows must say so before
+    // anybody has scrolled it. Re-runs when the tab set changes.
+    afterRenderEffect(() => {
+      this.tabs();
+      this.orientation();
+      const strip = this.stripRef()?.nativeElement;
+      untracked(() => this.measureStrip(strip ?? null));
+    });
+  }
+
   /** User selections write back into the model. */
   protected onSelectedTabChange(id: string | undefined): void {
     if (id !== undefined && id !== this.selectedId()) {
       this.selectedId.set(id);
     }
+  }
+
+  /**
+   * Whether the strip has anything left to scroll to. The trailing fade is
+   * a PROMISE that there is more that way; left on at the end of the strip
+   * it dims the last tab for nothing and says to keep scrolling when
+   * scrolling does nothing.
+   */
+  protected readonly stripHasMore = signal(false);
+
+  /** Re-reads the promise from the strip's own scroll position. */
+  protected measureStrip(strip: EventTarget | null): void {
+    if (!(strip instanceof HTMLElement)) {
+      return;
+    }
+    // abs(): under RTL the scroll offset runs 0 down to -max, so the
+    // distance travelled is its magnitude either way.
+    const travelled = Math.abs(strip.scrollLeft);
+    // A pixel of slack: fractional layout leaves the offset a hair short of
+    // the true end, and a fade that never quite comes off is the bug.
+    this.stripHasMore.set(strip.scrollWidth - strip.clientWidth - travelled > 1);
+  }
+
+  /**
+   * A vertical wheel over a HORIZONTAL strip scrolls it sideways. Touch and
+   * trackpads already pan a horizontal scroller, and the strip hides its
+   * scrollbar, so without this a mouse-wheel user has no way to reach a tab
+   * that has scrolled past the fade: the keyboard would move the selection
+   * rather than just the view.
+   */
+  protected onStripWheel(event: WheelEvent): void {
+    if (this.orientation() !== 'horizontal' || event.deltaY === 0) {
+      return;
+    }
+    const strip = event.currentTarget as HTMLElement;
+    const limit = strip.scrollWidth - strip.clientWidth;
+    if (limit <= 0) {
+      return;
+    }
+    // Under RTL the scroll offset runs 0 down to -limit, and a wheel "down"
+    // still means "further along the strip" — which is leftwards there.
+    const rtl = getComputedStyle(strip).direction === 'rtl';
+    const delta = rtl ? -event.deltaY : event.deltaY;
+    const [low, high] = rtl ? [-limit, 0] : [0, limit];
+    // Only while it has somewhere left to go: swallowing the wheel at either
+    // end would trap the page's own scroll under the pointer.
+    const clamped = Math.max(low, Math.min(high, strip.scrollLeft + delta));
+    if (clamped === strip.scrollLeft) {
+      return;
+    }
+    event.preventDefault();
+    strip.scrollLeft = clamped;
+    this.measureStrip(strip);
   }
 }

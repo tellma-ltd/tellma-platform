@@ -30,7 +30,7 @@ const light: TmSchemeColors = {
     sunken: '{grey.50}',
     card: '{white}',
     inverse: '{ink.900}',
-    hover: '{grey.50}',
+    hover: '{grey.25}',
     selected: '{teal.50}',
   },
   border: {
@@ -67,6 +67,7 @@ const light: TmSchemeColors = {
     borderHover: '{grey.300}',
     borderFocus: '{teal.500}',
     borderInvalid: '{status.error.fg}',
+    focusHalo: '{teal.50}',
     text: '{ink.900}',
     textDisabled: '{grey.400}',
     placeholder: '{grey.400}',
@@ -143,6 +144,9 @@ const dark: TmSchemeColors = {
     borderHover: 'rgba(255, 255, 255, 0.24)',
     borderFocus: '{teal.300}',
     borderInvalid: '{status.error.fg}',
+    // Translucent, not the light scheme's opaque teal-50: an opaque tint
+    // this pale would read as a plate around the field on a dark surface.
+    focusHalo: 'rgba(76, 160, 182, 0.22)',
     text: darkNeutral[900],
     textDisabled: darkNeutral[400],
     placeholder: darkNeutral[400],
@@ -221,11 +225,15 @@ export const tmTokensDefault: TmTokens = {
       leading: { tight: '1.2', snug: '1.35', body: '1.6', arabic: '1.9' },
     },
     border: { width: '1px' },
+    // Overlay elevation only — in-canvas surfaces stay flat with a hairline.
+    // md is the anchored-panel shadow (menus, dropdowns, popovers, the date
+    // popup); lg lifts a modal off its scrim. Both are negative-spread so
+    // the panel edge stays crisp and the shadow reads as depth, not haze.
     shadow: {
       xs: '0 1px 2px rgba(0, 23, 34, 0.05)',
-      sm: '0 1px 3px rgba(0, 23, 34, 0.07), 0 1px 2px rgba(0, 23, 34, 0.04)',
-      md: '0 4px 12px rgba(0, 23, 34, 0.08), 0 1px 3px rgba(0, 23, 34, 0.05)',
-      lg: '0 12px 32px rgba(0, 23, 34, 0.12), 0 2px 6px rgba(0, 23, 34, 0.06)',
+      sm: '0 4px 12px -4px rgba(0, 23, 34, 0.4)',
+      md: '0 8px 24px -8px rgba(0, 23, 34, 0.28), 0 2px 6px -2px rgba(0, 23, 34, 0.12)',
+      lg: '0 16px 40px -12px rgba(0, 23, 34, 0.4)',
     },
     motion: {
       durationFast: '120ms',
@@ -238,15 +246,30 @@ export const tmTokensDefault: TmTokens = {
   },
   semantic: {
     colorScheme: { light, dark },
-    focusRing: { width: '2px', color: '{teal.500}', offset: '2px' },
+    focusRing: { width: '2px', color: '{teal.500}', offset: '2px', haloWidth: '3px' },
     formField: {
       radius: '{radius.sm}',
       height: '38px',
       heightSm: '30px',
       heightLg: '46px',
       paddingX: '12px',
+      paddingXsm: '10px',
+      paddingXlg: '14px',
       paddingY: '8px',
       fontSize: '{font.size.sm}',
+      fontSizeSm: '13px',
+      fontSizeLg: '15px',
+      labelGap: '6px',
+      labelGapSm: '4px',
+      labelGapLg: '7px',
+      // Label and hint are chrome around the control, not part of it: they
+      // hold their type through every size so a dense form still reads.
+      labelFontSize: '13px',
+      hintFontSize: '{font.size.xs}',
+      errorIconSize: '13px',
+      optionHeight: '30px',
+      optionHeightSm: '26px',
+      optionHeightLg: '34px',
     },
     leadingByLang: {
       ar: '{font.leading.arabic}',
@@ -255,101 +278,213 @@ export const tmTokensDefault: TmTokens = {
   },
   component: {
     // tm-alert: page/section status wrapper — geometry only; per-kind
-    // colors ride the status semantic tokens in the component CSS.
+    // colors ride the status semantic tokens in the component CSS. An alert
+    // is a block of prose, not a control, so it keeps card geometry
+    // (radius-md, roomy padding) while the controls around it go dense.
     alert: {
-      gap: '8px',
-      paddingX: '12px',
-      paddingY: '10px',
-      radius: '{radius.sm}',
-      iconSize: '16px',
+      gap: '10px',
+      paddingX: '14px',
+      paddingY: '12px',
+      radius: '{radius.md}',
+      iconSize: '18px',
+      headingFontSize: '{font.size.sm}',
+      bodyFontSize: '13px',
     },
     // tmButton: heights ride the shared field-height scale (buttons align
     // with form fields in toolbars); per-variant colors resolve per scheme
     // through the semantic action/field/status roles.
+    //
+    // Kebab hazard: two adjacent capitals do NOT split, so `paddingXSm`
+    // emits `--button-padding-xsm`. The keys below are spelled the way they
+    // emit; check any new one against the generated stylesheet.
     button: {
       radius: '{radius.sm}',
       gap: '8px',
-      paddingXSm: '10px',
-      paddingX: '14px',
-      paddingXLg: '18px',
-      disabledOpacity: '0.55',
+      gapSm: '6px',
+      gapLg: '8px',
+      paddingXsm: '12px',
+      paddingX: '16px',
+      paddingXlg: '22px',
+      fontSize: '{font.size.sm}',
+      fontSizeSm: '13px',
+      fontSizeLg: '15px',
+      // Projected icons need an explicit size: an icon set's natural 24px
+      // is taller than a small button's whole content box.
+      iconSize: '14px',
+      // Disabled is a solid flat plate, not a faded live button: a
+      // translucent control shows whatever it sits on and stops reading as
+      // one surface. Filled and outline variants land on different plates
+      // so a disabled ghost does not grow a box it never had.
+      //
+      // The disabled INK is --text-muted for every variant. The brand sheet
+      // draws white on the filled plate, which is 1.6:1 — legible only
+      // because disabled text is exempt from contrast rules. Muted ink on
+      // the same plate reads, and disabled-ness is already carried by the
+      // flat fill plus the removed border.
+      disabledBg: '{border.default}',
+      disabledBgSubtle: '{surface.sunken}',
+      disabledText: '{text.muted}',
       primaryBg: '{action.primary}',
       primaryText: '{action.onPrimary}',
       primaryHoverBg: '{action.primaryHover}',
       primaryActiveBg: '{action.primaryActive}',
-      secondaryBg: '{field.bg}',
-      secondaryText: '{text.body}',
-      secondaryBorder: '{field.border}',
+      secondaryBg: '{surface.card}',
+      secondaryText: '{text.strong}',
+      secondaryBorder: '{border.default}',
       secondaryHoverBg: '{surface.hover}',
-      ghostText: '{text.body}',
+      secondaryHoverBorder: '{border.strong}',
+      secondaryActiveBg: '{surface.sunken}',
+      ghostText: '{text.strong}',
       ghostHoverBg: '{surface.hover}',
+      ghostActiveBg: '{border.subtle}',
       dangerBg: '{status.error.fg}',
       dangerText: '{action.onPrimary}',
     },
     // tm-checkbox (§3.3): the visible box renders at the brand 18px while
-    // the hit target is padded past the 24px minimum.
-    checkbox: { boxSize: '18px' },
-    // tm-date-picker: popup geometry. Cells exceed the 24px touch minimum;
-    // the popup width holds seven cells plus gaps at every view.
-    datePicker: {
-      cellSize: '32px',
-      cellGap: '2px',
-      popupWidth: '280px',
-      popupPadding: '12px',
+    // the hit target is padded past the 24px minimum. The box does NOT
+    // follow the size ladder — a smaller tick would drop under the touch
+    // minimum and is the one control whose glyph must stay legible.
+    checkbox: {
+      boxSize: '18px',
+      // The mark sits INSIDE the box: the glyph spans nearly its whole
+      // viewBox, so drawn edge to edge it would touch the box's border.
+      glyphSize: '14px',
+      gap: '9px',
+      labelFontSize: '13px',
     },
-    // tm-select (§3.4): panel + option-row geometry (touch-comfortable rows).
-    select: { panelMaxHeight: '280px', optionHeight: '36px' },
+    // tm-date-picker: popup geometry. Cells exceed the 24px touch minimum;
+    // the popup width holds seven cells plus gaps at every view. Cells are
+    // wider than they are tall — a calendar reads as columns of weekdays,
+    // and the extra width is where two-digit days breathe.
+    datePicker: {
+      cellHeight: '30px',
+      cellGap: '1px',
+      slotHeight: '32px',
+      popupWidth: '256px',
+      popupPadding: '8px',
+      headerFontSize: '13px',
+      weekdayHeight: '22px',
+      weekdayFontSize: '10.5px',
+      cellFontSize: '12.5px',
+      navGlyphSize: '15px',
+    },
+    // tm-select (§3.4): panel + option-row geometry. Rows follow the size
+    // ladder because a picker used dozens of times a minute is read as a
+    // list, not tapped as a button.
+    select: {
+      panelMaxHeight: '280px',
+      panelPadding: '4px',
+      optionRadius: '{radius.xs}',
+      optionPaddingX: '8px',
+      optionGap: '8px',
+      checkSize: '15px',
+    },
     // tm-entity-picker (spec 0006 §10): dropdown geometry — rows share the
-    // select's touch-comfortable sizing; the min-width floor keeps the panel
-    // readable when a narrow grid cell would make matched width unusable.
+    // select's sizing; the min-width floor keeps the panel readable when a
+    // narrow grid cell would make matched width unusable.
     entityPicker: {
       panelMaxHeight: '280px',
-      optionHeight: '36px',
       panelMinWidth: '200px',
+      panelPadding: '4px',
+      optionRadius: '{radius.xs}',
+      optionPaddingX: '8px',
+      optionGap: '8px',
+      iconSize: '15px',
+      noticeFontSize: '11.5px',
     },
     // tm-grid / tm-tree-grid: row density mirrors the field-height scale
     // one notch tighter (data rows, not form fields); selection fill is a
     // translucent brand teal so gridlines and text stay readable under it.
     grid: {
-      rowHeight: '32px',
-      rowHeightSm: '26px',
-      rowHeightLg: '40px',
-      headerBg: '{surface.subtle}',
+      // The brand sheet's ladder is 26/30/34, but 26 reads as cramped once
+      // there is real data in the cells rather than specimen text — the
+      // glyphs touch the rules. The whole ladder moves up one step so the
+      // dense default lands on 30.
+      rowHeight: '34px',
+      rowHeightSm: '30px',
+      rowHeightLg: '38px',
+      headerBg: '{surface.sunken}',
       headerText: '{text.secondary}',
       line: '{border.subtle}',
+      // The header's lower edge is the one rule drawn at full strength, in
+      // both the ruled and the plain look: it separates chrome from data.
+      headerLine: '{border.default}',
       selectionBg: 'rgba(76, 160, 182, 0.14)',
       selectionBorder: '{action.accent}',
       errorBg: '{status.error.bg}',
       errorBorder: '{status.error.border}',
-      readonlyBg: '{surface.subtle}',
+      readonlyBg: '{field.bgFilled}',
       zebraBg: '{surface.subtle}',
-      cutBorder: '{action.accent}',
+      cutBorder: '{action.primary}',
       findMatchBg: '{status.warning.bg}',
       findActiveOutline: '{status.warning.fg}',
-      indent: '20px',
-      rowHeaderWidth: '48px',
-      checkColWidth: '36px',
+      // One indent step per level, sized to sit under the twisty.
+      indent: '16px',
+      rowHeaderWidth: '34px',
+      checkColWidth: '30px',
       minColWidth: '48px',
       handleSize: '24px',
+      cellPaddingX: '8px',
+      cellFontSize: '12px',
+      // The plain (readonly) look drops the vertical rules, so its cells
+      // need their own inline breathing room to stay separable.
+      //
+      // Named plain-FIRST, not `cellPaddingXPlain`: two adjacent capitals do
+      // not kebab-split, so that spelling emits `--grid-cell-padding-xplain`
+      // and every rule reading `-x-plain` silently resolves to nothing.
+      plainCellPaddingX: '11px',
+      plainCellFontSize: '12.5px',
+      headerFontSize: '11.5px',
+      rowHeaderFontSize: '10.5px',
+      statusHeight: '30px',
+      statusFontSize: '11.5px',
+      statusIconSize: '14px',
+      twistySize: '15px',
     },
     // tm-dropzone: drop-region geometry; colors ride the field/surface
     // semantics in the component CSS.
     files: {
-      dropzoneMinHeight: '120px',
-      dropzonePadding: '16px',
+      dropzoneMinHeight: '108px',
+      dropzonePadding: '14px',
       dropzoneRadius: '{radius.md}',
+      dropzoneGap: '5px',
+      dropzoneIconSize: '22px',
+      dropzoneHintFontSize: '12.5px',
+      dropzoneMetaFontSize: '11px',
     },
     // tm-image: fixed-box chrome. The chrome fill is a static ink veil
     // that reads over any image on both schemes.
     image: {
       radius: '{radius.sm}',
-      glyphSize: '32px',
-      chromeBg: 'rgba(8, 18, 24, 0.62)',
+      glyphSize: '20px',
+      chromeBg: 'rgba(0, 23, 34, 0.72)',
       chromeText: '{white}',
+      chromeButtonSize: '20px',
+      cropBarPaddingX: '8px',
+      cropBarPaddingY: '5px',
+      cropBarShadow: '0 4px 14px -4px rgba(0, 23, 34, 0.55)',
+      cropSliderTrack: '4px',
+      cropSliderKnob: '12px',
+      cropDoneHeight: '22px',
+      cropDoneGlyphSize: '12px',
+      chromeIconSize: '14px',
+      chromeRadius: '{radius.xs}',
     },
     // tm-menu: panel + item-row geometry; colors ride the field/surface
-    // semantic tokens in the component CSS.
-    menu: { minWidth: '180px', itemHeight: '32px', iconSize: '16px' },
+    // semantic tokens in the component CSS. A menu is a pointer surface
+    // read in one pass, so it holds one dense height rather than following
+    // the size ladder.
+    menu: {
+      minWidth: '180px',
+      itemHeight: '30px',
+      iconSize: '15px',
+      itemGap: '9px',
+      itemPaddingX: '8px',
+      itemRadius: '{radius.xs}',
+      itemFontSize: '12.5px',
+      panelPadding: '4px',
+      shortcutFontSize: '10px',
+    },
     // tm-modal: panel buckets + shell geometry. The scrim is a static ink
     // veil that reads correctly over both schemes.
     modal: {
@@ -358,15 +493,34 @@ export const tmTokensDefault: TmTokens = {
       margin: '16px',
       lgMargin: '48px',
       radius: '{radius.md}',
-      paddingX: '20px',
-      closeSize: '32px',
-      iconSize: '16px',
+      paddingX: '16px',
+      headerPaddingY: '11px',
+      footerPaddingX: '12px',
+      footerPaddingY: '10px',
+      footerBg: '{surface.subtle}',
+      titleFontSize: '{font.size.sm}',
+      closeSize: '28px',
+      iconSize: '15px',
       scrim: 'rgba(4, 18, 24, 0.55)',
+    },
+    // tm-spinner: a decorative ring — a quiet full track with one quarter
+    // arc turning on it. The arc rides `color` so a host re-points it by
+    // setting text color alone; only the track needs a token, because it
+    // has to stay a groove against whatever ink the arc inherited.
+    spinner: {
+      size: '14px',
+      track: '{border.default}',
+      duration: '700ms',
     },
     // tm-file-preview: viewer-region geometry inside the lg modal.
     preview: {
       minHeight: '320px',
+      cardIconSize: '20px',
       audioMaxWidth: '480px',
+      footerPaddingX: '10px',
+      footerPaddingY: '8px',
+      footerFontSize: '11px',
+      footerBg: '{surface.subtle}',
     },
     // tm-popover: panel geometry; colors ride the surface/border semantics
     // in the component CSS.
@@ -376,22 +530,50 @@ export const tmTokensDefault: TmTokens = {
       maxInlineSize: '320px',
     },
     // tm-tab-group: strip geometry; the active indicator draws inside the
-    // tab box so activation never reflows.
+    // tab box so activation never reflows. A vertical strip is a nav list
+    // rather than a header, so it runs at its own tighter row height.
     tabs: {
-      height: '38px',
+      height: '34px',
+      verticalHeight: '30px',
       indicatorThickness: '2px',
-      gap: '4px',
-      labelPaddingX: '12px',
+      gap: '2px',
+      labelPaddingX: '11px',
+      fontSize: '13px',
+      verticalFontSize: '12.5px',
+      verticalPaddingX: '10px',
+      verticalRadius: '{radius.xs}',
     },
     // tmTooltip: inverse-surface text bubble. The directive reads `delay`
     // at show time; `offset` is the visual gap from the host.
     tooltip: {
       delay: '500ms',
       offset: '6px',
-      paddingX: '8px',
-      paddingY: '4px',
-      radius: '{radius.xs}',
-      maxInlineSize: '260px',
+      paddingX: '9px',
+      paddingY: '5px',
+      radius: '{radius.sm}',
+      maxInlineSize: '200px',
+      fontSize: '11.5px',
+    },
+    // The validation-message bubble: one look shared by tm-form-field and
+    // the grid's active-cell error, so a field error and a cell error read
+    // as the same thing. It is a card that has gone red at the edge, not a
+    // filled error banner — the field it points at already carries the red.
+    errorPopover: {
+      paddingX: '9px',
+      paddingY: '5px',
+      gap: '5px',
+      radius: '{radius.sm}',
+      fontSize: '{font.size.xs}',
+      iconSize: '13px',
+      // The visual gap between the field's border box and the bubble; the
+      // arrow overlaps back into it.
+      offset: '7px',
+      arrowSize: '6px',
+      // How far the arrow tip sits from the bubble's leading edge, so it
+      // lands under the field's inline padding rather than its corner.
+      arrowInset: '13px',
+      maxInlineSize: '320px',
+      shadow: '0 6px 16px -8px rgba(0, 23, 34, 0.28)',
     },
   },
 };

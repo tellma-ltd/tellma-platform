@@ -14,6 +14,8 @@ import {
   editor,
   gotoGrid,
   modelJson,
+  rowHeightOf,
+  setScrollTop,
 } from '../support/grid';
 
 /**
@@ -129,6 +131,36 @@ test('notFound and ambiguous labels become invalid inputs with distinct messages
 
   await activateCell(page, 2, 6);
   await expect(errorOverlay(page)).toContainText('matches more than one Agent');
+});
+
+test('the cell error bubble tracks its cell, lets presses through, and hides off-screen', async ({
+  page,
+}) => {
+  await setResolverDelay(page, 0);
+  await activateCell(page, 1, 6);
+  await syntheticPaste(page, { text: 'Nobody Real\r\n' });
+  await activateCell(page, 1, 6);
+  await expect(errorOverlay(page)).toBeVisible();
+
+  // Inert, all the way up: the CDK's pane wraps the bubble and would take the
+  // press itself. Whatever the bubble covers must stay one click away.
+  const box = (await errorOverlay(page).boundingBox())!;
+  const hit = await page.evaluate(
+    ({ x, y }) =>
+      document
+        .elementFromPoint(x, y)
+        ?.closest('[data-tm-cell]')
+        ?.getAttribute('data-row') ?? null,
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+  );
+  expect(hit).not.toBeNull();
+
+  // Scrolled past: an overlay lives in the top layer, so nothing clips it —
+  // it has to take itself away when the cell it points at is gone.
+  await setScrollTop(page, 20 * (await rowHeightOf(page)));
+  await expect(errorOverlay(page)).toHaveCount(0);
+  await setScrollTop(page, 0);
+  await expect(errorOverlay(page)).toBeVisible();
 });
 
 test('the whole paste — including async resolutions — is ONE undo op', async ({ page }) => {

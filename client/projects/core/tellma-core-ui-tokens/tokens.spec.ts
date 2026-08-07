@@ -28,6 +28,10 @@ describe('tmRefToVarName', () => {
     expect(tmRefToVarName('field.bgDisabled')).toBe('--field-bg-disabled');
     expect(tmRefToVarName('formField.heightSm')).toBe('--field-height-sm');
     expect(tmRefToVarName('focusRing.color')).toBe('--focus-ring-color');
+    expect(tmRefToVarName('focusRing.haloWidth')).toBe('--focus-ring-halo-width');
+    // Two adjacent capitals do NOT split: the padding variants are spelled
+    // the way they emit, matching --button-padding-xsm.
+    expect(tmRefToVarName('formField.paddingXsm')).toBe('--field-padding-xsm');
   });
 
   it('turns refs into var() and passes literals through', () => {
@@ -64,6 +68,36 @@ describe('tmEmitCss', () => {
     expect(css).toContain('--focus-ring-color: var(--teal-500);'); // spec §4, not the stale teal-400
     expect(css).toContain('--color-primary: var(--teal-600);');
     expect(css).toContain('--grey-900: var(--ink-900);');
+  });
+
+  it('emits a complete size ladder: four properties, three steps', () => {
+    // Shrinking the box alone leaves a dense field looking like a squeezed
+    // comfortable one, so every step restates height, control font size,
+    // inline padding and the label gap.
+    const ladder = [
+      '--field-height-sm: 30px;',
+      '--field-height-lg: 46px;',
+      '--field-font-size-sm: 13px;',
+      '--field-font-size-lg: 15px;',
+      '--field-padding-xsm: 10px;',
+      '--field-padding-xlg: 14px;',
+      '--field-label-gap-sm: 4px;',
+      '--field-label-gap-lg: 7px;',
+    ];
+    for (const declaration of ladder) {
+      expect(css).toContain(declaration);
+    }
+  });
+
+  it('carries the focus halo as a semantic role, so it flips with the scheme', () => {
+    // The brand sheet gets its dark halo by re-mapping the teal-50 PRIMITIVE.
+    // Primitives are scheme-invariant here, so the halo is a field role
+    // instead: opaque tint on light, translucent teal on dark.
+    const light = tmEmittedSchemeVars(tmTokensDefault, 'light');
+    const dark = tmEmittedSchemeVars(tmTokensDefault, 'dark');
+    expect(tmResolveVar(light, '--field-focus-halo')).toBe('#EAF4F7');
+    expect(dark.get('--field-focus-halo')).toBe('rgba(76, 160, 182, 0.22)');
+    expect(dark.get('--teal-50')).toBe(light.get('--teal-50'));
   });
 
   it('emits --font-ui as the single multi-script stack, with no direction coupling', () => {

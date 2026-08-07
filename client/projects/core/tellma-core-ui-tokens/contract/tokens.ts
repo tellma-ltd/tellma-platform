@@ -123,6 +123,14 @@ export interface TmSchemeColors {
     readonly borderHover: TmTokenValue;
     readonly borderFocus: TmTokenValue;
     readonly borderInvalid: TmTokenValue;
+    /**
+     * The soft glow a focused field paints outside its border. A field
+     * carries this instead of the offset two-layer focus ring buttons use,
+     * so a dense form does not fill with halos of page background. It has
+     * to be scheme-dependent: the light value is an opaque teal tint, while
+     * on dark only a translucent teal reads as a glow rather than a plate.
+     */
+    readonly focusHalo: TmTokenValue;
     readonly text: TmTokenValue;
     readonly textDisabled: TmTokenValue;
     readonly placeholder: TmTokenValue;
@@ -207,16 +215,51 @@ export interface TmTokens {
       readonly width: string;
       readonly color: TmTokenValue;
       readonly offset: string;
+      /** Thickness of the field focus glow (see `TmSchemeColors.field.focusHalo`). */
+      readonly haloWidth: string;
     };
-    /** Scheme-independent half of the form-field group (sizing/typography). */
+    /**
+     * Scheme-independent half of the form-field group (sizing/typography).
+     *
+     * Four properties form the size ladder — height, control font size,
+     * inline padding and the label-to-control gap — because shrinking the
+     * box alone leaves a dense field looking like a squeezed comfortable
+     * one. Label and hint type stay fixed across sizes: they are chrome
+     * around the control, not part of it.
+     *
+     * Naming: the `Sm`/`Lg` suffix kebabs cleanly (`heightSm` →
+     * `--field-height-sm`), but two adjacent capitals do NOT (`paddingXSm`
+     * would emit `--field-padding-xsm`). The padding variants are therefore
+     * spelled `paddingXsm`/`paddingXlg`, matching `--button-padding-xsm`.
+     */
     readonly formField: {
       readonly radius: TmTokenValue;
       readonly height: string;
       readonly heightSm: string;
       readonly heightLg: string;
       readonly paddingX: string;
+      readonly paddingXsm: string;
+      readonly paddingXlg: string;
       readonly paddingY: string;
       readonly fontSize: TmTokenValue;
+      readonly fontSizeSm: string;
+      readonly fontSizeLg: string;
+      readonly labelGap: string;
+      readonly labelGapSm: string;
+      readonly labelGapLg: string;
+      readonly labelFontSize: string;
+      readonly hintFontSize: TmTokenValue;
+      /** Size of the in-field glyph that marks an invalid control. */
+      readonly errorIconSize: string;
+      /**
+       * Dropdown row height, shared by every list a field drops (select,
+       * entity picker). It sits in the FIELD group rather than each
+       * component's so one step drives the whole control and its list — a
+       * dense select with comfortable rows is neither.
+       */
+      readonly optionHeight: string;
+      readonly optionHeightSm: string;
+      readonly optionHeightLg: string;
     };
     /**
      * Language-keyed line-height, emitted as `[lang]:lang()` rules that

@@ -5,6 +5,11 @@
 ```ts
 
 import * as _angular_core from '@angular/core';
+import { CdkConnectedOverlay } from '@angular/cdk/overlay';
+import { CdkConnectedOverlayConfig } from '@angular/cdk/overlay';
+import { ConnectedOverlayPositionChange } from '@angular/cdk/overlay';
+import { ConnectedPosition } from '@angular/cdk/overlay';
+import { FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
 import { Signal } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
 

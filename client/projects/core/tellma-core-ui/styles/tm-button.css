@@ -11,19 +11,32 @@
    component tokens (per-scheme values resolve at token-emit time). */
 
 .tm-button {
+  /* One local per step, re-pointed by the size modifiers below, so the size
+     ladder is stated once instead of three times per property. Type and gap
+     scale with the box: a 30px button carrying 15px text has no room left
+     for its own padding. */
+  --tm-button-block-size: var(--field-height);
+  --tm-button-padding-x: var(--button-padding-x);
+  --tm-button-font-size: var(--button-font-size);
+  --tm-button-gap: var(--button-gap);
+
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--button-gap);
+  gap: var(--tm-button-gap);
   box-sizing: border-box;
-  block-size: var(--field-height);
-  padding-inline: var(--button-padding-x);
+  block-size: var(--tm-button-block-size);
+  padding-inline: var(--tm-button-padding-x);
   border: var(--border-width) solid transparent;
   border-radius: var(--button-radius);
   font-family: var(--font-ui);
-  font-size: var(--field-font-size);
+  font-size: var(--tm-button-font-size);
   font-weight: var(--weight-medium);
+  white-space: nowrap;
+  /* An <a> can wear these classes too (a download link has to be an anchor);
+     without this it would arrive underlined. */
+  text-decoration: none;
   cursor: pointer;
   user-select: none;
   transition:
@@ -33,17 +46,21 @@
 }
 
 /* `--button-padding-xsm` / `-xlg`, not `-x-sm`: the emitter kebab-cases the
-   `paddingXSm` token key as one word. A name that misses is not a fallback —
+   `paddingXsm` token key as one word. A name that misses is not a fallback —
    the unresolvable var() invalidates this declaration at computed-value time
    and the size variant renders with zero inline padding. */
 .tm-button--sm {
-  block-size: var(--field-height-sm);
-  padding-inline: var(--button-padding-xsm);
+  --tm-button-block-size: var(--field-height-sm);
+  --tm-button-padding-x: var(--button-padding-xsm);
+  --tm-button-font-size: var(--button-font-size-sm);
+  --tm-button-gap: var(--button-gap-sm);
 }
 
 .tm-button--lg {
-  block-size: var(--field-height-lg);
-  padding-inline: var(--button-padding-xlg);
+  --tm-button-block-size: var(--field-height-lg);
+  --tm-button-padding-x: var(--button-padding-xlg);
+  --tm-button-font-size: var(--button-font-size-lg);
+  --tm-button-gap: var(--button-gap-lg);
 }
 
 .tm-button:focus-visible {
@@ -55,8 +72,13 @@
   box-shadow: var(--focus-ring);
 }
 
+/* Disabled is a flat plate, not a faded live button: a translucent control
+   shows whatever is behind it and stops reading as one surface. The border
+   goes with it, so a disabled ghost does not grow a box it never had. */
 .tm-button:disabled {
-  opacity: var(--button-disabled-opacity);
+  background: var(--button-disabled-bg);
+  border-color: transparent;
+  color: var(--button-disabled-text);
   cursor: default;
 }
 
@@ -64,15 +86,18 @@
 
 .tm-button--primary {
   background: var(--button-primary-bg);
+  border-color: var(--button-primary-bg);
   color: var(--button-primary-text);
 }
 
 .tm-button--primary:hover:not(:disabled):not(.tm-button--pending) {
   background: var(--button-primary-hover-bg);
+  border-color: var(--button-primary-hover-bg);
 }
 
 .tm-button--primary:active:not(:disabled):not(.tm-button--pending) {
   background: var(--button-primary-active-bg);
+  border-color: var(--button-primary-active-bg);
 }
 
 .tm-button--secondary {
@@ -83,6 +108,11 @@
 
 .tm-button--secondary:hover:not(:disabled):not(.tm-button--pending) {
   background: var(--button-secondary-hover-bg);
+  border-color: var(--button-secondary-hover-border);
+}
+
+.tm-button--secondary:active:not(:disabled):not(.tm-button--pending) {
+  background: var(--button-secondary-active-bg);
 }
 
 .tm-button--ghost {
@@ -94,8 +124,13 @@
   background: var(--button-ghost-hover-bg);
 }
 
+.tm-button--ghost:active:not(:disabled):not(.tm-button--pending) {
+  background: var(--button-ghost-active-bg);
+}
+
 .tm-button--danger {
   background: var(--button-danger-bg);
+  border-color: var(--button-danger-bg);
   color: var(--button-danger-text);
 }
 
@@ -110,9 +145,20 @@
   filter: brightness(0.86);
 }
 
-/* Projected icons ride the text color and never intercept the click. */
+/* An outline variant's disabled plate is the quieter one: the filled
+   variants' plate under a ghost button would invent a box out of nothing. */
+.tm-button--secondary:disabled,
+.tm-button--ghost:disabled {
+  background: var(--button-disabled-bg-subtle);
+}
+
+/* Projected icons ride the text color and never intercept the click. The
+   size rule is not optional: an icon set's natural size is 24px, which is
+   taller than a small button's entire content box. */
 .tm-button > svg {
   flex: none;
+  inline-size: var(--button-icon-size);
+  block-size: var(--button-icon-size);
   pointer-events: none;
 }
 
@@ -153,11 +199,25 @@
   color: var(--button-danger-text);
 }
 
+/* On a filled button the page-level track color disappears into the fill;
+   a wash of the button's own ink is what reads as a groove there. */
+.tm-button--primary.tm-button--pending > .tm-button__spinner,
+.tm-button--danger.tm-button--pending > .tm-button__spinner {
+  --spinner-track: color-mix(in srgb, currentColor 35%, transparent);
+}
+
 @media (forced-colors: active) {
   /* Variant boundaries survive via system colors: every variant keeps a
      real border (backgrounds are forced to ButtonFace). */
   .tm-button {
     border-color: ButtonText;
+  }
+
+  /* The flat disabled plate is forced away with every other background, so
+     the greyed system ink is what is left to say the button is dead. */
+  .tm-button:disabled {
+    border-color: GrayText;
+    color: GrayText;
   }
 
   /* `color: transparent` is overridden by forced colors, so the label
@@ -182,4 +242,3 @@
     transition: none;
   }
 }
-

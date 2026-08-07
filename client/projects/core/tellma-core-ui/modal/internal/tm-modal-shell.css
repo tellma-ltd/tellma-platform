@@ -79,19 +79,19 @@
   align-items: center;
   gap: var(--space-2);
   flex: none;
-  padding-block: var(--space-3);
+  padding-block: var(--modal-header-padding-y);
   padding-inline-start: var(--modal-padding-x);
   /* The close button sits in this corner, so the end padding is the air
      AROUND it, not the text inset the start edge carries: matching the
      block padding puts the same gap on all three sides it touches. */
-  padding-inline-end: var(--space-3);
+  padding-inline-end: var(--modal-header-padding-y);
   border-block-end: var(--border-width) solid var(--divider);
 }
 
 .tm-modal__title {
   flex: 1 1 auto;
   margin: 0;
-  font-size: var(--text-lg);
+  font-size: var(--modal-title-font-size);
   font-weight: var(--weight-semibold);
   color: var(--text-strong);
 }
@@ -135,7 +135,7 @@
   min-block-size: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: var(--space-4) var(--modal-padding-x);
+  padding: var(--space-3) var(--modal-padding-x);
 }
 
 /* Full-bleed content (a file preview) owns the whole scrollport: the
@@ -186,9 +186,11 @@
   gap: var(--space-2);
   margin-block-start: auto;
   margin-inline: calc(-1 * var(--modal-padding-x));
-  padding-block: var(--space-2);
-  padding-inline: var(--modal-padding-x);
-  background: var(--surface-card);
+  padding-block: var(--modal-footer-padding-y);
+  padding-inline: var(--modal-footer-padding-x);
+  /* A quieter plate than the body, so the actions read as a bar rather
+     than as the last row of the content that scrolls under them. */
+  background: var(--modal-footer-bg);
   border-block-start: var(--border-width) solid var(--divider);
 }
 
