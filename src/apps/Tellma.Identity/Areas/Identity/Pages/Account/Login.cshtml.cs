@@ -85,7 +85,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         public IReadOnlySet<string> ConfiguredExternalProviders { get; private set; } = new HashSet<string>();
 
         /// <summary>An informational banner, when any.</summary>
-        public string? StatusMessage { get; private set; }
+        public PageStatus? StatusMessage { get; private set; }
 
         /// <summary>Renders the sign-in surface, or sends an already-signed-in user onward.</summary>
         /// <param name="returnUrl">Where to return after sign-in.</param>
@@ -262,7 +262,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
             }
 
             ConfiguredExternalProviders = providers;
-            StatusMessage = StepUp ? localizer["ConfirmItsYou"].Value : null;
+            StatusMessage = StepUp ? PageStatus.Info(localizer["ConfirmItsYou"].Value) : null;
         }
     }
 }

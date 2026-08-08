@@ -7,8 +7,14 @@
 
 <h1 class="tmi-title">@L["SignIn"]</h1>
 
+@* Only ever rendered when a federated sign-in failed; a successful one redirects straight
+   through and never reaches this page. *@
 @if (!string.IsNullOrEmpty(Model.Error))
 {
-    <p class="tmi-error">@Model.Error</p>
-    <a class="tmi-link" asp-area="Identity" asp-page="/Account/Login">@L["SignIn"]</a>
+    <div class="tmi-notice tmi-notice-error" role="group" aria-label="@L["StatusError"]">
+        <tmi-icon name="circle-x" class="tmi-icon-lg" />
+        @* Provider text, so it is isolated from the layout around it. *@
+        <div class="tmi-notice-body"><bdi>@Model.Error</bdi></div>
+    </div>
+    <a class="tmi-button tmi-button-secondary" asp-area="Identity" asp-page="/Account/Login">@L["BackToSignIn"]</a>
 }

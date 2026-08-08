@@ -9,16 +9,19 @@
 
 @if (!Model.IsValid)
 {
-    <p class="tmi-error">@L["InvitationInvalid"]</p>
+    <div class="tmi-notice tmi-notice-error" role="group" aria-label="@L["StatusError"]">
+        <tmi-icon name="circle-x" class="tmi-icon-lg" />
+        <div class="tmi-notice-body">@L["InvitationInvalid"]</div>
+    </div>
 }
 else
 {
-    <p class="tmi-muted">@L["InvitationPrompt"]</p>
+    <p class="tmi-lead">@L["InvitationPrompt"]</p>
 
     @* The ceremony runs here rather than on a page this one links to: redeeming the invitation
        has already issued the credential-flow cookie the enrollment posts against, so a second
        page would only repeat this one's button under a different heading. *@
-    <partial name="Shared/_PasskeyEnrollment" model="@(Model.ReturnUrl)" />
+    <partial name="/Areas/Identity/Pages/Shared/_PasskeyEnrollment.cshtml" model="@(Model.ReturnUrl)" />
 }
 
 @if (Model.IsValid)

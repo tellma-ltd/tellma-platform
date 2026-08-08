@@ -4,14 +4,26 @@
     ViewData["Title"] = L["ErrorTitle"].Value;
 }
 
-<h1 class="tmi-title">@L["ErrorTitle"]</h1>
+<div class="tmi-centred">
+    <span class="tmi-hero tmi-hero-error"><tmi-icon name="circle-x" class="tmi-icon-lg" /></span>
+    <h1 class="tmi-title">@L["ErrorTitle"]</h1>
+</div>
 
-@if (!string.IsNullOrEmpty(Model.Error))
+@* Both may be absent — this page is also the re-execute target for any status code, where it
+   is a bare heading and nothing else. *@
+@if (!string.IsNullOrEmpty(Model.Error) || !string.IsNullOrEmpty(Model.ErrorDescription))
 {
-    <p class="tmi-error">@Model.Error</p>
-}
-
-@if (!string.IsNullOrEmpty(Model.ErrorDescription))
-{
-    <p class="tmi-muted">@Model.ErrorDescription</p>
+    <div class="tmi-notice tmi-notice-error" role="group" aria-label="@L["StatusError"]">
+        <tmi-icon name="circle-x" class="tmi-icon-lg" />
+        <div class="tmi-notice-body">
+            @if (!string.IsNullOrEmpty(Model.ErrorDescription))
+            {
+                <p class="tmi-notice-title">@Model.ErrorDescription</p>
+            }
+            @if (!string.IsNullOrEmpty(Model.Error))
+            {
+                <code>@Model.Error</code>
+            }
+        </div>
+    </div>
 }

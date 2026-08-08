@@ -273,4 +273,97 @@
   <data name="BackToApplication" xml:space="preserve">
     <value>Back to {0}</value>
   </data>
+  <data name="ThereIsAProblem" xml:space="preserve">
+    <value>There is a problem</value>
+  </data>
+  <data name="StatusSuccess" xml:space="preserve">
+    <value>Success</value>
+  </data>
+  <data name="StatusInfo" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="StatusWarning" xml:space="preserve">
+    <value>Warning</value>
+  </data>
+  <data name="StatusError" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="ErrorTitlePrefix" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="RemovePasskeyNamed" xml:space="preserve">
+    <value>Remove {0}</value>
+  </data>
+  <data name="PasskeyRemoved" xml:space="preserve">
+    <value>The passkey was removed.</value>
+  </data>
+  <data name="QrCodeAlt" xml:space="preserve">
+    <value>QR code for your authenticator app</value>
+  </data>
+  <data name="SharedKeyPrompt" xml:space="preserve">
+    <value>Cannot scan it? Enter this key in your app instead.</value>
+  </data>
+  <data name="BackToProfile" xml:space="preserve">
+    <value>Back to profile</value>
+  </data>
+  <data name="OrContinueWith" xml:space="preserve">
+    <value>or continue with</value>
+  </data>
+  <data name="ScopeProfileTitle" xml:space="preserve">
+    <value>Your profile</value>
+  </data>
+  <data name="ScopeProfileDetail" xml:space="preserve">
+    <value>Your name and preferred language.</value>
+  </data>
+  <data name="ScopeEmailTitle" xml:space="preserve">
+    <value>Your email address</value>
+  </data>
+  <data name="ScopeEmailDetail" xml:space="preserve">
+    <value>The address you sign in with.</value>
+  </data>
+  <data name="ScopeOpenIdTitle" xml:space="preserve">
+    <value>Who you are</value>
+  </data>
+  <data name="ScopeOpenIdDetail" xml:space="preserve">
+    <value>Confirms your identity without sharing your credentials.</value>
+  </data>
+  <data name="ScopeOfflineAccessTitle" xml:space="preserve">
+    <value>Stay signed in</value>
+  </data>
+  <data name="ScopeOfflineAccessDetail" xml:space="preserve">
+    <value>Keeps access after you close the app, until you sign out.</value>
+  </data>
+  <data name="ScopeApiTitle" xml:space="preserve">
+    <value>Your Tellma data</value>
+  </data>
+  <data name="ScopeApiDetail" xml:space="preserve">
+    <value>Read and change the data you have access to.</value>
+  </data>
+  <data name="ScopeUnknownDetail" xml:space="preserve">
+    <value>Access this application asked for by name.</value>
+  </data>
+  <data name="ConsentPromptApp" xml:space="preserve">
+    <value>{0} wants to access your account.</value>
+  </data>
+  <data name="LastSeen" xml:space="preserve">
+    <value>Last seen</value>
+  </data>
+  <data name="PasswordHint" xml:space="preserve">
+    <value>At least 12 characters.</value>
+  </data>
+  <data name="BackToSignIn" xml:space="preserve">
+    <value>Back to sign in</value>
+  </data>
+  <data name="SignInLead" xml:space="preserve">
+    <value>Use your work email or a passkey.</value>
+  </data>
+  <data name="Google" xml:space="preserve">
+    <value>Google</value>
+  </data>
+  <data name="Microsoft" xml:space="preserve">
+    <value>Microsoft</value>
+  </data>
+  <data name="RecoveryCodes" xml:space="preserve">
+    <value>Recovery codes</value>
+  </data>
 </root>

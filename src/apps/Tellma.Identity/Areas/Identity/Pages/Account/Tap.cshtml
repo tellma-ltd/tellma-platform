@@ -2,22 +2,30 @@
 @model Tellma.Identity.Areas.Identity.Pages.Account.TapModel
 @inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
 @{
-    ViewData["Title"] = L["TapTitle"].Value;
+    ViewData["Title"] = ViewContext.ModelState.IsValid
+        ? L["TapTitle"].Value
+        : L["ErrorTitlePrefix"].Value + ": " + L["TapTitle"].Value;
 }
 
 <h1 class="tmi-title">@L["TapTitle"]</h1>
-<p class="tmi-muted">@L["TapPrompt"]</p>
+<p class="tmi-lead">@L["TapPrompt"]</p>
+
+<partial name="/Areas/Identity/Pages/Shared/_ErrorSummary.cshtml" />
 
 <form method="post">
     <div class="tmi-field">
-        <label class="tmi-label" for="email">@L["Email"]</label>
-        <input class="tmi-input" id="email" name="Email" type="email" inputmode="email" required value="@Model.Email" />
+        <label class="tmi-label" for="Email">@L["Email"]</label>
+        <div class="tmi-field-control">
+            <tmi-icon name="mail" />
+            <input class="tmi-input" id="Email" name="Email" type="email" inputmode="email"
+                   dir="ltr" autocomplete="username" required value="@Model.Email" />
+        </div>
     </div>
     <div class="tmi-field">
-        <label class="tmi-label" for="pass">@L["TapPass"]</label>
-        <input class="tmi-input" id="pass" name="Pass" type="text" autocomplete="off" required />
+        <label class="tmi-label" for="Pass">@L["TapPass"]</label>
+        <input class="tmi-input tmi-input-code" id="Pass" name="Pass" type="text" dir="ltr"
+               autocomplete="off" required
+               aria-invalid="@(ViewContext.ModelState.IsValid ? null : "true")" />
     </div>
     <button class="tmi-button tmi-button-primary" type="submit">@L["Continue"]</button>
 </form>
-
-<div asp-validation-summary="All" class="tmi-error"></div>

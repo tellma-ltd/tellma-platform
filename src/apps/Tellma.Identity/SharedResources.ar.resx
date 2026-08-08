@@ -273,4 +273,97 @@
   <data name="BackToApplication" xml:space="preserve">
     <value>العودة إلى {0}</value>
   </data>
+  <data name="ThereIsAProblem" xml:space="preserve">
+    <value>هناك مشكلة</value>
+  </data>
+  <data name="StatusSuccess" xml:space="preserve">
+    <value>تم</value>
+  </data>
+  <data name="StatusInfo" xml:space="preserve">
+    <value>ملاحظة</value>
+  </data>
+  <data name="StatusWarning" xml:space="preserve">
+    <value>تنبيه</value>
+  </data>
+  <data name="StatusError" xml:space="preserve">
+    <value>خطأ</value>
+  </data>
+  <data name="ErrorTitlePrefix" xml:space="preserve">
+    <value>خطأ</value>
+  </data>
+  <data name="RemovePasskeyNamed" xml:space="preserve">
+    <value>إزالة {0}</value>
+  </data>
+  <data name="PasskeyRemoved" xml:space="preserve">
+    <value>تمت إزالة مفتاح المرور.</value>
+  </data>
+  <data name="QrCodeAlt" xml:space="preserve">
+    <value>رمز الاستجابة السريعة لتطبيق المصادقة</value>
+  </data>
+  <data name="SharedKeyPrompt" xml:space="preserve">
+    <value>تعذّر المسح؟ أدخل هذا المفتاح في التطبيق بدلاً من ذلك.</value>
+  </data>
+  <data name="BackToProfile" xml:space="preserve">
+    <value>العودة إلى الملف الشخصي</value>
+  </data>
+  <data name="OrContinueWith" xml:space="preserve">
+    <value>أو تابع باستخدام</value>
+  </data>
+  <data name="ScopeProfileTitle" xml:space="preserve">
+    <value>ملفك الشخصي</value>
+  </data>
+  <data name="ScopeProfileDetail" xml:space="preserve">
+    <value>اسمك ولغتك المفضلة.</value>
+  </data>
+  <data name="ScopeEmailTitle" xml:space="preserve">
+    <value>بريدك الإلكتروني</value>
+  </data>
+  <data name="ScopeEmailDetail" xml:space="preserve">
+    <value>العنوان الذي تسجل الدخول به.</value>
+  </data>
+  <data name="ScopeOpenIdTitle" xml:space="preserve">
+    <value>هويتك</value>
+  </data>
+  <data name="ScopeOpenIdDetail" xml:space="preserve">
+    <value>يؤكد هويتك دون مشاركة بيانات دخولك.</value>
+  </data>
+  <data name="ScopeOfflineAccessTitle" xml:space="preserve">
+    <value>البقاء مسجلاً للدخول</value>
+  </data>
+  <data name="ScopeOfflineAccessDetail" xml:space="preserve">
+    <value>يبقي الوصول بعد إغلاق التطبيق، حتى تسجل الخروج.</value>
+  </data>
+  <data name="ScopeApiTitle" xml:space="preserve">
+    <value>بياناتك في تلما</value>
+  </data>
+  <data name="ScopeApiDetail" xml:space="preserve">
+    <value>قراءة وتعديل البيانات التي تملك صلاحية الوصول إليها.</value>
+  </data>
+  <data name="ScopeUnknownDetail" xml:space="preserve">
+    <value>وصول طلبه هذا التطبيق بالاسم.</value>
+  </data>
+  <data name="ConsentPromptApp" xml:space="preserve">
+    <value>يطلب {0} الوصول إلى حسابك.</value>
+  </data>
+  <data name="LastSeen" xml:space="preserve">
+    <value>آخر ظهور</value>
+  </data>
+  <data name="PasswordHint" xml:space="preserve">
+    <value>١٢ حرفاً على الأقل.</value>
+  </data>
+  <data name="BackToSignIn" xml:space="preserve">
+    <value>العودة إلى تسجيل الدخول</value>
+  </data>
+  <data name="SignInLead" xml:space="preserve">
+    <value>استخدم بريد العمل أو مفتاح مرور.</value>
+  </data>
+  <data name="Google" xml:space="preserve">
+    <value>Google</value>
+  </data>
+  <data name="Microsoft" xml:space="preserve">
+    <value>Microsoft</value>
+  </data>
+  <data name="RecoveryCodes" xml:space="preserve">
+    <value>رموز الاستعادة</value>
+  </data>
 </root>

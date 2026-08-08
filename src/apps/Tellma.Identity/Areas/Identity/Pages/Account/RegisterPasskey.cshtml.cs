@@ -38,7 +38,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         public string? Credential { get; set; }
 
         /// <summary>An informational banner, when any.</summary>
-        public string? StatusMessage { get; private set; }
+        public PageStatus? StatusMessage { get; private set; }
 
         /// <summary>The validated local return URL.</summary>
         public string? ReturnUrl { get; private set; }

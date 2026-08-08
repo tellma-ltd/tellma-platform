@@ -46,7 +46,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
         public UserGender? Gender { get; set; }
 
         /// <summary>An informational banner, when any.</summary>
-        public string? StatusMessage { get; private set; }
+        public PageStatus? StatusMessage { get; private set; }
 
         /// <summary>Loads the current profile.</summary>
         /// <returns>The page.</returns>
@@ -56,7 +56,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
             DisplayName = user.DisplayName;
             Locale = user.Locale;
             Gender = user.Gender;
-            StatusMessage = TempData["StatusMessage"] as string;
+            StatusMessage = TempData["StatusMessage"] is string saved ? PageStatus.Success(saved) : null;
             return Page();
         }
 

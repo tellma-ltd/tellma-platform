@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 using Tellma.Identity.Data;
+using Tellma.Identity.Infrastructure;
 using Tellma.Identity.Services.Audit;
 using Tellma.Identity.Services.AuthenticationPolicy;
 
@@ -37,7 +38,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
         public IReadOnlyList<PasskeyView> Passkeys { get; private set; } = [];
 
         /// <summary>An informational banner, when any.</summary>
-        public string? StatusMessage { get; private set; }
+        public PageStatus? StatusMessage { get; private set; }
 
         /// <summary>Loads the user's passkeys.</summary>
         /// <returns>The page.</returns>
@@ -60,7 +61,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
                 || await userManager.HasPasswordAsync(user);
             if (!hasOtherFactor)
             {
-                StatusMessage = localizer["CannotRemoveOnlySignInMethod"].Value;
+                StatusMessage = PageStatus.Error(localizer["CannotRemoveOnlySignInMethod"].Value);
                 await LoadAsync();
                 return Page();
             }
@@ -74,6 +75,9 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
                 Outcome = "success",
             });
 
+            // Say so. The list simply re-renders one row shorter, which is a change nothing
+            // announces to a user who is not looking at it.
+            StatusMessage = PageStatus.Success(localizer["PasskeyRemoved"].Value);
             await LoadAsync();
             return Page();
         }

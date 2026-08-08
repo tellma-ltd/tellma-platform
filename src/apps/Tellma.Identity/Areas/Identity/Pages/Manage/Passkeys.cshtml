@@ -7,23 +7,34 @@
 
 <h1 class="tmi-title">@L["Passkeys"]</h1>
 
-<partial name="../Shared/_StatusMessage" model="@(Model.StatusMessage)" />
+<partial name="/Areas/Identity/Pages/Shared/_StatusMessage.cshtml" model="@(Model.StatusMessage)" />
 
 @if (Model.Passkeys.Count == 0)
 {
-    <p class="tmi-muted">@L["NoPasskeys"]</p>
+    <div class="tmi-empty">
+        <tmi-icon name="key-round" class="tmi-icon-lg" />
+        <span>@L["NoPasskeys"]</span>
+    </div>
 }
 else
 {
-    <ul>
-        @foreach (var passkey in Model.Passkeys)
+    <ul class="tmi-list">
+        @foreach (Tellma.Identity.Areas.Identity.Pages.Manage.PasskeysModel.PasskeyView passkey in Model.Passkeys)
         {
             <li>
-                <span>@passkey.Label</span>
-                <span class="tmi-muted">— @(passkey.IsDeviceBound ? L["DeviceBound"] : L["Synced"])</span>
+                <tmi-icon name="key-round" />
+                <div class="tmi-list-body">
+                    <div class="tmi-list-title">@passkey.Label</div>
+                    <span class="tmi-badge @(passkey.IsDeviceBound ? "tmi-badge-bound" : "tmi-badge-synced")">
+                        @(passkey.IsDeviceBound ? L["DeviceBound"] : L["Synced"])
+                    </span>
+                </div>
                 <form class="tmi-inline" method="post" asp-page-handler="Remove">
                     <input type="hidden" name="CredentialId" value="@passkey.CredentialId" />
-                    <button class="tmi-link" type="submit">@L["Remove"]</button>
+                    @* The label names which passkey. A list of controls all called "Remove" is
+                       one a user cannot tell apart from their accessible names alone. *@
+                    <button class="tmi-link tmi-link-danger" type="submit"
+                            aria-label="@L["RemovePasskeyNamed", passkey.Label]">@L["Remove"]</button>
                 </form>
             </li>
         }

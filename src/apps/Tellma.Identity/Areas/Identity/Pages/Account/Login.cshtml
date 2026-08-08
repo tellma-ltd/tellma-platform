@@ -2,19 +2,11 @@
 @model Tellma.Identity.Areas.Identity.Pages.Account.LoginModel
 @inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
 @{
-    ViewData["Title"] = Model.StepUp ? L["ConfirmItsYou"].Value : L["SignIn"].Value;
-}
+    string heading = Model.StepUp ? L["ConfirmItsYou"].Value : L["SignIn"].Value;
+    ViewData["Title"] = ViewContext.ModelState.IsValid
+        ? heading
+        : L["ErrorTitlePrefix"].Value + ": " + heading;
 
-<h1 class="tmi-title">@(Model.StepUp ? L["ConfirmItsYou"] : L["SignIn"])</h1>
-
-<partial name="Shared/_StatusMessage" model="@(Model.StatusMessage)" />
-
-@if (Model.RequiresDeviceBoundPasskey)
-{
-    <p class="tmi-muted">@L["DeviceBoundPasskeyRequired"]</p>
-}
-
-@{
     string passkeyMethod = Tellma.Identity.Services.AuthenticationPolicy.AuthenticationMethods.Passkey;
     string emailCodeMethod = Tellma.Identity.Services.AuthenticationPolicy.AuthenticationMethods.EmailCode;
     string googleMethod = Tellma.Identity.Services.AuthenticationPolicy.AuthenticationMethods.Google;
@@ -25,14 +17,33 @@
     bool showMicrosoft = Model.Methods.Contains(microsoftMethod) && Model.ConfiguredExternalProviders.Contains("Microsoft");
 }
 
+<h1 class="tmi-title">@heading</h1>
+<p class="tmi-lead">@L["SignInLead"]</p>
+
+<partial name="/Areas/Identity/Pages/Shared/_ErrorSummary.cshtml" />
+<partial name="/Areas/Identity/Pages/Shared/_StatusMessage.cshtml" model="@(Model.StatusMessage)" />
+
+@if (Model.RequiresDeviceBoundPasskey)
+{
+    @* Guidance to pick the right authenticator before bouncing off the authorization endpoint,
+       not an error — the request has not failed yet. *@
+    <div class="tmi-notice tmi-notice-warning" role="status">
+        <tmi-icon name="shield-check" class="tmi-icon-lg" />
+        <div class="tmi-notice-body">@L["DeviceBoundPasskeyRequired"]</div>
+    </div>
+}
+
 @if (showEmailCode)
 {
     <form method="post" asp-page-handler="EmailCode" asp-route-returnUrl="@Model.ReturnUrl" asp-route-methods="@Model.MethodsRaw" asp-route-stepUp="@Model.StepUp" asp-route-tier="@Model.Tier">
         <div class="tmi-field">
-            <label class="tmi-label" for="email">@L["Email"]</label>
-            @* autocomplete carries the webauthn token so passkey conditional UI can attach here. *@
-            <input class="tmi-input" id="email" name="Email" type="email" inputmode="email"
-                   autocomplete="username webauthn" required value="@Model.Email" />
+            <label class="tmi-label" for="Email">@L["Email"]</label>
+            <div class="tmi-field-control">
+                <tmi-icon name="mail" />
+                @* autocomplete carries the webauthn token so passkey conditional UI can attach here. *@
+                <input class="tmi-input" id="Email" name="Email" type="email" inputmode="email"
+                       dir="ltr" autocomplete="username webauthn" required value="@Model.Email" />
+            </div>
         </div>
         <label class="tmi-checkbox">
             <input type="checkbox" name="RememberMe" value="true" checked="@Model.RememberMe" />
@@ -48,7 +59,10 @@
     <form method="post" id="passkey-form" asp-page-handler="Passkey" asp-route-returnUrl="@Model.ReturnUrl" asp-route-methods="@Model.MethodsRaw" asp-route-stepUp="@Model.StepUp" asp-route-tier="@Model.Tier"
           data-assertion-url="@Url.Action("AssertionOptions", "PasskeyCeremony")">
         <input type="hidden" id="passkey-credential" name="Credential" />
-        <button class="tmi-button tmi-button-secondary" type="button" id="passkey-button">@L["SignInWithPasskey"]</button>
+        <button class="tmi-button @(showEmailCode ? "tmi-button-secondary" : "tmi-button-primary")"
+                type="button" id="passkey-button">
+            <tmi-icon name="key-round" class="tmi-icon-sm" />@L["SignInWithPasskey"]
+        </button>
     </form>
 }
 
@@ -56,27 +70,34 @@
 {
     @* The allow-list names only methods this deployment does not offer (password sign-in is
        deferred): say so instead of rendering an empty page. *@
-    <p class="tmi-error">@L["NoSignInMethodAvailable"]</p>
+    <div class="tmi-notice tmi-notice-error" role="group" aria-label="@L["StatusError"]">
+        <tmi-icon name="circle-x" class="tmi-icon-lg" />
+        <div class="tmi-notice-body">@L["NoSignInMethodAvailable"]</div>
+    </div>
 }
 
 @if (showGoogle || showMicrosoft)
 {
-    <hr class="tmi-divider" />
-    @if (showGoogle)
-    {
-        <form method="post" asp-page="/Account/ExternalLogin" asp-route-provider="Google" asp-route-returnUrl="@Model.ReturnUrl">
-            <button class="tmi-button tmi-button-secondary" type="submit">@L["ContinueWithGoogle"]</button>
-        </form>
-    }
-    @if (showMicrosoft)
-    {
-        <form method="post" asp-page="/Account/ExternalLogin" asp-route-provider="Microsoft" asp-route-returnUrl="@Model.ReturnUrl">
-            <button class="tmi-button tmi-button-secondary" type="submit">@L["ContinueWithMicrosoft"]</button>
-        </form>
-    }
+    <p class="tmi-divider">@L["OrContinueWith"]</p>
+    <div class="tmi-actions">
+        @if (showGoogle)
+        {
+            <form method="post" asp-page="/Account/ExternalLogin" asp-route-provider="Google" asp-route-returnUrl="@Model.ReturnUrl">
+                <button class="tmi-button tmi-button-secondary" type="submit">
+                    <partial name="/Areas/Identity/Pages/Shared/_MarkGoogle.cshtml" />@L["Google"]
+                </button>
+            </form>
+        }
+        @if (showMicrosoft)
+        {
+            <form method="post" asp-page="/Account/ExternalLogin" asp-route-provider="Microsoft" asp-route-returnUrl="@Model.ReturnUrl">
+                <button class="tmi-button tmi-button-secondary" type="submit">
+                    <partial name="/Areas/Identity/Pages/Shared/_MarkMicrosoft.cshtml" />@L["Microsoft"]
+                </button>
+            </form>
+        }
+    </div>
 }
-
-<div asp-validation-summary="All" class="tmi-error"></div>
 
 @if (showPasskey)
 {

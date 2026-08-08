@@ -56,8 +56,8 @@ namespace Tellma.Identity.E2E
                     // arranged through CDP: removing an authenticator takes its credentials with it.
                     await server.AddDeviceBoundPasskeyAsync("mixed-keys@example.com");
                     await page.GotoAsync("/Identity/Manage/Passkeys");
-                    await page.Locator("li", new() { HasTextString = "Device-bound" }).WaitForAsync();
-                    await page.Locator("li", new() { HasTextString = "Synced" }).WaitForAsync();
+                    await page.Locator(".tmi-list li", new() { HasTextString = "Device-bound" }).WaitForAsync();
+                    await page.Locator(".tmi-list li", new() { HasTextString = "Synced" }).WaitForAsync();
 
                     await page.GotoAsync("/Identity/Account/Logout");
                     await page.GetByRole(AriaRole.Button, new() { Name = "Sign out" }).ClickAsync();
@@ -71,10 +71,10 @@ namespace Tellma.Identity.E2E
 
                     // The synced assertion must be refused *for being synced*. Asserting the
                     // specific message is what makes this test about the tier check: a generic
-                    // ceremony failure renders into the same validation summary, so "an error
+                    // ceremony failure renders into the same error summary, so "an error
                     // appeared" would pass without the refusal ever running. The summary is the
-                    // only place that string appears inside .tmi-error — the standing hint above
-                    // the form is a .tmi-muted paragraph.
+                    // only place that string appears inside an error notice — the standing hint
+                    // above the form is a warning notice with no list in it.
                     await DriveCeremonyUntilRefusedAsync(page);
 
                     // The user was not signed in, so the authorization endpoint is never handed a
@@ -93,7 +93,7 @@ namespace Tellma.Identity.E2E
         /// </summary>
         private static async Task DriveCeremonyUntilRefusedAsync(IPage page)
         {
-            ILocator error = page.Locator(".tmi-error li", new() { HasTextString = "device-bound passkey" });
+            ILocator error = page.Locator(".tmi-notice-error li", new() { HasTextString = "device-bound passkey" });
             ILocator button = page.GetByRole(AriaRole.Button, new() { Name = "Sign in with a passkey" });
 
             for (int attempt = 0; attempt < 120; attempt++)

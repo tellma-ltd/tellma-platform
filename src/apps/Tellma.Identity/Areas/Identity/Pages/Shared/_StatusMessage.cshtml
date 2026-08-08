@@ -1,5 +1,30 @@
-@model string?
-@if (!string.IsNullOrEmpty(Model))
+@using Tellma.Identity.Infrastructure
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@model PageStatus
+@{
+    (string Variant, string Icon, string Label) style = Model?.Kind switch
+    {
+        PageStatusKind.Success => ("tmi-notice-success", "circle-check-big", L["StatusSuccess"].Value),
+        PageStatusKind.Warning => ("tmi-notice-warning", "triangle-alert", L["StatusWarning"].Value),
+        PageStatusKind.Error => ("tmi-notice-error", "circle-x", L["StatusError"].Value),
+        _ => ("tmi-notice-info", "info", L["StatusInfo"].Value),
+    };
+
+    // A refused or cautionary message takes focus, for the same reason the error summary does:
+    // the list it sits above is unchanged, so nothing else tells the user their action did not
+    // take. A success or a note does not — interrupting to confirm what was asked for is noise.
+    bool takesFocus = Model?.Kind is PageStatusKind.Warning or PageStatusKind.Error;
+}
+@if (Model is not null)
 {
-    <p class="tmi-status" role="status">@Model</p>
+    <div class="tmi-notice @style.Variant" role="@(takesFocus ? "group" : "status")"
+         tabindex="@(takesFocus ? "-1" : null)" autofocus="@takesFocus"
+         aria-label="@(takesFocus ? style.Label : null)">
+        <tmi-icon name="@style.Icon" class="tmi-icon-lg" />
+        <div class="tmi-notice-body">
+            @* The kind in words as well as in color: color alone is not a distinction every
+               user can perceive. *@
+            <span class="tmi-visually-hidden">@style.Label: </span>@Model.Text
+        </div>
+    </div>
 }

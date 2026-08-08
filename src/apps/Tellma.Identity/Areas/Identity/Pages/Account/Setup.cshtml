@@ -2,18 +2,22 @@
 @model Tellma.Identity.Areas.Identity.Pages.Account.SetupModel
 @inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
 @{
-    ViewData["Title"] = L["SetupTitle"].Value;
+    ViewData["Title"] = ViewContext.ModelState.IsValid
+        ? L["SetupTitle"].Value
+        : L["ErrorTitlePrefix"].Value + ": " + L["SetupTitle"].Value;
 }
 
 <h1 class="tmi-title">@L["SetupTitle"]</h1>
-<p class="tmi-muted">@L["SetupPrompt"]</p>
+<p class="tmi-lead">@L["SetupPrompt"]</p>
+
+<partial name="/Areas/Identity/Pages/Shared/_ErrorSummary.cshtml" />
 
 <form method="post">
     <div class="tmi-field">
-        <label class="tmi-label" for="token">@L["SetupToken"]</label>
-        <input class="tmi-input" id="token" name="Token" type="text" autocomplete="off" required />
+        <label class="tmi-label" for="Token">@L["SetupToken"]</label>
+        <input class="tmi-input tmi-input-code" id="Token" name="Token" type="text" dir="ltr"
+               autocomplete="off" required
+               aria-invalid="@(ViewContext.ModelState.IsValid ? null : "true")" />
     </div>
     <button class="tmi-button tmi-button-primary" type="submit">@L["Continue"]</button>
 </form>
-
-<div asp-validation-summary="All" class="tmi-error"></div>

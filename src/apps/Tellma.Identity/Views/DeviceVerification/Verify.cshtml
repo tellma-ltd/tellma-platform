@@ -1,14 +1,21 @@
 @model VerifyViewModel
 @inject IStringLocalizer<SharedResources> L
 @{
-    ViewData["Title"] = L["DeviceTitle"].Value;
+    ViewData["Title"] = string.IsNullOrEmpty(Model.Error)
+        ? L["DeviceTitle"].Value
+        : L["ErrorTitlePrefix"].Value + ": " + L["DeviceTitle"].Value;
 }
 
 <h1 class="tmi-title">@L["DeviceTitle"]</h1>
 
 @if (!string.IsNullOrEmpty(Model.Error))
 {
-    <p class="tmi-error">@Model.ErrorDescription</p>
+    @* Takes focus: this arrives on a page load, where a live region announces nothing. *@
+    <div class="tmi-notice tmi-notice-error" role="group" aria-label="@L["StatusError"]"
+         tabindex="-1" autofocus>
+        <tmi-icon name="circle-x" class="tmi-icon-lg" />
+        <div class="tmi-notice-body">@Model.ErrorDescription</div>
+    </div>
 }
 
 @if (string.IsNullOrEmpty(Model.UserCode))
@@ -17,17 +24,24 @@
     <form method="get" asp-controller="DeviceVerification" asp-action="Verify">
         <div class="tmi-field">
             <label class="tmi-label" for="user_code">@L["DeviceCode"]</label>
-            <input class="tmi-input" id="user_code" name="user_code" type="text" autocomplete="off" required autofocus />
+            <input class="tmi-input tmi-input-code" id="user_code" name="user_code" type="text"
+                   dir="ltr" autocomplete="off" required autofocus />
         </div>
         <button class="tmi-button tmi-button-primary" type="submit">@L["Continue"]</button>
     </form>
 }
 else
 {
-    <p class="tmi-muted">@L["DeviceConfirmPrompt", Model.ApplicationName ?? string.Empty]</p>
+    <div class="tmi-centred">
+        <span class="tmi-hero"><tmi-icon name="tv" class="tmi-icon-lg" /></span>
+    </div>
+    @* The application's own registered name, isolated from the sentence around it. *@
+    <p class="tmi-lead">@L["DeviceConfirmPrompt", Model.ApplicationName ?? string.Empty]</p>
     <form method="post" asp-controller="DeviceVerification" asp-action="Accept">
         <input type="hidden" name="user_code" value="@Model.UserCode" />
-        <button class="tmi-button tmi-button-primary" type="submit" name="submit.Accept" value="yes">@L["Accept"]</button>
-        <button class="tmi-button tmi-button-secondary" type="submit" name="submit.Deny" value="no" asp-action="Deny">@L["Deny"]</button>
+        <div class="tmi-actions">
+            <button class="tmi-button tmi-button-primary" type="submit" name="submit.Accept" value="yes">@L["Accept"]</button>
+            <button class="tmi-button tmi-button-secondary" type="submit" name="submit.Deny" value="no" asp-action="Deny">@L["Deny"]</button>
+        </div>
     </form>
 }
