@@ -6,7 +6,7 @@
 import { Component, computed, ElementRef, inject, type OnDestroy, signal } from '@angular/core';
 import { DomSanitizer, type SafeResourceUrl } from '@angular/platform-browser';
 
-import { TM_UI_TRANSLATE, TmL10n } from '@tellma/core-ui';
+import { TM_FORM_FIELD_DEFAULTS, TM_UI_TRANSLATE, TmL10n } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
 import { TM_MODAL_DATA, TmModalFooter } from '@tellma/core-ui/modal';
 import { TmSpinner } from '@tellma/core-ui/spinner';
@@ -152,10 +152,12 @@ const TEXT_CAP_BYTES = 1024 * 1024;
           <!-- An anchor, because the download attribute needs one, but
                wearing the button classes rather than a hand-copied
                reproduction of them: the classes come from tmButton's own
-               global stylesheet, so it cannot drift from the Print button
-               beside it. -->
+               global stylesheet, and the SIZE class is derived from the
+               same injected workspace default the Print tmButton beside it
+               resolves — so the two actions stay the same height under any
+               workspace size. -->
           <a
-            class="tm-button tm-button--primary tm-button--sm tm-preview__download"
+            [class]="downloadClasses"
             data-tm-preview-action="download"
             [href]="url"
             [download]="file.name"
@@ -175,6 +177,22 @@ export class ɵTmFilePreviewContent implements OnDestroy {
   private readonly l10n = inject(TmL10n);
 
   protected readonly file = inject<TmPreviewFile>(TM_MODAL_DATA);
+
+  private readonly defaults = inject(TM_FORM_FIELD_DEFAULTS);
+  /**
+   * The download anchor's button classes. An anchor cannot BE a tmButton
+   * (the directive's selector is button-only), so its size class is
+   * computed from the workspace default exactly the way TmButton's host
+   * bindings compute theirs — hard-coding a step here is how the two
+   * footer actions once drifted apart under a non-default size.
+   */
+  protected readonly downloadClasses =
+    'tm-button tm-button--primary' +
+    (this.defaults.size === 'sm'
+      ? ' tm-button--sm'
+      : this.defaults.size === 'lg'
+        ? ' tm-button--lg'
+        : '');
 
   protected readonly loadErrorLabel = this.translate('preview.loadError');
   protected readonly unsupportedLabel = this.translate('preview.unsupported');

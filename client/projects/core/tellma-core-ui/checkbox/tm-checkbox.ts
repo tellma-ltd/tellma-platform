@@ -175,19 +175,35 @@ export class TmCheckbox implements TmFormFieldControl {
   /** The merged aria-describedby attribute value, or null when no ids apply. */
   protected readonly describedByAttr = computed(() => this.describedByIds().join(' ') || null);
 
-  /** Whether invalidity is surfaced (aria-invalid) — follows the error-display policy. */
-  protected readonly showsInvalid = computed(() =>
-    this.errorDisplay({
-      invalid: this.invalid(),
-      touched: this.touched(),
-      dirty: this.dirty(),
-      pending: this.pending(),
-    }),
+  /** Whether the enclosing field displays an error this control must mark (see `setFieldError`). */
+  private readonly fieldError = signal(false);
+
+  /**
+   * Whether invalidity is surfaced (aria-invalid) — follows the
+   * error-display policy, or the enclosing field's own displayed error: the
+   * field around a chrome-owning checkbox is chromeless, so this control's
+   * red border and aria-invalid are the ONLY visible mark a field-level
+   * `error` input can get.
+   */
+  protected readonly showsInvalid = computed(
+    () =>
+      this.fieldError() ||
+      this.errorDisplay({
+        invalid: this.invalid(),
+        touched: this.touched(),
+        dirty: this.dirty(),
+        pending: this.pending(),
+      }),
   );
 
   /** Receives the field's hint/error ids and exposes them via aria-describedby. */
   setDescribedByIds(ids: readonly string[]): void {
     this.fieldDescribedBy.set(ids);
+  }
+
+  /** Receives whether the enclosing field displays an error (its plain `error` input included). */
+  setFieldError(showsError: boolean): void {
+    this.fieldError.set(showsError);
   }
 
   /** Focuses the checkbox when the user clicks the field's container chrome. */

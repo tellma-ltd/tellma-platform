@@ -836,23 +836,34 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
 
   /** The merged aria-describedby attribute value, or null when no ids apply. */
   protected readonly describedByAttr = computed(() => this.describedByIds().join(' ') || null);
+  /** Whether the enclosing field displays an error this control must mark (see `setFieldError`). */
+  private readonly fieldError = signal(false);
   /**
    * aria-invalid (and the standalone invalid border) follow the display
    * policy AND the presence of something worth showing — a query still
    * being typed is invalid for the form's purposes but must not paint the
-   * control red while the user works.
+   * control red while the user works. The enclosing field's own displayed
+   * error counts too: its plain `error` input never reaches this control's
+   * bound state, and the field's glyph is suppressed here (ownsErrorIcon),
+   * so without it the picker would show no mark for it at all.
    */
   protected readonly showsInvalid = computed(
     () =>
-      this.localizedErrors().length > 0 &&
-      this.errorDisplay({
-        invalid: this.invalid(),
-        touched: this.touched(),
-        dirty: this.dirty(),
-        pending: this.pending(),
-      }),
+      this.fieldError() ||
+      (this.localizedErrors().length > 0 &&
+        this.errorDisplay({
+          invalid: this.invalid(),
+          touched: this.touched(),
+          dirty: this.dirty(),
+          pending: this.pending(),
+        })),
   );
   private readonly touchedSelf = signal(false);
+
+  /** Receives whether the enclosing field displays an error (its plain `error` input included). */
+  setFieldError(showsError: boolean): void {
+    this.fieldError.set(showsError);
+  }
 
   constructor() {
     this.cellHost?.register(this);
