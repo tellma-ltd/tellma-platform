@@ -1,11 +1,60 @@
 /*
  * The identity UI's only hand-written stylesheet. Consumes the @tellma/core-ui-tokens custom
- * properties exclusively — no raw color or size literals — and uses CSS logical properties
- * throughout so right-to-left locales need no second sheet. The tokens sheet (tokens.css, the
- * emitted @tellma/core-ui-tokens build) and the vendored brand faces (fonts/fonts.css) are
- * loaded before this file.
+ * properties exclusively — no raw color literals — and uses CSS logical properties throughout
+ * so right-to-left locales need no second sheet. The tokens sheet (tokens.css, the emitted
+ * @tellma/core-ui-tokens build) and the vendored brand faces (fonts/fonts.css) are loaded
+ * before this file.
+ *
+ * It has to stay one file: the dangling-var() gate names this exact path, so a second
+ * stylesheet would be the one consumer a renamed token could break in silence.
  */
-* {
+
+/* ==========================================================================================
+   Locals
+   Sizes the emitted ramp does not carry, and the measures and palette of the brand panel.
+   Declared here rather than added to the shared tokens: nothing else on the platform renders
+   a marketing panel, and a name declared in this file satisfies the gate the same way an
+   emitted one does.
+   ========================================================================================== */
+:root {
+  /* The ramp is 12/14/16/18. These are its two ends: the panel's tagline above it, and the
+     chrome's meta text below it. */
+  --tmi-text-display: 22px;
+  --tmi-text-2xs: 11px;
+  --tmi-text-3xs: 10px;
+
+  /* Measures — widths, not rhythm, so they do not belong on the space ladder. */
+  --tmi-ink-width: 340px;
+  --tmi-nav-width: 232px;
+  --tmi-card-measure: 25rem;
+  --tmi-main-measure: 39rem;
+
+  /* The brand panel's palette. Scheme-independent primitives, never --surface-inverse or
+     --text-on-dark: this panel is dark in every scheme, so its contrast must not follow a
+     scheme that could move those out from under it. Verified against --ink-900: white
+     18.2:1, grey-300 8.9:1, grey-400 5.4:1. Note the trap that makes this worth stating —
+     grey-400 fails on white (3.4:1) and passes on ink. */
+  --tmi-ink-bg: var(--ink-900);
+  --tmi-ink-strong: var(--white);
+  --tmi-ink-body: var(--grey-300);
+  --tmi-ink-muted: var(--grey-400);
+  --tmi-ink-line: var(--ink-700);
+  --tmi-ink-star: var(--grey-800);
+  --tmi-ink-accent: var(--teal-400);
+
+  /* The perimeter of a control. --field-border and --border-default are grey-200, which is
+     1.5:1 against the card — below the 3:1 a control's boundary needs to be findable. grey-400
+     is 3.4:1. The shared tokens want the same correction; this is the identity UI's own until
+     they get it. */
+  --tmi-control-border: var(--grey-400);
+}
+
+/* ==========================================================================================
+   Base
+   ========================================================================================== */
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -20,65 +69,223 @@ body {
   background: var(--surface-page);
 }
 
-/* Centered single-card shell shared by every auth-flow page. */
-.tmi-shell {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-4);
+/* The hidden attribute is a user-agent display:none, which any author display rule beats. The
+   passkey error is toggled by that attribute and also wears the notice treatment, so restate
+   it with the weight the attribute deserves — that is what lets the blocks below set display
+   freely. */
+[hidden] {
+  display: none !important;
 }
 
-.tmi-card {
-  width: 100%;
-  max-width: 26rem;
-  background: var(--surface-card);
-  border: var(--border-width) solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  padding: var(--space-8);
+/* Reachable by keyboard, invisible until it is. The :not() guard is what lets the skip link
+   share this rule instead of owning a second copy of it. */
+.tmi-visually-hidden:not(:focus):not(:active) {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
-.tmi-brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-block-end: var(--space-6);
+/* ==========================================================================================
+   Focus
+   The emitted --focus-ring paints a 2px gap in --surface-page, and because that nesting
+   resolves where the variable is declared, re-pointing --surface-page on a descendant would
+   not change it. An outline's offset area is transparent, so the same geometry reads
+   correctly on the white card, the grey pane and the dark panel with no per-surface override
+   — and unlike a box-shadow it survives forced-colors mode.
+   ========================================================================================== */
+.tmi-input:focus-visible,
+.tmi-button:focus-visible,
+.tmi-link:focus-visible,
+.tmi-lang-button:focus-visible,
+.tmi-lang-option:focus-visible,
+.tmi-nav-item:focus-visible,
+.tmi-skip:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
 }
 
-.tmi-brand-name {
-  font-size: var(--text-lg);
-  font-weight: var(--weight-bold);
-  color: var(--color-primary);
+@media (forced-colors: active) {
+  :focus-visible {
+    outline-color: Highlight;
+  }
+
+  .tmi-notice {
+    border: var(--border-width) solid CanvasText;
+  }
 }
 
+/* ==========================================================================================
+   Icons
+   Every glyph is a 24-viewBox inline SVG taking currentColor; only the box changes.
+   ========================================================================================== */
+.tmi-icon {
+  flex: none;
+  inline-size: var(--menu-icon-size);
+  block-size: var(--menu-icon-size);
+}
+
+.tmi-icon-sm {
+  inline-size: var(--button-icon-size);
+  block-size: var(--button-icon-size);
+}
+
+.tmi-icon-lg {
+  inline-size: var(--alert-icon-size);
+  block-size: var(--alert-icon-size);
+}
+
+/* Only glyphs that point somewhere mirror. A check, a lock or a clock must not. */
+[dir="rtl"] .tmi-icon-flip {
+  transform: scaleX(-1);
+}
+
+/* ==========================================================================================
+   Typography
+   ========================================================================================== */
 .tmi-title {
   font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  letter-spacing: -0.01em;
   color: var(--text-strong);
-  margin-block: 0 var(--space-4);
+  margin-block: 0 var(--space-3);
+  text-wrap: pretty;
 }
 
+.tmi-lead,
+.tmi-muted {
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  margin-block: 0 var(--space-4);
+  text-wrap: pretty;
+}
+
+.tmi-status {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  margin-block: var(--space-2);
+}
+
+/* Base32 keys, recovery codes, user agents, emails and one-time codes are left-to-right
+   islands that must not reorder inside Arabic prose. Isolate, never override. */
+.tmi-ltr,
+code,
+.tmi-code {
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: start;
+}
+
+code,
+.tmi-code {
+  font-family: var(--font-mono);
+}
+
+/* ==========================================================================================
+   Skip link
+   Inside the banner rather than a bare first child of the body, so it is not content sitting
+   outside every landmark.
+   ========================================================================================== */
+.tmi-skip {
+  position: absolute;
+  z-index: 20;
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: var(--border-width) solid var(--tmi-control-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  color: var(--text-link);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.tmi-skip:not(:focus):not(:active) {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ==========================================================================================
+   Fields
+   ========================================================================================== */
 .tmi-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--field-label-gap);
   margin-block-end: var(--space-4);
 }
 
 .tmi-label {
-  display: block;
-  font-size: var(--text-sm);
+  font-size: var(--field-label-font-size);
+  font-weight: var(--weight-medium);
+  color: var(--text-strong);
+}
+
+.tmi-hint,
+.tmi-field-error {
+  font-size: var(--field-hint-font-size);
+  line-height: var(--leading-snug);
+  margin: 0;
+}
+
+.tmi-hint {
   color: var(--text-secondary);
-  margin-block-end: var(--space-1);
+}
+
+.tmi-field-error {
+  color: var(--error);
+}
+
+/* The control and any leading glyph share one bordered box, so the glyph reads as part of the
+   field rather than as something floating beside it. */
+.tmi-field-control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--field-padding-x);
+  border: var(--border-width) solid var(--tmi-control-border);
+  border-radius: var(--field-radius);
+  background: var(--field-bg);
+}
+
+.tmi-field-control:focus-within {
+  border-color: var(--field-border-focus);
+}
+
+.tmi-field-control > .tmi-icon {
+  color: var(--field-icon);
+}
+
+/* Inside the shared box the input owns no chrome of its own; standalone it draws the box. */
+.tmi-field-control > .tmi-input {
+  border: none;
+  padding-inline: 0;
+  background: none;
+}
+
+.tmi-field-control > .tmi-input:focus-visible {
+  outline: none;
 }
 
 .tmi-input {
-  width: 100%;
-  height: var(--field-height);
+  inline-size: 100%;
+  min-inline-size: 0;
+  block-size: var(--field-height);
   padding: var(--field-padding-y) var(--field-padding-x);
   font-family: inherit;
   font-size: var(--field-font-size);
   color: var(--field-text);
   background: var(--field-bg);
-  border: var(--border-width) solid var(--field-border);
+  border: var(--border-width) solid var(--tmi-control-border);
   border-radius: var(--field-radius);
 }
 
@@ -91,28 +298,61 @@ body {
 }
 
 .tmi-input:focus-visible {
-  outline: none;
   border-color: var(--field-border-focus);
-  box-shadow: var(--focus-ring);
 }
 
-/* Anchors carry this class too (navigation styled as a primary action), so centre the label
-   explicitly and drop the underline: a <button> centres its own label and has none, an <a>
-   does neither, which is what left-aligned underlined button text comes from. */
+.tmi-input[aria-invalid="true"] {
+  border-color: var(--field-border-invalid);
+}
+
+/* A one-time code, a device code or a shared key is read a character at a time. */
+.tmi-input-code {
+  font-family: var(--font-mono);
+  letter-spacing: 0.14em;
+}
+
+/* Native control, tinted — the accent keeps the platform's own checkbox semantics, focus ring
+   and high-contrast behaviour rather than rebuilding them on a styled span. */
+.tmi-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--checkbox-gap);
+  min-block-size: 24px;
+  margin-block-end: var(--space-4);
+  font-size: var(--checkbox-label-font-size);
+  color: var(--text-body);
+  cursor: pointer;
+}
+
+.tmi-checkbox input {
+  inline-size: var(--checkbox-box-size);
+  block-size: var(--checkbox-box-size);
+  margin: 0;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+/* ==========================================================================================
+   Buttons
+   Anchors carry these classes too, so the label is centred and the underline dropped
+   explicitly: a <button> does both by itself and an <a> does neither.
+   ========================================================================================== */
 .tmi-button {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: var(--button-gap);
+  inline-size: 100%;
+  block-size: var(--field-height);
+  padding-inline: var(--button-padding-x);
+  font-family: inherit;
+  font-size: var(--button-font-size);
+  font-weight: var(--weight-medium);
   text-align: center;
   text-decoration: none;
-  width: 100%;
-  height: var(--field-height);
-  padding: var(--field-padding-y) var(--space-4);
-  font-family: inherit;
-  font-size: var(--field-font-size);
-  font-weight: var(--weight-medium);
-  border-radius: var(--field-radius);
+  white-space: nowrap;
   border: var(--border-width) solid transparent;
+  border-radius: var(--button-radius);
   cursor: pointer;
   margin-block-end: var(--space-2);
   transition: background-color var(--duration-fast) var(--ease-standard);
@@ -133,68 +373,35 @@ body {
 
 .tmi-button-secondary {
   background: var(--surface-card);
-  color: var(--text-body);
-  border-color: var(--border-default);
+  color: var(--text-strong);
+  border-color: var(--tmi-control-border);
 }
 
 .tmi-button-secondary:hover {
   background: var(--surface-hover);
 }
 
-.tmi-button:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
-}
-
-.tmi-checkbox {
+/* Two actions that belong together read as a row, not a stack. */
+.tmi-actions {
   display: flex;
-  align-items: center;
   gap: var(--space-2);
-  margin-block-end: var(--space-4);
-  font-size: var(--text-sm);
 }
 
-.tmi-error {
-  color: var(--error);
-  font-size: var(--text-sm);
-  margin-block: var(--space-2);
+.tmi-actions .tmi-button {
+  flex: 1;
 }
 
-/* The validation-summary tag helper always emits a placeholder <li>, hidden with an inline
-   style attribute — which our style-src CSP drops, leaving a bare red bullet on every clean
-   form. Hide the summary by the class the helper itself toggles (it becomes
-   validation-summary-errors once there is something to say) rather than relying on that
-   inline style. */
-.validation-summary-valid {
-  display: none;
+/* A provider's own mark is multi-color and cannot inherit currentColor, so these sit apart
+   from the glyph set. */
+.tmi-mark {
+  flex: none;
+  inline-size: var(--menu-icon-size);
+  block-size: var(--menu-icon-size);
 }
 
-/* Errors read as lines of text like the rest of the page, not as an indented bulleted list. */
-.tmi-error ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.tmi-status {
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  margin-block: var(--space-2);
-}
-
-.tmi-muted {
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-}
-
-.tmi-divider {
-  border: none;
-  border-block-start: var(--border-width) solid var(--divider);
-  margin-block: var(--space-4);
-}
-
-/* Used on <button> as well as <a> — an inline action inside a form ("Remove") is a button for
-   accessibility reasons but must read as a link, so the user-agent button chrome is reset. */
+/* ==========================================================================================
+   Links
+   ========================================================================================== */
 .tmi-link {
   color: var(--text-link);
   text-decoration: none;
@@ -209,13 +416,472 @@ body {
   text-decoration: underline;
 }
 
+/* Removing a credential is destructive, and it sits inline in a list row — so it is a button
+   for behaviour, a link for weight, and 24px tall for a fingertip. */
+.tmi-link-danger {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 24px;
+  color: var(--error);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
 .tmi-inline {
   display: inline;
 }
 
-/* Page chrome below the card's content: the language picker and the legal links. Both are
-   secondary to the task at hand, so they sit quietly under a divider rather than competing
-   with the sign-in controls. */
+/* ==========================================================================================
+   Divider
+   ========================================================================================== */
+.tmi-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-block: var(--space-4);
+  border: none;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.tmi-divider::before,
+.tmi-divider::after {
+  content: "";
+  flex: 1;
+  block-size: var(--border-width);
+  background: var(--divider);
+}
+
+/* ==========================================================================================
+   Notices
+   The body reads in --text-body on every tint. The semantic color is spent on the icon and
+   the border, where 1.4.11's 3:1 applies rather than 1.4.3's 4.5:1 — as text on its own tint
+   --warning is 3.3:1, --info 3.6:1 and --success 4.3:1, so three of the four would fail.
+   ========================================================================================== */
+.tmi-notice {
+  display: flex;
+  gap: var(--alert-gap);
+  padding: var(--alert-padding-y) var(--alert-padding-x);
+  margin-block-end: var(--space-4);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--alert-radius);
+  font-size: var(--alert-body-font-size);
+  line-height: var(--leading-snug);
+  color: var(--text-body);
+}
+
+.tmi-notice > .tmi-icon {
+  margin-block-start: 1px;
+}
+
+.tmi-notice-body {
+  min-inline-size: 0;
+}
+
+.tmi-notice-title {
+  margin: 0 0 var(--space-1);
+  font-size: var(--alert-heading-font-size);
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+}
+
+.tmi-notice ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tmi-notice-info {
+  background: var(--info-bg);
+  border-color: var(--info-border);
+}
+
+.tmi-notice-info > .tmi-icon {
+  color: var(--teal-700);
+}
+
+.tmi-notice-success {
+  background: var(--success-bg);
+  border-color: var(--success-border);
+}
+
+.tmi-notice-success > .tmi-icon {
+  color: var(--success);
+}
+
+.tmi-notice-warning {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+}
+
+.tmi-notice-warning > .tmi-icon {
+  color: var(--warning);
+}
+
+.tmi-notice-error {
+  background: var(--error-bg);
+  border-color: var(--error-border);
+}
+
+.tmi-notice-error > .tmi-icon {
+  color: var(--error);
+}
+
+/* The error summary takes focus on a failed post, which is what tells a screen-reader user
+   the submission was rejected — a live region cannot, because the content is present when the
+   page parses rather than added afterwards. Suppress the ring it would otherwise draw around
+   a whole block; the heading it lands on is the announcement. */
+.tmi-notice[tabindex]:focus {
+  outline: none;
+}
+
+.tmi-error {
+  color: var(--error);
+  font-size: var(--text-sm);
+  margin-block: var(--space-2);
+}
+
+.tmi-error ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The validation-summary tag helper always emits a placeholder <li>, hidden with an inline
+   style attribute that our style-src drops — leaving a bare red bullet on every clean form.
+   Hide it by the class the helper itself toggles. */
+.validation-summary-valid {
+  display: none;
+}
+
+/* ==========================================================================================
+   Lists
+   ========================================================================================== */
+.tmi-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.tmi-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--surface-card);
+  border-block-end: var(--border-width) solid var(--divider);
+}
+
+.tmi-list li:last-child {
+  border-block-end: none;
+}
+
+.tmi-list li > .tmi-icon {
+  color: var(--text-secondary);
+}
+
+.tmi-list-body {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.tmi-list-title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-strong);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tmi-list-meta {
+  margin: var(--space-1) 0 0;
+  font-size: var(--tmi-text-2xs);
+  color: var(--text-secondary);
+}
+
+.tmi-badge {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 18px;
+  margin-block-start: var(--space-1);
+  padding-inline: var(--space-2);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-full);
+  font-size: var(--tmi-text-3xs);
+  font-weight: var(--weight-medium);
+}
+
+.tmi-badge-bound {
+  background: var(--surface-selected);
+  border-color: var(--accent);
+  color: var(--color-primary);
+}
+
+.tmi-badge-synced {
+  background: var(--surface-sunken);
+  border-color: var(--tmi-control-border);
+  color: var(--text-secondary);
+}
+
+.tmi-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  margin-block-end: var(--space-4);
+  border: var(--border-width) dashed var(--tmi-control-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+/* ==========================================================================================
+   Consent scopes
+   ========================================================================================== */
+.tmi-scopes {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 var(--space-4);
+  padding: var(--space-1);
+  list-style: none;
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.tmi-scopes li {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-2);
+}
+
+.tmi-scopes li > .tmi-icon {
+  margin-block-start: 2px;
+  color: var(--color-primary);
+}
+
+.tmi-scope-title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-strong);
+}
+
+.tmi-scope-detail {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  color: var(--text-secondary);
+}
+
+/* ==========================================================================================
+   Terminal pages, authenticator enrolment, recovery codes
+   ========================================================================================== */
+.tmi-hero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 40px;
+  block-size: 40px;
+  margin-block-end: var(--space-3);
+  border-radius: var(--radius-full);
+  background: var(--surface-selected);
+  color: var(--color-primary);
+}
+
+.tmi-hero-success {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.tmi-hero-error {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.tmi-centred {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.tmi-qr {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-block-end: var(--space-4);
+}
+
+.tmi-qr img {
+  flex: none;
+  inline-size: 128px;
+  block-size: 128px;
+  border: var(--border-width) solid var(--tmi-control-border);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+}
+
+.tmi-shared-key {
+  display: block;
+  padding: var(--space-2);
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  background: var(--surface-sunken);
+  color: var(--text-strong);
+  font-size: var(--text-xs);
+  word-break: break-all;
+}
+
+.tmi-code-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.tmi-code-grid li {
+  padding: var(--space-2);
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  background: var(--surface-sunken);
+  text-align: center;
+}
+
+.tmi-code-grid code {
+  font-size: var(--text-xs);
+  color: var(--text-strong);
+}
+
+/* ==========================================================================================
+   Language picker
+   A disclosure rather than a menu: <summary> is focusable, keyboard-operable and exposed as a
+   button with an expanded state, all without script — which a policy with no nonce would
+   otherwise make expensive. The panel is taken out of flow so opening it never moves the form
+   underneath.
+   ========================================================================================== */
+.tmi-lang {
+  position: relative;
+  flex: none;
+}
+
+.tmi-lang-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-block-size: 30px;
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+/* Both spellings of "do not draw the disclosure triangle"; the chevron glyph is the only
+   affordance the design wants. */
+.tmi-lang-button::-webkit-details-marker {
+  display: none;
+}
+
+.tmi-lang-button::marker {
+  content: "";
+}
+
+.tmi-lang-button:hover {
+  background: var(--surface-hover);
+  color: var(--text-body);
+}
+
+.tmi-lang[open] .tmi-lang-button > .tmi-icon:last-child {
+  transform: rotate(180deg);
+}
+
+.tmi-lang-menu {
+  position: absolute;
+  z-index: 10;
+  inset-block-start: calc(100% + var(--space-1));
+  inset-inline-end: 0;
+  min-inline-size: var(--menu-min-width);
+  display: flex;
+  flex-direction: column;
+  padding: var(--menu-panel-padding);
+  border: var(--border-width) solid var(--tmi-control-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-md);
+}
+
+.tmi-lang-option {
+  display: flex;
+  align-items: center;
+  min-block-size: var(--menu-item-height);
+  padding-inline: var(--menu-item-padding-x);
+  border: none;
+  border-radius: var(--menu-item-radius);
+  background: none;
+  font: inherit;
+  font-size: var(--menu-item-font-size);
+  color: var(--text-body);
+  text-align: start;
+  cursor: pointer;
+}
+
+.tmi-lang-option:hover {
+  background: var(--surface-hover);
+}
+
+.tmi-lang-option[aria-current="true"] {
+  color: var(--color-primary);
+  font-weight: var(--weight-medium);
+}
+
+/* ==========================================================================================
+   Shell
+   Replaced wholesale when the two shells land; kept working meanwhile so every page renders
+   sanely at each step.
+   ========================================================================================== */
+.tmi-shell {
+  min-block-size: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+.tmi-card {
+  inline-size: 100%;
+  max-inline-size: var(--tmi-card-measure);
+  padding: var(--space-8);
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-lg);
+}
+
+.tmi-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-block-end: var(--space-6);
+}
+
+.tmi-brand-name {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  color: var(--color-primary);
+}
+
 .tmi-language,
 .tmi-legal {
   display: flex;
@@ -228,7 +894,6 @@ body {
   font-size: var(--text-sm);
 }
 
-/* The picker and the links share the edge, so only the first draws the rule. */
 .tmi-language + .tmi-legal {
   margin-block-start: var(--space-2);
   padding-block-start: 0;
