@@ -9,6 +9,7 @@ import {
   Component,
   computed,
   DestroyRef,
+  effect,
   ElementRef,
   inject,
   input,
@@ -180,7 +181,7 @@ import { ɵTmGridTouchHandles } from './touch-handles';
                   [attr.aria-selected]="cell.selected ? 'true' : null"
                   [attr.aria-invalid]="cell.invalid ? 'true' : null"
                   [attr.aria-readonly]="cell.readonly ? 'true' : null"
-                  [attr.aria-describedby]="cell.active && cell.invalid && !cell.editing ? core().errorMsgId : null"
+                  [attr.aria-describedby]="cell.active && cell.invalid && !cell.editing && showErrorBubble() ? core().errorMsgId : null"
                   [tabindex]="cell.active && !core().escaped() ? 0 : -1"
                   [class.tm-grid__cell--active]="cell.active"
                   [class.tm-grid__cell--selected]="cell.fill"
@@ -327,7 +328,10 @@ import { ɵTmGridTouchHandles } from './touch-handles';
          bubble tm-form-field uses, so a cell error and a field error read as
          the same object. Unlike the field's, this one is NOT decoration —
          the cell has no live region of its own, so it carries the tooltip
-         role and the active cell's aria-describedby points here. -->
+         role and the active cell's aria-describedby points here. That
+         binding is gated on showErrorBubble() with the overlay: detached,
+         this element (the id's only carrier) leaves the DOM, and the
+         still-rendered cell must not describe itself by a dangling id. -->
     <ng-template
       [cdkConnectedOverlay]="errorAnchored.overlayConfig()"
       [cdkConnectedOverlayOpen]="showErrorBubble()"
@@ -459,6 +463,34 @@ export class ɵTmGridView {
   private readonly menu = viewChild(TmMenu);
   private readonly icons = viewChild(ɵTmGridIcons);
   private readonly direction = inject(Directionality);
+  /** The view's host element — the box the loading/empty overlay is inset against. */
+  private readonly hostElement = inject(ElementRef).nativeElement as HTMLElement;
+
+  /**
+   * Measures the loading/empty overlay's trailing insets, only while a
+   * layer is actually up. offsetWidth - clientWidth is BOTH borders plus
+   * the scrollbar, and the overlay's leading edges already sit INSIDE the
+   * border (grid-view.css) — so the trailing inset keeps ONE border-width,
+   * not two. The block inset is measured against the HOST's bottom edge:
+   * on an editable grid the status bar sits between the scroller and that
+   * edge, and the overlay must stop above the scrollbar, not partway into
+   * the status bar.
+   */
+  private measureOverlayInsets(): void {
+    const core = this.core();
+    const scroller = this.scroller()?.nativeElement;
+    if (scroller === undefined || (!core.loading() && !core.showEmpty())) {
+      return;
+    }
+    const border = Number.parseFloat(getComputedStyle(scroller).borderTopWidth) || 0;
+    this.scrollbarInline.set(scroller.offsetWidth - scroller.clientWidth - border);
+    this.scrollbarBlock.set(
+      this.hostElement.getBoundingClientRect().bottom -
+        scroller.getBoundingClientRect().top -
+        border -
+        scroller.clientHeight,
+    );
+  }
 
   constructor() {
     // The error anchor moves from cell to cell WHILE the overlay stays
@@ -502,21 +534,27 @@ export class ɵTmGridView {
       const icons = this.icons();
       untracked(() => core.attachMenu(menu ?? null, icons?.templates() ?? null));
     });
-    // Measured only while a layer is actually up, and after render so the
-    // scroller has its final box.
+    // Measured after render so the scroller has its final box, re-running
+    // when a layer goes up or the scroller arrives.
     afterRenderEffect(() => {
       const core = this.core();
-      if (!core.loading() && !core.showEmpty()) {
-        return;
-      }
+      core.loading();
+      core.showEmpty();
+      this.scroller();
+      untracked(() => this.measureOverlayInsets());
+    });
+    // Re-measured whenever the scroller's box changes: a window resize can
+    // toggle a scrollbar while a layer is up without any signal changing,
+    // and content-box observation sees both outer resizes and a scrollbar
+    // appearing or disappearing.
+    effect((onCleanup) => {
       const scroller = this.scroller()?.nativeElement;
       if (scroller === undefined) {
         return;
       }
-      untracked(() => {
-        this.scrollbarInline.set(scroller.offsetWidth - scroller.clientWidth);
-        this.scrollbarBlock.set(scroller.offsetHeight - scroller.clientHeight);
-      });
+      const observer = new ResizeObserver(() => this.measureOverlayInsets());
+      observer.observe(scroller);
+      onCleanup(() => observer.disconnect());
     });
     // A live direction flip re-lays the grid, but an already-open overlay
     // keeps the inline offset the CDK measured against the OLD side, so the

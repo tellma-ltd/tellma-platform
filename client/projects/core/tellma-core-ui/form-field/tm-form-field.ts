@@ -7,6 +7,7 @@ import {
   Component,
   computed,
   contentChild,
+  DestroyRef,
   DOCUMENT,
   effect,
   ElementRef,
@@ -16,6 +17,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { Directionality } from '@angular/cdk/bidi';
 import {
   CdkConnectedOverlay,
   OverlayModule,
@@ -95,16 +97,14 @@ let nextUniqueId = 0;
     >
       <ng-content select="[tmPrefix]" />
       <ng-content />
-      <ng-content select="[tmSuffix]" />
-      @if (pending() && !chromeless()) {
-        <tm-spinner class="tm-form-field__spinner" />
-      }
       <!-- The in-field mark of invalidity: the one part of the error state
            that survives blur, so a field that has scrolled out of focus
-           still says something is wrong. A control with a trailing button
-           draws this glyph itself (ownsErrorIcon), because appended here
-           it would sit AFTER that button and shove it sideways whenever an
-           error came and went. -->
+           still says something is wrong. Rendered BETWEEN the control and
+           the [tmSuffix] slot, so a static suffix adornment ("kg", a
+           currency) never shifts when an error comes or goes. A control
+           with a trailing button INSIDE its own anatomy still draws the
+           glyph itself (ownsErrorIcon) — the field cannot reach in front
+           of that button from out here. -->
       @if (showError() && !chromeless() && !ownsErrorIcon()) {
         <svg
           class="tm-form-field__error-icon"
@@ -120,6 +120,10 @@ let nextUniqueId = 0;
           <line x1="12" x2="12" y1="8" y2="12" />
           <line x1="12" x2="12.01" y1="16" y2="16" />
         </svg>
+      }
+      <ng-content select="[tmSuffix]" />
+      @if (pending() && !chromeless()) {
+        <tm-spinner class="tm-form-field__spinner" />
       }
     </div>
     <!-- Persistent polite live region: exists whether or not it holds text, so
@@ -143,8 +147,13 @@ let nextUniqueId = 0;
       (detach)="anchoredError.handleDetach()"
       (positionChange)="onErrorPositionChange($event)"
     >
+      <!-- data-tm-error-for ties this top-layer bubble back to ITS field
+           (the live region's id): a page can hold several fields' bubbles
+           plus the grid's, and the testing harness must not count someone
+           else's as this field's. -->
       <tm-error-popover
         aria-hidden="true"
+        [attr.data-tm-error-for]="errorId"
         [messages]="errorTexts()"
         [above]="errorPopoverAbove()"
       />
@@ -167,6 +176,8 @@ export class TmFormField {
   private readonly errorDisplay = inject(TM_ERROR_DISPLAY);
   private readonly hostElement = inject(ElementRef).nativeElement as HTMLElement;
   private readonly document = inject(DOCUMENT);
+  /** The layout direction — a live flip re-anchors the open error bubble. */
+  private readonly direction = inject(Directionality);
   private readonly uniqueId = nextUniqueId++;
 
   /** The visible label text; omit for a label-less (adorned-only) field. */
@@ -316,6 +327,13 @@ export class TmFormField {
       }
       control.setDescribedByIds(ids);
       control.setLabelId?.(this.label() !== '' ? this.labelId : null);
+      // The field's displayed-error state, pushed to controls that draw
+      // their own invalid presentation: the plain `error` input lives on
+      // the FIELD, and without this a chrome-owning control (checkbox,
+      // select) or a glyph-owning one (the pickers) would show nothing for
+      // it — red border, glyph and aria-invalid all read the control's own
+      // bound state, which that input never touches.
+      control.setFieldError?.(this.showError());
     });
 
     // Where the next press lands decides whether the bubble stays. Pressing
@@ -342,21 +360,46 @@ export class TmFormField {
           this.bubbleHeld.set(true);
           return;
         }
-        if (this.hostElement.contains(target)) {
-          this.bubbleHeld.set(false);
-          return;
-        }
         this.bubbleHeld.set(false);
         // The blur a grip suppressed never took effect — focus really did
         // leave when the reader first pressed into the bubble. Without this
-        // the field would still believe it is focused.
+        // the field would still believe it is focused. Checked for presses
+        // INSIDE the field too: a press on the hint or the label gap ends a
+        // grip without focusing anything, and skipping the check there left
+        // the bubble open over a blurred field.
         if (!this.hostElement.contains(this.document.activeElement)) {
           this.focused.set(false);
         }
       };
+      // A grip's escape hatch for the keyboard: the grip suppressed the
+      // control's blur, and no later focusout fires for this field once
+      // focus has already left it — so a reader who grips the bubble, copies
+      // the text and Tabs onward would otherwise carry the bubble over the
+      // rest of the form until some stray click. Focus landing anywhere
+      // outside the field ends both the grip and the stale focused state.
+      const onFocusIn = (event: FocusEvent) => {
+        const target = event.target;
+        if (target instanceof Node && !this.hostElement.contains(target)) {
+          this.bubbleHeld.set(false);
+          this.focused.set(false);
+        }
+      };
       this.document.addEventListener('pointerdown', onPointerDown);
-      onCleanup(() => this.document.removeEventListener('pointerdown', onPointerDown));
+      this.document.addEventListener('focusin', onFocusIn);
+      onCleanup(() => {
+        this.document.removeEventListener('pointerdown', onPointerDown);
+        this.document.removeEventListener('focusin', onFocusIn);
+      });
     });
+
+    // A live direction flip re-lays the field, but an already-open overlay
+    // keeps the inline offset the CDK measured against the OLD side, so the
+    // bubble would stay on the edge it opened against (the grid's cell
+    // bubble carries the same subscription for the same reason).
+    const directionChange = this.direction.change.subscribe(() =>
+      this.anchoredError.reanchor(),
+    );
+    inject(DestroyRef).onDestroy(() => directionChange.unsubscribe());
   }
 
   /** Forwards label clicks to controls that `<label for>` cannot reach. */
@@ -379,8 +422,13 @@ export class TmFormField {
     // it is pointer-transparent, so a press on the mark of the problem
     // surfaces on the box (or on a chrome-owning control's host) and lands
     // here — and reaching for that mark and having nothing happen is the
-    // one thing a reader will certainly try.
-    if (target.closest('input, textarea, select, button, a, [tabindex]') !== null) {
+    // one thing a reader will certainly try. The match must sit INSIDE the
+    // field: closest() walks to the document root, and a field in a dialog
+    // or popover always has a [tabindex] ancestor (CDK's dialog container
+    // carries tabindex="-1") that would otherwise swallow every chrome
+    // click.
+    const interactive = target.closest('input, textarea, select, button, a, [tabindex]');
+    if (interactive !== null && this.hostElement.contains(interactive)) {
       return;
     }
     this.control()?.onContainerClick?.();

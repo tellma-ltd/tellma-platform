@@ -9,6 +9,7 @@ import {
   Component,
   computed,
   contentChildren,
+  effect,
   ElementRef,
   input,
   model,
@@ -137,6 +138,21 @@ export class TmTabGroup {
       this.orientation();
       const strip = this.stripRef()?.nativeElement;
       untracked(() => this.measureStrip(strip ?? null));
+    });
+
+    // The promise also goes stale when the strip RESIZES: narrowed, tabs
+    // overflow with no fade; widened, the fade keeps dimming the last tab
+    // for a scroll that would do nothing. Neither fires a scroll event
+    // (the offset never leaves 0), and in a zoneless app a resize alone
+    // re-runs nothing — so the strip's own box is observed.
+    effect((onCleanup) => {
+      const strip = this.stripRef()?.nativeElement;
+      if (strip === undefined) {
+        return;
+      }
+      const observer = new ResizeObserver(() => this.measureStrip(strip));
+      observer.observe(strip);
+      onCleanup(() => observer.disconnect());
     });
   }
 

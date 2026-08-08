@@ -59,6 +59,7 @@ export interface TmFormFieldControl {
     readonly readonly: SignalLike<boolean>;
     readonly required: SignalLike<boolean>;
     setDescribedByIds(ids: readonly string[]): void;
+    setFieldError?(showsError: boolean): void;
     setLabelId?(id: string | null): void;
     readonly touched: SignalLike<boolean>;
 }

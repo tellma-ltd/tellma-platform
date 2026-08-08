@@ -59,6 +59,7 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
     readonly required: _angular_core.InputSignalWithTransform<boolean, unknown>;
     seed(text: string): void;
     setDescribedByIds(ids: readonly string[]): void;
+    setFieldError(showsError: boolean): void;
     protected readonly showsInvalid: Signal<boolean>;
     readonly text: Signal<string | null>;
     protected readonly toggleLabel: Signal<string>;

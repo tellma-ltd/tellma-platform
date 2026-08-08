@@ -323,19 +323,44 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
   /**
    * The popup's height, derived from its own tokens rather than measured:
    * at the moment the side is chosen the popup does not exist yet. Header
-   * and footer are one slot each, the body is the fixed seven-row grid.
+   * and footer are one slot each, the body is the fixed seven-row grid —
+   * plus everything else between the anchor and the popup's far edge
+   * (tm-date-popup.css): the two column-flex gaps between its three
+   * sections, the footer separator's margin + padding + hairline, the
+   * popup's own border, and the one-step detach margin on the anchor side.
+   * The single-position overlay never flips, so an undercount here is a
+   * clipped calendar, not a corrected one.
    */
   private popupHeightEstimate(): number {
     const styles = getComputedStyle(this.hostElement);
     const px = (name: string, fallback: number) => {
-      const parsed = Number.parseFloat(styles.getPropertyValue(name));
+      // Custom properties are unregistered, so getPropertyValue returns the
+      // SPECIFIED text: a theme's '1.875rem' would parseFloat to 1.875 and
+      // collapse the whole estimate. Only a px value is trusted; any other
+      // unit falls back to the token's default.
+      const match = /^([\d.]+)px$/.exec(styles.getPropertyValue(name).trim());
+      const parsed = match === null ? Number.NaN : Number.parseFloat(match[1]);
       return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
     };
     const cell = px('--date-picker-cell-height', 30);
     const gap = px('--date-picker-cell-gap', 1);
     const slot = px('--date-picker-slot-height', 32);
     const padding = px('--date-picker-popup-padding', 8);
-    return 7 * cell + 6 * gap + 2 * slot + 2 * padding;
+    const space = px('--space-1', 4);
+    const border = px('--border-width', 1);
+    return (
+      7 * cell +
+      6 * gap +
+      2 * slot +
+      2 * padding +
+      // Column gaps (header|grid, grid|footer), the footer separator
+      // (margin-block-start + padding-block-start + hairline), the popup's
+      // two borders, and its margin-block detach on the anchor side.
+      2 * space +
+      (2 * space + border) +
+      2 * border +
+      space
+    );
   }
 
   /**
@@ -528,20 +553,35 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
   );
   /** The merged aria-describedby attribute value, or null when no ids apply. */
   protected readonly describedByAttr = computed(() => this.describedByIds().join(' ') || null);
-  /** aria-invalid follows the error-DISPLAY policy; own parse errors count. */
-  protected readonly showsInvalid = computed(() =>
-    this.errorDisplay({
-      invalid: this.invalid() || this.rawText.parseErrors().length > 0,
-      touched: this.touched() || this.touchedSelf(),
-      dirty: this.dirty(),
-      pending: this.pending(),
-    }),
+  /** Whether the enclosing field displays an error this control must mark (see `setFieldError`). */
+  private readonly fieldError = signal(false);
+  /**
+   * aria-invalid follows the error-DISPLAY policy; own parse errors count,
+   * and so does the enclosing field's displayed error — its plain `error`
+   * input never reaches this control's bound state, and the field's glyph
+   * is suppressed here (ownsErrorIcon), so without this the picker would
+   * show no mark for it at all.
+   */
+  protected readonly showsInvalid = computed(
+    () =>
+      this.fieldError() ||
+      this.errorDisplay({
+        invalid: this.invalid() || this.rawText.parseErrors().length > 0,
+        touched: this.touched() || this.touchedSelf(),
+        dirty: this.dirty(),
+        pending: this.pending(),
+      }),
   );
   private readonly touchedSelf = signal(false);
 
   /** Receives the field's hint/error ids and exposes them via aria-describedby. */
   setDescribedByIds(ids: readonly string[]): void {
     this.fieldDescribedBy.set(ids);
+  }
+
+  /** Receives whether the enclosing field displays an error (its plain `error` input included). */
+  setFieldError(showsError: boolean): void {
+    this.fieldError.set(showsError);
   }
 
   /** Focuses the input when the user clicks the field's container chrome. */

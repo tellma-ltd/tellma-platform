@@ -24,9 +24,6 @@ export class TmFormFieldHarness extends ComponentHarness {
   private readonly errorEl = this.locatorFor('.tm-form-field__error');
   private readonly errorLineEls = this.locatorForAll('.tm-form-field__error-line');
   private readonly requiredEl = this.locatorForOptional('.tm-form-field__required');
-  private readonly errorPopoverEl = this.documentRootLocatorFactory().locatorForOptional(
-    'tm-error-popover',
-  );
 
   /** Gets the label text, or null when the field renders no label. */
   async getLabelText(): Promise<string | null> {
@@ -64,12 +61,24 @@ export class TmFormFieldHarness extends ComponentHarness {
   }
 
   /**
-   * Whether the visible validation bubble is on screen. It is decoration —
-   * shown only while the control holds focus — so assert message CONTENT
-   * through {@link getErrorTexts}, which does not depend on focus.
+   * Whether THIS field's visible validation bubble is on screen. It is
+   * decoration — shown only while the control holds focus — so assert
+   * message CONTENT through {@link getErrorTexts}, which does not depend on
+   * focus. The bubble renders in the top layer outside the field host, so
+   * it is matched by the field's error-region id stamped onto it
+   * (`data-tm-error-for`): a page can hold OTHER fields' bubbles, or the
+   * grid's cell bubble (the same element, and not focus-gated), and those
+   * must not count as this field's.
    */
   async isErrorPopoverOpen(): Promise<boolean> {
-    return (await this.errorPopoverEl()) !== null;
+    const id = await (await this.errorEl()).getAttribute('id');
+    if (id === null) {
+      return false;
+    }
+    const popover = await this.documentRootLocatorFactory().locatorForOptional(
+      `tm-error-popover[data-tm-error-for="${id}"]`,
+    )();
+    return popover !== null;
   }
 
   /** Clicks the field's label; throws when the field renders none. */

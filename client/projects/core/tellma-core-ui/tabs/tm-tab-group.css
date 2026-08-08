@@ -21,8 +21,12 @@
   scrollbar-width: none;
   /* Touch drags the strip sideways; the wheel is translated in the
      component (a vertical wheel does not scroll a horizontal box on its
-     own). Both matter because the scrollbar is hidden. */
-  touch-action: pan-x;
+     own). Both matter because the scrollbar is hidden. `manipulation`
+     (native pans + pinch, no double-tap zoom), NOT `pan-x`: the vertical
+     variant inherits this rule and pan-x would leave its overflowing
+     column unscrollable by touch, while on the horizontal strip it would
+     trap vertical page pans that merely start on a tab. */
+  touch-action: manipulation;
   overscroll-behavior-inline: contain;
 }
 
