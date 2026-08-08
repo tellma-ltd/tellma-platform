@@ -105,6 +105,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
     protected readonly searchFailedText: Signal<string>;
     seed(text: string): void;
     setDescribedByIds(ids: readonly string[]): void;
+    setFieldError(showsError: boolean): void;
     protected readonly showsEditRow: Signal<boolean>;
     protected readonly showsFooterRows: Signal<boolean>;
     protected readonly showsHasMore: Signal<boolean>;

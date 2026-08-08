@@ -13,9 +13,16 @@
   /* Inline hosts hit-test above their children (stage-3 spike finding). */
   display: block;
 
-  /* The size ladder, stated once. A select inside a tm-form-field inherits
-     the field's locals; these are what a bare select uses, and the
-     modifiers below are what an explicitly-sized one uses. */
+  /* NO ladder locals on the bare host: a custom property declared on the
+     element beats an inherited one, so declaring them here would cut off
+     the very inheritance a select inside a sized tm-form-field relies on.
+     An UNSIZED select in a field inherits the field's locals; a sized one
+     (or a bare one, which the component classes at its workspace default)
+     gets them from the modifiers below; the reads fall back to the default
+     step for a select outside both. */
+}
+
+:host(.tm-select--md) {
   --tm-field-block-size: var(--field-height);
   --tm-field-font-size: var(--field-font-size);
   --tm-field-padding-x: var(--field-padding-x);
@@ -41,14 +48,14 @@
   align-items: center;
   gap: var(--space-2);
   box-sizing: border-box;
-  block-size: var(--tm-field-block-size);
-  padding-inline: var(--tm-field-padding-x);
+  block-size: var(--tm-field-block-size, var(--field-height));
+  padding-inline: var(--tm-field-padding-x, var(--field-padding-x));
   background: var(--field-bg);
   border: var(--border-width) solid var(--field-border);
   border-radius: var(--field-radius);
   color: var(--field-text);
   font-family: var(--font-ui);
-  font-size: var(--tm-field-font-size);
+  font-size: var(--tm-field-font-size, var(--field-font-size));
   cursor: pointer;
   user-select: none;
   transition:
@@ -142,7 +149,7 @@
   overflow: hidden;
   color: var(--text-body);
   font-family: var(--font-ui);
-  font-size: var(--tm-field-font-size);
+  font-size: var(--tm-field-font-size, var(--field-font-size));
 }
 
 .tm-select__listbox {
@@ -175,7 +182,7 @@
   display: flex;
   align-items: center;
   gap: var(--select-option-gap);
-  block-size: var(--tm-field-option-height);
+  block-size: var(--tm-field-option-height, var(--field-option-height));
   box-sizing: border-box;
   padding-inline: var(--select-option-padding-x);
   border-radius: var(--select-option-radius);

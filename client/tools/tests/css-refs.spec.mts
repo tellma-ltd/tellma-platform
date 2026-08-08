@@ -73,6 +73,23 @@ describe('tmCheckCssRefs', () => {
     expect(tmCheckCssRefs(EMITTED, [file])).toEqual([]);
   });
 
+  it('allows a --tm- local declared by a DIFFERENT scanned sheet (the size-ladder pattern)', () => {
+    // tm-form-field's sheet declares the ladder locals; the global input
+    // sheet and the pickers' sheets read them without re-declaring.
+    const declaring = sheet(':host { --tm-field-block-size: 30px; }');
+    const reading = sheet('.tm-x { block-size: var(--tm-field-block-size); }');
+    expect(tmCheckCssRefs(EMITTED, [declaring, reading])).toEqual([]);
+  });
+
+  it('flags a --tm- read that no scanned sheet declares', () => {
+    // The private prefix must not be a blanket pass: a typo'd --tm- read is
+    // the same silent-drop failure the gate exists for.
+    const file = sheet('.tm-x { block-size: var(--tm-field-blok-size); }');
+    expect(tmCheckCssRefs(EMITTED, [file])).toEqual([
+      'component.css reads --tm-field-blok-size, which no scanned stylesheet declares',
+    ]);
+  });
+
   it('allows the custom properties components write as inline styles', () => {
     const file = sheet('.tm-grid__row { grid-template-columns: var(--grid-template); }');
     expect(tmCheckCssRefs(EMITTED, [file])).toEqual([]);

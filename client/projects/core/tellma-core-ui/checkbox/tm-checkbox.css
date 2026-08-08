@@ -108,6 +108,13 @@
   border-color: var(--field-border-invalid);
 }
 
+/* Focused AND invalid: the halo goes red with the border — the same rule
+   tm-form-field and tm-select carry, instead of a teal halo and a red
+   border disagreeing about what state the control is in. */
+:host(.tm-checkbox--invalid) .tm-checkbox__native:focus-visible ~ .tm-checkbox__box {
+  box-shadow: 0 0 0 var(--focus-ring-halo-width) var(--error-bg);
+}
+
 :host(.tm-checkbox--disabled) .tm-checkbox__box {
   background: var(--field-bg-disabled);
   border-color: var(--field-border);
