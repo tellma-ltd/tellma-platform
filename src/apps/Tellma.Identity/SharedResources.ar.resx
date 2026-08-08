@@ -264,4 +264,13 @@
   <data name="BrandCopyright" xml:space="preserve">
     <value>© تلما. جميع الحقوق محفوظة.</value>
   </data>
+  <data name="YourAccount" xml:space="preserve">
+    <value>حسابك</value>
+  </data>
+  <data name="Security" xml:space="preserve">
+    <value>الأمان</value>
+  </data>
+  <data name="BackToApplication" xml:space="preserve">
+    <value>العودة إلى {0}</value>
+  </data>
 </root>

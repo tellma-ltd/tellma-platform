@@ -264,4 +264,13 @@
   <data name="BrandCopyright" xml:space="preserve">
     <value>© Tellma. All rights reserved.</value>
   </data>
+  <data name="YourAccount" xml:space="preserve">
+    <value>Your account</value>
+  </data>
+  <data name="Security" xml:space="preserve">
+    <value>Security</value>
+  </data>
+  <data name="BackToApplication" xml:space="preserve">
+    <value>Back to {0}</value>
+  </data>
 </root>
