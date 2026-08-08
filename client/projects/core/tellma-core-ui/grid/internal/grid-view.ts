@@ -465,8 +465,32 @@ export class ɵTmGridView {
   private readonly direction = inject(Directionality);
   /** The view's host element — the box the loading/empty overlay is inset against. */
   private readonly hostElement = inject(ElementRef).nativeElement as HTMLElement;
-  /** Bumped when the scroller's box changes, so the overlay insets re-measure. */
-  private readonly scrollerResized = signal(0);
+
+  /**
+   * Measures the loading/empty overlay's trailing insets, only while a
+   * layer is actually up. offsetWidth - clientWidth is BOTH borders plus
+   * the scrollbar, and the overlay's leading edges already sit INSIDE the
+   * border (grid-view.css) — so the trailing inset keeps ONE border-width,
+   * not two. The block inset is measured against the HOST's bottom edge:
+   * on an editable grid the status bar sits between the scroller and that
+   * edge, and the overlay must stop above the scrollbar, not partway into
+   * the status bar.
+   */
+  private measureOverlayInsets(): void {
+    const core = this.core();
+    const scroller = this.scroller()?.nativeElement;
+    if (scroller === undefined || (!core.loading() && !core.showEmpty())) {
+      return;
+    }
+    const border = Number.parseFloat(getComputedStyle(scroller).borderTopWidth) || 0;
+    this.scrollbarInline.set(scroller.offsetWidth - scroller.clientWidth - border);
+    this.scrollbarBlock.set(
+      this.hostElement.getBoundingClientRect().bottom -
+        scroller.getBoundingClientRect().top -
+        border -
+        scroller.clientHeight,
+    );
+  }
 
   constructor() {
     // The error anchor moves from cell to cell WHILE the overlay stays
@@ -510,46 +534,25 @@ export class ɵTmGridView {
       const icons = this.icons();
       untracked(() => core.attachMenu(menu ?? null, icons?.templates() ?? null));
     });
-    // Measured only while a layer is actually up, and after render so the
-    // scroller has its final box. Also re-measured whenever that box
-    // changes (the observer below): a window resize can toggle a scrollbar
-    // while the layer is up without any other signal here changing.
+    // Measured after render so the scroller has its final box, re-running
+    // when a layer goes up or the scroller arrives.
     afterRenderEffect(() => {
       const core = this.core();
-      this.scrollerResized();
-      if (!core.loading() && !core.showEmpty()) {
-        return;
-      }
-      const scroller = this.scroller()?.nativeElement;
-      if (scroller === undefined) {
-        return;
-      }
-      untracked(() => {
-        // offsetWidth - clientWidth is BOTH borders plus the scrollbar, and
-        // the overlay's leading edges already sit INSIDE the border
-        // (grid-view.css) — so the trailing inset keeps ONE border-width,
-        // not two. The block inset is measured against the HOST's bottom
-        // edge: on an editable grid the status bar sits between the
-        // scroller and that edge, and the overlay must stop above the
-        // scrollbar, not partway into the status bar.
-        const border = Number.parseFloat(getComputedStyle(scroller).borderTopWidth) || 0;
-        this.scrollbarInline.set(scroller.offsetWidth - scroller.clientWidth - border);
-        this.scrollbarBlock.set(
-          this.hostElement.getBoundingClientRect().bottom -
-            scroller.getBoundingClientRect().top -
-            border -
-            scroller.clientHeight,
-        );
-      });
+      core.loading();
+      core.showEmpty();
+      this.scroller();
+      untracked(() => this.measureOverlayInsets());
     });
-    // The observer feeding the effect above; content-box changes cover both
-    // outer resizes and a scrollbar appearing or disappearing.
+    // Re-measured whenever the scroller's box changes: a window resize can
+    // toggle a scrollbar while a layer is up without any signal changing,
+    // and content-box observation sees both outer resizes and a scrollbar
+    // appearing or disappearing.
     effect((onCleanup) => {
       const scroller = this.scroller()?.nativeElement;
       if (scroller === undefined) {
         return;
       }
-      const observer = new ResizeObserver(() => this.scrollerResized.update((n) => n + 1));
+      const observer = new ResizeObserver(() => this.measureOverlayInsets());
       observer.observe(scroller);
       onCleanup(() => observer.disconnect());
     });
