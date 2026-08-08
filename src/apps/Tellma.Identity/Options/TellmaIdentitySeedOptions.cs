@@ -69,6 +69,14 @@ namespace Tellma.Identity.Options
 
         /// <summary>Additional resource (audience) permissions granted to the client.</summary>
         public IList<string> Resources { get; } = [];
+
+        /// <summary>
+        ///     Ask the user to approve this client's scopes the first time, and record the grant.
+        ///     Off by default because the seeded clients are first-party — the user has already
+        ///     chosen the product they are signing in to, so a consent screen would be noise. A
+        ///     client acting for someone else is the case this exists for.
+        /// </summary>
+        public bool RequireConsent { get; set; }
     }
 
     /// <summary>The Development-only seeded admin identity.</summary>

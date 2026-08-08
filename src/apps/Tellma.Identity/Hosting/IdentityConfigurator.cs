@@ -7,8 +7,10 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using System.Security.Claims;
 using Tellma.Identity.Data;
 using Tellma.Identity.Options;
+using Tellma.Identity.Services.AuthenticationPolicy;
 
 namespace Tellma.Identity.Hosting
 {
@@ -18,6 +20,20 @@ namespace Tellma.Identity.Hosting
     /// </summary>
     internal static class IdentityConfigurator
     {
+
+        /// <summary>
+        ///     The claims the sign-in service records on the SSO cookie, which a security-stamp
+        ///     refresh must carry forward: everything the policy engine reads back as evidence.
+        /// </summary>
+        private static readonly string[] SessionClaimTypes =
+        [
+            TellmaClaims.Sid,
+            TellmaClaims.Methods,
+            OpenIddict.Abstractions.OpenIddictConstants.Claims.AuthenticationTime,
+            SignInClaims.PasskeyDeviceBound,
+            SignInClaims.PasskeyAuthTime,
+        ];
+
         /// <summary>Registers Identity and its cookie/passkey configuration.</summary>
         /// <param name="services">The service collection.</param>
         /// <param name="options">The registration-time options snapshot.</param>
@@ -70,7 +86,42 @@ namespace Tellma.Identity.Hosting
             });
 
             services.Configure<SecurityStampValidatorOptions>(static validator =>
-                validator.ValidationInterval = TimeSpan.FromMinutes(5));
+            {
+                validator.ValidationInterval = TimeSpan.FromMinutes(5);
+
+                // Carry the engine's session evidence across a security-stamp refresh. The
+                // validator rebuilds the principal from the user alone, so every claim added at
+                // sign-in — the sid, when and how the user authenticated — is dropped, and a
+                // session older than the validation interval could no longer mint tokens: the
+                // next authorization failed with "the session must be re-established" until the
+                // user signed in again. Identity preserves amr for the same reason; this is the
+                // rest of the same evidence.
+                validator.OnRefreshingPrincipal = context =>
+                {
+                    if (context.CurrentPrincipal?.Identity is not ClaimsIdentity current
+                        || context.NewPrincipal?.Identity is not ClaimsIdentity refreshed)
+                    {
+                        return Task.CompletedTask;
+                    }
+
+                    foreach (string claimType in SessionClaimTypes)
+                    {
+                        // Replace rather than append: the refreshed principal may already carry a
+                        // value from the user's own claims, and two would be ambiguous.
+                        foreach (Claim stale in refreshed.FindAll(claimType).ToList())
+                        {
+                            refreshed.RemoveClaim(stale);
+                        }
+
+                        foreach (Claim carried in current.FindAll(claimType))
+                        {
+                            refreshed.AddClaim(new Claim(claimType, carried.Value));
+                        }
+                    }
+
+                    return Task.CompletedTask;
+                };
+            });
 
             // Passkeys: discoverable resident keys with user verification, scoped to the issuer
             // host (the authority origin in standalone mode, so one passkey works across every

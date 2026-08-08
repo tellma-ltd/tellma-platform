@@ -198,6 +198,11 @@ namespace Tellma.Identity.Services.Provisioning
                 descriptor.Permissions.Add(Permissions.Prefixes.Resource + resource);
             }
 
+            if (seed.RequireConsent)
+            {
+                descriptor.ConsentType = ConsentTypes.Explicit;
+            }
+
             TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.FirstParty, "true");
 
             return descriptor;

@@ -15,6 +15,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>@ViewData["Title"] · @brand.ProductName</title>
+    @* Explicit rather than relying on /favicon.ico: in in-proc mode the engine is mounted under a
+       path base, where the browser's default probe would miss it and hit the host's icon. *@
+    <link rel="icon" href="~/_content/Tellma.Identity/favicon.ico" sizes="any" asp-append-version="true" />
     @* Start the face this request will actually render before the stylesheets are even parsed.
        Without it the browser cannot learn the font URL until fonts.css has been fetched and
        read, which is late enough to show the fallback first and swap. The server already knows

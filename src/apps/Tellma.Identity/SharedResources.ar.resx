@@ -105,6 +105,12 @@
   <data name="PasskeyFailed" xml:space="preserve">
     <value>تعذّر التحقق من مفتاح المرور. حاول مرة أخرى.</value>
   </data>
+  <data name="PasskeyAlreadyOnThisDevice" xml:space="preserve">
+    <value>يحتوي هذا الجهاز على مفتاح مرور لحسابك بالفعل. استخدم جهازاً آخر أو مفتاح أمان لإضافة مفتاح ثانٍ.</value>
+  </data>
+  <data name="PasskeyEnrollFailed" xml:space="preserve">
+    <value>تعذّر إنشاء مفتاح المرور. حاول مرة أخرى.</value>
+  </data>
   <data name="Passkeys" xml:space="preserve">
     <value>مفاتيح المرور</value>
   </data>

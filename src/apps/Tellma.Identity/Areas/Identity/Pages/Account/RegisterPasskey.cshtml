@@ -16,6 +16,12 @@
     <button class="tmi-button tmi-button-primary" type="button" id="enroll-button">@L["RegisterPasskeyButton"]</button>
 </form>
 
+@* A ceremony the browser refuses reports here. The messages are rendered server-side so they
+   stay localized and the strict CSP still forbids building strings in script. *@
+<p class="tmi-error" id="passkey-error" hidden
+   data-duplicate-message="@L["PasskeyAlreadyOnThisDevice"]"
+   data-failed-message="@L["PasskeyEnrollFailed"]"></p>
+
 <div asp-validation-summary="All" class="tmi-error"></div>
 
 @section Scripts {
