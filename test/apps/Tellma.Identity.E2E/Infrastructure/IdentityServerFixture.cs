@@ -10,6 +10,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using OpenIddict.Abstractions;
 using Tellma.Identity.Hosting;
 using Tellma.Identity.Services.Email;
 using Testcontainers.MsSql;
@@ -38,6 +39,16 @@ namespace Tellma.Identity.E2E.Infrastructure
 
         /// <summary>The base address the browser navigates to.</summary>
         public string BaseAddress { get; private set; } = string.Empty;
+
+        /// <summary>
+        ///     The same host reached by IP rather than by name. A browser treats it as a different
+        ///     origin, so it stands in for a client's own site in flows that end in a cross-origin
+        ///     redirect — while still being a socket that answers, which a made-up address is not.
+        /// </summary>
+        public string CrossOriginAddress { get; private set; } = string.Empty;
+
+        /// <summary>The path <see cref="CrossOriginAddress" /> serves as a stand-in client callback.</summary>
+        public const string CallbackPath = "/e2e/callback";
 
         /// <summary>The captured outbound email (codes, links).</summary>
         public CapturingEmailSender Emails { get; } = new CapturingEmailSender();
@@ -100,12 +111,18 @@ namespace Tellma.Identity.E2E.Infrastructure
 
             _app.MapTellmaIdentity();
 
+            // Stands in for a relying party's own landing page. It is this same server, so it
+            // always answers; reached by IP it is nonetheless a different origin to the browser,
+            // which is what makes it a faithful target for a cross-origin protocol redirect.
+            _app.MapGet(CallbackPath, static () => "callback");
+
             await _app.StartAsync();
 
             IServerAddressesFeature addresses = _app.Services.GetRequiredService<IServer>().Features
                 .Get<IServerAddressesFeature>()!;
+            CrossOriginAddress = addresses.Addresses.First();
             // Reach the loopback host as "localhost" so the WebAuthn RP id resolves.
-            BaseAddress = addresses.Addresses.First().Replace("127.0.0.1", "localhost", StringComparison.Ordinal);
+            BaseAddress = CrossOriginAddress.Replace("127.0.0.1", "localhost", StringComparison.Ordinal);
         }
 
         /// <summary>Creates an active, email-confirmed user directly in the running host's store.</summary>
@@ -131,6 +148,69 @@ namespace Tellma.Identity.E2E.Infrastructure
                 Locale = "en",
                 LifecycleState = Data.UserLifecycleState.Active,
                 CreatedUtc = DateTimeOffset.UtcNow,
+            });
+        }
+
+        /// <summary>
+        ///     Issues an invitation link for a user, the way the bulk-invite API does, so a browser
+        ///     test can land on the invitation page the way an invited person does.
+        /// </summary>
+        /// <param name="email">The invited user, who must hold no credential yet.</param>
+        /// <returns>The single-use invitation token.</returns>
+        public async Task<string> IssueInvitationTokenAsync(string email)
+        {
+            await using AsyncServiceScope scope = _app!.Services.CreateAsyncScope();
+            Microsoft.AspNetCore.Identity.UserManager<Data.TellmaIdentityUser> userManager =
+                scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<Data.TellmaIdentityUser>>();
+            Services.Tokens.IOneTimeTokenService tokens =
+                scope.ServiceProvider.GetRequiredService<Services.Tokens.IOneTimeTokenService>();
+
+            Data.TellmaIdentityUser user = (await userManager.FindByEmailAsync(email))!;
+            return await tokens.IssueAsync(
+                user.Id,
+                Data.Entities.SingleUseCodePurpose.Invitation,
+                TimeSpan.FromHours(1),
+                returnUrl: null,
+                createdByClientId: null,
+                TestContext.Current.CancellationToken);
+        }
+
+        /// <summary>
+        ///     Registers a third-party client that requires explicit consent. Every provisioned
+        ///     client is first-party and implicit, so without one of these the consent screen — and
+        ///     everything the browser does with it — has no caller.
+        /// </summary>
+        /// <param name="clientId">The client id.</param>
+        /// <param name="displayName">The name the consent screen shows.</param>
+        /// <param name="redirectUri">The callback the grant redirects to.</param>
+        /// <returns>A task that completes when the client is registered.</returns>
+        public async Task CreateConsentClientAsync(string clientId, string displayName, string redirectUri)
+        {
+            await using AsyncServiceScope scope = _app!.Services.CreateAsyncScope();
+            IOpenIddictApplicationManager applications =
+                scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+
+            if (await applications.FindByClientIdAsync(clientId) is not null)
+            {
+                return;
+            }
+
+            await applications.CreateAsync(new OpenIddictApplicationDescriptor
+            {
+                ClientId = clientId,
+                DisplayName = displayName,
+                ClientType = OpenIddictConstants.ClientTypes.Public,
+                ConsentType = OpenIddictConstants.ConsentTypes.Explicit,
+                RedirectUris = { new Uri(redirectUri) },
+                Permissions =
+                {
+                    OpenIddictConstants.Permissions.Endpoints.Authorization,
+                    OpenIddictConstants.Permissions.Endpoints.Token,
+                    OpenIddictConstants.Permissions.GrantTypes.AuthorizationCode,
+                    OpenIddictConstants.Permissions.ResponseTypes.Code,
+                    OpenIddictConstants.Permissions.Scopes.Profile,
+                },
+                Requirements = { OpenIddictConstants.Requirements.Features.ProofKeyForCodeExchange },
             });
         }
 

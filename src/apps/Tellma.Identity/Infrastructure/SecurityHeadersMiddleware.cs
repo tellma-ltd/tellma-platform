@@ -24,12 +24,18 @@ namespace Tellma.Identity.Infrastructure
         ///     Every identity page ships external, same-origin JavaScript and CSS only, so the
         ///     policy needs no nonces, hashes, or third-party hosts. <c>img-src data:</c> covers
         ///     inline SVG/QR data URIs. <c>require-trusted-types-for 'script'</c> blocks DOM-XSS
-        ///     sinks (the ceremony scripts touch none), honoring the §14 Trusted Types commitment.
+        ///     sinks (the ceremony scripts touch none), honoring the Trusted Types commitment.
         /// </summary>
-        private const string ContentSecurityPolicy =
+        private const string PolicyBeforeFormAction =
             "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
-            + "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; "
-            + "require-trusted-types-for 'script'; trusted-types 'none'";
+            + "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+
+        /// <summary>The rest of the policy, after whatever <c>form-action</c> ends up allowing.</summary>
+        private const string PolicyAfterFormAction =
+            "; object-src 'none'; require-trusted-types-for 'script'; trusted-types 'none'";
+
+        /// <summary>The policy for a page that named no extra form-submission destinations.</summary>
+        private const string ContentSecurityPolicy = PolicyBeforeFormAction + PolicyAfterFormAction;
 
         private readonly string _pathBase = options.Value.PathBase;
 
@@ -42,19 +48,35 @@ namespace Tellma.Identity.Infrastructure
 
             if (_pathBase.Length == 0 || context.Request.Path.StartsWithSegments(_pathBase))
             {
+                // Deferred to OnStarting so the policy can still take account of what the page
+                // being rendered asks for: the endpoint runs after this middleware, not before.
                 context.Response.OnStarting(static state =>
                 {
-                    IHeaderDictionary headers = ((HttpResponse)state).Headers;
-                    headers.TryAdd("Content-Security-Policy", ContentSecurityPolicy);
+                    var http = (HttpContext)state;
+                    IHeaderDictionary headers = http.Response.Headers;
+                    headers.TryAdd("Content-Security-Policy", BuildPolicy(http));
                     headers.TryAdd("X-Frame-Options", "DENY");
                     headers.TryAdd("X-Content-Type-Options", "nosniff");
                     headers.TryAdd("Referrer-Policy", "strict-origin-when-cross-origin");
                     headers.TryAdd("Cross-Origin-Opener-Policy", "same-origin");
                     return Task.CompletedTask;
-                }, context.Response);
+                }, context);
             }
 
             return next(context);
+        }
+
+        /// <summary>
+        ///     Builds this response's policy, widening <c>form-action</c> by whatever the page
+        ///     named. Almost every page names nothing and gets the constant.
+        /// </summary>
+        /// <param name="context">The request context.</param>
+        /// <returns>The header value.</returns>
+        private static string BuildPolicy(HttpContext context)
+        {
+            return CspFormAction.Allowed(context) is { Count: > 0 } sources
+                ? PolicyBeforeFormAction + " " + string.Join(' ', sources) + PolicyAfterFormAction
+                : ContentSecurityPolicy;
         }
     }
 }

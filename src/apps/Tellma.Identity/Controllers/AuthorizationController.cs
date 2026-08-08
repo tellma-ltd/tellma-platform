@@ -5,7 +5,6 @@
 
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Identity;
@@ -216,13 +215,25 @@ namespace Tellma.Identity.Controllers
                 bool hasConsent = await HasPermanentAuthorizationAsync(user, application, request);
                 if (!hasConsent || request.HasPromptValue(PromptValues.Consent))
                 {
-                    return request.HasPromptValue(PromptValues.None)
-                        ? ForbidProtocol(Errors.ConsentRequired, "Interactive consent is required.")
-                        : View("Consent", new ConsentViewModel
-                        {
-                            ApplicationName = await applicationManager.GetLocalizedDisplayNameAsync(application),
-                            Scope = request.Scope ?? string.Empty,
-                        });
+                    if (request.HasPromptValue(PromptValues.None))
+                    {
+                        return ForbidProtocol(Errors.ConsentRequired, "Interactive consent is required.");
+                    }
+
+                    // Granting consent posts this page's form back here and is answered with a
+                    // redirect to the client's callback. A browser applies form-action to every
+                    // hop of a submission's navigation, so without naming that callback the
+                    // redirect is discarded and the user sits on the consent page watching
+                    // "Allow" do nothing, while the server records a perfectly good grant. Name
+                    // the client's own registered callbacks — never anything off the request —
+                    // so the policy widens only by where this grant could always have landed.
+                    CspFormAction.Allow(HttpContext, await applicationManager.GetRedirectUrisAsync(application));
+
+                    return View("Consent", new ConsentViewModel
+                    {
+                        ApplicationName = await applicationManager.GetLocalizedDisplayNameAsync(application),
+                        Scope = request.Scope ?? string.Empty,
+                    });
                 }
             }
 
@@ -231,7 +242,11 @@ namespace Tellma.Identity.Controllers
 
         /// <summary>Handles the consent form's Accept button.</summary>
         /// <returns>The protocol response.</returns>
-        [Authorize]
+        // Deliberately not [Authorize]: the cookie handler answers a challenge with a redirect to
+        // the login page, and this request carries the protocol parameters in its *body*, which
+        // that redirect drops. The user would come back from signing in to a bare
+        // /connect/authorize and an error with nowhere to go. Answering the client with
+        // login_required instead sends the browser back where it came from, still in the flow.
         [HttpPost("connect/authorize")]
         [FormValueRequired("submit.Accept")]
         [ValidateAntiForgeryToken]
@@ -239,6 +254,11 @@ namespace Tellma.Identity.Controllers
         {
             OpenIddictRequest request = HttpContext.GetOpenIddictServerRequest()
                 ?? throw new InvalidOperationException("The OpenID Connect request cannot be retrieved.");
+
+            if (User.Identity?.IsAuthenticated != true)
+            {
+                return ForbidProtocol(Errors.LoginRequired, "The session ended before consent was granted.");
+            }
 
             TellmaIdentityUser? user = await userManager.GetUserAsync(User);
             if (user is null || user.LifecycleState != UserLifecycleState.Active)
@@ -262,7 +282,8 @@ namespace Tellma.Identity.Controllers
 
         /// <summary>Handles the consent form's Deny button.</summary>
         /// <returns>The protocol error response.</returns>
-        [Authorize]
+        // Not [Authorize], for the reason given on Accept — and denying needs no session anyway:
+        // the answer is the same refusal either way, and it belongs back at the client.
         [HttpPost("connect/authorize")]
         [FormValueRequired("submit.Deny")]
         [ValidateAntiForgeryToken]

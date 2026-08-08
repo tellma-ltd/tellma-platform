@@ -64,7 +64,12 @@ namespace Tellma.Identity.E2E.Infrastructure
         }
 
         /// <summary>Signs the user in through the email-code flow, landing on the passkey list.</summary>
-        private static async Task SignInWithEmailCodeAsync(
+        /// <param name="server">The running host (email sink).</param>
+        /// <param name="page">The browser page.</param>
+        /// <param name="prefix">The engine route prefix ("" or "/id").</param>
+        /// <param name="email">The signing-in user.</param>
+        /// <returns>A task that completes once the session is established.</returns>
+        internal static async Task SignInWithEmailCodeAsync(
             IdentityServerFixtureBase server, IPage page, string prefix, string email)
         {
             string passkeysPath = prefix + "/Identity/Manage/Passkeys";
