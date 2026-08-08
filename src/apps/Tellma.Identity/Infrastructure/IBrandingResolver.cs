@@ -8,7 +8,19 @@ namespace Tellma.Identity.Infrastructure
     /// <summary>The branding tokens a page renders with.</summary>
     /// <param name="ProductName">The product name shown in chrome and email.</param>
     /// <param name="LogoPath">An app-relative logo path, when a logo exists.</param>
-    public sealed record BrandingInfo(string ProductName, string? LogoPath);
+    /// <param name="WordmarkPath">
+    ///     An app-relative wordmark for light chrome. Null renders the product name as text, so a
+    ///     deployment that has not supplied artwork still shows a brand.
+    /// </param>
+    /// <param name="WordmarkOnDarkPath">
+    ///     The wordmark for the dark brand panel. A two-color mark cannot inherit
+    ///     <c>currentColor</c>, so light and dark are separate files rather than one recolored.
+    /// </param>
+    public sealed record BrandingInfo(
+        string ProductName,
+        string? LogoPath,
+        string? WordmarkPath = null,
+        string? WordmarkOnDarkPath = null);
 
     /// <summary>
     ///     Resolves branding for the identity UI. The seam maps <c>client_id</c> to a
@@ -29,7 +41,11 @@ namespace Tellma.Identity.Infrastructure
         /// <inheritdoc />
         public BrandingInfo Resolve(string? clientId)
         {
-            return new BrandingInfo("Tellma", LogoPath: null);
+            return new BrandingInfo(
+                "Tellma",
+                LogoPath: null,
+                WordmarkPath: "~/_content/Tellma.Identity/img/tellma-wordmark.svg",
+                WordmarkOnDarkPath: "~/_content/Tellma.Identity/img/tellma-wordmark-on-dark.svg");
         }
     }
 }

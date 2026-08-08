@@ -124,6 +124,10 @@ namespace Tellma.Identity.Hosting
             // language picker, and the profile page.
             services.AddSingleton<LanguageCatalog>();
 
+            // Reads the registered clients to resolve the account pages' way back to the app, so
+            // it is scoped alongside the OpenIddict managers it depends on.
+            services.AddScoped<ApplicationLinkResolver>();
+
             // Every resource string is rendered through ICU MessageFormat, so a translation can
             // select on its own data — grammatical gender today, plurals when they arrive —
             // instead of the wording being decided by a branch in C#. Decorating rather than

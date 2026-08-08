@@ -31,5 +31,13 @@ namespace Tellma.Identity.Options
         ///     <see cref="PrivacyPolicyUrl" />.
         /// </summary>
         public string? TermsOfServiceUrl { get; set; }
+
+        /// <summary>
+        ///     Absolute URL of the application the account pages offer to return to, for a
+        ///     deployment that serves exactly one. An authority serving several distributions
+        ///     leaves this unset and lets the caller name its client instead, which resolves to
+        ///     that client's own registered origin; with neither, no back link is shown.
+        /// </summary>
+        public string? ApplicationUrl { get; set; }
     }
 }
