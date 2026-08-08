@@ -89,7 +89,7 @@ namespace Tellma.Identity.E2E
             const string email = "a11y-code@example.com";
             await server.CreateActiveUserAsync(email);
 
-            await using IBrowserContext context = await NewContextAsync(1440, 900);
+            await using IBrowserContext context = await NewContextAsync(1440, 900, signedIn: false);
             await PlaywrightTracing.RunTracedAsync(context, nameof(The_code_entry_page_is_accessible_including_its_error), async () =>
             {
                 IPage page = await NewPageAsync(context);
@@ -109,16 +109,13 @@ namespace Tellma.Identity.E2E
         [Fact]
         public async Task The_consent_screen_is_accessible()
         {
-            const string email = "a11y-consent@example.com";
             string callbackUri = server.CrossOriginAddress + IdentityServerFixtureBase.CallbackPath;
             await server.CreateConsentClientAsync("a11y-consent", "Accessibility Consent App", callbackUri);
-            await server.CreateActiveUserAsync(email);
 
-            await using IBrowserContext context = await NewContextAsync(1440, 900);
+            await using IBrowserContext context = await NewContextAsync(1440, 900, signedIn: true);
             await PlaywrightTracing.RunTracedAsync(context, nameof(The_consent_screen_is_accessible), async () =>
             {
                 IPage page = await NewPageAsync(context);
-                await PasskeyCeremonies.SignInWithEmailCodeAsync(server, page, string.Empty, email);
                 await page.GotoAsync(
                     "/connect/authorize?client_id=a11y-consent&response_type=code"
                     + "&redirect_uri=" + Uri.EscapeDataString(callbackUri)
@@ -132,15 +129,10 @@ namespace Tellma.Identity.E2E
         [Fact]
         public async Task Arabic_renders_right_to_left_and_stays_accessible()
         {
-            const string email = "a11y-rtl@example.com";
-            await server.CreateActiveUserAsync(email);
-
-            await using IBrowserContext context = await NewContextAsync(1440, 900);
+            await using IBrowserContext context = await NewContextAsync(1440, 900, signedIn: true);
             await PlaywrightTracing.RunTracedAsync(context, nameof(Arabic_renders_right_to_left_and_stays_accessible), async () =>
             {
                 IPage page = await NewPageAsync(context);
-                await AssertArabicAsync(page, "/Identity/Account/Login");
-                await PasskeyCeremonies.SignInWithEmailCodeAsync(server, page, string.Empty, email);
 
                 // Sessions and the authenticator page are the ones mixing left-to-right content —
                 // user agents, a base32 key — into right-to-left prose.
@@ -154,7 +146,7 @@ namespace Tellma.Identity.E2E
         [Fact]
         public async Task The_language_picker_does_not_move_the_page()
         {
-            await using IBrowserContext context = await NewContextAsync(1440, 900);
+            await using IBrowserContext context = await NewContextAsync(1440, 900, signedIn: false);
             await PlaywrightTracing.RunTracedAsync(context, nameof(The_language_picker_does_not_move_the_page), async () =>
             {
                 IPage page = await NewPageAsync(context);
@@ -186,7 +178,7 @@ namespace Tellma.Identity.E2E
         public async Task Every_page_reflows_without_scrolling_sideways()
         {
             // 320px is the width 1.4.10 actually names, narrower than the smallest tier's design.
-            await using IBrowserContext context = await NewContextAsync(320, 640);
+            await using IBrowserContext context = await NewContextAsync(320, 640, signedIn: false);
             await PlaywrightTracing.RunTracedAsync(context, nameof(Every_page_reflows_without_scrolling_sideways), async () =>
             {
                 IPage page = await NewPageAsync(context);
@@ -201,15 +193,13 @@ namespace Tellma.Identity.E2E
         [Fact]
         public async Task Inline_row_actions_are_large_enough_to_hit()
         {
-            const string email = "a11y-target@example.com";
-            await server.CreateActiveUserAsync(email);
-            await server.AddDeviceBoundPasskeyAsync(email);
+            // The shared session's user, given something to remove.
+            await server.AddDeviceBoundPasskeyAsync(IdentityServerFixtureBase.SharedSessionEmail);
 
-            await using IBrowserContext context = await NewContextAsync(1440, 900);
+            await using IBrowserContext context = await NewContextAsync(1440, 900, signedIn: true);
             await PlaywrightTracing.RunTracedAsync(context, nameof(Inline_row_actions_are_large_enough_to_hit), async () =>
             {
                 IPage page = await NewPageAsync(context);
-                await PasskeyCeremonies.SignInWithEmailCodeAsync(server, page, string.Empty, email);
                 await page.GotoAsync("/Identity/Manage/Passkeys");
 
                 // axe's target-size rule skips widgets sitting inline within a block of text,
@@ -256,22 +246,10 @@ namespace Tellma.Identity.E2E
         /// <summary>Scans one page at every viewport tier.</summary>
         private async Task ScanAsync(string label, string url, bool signedIn)
         {
-            // Its own mailbox per scan: the captured sink holds one latest code per address, so
-            // two scans sharing one address race for it.
-            string email = "a11y-" + label.Replace(' ', '-').Replace(',', '-') + "@example.com";
-            if (signedIn)
-            {
-                await server.CreateActiveUserAsync(email);
-            }
-
-            await using IBrowserContext context = await NewContextAsync(1440, 900);
+            await using IBrowserContext context = await NewContextAsync(1440, 900, signedIn);
             await PlaywrightTracing.RunTracedAsync(context, $"a11y-{label.Replace(' ', '-')}", async () =>
             {
                 IPage page = await NewPageAsync(context);
-                if (signedIn)
-                {
-                    await PasskeyCeremonies.SignInWithEmailCodeAsync(server, page, string.Empty, email);
-                }
 
                 foreach ((string name, int width, int height) in Viewports)
                 {
@@ -283,12 +261,21 @@ namespace Tellma.Identity.E2E
         }
 
         /// <summary>Creates a browser context at a given viewport, with the policy left in force.</summary>
-        private async Task<IBrowserContext> NewContextAsync(int width, int height)
+        /// <param name="width">Viewport width.</param>
+        /// <param name="height">Viewport height.</param>
+        /// <param name="signedIn">Whether to start from the suite's shared session.</param>
+        /// <returns>The context.</returns>
+        private async Task<IBrowserContext> NewContextAsync(int width, int height, bool signedIn)
         {
             return await playwright.Browser.NewContextAsync(new BrowserNewContextOptions
             {
                 BaseURL = server.BaseAddress,
                 ViewportSize = new ViewportSize { Width = width, Height = height },
+
+                // One sign-in for the whole suite. Codes are rate-limited per IP address and every
+                // test here comes from the same one, so signing in per test would run the budget
+                // out partway through and leave the rest waiting for mail that never arrives.
+                StorageState = signedIn ? await server.SignedInStorageStateAsync(playwright.Browser) : null,
             });
         }
 

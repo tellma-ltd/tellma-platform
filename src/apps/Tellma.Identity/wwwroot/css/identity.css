@@ -547,13 +547,6 @@ code,
   list-style: none;
 }
 
-/* The validation-summary tag helper always emits a placeholder <li>, hidden with an inline
-   style attribute that our style-src drops — leaving a bare red bullet on every clean form.
-   Hide it by the class the helper itself toggles. */
-.validation-summary-valid {
-  display: none;
-}
-
 /* ==========================================================================================
    Lists
    ========================================================================================== */

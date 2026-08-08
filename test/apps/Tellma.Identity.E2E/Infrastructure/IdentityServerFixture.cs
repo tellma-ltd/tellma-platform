@@ -50,6 +50,15 @@ namespace Tellma.Identity.E2E.Infrastructure
         /// <summary>The path <see cref="CrossOriginAddress" /> serves as a stand-in client callback.</summary>
         public const string CallbackPath = "/e2e/callback";
 
+        /// <summary>The user whose session <see cref="SignedInStorageStateAsync" /> hands out.</summary>
+        public const string SharedSessionEmail = "e2e-session@example.com";
+
+        /// <summary>Serializes the one sign-in, so two tests cannot both perform it.</summary>
+        private readonly SemaphoreSlim _signInGate = new(1, 1);
+
+        /// <summary>The captured session, once established.</summary>
+        private string? _storageState;
+
         /// <summary>The captured outbound email (codes, links).</summary>
         public CapturingEmailSender Emails { get; } = new CapturingEmailSender();
 
@@ -149,6 +158,46 @@ namespace Tellma.Identity.E2E.Infrastructure
                 LifecycleState = Data.UserLifecycleState.Active,
                 CreatedUtc = DateTimeOffset.UtcNow,
             });
+        }
+
+        /// <summary>
+        ///     A signed-in browser session, established once and handed to every test that needs
+        ///     one.
+        ///     <para>
+        ///         Sign-in codes are rate-limited per IP address, and every test in this suite
+        ///         reaches the server from the same loopback address — so a suite that signed in
+        ///         once per test would exhaust that budget partway through and then quietly stop
+        ///         receiving codes. Reusing one session is also several seconds faster per test.
+        ///     </para>
+        /// </summary>
+        /// <param name="browser">The browser to run the one sign-in in.</param>
+        /// <returns>Storage state to hand to <c>NewContextAsync</c>.</returns>
+        public async Task<string> SignedInStorageStateAsync(Microsoft.Playwright.IBrowser browser)
+        {
+            ArgumentNullException.ThrowIfNull(browser);
+
+            await _signInGate.WaitAsync(TestContext.Current.CancellationToken);
+            try
+            {
+                if (_storageState is not null)
+                {
+                    return _storageState;
+                }
+
+                await CreateActiveUserAsync(SharedSessionEmail);
+
+                await using Microsoft.Playwright.IBrowserContext context = await browser.NewContextAsync(
+                    new Microsoft.Playwright.BrowserNewContextOptions { BaseURL = BaseAddress });
+                Microsoft.Playwright.IPage page = await context.NewPageAsync();
+                await PasskeyCeremonies.SignInWithEmailCodeAsync(this, page, string.Empty, SharedSessionEmail);
+
+                _storageState = await context.StorageStateAsync();
+                return _storageState;
+            }
+            finally
+            {
+                _signInGate.Release();
+            }
         }
 
         /// <summary>

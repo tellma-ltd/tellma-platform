@@ -34,6 +34,15 @@ fail-closed configuration pattern.
 EF Core migrations for the engine's database (SQL schema `idsvr`) live in the separate
 [`Tellma.Identity.Migrations`](../Tellma.Identity.Migrations/README.md) project.
 
+The UI renders through three layouts under `Areas/Identity/Pages/Shared/`: `_Document` owns the
+document and the scripts slot, and two shells nest inside it — `_AuthLayout` for the sign-in flow
+(a brand panel beside the form on wide viewports, a card on a grey pane below that, and the bare
+form on the narrowest screens) and `_ManageLayout` for the self-service pages (a topbar and a
+navigation rail that collapses to a strip). Both are styled by the single hand-written
+`wwwroot/css/identity.css`, which has to stay one file: the client workspace's dangling-`var()`
+gate names that exact path. `wwwroot/img/` holds the brand wordmarks, hand-committed like the
+fonts below.
+
 The `wwwroot/css/tokens.css` stylesheet is the **emitted build of `@tellma/core-ui-tokens`** (the
 client workspace's design-token package), and `wwwroot/fonts/` vendors the brand faces from
 `@tellma/core-ui`. Both are committed copies because this project's build has no Node toolchain; the
