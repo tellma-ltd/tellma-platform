@@ -14,6 +14,17 @@
 else
 {
     <p class="tmi-muted">@L["InvitationPrompt"]</p>
-    <a class="tmi-button tmi-button-primary" asp-area="Identity" asp-page="/Account/RegisterPasskey"
-       asp-route-returnUrl="@Model.ReturnUrl">@L["RegisterPasskeyButton"]</a>
+
+    @* The ceremony runs here rather than on a page this one links to: redeeming the invitation
+       has already issued the credential-flow cookie the enrollment posts against, so a second
+       page would only repeat this one's button under a different heading. *@
+    <partial name="Shared/_PasskeyEnrollment" model="@(Model.ReturnUrl)" />
+}
+
+@if (Model.IsValid)
+{
+    @section Scripts {
+        <partial name="Shared/_PasskeyScripts" />
+        <script src="~/_content/Tellma.Identity/js/register-passkey.page.js"></script>
+    }
 }

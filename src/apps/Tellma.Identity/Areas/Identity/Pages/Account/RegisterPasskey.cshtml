@@ -10,17 +10,7 @@
 
 <partial name="Shared/_StatusMessage" model="@(Model.StatusMessage)" />
 
-@* The credential is posted back through this form's hidden field by passkey.js. *@
-<form method="post" id="passkey-form" data-creation-url="@Url.Action("CreationOptions", "PasskeyCeremony")">
-    <input type="hidden" id="credential" name="Credential" />
-    <button class="tmi-button tmi-button-primary" type="button" id="enroll-button">@L["RegisterPasskeyButton"]</button>
-</form>
-
-@* A ceremony the browser refuses reports here. The messages are rendered server-side so they
-   stay localized and the strict CSP still forbids building strings in script. *@
-<p class="tmi-error" id="passkey-error" hidden
-   data-duplicate-message="@L["PasskeyAlreadyOnThisDevice"]"
-   data-failed-message="@L["PasskeyEnrollFailed"]"></p>
+<partial name="Shared/_PasskeyEnrollment" model="@(Model.ReturnUrl)" />
 
 <div asp-validation-summary="All" class="tmi-error"></div>
 
