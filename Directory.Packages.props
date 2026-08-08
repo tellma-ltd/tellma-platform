@@ -15,6 +15,9 @@
     <PackageVersion Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="1.5.0" />
     <PackageVersion Include="Azure.Security.KeyVault.Certificates" Version="4.9.0" />
     <PackageVersion Include="Azure.Security.KeyVault.Secrets" Version="4.11.0" />
+    <!-- axe-core bound for .NET and Playwright: the static accessibility floor for the
+         identity UI, on the same 4.12 line as the client suite's @axe-core/playwright. -->
+    <PackageVersion Include="Deque.AxeCore.Playwright" Version="4.12.0" />
     <PackageVersion Include="MailKit" Version="4.17.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.9" />
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" Version="10.0.9" />
