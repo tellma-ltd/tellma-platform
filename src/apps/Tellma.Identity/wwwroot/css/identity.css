@@ -847,59 +847,245 @@ code,
 }
 
 /* ==========================================================================================
-   Shell
-   Replaced wholesale when the two shells land; kept working meanwhile so every page renders
-   sanely at each step.
+   Sign-in shell
+   Written narrowest-first, so the base is the phone and each breakpoint only adds. Three
+   tiers, and the widths are literals because a media condition cannot read a custom property
+   — confining each to one place is what keeps them from drifting:
+       below 576px  no card chrome at all; the form sits on the page, edge to edge
+       576px and up the form moves into a white card on a grey pane
+      1200px and up the brand panel joins it, and takes the wordmark with it
    ========================================================================================== */
-.tmi-shell {
-  min-block-size: 100vh;
+.tmi-auth {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  min-block-size: 100vh;
+  background: var(--surface-page);
+}
+
+.tmi-pane {
+  display: flex;
+  flex: 1;
+  min-inline-size: 0;
+  flex-direction: column;
   padding: var(--space-4);
 }
 
-.tmi-card {
-  inline-size: 100%;
-  max-inline-size: var(--tmi-card-measure);
-  padding: var(--space-8);
-  border: var(--border-width) solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  background: var(--surface-card);
-  box-shadow: var(--shadow-lg);
-}
-
-.tmi-brand {
+.tmi-pane-top {
   display: flex;
+  flex: none;
   align-items: center;
-  gap: var(--space-2);
+  justify-content: space-between;
+  gap: var(--space-3);
   margin-block-end: var(--space-6);
 }
 
-.tmi-brand-name {
+.tmi-pane-body {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  justify-content: center;
+  min-block-size: 0;
+}
+
+/* Tier 3: no card. The form runs the width of the screen with nothing drawn around it — at
+   this size a bordered box inside a bordered screen is just a smaller screen. */
+.tmi-card {
+  inline-size: 100%;
+  max-inline-size: var(--tmi-card-measure);
+}
+
+.tmi-wordmark {
+  block-size: 18px;
+  inline-size: auto;
+}
+
+.tmi-wordmark-text {
   font-size: var(--text-lg);
   font-weight: var(--weight-bold);
   color: var(--color-primary);
 }
 
-.tmi-language,
 .tmi-legal {
   display: flex;
+  flex: none;
   flex-wrap: wrap;
-  gap: var(--space-3);
-  align-items: baseline;
-  margin-block-start: var(--space-4);
-  padding-block-start: var(--space-3);
-  border-block-start: var(--border-width) solid var(--divider);
-  font-size: var(--text-sm);
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding-block-start: var(--space-4);
+  font-size: var(--text-xs);
 }
 
-.tmi-language + .tmi-legal {
-  margin-block-start: var(--space-2);
-  padding-block-start: 0;
-  border-block-start: none;
-}
-
-.tmi-language-current {
+.tmi-legal .tmi-link {
   color: var(--text-secondary);
+}
+
+.tmi-legal-dot {
+  color: var(--text-muted);
+}
+
+/* The brand panel. Hidden until the widest tier, where it is the only thing that changes the
+   page's shape. */
+.tmi-ink {
+  display: none;
+  position: relative;
+  flex-direction: column;
+  flex: none;
+  inline-size: var(--tmi-ink-width);
+  padding: var(--space-8);
+  overflow: hidden;
+  background: var(--tmi-ink-bg);
+}
+
+.tmi-ink-art {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  fill: none;
+}
+
+.tmi-ink-orbit {
+  fill: none;
+  stroke: var(--tmi-ink-line);
+  stroke-width: 1.2;
+  opacity: 0.5;
+}
+
+.tmi-ink-stars circle {
+  fill: var(--tmi-ink-star);
+}
+
+.tmi-ink-trail circle {
+  fill: var(--tmi-ink-accent);
+  opacity: 0.45;
+}
+
+.tmi-ink-halo,
+.tmi-ink-comet {
+  fill: var(--tmi-ink-accent);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.tmi-ink-halo {
+  opacity: 0.18;
+  animation: tmi-comet-halo 3.6s var(--ease-in-out) infinite;
+}
+
+.tmi-ink-comet {
+  opacity: 0.9;
+  animation: tmi-comet-core 3.6s var(--ease-in-out) infinite;
+}
+
+.tmi-ink-stack {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* The wordmark sits at the top, the copy at the bottom, and the space between them is the
+   panel's own — pushed apart rather than positioned. */
+.tmi-ink-stack .tmi-wordmark {
+  block-size: 22px;
+  align-self: flex-start;
+  margin-block-end: auto;
+}
+
+.tmi-ink-tagline {
+  margin: 0;
+  font-size: var(--tmi-text-display);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  letter-spacing: -0.01em;
+  color: var(--tmi-ink-strong);
+  max-inline-size: 22ch;
+  text-wrap: pretty;
+}
+
+.tmi-ink-blurb {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+  color: var(--tmi-ink-body);
+  max-inline-size: 38ch;
+  text-wrap: pretty;
+}
+
+.tmi-ink-copyright {
+  margin-block: var(--space-6) 0;
+  font-size: var(--tmi-text-2xs);
+  color: var(--tmi-ink-muted);
+}
+
+/* Tier 2 — the card appears, on a grey pane. The page keeps its own background so the
+   surface a token resolves to is still observable at the document level. */
+@media (min-width: 576px) {
+  .tmi-pane {
+    padding: var(--space-6);
+    background: var(--surface-subtle);
+  }
+
+  .tmi-pane-body {
+    align-items: center;
+  }
+
+  .tmi-card {
+    padding: var(--space-8);
+    border: var(--border-width) solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    background: var(--surface-card);
+    box-shadow: var(--shadow-xs);
+  }
+}
+
+/* Tier 1 — the brand panel joins, and takes the wordmark with it. */
+@media (min-width: 1200px) {
+  .tmi-ink {
+    display: flex;
+  }
+
+  .tmi-pane-top {
+    justify-content: flex-end;
+  }
+
+  .tmi-pane-top .tmi-wordmark,
+  .tmi-pane-top .tmi-wordmark-text {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tmi-ink-halo,
+  .tmi-ink-comet {
+    animation: none;
+  }
+}
+
+@keyframes tmi-comet-core {
+  from,
+  to {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.09);
+  }
+}
+
+@keyframes tmi-comet-halo {
+  from,
+  to {
+    opacity: 0.16;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.23;
+    transform: scale(1.19);
+  }
 }

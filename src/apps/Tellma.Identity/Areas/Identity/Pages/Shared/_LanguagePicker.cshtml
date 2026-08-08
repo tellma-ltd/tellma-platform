@@ -1,0 +1,36 @@
+@using System.Globalization
+@using Microsoft.AspNetCore.Http.Extensions
+@using Tellma.Identity.Infrastructure
+@inject LanguageCatalog Languages
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    LanguageChoice? current = Languages.Offered.FirstOrDefault(choice => string.Equals(
+        choice.Culture, CultureInfo.CurrentUICulture.TwoLetterISOLanguageName, StringComparison.Ordinal));
+}
+@* Only worth a control when there is a choice to make. *@
+@if (Languages.Offered.Count > 1)
+{
+    <details class="tmi-lang">
+        @* A summary is exposed as a button whose expanded state the browser maintains, so the
+           disclosure needs no aria-expanded of its own — and no script, which a policy with no
+           nonce would otherwise make expensive. *@
+        <summary class="tmi-lang-button">
+            <tmi-icon name="globe" class="tmi-icon-sm" />
+            <span lang="@current?.Culture">@(current?.NativeName ?? CultureInfo.CurrentUICulture.NativeName)</span>
+            <tmi-icon name="chevron-down" class="tmi-icon-sm" />
+        </summary>
+        @* data-tmi-chrome marks page furniture, so anything looking for "the page's form" — a
+           test driving a flow, most of all — is not fooled by the language picker sitting above
+           it. Each option is a real submit button carrying its own lang, which is what lets a
+           screen reader pronounce a language name in that language. *@
+        <form class="tmi-lang-menu" method="post" action="@Url.Action("Set", "Culture")" data-tmi-chrome>
+            <input type="hidden" name="returnUrl" value="@Context.Request.GetEncodedPathAndQuery()" />
+            @foreach (LanguageChoice language in Languages.Offered)
+            {
+                <button class="tmi-lang-option" type="submit" name="culture" value="@language.Culture"
+                        lang="@language.Culture"
+                        aria-current="@(language == current ? "true" : null)">@language.NativeName</button>
+            }
+        </form>
+    </details>
+}

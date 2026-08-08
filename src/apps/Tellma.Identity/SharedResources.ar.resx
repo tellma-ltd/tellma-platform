@@ -252,4 +252,16 @@
   <data name="CannotRemoveOnlySignInMethod" xml:space="preserve">
     <value>لا يمكنك إزالة وسيلة تسجيل الدخول الوحيدة لديك.</value>
   </data>
+  <data name="SkipToContent" xml:space="preserve">
+    <value>تخطٍّ إلى المحتوى</value>
+  </data>
+  <data name="BrandTagline" xml:space="preserve">
+    <value>نظام تخطيط الموارد المبني على الذكاء الاصطناعي.</value>
+  </data>
+  <data name="BrandBlurb" xml:space="preserve">
+    <value>المحاسبة والتقارير والعمليات متعددة العملات، في نظام واحد يعمل بالطريقة التي تعمل بها مؤسستك.</value>
+  </data>
+  <data name="BrandCopyright" xml:space="preserve">
+    <value>© تلما. جميع الحقوق محفوظة.</value>
+  </data>
 </root>

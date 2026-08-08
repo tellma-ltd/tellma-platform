@@ -252,4 +252,16 @@
   <data name="CannotRemoveOnlySignInMethod" xml:space="preserve">
     <value>You cannot remove your only sign-in method.</value>
   </data>
+  <data name="SkipToContent" xml:space="preserve">
+    <value>Skip to content</value>
+  </data>
+  <data name="BrandTagline" xml:space="preserve">
+    <value>The AI-native ERP for the agentic era.</value>
+  </data>
+  <data name="BrandBlurb" xml:space="preserve">
+    <value>Accounting, reporting and multi-currency operations, in one system that works the way your organization does.</value>
+  </data>
+  <data name="BrandCopyright" xml:space="preserve">
+    <value>© Tellma. All rights reserved.</value>
+  </data>
 </root>

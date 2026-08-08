@@ -158,7 +158,12 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
                 request => request.Content(html).Address(response.RequestMessage!.RequestUri),
                 TestContext.Current.CancellationToken);
 
-            IHtmlFormElement form = document.QuerySelector<IHtmlFormElement>("form")
+            // Page furniture — the language picker, sign-out — is marked data-tmi-chrome by the
+            // layouts, so "the page's form" stays the page's own however the chrome is arranged
+            // around it. Without this the picker sitting above the content would silently become
+            // the first form, and a flow would post its email to the culture endpoint, take the
+            // redirect that follows, and fail several steps later for no visible reason.
+            IHtmlFormElement form = document.QuerySelector<IHtmlFormElement>("form:not([data-tmi-chrome])")
                 ?? throw new InvalidOperationException("The page contains no form.");
 
             Dictionary<string, string> fields = [];
