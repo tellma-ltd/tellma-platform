@@ -78,12 +78,12 @@
                         <tmi-icon name="key-round" />@L["Passkeys"]
                     </a>
                 </li>
-                <li>
-                    <a class="tmi-nav-item" asp-area="Identity" asp-page="/Manage/EnableAuthenticator"
-                       asp-route-client_id="@clientId" aria-current="@Current("/Manage/EnableAuthenticator")">
-                        <tmi-icon name="shield-check" />@L["AuthenticatorApp"]
-                    </a>
-                </li>
+                @* The authenticator-app page is deliberately absent. Enrolling one stores a secret
+                   that nothing ever asks for: no sign-in path challenges for a time-based code, so
+                   the setting engine reads back as evidence can never be earned. Offering it here
+                   would sell a second factor that does not defend anything, and the enrollment
+                   also reissues recovery codes, so returning to it costs the user the ones they
+                   saved. Restore this entry in the same change that adds the sign-in challenge. *@
                 <li>
                     <a class="tmi-nav-item" asp-area="Identity" asp-page="/Manage/ExternalLogins"
                        asp-route-client_id="@clientId" aria-current="@Current("/Manage/ExternalLogins")">
