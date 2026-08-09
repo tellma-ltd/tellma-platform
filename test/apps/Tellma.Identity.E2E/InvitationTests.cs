@@ -44,6 +44,48 @@ namespace Tellma.Identity.E2E
                 await page.WaitForURLAsync("**/Identity/Manage/Passkeys", new() { Timeout = 15000 });
                 string content = await page.ContentAsync();
                 Assert.DoesNotContain("You have no passkeys yet", content, StringComparison.Ordinal);
+                Assert.Contains(email, content, StringComparison.Ordinal);
+            });
+        }
+
+        [Fact]
+        public async Task An_invitation_opened_in_another_users_session_enrolls_for_the_invited_user()
+        {
+            const string invited = "e2e-invited-elsewhere@example.com";
+            await server.CreateActiveUserAsync(invited);
+            string token = await server.IssueInvitationTokenAsync(invited);
+
+            // A browser that is already somebody else — a shared machine, or an administrator
+            // opening a link to see what it looks like.
+            await using IBrowserContext context = await playwright.Browser.NewContextAsync(
+                new BrowserNewContextOptions
+                {
+                    BaseURL = server.BaseAddress,
+                    StorageState = await server.SignedInStorageStateAsync(playwright.Browser),
+                });
+
+            await PlaywrightTracing.RunTracedAsync(context, nameof(An_invitation_opened_in_another_users_session_enrolls_for_the_invited_user), async () =>
+            {
+                IPage page = await context.NewPageAsync();
+                await using VirtualAuthenticator authenticator = await VirtualAuthenticator.AttachAsync(context, page);
+
+                await page.GotoAsync("/Identity/Manage/Index");
+                Assert.Contains(
+                    IdentityServerFixtureBase.SharedSessionEmail,
+                    await page.ContentAsync(),
+                    StringComparison.Ordinal);
+
+                await page.GotoAsync("/Identity/Account/Invitation?code=" + Uri.EscapeDataString(token));
+                await page.GetByRole(AriaRole.Button, new() { Name = "Create a passkey" }).ClickAsync();
+                await page.WaitForURLAsync("**/Identity/Manage/Passkeys", new() { Timeout = 15000 });
+
+                // The link named one account and the session named another. The credential — and
+                // the session it leaves behind — must belong to the account the link named, or an
+                // invitation opened on the wrong machine hands the invited user's enrolment to
+                // whoever happened to be signed in, having burned their one-time link to do it.
+                string content = await page.ContentAsync();
+                Assert.Contains(invited, content, StringComparison.Ordinal);
+                Assert.DoesNotContain(IdentityServerFixtureBase.SharedSessionEmail, content, StringComparison.Ordinal);
             });
         }
     }

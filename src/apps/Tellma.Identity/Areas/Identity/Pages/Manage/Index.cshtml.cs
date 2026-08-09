@@ -45,6 +45,9 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
         [BindProperty]
         public UserGender? Gender { get; set; }
 
+        /// <summary>Where the post-save message's resource key rides across the redirect.</summary>
+        private const string StatusKeyName = "StatusMessageKey";
+
         /// <summary>An informational banner, when any.</summary>
         public PageStatus? StatusMessage { get; private set; }
 
@@ -56,7 +59,12 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
             DisplayName = user.DisplayName;
             Locale = user.Locale;
             Gender = user.Gender;
-            StatusMessage = TempData["StatusMessage"] is string saved ? PageStatus.Success(saved) : null;
+            // Localized here rather than when it was stored: saving a new language changes the
+            // culture of the *next* request, which is this one. A message rendered on the way in
+            // would arrive in the language the user just left, alone on an otherwise translated
+            // page. Carrying the key instead means it is resolved in whatever culture ends up
+            // rendering it.
+            StatusMessage = TempData[StatusKeyName] is string key ? PageStatus.Success(localizer[key].Value) : null;
             return Page();
         }
 
@@ -86,7 +94,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
 
             // Re-render through a redirect: the culture cookie is read by request localization at
             // the start of a request, so the saved language only takes effect on the next one.
-            TempData["StatusMessage"] = localizer["Saved"].Value;
+            TempData[StatusKeyName] = "Saved";
             return RedirectToPage();
         }
     }

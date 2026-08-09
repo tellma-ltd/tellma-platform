@@ -262,7 +262,7 @@
     <value>Accounting, reporting and multi-currency operations, in one system that works the way your organization does.</value>
   </data>
   <data name="BrandCopyright" xml:space="preserve">
-    <value>© Tellma. All rights reserved.</value>
+    <value>© {0} Tellma. All rights reserved.</value>
   </data>
   <data name="YourAccount" xml:space="preserve">
     <value>Your account</value>
@@ -365,5 +365,17 @@
   </data>
   <data name="RecoveryCodes" xml:space="preserve">
     <value>Recovery codes</value>
+  </data>
+  <data name="SignInLeadPasskey" xml:space="preserve">
+    <value>Sign in with the passkey on this device.</value>
+  </data>
+  <data name="SignInLeadEmail" xml:space="preserve">
+    <value>Use your work email.</value>
+  </data>
+  <data name="EmailPlaceholder" xml:space="preserve">
+    <value>name@example.com</value>
+  </data>
+  <data name="BackToSignInAction" xml:space="preserve">
+    <value>Sign in again</value>
   </data>
 </root>

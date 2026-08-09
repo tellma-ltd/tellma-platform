@@ -24,7 +24,7 @@
   --tmi-text-3xs: 10px;
 
   /* Measures — widths, not rhythm, so they do not belong on the space ladder. */
-  --tmi-ink-width: 340px;
+  --tmi-ink-width: 404px;
   --tmi-nav-width: 232px;
   --tmi-card-measure: 25rem;
   --tmi-main-measure: 39rem;
@@ -96,7 +96,6 @@ body {
    correctly on the white card, the grey pane and the dark panel with no per-surface override
    — and unlike a box-shadow it survives forced-colors mode.
    ========================================================================================== */
-.tmi-input:focus-visible,
 .tmi-button:focus-visible,
 .tmi-link:focus-visible,
 .tmi-lang-button:focus-visible,
@@ -106,6 +105,27 @@ body {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
   box-shadow: none;
+}
+
+/* A field glows instead, the same way the component library's does: the offset ring paints a
+   gap of page background around the control, which reads as a hole punched through a column of
+   fields. The transparent outline underneath is what carries focus in forced-colors mode,
+   where box-shadows are stripped and outline-color is repainted in a system color. Both the
+   bare input and the box that wraps an input with its icon take it, so a field looks the same
+   whether or not it has an adornment. */
+.tmi-input:focus-visible,
+.tmi-field-control:focus-within {
+  border-color: var(--field-border-focus);
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: 0 0 0 var(--focus-ring-halo-width) var(--field-focus-halo);
+}
+
+/* Focused and invalid: the glow goes red too, rather than a teal halo and a red border
+   disagreeing about what state the field is in. */
+.tmi-input[aria-invalid="true"]:focus-visible,
+.tmi-field-control:focus-within:has(.tmi-input[aria-invalid="true"]) {
+  box-shadow: 0 0 0 var(--focus-ring-halo-width) var(--error-bg);
 }
 
 @media (forced-colors: active) {
@@ -265,7 +285,8 @@ code,
   color: var(--field-icon);
 }
 
-/* Inside the shared box the input owns no chrome of its own; standalone it draws the box. */
+/* Inside the shared box the input owns no chrome of its own — including the focus treatment,
+   which the box wears on its behalf; standalone it draws both itself. */
 .tmi-field-control > .tmi-input {
   border: none;
   padding-inline: 0;
@@ -274,6 +295,7 @@ code,
 
 .tmi-field-control > .tmi-input:focus-visible {
   outline: none;
+  box-shadow: none;
 }
 
 .tmi-input {
@@ -289,8 +311,30 @@ code,
   border-radius: var(--field-radius);
 }
 
+/* Not --field-placeholder, which is grey-400 and 3.4:1 against the field — placeholder text is
+   text, and 4.5:1 applies to it. grey-500 is 5.8:1. The shared token wants the same correction;
+   this is the identity UI's own until it gets one. */
 .tmi-input::placeholder {
-  color: var(--field-placeholder);
+  color: var(--grey-500);
+}
+
+/* A native select draws its own caret hard against the edge, and the position is not something
+   an author can move. Drawing it ourselves is what buys the breathing room — and matches the
+   chevron the language picker already uses. The glyph is a same-origin data URI, which the
+   policy's img-src admits. */
+.tmi-select {
+  appearance: none;
+  padding-inline-end: var(--space-8);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2356686F' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: 15px 15px;
+  /* background-position has no logical form, so the one direction-dependent value is flipped
+     by the rule below rather than duplicated across the whole declaration. */
+  background-position: right var(--field-padding-x) center;
+}
+
+[dir="rtl"] .tmi-select {
+  background-position: left var(--field-padding-x) center;
 }
 
 .tmi-input:hover {
@@ -704,6 +748,13 @@ code,
   flex-direction: column;
   align-items: center;
   text-align: center;
+}
+
+/* Blocks carry their own bottom margin so they space each other; the last one has nothing to
+   space itself from, and its margin becomes a gap between the content and the card's edge. */
+.tmi-card > :last-child,
+.tmi-centred > :last-child {
+  margin-block-end: 0;
 }
 
 .tmi-qr {

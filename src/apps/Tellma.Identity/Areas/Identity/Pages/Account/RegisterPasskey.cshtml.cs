@@ -95,10 +95,14 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                 Outcome = "success",
             });
 
-            // Unauthenticated enrollment (invitation/recovery) completes the sign-in; the WebAuthn
-            // ceremony is itself the authentication event. A device-bound (non-synced) credential
-            // raises the assurance tier.
-            if (User.Identity?.IsAuthenticated != true)
+            // Enrollment driven by a flow — invitation, recovery, first-run setup — completes the
+            // sign-in; the WebAuthn ceremony is itself the authentication event. A device-bound
+            // (non-synced) credential raises the assurance tier.
+            //
+            // Also when a session already exists, provided the flow named someone: following an
+            // invitation on a machine signed in as another person leaves you as the person you
+            // were invited as, rather than enrolled as one account and browsing as another.
+            if (User.Identity?.IsAuthenticated != true || CredentialFlowCookie.GetUserId(HttpContext) is not null)
             {
                 bool deviceBound = PasskeySignals.IsDeviceBound(attestation.Passkey);
                 await signInService.SignInAsync(
@@ -113,16 +117,23 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
             return LocalRedirect(ReturnUrlValidator.Sanitize(ReturnUrl, fallback));
         }
 
-        /// <summary>Resolves the user this ceremony acts for (authenticated or flow-scoped).</summary>
+        /// <summary>
+        ///     Resolves the user this ceremony acts for.
+        ///     <para>
+        ///         The flow cookie outranks an ambient session, and the order matters. The cookie
+        ///         names the account a single-use token was redeemed for moments ago — a statement
+        ///         about <em>this</em> ceremony. A session only says who last signed in on this
+        ///         browser. Taking the session first is how an invitation opened on a machine
+        ///         already signed in as someone else enrolls the credential onto that someone
+        ///         else's account, having consumed the invited user's one-time link to get there.
+        ///     </para>
+        /// </summary>
+        /// <returns>The user, or null when neither a flow nor a session identifies one.</returns>
         private async Task<TellmaIdentityUser?> ResolveUserAsync()
         {
-            if (User.Identity?.IsAuthenticated == true)
-            {
-                return await userManager.GetUserAsync(User);
-            }
-
-            string? userId = CredentialFlowCookie.GetUserId(HttpContext);
-            return userId is null ? null : await userManager.FindByIdAsync(userId);
+            return CredentialFlowCookie.GetUserId(HttpContext) is { } flowUserId
+                ? await userManager.FindByIdAsync(flowUserId)
+                : User.Identity?.IsAuthenticated == true ? await userManager.GetUserAsync(User) : null;
         }
     }
 }

@@ -15,10 +15,24 @@
     bool showEmailCode = Model.Methods.Contains(emailCodeMethod);
     bool showGoogle = Model.Methods.Contains(googleMethod) && Model.ConfiguredExternalProviders.Contains("Google");
     bool showMicrosoft = Model.Methods.Contains(microsoftMethod) && Model.ConfiguredExternalProviders.Contains("Microsoft");
+
+    // The request decides which methods this page offers, so the sentence introducing them has
+    // to follow — telling someone to use their work email when there is no email field is worse
+    // than saying nothing. Federation alone gets no lead: the buttons name their own providers.
+    string? lead = (showEmailCode, showPasskey) switch
+    {
+        (true, true) => L["SignInLead"].Value,
+        (true, false) => L["SignInLeadEmail"].Value,
+        (false, true) => L["SignInLeadPasskey"].Value,
+        _ => null,
+    };
 }
 
 <h1 class="tmi-title">@heading</h1>
-<p class="tmi-lead">@L["SignInLead"]</p>
+@if (lead is not null)
+{
+    <p class="tmi-lead">@lead</p>
+}
 
 <partial name="/Areas/Identity/Pages/Shared/_ErrorSummary.cshtml" />
 <partial name="/Areas/Identity/Pages/Shared/_StatusMessage.cshtml" model="@(Model.StatusMessage)" />
@@ -42,7 +56,8 @@
                 <tmi-icon name="mail" />
                 @* autocomplete carries the webauthn token so passkey conditional UI can attach here. *@
                 <input class="tmi-input" id="Email" name="Email" type="email" inputmode="email"
-                       dir="ltr" autocomplete="username webauthn" required value="@Model.Email" />
+                       dir="ltr" autocomplete="username webauthn" required value="@Model.Email"
+                       placeholder="@L["EmailPlaceholder"]" />
             </div>
         </div>
         <label class="tmi-checkbox">

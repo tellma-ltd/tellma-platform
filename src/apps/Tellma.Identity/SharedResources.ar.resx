@@ -262,7 +262,7 @@
     <value>المحاسبة والتقارير والعمليات متعددة العملات، في نظام واحد يعمل بالطريقة التي تعمل بها مؤسستك.</value>
   </data>
   <data name="BrandCopyright" xml:space="preserve">
-    <value>© تلما. جميع الحقوق محفوظة.</value>
+    <value>© {0} تلما. جميع الحقوق محفوظة.</value>
   </data>
   <data name="YourAccount" xml:space="preserve">
     <value>حسابك</value>
@@ -365,5 +365,17 @@
   </data>
   <data name="RecoveryCodes" xml:space="preserve">
     <value>رموز الاستعادة</value>
+  </data>
+  <data name="SignInLeadPasskey" xml:space="preserve">
+    <value>سجّل الدخول بمفتاح المرور الموجود على هذا الجهاز.</value>
+  </data>
+  <data name="SignInLeadEmail" xml:space="preserve">
+    <value>استخدم بريد العمل.</value>
+  </data>
+  <data name="EmailPlaceholder" xml:space="preserve">
+    <value>name@example.com</value>
+  </data>
+  <data name="BackToSignInAction" xml:space="preserve">
+    <value>تسجيل الدخول مرة أخرى</value>
   </data>
 </root>

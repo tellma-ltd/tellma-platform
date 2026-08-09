@@ -4,6 +4,15 @@
     ViewData["Title"] = string.IsNullOrEmpty(Model.Error)
         ? L["DeviceTitle"].Value
         : L["ErrorTitlePrefix"].Value + ": " + L["DeviceTitle"].Value;
+    bool confirming = !string.IsNullOrEmpty(Model.UserCode);
+}
+
+@* The mark leads the heading, so it is rendered before it rather than after — and aligned to
+   the start, so the two read as one block instead of the mark floating over the middle of the
+   title. Only the confirmation step has one; entering a code is not an event to illustrate. *@
+@if (confirming)
+{
+    <span class="tmi-hero"><tmi-icon name="tv" class="tmi-icon-lg" /></span>
 }
 
 <h1 class="tmi-title">@L["DeviceTitle"]</h1>
@@ -18,7 +27,7 @@
     </div>
 }
 
-@if (string.IsNullOrEmpty(Model.UserCode))
+@if (!confirming)
 {
     @* No resolved code yet: ask the user to enter the code shown on their device. *@
     <form method="get" asp-controller="DeviceVerification" asp-action="Verify">
@@ -32,9 +41,6 @@
 }
 else
 {
-    <div class="tmi-centred">
-        <span class="tmi-hero"><tmi-icon name="tv" class="tmi-icon-lg" /></span>
-    </div>
     @* The application's own registered name, isolated from the sentence around it. *@
     <p class="tmi-lead">@L["DeviceConfirmPrompt", Model.ApplicationName ?? string.Empty]</p>
     <form method="post" asp-controller="DeviceVerification" asp-action="Accept">

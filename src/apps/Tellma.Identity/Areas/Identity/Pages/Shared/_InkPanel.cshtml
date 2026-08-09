@@ -1,11 +1,16 @@
+@using System.Globalization
 @inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@inject TimeProvider Clock
 @* The brand panel beside the sign-in form on wide viewports. Everything in it is decoration or
    brand copy, so at narrower widths the stylesheet drops the whole aside rather than reflowing
    it — there is nothing here a user needs to complete the task. *@
 <aside class="tmi-ink">
     @* Coloured by class, never by presentation attribute: a fill="" cannot take a var(), and the
-       stylesheet is meant to be the only place a colour is decided. *@
-    <svg class="tmi-ink-art" viewBox="0 0 400 600" preserveAspectRatio="xMidYMid slice"
+       stylesheet is meant to be the only place a colour is decided. Anchored to the top rather
+       than the middle: the artwork is cropped to fill whatever shape the panel is, and the comet
+       sits in the top fifth, so centring it is what makes the comet the first thing to be cut
+       off in a short window. *@
+    <svg class="tmi-ink-art" viewBox="0 0 400 600" preserveAspectRatio="xMidYMin slice"
          aria-hidden="true" focusable="false">
         <ellipse class="tmi-ink-orbit" cx="200" cy="300" rx="330" ry="185" transform="rotate(-25 200 300)" />
         <g class="tmi-ink-stars">
@@ -30,6 +35,11 @@
         <partial name="/Areas/Identity/Pages/Shared/_Wordmark.cshtml" model="true" />
         <p class="tmi-ink-tagline">@L["BrandTagline"]</p>
         <p class="tmi-ink-blurb">@L["BrandBlurb"]</p>
-        <p class="tmi-ink-copyright">@L["BrandCopyright"]</p>
+        @* The year comes from the clock, so a notice that is wrong the moment it ships cannot be
+           left behind in a resource file. Passed as text: an ICU argument given a number is
+           formatted as one, and a year is not a quantity to be grouped. *@
+        <p class="tmi-ink-copyright">
+            @L["BrandCopyright", Clock.GetUtcNow().Year.ToString(CultureInfo.InvariantCulture)]
+        </p>
     </div>
 </aside>
