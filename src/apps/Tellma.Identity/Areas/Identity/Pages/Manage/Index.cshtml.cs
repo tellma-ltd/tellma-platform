@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 using Tellma.Identity.Data;
 using Tellma.Identity.Infrastructure;
+using Tellma.Identity.Services.AuthenticationPolicy;
 
 namespace Tellma.Identity.Areas.Identity.Pages.Manage
 {
@@ -22,11 +23,13 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
     ///     the old language reads as broken.
     /// </summary>
     /// <param name="userManager">The Identity user manager.</param>
+    /// <param name="signInService">The engine sign-in, to restamp the session after a change.</param>
     /// <param name="localizer">UI strings.</param>
     /// <param name="languages">The languages this deployment offers.</param>
     [Authorize]
     public sealed class IndexModel(
         UserManager<TellmaIdentityUser> userManager,
+        TellmaSignInService signInService,
         IStringLocalizer<SharedResources> localizer,
         LanguageCatalog languages) : PageModel
     {
@@ -91,6 +94,12 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
                     SameSite = SameSiteMode.Lax,
                     Secure = Request.IsHttps,
                 });
+
+            // Restamp the session's grammatical form. It rides on the cookie so a rendered string
+            // never costs a database read, which means changing it here has to reissue the cookie
+            // — otherwise the setting takes effect only at the next sign-in. Same sid, same
+            // evidence, so this is not a new session and nothing downstream sees a login.
+            await signInService.RefreshSessionAsync(user);
 
             // Re-render through a redirect: the culture cookie is read by request localization at
             // the start of a request, so the saved language only takes effect on the next one.

@@ -139,7 +139,7 @@
     <value>مرحباً</value>
   </data>
   <data name="InvitationPrompt" xml:space="preserve">
-    <value>أنشئ مفتاح مرور لإكمال إنشاء حسابك.</value>
+    <value>{gender, select, female{أنشئي} other{أنشئ}} مفتاح مرور لإكمال إنشاء حسابك.</value>
   </data>
   <data name="InvitationInvalid" xml:space="preserve">
     <value>رابط الدعوة غير صالح أو انتهت صلاحيته. اطلب من المسؤول إرسال رابط جديد.</value>
@@ -160,7 +160,7 @@
     <value>إعداد المسؤول</value>
   </data>
   <data name="SetupPrompt" xml:space="preserve">
-    <value>أدخل رمز الإعداد لمرة واحدة لتهيئة مسؤول الطوارئ.</value>
+    <value>{gender, select, female{أدخلي} other{أدخل}} رمز الإعداد لمرة واحدة لتهيئة مسؤول الطوارئ.</value>
   </data>
   <data name="SetupToken" xml:space="preserve">
     <value>رمز الإعداد</value>
@@ -217,19 +217,19 @@
     <value>تطبيق المصادقة</value>
   </data>
   <data name="AuthenticatorEnrollPrompt" xml:space="preserve">
-    <value>امسح رمز الاستجابة السريعة بتطبيق المصادقة، ثم أدخل الرمز المكوّن من 6 أرقام للتأكيد.</value>
+    <value>{gender, select, female{امسحي} other{امسح}} رمز الاستجابة السريعة بتطبيق المصادقة، ثم {gender, select, female{أدخلي} other{أدخل}} الرمز المكوّن من 6 أرقام للتأكيد.</value>
   </data>
   <data name="EnableAuthenticator" xml:space="preserve">
     <value>تفعيل تطبيق المصادقة</value>
   </data>
   <data name="RecoveryCodesPrompt" xml:space="preserve">
-    <value>احفظ رموز الاسترداد هذه في مكان آمن. يُستخدم كل رمز مرة واحدة إذا فقدت الوصول إلى طرقك الأخرى.</value>
+    <value>{gender, select, female{احفظي} other{احفظ}} رموز الاستعادة هذه في مكان آمن. يُستخدم كل رمز مرة واحدة إذا فقدت الوصول إلى طرقك الأخرى.</value>
   </data>
   <data name="ForgotPassword" xml:space="preserve">
     <value>هل نسيت كلمة المرور؟</value>
   </data>
   <data name="ForgotPasswordPrompt" xml:space="preserve">
-    <value>أدخل بريدك الإلكتروني وسنرسل لك رابطاً لإعادة تعيين كلمة المرور.</value>
+    <value>{gender, select, female{أدخلي} other{أدخل}} بريدك الإلكتروني وسنرسل لك رابطاً لإعادة تعيين كلمة المرور.</value>
   </data>
   <data name="ResetPassword" xml:space="preserve">
     <value>إعادة تعيين كلمة المرور</value>
@@ -355,7 +355,7 @@
     <value>العودة إلى تسجيل الدخول</value>
   </data>
   <data name="SignInLead" xml:space="preserve">
-    <value>استخدم بريد العمل أو مفتاح مرور.</value>
+    <value>{gender, select, female{استخدمي} other{استخدم}} بريد العمل أو مفتاح مرور.</value>
   </data>
   <data name="Google" xml:space="preserve">
     <value>Google</value>
@@ -367,15 +367,39 @@
     <value>رموز الاستعادة</value>
   </data>
   <data name="SignInLeadPasskey" xml:space="preserve">
-    <value>سجّل الدخول بمفتاح المرور الموجود على هذا الجهاز.</value>
+    <value>{gender, select, female{سجّلي} other{سجّل}} الدخول بمفتاح المرور الموجود على هذا الجهاز.</value>
   </data>
   <data name="SignInLeadEmail" xml:space="preserve">
-    <value>استخدم بريد العمل.</value>
+    <value>{gender, select, female{استخدمي} other{استخدم}} بريد العمل.</value>
   </data>
   <data name="EmailPlaceholder" xml:space="preserve">
     <value>name@example.com</value>
   </data>
   <data name="BackToSignInAction" xml:space="preserve">
     <value>تسجيل الدخول مرة أخرى</value>
+  </data>
+  <data name="ExternalLogins" xml:space="preserve">
+    <value>تسجيل الدخول الخارجي</value>
+  </data>
+  <data name="ExternalLoginsPrompt" xml:space="preserve">
+    <value>سجّل الدخول بحساب تملكه بالفعل.</value>
+  </data>
+  <data name="NoExternalLogins" xml:space="preserve">
+    <value>لم تربط أي حساب خارجي بعد.</value>
+  </data>
+  <data name="AddExternalLogin" xml:space="preserve">
+    <value>ربط {0}</value>
+  </data>
+  <data name="RemoveExternalLoginNamed" xml:space="preserve">
+    <value>إلغاء ربط {0}</value>
+  </data>
+  <data name="ExternalLoginRemoved" xml:space="preserve">
+    <value>تم إلغاء ربط الحساب الخارجي.</value>
+  </data>
+  <data name="ExternalLoginRemoveFailed" xml:space="preserve">
+    <value>تعذّر إلغاء ربط الحساب الخارجي.</value>
+  </data>
+  <data name="ResetPasswordExpired" xml:space="preserve">
+    <value>رابط إعادة تعيين كلمة المرور غير صالح أو انتهت صلاحيته. اطلب رابطاً جديداً.</value>
   </data>
 </root>

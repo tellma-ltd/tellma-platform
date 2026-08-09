@@ -4,13 +4,20 @@
 @* The brand panel beside the sign-in form on wide viewports. Everything in it is decoration or
    brand copy, so at narrower widths the stylesheet drops the whole aside rather than reflowing
    it — there is nothing here a user needs to complete the task. *@
-<aside class="tmi-ink">
+@* Hidden from assistive technology in its entirety. It is brand decoration that sits before
+   the form in reading order, so announcing a wordmark, a tagline, a marketing sentence and a
+   copyright notice would cost a screen-reader user all of that on every visit to a page whose
+   whole purpose is a two-field form. Nothing here is an instruction, a control, or anything
+   the form cannot be completed without, and the product name is already in the document
+   title. Safe to hide because it contains nothing focusable — aria-hidden over a focusable
+   element strands a keyboard user on a control their screen reader cannot see. *@
+<aside class="tmi-ink" aria-hidden="true">
     @* Coloured by class, never by presentation attribute: a fill="" cannot take a var(), and the
-       stylesheet is meant to be the only place a colour is decided. Anchored to the top rather
-       than the middle: the artwork is cropped to fill whatever shape the panel is, and the comet
-       sits in the top fifth, so centring it is what makes the comet the first thing to be cut
-       off in a short window. *@
-    <svg class="tmi-ink-art" viewBox="0 0 400 600" preserveAspectRatio="xMidYMin slice"
+       stylesheet is meant to be the only place a colour is decided.
+
+       This one is scaled to cover the panel and cropped to fit, which is right for a field of
+       stars — there is no part of it that has to survive. *@
+    <svg class="tmi-ink-art" viewBox="0 0 400 600" preserveAspectRatio="xMidYMid slice"
          aria-hidden="true" focusable="false">
         <ellipse class="tmi-ink-orbit" cx="200" cy="300" rx="330" ry="185" transform="rotate(-25 200 300)" />
         <g class="tmi-ink-stars">
@@ -20,15 +27,22 @@
             <circle cx="200" cy="470" r="1" /><circle cx="330" cy="430" r="1.4" />
             <circle cx="160" cy="560" r="1.2" />
         </g>
+    </svg>
+
+    @* The comet is its own element, placed against the panel's top corner at a fixed size, and
+       deliberately not part of the drawing above. A covering fill crops whichever axis is
+       over-long — width on a tall monitor, height on a short one — and the comet sits near a
+       corner, so it is the first thing lost either way. Nothing here is cropped by anything.
+       Scaled and faded rather than animating the r attribute the mockup uses: r as a
+       CSS-animatable geometry property has the thinnest engine support in this design. *@
+    <svg class="tmi-ink-comet-art" viewBox="0 0 130 180" aria-hidden="true" focusable="false">
         <g class="tmi-ink-trail">
-            <circle cx="332" cy="150" r="4" /><circle cx="358" cy="184" r="3.2" />
-            <circle cx="380" cy="216" r="2.5" /><circle cx="398" cy="246" r="1.9" />
-            <circle cx="414" cy="276" r="1.4" />
+            <circle cx="46" cy="52" r="4" /><circle cx="72" cy="86" r="3.2" />
+            <circle cx="94" cy="118" r="2.5" /><circle cx="112" cy="148" r="1.9" />
+            <circle cx="128" cy="178" r="1.4" />
         </g>
-        @* Scaled and faded rather than animating the r attribute the mockup uses: r as a
-           CSS-animatable geometry property has the thinnest engine support in this design. *@
-        <circle class="tmi-ink-halo" cx="300" cy="118" r="13" />
-        <circle class="tmi-ink-comet" cx="300" cy="118" r="7" />
+        <circle class="tmi-ink-halo" cx="14" cy="20" r="13" />
+        <circle class="tmi-ink-comet" cx="14" cy="20" r="7" />
     </svg>
 
     <div class="tmi-ink-stack">

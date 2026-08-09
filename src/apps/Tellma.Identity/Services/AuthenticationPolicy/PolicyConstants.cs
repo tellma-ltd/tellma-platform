@@ -67,6 +67,14 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
         public const string Sid = "sid";
 
         /// <summary>
+        ///     How the signed-in user has asked to be addressed, so translations can select a
+        ///     grammatical form. Carried on the session rather than looked up per string: the UI
+        ///     resolves resources synchronously and in enormous number, and a database read per
+        ///     rendered sentence is not a trade worth making for a pronoun.
+        /// </summary>
+        public const string Gender = "tellma_gender";
+
+        /// <summary>
         ///     The concrete authentication methods used, in the allow-list vocabulary — the
         ///     purpose-built set-membership claim for resource servers that must enforce methods,
         ///     since RFC 8176 <c>amr</c> values are deliberately coarser.

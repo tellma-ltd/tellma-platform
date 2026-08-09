@@ -378,4 +378,28 @@
   <data name="BackToSignInAction" xml:space="preserve">
     <value>Sign in again</value>
   </data>
+  <data name="ExternalLogins" xml:space="preserve">
+    <value>External logins</value>
+  </data>
+  <data name="ExternalLoginsPrompt" xml:space="preserve">
+    <value>Sign in with an account you already have.</value>
+  </data>
+  <data name="NoExternalLogins" xml:space="preserve">
+    <value>You have not linked any external accounts.</value>
+  </data>
+  <data name="AddExternalLogin" xml:space="preserve">
+    <value>Link {0}</value>
+  </data>
+  <data name="RemoveExternalLoginNamed" xml:space="preserve">
+    <value>Unlink {0}</value>
+  </data>
+  <data name="ExternalLoginRemoved" xml:space="preserve">
+    <value>The external login was unlinked.</value>
+  </data>
+  <data name="ExternalLoginRemoveFailed" xml:space="preserve">
+    <value>The external login could not be unlinked.</value>
+  </data>
+  <data name="ResetPasswordExpired" xml:space="preserve">
+    <value>This password-reset link is invalid or has expired. Request a new one.</value>
+  </data>
 </root>

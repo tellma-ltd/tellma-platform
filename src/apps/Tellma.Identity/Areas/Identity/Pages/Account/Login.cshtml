@@ -93,7 +93,13 @@
 
 @if (showGoogle || showMicrosoft)
 {
-    <p class="tmi-divider">@L["OrContinueWith"]</p>
+    @* "or continue with" only continues from something. When federation is all the request
+       allows, the providers are the whole page and the divider would be introducing them to
+       nothing above. *@
+    @if (showEmailCode || showPasskey)
+    {
+        <p class="tmi-divider">@L["OrContinueWith"]</p>
+    }
     <div class="tmi-actions">
         @if (showGoogle)
         {

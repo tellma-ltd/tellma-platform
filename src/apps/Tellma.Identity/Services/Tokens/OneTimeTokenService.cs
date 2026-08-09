@@ -55,7 +55,42 @@ namespace Tellma.Identity.Services.Tokens
         }
 
         /// <inheritdoc />
+        public async Task<bool> PeekAsync(
+            string token, SingleUseCodePurpose purpose, CancellationToken cancellationToken)
+        {
+            return await FindValidAsync(token, purpose, cancellationToken) is not null;
+        }
+
+        /// <inheritdoc />
         public async Task<OneTimeTokenContext?> RedeemAsync(
+            string token, SingleUseCodePurpose purpose, CancellationToken cancellationToken)
+        {
+            SingleUseCode? stored = await FindValidAsync(token, purpose, cancellationToken);
+            if (stored is null)
+            {
+                return null;
+            }
+
+            // Single-use under concurrency: only the conditional update's winner redeems it.
+            int consumed = await context.Set<SingleUseCode>()
+                .Where(code => code.Id == stored.Id && code.ConsumedUtc == null)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(static c => c.ConsumedUtc, timeProvider.GetUtcNow()),
+                    cancellationToken);
+
+            return consumed == 1 ? new OneTimeTokenContext(stored.UserId, stored.ReturnUrl) : null;
+        }
+
+        /// <summary>
+        ///     Finds the unconsumed, unexpired token a string names, verifying its secret. Shared
+        ///     by peeking and redeeming so the two can never disagree about what "valid" means —
+        ///     the only difference between them is whether the row is then consumed.
+        /// </summary>
+        /// <param name="token">The clear token string.</param>
+        /// <param name="purpose">The purpose the token must have been issued for.</param>
+        /// <param name="cancellationToken">Aborts the operation.</param>
+        /// <returns>The stored row, or null when the token is unusable.</returns>
+        private async Task<SingleUseCode?> FindValidAsync(
             string token, SingleUseCodePurpose purpose, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(token))
@@ -69,30 +104,19 @@ namespace Tellma.Identity.Services.Tokens
                 return null;
             }
 
-            DateTimeOffset now = timeProvider.GetUtcNow();
             SingleUseCode? stored = await context.Set<SingleUseCode>()
                 .FirstOrDefaultAsync(
                     code => code.Id == parts[0] && code.Purpose == purpose && code.ConsumedUtc == null,
                     cancellationToken);
 
-            if (stored is null || stored.ExpiresUtc <= now)
+            if (stored is null || stored.ExpiresUtc <= timeProvider.GetUtcNow())
             {
                 return null;
             }
 
             byte[] expected = Convert.FromBase64String(stored.SecretHash);
             byte[] actual = Convert.FromBase64String(Hash(parts[1]));
-            if (!CryptographicOperations.FixedTimeEquals(expected, actual))
-            {
-                return null;
-            }
-
-            // Single-use under concurrency: only the conditional update's winner redeems it.
-            int consumed = await context.Set<SingleUseCode>()
-                .Where(code => code.Id == stored.Id && code.ConsumedUtc == null)
-                .ExecuteUpdateAsync(setters => setters.SetProperty(static c => c.ConsumedUtc, now), cancellationToken);
-
-            return consumed == 1 ? new OneTimeTokenContext(stored.UserId, stored.ReturnUrl) : null;
+            return CryptographicOperations.FixedTimeEquals(expected, actual) ? stored : null;
         }
 
         /// <summary>Computes the stored hash of a token secret.</summary>

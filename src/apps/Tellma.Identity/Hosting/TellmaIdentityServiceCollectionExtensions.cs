@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -137,10 +138,12 @@ namespace Tellma.Identity.Hosting
             // inner instance is the framework's own so nothing about resx lookup changes.
             services.AddSingleton<IStringLocalizer<SharedResources>>(static provider =>
                 new IcuStringLocalizer<SharedResources>(
-                    new StringLocalizer<SharedResources>(provider.GetRequiredService<IStringLocalizerFactory>())));
+                    new StringLocalizer<SharedResources>(provider.GetRequiredService<IStringLocalizerFactory>()),
+                    provider.GetRequiredService<IHttpContextAccessor>()));
             services.AddSingleton<IStringLocalizer<Services.Email.EmailTemplates>>(static provider =>
                 new IcuStringLocalizer<Services.Email.EmailTemplates>(
-                    new StringLocalizer<Services.Email.EmailTemplates>(provider.GetRequiredService<IStringLocalizerFactory>())));
+                    new StringLocalizer<Services.Email.EmailTemplates>(provider.GetRequiredService<IStringLocalizerFactory>()),
+                    provider.GetRequiredService<IHttpContextAccessor>()));
 
             // The identity store. An in-proc host points the store at its own database through
             // ConfigureDbContext; the engine's tables live in the dedicated schema either way.

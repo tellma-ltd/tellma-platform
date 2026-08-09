@@ -42,11 +42,16 @@
   --tmi-ink-star: var(--grey-800);
   --tmi-ink-accent: var(--teal-400);
 
-  /* The perimeter of a control. --field-border and --border-default are grey-200, which is
-     1.5:1 against the card — below the 3:1 a control's boundary needs to be findable. grey-400
-     is 3.4:1. The shared tokens want the same correction; this is the identity UI's own until
-     they get it. */
-  --tmi-control-border: var(--grey-400);
+  /* The perimeter of a control.
+     KNOWN ACCESSIBILITY EXCEPTION, taken deliberately. --field-border is grey-200, which is
+     1.5:1 against the card — WCAG 2.2 SC 1.4.11 asks 3:1 for the visual boundary that
+     identifies a control, so an input's perimeter is hard to find for a low-vision user.
+     grey-400 (3.4:1) would satisfy it, and an earlier revision used it, but the design calls
+     for the lighter line and the design wins here. Whoever revisits this: the fix belongs in
+     @tellma/core-ui-tokens, because the component library draws the same 1.5:1 boundary and
+     the two should not diverge. No automated gate catches it — axe implements 1.4.3 for text
+     but has no rule for 1.4.11. */
+  --tmi-control-border: var(--field-border);
 }
 
 /* ==========================================================================================
@@ -311,11 +316,13 @@ code,
   border-radius: var(--field-radius);
 }
 
-/* Not --field-placeholder, which is grey-400 and 3.4:1 against the field — placeholder text is
-   text, and 4.5:1 applies to it. grey-500 is 5.8:1. The shared token wants the same correction;
-   this is the identity UI's own until it gets one. */
+/* KNOWN ACCESSIBILITY EXCEPTION, same call as the control border above: --field-placeholder is
+   grey-400, 3.4:1 against the field, and placeholder text is text, so 1.4.3 wants 4.5:1. The
+   design sets it to the same value as the icon beside it, which is what this token already is.
+   Mitigated by every field having a real visible label — nothing here is conveyed by
+   placeholder alone. */
 .tmi-input::placeholder {
-  color: var(--grey-500);
+  color: var(--field-placeholder);
 }
 
 /* A native select draws its own caret hard against the edge, and the position is not something
@@ -325,6 +332,12 @@ code,
 .tmi-select {
   appearance: none;
   padding-inline-end: var(--space-8);
+
+  /* The popup is drawn by the operating system, not by this document, so a stylesheet reaches
+     almost none of it. accent-color is the one lever browsers honour there: it repaints the
+     highlight on the focused option, which is otherwise the platform blue. Everything else
+     about that popup stays the platform's. */
+  accent-color: var(--color-primary);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2356686F' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-size: 15px 15px;
@@ -368,12 +381,43 @@ code,
   cursor: pointer;
 }
 
+/* The design's box: the field border when empty, the action colour filled when ticked, with a
+   drawn tick rather than the platform's. Still a real <input type=checkbox> — appearance:none
+   removes the paint, not the semantics, the keyboard behaviour or the state a screen reader
+   reads. The tick is two borders on a rotated pseudo-element, which is the whole glyph. */
 .tmi-checkbox input {
+  appearance: none;
+  position: relative;
+  flex: none;
   inline-size: var(--checkbox-box-size);
   block-size: var(--checkbox-box-size);
   margin: 0;
-  accent-color: var(--color-primary);
+  border: var(--border-width) solid var(--tmi-control-border);
+  border-radius: var(--radius-xs);
+  background: var(--field-bg);
   cursor: pointer;
+}
+
+.tmi-checkbox input:checked {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+}
+
+.tmi-checkbox input:checked::after {
+  content: "";
+  position: absolute;
+  inset-block-start: 1px;
+  inset-inline-start: 5px;
+  inline-size: 5px;
+  block-size: 9px;
+  border: solid var(--color-on-primary);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.tmi-checkbox input:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* ==========================================================================================
@@ -431,8 +475,11 @@ code,
   gap: var(--space-2);
 }
 
-.tmi-actions .tmi-button {
+/* The children may be buttons, or forms each wrapping one — a federated provider needs its own
+   form to post to. Either way they share the row evenly. */
+.tmi-actions > * {
   flex: 1;
+  min-inline-size: 0;
 }
 
 /* A provider's own mark is multi-color and cannot inherit currentColor, so these sit apart
@@ -751,9 +798,11 @@ code,
 }
 
 /* Blocks carry their own bottom margin so they space each other; the last one has nothing to
-   space itself from, and its margin becomes a gap between the content and the card's edge. */
+   space itself from, and its margin becomes a gap between the content and the card's edge.
+   Scoped to the card's own last block and, through it, that block's last line — a group that
+   still has something after it keeps its spacing. */
 .tmi-card > :last-child,
-.tmi-centred > :last-child {
+.tmi-card > :last-child > :last-child {
   margin-block-end: 0;
 }
 
@@ -985,6 +1034,18 @@ code,
   inset: 0;
   inline-size: 100%;
   block-size: 100%;
+  fill: none;
+}
+
+/* Fixed size, fixed distance from the panel's top corner: nothing about it depends on how tall
+   the window is, which is the whole point of separating it from the covering fill above. It
+   mirrors with the panel in Arabic, because inset-inline-end does. */
+.tmi-ink-comet-art {
+  position: absolute;
+  inset-block-start: var(--space-10);
+  inset-inline-end: var(--space-6);
+  inline-size: 130px;
+  block-size: 180px;
   fill: none;
 }
 

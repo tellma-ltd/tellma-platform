@@ -6,8 +6,10 @@
 using Jeffijoe.MessageFormat;
 using Jeffijoe.MessageFormat.Formatting;
 using Jeffijoe.MessageFormat.Parsing;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Localization;
 using System.Globalization;
+using Tellma.Identity.Services.AuthenticationPolicy;
 
 namespace Tellma.Identity.Infrastructure
 {
@@ -27,7 +29,9 @@ namespace Tellma.Identity.Infrastructure
     ///     </para>
     /// </summary>
     /// <param name="inner">The resource lookup this wraps.</param>
-    public sealed class IcuStringLocalizer<T>(IStringLocalizer<T> inner) : IStringLocalizer<T>
+    /// <param name="httpContextAccessor">Supplies the signed-in user's grammatical form, when any.</param>
+    public sealed class IcuStringLocalizer<T>(
+        IStringLocalizer<T> inner, IHttpContextAccessor httpContextAccessor) : IStringLocalizer<T>
     {
         /// <inheritdoc />
         public LocalizedString this[string name]
@@ -38,7 +42,7 @@ namespace Tellma.Identity.Infrastructure
 
                 // No arguments means nothing to select on, but the value may still carry ICU
                 // syntax that must not reach the user as braces.
-                return Render(value, []);
+                return Render(value, [], Gender());
             }
         }
 
@@ -48,8 +52,19 @@ namespace Tellma.Identity.Infrastructure
             get
             {
                 ArgumentNullException.ThrowIfNull(arguments);
-                return Render(inner[name], arguments);
+                return Render(inner[name], arguments, Gender());
             }
+        }
+
+        /// <summary>
+        ///     The current request's grammatical form, read from the session claim the sign-in
+        ///     stamped. Null outside a request, or for a user who has not said — either way every
+        ///     gendered translation falls to its neutral branch.
+        /// </summary>
+        /// <returns>The ICU select key, or null.</returns>
+        private string? Gender()
+        {
+            return httpContextAccessor.HttpContext?.User.FindFirst(TellmaClaims.Gender)?.Value;
         }
 
         /// <inheritdoc />
@@ -63,7 +78,7 @@ namespace Tellma.Identity.Infrastructure
         ///     (<c>{0}</c>), which is what the existing catalog uses; named arguments arrive as a
         ///     dictionary, which is how gender and any later plural reach the message.
         /// </summary>
-        private static LocalizedString Render(LocalizedString value, object[] arguments)
+        private static LocalizedString Render(LocalizedString value, object[] arguments, string? gender)
         {
             if (value.ResourceNotFound)
             {
@@ -71,6 +86,16 @@ namespace Tellma.Identity.Infrastructure
             }
 
             Dictionary<string, object?> named = [];
+
+            // The signed-in user's grammatical form, so a translation can select on it without
+            // every call site having to remember to pass it. An explicit argument below still
+            // wins, which is what lets the email templates address a recipient who is not the
+            // person the request is running as.
+            if (gender is not null)
+            {
+                named[IcuMessageFormatter.GenderArgument] = gender;
+            }
+
             foreach ((object argument, int index) in arguments.Select(static (argument, index) => (argument, index)))
             {
                 if (argument is IReadOnlyDictionary<string, object?> pairs)

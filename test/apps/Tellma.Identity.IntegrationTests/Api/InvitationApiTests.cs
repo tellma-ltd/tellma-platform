@@ -210,6 +210,14 @@ namespace Tellma.Identity.IntegrationTests.Api
                 throw new OperationCanceledException(caller.Token);
             }
 
+            public Task<bool> PeekAsync(
+                string token,
+                Data.Entities.SingleUseCodePurpose purpose,
+                CancellationToken cancellationToken)
+            {
+                return inner.PeekAsync(token, purpose, cancellationToken);
+            }
+
             public Task<OneTimeTokenContext?> RedeemAsync(
                 string token,
                 Data.Entities.SingleUseCodePurpose purpose,

@@ -38,6 +38,7 @@ namespace Tellma.Identity.E2E
             ("device approved", "/Identity/Account/DeviceApproved"),
             ("forgot password", "/Identity/Account/ForgotPassword"),
             ("reset password, expired link", "/Identity/Account/ResetPassword?code=expired"),
+            ("sign in, federated only", "/Identity/Account/Login?methods=google%20microsoft"),
             ("invitation, expired link", "/Identity/Account/Invitation?code=expired"),
             ("account recovery", "/Identity/Account/Tap"),
             ("administrator setup", "/Identity/Account/Setup"),
@@ -50,6 +51,7 @@ namespace Tellma.Identity.E2E
         [
             ("profile", "/Identity/Manage/Index"),
             ("passkeys", "/Identity/Manage/Passkeys"),
+            ("external logins", "/Identity/Manage/ExternalLogins"),
             ("sessions", "/Identity/Manage/Sessions"),
             ("authenticator app", "/Identity/Manage/EnableAuthenticator"),
             ("device verification", "/connect/verify"),

@@ -46,7 +46,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         /// <summary>Renders the reset form, 404 when passwords are disabled.</summary>
         /// <param name="code">The single-use reset token.</param>
         /// <returns>The page or 404.</returns>
-        public IActionResult OnGet(string? code)
+        public async Task<IActionResult> OnGetAsync(string? code)
         {
             if (!engineOptions.Value.EnablePasswordSignIn)
             {
@@ -54,7 +54,14 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
             }
 
             Code = code;
-            IsValid = !string.IsNullOrWhiteSpace(code);
+
+            // Peeked, not redeemed: a link that has expired says so on arrival rather than after
+            // the user has chosen and typed a new password. Redeeming here to find out would
+            // consume a perfectly good link before it had been used for anything, which is why
+            // this could previously only fail on submit. Still advisory — the token can lapse
+            // between here and the post, so the post is what actually decides.
+            IsValid = !string.IsNullOrWhiteSpace(code)
+                && await tokens.PeekAsync(code, SingleUseCodePurpose.PasswordReset, HttpContext.RequestAborted);
             return Page();
         }
 

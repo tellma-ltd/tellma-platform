@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using System.Globalization;
@@ -74,7 +75,7 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                     : null;
 
             SessionState session = ComposeSession(
-                sameUserSession, evidence, timeProvider.GetUtcNow().ToUnixTimeSeconds());
+                sameUserSession, evidence, timeProvider.GetUtcNow().ToUnixTimeSeconds(), user.Gender);
 
             bool isNewSession = session.IsNewSession;
             string sid = session.Sid;
@@ -127,6 +128,63 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
         internal sealed record SessionState(string Sid, bool IsNewSession, IReadOnlyList<Claim> Claims);
 
         /// <summary>
+        ///     Reissues the current session's cookie with the user's present profile values,
+        ///     keeping the session itself — same sid, same methods, same authentication time.
+        ///     <para>
+        ///         For settings the session carries a copy of, so a rendered string never costs a
+        ///         database read. Changing one of those has to restamp the cookie or the change
+        ///         only lands at the next sign-in. This is not an authentication event: no audit
+        ///         row, no new session, no <c>LastSignInUtc</c>.
+        ///     </para>
+        /// </summary>
+        /// <param name="user">The user whose profile just changed.</param>
+        /// <returns>A task that completes when the cookie is reissued.</returns>
+        public async Task RefreshSessionAsync(TellmaIdentityUser user)
+        {
+            ArgumentNullException.ThrowIfNull(user);
+
+            HttpContext httpContext = httpContextAccessor.HttpContext
+                ?? throw new InvalidOperationException("Refreshing a session requires an active HTTP request.");
+
+            ClaimsPrincipal? current = httpContext.User;
+            if (current?.Identity?.IsAuthenticated != true
+                || !string.Equals(userManager.GetUserId(current), user.Id, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            // The session's own evidence, carried over verbatim — the identity claims around it
+            // are rebuilt from the user by the claims factory, exactly as at sign-in.
+            List<Claim> claims = [];
+            foreach (string claimType in SessionClaimTypes)
+            {
+                claims.AddRange(current.FindAll(claimType).Select(claim => new Claim(claimType, claim.Value)));
+            }
+
+            if (user.Gender is { } gender)
+            {
+                claims.Add(new Claim(TellmaClaims.Gender, gender.ToString().ToLowerInvariant()));
+            }
+
+            // Whether the cookie outlives the browser is the user's earlier "remember me" answer,
+            // and saving a profile is not a place to quietly revoke it.
+            AuthenticateResult authenticated = await httpContext.AuthenticateAsync(IdentityConstants.ApplicationScheme);
+            bool isPersistent = authenticated.Properties?.IsPersistent ?? false;
+
+            await signInManager.SignInWithClaimsAsync(user, isPersistent, claims);
+        }
+
+        /// <summary>The claims that describe the session itself, as opposed to the user.</summary>
+        private static readonly string[] SessionClaimTypes =
+        [
+            TellmaClaims.Sid,
+            TellmaClaims.Methods,
+            Claims.AuthenticationTime,
+            SignInClaims.PasskeyDeviceBound,
+            SignInClaims.PasskeyAuthTime,
+        ];
+
+        /// <summary>
         ///     Merges one authentication event into the session's existing evidence. Pure, so the
         ///     rules that decide what an event carries forward can be examined directly:
         ///     <list type="bullet">
@@ -146,9 +204,10 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
         /// <param name="existing">The same user's current session principal, when there is one.</param>
         /// <param name="evidence">The authentication step just completed.</param>
         /// <param name="authTime">When it completed (unix seconds).</param>
+        /// <param name="gender">How the user has asked to be addressed; omitted when unstated.</param>
         /// <returns>The merged session state.</returns>
         internal static SessionState ComposeSession(
-            ClaimsPrincipal? existing, SignInEvidence evidence, long authTime)
+            ClaimsPrincipal? existing, SignInEvidence evidence, long authTime, UserGender? gender = null)
         {
             ArgumentNullException.ThrowIfNull(evidence);
 
@@ -191,6 +250,13 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                 new Claim(SignInClaims.PasskeyAuthTime, passkeyAuthTime.ToString(CultureInfo.InvariantCulture)),
                 .. methods.Select(static method => new Claim(TellmaClaims.Methods, method)),
             ];
+
+            // Only when stated. An absent claim is what makes every gendered translation fall to
+            // its neutral branch, which is the right default for someone who did not say.
+            if (gender is { } stated)
+            {
+                claims.Add(new Claim(TellmaClaims.Gender, stated.ToString().ToLowerInvariant()));
+            }
 
             return new SessionState(sid, isNewSession, claims);
         }

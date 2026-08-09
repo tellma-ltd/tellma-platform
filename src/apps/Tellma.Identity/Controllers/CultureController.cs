@@ -20,15 +20,18 @@ namespace Tellma.Identity.Controllers
     ///     </para>
     /// </summary>
     /// <param name="languages">The languages this deployment offers.</param>
+    /// <param name="userManager">The Identity user manager, to persist a signed-in user's choice.</param>
     [AllowAnonymous]
-    public sealed class CultureController(LanguageCatalog languages) : Controller
+    public sealed class CultureController(
+        LanguageCatalog languages,
+        Microsoft.AspNetCore.Identity.UserManager<Data.TellmaIdentityUser> userManager) : Controller
     {
         /// <summary>Applies a language choice and returns to the page it was made on.</summary>
         /// <param name="culture">The chosen culture name.</param>
         /// <param name="returnUrl">The local page to return to.</param>
         /// <returns>A redirect back to the originating page.</returns>
         [HttpPost("identity/culture")]
-        public IActionResult Set(string? culture, string? returnUrl)
+        public async Task<IActionResult> Set(string? culture, string? returnUrl)
         {
             // Only a language this deployment offers: the cookie is attacker-suppliable, and an
             // unoffered value would otherwise reach request localization unchallenged.
@@ -47,6 +50,18 @@ namespace Tellma.Identity.Controllers
                         SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax,
                         Secure = Request.IsHttps,
                     });
+
+                // A signed-in user is stating a preference, not just re-skinning this browser —
+                // so it is saved to the profile too. Without this the picker and the profile's own
+                // Language field disagree the moment you use the picker, and the next sign-in
+                // elsewhere, and every email, would still arrive in the language you left behind.
+                if (User.Identity?.IsAuthenticated == true
+                    && await userManager.GetUserAsync(User) is { } user
+                    && !string.Equals(user.Locale, culture, StringComparison.Ordinal))
+                {
+                    user.Locale = culture!;
+                    await userManager.UpdateAsync(user);
+                }
             }
 
             string fallback = Url.Page("/Account/Login", new { area = "Identity" })!;

@@ -36,6 +36,24 @@ namespace Tellma.Identity.Services.Tokens
             string? createdByClientId,
             CancellationToken cancellationToken);
 
+        /// <summary>
+        ///     Reports whether a token is currently usable, <em>without</em> consuming it.
+        ///     <para>
+        ///         For pages that land on a link and want to say "this link has expired" before
+        ///         the user fills anything in. Redeeming to find that out would burn a good link
+        ///         on arrival, which is why those pages could only ever fail on submit.
+        ///     </para>
+        ///     <para>
+        ///         Advisory, not a guarantee: the token can still be consumed or expire between
+        ///         the peek and the redeem, so the redeem remains the decision.
+        ///     </para>
+        /// </summary>
+        /// <param name="token">The clear token string.</param>
+        /// <param name="purpose">The purpose the token must have been issued for.</param>
+        /// <param name="cancellationToken">Aborts the operation.</param>
+        /// <returns>Whether the token would redeem right now.</returns>
+        Task<bool> PeekAsync(string token, SingleUseCodePurpose purpose, CancellationToken cancellationToken);
+
         /// <summary>Redeems a token, consuming it so it can never be used again.</summary>
         /// <param name="token">The clear token string.</param>
         /// <param name="purpose">The purpose the token must have been issued for.</param>

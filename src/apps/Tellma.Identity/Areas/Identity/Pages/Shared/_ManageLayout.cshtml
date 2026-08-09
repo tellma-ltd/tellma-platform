@@ -85,6 +85,12 @@
                     </a>
                 </li>
                 <li>
+                    <a class="tmi-nav-item" asp-area="Identity" asp-page="/Manage/ExternalLogins"
+                       asp-route-client_id="@clientId" aria-current="@Current("/Manage/ExternalLogins")">
+                        <tmi-icon name="user-round" />@L["ExternalLogins"]
+                    </a>
+                </li>
+                <li>
                     <a class="tmi-nav-item" asp-area="Identity" asp-page="/Manage/Sessions"
                        asp-route-client_id="@clientId" aria-current="@Current("/Manage/Sessions")">
                         <tmi-icon name="monitor" />@L["Sessions"]

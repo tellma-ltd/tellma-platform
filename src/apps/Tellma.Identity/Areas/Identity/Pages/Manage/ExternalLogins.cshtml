@@ -1,0 +1,74 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Manage.ExternalLoginsModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["ExternalLogins"].Value;
+}
+
+<h1 class="tmi-title">@L["ExternalLogins"]</h1>
+<p class="tmi-lead">@L["ExternalLoginsPrompt"]</p>
+
+<partial name="/Areas/Identity/Pages/Shared/_StatusMessage.cshtml" model="@(Model.StatusMessage)" />
+
+@if (Model.Linked.Count == 0)
+{
+    <div class="tmi-empty">
+        <tmi-icon name="user-round" class="tmi-icon-lg" />
+        <span>@L["NoExternalLogins"]</span>
+    </div>
+}
+else
+{
+    <ul class="tmi-list">
+        @foreach (Tellma.Identity.Areas.Identity.Pages.Manage.ExternalLoginsModel.LinkedLogin login in Model.Linked)
+        {
+            <li>
+                @if (string.Equals(login.Provider, "Google", StringComparison.OrdinalIgnoreCase))
+                {
+                    <partial name="/Areas/Identity/Pages/Shared/_MarkGoogle.cshtml" />
+                }
+                else if (string.Equals(login.Provider, "Microsoft", StringComparison.OrdinalIgnoreCase))
+                {
+                    <partial name="/Areas/Identity/Pages/Shared/_MarkMicrosoft.cshtml" />
+                }
+                else
+                {
+                    <tmi-icon name="user-round" />
+                }
+                <div class="tmi-list-body">
+                    <div class="tmi-list-title">@login.DisplayName</div>
+                </div>
+                <form class="tmi-inline" method="post" asp-page-handler="Remove">
+                    <input type="hidden" name="provider" value="@login.Provider" />
+                    <input type="hidden" name="key" value="@login.Key" />
+                    @* The label names the provider: a column of controls all called "Remove"
+                       cannot be told apart from their accessible names alone. *@
+                    <button class="tmi-link tmi-link-danger" type="submit"
+                            aria-label="@L["RemoveExternalLoginNamed", login.DisplayName]">@L["Remove"]</button>
+                </form>
+            </li>
+        }
+    </ul>
+}
+
+@* Linking runs through the ordinary sign-in flow, which already accepts an authenticated
+   session as proof that this account is yours — so there is no second linking path to keep
+   correct, only this button. *@
+@foreach (string provider in Model.Available)
+{
+    <form method="post" asp-area="Identity" asp-page="/Account/ExternalLogin"
+          asp-route-provider="@provider"
+          asp-route-returnUrl="@Url.Page("/Manage/ExternalLogins", new { area = "Identity" })">
+        <button class="tmi-button tmi-button-secondary" type="submit">
+            @if (string.Equals(provider, "Google", StringComparison.OrdinalIgnoreCase))
+            {
+                <partial name="/Areas/Identity/Pages/Shared/_MarkGoogle.cshtml" />
+            }
+            else
+            {
+                <partial name="/Areas/Identity/Pages/Shared/_MarkMicrosoft.cshtml" />
+            }
+            @L["AddExternalLogin", provider]
+        </button>
+    </form>
+}
