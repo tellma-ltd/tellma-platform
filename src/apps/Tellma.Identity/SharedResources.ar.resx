@@ -37,7 +37,7 @@
     <value>الرمز</value>
   </data>
   <data name="Verify" xml:space="preserve">
-    <value>تحقق</value>
+    <value>{gender, select, female{تحققي} other{تحقق}}</value>
   </data>
   <data name="ResendCode" xml:space="preserve">
     <value>إرسال رمز جديد</value>
@@ -84,6 +84,9 @@
   <data name="DeviceCode" xml:space="preserve">
     <value>{gender, select, female{أدخلي} other{أدخل}} الرمز الظاهر على جهازك</value>
   </data>
+  <data name="DeviceCodeInvalid" xml:space="preserve">
+    <value>هذا الرمز غير صالح أو انتهت صلاحيته. {gender, select, female{تحقّقي} other{تحقّق}} من الرمز الظاهر على جهازك و{gender, select, female{حاولي} other{حاول}} مرة أخرى.</value>
+  </data>
   <data name="DeviceConfirmPrompt" xml:space="preserve">
     <value>يطلب {0} الوصول إلى حسابك. هل توافق على هذا الجهاز؟</value>
   </data>
@@ -103,13 +106,13 @@
     <value>إنشاء مفتاح مرور</value>
   </data>
   <data name="PasskeyFailed" xml:space="preserve">
-    <value>تعذّر التحقق من مفتاح المرور. حاول مرة أخرى.</value>
+    <value>تعذّر التحقق من مفتاح المرور. {gender, select, female{حاولي} other{حاول}} مرة أخرى.</value>
   </data>
   <data name="PasskeyAlreadyOnThisDevice" xml:space="preserve">
-    <value>يحتوي هذا الجهاز على مفتاح مرور لحسابك بالفعل. استخدم جهازاً آخر أو مفتاح أمان لإضافة مفتاح ثانٍ.</value>
+    <value>يحتوي هذا الجهاز على مفتاح مرور لحسابك بالفعل. {gender, select, female{استخدمي} other{استخدم}} جهازاً آخر أو مفتاح أمان لإضافة مفتاح ثانٍ.</value>
   </data>
   <data name="PasskeyEnrollFailed" xml:space="preserve">
-    <value>تعذّر إنشاء مفتاح المرور. حاول مرة أخرى.</value>
+    <value>تعذّر إنشاء مفتاح المرور. {gender, select, female{حاولي} other{حاول}} مرة أخرى.</value>
   </data>
   <data name="Passkeys" xml:space="preserve">
     <value>مفاتيح المرور</value>
@@ -301,13 +304,13 @@
     <value>رمز الاستجابة السريعة لتطبيق المصادقة</value>
   </data>
   <data name="SharedKeyPrompt" xml:space="preserve">
-    <value>تعذّر المسح؟ أدخل هذا المفتاح في التطبيق بدلاً من ذلك.</value>
+    <value>تعذّر المسح؟ {gender, select, female{أدخلي} other{أدخل}} هذا المفتاح في التطبيق بدلاً من ذلك.</value>
   </data>
   <data name="BackToProfile" xml:space="preserve">
     <value>العودة إلى الملف الشخصي</value>
   </data>
   <data name="OrContinueWith" xml:space="preserve">
-    <value>أو تابع باستخدام</value>
+    <value>أو {gender, select, female{تابعي} other{تابع}} باستخدام</value>
   </data>
   <data name="ScopeProfileTitle" xml:space="preserve">
     <value>ملفك الشخصي</value>
@@ -319,7 +322,7 @@
     <value>بريدك الإلكتروني</value>
   </data>
   <data name="ScopeEmailDetail" xml:space="preserve">
-    <value>العنوان الذي تسجل الدخول به.</value>
+    <value>العنوان الذي {gender, select, female{تسجلين} other{تسجل}} الدخول به.</value>
   </data>
   <data name="ScopeOpenIdTitle" xml:space="preserve">
     <value>هويتك</value>
@@ -328,16 +331,16 @@
     <value>يؤكد هويتك دون مشاركة بيانات دخولك.</value>
   </data>
   <data name="ScopeOfflineAccessTitle" xml:space="preserve">
-    <value>البقاء مسجلاً للدخول</value>
+    <value>البقاء {gender, select, female{مسجلة} other{مسجلاً}} للدخول</value>
   </data>
   <data name="ScopeOfflineAccessDetail" xml:space="preserve">
-    <value>يبقي الوصول بعد إغلاق التطبيق، حتى تسجل الخروج.</value>
+    <value>يبقي الوصول بعد إغلاق التطبيق، حتى {gender, select, female{تسجلي} other{تسجل}} الخروج.</value>
   </data>
   <data name="ScopeApiTitle" xml:space="preserve">
     <value>بياناتك في تلما</value>
   </data>
   <data name="ScopeApiDetail" xml:space="preserve">
-    <value>قراءة وتعديل البيانات التي تملك صلاحية الوصول إليها.</value>
+    <value>قراءة وتعديل البيانات التي {gender, select, female{تملكين} other{تملك}} صلاحية الوصول إليها.</value>
   </data>
   <data name="ScopeUnknownDetail" xml:space="preserve">
     <value>وصول طلبه هذا التطبيق بالاسم.</value>
@@ -382,10 +385,10 @@
     <value>تسجيل الدخول الخارجي</value>
   </data>
   <data name="ExternalLoginsPrompt" xml:space="preserve">
-    <value>سجّل الدخول بحساب تملكه بالفعل.</value>
+    <value>{gender, select, female{سجّلي الدخول بحساب تملكينه بالفعل.} other{سجّل الدخول بحساب تملكه بالفعل.}}</value>
   </data>
   <data name="NoExternalLogins" xml:space="preserve">
-    <value>لم تربط أي حساب خارجي بعد.</value>
+    <value>{gender, select, female{لم تربطي أي حساب خارجي بعد.} other{لم تربط أي حساب خارجي بعد.}}</value>
   </data>
   <data name="AddExternalLogin" xml:space="preserve">
     <value>ربط {0}</value>

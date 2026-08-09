@@ -86,40 +86,33 @@ namespace Tellma.Identity.E2E
 
         /// <summary>
         ///     Drives the passkey ceremony on the login page until the device-bound refusal shows.
-        ///     The conditional-UI ceremony may answer on load and submit by itself, so the page can
-        ///     be mid-navigation at any moment: each step is therefore re-queried rather than
-        ///     awaited once, and the explicit button is only used if the automatic path has not
-        ///     already produced the refusal.
+        ///     <para>
+        ///         The login page offers the conditional ceremony again on every load, and the
+        ///         virtual authenticator answers it with no prompt, so a refused attempt becomes
+        ///         the next attempt and the page navigates almost continuously. The refusal is
+        ///         therefore awaited with Playwright's own retrying wait, which re-resolves the
+        ///         locator across those navigations; a hand-rolled poll spends each pass racing
+        ///         one, and under load never lands on a still page at all.
+        ///     </para>
         /// </summary>
         private static async Task DriveCeremonyUntilRefusedAsync(IPage page)
         {
-            ILocator error = page.Locator(".tmi-notice-error li", new() { HasTextString = "device-bound passkey" });
-            ILocator button = page.GetByRole(AriaRole.Button, new() { Name = "Sign in with a passkey" });
+            ILocator error = page
+                .Locator(".tmi-notice-error li", new() { HasTextString = "device-bound passkey" })
+                .First;
 
-            for (int attempt = 0; attempt < 120; attempt++)
+            try
             {
-                try
-                {
-                    if (await error.CountAsync() > 0)
-                    {
-                        return;
-                    }
-
-                    if (await button.CountAsync() > 0)
-                    {
-                        await button.ClickAsync(new() { Timeout = 2000 });
-                    }
-                }
-                catch (Exception exception) when (exception is PlaywrightException or TimeoutException)
-                {
-                    // The page navigated under the query — the ceremony submitted itself — so the
-                    // click or the count raced it. Re-query on the next pass.
-                }
-
-                await Task.Delay(250, TestContext.Current.CancellationToken);
+                await error.WaitForAsync(new() { Timeout = 30000 });
+                return;
+            }
+            catch (TimeoutException)
+            {
+                // Conditional mediation was never offered, so drive the explicit button instead.
             }
 
-            Assert.Fail("The synced assertion was never refused with the device-bound requirement.");
+            await page.GetByRole(AriaRole.Button, new() { Name = "Sign in with a passkey" }).ClickAsync();
+            await error.WaitForAsync(new() { Timeout = 15000 });
         }
 
         /// <summary>Runs the enrollment ceremony from the passkey list and returns to it.</summary>

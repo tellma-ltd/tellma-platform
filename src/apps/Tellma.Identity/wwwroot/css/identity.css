@@ -387,7 +387,8 @@ code,
    reads. The tick is two borders on a rotated pseudo-element, which is the whole glyph. */
 .tmi-checkbox input {
   appearance: none;
-  position: relative;
+  display: grid;
+  place-content: center;
   flex: none;
   inline-size: var(--checkbox-box-size);
   block-size: var(--checkbox-box-size);
@@ -403,16 +404,24 @@ code,
   background: var(--color-primary);
 }
 
-.tmi-checkbox input:checked::after {
+/* Centred by the grid rather than by hand-computed offsets, so the tick stays centred whatever
+   --checkbox-box-size becomes and in both writing directions. The nudge is optical, not
+   geometric: the ink is only the right and bottom borders, so it sits down-and-right of the
+   element's own centre, and the 45deg rotation turns that diagonal offset into a purely
+   vertical one — hence a vertical-only correction. Nudging horizontally as well would push the
+   tick back off centre on the axis rotation had already balanced. */
+.tmi-checkbox input::after {
   content: "";
-  position: absolute;
-  inset-block-start: 1px;
-  inset-inline-start: 5px;
   inline-size: 5px;
   block-size: 9px;
   border: solid var(--color-on-primary);
   border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
+  transform: translateY(-1px) rotate(45deg);
+  opacity: 0;
+}
+
+.tmi-checkbox input:checked::after {
+  opacity: 1;
 }
 
 .tmi-checkbox input:focus-visible {
@@ -820,6 +829,16 @@ code,
   border: var(--border-width) solid var(--tmi-control-border);
   border-radius: var(--radius-sm);
   background: var(--white);
+}
+
+/* The prompt and the key it introduces are both margin-less blocks, so the column spaces them
+   itself. Arabic needs this more than English does: its taller line box brings the prompt's
+   descenders down to where the key's border starts. */
+.tmi-qr-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-inline-size: 0;
 }
 
 .tmi-shared-key {

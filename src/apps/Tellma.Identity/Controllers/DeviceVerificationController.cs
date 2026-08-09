@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Localization;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
 using System.Security.Claims;
@@ -29,11 +30,13 @@ namespace Tellma.Identity.Controllers
     /// <param name="userManager">The Identity user manager.</param>
     /// <param name="principalFactory">Protocol principal assembly.</param>
     /// <param name="auditLogger">Audit emission.</param>
+    /// <param name="localizer">UI strings.</param>
     public sealed class DeviceVerificationController(
         IOpenIddictApplicationManager applicationManager,
         UserManager<TellmaIdentityUser> userManager,
         TellmaPrincipalFactory principalFactory,
-        IAuditLogger auditLogger) : Controller
+        IAuditLogger auditLogger,
+        IStringLocalizer<SharedResources> localizer) : Controller
     {
         /// <summary>Renders the verification form, pre-filling a user code supplied in the URI.</summary>
         /// <returns>The verification view.</returns>
@@ -49,14 +52,28 @@ namespace Tellma.Identity.Controllers
                 ? result.Properties?.GetTokenValue(OpenIddictServerAspNetCoreConstants.Tokens.UserCode)
                 : null;
 
-            return string.IsNullOrEmpty(userCode)
-                ? View(new VerifyViewModel())
-                : View(new VerifyViewModel
+            if (!string.IsNullOrEmpty(userCode))
+            {
+                return View(new VerifyViewModel
                 {
                     UserCode = userCode,
                     ApplicationName = await GetApplicationNameAsync(result.Principal),
                     Scope = string.Join(' ', result.Principal!.GetScopes()),
                 });
+            }
+
+            // Nothing resolved. Distinguish the two ways that happens: arriving with no code is
+            // the ordinary entry point and just asks for one, but arriving *with* a code that did
+            // not resolve has to say so — re-rendering the bare form makes a mistyped code look
+            // like the page cleared itself, with nothing to indicate a retry is needed.
+            bool codeWasSubmitted = !string.IsNullOrEmpty(Request.Query[Parameters.UserCode]);
+            return View(codeWasSubmitted
+                ? new VerifyViewModel
+                {
+                    Error = Errors.InvalidToken,
+                    ErrorDescription = localizer["DeviceCodeInvalid"].Value,
+                }
+                : new VerifyViewModel());
         }
 
         /// <summary>Approves the device authorization, issuing the device its tokens on the next poll.</summary>

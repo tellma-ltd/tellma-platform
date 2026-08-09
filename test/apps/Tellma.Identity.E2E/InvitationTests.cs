@@ -75,6 +75,17 @@ namespace Tellma.Identity.E2E
                     await page.ContentAsync(),
                     StringComparison.Ordinal);
 
+                // Give the ambient account a passkey on this authenticator first. Without one the
+                // scenario proves less than it looks: the enrollment's exclude list is built from
+                // whichever user the options endpoint picked, and an empty list matches nothing,
+                // so options built for the wrong user still complete. With one, resolving the
+                // wrong user makes the authenticator refuse the ceremony outright — which is the
+                // shape the failure actually takes in a browser.
+                await page.GotoAsync("/Identity/Manage/Passkeys");
+                await page.GetByRole(AriaRole.Link, new() { Name = "Add a passkey" }).ClickAsync();
+                await page.GetByRole(AriaRole.Button, new() { Name = "Create a passkey" }).ClickAsync();
+                await page.WaitForURLAsync("**/Identity/Manage/Passkeys");
+
                 await page.GotoAsync("/Identity/Account/Invitation?code=" + Uri.EscapeDataString(token));
                 await page.GetByRole(AriaRole.Button, new() { Name = "Create a passkey" }).ClickAsync();
                 await page.WaitForURLAsync("**/Identity/Manage/Passkeys", new() { Timeout = 15000 });

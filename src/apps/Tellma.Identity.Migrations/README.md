@@ -12,8 +12,13 @@ per-deployment schema override is deliberately not supported.
 Add a migration (run from the repo root):
 
 ```bash
-dotnet ef migrations add <Name> --project src/apps/Tellma.Identity.Migrations --startup-project src/apps/Tellma.Identity.Web
+dotnet ef migrations add <Name> --project src/apps/Tellma.Identity.Migrations --startup-project src/apps/Tellma.Identity.Migrations
 ```
+
+This project is its own startup project. It ships the design-time factory, and its
+`Microsoft.EntityFrameworkCore.Design` reference is `PrivateAssets=all` so it does not flow to the
+hosts — naming a host as the startup project fails with "doesn't reference
+Microsoft.EntityFrameworkCore.Design".
 
 The design-time factory reads `TELLMA_IDENTITY_MIGRATIONS_SQL` for the connection string, falling
 back to a LocalDB default. It replicates the runtime Identity store options that shape the model

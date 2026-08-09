@@ -66,6 +66,16 @@ namespace Tellma.Identity.Options
         /// </summary>
         public string? PasskeyServerDomain { get; set; }
 
+        /// <summary>
+        ///     How long a terminated SSO session is kept before the prune sweep deletes its row.
+        ///     The row outlives the session so a user signing out can still see, for a while, what
+        ///     they signed out of; the audit trail is the durable record and is retained
+        ///     separately. Deployments with their own data-retention rules set this; the idle
+        ///     window that ends a session in the first place is not configurable here, because it
+        ///     is the SSO cookie's own lifetime.
+        /// </summary>
+        public TimeSpan SessionRetention { get; set; } = TimeSpan.FromDays(90);
+
         /// <summary>Token lifetimes.</summary>
         public TellmaIdentityLifetimeOptions Lifetimes { get; } = new TellmaIdentityLifetimeOptions();
 

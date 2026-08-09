@@ -118,22 +118,14 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         }
 
         /// <summary>
-        ///     Resolves the user this ceremony acts for.
-        ///     <para>
-        ///         The flow cookie outranks an ambient session, and the order matters. The cookie
-        ///         names the account a single-use token was redeemed for moments ago — a statement
-        ///         about <em>this</em> ceremony. A session only says who last signed in on this
-        ///         browser. Taking the session first is how an invitation opened on a machine
-        ///         already signed in as someone else enrolls the credential onto that someone
-        ///         else's account, having consumed the invited user's one-time link to get there.
-        ///     </para>
+        ///     Resolves the user this ceremony acts for. Shared with the endpoint that mints the
+        ///     creation options, because the account the options are built for and the account the
+        ///     credential is stored against have to be the same one.
         /// </summary>
         /// <returns>The user, or null when neither a flow nor a session identifies one.</returns>
-        private async Task<TellmaIdentityUser?> ResolveUserAsync()
+        private Task<TellmaIdentityUser?> ResolveUserAsync()
         {
-            return CredentialFlowCookie.GetUserId(HttpContext) is { } flowUserId
-                ? await userManager.FindByIdAsync(flowUserId)
-                : User.Identity?.IsAuthenticated == true ? await userManager.GetUserAsync(User) : null;
+            return CredentialCeremony.ResolveUserAsync(HttpContext, userManager);
         }
     }
 }

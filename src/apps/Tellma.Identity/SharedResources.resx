@@ -84,6 +84,9 @@
   <data name="DeviceCode" xml:space="preserve">
     <value>Enter the code shown on your device</value>
   </data>
+  <data name="DeviceCodeInvalid" xml:space="preserve">
+    <value>That code is invalid or has expired. Check the code on your device and try again.</value>
+  </data>
   <data name="DeviceConfirmPrompt" xml:space="preserve">
     <value>{0} is requesting access to your account. Approve this device?</value>
   </data>

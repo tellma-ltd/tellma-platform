@@ -39,7 +39,7 @@ else
        image's own text says what it is for, in the page's language. *@
     <div class="tmi-qr" role="group" aria-labelledby="authenticator-prompt">
         <img src="@Model.QrCodeDataUri" alt="@L["QrCodeAlt"]" width="128" height="128" />
-        <div>
+        <div class="tmi-qr-text">
             <p class="tmi-hint" id="shared-key-prompt">@L["SharedKeyPrompt"]</p>
             <code class="tmi-shared-key" aria-describedby="shared-key-prompt">@Model.SharedKey</code>
         </div>

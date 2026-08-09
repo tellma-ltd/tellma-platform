@@ -25,6 +25,12 @@ namespace Tellma.Identity.Data.Configurations
             // "Sign out everywhere" and the active-sessions page fan out per user.
             builder.HasIndex(static session => session.UserId);
 
+            // The prune sweep's two passes, in one index: the expiry pass seeks the null-terminated
+            // rows and ranges over LastSeenUtc within them, the retention pass ranges over
+            // TerminatedUtc alone. Both are tail scans against a table that only ever grows
+            // between sweeps, so neither should read the live sessions.
+            builder.HasIndex(static session => new { session.TerminatedUtc, session.LastSeenUtc });
+
             builder
                 .HasOne<TellmaIdentityUser>()
                 .WithMany()

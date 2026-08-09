@@ -7,6 +7,11 @@ using Tellma.Identity.Data.Entities;
 
 namespace Tellma.Identity.Services.Sessions
 {
+    /// <summary>The outcome of one prune sweep.</summary>
+    /// <param name="Expired">Active sessions marked terminated because their cookie has lapsed.</param>
+    /// <param name="Removed">Terminated session rows deleted past the retention window.</param>
+    public sealed record SessionPruneResult(int Expired, int Removed);
+
     /// <summary>
     ///     The <c>sid</c>-keyed session registry: which SSO sessions exist and which
     ///     distributions hold tokens under each. Backed by SQL behind this interface so a
@@ -55,5 +60,27 @@ namespace Tellma.Identity.Services.Sessions
         /// <param name="cancellationToken">Aborts the operation.</param>
         /// <returns>A task that completes when the acknowledgment is stored.</returns>
         Task MarkNotifiedAsync(string sid, string clientId, CancellationToken cancellationToken);
+
+        /// <summary>
+        ///     Records that an active session was just observed at the authority, so its idle
+        ///     clock tracks the SSO cookie's rather than lagging it. A terminated session is not
+        ///     revived: a request still carrying a signed-out cookie must not undo the sign-out.
+        /// </summary>
+        /// <param name="sid">The session identifier.</param>
+        /// <param name="cancellationToken">Aborts the operation.</param>
+        /// <returns>A task that completes when the timestamp is stored.</returns>
+        Task TouchAsync(string sid, CancellationToken cancellationToken);
+
+        /// <summary>
+        ///     Sweeps the store, in two passes: active sessions last seen before
+        ///     <paramref name="idleSince" /> are terminated, and sessions terminated before
+        ///     <paramref name="terminatedSince" /> are deleted outright.
+        /// </summary>
+        /// <param name="idleSince">Sessions last seen before this are treated as lapsed.</param>
+        /// <param name="terminatedSince">Sessions terminated before this are past retention.</param>
+        /// <param name="cancellationToken">Aborts the operation.</param>
+        /// <returns>How many rows each pass affected.</returns>
+        Task<SessionPruneResult> PruneAsync(
+            DateTimeOffset idleSince, DateTimeOffset terminatedSince, CancellationToken cancellationToken);
     }
 }

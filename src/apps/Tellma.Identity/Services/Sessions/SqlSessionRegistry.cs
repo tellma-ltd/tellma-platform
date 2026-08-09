@@ -142,6 +142,44 @@ namespace Tellma.Identity.Services.Sessions
                     cancellationToken);
         }
 
+        /// <inheritdoc />
+        public Task TouchAsync(string sid, CancellationToken cancellationToken)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(sid);
+
+            // The terminated filter is the whole reason this is not a plain load-and-set: a
+            // request arriving with a cookie for a session someone signed out of would otherwise
+            // stamp it as freshly seen.
+            return context.Set<IdentitySession>()
+                .Where(s => s.Sid == sid && s.TerminatedUtc == null)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(static s => s.LastSeenUtc, timeProvider.GetUtcNow()),
+                    cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public async Task<SessionPruneResult> PruneAsync(
+            DateTimeOffset idleSince, DateTimeOffset terminatedSince, CancellationToken cancellationToken)
+        {
+            // Both passes are set-based: a sweep can touch far more rows than the change tracker
+            // should hold, and neither pass needs the entities themselves.
+            int expired = await context.Set<IdentitySession>()
+                .Where(s => s.TerminatedUtc == null && s.LastSeenUtc < idleSince)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(static s => s.TerminatedUtc, timeProvider.GetUtcNow()),
+                    cancellationToken);
+
+            // Ordered after the expiry pass on purpose, and safely so: rows this sweep just
+            // terminated carry the current instant, which is never older than the retention
+            // cutoff, so nothing is created and destroyed in the same run. The client
+            // registrations cascade with the session row.
+            int removed = await context.Set<IdentitySession>()
+                .Where(s => s.TerminatedUtc != null && s.TerminatedUtc < terminatedSince)
+                .ExecuteDeleteAsync(cancellationToken);
+
+            return new SessionPruneResult(expired, removed);
+        }
+
         /// <summary>Bounds free-text columns to their configured lengths.</summary>
         private static string? Truncate(string? value, int maxLength)
         {

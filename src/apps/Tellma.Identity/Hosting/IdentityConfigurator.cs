@@ -4,13 +4,16 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using System.Security.Claims;
 using Tellma.Identity.Data;
 using Tellma.Identity.Options;
 using Tellma.Identity.Services.AuthenticationPolicy;
+using Tellma.Identity.Services.Sessions;
 
 namespace Tellma.Identity.Hosting
 {
@@ -33,6 +36,51 @@ namespace Tellma.Identity.Hosting
             SignInClaims.PasskeyDeviceBound,
             SignInClaims.PasskeyAuthTime,
         ];
+
+        /// <summary>
+        ///     Marks the session behind a still-valid cookie as seen, so the prune sweep measures
+        ///     idleness against the same activity the cookie's sliding expiry does.
+        ///     <para>
+        ///         Without this the registry only learns of a session at sign-in and when a client
+        ///         obtains tokens under it. A user who visits nothing but the account pages for a
+        ///         whole cookie lifetime would look idle, and the sweep would retire a session
+        ///         they are still signed into — quietly removing it from their devices list and
+        ///         from the reach of "sign out everywhere".
+        ///     </para>
+        ///     <para>
+        ///         Rate is bounded by the stamp validator, which is what sets
+        ///         <see cref="CookieValidatePrincipalContext.ShouldRenew" /> here and does so no
+        ///         more than once per validation interval per session, not once per request.
+        ///     </para>
+        /// </summary>
+        /// <param name="validation">The cookie validation in progress.</param>
+        /// <returns>A task that completes when the session has been marked, or skipped.</returns>
+        private static async Task TouchSessionAsync(CookieValidatePrincipalContext validation)
+        {
+            if (!validation.ShouldRenew
+                || validation.Principal?.Identity?.IsAuthenticated != true
+                || validation.Principal.FindFirst(TellmaClaims.Sid)?.Value is not { Length: > 0 } sid)
+            {
+                return;
+            }
+
+            HttpContext httpContext = validation.HttpContext;
+            try
+            {
+                ISessionRegistry registry = httpContext.RequestServices.GetRequiredService<ISessionRegistry>();
+                await registry.TouchAsync(sid, httpContext.RequestAborted);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // Bookkeeping, on the authentication path: a store that cannot take the write must
+                // not cost the user their request. The cost of losing one is that the session
+                // looks slightly staler than it is, bounded by the next successful touch.
+                SessionActivityLog.TouchFailed(
+                    httpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(IdentityConfigurator)),
+                    exception,
+                    sid);
+            }
+        }
 
         /// <summary>Registers Identity and its cookie/passkey configuration.</summary>
         /// <param name="services">The service collection.</param>
@@ -83,6 +131,14 @@ namespace Tellma.Identity.Hosting
                 cookie.AccessDeniedPath = prefix + "/Identity/Account/AccessDenied";
                 cookie.ExpireTimeSpan = TimeSpan.FromDays(14);
                 cookie.SlidingExpiration = true;
+
+                // Assigning the event replaces Identity's default handler, so the stamp validation
+                // it wires up is reinstated by hand before the addition.
+                cookie.Events.OnValidatePrincipal = async validation =>
+                {
+                    await SecurityStampValidator.ValidatePrincipalAsync(validation);
+                    await TouchSessionAsync(validation);
+                };
             });
 
             services.Configure<SecurityStampValidatorOptions>(static validator =>
@@ -156,5 +212,16 @@ namespace Tellma.Identity.Hosting
                 });
             }
         }
+    }
+
+    /// <summary>Source-generated log messages for the SSO cookie's session bookkeeping.</summary>
+    internal static partial class SessionActivityLog
+    {
+        /// <summary>Recording a session as seen failed, and was swallowed.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The store failure.</param>
+        /// <param name="sid">The session that could not be marked.</param>
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Could not record activity for session {Sid}.")]
+        public static partial void TouchFailed(ILogger logger, Exception exception, string sid);
     }
 }

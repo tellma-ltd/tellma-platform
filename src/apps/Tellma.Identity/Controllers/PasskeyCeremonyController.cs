@@ -26,15 +26,16 @@ namespace Tellma.Identity.Controllers
     {
         /// <summary>
         ///     Produces creation (attestation) options for enrolling a new passkey. The subject is
-        ///     the authenticated user, or — during invitation/recovery — the user identified by the
-        ///     flow context established when the single-use link was consumed.
+        ///     the user identified by an in-flight credential flow (invitation, recovery, dev
+        ///     bootstrap), falling back to the authenticated user enrolling for themselves — the
+        ///     same order the handler that stores the result applies.
         /// </summary>
         /// <returns>The WebAuthn creation options JSON.</returns>
         [HttpPost("Identity/api/passkey/creation-options")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> CreationOptions()
         {
-            TellmaIdentityUser? user = await ResolveCeremonyUserAsync();
+            TellmaIdentityUser? user = await CredentialCeremony.ResolveUserAsync(HttpContext, userManager);
             if (user is null)
             {
                 return Forbid();
@@ -66,21 +67,6 @@ namespace Tellma.Identity.Controllers
         {
             string options = await signInManager.MakePasskeyRequestOptionsAsync(user: null);
             return Content(options, "application/json");
-        }
-
-        /// <summary>Resolves the user a passkey-creation ceremony is for.</summary>
-        private async Task<TellmaIdentityUser?> ResolveCeremonyUserAsync()
-        {
-            // Authenticated users (Account &amp; Security) enroll for themselves.
-            if (User.Identity?.IsAuthenticated == true)
-            {
-                return await userManager.GetUserAsync(User);
-            }
-
-            // Unauthenticated enrollment (invitation, recovery, dev bootstrap) is scoped to the
-            // user id the consumed single-use link established in the flow cookie.
-            string? userId = CredentialFlowCookie.GetUserId(HttpContext);
-            return userId is null ? null : await userManager.FindByIdAsync(userId);
         }
     }
 }

@@ -41,8 +41,12 @@
             <circle cx="94" cy="118" r="2.5" /><circle cx="112" cy="148" r="1.9" />
             <circle cx="128" cy="178" r="1.4" />
         </g>
-        <circle class="tmi-ink-halo" cx="14" cy="20" r="13" />
-        <circle class="tmi-ink-comet" cx="14" cy="20" r="7" />
+        @* The head sits far enough inside the viewBox for its halo to breathe: an <svg> clips at
+           its viewport, and the halo pulses to 1.19 x its 13 radius, so anything closer than
+           ~16 to an edge loses a sliver at the top of every cycle. Keep cx and cy above that
+           if either the radius or the keyframe's scale changes. *@
+        <circle class="tmi-ink-halo" cx="18" cy="22" r="13" />
+        <circle class="tmi-ink-comet" cx="18" cy="22" r="7" />
     </svg>
 
     <div class="tmi-ink-stack">

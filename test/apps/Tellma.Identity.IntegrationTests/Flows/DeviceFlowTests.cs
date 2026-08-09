@@ -105,6 +105,61 @@ namespace Tellma.Identity.IntegrationTests.Flows
             return document.RootElement.GetProperty("error").GetString();
         }
 
+        [Fact]
+        public async Task A_user_code_that_does_not_resolve_says_so_instead_of_clearing_the_form()
+        {
+            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iddevbad", CliSeed);
+            await TestData.CreateActiveUserAsync(factory, "gina@example.com");
+
+            using OidcFlowClient flow = new(factory);
+
+            // The page is [Authorize], so reaching it at all means signing in first.
+            string verifyUrl = "/connect/verify?user_code=" + Uri.EscapeDataString("WRONGCODE");
+            string loginUrl;
+            using (HttpResponseMessage challenge = await flow.Browser.GetAsync(
+                new Uri(verifyUrl, UriKind.Relative), TestContext.Current.CancellationToken))
+            {
+                loginUrl = challenge.Headers.Location!.ToString();
+            }
+
+            string afterLogin = await flow.SignInWithEmailCodeAsync("gina@example.com", loginUrl);
+            using HttpResponseMessage verifyPage = await flow.Browser.GetAsync(
+                new Uri(afterLogin, UriKind.RelativeOrAbsolute), TestContext.Current.CancellationToken);
+            string html = await verifyPage.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+            // A code was typed and rejected. The entry form comes back — that part is right — but
+            // it has to come back carrying the reason, or the retry looks like the first attempt.
+            Assert.Contains("That code is invalid or has expired", html, StringComparison.Ordinal);
+            Assert.Contains("tmi-notice-error", html, StringComparison.Ordinal);
+            Assert.Contains("name=\"user_code\"", html, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task Arriving_with_no_user_code_asks_for_one_without_an_error()
+        {
+            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iddevnone", CliSeed);
+            await TestData.CreateActiveUserAsync(factory, "hana@example.com");
+
+            using OidcFlowClient flow = new(factory);
+
+            string loginUrl;
+            using (HttpResponseMessage challenge = await flow.Browser.GetAsync(
+                new Uri("/connect/verify", UriKind.Relative), TestContext.Current.CancellationToken))
+            {
+                loginUrl = challenge.Headers.Location!.ToString();
+            }
+
+            string afterLogin = await flow.SignInWithEmailCodeAsync("hana@example.com", loginUrl);
+            using HttpResponseMessage verifyPage = await flow.Browser.GetAsync(
+                new Uri(afterLogin, UriKind.RelativeOrAbsolute), TestContext.Current.CancellationToken);
+            string html = await verifyPage.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+            // The ordinary entry point. Nothing was rejected, so nothing is reported — otherwise
+            // every arrival from a device would open on an error.
+            Assert.DoesNotContain("tmi-notice-error", html, StringComparison.Ordinal);
+            Assert.Contains("name=\"user_code\"", html, StringComparison.Ordinal);
+        }
+
         /// <summary>Signs the user in and approves the device user code in the browser.</summary>
         private static async Task ApproveUserCodeAsync(OidcFlowClient flow, string userCode, string email)
         {
