@@ -85,12 +85,24 @@ namespace Tellma.Identity.IntegrationTests.Api
             string feminine = await WaitForBodyAsync(factory, "hana@example.com");
             string neutral = await WaitForBodyAsync(factory, "sam@example.com");
 
-            // Nothing in the invitation body is gendered yet, so both read the same today. What
-            // this pins is that the rendering path resolves the select rather than leaking ICU
-            // syntax into a delivered email — the failure this feature could plausibly ship with.
+            // The imperative that opens the invitation is the gendered word. Asserted on the
+            // feminine form rather than the masculine one, because the masculine is a prefix of
+            // the feminine — "contains the masculine" is true of both and would pass whatever the
+            // recipient's setting did.
+            Assert.Contains("افتحي", feminine, StringComparison.Ordinal);
+            Assert.DoesNotContain("افتحي", neutral, StringComparison.Ordinal);
+            Assert.Contains("افتح", neutral, StringComparison.Ordinal);
+
+            // And the select resolves rather than reaching a mailbox as raw ICU syntax, which is
+            // how this feature would most plausibly break: the formatter swallows a malformed
+            // pattern and returns it verbatim.
             Assert.DoesNotContain("{gender", feminine, StringComparison.Ordinal);
             Assert.DoesNotContain("{gender", neutral, StringComparison.Ordinal);
             Assert.DoesNotContain("select,", feminine, StringComparison.Ordinal);
+
+            // The link still substitutes: positional arguments and a gender select share one
+            // pattern here for the first time, and ICU resolves both from the same argument bag.
+            Assert.Contains("/Identity/Account/Invitation", feminine, StringComparison.Ordinal);
         }
 
         /// <summary>Waits for the queued invitation to be delivered and returns its body.</summary>
