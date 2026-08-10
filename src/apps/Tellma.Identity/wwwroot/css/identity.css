@@ -1393,6 +1393,16 @@ code,
     color: var(--text-secondary);
   }
 
+  /* The address carries dir="ltr" because it is data, not prose: it must read left to right
+     whatever the page does, and it must run out of room at its own end so a narrow rail eats
+     the domain rather than the local part that names the account. That direction also decides
+     where a short address sits, which left it hugging the left edge under a right-aligned name.
+     Aligning to the element's own end — the right, since the element is ltr — puts it back
+     under the name without touching how it reads or how it truncates. */
+  [dir="rtl"] .tmi-nav-user-email {
+    text-align: end;
+  }
+
   .tmi-nav-list {
     flex-direction: column;
     gap: 0;

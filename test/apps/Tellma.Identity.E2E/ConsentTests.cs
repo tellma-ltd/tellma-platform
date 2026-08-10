@@ -58,7 +58,13 @@ namespace Tellma.Identity.E2E
                 // what the browser refused, so report both rather than a bare timeout.
                 try
                 {
-                    await page.WaitForURLAsync(callbackUri + "*", new() { Timeout = 10000 });
+                    // Commit, not load: the claim under test is that the browser followed the
+                    // redirect, which is settled the moment it commits to the callback URL. Waiting
+                    // for the callback document to finish loading adds the stub endpoint's response
+                    // time to a budget sized for the refusal case, and times out on a slow machine
+                    // having already proved the thing it was checking.
+                    await page.WaitForURLAsync(
+                        callbackUri + "*", new() { Timeout = 10000, WaitUntil = WaitUntilState.Commit });
                 }
                 catch (TimeoutException)
                 {

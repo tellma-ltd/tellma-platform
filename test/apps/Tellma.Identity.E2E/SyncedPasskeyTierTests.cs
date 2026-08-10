@@ -63,6 +63,8 @@ namespace Tellma.Identity.E2E
                     await page.GetByRole(AriaRole.Button, new() { Name = "Sign out" }).ClickAsync();
                     await page.WaitForURLAsync("**/Identity/Account/LoggedOut");
 
+                    await AllowOneCeremonyAsync(page);
+
                     // Sign in against a request demanding aal3 — the tier the authorization
                     // endpoint puts on the login URL when it needs a device-bound credential.
                     await page.GotoAsync(
@@ -85,15 +87,42 @@ namespace Tellma.Identity.E2E
         }
 
         /// <summary>
-        ///     Drives the passkey ceremony on the login page until the device-bound refusal shows.
+        ///     Lets exactly one passkey assertion be attempted from here on, by refusing every
+        ///     request for assertion options after the first.
         ///     <para>
-        ///         The login page offers the conditional ceremony again on every load, and the
-        ///         virtual authenticator answers it with no prompt, so a refused attempt becomes
-        ///         the next attempt and the page navigates almost continuously. The refusal is
-        ///         therefore awaited with Playwright's own retrying wait, which re-resolves the
-        ///         locator across those navigations; a hand-rolled poll spends each pass racing
-        ///         one, and under load never lands on a still page at all.
+        ///         The login page offers the conditional ceremony afresh on every load, and this
+        ///         authenticator is virtual, so it answers with no prompt a human would have to
+        ///         satisfy. A refused attempt therefore renders the error and immediately becomes
+        ///         the next attempt: the page never settles, and the refusal exists only in the
+        ///         gaps between navigations. Capping the ceremonies leaves the first refusal on
+        ///         screen to be read. It costs the test nothing — one synced assertion presented
+        ///         once is exactly the case under test — and a real browser does not loop, because
+        ///         conditional mediation there waits for the user to pick a credential.
         ///     </para>
+        /// </summary>
+        /// <param name="page">The page to constrain.</param>
+        /// <returns>A task that completes when the route is in place.</returns>
+        private static async Task AllowOneCeremonyAsync(IPage page)
+        {
+            int attempts = 0;
+            await page.RouteAsync("**/Identity/api/passkey/assertion-options", async route =>
+            {
+                if (Interlocked.Increment(ref attempts) > 1)
+                {
+                    await route.AbortAsync();
+                }
+                else
+                {
+                    await route.ContinueAsync();
+                }
+            });
+        }
+
+        /// <summary>
+        ///     Waits for the device-bound refusal on the login page. Whichever ceremony ran — the
+        ///     conditional one the page starts on load, or the explicit button where conditional
+        ///     mediation is unavailable — the single attempt allowed produces the message, and the
+        ///     page then stays put.
         /// </summary>
         private static async Task DriveCeremonyUntilRefusedAsync(IPage page)
         {
@@ -103,12 +132,13 @@ namespace Tellma.Identity.E2E
 
             try
             {
-                await error.WaitForAsync(new() { Timeout = 30000 });
+                await error.WaitForAsync(new() { Timeout = 15000 });
                 return;
             }
             catch (TimeoutException)
             {
-                // Conditional mediation was never offered, so drive the explicit button instead.
+                // Conditional mediation was never offered, so the allowance is still unspent and
+                // the explicit button gets it.
             }
 
             await page.GetByRole(AriaRole.Button, new() { Name = "Sign in with a passkey" }).ClickAsync();
