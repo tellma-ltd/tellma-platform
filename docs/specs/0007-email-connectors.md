@@ -88,6 +88,7 @@ delivery events, batch semantics) that only make full sense with the outbox in v
 |---|---|---|
 | Email contract (§1.2–§1.4) | `Tellma.Core.Abstractions` | `Tellma.Core.Abstractions.Email` |
 | Webhook contract (§1.5) | `Tellma.Core.Abstractions` | `Tellma.Core.Abstractions.Webhooks` |
+| Deployment identity (§1.6) | `Tellma.Core.Abstractions` | `Tellma.Core.Abstractions.Hosting` |
 | Sandbox-context seam (§3.1) | `Tellma.Core.Abstractions` | `Tellma.Core.Abstractions.Tenancy` |
 | Email pipeline: routing, selection, guard, log sink, dispatcher (§2, §3, §7) | `Tellma.Core.Email` | `Tellma.Core.Email` |
 | Webhook fronting (§6) | `Tellma.Core.Webhooks` | `Tellma.Core.Webhooks` |
@@ -267,9 +268,8 @@ Contract notes:
   (only it knows who the recipients are), so the contract makes it **required with no default** —
   it cannot be forgotten, only stated, and every statement is visible in review and greppable in
   audit. §3 defines what the pipeline does with it.
-- On the wire, adapters prefix the canonical correlation form with the deployment's fleet-unique
-  id (§5.4) — an envelope the contract type never sees, stripped and validated on the way back
-  in.
+- On the wire, adapters prefix the canonical correlation form with the deployment id (§1.6,
+  §5.4) — an envelope the contract type never sees, stripped and validated on the way back in.
 
 ### 1.3 Sending
 
@@ -279,7 +279,8 @@ namespace Tellma.Core.Abstractions.Email;
 /// <summary>The per-message outcome of a send attempt.</summary>
 public enum EmailSendOutcome
 {
-    /// <summary>Accepted by the transport. Terminal unless the result expects delivery events.</summary>
+    /// <summary>Accepted by the transport for real delivery toward the recipient. Terminal
+    ///     unless the result expects delivery events.</summary>
     Sent,
 
     /// <summary>Failed in a way that may succeed later (throttling, connection loss mid-batch);
@@ -290,14 +291,16 @@ public enum EmailSendOutcome
     Rejected,
 
     /// <summary>
-    ///     Withheld with no wire activity: the sandbox policy suppressed an externally-audienced
-    ///     message that has no sandbox channel. Success-class and terminal — consumers treat it
-    ///     as success for workflow purposes (branch failure handling on
+    ///     Handled by the sandbox policy instead of being delivered: routed to the transport's
+    ///     sandbox channel (a provider validation mode, a mail trap) or withheld with no wire
+    ///     activity — either way, no real email went out to the recipient. Success-class and
+    ///     terminal: workflows treat it as success (failure handling branches on
     ///     <see cref="TransientFailure"/> and <see cref="Rejected"/>, never on inequality with
-    ///     <see cref="Sent"/>) but may surface it distinctly: an outbox row reads "suppressed",
-    ///     not "sent". Emitted only by the platform routing policy; transports never produce it.
+    ///     <see cref="Sent"/>), while user-facing status may render it distinctly — a sandbox
+    ///     tenant's outbox reads "sandboxed", not "sent". Emitted only by the platform routing
+    ///     policy; transports never produce it.
     /// </summary>
-    Suppressed,
+    Sandboxed,
 }
 
 /// <summary>The outcome of one message in a send batch, positional to the input list.</summary>
@@ -310,9 +313,9 @@ public enum EmailSendOutcome
 /// <param name="ExpectsDeliveryEvents">True when delivery events may still arrive for this
 ///     message: it went out on the live channel of a transport whose delivery webhook is
 ///     configured, and it carries a correlation for events to return to. False otherwise —
-///     sandbox-delivered, suppressed, uncorrelated, or eventless-transport mail is terminal at
-///     its send outcome. Per message, because one batch can mix both (an internal and an
-///     external message of a sandbox tenant).</param>
+///     sandboxed, uncorrelated, or eventless-transport mail is terminal at its send outcome.
+///     Per message, because one batch can mix both (an internal and an external message of a
+///     sandbox tenant).</param>
 public sealed record EmailSendResult(
     EmailSendOutcome Outcome,
     string? ProviderMessageId = null,
@@ -559,6 +562,53 @@ The host constructing `WebhookRequest` guarantees `Headers` and `QueryParams` us
 ordinal-case-insensitive key comparers, so receivers index them without defensive re-wrapping
 (§6).
 
+### 1.6 Deployment identity
+
+```csharp
+namespace Tellma.Core.Abstractions.Hosting;
+
+/// <summary>
+///     Identifies this running deployment across the fleet. Registered once at composition as a
+///     singleton; consumed by any feature that must name the deployment durably or on a wire —
+///     the email correlation envelope, export file naming, future connectors.
+/// </summary>
+/// <remarks>
+///     Deliberately not configuration: the application half is a compile-time constant of the
+///     composition — an app knows its own name the way it knows its assembly name, and
+///     configuration would let two deployments claim each other by mistake — while the
+///     environment half comes from the host at startup. Pipelines that depend on it (email)
+///     validate at startup that an instance is registered.
+/// </remarks>
+/// <param name="Application">The deployable's hardcoded name: a distribution's slug
+///     ("etpharma"), "identity" for the identity server. Lowercase letters, digits, and
+///     hyphens; validated in the constructor.</param>
+/// <param name="EnvironmentName">The host environment name
+///     (<c>IHostEnvironment.EnvironmentName</c>).</param>
+public sealed record DeploymentIdentity(string Application, string EnvironmentName)
+{
+    /// <summary>
+    ///     The fleet-unique deployment id: <see cref="Application"/> alone in Production,
+    ///     environment-qualified (lowercased) otherwise — "etpharma", "etpharma-staging",
+    ///     "identity-development". Lowercase kebab-case and colon-free, safe for wire envelopes
+    ///     and file names; validated in the constructor.
+    /// </summary>
+    public string DeploymentId { get; }
+}
+```
+
+Every composition registers it with its own hardcoded name — one line the distribution template
+scaffolds:
+
+```csharp
+services.AddSingleton(new DeploymentIdentity("etpharma", builder.Environment.EnvironmentName));
+```
+
+Production stays unqualified so the id reads as the slug everywhere ids surface; every other
+environment is qualified automatically, which is what keeps a staging deployment's wire artifacts
+(§5.4) from ever colliding with production's. The type lives in
+`Tellma.Core.Abstractions.Hosting`, not in email options, because the id is a platform concern —
+email is merely its first consumer.
+
 ## 2. Composition and configuration
 
 ### 2.1 The registration model
@@ -587,7 +637,7 @@ namespace Tellma.Core.Abstractions.Email;
 ///     configuration.</param>
 /// <param name="Sandbox">Creates the sandbox-delivery sender — the transport's no-real-delivery
 ///     channel (a validation-only provider mode, a mail-trap host) — or null when the transport
-///     has none, in which case the pipeline suppresses external sandbox mail itself.</param>
+///     has none, in which case the pipeline withholds external sandbox mail itself.</param>
 public sealed record EmailTransportRegistration(
     string Name,
     Func<IServiceProvider, IEmailSender> Live,
@@ -624,8 +674,8 @@ the pipeline fails loudly when:
   typo ("sendgird") is a one-glance fix.
 - Two transports register the same name, or a transport name is not lowercase kebab-case.
 - The active provider is `log-sink` outside the Development environment (§2.4).
-- `Email:Deployable` is missing outside the Development environment (§5.4 — the correlation wire
-  envelope and cross-deployment event protection key on it).
+- No `DeploymentIdentity` is registered (§1.6 — the correlation wire envelope and
+  cross-deployment event protection key on it).
 - No `ISandboxContext` implementation is registered (§3.1).
 
 Validation also **resolves the active transport's factories once**, so the active adapter's own
@@ -641,15 +691,6 @@ config is legal as long as SendGrid is not the active provider.
     // Which transport sends mail: "sendgrid" | "smtp" | "log-sink" (case-insensitive).
     // Required outside Development; Development defaults to "log-sink".
     "Provider": "sendgrid",
-
-    // Fleet-unique id of this deployment, environment-qualified where a slug repeats
-    // ("etpharma", "etpharma-staging", "identity"). Stamped into the correlation wire
-    // envelope and checked on inbound events (§5.4). Required outside Development.
-    "Deployable": "etpharma",
-
-    // "Normal" routes per tenant category and audience (§3.3); "ForceSandbox" routes
-    // every message through the sandbox channel regardless — the staging posture (§3.5).
-    "Delivery": "Normal",
 
     "SendGrid": {
       "ApiKey": "<from Key Vault>",
@@ -670,7 +711,7 @@ config is legal as long as SendGrid is not the active provider.
       "Password": "<from Key Vault>",
       "From": { "Address": "no-reply@contoso.com", "DisplayName": "Contoso ERP" },
       // Optional sandbox-delivery channel: a mail-trap host (e.g. Mailpit) that
-      // receives external sandbox-tenant mail. Absent → such mail is suppressed (§3.3).
+      // receives external sandbox-tenant mail. Absent → such mail is withheld (§3.3).
       "Sandbox": { "Host": "mailtrap.staging.local", "Port": 1025, "SecureSocket": "None" }
     }
   }
@@ -706,9 +747,9 @@ does not exist.
 `LogSinkEmailSender` (in `Tellma.Core.Email`, registered by `AddTellmaEmail()` as the `"log-sink"`
 transport) writes every message to `ILogger` — recipients, subject, full text body, attachment
 names and sizes (never attachment content), audience, correlation — where developers and tests
-read it. It reports every message `Sent` with `ExpectsDeliveryEvents` false. Its `Sandbox` factory
-returns the same sink: in development, external sandbox mail is also worth seeing, and the log
-line's delivery tag (§8.2) distinguishes it.
+read it. It reports every message `Sent` with `ExpectsDeliveryEvents` false. Its `Sandbox`
+factory returns the sink parameterized as the sandbox channel: in development, external sandbox
+mail is also worth seeing, and the log line names the channel that carried each message.
 
 It is the Development default (no configuration needed on a fresh clone) and is useful beyond
 first-run: E2E suites scrape codes and links from it (the identity server's suites already do).
@@ -724,9 +765,8 @@ first-run: E2E suites scrape codes and links from it (the identity server's suit
    the last tripwire.
 
 Staging is deliberately included in the ban: it exists to be a faithful replica of production,
-which a log sink is not — staging runs a real transport in its sandbox posture (§3.5). A
-deployment that must never email anyone configures a real transport under `ForceSandbox` or an
-SMTP mail trap, not the sink.
+which a log sink is not — staging sends through the real pipeline into a mail trap (§3.5). A
+deployment that must never email anyone points the SMTP transport at a trap, not at the sink.
 
 ## 3. Sandbox tenants — routing, marking, suppression
 
@@ -787,15 +827,13 @@ on the way to the transport. No send bypasses it because the router *is* the reg
 ### 3.3 The routing policy
 
 `EmailRouter` (scoped; the sole DI `IEmailSender`) resolves the active transport's live — and,
-lazily, sandbox — senders once, then applies per batch. `Email:Delivery` is consulted first:
-under `ForceSandbox` (§3.5) **every** message — any tenant, any audience — takes the sandbox
-path of the matrix's last row, unmarked, since nothing reaches a real inbox. Under `Normal`:
+lazily, sandbox — senders once, then applies per batch:
 
 | Tenant | Audience | What happens |
 |---|---|---|
 | Live | Internal or External | Passed through to the **live** sender untouched. |
 | Sandbox | Internal | **Marked** (below), then sent via the **live** sender — real mail to real staff, visibly test-originated. |
-| Sandbox | External | Sent via the transport's **sandbox** sender when registered (SendGrid validation mode §5.2, SMTP mail-trap §4.4); otherwise **suppressed**: no wire activity, outcome `Suppressed`. |
+| Sandbox | External | Sent via the transport's **sandbox** sender when registered (SendGrid validation mode §5.2, SMTP mail-trap §4.4), or **withheld** with no wire activity when none is. Either way the reported outcome is `Sandboxed`. |
 
 Mechanics:
 
@@ -813,18 +851,21 @@ Mechanics:
   - The marker text is **fixed English, not localized**: it is an operational token, recognizable
     and filterable across every locale, and localizing it would demand a locale decision the
     router cannot make (message locale is not carried on the contract).
-- **Suppression** returns `Suppressed` per message — success-class and terminal, so calling
-  workflows proceed exactly as if sent, while the record stays honest: an outbox row or
-  per-document email UI can read "suppressed" instead of claiming a sandbox tenant's customer
-  invoice was "sent". Users of a sandbox tenant know they are in one; a truthful status is less
-  alarming than a false `Sent`, and it is auditable. The hazard is consumer code testing
-  equality with `Sent` — the contract's stated rule is that failure handling branches on
-  `TransientFailure`/`Rejected` (§1.3). `ProviderMessageId` is null; telemetry mirrors the
-  outcome (§8).
+- **`Sandboxed` means exactly "no real email went out to the recipient"**, whatever the
+  mechanism. Results returned by the sandbox channel have their success outcome rewritten
+  `Sent` → `Sandboxed` by the router (failures pass through unchanged; a sandbox-channel result
+  may carry a `ProviderMessageId`, a withheld one never does); withheld messages get `Sandboxed`
+  directly. One outcome value, because to the person testing on a sandbox tenant the two
+  mechanisms are the same event — the recipient received nothing — and a status that sometimes
+  said "sent" for provider-validated mail would misreport precisely the case that matters
+  (a customer invoice). Success-class and terminal: workflows proceed exactly as if sent, the
+  contract's rule being that failure handling branches on `TransientFailure`/`Rejected` (§1.3),
+  while status UIs render the truth. The rewrite lives in the router so adapters stay
+  policy-free (§3.2); telemetry mirrors the outcome and separately records the wire mechanism
+  (§8).
 - **`ExpectsDeliveryEvents`** arrives already set by the adapter on live-channel results (§5.2)
-  and is false on everything else: sandbox-delivered and suppressed mail generates no delivery
-  events even on an events-capable transport — nothing real was delivered — so those messages
-  are terminal at their send outcome.
+  and is false on every `Sandboxed` result: nothing real was delivered, so no delivery event
+  will ever arrive and the send outcome is final.
 
 ### 3.4 The pattern for future connectors
 
@@ -832,9 +873,10 @@ Restating the general rule this section instantiates, since this spec is the pre
 connector with external side effects ships **live and sandbox channels as explicit configuration**
 (the sandbox channel using the provider's sandbox facility where one exists), consults
 `ISandboxContext` through a central policy component owned by the platform — never scattered
-through business logic — and **suppresses with an explicit success-class outcome** when a sandbox
-tenant invokes a side effect the provider offers no sandbox for: workflows proceed as in
-production, while the result, records, and telemetry all state the truth.
+through business logic — and reports every sandbox-policy interception as **one explicit
+success-class outcome meaning "nothing real happened"**, whether the provider simulated the call
+or the platform withheld it: workflows proceed as in production, while the result, records, and
+telemetry all state the truth.
 
 ### 3.5 Environment profiles
 
@@ -843,15 +885,24 @@ The same binaries serve every environment; only configuration differs. The stand
 | Environment | Configuration | Effect |
 |---|---|---|
 | Development | nothing — defaults | `log-sink`: every message logged, nothing sent. Mailpit over the SMTP transport when rendered mail matters (§4.4). |
-| Staging | the production transport + `Delivery: ForceSandbox` | The full production pipe — credentials, payload validation, telemetry — with zero deliverability: SendGrid validates via sandbox mode, SMTP delivers to its configured trap, channel-less transports suppress. All tenants, all audiences. |
-| Production | the production transport, `Delivery: Normal` | The §3.3 matrix. |
+| Staging | `Provider: smtp`, live **and** sandbox sections pointed at the staging mail trap | The application runs exactly its production behavior — the §3.3 routing, sandbox-tenant marking, the real send pipeline — while every message that leaves the process is intercepted at the wire and stored where internal users and E2E suites can read it. |
+| Production | the production transport | The §3.3 matrix, for real. |
 
-Staging exists to rehearse a release against production's shape, so it runs production's
-transport rather than a substitute, and `ForceSandbox` is what makes that safe — a pure
-configuration switch, because staging and production run identical builds. When a staging test
-must *read* delivered mail (an E2E asserting an invoice email's rendered content), the SMTP
-transport pointed at a staging Mailpit trades transport fidelity for readable delivery; suites
-that only assert sending behavior read telemetry or in-process capture (§11.4) instead.
+Staging's defining constraint is that its mail must be **interceptable and readable, not
+absent**: internal users sign into staging with emailed codes, and E2E suites assert on message
+content — so a posture that silently validates-and-discards (a provider sandbox mode) would lock
+everyone out of the very instance they are testing. Interception at the wire is what SMTP
+mail-trapping *is*: the trap (Mailpit — SMTP endpoint in, authenticated web UI and REST API out)
+plays the smarthost, the application neither knows nor cares, and the routing/marking logic runs
+identically to production. Pointing the SMTP `Sandbox` section at the same trap keeps
+sandbox-tenant external mail visible there too (its results still report `Sandboxed`). The trap
+must be reachable only inside the staging network and requires authentication — it holds sign-in
+codes. What this posture gives up is the last wire hop of the production transport (staging does
+not exercise the SendGrid adapter against the live API); that contract is covered by the nightly
+gated live suite (§11.3), which is a better fidelity instrument than staging traffic anyway.
+This applies uniformly to distribution deployments, the standalone identity server's staging
+instance, and staging distros embedding identity in-proc — all of them just carry the trap SMTP
+config.
 
 ## 4. The SMTP connector — `Tellma.Connector.Smtp.Adapter`
 
@@ -920,9 +971,9 @@ exist on-prem); `From` required (§2.3); `TimeoutSeconds` defaults to 30.
 When `Email:Smtp:Sandbox` is present, the adapter registers a sandbox sender: the same
 implementation bound to the sandbox host/port/credentials — pointed at a mail-trap (a staging
 Mailpit, an internal catch-all relay) so external sandbox-tenant mail is inspectable instead of
-delivered. When absent, the registration's `Sandbox` factory is null and the router suppresses
-(§3.3). The trap's `From` falls back to the live `From` when the sandbox section doesn't override
-it.
+delivered. When absent, the registration's `Sandbox` factory is null and the router withholds
+the mail (outcome `Sandboxed`, §3.3). The trap's `From` falls back to the live `From` when the
+sandbox section doesn't override it.
 
 The same mechanism doubles as the local-dev inspection path: a developer who wants to see real
 rendered mail (instead of log-sink text) runs Mailpit — the actively maintained standard local
@@ -981,13 +1032,14 @@ Payload mapping:
 | `Subject` | `subject` |
 | `TextBody`, `HtmlBody` | `content` array — `text/plain` first, then `text/html` (SendGrid requires that order) |
 | `Attachments` | `attachments[]`, base64; `ContentId` present → `disposition: "inline"` + `content_id` |
-| `Correlation` | `custom_args`: `{ "tellma_correlation": "<deployable>:<canonical form>" }` — the configured `Email:Deployable` prefixed as the wire envelope (§5.4); a few dozen bytes against the 10,000-byte custom-args cap |
+| `Correlation` | `custom_args`: `{ "tellma_correlation": "<deployment id>:<canonical form>" }` — the `DeploymentIdentity.DeploymentId` (§1.6) prefixed as the wire envelope (§5.4); a few dozen bytes against the 10,000-byte custom-args cap |
 | (router-selected sandbox channel) | `mail_settings.sandbox_mode.enable: true` |
 
 The sandbox channel (§3.3) is the live client plus `sandbox_mode`: SendGrid validates the full
 payload, consumes no credits, never delivers, and emits **no** webhook events — the provider's
 purpose-built no-delivery mode, needing no configuration of its own (§2.2). It returns 200 rather
-than the normal 202; the adapter treats any 2xx as `Sent`.
+than the normal 202; the adapter treats any 2xx as `Sent`, which the router then surfaces as
+`Sandboxed` (§3.3).
 
 Outcome mapping, per request:
 
@@ -1037,10 +1089,10 @@ Handling, in order:
    `ProviderEventId` = `sg_event_id` (documented unique, ≤ 100 chars, the recommended dedupe
    key), `Reason` = `reason` where present, `RawType` = `event` verbatim. The
    `tellma_correlation` custom arg is split on its **envelope**: the leading segment names the
-   deployable that sent the message; when it differs from this deployment's `Email:Deployable`
-   the event is **foreign** — dropped before dispatch and metered (§8.1), routine background
-   under shared provider credentials (§5.5) and a misrouted-dashboard signal under dedicated
-   ones. Otherwise `Correlation` = `EmailCorrelation.TryParse` of the remainder (absent or
+   deployment that sent the message; when it differs from this deployment's
+   `DeploymentIdentity.DeploymentId` (§1.6) the event is **foreign** — dropped before dispatch
+   and metered (§8.1), routine background under shared provider credentials (§5.5) and a
+   misrouted-dashboard signal under dedicated ones. Otherwise `Correlation` = `EmailCorrelation.TryParse` of the remainder (absent or
    unparsable → null; SendGrid documents that delayed/asynchronous bounces can arrive without
    the send's metadata, so uncorrelated bounces are expected background, handled by §7's
    metering). Type map: `delivered` → `Delivered`, `deferred` → `Deferred`, `bounce` →
@@ -1167,7 +1219,7 @@ Two meters, `Tellma.Email` and `Tellma.Webhooks` (one per emitting package), cre
 
 | Instrument | Type | Unit | Tags |
 |---|---|---|---|
-| `tellma.email.sent.messages` | Counter | `{message}` | `email.transport`, `email.outcome` (`sent` \| `transient_failure` \| `rejected` \| `suppressed`), `email.audience` (`internal` \| `external`), `email.delivery` (`live` \| `sandbox` \| `suppressed`), `email.owner` (owner key or `none`), `tenant.category` (`live` \| `sandbox`) |
+| `tellma.email.sent.messages` | Counter | `{message}` | `email.transport`, `email.outcome` (`sent` \| `transient_failure` \| `rejected` \| `sandboxed`), `email.audience` (`internal` \| `external`), `email.delivery` (`live` \| `sandbox` \| `withheld` — the wire mechanism), `email.owner` (owner key or `none`), `tenant.category` (`live` \| `sandbox`) |
 | `tellma.email.send.duration` | Histogram | `s` | `email.transport`, `error.type` (exception type when the batch throws) |
 | `tellma.email.send.batch.size` | Histogram | `{message}` | `email.transport` |
 | `tellma.email.delivery.events` | Counter | `{event}` | `email.transport`, `email.event.type` (enum name, lowercase), `email.event.routing` (`routed` \| `uncorrelated` \| `unknown_owner` \| `foreign`), `email.owner` |
@@ -1193,14 +1245,14 @@ Source-generated `LoggerMessage` events (the platform's logging idiom), the key 
 | Batch sent | Information | Transport, batch size, per-outcome counts, elapsed. One line per batch, not per message. |
 | Message failed | Warning | Transport, outcome, provider error text, correlation, provider message id. No recipient address. |
 | Batch never attempted | Error | Transport, batch size, exception (the §1.3 rule-2 throw). |
-| Sandbox suppression | Information | Count and correlations of externally-audienced sandbox mail that was suppressed or trap-routed. |
+| Sandboxed mail | Information | Count and correlations of messages the sandbox policy kept from real delivery, and by which mechanism (channel or withheld). |
 | Webhook rejected | Warning | Receiver key, outcome, receiver `Detail`. Never the payload. |
 | Webhook receiver threw | Error | Receiver key, exception. |
 | Events dispatched | Debug | Per-owner counts. |
 | Unknown owner key | Warning | The unrecognized owner key and event count. |
 | Uncorrelated / foreign events | Debug | Counts only. |
 | Log-sink message | Information | The full message content — the sink's entire purpose (Development only, §2.4). |
-| Active transport selected | Information | At startup: transport name, delivery mode (`Normal`/`ForceSandbox`), delivery webhook configured or not, sandbox channel present or not. |
+| Active transport selected | Information | At startup: transport name, deployment id, delivery webhook configured or not, sandbox channel present or not. |
 
 The PII rule, stated once and binding everywhere: **recipient addresses and message content
 appear only in the Development log sink's output and in Debug-level adapter logs**; Information
@@ -1361,15 +1413,18 @@ future email transport inherits the suite; it is the executable form of the cont
   table (bad owner charset, non-integer tenant, empty reference, null); constructor validation.
 - **Router** (`Tellma.Core.Email.Tests`): the §3.3 matrix over fake transports — pass-through
   for live tenants; marking for sandbox+internal (subject idempotence, text prefix, HTML banner
-  placement with and without `<body>`); sandbox-sender routing and `Suppressed` outcomes for
-  sandbox+external; the `ForceSandbox` override across all tenant/audience combinations;
+  placement with and without `<body>`); the `Sent`→`Sandboxed` rewrite on sandbox-channel
+  results and direct `Sandboxed` on withheld messages, failures passing through unchanged;
   positional reassembly of mixed batches; `ExpectsDeliveryEvents` passed through untouched on
-  live results, false on suppression.
+  live results, false on every `Sandboxed` result.
 - **Selection & guard** (`Tellma.Core.Email.Tests`): provider resolution case-insensitivity;
   unknown provider startup failure listing registered names; Development default;
-  missing-provider and missing-`Deployable` failures outside Development; `log-sink` startup
-  failure outside Development and the sink's own constructor guard; missing `ISandboxContext`
-  failure; active-transport eager validation vs. cold inactive adapters.
+  missing-provider and missing-`DeploymentIdentity` failures; `log-sink` startup failure
+  outside Development and the sink's own constructor guard; missing `ISandboxContext` failure;
+  active-transport eager validation vs. cold inactive adapters.
+- **Deployment identity** (`Tellma.Core.Abstractions.Tests`): `DeploymentId` composition per
+  environment (bare in Production, qualified elsewhere) and constructor rejection of invalid
+  application names.
 - **Dispatcher** (`Tellma.Core.Email.Tests`): grouping and order preservation; unknown-owner
   and uncorrelated metering (asserted via `MetricCollector<T>`); handler-exception propagation.
 - **Webhook fronting** (`Tellma.Core.Webhooks.Tests`, in-memory host): status mapping for all
@@ -1496,7 +1551,7 @@ dead-letter transitions (rule 2 is what makes retry safe), `SendAfter` and quota
 tier that owns durable state (§9), correlations minted per row with `TenantId` set (its state is
 tenant-sharded), a delivery-event handler (`OwnerKey: "outbox"`) updating row status with
 `ProviderEventId` dedup, and each result's `ExpectsDeliveryEvents` deciding whether that row's
-`Sent` (or `Suppressed`) is terminal. The outbox spec also owns: unsubscribe and stream
+`Sent` (or `Sandboxed`) is terminal. The outbox spec also owns: unsubscribe and stream
 classification (§10), per-tenant quotas, the dispatch worker's signal/poll loop, and the
 per-document email UI fed by `RegardingEntity`/`RegardingId`.
 
@@ -1554,17 +1609,19 @@ The load-bearing decisions, where not already evident above:
    site) and not in adapters (duplicated per transport, guaranteed drift). The router is the
    registered `IEmailSender`, so no send path bypasses policy; adapters implement channels,
    never policy (§3.2–§3.3).
-6. **Suppression is an explicit `Suppressed` outcome, not a fabricated `Sent`** — success-class
-   and terminal, so workflows proceed as in production while records and UI can tell a sandbox
-   tenant's user the truth ("suppressed", not "sent" on a test invoice). The naive-equality
-   hazard is owned by the contract: failure handling branches on `TransientFailure`/`Rejected`,
-   never on inequality with `Sent` (§1.3, §3.3).
+6. **One `Sandboxed` outcome for every sandbox-policy interception** — `Sent` means a real
+   email went out toward the recipient, unambiguously; everything the sandbox policy kept from
+   real delivery (provider validation mode, mail trap, or withheld outright) reports
+   `Sandboxed`, with the wire mechanism recorded in telemetry only. Splitting those mechanisms
+   across outcomes would misreport the case that matters — provider-validated mail showing
+   "sent" on a sandbox tenant's invoice. Success-class and terminal; failure handling branches
+   on `TransientFailure`/`Rejected`, never on inequality with `Sent` (§1.3, §3.3).
 7. **The sandbox marker is fixed English** — an operational token, not user copy: recognizable
    and filterable in every locale, and the contract carries no message-locale field for the
    router to localize against (§3.3).
 8. **The log sink is admitted in Development only** — startup validation in the pipeline plus a
    constructor tripwire in the sink itself. Staging is included in the ban: it exists to be a
-   faithful replica of production and runs a real transport in `ForceSandbox` posture instead
+   faithful replica of production and sends through the real pipeline into a mail trap instead
    (§2.4, §3.5).
 9. **Provider selection is configuration-only** — adapters register transports; `Email:Provider`
    picks one; switching transports (or enabling the sink) is an `appsettings`/Key Vault edit.
@@ -1591,15 +1648,21 @@ The load-bearing decisions, where not already evident above:
     today's contracts could be validated against their eventual primary consumer (§12).
 16. **Delivery-event expectation is per-result, not per-sender** — `ExpectsDeliveryEvents` on
     `EmailSendResult`: one batch can mix a sandbox tenant's internal mail (live channel, events
-    coming) with its external mail (suppressed, terminal), and only a per-message flag can tell
+    coming) with its external mail (sandboxed, terminal), and only a per-message flag can tell
     the truth. A sender-level capability property cannot (§1.3, §5.2).
-17. **`Email:Delivery: ForceSandbox` is the staging posture** — staging runs production's
-    transport and pipeline with delivery forced through the sandbox channel for every tenant
-    and audience. The switch must be configuration because staging and production run identical
-    builds; a log sink or substitute transport would forfeit the rehearsal value staging exists
-    for (§3.5).
-18. **The correlation wire envelope carries `Email:Deployable`** — adapters prefix the
-    fleet-unique deployment id on the wire and drop foreign events at translation. Correlation
-    segments repeat across deployments, so the envelope is what makes cross-deployment
-    misdelivery detectable — and it is the routing key that makes the shared-subuser gateway
-    topology possible (§5.4, §5.5).
+17. **Staging intercepts at the wire — SMTP into a mail trap, normal routing** — staging's mail
+    must be readable, not absent: internal users sign in with emailed codes and E2E suites
+    assert on content, so a validate-and-discard posture (a provider sandbox mode forced across
+    the deployment) would lock testers out of the instance under test. The trap is the
+    interception infrastructure — the application runs its production behavior unmodified — and
+    the forgone last-hop fidelity is covered by the nightly gated live suite (§3.5). A
+    force-all-mail-to-sandbox delivery mode was considered and rejected on exactly this ground.
+18. **The correlation wire envelope carries the deployment id** — adapters prefix
+    `DeploymentIdentity.DeploymentId` on the wire and drop foreign events at translation.
+    Correlation segments repeat across deployments, so the envelope is what makes
+    cross-deployment misdelivery detectable — and it is the routing key that makes the
+    shared-subuser gateway topology possible. The id is a DI singleton, not configuration: the
+    application name is a compile-time constant of each composition and the environment comes
+    from the host, so no hand-managed value exists to drift — and the type sits in
+    `Tellma.Core.Abstractions.Hosting` because exports and future connectors need the same id
+    (§1.6, §5.4, §5.5).
