@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Email\Tellma.Core.Email.csproj" />
+    <!-- The alert-query cross-check spans both meters, so it needs the webhook telemetry names. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Webhooks\Tellma.Core.Webhooks.csproj" />
+    <!-- Dogfoods the shipped test package: the conformance suite runs against the log sink and
+         the delivery-event builders feed the dispatcher tests. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
+    <ProjectReference Include="..\..\shared\Tellma.Testing.Support\Tellma.Testing.Support.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+    <!-- A real generic host, so startup validation is exercised the way a deployment runs it. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The alert queries are read at runtime and cross-checked against the emitted instrument
+         and tag names, so a telemetry rename turns an alert query red at PR time. -->
+    <Content Include="..\..\..\infra\monitoring\email\*.kql" Link="AlertQueries/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

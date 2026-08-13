@@ -14,7 +14,7 @@ invitation links, and recovery mail; every distribution will send system notific
 customer-facing documents (invoices, statements) once the durable email outbox lands. Until now the
 only email code in the platform is private to the identity server engine — a minimal
 `IEmailSender` with an SMTP implementation and a Development log sink, defined inside
-`Tellma.Identity` (spec 0003 §11.6) because nothing shared existed to define it against.
+`Tellma.Identity` (spec 0003 §10.6) because nothing shared existed to define it against.
 
 This spec promotes email to platform infrastructure:
 
@@ -787,7 +787,10 @@ factory returns the sink parameterized as the sandbox channel: in development, e
 mail is also worth seeing, and the log line names the channel that carried each message.
 
 It is the Development default (no configuration needed on a fresh clone) and is useful beyond
-first-run: E2E suites scrape codes and links from it (the identity server's suites already do).
+first-run: it is where a developer reads the mail a feature just composed, and it is the only
+capture path open to an E2E suite that drives a deployed app and so cannot reach in-process
+state. Suites that run the app in-process capture through `Tellma.Core.Testing` instead (§12.4),
+which is what the identity server's own integration and E2E suites do today.
 
 **The guard** admits the sink in Development only, in two layers, both in `Tellma.Core.Email`:
 

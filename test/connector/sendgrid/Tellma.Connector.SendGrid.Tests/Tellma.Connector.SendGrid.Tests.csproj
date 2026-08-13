@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\connector\sendgrid\Tellma.Connector.SendGrid\Tellma.Connector.SendGrid.csproj" />
+    <ProjectReference Include="..\..\..\shared\Tellma.Testing.Support\Tellma.Testing.Support.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>

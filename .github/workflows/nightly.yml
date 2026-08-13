@@ -1,0 +1,115 @@
+name: Nightly live connector suites
+
+# The live SendGrid and ACS suites talk to real third-party APIs, so they are never a PR gate: an
+# external service on the merge path is a permanent flakiness tax, and fork PRs cannot read the
+# secrets anyway — they would only ever skip. A daily pulse plus the offline vectors detects API or
+# credential drift within a day.
+on:
+  schedule:
+    - cron: '17 3 * * *' # 03:17 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-live
+  cancel-in-progress: false
+
+jobs:
+  sendgrid-live:
+    # Forks inherit the schedule; this makes it a no-op there.
+    if: github.repository == 'tellma-ltd/tellma-platform'
+    runs-on: ubuntu-latest
+    # The environment scopes the secrets. Deliberately no required reviewers: a protected
+    # environment would leave every scheduled run waiting for an approval nobody is awake to give.
+    environment: live-email-tests
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      # The suites gate themselves on these variables being present, so a missing or expired secret
+      # would otherwise skip every test and report a green run — the exact silence this workflow
+      # exists to break.
+      - name: Require the SendGrid credentials
+        env:
+          TELLMA_SENDGRID_TEST_APIKEY: ${{ secrets.SENDGRID_TEST_APIKEY }}
+          TELLMA_SENDGRID_TEST_SENDER: ${{ vars.SENDGRID_TEST_SENDER }}
+        run: |
+          set -euo pipefail
+          : "${TELLMA_SENDGRID_TEST_APIKEY:?SENDGRID_TEST_APIKEY is not set on the live-email-tests environment}"
+          : "${TELLMA_SENDGRID_TEST_SENDER:?SENDGRID_TEST_SENDER is not set on the live-email-tests environment}"
+      - name: SendGrid live suite (sandbox mode — validated, never delivered, no credits)
+        env:
+          TELLMA_SENDGRID_TEST_APIKEY: ${{ secrets.SENDGRID_TEST_APIKEY }}
+          TELLMA_SENDGRID_TEST_SENDER: ${{ vars.SENDGRID_TEST_SENDER }}
+        # Solution-wide and filtered by trait, not by project path: a live suite added later is
+        # picked up here without anyone remembering to edit this file.
+        run: >
+          dotnet test Tellma.slnx -c Release
+          --filter "Live=true&FullyQualifiedName~SendGrid"
+
+  acs-live:
+    if: github.repository == 'tellma-ltd/tellma-platform'
+    runs-on: ubuntu-latest
+    environment: live-email-tests
+    permissions:
+      # Mint the GitHub OIDC token the federated Entra credential trades for an Azure token; there
+      # is no ACS secret to store, which is the point of the managed-identity design.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.ACS_TEST_CLIENT_ID }}
+          tenant-id: ${{ vars.ACS_TEST_TENANT_ID }}
+          subscription-id: ${{ vars.ACS_TEST_SUBSCRIPTION_ID }}
+      - name: Require the ACS configuration
+        env:
+          TELLMA_ACS_TEST_ENDPOINT: ${{ vars.ACS_TEST_ENDPOINT }}
+          TELLMA_ACS_TEST_SENDER: ${{ vars.ACS_TEST_SENDER }}
+          TELLMA_ACS_TEST_RECIPIENT: ${{ secrets.ACS_TEST_RECIPIENT }}
+        run: |
+          set -euo pipefail
+          : "${TELLMA_ACS_TEST_ENDPOINT:?ACS_TEST_ENDPOINT is not set on the live-email-tests environment}"
+          : "${TELLMA_ACS_TEST_SENDER:?ACS_TEST_SENDER is not set on the live-email-tests environment}"
+          : "${TELLMA_ACS_TEST_RECIPIENT:?ACS_TEST_RECIPIENT is not set on the live-email-tests environment}"
+      - name: ACS live suite (real delivery to the Tellma-owned test mailbox)
+        env:
+          TELLMA_ACS_TEST_ENDPOINT: ${{ vars.ACS_TEST_ENDPOINT }}
+          TELLMA_ACS_TEST_SENDER: ${{ vars.ACS_TEST_SENDER }}
+          # A secret only so a live mailbox address is not published in a public repository.
+          TELLMA_ACS_TEST_RECIPIENT: ${{ secrets.ACS_TEST_RECIPIENT }}
+        run: >
+          dotnet test Tellma.slnx -c Release
+          --filter "Live=true&FullyQualifiedName~AcsEmail"
+
+  # A nightly that fails silently is a nightly that does not exist.
+  report-failure:
+    if: ${{ always() && github.repository == 'tellma-ltd/tellma-platform' && contains(needs.*.result, 'failure') }}
+    needs: [sendgrid-live, acs-live]
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - name: Open or comment on the standing failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          num=$(gh issue list --repo "$GITHUB_REPOSITORY" --label nightly-live-failure --state open \
+                --json number --jq '.[0].number // empty')
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --repo "$GITHUB_REPOSITORY" --body "Nightly live suites failed again: $RUN_URL"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --label nightly-live-failure \
+              --title "Nightly live connector suites are failing" \
+              --body "First failure: $RUN_URL"
+          fi

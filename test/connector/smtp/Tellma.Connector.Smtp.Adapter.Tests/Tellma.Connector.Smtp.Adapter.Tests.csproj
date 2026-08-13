@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\connector\smtp\Tellma.Connector.Smtp.Adapter\Tellma.Connector.Smtp.Adapter.csproj" />
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
+    <ProjectReference Include="..\..\..\shared\Tellma.Testing.Support\Tellma.Testing.Support.csproj" />
+    <!-- A real SMTP endpoint inside the test process: a real socket, real MIME on the wire, and
+         no external infrastructure — which is why this stays an ordinary *.Tests project. -->
+    <PackageReference Include="SmtpServer" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>

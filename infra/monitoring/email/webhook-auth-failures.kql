@@ -1,0 +1,10 @@
+// Sustained webhook authentication failures.
+// The signature of a key rotation gone wrong, or of someone probing the endpoint. Either way it is
+// invisible in the send metrics, because sends keep succeeding.
+customMetrics
+| where name == "tellma.webhook.requests"
+| extend key = tostring(customDimensions["webhook.key"])
+| extend outcome = tostring(customDimensions["webhook.outcome"])
+| where outcome == "unauthorized"
+| summarize unauthorized = sum(valueSum) by key, bin(timestamp, 5m)
+| where unauthorized > 0
