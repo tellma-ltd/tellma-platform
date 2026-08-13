@@ -12,6 +12,16 @@ report by hand.
 Authentication is a token credential: a developer's own Azure sign-in locally, a federated identity
 in CI. There is no mail secret to store, which is the point of the managed-identity design.
 
+## Diagnosing a failure
+
+The reader of a nightly failure cannot step through it, so three things travel with every one: the
+transport's error text on the assertion (not just `Expected: Sent, Actual: Rejected`), the adapter's
+own log lines at `Debug` in the test output, and a report of the environment the run used — the
+endpoint, and the sender and recipient masked to their domains, since the sending domain is the
+likeliest cause of a refusal and the mailboxes must not be published by a public repository's
+Actions runs. This is how the suite's first real find — ACS refusing a `senderAddress` that carried
+a display name — was read off a failed run rather than reproduced by hand.
+
 ## Running
 
 Marked `Category=Integration` and `Live=true`, so it is excluded from every PR job and runs in the

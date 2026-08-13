@@ -13,6 +13,14 @@ Integration" button covers manual smoke at onboarding.
 The sender is composed through the adapter's own registration rather than constructed directly, so
 this also proves the composition a deployment uses.
 
+## Diagnosing a failure
+
+The reader of a nightly failure cannot step through it, so three things travel with every one: the
+provider's error text on the assertion (not just `Expected: Sent, Actual: Rejected`), the adapter's
+own log lines at `Debug` in the test output, and a report of the environment the run used — the
+sender masked to its domain, the key to its presence and length, because these logs are published by
+a public repository's Actions runs.
+
 ## Running
 
 Marked `Category=Integration` and `Live=true`, so it is excluded from every PR job and runs in the

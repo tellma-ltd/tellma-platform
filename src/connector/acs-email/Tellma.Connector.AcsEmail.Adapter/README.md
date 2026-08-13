@@ -20,7 +20,9 @@ and operations land in the Azure estate the platform already runs on.
   "Provider": "acs-email",
   "AcsEmail": {
     "Endpoint": "https://tellma-etpharma.communication.azure.com",
-    "From": { "Address": "no-reply@etpharma.tellma.com", "DisplayName": "Tellma" },
+    // No DisplayName: ACS refuses a senderAddress carrying one (see Sending, below), so configuring
+    // one fails validation rather than being silently dropped.
+    "From": { "Address": "no-reply@etpharma.tellma.com" },
     "MaxConcurrency": 8,
     "TimeoutSeconds": 30,
     "Webhook": {
@@ -42,6 +44,13 @@ identity registers its own `TokenCredential` and wins; otherwise `DefaultAzureCr
 One message maps to one send request; ACS has no batch endpoint. Recipient-count and request-size
 caps are resource-level and support-raisable, so nothing is pre-validated against them — the
 provider's synchronous 400 maps to a rejection like any other payload refusal.
+
+**The sender goes on the wire as a bare address.** ACS validates `senderAddress` against a MailFrom
+address configured on the sending domain and answers a 400 naming the property to anything in the
+`Display Name <address>` form. The sender's display name is therefore a property of the domain
+resource — set on its MailFrom address, and unavailable on Azure managed domains, which permit no
+sender usernames — so `From:DisplayName` is rejected at startup and a display name on a message's own
+`From` is dropped. Recipient display names are unaffected.
 
 **A 202 is reported as `Sent`, and the send operation is never polled.** The 202 means ACS has queued
 the message, which is exactly this contract's "accepted by the transport". Polling the long-running

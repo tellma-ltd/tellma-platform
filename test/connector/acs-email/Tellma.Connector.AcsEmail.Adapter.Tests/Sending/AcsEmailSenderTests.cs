@@ -166,17 +166,24 @@ namespace Tellma.Connector.AcsEmail.Adapter.Tests.Sending
         }
 
         [Fact]
-        public async Task Quotes_a_display_name_so_it_cannot_corrupt_the_sender_header()
+        public async Task Sends_a_bare_sender_address_dropping_any_display_name()
         {
-            AcsEmailOptions options = AcsSenderHarness.DefaultOptions();
-            options.From.DisplayName = "Tellma, \"ERP\"";
+            // A message-level From is the one sender a display name can still arrive on, since the
+            // configured one is refused outright by the transport's options validator.
+            EmailMessage message = ConformanceMessage(0) with
+            {
+                From = new EmailAddress("no-reply@tellma.com", "Tellma, \"ERP\""),
+            };
 
-            await using AcsSenderHarness harness = new(options);
-            await harness.Sender.SendAsync(Messages(1), TestContext.Current.CancellationToken);
+            await using AcsSenderHarness harness = new();
+            await harness.Sender.SendAsync([message], TestContext.Current.CancellationToken);
 
+            // ACS validates senderAddress against a configured MailFrom address and answers a 400
+            // naming the property to anything carrying a display name, so the name is dropped rather
+            // than formatted into the field.
             using var body = JsonDocument.Parse(Assert.Single(harness.RequestBodies));
             Assert.Equal(
-                "\"Tellma, \\\"ERP\\\"\" <no-reply@tellma.com>",
+                "no-reply@tellma.com",
                 body.RootElement.GetProperty("senderAddress").GetString());
         }
 

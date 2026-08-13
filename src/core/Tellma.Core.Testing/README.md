@@ -44,6 +44,19 @@ Cases a transport cannot express on its own wire are skipped through `SenderCapa
 skip reason names the transport limitation — so a skip always reads as "not applicable", never as
 "not implemented".
 
+**[TestOutputLoggerProvider](Diagnostics/TestOutputLoggerProvider.cs)** and its
+`AddTestOutput()` builder extension route `ILogger` records into the running test's output.
+`AddLogging()` registers no provider of its own, so a transport's account of what went wrong —
+often the whole diagnosis — otherwise goes nowhere. Written for the live suites, where the failure
+someone reads is hours old and cannot be stepped through.
+
+**[LiveTestEnvironment](Diagnostics/LiveTestEnvironment.cs)** reports the settings a live run used,
+disclosing shapes rather than values: `MaskMailbox` keeps the domain (the half that explains a
+refusal) and drops the mailbox, `DescribeSecret` reports presence and length. A live suite fails
+either because the code is wrong or because the environment was not what the run assumed, and a
+bare assertion cannot tell those apart — but the log that answers it is published by a public
+repository's Actions runs, which is the wrong audience for an address or a key.
+
 ## Rules this package lives by
 
 - **It takes an xunit dependency, and nothing else does.** Shipping the conformance suite is the

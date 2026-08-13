@@ -99,8 +99,9 @@ namespace Tellma.Connector.AcsEmail.Adapter.Tests.Infrastructure
                 MaxConcurrency = 4,
             };
 
+            // No From display name: the transport rejects one, because ACS takes the sender's
+            // display name from the domain's MailFrom address rather than from a message.
             options.From.Address = "no-reply@tellma.com";
-            options.From.DisplayName = "Tellma";
             return options;
         }
 

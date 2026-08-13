@@ -718,7 +718,10 @@ config is legal as long as SendGrid is not the active provider.
     "AcsEmail": {
       // Auth is Entra ID (managed identity) against the resource endpoint; no key is stored.
       "Endpoint": "https://tellma-etpharma.communication.azure.com",
-      "From": { "Address": "no-reply@etpharma.tellma.com", "DisplayName": "Tellma" },
+      // No DisplayName: ACS takes the sender's display name from the domain's MailFrom
+      // address and refuses a senderAddress carrying one, so the setting is rejected
+      // at startup rather than silently ignored (§6.2).
+      "From": { "Address": "no-reply@etpharma.tellma.com" },
       "MaxConcurrency": 8,                 // parallel send requests per batch
       "Webhook": {
         // Accepted ?token= values on the Event Grid subscription URL; more than one
@@ -776,6 +779,15 @@ adapter reads only its own section (§2.2), and the value is transport-coupled �
 authorized for the channel that carries it (SendGrid's authenticated domain, a smarthost's
 permitted senders), so a shared default would imply an interchangeability between transports that
 does not exist.
+
+**`DisplayName` is transport-coupled too, and ACS cannot carry one.** SendGrid and SMTP take the
+sender's display name per message; ACS validates `senderAddress` against a MailFrom address
+configured on the domain and refuses the `Display Name <address>` form outright, so the name is a
+property of the domain resource there (§6.2). The ACS adapter therefore rejects a configured
+`From:DisplayName` at startup, and drops one arriving on a message's own `From`. This asymmetry is
+found rather than chosen — an adapter cannot make a provider accept a field it validates against a
+resource — and it belongs in the same category as SendGrid having no `Sandbox` section: a
+transport's own shape, surfaced rather than papered over.
 
 ### 2.4 The Development log sink
 
@@ -1220,6 +1232,17 @@ One `EmailMessage` maps to one send request (ACS has no batch endpoint); the ada
 batch with bounded concurrency and reassembles results positionally. Recipient-count and
 request-size caps are resource-level and support-raisable, so the adapter does not pre-validate
 them — the provider's synchronous 400 maps to `Rejected` like any other payload refusal.
+
+**The sender goes on the wire as a bare address.** ACS validates `senderAddress` against a MailFrom
+address configured on the sending domain, and answers `400 BadRequest — "Request body validation
+error. See property 'senderAddress'"` to anything in the `Display Name <address>` form, quoted or
+not. The sender's display name is consequently a property of the domain resource — the MailFrom
+address's own `DisplayName`, set in the portal or through
+`az communication email domain sender-username`, and unavailable on Azure managed domains, which
+permit no sender usernames at all. So `From:DisplayName` fails options validation on this transport
+(§2.3) and a display name on a message's `From` is dropped; recipient display names are unaffected,
+since those ride a structured field. This was found by the live suite (§12.3) against a resource the
+offline vectors had happily agreed with — the case for keeping that suite.
 
 **Correlation rides the standard `Message-ID` header** (§6.3): the adapter stamps every
 correlated message's internet message id with an encoding of its correlation, and delivery
@@ -1694,6 +1717,22 @@ mailbox on a dedicated test resource, asserting acceptance — volume that sits 
 even default quotas. Event Grid delivery is not asserted here (that is synthetic monitoring,
 which is out of scope); the receiver's correctness rests on the recorded-payload suites above.
 
+**Both live suites are built to explain their own failures**, because the reader of a nightly
+failure is someone who cannot reproduce it: the run is hours old, it talks to an external account,
+and re-running it costs a day. Three things travel with every failure, from
+`Tellma.Core.Testing.Diagnostics` (§12.4):
+
+- **The provider's own reason on the assertion.** Acceptance is asserted through a helper that
+  fails with `EmailSendResult.Error` — the provider's error code and text — rather than through a
+  bare `Assert.Equal` on the outcome, which reports "Expected: Sent, Actual: Rejected" and discards
+  the only sentence that says why.
+- **The transport's log lines,** routed into the test's output at `Debug`, which is where both
+  adapters record a refusal's status and error code.
+- **A masked report of the environment the run used** — endpoint, and sender and recipient reduced
+  to their domains, a credential to its presence and length. The sending domain is the likeliest
+  cause of a live refusal and the mailboxes are the part that must not be published: these suites'
+  output lands in a public repository's Actions logs.
+
 ### 12.4 Test capture — `Tellma.Core.Testing`
 
 A new published package (charter: test doubles and assertion helpers for `Tellma.Core.Abstractions`
@@ -1714,6 +1753,13 @@ namespace `Tellma.Core.Testing.Email`:
 - **`DeliveryEvents.For(correlation)`** — a small builder producing plausible
   `EmailDeliveryEvent` batches (unique event ids, ordered timestamps) for handler tests, plus
   duplicate/redelivery shaping for dedupe tests.
+
+A second namespace, `Tellma.Core.Testing.Diagnostics`, carries what the live suites need to be
+readable after the fact (§12.3): `AddTestOutput()` routes `ILogger` records into the running test's
+output, and `LiveTestEnvironment` reports the settings a run used with mailboxes masked to their
+domains and credentials to their length. They live here rather than in either suite because both
+need them and neither owns them — and this is already the one package that takes an xunit
+dependency, which a test-output sink requires.
 
 E2E suites that drive a deployed app (Playwright) and cannot reach in-process state use the log
 sink and scrape codes/links from log output — the identity E2E suites' existing pattern — or
@@ -1865,3 +1911,11 @@ The load-bearing decisions, where not already evident above:
     Grid cannot sign deliveries, and a 401/403 is never retried (§6.4).
 23. **`Failed` is the one added event classification** — consumers must never parse provider
     `RawType`s to learn a message died; provider verdicts fold into it (§1.4, §6.4).
+24. **The ACS sender is a bare address, and `From:DisplayName` is refused at startup** — ACS
+    validates `senderAddress` against the domain's MailFrom address, where the display name
+    actually lives; a setting the transport cannot honour fails loudly instead of silently
+    (§2.3, §6.2).
+25. **A live suite must explain its own failure** — the transport's log at `Debug`, the
+    provider's error text on the assertion, and a masked report of the environment the run used;
+    a nightly failure is read hours later by someone who cannot reproduce it, and an
+    "Expected: Sent, Actual: Rejected" tells them nothing (§12.3).

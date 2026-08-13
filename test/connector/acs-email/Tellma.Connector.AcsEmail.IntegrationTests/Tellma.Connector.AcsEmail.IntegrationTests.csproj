@@ -2,6 +2,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\src\connector\acs-email\Tellma.Connector.AcsEmail.Adapter\Tellma.Connector.AcsEmail.Adapter.csproj" />
+    <!-- The test-output logger and the environment report the live suites share. -->
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
     <PackageReference Include="Azure.Identity" />
     <PackageReference Include="Microsoft.Extensions.Configuration" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />

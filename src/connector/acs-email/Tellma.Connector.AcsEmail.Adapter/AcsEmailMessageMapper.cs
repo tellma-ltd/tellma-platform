@@ -53,7 +53,12 @@ namespace Tellma.Connector.AcsEmail.Adapter
                 Html = message.HtmlBody,
             };
 
-            AcsEmailMessage acsMessage = new(FormatSender(from), recipients, content);
+            // The sender is a bare address and nothing else. ACS validates senderAddress against a
+            // configured MailFrom address, so an RFC 5322 display-name form — quoted or not — is
+            // refused with a 400 naming the property. The sender's display name is a property of the
+            // MailFrom address on the domain resource, set there rather than per message, so a
+            // display name on this address is deliberately dropped.
+            AcsEmailMessage acsMessage = new(from.Address, recipients, content);
 
             if (message.ReplyTo is TellmaEmailAddress replyTo)
             {
@@ -89,23 +94,6 @@ namespace Tellma.Connector.AcsEmail.Adapter
             return string.IsNullOrWhiteSpace(address.DisplayName)
                 ? new AcsEmailAddress(address.Address)
                 : new AcsEmailAddress(address.Address, address.DisplayName);
-        }
-
-        private static string FormatSender(TellmaEmailAddress from)
-        {
-            if (string.IsNullOrWhiteSpace(from.DisplayName))
-            {
-                return from.Address;
-            }
-
-            // The sender is a bare string on this SDK, so the display name has to be quoted and
-            // escaped by hand — an unquoted name containing a comma or an angle bracket would
-            // corrupt the header.
-            string escaped = from.DisplayName
-                .Replace("\\", "\\\\", StringComparison.Ordinal)
-                .Replace("\"", "\\\"", StringComparison.Ordinal);
-
-            return $"\"{escaped}\" <{from.Address}>";
         }
     }
 }

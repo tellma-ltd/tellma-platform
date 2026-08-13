@@ -5,10 +5,12 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using System.Text;
 using Tellma.Connector.SendGrid.Adapter;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Hosting;
+using Tellma.Core.Testing.Diagnostics;
 
 namespace Tellma.Connector.SendGrid.IntegrationTests
 {
@@ -53,7 +55,7 @@ namespace Tellma.Connector.SendGrid.IntegrationTests
             EmailSendResult result = Assert.Single(
                 await sender.SendAsync([Message("Tellma live check")], TestContext.Current.CancellationToken));
 
-            Assert.Equal(EmailSendOutcome.Sent, result.Outcome);
+            AssertAccepted(result);
             Assert.NotNull(result.ProviderMessageId);
         }
 
@@ -78,7 +80,7 @@ namespace Tellma.Connector.SendGrid.IntegrationTests
             EmailSendResult result = Assert.Single(
                 await sender.SendAsync([message], TestContext.Current.CancellationToken));
 
-            Assert.Equal(EmailSendOutcome.Sent, result.Outcome);
+            AssertAccepted(result);
         }
 
         [Fact(Skip = SkipReason, SkipUnless = nameof(HasCredentials), SkipType = typeof(SendGridLiveSendTests))]
@@ -92,7 +94,26 @@ namespace Tellma.Connector.SendGrid.IntegrationTests
                 TestContext.Current.CancellationToken);
 
             Assert.Equal(3, results.Count);
-            Assert.All(results, static r => Assert.Equal(EmailSendOutcome.Sent, r.Outcome));
+            Assert.All(results, AssertAccepted);
+        }
+
+        /// <summary>
+        ///     Asserts SendGrid accepted the message, reporting the provider's own reason when it did
+        ///     not.
+        /// </summary>
+        /// <remarks>
+        ///     Asserting on the outcome alone reports "Expected: Sent, Actual: Rejected" and discards
+        ///     <see cref="EmailSendResult.Error" /> — which carries the API's error objects, and is
+        ///     the difference between a nightly failure that explains itself and one that has to be
+        ///     reproduced by hand a day later.
+        /// </remarks>
+        /// <param name="result">The result of the send.</param>
+        private static void AssertAccepted(EmailSendResult result)
+        {
+            Assert.True(
+                result.Outcome == EmailSendOutcome.Sent,
+                $"Expected {EmailSendOutcome.Sent} but the transport reported {result.Outcome}: "
+                    + (result.Error ?? "no reason was supplied."));
         }
 
         private static string SenderAddress()
@@ -100,8 +121,27 @@ namespace Tellma.Connector.SendGrid.IntegrationTests
             return Environment.GetEnvironmentVariable(SenderVariable)!;
         }
 
+        /// <summary>
+        ///     Writes what the suite is pointed at to the test's output, so a refusal can be read
+        ///     against the account and sender that produced it.
+        /// </summary>
+        /// <remarks>
+        ///     The sending domain has to be one the account has authenticated — the likeliest cause of
+        ///     a live refusal — so the domain is reported and the mailbox is not; the key is reported
+        ///     as a presence and a length, which separates an unset variable from a truncated one
+        ///     without disclosing anything usable.
+        /// </remarks>
+        private static void ReportEnvironment()
+        {
+            LiveTestEnvironment.Report(
+                ("ApiKey", LiveTestEnvironment.DescribeSecret(Environment.GetEnvironmentVariable(ApiKeyVariable))),
+                ("From", LiveTestEnvironment.MaskMailbox(Environment.GetEnvironmentVariable(SenderVariable))));
+        }
+
         private static ServiceProvider Compose()
         {
+            ReportEnvironment();
+
             IConfigurationRoot configuration = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -114,7 +154,13 @@ namespace Tellma.Connector.SendGrid.IntegrationTests
 
             ServiceCollection services = new();
             services.AddSingleton<IConfiguration>(configuration);
-            services.AddLogging();
+            services.AddLogging(static builder =>
+            {
+                // The transport reports a refusal's status and error text at Debug, so the floor has
+                // to come down for the one line that says why a live send was refused.
+                builder.SetMinimumLevel(LogLevel.Debug);
+                builder.AddTestOutput();
+            });
             services.AddSingleton(new DeploymentIdentity("tellma", "Development"));
             services.AddSendGridEmail(configuration);
 

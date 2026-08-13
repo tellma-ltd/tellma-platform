@@ -38,6 +38,16 @@ namespace Tellma.Connector.AcsEmail.Adapter
                     $"{AcsEmailOptions.SectionName}:{nameof(AcsEmailOptions.From)}:{nameof(EmailAddressOptions.Address)} is required.");
             }
 
+            // ACS validates senderAddress against a configured MailFrom address and refuses anything
+            // carrying a display name, which makes the sender's display name a property of the domain
+            // resource rather than of a message. Rejecting the setting turns what would otherwise be
+            // a silently ignored configuration into a startup failure that says where the name goes.
+            if (!string.IsNullOrWhiteSpace(options.From.DisplayName))
+            {
+                failures.Add(
+                    $"{AcsEmailOptions.SectionName}:{nameof(AcsEmailOptions.From)}:{nameof(EmailAddressOptions.DisplayName)} is not supported by this transport; set the display name on the sending domain's MailFrom address instead.");
+            }
+
             if (options.MaxConcurrency < 1)
             {
                 failures.Add($"{AcsEmailOptions.SectionName}:{nameof(AcsEmailOptions.MaxConcurrency)} must be at least 1.");

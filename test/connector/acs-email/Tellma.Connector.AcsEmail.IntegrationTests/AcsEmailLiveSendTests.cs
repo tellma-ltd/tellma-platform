@@ -5,10 +5,12 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using System.Text;
 using Tellma.Connector.AcsEmail.Adapter;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Hosting;
+using Tellma.Core.Testing.Diagnostics;
 
 namespace Tellma.Connector.AcsEmail.IntegrationTests
 {
@@ -54,7 +56,7 @@ namespace Tellma.Connector.AcsEmail.IntegrationTests
                 await sender.SendAsync([Message("Tellma live check")], TestContext.Current.CancellationToken));
 
             // A 202 is the contract's "accepted by the transport"; the operation is never polled.
-            Assert.Equal(EmailSendOutcome.Sent, result.Outcome);
+            AssertAccepted(result);
             Assert.NotNull(result.ProviderMessageId);
         }
 
@@ -80,28 +82,69 @@ namespace Tellma.Connector.AcsEmail.IntegrationTests
             EmailSendResult result = Assert.Single(
                 await sender.SendAsync([message], TestContext.Current.CancellationToken));
 
-            Assert.Equal(EmailSendOutcome.Sent, result.Outcome);
+            AssertAccepted(result);
+        }
+
+        /// <summary>
+        ///     Asserts ACS accepted the message, reporting the transport's own reason when it did not.
+        /// </summary>
+        /// <remarks>
+        ///     Asserting on the outcome alone reports "Expected: Sent, Actual: Rejected" and discards
+        ///     <see cref="EmailSendResult.Error" /> — which for a live send is the whole diagnosis,
+        ///     since a rejection is either a structural defect in the message or the error code and
+        ///     text ACS answered a 400 with.
+        /// </remarks>
+        /// <param name="result">The result of the send.</param>
+        private static void AssertAccepted(EmailSendResult result)
+        {
+            Assert.True(
+                result.Outcome == EmailSendOutcome.Sent,
+                $"Expected {EmailSendOutcome.Sent} but the transport reported {result.Outcome}: "
+                    + (result.Error ?? "no reason was supplied."));
         }
 
         private static ServiceProvider Compose()
         {
+            ReportEnvironment();
+
             IConfigurationRoot configuration = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["Email:AcsEmail:Endpoint"] = Environment.GetEnvironmentVariable(EndpointVariable),
                     ["Email:AcsEmail:From:Address"] = Environment.GetEnvironmentVariable(SenderVariable),
-                    ["Email:AcsEmail:From:DisplayName"] = "Tellma",
                     ["Email:AcsEmail:MaxConcurrency"] = "2",
                 })
                 .Build();
 
             ServiceCollection services = new();
             services.AddSingleton<IConfiguration>(configuration);
-            services.AddLogging();
+            services.AddLogging(static builder =>
+            {
+                // The transport reports a refusal's status and error code at Debug, so the floor has
+                // to come down for the one line that says why a live send was refused.
+                builder.SetMinimumLevel(LogLevel.Debug);
+                builder.AddTestOutput();
+            });
             services.AddSingleton(new DeploymentIdentity("tellma", "Development"));
             services.AddAcsEmail(configuration);
 
             return services.BuildServiceProvider();
+        }
+
+        /// <summary>
+        ///     Writes what the suite is pointed at to the test's output, so a rejection can be read
+        ///     against the resource and sender that produced it.
+        /// </summary>
+        /// <remarks>
+        ///     The sending domain has to be one the resource is provisioned for — the likeliest cause
+        ///     of a live rejection — so the domains are reported and the mailboxes are not.
+        /// </remarks>
+        private static void ReportEnvironment()
+        {
+            LiveTestEnvironment.Report(
+                ("Endpoint", Environment.GetEnvironmentVariable(EndpointVariable)),
+                ("From", LiveTestEnvironment.MaskMailbox(Environment.GetEnvironmentVariable(SenderVariable))),
+                ("To", LiveTestEnvironment.MaskMailbox(Environment.GetEnvironmentVariable(RecipientVariable))));
         }
 
         private static IEmailSender LiveSender(IServiceProvider provider)
