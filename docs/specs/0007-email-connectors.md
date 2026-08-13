@@ -14,7 +14,7 @@ invitation links, and recovery mail; every distribution will send system notific
 customer-facing documents (invoices, statements) once the durable email outbox lands. Until now the
 only email code in the platform is private to the identity server engine — a minimal
 `IEmailSender` with an SMTP implementation and a Development log sink, defined inside
-`Tellma.Identity` (spec 0003 §10.6) because nothing shared existed to define it against.
+`Tellma.Identity` (spec 0003 §11.6) because nothing shared existed to define it against.
 
 This spec promotes email to platform infrastructure:
 
@@ -25,8 +25,9 @@ This spec promotes email to platform infrastructure:
   provider selection from configuration, the sandbox-tenant routing policy, the Development log
   sink with its guard, the delivery-event dispatcher, and the HTTP fronting for inbound
   webhooks.
-- **The first two connectors** — SendGrid (the hosted default) and SMTP (the on-prem/air-gapped
-  fallback and the local-dev inspection path), as connector adapter packages.
+- **The first three connectors** — ACS Email (the Azure-native default for SaaS deployments,
+  §6.1), SendGrid (the hosted fallback), and SMTP (the on-prem/air-gapped fallback and the
+  local-dev inspection path) — as connector packages.
 
 These are the platform's **first connector packages**. Their shape — package naming, the
 raw-client/adapter split, live-vs-sandbox routing, configuration layout, webhook handling,
@@ -41,7 +42,7 @@ other connectors depend on it.
 
 The durable email outbox (`IEmailOutbox`) is **specified here but not built**: its interface
 appears in this spec to pin the intended shape and to justify contract decisions (correlation,
-delivery events, batch semantics) that only make full sense with the outbox in view. See §12.
+delivery events, batch semantics) that only make full sense with the outbox in view. See §13.
 
 ## Goals / Non-goals
 
@@ -53,9 +54,10 @@ delivery events, batch semantics) that only make full sense with the outbox in v
   selection, the sandbox routing policy, the Development log sink + guard, delivery-event
   dispatch) and `Tellma.Core.Webhooks` (webhook HTTP fronting) — composable without
   `Tellma.Core`.
-- Ship `Tellma.Connector.Smtp.Adapter` (on MailKit) and `Tellma.Connector.SendGrid` +
-  `Tellma.Connector.SendGrid.Adapter` (first-party raw client, §5.1), each with README, tests,
-  and full observability.
+- Ship `Tellma.Connector.Smtp.Adapter` (on MailKit), `Tellma.Connector.SendGrid` +
+  `Tellma.Connector.SendGrid.Adapter` (first-party raw client, §5.1), and
+  `Tellma.Connector.AcsEmail.Adapter` (on the Azure SDK, §6.1) — each with README, tests, and
+  full observability.
 - Ship `Tellma.Core.Testing` with the email test-capture tooling distributions and platform apps
   use in integration and E2E tests.
 - Define the observability surface — metrics, logs, traces, and the alerts they enable — for
@@ -68,16 +70,16 @@ delivery events, batch semantics) that only make full sense with the outbox in v
 **Non-goals (explicitly out of scope)**
 
 - **`IEmailOutbox` implementation** — durable queuing, the dispatch worker, retry/dead-letter
-  policy, per-tenant quotas. The interface is specified (§12) but not compiled or built; it ships
+  policy, per-tenant quotas. The interface is specified (§13) but not compiled or built; it ships
   with its own spec.
 - **External unsubscribe / suppression management** — unsubscribe links, `List-Unsubscribe`
   headers, suppression-list UI. Designed with the outbox, which owns external customer mail. The
   connectors already surface the raw material (drop/bounce/spam events) so nothing here blocks it
-  (§10).
+  (§11).
 - **Synthetic monitoring** — scheduled probe sends from an external worker. Designed once
   several connectors exist and share the probe infrastructure.
 - **Mass-marketing campaigns** — a different product surface (list management, IP warm-up,
-  campaign scheduling), not the transactional pipe (§9).
+  campaign scheduling), not the transactional pipe (§10).
 - **Inbound mail** (receiving/parsing email) — nothing here reads mailboxes.
 
 ## 1. The contract — `Tellma.Core.Abstractions`
@@ -90,12 +92,13 @@ delivery events, batch semantics) that only make full sense with the outbox in v
 | Webhook contract (§1.5) | `Tellma.Core.Abstractions` | `Tellma.Core.Abstractions.Webhooks` |
 | Deployment identity (§1.6) | `Tellma.Core.Abstractions` | `Tellma.Core.Abstractions.Hosting` |
 | Sandbox-context seam (§3.1) | `Tellma.Core.Abstractions` | `Tellma.Core.Abstractions.Tenancy` |
-| Email pipeline: routing, selection, guard, log sink, dispatcher (§2, §3, §7) | `Tellma.Core.Email` | `Tellma.Core.Email` |
-| Webhook fronting (§6) | `Tellma.Core.Webhooks` | `Tellma.Core.Webhooks` |
+| Email pipeline: routing, selection, guard, log sink, dispatcher (§2, §3, §8) | `Tellma.Core.Email` | `Tellma.Core.Email` |
+| Webhook fronting (§7) | `Tellma.Core.Webhooks` | `Tellma.Core.Webhooks` |
 | SMTP connector (§4) | `Tellma.Connector.Smtp.Adapter` | `Tellma.Connector.Smtp.Adapter` |
 | SendGrid raw client (§5.1) | `Tellma.Connector.SendGrid` | `Tellma.Connector.SendGrid` |
 | SendGrid connector (§5) | `Tellma.Connector.SendGrid.Adapter` | `Tellma.Connector.SendGrid.Adapter` |
-| Test capture (§11.4) | `Tellma.Core.Testing` | `Tellma.Core.Testing.Email` |
+| ACS Email connector (§6) | `Tellma.Connector.AcsEmail.Adapter` | `Tellma.Connector.AcsEmail.Adapter` |
+| Test capture (§12.4) | `Tellma.Core.Testing` | `Tellma.Core.Testing.Email` |
 
 Contracts live in `Tellma.Core.Abstractions` because every layer consumes email through them and
 only the composition root picks implementations. All runtime machinery — including the Development
@@ -117,6 +120,8 @@ grouped one folder per vendor:
 
 ```
 src/connector/
+├── acs-email/
+│   └── Tellma.Connector.AcsEmail.Adapter/      # csproj — Azure-SDK-based IEmailSender + Event Grid receiver
 ├── sendgrid/
 │   ├── Tellma.Connector.SendGrid/              # csproj — raw client: v3 mail-send, webhook signature verification, error model
 │   └── Tellma.Connector.SendGrid.Adapter/      # csproj — IEmailSender + IWebhookReceiver over the raw client
@@ -130,13 +135,14 @@ actual C# project folders, matching how the lowercase category folders (`src/cor
 renamed to `src/connector/` to match the platform's singular category-folder convention.
 
 **Whether a connector ships the raw-client/adapter split or adapter-only is decided by the state
-of the upstream client ecosystem, per vendor.** SMTP ships adapter-only: MailKit *is* the .NET
-mail client — first-party quality, actively maintained, the library Microsoft's own docs
-recommend — and wrapping it in a pass-through project would be indirection without value.
-SendGrid ships the full split: the official SDK is dormant (§5.1), so the platform implements the
-small API surface it needs as a raw `Tellma.Connector.SendGrid` client, which the adapter then
-maps to the platform contracts. A raw client is written when the upstream client is absent or
-unfit, not on principle.
+of the upstream client ecosystem, per vendor.** SMTP and ACS ship adapter-only: MailKit *is* the
+.NET mail client — first-party quality, actively maintained, the library Microsoft's own docs
+recommend — and `Azure.Communication.Email` is a maintained first-party SDK exposing everything
+the adapter needs, including the client-supplied operation id the correlation design turns on
+(§6.1); wrapping either would be indirection without value. SendGrid ships the full split: the
+official SDK is dormant (§5.1), so the platform implements the small API surface it needs as a
+raw `Tellma.Connector.SendGrid` client, which the adapter then maps to the platform contracts. A
+raw client is written when the upstream client is absent or unfit, not on principle.
 
 For protocol-shaped connectors (SMTP here; sftp, AS2, etc. later) the protocol name occupies the
 `<vendor>` slot — the "external system" is the protocol itself.
@@ -268,8 +274,10 @@ Contract notes:
   (only it knows who the recipients are), so the contract makes it **required with no default** —
   it cannot be forgotten, only stated, and every statement is visible in review and greppable in
   audit. §3 defines what the pipeline does with it.
-- On the wire, adapters prefix the canonical correlation form with the deployment id (§1.6,
-  §5.4) — an envelope the contract type never sees, stripped and validated on the way back in.
+- Correlations round-trip by provider echo where the transport carries custom data — SendGrid
+  custom args, prefixed with the deployment id as a wire envelope (§1.6, §5.4) — and by
+  provider-message-id lookup through `IEmailCorrelationStore` (§1.4) where it does not (ACS,
+  §6.2). Either mechanism is invisible to the contract type and to handlers.
 
 ### 1.3 Sending
 
@@ -356,7 +364,7 @@ public static class EmailSenderExtensions
 }
 ```
 
-Batch-contract invariants, binding on every implementation (the conformance suite in §11.1 pins
+Batch-contract invariants, binding on every implementation (the conformance suite in §12.1 pins
 them):
 
 1. **One result per message, positionally.** No reordering, no elision, ever.
@@ -392,6 +400,11 @@ public enum EmailDeliveryEventType
     Bounced,
     /// <summary>Discarded by the provider before sending (suppression list, invalid address).</summary>
     Dropped,
+    /// <summary>Terminally not delivered, for a reason that is neither a recipient-server
+    ///     refusal (<see cref="Bounced"/>) nor a pre-send discard (<see cref="Dropped"/>) — a
+    ///     provider-internal failure or a post-acceptance filtering verdict; detail in
+    ///     <see cref="EmailDeliveryEvent.Reason"/> and <see cref="EmailDeliveryEvent.RawType"/>.</summary>
+    Failed,
     /// <summary>Opened by the recipient, where tracking is enabled.</summary>
     Opened,
     /// <summary>A link in the message was clicked, where tracking is enabled.</summary>
@@ -472,10 +485,43 @@ public interface IEmailDeliveryEventHandler
         IReadOnlyList<EmailDeliveryEvent> events,
         CancellationToken cancellationToken);
 }
+
+/// <summary>One correlation-store entry.</summary>
+/// <param name="ProviderMessageId">The transport's id for the message (the ACS operation id).</param>
+/// <param name="Correlation">The correlation minted for the message.</param>
+public sealed record EmailCorrelationEntry(string ProviderMessageId, EmailCorrelation Correlation);
+
+/// <summary>
+///     Provider-message-id → correlation lookup for transports whose delivery events cannot
+///     carry a correlation string (ACS events carry only the message id). The sending adapter
+///     records entries before dispatching to the provider; its webhook receiver resolves them
+///     when events return. Batch-shaped in both directions. Transports that echo the
+///     correlation on their events (SendGrid) never touch this seam.
+/// </summary>
+/// <remarks>
+///     Entries must outlive the provider's redelivery window. Implementations own durability: a
+///     lost entry degrades the event to uncorrelated — metered, never an error. The platform
+///     ships a bounded in-memory implementation that does not survive a restart, sufficient
+///     while no consumer tracks delivery durably; the outbox supplies a durable one for its own
+///     mail.
+/// </remarks>
+public interface IEmailCorrelationStore
+{
+    /// <summary>Records correlations for messages about to be handed to the transport.</summary>
+    Task StoreAsync(
+        IReadOnlyList<EmailCorrelationEntry> entries,
+        CancellationToken cancellationToken);
+
+    /// <summary>Resolves provider message ids to correlations; unknown ids are omitted from
+    ///     the result.</summary>
+    Task<IReadOnlyDictionary<string, EmailCorrelation>> ResolveAsync(
+        IReadOnlyList<string> providerMessageIds,
+        CancellationToken cancellationToken);
+}
 ```
 
 `EmailDeliveryEventType` deliberately has no `Unsubscribed` member yet: unsubscribe semantics are
-designed with the outbox and suppression work (§10), and adding an enum member later is additive.
+designed with the outbox and suppression work (§11), and adding an enum member later is additive.
 Until then unsubscribe-family provider events map to `Other` with the provider name in `RawType`,
 so nothing is lost — merely unclassified.
 
@@ -560,7 +606,7 @@ public interface IWebhookReceiver
 
 The host constructing `WebhookRequest` guarantees `Headers` and `QueryParams` use
 ordinal-case-insensitive key comparers, so receivers index them without defensive re-wrapping
-(§6).
+(§7).
 
 ### 1.6 Deployment identity
 
@@ -651,6 +697,8 @@ services.AddTellmaEmail();      // Tellma.Core.Email: pipeline, options, guard, 
 services.AddSmtpEmail();        // Tellma.Connector.Smtp.Adapter: registers the "smtp" transport
 services.AddSendGridEmail();    // Tellma.Connector.SendGrid.Adapter: registers the "sendgrid" transport
                                 // + its webhook receiver when webhook config is present
+services.AddAcsEmail();         // Tellma.Connector.AcsEmail.Adapter: registers the "acs-email" transport
+                                // + its Event Grid receiver when webhook config is present
 ```
 
 `AddTellmaEmail()` (in `Tellma.Core.Email`, class `TellmaEmailServiceCollectionExtensions`)
@@ -660,7 +708,7 @@ registers:
 - The **router** (§3.3) as the sole `IEmailSender` registration — scoped, because it consults the
   ambient `ISandboxContext`.
 - The `"log-sink"` transport (§2.4).
-- `IEmailDeliveryEventDispatcher` (§7) and the email metrics/logging plumbing (§8).
+- `IEmailDeliveryEventDispatcher` (§8) and the email metrics/logging plumbing (§9).
 
 Consumers everywhere — identity engine, module packs, distribution code — take `IEmailSender` via
 constructor injection and never learn which transport is behind it.
@@ -677,6 +725,7 @@ the pipeline fails loudly when:
 - No `DeploymentIdentity` is registered (§1.6 — the correlation wire envelope and
   cross-deployment event protection key on it).
 - No `ISandboxContext` implementation is registered (§3.1).
+- The ACS transport is active with no `IEmailCorrelationStore` registered (§6.3).
 
 Validation also **resolves the active transport's factories once**, so the active adapter's own
 options validation (missing API key, missing host) fires at startup rather than on the first send;
@@ -688,9 +737,21 @@ config is legal as long as SendGrid is not the active provider.
 ```jsonc
 {
   "Email": {
-    // Which transport sends mail: "sendgrid" | "smtp" | "log-sink" (case-insensitive).
-    // Required outside Development; Development defaults to "log-sink".
-    "Provider": "sendgrid",
+    // Which transport sends mail: "acs-email" | "sendgrid" | "smtp" | "log-sink"
+    // (case-insensitive). Required outside Development; Development defaults to "log-sink".
+    "Provider": "acs-email",
+
+    "AcsEmail": {
+      // Auth is Entra ID (managed identity) against the resource endpoint; no key is stored.
+      "Endpoint": "https://tellma-etpharma.communication.azure.com",
+      "From": { "Address": "no-reply@etpharma.tellma.com", "DisplayName": "Tellma" },
+      "MaxConcurrency": 8,                 // parallel send requests per batch
+      "Webhook": {
+        // Accepted ?token= values on the Event Grid subscription URL; more than one
+        // accepted to allow rotation (§6.4). Receiver active iff non-empty.
+        "Tokens": [ "<random secret>" ]
+      }
+    },
 
     "SendGrid": {
       "ApiKey": "<from Key Vault>",
@@ -733,7 +794,7 @@ Schema rules, which future connectors inherit as the pattern:
 
 Both adapters carry a required `From` in configuration, used when `EmailMessage.From` is null —
 the overwhelmingly common case: consumers rarely know or care what mailbox mail leaves from, and
-the sending domain is a deployment concern (domain authentication, §10) rather than a business
+the sending domain is a deployment concern (domain authentication, §11) rather than a business
 one. A message-level `From` overrides it for the rare flow that speaks as a different sender.
 
 The default sits per transport section, not hoisted to the `Email` root, for two reasons: each
@@ -833,7 +894,7 @@ lazily, sandbox — senders once, then applies per batch:
 |---|---|---|
 | Live | Internal or External | Passed through to the **live** sender untouched. |
 | Sandbox | Internal | **Marked** (below), then sent via the **live** sender — real mail to real staff, visibly test-originated. |
-| Sandbox | External | Sent via the transport's **sandbox** sender when registered (SendGrid validation mode §5.2, SMTP mail-trap §4.4), or **withheld** with no wire activity when none is. Either way the reported outcome is `Sandboxed`. |
+| Sandbox | External | Sent via the transport's **sandbox** sender when registered (SendGrid validation mode §5.2, SMTP mail-trap §4.4; ACS registers none, §6.2), or **withheld** with no wire activity when none is. Either way the reported outcome is `Sandboxed`. |
 
 Mechanics:
 
@@ -862,7 +923,7 @@ Mechanics:
   contract's rule being that failure handling branches on `TransientFailure`/`Rejected` (§1.3),
   while status UIs render the truth. The rewrite lives in the router so adapters stay
   policy-free (§3.2); telemetry mirrors the outcome and separately records the wire mechanism
-  (§8).
+  (§9).
 - **`ExpectsDeliveryEvents`** arrives already set by the adapter on live-channel results (§5.2)
   and is false on every `Sandboxed` result: nothing real was delivered, so no delivery event
   will ever arrive and the send outcome is final.
@@ -899,7 +960,7 @@ sandbox-tenant external mail visible there too (its results still report `Sandbo
 must be reachable only inside the staging network and requires authentication — it holds sign-in
 codes. What this posture gives up is the last wire hop of the production transport (staging does
 not exercise the SendGrid adapter against the live API); that contract is covered by the nightly
-gated live suite (§11.3), which is a better fidelity instrument than staging traffic anyway.
+gated live suite (§12.3), which is a better fidelity instrument than staging traffic anyway.
 This applies uniformly to distribution deployments, the standalone identity server's staging
 instance, and staging distros embedding identity in-proc — all of them just carry the trap SMTP
 config.
@@ -911,7 +972,7 @@ config.
 SMTP is the fallback transport: air-gapped and on-prem installations relaying through a customer
 smarthost, deployments where a SendGrid account is unavailable, and the local-dev path for
 inspecting real MIME output in a visual sink. It is also what the identity server ships with today
-(spec 0003 §13 pins an on-prem identity deployment to "store/PFX certificates, a file-system key
+(spec 0003 §14 pins an on-prem identity deployment to "store/PFX certificates, a file-system key
 ring, and SMTP email"); this adapter replaces that private implementation.
 
 The client is **MailKit** — not `System.Net.Mail.SmtpClient`, which Microsoft marks compat-only
@@ -1091,10 +1152,10 @@ Handling, in order:
    `tellma_correlation` custom arg is split on its **envelope**: the leading segment names the
    deployment that sent the message; when it differs from this deployment's
    `DeploymentIdentity.DeploymentId` (§1.6) the event is **foreign** — dropped before dispatch
-   and metered (§8.1), routine background under shared provider credentials (§5.5) and a
+   and metered (§9.1), routine background under shared provider credentials (§5.5) and a
    misrouted-dashboard signal under dedicated ones. Otherwise `Correlation` = `EmailCorrelation.TryParse` of the remainder (absent or
    unparsable → null; SendGrid documents that delayed/asynchronous bounces can arrive without
-   the send's metadata, so uncorrelated bounces are expected background, handled by §7's
+   the send's metadata, so uncorrelated bounces are expected background, handled by §8's
    metering). Type map: `delivered` → `Delivered`, `deferred` → `Deferred`, `bounce` →
    `Bounced`, `dropped` → `Dropped`, `open` → `Opened`, `click` → `Clicked`, `spamreport` →
    `SpamReported`; everything else — `processed`, `unsubscribe`, `group_unsubscribe`,
@@ -1117,7 +1178,7 @@ models, in descending isolation:
 1. **Subuser (or account) per deployable** — own API key, own event webhook at its own
    `/api/webhooks/sendgrid-events`, own suppression lists, own sender reputation; Twilio's
    documented multi-tenant model ("customer-per-subuser"). Subuser **credit limits** are the
-   enforceable per-deployable quota (§9). Plan reality (August 2026): subusers require the Pro
+   enforceable per-deployable quota (§10). Plan reality (August 2026): subusers require the Pro
    plan (≈ $90/month, 15 subusers included, more by negotiation or Premier); the free tier was
    retired in 2025, so even staging sending is paid.
 2. **Account per group** — several Pro accounts, each carrying up to 15 deployables as
@@ -1134,20 +1195,151 @@ models, in descending isolation:
    tail of small distributions materializes; the envelope this spec already stamps is what
    makes it possible.
 
-SendGrid is the first hosted provider, not a commitment. The contract is provider-neutral, and
-if fleet economics outgrow subuser pricing, the candidates to evaluate are **Azure Communication
-Services Email** (an ACS resource per deployable inside its own resource group; delivery reports
-and engagement events via Event Grid; pay-per-message, no plan gating) and **Postmark**
-(per-"server" isolation with per-server tokens and webhooks). An adapter swap touches
-composition and configuration only. SendGrid bought through the Azure Marketplace bills through
-Azure at the standard SendGrid plans — the discounted legacy marketplace offering was retired in
-2023 — so the marketplace is a procurement convenience, not a pricing lever.
+SendGrid's fleet role is **the hosted fallback**: the SaaS default wherever ACS's conditional
+default does not hold (§6.1), and the hosted choice for non-Azure deployments or for tenants
+needing deferred-event granularity, recipient spam-complaint events, or a per-request validation
+mode — signals ACS does not emit. The comparative analysis, with Postmark as the named tertiary
+candidate, is [docs/research/email-provider-comparison.md](../research/email-provider-comparison.md).
+SendGrid bought through the Azure Marketplace bills through Azure at the standard SendGrid
+plans — the discounted legacy marketplace offering was retired in 2023 — so the marketplace is a
+procurement convenience, not a pricing lever.
 
 **Domain authentication before first send**, whichever topology: SPF + DKIM per sending domain
 (mandatory at Gmail/Yahoo since 2024), DMARC once any deployable exceeds 5,000 messages/day to
-one mailbox provider (§10).
+one mailbox provider (§11).
 
-## 6. Webhook HTTP fronting — `MapTellmaWebhooks`
+## 6. The ACS Email connector — `Tellma.Connector.AcsEmail.Adapter`
+
+### 6.1 Role and client library
+
+Azure Communication Services Email is **the default hosted transport for Azure-deployed
+distributions, conditionally**: the default holds provided ACS email quota increases prove to be
+granted **per subscription** — one onboarding ticket lifting every co-located distribution — and
+flips to SendGrid (§5) if grants turn out to be per resource, a support ticket per distribution
+being operationally untenable at fleet scale. Resolving that scope question with Azure support
+precedes the first production rollout. The comparative analysis behind the choice is
+[docs/research/email-provider-comparison.md](../research/email-provider-comparison.md); the short
+form: per-deployable isolation is ACS's *native* model at near-zero fixed cost (a Communication
+Services resource inside each distribution's own resource group, provisioned by its own Bicep),
+authentication is managed identity (no mail secret exists at all), data-location options cover
+the fleet's regions, and operations land in the Azure estate the platform already runs on.
+
+The adapter builds on the first-party SDK — `Azure.Communication.Email` for sending and
+`Azure.Messaging.EventGrid` for event parsing — which is fit per the §1.1 rule: actively
+maintained, `TokenCredential`-native, and its send overload accepts a **client-supplied operation
+`Guid`**, the parameter the correlation design turns on. Two SDK behaviors are configured away:
+the Azure.Core retry policy is set to zero retries (§1.3 rule 4 — durable retry belongs to the
+caller), and sends use the start-only wait mode (no polling, §6.2).
+
+### 6.2 Sending
+
+The `Email:AcsEmail` section (§2.2) carries the resource `Endpoint`, the default `From` (§2.3),
+`MaxConcurrency` (default 8), and the webhook tokens (§6.4) — and deliberately **no credential**:
+the client authenticates with `TokenCredential` (the App Service's managed identity in Azure, the
+developer's Azure credential locally); ACS's HMAC access keys are left unused, so there is no
+mail secret to store or rotate.
+
+One `EmailMessage` maps to one send request (ACS has no batch endpoint); the adapter issues the
+batch with bounded concurrency and reassembles results positionally. Recipient-count and
+request-size caps are resource-level and support-raisable, so the adapter does not pre-validate
+them — the provider's synchronous 400 maps to `Rejected` like any other payload refusal.
+
+**Correlation rides the operation id, not an echo.** ACS delivery events carry no custom data;
+the REST contract requires the operation id to be a UUID, and even a permissive reading could not
+carry the correlation verbatim (ids must be unique per attempt; correlations repeat across
+resends). Per correlated message the adapter therefore mints a `Guid`, writes
+`(guid, correlation)` to the `IEmailCorrelationStore` (§1.4) **before** the send — crash-safe
+because the id is client-chosen — then sends with that operation id; `ProviderMessageId` is the
+guid. Uncorrelated messages skip the store. **No deployment envelope is stamped** (§1.2): each
+deployment's events return only to its own Event Grid subscription on its own resource, so
+cross-deployment protection is structural on this transport.
+
+Outcome mapping, per request: 202 → `Sent`; 400 → `Rejected` (error detail into `Error`);
+401/403 → throw before any success in the batch, `TransientFailure` for the remainder after one
+(§1.3 rule 2); 429 → `TransientFailure`, short-circuiting the batch's unattempted remainder
+(default quotas are low, §6.5); 5xx, network failure, timeout → `TransientFailure`.
+
+**202 is `Sent`; the adapter never polls the send operation.** The 202 means ACS has queued the
+message — exactly this contract's `Sent` ("accepted by the transport"), the same epistemic state
+as SendGrid's 202. Polling the long-running operation to a terminal state is both unwanted
+(`SendAsync` must return promptly) and unviable (status-poll quotas sit an order of magnitude
+below send quotas — the operations endpoint is a diagnostics facility, not a status channel).
+Post-acceptance failures surface as delivery reports with status `Failed`, which makes **the
+Event Grid receiver effectively part of the transport on ACS**: without it, mail that fails after
+acceptance fails silently. Deployments activating this transport configure §6.4 as a matter of
+course; the startup log (§9.2) makes a missing webhook configuration visible.
+
+Live-channel results carry `ExpectsDeliveryEvents = true` exactly when the webhook tokens are
+configured and the message has a correlation. **There is no sandbox channel**: ACS offers no
+validate-only mode, the registration's `Sandbox` factory is null, and the router withholds
+external sandbox mail (`Sandboxed`, §3.3).
+
+### 6.3 The correlation store
+
+`IEmailCorrelationStore` (§1.4) must be registered whenever the ACS transport is active —
+validated at startup like the other composition seams (§2.1). `Tellma.Core.Email` ships
+`InMemoryEmailCorrelationStore`, a bounded, TTL-evicting stopgap (default retention 48 hours,
+covering Event Grid's 24-hour redelivery window) whose stated limitation is that entries do not
+survive a restart — a lost entry degrades an event to uncorrelated (§8), never to an error. That
+is acceptable exactly as long as no consumer tracks delivery durably; the outbox spec ships the
+durable implementation, with the outbox row itself serving as the map for outbox mail.
+
+### 6.4 The Event Grid receiver
+
+`AcsEmailEventsWebhookReceiver`, key **`acs-email-events`**, registered by `AddAcsEmail()` iff
+`Email:AcsEmail:Webhook:Tokens` is non-empty — independent of the active send transport, the same
+drain-out rule as §5.4. Subscriptions are provisioned on the Event Grid **system topic** of the
+deployment's own resource, EventGridEvent schema, targeting
+`/api/webhooks/acs-email-events?token=<secret>`.
+
+Handling, in order:
+
+1. **Method check** — POST only (the CloudEvents OPTIONS handshake is not used; subscriptions
+   are provisioned with the EventGridEvent schema).
+2. **Verification** — Event Grid does not sign deliveries, so authenticity rests on the
+   subscription URL's `token` query parameter: compared constant-time against the configured
+   accepted tokens (multiple accepted for rotation, mirroring §5.4's key list); absent or
+   unmatched → `Unauthorized`. Microsoft Entra ID delivery auth is the documented hardening
+   upgrade — it changes subscription provisioning, not this contract. The fronting never logs
+   query strings (§7), so the token stays out of log stores.
+3. **Handshake** — a `SubscriptionValidationEvent` returns `Accepted` with body
+   `{"validationResponse": "<code>"}` and content type `application/json` — the §1.5
+   challenge-echo path.
+4. **Translation** — events parse through the SDK's system-event models. Per event:
+   `Recipient` = the event's recipient (engagement events omit it when the original message had
+   several recipients — passed through as null); `Timestamp` = the delivery/engagement
+   timestamp, falling back to the Event Grid envelope's event time; `ProviderEventId` = the
+   Event Grid event id (stable across redeliveries — the dedupe key); `Reason` = the delivery
+   status detail; `RawType` = the ACS status or engagement type verbatim. `Correlation` resolves
+   by batch lookup of `messageId` through the store; misses are uncorrelated (§8). Type map:
+   `Delivered` → `Delivered`, `Bounced` → `Bounced`, `Suppressed` → `Dropped` (the provider
+   discarded it — its managed suppression list), `Failed` / `Quarantined` / `FilteredSpam` →
+   `Failed`, `Expanded` → `Other`; engagement `View` → `Opened`, `Click` → `Clicked`.
+5. **Dispatch** — failures map to `TransientFailure`; Event Grid redelivers with backoff for up
+   to 24 hours.
+
+**Dead-lettering is part of provisioning, not an option**: Event Grid never retries a delivery
+answered 401 or 403, so a token-rotation mistake would otherwise silently drop events. Every
+subscription is provisioned with a dead-letter container, and the silent-webhook alert (§9.4)
+covers the residual gap.
+
+### 6.5 Provisioning and quotas (operational guidance, non-normative)
+
+- **Everything is the distribution's own Bicep**: the Communication Services resource, the Email
+  Communication Service and custom domain (whose SPF/DKIM records feed the distribution's DNS
+  setup), the managed-identity role assignment, the Event Grid system topic, and the webhook
+  subscription (token from Key Vault, dead-letter storage). Declarative per-distribution
+  provisioning at hundreds of distributions is the operational argument for this transport.
+- **Quotas gate onboarding**: fresh subscriptions send 30 messages/minute and 100/hour on custom
+  domains (Azure-managed domains are test-only), and increases go through a reputation-gated
+  support ticket (up to 72 hours, discretionary). The ticket is an onboarding prerequisite, and
+  the unresolved **grant-scope question — per subscription or per resource — decides the
+  default-provider policy** (§6.1).
+- **Suppression**: ACS's platform-managed suppression list auto-suppresses hard-bouncing
+  addresses; such sends surface as `Suppressed` events (→ `Dropped`). Customer-managed
+  suppression lists are preview-only and unused.
+
+## 7. Webhook HTTP fronting — `MapTellmaWebhooks`
 
 `Tellma.Core.Webhooks` ships the one HTTP fronting every receiver shares, so no connector ever
 writes a controller:
@@ -1173,15 +1365,16 @@ app.MapTellmaWebhooks();                    // maps /api/webhooks/{key}, GET + P
   present), `Unauthorized` → 401, `Invalid` → 400, `TransientFailure` → 503. An unhandled
   receiver exception is logged as an error and returned as 500 — semantically `TransientFailure`,
   so the provider redelivers.
-- **No payload logging.** Request bodies never reach logs at any level — they may contain
-  recipient addresses and provider junk; diagnostics rely on the receiver's `Detail`, the
-  metrics, and (for verified payloads) the translated events.
+- **No payload or query-string logging.** Request bodies never reach logs at any level — they
+  may contain recipient addresses and provider junk — and neither do query strings, which may
+  carry webhook credentials (§6.4); diagnostics rely on the receiver's `Detail`, the metrics,
+  and (for verified payloads) the translated events.
 
 The route shape `/api/webhooks/{key}` is a platform contract: operators configure provider
 dashboards against it, and it must remain stable across releases. Receiver keys are therefore
 part of a connector's public surface — renaming one is a breaking change.
 
-## 7. Delivery-event dispatch
+## 8. Delivery-event dispatch
 
 `Tellma.Core.Email`'s `IEmailDeliveryEventDispatcher` implementation (foreign-deployable events
 never reach it — adapters drop them at translation, §5.4):
@@ -1196,14 +1389,14 @@ never reach it — adapters drop them at translation, §5.4):
 - Events with a correlation whose **owner key matches no handler** are metered and logged at
   Warning — with foreign deployments already filtered by the envelope (§5.4), this is a
   composition bug (an owner minted correlations but registered no handler), worth an alert
-  (§8.4).
+  (§9.4).
 - **Handler failures propagate.** The receiver maps the exception to `TransientFailure`, the
   provider redelivers the whole batch later, and handler-side deduplication on `ProviderEventId`
   makes the redelivery harmless. This is deliberate at-least-once design: no event queue exists
   at this tier, so provider redelivery is the only durable retry — swallowing a handler failure
   would silently lose the event instead.
 
-## 8. Observability
+## 9. Observability
 
 All email telemetry is emitted by the platform pipeline — `Tellma.Core.Email` for the send and
 delivery-event instruments, `Tellma.Core.Webhooks` for the webhook instruments — so every
@@ -1212,7 +1405,7 @@ Instruments follow the OpenTelemetry conventions for custom meters — lowercase
 names, units in instrument metadata, durations in seconds — and the shapes mirror the OTel
 messaging semantic conventions where they fit.
 
-### 8.1 Metrics
+### 9.1 Metrics
 
 Two meters, `Tellma.Email` and `Tellma.Webhooks` (one per emitting package), created through
 `IMeterFactory`:
@@ -1236,7 +1429,7 @@ shared Log Analytics workspace supplies the fleet rollup keyed by resource.
 
 Recipient addresses, subjects, and body content never appear in metrics.
 
-### 8.2 Logs
+### 9.2 Logs
 
 Source-generated `LoggerMessage` events (the platform's logging idiom), the key ones:
 
@@ -1261,7 +1454,7 @@ never the person. (Provider error texts can quote the recipient address back —
 unknown user <x@y>`; that is accepted: it is failure-path-only, third-party-originated, and
 operationally essential.)
 
-### 8.3 Traces
+### 9.3 Traces
 
 One `ActivitySource`, `Tellma.Email`:
 
@@ -1276,7 +1469,7 @@ Hosts opt in by adding the source and meter to their OpenTelemetry configuration
 server's OTel wiring already follows this pattern; distributions inherit it from the host
 template).
 
-### 8.4 Alerts and dashboards (operational guidance, non-normative)
+### 9.4 Alerts and dashboards (operational guidance, non-normative)
 
 The instruments above are designed to back these Azure Monitor alerts — listed here so the
 implementation validates that each is expressible, not to fix thresholds forever:
@@ -1289,15 +1482,15 @@ implementation validates that each is expressible, not to fix thresholds forever
   `tellma.email.delivery.events` stays zero over a window — a misconfigured or broken provider
   webhook, otherwise invisible because sends still succeed.
 - **Bounce/spam ratio**: `bounced + dropped` (and separately `spam_reported`) over `delivered`
-  above the provider's reputation thresholds (§10) — the deliverability early-warning.
-- **Unknown owner keys**: any occurrence (composition bug or environment leakage, §7).
+  above the provider's reputation thresholds (§11) — the deliverability early-warning.
+- **Unknown owner keys**: any occurrence (composition bug or environment leakage, §8).
 - **Delivery-event lag p95** above minutes — provider-side callback delay or a struggling
   receiver.
 
 Per-deployable dashboards live in each Application Insights resource; the fleet view aggregates
 in the shared Log Analytics workspace.
 
-## 9. Guardrails — and where they don't belong
+## 10. Guardrails — and where they don't belong
 
 Question: should the connector tier throttle a badly-behaved distribution or tenant before it
 exhausts provider limits? **No — by design.** Volume policy cannot live at the transport:
@@ -1319,7 +1512,7 @@ Where volume control actually lives, each layer owning what it can enforce hones
 3. **Interactive-path rate limits** — endpoints that trigger mail on request (invitations,
    recovery) carry their own per-IP/per-user limits, as the identity server already does; that is
    request-abuse control, not email policy.
-4. **Detection** — §8.1's metrics make anomalous volume visible within minutes; a send-volume
+4. **Detection** — §9.1's metrics make anomalous volume visible within minutes; a send-volume
    alert per deployable is part of the standard alert set.
 
 **Mass marketing campaigns are not this pipe.** `IEmailSender` is the transactional channel;
@@ -1330,7 +1523,7 @@ the transactional pipe would also poison its sender reputation — the deliverab
 and sign-in codes must never depend on a marketing blast's spam rate. Nothing enforces this
 mechanically today (the outbox's quotas will); it is a stated platform rule.
 
-## 10. Deliverability, suppression, and unsubscribe
+## 11. Deliverability, suppression, and unsubscribe
 
 What this spec ships is the raw material; the policy tier lands with the outbox. The division:
 
@@ -1348,7 +1541,7 @@ What this spec ships is the raw material; the policy tier lands with the outbox.
   provider. This is per-deployable ops work (each subuser authenticates its domain) that the
   deployment runbook owns; the spec records it because unauthenticated mail fails regardless of
   code quality.
-- **Reputation alerting** (§8.4), against the provider's documented health thresholds:
+- **Reputation alerting** (§9.4), against the provider's documented health thresholds:
   investigate a bounce rate persistently above ~5%, treat a spam-report rate above 0.1% as
   excessive, keep the Gmail-reported spam rate under 0.3% (aim 0.1%).
 
@@ -1368,15 +1561,14 @@ What this spec ships is the raw material; the policy tier lands with the outbox.
 The SMTP path has no provider suppression layer; relay hygiene and bounce-mailbox handling
 belong to whoever operates the smarthost — stated plainly in the adapter README.
 
-## 11. Testing
+## 12. Testing
 
 The strategy per tier: **exhaustive offline tests** where the platform's own logic lives
 (mapping, verification, routing, policy), **hermetic in-process protocol tests** for SMTP
-(a real socket, no external dependency), and a **narrow, gated live suite** for SendGrid — the
-one thing no local test can vouch for is that our payloads and credentials satisfy the real API,
-and that matters precisely because the wire client is first-party code. SMTP gets no live suite:
-there is no canonical "the" SMTP server, and the in-process server exercising MailKit over a
-real socket is the honest equivalent.
+(a real socket, no external dependency), and **narrow, gated live suites** for the hosted
+providers — the one thing no local test can vouch for is that payloads, credentials, and quotas
+satisfy the real APIs. SMTP gets no live suite: there is no canonical "the" SMTP server, and the
+in-process server exercising MailKit over a real socket is the honest equivalent.
 
 Test projects mirror `src/` per repo convention, vendor grouping folders included. The
 in-process SMTP tests need no external infrastructure, so they live in the ordinary `*.Tests`
@@ -1385,6 +1577,9 @@ gated live suite).
 
 ```
 test/connector/
+├── acs-email/
+│   ├── Tellma.Connector.AcsEmail.Adapter.Tests/    # mapping, correlation-store ordering, Event Grid receiver, conformance
+│   └── Tellma.Connector.AcsEmail.IntegrationTests/ # gated live suite (real send to an internal mailbox)
 ├── sendgrid/
 │   ├── Tellma.Connector.SendGrid.Tests/            # raw client: payload snapshots, verifier vectors
 │   ├── Tellma.Connector.SendGrid.Adapter.Tests/    # mapping, receiver, conformance
@@ -1393,20 +1588,21 @@ test/connector/
     └── Tellma.Connector.Smtp.Adapter.Tests/        # in-process SMTP server suite, conformance
 test/core/
 ├── Tellma.Core.Abstractions.Tests/                 # correlation parsing, contract types
-├── Tellma.Core.Email.Tests/                        # router, selection & guard, dispatcher, log sink
+├── Tellma.Core.Email.Tests/                        # router, selection & guard, dispatcher, log sink, in-memory store
 └── Tellma.Core.Webhooks.Tests/                     # fronting: mapping, caps, key validation
 ```
 
-### 11.1 The sender conformance suite
+### 12.1 The sender conformance suite
 
 An abstract xUnit class pinning the §1.3 invariants — one result per message in order; throw
 only before first attempt; invalid message → `Rejected` without poisoning the batch; no
 adapter-level retries (asserted as at-most-one wire attempt per message) — instantiated per
 sender against its scriptable seam: the SendGrid adapter over a scripted `HttpMessageHandler`,
-the SMTP adapter over the in-process server with scripted responses, the log sink as-is. Every
-future email transport inherits the suite; it is the executable form of the contract.
+the ACS adapter over Azure.Core's mock transport, the SMTP adapter over the in-process server
+with scripted responses, the log sink as-is. Every future email transport inherits the suite; it
+is the executable form of the contract.
 
-### 11.2 Offline suites
+### 12.2 Offline suites
 
 - **Correlation** (`Tellma.Core.Abstractions.Tests`): `ToString`/`TryParse` round-trips
   including colons in `Reference` and null `TenantId`; wire-envelope round-trips; rejection
@@ -1442,8 +1638,19 @@ future email transport inherits the suite; it is the executable form of the cont
   over recorded event payloads (each documented event name, unknown names → `Other`, missing
   custom args → uncorrelated, foreign deployable segment → dropped and metered, malformed JSON →
   `Invalid`, missing headers → `Unauthorized`); dispatch-failure → `TransientFailure`.
+- **ACS adapter** (`…AcsEmail.Adapter.Tests`, over Azure.Core's mock transport): store-write
+  ordering (entry durably recorded before the send fires) and per-attempt operation-id
+  uniqueness; the zero-retry client configuration pinned; the §6.2 outcome table including the
+  401-before-success throw and the 429 short-circuit; startup failure when active without a
+  registered correlation store; receiver behavior end-to-end over recorded Event Grid payloads —
+  subscription-validation echo (body and content type), token verification (constant-time,
+  multi-accept, absent/unmatched → `Unauthorized`), the §6.4 translation table including
+  engagement events and the multi-recipient null-recipient case, store-miss → uncorrelated,
+  `ProviderEventId` = the Event Grid event id; dispatch-failure → `TransientFailure`.
+- **Correlation store** (`Tellma.Core.Email.Tests`): `InMemoryEmailCorrelationStore` capacity
+  bounds, TTL eviction, and batch resolve semantics (unknown ids omitted, never errors).
 
-### 11.3 The SMTP protocol suite and the gated live suite
+### 12.3 The SMTP protocol suite and the gated live suites
 
 **SMTP** (`…Smtp.Adapter.Tests`): the `SmtpServer` NuGet package (11.x — stable, cross-platform,
 in-process) hosts a real SMTP endpoint inside the test process, with `IMessageStore` capturing
@@ -1472,7 +1679,15 @@ within a day. (Webhook delivery cannot be exercised this way — sandbox mode em
 receiver's correctness rests on the recorded-payload and self-signed vectors above, and
 SendGrid's dashboard "Test Your Integration" button covers manual smoke at onboarding.)
 
-### 11.4 Test capture — `Tellma.Core.Testing`
+**ACS live** (`…AcsEmail.IntegrationTests`): same gating and cadence — environment-supplied
+endpoint and credential (`TELLMA_ACS_TEST_ENDPOINT` plus a federated CI credential), skipped
+cleanly when absent, nightly + manual, never a PR gate. ACS has no validate-only mode, so the
+suite **really delivers**: one minimal and one full-feature message to a fixed Tellma-owned
+mailbox on a dedicated test resource, asserting acceptance — volume that sits comfortably inside
+even default quotas. Event Grid delivery is not asserted here (that is synthetic monitoring,
+which is out of scope); the receiver's correctness rests on the recorded-payload suites above.
+
+### 12.4 Test capture — `Tellma.Core.Testing`
 
 A new published package (charter: test doubles and assertion helpers for `Tellma.Core.Abstractions`
 contracts — the C# sibling of the `@tellma/core-ui-testing` precedent), so distribution and
@@ -1498,7 +1713,7 @@ sink and scrape codes/links from log output — the identity E2E suites' existin
 point the SMTP transport at a Mailpit container and read its REST API; both are configuration-only
 profiles of this spec's machinery, not additional test infrastructure.
 
-## 12. The outbox — specified shape, future work
+## 13. The outbox — specified shape, future work
 
 For contract-shape alignment only; **none of this compiles in this spec's deliverables** — the
 types below are reproduced so the contracts above can be judged against their eventual primary
@@ -1548,37 +1763,38 @@ public interface IEmailOutbox
 How today's contract decisions serve it: the outbox worker is the archetypal `IEmailSender`
 caller — batch-shaped dispatch (§1.3), per-message outcomes driving row-level retry and
 dead-letter transitions (rule 2 is what makes retry safe), `SendAfter` and quota pacing at the
-tier that owns durable state (§9), correlations minted per row with `TenantId` set (its state is
+tier that owns durable state (§10), correlations minted per row with `TenantId` set (its state is
 tenant-sharded), a delivery-event handler (`OwnerKey: "outbox"`) updating row status with
 `ProviderEventId` dedup, and each result's `ExpectsDeliveryEvents` deciding whether that row's
 `Sent` (or `Sandboxed`) is terminal. The outbox spec also owns: unsubscribe and stream
-classification (§10), per-tenant quotas, the dispatch worker's signal/poll loop, and the
+classification (§11), per-tenant quotas, the dispatch worker's signal/poll loop, and the
 per-document email UI fed by `RegardingEntity`/`RegardingId`.
 
-## 13. Definition of done
+## 14. Definition of done
 
 - **Projects**: `Tellma.Core.Abstractions` additions; `Tellma.Core.Email`;
-  `Tellma.Core.Webhooks`; `Tellma.Connector.SendGrid` + `Tellma.Connector.SendGrid.Adapter`;
-  `Tellma.Connector.Smtp.Adapter`; `Tellma.Core.Testing` — each with a README stating purpose
-  and usage, XML docs on every member, building and testing on Windows and Linux under the
-  repo's warnings-as-errors gates. `src/connectors/` renamed to `src/connector/` with lowercase
-  vendor grouping folders (§1.1).
+  `Tellma.Core.Webhooks`; `Tellma.Connector.AcsEmail.Adapter`; `Tellma.Connector.SendGrid` +
+  `Tellma.Connector.SendGrid.Adapter`; `Tellma.Connector.Smtp.Adapter`; `Tellma.Core.Testing` —
+  each with a README stating purpose and usage, XML docs on every member, building and testing
+  on Windows and Linux under the repo's warnings-as-errors gates. `src/connectors/` renamed to
+  `src/connector/` with lowercase vendor grouping folders (§1.1).
 - **Behavior**: the §3.3 routing matrix, §2.1 startup validations (including both production
-  guards), §6 fronting semantics, §7 dispatch semantics, and both adapters' outcome mappings —
-  all implemented and covered by the suites of §11, conformance suite included, green in CI.
-- **Observability**: §8.1 instruments and §8.2 log events implemented and asserted
-  (`MetricCollector<T>`); `ActivitySource` wired; each §8.4 alert expressible against the
+  guards), §7 fronting semantics, §8 dispatch semantics, the three adapters' outcome mappings,
+  and the correlation store (seam, in-memory implementation, required-when-active validation) —
+  all implemented and covered by the suites of §12, conformance suite included, green in CI.
+- **Observability**: §9.1 instruments and §9.2 log events implemented and asserted
+  (`MetricCollector<T>`); `ActivitySource` wired; each §9.4 alert expressible against the
   emitted telemetry (validated by writing the queries, not by deploying alerts).
 - **CI**: unit/protocol suites on every PR (no new external dependencies on the PR path); the
-  gated SendGrid live suite wired as scheduled + manual, skipping cleanly where the secret is
-  absent.
+  gated SendGrid and ACS live suites wired as nightly + manual, each skipping cleanly where its
+  credentials are absent.
 - **Docs**: ARCHITECTURE.md updated where this spec touches it — the connector folder rename
   and lowercase vendor grouping, the two new core runtime packages, the `Tellma.Core.Testing`
   package, the SendGrid raw-client example replacing any official-SDK assumption. Public XML
   docs and error messages reference no `docs/` paths, per repo rule.
 - **Not in scope of done**: the identity server's adoption of the contract is executed and
   verified on the identity-server branch before that branch merges, not gated here;
-  `IEmailOutbox` remains uncompiled (§12).
+  `IEmailOutbox` remains uncompiled (§13).
 
 ## Decisions record
 
@@ -1592,9 +1808,10 @@ The load-bearing decisions, where not already evident above:
    since April 2024), targets legacy TFMs, drags Newtonsoft.Json into the platform's dependency
    graph, and delegates webhook signature verification to a third-party ECDSA library where BCL
    crypto suffices; the needed surface is one endpoint plus verification (§5.1). SendGrid
-   therefore gets the convention's raw-client/adapter split while SMTP stays adapter-only on
-   MailKit — the split is earned per vendor by the upstream ecosystem, not applied uniformly
-   (§1.1).
+   therefore gets the convention's raw-client/adapter split while SMTP and ACS stay adapter-only
+   on fit upstream clients (MailKit; `Azure.Communication.Email`, whose send overload exposes
+   the client-supplied operation id) — the split is earned per vendor by the upstream ecosystem,
+   not applied uniformly (§1.1).
 3. **Runtime in `Tellma.Core.Email` / `Tellma.Core.Webhooks`; contracts in Abstractions** —
    Abstractions' charter is a pure contract surface (the log sink belongs with the pipeline
    that activates and guards it), and dedicated runtime packages keep non-distribution hosts
@@ -1625,7 +1842,8 @@ The load-bearing decisions, where not already evident above:
    (§2.4, §3.5).
 9. **Provider selection is configuration-only** — adapters register transports; `Email:Provider`
    picks one; switching transports (or enabling the sink) is an `appsettings`/Key Vault edit.
-   Inactive adapters stay cold and unvalidated so shipping both adapters costs nothing (§2.1).
+   Inactive adapters stay cold and unvalidated so shipping all three adapters costs nothing
+   (§2.1).
 10. **Multiple accepted webhook verification keys; no timestamp-freshness check** — multi-key
     config is the rotation affordance SendGrid's single-signing-key model lacks; freshness
     checking is unsound against a provider that legitimately redelivers for 24 hours, and
@@ -1635,17 +1853,17 @@ The load-bearing decisions, where not already evident above:
 12. **No volume guardrails at the connector tier** — the transport cannot tell a runaway loop
     from a statement run, and in-process counters lie under scale-out. Enforcement lives where
     it is honest: provider-side subuser credit limits now, outbox quotas later, interactive
-    rate limits at the API layer, detection via metrics (§9).
+    rate limits at the API layer, detection via metrics (§10).
 13. **No `Unsubscribed` event type yet** — unsubscribe semantics belong to the outbox spec;
     the enum grows additively when the model exists; meanwhile `Other` + `RawType` loses
-    nothing (§1.4, §10).
+    nothing (§1.4, §11).
 14. **In-process `SmtpServer` for protocol tests; Mailpit for humans; live suite gated and
     scheduled** — PR CI stays hermetic and cross-platform with no Docker dependency; the real
     SendGrid API is pulse-checked nightly via sandbox mode (full validation, zero delivery)
-    rather than gating PRs on an external service (§11).
+    rather than gating PRs on an external service (§12).
 15. **`IEmailOutbox` is specified but not compiled** — publishing dead API would let semver
     freeze decisions the outbox spec must be free to revisit; the shape is recorded here so
-    today's contracts could be validated against their eventual primary consumer (§12).
+    today's contracts could be validated against their eventual primary consumer (§13).
 16. **Delivery-event expectation is per-result, not per-sender** — `ExpectsDeliveryEvents` on
     `EmailSendResult`: one batch can mix a sandbox tenant's internal mail (live channel, events
     coming) with its external mail (sandboxed, terminal), and only a per-message flag can tell
@@ -1657,12 +1875,40 @@ The load-bearing decisions, where not already evident above:
     interception infrastructure — the application runs its production behavior unmodified — and
     the forgone last-hop fidelity is covered by the nightly gated live suite (§3.5). A
     force-all-mail-to-sandbox delivery mode was considered and rejected on exactly this ground.
-18. **The correlation wire envelope carries the deployment id** — adapters prefix
+18. **The correlation wire envelope carries the deployment id** — echo-based adapters prefix
     `DeploymentIdentity.DeploymentId` on the wire and drop foreign events at translation.
     Correlation segments repeat across deployments, so the envelope is what makes
     cross-deployment misdelivery detectable — and it is the routing key that makes the
-    shared-subuser gateway topology possible. The id is a DI singleton, not configuration: the
-    application name is a compile-time constant of each composition and the environment comes
-    from the host, so no hand-managed value exists to drift — and the type sits in
-    `Tellma.Core.Abstractions.Hosting` because exports and future connectors need the same id
-    (§1.6, §5.4, §5.5).
+    shared-subuser gateway topology possible. ACS stamps no envelope: events structurally return
+    to the sending deployment's own subscription (§6.2). The id is a DI singleton, not
+    configuration: the application name is a compile-time constant of each composition and the
+    environment comes from the host, so no hand-managed value exists to drift — and the type
+    sits in `Tellma.Core.Abstractions.Hosting` because exports and future connectors need the
+    same id (§1.6, §5.4, §5.5).
+19. **ACS Email is the SaaS default, conditionally on quota-grant scope** — it wins on native
+    per-deployable isolation at near-zero fixed cost, Bicep-declarative provisioning,
+    managed-identity auth (no mail secret exists), and data-location fit; the condition is that
+    quota increases prove to be granted per subscription, one onboarding ticket covering every
+    co-located distribution. Per-resource grants flip the SaaS default to SendGrid; the question
+    is resolved with Azure support before the first production rollout (§6.1,
+    [docs/research/email-provider-comparison.md](../research/email-provider-comparison.md)).
+20. **ACS `202` is `Sent`; the send operation is never polled** — the 202 is the same
+    "accepted by the transport" state `Sent` names on every transport; status-poll quotas sit an
+    order of magnitude below send quotas, marking the operations endpoint as diagnostics, not a
+    status channel; post-acceptance failures arrive as `Failed` delivery reports, which makes
+    the Event Grid receiver effectively part of the transport (§6.2).
+21. **ACS correlation rides a client-minted operation id plus a store** — the REST contract
+    pins `Operation-Id` to a UUID, and ids must be unique per attempt while correlations repeat
+    across resends, so no encoding can carry the correlation itself. The store is written before
+    the send (client-chosen id = crash-safe), ships as a bounded in-memory stopgap, is required
+    whenever the transport is active, and the outbox row becomes the durable map for outbox mail
+    (§1.4, §6.2–§6.3).
+22. **Event Grid verification is rotating URL tokens with mandatory dead-lettering** — Event
+    Grid cannot sign deliveries, so authenticity rests on constant-time multi-token comparison
+    (the platform's standard rotation shape), with Entra ID delivery auth as the documented
+    hardening path; dead-lettering is non-optional because 401/403 responses are never retried
+    (§6.4).
+23. **`Failed` is the one added event classification** — a generic terminal not-delivered class
+    (provider-internal failure, post-acceptance filtering) so consumers never parse provider
+    `RawType`s to learn a message died; provider-specific verdicts (`Quarantined`,
+    `FilteredSpam`) map into it rather than becoming enum members (§1.4, §6.4).
