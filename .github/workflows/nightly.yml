@@ -104,12 +104,18 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          num=$(gh issue list --repo "$GITHUB_REPOSITORY" --label nightly-live-failure --state open \
+          # The label is the dedupe key, so it has to exist before either branch below: gh refuses a
+          # --label it cannot resolve, and a missing one would file a fresh unlabelled issue every
+          # night while the search that is supposed to find yesterday's keeps coming back empty.
+          # --force makes this idempotent, so a fresh clone of the repository needs no manual setup.
+          gh label create live-test-failure --repo "$GITHUB_REPOSITORY" --force \
+            --color d73a4a --description "The nightly live connector suites are failing"
+          num=$(gh issue list --repo "$GITHUB_REPOSITORY" --label live-test-failure --state open \
                 --json number --jq '.[0].number // empty')
           if [ -n "$num" ]; then
             gh issue comment "$num" --repo "$GITHUB_REPOSITORY" --body "Nightly live suites failed again: $RUN_URL"
           else
-            gh issue create --repo "$GITHUB_REPOSITORY" --label nightly-live-failure \
+            gh issue create --repo "$GITHUB_REPOSITORY" --label live-test-failure \
               --title "Nightly live connector suites are failing" \
               --body "First failure: $RUN_URL"
           fi
