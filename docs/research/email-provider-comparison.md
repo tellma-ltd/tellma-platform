@@ -95,7 +95,7 @@ At-a-glance matrix (details and sources follow):
 | Batch send | ✗ one message per request, long-running operation; default quota 30/min | ◐ one request per message, 10,000 req/s ceiling | ✓ native `/email/batch`, 500 messages/call |
 | Per-message outcome | ✓ 202 + pollable operation status | ✓ per-request status code | ✓ per-message success/error, ordered |
 | Delivery events | ◐ delivered/bounced/suppressed/quarantined/filtered-spam/failed + open/click; no deferred, no spam-complaint FBL | ✓ full set incl. deferred, dropped, spamreport | ✓ full set incl. spam complaint, subscription change |
-| Correlation echo | ✗ none — events carry only `messageId` (= send operation id) | ✓ `custom_args` echoed (≤10,000 bytes) | ✓ `Metadata` echoed (≤10 fields, 20-char keys, 80-char values) |
+| Correlation echo | ◐ customer-supplied `Message-ID` echoed as `internetMessageId` on delivery reports; engagement events carry none | ✓ `custom_args` echoed (≤10,000 bytes) | ✓ `Metadata` echoed (≤10 fields, 20-char keys, 80-char values) |
 | Webhook verification | ✓ Event Grid handshake + Entra ID auth option | ✓ ECDSA signature over raw bytes | ✗ no signature; basic auth + custom headers + IP allowlist |
 | Per-deployable isolation | ✓ resource per distribution, own Bicep | ◐ subusers gated behind Pro (~$90/mo, 15 incl.) | ✓ server per deployable; unlimited servers on Platform plan ($18/mo) |
 | Sandbox channel | ✗ none | ✓ `sandbox_mode` per request (no events) | ✓ sandbox servers (full events) + `POSTMARK_API_TEST` |
@@ -145,26 +145,27 @@ terminal states) and **no recipient spam-complaint event** (`FilteredSpam`/`Quar
 outbound filtering verdicts, not a feedback loop). Opens/clicks require enabling engagement
 tracking on the domain resource.
 
-**Correlation echo — the critical question — is a confirmed no.** The event data contains no
-custom key/value fields; nothing attached at send time (including custom headers) is returned. A
-[Microsoft Q&A answer (19 March 2025)](https://learn.microsoft.com/en-us/answers/questions/2236528/microsoft-communication-emaildeliveryreportreceive)
-confirms custom parameters are unsupported and recommends the workaround this analysis assumes:
-the `messageId` in every event **is the send operation id**, and the client may *supply* that id.
-The Q&A's wording is loose ("your custom UUID … or any unique identifier"), which invites the
-idea of passing the correlation string itself as the id; the REST contract forecloses it — the
+**Correlation echo — the critical question — is a qualified yes, through the `Message-ID`
+header.** The event data carries no custom key/value fields, and the send operation id cannot
+serve as the carrier: the
 [Email – Send reference](https://learn.microsoft.com/en-us/rest/api/communication/email/email/send?view=rest-communication-email-2025-09-01)
-declares the `Operation-Id` header `string (uuid)` and the operation-id field's definition says
-"Use a UUID" — and even under the looser reading the id could not carry the correlation verbatim,
-because it must be unique per send operation while a correlation is not unique per attempt (a
-resend of the same document reuses its correlation; reuse behaviour of an existing id is
-undocumented). An ACS adapter therefore needs a **durable messageId→correlation map**: mint a
-UUID per message, persist `(uuid, correlation)` *before* the send (crash-safe because the id is
-client-chosen), send with `Operation-Id: uuid`, and have the webhook receiver resolve
-correlations by lookup before dispatch. Architectural cost, honestly stated: a storage seam spec 0007 does not have — the
-adapter cannot stay stateless as the SendGrid one does; every send performs a durable write, every
-event a read; retention and cleanup become adapter concerns; and for outbox mail the map
-duplicates what the outbox row could store, so the seam should let the outbox *be* the map for its
-own mail. Tractable — one table, one small interface — but real platform work, not configuration.
+declares `Operation-Id` a `string (uuid)` ("Use a UUID"), and an id must be unique per send
+operation while a correlation is not unique per attempt (a resend reuses it; reuse behaviour of
+an existing id is undocumented). A widely-cited
+[Microsoft Q&A answer (19 March 2025)](https://learn.microsoft.com/en-us/answers/questions/2236528/microsoft-communication-emaildeliveryreportreceive)
+therefore recommends a messageId→correlation lookup — but a stateless channel exists: ACS accepts
+a **customer-supplied internet message id** and keeps it when valid (the
+[email-headers doc](https://learn.microsoft.com/en-us/azure/communication-services/concepts/email/email-headers)
+documents the behaviour via `x-ms-acsemail-validate-message-id` — strict mode rejects a
+malformed or duplicate id with a 400; the lenient default silently replaces an invalid id with a
+generated one), and `EmailDeliveryReportReceived` echoes the sent message's id as
+`internetMessageId` (present in the GA event contract across the SDK system-event models). The
+correlation therefore rides as an RFC 5322-valid encoding inside the id — colons are not atext,
+so the canonical form needs a base32-style transform plus a per-send entropy suffix for
+uniqueness across resends — with no storage seam and no adapter state. Coverage caveat:
+`EmailEngagementTrackingReportReceived` carries **only the operation id — no `internetMessageId`,
+in both the GA and preview contracts** — so opens/clicks cannot be correlated this way; every
+delivery status (the operationally significant events) can.
 
 **Webhook mechanics.** Event Grid pushes to a webhook after a
 [subscription-validation handshake](https://learn.microsoft.com/en-us/azure/event-grid/receive-events):
@@ -392,9 +393,10 @@ distributions. Deciding factors, ranked:
    optionally eliminated via managed identity, monitoring in the fleet's existing Azure Monitor
    estate, and data-location choices (including Europe and UAE) that match MENA deployment needs
    no other candidate offers.
-3. **The correlation gap is real but bounded.** The client-supplied `Operation-Id` makes a
-   durable messageId→correlation map crash-safe and deterministic; it is the one genuine contract
-   impedance, and it costs a storage seam plus adapter statefulness (spec 0007 impact below).
+3. **The correlation gap closed on inspection.** A customer-supplied `Message-ID`, echoed on
+   every delivery report as `internetMessageId`, carries the correlation with no storage seam
+   and no adapter state; the residual impedance is engagement events (no echo — opens/clicks
+   uncorrelated on ACS).
 4. **Provider diversity.** Keeping the SendGrid adapter preserves a tested exit in both
    directions — SendGrid remains correct for non-Azure/hybrid deployments needing a hosted
    provider with per-request sandbox validation and signed webhooks out of the box, and the SMTP
@@ -406,14 +408,14 @@ economics erode into operational drag — Postmark then becomes the best-fit fal
 tail of small distributions (batch API, metadata echo, sandbox servers, ~$18-base isolation),
 accepting its webhook-authentication mitigations; (b) if the outbox later needs deferred-event
 granularity or spam-complaint FBL data as first-class signals, ACS cannot supply them and
-SendGrid/Postmark would carry the deployables that need them; (c) if Microsoft ships correlation
-echo or batch send, the remaining reservations mostly dissolve.
+SendGrid/Postmark would carry the deployables that need them; (c) if Microsoft adds the internet
+message id to engagement events or ships batch send, the remaining reservations mostly dissolve.
 
-**Impact on spec 0007** (to fold in when the ACS adapter is specified): the contract's assumption
-that correlation is "round-tripped through the transport" does not hold for ACS — the adapter
-needs a durable correlation store written before send (designed so outbox mail can use the outbox
-row itself); the event-type map must absorb ACS statuses (`Suppressed`→`Dropped`,
-`Quarantined`/`FilteredSpam`→`Other`; no `Deferred`, no `SpamReported`); the webhook fronting's
+**Impact on spec 0007** (to fold in when the ACS adapter is specified): correlation round-trips
+through a customer-supplied `Message-ID` echoed as `internetMessageId` on delivery reports
+(engagement events carry no echo and stay uncorrelated); the event-type map must absorb ACS
+statuses (`Suppressed`→`Dropped`, `Quarantined`/`FilteredSpam` folding into a generic terminal
+failure classification; no `Deferred`, no `SpamReported`); the webhook fronting's
 challenge-echo already fits Event Grid's validation handshake, but Event Grid **dead-lettering**
 must be configured because a 401/403 from the receiver is never retried; and ACS registers no
 sandbox channel (router suppression applies), while a future Postmark adapter would register a
