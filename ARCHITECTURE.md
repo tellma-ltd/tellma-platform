@@ -297,7 +297,7 @@ Package names follow the pattern below. Square brackets denote optional segments
 | `Tellma.Core.Abstractions` | `Tellma.Core.Abstractions` | Mandatory. |
 | `Tellma.Core.EntityFrameworkCore` | `Tellma.Core.EntityFrameworkCore` | EF Core extensions (table types/UDTTs): configuration, migration operations, SQL generation, metadata API. Runtime-side — never references the EF `Design` package. |
 | `Tellma.Core.EntityFrameworkCore.Design` | `Tellma.Core.EntityFrameworkCore.Design` | Design-time companion (C# operation generator, `IDesignTimeServices`). Referenced only by the distribution's migrator project. |
-| `Tellma.Core.Email` | `Tellma.Core.Email` | Optional Core-layer runtime: the email pipeline. Depends only on `Tellma.Core.Abstractions`; each host adds it explicitly. |
+| `Tellma.Core.Email` | `Tellma.Core.Email` | Optional Core-layer runtime: the email pipeline. Depends on no Tellma package other than `Tellma.Core.Abstractions`; each host adds it explicitly. |
 | `Tellma.Core.Webhooks` | `Tellma.Core.Webhooks` | Optional Core-layer runtime: the shared HTTP fronting for inbound webhook receivers. |
 | `Tellma.Core.Testing` | `Tellma.Core.Testing` | Test doubles for the Abstractions contracts, executable conformance suites, and test-run diagnostics. Referenced by test projects only. |
 | `Tellma.Module.<m>` | `Tellma.Module.Sales` | `<m>` ∈ Modules registry. |
@@ -1113,8 +1113,9 @@ Other notes:
 - A cross-distribution dashboard tracks health, usage, error rate, and `Tellma.Core` version drift across all distributions.
 - Alerts fan out via Azure Monitor (email / Teams / on-call).
 - Platform libraries emit through `IMeterFactory` meters named after the emitting package (`Tellma.Identity`, `Tellma.Email`, `Tellma.Webhooks`), and through an `ActivitySource` of the same name wherever a library traces at all — a library may meter without tracing, as `Tellma.Core.Webhooks` does. Instrument names are lowercase and dot-separated under a `tellma.` prefix (`tellma.email.sent.messages`), with units in instrument metadata and durations in seconds. Hosts opt in by adding those names to their OpenTelemetry configuration, so no library takes an OpenTelemetry dependency.
+- Telemetry names — meter, instruments, tag keys, and the closed set of tag values — are `const`s in the emitting package's `.Abstractions`, not string literals at each call site. A connector adapter cannot reference the runtime library it adapts to, so without a shared home its half of a shared instrument drifts to a spelling no query matches; the shared home also gives the alert cross-check something to resolve against.
 - Tag cardinality is bounded by construction: every dimension is a small closed set, and a value that arrives from outside the process — a correlation off the wire, a key off a URL — is replaced with a literal before it is ever used as a tag, with the real value going to the structured log instead. Per-tenant identity is deliberately absent from library instruments: it multiplies every other dimension, and the structured logs answer that question better.
-- The alert queries a package's instruments were designed to back are checked in under `infra/monitoring/`, and a test cross-checks their identifiers against the emitted names — so renaming an instrument turns a stale alert into a failing build rather than an alert that quietly stops firing.
+- The alert queries a package's instruments were designed to back are checked in under `infra/monitoring/`, and a test cross-checks every instrument name, dimension key, and compared-against tag value in them against what the code can actually emit — so renaming any of the three turns a stale alert into a failing build rather than an alert that quietly reports zero forever.
 
 ## Rollout & Phasing
 

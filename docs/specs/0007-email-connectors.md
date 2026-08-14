@@ -147,6 +147,11 @@ raw client is written when the upstream client is absent or unfit, not on princi
 For protocol-shaped connectors (SMTP here; sftp, AS2, etc. later) the protocol name occupies the
 `<vendor>` slot — the "external system" is the protocol itself.
 
+**The code in this spec is normative for shape, not for formatting.** Snippets are written
+compactly, and several of those conventions are build errors under the repository's style gates.
+What a snippet fixes is the type, its members, and their contracts; how it is laid out is the
+repository's business, not this spec's.
+
 ### 1.2 Email types
 
 ```csharp
@@ -468,7 +473,13 @@ public sealed record EmailDeliveryEvent(
 public interface IEmailDeliveryEventDispatcher
 {
     /// <summary>Routes a batch of events to their owning handlers.</summary>
+    /// <param name="transport">The transport whose receiver translated these events — the
+    ///     registration name ("sendgrid", "acs-email"). Carried explicitly because the events
+    ///     themselves do not identify one, and the active transport is the wrong answer in
+    ///     exactly the case that matters: a deployment draining a former provider's callbacks
+    ///     after migrating away (§5.4, §6.4).</param>
     Task DispatchAsync(
+        string transport,
         IReadOnlyList<EmailDeliveryEvent> events,
         CancellationToken cancellationToken);
 }
@@ -671,13 +682,28 @@ public sealed record EmailTransportRegistration(
 Composition then reads, in a distribution or platform app host:
 
 ```csharp
-services.AddTellmaEmail();      // Tellma.Core.Email: pipeline, options, guard, log-sink transport, dispatcher
-services.AddSmtpEmail();        // Tellma.Connector.Smtp.Adapter: registers the "smtp" transport
-services.AddSendGridEmail();    // Tellma.Connector.SendGrid.Adapter: registers the "sendgrid" transport
-                                // + its webhook receiver when webhook config is present
-services.AddAcsEmail();         // Tellma.Connector.AcsEmail.Adapter: registers the "acs-email" transport
-                                // + its Event Grid receiver when webhook config is present
+services.AddTellmaEmail();                            // Tellma.Core.Email: pipeline, options, guard, log-sink transport, dispatcher
+services.AddSmtpEmail(builder.Configuration);         // Tellma.Connector.Smtp.Adapter: registers the "smtp" transport
+services.AddSendGridEmail(builder.Configuration);     // Tellma.Connector.SendGrid.Adapter: registers the "sendgrid" transport
+                                                      // + its webhook receiver when webhook config is present
+services.AddAcsEmail(builder.Configuration);          // Tellma.Connector.AcsEmail.Adapter: registers the "acs-email" transport
+                                                      // + its Event Grid receiver when webhook config is present
 ```
+
+**Adapters take the configuration, the pipeline does not.** `AddTellmaEmail()` binds its own
+section and needs nothing; each `Add*Email` reads its section at composition, because three of its
+registration decisions are facts about the *configuration file* rather than about the running
+options, and a registration cannot be revised once the container is built:
+
+- SMTP registers a `Sandbox` factory only when a `Sandbox` section exists (§4.4). A transport that
+  always advertised one would make the router send a sandbox tenant's external mail through a
+  channel that is really the live host.
+- Each receiver is registered only when its verification keys or tokens are present (§5.4, §6.4).
+  An endpoint that exists but can authenticate nothing is worse than no endpoint.
+
+An `IConfigurationSection` overload takes the same section directly, for a composition that
+relocates the email configuration. Everything else an adapter needs it reads through
+`IOptionsMonitor<T>` at send time, so key rotation still takes effect on the next batch.
 
 `AddTellmaEmail()` (in `Tellma.Core.Email`, class `TellmaEmailServiceCollectionExtensions`)
 registers:
@@ -797,7 +823,11 @@ transport's own shape, surfaced rather than papered over.
 `LogSinkEmailSender` (in `Tellma.Core.Email`, registered by `AddTellmaEmail()` as the `"log-sink"`
 transport) writes every message to `ILogger` — recipients, subject, full text body, attachment
 names and sizes (never attachment content), audience, correlation — where developers and tests
-read it. It reports every message `Sent` with `ExpectsDeliveryEvents` false. Its `Sandbox`
+read it. It reports every **valid** message `Sent` with `ExpectsDeliveryEvents` false; a
+structurally invalid one is `Rejected` and never written, because §1.3 rule 3 binds every
+`IEmailSender` and the conformance suite (§12.1) pins it for all of them alike. A sink that
+accepted a message with no recipients would let a bug through in Development and fail in staging,
+which is the one thing the Development default must not do. Its `Sandbox`
 factory returns the sink parameterized as the sandbox channel: in development, external sandbox
 mail is also worth seeing, and the log line names the channel that carried each message.
 
@@ -1370,12 +1400,18 @@ covers the residual gap.
 writes a controller:
 
 ```csharp
+services.AddTellmaWebhooks();               // options, instruments, the startup checks
 app.MapTellmaWebhooks();                    // maps /api/webhooks/{key}, GET + POST
 ```
 
 - **Registration.** Receivers register in DI as `IWebhookReceiver` (adapters do this in their
-  `Add*` methods, §2.1). At startup the fronting validates the set: keys unique, lowercase
-  kebab-case; violations fail startup.
+  `Add*` methods, §2.1). `AddTellmaWebhooks()` registers what the fronting itself needs — the
+  bound options, the request instruments, and the startup checks — and `MapTellmaWebhooks()`
+  throws a named error when it is missing, rather than deferring the mistake to the first
+  callback. At startup the fronting validates the set: keys unique, lowercase kebab-case;
+  violations fail startup. Its own section validates on start too, unconditionally, unlike an
+  adapter's: a body cap below 1 KiB is refused, because a cap of zero would answer every inbound
+  webhook 413 and the only visible symptom would be a provider quietly giving up.
 - **Request path.** The endpoint allows anonymous access (webhook callers hold no platform
   credentials — the receiver's signature verification is the authentication), is excluded from
   antiforgery, and runs outside any tenant-resolution scope: a webhook belongs to the deployable,
@@ -1427,8 +1463,11 @@ All email telemetry is emitted by the platform pipeline — `Tellma.Core.Email` 
 delivery-event instruments, `Tellma.Core.Webhooks` for the webhook instruments — so every
 transport is measured identically. Adapters add their transport-specific log detail, plus the
 one counter only they can emit: an adapter that drops foreign-deployment events at translation
-(§5.4) records the `foreign` slice of `tellma.email.delivery.events` itself, under the same
-meter name — those events never reach the dispatcher. Instruments follow the OpenTelemetry
+(§5.4) records the `foreign` slice of `tellma.email.delivery.events` itself, on its own
+`IMeterFactory` meter of the same name — an adapter may not reference `Tellma.Core.Email`, so it
+cannot share the pipeline's instrument, and those events never reach the dispatcher anyway. The
+names both sides use are `const`s in `Tellma.Core.Abstractions`, the one assembly both reference,
+so the meter, the instrument, and every tag spelling have exactly one definition. Instruments follow the OpenTelemetry
 conventions for custom meters — lowercase dot-separated names, units in instrument metadata,
 durations in seconds — and the shapes mirror the OTel messaging semantic conventions where they
 fit.
@@ -1443,13 +1482,18 @@ Two meters, `Tellma.Email` and `Tellma.Webhooks` (one per emitting package), cre
 | `tellma.email.sent.messages` | Counter | `{message}` | `email.transport`, `email.outcome` (`sent` \| `transient_failure` \| `rejected` \| `sandboxed`), `email.audience` (`internal` \| `external`), `email.delivery` (`live` \| `sandbox` \| `withheld` — the wire mechanism), `email.owner` (owner key or `none`), `tenant.category` (`live` \| `sandbox`) |
 | `tellma.email.send.duration` | Histogram | `s` | `email.transport`, `error.type` (exception type when the batch throws) |
 | `tellma.email.send.batch.size` | Histogram | `{message}` | `email.transport` |
-| `tellma.email.delivery.events` | Counter | `{event}` | `email.transport`, `email.event.type` (enum name, lowercase), `email.event.routing` (`routed` \| `uncorrelated` \| `unknown_owner` \| `foreign`), `email.owner` |
-| `tellma.email.delivery.event.lag` | Histogram | `s` | `email.transport`, `email.event.type` — webhook arrival time minus the event's provider timestamp |
-| `tellma.webhook.requests` | Counter | `{request}` | `webhook.key` (or `unknown`), `webhook.outcome` (enum name, plus `error` \| `too_large` \| `unknown_key`) |
+| `tellma.email.delivery.events` | Counter | `{event}` | `email.transport`, `email.event.type` (enum name, lowercase), `email.event.routing` (`routed` \| `uncorrelated` \| `unknown_owner` \| `foreign`), `email.owner` (owner key, `none`, or `unknown` — see below) |
+| `tellma.email.delivery.event.lag` | Histogram | `s` | `email.transport`, `email.event.type` — webhook arrival time minus the event's provider timestamp, recorded only for an event that carried one (§1.4) |
+| `tellma.webhook.requests` | Counter | `{request}` | `webhook.key` (or `unknown`), `webhook.outcome` (enum name, plus `error` \| `too_large` \| `unknown_key` \| `aborted`) |
 | `tellma.webhook.request.duration` | Histogram | `s` | `webhook.key`, `webhook.outcome` |
 
 Cardinality is bounded by construction: every tag is a small closed set except `email.owner`
-(a handful of registered owners) and `tenant.category`. **Deliberately absent**: `tenant.id` — a
+(a handful of registered owners) and `tenant.category`. A value that arrives from **outside the
+process** is never used as a tag: an event naming an owner key no handler owns is tagged
+`email.owner: unknown` and a request naming no registered receiver is tagged `webhook.key:
+unknown`, with the value that actually arrived going to the structured log, where cardinality
+costs nothing. Both are reachable by anyone who can post to the endpoint, so neither may size a
+metric's dimension. **Deliberately absent**: `tenant.id` — a
 per-tenant tag multiplies every other dimension and App Insights costs by tenant count for a
 question ("which tenant sent this?") the structured logs answer better; and any distribution
 dimension — each deployable already reports to its own Application Insights resource, and the
@@ -1605,6 +1649,22 @@ in-process SMTP tests need no external infrastructure, so they live in the ordin
 projects; `IntegrationTests` naming stays reserved for suites needing external resources (the
 gated live suite).
 
+**Two traits, three tiers.** Gating on `Category` alone cannot separate a suite that brings up its
+own infrastructure from one that calls a third party, so a second trait names the distinction and
+CI filters on both. A suite is gated by what it *needs*, never by the path it happens to live at —
+a path-scoped job silently stops covering anything added later.
+
+| Tier | Filter | Where it runs |
+|---|---|---|
+| Unit / protocol | `Category!=Integration&Live!=true` | Every PR, ubuntu + windows |
+| Integration, hermetic | `Category=Integration&Live!=true` | Every PR, solution-wide |
+| Live, credentialed | `Live=true` | Nightly and manual dispatch only |
+
+`Category=Integration` marks a suite that needs infrastructure it starts itself (Testcontainers);
+`Live=true` marks one that talks to a real external account. VSTest's `!=` matches a test that
+lacks the property entirely, so the two keys compose without either having to know about the
+other.
+
 ```
 test/connector/
 ├── acs-email/
@@ -1630,8 +1690,11 @@ only when nothing was sent (drain-then-throw under concurrency); cancellation su
 poisoning the batch; no adapter-level retries (asserted as at-most-one wire attempt per
 message) — instantiated per
 sender against its scriptable seam: the SendGrid adapter over a scripted `HttpMessageHandler`,
-the ACS adapter over Azure.Core's mock transport, the SMTP adapter over the in-process server
-with scripted responses, the log sink as-is. Every future email transport inherits the suite; it
+the ACS adapter over that *same* handler, wrapped in an `HttpClientTransport` and assigned to the
+public `ClientOptions.Transport` (Azure's own `Azure.Core.TestFramework` is not published on
+nuget.org, and the transport property is the supported seam — so one scripted handler drives both
+HTTP transports), the SMTP adapter over the in-process server with scripted responses, the log
+sink as-is. Every future email transport inherits the suite; it
 is the executable form of the contract.
 
 ### 12.2 Offline suites
@@ -1701,8 +1764,10 @@ raw MIME for MimeKit re-parsing and `IMailboxFilter`/`IUserAuthenticator` script
 
 **SendGrid live** (`…SendGrid.IntegrationTests`): sends real requests with
 `mail_settings.sandbox_mode` — full validation, zero delivery, zero credits, zero events — using
-an API key from the `TELLMA_SENDGRID_TEST_APIKEY` environment variable; `Assert.SkipWhen` skips
-the suite when the variable is absent, so local runs and PR CI never touch the network. Cases:
+an API key from the `TELLMA_SENDGRID_TEST_APIKEY` environment variable. Gating is attribute-level
+— `[Fact(Skip = …, SkipUnless = …, SkipType = …)]` — so an absent variable skips the test before
+its body runs, which a suite whose first act is to open a connection requires. Local runs and PR CI
+never touch the network. Cases:
 minimal message, full-feature message (attachments, inline image, custom args, non-ASCII), and a
 small batch — asserting 2xx acceptance. CI runs the suite on a **nightly schedule and manual
 dispatch, never as a PR gate**: an external service on the PR path is a flakiness tax, and fork
@@ -1715,10 +1780,14 @@ SendGrid's dashboard "Test Your Integration" button covers manual smoke at onboa
 **ACS live** (`…AcsEmail.IntegrationTests`): same gating and cadence — environment-supplied
 endpoint and credential (`TELLMA_ACS_TEST_ENDPOINT` plus a federated CI credential), skipped
 cleanly when absent, nightly + manual, never a PR gate. ACS has no validate-only mode, so the
-suite **really delivers**: one minimal and one full-feature message to a fixed Tellma-owned
+suite **really delivers**: one minimal and one full-feature message to a Tellma-owned
 mailbox on a dedicated test resource, asserting acceptance — volume that sits comfortably inside
 even default quotas. Event Grid delivery is not asserted here (that is synthetic monitoring,
 which is out of scope); the receiver's correctness rests on the recorded-payload suites above.
+
+The recipient arrives on `TELLMA_ACS_TEST_RECIPIENT` rather than being written into the suite. A
+live mailbox committed to a public Apache-2.0 repository is scraping bait, and the address is the
+one setting here that is a fact about Tellma rather than about the test.
 
 **Both live suites are built to explain their own failures**, because the reader of a nightly
 failure is someone who cannot reproduce it: the run is hours old, it talks to an external account,
@@ -1841,13 +1910,19 @@ per-document email UI fed by `RegardingEntity`/`RegardingId`.
 - **Observability**: §9.1 instruments and §9.2 log events implemented and asserted
   (`MetricCollector<T>`); `ActivitySource` wired; each §9.4 alert expressible against the
   emitted telemetry (validated by writing the queries, not by deploying alerts).
-- **CI**: unit/protocol suites on every PR (no new external dependencies on the PR path); the
-  gated SendGrid and ACS live suites wired as nightly + manual, each skipping cleanly where its
-  credentials are absent.
-- **Docs**: ARCHITECTURE.md updated where this spec touches it — the connector folder rename
-  and lowercase vendor grouping, the two new core runtime packages, the `Tellma.Core.Testing`
-  package, the SendGrid raw-client example replacing any official-SDK assumption. Public XML
-  docs and error messages reference no `docs/` paths, per repo rule.
+- **CI**: the three tiers of §12 wired as trait filters rather than project paths — unit and
+  protocol suites on every PR, hermetic integration suites solution-wide on every PR (no new
+  external dependencies on the PR path), and the gated SendGrid and ACS live suites nightly plus
+  manual dispatch. Each live suite skips cleanly where its credentials are absent, and the nightly
+  job fails outright when one is missing: a scheduled run that skipped everything and reported
+  green is the failure this tier exists to prevent.
+- **Docs**: ARCHITECTURE.md updated where this spec touches it — the connector folder rename and
+  lowercase grouping folders throughout, the two new core runtime packages, the
+  `Tellma.Core.Testing` package, and the SendGrid raw-client example replacing any official-SDK
+  assumption. It also gains what this spec introduces and it did not previously carry: the
+  Live/Sandbox tenant category (§3.1), the meter and instrument naming convention (§9.1), and the
+  test trait tiers (§12). Public XML docs and error messages reference no `docs/` paths, per repo
+  rule.
 - **Not in scope of done**: the identity server's adoption of the contract is executed and
   verified on the identity-server branch before that branch merges, not gated here;
   `IEmailOutbox` remains uncompiled (§13).
@@ -1922,3 +1997,28 @@ The load-bearing decisions, where not already evident above:
     provider's error text on the assertion, and a masked report of the environment the run used;
     a nightly failure is read hours later by someone who cannot reproduce it, and an
     "Expected: Sent, Actual: Rejected" tells them nothing (§12.3).
+26. **Adapter registration takes the configuration; the pipeline's does not** — whether a
+    transport has a sandbox channel, and whether a receiver exists at all, are facts about the
+    configuration file that a container cannot revise once built. Everything an adapter reads at
+    send time still comes through `IOptionsMonitor<T>`, so credential rotation needs no restart
+    (§2.1, §4.4, §5.4, §6.4).
+27. **The dispatcher is told which transport translated the events** — the events do not carry
+    one, and the active transport is wrong in exactly the case the design exists for: a
+    deployment draining a former provider's callbacks. Two instruments and the silent-webhook
+    alert are per-transport, so the tag has to come from somewhere real (§1.4, §9.1).
+28. **The log sink obeys the sender contract, including rejection** — reporting an invalid
+    message `Sent` would make Development the one environment where a malformed message looks
+    fine, which is the opposite of what a first-run default is for (§2.4, §12.1).
+29. **Adapters own their meter; the names are shared through Abstractions** — an adapter may not
+    reference `Tellma.Core.Email`, so the `foreign` slice cannot use the pipeline's instrument.
+    Both sides take the meter, instrument, and tag spellings from `const`s in the one assembly
+    they share, which is what keeps a rename from silently splitting a dimension (§9).
+30. **Values from outside the process are never used as metric tags** — an unrecognized owner key
+    or receiver key is recorded as a literal and the real value goes to the log. Anyone who can
+    post to an anonymous endpoint could otherwise size a metric's cardinality (§9.1).
+31. **Two traits, three CI tiers, filtered rather than path-scoped** — "needs infrastructure" and
+    "calls a third party" are different properties, and a job that names paths silently stops
+    covering whatever is added later (§12).
+32. **The live recipient comes from the environment** — a real mailbox committed to a public
+    repository is scraping bait, and it is the one live setting that is a fact about Tellma
+    rather than about the test (§12.3).
