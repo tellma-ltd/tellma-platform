@@ -124,6 +124,10 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
 
             Available = [.. configured.Where(provider => !logins.Any(
                 login => string.Equals(login.LoginProvider, provider, StringComparison.OrdinalIgnoreCase)))];
+
+            // Each offered provider is a form that redirects off this origin to start the link, and
+            // form-action is enforced on this page's policy across every hop of that redirect.
+            ExternalProviderFormAction.Allow(HttpContext, Available);
         }
     }
 }

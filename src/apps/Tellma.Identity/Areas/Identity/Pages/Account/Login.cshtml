@@ -9,12 +9,10 @@
 
     string passkeyMethod = Tellma.Identity.Services.AuthenticationPolicy.AuthenticationMethods.Passkey;
     string emailCodeMethod = Tellma.Identity.Services.AuthenticationPolicy.AuthenticationMethods.EmailCode;
-    string googleMethod = Tellma.Identity.Services.AuthenticationPolicy.AuthenticationMethods.Google;
-    string microsoftMethod = Tellma.Identity.Services.AuthenticationPolicy.AuthenticationMethods.Microsoft;
     bool showPasskey = Model.Methods.Contains(passkeyMethod);
     bool showEmailCode = Model.Methods.Contains(emailCodeMethod);
-    bool showGoogle = Model.Methods.Contains(googleMethod) && Model.ConfiguredExternalProviders.Contains("Google");
-    bool showMicrosoft = Model.Methods.Contains(microsoftMethod) && Model.ConfiguredExternalProviders.Contains("Microsoft");
+    bool showGoogle = Model.OfferedExternalProviders.Contains("Google");
+    bool showMicrosoft = Model.OfferedExternalProviders.Contains("Microsoft");
 
     // The request decides which methods this page offers, so the sentence introducing them has
     // to follow — telling someone to use their work email when there is no email field is worse

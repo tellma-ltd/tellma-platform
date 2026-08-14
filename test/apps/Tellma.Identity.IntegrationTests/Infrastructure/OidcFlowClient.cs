@@ -147,10 +147,15 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
             return document.RootElement.GetProperty("error").GetString();
         }
 
-        /// <summary>Parses the first form on a page (action + fields including antiforgery).</summary>
+        /// <summary>Parses a form on a page (action + fields including antiforgery).</summary>
         /// <param name="response">The page response.</param>
+        /// <param name="selector">
+        ///     Which form, for a page carrying several of its own — the federated buttons are one
+        ///     form each. Defaults to the page's first non-chrome form.
+        /// </param>
         /// <returns>The absolute-or-relative action URL and the form's named values.</returns>
-        public static async Task<(string Action, Dictionary<string, string> Fields)> ParseFormAsync(HttpResponseMessage response)
+        public static async Task<(string Action, Dictionary<string, string> Fields)> ParseFormAsync(
+            HttpResponseMessage response, string selector = "form:not([data-tmi-chrome])")
         {
             string html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             IBrowsingContext context = BrowsingContext.New(Configuration.Default);
@@ -163,8 +168,8 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
             // around it. Without this the picker sitting above the content would silently become
             // the first form, and a flow would post its email to the culture endpoint, take the
             // redirect that follows, and fail several steps later for no visible reason.
-            IHtmlFormElement form = document.QuerySelector<IHtmlFormElement>("form:not([data-tmi-chrome])")
-                ?? throw new InvalidOperationException("The page contains no form.");
+            IHtmlFormElement form = document.QuerySelector<IHtmlFormElement>(selector)
+                ?? throw new InvalidOperationException($"The page contains no form matching '{selector}'.");
 
             Dictionary<string, string> fields = [];
             foreach (IHtmlInputElement input in form.QuerySelectorAll<IHtmlInputElement>("input[name]"))

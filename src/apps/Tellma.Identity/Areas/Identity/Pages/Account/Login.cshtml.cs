@@ -81,8 +81,13 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         /// </summary>
         public bool RequiresDeviceBoundPasskey { get; private set; }
 
-        /// <summary>The external providers configured on this deployment (offered when allowed).</summary>
-        public IReadOnlySet<string> ConfiguredExternalProviders { get; private set; } = new HashSet<string>();
+        /// <summary>
+        ///     The external providers this page offers: configured on the deployment and allowed by
+        ///     the request. Already filtered, because the same set decides which buttons render and
+        ///     which providers the page's <c>form-action</c> permits — computing it twice is how a
+        ///     button appears that the policy will not let the browser follow.
+        /// </summary>
+        public IReadOnlySet<string> OfferedExternalProviders { get; private set; } = new HashSet<string>();
 
         /// <summary>An informational banner, when any.</summary>
         public PageStatus? StatusMessage { get; private set; }
@@ -251,17 +256,23 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
             Methods = offered;
 
             HashSet<string> providers = [];
-            if (engineOptions.Value.ExternalProviders.Google.IsConfigured)
+            if (engineOptions.Value.ExternalProviders.Google.IsConfigured
+                && offered.Contains(AuthenticationMethods.Google, StringComparer.Ordinal))
             {
                 providers.Add("Google");
             }
 
-            if (engineOptions.Value.ExternalProviders.Microsoft.IsConfigured)
+            if (engineOptions.Value.ExternalProviders.Microsoft.IsConfigured
+                && offered.Contains(AuthenticationMethods.Microsoft, StringComparer.Ordinal))
             {
                 providers.Add("Microsoft");
             }
 
-            ConfiguredExternalProviders = providers;
+            OfferedExternalProviders = providers;
+
+            // Starting a federated sign-in is a form submission answered with a redirect off this
+            // origin, and form-action is enforced on this page's policy across every hop of it.
+            ExternalProviderFormAction.Allow(HttpContext, providers);
             StatusMessage = StepUp ? PageStatus.Info(localizer["ConfirmItsYou"].Value) : null;
         }
     }
