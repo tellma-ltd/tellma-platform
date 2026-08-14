@@ -83,7 +83,7 @@ namespace Tellma.Core.Email
         /// <param name="messageCount">How many messages are reported as transient failures.</param>
         [LoggerMessage(
             Level = LogLevel.Error,
-            Message = "The {Channel} channel of the {Transport} transport failed after part of the batch had already been handled; its {MessageCount} messages are reported as transient failures.")]
+            Message = "The {Channel} email channel of the {Transport} transport failed after part of the batch had already been handled; its {MessageCount} messages are reported as transient failures.")]
         public static partial void PartitionFailedAfterResults(
             ILogger logger, Exception exception, string transport, string channel, int messageCount);
 
@@ -94,7 +94,7 @@ namespace Tellma.Core.Email
         /// <param name="correlations">Their correlations, truncated when the batch is large.</param>
         [LoggerMessage(
             Level = LogLevel.Information,
-            Message = "Sandbox policy kept {Count} messages from real delivery ({Mechanism}): {Correlations}.")]
+            Message = "Sandbox policy kept {Count} email messages from real delivery ({Mechanism}): {Correlations}.")]
         public static partial void SandboxedMail(
             ILogger logger, string mechanism, int count, string correlations);
 
@@ -121,7 +121,7 @@ namespace Tellma.Core.Email
         /// <param name="eventCount">How many events were routed.</param>
         [LoggerMessage(
             Level = LogLevel.Debug,
-            Message = "Dispatched {EventCount} {Transport} delivery events to {OwnerCount} owners.")]
+            Message = "Dispatched {EventCount} {Transport} email delivery events to {OwnerCount} owners.")]
         public static partial void EventsDispatched(
             ILogger logger, string transport, int ownerCount, int eventCount);
 
@@ -136,7 +136,7 @@ namespace Tellma.Core.Email
         /// <param name="eventCount">How many events named it.</param>
         [LoggerMessage(
             Level = LogLevel.Warning,
-            Message = "Dropped {EventCount} {Transport} delivery events for owner key '{OwnerKey}', which no registered handler owns.")]
+            Message = "Dropped {EventCount} {Transport} email delivery events for owner key '{OwnerKey}', which no registered handler owns.")]
         public static partial void UnknownOwnerKey(
             ILogger logger, string transport, string ownerKey, int eventCount);
 
@@ -150,7 +150,7 @@ namespace Tellma.Core.Email
         /// <param name="eventCount">How many events carried no correlation.</param>
         [LoggerMessage(
             Level = LogLevel.Debug,
-            Message = "Metered {EventCount} uncorrelated {Transport} delivery events.")]
+            Message = "Metered {EventCount} uncorrelated {Transport} email delivery events.")]
         public static partial void UncorrelatedEvents(ILogger logger, string transport, int eventCount);
     }
 }

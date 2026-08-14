@@ -20,7 +20,7 @@ namespace Tellma.Connector.Smtp.Adapter
         /// <param name="response">The server's acceptance line, which usually carries its queue id.</param>
         [LoggerMessage(
             Level = LogLevel.Debug,
-            Message = "SMTP accepted {MessageId}: {Response}")]
+            Message = "SMTP accepted email message {MessageId}: {Response}")]
         public static partial void MessageAccepted(ILogger logger, string messageId, string response);
 
         /// <summary>The server advertised SMTPUTF8, so non-ASCII addresses pass through unmangled.</summary>
@@ -28,7 +28,7 @@ namespace Tellma.Connector.Smtp.Adapter
         /// <param name="host">The connected host.</param>
         [LoggerMessage(
             Level = LogLevel.Debug,
-            Message = "SMTP host {Host} advertises SMTPUTF8; sending in international format.")]
+            Message = "SMTP email host {Host} advertises SMTPUTF8; sending in international format.")]
         public static partial void InternationalFormatNegotiated(ILogger logger, string host);
 
         /// <summary>
@@ -41,7 +41,7 @@ namespace Tellma.Connector.Smtp.Adapter
         /// <param name="host">The host that was connected.</param>
         [LoggerMessage(
             Level = LogLevel.Warning,
-            Message = "The SMTP connection to {Host} was lost mid-batch; the message in flight is reported as a transient failure.")]
+            Message = "The SMTP email connection to {Host} was lost mid-batch; the message in flight is reported as a transient failure.")]
         public static partial void ConnectionLostMidBatch(ILogger logger, Exception exception, string host);
 
         /// <summary>
@@ -52,7 +52,7 @@ namespace Tellma.Connector.Smtp.Adapter
         /// <param name="host">The host that keeps dropping the connection.</param>
         [LoggerMessage(
             Level = LogLevel.Error,
-            Message = "The SMTP connection to {Host} was lost again after this batch's one reconnect; the remainder of the batch is reported as transient failures without reconnecting again.")]
+            Message = "The SMTP email connection to {Host} was lost again after this batch's one reconnect; the remainder of the batch is reported as transient failures without reconnecting again.")]
         public static partial void ReconnectBudgetSpent(ILogger logger, string host);
 
         /// <summary>The single reconnect attempt failed, so the rest of the batch is transient.</summary>
@@ -61,7 +61,7 @@ namespace Tellma.Connector.Smtp.Adapter
         /// <param name="host">The host that could not be reached.</param>
         [LoggerMessage(
             Level = LogLevel.Error,
-            Message = "Reconnecting to the SMTP host {Host} failed; the remainder of the batch is reported as transient failures.")]
+            Message = "Reconnecting to the SMTP email host {Host} failed; the remainder of the batch is reported as transient failures.")]
         public static partial void ReconnectFailed(ILogger logger, Exception exception, string host);
     }
 }

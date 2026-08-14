@@ -21,7 +21,7 @@ namespace Tellma.Connector.SendGrid.Adapter
         /// <param name="error">The parsed error text, or the raw body when it was not JSON.</param>
         [LoggerMessage(
             Level = LogLevel.Debug,
-            Message = "SendGrid answered {StatusCode} to a mail-send request: {Error}")]
+            Message = "SendGrid answered {StatusCode} to an email mail-send request: {Error}")]
         public static partial void RequestFailed(ILogger logger, int statusCode, string? error);
 
         /// <summary>
@@ -33,7 +33,7 @@ namespace Tellma.Connector.SendGrid.Adapter
         /// <param name="count">How many events were dropped.</param>
         [LoggerMessage(
             Level = LogLevel.Debug,
-            Message = "Dropped {Count} SendGrid delivery events belonging to another deployment.")]
+            Message = "Dropped {Count} SendGrid email delivery events belonging to another deployment.")]
         public static partial void ForeignEventsDropped(ILogger logger, int count);
     }
 }

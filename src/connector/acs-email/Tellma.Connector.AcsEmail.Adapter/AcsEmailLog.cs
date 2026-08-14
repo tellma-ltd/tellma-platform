@@ -27,7 +27,7 @@ namespace Tellma.Connector.AcsEmail.Adapter
         /// <param name="ownerKey">The correlation's owner key; the reference itself is not logged.</param>
         [LoggerMessage(
             Level = LogLevel.Warning,
-            Message = "A '{OwnerKey}' correlation encoded to a message id over the length budget; the message was sent uncorrelated and will produce no routable delivery events.")]
+            Message = "A '{OwnerKey}' correlation encoded to an email message id over the length budget; the message was sent uncorrelated and will produce no routable delivery events.")]
         public static partial void CorrelationTooLongToStamp(ILogger logger, string ownerKey);
 
         /// <summary>A send request exceeded the transport's own network timeout.</summary>
