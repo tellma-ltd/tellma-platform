@@ -285,7 +285,12 @@ namespace Tellma.Core.Email
             int sandboxed = 0;
             int transientFailures = 0;
             int rejected = 0;
-            List<string>? sandboxedCorrelations = channel == EmailChannel.Sandbox ? [] : null;
+
+            // Collected only when someone is listening, and only up to the cap the log line prints:
+            // a statement run can sandbox thousands of messages, and formatting a correlation for
+            // each of them to name twenty is waste the send path should not carry.
+            List<string>? sandboxedCorrelations =
+                channel == EmailChannel.Sandbox && _logger.IsEnabled(LogLevel.Information) ? [] : null;
 
             for (int j = 0; j < partition.Count; j++)
             {
@@ -304,7 +309,11 @@ namespace Tellma.Core.Email
                         break;
                     case EmailSendOutcome.Sandboxed:
                         sandboxed++;
-                        sandboxedCorrelations?.Add(DescribeCorrelation(original.Correlation));
+                        if (sandboxedCorrelations is { Count: < MaxLoggedCorrelations })
+                        {
+                            sandboxedCorrelations.Add(DescribeCorrelation(original.Correlation));
+                        }
+
                         break;
                     case EmailSendOutcome.TransientFailure:
                         transientFailures++;
@@ -341,11 +350,11 @@ namespace Tellma.Core.Email
             EmailLog.BatchSent(
                 _logger, transport, channelTag, batch.Count, sent, sandboxed, transientFailures, rejected, elapsedSeconds);
 
-            if (sandboxedCorrelations is { Count: > 0 } && _logger.IsEnabled(LogLevel.Information))
+            if (sandboxedCorrelations is not null && sandboxed > 0)
             {
                 string mechanism = transport + " sandbox channel";
-                string joined = Join(sandboxedCorrelations);
-                EmailLog.SandboxedMail(_logger, mechanism, sandboxedCorrelations.Count, joined);
+                string joined = Join(sandboxedCorrelations, sandboxed);
+                EmailLog.SandboxedMail(_logger, mechanism, sandboxed, joined);
             }
 
             // Only a genuine send counts. A sandbox-channel result is Sandboxed by construction, so
@@ -360,13 +369,25 @@ namespace Tellma.Core.Email
             IReadOnlyList<EmailMessage> messages,
             EmailSendResult?[] results)
         {
-            List<string> correlations = new(withheldIndices.Count);
+            // Collected only when someone is listening, and only up to the cap the log line prints.
+            // Withholding is the unbounded case — a sandbox tenant's whole statement run lands here
+            // — so formatting a correlation per message would be the most expensive thing this
+            // method does, for a line that names twenty of them.
+            bool logging = _logger.IsEnabled(LogLevel.Information);
+            List<string>? correlations = logging
+                ? new List<string>(Math.Min(withheldIndices.Count, MaxLoggedCorrelations))
+                : null;
+
             foreach (int index in withheldIndices)
             {
                 // No wire activity at all: the transport has no sandbox channel, so external mail
                 // from a sandbox tenant simply does not happen.
                 results[index] = new EmailSendResult(EmailSendOutcome.Sandboxed);
-                correlations.Add(DescribeCorrelation(messages[index].Correlation));
+
+                if (correlations is { Count: < MaxLoggedCorrelations })
+                {
+                    correlations.Add(DescribeCorrelation(messages[index].Correlation));
+                }
 
                 _metrics.RecordSentMessage(
                     transport,
@@ -377,11 +398,11 @@ namespace Tellma.Core.Email
                     tenantIsSandbox: true);
             }
 
-            if (_logger.IsEnabled(LogLevel.Information))
+            if (correlations is not null)
             {
-                string joined = Join(correlations);
+                string joined = Join(correlations, withheldIndices.Count);
                 EmailLog.SandboxedMail(
-                    _logger, "withheld — the transport has no sandbox channel", correlations.Count, joined);
+                    _logger, "withheld — the transport has no sandbox channel", withheldIndices.Count, joined);
             }
         }
 
@@ -390,19 +411,17 @@ namespace Tellma.Core.Email
             return correlation?.ToString() ?? EmailTelemetryNames.NoOwner;
         }
 
-        private static string Join(List<string> correlations)
+        private static string Join(List<string> sample, int total)
         {
             // A statement run can sandbox thousands of messages; the log line names enough of them to
-            // investigate without becoming the reason the log store fills up.
-            if (correlations.Count <= MaxLoggedCorrelations)
-            {
-                return string.Join(", ", correlations);
-            }
+            // investigate without becoming the reason the log store fills up. The callers stop
+            // collecting at the cap, so the overflow is counted rather than formatted and discarded.
+            string joined = string.Join(", ", sample);
+            int remaining = total - sample.Count;
 
-            int remaining = correlations.Count - MaxLoggedCorrelations;
-            return string.Create(
-                CultureInfo.InvariantCulture,
-                $"{string.Join(", ", correlations.Take(MaxLoggedCorrelations))} (+{remaining} more)");
+            return remaining <= 0
+                ? joined
+                : string.Create(CultureInfo.InvariantCulture, $"{joined} (+{remaining} more)");
         }
     }
 }

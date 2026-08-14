@@ -26,6 +26,12 @@ tests, including `Redeliver()` for the duplicate a provider will eventually send
 default — fixed ids, fixed timestamps — because a fixture built on the wall clock makes every
 assertion touching ordering or lag flaky.
 
+**[EmailDeliveryEventTransports](Email/EmailDeliveryEventTransports.cs)** names the transports that
+have a delivery-event callback at all. The silent-webhook alert query watches exactly that set, and
+two suites that cannot see each other have to agree on it: the core alert-query test checks it
+against the query, and each connector's own suite checks its membership against what its composition
+registers.
+
 **[EmailSenderConformanceTests](Email/EmailSenderConformanceTests.cs)** is the executable form of the
 `IEmailSender` batch contract. Every email transport in the platform derives from it and supplies an
 [IEmailSenderHarness](Email/IEmailSenderHarness.cs); anyone writing a new transport inherits the same

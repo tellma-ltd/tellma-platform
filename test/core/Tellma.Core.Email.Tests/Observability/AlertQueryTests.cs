@@ -6,6 +6,7 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Tellma.Core.Abstractions.Email;
+using Tellma.Core.Testing.Email;
 using Tellma.Core.Webhooks;
 
 namespace Tellma.Core.Email.Tests.Observability
@@ -120,6 +121,33 @@ namespace Tellma.Core.Email.Tests.Observability
                 uncovered.Order(StringComparer.Ordinal));
         }
 
+        [Fact]
+        public void The_silent_webhook_alert_watches_exactly_the_transports_that_emit_delivery_events()
+        {
+            // This alert asks "live mail is going out, yet no delivery event came back", which is
+            // only a question worth asking of a transport that has a callback at all — so it carries
+            // its own list of them. That list is the one part of these queries the checks above
+            // cannot reach: the names resolve, so nothing complains, but a transport merely missing
+            // from the list is never evaluated by the alert built to catch precisely its silence.
+            string query = QueryBody(File.ReadAllText(
+                Path.Combine(AppContext.BaseDirectory, "AlertQueries", "silent-webhook.kql")));
+
+            Match binding = EventingTransportList().Match(query);
+            Assert.True(
+                binding.Success,
+                "silent-webhook.kql no longer declares its eventing transports as `let eventing = dynamic([…])`, so nothing checks them against the code any more.");
+
+            IEnumerable<string> queried = QuotedLiteral()
+                .Matches(binding.Groups["names"].Value)
+                .Select(static match => match.Groups["value"].Value);
+
+            // Both directions: a new eventing transport missing from the query fails here, and so
+            // does a name the query still watches after it stopped emitting events.
+            Assert.Equal(
+                EmailDeliveryEventTransports.Names.Order(StringComparer.Ordinal),
+                queried.Order(StringComparer.Ordinal));
+        }
+
         private static string QueryBody(string text)
         {
             // Comment lines are dropped: an instrument merely mentioned in the prose above a query
@@ -158,12 +186,17 @@ namespace Tellma.Core.Email.Tests.Observability
 
             // Transport names belong to the connector packages, which this suite deliberately does
             // not reference — a core test that pulled in three connectors would invert the
-            // dependency direction. They are listed here instead, which is also the only place a
-            // query may name a transport at all.
+            // dependency direction. The ones with a delivery-event callback are declared in the
+            // contract assembly, so they come from there rather than from a second list here; the
+            // eventless two are named below, which is the only other place a query may name a
+            // transport at all.
+            foreach (string transport in EmailDeliveryEventTransports.Names)
+            {
+                values.Add(transport);
+            }
+
             values.Add("smtp");
-            values.Add("sendgrid");
-            values.Add("acs-email");
-            values.Add("log-sink");
+            values.Add(EmailTransportResolution.LogSinkTransportName);
 
             return values;
         }
@@ -193,5 +226,10 @@ namespace Tellma.Core.Email.Tests.Observability
 
         [GeneratedRegex("\"(?<value>[^\"]*)\"")]
         private static partial Regex QuotedLiteral();
+
+        // Anchored on the binding name rather than on dynamic() in general, so an unrelated dynamic
+        // literal added to the query later cannot be mistaken for the eventing list.
+        [GeneratedRegex(@"let\s+eventing\s*=\s*dynamic\(\[(?<names>[^\]]*)\]\)")]
+        private static partial Regex EventingTransportList();
     }
 }

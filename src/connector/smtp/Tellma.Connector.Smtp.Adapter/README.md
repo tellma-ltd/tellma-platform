@@ -54,7 +54,7 @@ contract.
 | Connect or authenticate | **Throws.** Nothing was attempted, so the caller can retry the whole batch safely. |
 | A 4xx reply to a message | `TransientFailure` — the SMTP transient-negative class: greylisting, throttling, mailbox busy. |
 | A 5xx reply | `Rejected` — permanent-negative: unknown user, policy refusal, message too large. |
-| The connection dies mid-batch | That message is `TransientFailure`, the adapter reconnects once, and the remainder continues. If the reconnect fails, every remaining message is `TransientFailure` — never an exception once the batch has started. |
+| The connection dies mid-batch | That message is `TransientFailure`, the adapter reconnects once **per batch**, and the remainder continues. If the reconnect fails — or the connection drops again after it, since the budget is spent against the batch rather than against each loss — every remaining message is `TransientFailure`. Never an exception once the batch has started. |
 
 A structurally invalid message, or one whose addresses MailKit cannot parse, is rejected on its own
 without touching the wire: one malformed row must not poison a bulk dispatch. When the server

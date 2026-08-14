@@ -147,6 +147,10 @@ namespace Tellma.Core.Email
         }
 
         /// <summary>Records how far behind the provider's timestamp an event arrived.</summary>
+        /// <remarks>
+        ///     Called only for events that carried a provider timestamp, so the histogram's count is
+        ///     a count of measurable events rather than of all of them.
+        /// </remarks>
         /// <param name="transport">The transport whose receiver produced the event.</param>
         /// <param name="type">The platform classification of the event.</param>
         /// <param name="seconds">The lag; never negative, because a provider clock running ahead

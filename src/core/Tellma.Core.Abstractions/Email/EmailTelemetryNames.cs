@@ -38,6 +38,8 @@ namespace Tellma.Core.Abstractions.Email
 
         /// <summary>
         ///     Histogram of webhook arrival time minus the event's provider timestamp, in seconds.
+        ///     Records only events that carried a provider timestamp, so its count can legitimately
+        ///     sit below the delivery-event count.
         /// </summary>
         public const string DeliveryEventLagInstrument = "tellma.email.delivery.event.lag";
 

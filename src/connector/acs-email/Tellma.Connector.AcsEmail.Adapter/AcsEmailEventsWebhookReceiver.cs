@@ -92,7 +92,12 @@ namespace Tellma.Connector.AcsEmail.Adapter
             {
                 events = EventGridEvent.ParseMany(BinaryData.FromBytes(request.Body));
             }
-            catch (Exception exception) when (exception is JsonException or ArgumentException)
+            // FormatException belongs here alongside the JSON and argument failures: the envelope's
+            // eventTime is deserialized with DateTimeOffset.Parse, so well-formed JSON carrying an
+            // unparsable date throws from the parser rather than from the JSON reader. Leaving it
+            // out let a caller's malformed payload escape as an unhandled receiver fault — a 500
+            // metered as `error` — when it is exactly the bad request this arm exists to answer.
+            catch (Exception exception) when (exception is JsonException or ArgumentException or FormatException)
             {
                 return new WebhookResult(WebhookOutcome.Invalid, "The payload is not an Event Grid batch.");
             }
@@ -149,8 +154,13 @@ namespace Tellma.Connector.AcsEmail.Adapter
             {
                 throw;
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
+                // Every failure while the caller is still waiting, including a handler's own timeout
+                // surfacing as a TaskCanceledException on a token nobody cancelled. Filtering that
+                // one out would let it escape to the fronting as an unhandled receiver crash — a 500
+                // metered as `error` — when it is an ordinary transient handler failure.
+                //
                 // Event Grid redelivers with backoff for up to 24 hours, which is the durable retry
                 // at this tier.
                 return new WebhookResult(WebhookOutcome.TransientFailure, exception.Message);
@@ -245,7 +255,7 @@ namespace Tellma.Connector.AcsEmail.Adapter
                 delivery.DeliveryStatusDetails?.StatusMessage,
                 // The Event Grid envelope's time is the fallback: the delivery timestamp is optional,
                 // and public samples disagree with the SDK on its exact spelling.
-                delivery.DeliveryAttemptTimestamp ?? gridEvent.EventTime,
+                delivery.DeliveryAttemptTimestamp ?? EnvelopeTime(gridEvent),
                 gridEvent.Id);
         }
 
@@ -262,8 +272,24 @@ namespace Tellma.Connector.AcsEmail.Adapter
                 ClassifyEngagement(rawEngagement),
                 rawEngagement,
                 null,
-                engagement.UserActionTimestamp ?? gridEvent.EventTime,
+                engagement.UserActionTimestamp ?? EnvelopeTime(gridEvent),
                 gridEvent.Id);
+        }
+
+        /// <summary>The envelope's own time, or null when it does not really carry one.</summary>
+        /// <param name="gridEvent">The Event Grid envelope.</param>
+        /// <returns>The event time, or null when the envelope omitted it.</returns>
+        /// <remarks>
+        ///     <see cref="EventGridEvent.EventTime" /> is a non-nullable <see cref="DateTimeOffset" />
+        ///     and <see cref="EventGridEvent.ParseMany(BinaryData)" /> does not require the field, so
+        ///     an envelope without one deserializes to <c>default</c> — 0001-01-01 — rather than to
+        ///     anything the caller can recognize as absent. Passing that on would meter roughly two
+        ///     millennia of arrival lag off a single payload, which is worse than no measurement at
+        ///     all: it is one sample that dominates the percentile its alert is written against.
+        /// </remarks>
+        private static DateTimeOffset? EnvelopeTime(EventGridEvent gridEvent)
+        {
+            return gridEvent.EventTime == default ? null : gridEvent.EventTime;
         }
 
         private bool IsTokenAccepted(WebhookRequest request)

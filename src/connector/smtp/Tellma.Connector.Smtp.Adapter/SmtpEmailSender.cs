@@ -31,6 +31,11 @@ namespace Tellma.Connector.Smtp.Adapter
     /// </remarks>
     internal sealed class SmtpEmailSender : IEmailSender
     {
+        // Per batch, not per connection loss: a smarthost that drops the connection after every
+        // message would otherwise turn a bulk dispatch into one connect-and-authenticate cycle per
+        // message, which credentialed relays treat as abuse and start refusing outright.
+        private const int MaxReconnectsPerBatch = 1;
+
         private readonly SmtpChannel _channel;
         private readonly IOptionsMonitor<SmtpEmailOptions> _options;
         private readonly ISmtpClientFactory _clientFactory;
@@ -92,6 +97,7 @@ namespace Tellma.Connector.Smtp.Adapter
             // case where the contract permits — and prefers — an exception.
             ISmtpClient client = await ConnectAsync(settings, cancellationToken).ConfigureAwait(false);
             bool clientOwned = true;
+            int reconnectsRemaining = MaxReconnectsPerBatch;
 
             try
             {
@@ -132,8 +138,24 @@ namespace Tellma.Connector.Smtp.Adapter
                         Disconnect(client);
                         clientOwned = false;
 
-                        ISmtpClient? reconnected = await TryReconnectAsync(settings, cancellationToken)
-                            .ConfigureAwait(false);
+                        // The reconnect budget is spent against the batch, so a flapping smarthost
+                        // costs one extra connect in total rather than one per surviving message.
+                        ISmtpClient? reconnected = null;
+                        string remainderError;
+                        if (reconnectsRemaining > 0)
+                        {
+                            reconnectsRemaining--;
+                            reconnected = await TryReconnectAsync(settings, cancellationToken)
+                                .ConfigureAwait(false);
+                            remainderError = "The SMTP connection was lost and could not be re-established.";
+                        }
+                        else
+                        {
+                            SmtpEmailLog.ReconnectBudgetSpent(_logger, settings.Host);
+                            remainderError =
+                                "The SMTP connection was lost again after the batch's one reconnect.";
+                        }
+
                         if (reconnected is null)
                         {
                             // Never an exception once the batch has started: the caller gets one
@@ -141,8 +163,7 @@ namespace Tellma.Connector.Smtp.Adapter
                             for (int rest = p + 1; rest < pending.Count; rest++)
                             {
                                 results[pending[rest]] = new EmailSendResult(
-                                    EmailSendOutcome.TransientFailure,
-                                    Error: "The SMTP connection was lost and could not be re-established.");
+                                    EmailSendOutcome.TransientFailure, Error: remainderError);
                             }
 
                             return Complete(results);

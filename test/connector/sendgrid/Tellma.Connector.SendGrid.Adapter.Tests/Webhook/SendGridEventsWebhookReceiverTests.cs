@@ -110,9 +110,14 @@ namespace Tellma.Connector.SendGrid.Adapter.Tests.Webhook
             // mixes deployments, and dropping it whole would lose our own events.
             Assert.Equal(WebhookOutcome.Accepted, result.Outcome);
             Assert.Equal("evt-2", Assert.Single(Assert.Single(_dispatcher.Batches)).ProviderEventId);
-            Assert.Equal(
-                EmailTelemetryNames.ForeignEvent,
-                Assert.Single(events.GetMeasurementSnapshot()).Tags[EmailTelemetryNames.EventRoutingTag]);
+
+            CollectedMeasurement<long> dropped = Assert.Single(events.GetMeasurementSnapshot());
+            Assert.Equal(EmailTelemetryNames.ForeignEvent, dropped.Tags[EmailTelemetryNames.EventRoutingTag]);
+
+            // The event-type spelling too, not just the routing: this measurement lands on the same
+            // instrument the pipeline emits its other routing slices on, so an adapter that spelled
+            // this dimension its own way would split one instrument in two without failing anything.
+            Assert.Equal("delivered", dropped.Tags[EmailTelemetryNames.EventTypeTag]);
         }
 
         [Fact]
@@ -173,6 +178,40 @@ namespace Tellma.Connector.SendGrid.Adapter.Tests.Webhook
                 TestContext.Current.CancellationToken);
 
             Assert.Equal(WebhookOutcome.TransientFailure, result.Outcome);
+        }
+
+        [Fact]
+        public async Task Reports_a_handler_timeout_on_a_live_token_as_transient_rather_than_letting_it_escape()
+        {
+            // A handler's own timeout surfaces as a TaskCanceledException even though nobody
+            // cancelled this request. It is an ordinary transient failure, not a cancellation, and
+            // must be reported as one — letting it escape would reach the fronting as an unhandled
+            // receiver crash, answering 500 and metering `error` for a routine database timeout.
+            _dispatcher.ThrowOnDispatch = new TaskCanceledException("the handler's own timeout elapsed");
+            SendGridEventsWebhookReceiver receiver = Receiver();
+
+            WebhookResult result = await receiver.HandleAsync(
+                Signed(/*lang=json,strict*/ """[{"event":"delivered","sg_event_id":"evt-1"}]"""),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(WebhookOutcome.TransientFailure, result.Outcome);
+        }
+
+        [Fact]
+        public async Task Propagates_cancellation_when_the_caller_really_did_abandon_the_request()
+        {
+            // The other side of the same filter: once the caller's token is cancelled there is no
+            // response worth composing, so the cancellation propagates instead of being reported.
+            _dispatcher.ThrowOnDispatch = new OperationCanceledException("the caller went away");
+            SendGridEventsWebhookReceiver receiver = Receiver();
+
+            using CancellationTokenSource cancelled = new();
+            await cancelled.CancelAsync();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => receiver.HandleAsync(
+                    Signed(/*lang=json,strict*/ """[{"event":"delivered","sg_event_id":"evt-1"}]"""),
+                    cancelled.Token));
         }
 
         /// <inheritdoc />

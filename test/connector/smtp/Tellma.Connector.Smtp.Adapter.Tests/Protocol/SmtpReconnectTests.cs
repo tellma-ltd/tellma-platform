@@ -70,6 +70,33 @@ namespace Tellma.Connector.Smtp.Adapter.Tests.Protocol
             Assert.Equal(EmailSendOutcome.TransientFailure, results[2].Outcome);
         }
 
+        [Fact]
+        public async Task Reconnects_at_most_once_however_often_the_connection_drops()
+        {
+            await using InProcessSmtpServer server = await InProcessSmtpServer.StartAsync();
+
+            // Every client drops on its first send, which is what a flapping relay — or one with an
+            // aggressive per-connection message cap — looks like from here.
+            CountingClientFactory factory = new(failOnSend: 1) { EveryClientDrops = true };
+            IEmailSender sender = SmtpSenderFactory.Sender(SmtpSenderFactory.Options(server.Port), factory);
+
+            IReadOnlyList<EmailSendResult> results = await sender.SendAsync(
+                [
+                    SmtpSenderFactory.Message("first"),
+                    SmtpSenderFactory.Message("second"),
+                    SmtpSenderFactory.Message("third"),
+                    SmtpSenderFactory.Message("fourth"),
+                ],
+                TestContext.Current.CancellationToken);
+
+            Assert.All(results, static r => Assert.Equal(EmailSendOutcome.TransientFailure, r.Outcome));
+
+            // The initial connection plus one reconnect, and no more, whatever the batch length: the
+            // budget is spent against the batch, not against each loss. Without it this would be one
+            // connect-and-authenticate cycle per message.
+            Assert.Equal(2, factory.CreatedClients);
+        }
+
         /// <summary>Hands out clients and counts them, so "reconnected once" is a settled number.</summary>
         private sealed class CountingClientFactory(int failOnSend) : ISmtpClientFactory
         {
@@ -79,9 +106,17 @@ namespace Tellma.Connector.Smtp.Adapter.Tests.Protocol
             /// <summary>When set, the replacement client refuses to connect.</summary>
             public bool SecondClientCannotConnect { get; init; }
 
+            /// <summary>When set, every client drops the connection on its first send.</summary>
+            public bool EveryClientDrops { get; init; }
+
             public ISmtpClient Create()
             {
                 CreatedClients++;
+                if (EveryClientDrops)
+                {
+                    return new FaultingSmtpClient(1);
+                }
+
                 if (CreatedClients == 1)
                 {
                     return new FaultingSmtpClient(failOnSend);

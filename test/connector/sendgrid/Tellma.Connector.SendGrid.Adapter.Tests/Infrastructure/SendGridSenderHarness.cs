@@ -23,6 +23,7 @@ namespace Tellma.Connector.SendGrid.Adapter.Tests.Infrastructure
         private readonly Lock _gate = new();
         private readonly Dictionary<int, ScriptedReplyKind> _script = [];
         private readonly List<int> _attempted = [];
+        private readonly ScriptedHttpMessageHandler _handler;
         private readonly SingleClientHttpClientFactory _httpClientFactory;
 
         /// <summary>Creates a harness.</summary>
@@ -35,7 +36,8 @@ namespace Tellma.Connector.SendGrid.Adapter.Tests.Infrastructure
             DeploymentIdentity? deployment = null)
         {
             Options = options ?? DefaultOptions();
-            _httpClientFactory = new SingleClientHttpClientFactory(new ScriptedHttpMessageHandler(Respond));
+            _handler = new ScriptedHttpMessageHandler(Respond);
+            _httpClientFactory = new SingleClientHttpClientFactory(_handler);
 
             Sender = new SendGridEmailSender(
                 channel,
@@ -49,7 +51,12 @@ namespace Tellma.Connector.SendGrid.Adapter.Tests.Infrastructure
         public SendGridEmailOptions Options { get; }
 
         /// <summary>The bodies the wire saw, in arrival order.</summary>
-        public List<string> RequestBodies { get; } = [];
+        /// <remarks>
+        ///     The handler's own record, not a second copy of it: this is read while a concurrent
+        ///     batch may still be responding, so it has to be the snapshot the handler takes under
+        ///     its own lock rather than a live list.
+        /// </remarks>
+        public IReadOnlyList<string> RequestBodies => _handler.RequestBodies;
 
         /// <inheritdoc />
         public IEmailSender Sender { get; }
@@ -114,7 +121,6 @@ namespace Tellma.Connector.SendGrid.Adapter.Tests.Infrastructure
 
             lock (_gate)
             {
-                RequestBodies.Add(body);
                 if (ordinal >= 0)
                 {
                     _attempted.Add(ordinal);

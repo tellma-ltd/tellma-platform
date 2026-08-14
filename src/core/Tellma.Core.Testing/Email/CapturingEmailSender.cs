@@ -93,7 +93,22 @@ namespace Tellma.Core.Testing.Email
                 _waits.Add(wait);
             }
 
-            return await wait.Completion.Task.WaitAsync(timeout).ConfigureAwait(false);
+            try
+            {
+                return await wait.Completion.Task.WaitAsync(timeout).ConfigureAwait(false);
+            }
+            finally
+            {
+                // A wait that timed out must not outlive its await. Left registered, its predicate
+                // would be re-evaluated inside every later send — on the sending thread, under the
+                // lock — so a predicate written against a state the test has since moved past (a
+                // Clear(), say) would throw from inside an unrelated SendAsync. Removing a wait the
+                // send loop already satisfied is a no-op, which is why this is a finally.
+                lock (_gate)
+                {
+                    _waits.Remove(wait);
+                }
+            }
         }
 
         /// <inheritdoc />

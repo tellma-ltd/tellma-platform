@@ -29,13 +29,21 @@ namespace Tellma.Connector.SendGrid
         /// <param name="body">The raw request body.</param>
         /// <param name="events">The parsed events, or an empty list when parsing failed.</param>
         /// <returns>True when the body was a JSON array of objects.</returns>
-        public static bool TryParse(ReadOnlySpan<byte> body, out IReadOnlyList<SendGridEvent> events)
+        /// <remarks>
+        ///     Takes memory rather than a span so the document can be parsed over the caller's buffer
+        ///     instead of a copy of it — a webhook body runs to the fronting's megabyte-scale cap, and
+        ///     copying it whole before reading a single token is the most expensive thing on this
+        ///     path. <see cref="JsonDocument" /> then borrows that buffer for its lifetime, which is
+        ///     safe here because the document does not outlive this call and everything read out of
+        ///     it is a copied string.
+        /// </remarks>
+        public static bool TryParse(ReadOnlyMemory<byte> body, out IReadOnlyList<SendGridEvent> events)
         {
             events = [];
 
             try
             {
-                using var document = JsonDocument.Parse(body.ToArray());
+                using var document = JsonDocument.Parse(body);
                 if (document.RootElement.ValueKind != JsonValueKind.Array)
                 {
                     return false;
@@ -77,11 +85,15 @@ namespace Tellma.Connector.SendGrid
                 return false;
             }
 
-            DateTimeOffset timestamp = element.TryGetProperty(TimestampProperty, out JsonElement timestampElement)
+            // Null, not the epoch, when the field is missing or is not a number. A substituted epoch
+            // reads downstream as fifty-odd years of arrival lag, which poisons the lag histogram
+            // and trips its alert off a single malformed entry — and it would reach a handler as a
+            // 1970 timestamp worth persisting.
+            DateTimeOffset? timestamp = element.TryGetProperty(TimestampProperty, out JsonElement timestampElement)
                 && timestampElement.ValueKind == JsonValueKind.Number
                 && timestampElement.TryGetInt64(out long unixSeconds)
                     ? DateTimeOffset.FromUnixTimeSeconds(unixSeconds)
-                    : DateTimeOffset.UnixEpoch;
+                    : null;
 
             Dictionary<string, string> customArgs = new(StringComparer.Ordinal);
             foreach (JsonProperty property in element.EnumerateObject())

@@ -68,7 +68,8 @@ namespace Tellma.Connector.AcsEmail.Adapter.Tests.Webhook
         public async Task Falls_back_to_the_envelope_time_when_the_delivery_timestamp_is_absent()
         {
             // Microsoft's own published samples spell this field differently from the SDK's
-            // deserializer, so the fallback is what keeps the lag histogram honest either way.
+            // deserializer, so the envelope time is what covers the spelling mismatch. It only
+            // covers that case — an envelope carrying no time of its own is the sibling case below.
             AcsEmailEventsWebhookReceiver receiver = Receiver();
 
             await receiver.HandleAsync(
@@ -81,6 +82,26 @@ namespace Tellma.Connector.AcsEmail.Adapter.Tests.Webhook
             // An ACS-generated message id is not one this codec produced, so the event is
             // uncorrelated and flows through the pipeline's metering.
             Assert.Null(@event.Correlation);
+            Assert.Equal(EmailDeliveryEventType.Bounced, @event.Type);
+        }
+
+        [Fact]
+        public async Task Leaves_the_timestamp_unknown_when_the_envelope_carries_no_time_either()
+        {
+            // EventGridEvent.EventTime is a non-nullable DateTimeOffset and ParseMany does not
+            // require the field, so an envelope without one deserializes to 0001-01-01 rather than
+            // to anything absent. Substituting that reaches the lag histogram as two millennia of
+            // arrival delay — far worse than a missing sample, and enough on its own to trip the
+            // p95 alert. The translator has to recognize it as "no time" and say so.
+            AcsEmailEventsWebhookReceiver receiver = Receiver();
+
+            await receiver.HandleAsync(
+                Request(Payload("delivery-report-no-envelope-time.json")), TestContext.Current.CancellationToken);
+
+            EmailDeliveryEvent @event = Assert.Single(Assert.Single(_dispatcher.Batches));
+            Assert.Null(@event.Timestamp);
+
+            // Still a real event, still translated and routed — only the lag is unknown.
             Assert.Equal(EmailDeliveryEventType.Bounced, @event.Type);
         }
 
@@ -183,6 +204,29 @@ namespace Tellma.Connector.AcsEmail.Adapter.Tests.Webhook
             Assert.Equal(WebhookOutcome.Invalid, result.Outcome);
         }
 
+        [Theory]
+        [InlineData("")]
+        [InlineData("not-a-date")]
+        [InlineData("2026-13-45T99:99:99Z")]
+        public async Task Rejects_a_batch_whose_envelope_carries_an_unparsable_date(string eventTime)
+        {
+            // Well-formed JSON in the right shape, with one field the SDK cannot turn into a date.
+            // That is a malformed payload like any other and must answer Invalid — letting it throw
+            // would report a caller's bad request as this receiver crashing.
+            AcsEmailEventsWebhookReceiver receiver = Receiver();
+            string payload = /*lang=json,strict*/ """
+                [{"id":"1","topic":"t","subject":"s","data":{},
+                  "eventType":"Microsoft.Communication.EmailDeliveryReportReceived",
+                  "dataVersion":"1.0","eventTime":"@@"}]
+                """.Replace("@@", eventTime, StringComparison.Ordinal);
+
+            WebhookResult result = await receiver.HandleAsync(
+                Request(payload), TestContext.Current.CancellationToken);
+
+            Assert.Equal(WebhookOutcome.Invalid, result.Outcome);
+            Assert.Empty(_dispatcher.Batches);
+        }
+
         [Fact]
         public async Task Reports_a_dispatch_failure_as_transient_so_event_grid_redelivers()
         {
@@ -193,6 +237,37 @@ namespace Tellma.Connector.AcsEmail.Adapter.Tests.Webhook
                 Request(Payload("engagement-report.json")), TestContext.Current.CancellationToken);
 
             Assert.Equal(WebhookOutcome.TransientFailure, result.Outcome);
+        }
+
+        [Fact]
+        public async Task Reports_a_handler_timeout_on_a_live_token_as_transient_rather_than_letting_it_escape()
+        {
+            // A handler's own timeout surfaces as a TaskCanceledException even though nobody
+            // cancelled this request. It is an ordinary transient failure, not a cancellation, and
+            // must be reported as one — letting it escape would reach the fronting as an unhandled
+            // receiver crash, answering 500 and metering `error` for a routine database timeout.
+            _dispatcher.ThrowOnDispatch = new TaskCanceledException("the handler's own timeout elapsed");
+            AcsEmailEventsWebhookReceiver receiver = Receiver();
+
+            WebhookResult result = await receiver.HandleAsync(
+                Request(Payload("engagement-report.json")), TestContext.Current.CancellationToken);
+
+            Assert.Equal(WebhookOutcome.TransientFailure, result.Outcome);
+        }
+
+        [Fact]
+        public async Task Propagates_cancellation_when_the_caller_really_did_abandon_the_request()
+        {
+            // The other side of the same filter: once the caller's token is cancelled there is no
+            // response worth composing, so the cancellation propagates instead of being reported.
+            _dispatcher.ThrowOnDispatch = new OperationCanceledException("the caller went away");
+            AcsEmailEventsWebhookReceiver receiver = Receiver();
+
+            using CancellationTokenSource cancelled = new();
+            await cancelled.CancelAsync();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => receiver.HandleAsync(Request(Payload("engagement-report.json")), cancelled.Token));
         }
 
         private AcsEmailEventsWebhookReceiver Receiver()

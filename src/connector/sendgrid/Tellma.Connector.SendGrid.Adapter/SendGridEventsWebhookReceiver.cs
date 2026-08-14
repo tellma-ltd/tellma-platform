@@ -79,7 +79,7 @@ namespace Tellma.Connector.SendGrid.Adapter
                 return new WebhookResult(WebhookOutcome.Unauthorized, "Signature verification failed.");
             }
 
-            if (!SendGridEventParser.TryParse(request.Body.Span, out IReadOnlyList<SendGridEvent> events))
+            if (!SendGridEventParser.TryParse(request.Body, out IReadOnlyList<SendGridEvent> events))
             {
                 return new WebhookResult(WebhookOutcome.Invalid, "The payload is not a JSON array of events.");
             }
@@ -90,20 +90,20 @@ namespace Tellma.Connector.SendGrid.Adapter
             foreach (SendGridEvent @event in events)
             {
                 EmailDeliveryEventType type = ClassifyEvent(@event.EventName);
+                EmailCorrelation? correlation = ResolveCorrelation(@event, out bool isForeign);
 
-                if (!TryResolveCorrelation(@event, out EmailCorrelation? correlation, out bool isForeign))
+                if (isForeign)
                 {
-                    if (isForeign)
-                    {
-                        // Dropped per event, not per batch: under shared provider credentials one
-                        // batch legitimately mixes deployments, and dropping it whole would lose
-                        // this deployment's own events.
-                        foreign++;
-                        _metrics.RecordForeignEvent(type);
-                        continue;
-                    }
+                    // Dropped per event, not per batch: under shared provider credentials one
+                    // batch legitimately mixes deployments, and dropping it whole would lose
+                    // this deployment's own events.
+                    foreign++;
+                    _metrics.RecordForeignEvent(type);
+                    continue;
                 }
 
+                // Everything else is translated, correlated or not: an event this deployment cannot
+                // route is still worth metering, which is the dispatcher's job rather than ours.
                 translated.Add(new EmailDeliveryEvent(
                     correlation,
                     @event.Email,
@@ -129,8 +129,13 @@ namespace Tellma.Connector.SendGrid.Adapter
             {
                 throw;
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
+                // Every failure while the caller is still waiting, including a handler's own timeout
+                // surfacing as a TaskCanceledException on a token nobody cancelled. Filtering that
+                // one out would let it escape to the fronting as an unhandled receiver crash — a 500
+                // metered as `error` — when it is an ordinary transient handler failure.
+                //
                 // SendGrid redelivers a failed batch for up to 24 hours, which is the only durable
                 // retry that exists at this tier; handler-side deduplication makes it harmless.
                 return new WebhookResult(WebhookOutcome.TransientFailure, exception.Message);
@@ -158,10 +163,8 @@ namespace Tellma.Connector.SendGrid.Adapter
             };
         }
 
-        private bool TryResolveCorrelation(
-            SendGridEvent @event, out EmailCorrelation? correlation, out bool isForeign)
+        private EmailCorrelation? ResolveCorrelation(SendGridEvent @event, out bool isForeign)
         {
-            correlation = null;
             isForeign = false;
 
             if (!@event.CustomArgs.TryGetValue(SendGridPayloadMapper.CorrelationCustomArg, out string? envelope)
@@ -169,7 +172,7 @@ namespace Tellma.Connector.SendGrid.Adapter
             {
                 // SendGrid documents that delayed bounces can arrive without the send's metadata, so
                 // an uncorrelated event is expected background rather than an anomaly.
-                return false;
+                return null;
             }
 
             // The deployment id is colon-free by construction, so the first colon splits the envelope
@@ -177,16 +180,18 @@ namespace Tellma.Connector.SendGrid.Adapter
             int separator = envelope.IndexOf(':');
             if (separator < 0)
             {
-                return false;
+                return null;
             }
 
             if (!envelope.AsSpan(0, separator).SequenceEqual(_deployment.DeploymentId))
             {
                 isForeign = true;
-                return false;
+                return null;
             }
 
-            return EmailCorrelation.TryParse(envelope[(separator + 1)..], out correlation);
+            return EmailCorrelation.TryParse(envelope[(separator + 1)..], out EmailCorrelation? correlation)
+                ? correlation
+                : null;
         }
 
         private static bool TryGetHeader(WebhookRequest request, string name, out string value)

@@ -19,7 +19,10 @@ namespace Tellma.Core.Abstractions.Email
     ///     event's only meaning when <paramref name="Type" /> is <see cref="EmailDeliveryEventType.Other" />.</param>
     /// <param name="Reason">Provider-reported detail, chiefly for failures (the bounce reason).</param>
     /// <param name="Timestamp">When the event occurred at the provider — not when the webhook
-    ///     arrived; bounces can surface minutes later.</param>
+    ///     arrived; bounces can surface minutes later. Null when the callback carried no usable
+    ///     time: such an event is still translated and routed, but it contributes no arrival-lag
+    ///     measurement, because a substituted time would be indistinguishable from a real one and a
+    ///     substituted <em>epoch</em> would read as decades of lag.</param>
     /// <param name="ProviderEventId">The provider's unique id for this event. Handlers deduplicate
     ///     on it, because providers deliver at least once.</param>
     public sealed record EmailDeliveryEvent(
@@ -28,6 +31,6 @@ namespace Tellma.Core.Abstractions.Email
         EmailDeliveryEventType Type,
         string RawType,
         string? Reason,
-        DateTimeOffset Timestamp,
+        DateTimeOffset? Timestamp,
         string ProviderEventId);
 }

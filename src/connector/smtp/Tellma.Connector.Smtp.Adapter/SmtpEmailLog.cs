@@ -31,14 +31,29 @@ namespace Tellma.Connector.Smtp.Adapter
             Message = "SMTP host {Host} advertises SMTPUTF8; sending in international format.")]
         public static partial void InternationalFormatNegotiated(ILogger logger, string host);
 
-        /// <summary>The connection died while a batch was in flight.</summary>
+        /// <summary>
+        ///     The connection died while a batch was in flight. What happens next is said by whichever
+        ///     of the three lines below follows, so this one deliberately promises nothing: on the
+        ///     drop that exhausts the batch's reconnect budget there is no reconnect to promise.
+        /// </summary>
         /// <param name="logger">The logger.</param>
         /// <param name="exception">The failure.</param>
         /// <param name="host">The host that was connected.</param>
         [LoggerMessage(
             Level = LogLevel.Warning,
-            Message = "The SMTP connection to {Host} was lost mid-batch; reconnecting once to finish the remainder.")]
+            Message = "The SMTP connection to {Host} was lost mid-batch; the message in flight is reported as a transient failure.")]
         public static partial void ConnectionLostMidBatch(ILogger logger, Exception exception, string host);
+
+        /// <summary>
+        ///     The connection was lost again after the batch had already spent its one reconnect, so
+        ///     the remainder is abandoned rather than reconnected message by message.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="host">The host that keeps dropping the connection.</param>
+        [LoggerMessage(
+            Level = LogLevel.Error,
+            Message = "The SMTP connection to {Host} was lost again after this batch's one reconnect; the remainder of the batch is reported as transient failures without reconnecting again.")]
+        public static partial void ReconnectBudgetSpent(ILogger logger, string host);
 
         /// <summary>The single reconnect attempt failed, so the rest of the batch is transient.</summary>
         /// <param name="logger">The logger.</param>

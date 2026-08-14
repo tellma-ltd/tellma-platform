@@ -20,6 +20,16 @@ a declared telemetry constant, or a tag value the diagnostics layer produces. Re
 a tag, or a tag value therefore turns a stale alert into a failing build, instead of into an alert
 that quietly reports zero forever.
 
+`silent-webhook.kql` additionally carries a list of the transports it watches, which name resolution
+alone cannot vouch for — a transport merely *missing* from that list spells nothing wrong, it is just
+never evaluated by the alert built to catch its silence. So the list is checked in both directions
+against `EmailDeliveryEventTransports`, and each existing connector's suite asserts that its
+membership there agrees with whether its composition actually registers a delivery-event receiver.
+Note what that does and does not buy: it catches the list and the query drifting apart, and it
+catches a connector losing or gaining a callback. It cannot by itself catch a *brand new* connector
+whose author writes neither the declaration test nor the list entry — the three existing
+`*DeliveryEventDeclarationTests` are the pattern a new connector is expected to copy.
+
 They are written against Application Insights' `customMetrics` table, which is where OpenTelemetry
 instruments land through the Azure Monitor exporter. Thresholds are starting points chosen to be
 expressible, not settled operational policy; they will become

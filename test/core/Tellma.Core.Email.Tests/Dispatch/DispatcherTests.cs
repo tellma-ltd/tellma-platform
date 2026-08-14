@@ -123,6 +123,34 @@ namespace Tellma.Core.Email.Tests.Dispatch
         }
 
         [Fact]
+        public async Task Measures_no_lag_for_an_event_that_carried_no_provider_timestamp_but_still_routes_it()
+        {
+            RecordingHandler outbox = new("outbox");
+            EmailDeliveryEventDispatcher dispatcher = Create(outbox);
+            using MetricCollector<double> lag = new(
+                _meterFactory, EmailTelemetryNames.MeterName, EmailTelemetryNames.DeliveryEventLagInstrument);
+
+            EmailDeliveryEvent undated = new(
+                new EmailCorrelation("outbox", "1"),
+                "recipient@example.com",
+                EmailDeliveryEventType.Bounced,
+                "bounce",
+                null,
+                null,
+                "evt-1");
+
+            await dispatcher.DispatchAsync(Transport, [undated], TestContext.Current.CancellationToken);
+
+            // A gap in the histogram, not a fabricated number in it. Substituting a time would put a
+            // value an alert reads into a series that is supposed to describe provider latency; the
+            // epoch in particular would read as decades of lag off one malformed event.
+            Assert.Empty(lag.GetMeasurementSnapshot());
+
+            // And it is still a real event, so it still reaches its owner.
+            Assert.Single(Assert.Single(outbox.Batches));
+        }
+
+        [Fact]
         public async Task Lets_a_handler_failure_propagate_so_the_provider_redelivers()
         {
             // No event queue exists at this tier: the provider's redelivery is the only durable

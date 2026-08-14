@@ -128,7 +128,10 @@ namespace Tellma.Connector.SendGrid
             }
             finally
             {
-                ArrayPool<byte>.Shared.Return(signedPayload);
+                // Cleared on the way back: this buffer held the raw event body — recipient
+                // addresses, bounce reasons, custom arguments — and the pool hands the very same
+                // array to unrelated code next, beyond whatever that code writes into it.
+                ArrayPool<byte>.Shared.Return(signedPayload, clearArray: true);
             }
         }
 

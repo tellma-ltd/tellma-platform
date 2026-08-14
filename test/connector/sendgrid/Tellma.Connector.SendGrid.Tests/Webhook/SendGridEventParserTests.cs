@@ -96,6 +96,23 @@ namespace Tellma.Connector.SendGrid.Tests.Webhook
             Assert.Empty(events);
         }
 
+        [Theory]
+        [InlineData(/*lang=json,strict*/ """[{ "event": "bounce", "sg_event_id": "evt-1" }]""")]
+        [InlineData(/*lang=json,strict*/ """[{ "event": "bounce", "sg_event_id": "evt-1", "timestamp": "1767225600" }]""")]
+        public void Leaves_the_timestamp_unknown_rather_than_substituting_one(string payload)
+        {
+            // Absent, or present but not a number. Either way the platform reads it as unknown: a
+            // substituted epoch would reach the pipeline as fifty-odd years of arrival lag, which is
+            // enough on its own to trip the lag alert and to be persisted as an event time.
+            Assert.True(SendGridEventParser.TryParse(Bytes(payload), out IReadOnlyList<SendGridEvent> events));
+
+            SendGridEvent @event = Assert.Single(events);
+            Assert.Null(@event.Timestamp);
+
+            // The entry is still usable — it has a name to classify and an id to deduplicate on.
+            Assert.Equal("bounce", @event.EventName);
+        }
+
         [Fact]
         public void Reads_an_empty_batch_as_an_empty_batch()
         {

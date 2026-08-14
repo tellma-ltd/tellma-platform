@@ -67,21 +67,15 @@ namespace Tellma.Core.Email
         /// <summary>The metric tag value for a delivery-event type.</summary>
         /// <param name="type">The event type to spell.</param>
         /// <returns>A lowercase snake_case name.</returns>
+        /// <remarks>
+        ///     Forwards to the contract assembly's table rather than holding one of its own. Connector
+        ///     adapters cannot reference this assembly, yet they meter the same dimension, so this is
+        ///     the one tag-value mapping that cannot live here — it is kept reachable through
+        ///     <c>EmailDiagnostics</c> only so every call site spells telemetry the same way.
+        /// </remarks>
         internal static string ToTagValue(EmailDeliveryEventType type)
         {
-            return type switch
-            {
-                EmailDeliveryEventType.Delivered => "delivered",
-                EmailDeliveryEventType.Deferred => "deferred",
-                EmailDeliveryEventType.Bounced => "bounced",
-                EmailDeliveryEventType.Dropped => "dropped",
-                EmailDeliveryEventType.Failed => "failed",
-                EmailDeliveryEventType.Opened => "opened",
-                EmailDeliveryEventType.Clicked => "clicked",
-                EmailDeliveryEventType.SpamReported => "spam_reported",
-                EmailDeliveryEventType.Other => "other",
-                _ => "unknown",
-            };
+            return EmailTelemetryTagValues.ToTagValue(type);
         }
 
         /// <summary>The metric tag value for the channel a sender served.</summary>

@@ -60,7 +60,13 @@ namespace Tellma.Core.Email
 
             foreach (EmailDeliveryEvent @event in events)
             {
-                metrics.RecordDeliveryEventLag(transport, @event.Type, (now - @event.Timestamp).TotalSeconds);
+                // Only events that carried a provider time are measured. An event without one is
+                // still routed — it is a real event — but inventing a time for it would put a
+                // fabricated number into a histogram an alert reads, which is worse than a gap.
+                if (@event.Timestamp is DateTimeOffset occurredAt)
+                {
+                    metrics.RecordDeliveryEventLag(transport, @event.Type, (now - occurredAt).TotalSeconds);
+                }
 
                 string? ownerKey = @event.Correlation?.OwnerKey;
                 if (ownerKey is null)

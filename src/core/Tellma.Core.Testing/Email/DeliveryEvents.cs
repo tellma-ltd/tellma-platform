@@ -36,6 +36,10 @@ namespace Tellma.Core.Testing.Email
         private readonly List<EmailDeliveryEvent> _events = [];
         private string _recipient = "recipient@example.com";
 
+        // Counts appended events rather than list entries, so a redelivery — which adds a duplicate
+        // without being a new event — does not push the next real event's id and timestamp along.
+        private int _appended;
+
         internal DeliveryEventBuilder(EmailCorrelation? correlation)
         {
             _correlation = correlation;
@@ -127,7 +131,7 @@ namespace Tellma.Core.Testing.Email
 
         private DeliveryEventBuilder Append(EmailDeliveryEventType type, string rawType, string? reason)
         {
-            int index = _events.Count + 1;
+            int index = ++_appended;
             _events.Add(new EmailDeliveryEvent(
                 _correlation,
                 _recipient,

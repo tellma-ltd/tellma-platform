@@ -8,7 +8,9 @@ namespace Tellma.Connector.SendGrid
     /// <summary>One entry of an event-webhook batch.</summary>
     /// <param name="EventName">SendGrid's own event name ("delivered", "bounce", …), verbatim.</param>
     /// <param name="Email">The recipient address the event concerns.</param>
-    /// <param name="Timestamp">When the event occurred at SendGrid.</param>
+    /// <param name="Timestamp">When the event occurred at SendGrid; null when the entry carried no
+    ///     numeric <c>timestamp</c> field, which the platform reads as "unknown" rather than
+    ///     substituting a time of its own.</param>
     /// <param name="EventId">The <c>sg_event_id</c>, documented unique and the recommended dedupe key.</param>
     /// <param name="MessageId">The <c>sg_message_id</c>, SendGrid's id for the message.</param>
     /// <param name="Reason">The failure detail, where the event carries one.</param>
@@ -18,7 +20,7 @@ namespace Tellma.Connector.SendGrid
     public sealed record SendGridEvent(
         string EventName,
         string? Email,
-        DateTimeOffset Timestamp,
+        DateTimeOffset? Timestamp,
         string EventId,
         string? MessageId,
         string? Reason,

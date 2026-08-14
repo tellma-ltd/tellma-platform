@@ -7,6 +7,7 @@ using Azure;
 using Azure.Identity;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Runtime.ExceptionServices;
 using Tellma.Core.Abstractions.Email;
 
 // Azure.Communication.Email and the platform contract both spell several of these type names the
@@ -41,6 +42,8 @@ namespace Tellma.Connector.AcsEmail.Adapter
         private readonly IOptionsMonitor<AcsEmailOptions> _options;
         private readonly Func<AcsEmailOptions, AcsEmailClient> _clientFactory;
         private readonly ILogger<AcsEmailSender> _logger;
+
+        private CachedClient? _cachedClient;
 
         /// <summary>Creates the sender.</summary>
         /// <param name="options">The transport's options, read fresh per batch.</param>
@@ -91,7 +94,7 @@ namespace Tellma.Connector.AcsEmail.Adapter
             // Recipient-count and request-size caps are resource-level and support-raisable, so
             // nothing is pre-validated against them: the provider's synchronous 400 maps to a
             // rejection like any other payload refusal.
-            AcsEmailClient client = _clientFactory(options);
+            AcsEmailClient client = ClientFor(options);
             var defaultFrom = options.From.ToEmailAddress();
             bool expectsEvents = options.Webhook.Tokens.Count > 0;
 
@@ -108,9 +111,44 @@ namespace Tellma.Connector.AcsEmail.Adapter
 
             await Task.WhenAll(tasks).ConfigureAwait(false);
 
-            return state.AuthException is Exception authException && Volatile.Read(ref state.SentCount) == 0
-                ? throw authException
-                : Complete(results);
+            if (state.AuthException is Exception authException && Volatile.Read(ref state.SentCount) == 0)
+            {
+                // Rethrown through ExceptionDispatchInfo rather than with `throw authException`,
+                // which would reset the stack trace to this line and discard the credential-chain
+                // frame naming which token source refused — the whole diagnosis for a misconfigured
+                // federated identity.
+                ExceptionDispatchInfo.Capture(authException).Throw();
+            }
+
+            return Complete(results);
+        }
+
+        /// <summary>Returns the client for these options, building one only when they have changed.</summary>
+        /// <param name="options">The options this batch is being sent under.</param>
+        /// <returns>The client to send through.</returns>
+        /// <remarks>
+        ///     Building an <c>EmailClient</c> means building an HttpPipeline and its policy chain,
+        ///     which is not worth repeating for a client the SDK documents as thread-safe. The cache
+        ///     lives as long as this sender does, and the sender is built per DI scope — so it saves
+        ///     nothing for a host that sends one batch per scope, and saves the rebuild for every
+        ///     batch after the first for a background worker that drains an outbox in one scope.
+        ///     <see cref="IOptionsMonitor{TOptions}" /> hands out the same instance until
+        ///     configuration reloads, so reference identity is exactly the "has anything changed"
+        ///     key, and a credential or endpoint rotation still takes effect on the next batch. Two
+        ///     concurrent batches racing here build one client too many and both work; a lock would
+        ///     buy nothing but contention on the send path.
+        /// </remarks>
+        private AcsEmailClient ClientFor(AcsEmailOptions options)
+        {
+            CachedClient? cached = Volatile.Read(ref _cachedClient);
+            if (cached is not null && ReferenceEquals(cached.Options, options))
+            {
+                return cached.Client;
+            }
+
+            AcsEmailClient client = _clientFactory(options);
+            Volatile.Write(ref _cachedClient, new CachedClient(options, client));
+            return client;
         }
 
         private async Task RunWorkerAsync(
@@ -239,6 +277,11 @@ namespace Tellma.Connector.AcsEmail.Adapter
 
             return completed;
         }
+
+        /// <summary>The client built for one options instance, cached until that instance changes.</summary>
+        /// <param name="Options">The options the client was built from; compared by reference.</param>
+        /// <param name="Client">The client itself.</param>
+        private sealed record CachedClient(AcsEmailOptions Options, AcsEmailClient Client);
 
         /// <summary>The mutable state one batch's workers share.</summary>
         private sealed class BatchDispatchState
