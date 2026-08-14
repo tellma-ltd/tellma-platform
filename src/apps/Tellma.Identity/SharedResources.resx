@@ -387,8 +387,17 @@
   <data name="ExternalLoginsPrompt" xml:space="preserve">
     <value>Sign in with an account you already have.</value>
   </data>
-  <data name="NoExternalLogins" xml:space="preserve">
-    <value>You have not linked any external accounts.</value>
+  <data name="NoExternalProviders" xml:space="preserve">
+    <value>No external sign-in providers are available.</value>
+  </data>
+  <data name="Link" xml:space="preserve">
+    <value>Link</value>
+  </data>
+  <data name="Linked" xml:space="preserve">
+    <value>Linked</value>
+  </data>
+  <data name="NotLinked" xml:space="preserve">
+    <value>Not linked</value>
   </data>
   <data name="AddExternalLogin" xml:space="preserve">
     <value>Link {0}</value>

@@ -63,6 +63,9 @@ namespace Tellma.Identity.E2E
         [
             "/Identity/Manage/Sessions",
             "/Identity/Manage/EnableAuthenticator",
+            // A linked account's address sits under an Arabic provider name, left-to-right inside a
+            // right-to-left row — the exact shape this list exists for.
+            "/Identity/Manage/ExternalLogins",
         ];
 
         /// <summary>The anonymous pages, as theory rows.</summary>
@@ -82,6 +85,12 @@ namespace Tellma.Identity.E2E
         [MemberData(nameof(SignedInPages))]
         public async Task A_signed_in_page_is_accessible(string label, string url)
         {
+            // A linked row carries a badge, an address and an unlink control that an unlinked one
+            // does not, so without this the account page is scanned in its emptier half only.
+            // Idempotent, because every row of this theory runs it.
+            await server.AddExternalLoginAsync(
+                IdentityServerFixtureBase.SharedSessionEmail, "Google", "a11y.linked@example.org");
+
             await ScanAsync(label, url, signedIn: true);
         }
 
@@ -131,13 +140,18 @@ namespace Tellma.Identity.E2E
         [Fact]
         public async Task Arabic_renders_right_to_left_and_stays_accessible()
         {
+            // The account page's left-to-right content is the linked address, which only a linked
+            // row has — so seed one here too rather than scanning the half without it.
+            await server.AddExternalLoginAsync(
+                IdentityServerFixtureBase.SharedSessionEmail, "Google", "a11y.linked@example.org");
+
             await using IBrowserContext context = await NewContextAsync(1440, 900, signedIn: true);
             await PlaywrightTracing.RunTracedAsync(context, nameof(Arabic_renders_right_to_left_and_stays_accessible), async () =>
             {
                 IPage page = await NewPageAsync(context);
 
-                // Sessions and the authenticator page are the ones mixing left-to-right content —
-                // user agents, a base32 key — into right-to-left prose.
+                // These are the pages mixing left-to-right content — user agents, a base32 key, an
+                // email address — into right-to-left prose.
                 foreach (string url in ArabicPages)
                 {
                     await AssertArabicAsync(page, url);

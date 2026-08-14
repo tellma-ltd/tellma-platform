@@ -1,10 +1,13 @@
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.Extensions.Options
 @using System.Security.Claims
 @using Tellma.Identity.Data
 @using Tellma.Identity.Infrastructure
+@using Tellma.Identity.Options
 @inject UserManager<TellmaIdentityUser> UserManager
 @inject ApplicationLinkResolver ApplicationLinks
 @inject IBrandingResolver Branding
+@inject IOptions<TellmaIdentityOptions> EngineOptions
 @inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
 @{
     Layout = "/Areas/Identity/Pages/Shared/_Document.cshtml";
@@ -24,6 +27,11 @@
     ApplicationLink? backLink = await ApplicationLinks.ResolveAsync(clientId, Context.RequestAborted);
 
     string currentPage = ViewContext.RouteData.Values["page"] as string ?? string.Empty;
+
+    // Same predicate the external-logins page builds its rows from, so the entry and the page
+    // agree about whether there is anything to show.
+    bool hasExternalProviders = EngineOptions.Value.ExternalProviders.Google.IsConfigured
+        || EngineOptions.Value.ExternalProviders.Microsoft.IsConfigured;
 
     // The active item is marked, not classed: styling hangs off aria-current, so the state a
     // screen reader hears and the state the eye sees cannot drift apart.
@@ -84,12 +92,18 @@
                    would sell a second factor that does not defend anything, and the enrollment
                    also reissues recovery codes, so returning to it costs the user the ones they
                    saved. Restore this entry in the same change that adds the sign-in challenge. *@
-                <li>
-                    <a class="tmi-nav-item" asp-area="Identity" asp-page="/Manage/ExternalLogins"
-                       asp-route-client_id="@clientId" aria-current="@Current("/Manage/ExternalLogins")">
-                        <tmi-icon name="user-round" />@L["ExternalLogins"]
-                    </a>
-                </li>
+                @* Only where there is something to link. A deployment that configures no provider
+                   has an external-logins page with no rows on it, and an entry leading there is
+                   an offer the deployment cannot keep. *@
+                @if (hasExternalProviders)
+                {
+                    <li>
+                        <a class="tmi-nav-item" asp-area="Identity" asp-page="/Manage/ExternalLogins"
+                           asp-route-client_id="@clientId" aria-current="@Current("/Manage/ExternalLogins")">
+                            <tmi-icon name="link-2" />@L["ExternalLogins"]
+                        </a>
+                    </li>
+                }
                 <li>
                     <a class="tmi-nav-item" asp-area="Identity" asp-page="/Manage/Sessions"
                        asp-route-client_id="@clientId" aria-current="@Current("/Manage/Sessions")">

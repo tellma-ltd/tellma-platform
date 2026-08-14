@@ -93,7 +93,15 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                 return Fail();
             }
 
-            IdentityResult link = await userManager.AddLoginAsync(owner, info);
+            // Record which account was linked, not which provider it came from. The store keeps
+            // one free-text field per link and the framework fills it with the scheme's display
+            // name — "Google" — which the account page already knows from the scheme itself. The
+            // address is the only thing here that a user with two Google accounts needs to see,
+            // and this is the sole slot Identity offers to put it in.
+            UserLoginInfo credited = new(
+                info.LoginProvider, info.ProviderKey, providerEmail ?? info.ProviderDisplayName);
+
+            IdentityResult link = await userManager.AddLoginAsync(owner, credited);
             if (!link.Succeeded)
             {
                 return Fail();

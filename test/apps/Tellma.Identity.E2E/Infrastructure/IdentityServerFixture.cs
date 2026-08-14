@@ -93,6 +93,14 @@ namespace Tellma.Identity.E2E.Infrastructure
                 // WebAuthn requires a domain RP id, so the browser reaches the loopback host as
                 // "localhost" (special-cased by WebAuthn) rather than the 127.0.0.1 IP literal.
                 ["TellmaIdentity:PasskeyServerDomain"] = "localhost",
+                // Registering the providers costs a client id and nothing else — no request ever
+                // leaves for them here. It is what makes the sign-in page's federated buttons and
+                // the whole of the external-logins page exist to be scanned; without it those are
+                // the one surface the accessibility gate silently skips.
+                ["TellmaIdentity:ExternalProviders:Google:ClientId"] = "e2e-google-client-id",
+                ["TellmaIdentity:ExternalProviders:Google:ClientSecret"] = "e2e-google-client-secret",
+                ["TellmaIdentity:ExternalProviders:Microsoft:ClientId"] = "e2e-microsoft-client-id",
+                ["TellmaIdentity:ExternalProviders:Microsoft:ClientSecret"] = "e2e-microsoft-client-secret",
             });
             builder.Services.AddTellmaIdentity(builder.Configuration.GetSection("TellmaIdentity"));
             builder.Services.RemoveAll<IEmailSender>();
@@ -293,6 +301,29 @@ namespace Tellma.Identity.E2E.Infrastructure
                 clientDataJson: []);
 
             await userManager.AddOrUpdatePasskeyAsync(user, passkey);
+        }
+
+        /// <summary>
+        ///     Records an external link the way the sign-in callback does, so the account page has a
+        ///     linked row to render — the badge, the address and the unlink control, none of which
+        ///     exist on an unlinked row.
+        /// </summary>
+        /// <param name="email">The account to link.</param>
+        /// <param name="provider">The provider scheme, for example <c>Google</c>.</param>
+        /// <param name="account">The address the provider asserted.</param>
+        /// <returns>A task that completes when the link is stored.</returns>
+        public async Task AddExternalLoginAsync(string email, string provider, string account)
+        {
+            await using AsyncServiceScope scope = _app!.Services.CreateAsyncScope();
+            Microsoft.AspNetCore.Identity.UserManager<Data.TellmaIdentityUser> userManager =
+                scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<Data.TellmaIdentityUser>>();
+
+            Data.TellmaIdentityUser user = (await userManager.FindByEmailAsync(email))!;
+            if (await userManager.FindByLoginAsync(provider, account) is null)
+            {
+                await userManager.AddLoginAsync(
+                    user, new Microsoft.AspNetCore.Identity.UserLoginInfo(provider, account, account));
+            }
         }
 
         /// <inheritdoc />

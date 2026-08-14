@@ -516,15 +516,27 @@ code,
   text-decoration: underline;
 }
 
-/* Removing a credential is destructive, and it sits inline in a list row — so it is a button
-   for behaviour, a link for weight, and 24px tall for a fingertip. */
-.tmi-link-danger {
+/* The actions that sit inline in a list row — so a button for behaviour, a link for weight, and
+   24px tall for a fingertip. That height is the whole of our 2.5.8 conformance here: axe's
+   target-size rule exempts widgets inline in a block of text, which is exactly this shape, so
+   nothing automated would notice it shrinking. */
+.tmi-link-danger,
+.tmi-link-action {
   display: inline-flex;
   align-items: center;
   min-block-size: 24px;
-  color: var(--error);
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
+}
+
+/* Destructive: giving up a credential. */
+.tmi-link-danger {
+  color: var(--error);
+}
+
+/* Constructive: gaining one. */
+.tmi-link-action {
+  color: var(--color-primary);
 }
 
 .tmi-inline {
@@ -698,6 +710,47 @@ code,
   color: var(--text-secondary);
 }
 
+/* A meta line holding an address rather than prose. It carries dir="ltr" so it reads and
+   truncates in its own direction — keeping the local part, which is the half that names the
+   account — and that direction would otherwise also pull it to the left of an RTL row, away
+   from the title above it. Same treatment as the nav's account line. */
+.tmi-list-meta-ltr {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+[dir="rtl"] .tmi-list-meta-ltr {
+  text-align: end;
+}
+
+/* A full-colour brand logo, boxed so it reads as a considered mark rather than a sticker
+   dropped on the row. The marks are partials and take no class of their own, so they are sized
+   from here — and only here, leaving the sign-in page's federated buttons untouched. */
+.tmi-provider-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: 26px;
+  block-size: 26px;
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+}
+
+.tmi-provider-mark .tmi-mark {
+  inline-size: 15px;
+  block-size: 15px;
+}
+
+/* A point smaller than the others: four solid squares carry more ink than an outlined glyph of
+   the same box, and read larger next to one. The design draws them at 14. */
+.tmi-provider-mark .tmi-mark-microsoft {
+  inline-size: 14px;
+  block-size: 14px;
+}
+
 .tmi-badge {
   display: inline-flex;
   align-items: center;
@@ -720,6 +773,14 @@ code,
   background: var(--surface-sunken);
   border-color: var(--tmi-control-border);
   color: var(--text-secondary);
+}
+
+/* The top margin exists to sit a badge under the title it qualifies. A badge that is a row's own
+   child qualifies the row instead, and the row centres its children — so the margin would only
+   push it off that centre. Child combinator: the passkey list stacks its badge inside the text
+   column and must keep the margin. */
+.tmi-list li > .tmi-badge {
+  margin-block-start: 0;
 }
 
 .tmi-empty {

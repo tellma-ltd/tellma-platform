@@ -36,17 +36,22 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
         IAuditLogger auditLogger,
         IStringLocalizer<SharedResources> localizer) : PageModel
     {
-        /// <summary>One provider already linked to the account.</summary>
-        /// <param name="Provider">The provider's scheme name.</param>
-        /// <param name="DisplayName">The provider's human-readable name.</param>
-        /// <param name="Key">The provider's stable subject for this user.</param>
-        public sealed record LinkedLogin(string Provider, string DisplayName, string Key);
+        /// <summary>One provider as the page presents it, linked or not.</summary>
+        /// <param name="Provider">The provider's scheme name, and the row's title.</param>
+        /// <param name="Account">
+        ///     Which account is linked, when the link recorded one. Null both for an unlinked
+        ///     provider and for a link made before the address was captured, or by a provider that
+        ///     returned none — the row then says nothing rather than repeating the provider name.
+        /// </param>
+        /// <param name="Key">The provider's stable subject for this user; null when not linked.</param>
+        public sealed record ProviderRow(string Provider, string? Account, string? Key)
+        {
+            /// <summary>Whether this provider is currently linked to the account.</summary>
+            public bool IsLinked => Key is not null;
+        }
 
-        /// <summary>The providers already linked.</summary>
-        public IReadOnlyList<LinkedLogin> Linked { get; private set; } = [];
-
-        /// <summary>The configured providers not yet linked, offered to add.</summary>
-        public IReadOnlyList<string> Available { get; private set; } = [];
+        /// <summary>Every provider this page shows, in a stable order, linked or not.</summary>
+        public IReadOnlyList<ProviderRow> Providers { get; private set; } = [];
 
         /// <summary>An informational banner, when any.</summary>
         public PageStatus? StatusMessage { get; private set; }
@@ -75,7 +80,10 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
                 || await userManager.HasPasswordAsync(user);
             if (!hasOtherFactor)
             {
-                StatusMessage = PageStatus.Error(localizer["CannotRemoveOnlySignInMethod"].Value);
+                // A refusal, not a failure: nothing went wrong, the account simply cannot give up
+                // its last way in. The design draws it amber for that reason, and the warning
+                // treatment still takes focus so the unchanged list is not the only answer.
+                StatusMessage = PageStatus.Warning(localizer["CannotRemoveOnlySignInMethod"].Value);
                 await LoadAsync();
                 return Page();
             }
@@ -100,17 +108,12 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
             return Page();
         }
 
-        /// <summary>Reads the account's links and works out what is left to offer.</summary>
+        /// <summary>Builds the provider rows and permits the redirects their buttons start.</summary>
         private async Task LoadAsync()
         {
             TellmaIdentityUser user = (await userManager.GetUserAsync(User))!;
-
             IList<UserLoginInfo> logins = await userManager.GetLoginsAsync(user);
-            Linked = [.. logins.Select(static login => new LinkedLogin(
-                login.LoginProvider, login.ProviderDisplayName ?? login.LoginProvider, login.ProviderKey))];
 
-            // Only providers this deployment actually configured, minus the ones already linked —
-            // offering to add a provider twice, or one with no client id, is offering nothing.
             List<string> configured = [];
             if (engineOptions.Value.ExternalProviders.Google.IsConfigured)
             {
@@ -122,12 +125,45 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
                 configured.Add("Microsoft");
             }
 
-            Available = [.. configured.Where(provider => !logins.Any(
-                login => string.Equals(login.LoginProvider, provider, StringComparison.OrdinalIgnoreCase)))];
+            // Configured providers first, in a fixed order, then anything the user has linked that
+            // this deployment no longer configures. That tail matters: dropping a provider from
+            // configuration must not strand a link on the account with no way to remove it.
+            List<string> shown =
+            [
+                .. configured,
+                .. logins.Select(static login => login.LoginProvider)
+                    .Where(provider => !configured.Contains(provider, StringComparer.OrdinalIgnoreCase))
+                    .Distinct(StringComparer.OrdinalIgnoreCase),
+            ];
 
-            // Each offered provider is a form that redirects off this origin to start the link, and
-            // form-action is enforced on this page's policy across every hop of that redirect.
-            ExternalProviderFormAction.Allow(HttpContext, Available);
+            Providers = [.. shown.Select(provider => ToRow(provider, logins))];
+
+            // The unlinked rows are the ones that start a redirect off this origin, and form-action
+            // is enforced on this page's policy across every hop of it. Derived from the rows rather
+            // than recomputed: two computations of one set is how a button appears that the policy
+            // will not let the browser follow.
+            ExternalProviderFormAction.Allow(
+                HttpContext, Providers.Where(static row => !row.IsLinked).Select(static row => row.Provider));
+        }
+
+        /// <summary>Pairs a provider with the account's link to it, when there is one.</summary>
+        private static ProviderRow ToRow(string provider, IList<UserLoginInfo> logins)
+        {
+            UserLoginInfo? login = logins.FirstOrDefault(
+                candidate => string.Equals(candidate.LoginProvider, provider, StringComparison.OrdinalIgnoreCase));
+            if (login is null)
+            {
+                return new ProviderRow(provider, Account: null, Key: null);
+            }
+
+            // The stored name is the linked address for anything linked since that was captured,
+            // and the provider's own name for everything older. The latter is what the row's title
+            // already says, so it carries no information and is dropped.
+            string? account = string.Equals(login.ProviderDisplayName, provider, StringComparison.OrdinalIgnoreCase)
+                ? null
+                : login.ProviderDisplayName;
+
+            return new ProviderRow(provider, account, login.ProviderKey);
         }
     }
 }

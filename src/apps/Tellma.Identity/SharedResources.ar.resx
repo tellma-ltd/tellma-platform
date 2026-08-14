@@ -387,8 +387,17 @@
   <data name="ExternalLoginsPrompt" xml:space="preserve">
     <value>{gender, select, female{سجّلي الدخول بحساب تملكينه بالفعل.} other{سجّل الدخول بحساب تملكه بالفعل.}}</value>
   </data>
-  <data name="NoExternalLogins" xml:space="preserve">
-    <value>{gender, select, female{لم تربطي أي حساب خارجي بعد.} other{لم تربط أي حساب خارجي بعد.}}</value>
+  <data name="NoExternalProviders" xml:space="preserve">
+    <value>لا تتوفر أي جهة لتسجيل الدخول الخارجي.</value>
+  </data>
+  <data name="Link" xml:space="preserve">
+    <value>ربط</value>
+  </data>
+  <data name="Linked" xml:space="preserve">
+    <value>مرتبط</value>
+  </data>
+  <data name="NotLinked" xml:space="preserve">
+    <value>غير مرتبط</value>
   </data>
   <data name="AddExternalLogin" xml:space="preserve">
     <value>ربط {0}</value>
