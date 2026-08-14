@@ -30,6 +30,12 @@ namespace Tellma.Connector.AcsEmail.Adapter
         ///     The sender used when a message carries none. Must be an address on a domain the
         ///     resource is provisioned for. Required.
         /// </summary>
+        /// <remarks>
+        ///     Address only: a configured <see cref="EmailAddressOptions.DisplayName" /> fails
+        ///     startup validation, because ACS validates the sender against a MailFrom address on the
+        ///     domain resource and refuses anything carrying a display name. The sender's display
+        ///     name belongs on that MailFrom address instead.
+        /// </remarks>
         public EmailAddressOptions From { get; } = new EmailAddressOptions();
 
         /// <summary>How many send requests a batch issues at once.</summary>

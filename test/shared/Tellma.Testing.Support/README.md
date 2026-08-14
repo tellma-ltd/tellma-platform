@@ -12,5 +12,6 @@ plumbing those suites happen to need to drive a specific transport, which no con
 
 | Folder | Contents |
 |---|---|
-| `Http/` | [ScriptedHttpMessageHandler](Http/ScriptedHttpMessageHandler.cs) — answers from a script and records request bodies. One handler drives both HTTP-based transports: the SendGrid client takes an `HttpClient` directly, and the Azure pipeline accepts one through its transport. |
+| `Http/` | [ScriptedHttpMessageHandler](Http/ScriptedHttpMessageHandler.cs) — answers from a script and records request bodies. One handler drives both HTTP-based transports: the SendGrid client takes an `HttpClient` directly, and the Azure pipeline accepts one through its transport. [SingleClientHttpClientFactory](Http/SingleClientHttpClientFactory.cs) — hands that one client to an adapter that resolves `IHttpClientFactory`, whatever name it asks for. |
+| `Options/` | [StaticOptionsMonitor](Options/StaticOptionsMonitor.cs) — an `IOptionsMonitor<T>` over a fixed instance, so a sender that reads options per batch can be driven without a configuration stack. |
 | `Tenancy/` | [StubSandboxContext](Tenancy/StubSandboxContext.cs) — a settable sandbox flag, for driving the routing matrix. |

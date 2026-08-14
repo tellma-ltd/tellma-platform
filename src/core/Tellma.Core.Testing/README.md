@@ -1,8 +1,11 @@
 # Tellma.Core.Testing
 
-Test doubles and assertion helpers for the `Tellma.Core.Abstractions` contracts — the C# sibling of
-`@tellma/core-ui-testing`. Referenced by test projects, so distribution and platform suites stop
-hand-rolling their own email fakes.
+Test doubles and executable conformance suites for the `Tellma.Core.Abstractions` contracts — the
+C# sibling of `@tellma/core-ui-testing`. Referenced by test projects, so distribution and platform
+suites stop hand-rolling their own email fakes.
+
+It also carries the diagnostics a credentialed suite needs to explain a failure nobody can step
+through, which is why this package is the one that takes an xunit dependency by charter.
 
 ## What is in it
 

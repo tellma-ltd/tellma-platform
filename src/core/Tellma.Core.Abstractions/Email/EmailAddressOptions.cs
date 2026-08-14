@@ -19,7 +19,12 @@ namespace Tellma.Core.Abstractions.Email
         /// <summary>The address ("no-reply@example.com").</summary>
         public string? Address { get; set; }
 
-        /// <summary>The display name mail clients show, when one is configured.</summary>
+        /// <summary>
+        ///     The display name mail clients show, when one is configured. Whether a transport can
+        ///     carry it on the sender is the transport's own affair — one that takes the sender's
+        ///     display name from its account configuration rejects this at startup rather than
+        ///     ignoring it, so consult the adapter before setting it.
+        /// </summary>
         public string? DisplayName { get; set; }
 
         /// <summary>Converts to the immutable contract type.</summary>
