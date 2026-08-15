@@ -7,6 +7,11 @@
     <ProjectReference Include="..\assets\Tellma.Core.EntityFrameworkCore.MigrationsHost\Tellma.Core.EntityFrameworkCore.MigrationsHost.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Testcontainers.MsSql" />
+    <!-- Not used directly. Testcontainers brings SSH.NET in for its remote-Docker support, still
+         at a version NuGet audit flags (GHSA-q939-rpr3-3284, high); this direct reference is the
+         documented way to lift a transitive package to its patched version while central package
+         management has transitive pinning off. Drop it once Testcontainers ships the bump. -->
+    <PackageReference Include="SSH.NET" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>

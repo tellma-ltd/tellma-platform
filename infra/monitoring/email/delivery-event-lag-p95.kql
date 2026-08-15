@@ -1,0 +1,9 @@
+// Delivery-event arrival lag, 95th percentile.
+// Provider-side callback delay, or a receiver struggling to keep up. Measured against the event's
+// own provider timestamp, not against when we happened to process it.
+customMetrics
+| where name == "tellma.email.delivery.event.lag"
+| extend transport = tostring(customDimensions["email.transport"])
+| extend eventType = tostring(customDimensions["email.event.type"])
+| summarize lagP95 = percentile(value, 95) by transport, eventType, bin(timestamp, 15m)
+| where lagP95 > 300

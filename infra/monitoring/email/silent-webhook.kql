@@ -1,0 +1,28 @@
+// Silent delivery webhook.
+// Live-channel mail is going out on a transport whose webhook is configured, yet no delivery event
+// has arrived. Otherwise invisible: the sends themselves still succeed.
+// Scoped to the transports that emit delivery events at all — SMTP has no callback by design, and
+// the development log sink has no provider — so this alert is about silence, not about absence.
+let window = 1h;
+let eventing = dynamic(["sendgrid", "acs-email"]);
+let sent =
+    customMetrics
+    | where timestamp > ago(window)
+    | where name == "tellma.email.sent.messages"
+    | extend transport = tostring(customDimensions["email.transport"])
+    | extend delivery = tostring(customDimensions["email.delivery"])
+    | extend outcome = tostring(customDimensions["email.outcome"])
+    | where transport in (eventing)
+    | where delivery == "live" and outcome == "sent"
+    | summarize sentMessages = sum(valueSum) by transport;
+let events =
+    customMetrics
+    | where timestamp > ago(window)
+    | where name == "tellma.email.delivery.events"
+    | extend transport = tostring(customDimensions["email.transport"])
+    | where transport in (eventing)
+    | summarize deliveryEvents = sum(valueSum) by transport;
+sent
+| join kind=leftouter events on transport
+| extend deliveryEvents = coalesce(deliveryEvents, 0.0)
+| where sentMessages > 0 and deliveryEvents == 0

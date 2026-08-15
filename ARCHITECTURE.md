@@ -27,6 +27,7 @@ The new shape:
 | **Tellma Platform** | The umbrella product: the reusable `Tellma.Core` library family, the deployable landing app, the deployable identity server, the dev toolchain, and the distribution template. Source lives in the `tellma-platform` GitHub repo. |
 | **Tellma.Core** | The bare-minimum runtime library every distribution references (`Tellma.Core` C# NuGet, `Tellma.Core.EntityFrameworkCore` C# NuGet with its design-time companion `Tellma.Core.EntityFrameworkCore.Design`, `@tellma/core` npm package). Provides cross-cutting services — multi-tenancy, caching, settings, workflow engine, CRUD stack base, report base, feature flags — that every other pack and the distribution consume through `Tellma.Core.Abstractions`. |
 | **Tellma.Core.Abstractions** | The interface surface of `Tellma.Core` — extension-point interfaces (e.g. `IEmailSender`), base entity classes, options types, capability interfaces. Every layer above Core (Module, Industry, Compliance, Locale, Connector Adapter) consumes Core through this package; the full `Tellma.Core` is referenced only by the distribution as the composition root. |
+| **Optional Core-layer packages** | `Tellma.Core.Email` (the email pipeline: configuration-driven transport selection, the sandbox-tenant routing policy, the Development log sink, delivery-event dispatch, email telemetry), `Tellma.Core.Webhooks` (the shared HTTP fronting for inbound webhook receivers), and `Tellma.Core.Testing` (test doubles and executable conformance suites for the `Tellma.Core.Abstractions` contracts, plus the diagnostics a credentialed suite needs to explain its own failures — the C# sibling of `@tellma/core-ui-testing`). Each depends on no Tellma package other than `Tellma.Core.Abstractions`, and none is referenced by `Tellma.Core`: every host, distributions included, composes them explicitly, so a non-distribution host (identity, landing, a worker) gets email without the CRUD, multi-tenancy, and jobs machinery. Third-party dependencies are a separate question — `Tellma.Core.Testing` deliberately exposes xunit on its public surface, because a conformance suite consumers execute has to be written in some test framework. |
 | **`@tellma/core-ui` family** | The Angular UI component library, shipped as Core-layer npm packages (`@tellma/core-ui`, `-tokens`, `-testing`, `-mcp`). Greenfield on `@angular/cdk` + `@angular/aria`; `tm-`-prefixed; signal-first. See [Frontend → UI component library](#ui-component-library). |
 | **Platform pack** | An opt-in library referenced by distributions along one of five extension dimensions: **Module**, **Industry**, **Compliance**, **Connector**, **Locale**. Each pack ships entity classes (where applicable) and services; only the distribution generates migrations. See [Library architecture](#library-architecture). |
 | **Abstractions library** | The `*.Abstractions` companion of a runtime library — interfaces, base/abstract entity classes, capability interfaces, options types. Implementers reference the `.Abstractions` package; the full implementation is referenced only by the distribution at composition. Shipped wherever a library declares extension points consumed by other layers. |
@@ -149,6 +150,7 @@ tellma-platform/
 ├── .github/
 │   ├── workflows/
 │   │   ├── ci.yml                       # build + test on PR
+│   │   ├── nightly.yml                  # credentialed live-connector suites; schedule + manual dispatch
 │   │   ├── release.yml                  # tag-driven; aggregates news fragments, publishes packages
 │   │   └── changelog-fragment.yml       # enforces fragment-on-PR rule
 │   ├── dependabot.yml
@@ -185,7 +187,8 @@ tellma-platform/
 ├── eng/                                 # repo engineering scripts; not shipped to distributions
 ├── infra/                               # Bicep for shared platform infra (Log Analytics, ASPs, SQL, …)
 │   ├── shared-platform.bicep
-│   └── modules/
+│   ├── modules/
+│   └── monitoring/                      # alert queries (KQL), cross-checked in tests against the emitted instruments
 ├── migrations/                          # breaking-change recipes; shipped in package docs/migrations/
 │   └── v<major>/
 ├── releases/                            # aggregated release JSON; shipped in package docs/releases/
@@ -195,22 +198,32 @@ tellma-platform/
 │   ├── core/                            # bare-minimum family
 │   │   ├── Tellma.Core.Abstractions/    # .csproj — interfaces, base entity classes, capability interfaces, options. Published as Tellma.Core.Abstractions NuGet.
 │   │   ├── Tellma.Core/                 # .csproj — runtime services and concrete DI registrations. Published as the Tellma.Core NuGet.
+│   │   ├── Tellma.Core.Email/           # .csproj — email pipeline: transport selection, sandbox routing, the Development log sink, delivery-event dispatch. Composed explicitly by each host; never referenced by Tellma.Core.
 │   │   ├── Tellma.Core.EntityFrameworkCore/        # .csproj — EF Core extensions (runtime): table-type (UDTT) configuration, migration operations, migrations SQL generation, metadata API. Never references the EF Design package.
-│   │   └── Tellma.Core.EntityFrameworkCore.Design/ # .csproj — design-time companion: C# migration operation generator + IDesignTimeServices, discovered via the [assembly: DesignTimeServicesReference] its MSBuild targets inject into the consuming migrator assembly. Referenced only by migrator projects.
+│   │   ├── Tellma.Core.EntityFrameworkCore.Design/ # .csproj — design-time companion: C# migration operation generator + IDesignTimeServices, discovered via the [assembly: DesignTimeServicesReference] its MSBuild targets inject into the consuming migrator assembly. Referenced only by migrator projects.
+│   │   ├── Tellma.Core.Testing/         # .csproj — test doubles for the Abstractions contracts, the executable email-transport conformance suite, and test-run diagnostics. Referenced by test projects only.
+│   │   └── Tellma.Core.Webhooks/        # .csproj — the shared HTTP fronting for inbound webhook receivers (/api/webhooks/{key}). The one project here taking a FrameworkReference to Microsoft.AspNetCore.App.
 │   ├── module/                          # horizontal functional modules (entity classes, services, controllers)
-│   │   └── Tellma.Module.Sales/
+│   │   └── sales/
 │   │       ├── Tellma.Module.Sales.Abstractions/
 │   │       └── Tellma.Module.Sales/
 │   ├── industry/                        # vertical industry overlays (per-module by default; see naming convention)
-│   │   └── Tellma.Industry.Pharma.Sales/
+│   │   └── pharma-sales/
 │   │       ├── Tellma.Industry.Pharma.Sales.Abstractions/
 │   │       └── Tellma.Industry.Pharma.Sales/
 │   ├── compliance/                      # jurisdictional and standards-based packs
-│   │   └── Tellma.Compliance.Sa/
+│   │   └── sa/
 │   │       ├── Tellma.Compliance.Sa.Abstractions/
 │   │       └── Tellma.Compliance.Sa/
-│   ├── connector/                       # external-system integrations and adapters
-│   │   └── Tellma.Connector.Zatca/
+│   ├── connector/                       # external-system integrations and adapters, one grouping folder per vendor
+│   │   ├── acs-email/
+│   │   │   └── Tellma.Connector.AcsEmail.Adapter/            # adapter-only: Azure.Communication.Email is a fit first-party client
+│   │   ├── sendgrid/
+│   │   │   ├── Tellma.Connector.SendGrid/                    # raw client library, because the official SDK is dormant
+│   │   │   └── Tellma.Connector.SendGrid.Adapter/            # adapter implementing upper-layer interfaces
+│   │   ├── smtp/
+│   │   │   └── Tellma.Connector.Smtp.Adapter/                # adapter-only, on MailKit; a protocol name occupies the <vendor> slot
+│   │   └── zatca/
 │   │       ├── Tellma.Connector.Zatca/                       # raw client library
 │   │       └── Tellma.Connector.Zatca.Sa.Sales.Adapter/      # adapter implementing upper-layer interfaces
 │   ├── locale/                          # cultural and presentation primitives
@@ -223,7 +236,7 @@ tellma-platform/
 │       └── Tellma.Cli/                  # .csproj — published as the `dotnet tellma` CLI (dotnet tool)
 ├── templates/
 │   └── tellma-distribution/             # `dotnet new tellma-distribution` template
-├── test/                                # one project per src/* component (Tellma.Core.Tests, Tellma.Core.IntegrationTests, …)
+├── test/                                # mirrors src/, grouping folders included (test/core/, test/connector/<vendor>/), plus test/shared/ for doubles reused across suites. *.IntegrationTests is reserved for suites needing external resources; a suite that hosts its own dependency in-process stays a *.Tests project
 ├── .editorconfig
 ├── .gitattributes
 ├── .gitignore
@@ -243,7 +256,7 @@ tellma-platform/
 └── Tellma.slnx
 ```
 
-Folder names follow standard .NET-ecosystem conventions (`src/`, `test/`, `eng/`, `samples/`, `build/`, `docs/`) so the repo is immediately legible to anyone familiar with `dotnet/aspnetcore` or `dotnet/efcore`. `src/` and `client/projects/` group projects by area (`core/`, `module/`, `industry/`, `compliance/`, `connector/`, `locale/`, `apps/`, `tooling/`) because the library family is expected to grow to dozens of packs; the grouping keeps a flat top-level legible. Category folders are lowercase to match other organizational folders (`src/`, `test/`, `eng/`); PascalCase is reserved for actual .NET project folders, which match their `.csproj` / assembly name. The Angular workspace lives once at the repo root in `client/` and produces every published `@tellma/*` library plus the Landing SPA. `build/` is the MSBuild-conventional folder name for assets shipped via NuGet under `build/<id>.targets`.
+Folder names follow standard .NET-ecosystem conventions (`src/`, `test/`, `eng/`, `samples/`, `build/`, `docs/`) so the repo is immediately legible to anyone familiar with `dotnet/aspnetcore` or `dotnet/efcore`. `src/` and `client/projects/` group projects by area (`core/`, `module/`, `industry/`, `compliance/`, `connector/`, `locale/`, `apps/`, `tooling/`) because the library family is expected to grow to dozens of packs; the grouping keeps a flat top-level legible. Category folders are lowercase to match other organizational folders (`src/`, `test/`, `eng/`); PascalCase is reserved for actual .NET project folders, which match their `.csproj` / assembly name. The same rule applies to the grouping folder inside a category — the vendor or pack name — so a path reads `src/connector/sendgrid/Tellma.Connector.SendGrid.Adapter/`, lowercase all the way down to the project folder. The Angular workspace lives once at the repo root in `client/` and produces every published `@tellma/*` library plus the Landing SPA. `build/` is the MSBuild-conventional folder name for assets shipped via NuGet under `build/<id>.targets`.
 
 ### Library architecture
 
@@ -256,7 +269,7 @@ The platform exposes its functionality through a layered family of NuGet package
 | **Module** | Horizontal functional area (GL, Sales, Procurement, Inventory, HR, Manufacturing). Owns most entities and declares the bulk of extension points. | Yes — the bulk of them | ~10–20 |
 | **Industry** | Vertical specialization (Pharma, Telecom, TextileFactories, …). Introduces new vertical entities and overlays horizontal modules. | Yes — both new vertical nouns and overlays | ~50–100 |
 | **Compliance** | Jurisdictional or standards-based rules (SA, ET, IFRS, US-GAAP, …). Mostly parameterizes module behavior with regime-specific rules, rates, and document formats; occasionally introduces thin filing entities. | Sometimes — mostly behavior | ~50–100 |
-| **Connector** | Leaf integration to a specific external system (Zatca, RajhiBank, SendGrid, Stripe, …). Splits into a raw client library and one or more `.Adapter` libraries that implement upper-layer interfaces. | No — adapts to external | 100s |
+| **Connector** | Leaf integration to a specific external system (Zatca, RajhiBank, SendGrid, Stripe, …). Ships one or more `.Adapter` libraries implementing upper-layer interfaces, plus a raw client library **when the upstream client is absent or unfit** — a per-vendor judgment, not a rule (SendGrid gets one because its official SDK is dormant; SMTP and ACS ride MailKit and `Azure.Communication.Email` adapter-only). | No — adapts to external | 100s |
 | **Locale** | Cultural and presentation primitives (Ar, ArAe, Et, …). Implements `ICalendar`, `IAmountToText`, formatting utilities. | No | ~50–100 |
 
 These dimensions are not orthogonal — Compliance often implies Locale, Industry often implies Compliance, Connector Adapters often imply both a Compliance regime and a Module. Cross-dimensional libraries are expressed as positional suffixes on the library name (see [Package naming](#package-naming)); no separate "Bridge" category exists.
@@ -272,6 +285,8 @@ Implementers and overlay libraries reference only the `.Abstractions` package; t
 
 The split applies wherever extension points exist. Core, Module, Industry, and Compliance routinely ship Abstractions. Locale, the raw `Connector.<vendor>`, and Connector Adapter libraries are leaves and ship without Abstractions companions — until and unless a leaf grows its own extension points consumed by another library.
 
+A raw client library is written **when the upstream client is absent or unfit, not on principle**: wrapping a maintained, well-shaped first-party client is indirection without value. The evidence to weigh is release cadence, target frameworks and nullability, the dependencies it would impose transitively on every distribution, and whether it exposes the seams the adapter needs.
+
 #### Package naming
 
 Package names follow the pattern below. Square brackets denote optional segments; the slot order is fixed.
@@ -282,6 +297,9 @@ Package names follow the pattern below. Square brackets denote optional segments
 | `Tellma.Core.Abstractions` | `Tellma.Core.Abstractions` | Mandatory. |
 | `Tellma.Core.EntityFrameworkCore` | `Tellma.Core.EntityFrameworkCore` | EF Core extensions (table types/UDTTs): configuration, migration operations, SQL generation, metadata API. Runtime-side — never references the EF `Design` package. |
 | `Tellma.Core.EntityFrameworkCore.Design` | `Tellma.Core.EntityFrameworkCore.Design` | Design-time companion (C# operation generator, `IDesignTimeServices`). Referenced only by the distribution's migrator project. |
+| `Tellma.Core.Email` | `Tellma.Core.Email` | Optional Core-layer runtime: the email pipeline. Depends on no Tellma package other than `Tellma.Core.Abstractions`; each host adds it explicitly. |
+| `Tellma.Core.Webhooks` | `Tellma.Core.Webhooks` | Optional Core-layer runtime: the shared HTTP fronting for inbound webhook receivers. |
+| `Tellma.Core.Testing` | `Tellma.Core.Testing` | Test doubles for the Abstractions contracts, executable conformance suites, and test-run diagnostics. Referenced by test projects only. |
 | `Tellma.Module.<m>` | `Tellma.Module.Sales` | `<m>` ∈ Modules registry. |
 | `Tellma.Module.<m>.Abstractions` | `Tellma.Module.Sales.Abstractions` | |
 | `Tellma.Locale.<id>` | `Tellma.Locale.Ar` | `<id>` ad-hoc. |
@@ -289,8 +307,8 @@ Package names follow the pattern below. Square brackets denote optional segments
 | `Tellma.Industry.<i>[.<m>].Abstractions` | `Tellma.Industry.Pharma.Sales.Abstractions` | |
 | `Tellma.Compliance.<c>[.<i>][.<m>]` | `Tellma.Compliance.Sa.Pharma.Sales` | `<c>` ∈ Compliance registry. `<i>` and `<m>` optional. |
 | `Tellma.Compliance.<c>[.<i>][.<m>].Abstractions` | `Tellma.Compliance.Sa.Abstractions` | |
-| `Tellma.Connector.<vendor>` | `Tellma.Connector.Zatca` | `<vendor>` ad-hoc. Raw client library. |
-| `Tellma.Connector.<vendor>[.<c>][.<i>][.<m>].Adapter` | `Tellma.Connector.Zatca.Sa.Sales.Adapter` | `.Adapter` suffix mandatory. All scoping segments optional but ordered `<c>`, `<i>`, `<m>`. Three or four scoping segments at once is theoretically possible but a smell — break the adapter up. |
+| `Tellma.Connector.<vendor>` | `Tellma.Connector.Zatca` | `<vendor>` ad-hoc. Raw client library, present only when the upstream client is absent or unfit. |
+| `Tellma.Connector.<vendor>[.<c>][.<i>][.<m>].Adapter` | `Tellma.Connector.Zatca.Sa.Sales.Adapter` | `.Adapter` suffix mandatory. All scoping segments optional but ordered `<c>`, `<i>`, `<m>`; zero segments is the norm for cross-cutting infrastructure adapters (`Tellma.Connector.Smtp.Adapter`). For protocol-shaped connectors the protocol name occupies the `<vendor>` slot — the external system is the protocol itself. Three or four scoping segments at once is theoretically possible but a smell — break the adapter up. |
 | `Tellma.Distro.<slug>` | `Tellma.Distro.Etpharma` | Project/namespace prefix for distribution repos (e.g. `Tellma.Distro.Etpharma.Web`); never published as a package and never lives in the platform repo. |
 
 **Registry rules.** Two name registries are maintained at the platform level in `taxonomy.json`:
@@ -317,6 +335,7 @@ flowchart TB
     subgraph PLATFORM["Tellma Platform Repo — semantic versioning"]
         CoreAbs["Tellma.Core.Abstractions"]:::core
         Core["Tellma.Core"]:::core
+        CoreOptional["Tellma.Core.Email<br/>Tellma.Core.Webhooks<br/>Tellma.Core.Testing"]:::core
         ModuleAbs["Tellma.Module.&lt;m&gt;.Abstractions"]:::module
         Module["Tellma.Module.&lt;m&gt;"]:::module
         Locale["Tellma.Locale.&lt;id&gt;"]:::locale
@@ -328,6 +347,7 @@ flowchart TB
         Adapter["Tellma.Connector.&lt;vendor&gt;[.&lt;c&gt;][.&lt;i&gt;][.&lt;m&gt;].Adapter"]:::connector
 
         Core --> CoreAbs
+        CoreOptional --> CoreAbs
         Locale --> CoreAbs
         Module --> ModuleAbs
         ModuleAbs --> CoreAbs
@@ -363,7 +383,9 @@ The rules these arrows encode:
 
 5. **Compliance and Connector Adapter target any subset of upstream Abstractions.** A `Tellma.Compliance.<c>` library implements interfaces from any combination of `Core.Abstractions`, `Module.<m>.Abstractions`, and `Industry.<i>.Abstractions`, whichever its overrides need. Same for `Tellma.Connector.<vendor>.Adapter`, which additionally references the raw `Tellma.Connector.<vendor>` it adapts. Each library declares only the Abstractions packages it actually consumes; the diagram shows the union of possible edges, not edges that must all be present in every library.
 
-6. **Distributions may reference any platform package directly,** subject to a minimum of `Tellma.Core`. There is no scaffolding restriction; the distribution is the composition root and pulls in whichever combination of full implementations its tenants need.
+6. **The optional Core-layer packages are composed, never inherited.** `Tellma.Core.Email`, `Tellma.Core.Webhooks`, and `Tellma.Core.Testing` depend on no Tellma package other than `Tellma.Core.Abstractions`, and none is referenced by `Tellma.Core`: a host that wants email adds it, and one that does not pays nothing. That is what lets a non-distribution deployable — the identity server, the landing app, a worker — compose email without the CRUD stack, multi-tenancy, settings, and jobs machinery.
+
+7. **Distributions may reference any platform package directly,** subject to a minimum of `Tellma.Core`. There is no scaffolding restriction; the distribution is the composition root and pulls in whichever combination of full implementations its tenants need.
 
 #### Per-dimension contents
 
@@ -433,6 +455,12 @@ In addition to the file layout, every distribution exposes:
 ### Multi-tenancy within a distribution
 
 Each distribution keeps the existing sharded model — its own Catalog DB listing tenants and where to find them, plus one application DB per tenant. A distribution may host a single tenant or a group of homogeneous tenants. This reuses `Tellma.Core`'s sharding code unchanged.
+
+**Every tenant is Live or Sandbox.** The category is a property of the tenant, not of the deployment: staging and production distributions both host tenants of either kind, and distribution code mostly does not know which environment it runs in. A sandbox tenant must produce **no external side effects** — nothing it does may reach a real customer, whether by email, an e-invoicing filing, or a payment instruction.
+
+Connectors learn the category through one narrow seam, `ISandboxContext` in `Tellma.Core.Abstractions`, which a distribution implements over its tenant context and must keep resolvable wherever side effects happen — request scopes and background-worker scopes alike. A host without tenants registers the fixed never-sandboxed implementation; there is deliberately **no default registration**, so a composition that forgot to decide fails at startup rather than silently treating sandbox tenants as live.
+
+The pattern every side-effecting connector follows: ship **live and sandbox channels as explicit configuration** (using the provider's own sandbox facility where one exists), consult `ISandboxContext` through a central policy component owned by the platform rather than scattered through business logic, and report every interception as **one explicit success-class outcome meaning “nothing real happened”** — whether the provider simulated the call or the platform withheld it. Workflows then proceed exactly as in production, while the result, the records, and the telemetry all state the truth. The email pipeline is the first instance and the reference implementation.
 
 ## Licensing & Intellectual Property
 
@@ -1073,6 +1101,7 @@ Other notes:
 - Per-distribution GitHub Actions pipelines: build, test, deploy.
 - Coding agents drive most PR work; humans review.
 - Required tests on every PR: unit, integration against a real SQL Server, Playwright smoke against the deployed staging slot.
+- .NET suites are tiered by two xUnit traits, and CI filters on them rather than on project paths — a suite added later is gated automatically. `Category=Integration` marks a suite that needs infrastructure it brings up itself (Testcontainers); `Live=true` marks one that talks to a real third-party API. Live suites never run on a PR: an external service on the merge path is a flakiness tax, and fork PRs cannot read the secrets anyway. They run nightly and on manual dispatch, filtered by the same traits rather than by project path, and skip cleanly wherever their credentials are absent — except in the nightly workflow itself, which fails outright on a missing credential, because a run that skipped everything and reported green is the failure mode a nightly exists to prevent.
 - Dependabot opens PRs for `Tellma.Core` upgrades; the CI pipeline + agents handle most of them end-to-end.
 - Before the swap, the release pipeline triggers a fleet execution of the distribution's migrator job (migrate + versioned seeds across the Catalog DB and every tenant DB — see [Migrations & seeding — the deploy-time migrator](#migrations--seeding--the-deploy-time-migrator)); the swap proceeds only when all tenant DBs have converged.
 - Production deploys are slot-swap with automatic rollback on health probe failure (safe without schema rollback because migrations are N−1 compatible).
@@ -1083,6 +1112,10 @@ Other notes:
 - All instances feed a central Log Analytics workspace.
 - A cross-distribution dashboard tracks health, usage, error rate, and `Tellma.Core` version drift across all distributions.
 - Alerts fan out via Azure Monitor (email / Teams / on-call).
+- Platform libraries emit through `IMeterFactory` meters named after the emitting package (`Tellma.Identity`, `Tellma.Email`, `Tellma.Webhooks`), and through an `ActivitySource` of the same name wherever a library traces at all — a library may meter without tracing, as `Tellma.Core.Webhooks` does. Instrument names are lowercase and dot-separated under a `tellma.` prefix (`tellma.email.sent.messages`), with units in instrument metadata and durations in seconds. Hosts opt in by adding those names to their OpenTelemetry configuration, so no library takes an OpenTelemetry dependency.
+- Telemetry names — meter, instruments, tag keys, and the closed set of tag values — are `const`s in the emitting package's `.Abstractions`, not string literals at each call site. A connector adapter cannot reference the runtime library it adapts to, so without a shared home its half of a shared instrument drifts to a spelling no query matches; the shared home also gives the alert cross-check something to resolve against.
+- Tag cardinality is bounded by construction: every dimension is a small closed set, and a value that arrives from outside the process — a correlation off the wire, a key off a URL — is replaced with a literal before it is ever used as a tag, with the real value going to the structured log instead. Per-tenant identity is deliberately absent from library instruments: it multiplies every other dimension, and the structured logs answer that question better.
+- The alert queries a package's instruments were designed to back are checked in under `infra/monitoring/`, and a test cross-checks every instrument name, dimension key, and compared-against tag value in them against what the code can actually emit — so renaming any of the three turns a stale alert into a failing build rather than an alert that quietly reports zero forever.
 
 ## Rollout & Phasing
 

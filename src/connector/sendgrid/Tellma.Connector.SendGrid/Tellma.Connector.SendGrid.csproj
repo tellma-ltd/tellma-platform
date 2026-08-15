@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>A first-party client for the small slice of the SendGrid v3 API the platform needs: mail send, event-webhook signature verification, the event payload shape, and the vendor error model. No Tellma dependencies.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!-- Deliberately no PackageReference and no ProjectReference. HttpClient, System.Text.Json,
+       System.Net.Http.Json and ECDsa are all in the net10.0 shared framework, and keeping this
+       library dependency-free is what lets any future SendGrid adapter (marketing, inbound parse)
+       reuse it unchanged. -->
+
+  <ItemGroup>
+    <!-- The payload snapshot and signature-vector suites exercise the serializer context and the
+         verifier's key handling directly. -->
+    <InternalsVisibleTo Include="Tellma.Connector.SendGrid.Tests" />
+  </ItemGroup>
+
+</Project>

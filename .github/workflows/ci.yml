@@ -22,7 +22,7 @@ jobs:
           global-json-file: global.json
       - run: dotnet restore Tellma.slnx
       - run: dotnet build Tellma.slnx -c Release --no-restore
-      - run: dotnet test Tellma.slnx -c Release --no-build --filter "Category!=Integration"
+      - run: dotnet test Tellma.slnx -c Release --no-build --filter "Category!=Integration&Live!=true"
 
   # Code style and formatting: the full IDE code-style surface (whitespace, imports, IDE00xx) that
   # the compiler build does not run even with EnforceCodeStyleInBuild. Same analyzers and
@@ -39,9 +39,12 @@ jobs:
       - run: dotnet restore Tellma.slnx
       - run: dotnet format Tellma.slnx --verify-no-changes --no-restore
 
-  # Containerized SQL Server (Testcontainers manages the container; Docker is preinstalled on
-  # ubuntu runners). Covers apply/verify, drop guard, grants, column-order parity, idempotent
-  # script run-twice, and the zero-persisted-dependents invariant.
+  # Every hermetic integration suite in the solution: the ones that manage their own infrastructure
+  # (Testcontainers brings up SQL Server; Docker is preinstalled on ubuntu runners) but need no
+  # third-party credentials. Solution-wide rather than path-scoped, so a suite added later is gated
+  # rather than silently never run. Suites marked Live=true talk to real external APIs and run in
+  # the nightly workflow instead — they would put a third-party service on the merge path, and fork
+  # PRs cannot read the secrets they need anyway.
   integration:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
@@ -50,7 +53,7 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
-      - run: dotnet test test/core/Tellma.Core.EntityFrameworkCore.IntegrationTests -c Release --filter "Category=Integration"
+      - run: dotnet test Tellma.slnx -c Release --filter "Category=Integration&Live!=true"
 
   # Real `dotnet ef` end to end, in both DesignTimeServicesReference discovery flows:
   #   1. ProjectReference flow (Phase-1 in-repo): regenerate the MigrationsHost migration and

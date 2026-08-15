@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>The HTTP fronting every Tellma webhook receiver shares: one anonymous, antiforgery-exempt endpoint at /api/webhooks/{key} that buffers the raw request body under a cap and maps the receiver's outcome to a status code. Transport-agnostic — it knows nothing about email.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tellma.Core.Abstractions\Tellma.Core.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The only project in the email infrastructure that takes an ASP.NET Core dependency.
+         Deliberately no PackageReference of any kind: the shared framework already supplies
+         every Microsoft.Extensions.* API used here, and .NET 10 prunes such references (NU1510),
+         which TreatWarningsAsErrors turns into a build failure. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The suite drives the body reader and the metric class directly, which keeps both out of
+         the public surface. -->
+    <InternalsVisibleTo Include="Tellma.Core.Webhooks.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>The Azure Communication Services Email transport: an IEmailSender on the first-party Azure SDK authenticating with managed identity, the Message-ID correlation channel, and the Event Grid receiver that turns delivery reports into platform delivery events.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\core\Tellma.Core.Abstractions\Tellma.Core.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Communication.Email" />
+    <!-- RetryOptions (zeroing the SDK's retry policy) and HttpPipelineTransport. -->
+    <PackageReference Include="Azure.Core" />
+    <!-- DefaultAzureCredential, the fallback when the host registers no TokenCredential. -->
+    <PackageReference Include="Azure.Identity" />
+    <PackageReference Include="Azure.Messaging.EventGrid" />
+    <!-- The ACS email system-event models; separate package since Event Grid 5.0.0. -->
+    <PackageReference Include="Azure.Messaging.EventGrid.SystemEvents" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The suite substitutes the Azure pipeline transport and exercises the Message-ID codec,
+         neither of which is part of the adapter's public surface. -->
+    <InternalsVisibleTo Include="Tellma.Connector.AcsEmail.Adapter.Tests" />
+  </ItemGroup>
+
+</Project>
