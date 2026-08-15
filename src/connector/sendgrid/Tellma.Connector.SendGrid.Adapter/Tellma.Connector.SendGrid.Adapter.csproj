@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>The SendGrid email transport: an IEmailSender over the first-party SendGrid client, plus the delivery-event webhook receiver that verifies, translates, and dispatches SendGrid's event callbacks.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\core\Tellma.Core.Abstractions\Tellma.Core.Abstractions.csproj" />
+    <ProjectReference Include="..\Tellma.Connector.SendGrid\Tellma.Connector.SendGrid.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- IHttpClientFactory: the raw client takes an HttpClient, so the adapter is what wires it
+         into the host's handler pool. Deliberately no resilience handler — durable retry policy
+         belongs to the caller, not the transport. -->
+    <PackageReference Include="Microsoft.Extensions.Http" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The suite constructs the sender against a scripted HttpClient and the receiver against
+         recorded payloads, neither of which goes through the DI registration. -->
+    <InternalsVisibleTo Include="Tellma.Connector.SendGrid.Adapter.Tests" />
+  </ItemGroup>
+
+</Project>

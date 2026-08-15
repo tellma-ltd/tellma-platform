@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Tellma's email pipeline: configuration-driven transport selection, the sandbox-tenant routing policy, the Development log sink and its guard, delivery-event dispatch, and the email telemetry every transport is measured by. Composed explicitly by each host; never referenced by Tellma.Core.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tellma.Core.Abstractions\Tellma.Core.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Deliberately no ASP.NET Core dependency: hosts that are not web apps (workers, tests)
+         compose this package too. The one ASP.NET-touching piece of the email infrastructure is
+         the webhook fronting, which lives in Tellma.Core.Webhooks.
+         System.Diagnostics.DiagnosticSource (Meter, IMeterFactory, ActivitySource, TagList) is
+         part of the net10.0 targeting pack — referencing it as a package would be pruned (NU1510)
+         and, under TreatWarningsAsErrors, fail the build. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <!-- AddMetrics(), which registers the IMeterFactory the metrics classes are built from. -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics" />
+    <!-- IHostEnvironment (the log-sink guard) and IHostedService (the startup validator). -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <!-- ValidateOnStart lives here, not in Microsoft.Extensions.Hosting. -->
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The suites construct the router, dispatcher, and metric classes directly rather than
+         through the DI registration, which keeps those types out of the public surface. -->
+    <InternalsVisibleTo Include="Tellma.Core.Email.Tests" />
+  </ItemGroup>
+
+</Project>

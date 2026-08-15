@@ -9,9 +9,15 @@
   <ItemGroup>
     <PackageVersion Include="AngleSharp" Version="1.5.2" />
     <!-- Azure integrations are config-gated optional paths; on-prem deployments run without them. -->
+    <PackageVersion Include="Azure.Communication.Email" Version="1.1.0" />
+    <PackageVersion Include="Azure.Core" Version="1.61.0" />
     <PackageVersion Include="Azure.Extensions.AspNetCore.DataProtection.Blobs" Version="1.5.3" />
     <PackageVersion Include="Azure.Extensions.AspNetCore.DataProtection.Keys" Version="1.6.3" />
     <PackageVersion Include="Azure.Identity" Version="1.21.0" />
+    <PackageVersion Include="Azure.Messaging.EventGrid" Version="5.0.0" />
+    <!-- The Event Grid system-event models moved out of the main package in 5.0.0 (which
+         type-forwards them). Must never be paired with Azure.Messaging.EventGrid < 5.0.0. -->
+    <PackageVersion Include="Azure.Messaging.EventGrid.SystemEvents" Version="1.1.0" />
     <PackageVersion Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="1.5.0" />
     <PackageVersion Include="Azure.Security.KeyVault.Certificates" Version="4.9.0" />
     <PackageVersion Include="Azure.Security.KeyVault.Secrets" Version="4.11.0" />
@@ -23,6 +29,7 @@
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" Version="10.0.9" />
     <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.9" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.11" />
     <!-- Pinned to the exact Roslyn version Microsoft.EntityFrameworkCore.Design depends on
          (its Workspaces dependency demands = 5.0.0). -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
@@ -36,9 +43,21 @@
          with it; pinned forward to the patched line. -->
     <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.10" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.DependencyModel" Version="10.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.7.0" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics" Version="10.0.11" />
+    <!-- MetricCollector<T> and FakeLogger. Versions on the dotnet/extensions line, not the
+         runtime's, so this does not track the 10.0.x band above. -->
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.9.0" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.7.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.9.0" />
     <!-- Kept on the same 8.x line OpenIddict 7.x depends on to avoid diamond conflicts. -->
     <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.19.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.6.0" />
@@ -55,8 +74,18 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.SqlClient" Version="1.16.0" />
     <PackageVersion Include="Quartz.Extensions.Hosting" Version="3.18.2" />
     <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
-    <PackageVersion Include="Testcontainers.MsSql" Version="4.12.0" />
+    <!-- In-process SMTP endpoint for the MailKit protocol suite; no external infrastructure. -->
+    <PackageVersion Include="SmtpServer" Version="11.1.0" />
+    <!-- The first version patched against GHSA-q939-rpr3-3284; referenced only to lift the
+         version Testcontainers still brings in transitively. -->
+    <PackageVersion Include="SSH.NET" Version="2026.0.0" />
+    <PackageVersion Include="Testcontainers.MsSql" Version="4.13.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
+    <!-- Libraries that expose xunit types (the sender conformance suite, shared test doubles)
+         reference these two instead of the xunit.v3 metapackage, whose build targets fail any
+         project that is not an executable test project. -->
+    <PackageVersion Include="xunit.v3.assert" Version="3.2.2" />
+    <PackageVersion Include="xunit.v3.extensibility.core" Version="3.2.2" />
   </ItemGroup>
 </Project>

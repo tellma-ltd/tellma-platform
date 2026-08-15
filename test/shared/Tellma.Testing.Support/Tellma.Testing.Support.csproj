@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <!-- The test-tree props add a global `using Xunit` for every project under test/. This one is
+         plumbing rather than a suite and references no test framework at all, so the global using
+         would not compile. -->
+    <Using Remove="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Abstractions\Tellma.Core.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- No test-framework reference of any kind. These are plumbing types, not assertions, so the
+         project needs no xunit; omitting Microsoft.NET.Test.Sdk likewise keeps IsTestProject false,
+         so `dotnet test Tellma.slnx` never tries to run it. -->
+    <!-- IOptionsMonitor<T>, for the static monitor the adapters' senders take. -->
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <!-- IHttpClientFactory, for the single-client factory the HTTP-based senders take. -->
+    <PackageReference Include="Microsoft.Extensions.Http" />
+  </ItemGroup>
+
+</Project>

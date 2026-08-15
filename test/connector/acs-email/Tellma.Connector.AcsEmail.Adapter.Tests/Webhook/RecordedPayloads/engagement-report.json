@@ -1,0 +1,20 @@
+[
+  {
+    "id": "3f8a1c77-4b2d-4e19-9a6c-5d4e3f2a1b99",
+    "topic": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-tellma-etpharma/providers/Microsoft.Communication/CommunicationServices/tellma-etpharma",
+    "subject": "sender/no-reply@tellma.com/message/1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+    "data": {
+      "sender": "no-reply@tellma.com",
+      "recipient": null,
+      "messageId": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      "userActionTimestamp": "2026-01-01T00:05:00.0000000Z",
+      "engagementContext": "https://etpharma.app.tellma.com/invoices/42",
+      "userAgent": "Mozilla/5.0",
+      "engagementType": "click"
+    },
+    "eventType": "Microsoft.Communication.EmailEngagementTrackingReportReceived",
+    "dataVersion": "1.0",
+    "metadataVersion": "1",
+    "eventTime": "2026-01-01T00:05:02.0000000Z"
+  }
+]

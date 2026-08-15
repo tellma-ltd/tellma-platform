@@ -1,0 +1,22 @@
+[
+  {
+    "id": "5b9b4a2e-8a0f-4d3b-9f9b-1f2f5a1c6f11",
+    "topic": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-tellma-etpharma/providers/Microsoft.Communication/CommunicationServices/tellma-etpharma",
+    "subject": "sender/no-reply@tellma.com/message/8d3f2b18-1e6f-4d47-9d18-1a0e2d3f4b55",
+    "data": {
+      "sender": "no-reply@tellma.com",
+      "recipient": "recipient@example.com",
+      "messageId": "8d3f2b18-1e6f-4d47-9d18-1a0e2d3f4b55",
+      "internetMessageId": "__MESSAGE_ID__",
+      "status": "Delivered",
+      "deliveryStatusDetails": {
+        "statusMessage": "DestinationMailboxFull"
+      },
+      "deliveryAttemptTimestamp": "2026-01-01T00:01:30.0000000Z"
+    },
+    "eventType": "Microsoft.Communication.EmailDeliveryReportReceived",
+    "dataVersion": "1.0",
+    "metadataVersion": "1",
+    "eventTime": "2026-01-01T00:01:35.0000000Z"
+  }
+]

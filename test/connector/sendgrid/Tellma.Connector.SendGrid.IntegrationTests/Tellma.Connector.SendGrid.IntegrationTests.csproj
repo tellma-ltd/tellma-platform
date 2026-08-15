@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\connector\sendgrid\Tellma.Connector.SendGrid.Adapter\Tellma.Connector.SendGrid.Adapter.csproj" />
+    <!-- The test-output logger and the environment report the live suites share. -->
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>

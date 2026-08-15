@@ -1,0 +1,15 @@
+// Deliverability early warning, per transport.
+// Bounces and provider-side drops against deliveries, and spam reports separately: the provider's
+// own reputation thresholds sit around 5% and 0.1% respectively.
+customMetrics
+| where name == "tellma.email.delivery.events"
+| extend transport = tostring(customDimensions["email.transport"])
+| extend eventType = tostring(customDimensions["email.event.type"])
+| summarize
+    delivered = sumif(valueSum, eventType == "delivered"),
+    bouncedOrDropped = sumif(valueSum, eventType in ("bounced", "dropped")),
+    spamReported = sumif(valueSum, eventType == "spam_reported")
+    by transport, bin(timestamp, 1h)
+| extend bounceRate = iff(delivered == 0, 0.0, todouble(bouncedOrDropped) / todouble(delivered))
+| extend spamRate = iff(delivered == 0, 0.0, todouble(spamReported) / todouble(delivered))
+| where bounceRate > 0.05 or spamRate > 0.001

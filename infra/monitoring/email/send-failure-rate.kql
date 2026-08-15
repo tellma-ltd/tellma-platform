@@ -1,0 +1,13 @@
+// Send failure rate, per transport.
+// Backs the "send failure rate above N% for M minutes" alert: transient failures and rejections
+// measured against everything the pipeline handled. Sandboxed mail counts as handled, not failed.
+customMetrics
+| where name == "tellma.email.sent.messages"
+| extend transport = tostring(customDimensions["email.transport"])
+| extend outcome = tostring(customDimensions["email.outcome"])
+| summarize
+    failed = sumif(valueSum, outcome in ("transient_failure", "rejected")),
+    total = sum(valueSum)
+    by transport, bin(timestamp, 5m)
+| extend failureRate = iff(total == 0, 0.0, todouble(failed) / todouble(total))
+| where failureRate > 0.05

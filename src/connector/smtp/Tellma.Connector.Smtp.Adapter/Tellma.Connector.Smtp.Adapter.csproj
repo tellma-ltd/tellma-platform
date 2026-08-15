@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>The SMTP email transport: a MailKit-based IEmailSender for on-prem smarthosts, air-gapped installations, staging mail traps, and the local-development inspection path.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\core\Tellma.Core.Abstractions\Tellma.Core.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- MailKit is the .NET mail client Microsoft's own documentation names as the replacement
+         for the compat-only System.Net.Mail.SmtpClient; it brings MimeKit, which gives correct
+         multipart, encoding, and internationalization behavior. -->
+    <PackageReference Include="MailKit" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The protocol suite drives the client seam directly (a scripted ISmtpClient for the
+         reconnect path, a certificate-validation override for the STARTTLS profile), which keeps
+         that seam internal instead of widening the adapter's public surface for testability. -->
+    <InternalsVisibleTo Include="Tellma.Connector.Smtp.Adapter.Tests" />
+  </ItemGroup>
+
+</Project>

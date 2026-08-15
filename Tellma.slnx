@@ -21,17 +21,41 @@
     <Project Path="src/apps/Tellma.Identity.Web/Tellma.Identity.Web.csproj" />
     <Project Path="src/core/Tellma.Core.Abstractions/Tellma.Core.Abstractions.csproj" Id="a8c5c375-60d1-4415-9377-aa1254091b00" />
     <Project Path="src/core/Tellma.Core/Tellma.Core.csproj" Id="139b300f-8e04-4fcf-92db-45127fb3c7a4" />
+    <Project Path="src/core/Tellma.Core.Email/Tellma.Core.Email.csproj" />
     <Project Path="src/core/Tellma.Core.EntityFrameworkCore/Tellma.Core.EntityFrameworkCore.csproj" />
     <Project Path="src/core/Tellma.Core.EntityFrameworkCore.Design/Tellma.Core.EntityFrameworkCore.Design.csproj" />
+    <Project Path="src/core/Tellma.Core.Testing/Tellma.Core.Testing.csproj" />
+    <Project Path="src/core/Tellma.Core.Webhooks/Tellma.Core.Webhooks.csproj" />
+  </Folder>
+  <Folder Name="/src/connector/">
+    <Project Path="src/connector/acs-email/Tellma.Connector.AcsEmail.Adapter/Tellma.Connector.AcsEmail.Adapter.csproj" />
+    <Project Path="src/connector/sendgrid/Tellma.Connector.SendGrid/Tellma.Connector.SendGrid.csproj" />
+    <Project Path="src/connector/sendgrid/Tellma.Connector.SendGrid.Adapter/Tellma.Connector.SendGrid.Adapter.csproj" />
+    <Project Path="src/connector/smtp/Tellma.Connector.Smtp.Adapter/Tellma.Connector.Smtp.Adapter.csproj" />
   </Folder>
   <Folder Name="/test/">
     <File Path="test/Directory.Build.props" />
     <Project Path="test/apps/Tellma.Identity.Tests/Tellma.Identity.Tests.csproj" />
     <Project Path="test/apps/Tellma.Identity.IntegrationTests/Tellma.Identity.IntegrationTests.csproj" />
     <Project Path="test/apps/Tellma.Identity.E2E/Tellma.Identity.E2E.csproj" />
+    <Project Path="test/core/Tellma.Core.Abstractions.Tests/Tellma.Core.Abstractions.Tests.csproj" />
+    <Project Path="test/core/Tellma.Core.Email.Tests/Tellma.Core.Email.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Tests/Tellma.Core.EntityFrameworkCore.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Design.Tests/Tellma.Core.EntityFrameworkCore.Design.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.IntegrationTests/Tellma.Core.EntityFrameworkCore.IntegrationTests.csproj" />
+    <Project Path="test/core/Tellma.Core.Testing.Tests/Tellma.Core.Testing.Tests.csproj" />
+    <Project Path="test/core/Tellma.Core.Webhooks.Tests/Tellma.Core.Webhooks.Tests.csproj" />
+  </Folder>
+  <Folder Name="/test/connector/">
+    <Project Path="test/connector/acs-email/Tellma.Connector.AcsEmail.Adapter.Tests/Tellma.Connector.AcsEmail.Adapter.Tests.csproj" />
+    <Project Path="test/connector/acs-email/Tellma.Connector.AcsEmail.IntegrationTests/Tellma.Connector.AcsEmail.IntegrationTests.csproj" />
+    <Project Path="test/connector/sendgrid/Tellma.Connector.SendGrid.Tests/Tellma.Connector.SendGrid.Tests.csproj" />
+    <Project Path="test/connector/sendgrid/Tellma.Connector.SendGrid.Adapter.Tests/Tellma.Connector.SendGrid.Adapter.Tests.csproj" />
+    <Project Path="test/connector/sendgrid/Tellma.Connector.SendGrid.IntegrationTests/Tellma.Connector.SendGrid.IntegrationTests.csproj" />
+    <Project Path="test/connector/smtp/Tellma.Connector.Smtp.Adapter.Tests/Tellma.Connector.Smtp.Adapter.Tests.csproj" />
+  </Folder>
+  <Folder Name="/test/shared/">
+    <Project Path="test/shared/Tellma.Testing.Support/Tellma.Testing.Support.csproj" />
   </Folder>
   <Folder Name="/test/assets/">
     <Project Path="test/apps/assets/Tellma.Identity.TestInProcHost/Tellma.Identity.TestInProcHost.csproj" />

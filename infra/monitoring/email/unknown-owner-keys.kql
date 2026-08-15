@@ -1,0 +1,12 @@
+// Delivery events naming an owner key nothing handles.
+// With foreign deployments already filtered at translation, any occurrence is a composition bug:
+// an owner minted correlations but registered no handler.
+// The owner dimension is the literal "unknown" here by design — the key that actually arrived is in
+// the accompanying EmailLog.UnknownOwnerKey trace, where cardinality costs nothing.
+customMetrics
+| where name == "tellma.email.delivery.events"
+| extend routing = tostring(customDimensions["email.event.routing"])
+| extend transport = tostring(customDimensions["email.transport"])
+| where routing == "unknown_owner"
+| summarize events = sum(valueSum) by transport, bin(timestamp, 15m)
+| where events > 0

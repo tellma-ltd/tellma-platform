@@ -1,0 +1,22 @@
+[
+  {
+    "id": "7c1f9d55-2a3e-4c8b-8f0d-9a7b6c5d4e33",
+    "topic": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-tellma-etpharma/providers/Microsoft.Communication/CommunicationServices/tellma-etpharma",
+    "subject": "sender/no-reply@tellma.com/message/9e4a3c29-2f7a-4e58-8e29-2b1f3e4a5c66",
+    "data": {
+      "sender": "no-reply@tellma.com",
+      "recipient": "recipient@example.com",
+      "messageId": "9e4a3c29-2f7a-4e58-8e29-2b1f3e4a5c66",
+      "internetMessageId": "<a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d@azurecomm.net>",
+      "status": "Bounced",
+      "deliveryStatusDetails": {
+        "statusMessage": "550 5.1.1 unknown user"
+      },
+      "deliveryAttemptTimeStamp": "2026-01-01T00:01:30.0000000Z"
+    },
+    "eventType": "Microsoft.Communication.EmailDeliveryReportReceived",
+    "dataVersion": "1.0",
+    "metadataVersion": "1",
+    "eventTime": "2026-01-01T00:02:00.0000000Z"
+  }
+]
