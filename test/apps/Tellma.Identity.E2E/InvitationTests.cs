@@ -41,7 +41,7 @@ namespace Tellma.Identity.E2E
                 await page.GetByRole(AriaRole.Button, new() { Name = "Create a passkey" }).ClickAsync();
 
                 // Enrollment signs the user in, so it lands on the signed-in passkey list.
-                await page.WaitForURLAsync("**/Identity/Manage/Passkeys", new() { Timeout = 15000 });
+                await page.WaitForPathAsync("/Identity/Manage/Passkeys", 15000);
                 string content = await page.ContentAsync();
                 Assert.DoesNotContain("You have no passkeys yet", content, StringComparison.Ordinal);
                 Assert.Contains(email, content, StringComparison.Ordinal);
@@ -84,11 +84,11 @@ namespace Tellma.Identity.E2E
                 await page.GotoAsync("/Identity/Manage/Passkeys");
                 await page.GetByRole(AriaRole.Link, new() { Name = "Add a passkey" }).ClickAsync();
                 await page.GetByRole(AriaRole.Button, new() { Name = "Create a passkey" }).ClickAsync();
-                await page.WaitForURLAsync("**/Identity/Manage/Passkeys");
+                await page.WaitForPathAsync("/Identity/Manage/Passkeys");
 
                 await page.GotoAsync("/Identity/Account/Invitation?code=" + Uri.EscapeDataString(token));
                 await page.GetByRole(AriaRole.Button, new() { Name = "Create a passkey" }).ClickAsync();
-                await page.WaitForURLAsync("**/Identity/Manage/Passkeys", new() { Timeout = 15000 });
+                await page.WaitForPathAsync("/Identity/Manage/Passkeys", 15000);
 
                 // The link named one account and the session named another. The credential — and
                 // the session it leaves behind — must belong to the account the link named, or an

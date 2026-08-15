@@ -19,6 +19,12 @@ Playwright (Chromium):
 - Not covered here: the external-login failure page, which needs a stubbed upstream provider, and
   TOTP enrolment past its entry screen. Both are integration-tested instead; the accessibility
   suite scans the states they reach by URL.
+- Wait for a destination with `WaitForPathAsync`/`ReachedPathAsync`, never Playwright's
+  `WaitForURLAsync`. The latter waits for the `load` lifecycle event whenever the address already
+  matches, and that event is reported once per document, so a click that happened to return after
+  its navigation committed leaves nothing left to observe and the call hangs for its whole timeout.
+  Which behaviour you get turns on a few milliseconds, so it passes until something unrelated
+  changes the pace of the flow.
 - Sign-in codes are rate-limited to 10 per IP per hour, and every test here reaches the server
   from the same loopback address, so the whole run shares one budget. The accessibility suite
   therefore signs in once and hands the session to every test that needs one

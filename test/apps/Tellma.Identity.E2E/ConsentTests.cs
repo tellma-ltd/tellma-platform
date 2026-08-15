@@ -7,6 +7,7 @@ using Microsoft.Playwright;
 using System.Buffers.Text;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using Tellma.Identity.E2E.Infrastructure;
 
 namespace Tellma.Identity.E2E
@@ -53,20 +54,13 @@ namespace Tellma.Identity.E2E
 
                 await page.GetByRole(AriaRole.Button, new() { Name = "Allow" }).ClickAsync();
 
-                // The whole point: the browser must actually follow the grant's redirect. When it
-                // does not, the interesting evidence is the policy the page was served with and
-                // what the browser refused, so report both rather than a bare timeout.
-                try
-                {
-                    // Commit, not load: the claim under test is that the browser followed the
-                    // redirect, which is settled the moment it commits to the callback URL. Waiting
-                    // for the callback document to finish loading adds the stub endpoint's response
-                    // time to a budget sized for the refusal case, and times out on a slow machine
-                    // having already proved the thing it was checking.
-                    await page.WaitForURLAsync(
-                        callbackUri + "*", new() { Timeout = 10000, WaitUntil = WaitUntilState.Commit });
-                }
-                catch (TimeoutException)
+                // The whole point: the browser must actually follow the grant's redirect. The claim
+                // is settled the moment the address becomes the callback URL — waiting for that
+                // document to load as well would add the stub endpoint's response time to a budget
+                // sized for the refusal case. When the browser does not follow, the interesting
+                // evidence is the policy the page was served with and what the browser refused, so
+                // report both rather than a bare timeout.
+                if (!await page.ReachedUrlAsync(new Regex("^" + Regex.Escape(callbackUri)), 10000))
                 {
                     consentResponse.Headers.TryGetValue("content-security-policy", out string? policy);
                     Assert.Fail(

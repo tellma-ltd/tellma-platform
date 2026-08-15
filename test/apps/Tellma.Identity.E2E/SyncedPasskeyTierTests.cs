@@ -62,7 +62,7 @@ namespace Tellma.Identity.E2E
 
                     await page.GotoAsync("/Identity/Account/Logout");
                     await page.GetByRole(AriaRole.Button, new() { Name = "Sign out" }).ClickAsync();
-                    await page.WaitForURLAsync("**/Identity/Account/LoggedOut");
+                    await page.WaitForPathAsync("/Identity/Account/LoggedOut");
 
                     await AllowOneCeremonyAsync(page);
 
@@ -152,7 +152,7 @@ namespace Tellma.Identity.E2E
             await page.GotoAsync("/Identity/Manage/Passkeys");
             await page.GetByRole(AriaRole.Link, new() { Name = "Add a passkey" }).ClickAsync();
             await page.GetByRole(AriaRole.Button, new() { Name = "Create a passkey" }).ClickAsync();
-            await page.WaitForURLAsync("**/Identity/Manage/Passkeys");
+            await page.WaitForPathAsync("/Identity/Manage/Passkeys");
         }
 
         /// <summary>Signs the user in through the email-code flow, landing on the passkey list.</summary>
@@ -165,7 +165,7 @@ namespace Tellma.Identity.E2E
             string code = await WaitForCodeAsync(email);
             await page.GetByLabel("Code").FillAsync(code);
             await page.GetByRole(AriaRole.Button, new() { Name = "Verify" }).ClickAsync();
-            await page.WaitForURLAsync("**/Identity/Manage/Passkeys");
+            await page.WaitForPathAsync("/Identity/Manage/Passkeys");
         }
 
         /// <summary>Waits for the sign-in code the background worker delivers.</summary>

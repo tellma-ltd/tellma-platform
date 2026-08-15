@@ -35,7 +35,7 @@ namespace Tellma.Identity.E2E.Infrastructure
             // Enroll a passkey.
             await page.GetByRole(AriaRole.Link, new() { Name = "Add a passkey" }).ClickAsync();
             await page.GetByRole(AriaRole.Button, new() { Name = "Create a passkey" }).ClickAsync();
-            await page.WaitForURLAsync("**" + passkeysPath);
+            await page.WaitForPathAsync(passkeysPath);
 
             // The credential enrolled and appears in the list — and the virtual authenticator's
             // credential is not backup-eligible, so it must be classified "Device-bound": this
@@ -47,20 +47,16 @@ namespace Tellma.Identity.E2E.Infrastructure
             // Sign out.
             await page.GotoAsync(prefix + "/Identity/Account/Logout");
             await page.GetByRole(AriaRole.Button, new() { Name = "Sign out" }).ClickAsync();
-            await page.WaitForURLAsync("**" + prefix + "/Identity/Account/LoggedOut");
+            await page.WaitForPathAsync(prefix + "/Identity/Account/LoggedOut");
 
             // Sign back in with the passkey. On the login page the conditional-UI ceremony the
             // virtual authenticator satisfies automatically completes the sign-in; if it does
             // not fire, the explicit button drives the same ceremony.
             await page.GotoAsync(prefix + "/Identity/Account/Login?returnUrl=" + Uri.EscapeDataString(passkeysPath));
-            try
-            {
-                await page.WaitForURLAsync("**" + passkeysPath, new() { Timeout = 5000 });
-            }
-            catch (TimeoutException)
+            if (!await page.ReachedPathAsync(passkeysPath, 5000))
             {
                 await page.GetByRole(AriaRole.Button, new() { Name = "Sign in with a passkey" }).ClickAsync();
-                await page.WaitForURLAsync("**" + passkeysPath, new() { Timeout = 15000 });
+                await page.WaitForPathAsync(passkeysPath, 15000);
             }
         }
 
@@ -81,7 +77,7 @@ namespace Tellma.Identity.E2E.Infrastructure
             string code = await WaitForCodeAsync(server, email);
             await page.GetByLabel("Code").FillAsync(code);
             await page.GetByRole(AriaRole.Button, new() { Name = "Verify" }).ClickAsync();
-            await page.WaitForURLAsync("**" + passkeysPath);
+            await page.WaitForPathAsync(passkeysPath);
         }
 
         /// <summary>Waits for the sign-in code the background worker delivers.</summary>
