@@ -52,6 +52,7 @@ export interface TmSchemeColors {
         readonly borderHover: TmTokenValue;
         readonly borderFocus: TmTokenValue;
         readonly borderInvalid: TmTokenValue;
+        readonly focusHalo: TmTokenValue;
         readonly text: TmTokenValue;
         readonly textDisabled: TmTokenValue;
         readonly placeholder: TmTokenValue;
@@ -166,6 +167,7 @@ export interface TmTokens {
             readonly width: string;
             readonly color: TmTokenValue;
             readonly offset: string;
+            readonly haloWidth: string;
         };
         readonly formField: {
             readonly radius: TmTokenValue;
@@ -173,8 +175,21 @@ export interface TmTokens {
             readonly heightSm: string;
             readonly heightLg: string;
             readonly paddingX: string;
+            readonly paddingXsm: string;
+            readonly paddingXlg: string;
             readonly paddingY: string;
             readonly fontSize: TmTokenValue;
+            readonly fontSizeSm: string;
+            readonly fontSizeLg: string;
+            readonly labelGap: string;
+            readonly labelGapSm: string;
+            readonly labelGapLg: string;
+            readonly labelFontSize: string;
+            readonly hintFontSize: TmTokenValue;
+            readonly errorIconSize: string;
+            readonly optionHeight: string;
+            readonly optionHeightSm: string;
+            readonly optionHeightLg: string;
         };
         readonly leadingByLang: Readonly<Record<string, TmTokenValue>>;
     };

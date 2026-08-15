@@ -7,6 +7,7 @@
 import * as _angular_core from '@angular/core';
 import { CdkConnectedOverlay } from '@angular/cdk/overlay';
 import { CdkConnectedOverlayConfig } from '@angular/cdk/overlay';
+import { ConnectedOverlayPositionChange } from '@angular/cdk/overlay';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
 import { Signal } from '@angular/core';
@@ -48,6 +49,7 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
     protected onToggleClick(): void;
     openPopup(): void;
     readonly ownsChrome = false;
+    readonly ownsErrorIcon = true;
     readonly pending: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly picked: _angular_core.OutputEmitterRef<string | null>;
     readonly placeholder: _angular_core.InputSignal<string | undefined>;
@@ -57,6 +59,7 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
     readonly required: _angular_core.InputSignalWithTransform<boolean, unknown>;
     seed(text: string): void;
     setDescribedByIds(ids: readonly string[]): void;
+    setFieldError(showsError: boolean): void;
     protected readonly showsInvalid: Signal<boolean>;
     readonly text: Signal<string | null>;
     protected readonly toggleLabel: Signal<string>;

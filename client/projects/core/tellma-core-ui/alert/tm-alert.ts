@@ -42,41 +42,40 @@ export type TmAlertLive = 'off' | 'polite' | 'assertive';
 @Component({
   selector: 'tm-alert',
   template: `
-    <svg class="tm-alert__icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <!-- The glyph is chosen by MEANING, not by tone alone. Circle-x marks
+         something that failed or was refused with nothing to correct in
+         place; the caution triangle marks a decision the reader has not
+         made yet. A field error, which can be fixed where it stands, uses
+         circle-! instead and lives in tm-form-field. -->
+    <svg
+      class="tm-alert__icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.75"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
       @switch (kind()) {
         @case ('info') {
-          <circle cx="8" cy="8" r="6.25" stroke="currentColor" stroke-width="1.5" />
-          <path d="M8 7.2v3.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-          <circle cx="8" cy="4.9" r="0.9" fill="currentColor" />
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 16v-4" />
+          <path d="M12 8h.01" />
         }
         @case ('success') {
-          <circle cx="8" cy="8" r="6.25" stroke="currentColor" stroke-width="1.5" />
-          <path
-            d="m5.2 8.2 1.9 1.9 3.7-4.2"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
+          <path d="M21.801 10A10 10 0 1 1 17 3.335" />
+          <path d="m9 11 3 3L22 4" />
         }
         @case ('warning') {
-          <path
-            d="M8 2.2 14.6 13.4H1.4Z"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linejoin="round"
-          />
-          <path d="M8 6.4v3.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-          <circle cx="8" cy="11.4" r="0.9" fill="currentColor" />
+          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+          <path d="M12 9v4" />
+          <path d="M12 17h.01" />
         }
         @case ('error') {
-          <circle cx="8" cy="8" r="6.25" stroke="currentColor" stroke-width="1.5" />
-          <path
-            d="m5.6 5.6 4.8 4.8m0-4.8-4.8 4.8"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-          />
+          <circle cx="12" cy="12" r="10" />
+          <path d="m15 9-6 6" />
+          <path d="m9 9 6 6" />
         }
       }
     </svg>

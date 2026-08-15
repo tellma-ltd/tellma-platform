@@ -52,7 +52,7 @@ export const TM_UI_STRINGS_EN = {
     noResults: 'No results',
     searchFailed: 'Search failed',
     moreResults:
-      '{count, plural, one {Showing the top match. Keep typing to refine.} other {Showing top # matches. Keep typing to refine.}}',
+      '{count, plural, one {Showing 1 match. Type to refine.} other {Showing # matches. Type to refine.}}',
     announce: {
       results: '{count, plural, one {1 result} other {# results}}',
       resultsMore: '{count, number}+ results — more available',

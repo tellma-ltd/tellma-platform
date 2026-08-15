@@ -67,28 +67,99 @@ describe('tmInput + tm-form-field (Signal Forms, §3.1/§3.2/§5)', () => {
       expect(await input.getValue()).toBe('x@y.org');
     });
 
-    it('shows the hint until touched-and-invalid, then swaps to the localized error', async () => {
+    it('adds the localized error when touched-and-invalid, and keeps the hint', async () => {
       const { fixture, input, field } = await setup(Host);
 
       // Pristine: hint visible, no error, not marked invalid.
       expect(await field.getHintText()).toBe('Your work email');
-      expect(await field.getErrorText()).toBeNull();
+      expect(await field.getErrorTexts()).toEqual([]);
       expect(await input.isInvalid()).toBe(false);
 
       // Blur without typing -> touched + required error, localized.
       await input.focus();
       await input.blur();
       await fixture.whenStable();
-      expect(await field.getErrorText()).toBe('This field is required');
-      expect(await field.getHintText()).toBeNull();
+      expect(await field.getErrorTexts()).toEqual(['This field is required']);
+      // The hint is the field's standing instruction and stays put: it is
+      // most useful exactly when the value is wrong.
+      expect(await field.getHintText()).toBe('Your work email');
       expect(await input.isInvalid()).toBe(true);
 
-      // aria-describedby now points at the error element, which holds the text.
-      const describedBy = await input.getDescribedBy();
-      expect(describedBy).toBeTruthy();
-      const errorEl = document.getElementById(describedBy!);
+      // The message region is described, live, and never removed — so what
+      // assistive technology gets does not depend on where focus is.
+      const describedBy = (await input.getDescribedBy())!.split(' ');
+      const errorEl = document.getElementById(describedBy[describedBy.length - 1]);
       expect(errorEl?.textContent?.trim()).toBe('This field is required');
       expect(errorEl?.getAttribute('aria-live')).toBe('polite');
+    });
+
+    it('shows the bubble only while focused; the message region never moves', async () => {
+      const { fixture, input, field } = await setup(Host);
+
+      await input.focus();
+      await input.blur();
+      await fixture.whenStable();
+
+      // Blurred and invalid: no bubble, but the words are still there for
+      // assistive technology and the field still reads as invalid.
+      expect(await field.isErrorPopoverOpen()).toBe(false);
+      expect(await field.getErrorTexts()).toEqual(['This field is required']);
+      expect(await input.isInvalid()).toBe(true);
+
+      await input.focus();
+      await fixture.whenStable();
+      expect(await field.isErrorPopoverOpen()).toBe(true);
+
+      // The bubble is decoration: it must not be announced a second time.
+      expect(document.querySelector('tm-error-popover')?.getAttribute('aria-hidden')).toBe(
+        'true',
+      );
+
+      await input.blur();
+      await fixture.whenStable();
+      expect(await field.isErrorPopoverOpen()).toBe(false);
+      expect(await field.getErrorTexts()).toEqual(['This field is required']);
+    });
+
+    it('a press into the bubble holds it open, so the message can be selected', async () => {
+      const { fixture, input, field } = await setup(Host);
+
+      await input.focus();
+      await input.blur();
+      await input.focus();
+      await fixture.whenStable();
+      expect(await field.isErrorPopoverOpen()).toBe(true);
+
+      // Pressing into the bubble blurs the control (the bubble is
+      // decoration and takes no focus), and the bubble must survive that
+      // blur or the drag has nothing left to select. The press bubbles all
+      // the way to the document, which is where the release is judged.
+      const bubble = document.querySelector('tm-error-popover')!;
+      bubble.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      (document.activeElement as HTMLElement | null)?.blur();
+      await fixture.whenStable();
+      expect(await field.isErrorPopoverOpen()).toBe(true);
+
+      // A press anywhere else ends the grip.
+      document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      await fixture.whenStable();
+      expect(await field.isErrorPopoverOpen()).toBe(false);
+    });
+
+    it('bullets every message with its own glyph', async () => {
+      const { fixture, input } = await setup(Host);
+      await input.focus();
+      await input.blur();
+      await input.focus();
+      await fixture.whenStable();
+
+      const messages = document.querySelectorAll('.tm-error-popover__message');
+      expect(messages.length).toBe(1);
+      // One glyph per message, not one for the bubble: with two messages a
+      // single glyph reads as decoration on the first line.
+      for (const message of messages) {
+        expect(message.querySelector('.tm-error-popover__icon')).not.toBeNull();
+      }
     });
 
     it('marks required from the schema and renders the required marker', async () => {
@@ -283,11 +354,53 @@ describe('tmInput + tm-form-field (Signal Forms, §3.1/§3.2/§5)', () => {
       await input.focus();
       await input.blur();
       await fixture.whenStable();
+      // The hint no longer drops out when an error appears, so all three
+      // ids are present: author's first, then hint, then error.
       const after = inputEl.getAttribute('aria-describedby')!.split(' ');
       expect(after[0]).toBe('ext-desc'); // author id stays first
-      expect(document.getElementById(after[1])?.textContent?.trim()).toBe(
+      expect(document.getElementById(after[1])?.textContent?.trim()).toBe('Work email');
+      expect(document.getElementById(after[2])?.textContent?.trim()).toBe(
         'This field is required',
       );
+    });
+  });
+
+  describe('validation messages', () => {
+    @Component({
+      imports: [TmInput, TmFormField, FormField],
+      template: `
+        <tm-form-field label="Email">
+          <input tmInput [formField]="f.email" />
+        </tm-form-field>
+      `,
+    })
+    class MultiErrorHost {
+      readonly model = signal({ email: '' });
+      readonly f = form(this.model, (p) => {
+        minLength(p.email, 5);
+        email(p.email);
+      });
+    }
+
+    it('lists EVERY displayed error, not just the first', async () => {
+      const { fixture, input, field } = await setup(MultiErrorHost);
+
+      // One value breaking two rules at once. Reporting one, then the next
+      // once it is fixed, reads as the form moving the goalposts — and the
+      // bubble has room for both.
+      await input.setValue('ab');
+      await input.blur();
+      await fixture.whenStable();
+      expect(await field.getErrorTexts()).toEqual([
+        'Enter at least 5 characters',
+        'Enter a valid email address',
+      ]);
+
+      // One atomic live region holding both, so the pair is announced as a
+      // single message rather than two interleaved ones.
+      const errorEl = document.querySelector('.tm-form-field__error');
+      expect(errorEl?.getAttribute('aria-live')).toBe('polite');
+      expect(errorEl?.getAttribute('aria-atomic')).toBe('true');
     });
   });
 

@@ -55,8 +55,14 @@ const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(n
       [disabled]="core().findMatchCount() === 0"
       (click)="core().findStep(-1)"
     >
-      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <polyline points="4,10 8,6 12,10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+      <svg viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true">
+        <path d="m18 15-6-6-6 6" />
       </svg>
     </button>
     <button
@@ -67,8 +73,14 @@ const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(n
       [disabled]="core().findMatchCount() === 0"
       (click)="core().findStep(1)"
     >
-      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <polyline points="4,6 8,10 12,6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+      <svg viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true">
+        <path d="m6 9 6 6 6-6" />
       </svg>
     </button>
     <button
@@ -78,8 +90,15 @@ const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(n
       [attr.aria-label]="closeLabel()"
       (click)="core().closeFind()"
     >
-      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+      <svg viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true">
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
       </svg>
     </button>
   `,

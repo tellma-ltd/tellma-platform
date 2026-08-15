@@ -24,7 +24,13 @@ import { Directionality } from '@angular/cdk/bidi';
 import type { FieldTree } from '@angular/forms/signals';
 
 import type { TmCellEdit, TmRowId } from '@tellma/core-ui/contracts';
-import { TM_ACTIVE_LOCALE, TM_CALENDAR, TM_UI_TRANSLATE } from '@tellma/core-ui';
+import {
+  TM_ACTIVE_LOCALE,
+  TM_CALENDAR,
+  TM_FORM_FIELD_DEFAULTS,
+  TM_UI_TRANSLATE,
+  type TmControlSize,
+} from '@tellma/core-ui';
 import type { TmMenuItem } from '@tellma/core-ui/menu';
 
 import { TmGridColumn } from '../tm-grid-column';
@@ -42,6 +48,8 @@ import { ɵTmGridCore, type ɵTmGridTreeConfig } from './grid-core';
  */
 @Directive()
 export abstract class ɵTmGridBase<T> {
+  private readonly sizeDefaults = inject(TM_FORM_FIELD_DEFAULTS);
+
   /**
    * Stable identity of this grid definition — the key column widths (and,
    * with `contentKey`, scroll/selection/undo state) are remembered under.
@@ -89,8 +97,12 @@ export abstract class ɵTmGridBase<T> {
   readonly selectable = input(false, { transform: booleanAttribute });
   /** Extra context-menu items appended after the built-ins. */
   readonly extraMenuItems = input<readonly TmMenuItem[]>([]);
-  /** Row density. */
-  readonly size = input<'sm' | 'md' | 'lg'>('md');
+  /**
+   * Row density. Defaults to the workspace default from
+   * `TM_FORM_FIELD_DEFAULTS`, so a grid and the fields on the same screen
+   * agree about how dense the app is.
+   */
+  readonly size = input<TmControlSize>(this.sizeDefaults.size);
 
   /**
    * The checked row ids of a `selectable` grid. Fully independent of

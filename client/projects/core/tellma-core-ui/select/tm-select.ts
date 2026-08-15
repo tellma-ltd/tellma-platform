@@ -35,8 +35,9 @@ import {
   TM_FORM_FIELD_DEFAULTS,
   TM_UI_TRANSLATE,
   tmResolveFieldErrors,
+  type TmControlSize,
 } from '@tellma/core-ui';
-import { TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/form-field';
+import { TM_FORM_FIELD_CONTROL, TmFormField } from '@tellma/core-ui/form-field';
 import { tmCreateAnchoredOverlay } from '@tellma/core-ui/private';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
@@ -114,14 +115,17 @@ let nextUniqueId = 0;
       @if (pending()) {
         <tm-spinner class="tm-select__spinner" />
       }
-      <svg class="tm-select__caret" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <polyline
-          points="4,6 8,10 12,6"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
+      <svg
+        class="tm-select__caret"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="m6 9 6 6 6-6" />
       </svg>
     </div>
 
@@ -158,14 +162,17 @@ let nextUniqueId = 0;
                 <span class="tm-option__content">
                   <ng-container [ngTemplateOutlet]="option.contentTemplate()" />
                 </span>
-                <svg class="tm-option__check" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <polyline
-                    points="3.5,8.5 6.5,11.5 12.5,4.5"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
+                <svg
+                  class="tm-option__check"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.75"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M20 6 9 17l-5-5" />
                 </svg>
               </li>
             }
@@ -184,8 +191,9 @@ let nextUniqueId = 0;
     '[class.tm-select--open]': 'expanded()',
     '[class.tm-select--disabled]': 'disabled()',
     '[class.tm-select--invalid]': 'showsInvalid()',
-    '[class.tm-select--sm]': 'size() === "sm"',
-    '[class.tm-select--lg]': 'size() === "lg"',
+    '[class.tm-select--md]': 'effectiveSize() === "md"',
+    '[class.tm-select--sm]': 'effectiveSize() === "sm"',
+    '[class.tm-select--lg]': 'effectiveSize() === "lg"',
   },
 })
 export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefined> {
@@ -194,6 +202,8 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   private readonly defaults = inject(TM_FORM_FIELD_DEFAULTS);
   /** The enclosing grid cell's registration sink, if any — absent standalone. */
   private readonly cellHost = inject(TM_CELL_EDITOR_HOST, { optional: true });
+  /** The enclosing form field, if any — decides whether the size ladder is inherited. */
+  private readonly field = inject(TmFormField, { optional: true });
 
   // ---- FormValueControl<T | undefined> + optional state inputs (§5) ----
   /** The selected domain value — THE source of truth. */
@@ -238,8 +248,23 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
    * AFTER them, never over them.
    */
   readonly ariaDescribedby = input<string | null>(null, { alias: 'aria-describedby' });
-  /** Height/density variant; defaults to the workspace-wide form-field default. */
-  readonly size = input<'sm' | 'md' | 'lg'>(this.defaults.size);
+  /**
+   * Size step. Unset, a select inside a `tm-form-field` follows the FIELD's
+   * size (the field publishes its ladder as inheritable locals), and a bare
+   * select follows the workspace-wide control default.
+   */
+  readonly size = input<TmControlSize | undefined>(undefined);
+
+  /**
+   * The size step the host classes apply. Deliberately `undefined` for an
+   * unsized select inside a field: a size class would re-declare the ladder
+   * locals on this host, and an element's own custom property always beats
+   * an inherited one — exactly what must NOT happen when the field's size
+   * is meant to reach the trigger and its dropdown rows.
+   */
+  protected readonly effectiveSize = computed(
+    () => this.size() ?? (this.field === null ? this.defaults.size : undefined),
+  );
   /** Emits the committed value whenever the user activates an option. */
   readonly selectionChange = output<T>();
   /** Emits when the options panel opens. */
@@ -324,15 +349,30 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   /** The field-provided label id, bound as aria-labelledby on the trigger. */
   protected readonly ariaLabelledBy = computed(() => this.labelIdFromField());
 
-  /** Whether invalidity is surfaced (aria-invalid) — follows the error-display policy. */
-  protected readonly showsInvalid = computed(() =>
-    this.errorDisplay({
-      invalid: this.invalid(),
-      touched: this.touched(),
-      dirty: this.dirty(),
-      pending: this.pending(),
-    }),
+  /** Whether the enclosing field displays an error this control must mark (see `setFieldError`). */
+  private readonly fieldError = signal(false);
+
+  /**
+   * Whether invalidity is surfaced (aria-invalid) — follows the
+   * error-display policy, or the enclosing field's own displayed error: the
+   * field's plain `error` input never reaches this control's bound state,
+   * and the select owns the only chrome there is to mark.
+   */
+  protected readonly showsInvalid = computed(
+    () =>
+      this.fieldError() ||
+      this.errorDisplay({
+        invalid: this.invalid(),
+        touched: this.touched(),
+        dirty: this.dirty(),
+        pending: this.pending(),
+      }),
   );
+
+  /** Receives whether the enclosing field displays an error (its plain `error` input included). */
+  setFieldError(showsError: boolean): void {
+    this.fieldError.set(showsError);
+  }
 
   /** Domain value → the stable primitive key aria selects on. */
   keyOf(value: T): unknown {

@@ -58,6 +58,9 @@ export class App {
   private readonly urlDark =
     new URLSearchParams(this.document.location.search).get('theme') === 'dark';
 
+  /** Read the same way as the theme, and for the same first-paint reason. */
+  private readonly urlSize = new URLSearchParams(this.document.location.search).get('size');
+
   protected readonly theme = computed(() => {
     const query = this.query();
     if (query === undefined) {
@@ -70,6 +73,17 @@ export class App {
       ? ('rtl' as const)
       : ('ltr' as const),
   );
+
+  /**
+   * The workspace-wide control size. Unlike theme and direction this is an
+   * injected provider value rather than a DOM attribute, so switching it
+   * navigates hard instead of updating in place — the shell is a dev tool
+   * and a reload is a fair price for reading the value at bootstrap.
+   */
+  protected readonly size = computed(() => {
+    const size = this.query()?.get('size') ?? this.urlSize;
+    return size === 'md' || size === 'lg' ? size : 'sm';
+  });
 
   constructor() {
     effect(() => {
@@ -99,5 +113,16 @@ export class App {
   /** Switches the ambient display calendar for every story at once. */
   protected setCalendar(event: Event): void {
     this.calendars.id.set((event.target as HTMLSelectElement).value as ShowcaseCalendarId);
+  }
+
+  /**
+   * Switches the workspace-wide control size. A full page load, not a
+   * router navigation: the size is read once when `provideTellmaUi()` runs
+   * at bootstrap, so nothing already on screen would pick up a new value.
+   */
+  protected setSize(event: Event): void {
+    const url = new URL(this.document.location.href);
+    url.searchParams.set('size', (event.target as HTMLSelectElement).value);
+    this.document.location.assign(url.toString());
   }
 }

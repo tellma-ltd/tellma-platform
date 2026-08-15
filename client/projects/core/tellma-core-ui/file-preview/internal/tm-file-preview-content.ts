@@ -6,7 +6,7 @@
 import { Component, computed, ElementRef, inject, type OnDestroy, signal } from '@angular/core';
 import { DomSanitizer, type SafeResourceUrl } from '@angular/platform-browser';
 
-import { TM_UI_TRANSLATE, TmL10n } from '@tellma/core-ui';
+import { TM_FORM_FIELD_DEFAULTS, TM_UI_TRANSLATE, TmL10n } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
 import { TM_MODAL_DATA, TmModalFooter } from '@tellma/core-ui/modal';
 import { TmSpinner } from '@tellma/core-ui/spinner';
@@ -40,6 +40,22 @@ const TEXT_CAP_BYTES = 1024 * 1024;
         }
         @case ('error') {
           <div class="tm-preview__card">
+            <!-- Circle-x, not circle-!: the fetch failed and there is
+                 nothing here for the reader to correct. -->
+            <svg
+              class="tm-preview__card-icon tm-preview__card-icon--error"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <path d="m15 9-6 6" />
+              <path d="m9 9 6 6" />
+            </svg>
             <p class="tm-preview__card-title">{{ loadErrorLabel() }}</p>
           </div>
         }
@@ -85,8 +101,28 @@ const TEXT_CAP_BYTES = 1024 * 1024;
             }
             @default {
               <div class="tm-preview__card">
-                <p class="tm-preview__card-title">{{ unsupportedLabel() }}</p>
-                <p class="tm-preview__card-hint">{{ unsupportedHintLabel() }}</p>
+                <!-- A document glyph, not an error one: nothing went wrong,
+                     this kind simply has no viewer. -->
+                <svg
+                  class="tm-preview__card-icon"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.75"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+                  <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+                  <path d="M10 9H8" />
+                  <path d="M16 13H8" />
+                  <path d="M16 17H8" />
+                </svg>
+                <div>
+                  <p class="tm-preview__card-title">{{ unsupportedLabel() }}</p>
+                  <p class="tm-preview__card-hint">{{ unsupportedHintLabel() }}</p>
+                </div>
               </div>
             }
           }
@@ -98,11 +134,8 @@ const TEXT_CAP_BYTES = 1024 * 1024;
            the modal is already open and focused when a lazy load fails. -->
       <div class="tm-preview__live" role="status">{{ liveMessage() }}</div>
     </div>
-    <!-- The PDF branch has NO footer: the browser's viewer brings its own
-         print and download chrome, so ours would only repeat it — and a
-         size line alone does not earn a band across a document the user is
-         trying to read. Every other kind keeps it. -->
-    @if (viewKind() !== 'pdf') {
+    <!-- Whether there is a footer at all is decided by showFooter(). -->
+    @if (showFooter()) {
       <div tmModalFooter class="tm-preview__footer">
         <span class="tm-preview__size">{{ sizeText() }}</span>
         @if (canPrint()) {
@@ -116,8 +149,15 @@ const TEXT_CAP_BYTES = 1024 * 1024;
           </button>
         }
         @if (downloadUrl(); as url) {
+          <!-- An anchor, because the download attribute needs one, but
+               wearing the button classes rather than a hand-copied
+               reproduction of them: the classes come from tmButton's own
+               global stylesheet, and the SIZE class is derived from the
+               same injected workspace default the Print tmButton beside it
+               resolves — so the two actions stay the same height under any
+               workspace size. -->
           <a
-            class="tm-preview__download"
+            [class]="downloadClasses"
             data-tm-preview-action="download"
             [href]="url"
             [download]="file.name"
@@ -137,6 +177,22 @@ export class ɵTmFilePreviewContent implements OnDestroy {
   private readonly l10n = inject(TmL10n);
 
   protected readonly file = inject<TmPreviewFile>(TM_MODAL_DATA);
+
+  private readonly defaults = inject(TM_FORM_FIELD_DEFAULTS);
+  /**
+   * The download anchor's button classes. An anchor cannot BE a tmButton
+   * (the directive's selector is button-only), so its size class is
+   * computed from the workspace default exactly the way TmButton's host
+   * bindings compute theirs — hard-coding a step here is how the two
+   * footer actions once drifted apart under a non-default size.
+   */
+  protected readonly downloadClasses =
+    'tm-button tm-button--primary' +
+    (this.defaults.size === 'sm'
+      ? ' tm-button--sm'
+      : this.defaults.size === 'lg'
+        ? ' tm-button--lg'
+        : '');
 
   protected readonly loadErrorLabel = this.translate('preview.loadError');
   protected readonly unsupportedLabel = this.translate('preview.unsupported');
@@ -183,6 +239,23 @@ export class ɵTmFilePreviewContent implements OnDestroy {
     return this.truncated() ? this.truncatedLabel() : '';
   });
 
+  /**
+   * Whether the footer band renders at all. It carries a size line and the
+   * actions; with none of them — while the file is still loading, most
+   * often — it is an empty stripe across the viewer.
+   *
+   * The PDF branch never has one: the browser's own viewer brings its own
+   * print and download chrome, so ours would only repeat it.
+   */
+  // Each disjunct mirrors the guard on the matching row in the template —
+  // a truthy `downloadUrl`, not a defined one, because its empty value is
+  // null and `null !== undefined` would hold the band open on every load.
+  protected readonly showFooter = computed(
+    () =>
+      this.viewKind() !== 'pdf' &&
+      (this.sizeText() !== '' || this.canPrint() || (this.downloadUrl() ?? '') !== ''),
+  );
+
   /** Localized size line (the active locale drives the digits). */
   protected readonly sizeText = computed(() => {
     const size = this.file.size;
@@ -199,6 +272,10 @@ export class ɵTmFilePreviewContent implements OnDestroy {
     return new Intl.NumberFormat(locale, {
       style: 'unit',
       unit,
+      // The SHORT form of `byte` is the bare word — "312 byte". kB and MB
+      // are abbreviations and read better short; only bytes need spelling
+      // out, and the long form is what makes the plural agree per locale.
+      unitDisplay: unit === 'byte' ? 'long' : 'short',
       maximumFractionDigits: 1,
     }).format(value);
   });

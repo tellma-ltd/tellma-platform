@@ -18,6 +18,30 @@
   gap: var(--tabs-gap);
   overflow-x: auto;
   border-block-end: var(--border-width) solid var(--border-subtle);
+  scrollbar-width: none;
+  /* Touch drags the strip sideways; the wheel is translated in the
+     component (a vertical wheel does not scroll a horizontal box on its
+     own). Both matter because the scrollbar is hidden. `manipulation`
+     (native pans + pinch, no double-tap zoom), NOT `pan-x`: the vertical
+     variant inherits this rule and pan-x would leave its overflowing
+     column unscrollable by touch, while on the horizontal strip it would
+     trap vertical page pans that merely start on a tab. */
+  touch-action: manipulation;
+  overscroll-behavior-inline: contain;
+}
+
+/* A strip with more to reach fades out at its TRAILING edge instead of
+   stopping mid-glyph: a hard cut looks like the last tab is named
+   "Approva", while a fade reads as "there is more this way". It comes off
+   at the end of the strip — a fade over the last tab promises a scroll that
+   would do nothing. The mask is direction-aware, because "trailing" is not
+   a physical side. */
+.tm-tab-group__list--faded {
+  mask-image: linear-gradient(to right, #000 88%, transparent);
+}
+
+:host-context([dir='rtl']) .tm-tab-group__list--faded {
+  mask-image: linear-gradient(to left, #000 88%, transparent);
 }
 
 .tm-tab-group__list[aria-orientation='vertical'] {
@@ -26,22 +50,25 @@
   overflow-y: auto;
   border-block-end: none;
   border-inline-end: var(--border-width) solid var(--border-subtle);
+  /* A column of nav rows has no trailing edge to fade. */
+  mask-image: none;
 }
 
 .tm-tab-group__tab {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-1);
+  gap: var(--space-2);
   flex: none;
   block-size: var(--tabs-height);
   padding-inline: var(--tabs-label-padding-x);
   border: none;
   background: transparent;
   font-family: var(--font-ui);
-  font-size: var(--text-sm);
+  font-size: var(--tabs-font-size);
   font-weight: var(--weight-medium);
   color: var(--text-secondary);
+  white-space: nowrap;
   cursor: pointer;
   /* The indicator draws inside the tab box — activating never reflows. */
   box-shadow: inset 0 calc(-1 * var(--tabs-indicator-thickness)) 0 transparent;
@@ -51,13 +78,13 @@
 }
 
 .tm-tab-group__tab:hover:not([aria-disabled='true']) {
-  color: var(--text-body);
+  color: var(--text-strong);
   background: var(--surface-hover);
 }
 
 .tm-tab-group__tab[aria-selected='true'] {
   color: var(--text-strong);
-  box-shadow: inset 0 calc(-1 * var(--tabs-indicator-thickness)) 0 var(--color-primary);
+  box-shadow: inset 0 calc(-1 * var(--tabs-indicator-thickness)) 0 var(--accent);
 }
 
 /* aria-disabled, not :disabled — a disabled tab stays FOCUSABLE (the aria
@@ -88,20 +115,27 @@
    selected. This way the ring still frames the other three edges. */
 .tm-tab-group__tab[aria-selected='true']:focus-visible {
   box-shadow:
-    inset 0 calc(-1 * var(--tabs-indicator-thickness)) 0 var(--color-primary),
+    inset 0 calc(-1 * var(--tabs-indicator-thickness)) 0 var(--accent),
     inset 0 0 0 var(--focus-ring-width) var(--focus-ring-color);
 }
 
-/* Vertical strips: the indicator moves to the inline-end edge (adjacent
-   to the panel). The transparent border reserves its space on every tab,
-   so selecting never reflows. */
+/* A vertical strip is a nav LIST, not a header: shorter rows, quieter type,
+   start-aligned like the labels it stands beside, and the indicator moves to
+   the inline-start edge where a nav marker belongs. The transparent border
+   reserves its space on every tab, so selecting never reflows. */
 .tm-tab-group__list[aria-orientation='vertical'] .tm-tab-group__tab {
-  border-inline-end: var(--tabs-indicator-thickness) solid transparent;
+  justify-content: flex-start;
+  block-size: var(--tabs-vertical-height);
+  padding-inline: var(--tabs-vertical-padding-x);
+  border-inline-start: var(--tabs-indicator-thickness) solid transparent;
+  border-radius: var(--tabs-vertical-radius);
+  font-size: var(--tabs-vertical-font-size);
   box-shadow: none;
 }
 
 .tm-tab-group__list[aria-orientation='vertical'] .tm-tab-group__tab[aria-selected='true'] {
-  border-inline-end-color: var(--color-primary);
+  background: var(--surface-selected);
+  border-inline-start-color: var(--accent);
 }
 
 .tm-tab-group__list[aria-orientation='vertical'] .tm-tab-group__tab:focus-visible {
@@ -124,9 +158,12 @@
     border-block-end: var(--tabs-indicator-thickness) solid Highlight;
   }
 
+  /* The vertical strip's selected tint is forced away with every other
+     background; its inline-start marker is what survives. */
+
   .tm-tab-group__list[aria-orientation='vertical'] .tm-tab-group__tab[aria-selected='true'] {
     border-block-end: none;
-    border-inline-end-color: Highlight;
+    border-inline-start-color: Highlight;
   }
 
   /* Forced colors flatten every text ink to CanvasText, so the disabled tint

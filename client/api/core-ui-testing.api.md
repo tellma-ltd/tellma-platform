@@ -123,10 +123,12 @@ export class TmFilePreviewHarness extends ComponentHarness {
 // @public
 export class TmFormFieldHarness extends ComponentHarness {
     getErrorText(): Promise<string | null>;
+    getErrorTexts(): Promise<string[]>;
     getHintText(): Promise<string | null>;
     getLabelText(): Promise<string | null>;
     hasRequiredMarker(): Promise<boolean>;
     static hostSelector: string;
+    isErrorPopoverOpen(): Promise<boolean>;
     labelClick(): Promise<void>;
 }
 

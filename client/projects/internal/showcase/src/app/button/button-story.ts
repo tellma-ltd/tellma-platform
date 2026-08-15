@@ -25,9 +25,12 @@ import { TmButton } from '@tellma/core-ui/button';
         <button tmButton variant="ghost">Ghost</button>
         <button tmButton variant="danger">Danger</button>
       </div>
+      <!-- Every step is stated: the workspace default is 'sm', so an
+           unsized button would render identically to the small one and the
+           ladder would look like it had two rungs. -->
       <div class="row">
         <button tmButton size="sm">Small</button>
-        <button tmButton>Medium</button>
+        <button tmButton size="md">Medium</button>
         <button tmButton size="lg">Large</button>
         <button tmButton disabled>Disabled</button>
       </div>
@@ -37,15 +40,18 @@ import { TmButton } from '@tellma/core-ui/button';
       <h3>Icons</h3>
       <div class="row">
         <button tmButton variant="primary">
-          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" width="16" height="16">
-            <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12h14" />
+            <path d="M12 5v14" />
           </svg>
           New record
         </button>
         <button tmButton aria-label="Search" data-testid="icon-only">
-          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" width="16" height="16">
-            <circle cx="7" cy="7" r="4.5" stroke="currentColor" />
-            <path d="m10.5 10.5 3 3" stroke="currentColor" stroke-linecap="round" />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.3-4.3" />
           </svg>
         </button>
       </div>
@@ -61,8 +67,11 @@ import { TmButton } from '@tellma/core-ui/button';
           [pending]="pending()"
           (click)="clicks.set(clicks() + 1)"
         >
-          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" width="16" height="16">
-            <path d="M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+            <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" />
+            <path d="M7 3v4a1 1 0 0 0 1 1h7" />
           </svg>
           Save changes
         </button>

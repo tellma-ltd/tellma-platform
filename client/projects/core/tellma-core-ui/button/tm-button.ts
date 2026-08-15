@@ -17,13 +17,14 @@ import {
   untracked,
 } from '@angular/core';
 
+import { TM_FORM_FIELD_DEFAULTS, type TmControlSize } from '@tellma/core-ui';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
 /** The brand-themed visual variants of {@link TmButton}. */
 export type TmButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
-/** The height scale of {@link TmButton} — aligned with the form-field heights. */
-export type TmButtonSize = 'sm' | 'md' | 'lg';
+/** The size scale of {@link TmButton} — the shared control size ladder. */
+export type TmButtonSize = TmControlSize;
 
 /**
  * Brand-themed button — a directive on the native `<button>`, which stays
@@ -67,11 +68,16 @@ export type TmButtonSize = 'sm' | 'md' | 'lg';
 export class TmButton {
   private readonly element = inject<ElementRef<HTMLButtonElement>>(ElementRef).nativeElement;
   private readonly environmentInjector = inject(EnvironmentInjector);
+  private readonly defaults = inject(TM_FORM_FIELD_DEFAULTS);
 
   /** The visual variant. Default `secondary` — the workhorse toolbar button. */
   readonly variant = input<TmButtonVariant>('secondary');
-  /** The height scale, mapped to the form-field height tokens. Default `md`. */
-  readonly size = input<TmButtonSize>('md');
+  /**
+   * The size step, mapped to the shared control size tokens. Defaults to
+   * the workspace default from `TM_FORM_FIELD_DEFAULTS`, so a button in a
+   * toolbar lines up with the fields beside it without being told twice.
+   */
+  readonly size = input<TmButtonSize>(this.defaults.size);
   /**
    * Async-action state: announces `aria-busy`, swallows click/Enter/Space
    * activation, hides the label (box size kept) and overlays a centered

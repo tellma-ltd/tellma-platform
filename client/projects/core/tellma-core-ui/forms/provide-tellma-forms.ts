@@ -42,23 +42,38 @@ export const TM_ERROR_DISPLAY = new InjectionToken<TmErrorDisplayPolicy>('TM_ERR
   factory: () => tmDefaultErrorDisplay,
 });
 
-/** Workspace-wide form-field defaults. */
+/** The height/type/padding step a control renders at. */
+export type TmControlSize = 'sm' | 'md' | 'lg';
+
+/**
+ * Workspace-wide defaults for every control that sits on the field size
+ * ladder — form fields, buttons, selects, entity pickers and data grids.
+ */
 export interface TmFormFieldDefaults {
-  /** The height/density variant fields use when they do not set one. */
-  readonly size: 'sm' | 'md' | 'lg';
+  /** The size step controls use when they do not set one. */
+  readonly size: TmControlSize;
   /** The visual required marker; announced via the localized string. */
   readonly requiredMarker: string;
 }
 
+/** The shipped default size step. */
+const DEFAULT_SIZE: TmControlSize = 'sm';
+
 /**
- * The workspace-wide form-field defaults. Defaults to size 'md' with a '*'
- * marker; customized via `provideTellmaForms({ formFieldDefaults })`.
+ * The workspace-wide control defaults. Customized via
+ * `provideTellmaForms({ formFieldDefaults })`.
+ *
+ * The default size is 'sm'. An ERP is read, not browsed: its screens are
+ * dense forms and long tables, and the number of rows on screen at once is
+ * a functional property of them, not a matter of taste. 'md' and 'lg' stay
+ * available per control, and a distribution that wants a roomier default
+ * everywhere changes it once here.
  */
 export const TM_FORM_FIELD_DEFAULTS = new InjectionToken<TmFormFieldDefaults>(
   'TM_FORM_FIELD_DEFAULTS',
   {
     providedIn: 'root',
-    factory: () => ({ size: 'md', requiredMarker: '*' }),
+    factory: () => ({ size: DEFAULT_SIZE, requiredMarker: '*' }),
   },
 );
 
@@ -86,7 +101,7 @@ export function provideTellmaForms(options: TmFormsOptions = {}): EnvironmentPro
           {
             provide: TM_FORM_FIELD_DEFAULTS,
             useValue: {
-              size: options.formFieldDefaults.size ?? 'md',
+              size: options.formFieldDefaults.size ?? DEFAULT_SIZE,
               requiredMarker: options.formFieldDefaults.requiredMarker ?? '*',
             } satisfies TmFormFieldDefaults,
           },

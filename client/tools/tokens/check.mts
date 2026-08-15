@@ -7,16 +7,19 @@
  * tokens:check — the build gate (§4, DoD 9):
  *   1. zod-parses the default preset (schema gate),
  *   2. runs the missing-ref gate (both schemes + the :lang() leading map),
- *   3. emits the generated JSON Schema into the package's assets.
+ *   3. checks every var() the library stylesheets read against what the
+ *      emitter actually produces (the dangling-var gate),
+ *   4. emits the generated JSON Schema into the package's assets.
  * Exits non-zero on any issue. Color-contrast accessibility is covered by
  * the axe browser battery, not here.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { globSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
-import { tmTokensDefault, tmValidateTokens } from '@tellma/core-ui-tokens';
+import { tmEmitCss, tmTokensDefault, tmValidateTokens } from '@tellma/core-ui-tokens';
+import { tmCheckCssRefs } from './css-refs.mjs';
 import { tmTokensZodSchema } from './zod-schema.mjs';
 
 const clientDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -40,10 +43,26 @@ if (issues.length > 0) {
   process.exit(1);
 }
 
-// 3. Generated JSON Schema (shipped as a package asset).
+// 3. Dangling-var gate: a name that misses is not a fallback — CSS drops the
+//    whole declaration, so the rule silently stops applying.
+const stylesheets = globSync(join(clientDir, 'projects', '**', '*.css')).filter(
+  (file) => !file.includes('tellma-core-ui-tokens'),
+);
+const dangling = tmCheckCssRefs(tmEmitCss(tmTokensDefault), stylesheets);
+if (dangling.length > 0) {
+  console.error(`tokens:check FAILED — ${dangling.length} dangling var() reference(s):`);
+  for (const problem of dangling) {
+    console.error(`  ${problem}`);
+  }
+  process.exit(1);
+}
+
+// 4. Generated JSON Schema (shipped as a package asset).
 const jsonSchema = z.toJSONSchema(tmTokensZodSchema, { target: 'draft-7' });
 const outDir = join(packageDir, 'generated');
 mkdirSync(outDir, { recursive: true });
 writeFileSync(join(outDir, 'tm-tokens.schema.json'), JSON.stringify(jsonSchema, null, 2) + '\n');
 
-console.log('tokens:check OK — schema, missing-ref (light+dark).');
+console.log(
+  `tokens:check OK — schema, missing-ref (light+dark), ${stylesheets.length} stylesheets scanned for dangling var().`,
+);

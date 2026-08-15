@@ -141,7 +141,7 @@ test.describe('search lifecycle', () => {
     await input(page).click();
     await expect(options(page)).toHaveCount(5); // capped
     const hint = page.locator('.tm-entity-picker__hint');
-    await expect(hint).toHaveText('Showing top 5 matches. Keep typing to refine.');
+    await expect(hint).toHaveText('Showing 5 matches. Type to refine.');
     await expect(hint).toHaveAttribute('aria-hidden', 'true');
     // Visually distinct from the command rows below it: smaller and muted,
     // so nothing about it reads as clickable.

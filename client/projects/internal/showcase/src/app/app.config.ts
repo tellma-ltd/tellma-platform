@@ -15,12 +15,27 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
 import { TranslocoService } from '@jsverse/transloco';
 
-import { provideTellmaUi, TM_ACTIVE_LOCALE, TM_CALENDAR } from '@tellma/core-ui';
+import {
+  provideTellmaUi,
+  TM_ACTIVE_LOCALE,
+  TM_CALENDAR,
+  type TmControlSize,
+} from '@tellma/core-ui';
 import { provideTellmaLocaleAr } from '@tellma/locale-ar';
 
 import { ShowcaseCalendar } from './i18n/showcase-calendar';
 
 import { routes } from './app.routes';
+
+/**
+ * The workspace-wide control size, read from `?size=` at bootstrap so a
+ * whole story can be compared against the design sheet at each step of the
+ * ladder. Anything unrecognized falls back to the library default.
+ */
+function sizeFromUrl(): TmControlSize {
+  const size = new URLSearchParams(window.location.search).get('size');
+  return size === 'md' || size === 'lg' || size === 'sm' ? size : 'sm';
+}
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -30,7 +45,7 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(),
     // The zero-config default path + the reference Arabic pack (its font
     // stylesheet rides the styles array in angular.json).
-    provideTellmaUi(),
+    provideTellmaUi({ forms: { formFieldDefaults: { size: sizeFromUrl() } } }),
     provideTellmaLocaleAr(),
     // The formatting-locale seam, exercised the way a distribution would:
     // UI language tags are bare (en/ar), but formatting nominates REGIONAL

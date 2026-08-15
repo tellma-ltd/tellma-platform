@@ -43,6 +43,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     readonly disabled: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly displayWith: _angular_core.InputSignal<((value: T) => string) | undefined>;
     protected readonly effectivePlaceholder: Signal<string>;
+    protected readonly effectiveSize: Signal<TmControlSize | undefined>;
     readonly errors: _angular_core.InputSignal<readonly ValidationError.WithOptionalFieldTree[]>;
     protected readonly expanded: _angular_core.WritableSignal<boolean>;
     focus(options?: FocusOptions): void;
@@ -66,10 +67,11 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     seed(text: string): void;
     readonly selectionChange: _angular_core.OutputEmitterRef<T>;
     setDescribedByIds(ids: readonly string[]): void;
+    setFieldError(showsError: boolean): void;
     setLabelId(id: string | null): void;
     protected readonly showsInvalid: Signal<boolean>;
     protected readonly showsPlaceholder: Signal<boolean>;
-    readonly size: _angular_core.InputSignal<"sm" | "md" | "lg">;
+    readonly size: _angular_core.InputSignal<TmControlSize | undefined>;
     readonly text: Signal<string | null>;
     readonly touch: _angular_core.OutputEmitterRef<void>;
     readonly touched: _angular_core.InputSignalWithTransform<boolean, unknown>;

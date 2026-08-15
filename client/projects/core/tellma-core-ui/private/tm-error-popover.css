@@ -1,0 +1,120 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-error-popover — the shared validation bubble. A card surface with an
+   error-tinted hairline, not a filled error banner: the control it points
+   at already carries the red, and a second solid block of it next to a
+   dense form reads as alarm rather than information. */
+
+:host {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  max-inline-size: var(--error-popover-max-inline-size);
+  /* Symmetric, so the gap survives the overlay flipping the bubble above. */
+  margin-block: var(--error-popover-offset);
+  padding-block: var(--error-popover-padding-y);
+  padding-inline: var(--error-popover-padding-x);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--error-border);
+  border-radius: var(--error-popover-radius);
+  box-shadow: var(--error-popover-shadow);
+  font-family: var(--font-ui);
+  font-size: var(--error-popover-font-size);
+  line-height: var(--leading-snug);
+  color: var(--error);
+  /* The bubble hangs OVER whatever is below the thing it points at — the
+     next field, the next grid row. Transparent to the pointer, so it never
+     makes that unreachable; only the words themselves take the pointer (see
+     below), because the reader has to be able to select and copy them. */
+  pointer-events: none;
+}
+
+.tm-error-popover__message {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--error-popover-gap);
+  min-inline-size: 0;
+}
+
+.tm-error-popover__icon {
+  flex: none;
+  inline-size: var(--error-popover-icon-size);
+  block-size: var(--error-popover-icon-size);
+  /* Optically centered on its message's FIRST line rather than on the whole
+     message box, so a glyph beside a wrapped message stays on the line it
+     bullets. */
+  margin-block-start: calc((1lh - var(--error-popover-icon-size)) / 2);
+}
+
+/* The one part that takes the pointer: an error is often the thing you
+   paste into a support message, and selecting it means pressing into it. */
+.tm-error-popover__text {
+  min-inline-size: 0;
+  pointer-events: auto;
+  user-select: text;
+  cursor: auto;
+}
+
+/* …unless the host asked for a wholly inert bubble (see `selectable`). */
+:host(.tm-error-popover--static) .tm-error-popover__text {
+  pointer-events: none;
+  user-select: none;
+}
+
+/* A rotated square showing two of its borders. The offset lifts it far
+   enough that its rotated corner clears the bubble's own border. */
+.tm-error-popover__arrow {
+  position: absolute;
+  inset-block-start: calc(var(--error-popover-arrow-size) / -1.5);
+  inset-inline-start: var(--error-popover-arrow-inset);
+  inline-size: var(--error-popover-arrow-size);
+  block-size: var(--error-popover-arrow-size);
+  background: var(--surface-card);
+  /* stylelint-disable-next-line liberty/use-logical-spec --
+     The visible corner of a 45deg-rotated square is a PHYSICAL corner: the
+     tip must point up whatever the direction. Logical borders would mirror
+     under RTL and swing the tip sideways. The inline-start INSET above is
+     logical on purpose, so the arrow still tracks the field's leading edge. */
+  border-top: var(--border-width) solid var(--error-border);
+  /* stylelint-disable-next-line liberty/use-logical-spec -- see above. */
+  border-left: var(--border-width) solid var(--error-border);
+  transform: rotate(45deg);
+}
+
+/* Flipped above what it points at: the arrow moves to the lower edge and
+   shows its opposite pair of borders, so the tip still points at the host. */
+:host(.tm-error-popover--above) .tm-error-popover__arrow {
+  inset-block-start: auto;
+  inset-block-end: calc(var(--error-popover-arrow-size) / -1.5);
+  /* stylelint-disable-next-line liberty/use-logical-spec -- physical, as above. */
+  border-top: 0;
+  /* stylelint-disable-next-line liberty/use-logical-spec -- physical, as above. */
+  border-left: 0;
+  /* stylelint-disable-next-line liberty/use-logical-spec -- physical, as above. */
+  border-bottom: var(--border-width) solid var(--error-border);
+  /* stylelint-disable-next-line liberty/use-logical-spec -- physical, as above. */
+  border-right: var(--border-width) solid var(--error-border);
+}
+
+@media (forced-colors: active) {
+  /* Tints and shadows are forced away; the border and the glyph are what
+     is left to separate the bubble from the page behind it. */
+  :host {
+    background: Canvas;
+    border-color: CanvasText;
+    color: CanvasText;
+  }
+
+  .tm-error-popover__arrow {
+    background: Canvas;
+    border-color: CanvasText;
+  }
+}

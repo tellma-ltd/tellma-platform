@@ -104,9 +104,8 @@ describe('TmFilePreview', () => {
     expect(img.getAttribute('alt')).toBe('photo.png');
     expect(img.src.startsWith('blob:')).toBe(true);
 
-    const harness = await TestbedHarnessEnvironment.documentRootLoader(fixture).getHarness(
-      TmFilePreviewHarness,
-    );
+    const harness =
+      await TestbedHarnessEnvironment.documentRootLoader(fixture).getHarness(TmFilePreviewHarness);
     expect(await harness.hasPrintButton()).toBe(true); // images only
     expect(await harness.getDownloadName()).toBe('photo.png');
     ref.close();
@@ -141,9 +140,8 @@ describe('TmFilePreview', () => {
     expect(content()!.querySelector('iframe')).toBeNull();
     expect(content()!.querySelector('.tm-preview__text')).toBeNull();
     expect(document.title).not.toBe('pwned');
-    const harness = await TestbedHarnessEnvironment.documentRootLoader(fixture).getHarness(
-      TmFilePreviewHarness,
-    );
+    const harness =
+      await TestbedHarnessEnvironment.documentRootLoader(fixture).getHarness(TmFilePreviewHarness);
     expect(await harness.getCardTitle()).toBe('Preview not available');
     expect(await harness.getDownloadName()).toBe('page.html'); // download still offered
     expect(await harness.hasPrintButton()).toBe(false);
@@ -163,9 +161,7 @@ describe('TmFilePreview', () => {
         source: new Blob(['<script>document.title="pwned"</script>'], { type: 'text/html' }),
       });
       await until(fixture, () => content()?.querySelector('iframe.tm-preview__frame') !== null);
-      const frameUrl = content()!
-        .querySelector('iframe.tm-preview__frame')!
-        .getAttribute('src')!;
+      const frameUrl = content()!.querySelector('iframe.tm-preview__frame')!.getAttribute('src')!;
       const served = await fetch(frameUrl).then((response) => response.blob());
       expect(served.type).toBe('application/pdf'); // re-wrapped, never text/html
       expect(document.title).not.toBe('pwned');
@@ -293,10 +289,7 @@ describe('TmFilePreview', () => {
       type: 'video/x-not-a-real-codec',
       source: new Blob([new Uint8Array(64)], { type: 'video/x-not-a-real-codec' }),
     });
-    await until(
-      fixture,
-      () => document.querySelectorAll('tm-file-preview-content').length === 2,
-    );
+    await until(fixture, () => document.querySelectorAll('tm-file-preview-content').length === 2);
     const second = document.querySelectorAll('tm-file-preview-content')[1];
     await until(fixture, () => second.querySelector('.tm-preview__card') !== null);
     expect(second.querySelector('video')).toBeNull();
@@ -323,9 +316,8 @@ describe('TmFilePreview', () => {
       source: () => new Promise<Blob>((resolve) => (resolveBlob = resolve)),
     });
     await until(fixture, () => content() !== null);
-    const harness = await TestbedHarnessEnvironment.documentRootLoader(fixture).getHarness(
-      TmFilePreviewHarness,
-    );
+    const harness =
+      await TestbedHarnessEnvironment.documentRootLoader(fixture).getHarness(TmFilePreviewHarness);
     expect(await harness.isLoading()).toBe(true);
 
     resolveBlob(new Blob(['later'], { type: 'text/plain' }));
@@ -339,9 +331,9 @@ describe('TmFilePreview', () => {
     });
     await until(fixture, () =>
       Boolean(
-        document.querySelectorAll('tm-file-preview-content')[1]?.querySelector(
-          '.tm-preview__card-title',
-        ),
+        document
+          .querySelectorAll('tm-file-preview-content')[1]
+          ?.querySelector('.tm-preview__card-title'),
       ),
     );
     const second = document.querySelectorAll('tm-file-preview-content')[1];
@@ -378,6 +370,49 @@ describe('TmFilePreview', () => {
     });
     await until(fixture, () => content()?.querySelector('img.tm-preview__media') !== null);
     expect(content()!.querySelector('.tm-preview__footer')).not.toBeNull();
+    expect(content()!.querySelector('[data-tm-preview-action="download"]')).not.toBeNull();
+  });
+
+  it('spells out the unit under a kilobyte and abbreviates it above', async () => {
+    const { fixture, preview } = await setup();
+    const small = preview.open({
+      name: 'tiny.txt',
+      type: 'text/plain',
+      size: 312,
+      source: new Blob(['x']),
+    });
+    await until(fixture, () => content()?.querySelector('.tm-preview__size') !== null);
+    // "312 byte" reads as a typo; at this scale the word is short enough to
+    // spell out, which the larger units are not.
+    expect(content()!.querySelector('.tm-preview__size')!.textContent).toBe('312 bytes');
+
+    // One viewer at a time: the second file needs the first one closed.
+    small.close();
+    await until(fixture, () => content() === null);
+    preview.open({ name: 'bigger.txt', type: 'text/plain', size: 2048, source: new Blob(['x']) });
+    await until(fixture, () => content()?.querySelector('.tm-preview__size') !== null);
+    expect(content()!.querySelector('.tm-preview__size')!.textContent).toBe('2 kB');
+  });
+
+  it('a footer with nothing to put in it does not render', async () => {
+    const { fixture, preview } = await setup();
+    let settle: ((blob: Blob) => void) | undefined;
+    // No size on the descriptor, and a loader still in flight: there is no
+    // size line, nothing to print and nothing to download yet.
+    preview.open({
+      name: 'slow.txt',
+      type: 'text/plain',
+      source: () =>
+        new Promise<Blob>((resolve) => {
+          settle = resolve;
+        }),
+    });
+    await until(fixture, () => settle !== undefined);
+    expect(content()!.querySelector('.tm-preview__footer')).toBeNull();
+
+    settle!(new Blob(['finally here'], { type: 'text/plain' }));
+    await until(fixture, () => content()?.querySelector('.tm-preview__footer') !== null);
+    // The download URL is what brings it back, so it comes back with content.
     expect(content()!.querySelector('[data-tm-preview-action="download"]')).not.toBeNull();
   });
 

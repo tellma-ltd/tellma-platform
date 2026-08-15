@@ -18,10 +18,14 @@
   flex-direction: column;
   block-size: 100%;
   min-block-size: 0;
-  /* The check/dash glyph mask (the same polyline tm-checkbox draws), defined
-     once and referenced by every boolean/checkbox glyph. */
-  --tm-grid-check-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpolyline points='3.5,8.5 6.5,11.5 12.5,4.5' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  --tm-grid-dash-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8h8' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+  /* The check/dash glyph mask — the SAME path tm-checkbox draws, in the
+     same 24 viewBox at the same stroke weight, defined once and referenced
+     by every boolean/checkbox glyph. A grid paints thousands of these as
+     plain divs rather than components, which is why it is a mask and not an
+     <svg>; the price is that the geometry lives in two files and the two
+     have to be changed together. */
+  --tm-grid-check-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20 6 9 17l-5-5' fill='none' stroke='%23000' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --tm-grid-dash-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12h14' fill='none' stroke='%23000' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 .tm-grid__scroller {
@@ -30,9 +34,19 @@
   box-sizing: border-box;
   flex: 1 1 auto;
   min-block-size: 0;
+
+  /* RULED is the editable look: every cell boundary drawn, which is what
+     you want tabbing through forty columns of line entry. The rule color
+     goes transparent rather than the border going away, so switching looks
+     never shifts a single pixel of layout. */
+  --tm-grid-rule: var(--grid-line);
+  --tm-grid-cell-font-size: var(--grid-cell-font-size);
+  --tm-grid-cell-padding-x: var(--grid-cell-padding-x);
+
   font-family: var(--font-ui);
-  font-size: var(--field-font-size);
-  border: var(--border-width) solid var(--grid-line);
+  font-size: var(--tm-grid-cell-font-size);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-sm);
   /* Touch: pan + pinch stay native, double-tap zoom is dropped — a
      double-tap must synthesize dblclick (opens the editor) without the
      300ms tap delay. */
@@ -45,6 +59,17 @@
      the sticky header (z-index 2, opaque header cells), leaving the outline
      thinner up top than on the sides. Outside the border, nothing covers it. */
   outline-offset: 0;
+}
+
+/* PLAIN is the readonly look: no cell rules at all, zebra striping instead,
+   and a little more air per cell. A list screen is scanned by row, and the
+   vertical rules that help you tab through line entry only chop the rows up
+   when all you are doing is reading them. A grid picks its look from its
+   mode, not from taste. */
+.tm-grid__scroller--readonly {
+  --tm-grid-rule: transparent;
+  --tm-grid-cell-font-size: var(--grid-plain-cell-font-size);
+  --tm-grid-cell-padding-x: var(--grid-plain-cell-padding-x);
 }
 
 /* ---- sticky header ---- */
@@ -61,11 +86,15 @@
 .tm-grid__corner,
 .tm-grid__colhdr {
   box-sizing: border-box;
-  padding-inline: var(--space-2);
+  padding-inline: var(--tm-grid-cell-padding-x);
   background: var(--grid-header-bg);
   color: var(--grid-header-text);
-  border-block-end: var(--border-width) solid var(--grid-line);
-  border-inline-end: var(--border-width) solid var(--grid-line);
+  /* The header's lower edge is drawn at full strength in BOTH looks: it
+     separates chrome from data, which is a different job from separating
+     one cell from the next. */
+  border-block-end: var(--border-width) solid var(--grid-header-line);
+  border-inline-end: var(--border-width) solid var(--tm-grid-rule);
+  font-size: var(--grid-header-font-size);
   font-weight: var(--weight-medium);
   line-height: calc(var(--grid-row-height) - var(--border-width));
   white-space: nowrap;
@@ -131,9 +160,14 @@
   box-sizing: border-box;
   padding-inline: var(--space-1);
   text-align: center;
-  font-size: var(--text-xs);
+  font-size: var(--grid-row-header-font-size);
+  font-variant-numeric: tabular-nums;
   line-height: calc(var(--grid-row-height) - var(--border-width));
   background: var(--grid-header-bg);
+  /* --text-muted is the quieter ink the brand sheet draws here, but at this
+     size on this surface it measures 3.04:1 and the axe gate rejects it.
+     --text-secondary is the quietest tone that clears AA, and the tiny type
+     already says "gutter, not data". */
   color: var(--grid-header-text);
   border-block-end: var(--border-width) solid var(--grid-line);
   border-inline-end: var(--border-width) solid var(--grid-line);
@@ -183,8 +217,9 @@
 
 /* The check/dash glyph is the SAME SVG tm-checkbox draws, painted through a
    mask so it matches pixel-for-pixel (the old CSS border-rotate checkmark
-   sat slightly off-centre). The mark fills the box; the polyline's own
-   inset gives the symmetric padding. */
+   sat slightly off-centre). The mask is sized to the checkbox's GLYPH box,
+   not the element: sizing it `contain` would scale the same viewBox to the
+   full 18px box here against 14px there, and the two would visibly differ. */
 .tm-grid__check--on::after,
 .tm-grid__check--mixed::after {
   content: '';
@@ -193,7 +228,7 @@
   block-size: 100%;
   background-color: var(--color-on-primary);
   mask-position: center;
-  mask-size: contain;
+  mask-size: var(--checkbox-glyph-size);
   mask-repeat: no-repeat;
 }
 
@@ -208,7 +243,7 @@
 .tm-grid__cell {
   position: relative; /* anchors the editor overlay and the pending spinner */
   box-sizing: border-box;
-  padding-inline: var(--space-2);
+  padding-inline: var(--tm-grid-cell-padding-x);
   line-height: calc(var(--grid-row-height) - var(--border-width));
   overflow: hidden;
   text-overflow: ellipsis;
@@ -217,17 +252,12 @@
      the I-beam the text content would otherwise imply (a click-drag selects
      the range, it never highlights the glyph text). */
   cursor: default;
-  border-block-end: var(--border-width) solid var(--grid-line);
+  border-block-end: var(--border-width) solid var(--tm-grid-rule);
+  border-inline-end: var(--border-width) solid var(--tm-grid-rule);
   /* stylelint-disable-next-line declaration-property-value-disallowed-list --
      cells take real (roving) focus; the active-cell inset ring below is the
      equally-visible substitute. */
   outline: none;
-}
-
-/* Editable grids draw the full gridline mesh; readonly drops the vertical
-   lines and stripes rows instead (zebra is applied per cell, see header). */
-.tm-grid__scroller:not(.tm-grid__scroller--readonly) .tm-grid__cell {
-  border-inline-end: var(--border-width) solid var(--grid-line);
 }
 
 /* Row/cell base tints paint via background-COLOR, so the selection's
@@ -334,9 +364,13 @@
   background-image: linear-gradient(var(--grid-find-match-bg), var(--grid-find-match-bg));
 }
 
+/* The active match REPLACES the active-cell ring rather than painting over
+   it. An outline and an inset box-shadow are two different painting
+   mechanisms: on a fractional column width they round to different
+   rectangles, and a sliver of the teal ring survives around the yellow one.
+   Using the same mechanism, the later rule simply wins. */
 .tm-grid__cell.tm-grid__cell--find-active {
-  outline: var(--focus-ring-width) solid var(--grid-find-active-outline);
-  outline-offset: calc(-1 * var(--focus-ring-width));
+  box-shadow: inset 0 0 0 var(--focus-ring-width) var(--grid-find-active-outline);
 }
 
 /* ---- tree hierarchy affordance (tm-tree-grid) ----
@@ -360,7 +394,7 @@
 }
 
 .tm-grid__twisty {
-  inline-size: var(--grid-indent);
+  inline-size: var(--grid-twisty-size);
 }
 
 .tm-grid__childspin {
@@ -388,24 +422,23 @@
   cursor: pointer;
 }
 
-/* Collapsed: a triangle pointing inline-end (mirrors in RTL). */
-.tm-grid__expander::before {
-  content: '';
-  display: block;
-  inline-size: 0;
-  block-size: 0;
-  border-block-start: var(--space-1) solid transparent;
-  border-block-end: var(--space-1) solid transparent;
-  border-inline-start: calc(var(--space-1) * 1.5) solid currentColor;
-  border-inline-end: 0 solid transparent;
+/* Expanded is the glyph's own orientation: a chevron pointing down. */
+.tm-grid__expander-glyph {
+  inline-size: var(--grid-twisty-size);
+  block-size: var(--grid-twisty-size);
+  /* Collapsed: rotated a quarter turn so it points along the reading
+     direction. The rotation has to be direction-aware — a chevron is not a
+     logical shape and would otherwise point back into the text in RTL. */
+  rotate: -90deg;
 }
 
-/* Expanded: a triangle pointing block-end (no rotation — direction-safe). */
-.tm-grid__expander--open::before {
-  border-block-start: calc(var(--space-1) * 1.5) solid currentColor;
-  border-block-end: 0 solid transparent;
-  border-inline-start: var(--space-1) solid transparent;
-  border-inline-end: var(--space-1) solid transparent;
+:host-context([dir='rtl']) .tm-grid__expander-glyph {
+  rotate: 90deg;
+}
+
+.tm-grid__expander--open .tm-grid__expander-glyph,
+:host-context([dir='rtl']) .tm-grid__expander--open .tm-grid__expander-glyph {
+  rotate: 0deg;
 }
 
 /* ---- the single live editor (fills the cell box) ---- */
@@ -444,17 +477,10 @@
 
 /* ---- active-cell error message (top-layer overlay; zero layout shift) ---- */
 
+/* The bubble brings its own chrome (tm-error-popover); the grid only says
+   it must not be squeezed by the narrow cell it points at. */
 .tm-grid__error-msg {
-  box-sizing: border-box;
-  padding-block: var(--space-1);
-  padding-inline: var(--space-2);
-  background: var(--field-bg);
-  color: var(--error);
-  border: var(--border-width) solid var(--grid-error-border);
-  border-radius: var(--radius-xs);
-  box-shadow: var(--shadow-md);
-  font-family: var(--font-ui);
-  font-size: var(--text-xs);
+  inline-size: max-content;
 }
 
 /* ---- boolean glyph (token lock-step with tm-checkbox's box) ---- */
@@ -488,7 +514,7 @@
   background-color: var(--color-on-primary);
   mask-image: var(--tm-grid-check-mask);
   mask-position: center;
-  mask-size: contain;
+  mask-size: var(--checkbox-glyph-size);
   mask-repeat: no-repeat;
 }
 
@@ -532,8 +558,11 @@
      (inside the scroller it flowed after the full-height spacer, off-screen). */
   position: absolute;
   /* Start below the sticky header (at the scroller's top, inside its border)
-     so the column headers stay visible above the loading / empty layer. */
-  inset: calc(var(--grid-row-height) + var(--border-width)) 0 0;
+     so the column headers stay visible above the loading / empty layer. The
+     trailing insets come from the component, which measures the scrollbars:
+     a layer flush against the border box paints over them. */
+  inset-block-start: calc(var(--grid-row-height) + var(--border-width));
+  inset-inline-start: var(--border-width);
   z-index: 4; /* above the rows, the sticky header, and the notice */
   display: flex;
   align-items: center;

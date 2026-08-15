@@ -67,26 +67,24 @@ let nextUniqueId = 0;
           (change)="onNativeChange($event)"
           (blur)="touch.emit()"
         />
+        <!-- The mark geometry is duplicated as a CSS mask in the grid
+             (grid-view.css), which draws thousands of these as plain divs
+             rather than components. The two must stay identical or a
+             checkbox column and a checkbox visibly disagree. -->
         <span class="tm-checkbox__box" aria-hidden="true">
-          <svg class="tm-checkbox__glyph" viewBox="0 0 16 16" fill="none">
+          <svg
+            class="tm-checkbox__glyph"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.75"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             @if (indeterminate()) {
-              <path
-                class="tm-checkbox__mark"
-                d="M4 8h8"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-              />
+              <path class="tm-checkbox__mark" d="M5 12h14" />
             } @else {
-              <polyline
-                class="tm-checkbox__mark"
-                points="3.5,8.5 6.5,11.5 12.5,4.5"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                fill="none"
-              />
+              <path class="tm-checkbox__mark" d="M20 6 9 17l-5-5" />
             }
           </svg>
         </span>
@@ -100,6 +98,9 @@ let nextUniqueId = 0;
     '[class.tm-checkbox--checked]': 'checked()',
     '[class.tm-checkbox--indeterminate]': 'indeterminate()',
     '[class.tm-checkbox--disabled]': 'disabled()',
+    // A checkbox owns its chrome, so the enclosing field's invalid border
+    // never reaches it — the box has to carry the state itself.
+    '[class.tm-checkbox--invalid]': 'showsInvalid()',
     // The accessible name and description live on the NATIVE input; a
     // role-less custom element must not carry aria-label/-describedby.
     '[attr.aria-label]': 'null',
@@ -174,19 +175,35 @@ export class TmCheckbox implements TmFormFieldControl {
   /** The merged aria-describedby attribute value, or null when no ids apply. */
   protected readonly describedByAttr = computed(() => this.describedByIds().join(' ') || null);
 
-  /** Whether invalidity is surfaced (aria-invalid) — follows the error-display policy. */
-  protected readonly showsInvalid = computed(() =>
-    this.errorDisplay({
-      invalid: this.invalid(),
-      touched: this.touched(),
-      dirty: this.dirty(),
-      pending: this.pending(),
-    }),
+  /** Whether the enclosing field displays an error this control must mark (see `setFieldError`). */
+  private readonly fieldError = signal(false);
+
+  /**
+   * Whether invalidity is surfaced (aria-invalid) — follows the
+   * error-display policy, or the enclosing field's own displayed error: the
+   * field around a chrome-owning checkbox is chromeless, so this control's
+   * red border and aria-invalid are the ONLY visible mark a field-level
+   * `error` input can get.
+   */
+  protected readonly showsInvalid = computed(
+    () =>
+      this.fieldError() ||
+      this.errorDisplay({
+        invalid: this.invalid(),
+        touched: this.touched(),
+        dirty: this.dirty(),
+        pending: this.pending(),
+      }),
   );
 
   /** Receives the field's hint/error ids and exposes them via aria-describedby. */
   setDescribedByIds(ids: readonly string[]): void {
     this.fieldDescribedBy.set(ids);
+  }
+
+  /** Receives whether the enclosing field displays an error (its plain `error` input included). */
+  setFieldError(showsError: boolean): void {
+    this.fieldError.set(showsError);
   }
 
   /** Focuses the checkbox when the user clicks the field's container chrome. */

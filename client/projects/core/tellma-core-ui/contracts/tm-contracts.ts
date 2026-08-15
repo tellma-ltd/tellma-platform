@@ -59,6 +59,17 @@ export interface TmFormFieldControl {
    */
   readonly ownsChrome: boolean;
   /**
+   * true = the control draws the invalid glyph itself, and the field skips
+   * its own. Set by controls that carry a TRAILING affordance (the date
+   * picker's calendar button, the entity picker's magnifier): the field can
+   * only append its glyph after the whole control, which would push that
+   * affordance sideways every time an error appeared and back again when it
+   * cleared — a button that moves under the pointer as you are reaching for
+   * it. Drawing the glyph inside the control puts it before the affordance,
+   * which then never moves.
+   */
+  readonly ownsErrorIcon?: boolean;
+  /**
    * Every id the control exposes via aria-describedby: author-supplied ids
    * first, then the ids the field pushed via `setDescribedByIds`.
    */
@@ -76,6 +87,15 @@ export interface TmFormFieldControl {
    * job.
    */
   setLabelId?(id: string | null): void;
+  /**
+   * Optional: the field reports whether IT is currently displaying an error
+   * — including one from its plain `error` input, which the control's own
+   * bound state knows nothing about. A control that draws its own invalid
+   * presentation (an `ownsChrome` border, an `ownsErrorIcon` glyph,
+   * aria-invalid) folds this in, so a field-level error marks the control
+   * exactly like a bound one; controls the field decorates itself omit it.
+   */
+  setFieldError?(showsError: boolean): void;
   // Field state, mirrored from the bound Field (all read-only to the wrapper):
   /** Whether the field is required, mirrored from the bound field. */
   readonly required: SignalLike<boolean>;

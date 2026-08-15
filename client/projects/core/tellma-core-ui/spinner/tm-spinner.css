@@ -6,19 +6,31 @@
  */
 
 /* The animation lives on the HOST so consumers and tests can observe or
-   override it on the element they address. */
+   override it on the element they address.
+
+   The leading arc rides `color`, so a spinner on a filled button inherits
+   the button's ink without being told; the track is its own token because
+   it must stay a quiet groove against whatever that ink is. */
 :host {
   display: inline-flex;
   flex: none;
-  inline-size: var(--space-4);
-  block-size: var(--space-4);
-  color: var(--field-icon);
-  animation: tm-spinner-spin var(--duration-slow) linear infinite;
+  inline-size: var(--spinner-size);
+  block-size: var(--spinner-size);
+  color: var(--color-primary);
+  animation: tm-spinner-spin var(--spinner-duration) linear infinite;
 }
 
 svg {
   inline-size: 100%;
   block-size: 100%;
+}
+
+.tm-spinner__track {
+  stroke: var(--spinner-track);
+}
+
+.tm-spinner__arc {
+  stroke: currentColor;
 }
 
 @keyframes tm-spinner-spin {

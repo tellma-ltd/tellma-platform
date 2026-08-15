@@ -5,81 +5,129 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-/* tm-form-field — the shared label/hint/error scaffold + the bordered box
+/* tm-form-field — the shared label/hint/message scaffold + the bordered box
    chrome for bare-directive controls (spec §3.1). Every size comes from the
    field/space/text token variables (stylelint-enforced); layout uses
    logical properties only so RTL mirrors for free (§7). */
 
 :host {
-  display: block;
+  /* The size ladder is re-pointed in ONE place per variant, so every rule
+     that derives from it — including the trailing-affordance padding over
+     in the global input sheet — follows automatically. Height alone is not
+     enough: a short box with comfortable type and padding reads as a
+     squeezed comfortable field rather than a dense one. */
+  --tm-field-block-size: var(--field-height);
+  --tm-field-font-size: var(--field-font-size);
+  --tm-field-padding-x: var(--field-padding-x);
+  --tm-field-label-gap: var(--field-label-gap);
+  /* Read by any list the field drops (select, entity picker), whose panel
+     is inserted next to the anchor and therefore inherits this. */
+  --tm-field-option-height: var(--field-option-height);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--tm-field-label-gap);
   font-family: var(--font-ui);
 }
 
+:host(.tm-form-field--sm) {
+  --tm-field-block-size: var(--field-height-sm);
+  --tm-field-font-size: var(--field-font-size-sm);
+  --tm-field-padding-x: var(--field-padding-xsm);
+  --tm-field-label-gap: var(--field-label-gap-sm);
+  --tm-field-option-height: var(--field-option-height-sm);
+}
+
+:host(.tm-form-field--lg) {
+  --tm-field-block-size: var(--field-height-lg);
+  --tm-field-font-size: var(--field-font-size-lg);
+  --tm-field-padding-x: var(--field-padding-xlg);
+  --tm-field-label-gap: var(--field-label-gap-lg);
+  --tm-field-option-height: var(--field-option-height-lg);
+}
+
+/* Flex, not block: the marker follows the label text with a gap of exactly
+   one step, and the template's own newline between them stops adding a
+   space character of its own (a flex container drops whitespace-only
+   children). align-items: baseline so a wrapped label still sits on its
+   own first line with the asterisk. */
 .tm-form-field__label {
-  display: block;
-  margin-block-end: var(--space-1);
-  font-size: var(--text-sm);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  font-size: var(--field-label-font-size);
   font-weight: var(--weight-medium);
   color: var(--text-strong);
 }
 
 .tm-form-field__required {
-  margin-inline-start: var(--space-1);
   color: var(--error);
 }
 
 .tm-form-field__box {
-  /* The height lives in a local so the size variants can restate it once
-     and every rule derived from it (see the trailing-affordance padding
-     below) follows automatically. */
-  --tm-field-block-size: var(--field-height);
-
   display: flex;
   align-items: center;
   gap: var(--space-2);
   box-sizing: border-box;
   block-size: var(--tm-field-block-size);
-  padding-inline: var(--field-padding-x);
+  padding-inline: var(--tm-field-padding-x);
   background: var(--field-bg);
   border: var(--border-width) solid var(--field-border);
   border-radius: var(--field-radius);
   color: var(--field-text);
-  transition: border-color var(--duration-fast) var(--ease-standard);
-}
-
-:host(.tm-form-field--sm) .tm-form-field__box {
-  --tm-field-block-size: var(--field-height-sm);
-}
-
-:host(.tm-form-field--lg) .tm-form-field__box {
-  --tm-field-block-size: var(--field-height-lg);
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
 }
 
 .tm-form-field__box:hover {
   border-color: var(--field-border-hover);
 }
 
-/* The focus ring wraps box-plus-adornments — the reason the chrome is the
-   wrapper's, not a border on the empty <input> element (§3). */
+/* The focus treatment wraps box-plus-adornments — the reason the chrome is
+   the wrapper's, not a border on the empty <input> element (§3).
+
+   A field glows rather than wearing the offset two-layer ring buttons use:
+   that ring paints a gap of page background around the control, which is
+   right for one isolated button and wrong in a column of forty fields,
+   where it reads as a hole punched through the form. */
 .tm-form-field__box:focus-within {
   border-color: var(--field-border-focus);
-  /* A transparent REAL outline beneath the token ring: forced colors strip
+  /* A transparent REAL outline beneath the token glow: forced colors strip
      box-shadows but repaint outline-color in a system color, so the outline
      is the only thing left carrying focus there. The focus border alone
      cannot stand in — forced colors flattens it to the same FieldText the
      unfocused box already uses. */
   outline: var(--focus-ring-width) solid transparent;
   outline-offset: var(--focus-ring-offset);
-  box-shadow: var(--focus-ring);
+  box-shadow: 0 0 0 var(--focus-ring-halo-width) var(--field-focus-halo);
 }
 
 :host(.tm-form-field--invalid) .tm-form-field__box {
   border-color: var(--field-border-invalid);
 }
 
+/* Focused AND invalid: the glow goes red too, instead of a teal halo and a
+   red border disagreeing about what state the field is in. */
+:host(.tm-form-field--invalid) .tm-form-field__box:focus-within {
+  box-shadow: 0 0 0 var(--focus-ring-halo-width) var(--error-bg);
+}
+
 :host(.tm-form-field--disabled) .tm-form-field__box {
   background: var(--field-bg-disabled);
   color: var(--field-text-disabled);
+}
+
+:host(.tm-form-field--disabled) .tm-form-field__label {
+  color: var(--text-muted);
+}
+
+/* Readonly is a value on display, not a control refusing input: it takes
+   the filled surface and a hairline instead of the field border, so a form
+   of them reads as a record rather than a column of dead inputs. */
+:host(.tm-form-field--readonly) .tm-form-field__box {
+  background: var(--field-bg-filled);
+  border-color: var(--border-subtle);
 }
 
 /* ownsChrome controls (tm-checkbox, tm-select) render their own box; the
@@ -88,26 +136,54 @@
   display: contents;
 }
 
-.tm-form-field__hint,
-.tm-form-field__error {
-  margin-block-start: var(--space-1);
-  font-size: var(--text-xs);
-  line-height: var(--leading-snug);
+/* The invalid glyph inside the box — the part of the error state that
+   outlives focus, so the popover can come and go without the field ever
+   looking valid in between. */
+.tm-form-field__error-icon {
+  flex: none;
+  inline-size: var(--field-error-icon-size);
+  block-size: var(--field-error-icon-size);
+  color: var(--error);
+  /* Transparent to the pointer, so a press on the glyph lands on the chrome
+     beneath it and focuses the control — which is what shows the message.
+     Reaching for the mark of the problem and having nothing happen is the
+     one thing a reader will certainly try. */
+  pointer-events: none;
 }
 
 .tm-form-field__hint {
+  font-size: var(--field-hint-font-size);
+  line-height: var(--leading-snug);
   color: var(--text-secondary);
 }
 
+/* The message region is live at all times but never drawn: the visible
+   bubble is an overlay, and repeating the text in the flow would both
+   reflow the page and announce everything twice. Visually hidden, NOT
+   display:none — it has to stay in the accessibility tree for the
+   control's aria-describedby to resolve. */
 .tm-form-field__error {
-  color: var(--error);
-  /* Persistent live region: keep the element in the a11y tree even when
-     empty; only the text toggles (§6). */
-  min-block-size: 0;
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.tm-form-field__error-line {
+  display: block;
 }
 
 @media (forced-colors: active) {
   .tm-form-field__box {
     border-color: FieldText;
+  }
+
+  /* Tints are forced away, so the glyph is all that is left marking the
+     field invalid. */
+  .tm-form-field__error-icon {
+    color: CanvasText;
   }
 }
