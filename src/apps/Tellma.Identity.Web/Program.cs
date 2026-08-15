@@ -9,6 +9,13 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using Serilog;
 using System.Net;
+using Tellma.Connector.AcsEmail.Adapter;
+using Tellma.Connector.SendGrid.Adapter;
+using Tellma.Connector.Smtp.Adapter;
+using Tellma.Core.Abstractions.Email;
+using Tellma.Core.Abstractions.Hosting;
+using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Email;
 using Tellma.Identity.Hosting;
 using Tellma.Identity.Infrastructure;
 
@@ -34,6 +41,25 @@ namespace Tellma.Identity.Web
 
             builder.Services.AddTellmaIdentity(builder.Configuration.GetSection("TellmaIdentity"));
 
+            // Email. The engine asks for the platform's IEmailSender and knows nothing else; this is
+            // where a deployment says what actually carries the mail. All three transports are
+            // registered but only the one Email:Provider names is ever constructed, so switching
+            // between them — or to the development log sink — is configuration, not a rebuild. The
+            // adapters take the root configuration and find their own subsections under it.
+            builder.Services.AddTellmaEmail();
+            builder.Services.AddSmtpEmail(builder.Configuration);
+            builder.Services.AddSendGridEmail(builder.Configuration);
+            builder.Services.AddAcsEmail(builder.Configuration);
+
+            // The identity server has no tenants, so no message of its can be a sandbox tenant's and
+            // none is ever withheld. The pipeline requires the decision to be stated rather than
+            // assumed, and refuses to start without it.
+            builder.Services.AddSingleton(SandboxContext.Never);
+
+            // Names this deployment in email telemetry and in the sender's own logs, so mail from
+            // the identity server is distinguishable from a distribution's at the provider.
+            builder.Services.AddSingleton(new DeploymentIdentity("identity", builder.Environment.EnvironmentName));
+
             // OpenTelemetry: W3C Trace Context is the .NET default propagator, so a trace begun in a
             // distribution and passed through its BFF joins here automatically. SqlClient
             // instrumentation is what measures time spent in SQL Server I/O. Azure Monitor exports
@@ -41,9 +67,13 @@ namespace Tellma.Identity.Web
             builder.Services.AddOpenTelemetry()
                 .WithMetrics(metrics => metrics
                     .AddMeter(IdentityMetrics.MeterName)
+                    // Delivery counts and latencies now come from the shared pipeline; without its
+                    // meter here the instruments it records would be collected by nothing.
+                    .AddMeter(EmailTelemetryNames.MeterName)
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation())
                 .WithTracing(tracing => tracing
+                    .AddSource(EmailTelemetryNames.ActivitySourceName)
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
                     .AddSqlClientInstrumentation());

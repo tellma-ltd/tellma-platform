@@ -82,8 +82,9 @@ namespace Tellma.Identity.Options
         /// <summary>Signing and encryption key material.</summary>
         public TellmaIdentityKeyOptions Keys { get; } = new TellmaIdentityKeyOptions();
 
-        /// <summary>Outgoing email transport.</summary>
-        public TellmaIdentityEmailOptions Email { get; } = new TellmaIdentityEmailOptions();
+        // Outgoing email is not configured here. The transport and its settings live in the
+        // platform's own "Email" section, which the host binds — one shape across every deployable
+        // rather than an identity-only dialect of the same settings.
 
         /// <summary>Data Protection key-ring configuration (standalone mode only).</summary>
         public TellmaIdentityDataProtectionOptions DataProtection { get; } = new TellmaIdentityDataProtectionOptions();

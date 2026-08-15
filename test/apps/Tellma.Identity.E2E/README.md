@@ -23,7 +23,7 @@ Playwright (Chromium):
   from the same loopback address, so the whole run shares one budget. The accessibility suite
   therefore signs in once and hands the session to every test that needs one
   (`IdentityServerFixtureBase.SignedInStorageStateAsync`); a suite that signs in per test would
-  exhaust the budget partway through and then fail with "No sign-in code was captured". Reuse the
-  shared session for anything new unless the test is about signing in.
+  exhaust the budget partway through and then time out waiting for a code that the server declined
+  to issue. Reuse the shared session for anything new unless the test is about signing in.
 
 First run requires Playwright browsers: `pwsh bin/Debug/net10.0/playwright.ps1 install chromium`.

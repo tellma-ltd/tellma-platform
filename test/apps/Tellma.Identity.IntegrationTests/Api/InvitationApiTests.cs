@@ -14,6 +14,7 @@ using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Invitations;
 using Tellma.Identity.Services.Provisioning;
 using Tellma.Identity.Services.Tokens;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Api
 {
@@ -270,19 +271,9 @@ namespace Tellma.Identity.IntegrationTests.Api
         ///     background dispatcher rather than sent inline, so delivery lands shortly after the
         ///     response — asserting immediately would be a race, not a check.
         /// </summary>
-        private static async Task<string> WaitForLinkAsync(StandaloneFactory factory, string email)
+        private static Task<string> WaitForLinkAsync(StandaloneFactory factory, string email)
         {
-            for (int attempt = 0; attempt < 100; attempt++)
-            {
-                if (factory.Emails.LatestLinkFor(email) is { } link)
-                {
-                    return link;
-                }
-
-                await Task.Delay(20, TestContext.Current.CancellationToken);
-            }
-
-            throw new InvalidOperationException($"No invitation link was delivered to {email}.");
+            return factory.Emails.WaitForLinkAsync(email);
         }
 
         /// <summary>Gives a user a password so it counts as having a credential.</summary>

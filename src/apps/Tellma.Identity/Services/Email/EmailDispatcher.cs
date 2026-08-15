@@ -4,12 +4,14 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Threading.Channels;
+using Tellma.Core.Abstractions.Email;
 
 namespace Tellma.Identity.Services.Email
 {
     /// <summary>
-    ///     Hands outbound mail to a background worker so the request path never blocks on an SMTP
-    ///     round trip. On enumeration-safe endpoints (email-code issuance, password reset) this
+    ///     Hands outbound mail to a background worker so the request path never blocks on the
+    ///     transport's round trip. On enumeration-safe endpoints (email-code issuance, password
+    ///     reset) this
     ///     removes the dominant latency difference between the account-exists and account-unknown
     ///     paths — the handler returns without waiting for delivery either way (the hit path still
     ///     performs a few extra database writes, so latencies are comparable, not identical).

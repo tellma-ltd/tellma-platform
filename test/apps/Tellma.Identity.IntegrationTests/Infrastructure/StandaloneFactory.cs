@@ -11,7 +11,8 @@ using Microsoft.Extensions.Configuration.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
-using Tellma.Identity.Services.Email;
+using Tellma.Core.Abstractions.Email;
+using Tellma.Core.Testing.Email;
 using Tellma.Identity.Web;
 
 namespace Tellma.Identity.IntegrationTests.Infrastructure
@@ -90,7 +91,6 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
                 ["TellmaIdentity:Keys:Encryption:Source"] = "DevelopmentSelfSigned",
                 ["TellmaIdentity:Development:AllowDevelopmentCertificates"] = "true",
                 ["TellmaIdentity:Development:AllowInsecureHttp"] = "true",
-                ["TellmaIdentity:Development:UseEmailSink"] = "true",
                 ["TellmaIdentity:Seed:ApplyMigrations"] = "false",
                 ["TellmaIdentity:Seed:DevAdmin:Enabled"] = "false",
             };

@@ -109,16 +109,10 @@ namespace Tellma.Identity.Hosting
                     static client => client.Timeout = TimeSpan.FromSeconds(15))
                 .AddStandardResilienceHandler();
 
-            // The Development sink is the only email difference from a deployed instance.
-            if (snapshot.Development.UseEmailSink)
-            {
-                services.AddSingleton<Services.Email.IEmailSender, Services.Email.LogSinkEmailSender>();
-            }
-            else
-            {
-                services.AddScoped<Services.Email.IEmailSender, Services.Email.SmtpEmailSender>();
-            }
-
+            // No email transport is registered here. The engine consumes the platform's
+            // IEmailSender and the host decides what backs it — which is what lets one deployment
+            // relay through SMTP, another through a provider API, and a developer through the log
+            // sink, without the engine knowing the difference.
             services.AddLocalization();
 
             // The languages this deployment offers; read by request localization, the sign-in

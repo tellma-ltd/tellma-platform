@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Playwright;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.E2E.Infrastructure
 {
@@ -83,21 +84,10 @@ namespace Tellma.Identity.E2E.Infrastructure
             await page.WaitForURLAsync("**" + passkeysPath);
         }
 
-        /// <summary>Polls the captured email sink for the latest sign-in code.</summary>
-        private static async Task<string> WaitForCodeAsync(IdentityServerFixtureBase server, string email)
+        /// <summary>Waits for the sign-in code the background worker delivers.</summary>
+        private static Task<string> WaitForCodeAsync(IdentityServerFixtureBase server, string email)
         {
-            for (int attempt = 0; attempt < 50; attempt++)
-            {
-                string? code = server.Emails.LatestCodeFor(email);
-                if (code is not null)
-                {
-                    return code;
-                }
-
-                await Task.Delay(100, TestContext.Current.CancellationToken);
-            }
-
-            throw new InvalidOperationException("No sign-in code was captured.");
+            return server.Emails.WaitForCodeAsync(email);
         }
     }
 }

@@ -13,17 +13,37 @@ The engine is deployed in two hosting shapes through **one registration path**:
 - **In-proc** — a distribution's web host references this project and mounts the authority at a
   reserved path base (for example `/id`) on its own origin.
 
-Both shapes call the same three extensions:
+Both shapes call the same three extensions, plus the email pipeline the engine expects the host to
+compose:
 
 ```csharp
 builder.Services.AddTellmaIdentity(builder.Configuration.GetSection("TellmaIdentity"));
+
+// Email: the engine asks for IEmailSender and never registers one. Add the pipeline, at least one
+// transport, and the two seams it requires. In-proc, the hosting distribution already has these.
+builder.Services.AddTellmaEmail();
+builder.Services.AddSmtpEmail(builder.Configuration);          // or AddSendGridEmail / AddAcsEmail
+builder.Services.AddSingleton(SandboxContext.Never);           // identity has no tenants
+builder.Services.AddSingleton(new DeploymentIdentity("identity", builder.Environment.EnvironmentName));
+
 app.UseTellmaIdentity();
 app.MapTellmaIdentity();
 ```
 
-Configuration binds to `TellmaIdentityOptions` (see `Options/`). The server runs fully on-prem:
-certificate-store or PFX key material, file-system Data Protection, and SMTP email; Azure Key Vault,
-blob-backed Data Protection, and Azure Monitor are config-gated optional paths.
+Omitting the email registrations **fails startup** rather than accepting sign-in codes and
+discarding them — the engine mounts a mail worker, and that worker refuses to start against a
+container with no sender in it.
+
+Configuration binds to `TellmaIdentityOptions` (see `Options/`); mail is configured separately,
+under the platform's own `Email` section. The server runs fully on-prem: certificate-store or PFX
+key material, file-system Data Protection, and mail relayed through the SMTP transport; Azure Key
+Vault, blob-backed Data Protection, Azure Monitor and the two hosted email providers are
+config-gated optional paths.
+
+What the engine does own is the dispatch policy above the contract: `Services/Email/` queues every
+message to a background worker so an enumeration-safe endpoint answers at the same speed whether or
+not the account exists, drains that queue on graceful shutdown, and renders each message in the
+recipient's own locale.
 
 The engine reads the client IP from the connection (`RemoteIpAddress`) for rate limiting and audit.
 A host that sits behind a reverse proxy — standalone or in-proc — must register the ASP.NET Core

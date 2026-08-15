@@ -19,6 +19,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The engine sends mail through the platform's contract and knows nothing about transports:
+         which one carries a message, and whether it is even configured, is the host's composition
+         to make. Abstractions only — a reference to Tellma.Core.Email here would put the router and
+         its transport registry inside a library that must stay hostable both ways. -->
+    <ProjectReference Include="..\..\core\Tellma.Core.Abstractions\Tellma.Core.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Azure packages back config-gated optional paths only (Key Vault certificates, blob-backed
          Data Protection). On-prem deployments run fully without Azure: certificate-store/PFX key
          sources, file-system Data Protection, and SMTP email. -->
@@ -28,7 +36,6 @@
     <PackageReference Include="Azure.Identity" />
     <PackageReference Include="Azure.Security.KeyVault.Certificates" />
     <PackageReference Include="Azure.Security.KeyVault.Secrets" />
-    <PackageReference Include="MailKit" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />

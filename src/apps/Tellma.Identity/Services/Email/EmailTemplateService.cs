@@ -5,6 +5,7 @@
 
 using Microsoft.Extensions.Localization;
 using System.Globalization;
+using Tellma.Core.Abstractions.Email;
 using Tellma.Identity.Data;
 using Tellma.Identity.Infrastructure;
 
@@ -78,7 +79,19 @@ namespace Tellma.Identity.Services.Email
 
                 string subject = localizer[subjectKey, [.. subjectArgs, gender]];
                 string body = localizer[bodyKey, [.. bodyArgs, gender]];
-                return new EmailMessage(user.Email!, user.DisplayName, subject, body);
+
+                // Internal: every message the identity server sends addresses a platform user about
+                // their own account, never a recipient of a tenant's own correspondence. No From —
+                // the active transport supplies the configured sender. No Correlation — nothing here
+                // subscribes to delivery events, and a correlation nobody owns is only noise in the
+                // pipeline's logs.
+                return new EmailMessage
+                {
+                    To = [new EmailAddress(user.Email!, user.DisplayName)],
+                    Subject = subject,
+                    TextBody = body,
+                    Audience = EmailAudience.Internal,
+                };
             }
             finally
             {

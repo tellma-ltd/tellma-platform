@@ -5,6 +5,7 @@
 
 using Microsoft.Playwright;
 using Tellma.Identity.E2E.Infrastructure;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.E2E
 {
@@ -167,21 +168,10 @@ namespace Tellma.Identity.E2E
             await page.WaitForURLAsync("**/Identity/Manage/Passkeys");
         }
 
-        /// <summary>Polls the captured email sink for the latest sign-in code.</summary>
-        private async Task<string> WaitForCodeAsync(string email)
+        /// <summary>Waits for the sign-in code the background worker delivers.</summary>
+        private Task<string> WaitForCodeAsync(string email)
         {
-            for (int attempt = 0; attempt < 50; attempt++)
-            {
-                string? code = server.Emails.LatestCodeFor(email);
-                if (code is not null)
-                {
-                    return code;
-                }
-
-                await Task.Delay(100, TestContext.Current.CancellationToken);
-            }
-
-            throw new InvalidOperationException("No sign-in code was captured.");
+            return server.Emails.WaitForCodeAsync(email);
         }
     }
 }

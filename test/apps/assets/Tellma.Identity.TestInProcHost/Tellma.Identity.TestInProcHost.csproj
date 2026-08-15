@@ -9,6 +9,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\src\apps\Tellma.Identity\Tellma.Identity.csproj" />
     <ProjectReference Include="..\..\..\..\src\apps\Tellma.Identity.Migrations\Tellma.Identity.Migrations.csproj" />
+    <!-- The email pipeline, because in-proc the hosting distribution composes it — that is the
+         parity this asset exists to prove. No transport adapter: the pipeline registers the
+         development log sink itself, which is all a test host needs. -->
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.Email\Tellma.Core.Email.csproj" />
   </ItemGroup>
 
 </Project>

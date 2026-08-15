@@ -13,9 +13,28 @@ dotnet run --project src/apps/Tellma.Identity.Web
 ```
 
 In the Development environment the host seeds a dev admin (`admin@localhost`), generates persisted
-self-signed signing/encryption certificates, and writes invitation/recovery emails to the log sink
-instead of sending them. Configuration schema: see the `TellmaIdentity` section in
-`appsettings.json` and the options documentation in the engine README.
+self-signed signing/encryption certificates, and — because the email pipeline defaults to its log
+sink when no transport is named — writes invitation and recovery mail to the console instead of
+sending it. Configuration schema: see the `TellmaIdentity` section in `appsettings.json` and the
+options documentation in the engine README.
+
+## Email
+
+This host composes the platform's email pipeline; the engine only asks for `IEmailSender`. All three
+transports are registered and `Email:Provider` decides which one is constructed, so a deployment
+changes transport by configuration alone:
+
+| `Email:Provider` | Transport | Its own settings |
+|---|---|---|
+| `acs-email` | Azure Communication Services | `Email:AcsEmail` |
+| `sendgrid` | SendGrid | `Email:SendGrid` |
+| `smtp` | Any SMTP relay — the on-prem path | `Email:Smtp` |
+| `log-sink` | Writes to the log; **Development only** | — |
+
+The key is required outside Development, where the pipeline defaults to the log sink. The active
+transport's own section is validated at startup, so an incomplete one fails the host rather than the
+first person to request a sign-in code. Identity registers `SandboxContext.Never` — it has no
+tenants, so none of its mail is ever withheld — and names itself `identity` in email telemetry.
 
 ## Behind a reverse proxy
 

@@ -11,8 +11,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenIddict.Abstractions;
+using Tellma.Core.Abstractions.Email;
+using Tellma.Core.Testing.Email;
 using Tellma.Identity.Hosting;
-using Tellma.Identity.Services.Email;
 using Testcontainers.MsSql;
 
 [assembly: AssemblyFixture(typeof(Tellma.Identity.E2E.Infrastructure.IdentityServerFixture))]
@@ -22,7 +23,7 @@ namespace Tellma.Identity.E2E.Infrastructure
     /// <summary>
     ///     Runs the real identity engine on Kestrel at an ephemeral loopback port (a real socket a
     ///     browser can reach — the in-memory TestServer cannot), backed by a fresh SQL Server
-    ///     database and the in-process capturing email sink E2E tests read codes and links from.
+    ///     database and the in-process capturing sender E2E tests read codes and links from.
     ///     Concrete fixtures pick the hosting shape (standalone at the root, or in-proc under the
     ///     reserved path base).
     /// </summary>
@@ -86,7 +87,6 @@ namespace Tellma.Identity.E2E.Infrastructure
                 ["TellmaIdentity:Keys:Encryption:Source"] = "DevelopmentSelfSigned",
                 ["TellmaIdentity:Development:AllowDevelopmentCertificates"] = "true",
                 ["TellmaIdentity:Development:AllowInsecureHttp"] = "true",
-                ["TellmaIdentity:Development:UseEmailSink"] = "true",
                 ["TellmaIdentity:EnablePasswordSignIn"] = "true",
                 ["TellmaIdentity:Seed:ApplyMigrations"] = "true",
                 ["TellmaIdentity:Seed:DevAdmin:Enabled"] = "true",

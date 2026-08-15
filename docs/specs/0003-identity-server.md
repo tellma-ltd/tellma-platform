@@ -318,7 +318,7 @@ Microsoft). A passkey alone already satisfies MFA.
 
 Codes are **single-use, short-lived (10 min), rate-limited, and bound to the requesting session**. The
 built-in email/phone token provider is TOTP-based and allows replay within its window, so a custom token
-provider enforces single-use and expiry, delivering via the configured `IEmailSender`.
+provider enforces single-use and expiry, delivering via the platform's `IEmailSender` (spec 0007).
 
 ### 8.4 External-login account linking
 
@@ -553,9 +553,11 @@ purges immediately. Orphaned users cannot obtain tokens.
 
 ### 10.6 Local development
 
-In the Development environment the only security-relevant change is the `IEmailSender` implementation: it
-writes invitation and recovery links to a sink (console/log, or a local SMTP catcher such as smtp4dev)
-instead of sending mail. Developers and E2E tests read the link from the sink. The invite API's response
+In the Development environment the only security-relevant change is which email transport is in force:
+the platform pipeline (spec 0007) selects its log sink, writing invitation and recovery links to the
+console instead of sending mail. That is the pipeline's default when `Email:Provider` is unset, and the
+sink refuses to run in any other environment — a deployment cannot reach production still discarding its
+mail. Developers read the link from the console; the E2E suite substitutes a capturing sender for the transport and reads it from there. The invite API's response
 is identical to production — status plus each user's `sub`, and **never** the link, in any environment —
 so the email-ownership proof the link represents is never exposed to the caller.
 

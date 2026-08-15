@@ -38,6 +38,7 @@
     <Project Path="test/apps/Tellma.Identity.Tests/Tellma.Identity.Tests.csproj" />
     <Project Path="test/apps/Tellma.Identity.IntegrationTests/Tellma.Identity.IntegrationTests.csproj" />
     <Project Path="test/apps/Tellma.Identity.E2E/Tellma.Identity.E2E.csproj" />
+    <Project Path="test/apps/Tellma.Identity.TestSupport/Tellma.Identity.TestSupport.csproj" />
     <Project Path="test/core/Tellma.Core.Abstractions.Tests/Tellma.Core.Abstractions.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.Email.Tests/Tellma.Core.Email.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Tests/Tellma.Core.EntityFrameworkCore.Tests.csproj" />

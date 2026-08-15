@@ -22,12 +22,5 @@ namespace Tellma.Identity.Options
         ///     hosts only).
         /// </summary>
         public bool AllowInsecureHttp { get; set; }
-
-        /// <summary>
-        ///     Write outgoing email (invitation and recovery links, sign-in codes) to the log sink
-        ///     instead of sending it. The only security-relevant difference between Development
-        ///     and a deployed instance.
-        /// </summary>
-        public bool UseEmailSink { get; set; }
     }
 }

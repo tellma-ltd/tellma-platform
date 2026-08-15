@@ -11,6 +11,14 @@
          flows in; the Design toolchain is private to the migrations project (its own dotnet-ef
          startup), so this host never ships it. -->
     <ProjectReference Include="..\Tellma.Identity.Migrations\Tellma.Identity.Migrations.csproj" />
+    <!-- Email is composed here rather than in the engine: which transport carries a message is a
+         deployment decision, and the engine only asks for IEmailSender. All three transports are
+         registered and only the one named by Email:Provider is ever constructed, so a deployment
+         switches transport by configuration alone. -->
+    <ProjectReference Include="..\..\core\Tellma.Core.Email\Tellma.Core.Email.csproj" />
+    <ProjectReference Include="..\..\connector\smtp\Tellma.Connector.Smtp.Adapter\Tellma.Connector.Smtp.Adapter.csproj" />
+    <ProjectReference Include="..\..\connector\sendgrid\Tellma.Connector.SendGrid.Adapter\Tellma.Connector.SendGrid.Adapter.csproj" />
+    <ProjectReference Include="..\..\connector\acs-email\Tellma.Connector.AcsEmail.Adapter\Tellma.Connector.AcsEmail.Adapter.csproj" />
     <!-- Azure Monitor exporting is config-gated; without configuration the OpenTelemetry
          pipeline runs with no exporter. -->
     <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" />

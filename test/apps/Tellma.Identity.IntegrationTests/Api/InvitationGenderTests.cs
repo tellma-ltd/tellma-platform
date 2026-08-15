@@ -11,6 +11,7 @@ using System.Text.Json;
 using Tellma.Identity.Data;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Api
 {
@@ -82,8 +83,8 @@ namespace Tellma.Identity.IntegrationTests.Api
 
             Assert.True(response.IsSuccessStatusCode);
 
-            string feminine = await WaitForBodyAsync(factory, "hana@example.com");
-            string neutral = await WaitForBodyAsync(factory, "sam@example.com");
+            string feminine = await factory.Emails.WaitForBodyAsync("hana@example.com");
+            string neutral = await factory.Emails.WaitForBodyAsync("sam@example.com");
 
             // The imperative that opens the invitation is the gendered word. Asserted on the
             // feminine form rather than the masculine one, because the masculine is a prefix of
@@ -103,23 +104,6 @@ namespace Tellma.Identity.IntegrationTests.Api
             // The link still substitutes: positional arguments and a gender select share one
             // pattern here for the first time, and ICU resolves both from the same argument bag.
             Assert.Contains("/Identity/Account/Invitation", feminine, StringComparison.Ordinal);
-        }
-
-        /// <summary>Waits for the queued invitation to be delivered and returns its body.</summary>
-        private static async Task<string> WaitForBodyAsync(StandaloneFactory factory, string email)
-        {
-            // Delivery is queued on a background worker, so the API response arrives first.
-            for (int attempt = 0; attempt < 100; attempt++)
-            {
-                if (factory.Emails.LatestFor(email) is { } message)
-                {
-                    return message.TextBody;
-                }
-
-                await Task.Delay(20, TestContext.Current.CancellationToken);
-            }
-
-            throw new InvalidOperationException($"No invitation was delivered to {email}.");
         }
 
         /// <summary>Obtains a management-scope token for the invitation API.</summary>

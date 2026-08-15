@@ -95,12 +95,10 @@ namespace Tellma.Identity.Options
                 failures.Add("TellmaIdentity:DataProtection:KeyVaultKeyUri is required when BlobUri is set, so the blob-persisted key ring is encrypted at rest.");
             }
 
-            // Email delivery is load-bearing (invitations, recovery): a deployment must either
-            // configure SMTP or explicitly opt into the development sink.
-            if (string.IsNullOrWhiteSpace(options.Email.SmtpHost) && !options.Development.UseEmailSink)
-            {
-                failures.Add("TellmaIdentity:Email:SmtpHost is required (or enable TellmaIdentity:Development:UseEmailSink in development).");
-            }
+            // Email delivery is load-bearing (invitations, recovery) and still validated at
+            // startup — by the email pipeline rather than here, against the Email section and the
+            // transport that section selects. Repeating the rule would mean two validators
+            // disagreeing about what a usable configuration is.
 
             // A language the engine ships no resources for would render as English while claiming
             // to be something else, so a typo fails startup instead of shipping a broken picker.

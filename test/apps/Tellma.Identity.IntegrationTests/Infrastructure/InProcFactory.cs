@@ -34,7 +34,6 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
                 ["TellmaIdentity:Keys:Encryption:Source"] = "DevelopmentSelfSigned",
                 ["TellmaIdentity:Development:AllowDevelopmentCertificates"] = "true",
                 ["TellmaIdentity:Development:AllowInsecureHttp"] = "true",
-                ["TellmaIdentity:Development:UseEmailSink"] = "true",
                 ["TellmaIdentity:Seed:ApplyMigrations"] = "false",
                 ["TellmaIdentity:Seed:DevAdmin:Enabled"] = "false",
             };

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Test helpers shared by the identity server's integration and browser suites: reading the mail the platform's capturing sender collected. Not a suite itself.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The test-tree props add a global `using Xunit` for every project under test/. This one is
+         plumbing rather than a suite and references no test framework, so the global using would
+         not compile. Same reasoning as test/shared/Tellma.Testing.Support. -->
+    <Using Remove="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The capturing sender and the message shape it captures. No test-framework reference of any
+         kind: these are lookups, not assertions, and omitting Microsoft.NET.Test.Sdk keeps
+         IsTestProject false so `dotnet test Tellma.slnx` never tries to run this project. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
+  </ItemGroup>
+
+</Project>

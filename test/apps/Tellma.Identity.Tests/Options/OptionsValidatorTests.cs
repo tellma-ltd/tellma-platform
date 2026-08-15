@@ -25,7 +25,6 @@ namespace Tellma.Identity.Tests.Options
             options.Keys.Signing.PfxFiles.Add(new TellmaIdentityPfxFileOptions { Path = "/etc/tellma/signing.pfx" });
             options.Keys.Encryption.Source = TellmaIdentityCertificateSourceKind.PfxFile;
             options.Keys.Encryption.PfxFiles.Add(new TellmaIdentityPfxFileOptions { Path = "/etc/tellma/encryption.pfx" });
-            options.Email.SmtpHost = "smtp.example.com";
 
             Assert.Equal(ValidateOptionsResult.Success, _validator.Validate(null, options));
         }
@@ -34,7 +33,7 @@ namespace Tellma.Identity.Tests.Options
         public void A_missing_issuer_fails()
         {
             TellmaIdentityOptions options = new() { ConnectionString = "x" };
-            ConfigureDevKeysAndSink(options);
+            ConfigureDevKeys(options);
 
             Assert.True(_validator.Validate(null, options).Failed);
         }
@@ -49,7 +48,6 @@ namespace Tellma.Identity.Tests.Options
             };
             options.Keys.Signing.Source = TellmaIdentityCertificateSourceKind.DevelopmentSelfSigned;
             options.Keys.Encryption.Source = TellmaIdentityCertificateSourceKind.DevelopmentSelfSigned;
-            options.Email.SmtpHost = "smtp.example.com";
 
             // Development.AllowDevelopmentCertificates defaults to false.
             Assert.True(_validator.Validate(null, options).Failed);
@@ -65,7 +63,7 @@ namespace Tellma.Identity.Tests.Options
                 PathBase = "/id",
                 ConnectionString = "x",
             };
-            ConfigureDevKeysAndSink(options);
+            ConfigureDevKeys(options);
 
             Assert.Equal(ValidateOptionsResult.Success, _validator.Validate(null, options));
         }
@@ -80,27 +78,14 @@ namespace Tellma.Identity.Tests.Options
                 PathBase = "/id",
                 ConnectionString = "x",
             };
-            ConfigureDevKeysAndSink(options);
+            ConfigureDevKeys(options);
 
             Assert.True(_validator.Validate(null, options).Failed);
         }
 
-        [Fact]
-        public void Missing_email_transport_fails_without_the_development_sink()
-        {
-            TellmaIdentityOptions options = new()
-            {
-                Issuer = new Uri("https://identity.example.com"),
-                ConnectionString = "x",
-            };
-            options.Keys.Signing.Source = TellmaIdentityCertificateSourceKind.PfxFile;
-            options.Keys.Signing.PfxFiles.Add(new TellmaIdentityPfxFileOptions { Path = "/s.pfx" });
-            options.Keys.Encryption.Source = TellmaIdentityCertificateSourceKind.PfxFile;
-            options.Keys.Encryption.PfxFiles.Add(new TellmaIdentityPfxFileOptions { Path = "/e.pfx" });
-
-            // No SmtpHost and no email sink.
-            Assert.True(_validator.Validate(null, options).Failed);
-        }
+        // A missing email transport used to fail here. It still fails startup, but in the email
+        // pipeline's own validator against the Email section — this validator no longer has an
+        // opinion about mail, and a test here would only assert that it does not.
 
         [Fact]
         public void A_blob_key_ring_without_a_key_vault_key_fails()
@@ -169,7 +154,7 @@ namespace Tellma.Identity.Tests.Options
                 Issuer = new Uri("https://identity.example.com"),
                 ConnectionString = "x",
             };
-            ConfigureDevKeysAndSink(options);
+            ConfigureDevKeys(options);
 
             ValidateOptionsResult result = validator.Validate(null, options);
 
@@ -186,7 +171,7 @@ namespace Tellma.Identity.Tests.Options
                 Issuer = new Uri("https://identity.example.com"),
                 ConnectionString = "x",
             };
-            ConfigureDevKeysAndSink(options);
+            ConfigureDevKeys(options);
 
             Assert.Equal(ValidateOptionsResult.Success, validator.Validate(null, options));
         }
@@ -203,15 +188,13 @@ namespace Tellma.Identity.Tests.Options
             options.Keys.Signing.PfxFiles.Add(new TellmaIdentityPfxFileOptions { Path = "/etc/tellma/signing.pfx" });
             options.Keys.Encryption.Source = TellmaIdentityCertificateSourceKind.PfxFile;
             options.Keys.Encryption.PfxFiles.Add(new TellmaIdentityPfxFileOptions { Path = "/etc/tellma/encryption.pfx" });
-            options.Email.SmtpHost = "smtp.example.com";
             return options;
         }
 
-        /// <summary>Configures development self-signed keys and the email sink for a dev-shaped options object.</summary>
-        private static void ConfigureDevKeysAndSink(TellmaIdentityOptions options)
+        /// <summary>Configures development self-signed keys for a dev-shaped options object.</summary>
+        private static void ConfigureDevKeys(TellmaIdentityOptions options)
         {
             options.Development.AllowDevelopmentCertificates = true;
-            options.Development.UseEmailSink = true;
             options.Keys.Signing.Source = TellmaIdentityCertificateSourceKind.DevelopmentSelfSigned;
             options.Keys.Encryption.Source = TellmaIdentityCertificateSourceKind.DevelopmentSelfSigned;
         }

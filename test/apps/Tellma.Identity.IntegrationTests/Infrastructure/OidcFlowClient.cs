@@ -11,6 +11,7 @@ using System.Buffers.Text;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Infrastructure
 {
@@ -95,21 +96,12 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
                 new Uri(codePageUrl, UriKind.RelativeOrAbsolute), TestContext.Current.CancellationToken);
             Assert.True(codePage.IsSuccessStatusCode, $"Code page failed: {codePage.StatusCode}");
 
-            // The code is delivered by the background mail worker, so poll briefly for it.
-            string? code = null;
-            for (int attempt = 0; attempt < 50 && string.IsNullOrEmpty(code); attempt++)
-            {
-                code = _factory.Emails.LatestCodeFor(email);
-                if (string.IsNullOrEmpty(code))
-                {
-                    await Task.Delay(20, TestContext.Current.CancellationToken);
-                }
-            }
-
-            Assert.False(string.IsNullOrEmpty(code), "No sign-in code was captured.");
+            // The code is delivered by the background mail worker, so the redirect above arrives
+            // first. The capturing sender signals when the message lands rather than being polled.
+            string code = await _factory.Emails.WaitForCodeAsync(email);
 
             (string verifyAction, Dictionary<string, string> verifyFields) = await ParseFormAsync(codePage);
-            verifyFields["Code"] = code!;
+            verifyFields["Code"] = code;
             using HttpResponseMessage signedIn = await PostFormAsync(verifyAction, verifyFields);
             Assert.Equal(System.Net.HttpStatusCode.Redirect, signedIn.StatusCode);
 
