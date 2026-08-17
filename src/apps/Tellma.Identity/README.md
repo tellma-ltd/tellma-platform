@@ -40,10 +40,27 @@ key material, file-system Data Protection, and mail relayed through the SMTP tra
 Vault, blob-backed Data Protection, Azure Monitor and the two hosted email providers are
 config-gated optional paths.
 
-What the engine does own is the dispatch policy above the contract: `Services/Email/` queues every
-message to a background worker so an enumeration-safe endpoint answers at the same speed whether or
-not the account exists, drains that queue on graceful shutdown, and renders each message in the
-recipient's own locale.
+What the engine does own is the dispatch policy above the contract, and how a message reads.
+`Services/Email/` queues every message to a background worker so an enumeration-safe endpoint answers
+at the same speed whether or not the account exists, drains that queue on graceful shutdown, and
+renders each message in the recipient's own locale.
+
+Every message goes out in both forms. The plain-text body is the one that always arrives, and is what
+the test suites read a code or a link back out of. The HTML body — `EmailHtmlLayout` — is what most
+recipients see: an ink banner, a heading, one button or one code panel, and a grey footer, built as
+nested tables with inline styles because Outlook renders through Word and Gmail discards a
+document's stylesheet for non-Gmail accounts. Its colors are literals copied from the emitted design
+tokens, since `var()` resolves nowhere in either; a token change has to be copied across
+deliberately. The layout takes its direction from the recipient's own culture, so Arabic mirrors
+whole rather than per element, and the Latin runs inside it — the address under the button, the
+one-time code — are isolated back individually.
+
+`Services/Email/tellma-wordmark-email.png` is the brand mark those emails carry, embedded in the
+assembly and attached to each message as an inline part. It is a hand-committed raster of
+`wwwroot/img/tellma-wordmark-on-dark.svg` at three times its display size, because mail clients drop
+SVG, block remote images until the reader trusts the sender, and could not reach an on-premise
+authority in any case. Refresh it by rendering that SVG at 396&nbsp;&times;&nbsp;112 on a transparent
+background whenever the wordmark changes.
 
 The engine reads the client IP from the connection (`RemoteIpAddress`) for rate limiting and audit.
 A host that sits behind a reverse proxy — standalone or in-proc — must register the ASP.NET Core

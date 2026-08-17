@@ -591,7 +591,28 @@ The distribution surfaces Account & Security as a "Sign-in & security" tab insid
 that deep-links to these pages over SSO (no re-login) with a `return_url`, so a single-distribution user
 sees one unified settings experience.
 
-### 11.3 Management API surface
+### 11.3 Email presentation
+
+Sign-in codes, invitations and password resets are the server's other user-facing surface, and are
+sent in two forms. The plain-text alternative is always present: it reads correctly in a client that
+refuses HTML, and mail carrying no text part is treated as a spam signal. The HTML alternative is what
+most recipients see — an ink banner carrying the brand mark, a heading, a single action as either a
+button or a one-time-code panel, and a footer linking whichever legal documents the deployment has
+published.
+
+Mail clients constrain how that is built rather than what it says: layout is nested tables and every
+visual rule is an inline attribute, because Outlook renders through Word and Gmail discards a
+document's stylesheet for accounts that are not Gmail ones. Design-token custom properties resolve in
+neither, so the palette is carried as literals matching the emitted tokens. The brand mark travels as
+an inline part rather than a URL, since clients drop SVG and block remote images until a reader trusts
+the sender — and an on-premise authority is unreachable from a recipient's client in any case.
+
+Every message renders in the recipient's own stored `locale` rather than the current request's, so a
+bulk invitation carries a different language per message, and takes that culture's direction as the
+document's own. Latin runs inside a right-to-left message — the address written out beneath the
+button, the one-time code — are isolated individually so they keep their order.
+
+### 11.4 Management API surface
 
 The server exposes management as APIs; there is no standalone admin SPA.
 
@@ -766,7 +787,7 @@ enable in-page passkey step-up in standalone mode (§9.3), gated on browser supp
 and with it the TOTP second-factor challenge, recovery-code redemption, and the breached-password check
 (§8.2 — the enable flag already gates the reset flows); the operator surface beyond user lookup and
 Temporary Access Pass issuance — user disable/enable/purge, last-resort credential reset,
-client-registration/scope/key administration APIs, audit query, and consented impersonation (§11.3); an
+client-registration/scope/key administration APIs, audit query, and consented impersonation (§11.4); an
 `ITicketStore`-backed SSO cookie for immediate server-side session termination (§7.3); per-tenant login
 branding (the `BrandingResolver` seam, §11.1); enterprise Entra federation as a social provider; a
 distributed-cache (Redis) backing for the `sid` registry and rate-limit counters (§12), gated on the

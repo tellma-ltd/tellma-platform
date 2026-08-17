@@ -19,6 +19,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The wordmark travels inside each HTML email as an inline part, so the engine needs its
+         bytes rather than a URL: mail clients drop SVG, block remote images until the reader asks
+         for them, and on-prem deployments have no address the recipient's client could fetch from.
+         Embedded rather than a static web asset because it is never served over HTTP. -->
+    <EmbeddedResource Include="Services\Email\tellma-wordmark-email.png" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- The engine sends mail through the platform's contract and knows nothing about transports:
          which one carries a message, and whether it is even configured, is the host's composition
          to make. Abstractions only — a reference to Tellma.Core.Email here would put the router and
