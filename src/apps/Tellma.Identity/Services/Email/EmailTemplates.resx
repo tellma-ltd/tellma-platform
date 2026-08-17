@@ -30,9 +30,6 @@
   <data name="PasswordResetBody" xml:space="preserve">
     <value>Open this link to reset your password: {0} The link can be used once and expires in 1 hour. If you did not request it, you can safely ignore this email.</value>
   </data>
-  <data name="SignInCodeEyebrow" xml:space="preserve">
-    <value>Sign in</value>
-  </data>
   <data name="SignInCodePreheader" xml:space="preserve">
     <value>Your sign-in code expires in 10 minutes.</value>
   </data>
@@ -50,9 +47,6 @@
   </data>
   <data name="SignInCodeFooter" xml:space="preserve">
     <value>This message was sent by {0} because a sign-in was requested for {1}.</value>
-  </data>
-  <data name="InvitationEyebrow" xml:space="preserve">
-    <value>Invitation</value>
   </data>
   <data name="InvitationPreheader" xml:space="preserve">
     <value>Set up your {0} account.</value>
@@ -74,9 +68,6 @@
   </data>
   <data name="InvitationFooter" xml:space="preserve">
     <value>This message was sent by {0}.</value>
-  </data>
-  <data name="PasswordResetEyebrow" xml:space="preserve">
-    <value>Password reset</value>
   </data>
   <data name="PasswordResetPreheader" xml:space="preserve">
     <value>Choose a new password for your {0} account.</value>

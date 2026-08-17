@@ -54,7 +54,6 @@ namespace Tellma.Identity.Services.Email
                 localize => new EmailContent
                 {
                     Preheader = localize("SignInCodePreheader"),
-                    Eyebrow = localize("SignInCodeEyebrow"),
                     Heading = localize("SignInCodeHeading"),
                     Paragraphs = [localize("SignInCodeIntro", product, user.Email!)],
                     Code = code,
@@ -83,7 +82,6 @@ namespace Tellma.Identity.Services.Email
                 localize => new EmailContent
                 {
                     Preheader = localize("InvitationPreheader", product),
-                    Eyebrow = localize("InvitationEyebrow"),
                     Heading = localize("InvitationHeading", product),
                     Paragraphs = [localize("InvitationIntro", product)],
                     Action = new EmailAction(
@@ -111,7 +109,6 @@ namespace Tellma.Identity.Services.Email
                 localize => new EmailContent
                 {
                     Preheader = localize("PasswordResetPreheader", product),
-                    Eyebrow = localize("PasswordResetEyebrow"),
                     Heading = localize("PasswordResetHeading"),
                     Paragraphs = [localize("PasswordResetIntro", product)],
                     Action = new EmailAction(

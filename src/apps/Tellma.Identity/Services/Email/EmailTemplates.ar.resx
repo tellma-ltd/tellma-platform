@@ -30,9 +30,6 @@
   <data name="PasswordResetBody" xml:space="preserve">
     <value>{gender, select, female{افتحي} other{افتح}} هذا الرابط لإعادة تعيين كلمة المرور: {0} يُستخدم الرابط مرة واحدة وتنتهي صلاحيته خلال ساعة واحدة. إذا لم {gender, select, female{تطلبي} other{تطلب}} ذلك، يمكنك تجاهل هذه الرسالة بأمان.</value>
   </data>
-  <data name="SignInCodeEyebrow" xml:space="preserve">
-    <value>تسجيل الدخول</value>
-  </data>
   <data name="SignInCodePreheader" xml:space="preserve">
     <value>تنتهي صلاحية رمز تسجيل الدخول خلال 10 دقائق.</value>
   </data>
@@ -50,9 +47,6 @@
   </data>
   <data name="SignInCodeFooter" xml:space="preserve">
     <value>أُرسلت هذه الرسالة من {0} لأنه تم طلب تسجيل الدخول إلى {1}.</value>
-  </data>
-  <data name="InvitationEyebrow" xml:space="preserve">
-    <value>دعوة</value>
   </data>
   <data name="InvitationPreheader" xml:space="preserve">
     <value>{gender, select, female{أعدّي} other{أعدّ}} حسابك في {0}.</value>
@@ -74,9 +68,6 @@
   </data>
   <data name="InvitationFooter" xml:space="preserve">
     <value>أُرسلت هذه الرسالة من {0}.</value>
-  </data>
-  <data name="PasswordResetEyebrow" xml:space="preserve">
-    <value>إعادة تعيين كلمة المرور</value>
   </data>
   <data name="PasswordResetPreheader" xml:space="preserve">
     <value>{gender, select, female{اختاري} other{اختر}} كلمة مرور جديدة لحسابك في {0}.</value>

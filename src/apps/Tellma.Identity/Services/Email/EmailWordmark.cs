@@ -31,10 +31,10 @@ namespace Tellma.Identity.Services.Email
         internal const string ContentType = "image/png";
 
         /// <summary>The width the mark is drawn at, in CSS pixels.</summary>
-        internal const int DisplayWidth = 132;
+        internal const int DisplayWidth = 106;
 
         /// <summary>The height the mark is drawn at, in CSS pixels.</summary>
-        internal const int DisplayHeight = 37;
+        internal const int DisplayHeight = 30;
 
         /// <summary>The manifest name the build gives the embedded image.</summary>
         private const string ResourceName = "Tellma.Identity.Services.Email.tellma-wordmark-email.png";

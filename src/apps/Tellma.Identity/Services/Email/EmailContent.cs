@@ -18,12 +18,10 @@ namespace Tellma.Identity.Services.Email
     {
         /// <summary>
         ///     The line inboxes preview beside the subject. Hidden in the body itself — left unset,
-        ///     clients fall back to scraping the first visible text, which here is the eyebrow.
+        ///     clients fall back to scraping the first visible text, which would repeat the heading
+        ///     the subject has already said.
         /// </summary>
         public required string Preheader { get; init; }
-
-        /// <summary>The small capitalized label above the heading, naming the kind of message.</summary>
-        public required string Eyebrow { get; init; }
 
         /// <summary>The heading, which carries the message on its own when nothing else is read.</summary>
         public required string Heading { get; init; }
