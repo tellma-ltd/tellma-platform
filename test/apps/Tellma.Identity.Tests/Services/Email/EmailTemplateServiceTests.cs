@@ -48,6 +48,86 @@ namespace Tellma.Identity.Tests.Services.Email
         }
 
         [Fact]
+        public void The_text_body_carries_every_part_the_message_has()
+        {
+            EmailContent content = new()
+            {
+                Preheader = "the-preheader",
+                Heading = "the-heading",
+                Paragraphs = ["first-paragraph", "second-paragraph"],
+                Code = "91095144",
+                CodeNote = "the-code-note",
+                Notes = ["first-note", "second-note"],
+                FooterNote = "the-footer-note",
+                FooterLinks = [new EmailLink("Privacy", "https://example.com/privacy")],
+            };
+
+            string text = EmailTextLayout.Render(content);
+
+            // Everything the HTML shows a reader is here too, which is the whole point of deriving
+            // one from the other rather than writing the two separately.
+            foreach (string part in (string[])
+                ["the-heading", "first-paragraph", "second-paragraph", "91095144", "the-code-note",
+                 "first-note", "second-note", "the-footer-note", "https://example.com/privacy"])
+            {
+                Assert.Contains(part, text, StringComparison.Ordinal);
+            }
+
+            // Except the preheader, which is the inbox's preview line. It exists to be read beside
+            // the subject, and repeating it in the body would say the same thing twice.
+            Assert.DoesNotContain("the-preheader", text, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void The_text_body_offers_the_action_as_an_address_rather_than_a_button()
+        {
+            EmailContent content = new()
+            {
+                Preheader = "p",
+                Heading = "h",
+                Paragraphs = [],
+                Action = new EmailAction("Accept invitation", Link, "the-validity", "the-button-fallback"),
+                Notes = [],
+                FooterNote = "f",
+            };
+
+            string text = EmailTextLayout.Render(content);
+
+            Assert.Contains("Accept invitation:\r\n" + Link, text, StringComparison.Ordinal);
+            Assert.Contains("the-validity", text, StringComparison.Ordinal);
+
+            // The one sentence deliberately left out: there is no button here to have failed, so
+            // telling the reader what to do when it does not work would be nonsense.
+            Assert.DoesNotContain("the-button-fallback", text, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void The_text_body_carries_the_link_and_the_code_it_is_scraped_for()
+        {
+            EmailTemplateService templates = CreateService();
+            TellmaIdentityUser user = CreateUser();
+
+            // The browser suites and the local inspection script both read these back out of the
+            // text body, so a rendering that dropped either would break them and nothing else.
+            Assert.Contains("91095144", templates.SignInCode(user, "91095144").TextBody, StringComparison.Ordinal);
+            Assert.Contains(Link, templates.Invitation(user, Link, expiryDays: 7).TextBody, StringComparison.Ordinal);
+            Assert.Contains(Link, templates.PasswordReset(user, Link).TextBody, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void The_text_body_separates_its_paragraphs_the_way_mail_does()
+        {
+            EmailTemplateService templates = CreateService();
+
+            string text = templates.Invitation(CreateUser(), Link, expiryDays: 7).TextBody;
+
+            // CRLF, not the host's line ending: the same message has to read identically whether it
+            // was composed on Windows or Linux.
+            Assert.Contains("\r\n\r\n", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("\n\n\n", text.Replace("\r", string.Empty, StringComparison.Ordinal), StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void Every_message_carries_the_wordmark_the_html_references()
         {
             EmailTemplateService templates = CreateService();

@@ -242,7 +242,9 @@ namespace Tellma.Identity.Services.Email
         /// <summary>Writes the note introducing the button's address, and the address itself.</summary>
         private static void AppendActionFallback(StringBuilder html, EmailAction action, bool rtl)
         {
-            AppendParagraph(html, action.FallbackNote, SecondaryText, 14, 22);
+            // One sentence: how long the link lasts, then what to do when the button will not open
+            // it. Two paragraphs would put a break between halves of the same thought.
+            AppendParagraph(html, action.Validity + " " + action.FallbackNote, SecondaryText, 14, 22);
 
             // The address is Latin and must not be reordered by a right-to-left paragraph, so the
             // run is isolated and then aligned back to the reader's own starting edge. word-break

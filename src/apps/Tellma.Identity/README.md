@@ -45,11 +45,14 @@ What the engine does own is the dispatch policy above the contract, and how a me
 at the same speed whether or not the account exists, drains that queue on graceful shutdown, and
 renders each message in the recipient's own locale.
 
-Every message goes out in both forms. The plain-text body is the one that always arrives, and is what
-the test suites read a code or a link back out of. The HTML body — `EmailHtmlLayout` — is what most
-recipients see: an ink banner, a heading, one button or one code panel, and a grey footer, built as
-nested tables with inline styles because Outlook renders through Word and Gmail discards a
-document's stylesheet for non-Gmail accounts. Its colors are literals copied from the emitted design
+Every message goes out in both forms, and both are rendered from one description of it — the parts in
+`EmailContent`, never two hand-written copies that drift. `EmailTextLayout` produces the plain-text
+body, which is what always arrives and what the test suites read a code or a link back out of;
+`EmailHtmlLayout` produces what most recipients see: an ink banner, a heading, one button or one code
+panel, and a grey footer, built as nested tables with inline styles because Outlook renders through
+Word and Gmail discards a document's stylesheet for non-Gmail accounts. The two carry the same
+sentences, which is both fairer to a reader whose client refuses HTML and one fewer thing for a spam
+filter to score. Its colors are literals copied from the emitted design
 tokens, since `var()` resolves nowhere in either; a token change has to be copied across
 deliberately. The layout takes its direction from the recipient's own culture, so Arabic mirrors
 whole rather than per element, and the Latin runs inside it — the address under the button, the

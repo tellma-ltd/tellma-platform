@@ -60,8 +60,12 @@ namespace Tellma.Identity.Services.Email
     /// </summary>
     /// <param name="Label">The button's text.</param>
     /// <param name="Url">The absolute address the button opens.</param>
-    /// <param name="FallbackNote">The sentence introducing the written-out address.</param>
-    internal sealed record EmailAction(string Label, string Url, string FallbackNote);
+    /// <param name="Validity">How long the address lasts and how often it may be used. Separate
+    ///     from <paramref name="FallbackNote" /> because it is true of the message either way,
+    ///     whereas the fallback only makes sense where a button was drawn.</param>
+    /// <param name="FallbackNote">The sentence introducing the written-out address, for the
+    ///     rendering that has a button to fall back from.</param>
+    internal sealed record EmailAction(string Label, string Url, string Validity, string FallbackNote);
 
     /// <summary>A labelled link in the footer.</summary>
     /// <param name="Label">The link's text.</param>

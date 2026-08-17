@@ -86,13 +86,13 @@ namespace Tellma.Identity.IntegrationTests.Api
             string feminine = await factory.Emails.WaitForBodyAsync("hana@example.com");
             string neutral = await factory.Emails.WaitForBodyAsync("sam@example.com");
 
-            // The imperative that opens the invitation is the gendered word. Asserted on the
+            // The imperative asking the recipient to accept is the gendered word. Asserted on the
             // feminine form rather than the masculine one, because the masculine is a prefix of
             // the feminine — "contains the masculine" is true of both and would pass whatever the
             // recipient's setting did.
-            Assert.Contains("افتحي", feminine, StringComparison.Ordinal);
-            Assert.DoesNotContain("افتحي", neutral, StringComparison.Ordinal);
-            Assert.Contains("افتح", neutral, StringComparison.Ordinal);
+            Assert.Contains("اقبلي", feminine, StringComparison.Ordinal);
+            Assert.DoesNotContain("اقبلي", neutral, StringComparison.Ordinal);
+            Assert.Contains("اقبل", neutral, StringComparison.Ordinal);
 
             // And the select resolves rather than reaching a mailbox as raw ICU syntax, which is
             // how this feature would most plausibly break: the formatter swallows a malformed

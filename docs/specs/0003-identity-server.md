@@ -594,11 +594,14 @@ sees one unified settings experience.
 ### 11.3 Email presentation
 
 Sign-in codes, invitations and password resets are the server's other user-facing surface, and are
-sent in two forms. The plain-text alternative is always present: it reads correctly in a client that
-refuses HTML, and mail carrying no text part is treated as a spam signal. The HTML alternative is what
-most recipients see — an ink banner carrying the brand mark, a heading, a single action as either a
-button or a one-time-code panel, and a footer linking whichever legal documents the deployment has
-published.
+sent in two forms rendered from one description of the message rather than written twice. The
+plain-text alternative is always present: it reads correctly in a client that refuses HTML, and mail
+carrying no text part is treated as a spam signal — as, more mildly, is one whose two alternatives
+disagree. The HTML alternative is what most recipients see — an ink banner carrying the brand mark, a
+heading, a single action as either a button or a one-time-code panel, and a footer linking whichever
+legal documents the deployment has published. The only copy that differs between them is the sentence
+telling a reader what to do when the button does not work, which has no meaning where no button was
+drawn.
 
 Mail clients constrain how that is built rather than what it says: layout is nested tables and every
 visual rule is an inline attribute, because Outlook renders through Word and Gmail discards a

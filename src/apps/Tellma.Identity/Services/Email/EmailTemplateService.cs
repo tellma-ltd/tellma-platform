@@ -50,7 +50,6 @@ namespace Tellma.Identity.Services.Email
                 user,
                 product,
                 "SignInCodeSubject", [product],
-                "SignInCodeBody", [code],
                 localize => new EmailContent
                 {
                     Preheader = localize("SignInCodePreheader"),
@@ -78,14 +77,14 @@ namespace Tellma.Identity.Services.Email
                 user,
                 product,
                 "InvitationSubject", [product],
-                "InvitationBody", [product, link, expiryDays],
                 localize => new EmailContent
                 {
                     Preheader = localize("InvitationPreheader", product),
                     Heading = localize("InvitationHeading", product),
-                    Paragraphs = [localize("InvitationIntro", product)],
+                    Paragraphs = [localize("InvitationIntro")],
                     Action = new EmailAction(
-                        localize("InvitationButton"), link, localize("InvitationFallback", expiryDays)),
+                        localize("InvitationButton"), link,
+                        localize("InvitationValidity", expiryDays), localize("ActionFallback")),
                     Notes = [localize("InvitationSecurity")],
                     FooterNote = localize("InvitationFooter", product),
                     FooterLinks = FooterLinks(localize),
@@ -105,14 +104,14 @@ namespace Tellma.Identity.Services.Email
                 user,
                 product,
                 "PasswordResetSubject", [product],
-                "PasswordResetBody", [link],
                 localize => new EmailContent
                 {
                     Preheader = localize("PasswordResetPreheader", product),
                     Heading = localize("PasswordResetHeading"),
                     Paragraphs = [localize("PasswordResetIntro", product)],
                     Action = new EmailAction(
-                        localize("PasswordResetButton"), link, localize("PasswordResetFallback")),
+                        localize("PasswordResetButton"), link,
+                        localize("PasswordResetValidity"), localize("ActionFallback")),
                     Notes = [localize("PasswordResetSecurity")],
                     FooterNote = localize("PasswordResetFooter", product),
                     FooterLinks = FooterLinks(localize),
@@ -125,8 +124,6 @@ namespace Tellma.Identity.Services.Email
             string product,
             string subjectKey,
             object[] subjectArgs,
-            string bodyKey,
-            object[] bodyArgs,
             Func<Localize, EmailContent> buildContent)
         {
             CultureInfo previous = CultureInfo.CurrentUICulture;
@@ -151,8 +148,12 @@ namespace Tellma.Identity.Services.Email
                 }
 
                 string subject = Localized(subjectKey, subjectArgs);
-                string body = Localized(bodyKey, bodyArgs);
-                string html = EmailHtmlLayout.Render(buildContent(Localized), subject, product, culture);
+
+                // Both bodies from one description of the message, so a client that refuses HTML
+                // gets the same content rather than a shorter summary of it.
+                EmailContent content = buildContent(Localized);
+                string html = EmailHtmlLayout.Render(content, subject, product, culture);
+                string body = EmailTextLayout.Render(content);
 
                 // Internal: every message the identity server sends addresses a platform user about
                 // their own account, never a recipient of a tenant's own correspondence. No From —
