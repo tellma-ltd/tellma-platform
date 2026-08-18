@@ -41,6 +41,59 @@ namespace Tellma.Identity.Controllers.Api
         public string? ReturnUrl { get; init; }
     }
 
+    /// <summary>The bulk delivery-status request body.</summary>
+    public sealed class InvitationDeliveryStatusRequest
+    {
+        /// <summary>The users to report on (1–1000), by the <c>sub</c> the invite call returned.</summary>
+        [Required]
+        [MinLength(1)]
+        [MaxLength(1000)]
+        public IList<string> Subs { get; init; } = [];
+    }
+
+    /// <summary>The bulk delivery-status response body.</summary>
+    public sealed class InvitationDeliveryStatusResponse
+    {
+        /// <summary>One result per requested subject, in request order.</summary>
+        public IList<InvitationDeliveryStatusResult> Results { get; init; } = [];
+    }
+
+    /// <summary>One user's invitation delivery status.</summary>
+    public sealed class InvitationDeliveryStatusResult
+    {
+        /// <summary>The subject asked about.</summary>
+        public string Sub { get; init; } = string.Empty;
+
+        /// <summary>
+        ///     How far the invitation got: <c>NotFound</c>, <c>Pending</c>, <c>Sent</c>,
+        ///     <c>Delivered</c>, <c>Bounced</c>, <c>Complained</c>, <c>Rejected</c>,
+        ///     <c>Abandoned</c>, or <c>Accepted</c>.
+        ///     <para>
+        ///         <c>NotFound</c> means this caller raised no invitation for that subject. It is
+        ///         deliberately the same answer for a user that does not exist, so that the endpoint
+        ///         cannot be used to probe the global directory.
+        ///     </para>
+        /// </summary>
+        public string State { get; init; } = string.Empty;
+
+        /// <summary>
+        ///     Whether a provider will report further on this message. When false, <c>Sent</c> is
+        ///     the end of the story rather than a step on the way to <c>Delivered</c> — an
+        ///     on-premise SMTP relay reports nothing back, and a caller that renders silence as
+        ///     "not delivered yet" would be showing a status that can never change.
+        /// </summary>
+        public bool ExpectsDeliveryEvents { get; init; }
+
+        /// <summary>When the message reached a transport; null until it has.</summary>
+        public DateTimeOffset? SentUtc { get; init; }
+
+        /// <summary>When a provider last reported on it; null when none has.</summary>
+        public DateTimeOffset? UpdatedUtc { get; init; }
+
+        /// <summary>The provider's failure detail, for a failed state only.</summary>
+        public string? Reason { get; init; }
+    }
+
     /// <summary>The bulk-invitation response body. Never contains invitation links.</summary>
     public sealed class InviteUsersResponse
     {

@@ -98,6 +98,7 @@ namespace Tellma.Identity.Hosting
             // sweep's contract is that two of them running at once never send the same invitation
             // twice, and that is only demonstrable by resolving two and running them together.
             services.AddScoped<Services.Invitations.InvitationDispatchJob>();
+            services.AddScoped<Services.Invitations.InvitationDeliveryStatusService>();
 
             // Outbound mail leaves the request path via a background worker so enumeration-safe
             // endpoints return without an SMTP wait whether or not the account exists.

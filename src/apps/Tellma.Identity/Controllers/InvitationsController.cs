@@ -20,10 +20,13 @@ namespace Tellma.Identity.Controllers
     ///     invitation link is never in the response, in any environment.
     /// </summary>
     /// <param name="invitationService">The bulk invitation service.</param>
+    /// <param name="deliveryStatusService">Reads what became of invitations already raised.</param>
     [ApiController]
     [Authorize(AuthenticationSchemes = OpenIddict.Validation.AspNetCore.OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme,
         Policy = ApiPolicies.IdentityScope)]
-    public sealed class InvitationsController(InvitationService invitationService) : ControllerBase
+    public sealed class InvitationsController(
+        InvitationService invitationService,
+        InvitationDeliveryStatusService deliveryStatusService) : ControllerBase
     {
         /// <summary>Invites a batch of users.</summary>
         /// <param name="request">The users to invite.</param>
@@ -58,6 +61,49 @@ namespace Tellma.Identity.Controllers
                     Sub = result.Subject,
                     Status = result.Status?.ToString(),
                     Error = result.Error,
+                })],
+            });
+        }
+
+        /// <summary>Reads what became of the invitations this caller raised.</summary>
+        /// <param name="request">The subjects to report on.</param>
+        /// <returns>One result per requested subject, in request order.</returns>
+        /// <remarks>
+        ///     Bulk-shaped for the same reason the invite is: a distribution's admin screen asks
+        ///     about a page of users at once, and a per-user endpoint would turn that into a page
+        ///     of round trips.
+        /// </remarks>
+        [HttpPost("api/identity/invitations/delivery-status")]
+        public async Task<ActionResult<InvitationDeliveryStatusResponse>> DeliveryStatus(
+            [FromBody] InvitationDeliveryStatusRequest request)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+
+            // Resolved exactly as the invite does, because it has to match what was recorded then.
+            string? clientId = User.GetClaim(OpenIddictConstants.Claims.ClientId)
+                ?? User.GetClaim(OpenIddictConstants.Claims.Subject);
+
+            // A token carrying the scope but naming no client would otherwise be scoped to rows
+            // whose creating client is also null, which is every invitation raised without one.
+            // There is no caller this could legitimately be, so it is refused rather than narrowed.
+            if (string.IsNullOrWhiteSpace(clientId))
+            {
+                return Forbid();
+            }
+
+            IReadOnlyList<InvitationDeliveryStatus> statuses = await deliveryStatusService.ReadAsync(
+                [.. request.Subs], clientId, HttpContext.RequestAborted);
+
+            return Ok(new InvitationDeliveryStatusResponse
+            {
+                Results = [.. statuses.Select(static status => new InvitationDeliveryStatusResult
+                {
+                    Sub = status.Subject,
+                    State = status.State.ToString(),
+                    ExpectsDeliveryEvents = status.ExpectsDeliveryEvents,
+                    SentUtc = status.SentUtc,
+                    UpdatedUtc = status.UpdatedUtc,
+                    Reason = status.Reason,
                 })],
             });
         }
