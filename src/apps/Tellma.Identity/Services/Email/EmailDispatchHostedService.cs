@@ -42,21 +42,25 @@ namespace Tellma.Identity.Services.Email
                     await using AsyncServiceScope scope = scopeFactory.CreateAsyncScope();
                     IEmailSender sender = scope.ServiceProvider.GetRequiredService<IEmailSender>();
 
-                    // The results are deliberately not inspected. Each one is already counted and
-                    // logged centrally by the pipeline, and there is nothing this worker could do
-                    // with a per-message outcome: a code or link that failed to go out is recovered
-                    // by the user asking for another, not by anything here. That includes the
-                    // outcomes that are not failures at all — Sandboxed cannot occur while this
-                    // deployment declares itself tenant-less, and Rejected means the message was
-                    // malformed, which retrying would not mend.
-                    await sender.SendAsync(batch, CancellationToken.None);
+                    IReadOnlyList<EmailSendResult> results = await sender.SendAsync(batch, CancellationToken.None);
+
+                    // The outcome is recorded against the single-use code each message carries.
+                    // A code or a reset link that failed to go out is still recovered by the user
+                    // asking for another — but an invitation's recipient is not waiting for it and
+                    // cannot ask, so the row has to remember that nothing went out and let the
+                    // recovery sweep finish the job.
+                    await scope.ServiceProvider
+                        .GetRequiredService<IEmailDispatchRecorder>()
+                        .RecordAsync(batch, results, CancellationToken.None);
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
                     // The contract lets a sender throw only when nothing went out, so a whole batch
                     // is lost here rather than half-delivered — except for a transport that breaks
                     // the contract, which the pipeline surfaces as InvalidOperationException after
-                    // mail may already have gone. Neither is retried: see above.
+                    // mail may already have gone. Either way the rows stay Pending, which is the
+                    // safe reading: the sweep resends, and a duplicate invitation is recoverable
+                    // where a missing one is not.
                     EmailDispatchLog.DeliveryFailed(logger, exception, batch.Count);
                 }
             }

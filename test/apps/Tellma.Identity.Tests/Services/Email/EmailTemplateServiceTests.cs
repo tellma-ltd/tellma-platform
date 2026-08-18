@@ -26,6 +26,8 @@ namespace Tellma.Identity.Tests.Services.Email
     /// </summary>
     public sealed class EmailTemplateServiceTests
     {
+        private const string CodeId = "0123456789abcdef0123456789abcdef";
+
         private const string Link = "https://id.example.com/Identity/Account/Invitation?code=abc123";
 
         [Fact]
@@ -109,9 +111,9 @@ namespace Tellma.Identity.Tests.Services.Email
 
             // The browser suites and the local inspection script both read these back out of the
             // text body, so a rendering that dropped either would break them and nothing else.
-            Assert.Contains("91095144", templates.SignInCode(user, "91095144").TextBody, StringComparison.Ordinal);
-            Assert.Contains(Link, templates.Invitation(user, Link, expiryDays: 7).TextBody, StringComparison.Ordinal);
-            Assert.Contains(Link, templates.PasswordReset(user, Link).TextBody, StringComparison.Ordinal);
+            Assert.Contains("91095144", templates.SignInCode(user, "91095144", CodeId).TextBody, StringComparison.Ordinal);
+            Assert.Contains(Link, templates.Invitation(user, Link, expiryDays: 7, CodeId).TextBody, StringComparison.Ordinal);
+            Assert.Contains(Link, templates.PasswordReset(user, Link, CodeId).TextBody, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -119,7 +121,7 @@ namespace Tellma.Identity.Tests.Services.Email
         {
             EmailTemplateService templates = CreateService();
 
-            string text = templates.Invitation(CreateUser(), Link, expiryDays: 7).TextBody;
+            string text = templates.Invitation(CreateUser(), Link, expiryDays: 7, CodeId).TextBody;
 
             // CRLF, not the host's line ending: the same message has to read identically whether it
             // was composed on Windows or Linux.
@@ -166,7 +168,7 @@ namespace Tellma.Identity.Tests.Services.Email
         {
             EmailTemplateService templates = CreateService();
 
-            string html = templates.Invitation(CreateUser(), Link, expiryDays: 7).HtmlBody!;
+            string html = templates.Invitation(CreateUser(), Link, expiryDays: 7, CodeId).HtmlBody!;
 
             // Twice: once behind the button, once spelled out for a client that will not follow it.
             Assert.Equal(2, CountOccurrences(html, $"href=\"{Link}\""));
@@ -181,7 +183,7 @@ namespace Tellma.Identity.Tests.Services.Email
         {
             EmailTemplateService templates = CreateService();
 
-            string html = templates.SignInCode(CreateUser(locale: "ar"), "91095144").HtmlBody!;
+            string html = templates.SignInCode(CreateUser(locale: "ar"), "91095144", CodeId).HtmlBody!;
 
             // Digits inside a right-to-left paragraph keep their order only when the run says so.
             Assert.Contains("dir=\"ltr\"", html, StringComparison.Ordinal);
@@ -195,7 +197,7 @@ namespace Tellma.Identity.Tests.Services.Email
         {
             EmailTemplateService templates = CreateService();
 
-            string html = templates.SignInCode(CreateUser(locale: locale), "91095144").HtmlBody!;
+            string html = templates.SignInCode(CreateUser(locale: locale), "91095144", CodeId).HtmlBody!;
 
             Assert.Contains($"<html lang=\"{locale}\" dir=\"{direction}\"", html, StringComparison.Ordinal);
         }
@@ -205,7 +207,7 @@ namespace Tellma.Identity.Tests.Services.Email
         {
             EmailTemplateService templates = CreateService();
 
-            EmailMessage message = templates.Invitation(CreateUser(locale: "ar"), Link, expiryDays: 7);
+            EmailMessage message = templates.Invitation(CreateUser(locale: "ar"), Link, expiryDays: 7, CodeId);
 
             // The button label, so this pins the HTML-only strings rather than only the subject
             // the plain-text body already shares.
@@ -222,7 +224,7 @@ namespace Tellma.Identity.Tests.Services.Email
 
             // The address is interpolated into the sign-in copy and the footer, so it is the one
             // piece of recipient-controlled text that reaches the HTML body.
-            string html = templates.SignInCode(user, "91095144").HtmlBody!;
+            string html = templates.SignInCode(user, "91095144", CodeId).HtmlBody!;
 
             Assert.DoesNotContain("<script>", html, StringComparison.Ordinal);
             Assert.Contains("&lt;script&gt;", html, StringComparison.Ordinal);
@@ -234,13 +236,13 @@ namespace Tellma.Identity.Tests.Services.Email
         {
             TellmaIdentityUser user = CreateUser();
 
-            string without = CreateService().SignInCode(user, "91095144").HtmlBody!;
+            string without = CreateService().SignInCode(user, "91095144", CodeId).HtmlBody!;
             Assert.DoesNotContain(">Privacy</a>", without, StringComparison.Ordinal);
             Assert.DoesNotContain(">Terms</a>", without, StringComparison.Ordinal);
 
             string with = CreateService(
                 privacyUrl: "https://example.com/privacy", termsUrl: "https://example.com/terms")
-                .SignInCode(user, "91095144").HtmlBody!;
+                .SignInCode(user, "91095144", CodeId).HtmlBody!;
             Assert.Contains("href=\"https://example.com/privacy\"", with, StringComparison.Ordinal);
             Assert.Contains("href=\"https://example.com/terms\"", with, StringComparison.Ordinal);
         }
@@ -253,16 +255,16 @@ namespace Tellma.Identity.Tests.Services.Email
             // Nothing generates such a link today. The check is here because a link in mail is
             // followed later, elsewhere, by someone who cannot see where it came from.
             Assert.Throws<ArgumentException>(
-                () => templates.PasswordReset(CreateUser(), "javascript:alert(1)"));
+                () => templates.PasswordReset(CreateUser(), "javascript:alert(1)", CodeId));
         }
 
         /// <summary>The three messages, so a rule that must hold for all of them is stated once.</summary>
         private static IEnumerable<EmailMessage> AllMessages(
             EmailTemplateService templates, TellmaIdentityUser user)
         {
-            yield return templates.SignInCode(user, "91095144");
-            yield return templates.Invitation(user, Link, expiryDays: 7);
-            yield return templates.PasswordReset(user, Link);
+            yield return templates.SignInCode(user, "91095144", CodeId);
+            yield return templates.Invitation(user, Link, expiryDays: 7, CodeId);
+            yield return templates.PasswordReset(user, Link, CodeId);
         }
 
         /// <summary>Builds the service the way the host composes it.</summary>

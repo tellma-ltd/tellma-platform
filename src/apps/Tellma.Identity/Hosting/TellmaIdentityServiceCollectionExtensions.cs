@@ -84,6 +84,13 @@ namespace Tellma.Identity.Hosting
             services.AddScoped<Services.EmailCodes.IEmailCodeService, Services.EmailCodes.EmailCodeService>();
             services.AddScoped<Services.RateLimiting.IRateLimitCounterStore, Services.RateLimiting.SqlRateLimitCounterStore>();
             services.AddScoped<Services.Email.EmailTemplateService>();
+            services.AddScoped<Services.Email.IEmailDispatchRecorder, Services.Email.EmailDispatchRecorder>();
+            services.AddSingleton<Services.Invitations.InvitationLinkBuilder>();
+
+            // Registered as a service in its own right, not only as a Quartz job: the recovery
+            // sweep's contract is that two of them running at once never send the same invitation
+            // twice, and that is only demonstrable by resolving two and running them together.
+            services.AddScoped<Services.Invitations.InvitationDispatchJob>();
 
             // Outbound mail leaves the request path via a background worker so enumeration-safe
             // endpoints return without an SMTP wait whether or not the account exists.

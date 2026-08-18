@@ -104,7 +104,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                 string prefix = engineOptions.Value.PathBase;
                 string link = new Uri(engineOptions.Value.Issuer!, $"{prefix}/Identity/Account/ResetPassword?code={Uri.EscapeDataString(token)}").AbsoluteUri;
 
-                emailQueue.Enqueue([templates.PasswordReset(user, link)]);
+                emailQueue.Enqueue([templates.PasswordReset(user, link, OneTimeTokenFormat.IdOf(token))]);
                 await auditLogger.LogAsync(new AuditEventEntry
                 {
                     Action = AuditActions.PasswordResetRequested,

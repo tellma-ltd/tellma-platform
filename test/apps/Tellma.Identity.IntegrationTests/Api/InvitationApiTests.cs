@@ -211,10 +211,16 @@ namespace Tellma.Identity.IntegrationTests.Api
                 throw new OperationCanceledException(caller.Token);
             }
 
+            /// <summary>Never reached: the batch aborts before any resend can be attempted.</summary>
+            public Task<string?> RotateAsync(string codeId, TimeSpan lifetime, CancellationToken cancellationToken)
+            {
+                return Task.FromResult<string?>(null);
+            }
+
             public Task<bool> PeekAsync(
-                string token,
-                Data.Entities.SingleUseCodePurpose purpose,
-                CancellationToken cancellationToken)
+                    string token,
+                    Data.Entities.SingleUseCodePurpose purpose,
+                    CancellationToken cancellationToken)
             {
                 return inner.PeekAsync(token, purpose, cancellationToken);
             }

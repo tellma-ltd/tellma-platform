@@ -7,12 +7,10 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Identity.Data;
 using Tellma.Identity.Data.Entities;
 using Tellma.Identity.Infrastructure;
-using Tellma.Identity.Options;
 using Tellma.Identity.Services.Audit;
 using Tellma.Identity.Services.Email;
 using Tellma.Identity.Services.Tokens;
@@ -67,7 +65,7 @@ namespace Tellma.Identity.Services.Invitations
     /// <param name="tokens">One-time invitation tokens.</param>
     /// <param name="emailDispatcher">The background mail dispatch queue.</param>
     /// <param name="templates">Localized message construction.</param>
-    /// <param name="options">The engine options (issuer for the link base).</param>
+    /// <param name="links">Builds the absolute invitation link.</param>
     /// <param name="auditLogger">Audit emission.</param>
     /// <param name="metrics">Identity metrics.</param>
     /// <param name="timeProvider">The clock.</param>
@@ -78,7 +76,7 @@ namespace Tellma.Identity.Services.Invitations
         IOneTimeTokenService tokens,
         IEmailDispatcher emailDispatcher,
         EmailTemplateService templates,
-        IOptions<TellmaIdentityOptions> options,
+        InvitationLinkBuilder links,
         IAuditLogger auditLogger,
         IdentityMetrics metrics,
         TimeProvider timeProvider,
@@ -270,8 +268,8 @@ namespace Tellma.Identity.Services.Invitations
             {
                 string token = await tokens.IssueAsync(
                     user.Id, SingleUseCodePurpose.Invitation, InvitationLifetime, item.ReturnUrl, createdByClientId, cancellationToken);
-                string link = BuildLink(token);
-                emails.Add(templates.Invitation(user, link, InvitationLifetime.Days));
+                string link = links.Build(token);
+                emails.Add(templates.Invitation(user, link, InvitationLifetime.Days, OneTimeTokenFormat.IdOf(token)));
 
                 // As above: the user's link is issued and queued, so recording that must not be
                 // undone by the caller giving up.
@@ -369,13 +367,6 @@ namespace Tellma.Identity.Services.Invitations
                 ? (user, InvitationStatus.Invited, null)
                 : (null, default, "The user could not be created: "
                     + string.Join("; ", result.Errors.Select(static e => e.Description)));
-        }
-
-        /// <summary>Builds the absolute invitation link (the token, not the return url, is in the URL).</summary>
-        private string BuildLink(string token)
-        {
-            string prefix = options.Value.PathBase;
-            return new Uri(options.Value.Issuer!, $"{prefix}/Identity/Account/Invitation?code={Uri.EscapeDataString(token)}").AbsoluteUri;
         }
     }
 

@@ -75,10 +75,26 @@ namespace Tellma.Identity.Data.Configurations
             builder.Property(static code => code.FlowBinding).HasMaxLength(64);
             builder.Property(static code => code.ReturnUrl).HasMaxLength(2048);
             builder.Property(static code => code.CreatedByClientId).HasMaxLength(100);
+            builder.Property(static code => code.ProviderMessageId).HasMaxLength(200);
+            builder.Property(static code => code.DeliveryReason).HasMaxLength(512);
+            builder.Property(static code => code.LastProviderEventId).HasMaxLength(200);
 
             // Verification looks up the outstanding secret per user and purpose; expiry bounds
             // the scan and supports pruning.
             builder.HasIndex(static code => new { code.UserId, code.Purpose, code.ExpiresUtc });
+
+            // The recovery sweep's claim, filtered to the only state it can claim. Filtered
+            // because sign-in codes share this table and vastly outnumber invitations: a full
+            // index would carry every code ever issued to serve a query that only ever wants the
+            // few rows whose mail has not gone out.
+            builder
+                .HasIndex(static code => new { code.Purpose, code.CreatedUtc })
+                .HasFilter("[DispatchState] = 0")
+                .HasDatabaseName("IX_SingleUseCodes_PendingDispatch");
+
+            // The distribution-facing delivery-status read: always scoped to the calling client
+            // first, then the users it asked about.
+            builder.HasIndex(static code => new { code.CreatedByClientId, code.UserId, code.CreatedUtc });
 
             builder
                 .HasOne<TellmaIdentityUser>()

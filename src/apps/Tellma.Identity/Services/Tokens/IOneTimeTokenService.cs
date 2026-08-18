@@ -37,6 +37,23 @@ namespace Tellma.Identity.Services.Tokens
             CancellationToken cancellationToken);
 
         /// <summary>
+        ///     Mints a fresh secret for an existing token row, keeping its identity and its
+        ///     context, and returns the new clear token.
+        /// </summary>
+        /// <remarks>
+        ///     For resending a link whose mail never went out. Only the hash is ever stored, so the
+        ///     original link cannot be reproduced — the row is given a new secret instead of a new
+        ///     row, which keeps one invitation to one record and needs no "superseded" state. The
+        ///     previous link stops working the moment this returns, which is the intended reading:
+        ///     if it had reached anyone, this resend would not be happening.
+        /// </remarks>
+        /// <param name="codeId">The row to rotate.</param>
+        /// <param name="lifetime">How long the new secret stays valid, measured from now.</param>
+        /// <param name="cancellationToken">Aborts the operation.</param>
+        /// <returns>The new clear token, or null when the row is gone or already consumed.</returns>
+        Task<string?> RotateAsync(string codeId, TimeSpan lifetime, CancellationToken cancellationToken);
+
+        /// <summary>
         ///     Reports whether a token is currently usable, <em>without</em> consuming it.
         ///     <para>
         ///         For pages that land on a link and want to say "this link has expired" before

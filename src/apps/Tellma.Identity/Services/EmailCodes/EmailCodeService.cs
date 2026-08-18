@@ -108,9 +108,10 @@ namespace Tellma.Identity.Services.EmailCodes
                 .ExecuteUpdateAsync(setters => setters.SetProperty(static c => c.ConsumedUtc, now), cancellationToken);
 
             string code = RandomNumberGenerator.GetInt32(0, 100_000_000).ToString("D8", CultureInfo.InvariantCulture);
+            string codeId = Guid.NewGuid().ToString("N");
             context.Set<SingleUseCode>().Add(new SingleUseCode
             {
-                Id = Guid.NewGuid().ToString("N"),
+                Id = codeId,
                 UserId = user.Id,
                 Purpose = purpose,
                 SecretHash = Hash(user.Id, code),
@@ -121,7 +122,7 @@ namespace Tellma.Identity.Services.EmailCodes
             await context.SaveChangesAsync(cancellationToken);
 
             // Hand delivery to the background worker so the request returns without an SMTP wait.
-            emailQueue.Enqueue([templates.SignInCode(user, code)]);
+            emailQueue.Enqueue([templates.SignInCode(user, code, codeId)]);
 
             await auditLogger.LogAsync(
                 new AuditEventEntry

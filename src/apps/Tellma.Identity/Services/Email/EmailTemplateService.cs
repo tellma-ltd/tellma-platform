@@ -40,8 +40,9 @@ namespace Tellma.Identity.Services.Email
         /// <summary>Builds the sign-in / verification code message.</summary>
         /// <param name="user">The recipient.</param>
         /// <param name="code">The one-time code.</param>
+        /// <param name="singleUseCodeId">The row delivery events for this message report against.</param>
         /// <returns>The localized message.</returns>
-        public EmailMessage SignInCode(TellmaIdentityUser user, string code)
+        public EmailMessage SignInCode(TellmaIdentityUser user, string code, string singleUseCodeId)
         {
             ArgumentNullException.ThrowIfNull(user);
 
@@ -49,6 +50,7 @@ namespace Tellma.Identity.Services.Email
             return Render(
                 user,
                 product,
+                singleUseCodeId,
                 "SignInCodeSubject", [product],
                 localize => new EmailContent
                 {
@@ -67,8 +69,10 @@ namespace Tellma.Identity.Services.Email
         /// <param name="user">The recipient.</param>
         /// <param name="link">The single-use invitation link.</param>
         /// <param name="expiryDays">How many days the link stays valid.</param>
+        /// <param name="singleUseCodeId">The row delivery events for this message report against.</param>
         /// <returns>The localized message.</returns>
-        public EmailMessage Invitation(TellmaIdentityUser user, string link, int expiryDays)
+        public EmailMessage Invitation(
+            TellmaIdentityUser user, string link, int expiryDays, string singleUseCodeId)
         {
             ArgumentNullException.ThrowIfNull(user);
 
@@ -76,6 +80,7 @@ namespace Tellma.Identity.Services.Email
             return Render(
                 user,
                 product,
+                singleUseCodeId,
                 "InvitationSubject", [product],
                 localize => new EmailContent
                 {
@@ -94,8 +99,9 @@ namespace Tellma.Identity.Services.Email
         /// <summary>Builds the password-reset message.</summary>
         /// <param name="user">The recipient.</param>
         /// <param name="link">The single-use reset link.</param>
+        /// <param name="singleUseCodeId">The row delivery events for this message report against.</param>
         /// <returns>The localized message.</returns>
-        public EmailMessage PasswordReset(TellmaIdentityUser user, string link)
+        public EmailMessage PasswordReset(TellmaIdentityUser user, string link, string singleUseCodeId)
         {
             ArgumentNullException.ThrowIfNull(user);
 
@@ -103,6 +109,7 @@ namespace Tellma.Identity.Services.Email
             return Render(
                 user,
                 product,
+                singleUseCodeId,
                 "PasswordResetSubject", [product],
                 localize => new EmailContent
                 {
@@ -122,6 +129,7 @@ namespace Tellma.Identity.Services.Email
         private EmailMessage Render(
             TellmaIdentityUser user,
             string product,
+            string singleUseCodeId,
             string subjectKey,
             object[] subjectArgs,
             Func<Localize, EmailContent> buildContent)
@@ -157,9 +165,9 @@ namespace Tellma.Identity.Services.Email
 
                 // Internal: every message the identity server sends addresses a platform user about
                 // their own account, never a recipient of a tenant's own correspondence. No From —
-                // the active transport supplies the configured sender. No Correlation — nothing here
-                // subscribes to delivery events, and a correlation nobody owns is only noise in the
-                // pipeline's logs.
+                // the active transport supplies the configured sender. The correlation names the
+                // single-use code this message carries, which is what lets a delivery event — and
+                // the send outcome itself — find the row to report against.
                 return new EmailMessage
                 {
                     To = [new EmailAddress(user.Email!, user.DisplayName)],
@@ -168,6 +176,7 @@ namespace Tellma.Identity.Services.Email
                     HtmlBody = html,
                     Attachments = [EmailWordmark.Attachment()],
                     Audience = EmailAudience.Internal,
+                    Correlation = IdentityEmailCorrelation.For(singleUseCodeId),
                 };
             }
             finally

@@ -55,6 +55,29 @@ namespace Tellma.Identity.Services.Tokens
         }
 
         /// <inheritdoc />
+        public async Task<string?> RotateAsync(
+            string codeId, TimeSpan lifetime, CancellationToken cancellationToken)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(codeId);
+
+            DateTimeOffset now = timeProvider.GetUtcNow();
+            string secret = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32));
+
+            // Conditional on the row still being unconsumed, so a token redeemed between the
+            // sweep's claim and this update is not resurrected with a fresh secret.
+            int rotated = await context.Set<SingleUseCode>()
+                .Where(code => code.Id == codeId && code.ConsumedUtc == null)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(static c => c.SecretHash, Hash(secret))
+                        .SetProperty(static c => c.ExpiresUtc, now.Add(lifetime))
+                        .SetProperty(static c => c.Attempts, 0),
+                    cancellationToken);
+
+            return rotated == 1 ? codeId + "." + secret : null;
+        }
+
+        /// <inheritdoc />
         public async Task<bool> PeekAsync(
             string token, SingleUseCodePurpose purpose, CancellationToken cancellationToken)
         {
