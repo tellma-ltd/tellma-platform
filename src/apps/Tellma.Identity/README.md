@@ -79,6 +79,20 @@ SVG, block remote images until the reader trusts the sender, and could not reach
 authority in any case. Refresh it by rendering that SVG at 396&nbsp;&times;&nbsp;112 on a transparent
 background whenever the wordmark changes.
 
+One cross-cutting rule about the UI is worth knowing before touching any page in the sign-in flow.
+Every response carries `form-action 'self'`, and a browser applies that directive to **every hop of the
+navigation a form submission produces** — judged against the policy of the document holding the form,
+not the response that does the redirecting. Signing in, granting consent, accepting an invitation and
+starting a federated hand-off all end at another origin, so each of those pages widens its own policy
+to exactly the destinations involved: the pending client's registered callbacks, the configured
+provider's origin, the invitation's sealed destination. The widenings accumulate, because one page can
+need two of them. Get this wrong and there is no error to find: the server issues a perfectly good
+redirect, the browser silently declines to follow it, and the page appears to do nothing.
+
+Failures with nowhere else to go land on the error page, which always shows the request's trace
+identifier — the reference a user can quote and an operator can search for. Standalone, the host also
+routes its own unhandled exceptions there; in-proc, that is the hosting distribution's to wire.
+
 The engine reads the client IP from the connection (`RemoteIpAddress`) for rate limiting and audit.
 A host that sits behind a reverse proxy — standalone or in-proc — must register the ASP.NET Core
 forwarded-headers middleware as its first middleware, restricted to the deployment's known

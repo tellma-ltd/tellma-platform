@@ -163,6 +163,12 @@ namespace Tellma.Identity.Web
 
             if (!app.Environment.IsDevelopment())
             {
+                // Ahead of routing, because handling an exception means re-running the request
+                // against the error path and routing has to see it — behind routing the
+                // re-execution would match no endpoint and answer a blank 404. Development keeps
+                // the developer exception page the host adds for it, which is more use there than
+                // a sanitized page.
+                app.UseExceptionHandler("/error");
                 app.UseHsts();
                 app.UseHttpsRedirection();
             }

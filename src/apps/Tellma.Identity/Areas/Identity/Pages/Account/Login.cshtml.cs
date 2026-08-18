@@ -32,6 +32,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
     /// <param name="auditLogger">Audit emission.</param>
     /// <param name="metrics">Identity metrics.</param>
     /// <param name="localizer">UI strings.</param>
+    /// <param name="authorizeReturns">Names the pending client's callbacks in this page's policy.</param>
     [AllowAnonymous]
     public sealed class LoginModel(
         SignInManager<TellmaIdentityUser> signInManager,
@@ -41,7 +42,8 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         IOptions<TellmaIdentityOptions> engineOptions,
         IAuditLogger auditLogger,
         IdentityMetrics metrics,
-        IStringLocalizer<SharedResources> localizer) : PageModel
+        IStringLocalizer<SharedResources> localizer,
+        AuthorizeReturnFormAction authorizeReturns) : PageModel
     {
         /// <summary>The email the user typed.</summary>
         [BindProperty]
@@ -98,9 +100,9 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         /// <param name="stepUp">Whether this is a step-up confirmation.</param>
         /// <param name="tier">The required assurance tier, from the authorize redirect.</param>
         /// <returns>The page, or a redirect when there is nothing left to ask for.</returns>
-        public IActionResult OnGet(string? returnUrl = null, string? methods = null, bool stepUp = false, string? tier = null)
+        public async Task<IActionResult> OnGetAsync(string? returnUrl = null, string? methods = null, bool stepUp = false, string? tier = null)
         {
-            Initialize(returnUrl, methods, stepUp, tier);
+            await InitializeAsync(returnUrl, methods, stepUp, tier);
 
             // A signed-in user has nothing to do here — unless this is a step-up, where the session
             // exists but does not yet meet what the request demands, and the whole point is to ask
@@ -124,7 +126,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         public async Task<IActionResult> OnPostEmailCodeAsync(
             string? returnUrl = null, string? methods = null, bool stepUp = false, string? tier = null)
         {
-            Initialize(returnUrl, methods, stepUp, tier);
+            await InitializeAsync(returnUrl, methods, stepUp, tier);
 
             if (string.IsNullOrWhiteSpace(Email))
             {
@@ -154,7 +156,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         public async Task<IActionResult> OnPostPasskeyAsync(
             string? returnUrl = null, string? methods = null, bool stepUp = false, string? tier = null)
         {
-            Initialize(returnUrl, methods, stepUp, tier);
+            await InitializeAsync(returnUrl, methods, stepUp, tier);
 
             if (string.IsNullOrWhiteSpace(Credential))
             {
@@ -226,7 +228,8 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         }
 
         /// <summary>Applies and validates the flow parameters.</summary>
-        private void Initialize(string? returnUrl, string? methods, bool stepUp, string? tier)
+        /// <returns>A task that completes once the response's policy has been settled.</returns>
+        private async Task InitializeAsync(string? returnUrl, string? methods, bool stepUp, string? tier)
         {
             ReturnUrl = ReturnUrlValidator.IsValid(returnUrl) ? returnUrl : null;
             StepUp = stepUp;
@@ -273,6 +276,11 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
             // Starting a federated sign-in is a form submission answered with a redirect off this
             // origin, and form-action is enforced on this page's policy across every hop of it.
             ExternalProviderFormAction.Allow(HttpContext, providers);
+
+            // So is finishing one: a sign-in that resumes a pending authorization is answered with
+            // a redirect through the authorization endpoint and on to the client's own callback.
+            // Both widenings apply to this one page, which is why they accumulate.
+            await authorizeReturns.AllowAsync(HttpContext, ReturnUrl, HttpContext.RequestAborted);
             StatusMessage = StepUp ? PageStatus.Info(localizer["ConfirmItsYou"].Value) : null;
         }
     }

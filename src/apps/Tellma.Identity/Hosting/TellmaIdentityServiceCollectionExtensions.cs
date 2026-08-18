@@ -80,6 +80,11 @@ namespace Tellma.Identity.Hosting
             services.AddSingleton<Services.AuthenticationPolicy.IAuthenticationPolicyService, Services.AuthenticationPolicy.AuthenticationPolicyService>();
             services.AddScoped<Services.AuthenticationPolicy.TellmaSignInService>();
             services.AddScoped<Services.AuthenticationPolicy.TellmaPrincipalFactory>();
+
+            // Every page in the sign-in flow needs this to name the pending client's callbacks in
+            // its own policy, or the form that completes the flow submits and the browser refuses
+            // to follow the redirect home.
+            services.AddScoped<AuthorizeReturnFormAction>();
             services.AddScoped<Services.Sessions.ISessionRegistry, Services.Sessions.SqlSessionRegistry>();
             services.AddScoped<Services.EmailCodes.IEmailCodeService, Services.EmailCodes.EmailCodeService>();
             services.AddScoped<Services.RateLimiting.IRateLimitCounterStore, Services.RateLimiting.SqlRateLimitCounterStore>();

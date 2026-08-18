@@ -9,6 +9,13 @@
     <h1 class="tmi-title">@L["ErrorTitle"]</h1>
 </div>
 
+@* A server fault says nothing about itself — nothing it could say is both safe and useful — so
+   the page says whose fault it is instead, which is the part the reader can act on. *@
+@if (Model.IsServerFault)
+{
+    <p class="tmi-muted">@L["ErrorServerFault"]</p>
+}
+
 @* Both may be absent — this page is also the re-execute target for any status code, where it
    is a bare heading and nothing else. *@
 @if (!string.IsNullOrEmpty(Model.Error) || !string.IsNullOrEmpty(Model.ErrorDescription))
@@ -26,4 +33,13 @@
             }
         </div>
     </div>
+}
+
+@* The one thing on this page that connects what the user saw to what the operator can search
+   for. A <code> element because it is a token to be copied character for character — and
+   because that element already isolates its text left-to-right inside Arabic prose. *@
+@if (!string.IsNullOrEmpty(Model.Reference))
+{
+    <p class="tmi-hint">@L["ErrorReference"]: <code>@Model.Reference</code></p>
+    <p class="tmi-hint">@L["ErrorReferenceHint"]</p>
 }

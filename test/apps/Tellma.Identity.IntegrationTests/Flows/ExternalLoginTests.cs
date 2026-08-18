@@ -3,7 +3,13 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.AspNetCore.Authentication.Google;
+using Microsoft.AspNetCore.Authentication.OAuth.Claims;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using System.Net;
+using System.Security.Claims;
+using System.Text.Json;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 
 namespace Tellma.Identity.IntegrationTests.Flows
@@ -57,6 +63,37 @@ namespace Tellma.Identity.IntegrationTests.Flows
             string destination = new Uri(challenge.Headers.Location!.ToString()).GetLeftPart(UriPartial.Authority);
             Assert.Contains("form-action ", policy, StringComparison.Ordinal);
             Assert.Contains(destination, policy, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task Googles_verified_email_claim_reaches_the_principal()
+        {
+            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+                fixture, "idfedclaims", ProviderSeed);
+
+            GoogleOptions options = factory.Services
+                .GetRequiredService<IOptionsMonitor<GoogleOptions>>()
+                .Get(GoogleDefaults.AuthenticationScheme);
+
+            // The handler's own claim actions do not read this key, so the claim is present only
+            // because the engine maps it — and an invitation accepted through Google is allowed to
+            // link only against an address the provider vouches for. Run the actions over the
+            // payload Google's userinfo endpoint returns, which is also the one thing that settles
+            // what a JSON boolean becomes once it is a claim value.
+            using var userinfo = JsonDocument.Parse(
+                @"{""sub"":""1074"",""email"":""someone@example.com"",""email_verified"":true,""name"":""Someone""}");
+
+            ClaimsIdentity identity = new();
+            foreach (ClaimAction action in options.ClaimActions)
+            {
+                action.Run(userinfo.RootElement, identity, GoogleDefaults.AuthenticationScheme);
+            }
+
+            // "True", not "true": the mapping renders the JSON boolean through the framework's own
+            // formatting, so the check that reads this claim has to be case-insensitive. Pinned
+            // here because tightening that comparison would break linking silently.
+            Assert.Equal("someone@example.com", identity.FindFirst(ClaimTypes.Email)?.Value);
+            Assert.Equal("True", identity.FindFirst("email_verified")?.Value);
         }
 
         [Fact]

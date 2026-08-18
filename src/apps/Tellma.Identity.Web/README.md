@@ -36,6 +36,15 @@ transport's own section is validated at startup, so an incomplete one fails the 
 first person to request a sign-in code. Identity registers `SandboxContext.Never` — it has no
 tenants, so none of its mail is ever withheld — and names itself `identity` in email telemetry.
 
+## Failures
+
+Outside Development the host routes its own unhandled exceptions to the engine's error page, ahead of
+routing — an exception handler registered behind it would re-execute the request against a pipeline
+that has already matched an endpoint, and answer a blank 404. Development keeps the developer
+exception page instead, which is more use there than a sanitized one. Either way the response carries
+the request's trace identifier as a quotable reference, and the trace it names is the one the logs and
+any configured collector already correlate on.
+
 ## Behind a reverse proxy
 
 Per-IP rate limiting and audit forensics need the real client IP, which a reverse proxy delivers in

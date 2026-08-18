@@ -30,6 +30,9 @@
     </div>
     <div class="tmi-actions">
         <button class="tmi-button tmi-button-primary" type="submit">@L["Verify"]</button>
-        <button class="tmi-button tmi-button-secondary" type="submit" asp-page-handler="Resend">@L["ResendCode"]</button>
+        @* formnovalidate because asking for a new code is the thing you do when you have no code:
+           the field's own constraint belongs to Verify alone, and without this the browser refuses
+           to submit at all and the button reads as broken. The server checks the code regardless. *@
+        <button class="tmi-button tmi-button-secondary" type="submit" formnovalidate asp-page-handler="Resend">@L["ResendCode"]</button>
     </div>
 </form>

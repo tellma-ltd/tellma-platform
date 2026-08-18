@@ -28,6 +28,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
     /// <param name="auditLogger">Audit emission.</param>
     /// <param name="metrics">Identity metrics.</param>
     /// <param name="localizer">UI strings.</param>
+    /// <param name="authorizeReturns">Names the pending client's callbacks in this page's policy.</param>
     [AllowAnonymous]
     public sealed class EmailCodeModel(
         UserManager<TellmaIdentityUser> userManager,
@@ -35,7 +36,8 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         TellmaSignInService signInService,
         IAuditLogger auditLogger,
         IdentityMetrics metrics,
-        IStringLocalizer<SharedResources> localizer) : PageModel
+        IStringLocalizer<SharedResources> localizer,
+        AuthorizeReturnFormAction authorizeReturns) : PageModel
     {
         /// <summary>The submitted code.</summary>
         [BindProperty]
@@ -58,9 +60,10 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         /// <param name="returnUrl">Where to return after sign-in.</param>
         /// <param name="stepUp">Whether this is a step-up confirmation.</param>
         /// <param name="rememberMe">Whether the SSO cookie should persist.</param>
-        public void OnGet(string? email = null, string? returnUrl = null, bool stepUp = false, bool rememberMe = false)
+        /// <returns>A task that completes when the page is ready to render.</returns>
+        public Task OnGetAsync(string? email = null, string? returnUrl = null, bool stepUp = false, bool rememberMe = false)
         {
-            Initialize(email, returnUrl, stepUp, rememberMe);
+            return InitializeAsync(email, returnUrl, stepUp, rememberMe);
         }
 
         /// <summary>Verifies the code and signs the user in.</summary>
@@ -71,7 +74,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         /// <returns>The post-sign-in redirect, or the form with a generic error.</returns>
         public async Task<IActionResult> OnPostAsync(string? email = null, string? returnUrl = null, bool stepUp = false, bool rememberMe = false)
         {
-            Initialize(email, returnUrl, stepUp, rememberMe);
+            await InitializeAsync(email, returnUrl, stepUp, rememberMe);
 
             if (string.IsNullOrWhiteSpace(Email) || string.IsNullOrWhiteSpace(Code))
             {
@@ -124,7 +127,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         /// <returns>The refreshed form.</returns>
         public async Task<IActionResult> OnPostResendAsync(string? email = null, string? returnUrl = null, bool stepUp = false, bool rememberMe = false)
         {
-            Initialize(email, returnUrl, stepUp, rememberMe);
+            await InitializeAsync(email, returnUrl, stepUp, rememberMe);
 
             if (!string.IsNullOrWhiteSpace(Email))
             {
@@ -140,12 +143,18 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         }
 
         /// <summary>Applies and validates the flow parameters.</summary>
-        private void Initialize(string? email, string? returnUrl, bool stepUp, bool rememberMe)
+        /// <returns>A task that completes once the response's policy has been settled.</returns>
+        private Task InitializeAsync(string? email, string? returnUrl, bool stepUp, bool rememberMe)
         {
             Email = email;
             ReturnUrl = ReturnUrlValidator.IsValid(returnUrl) ? returnUrl : null;
             StepUp = stepUp;
             RememberMe = rememberMe;
+
+            // Verifying a code here is the last step of a pending authorization, and the redirect
+            // that carries it home leaves this origin. Every handler runs this, because a
+            // re-rendered form is the document the *next* submission is judged against.
+            return authorizeReturns.AllowAsync(HttpContext, ReturnUrl, HttpContext.RequestAborted);
         }
     }
 }

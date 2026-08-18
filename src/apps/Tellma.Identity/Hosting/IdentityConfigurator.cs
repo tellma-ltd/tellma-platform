@@ -200,6 +200,12 @@ namespace Tellma.Identity.Hosting
                 {
                     google.ClientId = options.ExternalProviders.Google.ClientId!;
                     google.ClientSecret = options.ExternalProviders.Google.ClientSecret ?? string.Empty;
+
+                    // Google's userinfo response carries this and the handler's default claim
+                    // actions do not read it, so without mapping it the claim is simply absent —
+                    // and an invitation accepted through Google, which is allowed to link only
+                    // against an address the provider vouches for, could never be honoured.
+                    google.ClaimActions.MapJsonKey("email_verified", "email_verified");
                 });
             }
 

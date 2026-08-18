@@ -23,5 +23,14 @@ namespace Tellma.Identity.Controllers.ViewModels
 
         /// <summary>The human-readable error description.</summary>
         public string? ErrorDescription { get; set; }
+
+        /// <summary>
+        ///     The identifier that ties this response to the log entries it produced, shown so a
+        ///     user can quote it and an operator can search for it.
+        /// </summary>
+        public string? Reference { get; set; }
+
+        /// <summary>Whether the failure was the server's own, rather than something in the request.</summary>
+        public bool IsServerFault { get; set; }
     }
 }

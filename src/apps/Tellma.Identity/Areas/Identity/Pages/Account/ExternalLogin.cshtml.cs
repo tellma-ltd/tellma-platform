@@ -19,10 +19,17 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
 {
     /// <summary>
     ///     External login (Google, Microsoft). A login already linked by the provider's stable
-    ///     subject <c>(LoginProvider, ProviderKey)</c> signs in directly. A new external identity
-    ///     is never auto-merged by email: linking requires the provider to assert a verified email
-    ///     AND proof of ownership of the local account — an authenticated session, or the
-    ///     invitation/recovery credential-flow context (the single-use link is itself the proof).
+    ///     subject <c>(LoginProvider, ProviderKey)</c> signs in directly. A new external identity is
+    ///     never auto-merged by email: linking requires proof that the visitor owns the local
+    ///     account, and the two proofs it accepts are trusted for different reasons.
+    ///     <para>
+    ///         An authenticated session proves ownership by itself — the visitor is already signed in
+    ///         as the account they are attaching the identity to, and the provider's address is
+    ///         recorded beside the link as a label, nothing more. Following an invitation, the proof
+    ///         <em>is</em> the address: the provider must assert it as verified and it must be the
+    ///         one invited. The verified-email requirement therefore applies to that branch alone,
+    ///         where it is what stands between an unverified assertion and someone else's account.
+    ///     </para>
     /// </summary>
     /// <param name="signInManager">The Identity sign-in manager.</param>
     /// <param name="userManager">The Identity user manager.</param>
@@ -81,15 +88,27 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                     : await CompleteSignInAsync(linked, method, safeReturn);
             }
 
-            // 2. New external identity: link only with a verified email AND ownership proof.
+            // 2. New external identity: link only against a proof of local ownership.
+            string? providerEmail = info.Principal.FindFirstValue(ClaimTypes.Email);
+            (TellmaIdentityUser? owner, OwnershipProof proof) = await ResolveOwnerAsync(providerEmail);
+            if (owner is null)
+            {
+                // Never auto-merge by email without proof — this is the pre-hijacking guard. Saying
+                // so plainly costs nothing: the only person who can read the message is whoever just
+                // signed in to that provider account, so it tells them about themselves.
+                return NotLinked();
+            }
+
+            // Only where the address is the proof. A provider that asserts no verification cannot be
+            // taken at its word about an invited mailbox, so that link is refused; the same provider
+            // links fine from a signed-in session, where the session is the proof.
+            //
+            // Case-insensitively, and that matters: the claim is mapped from a JSON boolean and
+            // arrives rendered by the framework as "True".
             bool emailVerified = string.Equals(
                 info.Principal.FindFirstValue("email_verified"), "true", StringComparison.OrdinalIgnoreCase);
-            string? providerEmail = info.Principal.FindFirstValue(ClaimTypes.Email);
-
-            TellmaIdentityUser? owner = await ResolveOwnerAsync(providerEmail);
-            if (owner is null || !emailVerified)
+            if (proof == OwnershipProof.InvitationEmail && !emailVerified)
             {
-                // Never auto-merge by email without proof — this is the pre-hijacking guard.
                 return Fail();
             }
 
@@ -126,17 +145,32 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
             return LocalRedirect(returnUrl);
         }
 
+        /// <summary>What proved that the visitor owns the local account being linked to.</summary>
+        private enum OwnershipProof
+        {
+            /// <summary>Nothing did, and no account was resolved.</summary>
+            None,
+
+            /// <summary>An authenticated session: the visitor is signed in as that account.</summary>
+            Session,
+
+            /// <summary>An invitation link, whose proof is the address the provider asserts.</summary>
+            InvitationEmail,
+        }
+
         /// <summary>
-        ///     Resolves the local account an external identity may link to, from the ownership
-        ///     proofs the spec permits: an authenticated session, or the invitation/recovery
-        ///     credential-flow context whose provider email must match.
+        ///     Resolves the local account an external identity may link to, and how that account's
+        ///     ownership was proved — the two proofs are trusted for different reasons, so the
+        ///     caller has to know which one it got.
         /// </summary>
-        private async Task<TellmaIdentityUser?> ResolveOwnerAsync(string? providerEmail)
+        /// <param name="providerEmail">The address the provider asserts, when it asserts one.</param>
+        /// <returns>The account and its proof, or null and <see cref="OwnershipProof.None" />.</returns>
+        private async Task<(TellmaIdentityUser? Owner, OwnershipProof Proof)> ResolveOwnerAsync(string? providerEmail)
         {
             // An authenticated user is linking a new provider from Account & Security.
             if (User.Identity?.IsAuthenticated == true)
             {
-                return await userManager.GetUserAsync(User);
+                return (await userManager.GetUserAsync(User), OwnershipProof.Session);
             }
 
             // Only the invitation flow may link an external login (§8.4): the single-use invitation
@@ -145,14 +179,14 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
             CredentialFlowContext? flow = CredentialFlowCookie.Read(HttpContext);
             if (flow is not { Purpose: CredentialFlowPurpose.Invitation } || providerEmail is null)
             {
-                return null;
+                return (null, OwnershipProof.None);
             }
 
             TellmaIdentityUser? user = await userManager.FindByIdAsync(flow.UserId);
             return user is not null
                 && string.Equals(user.Email, providerEmail, StringComparison.OrdinalIgnoreCase)
-                ? user
-                : null;
+                ? (user, OwnershipProof.InvitationEmail)
+                : (null, OwnershipProof.None);
         }
 
         /// <summary>Maps an external provider scheme to the method vocabulary.</summary>
@@ -166,7 +200,14 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         /// <summary>Renders the generic external-login failure.</summary>
         private PageResult Fail()
         {
-            Error = localizer["PasskeyFailed"].Value;
+            Error = localizer["ExternalLoginFailed"].Value;
+            return Page();
+        }
+
+        /// <summary>Renders the refusal to attach an external identity to an unproved account.</summary>
+        private PageResult NotLinked()
+        {
+            Error = localizer["ExternalLoginNotLinked"].Value;
             return Page();
         }
     }

@@ -306,7 +306,7 @@ requires it (§17); until then `aal3` reflects the self-asserted device-bound si
 |---|---|---|
 | Passkey (incl. hardware keys) | Primary | AAL2 (synced); device-bound targets AAL3 (§9, attestation deferred) |
 | Email one-time code | Recovery and bootstrap; universal device floor | Custom single-use provider (§8.3) |
-| External login (Google, Microsoft) | Alternative primary | Linked by verified email + ownership (§8.4). Sign in with Apple is out of scope |
+| External login (Google, Microsoft) | Alternative primary | Linked against a proof of local ownership (§8.4). Sign in with Apple is out of scope |
 | TOTP authenticator | Second factor on password | Enrollment (server-rendered QR + one-time recovery codes) ships now; the sign-in challenge arrives with password sign-in (§17) |
 | Password | Optional, off by default | The enable flag gates the reset flows; the sign-in surface is deferred (§17). Lockout and rate limiting apply |
 
@@ -323,11 +323,28 @@ provider enforces single-use and expiry, delivering via the platform's `IEmailSe
 ### 8.4 External-login account linking
 
 External logins are linked by the provider's stable subject `(LoginProvider, ProviderKey)`, never
-silently by email. Auto-merging by matching email is the pre-hijacking attack class; linking requires
-`email_verified == true` **and** proof of ownership of the local account. Within the invitation flow the
-single-use invitation link is itself the proof of email possession, so an invited user may link Google
-or Microsoft immediately without an additional code (§10.1). Microsoft-as-social uses
-`AddMicrosoftAccount`.
+silently by email. Auto-merging by matching email is the pre-hijacking attack class, so a new external
+identity attaches only against a proof that the visitor owns the local account. Two proofs qualify, and
+they are trusted for different reasons — which decides what else each one has to establish.
+
+An **authenticated session** is a proof in itself: the visitor is already signed in as the account they
+are attaching the identity to, and the address the provider asserts is recorded beside the link as a
+label, nothing more. Any configured provider links this way.
+
+An **invitation link** proves possession of the mailbox, and there the address *is* the proof: the
+provider must assert it as verified and it must be the address invited, which lets an invited user link
+a provider immediately instead of taking a code first (§10.1). This is the only branch the
+verified-email requirement governs, because it is the only one where the assertion stands between an
+attacker and someone else's account.
+
+The requirement therefore turns on what a provider actually says. Google states verification in its
+userinfo response, which the deployment maps into the principal. Microsoft Graph exposes no
+verification signal at all, so linking Microsoft through an invitation fails closed; the same account
+links normally from a signed-in session. Microsoft-as-social uses `AddMicrosoftAccount`.
+
+A refusal for want of a proof says so plainly rather than hiding behind a generic failure. It reveals
+only whether the provider identity the visitor just authenticated as is connected here — a fact about
+themselves — and telling them turns a dead end into an instruction.
 
 ### 8.5 Coverage
 
@@ -507,8 +524,9 @@ is one call that returns per-user results and hands the whole batch to email in 
    again. A permanent rejection is terminal on its first occurrence; only a transient failure is
    retried, with backoff, to a limit.
 3. The user opens the link (which proves control of the mailbox):
-   - New user → a passkey-setup page → return to the distribution. The user may instead link Google or
-     Microsoft immediately (verified, matching email — the link is the ownership proof).
+   - New user → a passkey-setup page → return to the distribution. The user may instead link a
+     provider immediately, where the link is the ownership proof and the provider vouches for the
+     invited address (§8.4).
    - Existing user, new only to this distribution → straight in; an existing passkey already works.
    - A link already used sends the holder to sign in rather than to the generic refusal, carrying
      the same destination. That is overwhelmingly the recipient returning to the only address they
@@ -620,6 +638,13 @@ invitation accept; Temporary Access Pass recovery; break-glass setup; logout and
 denied; error; and self-service **Account & Security** (the profile fields the server owns — name,
 locale — plus passkey management, authenticator-app enrollment with one-time recovery codes, and active
 sessions with "sign out everywhere").
+
+The error page is where every failure with nowhere else to go arrives: a protocol error that cannot be
+redirected to a client, a request that matched nothing, and the server's own unhandled faults. It shows
+a protocol error's code and description, which are written for the person who caused them, and says
+nothing about a fault of its own beyond whose it was — nothing it could say there is both safe and
+useful. All of them carry the request's trace identifier, so a user can quote a reference and an
+operator can find the request behind it (§15).
 
 The distribution surfaces Account & Security as a "Sign-in & security" tab inside its own account area
 that deep-links to these pages over SSO (no re-login) with a `return_url`, so a single-distribution user
@@ -740,6 +765,7 @@ chooses to rotate, a second secret can be added for a zero-downtime cutover. Con
 | Redirect manipulation | Exact per-client redirect-URI matching (OpenIddict default); no wildcard trust |
 | Token theft via XSS | BFF — no tokens in the browser; `HttpOnly`/`SameSite` cookies; CSP; Trusted Types |
 | Clickjacking / UI redressing of the identity UI | `Content-Security-Policy: frame-ancestors 'none'` plus `X-Frame-Options: DENY` on every identity-UI response, so login, consent, and passkey ceremonies cannot be framed by a hostile site |
+| A hostile page posting an identity form off-origin | `form-action 'self'`, widened per response only by destinations already registered with this server — the pending client's own callbacks, a configured provider's origin. A browser applies the directive to every hop of the navigation a submission produces, so the widening is what lets a sign-in, a grant, or a federated hand-off complete; it is computed from the registry, never from the request |
 | Phishing | Origin-bound passkeys; no standing password; single-use, session-bound email codes |
 | CSRF | `SameSite`; anti-forgery on state-changing endpoints; PKCE + `state` + `nonce` |
 | Authorization-code interception | PKCE for all clients; PAR; `iss` in the response |
@@ -755,7 +781,7 @@ chooses to rotate, a second secret can be added for a zero-downtime cutover. Con
 | Policy tampering | Required assurance and allowed methods carried via PAR, not URL parameters |
 | Cross-device consent phishing (device flow) | Short-lived, rate-limited, one-time user codes; proximity where available |
 | Admin recovery social engineering | TAP single-use/short-lived/proofing-gated/audited |
-| External-login pre-hijacking | Verified email + ownership proof before linking |
+| External-login pre-hijacking | A proof of local ownership before linking; where that proof is the address itself, the provider must vouch for it (§8.4) |
 
 Assurance tiers correspond to NIST SP 800-63B-4 authenticator assurance levels. NIST AAL3 requires a
 hardware-protected, non-exportable key plus verifier impersonation resistance; the `aal3` tier delivers

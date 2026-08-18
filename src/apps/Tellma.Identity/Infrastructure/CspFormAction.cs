@@ -17,9 +17,15 @@ namespace Tellma.Identity.Infrastructure
     ///         on the page that submitted — with no visible error and nothing wrong on the server.
     ///     </para>
     ///     <para>
-    ///         Only the values a page supplies here are added, and the sole caller supplies a
-    ///         client's registered callbacks, so the policy widens by exactly the destinations the
-    ///         request was always going to be allowed to reach.
+    ///         Only the values a page supplies here are added, and every caller supplies
+    ///         destinations already registered with this server — a client's own callbacks, a
+    ///         configured provider's origin — so the policy widens by exactly where the page's
+    ///         forms were always going to be allowed to reach.
+    ///     </para>
+    ///     <para>
+    ///         Calls accumulate. One page can need more than one widening at once — a sign-in page
+    ///         resuming an authorization request also renders the external-provider buttons — and a
+    ///         later call replacing an earlier one would silently disable whichever ran first.
     ///     </para>
     /// </summary>
     public static class CspFormAction
@@ -43,7 +49,11 @@ namespace Tellma.Identity.Infrastructure
             ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(uris);
 
-            List<string> sources = [];
+            List<string> sources = context.Items.TryGetValue(ItemKey, out object? existing)
+                && existing is List<string> already
+                ? already
+                : [];
+
             foreach (string uri in uris)
             {
                 if (ToSource(uri) is { } source && !sources.Contains(source, StringComparer.Ordinal))

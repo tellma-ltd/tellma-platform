@@ -61,6 +61,9 @@ namespace Tellma.Identity.Services.Email
         /// <summary>The card's width, in CSS pixels; the width every email design has settled on.</summary>
         private const int CardWidth = 600;
 
+        /// <summary>The radius the card's corners are drawn with, in CSS pixels.</summary>
+        private const int CardRadius = 12;
+
         /// <summary>Renders the HTML alternative for one message.</summary>
         /// <param name="content">What the message says.</param>
         /// <param name="subject">The subject, used as the document title.</param>
@@ -115,8 +118,12 @@ namespace Tellma.Identity.Services.Email
             html.Append(CultureInfo.InvariantCulture, $"<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" dir=\"{dir}\" style=\"background-color:{PageBackground};border-collapse:collapse;\">\r\n")
                 .Append("<tr><td align=\"center\" style=\"padding:24px 12px;\">\r\n")
                 // The card carries its own edge, which is what separates it from the pane behind it
-                // now that nothing else does.
-                .Append(CultureInfo.InvariantCulture, $"<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"{CardWidth}\" class=\"tmi-card\" dir=\"{dir}\" style=\"width:{CardWidth}px;max-width:100%;background-color:{White};border:1px solid {CardBorder};border-collapse:collapse;\">\r\n");
+                // now that nothing else does. Its corners are rounded with separated borders
+                // rather than collapsed ones, because a collapsed border box has no radius by
+                // rule; the two coloured rows round to match below, or their backgrounds square
+                // the corners off from the inside. Outlook draws through Word, which has no
+                // radius at all, and gets the same card with square corners.
+                .Append(CultureInfo.InvariantCulture, $"<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"{CardWidth}\" class=\"tmi-card\" dir=\"{dir}\" style=\"width:{CardWidth}px;max-width:100%;background-color:{White};border:1px solid {CardBorder};border-collapse:separate;border-spacing:0;border-radius:{CardRadius}px;\">\r\n");
 
             AppendBanner(html, productName, start);
             AppendBody(html, content, start, rtl);
@@ -148,7 +155,7 @@ namespace Tellma.Identity.Services.Email
         {
             // bgcolor as well as the inline style: Outlook honours the attribute more reliably than
             // the property on a table cell, and a banner that loses its ink turns white text white.
-            html.Append(CultureInfo.InvariantCulture, $"<tr><td align=\"{start}\" bgcolor=\"{Ink}\" class=\"tmi-pad\" style=\"background-color:{Ink};padding:20px 32px;\">\r\n")
+            html.Append(CultureInfo.InvariantCulture, $"<tr><td align=\"{start}\" bgcolor=\"{Ink}\" class=\"tmi-pad\" style=\"background-color:{Ink};padding:20px 32px;border-radius:{CardRadius}px {CardRadius}px 0 0;\">\r\n")
                 .Append(CultureInfo.InvariantCulture, $"<img src=\"cid:{EmailWordmark.ContentId}\" width=\"{EmailWordmark.DisplayWidth}\" height=\"{EmailWordmark.DisplayHeight}\" alt=\"{Encode(productName)}\" ")
                 // The alt text is styled too, so a client that strips the part still shows the brand
                 // in white rather than in the client's default near-black on near-black ink.
@@ -163,7 +170,7 @@ namespace Tellma.Identity.Services.Email
 
             // Heading. An h1 rather than a styled paragraph: a heading is what it is, and mail is
             // read by screen readers too.
-            html.Append(CultureInfo.InvariantCulture, $"<h1 class=\"tmi-heading\" style=\"margin:0 0 20px;font-family:{FontStack};font-size:28px;line-height:36px;font-weight:700;color:{Ink};mso-line-height-rule:exactly;\">")
+            html.Append(CultureInfo.InvariantCulture, $"<h1 class=\"tmi-heading\" style=\"margin:0 0 20px;font-family:{FontStack};font-size:28px;line-height:36px;font-weight:500;color:{Ink};mso-line-height-rule:exactly;\">")
                 .Append(Encode(content.Heading))
                 .Append("</h1>\r\n");
 
@@ -277,7 +284,7 @@ namespace Tellma.Identity.Services.Email
         /// <summary>Writes the grey footer.</summary>
         private static void AppendFooter(StringBuilder html, EmailContent content, string start)
         {
-            html.Append(CultureInfo.InvariantCulture, $"<tr><td align=\"{start}\" bgcolor=\"{FooterBackground}\" class=\"tmi-pad\" style=\"background-color:{FooterBackground};padding:24px 32px;\">\r\n")
+            html.Append(CultureInfo.InvariantCulture, $"<tr><td align=\"{start}\" bgcolor=\"{FooterBackground}\" class=\"tmi-pad\" style=\"background-color:{FooterBackground};padding:24px 32px;border-radius:0 0 {CardRadius}px {CardRadius}px;\">\r\n")
                 .Append(CultureInfo.InvariantCulture, $"<p style=\"margin:0;font-family:{FontStack};font-size:13px;line-height:20px;color:{SecondaryText};mso-line-height-rule:exactly;\">")
                 .Append(Encode(content.FooterNote))
                 .Append("</p>\r\n");

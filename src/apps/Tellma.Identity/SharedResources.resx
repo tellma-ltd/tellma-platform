@@ -63,6 +63,15 @@
   <data name="ErrorTitle" xml:space="preserve">
     <value>Something went wrong</value>
   </data>
+  <data name="ErrorServerFault" xml:space="preserve">
+    <value>The problem is on our side, not with anything you did. Please try again in a moment.</value>
+  </data>
+  <data name="ErrorReference" xml:space="preserve">
+    <value>Reference</value>
+  </data>
+  <data name="ErrorReferenceHint" xml:space="preserve">
+    <value>Quote this reference if you report the problem.</value>
+  </data>
   <data name="ConsentTitle" xml:space="preserve">
     <value>Authorize application</value>
   </data>
@@ -107,6 +116,12 @@
   </data>
   <data name="PasskeyFailed" xml:space="preserve">
     <value>The passkey could not be verified. Please try again.</value>
+  </data>
+  <data name="ExternalLoginFailed" xml:space="preserve">
+    <value>That sign-in could not be completed. Please try again or use another method.</value>
+  </data>
+  <data name="ExternalLoginNotLinked" xml:space="preserve">
+    <value>That account is not connected to Tellma. Sign in another way, then connect it from Account &amp; security.</value>
   </data>
   <data name="PasskeyAlreadyOnThisDevice" xml:space="preserve">
     <value>This device already has a passkey for your account. Use another device or security key to add a second one.</value>
