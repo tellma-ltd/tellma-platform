@@ -334,8 +334,12 @@ label, nothing more. Any configured provider links this way.
 An **invitation link** proves possession of the mailbox, and there the address *is* the proof: the
 provider must assert it as verified and it must be the address invited, which lets an invited user link
 a provider immediately instead of taking a code first (§10.1). This is the only branch the
-verified-email requirement governs, because it is the only one where the assertion stands between an
-attacker and someone else's account.
+verified-email requirement governs, and what it buys is narrower than blocking a stranger: whoever gets
+this far already redeemed the link, so they could have enrolled a passkey instead. What the requirement
+protects is the address comparison itself. That comparison is the only thing choosing which provider
+identity may attach to the invited account, and against an address no one vouches for it is a
+comparison with a self-asserted string — which would leave the account permanently bound to whichever
+identity claimed the address.
 
 The requirement therefore turns on what a provider actually says. Google states verification in its
 userinfo response, which the deployment maps into the principal. Microsoft Graph exposes no
