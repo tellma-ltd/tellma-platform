@@ -7,9 +7,14 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Tellma.Identity.Data;
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -171,6 +176,81 @@ namespace Tellma.Identity.IntegrationTests.Flows
             Assert.Equal(HttpStatusCode.OK, callback.StatusCode);
             string html = await callback.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             Assert.Contains("could not be completed", html, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task An_invitation_outranks_an_unrelated_session_the_way_passkey_enrollment_does()
+        {
+            const string signedIn = "bystander@example.com";
+            const string invited = "invited@example.com";
+
+            using StandaloneFactory factory = await CreateFactoryAsync("idlinkinvite");
+            DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
+            await TestData.CreateActiveUserAsync(factory, signedIn);
+
+            using OidcFlowClient flow = new(factory);
+            await SignInAsync(flow, signedIn);
+
+            // Someone else's invitation, opened on a browser already signed in as the bystander —
+            // a shared machine, or a link followed without noticing who was signed in.
+            await InviteAsync(factory, distribution, invited);
+            string link = await factory.Emails.WaitForLinkAsync(invited);
+            using (HttpResponseMessage accepted = await flow.Browser.GetAsync(
+                new Uri(new Uri(link).PathAndQuery, UriKind.Relative), TestContext.Current.CancellationToken))
+            {
+                Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+            }
+
+            // A plain sign-in, declaring no link — the shape a provider button on the sign-in page
+            // produces. The address the provider vouches for is the invited one.
+            using HttpResponseMessage callback = await CompleteExternalCallbackAsync(flow, invited);
+
+            // The invitation decides, not the session that happened to be open. Passkey enrollment
+            // already resolved its ceremony this way, and the two must not disagree about whose
+            // account a credential lands on.
+            Assert.Equal(HttpStatusCode.Redirect, callback.StatusCode);
+            Assert.True(await HasGoogleLinkAsync(factory, invited));
+            Assert.False(await HasGoogleLinkAsync(factory, signedIn));
+            Assert.Equal(invited, await SignedInEmailAsync(flow));
+        }
+
+        /// <summary>Invites one address through the distribution-facing API.</summary>
+        private static async Task InviteAsync(
+            StandaloneFactory factory, DistributionClientCredentials distribution, string email)
+        {
+            using HttpClient client = factory.CreateClient();
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", await TokenAsync(factory, distribution));
+
+            using HttpResponseMessage response = await client.PostAsJsonAsync(
+                new Uri("/api/identity/invitations", UriKind.Relative),
+                new { users = new object[] { new { email, displayName = email, locale = "en" } } },
+                TestContext.Current.CancellationToken);
+
+            Assert.True(
+                response.IsSuccessStatusCode,
+                await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        }
+
+        /// <summary>Obtains a management-scope token for a distribution's backend client.</summary>
+        private static async Task<string> TokenAsync(
+            StandaloneFactory factory, DistributionClientCredentials distribution)
+        {
+            using HttpClient client = factory.CreateClient();
+            using HttpResponseMessage response = await client.PostAsync(
+                new Uri("/connect/token", UriKind.Relative),
+                new FormUrlEncodedContent(new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["grant_type"] = "client_credentials",
+                    ["client_id"] = distribution.ServiceClientId,
+                    ["client_secret"] = distribution.ServiceClientSecret,
+                    ["scope"] = "tellma_identity",
+                }),
+                TestContext.Current.CancellationToken);
+
+            using var token = JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            return token.RootElement.GetProperty("access_token").GetString()!;
         }
 
         /// <summary>Boots a host with Google configured.</summary>

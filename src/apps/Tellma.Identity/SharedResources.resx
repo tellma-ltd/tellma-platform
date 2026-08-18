@@ -121,10 +121,10 @@
     <value>That sign-in could not be completed. Please try again or use another method.</value>
   </data>
   <data name="ExternalLoginNotLinked" xml:space="preserve">
-    <value>That account is not connected to Tellma. Sign in another way, then connect it from Account &amp; security.</value>
+    <value>That external account is not connected to Tellma. Sign in another way, then connect it from Account &amp; security.</value>
   </data>
   <data name="ExternalLoginOwnedByAnotherAccount" xml:space="preserve">
-    <value>That account is already connected to a different Tellma account. Sign out first to use it, or connect a different one.</value>
+    <value>That external account is already connected to a different Tellma account. Sign out first to use it, or connect a different one.</value>
   </data>
   <data name="PasskeyAlreadyOnThisDevice" xml:space="preserve">
     <value>This device already has a passkey for your account. Use another device or security key to add a second one.</value>

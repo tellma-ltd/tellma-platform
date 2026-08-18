@@ -21,13 +21,15 @@
         @* A signed-in visitor came from somewhere — the account pages, or a step-up they can
            retry another way — and the refusal may tell them to sign out first, so both doors
            are offered. A sign-in link would only bounce them back to their profile. *@
-        if (Model.ReturnUrl is { } returnUrl)
-        {
-            <a class="tmi-button tmi-button-secondary" href="@returnUrl">@L["GoBack"]</a>
-        }
-        <form class="tmi-inline" method="post" asp-area="Identity" asp-page="/Account/Logout">
-            <button class="tmi-link" type="submit">@L["SignOut"]</button>
-        </form>
+        <div class="tmi-actions">
+            <form method="post" asp-area="Identity" asp-page="/Account/Logout">
+                <button class="tmi-button tmi-button-primary" type="submit">@L["SignOut"]</button>
+            </form>
+            @if (Model.ReturnUrl is { } returnUrl)
+            {
+                <a class="tmi-button tmi-button-secondary" href="@returnUrl">@L["GoBack"]</a>
+            }
+        </div>
     }
     else
     {
