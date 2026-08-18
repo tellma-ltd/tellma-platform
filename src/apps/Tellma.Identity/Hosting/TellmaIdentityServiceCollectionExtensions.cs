@@ -85,6 +85,13 @@ namespace Tellma.Identity.Hosting
             services.AddScoped<Services.RateLimiting.IRateLimitCounterStore, Services.RateLimiting.SqlRateLimitCounterStore>();
             services.AddScoped<Services.Email.EmailTemplateService>();
             services.AddScoped<Services.Email.IEmailDispatchRecorder, Services.Email.EmailDispatchRecorder>();
+
+            // Identity answers delivery events for the mail it sent. Registered as the platform's
+            // handler contract, which the dispatcher routes to by owner key; the webhook endpoint
+            // that feeds it is the host's to mount, alongside whichever transport it configured.
+            services.AddScoped<
+                Core.Abstractions.Email.IEmailDeliveryEventHandler,
+                Services.Email.IdentityDeliveryEventHandler>();
             services.AddSingleton<Services.Invitations.InvitationLinkBuilder>();
 
             // Registered as a service in its own right, not only as a Quartz job: the recovery

@@ -16,6 +16,7 @@ using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Email;
+using Tellma.Core.Webhooks;
 using Tellma.Identity.Hosting;
 using Tellma.Identity.Infrastructure;
 
@@ -50,6 +51,12 @@ namespace Tellma.Identity.Web
             builder.Services.AddSmtpEmail(builder.Configuration);
             builder.Services.AddSendGridEmail(builder.Configuration);
             builder.Services.AddAcsEmail(builder.Configuration);
+
+            // The inbound half of the same pipeline: providers report what became of each message
+            // to /api/webhooks/{key}, and the engine's handler writes it onto the single-use code
+            // the message carried. Only the hosted providers report at all — an SMTP relay says
+            // nothing back, which is why a message records whether events are even expected of it.
+            builder.Services.AddTellmaWebhooks();
 
             // The identity server has no tenants, so no message of its can be a sandbox tenant's and
             // none is ever withheld. The pipeline requires the decision to be stated rather than
@@ -170,6 +177,11 @@ namespace Tellma.Identity.Web
 
             app.MapStaticAssets();
             app.MapTellmaIdentity();
+
+            // Unauthenticated by design: a provider cannot hold a token. Each receiver verifies the
+            // payload signature over the raw bytes before anything is trusted, which is the
+            // authentication for this route.
+            app.MapTellmaWebhooks();
 
             app.Run();
         }

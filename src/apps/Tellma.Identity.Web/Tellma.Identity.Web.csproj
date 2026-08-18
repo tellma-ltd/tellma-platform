@@ -19,6 +19,10 @@
     <ProjectReference Include="..\..\connector\smtp\Tellma.Connector.Smtp.Adapter\Tellma.Connector.Smtp.Adapter.csproj" />
     <ProjectReference Include="..\..\connector\sendgrid\Tellma.Connector.SendGrid.Adapter\Tellma.Connector.SendGrid.Adapter.csproj" />
     <ProjectReference Include="..\..\connector\acs-email\Tellma.Connector.AcsEmail.Adapter\Tellma.Connector.AcsEmail.Adapter.csproj" />
+    <!-- The webhook fronting the transports report delivery back through. Only the hosted
+         providers ship a receiver; an SMTP relay reports nothing, so in an on-premise deployment
+         this route simply has nothing registered behind it. -->
+    <ProjectReference Include="..\..\core\Tellma.Core.Webhooks\Tellma.Core.Webhooks.csproj" />
     <!-- Azure Monitor exporting is config-gated; without configuration the OpenTelemetry
          pipeline runs with no exporter. -->
     <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" />
