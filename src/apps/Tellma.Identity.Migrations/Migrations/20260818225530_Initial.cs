@@ -37,6 +37,7 @@ namespace Tellma.Identity.Migrations
                     Id = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     DisplayName = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     Locale = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Gender = table.Column<int>(type: "int", nullable: true),
                     LifecycleState = table.Column<int>(type: "int", nullable: false),
                     CreatedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     OrphanedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
@@ -130,6 +131,20 @@ namespace Tellma.Identity.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_OpenIddictScopes", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "RateLimitCounters",
+                schema: "idsvr",
+                columns: table => new
+                {
+                    Key = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    WindowStartUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    Count = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_RateLimitCounters", x => new { x.Key, x.WindowStartUtc });
                 });
 
             migrationBuilder.CreateTable(
@@ -326,7 +341,17 @@ namespace Tellma.Identity.Migrations
                     CreatedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     ExpiresUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     ConsumedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                    Attempts = table.Column<int>(type: "int", nullable: false)
+                    Attempts = table.Column<int>(type: "int", nullable: false),
+                    DispatchState = table.Column<int>(type: "int", nullable: false),
+                    SentUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    DispatchClaimedUntil = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    DispatchAttempts = table.Column<int>(type: "int", nullable: false),
+                    ProviderMessageId = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
+                    ExpectsDeliveryEvents = table.Column<bool>(type: "bit", nullable: false),
+                    DeliveryStatus = table.Column<int>(type: "int", nullable: true),
+                    DeliveryUpdatedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    DeliveryReason = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: true),
+                    LastProviderEventId = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true)
                 },
                 constraints: table =>
                 {
@@ -563,10 +588,29 @@ namespace Tellma.Identity.Migrations
                 column: "ClientId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Sessions_TerminatedUtc_LastSeenUtc",
+                schema: "idsvr",
+                table: "Sessions",
+                columns: new[] { "TerminatedUtc", "LastSeenUtc" });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Sessions_UserId",
                 schema: "idsvr",
                 table: "Sessions",
                 column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SingleUseCodes_CreatedByClientId_UserId_CreatedUtc",
+                schema: "idsvr",
+                table: "SingleUseCodes",
+                columns: new[] { "CreatedByClientId", "UserId", "CreatedUtc" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SingleUseCodes_PendingDispatch",
+                schema: "idsvr",
+                table: "SingleUseCodes",
+                columns: new[] { "Purpose", "CreatedUtc" },
+                filter: "[DispatchState] = 0");
 
             migrationBuilder.CreateIndex(
                 name: "IX_SingleUseCodes_UserId_Purpose_ExpiresUtc",
@@ -592,15 +636,20 @@ namespace Tellma.Identity.Migrations
                 table: "TemporaryAccessPasses",
                 column: "UserId");
 
-            // Index supporting the Quartz prune query. OpenIddict prunes rows whose CreationDate is
-            // older than a threshold (the query's dominant, most selective bound), so the index
-            // leads with CreationDate to seek them; Status, ExpirationDate, and AuthorizationId are
-            // included to cover the residual predicate — which joins to the authorization's status
-            // through AuthorizationId — without a key lookup. Measured on a 50k-row table with the
-            // steady-state shape the prune job sees (a small tail past the threshold, most rows
-            // recent): without AuthorizationId the optimizer chose a clustered scan, with it a
-            // seek. Plan choice is statistics-dependent, so a store whose rows are mostly prunable
-            // may still legitimately scan.
+            // Raw SQL, and hand-carried through any regeneration of this file: OpenIddict owns the
+            // token entity, so nothing in the model describes this index and the scaffolder cannot
+            // emit it.
+            //
+            // The prune job deletes tokens older than a threshold (the query's dominant, most
+            // selective bound), so the index leads with CreationDate to seek them; Status,
+            // ExpirationDate, and AuthorizationId are included to cover the residual predicate —
+            // which joins to the authorization's status through AuthorizationId — without a key
+            // lookup. Measured on a 50k-row table with the steady-state shape the prune job sees (a
+            // small tail past the threshold, most rows recent): without AuthorizationId the
+            // optimizer chose a clustered scan, with it a seek. Plan choice is
+            // statistics-dependent, so a store whose rows are mostly prunable may still
+            // legitimately scan.
+            //
             // Deliberately unfiltered: OpenIddict never flips Status on expiry, so
             // expired-but-'valid' access tokens are the prune bulk and a Status <> 'valid' filter
             // would exclude exactly what the query scans.
@@ -650,6 +699,10 @@ namespace Tellma.Identity.Migrations
 
             migrationBuilder.DropTable(
                 name: "OpenIddictTokens",
+                schema: "idsvr");
+
+            migrationBuilder.DropTable(
+                name: "RateLimitCounters",
                 schema: "idsvr");
 
             migrationBuilder.DropTable(

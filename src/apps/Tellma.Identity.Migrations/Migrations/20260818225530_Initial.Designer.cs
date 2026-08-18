@@ -12,8 +12,8 @@ using Tellma.Identity.Data;
 namespace Tellma.Identity.Migrations
 {
     [DbContext(typeof(TellmaIdentityDbContext))]
-    [Migration("20260805161750_AddUserGender")]
-    partial class AddUserGender
+    [Migration("20260818225530_Initial")]
+    partial class Initial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -475,6 +475,8 @@ namespace Tellma.Identity.Migrations
 
                     b.HasIndex("UserId");
 
+                    b.HasIndex("TerminatedUtc", "LastSeenUtc");
+
                     b.ToTable("Sessions", "idsvr");
                 });
 
@@ -541,12 +543,42 @@ namespace Tellma.Identity.Migrations
                     b.Property<DateTimeOffset>("CreatedUtc")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("DeliveryReason")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<int?>("DeliveryStatus")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("DeliveryUpdatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("DispatchAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("DispatchClaimedUntil")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("DispatchState")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("ExpectsDeliveryEvents")
+                        .HasColumnType("bit");
+
                     b.Property<DateTimeOffset>("ExpiresUtc")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<string>("FlowBinding")
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("LastProviderEventId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ProviderMessageId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<int>("Purpose")
                         .HasColumnType("int");
@@ -560,12 +592,21 @@ namespace Tellma.Identity.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
+                    b.Property<DateTimeOffset?>("SentUtc")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<string>("UserId")
                         .IsRequired()
                         .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Purpose", "CreatedUtc")
+                        .HasDatabaseName("IX_SingleUseCodes_PendingDispatch")
+                        .HasFilter("[DispatchState] = 0");
+
+                    b.HasIndex("CreatedByClientId", "UserId", "CreatedUtc");
 
                     b.HasIndex("UserId", "Purpose", "ExpiresUtc");
 
