@@ -327,9 +327,10 @@ silently by email. Auto-merging by matching email is the pre-hijacking attack cl
 identity attaches only against a proof that the visitor owns the local account. Two proofs qualify, and
 they are trusted for different reasons — which decides what else each one has to establish.
 
-An **authenticated session** is a proof in itself: the visitor is already signed in as the account they
-are attaching the identity to, and the address the provider asserts is recorded beside the link as a
-label, nothing more. Any configured provider links this way.
+A **declared link attempt's session** is a proof in itself: the visitor is already signed in as the
+account they named when starting the challenge, and the address the provider asserts is recorded
+beside the link as a label, nothing more. Any configured provider links this way. A callback that
+declares no link never reaches for whatever session happens to be open.
 
 An **invitation link** proves possession of the mailbox, and there the address *is* the proof: the
 provider must assert it as verified and it must be the address invited, which lets an invited user link

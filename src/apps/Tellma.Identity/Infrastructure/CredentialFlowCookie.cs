@@ -12,10 +12,10 @@ namespace Tellma.Identity.Infrastructure
     /// <summary>Why a credential-flow context was established, which bounds what it may authorize.</summary>
     public enum CredentialFlowPurpose
     {
-        /// <summary>Invitation accept: the single-use link proves mailbox control (§8.4).</summary>
+        /// <summary>Invitation accept: the single-use link proves mailbox control.</summary>
         Invitation = 0,
 
-        /// <summary>Admin-assisted recovery or break-glass bootstrap: a passkey-only exit (§10.3–§10.4).</summary>
+        /// <summary>Admin-assisted recovery or break-glass bootstrap, whose only exit is a passkey.</summary>
         Recovery = 1,
     }
 

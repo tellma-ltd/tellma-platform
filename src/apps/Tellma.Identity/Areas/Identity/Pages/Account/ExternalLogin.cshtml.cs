@@ -28,8 +28,9 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
     ///         is recorded beside the link as a label, nothing more. Following an invitation, the
     ///         proof <em>is</em> the address: the provider must assert it as verified and it must be
     ///         the one invited. The verified-email requirement therefore applies to that branch
-    ///         alone, where it is what stands between an unverified assertion and someone else's
-    ///         account.
+    ///         alone, where it is what keeps the address comparison meaningful — against an address
+    ///         no one vouches for, that comparison is against a self-asserted string, and the
+    ///         account ends up bound to whichever identity claimed it.
     ///     </para>
     ///     <para>
     ///         A link attempt declares itself: the challenge carries the initiating account, and

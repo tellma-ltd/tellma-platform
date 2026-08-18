@@ -83,7 +83,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
 
         /// <summary>
         ///     Provisions a distribution (so a caller with an origin exists) and creates a service
-        ///     account on its behalf — the origin-scoped audience path §6.2 requires.
+        ///     account on its behalf — the path that gives the audience an origin to be scoped to.
         /// </summary>
         internal static async Task<ServiceAccountCredentials> CreateServiceAccountAsync(
             StandaloneFactory factory, IReadOnlyCollection<string> resources)

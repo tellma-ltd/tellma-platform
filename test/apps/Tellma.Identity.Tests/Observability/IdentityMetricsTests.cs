@@ -11,9 +11,9 @@ using Tellma.Identity.Infrastructure;
 namespace Tellma.Identity.Tests.Observability
 {
     /// <summary>
-    ///     The <c>Tellma.Identity</c> meter records the counters §15 requires, so the alerts and
-    ///     dashboards built on them have data. Guards against the instruments being defined but
-    ///     never incremented.
+    ///     The <c>Tellma.Identity</c> meter records the counters the deployment's alerts and
+    ///     dashboards are built on, so those have data. Guards against the instruments being
+    ///     defined but never incremented.
     /// </summary>
     public sealed class IdentityMetricsTests
     {

@@ -56,8 +56,8 @@ namespace Tellma.Identity.Controllers
         ///     Produces request (assertion) options for signing in with a passkey. The ceremony is
         ///     always discoverable-credential (the authenticator picks the account): scoping by a
         ///     caller-supplied email on this anonymous endpoint would leak account existence and a
-        ///     user's credential ids, and §8.1's resident-key + conditional-UI model makes email
-        ///     scoping only a UX filter with no security value.
+        ///     user's credential ids, and against resident keys offered through conditional UI,
+        ///     email scoping is only a UX filter with no security value.
         /// </summary>
         /// <returns>The WebAuthn request options JSON.</returns>
         [AllowAnonymous]

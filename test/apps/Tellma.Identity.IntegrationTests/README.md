@@ -13,3 +13,7 @@ end-to-end against a real SQL Server:
 - Protocol flows are driven with raw `HttpClient` calls plus AngleSharp form parsing — the
   assertions are the protocol details themselves. Browser-only ceremonies (passkeys) are covered in
   `Tellma.Identity.E2E`; integration sign-ins use the email-code path via the capturing email sink.
+- External-login callbacks are reachable here through `ExternalProviderStub`, which writes the
+  Identity external cookie a provider's handler would have written and nothing else. The round trip
+  to Google is the one part of that flow a test cannot make; everything the callback then does with
+  the assertion — linking, refusing, signing in — is the real code path.

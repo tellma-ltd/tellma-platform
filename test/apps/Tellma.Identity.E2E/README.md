@@ -9,9 +9,15 @@ Playwright (Chromium):
   ctap2/internal, resident keys, user verification). The browser's conditional-mediation account
   chooser cannot be driven deterministically over CDP, so conditional-UI coverage asserts the wiring
   (autofill attribute + options request), not the chooser UX — verify that path manually.
-- Scenarios: passkey register/sign-in, email code, invitation acceptance, consent (including that
-  the browser follows the grant's redirect, which the integration suite cannot see), the
-  device-bound tier refusal, logout, and branding (the token stylesheet loads and resolves).
+- Scenarios: passkey register/sign-in, email code, invitation acceptance, consent and step-up
+  (each including that the browser follows the redirect back to the client, which the integration
+  suite cannot see), the device-bound tier refusal, logout, and branding (the token stylesheet
+  loads and resolves).
+- The redirect assertions above are the point of several of these. A browser applies the
+  content-security policy's `form-action` directive to every hop of the navigation a form
+  submission produces, and refuses the last one silently: the server issues a perfectly good
+  redirect, nothing is logged, and the page simply does not move. Only a browser sees that, so a
+  flow that ends at a client callback belongs here even when the server side is covered elsewhere.
 - `AccessibilityTests` runs the axe rule set over every page a user can reach, at three viewport
   widths and in Arabic, with the content-security policy left in force and its refusals asserted
   alongside. It also asserts the three things axe cannot: reflow at 320px, the `dir` attribute,

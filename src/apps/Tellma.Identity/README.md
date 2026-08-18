@@ -74,10 +74,11 @@ tell a new membership from an existing one.
 
 `Services/Email/tellma-wordmark-email.png` is the brand mark those emails carry, embedded in the
 assembly and attached to each message as an inline part. It is a hand-committed raster of
-`wwwroot/img/tellma-wordmark-on-dark.svg` at three times its display size, because mail clients drop
-SVG, block remote images until the reader trusts the sender, and could not reach an on-premise
-authority in any case. Refresh it by rendering that SVG at 396&nbsp;&times;&nbsp;112 on a transparent
-background whenever the wordmark changes.
+`wwwroot/img/tellma-wordmark-on-dark.svg` rendered well above the size it is drawn at, because mail
+clients drop SVG, block remote images until the reader trusts the sender, and could not reach an
+on-premise authority in any case. Refresh it by rendering that SVG at
+396&nbsp;&times;&nbsp;112 on a transparent background whenever the wordmark changes — comfortably
+past what the densest screen asks of a mark this size, and a few kilobytes either way.
 
 One cross-cutting rule about the UI is worth knowing before touching any page in the sign-in flow.
 Every response carries `form-action 'self'`, and a browser applies that directive to **every hop of the
