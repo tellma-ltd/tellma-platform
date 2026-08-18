@@ -117,6 +117,13 @@ namespace Tellma.Identity.Controllers.Api
         /// <summary>
         ///     The per-user outcome: <c>Invited</c>, <c>Reinvited</c>, or <c>Active</c>; null when
         ///     the user was refused.
+        ///     <para>
+        ///         <c>Active</c> means the user already had an identity with a credential, so
+        ///         <strong>no email was sent</strong> — there is nothing to prove and nothing to set
+        ///         up. If this membership is new to the caller, telling the user about it is the
+        ///         caller's responsibility: this server has no notion of tenants and cannot know
+        ///         whether the user was just added to something or has belonged all along.
+        ///     </para>
         /// </summary>
         public string? Status { get; init; }
 

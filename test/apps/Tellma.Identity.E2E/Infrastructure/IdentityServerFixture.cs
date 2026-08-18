@@ -213,8 +213,11 @@ namespace Tellma.Identity.E2E.Infrastructure
         ///     test can land on the invitation page the way an invited person does.
         /// </summary>
         /// <param name="email">The invited user, who must hold no credential yet.</param>
+        /// <param name="returnUrl">Where accepting it should send the user; null keeps them here.</param>
+        /// <param name="createdByClientId">The client the destination is validated against.</param>
         /// <returns>The single-use invitation token.</returns>
-        public async Task<string> IssueInvitationTokenAsync(string email)
+        public async Task<string> IssueInvitationTokenAsync(
+            string email, string? returnUrl = null, string? createdByClientId = null)
         {
             await using AsyncServiceScope scope = _app!.Services.CreateAsyncScope();
             Microsoft.AspNetCore.Identity.UserManager<Data.TellmaIdentityUser> userManager =
@@ -227,8 +230,8 @@ namespace Tellma.Identity.E2E.Infrastructure
                 user.Id,
                 Data.Entities.SingleUseCodePurpose.Invitation,
                 TimeSpan.FromHours(1),
-                returnUrl: null,
-                createdByClientId: null,
+                returnUrl,
+                createdByClientId,
                 TestContext.Current.CancellationToken);
         }
 
@@ -269,6 +272,41 @@ namespace Tellma.Identity.E2E.Infrastructure
                 },
                 Requirements = { OpenIddictConstants.Requirements.Features.ProofKeyForCodeExchange },
             });
+        }
+
+        /// <summary>
+        ///     Registers a first-party client at an origin, so an invitation it raises may name a
+        ///     destination there. The origin property is what the return-url check reads; nothing
+        ///     about the request is trusted.
+        /// </summary>
+        /// <param name="clientId">The client id.</param>
+        /// <param name="origin">The origin the client receives users at.</param>
+        /// <returns>A task that completes when the client is registered.</returns>
+        public async Task CreateOriginClientAsync(string clientId, string origin)
+        {
+            await using AsyncServiceScope scope = _app!.Services.CreateAsyncScope();
+            IOpenIddictApplicationManager applications =
+                scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+
+            if (await applications.FindByClientIdAsync(clientId) is not null)
+            {
+                return;
+            }
+
+            OpenIddictApplicationDescriptor descriptor = new()
+            {
+                ClientId = clientId,
+                DisplayName = clientId,
+                ClientType = OpenIddictConstants.ClientTypes.Public,
+                ConsentType = OpenIddictConstants.ConsentTypes.Implicit,
+            };
+
+            Services.Provisioning.TellmaClientProperties.Set(
+                descriptor.Properties, Services.Provisioning.TellmaClientProperties.Origin, origin);
+            Services.Provisioning.TellmaClientProperties.Set(
+                descriptor.Properties, Services.Provisioning.TellmaClientProperties.FirstParty, "true");
+
+            await applications.CreateAsync(descriptor);
         }
 
         /// <summary>

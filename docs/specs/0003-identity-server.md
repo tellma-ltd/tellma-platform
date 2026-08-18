@@ -488,14 +488,48 @@ is one call that returns per-user results and hands the whole batch to email in 
    created just before the failing step keeps its row, reported with an error and no status, and is
    left credential-less and `Active` so that re-inviting the address resolves it as `Reinvited` and
    completes the invitation. A caller that disconnects has no results to read, so results cover a
-   prefix of the request rather than all of it. Delivery itself is best-effort: mail is queued and
-   sent by a background worker that drains on graceful shutdown, so a transport failure or an
-   ungraceful stop is logged rather than reported to the caller, and the remedy is the same as for
-   any lost mail — re-invite, which supersedes the outstanding link (§10.3).
+   prefix of the request rather than all of it.
+
+   `Active` means no email was sent: the user already holds a credential, so there is nothing to
+   prove and nothing to set up. The server has no notion of tenants and cannot tell a membership
+   that is new to the caller from one that has always existed, so telling that user they now have
+   access is the caller's responsibility.
+
+   An invitation is the only message whose recipient is not waiting for it, and so the only one a
+   user cannot recover by asking again. Each single-use code records how far the mail carrying it
+   got; a recurring sweep claims any still unsent and delivers them, which is what makes an
+   invitation survive a crash between committing the user and putting the link on the wire.
+   Claiming is a single atomic statement with a lease rather than a scheduler guarantee, because
+   every instance of a multi-instance deployment runs its own scheduler. Because only the hash of a
+   secret is stored, a resend cannot reproduce the original link: it rotates the code's secret, so
+   a crash between the wire and the record produces a second email and invalidates the first —
+   at-least-once, last link wins, which is the correct direction for a message nobody can ask for
+   again. A permanent rejection is terminal on its first occurrence; only a transient failure is
+   retried, with backoff, to a limit.
 3. The user opens the link (which proves control of the mailbox):
    - New user → a passkey-setup page → return to the distribution. The user may instead link Google or
      Microsoft immediately (verified, matching email — the link is the ownership proof).
    - Existing user, new only to this distribution → straight in; an existing passkey already works.
+   - A link already used sends the holder to sign in rather than to the generic refusal, carrying
+     the same destination. That is overwhelmingly the recipient returning to the only address they
+     kept. It makes a used link tellable from an expired or forged one, which stay identical to
+     each other; the token's secret is verified first, so only someone who already held the link
+     learns anything, and consuming it proved mailbox control to begin with.
+
+   Where "return to the distribution" leads is the invitation's `returnUrl`, held server-side so
+   the emailed link cannot be edited into pointing elsewhere. An absolute destination is allowed
+   only when it is the inviting client's own registered origin — read from the registration, never
+   from the request — and is checked both when the invitation is raised and again when it is
+   opened, since a registration can change inside the week a link is valid. A destination the
+   client is not registered for is a per-user error rather than a silent drop. This is the only
+   redirect in the server that may leave its own origin; every other page remains local-only.
+
+4. The distribution can read what became of each invitation through the bulk delivery-status API,
+   scoped to the invitations that client raised (a subject another distribution invited is reported
+   exactly as one that does not exist, so the endpoint cannot be used to probe the directory).
+   `Sent` is terminal on a transport that reports nothing back — an on-premise relay has no
+   webhook — which the response states explicitly rather than leaving silence to be read as
+   failure.
 
 The distribution records the tenant-membership mapping (`sub` ↔ its user/roles); the server records only
 the global user. The invitation link is the passwordless bootstrap, so no password is ever required to
@@ -610,6 +644,12 @@ neither, so the palette is carried as literals matching the emitted tokens. The 
 an inline part rather than a URL, since clients drop SVG and block remote images until a reader trusts
 the sender — and an on-premise authority is unreachable from a recipient's client in any case.
 
+Every message carries a correlation naming the single-use code it belongs to, which is how a send
+outcome and a provider's later delivery report find the record they describe. The correlation is a
+row key and nothing else: it transits the mail provider and returns on an endpoint guarded only by
+signature verification, so an address or a user identifier there would be a disclosure. Engagement
+reports are discarded — the server keeps no record of who opened its mail.
+
 Every message renders in the recipient's own stored `locale` rather than the current request's, so a
 bulk invitation carries a different language per message, and takes that culture's direction as the
 document's own. Latin runs inside a right-to-left message — the address written out beneath the
@@ -619,7 +659,8 @@ button, the one-time code — are isolated individually so they keep their order
 
 The server exposes management as APIs; there is no standalone admin SPA.
 
-- **Distribution-facing (called by the distribution backend, M2M):** **invite users** (bulk) and
+- **Distribution-facing (called by the distribution backend, M2M):** **invite users** (bulk),
+  **read invitation delivery status** (bulk, scoped to the invitations that client raised), and
   **create / get / delete service account** — get and delete are ownership-scoped, finding only the
   accounts the calling distribution created. These are the only server APIs a tenant admin's workflows
   need. A caller that also holds the control-plane scope reads and deletes every service account,

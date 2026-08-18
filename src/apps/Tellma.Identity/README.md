@@ -58,6 +58,20 @@ deliberately. The layout takes its direction from the recipient's own culture, s
 whole rather than per element, and the Latin runs inside it — the address under the button, the
 one-time code — are isolated back individually.
 
+An invitation is the one message whose recipient is not waiting for it, so it is the one that
+cannot be recovered by the user asking again. Each single-use code therefore records how far the
+mail carrying it got, a Quartz sweep finishes any that never reached a transport, and the calling
+distribution can read the outcome back through `POST /api/identity/invitations/delivery-status`
+(scoped to the invitations that client raised, and to nothing else). Two consequences worth
+knowing: a resend rotates the code's secret, so a crash between the wire and the record produces a
+second email and invalidates the first link — at-least-once, last link wins; and `Sent` is the
+terminal state on a transport that reports nothing back, which is what `expectsDeliveryEvents`
+tells a caller. An SMTP relay has no webhook, so on-premise deployments rest at `Sent` for good.
+
+An `Active` result from the invite API means the user already had a credential and **no email was
+sent**. Telling them they now have access is the caller's job; the server has no tenants and cannot
+tell a new membership from an existing one.
+
 `Services/Email/tellma-wordmark-email.png` is the brand mark those emails carry, embedded in the
 assembly and attached to each message as an inline part. It is a hand-committed raster of
 `wwwroot/img/tellma-wordmark-on-dark.svg` at three times its display size, because mail clients drop

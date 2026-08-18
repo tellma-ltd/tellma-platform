@@ -50,6 +50,14 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         {
             ReturnUrl = ReturnUrlValidator.IsValid(returnUrl) ? returnUrl : null;
 
+            // Same reasoning as the invitation page: this document carries the enrollment form, so
+            // its policy is the one checked when that form's navigation redirects off-origin.
+            if (CredentialFlowCookie.Read(HttpContext)?.ReturnUrl is { } sealedDestination
+                && !ReturnUrlValidator.IsValid(sealedDestination))
+            {
+                CspFormAction.Allow(HttpContext, [sealedDestination]);
+            }
+
             return await ResolveUserAsync() is null
                 ? RedirectToPage("Login")
                 : Page();
@@ -124,6 +132,12 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
             // else stays on the authority, where enrollment has always ended.
             if (sealedReturnUrl is not null && !ReturnUrlValidator.IsValid(sealedReturnUrl))
             {
+                // The enrollment is a form submission, and a browser applies form-action to every
+                // hop of the navigation one produces — including this redirect. Without naming the
+                // destination the policy would refuse to follow it, the page would sit still, and
+                // nothing would be logged server-side: the whole redirect would succeed and the
+                // browser would simply decline to go.
+                CspFormAction.Allow(HttpContext, [sealedReturnUrl]);
                 return Redirect(sealedReturnUrl);
             }
 

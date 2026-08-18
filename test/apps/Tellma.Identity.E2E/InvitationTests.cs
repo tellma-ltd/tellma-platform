@@ -99,5 +99,41 @@ namespace Tellma.Identity.E2E
                 Assert.DoesNotContain(IdentityServerFixtureBase.SharedSessionEmail, content, StringComparison.Ordinal);
             });
         }
+
+        [Fact]
+        public async Task Accepting_an_invitation_lands_on_the_tenant_that_raised_it()
+        {
+            const string email = "e2e-invitation-return@example.com";
+            const string origin = "https://tenant.e2e.invalid";
+            const string destination = origin + "/welcome";
+
+            await server.CreateOriginClientAsync("e2e-return-client", origin);
+            await server.CreateActiveUserAsync(email);
+            string token = await server.IssueInvitationTokenAsync(email, destination, "e2e-return-client");
+
+            await using IBrowserContext context = await playwright.Browser.NewContextAsync(
+                new BrowserNewContextOptions { BaseURL = server.BaseAddress });
+
+            await PlaywrightTracing.RunTracedAsync(context, nameof(Accepting_an_invitation_lands_on_the_tenant_that_raised_it), async () =>
+            {
+                IPage page = await context.NewPageAsync();
+                await using VirtualAuthenticator authenticator = await VirtualAuthenticator.AttachAsync(context, page);
+
+                await page.GotoAsync("/Identity/Account/Invitation?code=" + Uri.EscapeDataString(token));
+
+                // The tenant does not exist, so what is asserted is that the browser *asks* for it.
+                // That is precisely what a content-security policy withholds: enrollment is a form
+                // submission, and a browser applies form-action to every hop of the navigation one
+                // produces. A policy that did not name this origin would leave the server's
+                // redirect perfectly correct, emit no error either side, and simply never issue
+                // this request — which is how the same class of defect once shipped on consent.
+                Task<IRequest> arrival = page.WaitForRequestAsync(
+                    request => request.Url.StartsWith(destination, StringComparison.Ordinal),
+                    new PageWaitForRequestOptions { Timeout = 15000 });
+
+                await page.GetByRole(AriaRole.Button, new() { Name = "Create a passkey" }).ClickAsync();
+                await arrival;
+            });
+        }
     }
 }

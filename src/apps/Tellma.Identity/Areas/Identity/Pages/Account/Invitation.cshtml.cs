@@ -108,6 +108,13 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
             // destination with it: the enrollment page must not take an absolute address from its
             // own query string, where anything could have put it.
             CredentialFlowCookie.Issue(HttpContext, user.Id, CredentialFlowPurpose.Invitation, ReturnUrl);
+
+            // This page carries the enrollment form, and a browser checks form-action against the
+            // policy of the document the form is in — not the policy on the response that ends up
+            // redirecting. Naming the destination here is therefore the only thing that lets the
+            // browser follow the enrollment through to the tenant; without it the submission
+            // succeeds server-side and the page simply never moves.
+            AllowFormActionTo(ReturnUrl);
             IsValid = true;
             return Page();
         }
@@ -147,6 +154,15 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                 : null;
 
             return RedirectToPage("Login", new { returnUrl = destination });
+        }
+
+        /// <summary>Widens this response's form-action policy to an off-origin destination.</summary>
+        private void AllowFormActionTo(string? destination)
+        {
+            if (destination is not null && !ReturnUrlValidator.IsValid(destination))
+            {
+                CspFormAction.Allow(HttpContext, [destination]);
+            }
         }
 
         /// <summary>Whether a user holds any credential they could sign in with.</summary>
