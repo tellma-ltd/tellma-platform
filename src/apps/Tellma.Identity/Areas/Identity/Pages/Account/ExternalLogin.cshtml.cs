@@ -30,6 +30,11 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
     ///         one invited. The verified-email requirement therefore applies to that branch alone,
     ///         where it is what stands between an unverified assertion and someone else's account.
     ///     </para>
+    ///     <para>
+    ///         A session is never exchanged for another here. An identity already held by a
+    ///         different account is reported as the conflict it is, rather than signing the visitor
+    ///         into that account behind a page that looks like it merely connected something.
+    ///     </para>
     /// </summary>
     /// <param name="signInManager">The Identity sign-in manager.</param>
     /// <param name="userManager">The Identity user manager.</param>
@@ -79,13 +84,26 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
 
             string method = MapMethod(info.LoginProvider);
 
-            // 1. Already linked by (provider, key): sign in directly.
+            // 1. Already linked by (provider, key): sign in as whoever holds it.
             TellmaIdentityUser? linked = await userManager.FindByLoginAsync(info.LoginProvider, info.ProviderKey);
             if (linked is not null)
             {
-                return linked.LifecycleState != UserLifecycleState.Active
-                    ? Fail()
-                    : await CompleteSignInAsync(linked, method, safeReturn);
+                if (linked.LifecycleState != UserLifecycleState.Active)
+                {
+                    return Fail();
+                }
+
+                // Unless this browser is already signed in as someone else. A session belongs to
+                // the person who established it, and this callback is not a place to change whose
+                // it is: someone connecting a provider from their account pages, with an identity
+                // that turns out to belong to another account, would be signed into that account
+                // and returned to the same pages — which reads exactly like the connection having
+                // worked. Everything they did next would land on an account they did not choose
+                // and cannot see they are on.
+                return SignedInUserId() is { } current
+                    && !string.Equals(current, linked.Id, StringComparison.Ordinal)
+                        ? OwnedByAnotherAccount()
+                        : await CompleteSignInAsync(linked, method, safeReturn);
             }
 
             // 2. New external identity: link only against a proof of local ownership.
@@ -189,6 +207,13 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                 : (null, OwnershipProof.None);
         }
 
+        /// <summary>The account this browser is signed in as, when it is signed in at all.</summary>
+        /// <returns>The user id, or null for an anonymous visitor.</returns>
+        private string? SignedInUserId()
+        {
+            return User.Identity?.IsAuthenticated == true ? userManager.GetUserId(User) : null;
+        }
+
         /// <summary>Maps an external provider scheme to the method vocabulary.</summary>
         private static string MapMethod(string loginProvider)
         {
@@ -208,6 +233,18 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         private PageResult NotLinked()
         {
             Error = localizer["ExternalLoginNotLinked"].Value;
+            return Page();
+        }
+
+        /// <summary>
+        ///     Renders the refusal to move an identity that another account already holds. Says
+        ///     what happened without naming that account: the reader authenticated as this provider
+        ///     identity a moment ago, so the conflict is theirs to resolve, but which local account
+        ///     holds it is not theirs to learn.
+        /// </summary>
+        private PageResult OwnedByAnotherAccount()
+        {
+            Error = localizer["ExternalLoginOwnedByAnotherAccount"].Value;
             return Page();
         }
     }

@@ -58,5 +58,26 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
             Assert.True(result.Succeeded, string.Join("; ", result.Errors.Select(static e => e.Description)));
             return user;
         }
+
+        /// <summary>Records an external login against a user, the way a completed link would.</summary>
+        /// <param name="factory">The host under test.</param>
+        /// <param name="email">The user the identity belongs to.</param>
+        /// <param name="provider">The provider scheme.</param>
+        /// <param name="key">The provider's stable subject for this identity.</param>
+        /// <param name="account">The address recorded beside the link.</param>
+        /// <returns>A task that completes when the link exists.</returns>
+        public static async Task AddExternalLoginAsync(
+            StandaloneFactory factory, string email, string provider, string key, string? account = null)
+        {
+            using IServiceScope scope = factory.Services.CreateScope();
+            UserManager<TellmaIdentityUser> userManager =
+                scope.ServiceProvider.GetRequiredService<UserManager<TellmaIdentityUser>>();
+
+            TellmaIdentityUser user = (await userManager.FindByEmailAsync(email))!;
+            IdentityResult result = await userManager.AddLoginAsync(
+                user, new UserLoginInfo(provider, key, account ?? email));
+
+            Assert.True(result.Succeeded, string.Join("; ", result.Errors.Select(static e => e.Description)));
+        }
     }
 }

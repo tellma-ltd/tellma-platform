@@ -346,6 +346,12 @@ userinfo response, which the deployment maps into the principal. Microsoft Graph
 verification signal at all, so linking Microsoft through an invitation fails closed; the same account
 links normally from a signed-in session. Microsoft-as-social uses `AddMicrosoftAccount`.
 
+A session is never exchanged for another along the way. An identity already held by a different
+account is reported as the conflict it is — the visitor signs out first if they meant to use it —
+because signing them into that account instead returns them to the account pages looking like the
+connection simply worked, with everything they do next landing on an account they did not choose and
+cannot see they are on.
+
 A refusal for want of a proof says so plainly rather than hiding behind a generic failure. It reveals
 only whether the provider identity the visitor just authenticated as is connected here — a fact about
 themselves — and telling them turns a dead end into an instruction.
@@ -786,6 +792,7 @@ chooses to rotate, a second secret can be added for a zero-downtime cutover. Con
 | Cross-device consent phishing (device flow) | Short-lived, rate-limited, one-time user codes; proximity where available |
 | Admin recovery social engineering | TAP single-use/short-lived/proofing-gated/audited |
 | External-login pre-hijacking | A proof of local ownership before linking; where that proof is the address itself, the provider must vouch for it (§8.4) |
+| Silent account substitution during federated linking | The external callback never replaces one signed-in account with another: an identity another account holds is a reported conflict, not a sign-in (§8.4) |
 
 Assurance tiers correspond to NIST SP 800-63B-4 authenticator assurance levels. NIST AAL3 requires a
 hardware-protected, non-exportable key plus verifier impersonation resistance; the `aal3` tier delivers
