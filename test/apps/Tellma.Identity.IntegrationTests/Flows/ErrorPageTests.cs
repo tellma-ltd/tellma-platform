@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Net;
+using System.Text.RegularExpressions;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 
 namespace Tellma.Identity.IntegrationTests.Flows
@@ -33,7 +34,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
 
             Assert.Contains("Something went wrong", html, StringComparison.Ordinal);
             Assert.Contains("invalid_client", html, StringComparison.Ordinal);
-            Assert.Contains("Reference", html, StringComparison.Ordinal);
+            AssertShowsATraceId(html);
 
             // A caller error, so the page must not tell the reader the fault was ours.
             Assert.DoesNotContain("The problem is on our side", html, StringComparison.Ordinal);
@@ -54,7 +55,24 @@ namespace Tellma.Identity.IntegrationTests.Flows
             // that used to leave a bare heading and nothing an operator could act on.
             string html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             Assert.Contains("Something went wrong", html, StringComparison.Ordinal);
+            AssertShowsATraceId(html);
+        }
+
+        /// <summary>Asserts the page shows a reference an operator could actually look up.</summary>
+        /// <param name="html">The rendered error page.</param>
+        private static void AssertShowsATraceId(string html)
+        {
             Assert.Contains("Reference", html, StringComparison.Ordinal);
+
+            // The trace id in its own right — thirty-two hex characters — and not the activity's
+            // full identifier, which wraps the same value in a version, a span and flags. Only the
+            // bare form matches what the logs and a collector index the request under, so a
+            // reference in any other shape is one the user can read out and nobody can find.
+            // Anchored on the label, because a protocol error renders its own code in a <code>
+            // element further up the page and an unanchored match would read that instead.
+            Match reference = Regex.Match(html, "Reference: <code>([^<]+)</code>");
+            Assert.True(reference.Success, "The page showed no reference at all.");
+            Assert.Matches("^[0-9a-f]{32}$", reference.Groups[1].Value);
         }
     }
 }

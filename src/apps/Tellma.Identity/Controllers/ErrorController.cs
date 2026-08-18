@@ -47,12 +47,25 @@ namespace Tellma.Identity.Controllers
                 Error = serverFault ? null : response?.Error,
                 ErrorDescription = serverFault ? null : response?.ErrorDescription,
 
-                // The distributed-trace id where one exists, so the reference the user reads off
-                // the screen is the same one a collector indexed the request under; the connection
-                // -scoped identifier otherwise, which is what the logs fall back to as well.
-                Reference = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                Reference = TraceReference(),
                 IsServerFault = serverFault,
             });
+        }
+
+        /// <summary>The identifier this request's log entries can be found under.</summary>
+        /// <returns>The trace id, or the connection-scoped identifier when the request is untraced.</returns>
+        private string TraceReference()
+        {
+            // The trace id alone, not the activity's full identifier. That one also carries the
+            // span and the flags, while everything that indexes a request — the log template,
+            // Application Insights' operation_Id, Log Analytics' OperationId — keys on the trace,
+            // so printing the longer form would hand the user a reference that matches nothing
+            // they can search for. Where there is no W3C trace, the connection-scoped id is what
+            // the logs fall back to as well.
+            Activity? activity = Activity.Current;
+            return activity is { IdFormat: ActivityIdFormat.W3C }
+                ? activity.TraceId.ToString()
+                : HttpContext.TraceIdentifier;
         }
     }
 }

@@ -49,14 +49,19 @@ namespace Tellma.Identity.Tests.Controllers
         }
 
         [Fact]
-        public void The_reference_is_the_trace_id_when_the_request_is_traced()
+        public void The_reference_is_the_trace_id_alone()
         {
-            // Same id a collector indexed the request under, so the reference read off the screen
-            // finds the request rather than merely accompanying it.
-            using Activity activity = new(nameof(The_reference_is_the_trace_id_when_the_request_is_traced));
+            using Activity activity = new(nameof(The_reference_is_the_trace_id_alone));
             activity.Start();
 
-            Assert.Equal(activity.Id, Render(serverFault: true).Reference);
+            string reference = Render(serverFault: true).Reference!;
+
+            // The trace id, not the activity's full identifier — that one appends the span and the
+            // flags, and nothing indexes a request under it. Both halves are asserted, because the
+            // trace id is a prefix-free substring of the longer form and checking only the first
+            // would pass for either.
+            Assert.Equal(activity.TraceId.ToString(), reference);
+            Assert.NotEqual(activity.Id, reference);
         }
 
         /// <summary>Runs the controller and returns the model it handed the view.</summary>
