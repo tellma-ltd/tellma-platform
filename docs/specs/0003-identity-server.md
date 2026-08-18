@@ -346,11 +346,15 @@ userinfo response, which the deployment maps into the principal. Microsoft Graph
 verification signal at all, so linking Microsoft through an invitation fails closed; the same account
 links normally from a signed-in session. Microsoft-as-social uses `AddMicrosoftAccount`.
 
-A session is never exchanged for another along the way. An identity already held by a different
-account is reported as the conflict it is — the visitor signs out first if they meant to use it —
-because signing them into that account instead returns them to the account pages looking like the
-connection simply worked, with everything they do next landing on an account they did not choose and
-cannot see they are on.
+A link attempt declares itself: the challenge carries the initiating account, and only that
+account's live session may complete it — the provider's assertion is likewise consumed on first
+read, so a stale callback cannot finish later against whoever is signed in by then. An identity
+already held by a different account is reported as the conflict it is, and audited — the visitor
+signs out first if they meant to use it — because signing them into that account instead returns
+them to the account pages looking like the connection simply worked, with everything they do next
+landing on an account they did not choose and cannot see they are on. A plain federated sign-in
+carries no link mark and may switch accounts the way every sign-in method may, always onto a fresh
+session.
 
 A refusal for want of a proof says so plainly rather than hiding behind a generic failure. It reveals
 only whether the provider identity the visitor just authenticated as is connected here — a fact about
@@ -792,7 +796,7 @@ chooses to rotate, a second secret can be added for a zero-downtime cutover. Con
 | Cross-device consent phishing (device flow) | Short-lived, rate-limited, one-time user codes; proximity where available |
 | Admin recovery social engineering | TAP single-use/short-lived/proofing-gated/audited |
 | External-login pre-hijacking | A proof of local ownership before linking; where that proof is the address itself, the provider must vouch for it (§8.4) |
-| Silent account substitution during federated linking | The external callback never replaces one signed-in account with another: an identity another account holds is a reported conflict, not a sign-in (§8.4) |
+| Silent account substitution during federated linking | A link attempt carries its initiating account through the challenge and completes only for that account's live session; an identity another account holds is a reported conflict, not a sign-in (§8.4) |
 
 Assurance tiers correspond to NIST SP 800-63B-4 authenticator assurance levels. NIST AAL3 requires a
 hardware-protected, non-exportable key plus verifier impersonation resistance; the `aal3` tier delivers

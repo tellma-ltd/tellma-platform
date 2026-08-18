@@ -3,9 +3,6 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.DependencyInjection;
-using Tellma.Identity.Data;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 
 namespace Tellma.Identity.IntegrationTests.Flows
@@ -33,7 +30,8 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
                 fixture, "idfedpage", ProviderSeed);
             await TestData.CreateActiveUserAsync(factory, "fedpage@example.com");
-            await LinkAsync(factory, "fedpage@example.com", "Google", "f.nasser@aljood.org");
+            await TestData.AddExternalLoginAsync(
+                factory, "fedpage@example.com", "Google", "google-subject", "f.nasser@aljood.org");
 
             string html = await PageHtmlAsync(factory, "fedpage@example.com");
 
@@ -58,7 +56,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
 
             // What the store holds for every link made before the address was captured: the
             // provider's own name, which the row's title already says.
-            await LinkAsync(factory, "fedlegacy@example.com", "Google", "Google");
+            await TestData.AddExternalLoginAsync(factory, "fedlegacy@example.com", "Google", "google-subject", "Google");
 
             string html = await PageHtmlAsync(factory, "fedlegacy@example.com");
 
@@ -75,7 +73,8 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
                 fixture, "idfedrefuse", ProviderSeed);
             await TestData.CreateActiveUserAsync(factory, "fedrefuse@example.com");
-            await LinkAsync(factory, "fedrefuse@example.com", "Google", "only@example.com");
+            await TestData.AddExternalLoginAsync(
+                factory, "fedrefuse@example.com", "Google", "google-subject", "only@example.com");
 
             using OidcFlowClient flow = new(factory);
             await flow.SignInWithEmailCodeAsync("fedrefuse@example.com", "/Identity/Account/Login");
@@ -109,19 +108,6 @@ namespace Tellma.Identity.IntegrationTests.Flows
 
             // The nav hides the page in this state; whoever arrives by URL still gets a sentence.
             Assert.Contains("No external sign-in providers are available", html, StringComparison.Ordinal);
-        }
-
-        /// <summary>Records an external link the way the callback does, with a chosen account name.</summary>
-        private static async Task LinkAsync(StandaloneFactory factory, string email, string provider, string account)
-        {
-            using IServiceScope scope = factory.Services.CreateScope();
-            UserManager<TellmaIdentityUser> users =
-                scope.ServiceProvider.GetRequiredService<UserManager<TellmaIdentityUser>>();
-
-            TellmaIdentityUser user = (await users.FindByEmailAsync(email))!;
-            IdentityResult result = await users.AddLoginAsync(
-                user, new UserLoginInfo(provider, provider.ToLowerInvariant() + "-subject", account));
-            Assert.True(result.Succeeded, string.Join("; ", result.Errors.Select(static e => e.Description)));
         }
 
         /// <summary>Signs the user in and returns the rendered external-logins page.</summary>

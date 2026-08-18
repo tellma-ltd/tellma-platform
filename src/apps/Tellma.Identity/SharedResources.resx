@@ -375,6 +375,9 @@
   <data name="BackToSignIn" xml:space="preserve">
     <value>Back to sign in</value>
   </data>
+  <data name="GoBack" xml:space="preserve">
+    <value>Go back</value>
+  </data>
   <data name="SignInLead" xml:space="preserve">
     <value>Use your work email or a passkey.</value>
   </data>

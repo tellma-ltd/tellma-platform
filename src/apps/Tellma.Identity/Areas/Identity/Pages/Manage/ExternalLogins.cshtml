@@ -84,10 +84,12 @@ else
                 }
                 else
                 {
-                    @* Linking runs through the ordinary sign-in flow, which already accepts an
-                       authenticated session as proof that this account is yours — so there is no
-                       second linking path to keep correct, only this form. *@
+                    @* Linking runs through the ordinary external flow, but declares itself: the
+                       Link handler stamps this account into the challenge, so the callback treats
+                       anything else it finds there — another owner, another session, no session —
+                       as the broken link attempt it is, never as a sign-in to complete. *@
                     <form class="tmi-inline" method="post" asp-area="Identity" asp-page="/Account/ExternalLogin"
+                          asp-page-handler="Link"
                           asp-route-provider="@row.Provider"
                           asp-route-returnUrl="@Url.Page("/Manage/ExternalLogins", new { area = "Identity" })">
                         <button class="tmi-link tmi-link-action" type="submit"

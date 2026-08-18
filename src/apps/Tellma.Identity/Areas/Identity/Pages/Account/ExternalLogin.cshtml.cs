@@ -23,17 +23,22 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
     ///     never auto-merged by email: linking requires proof that the visitor owns the local
     ///     account, and the two proofs it accepts are trusted for different reasons.
     ///     <para>
-    ///         An authenticated session proves ownership by itself — the visitor is already signed in
-    ///         as the account they are attaching the identity to, and the provider's address is
-    ///         recorded beside the link as a label, nothing more. Following an invitation, the proof
-    ///         <em>is</em> the address: the provider must assert it as verified and it must be the
-    ///         one invited. The verified-email requirement therefore applies to that branch alone,
-    ///         where it is what stands between an unverified assertion and someone else's account.
+    ///         A declared link attempt's session proves ownership by itself — the visitor is signed
+    ///         in as the account they named when starting the challenge, and the provider's address
+    ///         is recorded beside the link as a label, nothing more. Following an invitation, the
+    ///         proof <em>is</em> the address: the provider must assert it as verified and it must be
+    ///         the one invited. The verified-email requirement therefore applies to that branch
+    ///         alone, where it is what stands between an unverified assertion and someone else's
+    ///         account.
     ///     </para>
     ///     <para>
-    ///         A session is never exchanged for another here. An identity already held by a
-    ///         different account is reported as the conflict it is, rather than signing the visitor
-    ///         into that account behind a page that looks like it merely connected something.
+    ///         A link attempt declares itself: the challenge carries the initiating account, and
+    ///         only that account's live session may complete it. An identity already held by a
+    ///         different account is then reported as the conflict it is, rather than signing the
+    ///         visitor into that account behind a page that looks like it merely connected
+    ///         something. A plain sign-in carries no such mark, and completing one as a different
+    ///         account is the same deliberate switch every sign-in method allows — onto a fresh
+    ///         session, never a continued one.
     ///     </para>
     /// </summary>
     /// <param name="signInManager">The Identity sign-in manager.</param>
@@ -49,19 +54,42 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         IAuditLogger auditLogger,
         IStringLocalizer<SharedResources> localizer) : PageModel
     {
+        /// <summary>
+        ///     The challenge-properties item that carries a link attempt's initiating account
+        ///     through the provider round trip. Present only when the challenge was started with
+        ///     <see cref="OnPostLink" />, so the callback can tell a link from a sign-in without
+        ///     guessing from whatever session is present when the provider answers.
+        /// </summary>
+        public const string LinkForProperty = "LinkFor";
+
         /// <summary>An error to display when the flow could not complete.</summary>
         public string? Error { get; private set; }
 
-        /// <summary>Starts the external-login challenge.</summary>
+        /// <summary>Where the visitor was headed, offered back to them when the flow refuses.</summary>
+        public string? ReturnUrl { get; private set; }
+
+        /// <summary>Starts the external sign-in challenge.</summary>
         /// <param name="provider">The external authentication scheme (Google, Microsoft).</param>
         /// <param name="returnUrl">Where to return after sign-in.</param>
         /// <returns>A challenge to the external provider.</returns>
         public IActionResult OnPost(string provider, string? returnUrl = null)
         {
-            string safeReturn = ReturnUrlValidator.Sanitize(returnUrl, Url.Page("/Account/Login", new { area = "Identity" })!);
-            string redirectUrl = Url.Page("ExternalLogin", pageHandler: "Callback", values: new { returnUrl = safeReturn })!;
-            AuthenticationProperties properties = signInManager.ConfigureExternalAuthenticationProperties(provider, redirectUrl);
-            return Challenge(properties, provider);
+            return ChallengeProvider(provider, returnUrl, linkFor: null);
+        }
+
+        /// <summary>Starts the external linking challenge for the signed-in account.</summary>
+        /// <param name="provider">The external authentication scheme (Google, Microsoft).</param>
+        /// <param name="returnUrl">Where to return after linking.</param>
+        /// <returns>A challenge to the external provider, carrying the link intent.</returns>
+        public IActionResult OnPostLink(string provider, string? returnUrl = null)
+        {
+            // Whose link attempt this is travels inside the challenge state rather than being
+            // read back from the session later: the provider round trip can outlive the session
+            // that started it, and a link completed against whatever session remains — or none —
+            // is how an identity ends up attached to an account nobody chose.
+            return SignedInUserId() is { } initiator
+                ? ChallengeProvider(provider, returnUrl, initiator)
+                : Fail();
         }
 
         /// <summary>Handles the provider callback: sign in an existing link, or link with ownership proof.</summary>
@@ -71,6 +99,7 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         public async Task<IActionResult> OnGetCallbackAsync(string? returnUrl = null, string? remoteError = null)
         {
             string safeReturn = ReturnUrlValidator.Sanitize(returnUrl, Url.Page("/Account/Login", new { area = "Identity" })!);
+            ReturnUrl = safeReturn;
             if (remoteError is not null)
             {
                 return Fail();
@@ -82,33 +111,57 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                 return Fail();
             }
 
+            // Consumed on first read. The engine sign-in does not delete the assertion the way
+            // the stock manager's sign-in does, so left alive it would remain replayable from
+            // this GET for its whole cookie lifetime — able to re-mint the session it produced
+            // even after a global sign-out, or to complete a refused attempt on whatever session
+            // exists by the time the page is refreshed.
+            await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+
             string method = MapMethod(info.LoginProvider);
+
+            // A link attempt names its account in the challenge state; a sign-in carries no such
+            // mark. The distinction cannot be read from the current session — the round trip can
+            // outlive it, and step-up renders sign-in buttons to a browser that has one.
+            string? linkFor = info.AuthenticationProperties is { } challenge
+                && challenge.Items.TryGetValue(LinkForProperty, out string? initiator)
+                    ? initiator
+                    : null;
 
             // 1. Already linked by (provider, key): sign in as whoever holds it.
             TellmaIdentityUser? linked = await userManager.FindByLoginAsync(info.LoginProvider, info.ProviderKey);
             if (linked is not null)
             {
+                // Unless this is a link attempt and the identity is already another account's.
+                // The conflict outranks the holder's lifecycle: whoever holds it, the answer to
+                // "connect this to me" is that it is taken, and the generic failure's advice to
+                // try again could never come true.
+                if (linkFor is not null && !string.Equals(linkFor, linked.Id, StringComparison.Ordinal))
+                {
+                    return await OwnedByAnotherAccountAsync(linkFor);
+                }
+
                 if (linked.LifecycleState != UserLifecycleState.Active)
                 {
                     return Fail();
                 }
 
-                // Unless this browser is already signed in as someone else. A session belongs to
-                // the person who established it, and this callback is not a place to change whose
-                // it is: someone connecting a provider from their account pages, with an identity
-                // that turns out to belong to another account, would be signed into that account
-                // and returned to the same pages — which reads exactly like the connection having
-                // worked. Everything they did next would land on an account they did not choose
-                // and cannot see they are on.
-                return SignedInUserId() is { } current
-                    && !string.Equals(current, linked.Id, StringComparison.Ordinal)
-                        ? OwnedByAnotherAccount()
+                // A link attempt is completed only by the session that started it. Anything else
+                // — the session ended at the provider's account chooser, or another tab changed
+                // whose it is — and signing in whoever the identity resolves to would hand the
+                // browser an account nobody chose, behind a page that reads like the connection
+                // having worked. A sign-in, by contrast, completes for the identity's owner no
+                // matter what session it lands on: switching accounts is what sign-in methods do,
+                // and the engine answers a switch with a fresh session id.
+                return linkFor is not null
+                    && !string.Equals(SignedInUserId(), linkFor, StringComparison.Ordinal)
+                        ? Fail()
                         : await CompleteSignInAsync(linked, method, safeReturn);
             }
 
             // 2. New external identity: link only against a proof of local ownership.
             string? providerEmail = info.Principal.FindFirstValue(ClaimTypes.Email);
-            (TellmaIdentityUser? owner, OwnershipProof proof) = await ResolveOwnerAsync(providerEmail);
+            (TellmaIdentityUser? owner, OwnershipProof proof) = await ResolveOwnerAsync(providerEmail, linkFor);
             if (owner is null)
             {
                 // Never auto-merge by email without proof — this is the pre-hijacking guard. Saying
@@ -155,6 +208,24 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
             return await CompleteSignInAsync(owner, method, safeReturn);
         }
 
+        /// <summary>Builds the provider challenge, stamping the link initiator when there is one.</summary>
+        /// <param name="provider">The external authentication scheme.</param>
+        /// <param name="returnUrl">Where to return after the callback completes.</param>
+        /// <param name="linkFor">The account a link attempt is for, or null for a sign-in.</param>
+        /// <returns>A challenge to the external provider.</returns>
+        private ChallengeResult ChallengeProvider(string provider, string? returnUrl, string? linkFor)
+        {
+            string safeReturn = ReturnUrlValidator.Sanitize(returnUrl, Url.Page("/Account/Login", new { area = "Identity" })!);
+            string redirectUrl = Url.Page("ExternalLogin", pageHandler: "Callback", values: new { returnUrl = safeReturn })!;
+            AuthenticationProperties properties = signInManager.ConfigureExternalAuthenticationProperties(provider, redirectUrl);
+            if (linkFor is not null)
+            {
+                properties.Items[LinkForProperty] = linkFor;
+            }
+
+            return Challenge(properties, provider);
+        }
+
         /// <summary>Signs the user in, recording the external method as the authentication event.</summary>
         private async Task<IActionResult> CompleteSignInAsync(TellmaIdentityUser user, string method, string returnUrl)
         {
@@ -169,7 +240,10 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
             /// <summary>Nothing did, and no account was resolved.</summary>
             None,
 
-            /// <summary>An authenticated session: the visitor is signed in as that account.</summary>
+            /// <summary>
+            ///     The declared link attempt's own session: the visitor is signed in as the
+            ///     account they named when starting the challenge.
+            /// </summary>
             Session,
 
             /// <summary>An invitation link, whose proof is the address the provider asserts.</summary>
@@ -182,13 +256,20 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         ///     caller has to know which one it got.
         /// </summary>
         /// <param name="providerEmail">The address the provider asserts, when it asserts one.</param>
+        /// <param name="linkFor">The account the challenge declared a link attempt for, if any.</param>
         /// <returns>The account and its proof, or null and <see cref="OwnershipProof.None" />.</returns>
-        private async Task<(TellmaIdentityUser? Owner, OwnershipProof Proof)> ResolveOwnerAsync(string? providerEmail)
+        private async Task<(TellmaIdentityUser? Owner, OwnershipProof Proof)> ResolveOwnerAsync(
+            string? providerEmail, string? linkFor)
         {
-            // An authenticated user is linking a new provider from Account & Security.
-            if (User.Identity?.IsAuthenticated == true)
+            // A declared link attempt is the only path on which a session proves ownership, and
+            // only the session that made the declaration. An undeclared callback never links to
+            // whatever session happens to be present: ambient state does not decide whose account
+            // gains a credential.
+            if (linkFor is not null)
             {
-                return (await userManager.GetUserAsync(User), OwnershipProof.Session);
+                return string.Equals(SignedInUserId(), linkFor, StringComparison.Ordinal)
+                    ? (await userManager.GetUserAsync(User), OwnershipProof.Session)
+                    : (null, OwnershipProof.None);
             }
 
             // Only the invitation flow may link an external login (§8.4): the single-use invitation
@@ -237,13 +318,25 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         }
 
         /// <summary>
-        ///     Renders the refusal to move an identity that another account already holds. Says
-        ///     what happened without naming that account: the reader authenticated as this provider
-        ///     identity a moment ago, so the conflict is theirs to resolve, but which local account
-        ///     holds it is not theirs to learn.
+        ///     Renders the refusal to move an identity that another account already holds, and
+        ///     leaves a trace of it. The message says what happened without naming that account:
+        ///     the reader authenticated as this provider identity a moment ago, so the conflict is
+        ///     theirs to resolve, but which local account holds it is not theirs to learn.
         /// </summary>
-        private PageResult OwnedByAnotherAccount()
+        /// <param name="subject">The account whose link attempt was refused.</param>
+        /// <returns>The rendered refusal.</returns>
+        private async Task<PageResult> OwnedByAnotherAccountAsync(string subject)
         {
+            // The one refusal here that proves a cross-account collision, so the one the audit
+            // stream must not lose: a run of these against one subject is somebody probing which
+            // provider identities lead where.
+            await auditLogger.LogAsync(new AuditEventEntry
+            {
+                Action = AuditActions.ExternalLoginConflict,
+                Subject = subject,
+                Outcome = "failure",
+            });
+
             Error = localizer["ExternalLoginOwnedByAnotherAccount"].Value;
             return Page();
         }

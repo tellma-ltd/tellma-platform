@@ -124,7 +124,7 @@
     <value>هذا الحساب غير مرتبط بتلما. {gender, select, female{سجّلي} other{سجّل}} الدخول بطريقة أخرى ثم {gender, select, female{اربطيه} other{اربطه}} من صفحة الحساب والأمان.</value>
   </data>
   <data name="ExternalLoginOwnedByAnotherAccount" xml:space="preserve">
-    <value>هذا الحساب مرتبط بالفعل بحساب تلما آخر. {gender, select, female{سجّلي} other{سجّل}} الخروج أولاً لاستخدامه، أو {gender, select, female{اربطي} other{اربط}} حسابًا آخر.</value>
+    <value>هذا الحساب مرتبط بالفعل بحساب تلما آخر. {gender, select, female{سجّلي} other{سجّل}} الخروج أولاً لاستخدامه، أو {gender, select, female{اربطي} other{اربط}} حساباً آخر.</value>
   </data>
   <data name="PasskeyAlreadyOnThisDevice" xml:space="preserve">
     <value>يحتوي هذا الجهاز على مفتاح مرور لحسابك بالفعل. {gender, select, female{استخدمي} other{استخدم}} جهازاً آخر أو مفتاح أمان لإضافة مفتاح ثانٍ.</value>
@@ -374,6 +374,9 @@
   </data>
   <data name="BackToSignIn" xml:space="preserve">
     <value>العودة إلى تسجيل الدخول</value>
+  </data>
+  <data name="GoBack" xml:space="preserve">
+    <value>العودة</value>
   </data>
   <data name="SignInLead" xml:space="preserve">
     <value>{gender, select, female{استخدمي} other{استخدم}} بريد العمل أو مفتاح مرور.</value>

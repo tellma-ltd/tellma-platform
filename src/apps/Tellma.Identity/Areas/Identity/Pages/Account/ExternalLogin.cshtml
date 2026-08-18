@@ -7,8 +7,8 @@
 
 <h1 class="tmi-title">@L["SignIn"]</h1>
 
-@* Only ever rendered when a federated sign-in failed; a successful one redirects straight
-   through and never reaches this page. *@
+@* Only ever rendered when the flow refused — a failed sign-in, or a link attempt turned away;
+   a successful callback redirects straight through and never reaches this page. *@
 @if (!string.IsNullOrEmpty(Model.Error))
 {
     <div class="tmi-notice tmi-notice-error" role="group" aria-label="@L["StatusError"]">
@@ -16,5 +16,21 @@
         @* Provider text, so it is isolated from the layout around it. *@
         <div class="tmi-notice-body"><bdi>@Model.Error</bdi></div>
     </div>
-    <a class="tmi-button tmi-button-secondary" asp-area="Identity" asp-page="/Account/Login">@L["BackToSignIn"]</a>
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        @* A signed-in visitor came from somewhere — the account pages, or a step-up they can
+           retry another way — and the refusal may tell them to sign out first, so both doors
+           are offered. A sign-in link would only bounce them back to their profile. *@
+        if (Model.ReturnUrl is { } returnUrl)
+        {
+            <a class="tmi-button tmi-button-secondary" href="@returnUrl">@L["GoBack"]</a>
+        }
+        <form class="tmi-inline" method="post" asp-area="Identity" asp-page="/Account/Logout">
+            <button class="tmi-link" type="submit">@L["SignOut"]</button>
+        </form>
+    }
+    else
+    {
+        <a class="tmi-button tmi-button-secondary" asp-area="Identity" asp-page="/Account/Login">@L["BackToSignIn"]</a>
+    }
 }

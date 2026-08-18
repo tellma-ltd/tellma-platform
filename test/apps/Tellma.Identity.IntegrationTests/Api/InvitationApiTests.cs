@@ -83,7 +83,7 @@ namespace Tellma.Identity.IntegrationTests.Api
             // A disabled user sits in the middle of the batch; reactivating it must be a
             // deliberate operator action, never a side effect of a bulk invite.
             TellmaIdentityUser disabled = await TestData.CreateActiveUserAsync(factory, "disabled@example.com");
-            await SetLifecycleStateAsync(factory, disabled, UserLifecycleState.Disabled);
+            await TestData.SetLifecycleStateAsync(factory, disabled, UserLifecycleState.Disabled);
 
             string token = await GetIdentityScopeTokenAsync(factory);
             using HttpClient client = factory.CreateClient();
@@ -297,18 +297,6 @@ namespace Tellma.Identity.IntegrationTests.Api
                 scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<TellmaIdentityUser>>();
             TellmaIdentityUser tracked = (await userManager.FindByIdAsync(user.Id))!;
             await userManager.AddPasswordAsync(tracked, "correct horse battery staple");
-        }
-
-        /// <summary>Moves a user to the given lifecycle state directly in the store.</summary>
-        private static async Task SetLifecycleStateAsync(
-            StandaloneFactory factory, TellmaIdentityUser user, UserLifecycleState state)
-        {
-            using IServiceScope scope = factory.Services.CreateScope();
-            Microsoft.AspNetCore.Identity.UserManager<TellmaIdentityUser> userManager =
-                scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<TellmaIdentityUser>>();
-            TellmaIdentityUser tracked = (await userManager.FindByIdAsync(user.Id))!;
-            tracked.LifecycleState = state;
-            await userManager.UpdateAsync(tracked);
         }
     }
 }

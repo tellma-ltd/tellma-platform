@@ -79,5 +79,24 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
 
             Assert.True(result.Succeeded, string.Join("; ", result.Errors.Select(static e => e.Description)));
         }
+
+        /// <summary>Moves a user to the given lifecycle state directly in the store.</summary>
+        /// <param name="factory">The host under test.</param>
+        /// <param name="user">The user to move.</param>
+        /// <param name="state">The state to move them to.</param>
+        /// <returns>A task that completes when the state is stored.</returns>
+        public static async Task SetLifecycleStateAsync(
+            StandaloneFactory factory, TellmaIdentityUser user, UserLifecycleState state)
+        {
+            using IServiceScope scope = factory.Services.CreateScope();
+            UserManager<TellmaIdentityUser> userManager =
+                scope.ServiceProvider.GetRequiredService<UserManager<TellmaIdentityUser>>();
+
+            TellmaIdentityUser tracked = (await userManager.FindByIdAsync(user.Id))!;
+            tracked.LifecycleState = state;
+            IdentityResult result = await userManager.UpdateAsync(tracked);
+
+            Assert.True(result.Succeeded, string.Join("; ", result.Errors.Select(static e => e.Description)));
+        }
     }
 }

@@ -15,10 +15,10 @@ namespace Tellma.Identity.IntegrationTests.Flows
 {
     /// <summary>
     ///     Connecting a provider to the account you are signed in as. The same callback serves this
-    ///     and an ordinary federated sign-in, so it has to tell the two apart: an identity that
-    ///     already belongs to someone else is a conflict to report, never a session to swap into.
-    ///     Swapping it silently leaves a person acting on an account they did not choose and cannot
-    ///     see they are on.
+    ///     and an ordinary federated sign-in, so the challenge says which it is: a link attempt
+    ///     carries the account it is for, and an identity that already belongs to someone else is
+    ///     then a conflict to report, never a session to swap into. Swapping it silently leaves a
+    ///     person acting on an account they did not choose and cannot see they are on.
     /// </summary>
     [Collection(SqlServerCollectionDefinition.Name)]
     [Trait("Category", "Integration")]
@@ -52,11 +52,17 @@ namespace Tellma.Identity.IntegrationTests.Flows
             await SignInAsync(flow, mine);
             Assert.Equal(mine, await SignedInEmailAsync(flow));
 
-            await CompleteExternalCallbackAsync(flow, theirs);
+            using HttpResponseMessage callback = await CompleteExternalCallbackAsync(flow, theirs, linkForEmail: mine);
 
-            // The whole claim. Before this was refused, the callback found the identity's owner,
-            // signed the browser in as them, and returned to the account pages showing that
-            // account's name — which reads as the link having worked.
+            // The whole claim, pinned from both sides: the callback rendered the refusal rather
+            // than redirecting into a sign-in — so a flow that broke before the conflict check
+            // cannot pass here by accident — and the session is still the one that started the
+            // link. Before this was refused, the callback found the identity's owner, signed the
+            // browser in as them, and returned to the account pages showing that account's name —
+            // which reads as the link having worked.
+            Assert.Equal(HttpStatusCode.OK, callback.StatusCode);
+            string html = await callback.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.Contains("already connected to a different", html, StringComparison.Ordinal);
             Assert.Equal(mine, await SignedInEmailAsync(flow));
         }
 
@@ -74,7 +80,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using OidcFlowClient flow = new(factory);
             await SignInAsync(flow, mine);
 
-            using HttpResponseMessage callback = await CompleteExternalCallbackAsync(flow, theirs);
+            using HttpResponseMessage callback = await CompleteExternalCallbackAsync(flow, theirs, linkForEmail: mine);
             string html = await callback.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
             // Told what happened, because the reader is the one person who can act on it — they
@@ -95,10 +101,12 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using OidcFlowClient flow = new(factory);
             await SignInAsync(flow, mine);
 
-            // The ordinary case, which must keep working: an identity nobody holds attaches to the
-            // account that is signed in, and the session stays that account's throughout.
-            await CompleteExternalCallbackAsync(flow, "someone-else@example.com");
+            // The ordinary case, which must keep working: an identity nobody holds attaches to
+            // the account whose link attempt this is, and the session stays that account's.
+            using HttpResponseMessage callback = await CompleteExternalCallbackAsync(
+                flow, "someone-else@example.com", linkForEmail: mine);
 
+            Assert.Equal(HttpStatusCode.Redirect, callback.StatusCode);
             Assert.Equal(mine, await SignedInEmailAsync(flow));
             Assert.True(await HasGoogleLinkAsync(factory, mine));
         }
@@ -115,11 +123,54 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using OidcFlowClient flow = new(factory);
             await SignInAsync(flow, mine);
 
-            // Same account, same identity — the conflict rule must not catch this, or a user could
-            // never re-present a provider they had already connected.
-            await CompleteExternalCallbackAsync(flow, mine);
+            // Same account, same identity — the conflict rule must not catch this, or a user
+            // could never re-present a provider they had already connected. The redirect is the
+            // discriminating half: a wrongful refusal would render an error page while leaving
+            // the session just as intact.
+            using HttpResponseMessage callback = await CompleteExternalCallbackAsync(flow, mine, linkForEmail: mine);
 
+            Assert.Equal(HttpStatusCode.Redirect, callback.StatusCode);
             Assert.Equal(mine, await SignedInEmailAsync(flow));
+        }
+
+        [Fact]
+        public async Task A_sign_in_with_a_linked_identity_signs_in_its_owner()
+        {
+            const string owner = "signin-owner@example.com";
+
+            using StandaloneFactory factory = await CreateFactoryAsync("idlinksignin");
+            await TestData.CreateActiveUserAsync(factory, owner);
+            await TestData.AddExternalLoginAsync(factory, owner, "Google", GoogleSubject);
+
+            using OidcFlowClient flow = new(factory);
+
+            // No session and no declared link: the ordinary federated sign-in, which the conflict
+            // rule must leave exactly as it was — a redirect onward, signed in as the owner.
+            using HttpResponseMessage callback = await CompleteExternalCallbackAsync(flow, owner);
+
+            Assert.Equal(HttpStatusCode.Redirect, callback.StatusCode);
+            Assert.Equal("/Identity/Manage/ExternalLogins", callback.Headers.Location?.ToString());
+            Assert.Equal(owner, await SignedInEmailAsync(flow));
+        }
+
+        [Fact]
+        public async Task A_disabled_owners_identity_does_not_sign_in()
+        {
+            const string owner = "signin-disabled@example.com";
+
+            using StandaloneFactory factory = await CreateFactoryAsync("idlinkdisabled");
+            TellmaIdentityUser user = await TestData.CreateActiveUserAsync(factory, owner);
+            await TestData.AddExternalLoginAsync(factory, owner, "Google", GoogleSubject);
+            await TestData.SetLifecycleStateAsync(factory, user, UserLifecycleState.Disabled);
+
+            using OidcFlowClient flow = new(factory);
+            using HttpResponseMessage callback = await CompleteExternalCallbackAsync(flow, owner);
+
+            // Refused with the generic failure: an account that cannot sign in does not sign in
+            // through a provider either, and the page says no more than that.
+            Assert.Equal(HttpStatusCode.OK, callback.StatusCode);
+            string html = await callback.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.Contains("could not be completed", html, StringComparison.Ordinal);
         }
 
         /// <summary>Boots a host with Google configured.</summary>
@@ -146,12 +197,15 @@ namespace Tellma.Identity.IntegrationTests.Flows
         /// <summary>Asserts a provider identity, then completes the callback that acts on it.</summary>
         /// <param name="flow">The browser-role client.</param>
         /// <param name="providerEmail">The address the provider asserts.</param>
+        /// <param name="linkForEmail">The account linking, when the challenge declared a link.</param>
         /// <returns>The callback's response.</returns>
         private static async Task<HttpResponseMessage> CompleteExternalCallbackAsync(
-            OidcFlowClient flow, string providerEmail)
+            OidcFlowClient flow, string providerEmail, string? linkForEmail = null)
         {
             using (HttpResponseMessage assertion = await flow.Browser.GetAsync(
-                new Uri(ExternalProviderStub.AssertionUrl("Google", GoogleSubject, providerEmail), UriKind.Relative),
+                new Uri(
+                    ExternalProviderStub.AssertionUrl("Google", GoogleSubject, providerEmail, linkForEmail),
+                    UriKind.Relative),
                 TestContext.Current.CancellationToken))
             {
                 Assert.Equal(HttpStatusCode.NoContent, assertion.StatusCode);
@@ -174,9 +228,12 @@ namespace Tellma.Identity.IntegrationTests.Flows
             Assert.True(page.IsSuccessStatusCode, $"The profile page answered {page.StatusCode}.");
             string html = await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
-            Match found = Regex.Match(html, @"[\w.\-]+@example\.com");
+            // Read from the element the layout dedicates to the session's user, not from the
+            // first address-shaped string anywhere in the page: other addresses — a linked
+            // provider's label, say — may render before it.
+            Match found = Regex.Match(html, "tmi-nav-user-email[^>]*>(?<email>[^<]+)<");
             Assert.True(found.Success, "The account pages named no signed-in user.");
-            return found.Value;
+            return found.Groups["email"].Value.Trim();
         }
 
         /// <summary>Whether a user holds a Google link.</summary>

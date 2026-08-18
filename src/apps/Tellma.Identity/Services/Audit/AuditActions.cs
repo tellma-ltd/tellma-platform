@@ -62,6 +62,9 @@ namespace Tellma.Identity.Services.Audit
         /// <summary>An external login was removed from a local account.</summary>
         public const string ExternalLoginRemoved = "ExternalLoginRemoved";
 
+        /// <summary>A link attempt presented an identity that another account already holds.</summary>
+        public const string ExternalLoginConflict = "ExternalLoginConflict";
+
         /// <summary>Tokens were issued.</summary>
         public const string TokenIssued = "TokenIssued";
 
