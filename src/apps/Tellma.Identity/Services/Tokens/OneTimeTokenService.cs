@@ -101,7 +101,44 @@ namespace Tellma.Identity.Services.Tokens
                     setters => setters.SetProperty(static c => c.ConsumedUtc, timeProvider.GetUtcNow()),
                     cancellationToken);
 
-            return consumed == 1 ? new OneTimeTokenContext(stored.UserId, stored.ReturnUrl) : null;
+            return consumed == 1
+                ? new OneTimeTokenContext(stored.UserId, stored.ReturnUrl, stored.CreatedByClientId)
+                : null;
+        }
+
+        /// <inheritdoc />
+        public async Task<OneTimeTokenContext?> FindConsumedAsync(
+            string token, SingleUseCodePurpose purpose, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return null;
+            }
+
+            string[] parts = token.Split('.', 2);
+            if (parts.Length != 2)
+            {
+                return null;
+            }
+
+            SingleUseCode? stored = await context.Set<SingleUseCode>()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    code => code.Id == parts[0] && code.Purpose == purpose && code.ConsumedUtc != null,
+                    cancellationToken);
+
+            if (stored is null)
+            {
+                return null;
+            }
+
+            // The secret is still verified. Without it the row id alone would be enough to ask
+            // whether an invitation had been used, and the id travels in the open.
+            byte[] expected = Convert.FromBase64String(stored.SecretHash);
+            byte[] actual = Convert.FromBase64String(Hash(parts[1]));
+            return CryptographicOperations.FixedTimeEquals(expected, actual)
+                ? new OneTimeTokenContext(stored.UserId, stored.ReturnUrl, stored.CreatedByClientId)
+                : null;
         }
 
         /// <summary>

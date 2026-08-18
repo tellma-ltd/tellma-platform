@@ -217,6 +217,13 @@ namespace Tellma.Identity.IntegrationTests.Api
                 return Task.FromResult<string?>(null);
             }
 
+            /// <summary>Never reached: nothing here opens a link.</summary>
+            public Task<OneTimeTokenContext?> FindConsumedAsync(
+                string token, Data.Entities.SingleUseCodePurpose purpose, CancellationToken cancellationToken)
+            {
+                return inner.FindConsumedAsync(token, purpose, cancellationToken);
+            }
+
             public Task<bool> PeekAsync(
                     string token,
                     Data.Entities.SingleUseCodePurpose purpose,

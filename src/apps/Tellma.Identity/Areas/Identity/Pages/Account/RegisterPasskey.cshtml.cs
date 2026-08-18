@@ -62,6 +62,13 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         {
             ReturnUrl = ReturnUrlValidator.IsValid(returnUrl) ? returnUrl : null;
 
+            // Read before the ceremony completes, because completing it clears the cookie. This is
+            // the only destination that may be off-origin, and the only reason it may be is that
+            // this server put it there: it was checked against the inviting client's registered
+            // origin, then sealed under Data Protection. The query string beside it is still held
+            // to local paths only.
+            string? sealedReturnUrl = CredentialFlowCookie.Read(HttpContext)?.ReturnUrl;
+
             TellmaIdentityUser? user = await ResolveUserAsync();
             if (user is null)
             {
@@ -113,8 +120,15 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                 CredentialFlowCookie.Clear(HttpContext);
             }
 
+            // An invitation that named where it came from sends the new user back there; anything
+            // else stays on the authority, where enrollment has always ended.
+            if (sealedReturnUrl is not null && !ReturnUrlValidator.IsValid(sealedReturnUrl))
+            {
+                return Redirect(sealedReturnUrl);
+            }
+
             string fallback = Url.Page("/Manage/Passkeys", new { area = "Identity" })!;
-            return LocalRedirect(ReturnUrlValidator.Sanitize(ReturnUrl, fallback));
+            return LocalRedirect(ReturnUrlValidator.Sanitize(sealedReturnUrl ?? ReturnUrl, fallback));
         }
 
         /// <summary>

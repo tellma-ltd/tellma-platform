@@ -22,7 +22,10 @@ namespace Tellma.Identity.Infrastructure
     /// <summary>A resolved credential-flow context.</summary>
     /// <param name="UserId">The user the ceremony may act for.</param>
     /// <param name="Purpose">Why the context exists.</param>
-    public sealed record CredentialFlowContext(string UserId, CredentialFlowPurpose Purpose);
+    /// <param name="ReturnUrl">Where to send the user once the ceremony completes; null for the
+    ///     authority's own account page. Already validated when it was sealed in.</param>
+    public sealed record CredentialFlowContext(
+        string UserId, CredentialFlowPurpose Purpose, string? ReturnUrl = null);
 
     /// <summary>
     ///     A short-lived, Data-Protection-encrypted cookie that carries the identity of the user
@@ -47,14 +50,19 @@ namespace Tellma.Identity.Infrastructure
         /// <param name="context">The request context.</param>
         /// <param name="userId">The user the ceremony may act for.</param>
         /// <param name="purpose">Why the context exists (bounds what it authorizes).</param>
-        public static void Issue(HttpContext context, string userId, CredentialFlowPurpose purpose)
+        /// <param name="returnUrl">Where the completed ceremony sends the user, already validated.
+        ///     Carried here rather than through the page's query string precisely because it may be
+        ///     an absolute address: sealed in the cookie it is a value this server put there and
+        ///     checked, where a query parameter would be whatever the browser was handed.</param>
+        public static void Issue(
+            HttpContext context, string userId, CredentialFlowPurpose purpose, string? returnUrl = null)
         {
             ArgumentNullException.ThrowIfNull(context);
             ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
             IDataProtector protector = GetProtector(context);
             string payload = protector.Protect(
-                $"{userId}|{DateTimeOffset.UtcNow.Add(Lifetime).ToUnixTimeSeconds()}|{(int)purpose}");
+                $"{userId}|{DateTimeOffset.UtcNow.Add(Lifetime).ToUnixTimeSeconds()}|{(int)purpose}|{returnUrl}");
 
             context.Response.Cookies.Append(Name, payload, new CookieOptions
             {
@@ -80,13 +88,19 @@ namespace Tellma.Identity.Infrastructure
 
             try
             {
-                string[] parts = GetProtector(context).Unprotect(payload).Split('|', 3);
-                return parts.Length != 3
+                // Four fields now, three before the return url was added. Both are accepted so a
+                // ceremony already under way when this deploys is not stranded — its invitation
+                // link is single-use and has already been spent, so there is no retry to offer.
+                string[] parts = GetProtector(context).Unprotect(payload).Split('|', 4);
+                return parts.Length < 3
                     || !long.TryParse(parts[1], out long expiresUnix)
                     || DateTimeOffset.FromUnixTimeSeconds(expiresUnix) < DateTimeOffset.UtcNow
                     || !int.TryParse(parts[2], out int purpose)
                     ? null
-                    : new CredentialFlowContext(parts[0], (CredentialFlowPurpose)purpose);
+                    : new CredentialFlowContext(
+                        parts[0],
+                        (CredentialFlowPurpose)purpose,
+                        parts.Length == 4 && parts[3].Length > 0 ? parts[3] : null);
             }
             catch (System.Security.Cryptography.CryptographicException)
             {

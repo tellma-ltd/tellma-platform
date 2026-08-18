@@ -66,6 +66,7 @@ namespace Tellma.Identity.Services.Invitations
     /// <param name="emailDispatcher">The background mail dispatch queue.</param>
     /// <param name="templates">Localized message construction.</param>
     /// <param name="links">Builds the absolute invitation link.</param>
+    /// <param name="returnUrls">Decides where an accepted invitation may send the user.</param>
     /// <param name="auditLogger">Audit emission.</param>
     /// <param name="metrics">Identity metrics.</param>
     /// <param name="timeProvider">The clock.</param>
@@ -77,6 +78,7 @@ namespace Tellma.Identity.Services.Invitations
         IEmailDispatcher emailDispatcher,
         EmailTemplateService templates,
         InvitationLinkBuilder links,
+        InvitationReturnUrlValidator returnUrls,
         IAuditLogger auditLogger,
         IdentityMetrics metrics,
         TimeProvider timeProvider,
@@ -239,6 +241,20 @@ namespace Tellma.Identity.Services.Invitations
             List<EmailMessage> emails,
             CancellationToken cancellationToken)
         {
+            // Checked before the user is created, so a destination this client may not send to is
+            // refused outright rather than silently dropped — which is what happened before, and
+            // left an invited user finishing on the authority's own page with no way onward.
+            if (!await returnUrls.IsAllowedAsync(item.ReturnUrl, createdByClientId, cancellationToken))
+            {
+                results.Add(new InvitationResultItem(
+                    item.Email,
+                    null,
+                    null,
+                    "The return url is not a destination this client is registered to receive users at."));
+                metrics.Invitation(RefusedMetricStatus);
+                return;
+            }
+
             (TellmaIdentityUser? user, InvitationStatus status, string? error) = await CreateOrGetAsync(item);
             if (error is not null || user is null)
             {

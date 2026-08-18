@@ -11,6 +11,7 @@ using Tellma.Identity.Data;
 using Tellma.Identity.Data.Entities;
 using Tellma.Identity.Infrastructure;
 using Tellma.Identity.Services.Audit;
+using Tellma.Identity.Services.Invitations;
 using Tellma.Identity.Services.Tokens;
 
 namespace Tellma.Identity.Areas.Identity.Pages.Account
@@ -24,11 +25,13 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
     /// <param name="tokens">One-time invitation tokens.</param>
     /// <param name="userManager">The Identity user manager.</param>
     /// <param name="auditLogger">Audit emission.</param>
+    /// <param name="returnUrls">Re-checks the stored destination against the client's registration.</param>
     [AllowAnonymous]
     public sealed class InvitationModel(
         IOneTimeTokenService tokens,
         UserManager<TellmaIdentityUser> userManager,
-        IAuditLogger auditLogger) : PageModel
+        IAuditLogger auditLogger,
+        InvitationReturnUrlValidator returnUrls) : PageModel
     {
         /// <summary>Whether the invitation link resolved to a pending user.</summary>
         public bool IsValid { get; private set; }
@@ -46,7 +49,21 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                 : await tokens.RedeemAsync(code, SingleUseCodePurpose.Invitation, HttpContext.RequestAborted);
             if (redeemed is null)
             {
-                // Enumeration-safe: an invalid, expired, or already-used link looks identical.
+                // A link that was already used is the one case worth telling apart, because it is
+                // overwhelmingly the legitimate recipient coming back to the only address they
+                // kept — the email — after finishing setup and not bookmarking the app. Sending
+                // them on to sign in is the whole point of having recorded where they were going.
+                //
+                // It does mean "used" is distinguishable from "expired" or "forged", which are
+                // still identical to each other. The trade is deliberate: the token's secret is
+                // verified before this answers, so only someone who already held the link learns
+                // anything, and consuming it proved control of the mailbox in the first place.
+                if (await ConsumedRedirectAsync(code) is { } onward)
+                {
+                    return onward;
+                }
+
+                // Enumeration-safe: an invalid, expired, or unknown link looks identical.
                 IsValid = false;
                 return Page();
             }
@@ -72,22 +89,72 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                 Outcome = "success",
             });
 
-            ReturnUrl = ReturnUrlValidator.IsValid(redeemed.ReturnUrl) ? redeemed.ReturnUrl : null;
+            // Re-checked rather than trusted because it was checked once at issuance: a
+            // registration can change in the days an invitation is valid for, and the answer that
+            // matters is the one true when the user actually arrives.
+            ReturnUrl = await returnUrls.IsAllowedAsync(
+                redeemed.ReturnUrl, redeemed.CreatedByClientId, HttpContext.RequestAborted)
+                ? redeemed.ReturnUrl
+                : null;
 
             // An existing user who already has a credential is only new to this distribution; the
             // membership is recorded by the caller and any existing passkey already works.
-            bool hasCredential = (await userManager.GetPasskeysAsync(user)).Count > 0
-                || await userManager.HasPasswordAsync(user)
-                || (await userManager.GetLoginsAsync(user)).Count > 0;
-            if (hasCredential)
+            if (await HasCredentialAsync(user))
             {
                 return RedirectToPage("Login", new { returnUrl = ReturnUrl });
             }
 
-            // Scope the upcoming credential ceremony to this user without a session.
-            CredentialFlowCookie.Issue(HttpContext, user.Id, CredentialFlowPurpose.Invitation);
+            // Scope the upcoming credential ceremony to this user without a session, carrying the
+            // destination with it: the enrollment page must not take an absolute address from its
+            // own query string, where anything could have put it.
+            CredentialFlowCookie.Issue(HttpContext, user.Id, CredentialFlowPurpose.Invitation, ReturnUrl);
             IsValid = true;
             return Page();
+        }
+
+        /// <summary>
+        ///     Sends the holder of an already-used invitation on to sign in, when the link is
+        ///     genuinely one that was redeemed and the account it belongs to can now get in.
+        /// </summary>
+        /// <param name="code">The single-use invitation token.</param>
+        /// <returns>The redirect, or null when there is nothing better to offer than the
+        ///     generic page.</returns>
+        private async Task<IActionResult?> ConsumedRedirectAsync(string? code)
+        {
+            if (code is null
+                || await tokens.FindConsumedAsync(
+                    code, SingleUseCodePurpose.Invitation, HttpContext.RequestAborted) is not { } consumed)
+            {
+                return null;
+            }
+
+            // Only for an account that can actually get in. One that was invited, had its link
+            // consumed, and still holds no credential has nothing to sign in with, and sending it
+            // to a login page would be a dead end wearing a different hat.
+            TellmaIdentityUser? user = await userManager.FindByIdAsync(consumed.UserId);
+            if (user is null || !await HasCredentialAsync(user))
+            {
+                return null;
+            }
+
+            // Re-checked against the client's registration for the same reason the redeem path
+            // does it: the invitation may be days old and registrations change. An invitation that
+            // named nowhere still gets the sign-in page — that alone is the difference between a
+            // way back in and a dead end.
+            string? destination = await returnUrls.IsAllowedAsync(
+                consumed.ReturnUrl, consumed.CreatedByClientId, HttpContext.RequestAborted)
+                ? consumed.ReturnUrl
+                : null;
+
+            return RedirectToPage("Login", new { returnUrl = destination });
+        }
+
+        /// <summary>Whether a user holds any credential they could sign in with.</summary>
+        private async Task<bool> HasCredentialAsync(TellmaIdentityUser user)
+        {
+            return (await userManager.GetPasskeysAsync(user)).Count > 0
+                || await userManager.HasPasswordAsync(user)
+                || (await userManager.GetLoginsAsync(user)).Count > 0;
         }
     }
 }

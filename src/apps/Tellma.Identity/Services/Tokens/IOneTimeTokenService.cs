@@ -10,7 +10,11 @@ namespace Tellma.Identity.Services.Tokens
     /// <summary>A consumed one-time token and the context it carried.</summary>
     /// <param name="UserId">The user the token was issued to.</param>
     /// <param name="ReturnUrl">The validated post-completion destination, when any.</param>
-    public sealed record OneTimeTokenContext(string UserId, string? ReturnUrl);
+    /// <param name="CreatedByClientId">The client that requested issuance. Carried through so a
+    ///     destination validated against that client's registration at issuance can be checked
+    ///     against it again on arrival, days later, when the registration may have changed.</param>
+    public sealed record OneTimeTokenContext(
+        string UserId, string? ReturnUrl, string? CreatedByClientId = null);
 
     /// <summary>
     ///     Issues and redeems single-use link tokens (invitations, password resets). Tokens are
@@ -70,6 +74,22 @@ namespace Tellma.Identity.Services.Tokens
         /// <param name="cancellationToken">Aborts the operation.</param>
         /// <returns>Whether the token would redeem right now.</returns>
         Task<bool> PeekAsync(string token, SingleUseCodePurpose purpose, CancellationToken cancellationToken);
+
+        /// <summary>
+        ///     The context of a token that was already redeemed, for a link opened a second time.
+        /// </summary>
+        /// <remarks>
+        ///     Only ever answers for a token that verified and was consumed — an unknown, expired,
+        ///     or forged one is null here exactly as it is for a redeem, so the page above can keep
+        ///     telling those apart from nothing. Consumption already proved control of the mailbox,
+        ///     which is why saying "this was used" to whoever holds it discloses nothing new.
+        /// </remarks>
+        /// <param name="token">The clear token string.</param>
+        /// <param name="purpose">The purpose the token must have been issued for.</param>
+        /// <param name="cancellationToken">Aborts the operation.</param>
+        /// <returns>The context, or null when the token is not a consumed one of this purpose.</returns>
+        Task<OneTimeTokenContext?> FindConsumedAsync(
+            string token, SingleUseCodePurpose purpose, CancellationToken cancellationToken);
 
         /// <summary>Redeems a token, consuming it so it can never be used again.</summary>
         /// <param name="token">The clear token string.</param>
