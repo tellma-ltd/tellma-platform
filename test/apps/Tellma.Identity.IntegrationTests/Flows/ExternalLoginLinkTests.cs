@@ -12,6 +12,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Tellma.Identity.Data;
+using Tellma.Identity.Infrastructure;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
 using Tellma.Identity.TestSupport;
@@ -194,12 +195,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             // Someone else's invitation, opened on a browser already signed in as the bystander —
             // a shared machine, or a link followed without noticing who was signed in.
             await InviteAsync(factory, distribution, invited);
-            string link = await factory.Emails.WaitForLinkAsync(invited);
-            using (HttpResponseMessage accepted = await flow.Browser.GetAsync(
-                new Uri(new Uri(link).PathAndQuery, UriKind.Relative), TestContext.Current.CancellationToken))
-            {
-                Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
-            }
+            await AcceptInvitationAsync(flow, await factory.Emails.WaitForLinkAsync(invited));
 
             // A plain sign-in, declaring no link — the shape a provider button on the sign-in page
             // produces. The address the provider vouches for is the invited one.
@@ -212,6 +208,65 @@ namespace Tellma.Identity.IntegrationTests.Flows
             Assert.True(await HasGoogleLinkAsync(factory, invited));
             Assert.False(await HasGoogleLinkAsync(factory, signedIn));
             Assert.Equal(invited, await SignedInEmailAsync(flow));
+
+            // The invitation was the proof, so it is spent: a single-use context that survived
+            // being used would be a second chance at the credential it just granted.
+            Assert.True(ClearsTheFlowCookie(callback));
+        }
+
+        [Fact]
+        public async Task A_link_proved_by_its_session_leaves_an_unrelated_invitation_alone()
+        {
+            const string signedIn = "keeps-mine@example.com";
+            const string invited = "keeps-theirs@example.com";
+
+            using StandaloneFactory factory = await CreateFactoryAsync("idlinkkeepflow");
+            DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
+            await TestData.CreateActiveUserAsync(factory, signedIn);
+
+            using OidcFlowClient flow = new(factory);
+            await SignInAsync(flow, signedIn);
+
+            // Somebody else's invitation is open on this browser, exactly as above.
+            await InviteAsync(factory, distribution, invited);
+            await AcceptInvitationAsync(flow, await factory.Emails.WaitForLinkAsync(invited));
+
+            // This link is proved by the session that declared it, and the address it carries is
+            // the signed-in account's own — the invitation has nothing to do with it.
+            using HttpResponseMessage callback = await CompleteExternalCallbackAsync(
+                flow, signedIn, linkForEmail: signedIn);
+
+            Assert.Equal(HttpStatusCode.Redirect, callback.StatusCode);
+            Assert.True(await HasGoogleLinkAsync(factory, signedIn));
+
+            // So the invitation survives it. Spending a context this link never consulted would
+            // strand its holder mid-enrollment on a link that cannot be opened twice.
+            Assert.False(ClearsTheFlowCookie(callback));
+        }
+
+        /// <summary>Opens an invitation link, which is what establishes its credential flow.</summary>
+        /// <param name="flow">The browser-role client whose jar receives the flow cookie.</param>
+        /// <param name="link">The absolute link the invitation email carried.</param>
+        /// <returns>A task that completes once the invitation page has rendered.</returns>
+        private static async Task AcceptInvitationAsync(OidcFlowClient flow, string link)
+        {
+            using HttpResponseMessage accepted = await flow.Browser.GetAsync(
+                new Uri(new Uri(link).PathAndQuery, UriKind.Relative), TestContext.Current.CancellationToken);
+
+            Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+        }
+
+        /// <summary>Whether a response told the browser to drop the credential-flow cookie.</summary>
+        /// <param name="response">The callback's response.</param>
+        /// <returns>True when the response carries the deletion.</returns>
+        private static bool ClearsTheFlowCookie(HttpResponseMessage response)
+        {
+            // A deletion is a Set-Cookie with an empty value and an expiry in the past, which is
+            // what distinguishes it from the cookie merely not being touched.
+            return response.Headers.TryGetValues("Set-Cookie", out IEnumerable<string>? cookies)
+                && cookies.Any(static cookie =>
+                    cookie.StartsWith(CredentialFlowCookie.Name + "=;", StringComparison.Ordinal)
+                    && cookie.Contains("expires=Thu, 01 Jan 1970", StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>Invites one address through the distribution-facing API.</summary>

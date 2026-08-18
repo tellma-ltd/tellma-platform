@@ -204,7 +204,15 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
                 Outcome = "success",
             });
 
-            CredentialFlowCookie.Clear(HttpContext);
+            // Only the flow that proved this link is spent. A link proved by its own session can be
+            // running alongside an invitation meant for somebody else — a shared machine, a link
+            // opened in another tab — and clearing that would discard an enrollment context this
+            // had nothing to do with, leaving its holder to start the invitation over.
+            if (proof == OwnershipProof.InvitationEmail)
+            {
+                CredentialFlowCookie.Clear(HttpContext);
+            }
+
             return await CompleteSignInAsync(owner, method, safeReturn);
         }
 

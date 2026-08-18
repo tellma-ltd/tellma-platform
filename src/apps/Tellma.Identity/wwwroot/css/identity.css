@@ -484,6 +484,22 @@ code,
   gap: var(--space-2);
 }
 
+/* Actions that are not peers stack instead, full width, the way a lone button already sits. A
+   row presents its children as equal choices, which is right for "verify or resend" and wrong
+   where one of them is what the message just told the reader to do. */
+.tmi-actions-stacked {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* The gap spaces this column, so a button's own bottom margin would double it — and unevenly,
+   because the card's last-child rule reaches a bare anchor here but not a button one level
+   deeper inside the form a federated action needs. Descendant, not child, for that reason. */
+.tmi-actions-stacked .tmi-button {
+  margin-block-end: 0;
+}
+
 /* The children may be buttons, or forms each wrapping one — a federated provider needs its own
    form to post to. Either way they share the row evenly. */
 .tmi-actions > * {
