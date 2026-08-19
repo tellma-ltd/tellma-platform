@@ -10,6 +10,7 @@ jobs:
   # Build everything and run the unit suites (integration excluded) on both OSes.
   build-test:
     if: ${{ !github.event.pull_request.draft }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -30,6 +31,7 @@ jobs:
   # as a style failure, not an OS-specific one.
   format:
     if: ${{ !github.event.pull_request.draft }}
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -47,6 +49,7 @@ jobs:
   # PRs cannot read the secrets they need anyway.
   integration:
     if: ${{ !github.event.pull_request.draft }}
+    timeout-minutes: 25
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -62,6 +65,7 @@ jobs:
   #      PackageReference variant of the host.
   design-e2e:
     if: ${{ !github.event.pull_request.draft }}
+    timeout-minutes: 25
     runs-on: ubuntu-latest
     env:
       HOST: test/core/assets/Tellma.Core.EntityFrameworkCore.MigrationsHost
@@ -106,6 +110,7 @@ jobs:
   # via the CDP virtual authenticator. The browser download is cached on the package version.
   identity-e2e:
     if: ${{ !github.event.pull_request.draft }}
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -119,6 +124,7 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ hashFiles('Directory.Packages.props') }}
       - name: Install Chromium
+        timeout-minutes: 10
         run: pwsh test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
       - run: dotnet test test/apps/Tellma.Identity.E2E -c Release --no-build --filter "Category=E2E"
       - name: Upload Playwright traces on failure
@@ -136,6 +142,7 @@ jobs:
   # port-free (§1.3).
   client:
     if: ${{ !github.event.pull_request.draft }}
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -151,7 +158,9 @@ jobs:
           cache: pnpm
           cache-dependency-path: client/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install chromium firefox webkit --with-deps
+      - name: Install browsers
+        timeout-minutes: 15
+        run: pnpm exec playwright install chromium firefox webkit --with-deps
       - run: pnpm run lint
       - run: pnpm run typecheck
       - run: pnpm run lint:test
@@ -173,6 +182,7 @@ jobs:
     # Include all required job in this list — a job missing here is NOT gated.
     # Branch protection must require THIS job only.
     needs: [build-test, format, integration, design-e2e, client, identity-e2e]
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any dependency did not succeed
