@@ -49,7 +49,7 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
 
         /// <summary>
         ///     Phishing-resistant and device-bound (non-synced). A fully substantiated NIST AAL3
-        ///     additionally requires attestation, which is deferred.
+        ///     additionally requires attestation, which is deferred (TODO).
         /// </summary>
         public const string Aal3 = "urn:tellma:acr:aal3";
 

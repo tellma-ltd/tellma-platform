@@ -15,7 +15,7 @@ namespace Tellma.Identity.Services.Sessions
     /// <summary>
     ///     The <c>sid</c>-keyed session registry: which SSO sessions exist and which
     ///     distributions hold tokens under each. Backed by SQL behind this interface so a
-    ///     distributed cache can substitute later as a configuration change.
+    ///     distributed cache can substitute later as a configuration change (TODO).
     /// </summary>
     public interface ISessionRegistry
     {

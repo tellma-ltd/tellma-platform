@@ -41,7 +41,9 @@ namespace Tellma.Identity.Services.Provisioning
         /// <param name="slug">The distribution slug (= BFF client id).</param>
         /// <param name="origin">The distribution's browser origin.</param>
         /// <param name="backchannelLogoutUri">The BFF's back-channel logout endpoint.</param>
-        /// <param name="allowTokenExchange">Grant the backend client token exchange (acting for users).</param>
+        /// <param name="allowTokenExchange">Grant the backend client token exchange, which lets it narrow
+        ///     one of its own machine tokens for a single downstream call. It never acts for a user:
+        ///     exchanging a token issued to one is refused.</param>
         /// <param name="cancellationToken">Aborts the operation.</param>
         /// <returns>The generated credentials; secrets are not retrievable afterwards.</returns>
         Task<DistributionClientCredentials> CreateDistributionAsync(

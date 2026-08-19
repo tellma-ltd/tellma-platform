@@ -44,8 +44,18 @@ namespace Tellma.Identity.Hosting
 
             services.AddQuartz(static quartz =>
             {
-                JobKey key = new(SessionPruneJob.Name);
-                quartz.AddJob<SessionPruneJob>(job => job.WithIdentity(key));
+                // The session sweep. Delayed first run so startup is not competing with a table
+                // scan, and hourly after that: the windows this job enforces are measured in days,
+                // so a sweep any more often would only cost reads.
+                JobKey prune = new(SessionPruneJob.Name);
+                quartz.AddJob<SessionPruneJob>(job => job.WithIdentity(prune));
+                quartz.AddTrigger(trigger => trigger
+                    .ForJob(prune)
+                    .WithIdentity(SessionPruneJob.Name + ".Trigger")
+                    .StartAt(DateBuilder.FutureDate((int)SessionPruneStartDelay.TotalMinutes, IntervalUnit.Minute))
+                    .WithSimpleSchedule(schedule => schedule
+                        .WithInterval(SessionPruneInterval)
+                        .RepeatForever()));
 
                 // The invitation recovery sweep. Unlike the prune, this one has a deadline that
                 // matters to a person: an invitation whose mail was lost is only found here, and
@@ -60,17 +70,6 @@ namespace Tellma.Identity.Hosting
                         (int)InvitationDispatchStartDelay.TotalSeconds, IntervalUnit.Second))
                     .WithSimpleSchedule(schedule => schedule
                         .WithInterval(InvitationDispatchInterval)
-                        .RepeatForever()));
-
-                // Delayed first run so startup is not competing with a table scan, and hourly
-                // after that: the windows this job enforces are measured in days, so a sweep any
-                // more often would only cost reads.
-                quartz.AddTrigger(trigger => trigger
-                    .ForJob(key)
-                    .WithIdentity(SessionPruneJob.Name + ".Trigger")
-                    .StartAt(DateBuilder.FutureDate((int)SessionPruneStartDelay.TotalMinutes, IntervalUnit.Minute))
-                    .WithSimpleSchedule(schedule => schedule
-                        .WithInterval(SessionPruneInterval)
                         .RepeatForever()));
             });
 
