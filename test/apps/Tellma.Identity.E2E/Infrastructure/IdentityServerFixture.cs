@@ -1,4 +1,4 @@
-// Copyright (c) Tellma Ltd. All rights reserved.
+﻿// Copyright (c) Tellma Ltd. All rights reserved.
 //
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
@@ -388,19 +388,31 @@ namespace Tellma.Identity.E2E.Infrastructure
         /// <summary>
         ///     Records an external link the way the sign-in callback does, so the account page has a
         ///     linked row to render — the badge, the address and the unlink control, none of which
-        ///     exist on an unlinked row.
+        ///     exist on an unlinked row. The account is created first if it does not exist yet.
         /// </summary>
-        /// <param name="email">The account to link.</param>
+        /// <param name="email">The account to link, created if absent.</param>
         /// <param name="provider">The provider scheme, for example <c>Google</c>.</param>
         /// <param name="account">The address the provider asserted.</param>
         /// <returns>A task that completes when the link is stored.</returns>
         public async Task AddExternalLoginAsync(string email, string provider, string account)
         {
+            // Seeding a link says nothing about when the account was made, and for the shared
+            // session's address that moment is the first test to ask for a signed-in context —
+            // which a test seeding its state up front has not done yet. Creating it here is
+            // idempotent, and it is what keeps this independent of the order tests run in.
+            await CreateActiveUserAsync(email);
+
             await using AsyncServiceScope scope = _app!.Services.CreateAsyncScope();
             Microsoft.AspNetCore.Identity.UserManager<Data.TellmaIdentityUser> userManager =
                 scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<Data.TellmaIdentityUser>>();
 
-            Data.TellmaIdentityUser user = (await userManager.FindByEmailAsync(email))!;
+            // Still checked, because creation above reports failure by leaving nothing behind: an
+            // address Identity's validator refuses would otherwise reach AddLoginAsync as a null
+            // user and surface as a null-argument throw from inside the framework, naming a
+            // parameter rather than the address that could not be made.
+            Data.TellmaIdentityUser user = await userManager.FindByEmailAsync(email)
+                ?? throw new InvalidOperationException($"No user holds the address '{email}'.");
+
             if (await userManager.FindByLoginAsync(provider, account) is null)
             {
                 await userManager.AddLoginAsync(
