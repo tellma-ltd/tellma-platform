@@ -1,4 +1,4 @@
-﻿// Copyright (c) Tellma Ltd. All rights reserved.
+// Copyright (c) Tellma Ltd. All rights reserved.
 //
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
@@ -100,7 +100,7 @@ namespace Tellma.Identity.IntegrationTests.Api
             factory.Emails.OnSending((_, _) =>
             {
                 Thread.Sleep(20);
-                return new Core.Abstractions.Email.EmailSendResult(Core.Abstractions.Email.EmailSendOutcome.Sent);
+                return new EmailSendResult(EmailSendOutcome.Sent);
             });
 
             // Quartz runs on its default in-memory store with no clustering here, so in a
