@@ -1,4 +1,4 @@
-// Copyright (c) Tellma Ltd. All rights reserved.
+﻿// Copyright (c) Tellma Ltd. All rights reserved.
 //
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
@@ -14,10 +14,19 @@ namespace Tellma.Identity.Services.Email
     ///     Drains the <see cref="EmailDispatcher" /> and delivers each batch through a freshly
     ///     scoped <see cref="IEmailSender" /> — the platform's router is registered scoped, so it
     ///     cannot be captured once and reused across batches. A delivery failure is logged and
-    ///     swallowed so one bad batch cannot stop the worker. Shutdown closes the queue only once
+    ///     swallowed so one bad chunk cannot stop the worker. Shutdown closes the queue only once
     ///     the web server has finished with its requests, and the loop then delivers what is left
     ///     — bounded by the host's shutdown timeout — so a graceful restart does not silently drop
     ///     issued codes and links.
+    ///     <para>
+    ///         Each chunk claims its rows immediately before the send. Queue position is not a
+    ///         claim: a message can sit here for as long as the backlog ahead of it takes to drain,
+    ///         and the recovery sweep — which sees only the database, and in a multi-instance
+    ///         deployment runs in a process that cannot see this queue at all — would otherwise
+    ///         find those rows still pending and mail them a second time. The claim settles it
+    ///         wherever the two meet: whichever sender takes the row sends it, and the other drops
+    ///         its copy.
+    ///     </para>
     /// </summary>
     /// <param name="queue">The dispatch queue.</param>
     /// <param name="scopeFactory">The scope factory for resolving the scoped sender.</param>
@@ -29,6 +38,25 @@ namespace Tellma.Identity.Services.Email
         IServiceProviderIsService isRegistered,
         ILogger<EmailDispatchHostedService> logger) : BackgroundService, IHostedLifecycleService
     {
+        /// <summary>
+        ///     How many messages one claim-and-send covers. It bounds how long a claim must be
+        ///     held — one transport call for this many messages — so the lease answers a question
+        ///     about a single send rather than about the whole backlog behind it. Still one call
+        ///     per chunk rather than per message, which is the shape the sender's contract asks
+        ///     for.
+        ///     <para>
+        ///         This size and the recorder's send lease are one setting in two places: the
+        ///         chunk must finish inside the lease, or it lapses mid-send and the recovery
+        ///         sweep is free to mail the rest of the chunk a second time. At the values these
+        ///         two currently hold that allows several seconds per message, which no working
+        ///         transport approaches — but a badly degraded one could. Widen the margin by
+        ///         shrinking the chunk rather than by lengthening the lease: a shorter chunk also
+        ///         narrows what a throwing send loses, while a longer lease only delays recovery
+        ///         from a worker that died holding it.
+        ///     </para>
+        /// </summary>
+        private const int SendChunkSize = 100;
+
         /// <inheritdoc />
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
@@ -37,32 +65,50 @@ namespace Tellma.Identity.Services.Email
             // batches are drained.
             await foreach (IReadOnlyList<EmailMessage> batch in queue.Reader.ReadAllAsync(CancellationToken.None))
             {
-                try
+                foreach (EmailMessage[] chunk in batch.Chunk(SendChunkSize))
                 {
-                    await using AsyncServiceScope scope = scopeFactory.CreateAsyncScope();
-                    IEmailSender sender = scope.ServiceProvider.GetRequiredService<IEmailSender>();
-
-                    IReadOnlyList<EmailSendResult> results = await sender.SendAsync(batch, CancellationToken.None);
-
-                    // The outcome is recorded against the single-use code each message carries.
-                    // A code or a reset link that failed to go out is still recovered by the user
-                    // asking for another — but an invitation's recipient is not waiting for it and
-                    // cannot ask, so the row has to remember that nothing went out and let the
-                    // recovery sweep finish the job.
-                    await scope.ServiceProvider
-                        .GetRequiredService<IEmailDispatchRecorder>()
-                        .RecordAsync(batch, results, CancellationToken.None);
+                    await DeliverAsync(chunk);
                 }
-                catch (Exception exception) when (exception is not OperationCanceledException)
+            }
+        }
+
+        /// <summary>Claims, sends, and records one chunk, swallowing whatever it fails on.</summary>
+        /// <param name="chunk">The messages to attempt.</param>
+        /// <returns>A task that completes once the chunk has been attempted.</returns>
+        private async Task DeliverAsync(EmailMessage[] chunk)
+        {
+            try
+            {
+                await using AsyncServiceScope scope = scopeFactory.CreateAsyncScope();
+                IEmailDispatchRecorder recorder = scope.ServiceProvider.GetRequiredService<IEmailDispatchRecorder>();
+
+                // Taken here rather than at enqueue: a claim is only meaningful while it covers
+                // work actually under way, and everything before this line was waiting.
+                IReadOnlyList<EmailMessage> owned = await recorder.ClaimAsync(chunk, CancellationToken.None);
+                if (owned.Count == 0)
                 {
-                    // The contract lets a sender throw only when nothing went out, so a whole batch
-                    // is lost here rather than half-delivered — except for a transport that breaks
-                    // the contract, which the pipeline surfaces as InvalidOperationException after
-                    // mail may already have gone. Either way the rows stay Pending, which is the
-                    // safe reading: the sweep resends, and a duplicate invitation is recoverable
-                    // where a missing one is not.
-                    EmailDispatchLog.DeliveryFailed(logger, exception, batch.Count);
+                    return;
                 }
+
+                IEmailSender sender = scope.ServiceProvider.GetRequiredService<IEmailSender>();
+                IReadOnlyList<EmailSendResult> results = await sender.SendAsync(owned, CancellationToken.None);
+
+                // The outcome is recorded against the single-use code each message carries.
+                // A code or a reset link that failed to go out is still recovered by the user
+                // asking for another — but an invitation's recipient is not waiting for it and
+                // cannot ask, so the row has to remember that nothing went out and let the
+                // recovery sweep finish the job.
+                await recorder.RecordAsync(owned, results, CancellationToken.None);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // The contract lets a sender throw only when nothing went out, so a whole chunk
+                // is lost here rather than half-delivered — except for a transport that breaks
+                // the contract, which the pipeline surfaces as InvalidOperationException after
+                // mail may already have gone. Either way the rows keep the claim this chunk took
+                // until it lapses, and then read as Pending again: the sweep resends, and a
+                // duplicate invitation is recoverable where a missing one is not.
+                EmailDispatchLog.DeliveryFailed(logger, exception, chunk.Length);
             }
         }
 

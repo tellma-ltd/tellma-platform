@@ -1,4 +1,4 @@
-// Copyright (c) Tellma Ltd. All rights reserved.
+﻿// Copyright (c) Tellma Ltd. All rights reserved.
 //
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
@@ -14,6 +14,21 @@ namespace Tellma.Identity.Services.Email
     /// <summary>Writes what a transport said about a message back onto the row that produced it.</summary>
     public interface IEmailDispatchRecorder
     {
+        /// <summary>
+        ///     Takes ownership of the rows behind a batch about to be sent, and returns only the
+        ///     messages this caller may send.
+        /// </summary>
+        /// <remarks>
+        ///     A message is dropped when its row is no longer claimable — already sent, already
+        ///     consumed, or held by the recovery sweep — because sending it would be a second copy
+        ///     of mail another worker is delivering.
+        /// </remarks>
+        /// <param name="messages">The batch about to go to the transport.</param>
+        /// <param name="cancellationToken">Abandons the work.</param>
+        /// <returns>The subset of <paramref name="messages" /> this caller owns, in input order.</returns>
+        Task<IReadOnlyList<EmailMessage>> ClaimAsync(
+            IReadOnlyList<EmailMessage> messages, CancellationToken cancellationToken);
+
         /// <summary>Records the outcome of every message in a batch that identity owns.</summary>
         /// <param name="messages">The batch that was sent.</param>
         /// <param name="results">The results, positional to <paramref name="messages" />.</param>
@@ -61,6 +76,71 @@ namespace Tellma.Identity.Services.Email
 
         /// <summary>The ceiling on backoff, so a long-dead transport is still retried periodically.</summary>
         private static readonly TimeSpan MaxBackoff = TimeSpan.FromMinutes(30);
+
+        /// <summary>
+        ///     How long a send-time claim is held. It has to outlast one call to the transport and
+        ///     nothing more — deliberately not the wait in the queue ahead of it, which depends on
+        ///     the backlog and the transport's rate and so cannot be bounded by a constant. That is
+        ///     why the claim is taken here, immediately before the send, rather than when the batch
+        ///     was queued.
+        ///     <para>
+        ///         What it does have to outlast is one chunk, whose size the dispatcher's worker
+        ///         sets. Retuning either without the other reopens the duplicate this claim exists
+        ///         to close, so the reasoning for the pair is kept there, next to the chunk size.
+        ///     </para>
+        /// </summary>
+        private static readonly TimeSpan SendLease = TimeSpan.FromMinutes(10);
+
+        /// <inheritdoc />
+        public async Task<IReadOnlyList<EmailMessage>> ClaimAsync(
+            IReadOnlyList<EmailMessage> messages, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(messages);
+
+            DateTimeOffset now = timeProvider.GetUtcNow();
+            List<EmailMessage> owned = new(messages.Count);
+            foreach (EmailMessage message in messages)
+            {
+                // Mail with no correlation owns no row, so there is nothing for a second sender to
+                // contend over and nothing to claim.
+                if (IdentityEmailCorrelation.ReferenceOf(message) is not { } reference)
+                {
+                    owned.Add(message);
+                    continue;
+                }
+
+                if (await TryClaimAsync(reference, now, cancellationToken))
+                {
+                    owned.Add(message);
+                }
+                else
+                {
+                    EmailDispatchRecorderLog.ClaimLost(logger, reference);
+                }
+            }
+
+            return owned;
+        }
+
+        /// <summary>
+        ///     Takes one row's claim, if it is still there to take. The conditions are the recovery
+        ///     sweep's own, so whichever of the two reaches the row first excludes the other: a
+        ///     single conditional update, whose affected-row count is the answer.
+        /// </summary>
+        private async Task<bool> TryClaimAsync(
+            string reference, DateTimeOffset now, CancellationToken cancellationToken)
+        {
+            int affected = await context.Set<SingleUseCode>()
+                .Where(c => c.Id == reference
+                    && c.DispatchState == EmailDispatchState.Pending
+                    && c.ConsumedUtc == null
+                    && (c.DispatchClaimedUntil == null || c.DispatchClaimedUntil < now))
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(c => c.DispatchClaimedUntil, now.Add(SendLease)),
+                    cancellationToken);
+
+            return affected == 1;
+        }
 
         /// <inheritdoc />
         public async Task RecordAsync(
@@ -192,6 +272,14 @@ namespace Tellma.Identity.Services.Email
     /// <summary>Source-generated log messages for <see cref="EmailDispatchRecorder" />.</summary>
     internal static partial class EmailDispatchRecorderLog
     {
+        /// <summary>A message dropped because its row was claimed elsewhere.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="reference">The correlation's reference.</param>
+        [LoggerMessage(
+            Level = LogLevel.Information,
+            Message = "Skipped sending for single-use code {Reference}: another sender holds it.")]
+        public static partial void ClaimLost(ILogger logger, string reference);
+
         /// <summary>A correlation that resolved to no row.</summary>
         /// <param name="logger">The logger.</param>
         /// <param name="reference">The correlation's reference.</param>

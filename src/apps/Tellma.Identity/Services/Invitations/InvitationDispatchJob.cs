@@ -1,4 +1,4 @@
-// Copyright (c) Tellma Ltd. All rights reserved.
+﻿// Copyright (c) Tellma Ltd. All rights reserved.
 //
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
@@ -38,7 +38,9 @@ namespace Tellma.Identity.Services.Invitations
     ///     for exclusion: Quartz runs here on its default in-memory store with no clustering, so
     ///     every instance of a multi-instance deployment fires this trigger on its own schedule and
     ///     <see cref="DisallowConcurrentExecutionAttribute" /> only bounds one process. The claim is
-    ///     what actually stops two instances mailing the same invitation twice.
+    ///     what actually stops two instances mailing the same invitation twice — and, because the
+    ///     background dispatcher takes the same claim before its own sends, it is equally what
+    ///     stops a sweep and a still-queued send from both delivering one.
     /// </remarks>
     /// <param name="store">The identity store.</param>
     /// <param name="tokens">Mints the replacement secret.</param>
@@ -69,8 +71,15 @@ namespace Tellma.Identity.Services.Invitations
 
         /// <summary>
         ///     How long a row must have sat unsent before the sweep will touch it. Comfortably
-        ///     longer than the normal path takes, so the sweep can never pick up an invitation the
-        ///     background worker is still in the middle of sending.
+        ///     longer than the normal path takes, so an invitation the background worker is about
+        ///     to send is not swept up while it waits its turn.
+        ///     <para>
+        ///         This is a filter, not the exclusion. A queue drains at whatever rate its
+        ///         transport allows, so no constant here can outlast a backlog, and the worker's
+        ///         queue is in a process this sweep may not even be running in. What actually
+        ///         prevents two copies is that the worker takes the same claim below, immediately
+        ///         before it sends.
+        ///     </para>
         /// </summary>
         internal static readonly TimeSpan Grace = TimeSpan.FromMinutes(5);
 

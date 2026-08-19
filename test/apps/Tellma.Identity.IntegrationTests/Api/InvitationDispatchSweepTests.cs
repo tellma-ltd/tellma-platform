@@ -1,4 +1,4 @@
-// Copyright (c) Tellma Ltd. All rights reserved.
+﻿// Copyright (c) Tellma Ltd. All rights reserved.
 //
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
@@ -8,9 +8,11 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Tellma.Core.Abstractions.Email;
 using Tellma.Identity.Data;
 using Tellma.Identity.Data.Entities;
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using Tellma.Identity.Services.Email;
 using Tellma.Identity.Services.Invitations;
 using Tellma.Identity.Services.Provisioning;
 using Tellma.Identity.TestSupport;
@@ -137,6 +139,81 @@ namespace Tellma.Identity.IntegrationTests.Api
 
             Assert.Equal(1, await SweepAsync(factory));
             await factory.Emails.WaitForLinkAsync(email);
+        }
+
+        [Fact]
+        public async Task A_send_the_sweep_got_to_first_is_dropped_rather_than_sent_twice()
+        {
+            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idsweepclaim");
+            string email = "queued@example.com";
+            await InviteAsync(factory, email);
+
+            // The state a backed-up queue leaves behind: the message is still sitting in the
+            // dispatcher's channel, so its row is untouched and old enough for the sweep to take.
+            // Queue position is not a claim, and the sweep cannot see the channel — in a
+            // multi-instance deployment it is not even in the same process.
+            await LoseTheMailAsync(factory, email);
+            factory.Emails.Clear();
+
+            Assert.Equal(1, await SweepAsync(factory));
+            string swept = await factory.Emails.WaitForLinkAsync(email);
+
+            // The queue now reaches the message it has been holding all along. Its row belongs to
+            // the sweep's send, so this copy is dropped rather than delivered on top of it.
+            IReadOnlyList<EmailMessage> owned = await ClaimAsync(factory, await QueuedMessageAsync(factory, email));
+
+            Assert.Empty(owned);
+            Assert.Single(
+                factory.Emails.Captured,
+                captured => captured.Message.To.Any(
+                    to => string.Equals(to.Address, email, StringComparison.OrdinalIgnoreCase)));
+
+            // The row belongs to the send that actually happened, so the link the recipient holds
+            // is the live one.
+            SingleUseCode row = await SingleRowAsync(factory, email);
+            Assert.Equal(EmailDispatchState.Sent, row.DispatchState);
+            Assert.Contains(row.Id, swept, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task A_send_that_claims_first_leaves_nothing_for_the_sweep()
+        {
+            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idsweepclaimfirst");
+            string email = "claimed@example.com";
+            await InviteAsync(factory, email);
+
+            // Backdated past the grace window but claimed by a sender that is mid-send: the sweep
+            // must leave it alone until that claim lapses, exactly as it does for another sweep.
+            await LoseTheMailAsync(factory, email);
+            factory.Emails.Clear();
+
+            Assert.Single(await ClaimAsync(factory, await QueuedMessageAsync(factory, email)));
+            Assert.Equal(0, await SweepAsync(factory));
+            Assert.Empty(factory.Emails.Captured);
+        }
+
+        /// <summary>Runs a claim in its own scope, the way the dispatcher's worker would.</summary>
+        private static async Task<IReadOnlyList<EmailMessage>> ClaimAsync(
+            StandaloneFactory factory, EmailMessage message)
+        {
+            using IServiceScope scope = factory.Services.CreateScope();
+            return await scope.ServiceProvider
+                .GetRequiredService<IEmailDispatchRecorder>()
+                .ClaimAsync([message], TestContext.Current.CancellationToken);
+        }
+
+        /// <summary>Rebuilds the message a backed-up queue would still be holding for one address.</summary>
+        private static async Task<EmailMessage> QueuedMessageAsync(StandaloneFactory factory, string email)
+        {
+            SingleUseCode row = await SingleRowAsync(factory, email);
+            return new EmailMessage
+            {
+                To = [new EmailAddress(email)],
+                Subject = "queued",
+                TextBody = "queued",
+                Audience = EmailAudience.Internal,
+                Correlation = new EmailCorrelation("identity", row.Id),
+            };
         }
 
         /// <summary>Runs one sweep in its own scope, the way a scheduled execution would.</summary>
