@@ -1,0 +1,131 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+namespace Tellma.Identity.Services.AuthenticationPolicy
+{
+    /// <summary>
+    ///     The fixed authentication-method vocabulary used by the <c>tellma_allowed_methods</c>
+    ///     allow-list and the concrete-methods claim. Distributions select from this catalog;
+    ///     they cannot extend it.
+    /// </summary>
+    public static class AuthenticationMethods
+    {
+        /// <summary>Passkey (WebAuthn/FIDO2), including roaming hardware security keys.</summary>
+        public const string Passkey = "passkey";
+
+        /// <summary>Single-use email one-time code.</summary>
+        public const string EmailCode = "email_code";
+
+        /// <summary>Authenticator-app TOTP second factor.</summary>
+        public const string Totp = "totp";
+
+        /// <summary>Password (offered only when a distribution's policy enables it).</summary>
+        public const string Password = "password";
+
+        /// <summary>Google external login.</summary>
+        public const string Google = "google";
+
+        /// <summary>Microsoft external login.</summary>
+        public const string Microsoft = "microsoft";
+
+        /// <summary>The complete vocabulary, in catalog order.</summary>
+        public static readonly IReadOnlyList<string> All = [Passkey, EmailCode, Totp, Password, Google, Microsoft];
+    }
+
+    /// <summary>
+    ///     The private authentication-context tier scheme carried in <c>acr</c>, corresponding to
+    ///     NIST SP 800-63B authenticator assurance levels, plus the OpenID Connect EAP ACR input
+    ///     values the server accepts as synonyms.
+    /// </summary>
+    public static class AcrTiers
+    {
+        /// <summary>Single factor (baseline).</summary>
+        public const string Aal1 = "urn:tellma:acr:aal1";
+
+        /// <summary>Two distinct factors, or one multi-factor authenticator (a passkey satisfies this).</summary>
+        public const string Aal2 = "urn:tellma:acr:aal2";
+
+        /// <summary>
+        ///     Phishing-resistant and device-bound (non-synced). A fully substantiated NIST AAL3
+        ///     additionally requires attestation, which is deferred (TODO).
+        /// </summary>
+        public const string Aal3 = "urn:tellma:acr:aal3";
+
+        /// <summary>EAP "phishing-resistant" input; maps to the passkey tier (<see cref="Aal2" />).</summary>
+        public const string PhishingResistant = "phr";
+
+        /// <summary>EAP "phishing-resistant hardware" input; maps to <see cref="Aal3" />.</summary>
+        public const string PhishingResistantHardware = "phrh";
+    }
+
+    /// <summary>Tellma-defined claim names (standard claims come from OpenIddict's constants).</summary>
+    public static class TellmaClaims
+    {
+        /// <summary>The session identifier binding back-channel logout to the SSO session.</summary>
+        public const string Sid = "sid";
+
+        /// <summary>
+        ///     How the signed-in user has asked to be addressed, so translations can select a
+        ///     grammatical form. Carried on the session rather than looked up per string: the UI
+        ///     resolves resources synchronously and in enormous number, and a database read per
+        ///     rendered sentence is not a trade worth making for a pronoun.
+        /// </summary>
+        public const string Gender = "tellma_gender";
+
+        /// <summary>
+        ///     The concrete authentication methods used, in the allow-list vocabulary — the
+        ///     purpose-built set-membership claim for resource servers that must enforce methods,
+        ///     since RFC 8176 <c>amr</c> values are deliberately coarser.
+        /// </summary>
+        public const string Methods = "tellma_methods";
+
+        /// <summary>
+        ///     The allow-list under which tokens were issued; private server-side state (never
+        ///     serialized into tokens) used to re-enforce the list at refresh time.
+        /// </summary>
+        public const string AllowedMethods = "tellma_allowed_methods";
+
+        /// <summary>
+        ///     When the evidence carrying <c>acr</c> was demonstrated (unix seconds). Standard
+        ///     <c>auth_time</c> answers "when did the user last authenticate", which any factor
+        ///     refreshes; a relying party deciding whether a sensitive operation needs a step-up is
+        ///     asking the narrower question "when was <em>this assurance</em> demonstrated", and
+        ///     that is what this answers. The two differ whenever a session adds a weaker factor
+        ///     after a stronger one.
+        /// </summary>
+        public const string AcrAuthTime = "tellma_acr_auth_time";
+    }
+
+    /// <summary>Tellma-defined OAuth request parameters.</summary>
+    public static class TellmaParameters
+    {
+        /// <summary>
+        ///     The space-delimited method allow-list a distribution sends inside the pushed
+        ///     authorization request; no standard OIDC equivalent exists.
+        /// </summary>
+        public const string AllowedMethods = "tellma_allowed_methods";
+    }
+
+    /// <summary>
+    ///     Claims recorded on the SSO session cookie by the engine's sign-in service (internal
+    ///     session state; never emitted into tokens directly).
+    /// </summary>
+    public static class SignInClaims
+    {
+        /// <summary>
+        ///     Whether the passkey used is device-bound (non-synced), per the authenticator's
+        ///     self-asserted backup-eligibility flag. Describes the session's most recent passkey
+        ///     assertion, so presenting a synced credential supersedes an earlier hardware one.
+        /// </summary>
+        public const string PasskeyDeviceBound = "tellma_passkey_device_bound";
+
+        /// <summary>
+        ///     When the session's most recent passkey assertion happened (unix seconds). Tiers
+        ///     above aal1 rest on passkey evidence, so their freshness is measured against this
+        ///     rather than the session-wide <c>auth_time</c>, which any weaker factor refreshes.
+        /// </summary>
+        public const string PasskeyAuthTime = "tellma_passkey_auth_time";
+    }
+}

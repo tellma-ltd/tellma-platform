@@ -1,0 +1,47 @@
+@using Microsoft.AspNetCore.Mvc.ModelBinding
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    // Every error on the page, each paired with the field it belongs to when it has one.
+    List<(string? Field, string Message)> errors = [];
+    foreach ((string key, ModelStateEntry entry) in ViewContext.ModelState)
+    {
+        foreach (ModelError error in entry.Errors)
+        {
+            errors.Add((string.IsNullOrEmpty(key) ? null : key, error.ErrorMessage));
+        }
+    }
+}
+@if (errors.Count > 0)
+{
+    @* Deliberately not a live region. These failures arrive as a whole page load, and aria-live
+       announces changes to a region already parsed — content present at parse time is not
+       announced at all. What works without script is focus plus the document title: autofocus
+       has been a global attribute since 2019 and is honored on anything focusable by tabindex,
+       so the browser lands here on arrival, and a labelled group announces its own name and
+       then its contents. role="alert" would be unreliable on load and would double up with the
+       focus move where it does fire. *@
+    <div class="tmi-notice tmi-notice-error" id="tmi-errors" role="group"
+         aria-labelledby="tmi-errors-title" tabindex="-1" autofocus>
+        <tmi-icon name="circle-x" class="tmi-icon-lg" />
+        <div class="tmi-notice-body">
+            <h2 class="tmi-notice-title" id="tmi-errors-title">@L["ThereIsAProblem"]</h2>
+            <ul>
+                @foreach ((string? field, string message) in errors)
+                {
+                    <li>
+                        @* Each message is a route to the control that produced it, which is all
+                           an error suggestion can be without knowing the data. *@
+                        @if (field is null)
+                        {
+                            @message
+                        }
+                        else
+                        {
+                            <a class="tmi-link" href="#@field">@message</a>
+                        }
+                    </li>
+                }
+            </ul>
+        </div>
+    </div>
+}

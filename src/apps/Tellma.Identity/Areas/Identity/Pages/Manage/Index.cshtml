@@ -1,0 +1,37 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Manage.IndexModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["Profile"].Value;
+}
+
+<h1 class="tmi-title">@L["Profile"]</h1>
+
+<partial name="/Areas/Identity/Pages/Shared/_StatusMessage.cshtml" model="@(Model.StatusMessage)" />
+
+<form method="post">
+    <div class="tmi-field">
+        <label class="tmi-label" for="displayName">@L["Name"]</label>
+        <input class="tmi-input" id="displayName" name="DisplayName" type="text" value="@Model.DisplayName" />
+    </div>
+    <div class="tmi-field">
+        <label class="tmi-label" for="locale">@L["Language"]</label>
+        <select class="tmi-input tmi-select" id="locale" name="Locale">
+            @foreach (Tellma.Identity.Infrastructure.LanguageChoice language in Model.Languages)
+            {
+                <option value="@language.Culture" selected="@(Model.Locale == language.Culture)" lang="@language.Culture">@language.NativeName</option>
+            }
+        </select>
+    </div>
+    <div class="tmi-field">
+        <label class="tmi-label" for="gender">@L["Gender"]</label>
+        @* Optional, and the blank option comes first: the neutral wording is the default, not a
+           fallback the user has to be talked out of. *@
+        <select class="tmi-input tmi-select" id="gender" name="Gender">
+            <option value="" selected="@(Model.Gender is null)">@L["GenderUnstated"]</option>
+            <option value="Female" selected="@(Model.Gender == Tellma.Identity.Data.UserGender.Female)">@L["GenderFemale"]</option>
+            <option value="Male" selected="@(Model.Gender == Tellma.Identity.Data.UserGender.Male)">@L["GenderMale"]</option>
+        </select>
+    </div>
+    <button class="tmi-button tmi-button-primary" type="submit">@L["Save"]</button>
+</form>

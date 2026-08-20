@@ -1,0 +1,38 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Account.EmailCodeModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = ViewContext.ModelState.IsValid
+        ? L["EnterCode"].Value
+        : L["ErrorTitlePrefix"].Value + ": " + L["EnterCode"].Value;
+}
+
+<h1 class="tmi-title">@L["EnterCode"]</h1>
+
+<partial name="/Areas/Identity/Pages/Shared/_ErrorSummary.cshtml" />
+
+@* Deliberately non-committal: the same sentence is shown whether or not the address is known,
+   so the design must not imply an outcome the copy refuses to give. *@
+<div class="tmi-notice tmi-notice-info" role="status">
+    <tmi-icon name="mail" class="tmi-icon-lg" />
+    <div class="tmi-notice-body">@L["CodeSentIfAccountExists"]</div>
+</div>
+
+<form method="post" asp-route-email="@Model.Email" asp-route-returnUrl="@Model.ReturnUrl"
+      asp-route-stepUp="@Model.StepUp" asp-route-rememberMe="@Model.RememberMe">
+    <div class="tmi-field">
+        <label class="tmi-label" for="Code">@L["Code"]</label>
+        @* dir on the element rather than in CSS: a code stays left-to-right in an Arabic page
+           even with the stylesheet off, which is what the attribute is for. *@
+        <input class="tmi-input tmi-input-code" id="Code" name="Code" type="text" inputmode="numeric"
+               dir="ltr" autocomplete="one-time-code" required autofocus
+               aria-invalid="@(ViewContext.ModelState.IsValid ? null : "true")" />
+    </div>
+    <div class="tmi-actions">
+        <button class="tmi-button tmi-button-primary" type="submit">@L["Verify"]</button>
+        @* formnovalidate because asking for a new code is the thing you do when you have no code:
+           the field's own constraint belongs to Verify alone, and without this the browser refuses
+           to submit at all and the button reads as broken. The server checks the code regardless. *@
+        <button class="tmi-button tmi-button-secondary" type="submit" formnovalidate asp-page-handler="Resend">@L["ResendCode"]</button>
+    </div>
+</form>

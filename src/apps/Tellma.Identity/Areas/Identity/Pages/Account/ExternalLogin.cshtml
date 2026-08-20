@@ -1,0 +1,38 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Account.ExternalLoginModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["SignIn"].Value;
+}
+
+<h1 class="tmi-title">@L["SignIn"]</h1>
+
+@* Only ever rendered when the flow refused — a failed sign-in, or a link attempt turned away;
+   a successful callback redirects straight through and never reaches this page. *@
+@if (!string.IsNullOrEmpty(Model.Error))
+{
+    <div class="tmi-notice tmi-notice-error" role="group" aria-label="@L["StatusError"]">
+        <tmi-icon name="circle-x" class="tmi-icon-lg" />
+        @* Provider text, so it is isolated from the layout around it. *@
+        <div class="tmi-notice-body"><bdi>@Model.Error</bdi></div>
+    </div>
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        @* A signed-in visitor came from somewhere — the account pages, or a step-up they can
+           retry another way — and the refusal may tell them to sign out first, so both doors
+           are offered. A sign-in link would only bounce them back to their profile. *@
+        <div class="tmi-actions-stacked">
+            <form method="post" asp-area="Identity" asp-page="/Account/Logout">
+                <button class="tmi-button tmi-button-primary" type="submit">@L["SignOut"]</button>
+            </form>
+            @if (Model.ReturnUrl is { } returnUrl)
+            {
+                <a class="tmi-button tmi-button-secondary" href="@returnUrl">@L["GoBack"]</a>
+            }
+        </div>
+    }
+    else
+    {
+        <a class="tmi-button tmi-button-secondary" asp-area="Identity" asp-page="/Account/Login">@L["BackToSignIn"]</a>
+    }
+}

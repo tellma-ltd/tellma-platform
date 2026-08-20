@@ -1,0 +1,39 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Manage.SessionsModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["Sessions"].Value;
+}
+
+<h1 class="tmi-title">@L["Sessions"]</h1>
+
+<ul class="tmi-list">
+    @foreach (Tellma.Identity.Areas.Identity.Pages.Manage.SessionsModel.SessionView session in Model.Sessions)
+    {
+        <li>
+            <tmi-icon name="monitor" />
+            <div class="tmi-list-body">
+                <div class="tmi-list-title">
+                    @* A user-agent string is attacker-influenced text dropped into a sentence;
+                       isolating it stops one written right-to-left from reordering what is
+                       around it. *@
+                    <bdi>@(session.UserAgent ?? L["UnknownDevice"].Value)</bdi>
+                    @if (session.IsCurrent)
+                    {
+                        <span class="tmi-list-here">(@L["ThisSession"])</span>
+                    }
+                </div>
+                @* An absolute, machine-readable instant. The mockup shows "2 hours ago", which a
+                   server-rendered page cannot keep true for longer than it takes to read. *@
+                <p class="tmi-list-meta">
+                    @L["LastSeen"]
+                    <time datetime="@session.LastSeenUtc.UtcDateTime.ToString("O")">@session.LastSeenUtc.ToLocalTime().ToString("f")</time>
+                </p>
+            </div>
+        </li>
+    }
+</ul>
+
+<form method="post" asp-page-handler="SignOutEverywhere">
+    <button class="tmi-button tmi-button-secondary" type="submit">@L["SignOutEverywhere"]</button>
+</form>

@@ -1,0 +1,57 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Manage.EnableAuthenticatorModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = ViewContext.ModelState.IsValid
+        ? L["AuthenticatorApp"].Value
+        : L["ErrorTitlePrefix"].Value + ": " + L["AuthenticatorApp"].Value;
+}
+
+@if (Model.RecoveryCodes is { Count: > 0 })
+{
+    <h1 class="tmi-title">@L["RecoveryCodes"]</h1>
+
+    @* Shown exactly once, and there is no way back to them. That makes this the most
+       consequence-heavy screen in the app, so it warns rather than merely informs. *@
+    <div class="tmi-notice tmi-notice-warning" role="status">
+        <tmi-icon name="shield-check" class="tmi-icon-lg" />
+        <div class="tmi-notice-body">@L["RecoveryCodesPrompt"]</div>
+    </div>
+
+    <ul class="tmi-code-grid">
+        @foreach (string codeValue in Model.RecoveryCodes)
+        {
+            <li><code>@codeValue</code></li>
+        }
+    </ul>
+
+    <a class="tmi-button tmi-button-primary" asp-area="Identity" asp-page="/Manage/Index">@L["BackToProfile"]</a>
+}
+else
+{
+    <h1 class="tmi-title">@L["AuthenticatorApp"]</h1>
+    <p class="tmi-lead" id="authenticator-prompt">@L["AuthenticatorEnrollPrompt"]</p>
+
+    <partial name="/Areas/Identity/Pages/Shared/_ErrorSummary.cshtml" />
+
+    @* One labelled group: the code and the key are two ways to do the same thing, so the key is
+       described as the alternative rather than left as an unexplained string of characters. The
+       image's own text says what it is for, in the page's language. *@
+    <div class="tmi-qr" role="group" aria-labelledby="authenticator-prompt">
+        <img src="@Model.QrCodeDataUri" alt="@L["QrCodeAlt"]" width="128" height="128" />
+        <div class="tmi-qr-text">
+            <p class="tmi-hint" id="shared-key-prompt">@L["SharedKeyPrompt"]</p>
+            <code class="tmi-shared-key" aria-describedby="shared-key-prompt">@Model.SharedKey</code>
+        </div>
+    </div>
+
+    <form method="post">
+        <div class="tmi-field">
+            <label class="tmi-label" for="Code">@L["Code"]</label>
+            <input class="tmi-input tmi-input-code" id="Code" name="Code" type="text" inputmode="numeric"
+                   dir="ltr" autocomplete="one-time-code" required
+                   aria-invalid="@(ViewContext.ModelState.IsValid ? null : "true")" />
+        </div>
+        <button class="tmi-button tmi-button-primary" type="submit">@L["EnableAuthenticator"]</button>
+    </form>
+}

@@ -1,0 +1,127 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Account.LoginModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    string heading = Model.StepUp ? L["ConfirmItsYou"].Value : L["SignIn"].Value;
+    ViewData["Title"] = ViewContext.ModelState.IsValid
+        ? heading
+        : L["ErrorTitlePrefix"].Value + ": " + heading;
+
+    string passkeyMethod = Tellma.Identity.Services.AuthenticationPolicy.AuthenticationMethods.Passkey;
+    string emailCodeMethod = Tellma.Identity.Services.AuthenticationPolicy.AuthenticationMethods.EmailCode;
+    bool showPasskey = Model.Methods.Contains(passkeyMethod);
+    bool showEmailCode = Model.Methods.Contains(emailCodeMethod);
+    bool showGoogle = Model.OfferedExternalProviders.Contains("Google");
+    bool showMicrosoft = Model.OfferedExternalProviders.Contains("Microsoft");
+
+    // The request decides which methods this page offers, so the sentence introducing them has
+    // to follow — telling someone to use their work email when there is no email field is worse
+    // than saying nothing. Federation alone gets no lead: the buttons name their own providers.
+    string? lead = (showEmailCode, showPasskey) switch
+    {
+        (true, true) => L["SignInLead"].Value,
+        (true, false) => L["SignInLeadEmail"].Value,
+        (false, true) => L["SignInLeadPasskey"].Value,
+        _ => null,
+    };
+}
+
+<h1 class="tmi-title">@heading</h1>
+@if (lead is not null)
+{
+    <p class="tmi-lead">@lead</p>
+}
+
+<partial name="/Areas/Identity/Pages/Shared/_ErrorSummary.cshtml" />
+<partial name="/Areas/Identity/Pages/Shared/_StatusMessage.cshtml" model="@(Model.StatusMessage)" />
+
+@if (Model.RequiresDeviceBoundPasskey)
+{
+    @* Guidance to pick the right authenticator before bouncing off the authorization endpoint,
+       not an error — the request has not failed yet. *@
+    <div class="tmi-notice tmi-notice-warning" role="status">
+        <tmi-icon name="shield-check" class="tmi-icon-lg" />
+        <div class="tmi-notice-body">@L["DeviceBoundPasskeyRequired"]</div>
+    </div>
+}
+
+@if (showEmailCode)
+{
+    <form method="post" asp-page-handler="EmailCode" asp-route-returnUrl="@Model.ReturnUrl" asp-route-methods="@Model.MethodsRaw" asp-route-stepUp="@Model.StepUp" asp-route-tier="@Model.Tier">
+        <div class="tmi-field">
+            <label class="tmi-label" for="Email">@L["Email"]</label>
+            <div class="tmi-field-control">
+                <tmi-icon name="mail" />
+                @* autocomplete carries the webauthn token so passkey conditional UI can attach here. *@
+                <input class="tmi-input" id="Email" name="Email" type="email" inputmode="email"
+                       dir="ltr" autocomplete="username webauthn" required value="@Model.Email"
+                       placeholder="@L["EmailPlaceholder"]" />
+            </div>
+        </div>
+        <label class="tmi-checkbox">
+            <input type="checkbox" name="RememberMe" value="true" checked="@Model.RememberMe" />
+            @L["RememberMe"]
+        </label>
+        <button class="tmi-button tmi-button-primary" type="submit">@L["ContinueWithEmailCode"]</button>
+    </form>
+}
+
+@if (showPasskey)
+{
+    @* The assertion credential is posted back through this hidden field by passkey.js. *@
+    <form method="post" id="passkey-form" asp-page-handler="Passkey" asp-route-returnUrl="@Model.ReturnUrl" asp-route-methods="@Model.MethodsRaw" asp-route-stepUp="@Model.StepUp" asp-route-tier="@Model.Tier"
+          data-assertion-url="@Url.Action("AssertionOptions", "PasskeyCeremony")">
+        <input type="hidden" id="passkey-credential" name="Credential" />
+        <button class="tmi-button @(showEmailCode ? "tmi-button-secondary" : "tmi-button-primary")"
+                type="button" id="passkey-button">
+            <tmi-icon name="key-round" class="tmi-icon-sm" />@L["SignInWithPasskey"]
+        </button>
+    </form>
+}
+
+@if (!showPasskey && !showEmailCode && !showGoogle && !showMicrosoft)
+{
+    @* The allow-list names only methods this deployment does not offer (password sign-in is
+       deferred): say so instead of rendering an empty page. *@
+    <div class="tmi-notice tmi-notice-error" role="group" aria-label="@L["StatusError"]">
+        <tmi-icon name="circle-x" class="tmi-icon-lg" />
+        <div class="tmi-notice-body">@L["NoSignInMethodAvailable"]</div>
+    </div>
+}
+
+@if (showGoogle || showMicrosoft)
+{
+    @* "or continue with" only continues from something. When federation is all the request
+       allows, the providers are the whole page and the divider would be introducing them to
+       nothing above. *@
+    @if (showEmailCode || showPasskey)
+    {
+        <p class="tmi-divider">@L["OrContinueWith"]</p>
+    }
+    <div class="tmi-actions">
+        @if (showGoogle)
+        {
+            <form method="post" asp-page="/Account/ExternalLogin" asp-route-provider="Google" asp-route-returnUrl="@Model.ReturnUrl">
+                <button class="tmi-button tmi-button-secondary" type="submit">
+                    <partial name="/Areas/Identity/Pages/Shared/_MarkGoogle.cshtml" />@L["Google"]
+                </button>
+            </form>
+        }
+        @if (showMicrosoft)
+        {
+            <form method="post" asp-page="/Account/ExternalLogin" asp-route-provider="Microsoft" asp-route-returnUrl="@Model.ReturnUrl">
+                <button class="tmi-button tmi-button-secondary" type="submit">
+                    <partial name="/Areas/Identity/Pages/Shared/_MarkMicrosoft.cshtml" />@L["Microsoft"]
+                </button>
+            </form>
+        }
+    </div>
+}
+
+@if (showPasskey)
+{
+    @section Scripts {
+        <partial name="Shared/_PasskeyScripts" />
+        <script src="~/_content/Tellma.Identity/js/login.page.js"></script>
+    }
+}

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>EF Core migrations assembly for the Tellma Identity Server database (schema "idsvr"): the committed migration chain and the design-time context factory. Referenced by hosts that apply migrations; the engine itself never references the EF Design package. Because this project ships an IDesignTimeDbContextFactory, it is its own dotnet-ef startup project — no host references the Design toolchain: dotnet ef migrations add &lt;Name&gt; --project src/apps/Tellma.Identity.Migrations --startup-project src/apps/Tellma.Identity.Migrations</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tellma.Identity\Tellma.Identity.csproj" />
+    <!-- The design-time factory compiles and runs dotnet-ef against the Design package, but
+         PrivateAssets=all keeps it from flowing into any referencing host's output, so production
+         hosts never ship the code-generation toolchain (Design + Roslyn Workspaces). -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,438 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="SignIn" xml:space="preserve">
+    <value>Sign in</value>
+  </data>
+  <data name="ConfirmItsYou" xml:space="preserve">
+    <value>Confirm it's you</value>
+  </data>
+  <data name="Email" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="ContinueWithEmailCode" xml:space="preserve">
+    <value>Email me a sign-in code</value>
+  </data>
+  <data name="SignInWithPasskey" xml:space="preserve">
+    <value>Sign in with a passkey</value>
+  </data>
+  <data name="EnterCode" xml:space="preserve">
+    <value>Enter the code we emailed you</value>
+  </data>
+  <data name="CodeSentIfAccountExists" xml:space="preserve">
+    <value>If an account exists for that address, we sent it a sign-in code.</value>
+  </data>
+  <data name="Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="Verify" xml:space="preserve">
+    <value>Verify</value>
+  </data>
+  <data name="ResendCode" xml:space="preserve">
+    <value>Send a new code</value>
+  </data>
+  <data name="InvalidCode" xml:space="preserve">
+    <value>The code is invalid or has expired.</value>
+  </data>
+  <data name="RememberMe" xml:space="preserve">
+    <value>Remember me</value>
+  </data>
+  <data name="SignOut" xml:space="preserve">
+    <value>Sign out</value>
+  </data>
+  <data name="SignedOut" xml:space="preserve">
+    <value>You are signed out.</value>
+  </data>
+  <data name="SignOutConfirm" xml:space="preserve">
+    <value>Sign out of your account?</value>
+  </data>
+  <data name="AccessDenied" xml:space="preserve">
+    <value>You do not have access to this resource.</value>
+  </data>
+  <data name="ErrorTitle" xml:space="preserve">
+    <value>Something went wrong</value>
+  </data>
+  <data name="ErrorServerFault" xml:space="preserve">
+    <value>The problem is on our side, not with anything you did. Please try again in a moment.</value>
+  </data>
+  <data name="ErrorReference" xml:space="preserve">
+    <value>Reference</value>
+  </data>
+  <data name="ErrorReferenceHint" xml:space="preserve">
+    <value>Quote this reference if you report the problem.</value>
+  </data>
+  <data name="ConsentTitle" xml:space="preserve">
+    <value>Authorize application</value>
+  </data>
+  <data name="ConsentPrompt" xml:space="preserve">
+    <value>{0} wants to access your account with the following scopes: {1}</value>
+  </data>
+  <data name="Accept" xml:space="preserve">
+    <value>Allow</value>
+  </data>
+  <data name="Deny" xml:space="preserve">
+    <value>Deny</value>
+  </data>
+  <data name="Continue" xml:space="preserve">
+    <value>Continue</value>
+  </data>
+  <data name="DeviceTitle" xml:space="preserve">
+    <value>Authorize your device</value>
+  </data>
+  <data name="DeviceCode" xml:space="preserve">
+    <value>Enter the code shown on your device</value>
+  </data>
+  <data name="DeviceCodeInvalid" xml:space="preserve">
+    <value>That code is invalid or has expired. Check the code on your device and try again.</value>
+  </data>
+  <data name="DeviceConfirmPrompt" xml:space="preserve">
+    <value>{0} is requesting access to your account. Approve this device?</value>
+  </data>
+  <data name="DeviceDoneTitle" xml:space="preserve">
+    <value>All set</value>
+  </data>
+  <data name="DeviceDonePrompt" xml:space="preserve">
+    <value>You can return to your device.</value>
+  </data>
+  <data name="RegisterPasskeyTitle" xml:space="preserve">
+    <value>Set up a passkey</value>
+  </data>
+  <data name="RegisterPasskeyPrompt" xml:space="preserve">
+    <value>A passkey lets you sign in with your fingerprint, face, or device PIN — no password to remember.</value>
+  </data>
+  <data name="RegisterPasskeyButton" xml:space="preserve">
+    <value>Create a passkey</value>
+  </data>
+  <data name="PasskeyFailed" xml:space="preserve">
+    <value>The passkey could not be verified. Please try again.</value>
+  </data>
+  <data name="ExternalLoginFailed" xml:space="preserve">
+    <value>That sign-in could not be completed. Please try again or use another method.</value>
+  </data>
+  <data name="ExternalLoginNotLinked" xml:space="preserve">
+    <value>That external account is not connected to Tellma. Sign in another way, then connect it from Account &amp; security.</value>
+  </data>
+  <data name="ExternalLoginOwnedByAnotherAccount" xml:space="preserve">
+    <value>That external account is already connected to a different Tellma account. Sign out first to use it, or connect a different one.</value>
+  </data>
+  <data name="PasskeyAlreadyOnThisDevice" xml:space="preserve">
+    <value>This device already has a passkey for your account. Use another device or security key to add a second one.</value>
+  </data>
+  <data name="PasskeyEnrollFailed" xml:space="preserve">
+    <value>The passkey could not be created. Please try again.</value>
+  </data>
+  <data name="Passkeys" xml:space="preserve">
+    <value>Passkeys</value>
+  </data>
+  <data name="AddPasskey" xml:space="preserve">
+    <value>Add a passkey</value>
+  </data>
+  <data name="Remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="DeviceBound" xml:space="preserve">
+    <value>Device-bound</value>
+  </data>
+  <data name="DeviceBoundPasskeyRequired" xml:space="preserve">
+    <value>This action requires a device-bound passkey, such as a hardware security key. A passkey synced through a cloud account will not be accepted.</value>
+  </data>
+  <data name="NoSignInMethodAvailable" xml:space="preserve">
+    <value>No sign-in method is available for this request. Contact your administrator.</value>
+  </data>
+  <data name="Synced" xml:space="preserve">
+    <value>Synced</value>
+  </data>
+  <data name="NoPasskeys" xml:space="preserve">
+    <value>You have no passkeys yet.</value>
+  </data>
+  <data name="InvitationTitle" xml:space="preserve">
+    <value>Welcome</value>
+  </data>
+  <data name="InvitationPrompt" xml:space="preserve">
+    <value>Set up a passkey to finish creating your account.</value>
+  </data>
+  <data name="InvitationInvalid" xml:space="preserve">
+    <value>This invitation link is invalid or has expired. Ask your administrator to send a new one.</value>
+  </data>
+  <data name="TapTitle" xml:space="preserve">
+    <value>Recover your account</value>
+  </data>
+  <data name="TapPrompt" xml:space="preserve">
+    <value>Enter your email and the access pass your administrator gave you.</value>
+  </data>
+  <data name="TapPass" xml:space="preserve">
+    <value>Access pass</value>
+  </data>
+  <data name="TapInvalid" xml:space="preserve">
+    <value>The access pass is invalid or has expired.</value>
+  </data>
+  <data name="SetupTitle" xml:space="preserve">
+    <value>Set up the administrator</value>
+  </data>
+  <data name="SetupPrompt" xml:space="preserve">
+    <value>Enter the one-time setup token to configure the break-glass administrator.</value>
+  </data>
+  <data name="SetupToken" xml:space="preserve">
+    <value>Setup token</value>
+  </data>
+  <data name="SetupInvalid" xml:space="preserve">
+    <value>The setup token is invalid or setup has already been completed.</value>
+  </data>
+  <data name="Profile" xml:space="preserve">
+    <value>Profile</value>
+  </data>
+  <data name="Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Language" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="Gender" xml:space="preserve">
+    <value>How we address you</value>
+  </data>
+  <data name="GenderUnstated" xml:space="preserve">
+    <value>Prefer not to say</value>
+  </data>
+  <data name="GenderFemale" xml:space="preserve">
+    <value>Feminine</value>
+  </data>
+  <data name="GenderMale" xml:space="preserve">
+    <value>Masculine</value>
+  </data>
+  <data name="Save" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="Saved" xml:space="preserve">
+    <value>Your changes have been saved.</value>
+  </data>
+  <data name="UnknownDevice" xml:space="preserve">
+    <value>Unknown device</value>
+  </data>
+  <data name="ThisSession" xml:space="preserve">
+    <value>this session</value>
+  </data>
+  <data name="PrivacyPolicy" xml:space="preserve">
+    <value>Privacy policy</value>
+  </data>
+  <data name="TermsOfService" xml:space="preserve">
+    <value>Terms of service</value>
+  </data>
+  <data name="Sessions" xml:space="preserve">
+    <value>Sessions</value>
+  </data>
+  <data name="SignOutEverywhere" xml:space="preserve">
+    <value>Sign out everywhere</value>
+  </data>
+  <data name="AuthenticatorApp" xml:space="preserve">
+    <value>Authenticator app</value>
+  </data>
+  <data name="AuthenticatorEnrollPrompt" xml:space="preserve">
+    <value>Scan the QR code with your authenticator app, then enter the 6-digit code to confirm.</value>
+  </data>
+  <data name="EnableAuthenticator" xml:space="preserve">
+    <value>Enable authenticator app</value>
+  </data>
+  <data name="RecoveryCodesPrompt" xml:space="preserve">
+    <value>Save these recovery codes somewhere safe. Each can be used once if you lose access to your other methods.</value>
+  </data>
+  <data name="ForgotPassword" xml:space="preserve">
+    <value>Forgot your password?</value>
+  </data>
+  <data name="ForgotPasswordPrompt" xml:space="preserve">
+    <value>Enter your email and we will send you a link to reset your password.</value>
+  </data>
+  <data name="ResetPassword" xml:space="preserve">
+    <value>Reset your password</value>
+  </data>
+  <data name="Password" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="SendResetLink" xml:space="preserve">
+    <value>Send reset link</value>
+  </data>
+  <data name="ResetLinkSent" xml:space="preserve">
+    <value>If an account exists for that address, we sent it a password-reset link.</value>
+  </data>
+  <data name="ContinueWithGoogle" xml:space="preserve">
+    <value>Continue with Google</value>
+  </data>
+  <data name="ContinueWithMicrosoft" xml:space="preserve">
+    <value>Continue with Microsoft</value>
+  </data>
+  <data name="CannotRemoveOnlySignInMethod" xml:space="preserve">
+    <value>You cannot remove your only sign-in method.</value>
+  </data>
+  <data name="SkipToContent" xml:space="preserve">
+    <value>Skip to content</value>
+  </data>
+  <data name="BrandTagline" xml:space="preserve">
+    <value>The AI-native ERP for the agentic era.</value>
+  </data>
+  <data name="BrandBlurb" xml:space="preserve">
+    <value>Accounting, reporting and multi-currency operations, in one system that works the way your organization does.</value>
+  </data>
+  <data name="BrandCopyright" xml:space="preserve">
+    <value>© {0} Tellma. All rights reserved.</value>
+  </data>
+  <data name="YourAccount" xml:space="preserve">
+    <value>Your account</value>
+  </data>
+  <data name="Security" xml:space="preserve">
+    <value>Security</value>
+  </data>
+  <data name="BackToApplication" xml:space="preserve">
+    <value>Back to {0}</value>
+  </data>
+  <data name="ThereIsAProblem" xml:space="preserve">
+    <value>There is a problem</value>
+  </data>
+  <data name="StatusSuccess" xml:space="preserve">
+    <value>Success</value>
+  </data>
+  <data name="StatusInfo" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="StatusWarning" xml:space="preserve">
+    <value>Warning</value>
+  </data>
+  <data name="StatusError" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="ErrorTitlePrefix" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="RemovePasskeyNamed" xml:space="preserve">
+    <value>Remove {0}</value>
+  </data>
+  <data name="PasskeyRemoved" xml:space="preserve">
+    <value>The passkey was removed.</value>
+  </data>
+  <data name="QrCodeAlt" xml:space="preserve">
+    <value>QR code for your authenticator app</value>
+  </data>
+  <data name="SharedKeyPrompt" xml:space="preserve">
+    <value>Cannot scan it? Enter this key in your app instead.</value>
+  </data>
+  <data name="BackToProfile" xml:space="preserve">
+    <value>Back to profile</value>
+  </data>
+  <data name="OrContinueWith" xml:space="preserve">
+    <value>or continue with</value>
+  </data>
+  <data name="ScopeProfileTitle" xml:space="preserve">
+    <value>Your profile</value>
+  </data>
+  <data name="ScopeProfileDetail" xml:space="preserve">
+    <value>Your name and preferred language.</value>
+  </data>
+  <data name="ScopeEmailTitle" xml:space="preserve">
+    <value>Your email address</value>
+  </data>
+  <data name="ScopeEmailDetail" xml:space="preserve">
+    <value>The address you sign in with.</value>
+  </data>
+  <data name="ScopeOpenIdTitle" xml:space="preserve">
+    <value>Who you are</value>
+  </data>
+  <data name="ScopeOpenIdDetail" xml:space="preserve">
+    <value>Confirms your identity without sharing your credentials.</value>
+  </data>
+  <data name="ScopeOfflineAccessTitle" xml:space="preserve">
+    <value>Stay signed in</value>
+  </data>
+  <data name="ScopeOfflineAccessDetail" xml:space="preserve">
+    <value>Keeps access after you close the app, until you sign out.</value>
+  </data>
+  <data name="ScopeApiTitle" xml:space="preserve">
+    <value>Your Tellma data</value>
+  </data>
+  <data name="ScopeApiDetail" xml:space="preserve">
+    <value>Read and change the data you have access to.</value>
+  </data>
+  <data name="ScopeUnknownDetail" xml:space="preserve">
+    <value>Access this application asked for by name.</value>
+  </data>
+  <data name="ConsentPromptApp" xml:space="preserve">
+    <value>{0} wants to access your account.</value>
+  </data>
+  <data name="LastSeen" xml:space="preserve">
+    <value>Last seen</value>
+  </data>
+  <data name="PasswordHint" xml:space="preserve">
+    <value>At least 12 characters.</value>
+  </data>
+  <data name="BackToSignIn" xml:space="preserve">
+    <value>Back to sign in</value>
+  </data>
+  <data name="GoBack" xml:space="preserve">
+    <value>Go back</value>
+  </data>
+  <data name="SignInLead" xml:space="preserve">
+    <value>Use your work email or a passkey.</value>
+  </data>
+  <data name="Google" xml:space="preserve">
+    <value>Google</value>
+  </data>
+  <data name="Microsoft" xml:space="preserve">
+    <value>Microsoft</value>
+  </data>
+  <data name="RecoveryCodes" xml:space="preserve">
+    <value>Recovery codes</value>
+  </data>
+  <data name="SignInLeadPasskey" xml:space="preserve">
+    <value>Sign in with the passkey on this device.</value>
+  </data>
+  <data name="SignInLeadEmail" xml:space="preserve">
+    <value>Use your work email.</value>
+  </data>
+  <data name="EmailPlaceholder" xml:space="preserve">
+    <value>name@example.com</value>
+  </data>
+  <data name="BackToSignInAction" xml:space="preserve">
+    <value>Sign in again</value>
+  </data>
+  <data name="ExternalLogins" xml:space="preserve">
+    <value>External logins</value>
+  </data>
+  <data name="ExternalLoginsPrompt" xml:space="preserve">
+    <value>Sign in with an account you already have.</value>
+  </data>
+  <data name="NoExternalProviders" xml:space="preserve">
+    <value>No external sign-in providers are available.</value>
+  </data>
+  <data name="Link" xml:space="preserve">
+    <value>Link</value>
+  </data>
+  <data name="Linked" xml:space="preserve">
+    <value>Linked</value>
+  </data>
+  <data name="NotLinked" xml:space="preserve">
+    <value>Not linked</value>
+  </data>
+  <data name="AddExternalLogin" xml:space="preserve">
+    <value>Link {0}</value>
+  </data>
+  <data name="RemoveExternalLoginNamed" xml:space="preserve">
+    <value>Unlink {0}</value>
+  </data>
+  <data name="ExternalLoginRemoved" xml:space="preserve">
+    <value>The external login was unlinked.</value>
+  </data>
+  <data name="ExternalLoginRemoveFailed" xml:space="preserve">
+    <value>The external login could not be unlinked.</value>
+  </data>
+  <data name="ResetPasswordExpired" xml:space="preserve">
+    <value>This password-reset link is invalid or has expired. Request a new one.</value>
+  </data>
+</root>

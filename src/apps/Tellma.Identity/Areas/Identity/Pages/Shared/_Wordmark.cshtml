@@ -1,0 +1,18 @@
+@using Tellma.Identity.Infrastructure
+@inject IBrandingResolver Branding
+@* The model says whether this instance sits on the dark brand panel; a two-color mark cannot
+   inherit currentColor, so light and dark are separate files rather than one recolored. A
+   deployment that supplies no artwork still shows its product name. *@
+@model bool
+@{
+    BrandingInfo brand = Branding.Resolve(clientId: null);
+    string? wordmark = Model ? brand.WordmarkOnDarkPath : brand.WordmarkPath;
+}
+@if (wordmark is not null)
+{
+    <img class="tmi-wordmark" src="@Url.Content(wordmark)" alt="@brand.ProductName" width="736" height="208" />
+}
+else
+{
+    <span class="tmi-wordmark-text">@brand.ProductName</span>
+}

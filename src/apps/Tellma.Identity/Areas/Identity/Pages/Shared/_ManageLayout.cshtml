@@ -1,0 +1,134 @@
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.Extensions.Options
+@using System.Security.Claims
+@using Tellma.Identity.Data
+@using Tellma.Identity.Infrastructure
+@using Tellma.Identity.Options
+@inject UserManager<TellmaIdentityUser> UserManager
+@inject ApplicationLinkResolver ApplicationLinks
+@inject IBrandingResolver Branding
+@inject IOptions<TellmaIdentityOptions> EngineOptions
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    Layout = "/Areas/Identity/Pages/Shared/_Document.cshtml";
+
+    // The page handler has already materialized this user, and UserManager.GetUserAsync goes
+    // through DbSet.FindAsync, which consults the change tracker before the database — so this
+    // is a dictionary lookup rather than a second round trip. Deliberately not a sign-in claim:
+    // renaming yourself on the profile page does not bump the security stamp, so a claim would
+    // go stale until the next sign-in.
+    TellmaIdentityUser? user = await UserManager.GetUserAsync(User);
+    string email = User.FindFirstValue(ClaimTypes.Email) ?? user?.Email ?? string.Empty;
+    string displayName = user?.DisplayName is { Length: > 0 } name ? name : email;
+
+    // A caller may say which application the user came from; the link resolves to that client's
+    // own registered origin, never to anything the caller supplied.
+    string? clientId = Context.Request.Query["client_id"];
+    ApplicationLink? backLink = await ApplicationLinks.ResolveAsync(clientId, Context.RequestAborted);
+
+    string currentPage = ViewContext.RouteData.Values["page"] as string ?? string.Empty;
+
+    // Same predicate the external-logins page builds its rows from, so the entry and the page
+    // agree about whether there is anything to show.
+    bool hasExternalProviders = EngineOptions.Value.ExternalProviders.Google.IsConfigured
+        || EngineOptions.Value.ExternalProviders.Microsoft.IsConfigured;
+
+    // The active item is marked, not classed: styling hangs off aria-current, so the state a
+    // screen reader hears and the state the eye sees cannot drift apart.
+    string? Current(string page) =>
+        string.Equals(currentPage, page, StringComparison.OrdinalIgnoreCase) ? "page" : null;
+}
+<div class="tmi-manage">
+    <header class="tmi-topbar">
+        <a class="tmi-skip" href="#tmi-main">@L["SkipToContent"]</a>
+        <partial name="/Areas/Identity/Pages/Shared/_Wordmark.cshtml" model="false" />
+        <span class="tmi-topbar-rule" aria-hidden="true"></span>
+        <span class="tmi-topbar-title">@L["YourAccount"]</span>
+
+        @if (backLink is not null)
+        {
+            <a class="tmi-topbar-back" href="@backLink.Url">
+                <tmi-icon name="arrow-left" class="tmi-icon-sm tmi-icon-flip" />
+                @* A configured URL names no client, so the product stands in for the name. *@
+                @L["BackToApplication", backLink.Name ?? Branding.Resolve(clientId: null).ProductName]
+            </a>
+        }
+
+        <partial name="/Areas/Identity/Pages/Shared/_LanguagePicker.cshtml" />
+
+        @* Narrow screens only: the nav becomes a strip with no footer for this to sit in. *@
+        <form class="tmi-topbar-signout" method="post" asp-area="Identity" asp-page="/Account/Logout" data-tmi-chrome>
+            <button class="tmi-link" type="submit" aria-label="@L["SignOut"]"><tmi-icon name="log-out" /></button>
+        </form>
+    </header>
+
+    <div class="tmi-manage-body">
+        @* Links to separate documents, so a nav of anchors — not a tablist, which would promise
+           roving arrow keys and a panel relationship that do not exist here. *@
+        <nav class="tmi-nav" aria-label="@L["YourAccount"]">
+            <div class="tmi-nav-user">
+                <div class="tmi-nav-user-name">@displayName</div>
+                <div class="tmi-nav-user-email" dir="ltr">@email</div>
+            </div>
+
+            <ul class="tmi-nav-list">
+                <li class="tmi-nav-group">@L["Profile"]</li>
+                <li>
+                    <a class="tmi-nav-item" asp-area="Identity" asp-page="/Manage/Index"
+                       asp-route-client_id="@clientId" aria-current="@Current("/Manage/Index")">
+                        <tmi-icon name="user-round" />@L["Profile"]
+                    </a>
+                </li>
+                <li class="tmi-nav-group">@L["Security"]</li>
+                <li>
+                    <a class="tmi-nav-item" asp-area="Identity" asp-page="/Manage/Passkeys"
+                       asp-route-client_id="@clientId" aria-current="@Current("/Manage/Passkeys")">
+                        <tmi-icon name="key-round" />@L["Passkeys"]
+                    </a>
+                </li>
+                @* The authenticator-app page is deliberately absent. Enrolling one stores a secret
+                   that nothing ever asks for: no sign-in path challenges for a time-based code, so
+                   the setting engine reads back as evidence can never be earned. Offering it here
+                   would sell a second factor that does not defend anything, and the enrollment
+                   also reissues recovery codes, so returning to it costs the user the ones they
+                   saved. Restore this entry in the same change that adds the sign-in challenge. *@
+                @* Only where there is something to link. A deployment that configures no provider
+                   has an external-logins page with no rows on it, and an entry leading there is
+                   an offer the deployment cannot keep. *@
+                @if (hasExternalProviders)
+                {
+                    <li>
+                        <a class="tmi-nav-item" asp-area="Identity" asp-page="/Manage/ExternalLogins"
+                           asp-route-client_id="@clientId" aria-current="@Current("/Manage/ExternalLogins")">
+                            <tmi-icon name="link-2" />@L["ExternalLogins"]
+                        </a>
+                    </li>
+                }
+                <li>
+                    <a class="tmi-nav-item" asp-area="Identity" asp-page="/Manage/Sessions"
+                       asp-route-client_id="@clientId" aria-current="@Current("/Manage/Sessions")">
+                        <tmi-icon name="monitor" />@L["Sessions"]
+                    </a>
+                </li>
+            </ul>
+
+            <div class="tmi-nav-foot">
+                <form method="post" asp-area="Identity" asp-page="/Account/Logout" data-tmi-chrome>
+                    <button class="tmi-nav-signout" type="submit"><tmi-icon name="log-out" />@L["SignOut"]</button>
+                </form>
+            </div>
+        </nav>
+
+        <main class="tmi-main" id="tmi-main">
+            <div class="tmi-main-inner">
+                <div class="tmi-card">
+                    @RenderBody()
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+@section Scripts {
+    @await RenderSectionAsync("Scripts", required: false)
+}

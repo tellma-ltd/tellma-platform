@@ -1,0 +1,40 @@
+@using System.Globalization
+@using Tellma.Identity.Infrastructure
+@inject Tellma.Identity.Infrastructure.IBrandingResolver Branding
+@{
+    BrandingInfo brand = Branding.Resolve(clientId: null);
+    bool isRtl = CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft;
+}
+<!DOCTYPE html>
+<html lang="@CultureInfo.CurrentUICulture.Name" dir="@(isRtl ? "rtl" : "ltr")">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@ViewData["Title"] · @brand.ProductName</title>
+    @* Explicit rather than relying on /favicon.ico: in in-proc mode the engine is mounted under a
+       path base, where the browser's default probe would miss it and hit the host's icon. *@
+    <link rel="icon" href="~/_content/Tellma.Identity/favicon.ico" sizes="any" asp-append-version="true" />
+    @* Start the face this request will actually render before the stylesheets are even parsed.
+       Without it the browser cannot learn the font URL until fonts.css has been fetched and
+       read, which is late enough to show the fallback first and swap. The server already knows
+       the culture, so exactly one face is preloaded rather than every script we ship. *@
+    <link rel="preload" as="font" type="font/woff2" crossorigin
+          href="@Url.Content(FontPreload.ForCulture(CultureInfo.CurrentUICulture))" />
+    @* The brand faces and the emitted @tellma/core-ui-tokens build; identity.css consumes them.
+       Per-tenant branding later means serving a different tokens file, not editing styles.
+       asp-append-version stamps each URL with the asset's content hash, which is what lets the
+       static-asset endpoint answer with an immutable year-long cache instead of revalidating
+       on every reload. *@
+    <link rel="stylesheet" href="~/_content/Tellma.Identity/fonts/fonts.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/_content/Tellma.Identity/css/tokens.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/_content/Tellma.Identity/css/identity.css" asp-append-version="true" />
+</head>
+<body>
+    @RenderBody()
+    @* Each shell forwards its page's Scripts section here, so the ceremony scripts stay at the
+       end of the document whichever shell rendered the page. This must stay unconditional: the
+       shells define the section unconditionally too, and a section defined but never rendered
+       is an error. *@
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

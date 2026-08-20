@@ -1,0 +1,1597 @@
+/*
+ * The identity UI's only hand-written stylesheet. Consumes the @tellma/core-ui-tokens custom
+ * properties exclusively — no raw color literals — and uses CSS logical properties throughout
+ * so right-to-left locales need no second sheet. The tokens sheet (tokens.css, the emitted
+ * @tellma/core-ui-tokens build) and the vendored brand faces (fonts/fonts.css) are loaded
+ * before this file.
+ *
+ * It has to stay one file: the dangling-var() gate names this exact path, so a second
+ * stylesheet would be the one consumer a renamed token could break in silence.
+ */
+
+/* ==========================================================================================
+   Locals
+   Sizes the emitted ramp does not carry, and the measures and palette of the brand panel.
+   Declared here rather than added to the shared tokens: nothing else on the platform renders
+   a marketing panel, and a name declared in this file satisfies the gate the same way an
+   emitted one does.
+   ========================================================================================== */
+:root {
+  /* The ramp is 12/14/16/18. These are its two ends: the panel's tagline above it, and the
+     chrome's meta text below it. */
+  --tmi-text-display: 22px;
+  --tmi-text-2xs: 11px;
+  --tmi-text-3xs: 10px;
+
+  /* Measures — widths, not rhythm, so they do not belong on the space ladder. */
+  --tmi-ink-width: 404px;
+  --tmi-nav-width: 232px;
+  --tmi-card-measure: 25rem;
+  --tmi-main-measure: 39rem;
+
+  /* The brand panel's palette. Scheme-independent primitives, never --surface-inverse or
+     --text-on-dark: this panel is dark in every scheme, so its contrast must not follow a
+     scheme that could move those out from under it. Verified against --ink-900: white
+     18.2:1, grey-300 8.9:1, grey-400 5.4:1. Note the trap that makes this worth stating —
+     grey-400 fails on white (3.4:1) and passes on ink. */
+  --tmi-ink-bg: var(--ink-900);
+  --tmi-ink-strong: var(--white);
+  --tmi-ink-body: var(--grey-300);
+  --tmi-ink-muted: var(--grey-400);
+  --tmi-ink-line: var(--ink-700);
+  --tmi-ink-star: var(--grey-800);
+  --tmi-ink-accent: var(--teal-400);
+
+  /* The perimeter of a control.
+     KNOWN ACCESSIBILITY EXCEPTION, taken deliberately. --field-border is grey-200, which is
+     1.5:1 against the card — WCAG 2.2 SC 1.4.11 asks 3:1 for the visual boundary that
+     identifies a control, so an input's perimeter is hard to find for a low-vision user.
+     grey-400 (3.4:1) would satisfy it, and an earlier revision used it, but the design calls
+     for the lighter line and the design wins here. Whoever revisits this: the fix belongs in
+     @tellma/core-ui-tokens, because the component library draws the same 1.5:1 boundary and
+     the two should not diverge. No automated gate catches it — axe implements 1.4.3 for text
+     but has no rule for 1.4.11. */
+  --tmi-control-border: var(--field-border);
+}
+
+/* ==========================================================================================
+   Base
+   ========================================================================================== */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  line-height: var(--leading-ui);
+  color: var(--text-body);
+  background: var(--surface-page);
+}
+
+/* The hidden attribute is a user-agent display:none, which any author display rule beats. The
+   passkey error is toggled by that attribute and also wears the notice treatment, so restate
+   it with the weight the attribute deserves — that is what lets the blocks below set display
+   freely. */
+[hidden] {
+  display: none !important;
+}
+
+/* Reachable by keyboard, invisible until it is. The :not() guard is what lets the skip link
+   share this rule instead of owning a second copy of it. */
+.tmi-visually-hidden:not(:focus):not(:active) {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ==========================================================================================
+   Focus
+   The emitted --focus-ring paints a 2px gap in --surface-page, and because that nesting
+   resolves where the variable is declared, re-pointing --surface-page on a descendant would
+   not change it. An outline's offset area is transparent, so the same geometry reads
+   correctly on the white card, the grey pane and the dark panel with no per-surface override
+   — and unlike a box-shadow it survives forced-colors mode.
+   ========================================================================================== */
+.tmi-button:focus-visible,
+.tmi-link:focus-visible,
+.tmi-lang-button:focus-visible,
+.tmi-lang-option:focus-visible,
+.tmi-nav-item:focus-visible,
+.tmi-skip:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
+}
+
+/* A field glows instead, the same way the component library's does: the offset ring paints a
+   gap of page background around the control, which reads as a hole punched through a column of
+   fields. The transparent outline underneath is what carries focus in forced-colors mode,
+   where box-shadows are stripped and outline-color is repainted in a system color. Both the
+   bare input and the box that wraps an input with its icon take it, so a field looks the same
+   whether or not it has an adornment. */
+.tmi-input:focus-visible,
+.tmi-field-control:focus-within {
+  border-color: var(--field-border-focus);
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: 0 0 0 var(--focus-ring-halo-width) var(--field-focus-halo);
+}
+
+/* Focused and invalid: the glow goes red too, rather than a teal halo and a red border
+   disagreeing about what state the field is in. */
+.tmi-input[aria-invalid="true"]:focus-visible,
+.tmi-field-control:focus-within:has(.tmi-input[aria-invalid="true"]) {
+  box-shadow: 0 0 0 var(--focus-ring-halo-width) var(--error-bg);
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline-color: Highlight;
+  }
+
+  .tmi-notice {
+    border: var(--border-width) solid CanvasText;
+  }
+}
+
+/* ==========================================================================================
+   Icons
+   Every glyph is a 24-viewBox inline SVG taking currentColor; only the box changes.
+   ========================================================================================== */
+.tmi-icon {
+  flex: none;
+  inline-size: var(--menu-icon-size);
+  block-size: var(--menu-icon-size);
+}
+
+.tmi-icon-sm {
+  inline-size: var(--button-icon-size);
+  block-size: var(--button-icon-size);
+}
+
+.tmi-icon-lg {
+  inline-size: var(--alert-icon-size);
+  block-size: var(--alert-icon-size);
+}
+
+/* Only glyphs that point somewhere mirror. A check, a lock or a clock must not. */
+[dir="rtl"] .tmi-icon-flip {
+  transform: scaleX(-1);
+}
+
+/* ==========================================================================================
+   Typography
+   ========================================================================================== */
+.tmi-title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+  margin-block: 0 var(--space-3);
+  text-wrap: pretty;
+}
+
+.tmi-lead,
+.tmi-muted {
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  margin-block: 0 var(--space-4);
+  text-wrap: pretty;
+}
+
+.tmi-status {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  margin-block: var(--space-2);
+}
+
+/* Base32 keys, recovery codes, user agents, emails and one-time codes are left-to-right
+   islands that must not reorder inside Arabic prose. Isolate, never override. */
+.tmi-ltr,
+code,
+.tmi-code {
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: start;
+}
+
+code,
+.tmi-code {
+  font-family: var(--font-mono);
+}
+
+/* ==========================================================================================
+   Skip link
+   Inside the banner rather than a bare first child of the body, so it is not content sitting
+   outside every landmark.
+   ========================================================================================== */
+.tmi-skip {
+  position: absolute;
+  z-index: 20;
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: var(--border-width) solid var(--tmi-control-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  color: var(--text-link);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.tmi-skip:not(:focus):not(:active) {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ==========================================================================================
+   Fields
+   ========================================================================================== */
+.tmi-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--field-label-gap);
+  margin-block-end: var(--space-4);
+}
+
+.tmi-label {
+  font-size: var(--field-label-font-size);
+  font-weight: var(--weight-medium);
+  color: var(--text-strong);
+}
+
+.tmi-hint,
+.tmi-field-error {
+  font-size: var(--field-hint-font-size);
+  line-height: var(--leading-snug);
+  margin: 0;
+}
+
+.tmi-hint {
+  color: var(--text-secondary);
+}
+
+.tmi-field-error {
+  color: var(--error);
+}
+
+/* The control and any leading glyph share one bordered box, so the glyph reads as part of the
+   field rather than as something floating beside it. */
+.tmi-field-control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--field-padding-x);
+  border: var(--border-width) solid var(--tmi-control-border);
+  border-radius: var(--field-radius);
+  background: var(--field-bg);
+}
+
+.tmi-field-control:focus-within {
+  border-color: var(--field-border-focus);
+}
+
+.tmi-field-control > .tmi-icon {
+  color: var(--field-icon);
+}
+
+/* Inside the shared box the input owns no chrome of its own — including the focus treatment,
+   which the box wears on its behalf; standalone it draws both itself. */
+.tmi-field-control > .tmi-input {
+  border: none;
+  padding-inline: 0;
+  background: none;
+}
+
+.tmi-field-control > .tmi-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.tmi-input {
+  inline-size: 100%;
+  min-inline-size: 0;
+  block-size: var(--field-height);
+  padding: var(--field-padding-y) var(--field-padding-x);
+  font-family: inherit;
+  font-size: var(--field-font-size);
+  color: var(--field-text);
+  background: var(--field-bg);
+  border: var(--border-width) solid var(--tmi-control-border);
+  border-radius: var(--field-radius);
+}
+
+/* KNOWN ACCESSIBILITY EXCEPTION, same call as the control border above: --field-placeholder is
+   grey-400, 3.4:1 against the field, and placeholder text is text, so 1.4.3 wants 4.5:1. The
+   design sets it to the same value as the icon beside it, which is what this token already is.
+   Mitigated by every field having a real visible label — nothing here is conveyed by
+   placeholder alone. */
+.tmi-input::placeholder {
+  color: var(--field-placeholder);
+}
+
+/* A native select draws its own caret hard against the edge, and the position is not something
+   an author can move. Drawing it ourselves is what buys the breathing room — and matches the
+   chevron the language picker already uses. The glyph is a same-origin data URI, which the
+   policy's img-src admits. */
+.tmi-select {
+  appearance: none;
+  padding-inline-end: var(--space-8);
+
+  /* The popup is drawn by the operating system, not by this document, so a stylesheet reaches
+     almost none of it. accent-color is the one lever browsers honour there: it repaints the
+     highlight on the focused option, which is otherwise the platform blue. Everything else
+     about that popup stays the platform's. */
+  accent-color: var(--color-primary);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2356686F' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: 15px 15px;
+  /* background-position has no logical form, so the one direction-dependent value is flipped
+     by the rule below rather than duplicated across the whole declaration. */
+  background-position: right var(--field-padding-x) center;
+}
+
+[dir="rtl"] .tmi-select {
+  background-position: left var(--field-padding-x) center;
+}
+
+.tmi-input:hover {
+  border-color: var(--field-border-hover);
+}
+
+.tmi-input:focus-visible {
+  border-color: var(--field-border-focus);
+}
+
+.tmi-input[aria-invalid="true"] {
+  border-color: var(--field-border-invalid);
+}
+
+/* A one-time code, a device code or a shared key is read a character at a time. */
+.tmi-input-code {
+  font-family: var(--font-mono);
+  letter-spacing: 0.14em;
+}
+
+/* Native control, tinted — the accent keeps the platform's own checkbox semantics, focus ring
+   and high-contrast behaviour rather than rebuilding them on a styled span. */
+.tmi-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--checkbox-gap);
+  min-block-size: 24px;
+  margin-block-end: var(--space-4);
+  font-size: var(--checkbox-label-font-size);
+  color: var(--text-body);
+  cursor: pointer;
+}
+
+/* The design's box: the field border when empty, the action colour filled when ticked, with a
+   drawn tick rather than the platform's. Still a real <input type=checkbox> — appearance:none
+   removes the paint, not the semantics, the keyboard behaviour or the state a screen reader
+   reads. The tick is two borders on a rotated pseudo-element, which is the whole glyph. */
+.tmi-checkbox input {
+  appearance: none;
+  display: grid;
+  place-content: center;
+  flex: none;
+  inline-size: var(--checkbox-box-size);
+  block-size: var(--checkbox-box-size);
+  margin: 0;
+  border: var(--border-width) solid var(--tmi-control-border);
+  border-radius: var(--radius-xs);
+  background: var(--field-bg);
+  cursor: pointer;
+}
+
+.tmi-checkbox input:checked {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+}
+
+/* Centred by the grid rather than by hand-computed offsets, so the tick stays centred whatever
+   --checkbox-box-size becomes and in both writing directions. The nudge is optical, not
+   geometric: the ink is only the right and bottom borders, so it sits down-and-right of the
+   element's own centre, and the 45deg rotation turns that diagonal offset into a purely
+   vertical one — hence a vertical-only correction. Nudging horizontally as well would push the
+   tick back off centre on the axis rotation had already balanced. */
+.tmi-checkbox input::after {
+  content: "";
+  inline-size: 5px;
+  block-size: 9px;
+  border: solid var(--color-on-primary);
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg);
+  opacity: 0;
+}
+
+.tmi-checkbox input:checked::after {
+  opacity: 1;
+}
+
+.tmi-checkbox input:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* ==========================================================================================
+   Buttons
+   Anchors carry these classes too, so the label is centred and the underline dropped
+   explicitly: a <button> does both by itself and an <a> does neither.
+   ========================================================================================== */
+.tmi-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--button-gap);
+  inline-size: 100%;
+  block-size: var(--field-height);
+  padding-inline: var(--button-padding-x);
+  font-family: inherit;
+  font-size: var(--button-font-size);
+  font-weight: var(--weight-medium);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--button-radius);
+  cursor: pointer;
+  margin-block-end: var(--space-2);
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.tmi-button-primary {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.tmi-button-primary:hover {
+  background: var(--color-primary-hover);
+}
+
+.tmi-button-primary:active {
+  background: var(--color-primary-active);
+}
+
+.tmi-button-secondary {
+  background: var(--surface-card);
+  color: var(--text-strong);
+  border-color: var(--tmi-control-border);
+}
+
+.tmi-button-secondary:hover {
+  background: var(--surface-hover);
+}
+
+/* Two actions that belong together read as a row, not a stack. */
+.tmi-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Actions that are not peers stack instead, full width, the way a lone button already sits. A
+   row presents its children as equal choices, which is right for "verify or resend" and wrong
+   where one of them is what the message just told the reader to do. */
+.tmi-actions-stacked {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* The gap spaces this column, so a button's own bottom margin would double it — and unevenly,
+   because the card's last-child rule reaches a bare anchor here but not a button one level
+   deeper inside the form a federated action needs. Descendant, not child, for that reason. */
+.tmi-actions-stacked .tmi-button {
+  margin-block-end: 0;
+}
+
+/* The children may be buttons, or forms each wrapping one — a federated provider needs its own
+   form to post to. Either way they share the row evenly. */
+.tmi-actions > * {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+/* A provider's own mark is multi-color and cannot inherit currentColor, so these sit apart
+   from the glyph set. */
+.tmi-mark {
+  flex: none;
+  inline-size: var(--menu-icon-size);
+  block-size: var(--menu-icon-size);
+}
+
+/* ==========================================================================================
+   Links
+   ========================================================================================== */
+.tmi-link {
+  color: var(--text-link);
+  text-decoration: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tmi-link:hover {
+  text-decoration: underline;
+}
+
+/* The actions that sit inline in a list row — so a button for behaviour, a link for weight, and
+   24px tall for a fingertip. That height is the whole of our 2.5.8 conformance here: axe's
+   target-size rule exempts widgets inline in a block of text, which is exactly this shape, so
+   nothing automated would notice it shrinking. */
+.tmi-link-danger,
+.tmi-link-action {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 24px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+/* Destructive: giving up a credential. */
+.tmi-link-danger {
+  color: var(--error);
+}
+
+/* Constructive: gaining one. */
+.tmi-link-action {
+  color: var(--color-primary);
+}
+
+.tmi-inline {
+  display: inline;
+}
+
+/* ==========================================================================================
+   Divider
+   ========================================================================================== */
+.tmi-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-block: var(--space-4);
+  border: none;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.tmi-divider::before,
+.tmi-divider::after {
+  content: "";
+  flex: 1;
+  block-size: var(--border-width);
+  background: var(--divider);
+}
+
+/* ==========================================================================================
+   Notices
+   The body reads in --text-body on every tint. The semantic color is spent on the icon and
+   the border, where 1.4.11's 3:1 applies rather than 1.4.3's 4.5:1 — as text on its own tint
+   --warning is 3.3:1, --info 3.6:1 and --success 4.3:1, so three of the four would fail.
+   ========================================================================================== */
+.tmi-notice {
+  display: flex;
+  gap: var(--alert-gap);
+  padding: var(--alert-padding-y) var(--alert-padding-x);
+  margin-block-end: var(--space-4);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--alert-radius);
+  font-size: var(--alert-body-font-size);
+  line-height: var(--leading-snug);
+  color: var(--text-body);
+}
+
+.tmi-notice > .tmi-icon {
+  margin-block-start: 1px;
+}
+
+.tmi-notice-body {
+  min-inline-size: 0;
+}
+
+.tmi-notice-title {
+  margin: 0 0 var(--space-1);
+  font-size: var(--alert-heading-font-size);
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+}
+
+.tmi-notice ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tmi-notice-info {
+  background: var(--info-bg);
+  border-color: var(--info-border);
+}
+
+.tmi-notice-info > .tmi-icon {
+  color: var(--teal-700);
+}
+
+.tmi-notice-success {
+  background: var(--success-bg);
+  border-color: var(--success-border);
+}
+
+.tmi-notice-success > .tmi-icon {
+  color: var(--success);
+}
+
+.tmi-notice-warning {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+}
+
+.tmi-notice-warning > .tmi-icon {
+  color: var(--warning);
+}
+
+.tmi-notice-error {
+  background: var(--error-bg);
+  border-color: var(--error-border);
+}
+
+.tmi-notice-error > .tmi-icon {
+  color: var(--error);
+}
+
+/* The error summary takes focus on a failed post, which is what tells a screen-reader user
+   the submission was rejected — a live region cannot, because the content is present when the
+   page parses rather than added afterwards. Suppress the ring it would otherwise draw around
+   a whole block; the heading it lands on is the announcement. */
+.tmi-notice[tabindex]:focus {
+  outline: none;
+}
+
+.tmi-error {
+  color: var(--error);
+  font-size: var(--text-sm);
+  margin-block: var(--space-2);
+}
+
+.tmi-error ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ==========================================================================================
+   Lists
+   ========================================================================================== */
+.tmi-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.tmi-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--surface-card);
+  border-block-end: var(--border-width) solid var(--divider);
+}
+
+.tmi-list li:last-child {
+  border-block-end: none;
+}
+
+.tmi-list li > .tmi-icon {
+  color: var(--text-secondary);
+}
+
+.tmi-list-body {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.tmi-list-title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-strong);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tmi-list-meta {
+  margin: var(--space-1) 0 0;
+  font-size: var(--tmi-text-2xs);
+  color: var(--text-secondary);
+}
+
+/* A meta line holding an address rather than prose. It carries dir="ltr" so it reads and
+   truncates in its own direction — keeping the local part, which is the half that names the
+   account — and that direction would otherwise also pull it to the left of an RTL row, away
+   from the title above it. Same treatment as the nav's account line. */
+.tmi-list-meta-ltr {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+[dir="rtl"] .tmi-list-meta-ltr {
+  text-align: end;
+}
+
+/* A full-colour brand logo, boxed so it reads as a considered mark rather than a sticker
+   dropped on the row. The marks are partials and take no class of their own, so they are sized
+   from here — and only here, leaving the sign-in page's federated buttons untouched. */
+.tmi-provider-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: 26px;
+  block-size: 26px;
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+}
+
+.tmi-provider-mark .tmi-mark {
+  inline-size: 15px;
+  block-size: 15px;
+}
+
+/* A point smaller than the others: four solid squares carry more ink than an outlined glyph of
+   the same box, and read larger next to one. The design draws them at 14. */
+.tmi-provider-mark .tmi-mark-microsoft {
+  inline-size: 14px;
+  block-size: 14px;
+}
+
+.tmi-badge {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 18px;
+  margin-block-start: var(--space-1);
+  padding-inline: var(--space-2);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-full);
+  font-size: var(--tmi-text-3xs);
+  font-weight: var(--weight-medium);
+}
+
+.tmi-badge-bound {
+  background: var(--surface-selected);
+  border-color: var(--accent);
+  color: var(--color-primary);
+}
+
+.tmi-badge-synced {
+  background: var(--surface-sunken);
+  border-color: var(--tmi-control-border);
+  color: var(--text-secondary);
+}
+
+/* The top margin exists to sit a badge under the title it qualifies. A badge that is a row's own
+   child qualifies the row instead, and the row centres its children — so the margin would only
+   push it off that centre. Child combinator: the passkey list stacks its badge inside the text
+   column and must keep the margin. */
+.tmi-list li > .tmi-badge {
+  margin-block-start: 0;
+}
+
+.tmi-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  margin-block-end: var(--space-4);
+  border: var(--border-width) dashed var(--tmi-control-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+/* ==========================================================================================
+   Consent scopes
+   ========================================================================================== */
+.tmi-scopes {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 var(--space-4);
+  padding: var(--space-1);
+  list-style: none;
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.tmi-scopes li {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-2);
+}
+
+.tmi-scopes li > .tmi-icon {
+  margin-block-start: 2px;
+  color: var(--color-primary);
+}
+
+.tmi-scope-title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-strong);
+}
+
+.tmi-scope-detail {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  color: var(--text-secondary);
+}
+
+/* ==========================================================================================
+   Terminal pages, authenticator enrolment, recovery codes
+   ========================================================================================== */
+.tmi-hero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 40px;
+  block-size: 40px;
+  margin-block-end: var(--space-3);
+  border-radius: var(--radius-full);
+  background: var(--surface-selected);
+  color: var(--color-primary);
+}
+
+.tmi-hero-success {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.tmi-hero-error {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.tmi-centred {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* Blocks carry their own bottom margin so they space each other; the last one has nothing to
+   space itself from, and its margin becomes a gap between the content and the card's edge.
+   Scoped to the card's own last block and, through it, that block's last line — a group that
+   still has something after it keeps its spacing. */
+.tmi-card > :last-child,
+.tmi-card > :last-child > :last-child {
+  margin-block-end: 0;
+}
+
+.tmi-qr {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-block-end: var(--space-4);
+}
+
+.tmi-qr img {
+  flex: none;
+  inline-size: 128px;
+  block-size: 128px;
+  border: var(--border-width) solid var(--tmi-control-border);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+}
+
+/* The prompt and the key it introduces are both margin-less blocks, so the column spaces them
+   itself. Arabic needs this more than English does: its taller line box brings the prompt's
+   descenders down to where the key's border starts. */
+.tmi-qr-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+.tmi-shared-key {
+  display: block;
+  padding: var(--space-2);
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  background: var(--surface-sunken);
+  color: var(--text-strong);
+  font-size: var(--text-xs);
+  word-break: break-all;
+}
+
+.tmi-code-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.tmi-code-grid li {
+  padding: var(--space-2);
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  background: var(--surface-sunken);
+  text-align: center;
+}
+
+.tmi-code-grid code {
+  font-size: var(--text-xs);
+  color: var(--text-strong);
+}
+
+/* ==========================================================================================
+   Language picker
+   A disclosure rather than a menu: <summary> is focusable, keyboard-operable and exposed as a
+   button with an expanded state, all without script — which a policy with no nonce would
+   otherwise make expensive. The panel is taken out of flow so opening it never moves the form
+   underneath.
+   ========================================================================================== */
+.tmi-lang {
+  position: relative;
+  flex: none;
+}
+
+.tmi-lang-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-block-size: 30px;
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+/* Both spellings of "do not draw the disclosure triangle"; the chevron glyph is the only
+   affordance the design wants. */
+.tmi-lang-button::-webkit-details-marker {
+  display: none;
+}
+
+.tmi-lang-button::marker {
+  content: "";
+}
+
+.tmi-lang-button:hover {
+  background: var(--surface-hover);
+  color: var(--text-body);
+}
+
+.tmi-lang[open] .tmi-lang-button > .tmi-icon:last-child {
+  transform: rotate(180deg);
+}
+
+.tmi-lang-menu {
+  position: absolute;
+  z-index: 10;
+  inset-block-start: calc(100% + var(--space-1));
+  inset-inline-end: 0;
+  min-inline-size: var(--menu-min-width);
+  display: flex;
+  flex-direction: column;
+  padding: var(--menu-panel-padding);
+  border: var(--border-width) solid var(--tmi-control-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-md);
+}
+
+.tmi-lang-option {
+  display: flex;
+  align-items: center;
+  min-block-size: var(--menu-item-height);
+  padding-inline: var(--menu-item-padding-x);
+  border: none;
+  border-radius: var(--menu-item-radius);
+  background: none;
+  font: inherit;
+  font-size: var(--menu-item-font-size);
+  color: var(--text-body);
+  text-align: start;
+  cursor: pointer;
+}
+
+.tmi-lang-option:hover {
+  background: var(--surface-hover);
+}
+
+.tmi-lang-option[aria-current="true"] {
+  color: var(--color-primary);
+  font-weight: var(--weight-medium);
+}
+
+/* ==========================================================================================
+   Sign-in shell
+   Written narrowest-first, so the base is the phone and each breakpoint only adds. Three
+   tiers, and the widths are literals because a media condition cannot read a custom property
+   — confining each to one place is what keeps them from drifting:
+       below 576px  no card chrome at all; the form sits on the page, edge to edge
+       576px and up the form moves into a white card on a grey pane
+      1200px and up the brand panel joins it, and takes the wordmark with it
+   ========================================================================================== */
+.tmi-auth {
+  display: flex;
+  min-block-size: 100vh;
+  background: var(--surface-page);
+}
+
+.tmi-pane {
+  display: flex;
+  flex: 1;
+  min-inline-size: 0;
+  flex-direction: column;
+  padding: var(--space-4);
+}
+
+.tmi-pane-top {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-block-end: var(--space-6);
+}
+
+.tmi-pane-body {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  justify-content: center;
+  min-block-size: 0;
+}
+
+/* Tier 3: no card. The form runs the width of the screen with nothing drawn around it — at
+   this size a bordered box inside a bordered screen is just a smaller screen. */
+.tmi-card {
+  inline-size: 100%;
+  max-inline-size: var(--tmi-card-measure);
+}
+
+.tmi-wordmark {
+  block-size: 18px;
+  inline-size: auto;
+}
+
+.tmi-wordmark-text {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  color: var(--color-primary);
+}
+
+.tmi-legal {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding-block-start: var(--space-4);
+  font-size: var(--text-xs);
+}
+
+.tmi-legal .tmi-link {
+  color: var(--text-secondary);
+}
+
+.tmi-legal-dot {
+  color: var(--text-muted);
+}
+
+/* The brand panel. Hidden until the widest tier, where it is the only thing that changes the
+   page's shape. */
+.tmi-ink {
+  display: none;
+  position: relative;
+  flex-direction: column;
+  flex: none;
+  inline-size: var(--tmi-ink-width);
+  padding: var(--space-8);
+  overflow: hidden;
+  background: var(--tmi-ink-bg);
+}
+
+.tmi-ink-art {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  fill: none;
+}
+
+/* Fixed size, fixed distance from the panel's top corner: nothing about it depends on how tall
+   the window is, which is the whole point of separating it from the covering fill above. It
+   mirrors with the panel in Arabic, because inset-inline-end does. */
+.tmi-ink-comet-art {
+  position: absolute;
+  inset-block-start: var(--space-10);
+  inset-inline-end: var(--space-6);
+  inline-size: 130px;
+  block-size: 180px;
+  fill: none;
+}
+
+.tmi-ink-orbit {
+  fill: none;
+  stroke: var(--tmi-ink-line);
+  stroke-width: 1.2;
+  opacity: 0.5;
+}
+
+.tmi-ink-stars circle {
+  fill: var(--tmi-ink-star);
+}
+
+.tmi-ink-trail circle {
+  fill: var(--tmi-ink-accent);
+  opacity: 0.45;
+}
+
+.tmi-ink-halo,
+.tmi-ink-comet {
+  fill: var(--tmi-ink-accent);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.tmi-ink-halo {
+  opacity: 0.18;
+  animation: tmi-comet-halo 3.6s var(--ease-in-out) infinite;
+}
+
+.tmi-ink-comet {
+  opacity: 0.9;
+  animation: tmi-comet-core 3.6s var(--ease-in-out) infinite;
+}
+
+.tmi-ink-stack {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* The wordmark sits at the top, the copy at the bottom, and the space between them is the
+   panel's own — pushed apart rather than positioned. */
+.tmi-ink-stack .tmi-wordmark {
+  block-size: 22px;
+  align-self: flex-start;
+  margin-block-end: auto;
+}
+
+.tmi-ink-tagline {
+  margin: 0;
+  font-size: var(--tmi-text-display);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  letter-spacing: -0.01em;
+  color: var(--tmi-ink-strong);
+  max-inline-size: 22ch;
+  text-wrap: pretty;
+}
+
+.tmi-ink-blurb {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+  color: var(--tmi-ink-body);
+  max-inline-size: 38ch;
+  text-wrap: pretty;
+}
+
+.tmi-ink-copyright {
+  margin-block: var(--space-6) 0;
+  font-size: var(--tmi-text-2xs);
+  color: var(--tmi-ink-muted);
+}
+
+/* Tier 2 — the card appears, on a grey pane. The page keeps its own background so the
+   surface a token resolves to is still observable at the document level. */
+@media (min-width: 576px) {
+  .tmi-pane {
+    padding: var(--space-6);
+    background: var(--surface-subtle);
+  }
+
+  .tmi-pane-body {
+    align-items: center;
+  }
+
+  .tmi-card {
+    padding: var(--space-8);
+    border: var(--border-width) solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    background: var(--surface-card);
+    box-shadow: var(--shadow-xs);
+  }
+}
+
+/* Tier 1 — the brand panel joins, and takes the wordmark with it. */
+@media (min-width: 1200px) {
+  .tmi-ink {
+    display: flex;
+  }
+
+  .tmi-pane-top {
+    justify-content: flex-end;
+  }
+
+  .tmi-pane-top .tmi-wordmark,
+  .tmi-pane-top .tmi-wordmark-text {
+    display: none;
+  }
+}
+
+/* ==========================================================================================
+   Account shell
+   Reached from the application rather than through a flow, so it carries navigation the
+   sign-in pages have no use for. Its breakpoints differ from the sign-in shell's on purpose:
+   a four-item nav earns a side rail long before a form earns a brand panel beside it.
+       below 576px  the card runs edge to edge; the nav is a scrolling strip
+       576px and up the card regains its margins
+       768px and up the strip becomes a side rail, and sign-out moves into its footer
+   ========================================================================================== */
+.tmi-manage {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100vh;
+  background: var(--surface-subtle);
+}
+
+.tmi-topbar {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-3);
+  min-block-size: 52px;
+  padding-inline: var(--space-4);
+  background: var(--surface-card);
+  border-block-end: var(--border-width) solid var(--border-subtle);
+}
+
+.tmi-topbar-rule {
+  inline-size: var(--border-width);
+  block-size: 18px;
+  background: var(--border-subtle);
+}
+
+.tmi-topbar-title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-body);
+}
+
+/* Everything after this is pushed to the trailing edge, which is the right edge in English
+   and the left in Arabic without a second rule. */
+.tmi-topbar-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.tmi-topbar-back:hover {
+  text-decoration: underline;
+}
+
+/* Without a back link the picker takes over the job of pushing right. */
+.tmi-topbar-back + .tmi-lang {
+  margin-inline-start: 0;
+}
+
+.tmi-topbar > .tmi-lang {
+  margin-inline-start: auto;
+}
+
+.tmi-topbar-signout .tmi-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 30px;
+  block-size: 30px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+
+.tmi-manage-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+/* Narrow: a strip. It scrolls rather than wrapping, and it carries no fade — a mask
+   multiplies alpha, which at the midpoint would put a nav label at about 2:1 against the
+   background and dim the focus ring with it. */
+.tmi-nav {
+  flex: none;
+  background: var(--surface-card);
+  border-block-end: var(--border-width) solid var(--border-subtle);
+}
+
+.tmi-nav-user,
+.tmi-nav-group,
+.tmi-nav-foot {
+  display: none;
+}
+
+.tmi-nav-list {
+  display: flex;
+  gap: var(--space-1);
+  margin: 0;
+  padding-inline: var(--space-3);
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-padding-inline: var(--space-6);
+}
+
+.tmi-nav-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-block-size: 40px;
+  padding-inline: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+  border-block-end: 2px solid transparent;
+}
+
+.tmi-nav-item > .tmi-icon {
+  display: none;
+}
+
+.tmi-nav-item[aria-current="page"] {
+  color: var(--color-primary);
+  font-weight: var(--weight-medium);
+  border-block-end-color: var(--color-primary);
+}
+
+/* A strip clips whatever is drawn outside a tab's box, so the ring goes inside it. */
+.tmi-nav-item:focus-visible {
+  outline-offset: -2px;
+}
+
+.tmi-main {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.tmi-main-inner {
+  max-inline-size: var(--tmi-main-measure);
+}
+
+/* Narrow: the card is the page. */
+.tmi-manage .tmi-card {
+  max-inline-size: none;
+  padding: var(--space-4);
+  background: var(--surface-card);
+}
+
+/* A focused link must not land under the sticky-feeling topbar. */
+.tmi-manage :focus-visible {
+  scroll-margin-block-start: calc(52px + var(--space-2));
+}
+
+@media (min-width: 576px) {
+  .tmi-main {
+    padding: var(--space-5);
+  }
+
+  .tmi-manage .tmi-card {
+    padding: var(--space-6);
+    border: var(--border-width) solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xs);
+  }
+}
+
+/* Wide: the strip becomes a rail. */
+@media (min-width: 768px) {
+  .tmi-manage-body {
+    flex-direction: row;
+  }
+
+  .tmi-topbar-signout {
+    display: none;
+  }
+
+  .tmi-nav {
+    display: flex;
+    flex-direction: column;
+    inline-size: var(--tmi-nav-width);
+    padding: var(--space-3);
+    border-block-end: none;
+    border-inline-end: var(--border-width) solid var(--border-subtle);
+  }
+
+  .tmi-nav-user {
+    display: block;
+    padding: var(--space-1) var(--space-3) var(--space-3);
+    margin-block-end: var(--space-1);
+    border-block-end: var(--border-width) solid var(--border-subtle);
+  }
+
+  .tmi-nav-user-name {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    color: var(--text-strong);
+  }
+
+  .tmi-nav-user-email {
+    unicode-bidi: isolate;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: var(--tmi-text-2xs);
+    color: var(--text-secondary);
+  }
+
+  /* The address carries dir="ltr" because it is data, not prose: it must read left to right
+     whatever the page does, and it must run out of room at its own end so a narrow rail eats
+     the domain rather than the local part that names the account. That direction also decides
+     where a short address sits, which left it hugging the left edge under a right-aligned name.
+     Aligning to the element's own end — the right, since the element is ltr — puts it back
+     under the name without touching how it reads or how it truncates. */
+  [dir="rtl"] .tmi-nav-user-email {
+    text-align: end;
+  }
+
+  .tmi-nav-list {
+    flex-direction: column;
+    gap: 0;
+    padding-inline: 0;
+    overflow: visible;
+  }
+
+  .tmi-nav-group {
+    display: block;
+    padding: var(--space-3) var(--space-3) var(--space-1);
+    font-family: var(--font-mono);
+    font-size: var(--tmi-text-3xs);
+    font-weight: var(--weight-medium);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  .tmi-nav-item {
+    display: flex;
+    min-block-size: 34px;
+    padding-inline: var(--space-3);
+    border-block-end: none;
+    border-radius: var(--radius-sm);
+    color: var(--text-body);
+  }
+
+  .tmi-nav-item > .tmi-icon {
+    display: block;
+    color: var(--text-secondary);
+  }
+
+  .tmi-nav-item:hover {
+    background: var(--surface-hover);
+  }
+
+  .tmi-nav-item[aria-current="page"] {
+    background: var(--surface-selected);
+    border-inline-start: 2px solid var(--color-primary);
+    padding-inline-start: var(--space-2);
+  }
+
+  .tmi-nav-item[aria-current="page"] > .tmi-icon {
+    color: var(--color-primary);
+  }
+
+  .tmi-nav-item:focus-visible {
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .tmi-nav-foot {
+    display: block;
+    margin-block-start: auto;
+    padding-block-start: var(--space-3);
+    border-block-start: var(--border-width) solid var(--border-subtle);
+  }
+
+  .tmi-nav-signout {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    inline-size: 100%;
+    min-block-size: 34px;
+    padding-inline: var(--space-3);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: none;
+    font: inherit;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .tmi-nav-signout:hover {
+    background: var(--surface-hover);
+  }
+
+  .tmi-main {
+    padding: var(--space-5) var(--space-6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tmi-ink-halo,
+  .tmi-ink-comet {
+    animation: none;
+  }
+}
+
+@keyframes tmi-comet-core {
+  from,
+  to {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.09);
+  }
+}
+
+@keyframes tmi-comet-halo {
+  from,
+  to {
+    opacity: 0.16;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.23;
+    transform: scale(1.19);
+  }
+}

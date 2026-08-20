@@ -1,0 +1,102 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Manage.ExternalLoginsModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["ExternalLogins"].Value;
+}
+
+<h1 class="tmi-title">@L["ExternalLogins"]</h1>
+
+@* The lead introduces the feature; a notice reports what just happened to it. Showing both
+   stacks an explanation nobody is reading on top of the answer they are looking for, so the
+   notice takes its place for that render. *@
+@if (Model.StatusMessage is not null)
+{
+    <partial name="/Areas/Identity/Pages/Shared/_StatusMessage.cshtml" model="@(Model.StatusMessage)" />
+}
+else
+{
+    <p class="tmi-lead">@L["ExternalLoginsPrompt"]</p>
+}
+
+@if (Model.Providers.Count == 0)
+{
+    @* No provider is configured, so there is nothing to link and nothing linked. The nav hides
+       this page in that state; someone arriving by URL still gets an explanation. *@
+    <div class="tmi-empty">
+        <tmi-icon name="link-2" class="tmi-icon-lg" />
+        <span>@L["NoExternalProviders"]</span>
+    </div>
+}
+else
+{
+    @* One row per provider whether or not it is linked, so the account's federation is legible
+       in one place instead of split between a list of what is and buttons for what could be. *@
+    <ul class="tmi-list">
+        @foreach (Tellma.Identity.Areas.Identity.Pages.Manage.ExternalLoginsModel.ProviderRow row in Model.Providers)
+        {
+            <li>
+                @* The mark sits in a bordered chip: these are full-colour brand logos rather than
+                   members of the stroke set, and the chip is what stops them reading as loose
+                   stickers against the row. *@
+                <span class="tmi-provider-mark">
+                    @if (string.Equals(row.Provider, "Google", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <partial name="/Areas/Identity/Pages/Shared/_MarkGoogle.cshtml" />
+                    }
+                    else if (string.Equals(row.Provider, "Microsoft", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <partial name="/Areas/Identity/Pages/Shared/_MarkMicrosoft.cshtml" />
+                    }
+                    else
+                    {
+                        <tmi-icon name="link-2" />
+                    }
+                </span>
+
+                <div class="tmi-list-body">
+                    <div class="tmi-list-title">@row.Provider</div>
+                    @if (row.Account is { Length: > 0 } account)
+                    {
+                        @* The address is data, not prose: left-to-right whatever the page does, and
+                           truncated from its own end so a narrow rail keeps the part that names the
+                           account. *@
+                        <div class="tmi-list-meta tmi-list-meta-ltr" dir="ltr">@account</div>
+                    }
+                    else if (!row.IsLinked)
+                    {
+                        <div class="tmi-list-meta">@L["NotLinked"]</div>
+                    }
+                </div>
+
+                @if (row.IsLinked)
+                {
+                    <span class="tmi-badge tmi-badge-bound">@L["Linked"]</span>
+                    <form class="tmi-inline" method="post" asp-page-handler="Remove">
+                        <input type="hidden" name="provider" value="@row.Provider" />
+                        <input type="hidden" name="key" value="@row.Key" />
+                        @* The visible word is the bare verb, so the accessible name has to carry the
+                           provider: a column of controls all called "Remove" cannot be told apart
+                           from their names alone. *@
+                        <button class="tmi-link tmi-link-danger" type="submit"
+                                aria-label="@L["RemoveExternalLoginNamed", row.Provider]">@L["Remove"]</button>
+                    </form>
+                }
+                else
+                {
+                    @* Linking runs through the ordinary external flow, but declares itself: the
+                       Link handler stamps this account into the challenge, so the callback treats
+                       anything else it finds there — another owner, another session, no session —
+                       as the broken link attempt it is, never as a sign-in to complete. *@
+                    <form class="tmi-inline" method="post" asp-area="Identity" asp-page="/Account/ExternalLogin"
+                          asp-page-handler="Link"
+                          asp-route-provider="@row.Provider"
+                          asp-route-returnUrl="@Url.Page("/Manage/ExternalLogins", new { area = "Identity" })">
+                        <button class="tmi-link tmi-link-action" type="submit"
+                                aria-label="@L["AddExternalLogin", row.Provider]">@L["Link"]</button>
+                    </form>
+                }
+            </li>
+        }
+    </ul>
+}

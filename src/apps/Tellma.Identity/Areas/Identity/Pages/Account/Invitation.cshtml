@@ -1,0 +1,33 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Account.InvitationModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["InvitationTitle"].Value;
+}
+
+<h1 class="tmi-title">@L["InvitationTitle"]</h1>
+
+@if (!Model.IsValid)
+{
+    <div class="tmi-notice tmi-notice-error" role="group" aria-label="@L["StatusError"]">
+        <tmi-icon name="circle-x" class="tmi-icon-lg" />
+        <div class="tmi-notice-body">@L["InvitationInvalid"]</div>
+    </div>
+}
+else
+{
+    <p class="tmi-lead">@L["InvitationPrompt"]</p>
+
+    @* The ceremony runs here rather than on a page this one links to: redeeming the invitation
+       has already issued the credential-flow cookie the enrollment posts against, so a second
+       page would only repeat this one's button under a different heading. *@
+    <partial name="/Areas/Identity/Pages/Shared/_PasskeyEnrollment.cshtml" model="@(Model.ReturnUrl)" />
+}
+
+@if (Model.IsValid)
+{
+    @section Scripts {
+        <partial name="Shared/_PasskeyScripts" />
+        <script src="~/_content/Tellma.Identity/js/register-passkey.page.js"></script>
+    }
+}

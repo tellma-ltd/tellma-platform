@@ -1,0 +1,47 @@
+@using Tellma.Identity.Infrastructure
+@model ConsentViewModel
+@inject IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["ConsentTitle"].Value;
+    IReadOnlyList<ConsentScope> scopes = ConsentScopeCatalog.Describe(Model.Scope);
+}
+
+<h1 class="tmi-title">@L["ConsentTitle"]</h1>
+@* The application's name is its own registered text, so it is isolated: a name written
+   right-to-left must not reorder the sentence around it. *@
+<p class="tmi-lead">@L["ConsentPromptApp", Model.ApplicationName ?? string.Empty]</p>
+
+@* A scope name is an identifier for a protocol, not a description for a person. Anything the
+   catalogue does not know is still listed under its own name — a request this screen cannot
+   explain is exactly the one a user most needs to see. *@
+<ul class="tmi-scopes">
+    @foreach (ConsentScope scope in scopes)
+    {
+        <li>
+            <tmi-icon name="@scope.IconName" />
+            <div>
+                <div class="tmi-scope-title">@(scope.TitleKey is null ? scope.Scope : L[scope.TitleKey].Value)</div>
+                <p class="tmi-scope-detail">@L[scope.DetailKey]</p>
+            </div>
+        </li>
+    }
+</ul>
+
+<form method="post">
+    @* Round-trip the protocol parameters so OpenIddict resolves the same request on POST. *@
+    @foreach (KeyValuePair<string, Microsoft.Extensions.Primitives.StringValues> parameter in
+        (Context.Request.HasFormContentType
+            ? (IEnumerable<KeyValuePair<string, Microsoft.Extensions.Primitives.StringValues>>)Context.Request.Form
+            : Context.Request.Query))
+    {
+        @if (!string.Equals(parameter.Key, "__RequestVerificationToken", StringComparison.Ordinal)
+            && !parameter.Key.StartsWith("submit.", StringComparison.Ordinal))
+        {
+            <input type="hidden" name="@parameter.Key" value="@parameter.Value" />
+        }
+    }
+    <div class="tmi-actions">
+        <button class="tmi-button tmi-button-primary" type="submit" name="submit.Accept" value="yes">@L["Accept"]</button>
+        <button class="tmi-button tmi-button-secondary" type="submit" name="submit.Deny" value="no">@L["Deny"]</button>
+    </div>
+</form>

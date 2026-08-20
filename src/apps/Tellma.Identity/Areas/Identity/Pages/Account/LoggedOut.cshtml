@@ -1,0 +1,14 @@
+@page
+@model Tellma.Identity.Areas.Identity.Pages.Account.LoggedOutModel
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["SignedOut"].Value;
+}
+
+<div class="tmi-centred">
+    <span class="tmi-hero tmi-hero-success"><tmi-icon name="circle-check-big" class="tmi-icon-lg" /></span>
+    <h1 class="tmi-title">@L["SignedOut"]</h1>
+</div>
+
+@* A terminal page still needs a way onward; without one the only route back is the URL bar. *@
+<a class="tmi-button tmi-button-primary" asp-area="Identity" asp-page="/Account/Login">@L["BackToSignInAction"]</a>

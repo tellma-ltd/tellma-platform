@@ -1,0 +1,51 @@
+@inject Microsoft.Extensions.Options.IOptions<Tellma.Identity.Options.TellmaIdentityOptions> Ui
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SharedResources> L
+@{
+    Layout = "/Areas/Identity/Pages/Shared/_Document.cshtml";
+    string? privacyUrl = Ui.Value.Ui.PrivacyPolicyUrl;
+    string? termsUrl = Ui.Value.Ui.TermsOfServiceUrl;
+}
+<div class="tmi-auth">
+    <partial name="/Areas/Identity/Pages/Shared/_InkPanel.cshtml" />
+
+    <div class="tmi-pane">
+        @* The banner is the first landmark, which is why the skip link lives in it rather than
+           loose in the body where it would be content outside every region. Below the widest
+           tier the panel is gone and this row carries the wordmark instead. *@
+        <header class="tmi-pane-top">
+            <a class="tmi-skip" href="#tmi-main">@L["SkipToContent"]</a>
+            <partial name="/Areas/Identity/Pages/Shared/_Wordmark.cshtml" model="false" />
+            <partial name="/Areas/Identity/Pages/Shared/_LanguagePicker.cshtml" />
+        </header>
+
+        <main class="tmi-pane-body" id="tmi-main">
+            <div class="tmi-card">
+                @RenderBody()
+            </div>
+        </main>
+
+        @if (privacyUrl is not null || termsUrl is not null)
+        {
+            <footer class="tmi-legal">
+                @if (privacyUrl is not null)
+                {
+                    <a class="tmi-link" href="@privacyUrl" target="_blank" rel="noopener noreferrer">@L["PrivacyPolicy"]</a>
+                }
+                @if (privacyUrl is not null && termsUrl is not null)
+                {
+                    <span class="tmi-legal-dot" aria-hidden="true">·</span>
+                }
+                @if (termsUrl is not null)
+                {
+                    <a class="tmi-link" href="@termsUrl" target="_blank" rel="noopener noreferrer">@L["TermsOfService"]</a>
+                }
+            </footer>
+        }
+    </div>
+</div>
+
+@* Declared unconditionally, and rendered unconditionally by the document: a section defined but
+   never rendered is an error, so neither end may be made conditional. *@
+@section Scripts {
+    @await RenderSectionAsync("Scripts", required: false)
+}

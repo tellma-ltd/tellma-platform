@@ -1,21 +1,47 @@
 <Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- So a PackageVersion also binds packages that arrive transitively: pinning a
+         vulnerable transitive forward otherwise needs an explicit reference in every
+         project that happens to pull it in. -->
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <ItemGroup>
+    <PackageVersion Include="AngleSharp" Version="1.5.2" />
+    <!-- Azure integrations are config-gated optional paths; on-prem deployments run without them. -->
     <PackageVersion Include="Azure.Communication.Email" Version="1.1.0" />
     <PackageVersion Include="Azure.Core" Version="1.61.0" />
+    <PackageVersion Include="Azure.Extensions.AspNetCore.DataProtection.Blobs" Version="1.5.3" />
+    <PackageVersion Include="Azure.Extensions.AspNetCore.DataProtection.Keys" Version="1.6.3" />
     <PackageVersion Include="Azure.Identity" Version="1.21.0" />
     <PackageVersion Include="Azure.Messaging.EventGrid" Version="5.0.0" />
     <!-- The Event Grid system-event models moved out of the main package in 5.0.0 (which
          type-forwards them). Must never be paired with Azure.Messaging.EventGrid < 5.0.0. -->
     <PackageVersion Include="Azure.Messaging.EventGrid.SystemEvents" Version="1.1.0" />
+    <PackageVersion Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="1.5.0" />
+    <PackageVersion Include="Azure.Security.KeyVault.Certificates" Version="4.9.0" />
+    <PackageVersion Include="Azure.Security.KeyVault.Secrets" Version="4.11.0" />
+    <!-- axe-core bound for .NET and Playwright: the static accessibility floor for the
+         identity UI, on the same 4.12 line as the client suite's @axe-core/playwright. -->
+    <PackageVersion Include="Deque.AxeCore.Playwright" Version="4.12.0" />
     <PackageVersion Include="MailKit" Version="4.17.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.9" />
     <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.11" />
     <!-- Pinned to the exact Roslyn version Microsoft.EntityFrameworkCore.Design depends on
          (its Workspaces dependency demands = 5.0.0). -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
+    <!-- ICU MessageFormat: the only maintained .NET implementation of the syntax
+         translators and every TMS already speak. Needed for grammatical gender, which
+         composite formatting cannot express. -->
+    <PackageVersion Include="MessageFormat" Version="8.0.0" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9" />
+    <!-- Transitive via EF Core Design. 10.0.7 (what it resolves to) carries several high
+         severity advisories that fail the audit, which takes the migrations tooling down
+         with it; pinned forward to the patched line. -->
+    <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.10" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
@@ -27,11 +53,26 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.7.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.9.0" />
+    <!-- Kept on the same 8.x line OpenIddict 7.x depends on to avoid diamond conflicts. -->
+    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.19.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.6.0" />
+    <PackageVersion Include="Microsoft.Playwright" Version="1.61.0" />
+    <PackageVersion Include="Net.Codecrete.QrCodeGenerator" Version="3.0.0" />
+    <PackageVersion Include="OpenIddict.EntityFrameworkCore" Version="7.5.0" />
+    <PackageVersion Include="OpenIddict.Quartz" Version="7.5.0" />
+    <PackageVersion Include="OpenIddict.Server.AspNetCore" Version="7.5.0" />
+    <PackageVersion Include="OpenIddict.Validation.AspNetCore" Version="7.5.0" />
+    <PackageVersion Include="OpenIddict.Validation.ServerIntegration" Version="7.5.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.16.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.16.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.16.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.SqlClient" Version="1.16.0" />
+    <PackageVersion Include="Quartz.Extensions.Hosting" Version="3.18.2" />
     <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
     <!-- In-process SMTP endpoint for the MailKit protocol suite; no external infrastructure. -->
     <PackageVersion Include="SmtpServer" Version="11.1.0" />

@@ -13,6 +13,7 @@
     "e2e": "node scripts/e2e.mjs",
     "tokens:build-css": "tsx tools/tokens/build-css.mts",
     "tokens:check": "tsx tools/tokens/check.mts",
+    "identity:copy-assets": "tsx tools/fonts/copy-identity-assets.mts",
     "prestart": "pnpm run tokens:build-css",
     "pree2e": "pnpm run tokens:build-css",
     "api:check": "node scripts/api-extractor.mjs --check",

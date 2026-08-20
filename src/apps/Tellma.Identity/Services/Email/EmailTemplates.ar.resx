@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="SignInCodeSubject" xml:space="preserve">
+    <value>رمز تسجيل الدخول إلى {0}</value>
+  </data>
+  <data name="InvitationSubject" xml:space="preserve">
+    <value>تمت دعوتك إلى {0}</value>
+  </data>
+  <data name="PasswordResetSubject" xml:space="preserve">
+    <value>إعادة تعيين كلمة مرور {0}</value>
+  </data>
+  <data name="SignInCodePreheader" xml:space="preserve">
+    <value>تنتهي صلاحية رمز تسجيل الدخول خلال 10 دقائق.</value>
+  </data>
+  <data name="SignInCodeHeading" xml:space="preserve">
+    <value>رمز تسجيل الدخول</value>
+  </data>
+  <data name="SignInCodeIntro" xml:space="preserve">
+    <value>{gender, select, female{أدخلي} other{أدخل}} هذا الرمز لإكمال تسجيل الدخول إلى {0} باسم {1}.</value>
+  </data>
+  <data name="SignInCodeExpiry" xml:space="preserve">
+    <value>تنتهي صلاحية الرمز خلال 10 دقائق ويُستخدم مرة واحدة فقط.</value>
+  </data>
+  <data name="SignInCodeSecurity" xml:space="preserve">
+    <value>لن يطلب منك {0} هذا الرمز عبر الهاتف أو الدردشة أو البريد الإلكتروني. إذا لم {gender, select, female{تحاولي} other{تحاول}} تسجيل الدخول، يمكنك تجاهل هذه الرسالة.</value>
+  </data>
+  <data name="SignInCodeFooter" xml:space="preserve">
+    <value>أُرسلت هذه الرسالة من {0} لأنه تم طلب تسجيل الدخول إلى {1}.</value>
+  </data>
+  <data name="InvitationPreheader" xml:space="preserve">
+    <value>{gender, select, female{أعدّي} other{أعدّ}} حسابك في {0}.</value>
+  </data>
+  <data name="InvitationHeading" xml:space="preserve">
+    <value>تمت دعوتك إلى {0}</value>
+  </data>
+  <data name="InvitationIntro" xml:space="preserve">
+    <value>{gender, select, female{اقبلي} other{اقبل}} الدعوة لإعداد حسابك وتسجيل الدخول.</value>
+  </data>
+  <data name="InvitationButton" xml:space="preserve">
+    <value>قبول الدعوة</value>
+  </data>
+  <data name="InvitationValidity" xml:space="preserve">
+    <value>تنتهي صلاحية الدعوة خلال {0} أيام وتُستخدم مرة واحدة.</value>
+  </data>
+  <data name="InvitationSecurity" xml:space="preserve">
+    <value>إذا لم {gender, select, female{تكوني تتوقعين} other{تكن تتوقع}} هذه الدعوة، يمكنك تجاهل هذه الرسالة. لن يتم إنشاء أي حساب.</value>
+  </data>
+  <data name="InvitationFooter" xml:space="preserve">
+    <value>أُرسلت هذه الرسالة من {0}.</value>
+  </data>
+  <data name="PasswordResetPreheader" xml:space="preserve">
+    <value>{gender, select, female{اختاري} other{اختر}} كلمة مرور جديدة لحسابك في {0}.</value>
+  </data>
+  <data name="PasswordResetHeading" xml:space="preserve">
+    <value>إعادة تعيين كلمة المرور</value>
+  </data>
+  <data name="PasswordResetIntro" xml:space="preserve">
+    <value>{gender, select, female{استخدمي} other{استخدم}} الرابط أدناه لاختيار كلمة مرور جديدة لحسابك في {0}.</value>
+  </data>
+  <data name="PasswordResetButton" xml:space="preserve">
+    <value>إعادة تعيين كلمة المرور</value>
+  </data>
+  <data name="PasswordResetValidity" xml:space="preserve">
+    <value>تنتهي صلاحية الرابط خلال ساعة واحدة ويُستخدم مرة واحدة.</value>
+  </data>
+  <data name="PasswordResetSecurity" xml:space="preserve">
+    <value>إذا لم {gender, select, female{تطلبي} other{تطلب}} إعادة تعيين كلمة المرور، يمكنك تجاهل هذه الرسالة. لن تتغير كلمة المرور.</value>
+  </data>
+  <data name="PasswordResetFooter" xml:space="preserve">
+    <value>أُرسلت هذه الرسالة من {0}.</value>
+  </data>
+  <data name="FooterPrivacy" xml:space="preserve">
+    <value>الخصوصية</value>
+  </data>
+  <data name="FooterTerms" xml:space="preserve">
+    <value>الشروط</value>
+  </data>
+  <data name="ActionFallback" xml:space="preserve">
+    <value>إذا لم يعمل الزر، {gender, select, female{انسخي} other{انسخ}} هذا العنوان إلى المتصفح:</value>
+  </data>
+</root>
