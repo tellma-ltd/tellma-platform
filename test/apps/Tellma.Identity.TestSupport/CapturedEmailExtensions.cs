@@ -61,11 +61,12 @@ namespace Tellma.Identity.TestSupport
         ///     event-driven wait for that, in place of a sleep loop that has to guess an interval.
         ///     <para>
         ///         Waits for <em>any</em> mail to the address, so it returns at once if this
-        ///         recipient already has some. That suits one message per address, which is what
-        ///         every test does today — each gets its own sender. A test that sends twice to one
-        ///         address and wants the second message needs a baseline: capture
-        ///         <see cref="CapturingEmailSender.Captured" />'s count first and wait for it to
-        ///         grow, or <see cref="CapturingEmailSender.Clear" /> in between.
+        ///         recipient already has some. A test that sends twice to one address and wants the
+        ///         second message must not use this — it would be handed the first one, and a code
+        ///         or link already spent reads downstream as expired rather than as a stale read.
+        ///         Take a baseline with <see cref="CountFor" /> and wait with
+        ///         <see cref="WaitForCodeAfterAsync" />, or <see cref="CapturingEmailSender.Clear" />
+        ///         in between where the sender belongs to one test.
         ///     </para>
         /// </summary>
         /// <param name="sender">The capturing sender.</param>
@@ -93,6 +94,45 @@ namespace Tellma.Identity.TestSupport
             this CapturingEmailSender sender, string email, TimeSpan? timeout = null)
         {
             string body = await sender.WaitForBodyAsync(email, timeout);
+            return Extract(body, CodePattern())
+                ?? throw new InvalidOperationException($"The message to {email} carries no sign-in code: {body}");
+        }
+
+        /// <summary>
+        ///     How many messages have reached a recipient so far. The baseline a test takes before
+        ///     provoking another one, so the wait that follows can tell the new message from the one
+        ///     already sitting there.
+        /// </summary>
+        /// <param name="sender">The capturing sender.</param>
+        /// <param name="email">The recipient's address.</param>
+        /// <returns>The count; zero when nothing has been sent to that address.</returns>
+        public static int CountFor(this CapturingEmailSender sender, string email)
+        {
+            ArgumentNullException.ThrowIfNull(sender);
+
+            return sender.Captured.Count(captured => IsAddressedTo(captured, email));
+        }
+
+        /// <summary>
+        ///     Waits for a message beyond a baseline and returns the sign-in code in it — the form
+        ///     to use when the recipient already has mail, since the plain wait would return at once
+        ///     with the older one.
+        /// </summary>
+        /// <param name="sender">The capturing sender.</param>
+        /// <param name="email">The recipient's address.</param>
+        /// <param name="since">The count from <see cref="CountFor" />, taken before provoking the message.</param>
+        /// <param name="timeout">How long to wait; the default suits a local worker.</param>
+        /// <returns>The code from the first message to arrive past the baseline.</returns>
+        public static async Task<string> WaitForCodeAfterAsync(
+            this CapturingEmailSender sender, string email, int since, TimeSpan? timeout = null)
+        {
+            ArgumentNullException.ThrowIfNull(sender);
+
+            await sender.WaitForAsync(
+                captured => captured.Count(one => IsAddressedTo(one, email)) > since,
+                timeout ?? DefaultTimeout);
+
+            string body = sender.LatestFor(email)!.TextBody;
             return Extract(body, CodePattern())
                 ?? throw new InvalidOperationException($"The message to {email} carries no sign-in code: {body}");
         }

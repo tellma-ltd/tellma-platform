@@ -135,9 +135,15 @@ namespace Tellma.Identity.E2E
             await page.GotoAsync("/Identity/Account/Login?returnUrl=%2FIdentity%2FManage%2FPasskeys");
 
             await page.GetByLabel("Email").FillAsync(email);
+
+            // This address already holds the code that signed the passkey enrollment in, and the
+            // plain wait would hand that one straight back — already spent, and rejected on
+            // submission as though it had expired. The baseline is what makes the wait below about
+            // the message this click provokes rather than about the address having any mail at all.
+            int delivered = server.Emails.CountFor(email);
             await page.GetByRole(AriaRole.Button, new() { Name = "Email me a sign-in code" }).ClickAsync();
 
-            string code = await server.Emails.WaitForCodeAsync(email);
+            string code = await server.Emails.WaitForCodeAfterAsync(email, delivered);
             await page.GetByLabel("Code").FillAsync(code);
             await page.GetByRole(AriaRole.Button, new() { Name = "Verify" }).ClickAsync();
             await page.WaitForPathAsync("/Identity/Manage/Passkeys");
