@@ -680,7 +680,8 @@ public sealed class EntityDescriptor
     public IReadOnlyList<NavigationDescriptor> Navigations { get; }
 
     /// <summary>The hierarchy-node property (type <see cref="QueryexType.HierarchyId"/>) when
-    ///     the entity is hierarchical; enables <c>descendantOf</c> (§10.10). Null otherwise.</summary>
+    ///     the entity is hierarchical; enables <c>descendantOf</c> and <c>ancestorOf</c>
+    ///     (§10.10). Null otherwise.</summary>
     public PropertyDescriptor? TreeNode { get; }
 }
 
@@ -701,7 +702,7 @@ public sealed class PropertyDescriptor
     public bool IsNotNull { get; }
 
     /// <summary>True when the column is backed by a unique constraint or index. Must be
-    ///     truthful; <c>descendantOf</c> (§10.10) depends on it for correctness.</summary>
+    ///     truthful; the hierarchy predicates (§10.10) depend on it for correctness.</summary>
     public bool IsUnique { get; }
 
     /// <summary>The physical column type, structured — never free text. Consulted only to type
@@ -1342,11 +1343,14 @@ internal sealed record FunctionSignature(
 internal sealed record FunctionParameter(
     TypeSpec Type,                                // concrete type, OneOf(types), or Var(name, bound)
     bool Optional,
+    bool Rest,                                    // variadic tail: matches one or more further arguments
     ParameterConstraint Constraint);              // None | LiteralOnly | MemberOf(set)
 ```
 
 Type variables bind on first use within a signature; the bound `Ordered` admits the Ordered types
-(§7.1), `Any` admits all. `LiteralOnly` arguments are compile-time selectors: they choose an emit
+(§7.1), `Any` admits all. A `Rest` parameter must be a signature's last and matches one or more
+trailing arguments, each checked against its type and constraint — how `coalesce` and the
+hierarchy predicates (§10.10) take their variadic tails. `LiteralOnly` arguments are compile-time selectors: they choose an emit
 template and never reach the backend as data (QX3100 when not a literal; QX3101 when outside a
 `MemberOf` set). Registry-declared `AlwaysNotNull` obliges the emit template to be **total** —
 false (or a value) for absent operands — which the differential suite verifies per function
@@ -1563,30 +1567,47 @@ endsWith(s: String, suffix: String)          -> Bool
 ### 10.10 Hierarchy
 
 ```
-descendantOf(key: <path>, ancestorKey: Any) -> Bool
+descendantOf(key: <path>, k₁: Any, …, kₙ: Any) -> Bool      n ≥ 1
+ancestorOf(key: <path>, k₁: Any, …, kₙ: Any)   -> Bool      n ≥ 1
 ```
 
-True when the row's node in the hierarchy is at or below the node of the ancestor row identified
-by `ancestorKey`. Descendancy is reflexive. Constraints, checked at bind time:
+`descendantOf` is true when the row's node in the hierarchy is at or below the node of **any** of
+the rows identified by `k₁ … kₙ`; `ancestorOf` when it is at or above any of them. Both are
+reflexive: a row is its own descendant and its own ancestor. The keys are a `Rest` parameter
+(§10.1); constraints, checked at bind time:
 
 1. `key` must be a bare path (QX3300), and the entity it resolves through must expose a `TreeNode`
    (QX3301).
-2. The property named by `key` must be `IsUnique` on that entity, so the ancestor lookup
-   identifies at most one row (QX3302).
-3. `ancestorKey` must contain no path — literals, parameters, and context functions only
-   (QX3303) — and must unify with `key`'s type.
+2. The property named by `key` must be `IsUnique` on that entity, so each key lookup identifies
+   at most one row (QX3302).
+3. Each `kᵢ` must contain no path — literals, parameters, and context functions only (QX3303) —
+   and must unify with `key`'s type.
 
 ```
 descendantOf(Account.Concept, 'Assets')
+ancestorOf(Id, @k0, @k1, @k2)
 ```
 
-reads: the row's `Account` is at or below the account whose (unique) `Concept` is `'Assets'`.
+The first reads: the row's `Account` is at or below the account whose (unique) `Concept` is
+`'Assets'`. The second is the tree-loading shape — the rows that are ancestors of any of the
+keyed rows — which is how a filtered page is completed into a renderable tree: the host queries
+the page, then composes a second query with one key argument per page row and unions the two
+result sets client-side.
 
-When no ancestor is identified — `ancestorKey` is absent, or no row matches it — the result is
-**`false`**; there is no value of `ancestorKey` that makes the predicate universally true. The
-function is `Bool`/`NotNull`, so its emission is guarded to stay total: the hoisted ancestor
-lookup (§12.4) and the row's own node are both null-checked, and `not descendantOf(…)` is `true`
-in exactly the rows where the positive form is `false`.
+A key that identifies no row — `kᵢ` absent, or no row matches it — contributes nothing; with
+every key unmatched the result is **`false`**. There is no key value that makes either predicate
+universally true. Both functions are `Bool`/`NotNull`, so emission is guarded to stay total: each
+hoisted node lookup (§12.4) and the row's own node are null-checked, the per-key tests are
+disjoined, and `not descendantOf(…)` is `true` in exactly the rows where the positive form is
+`false`.
+
+*Emission and plans.* Lowering hoists one node-lookup variable per key; the predicate is the OR
+of the guarded per-key tests, and each key contributes one parameter, so n is bounded by
+`MaxParameters` (§15). In the `descendantOf` direction each disjunct stays sargable on an indexed
+node column (the backend converts a node-below-variable test into a range seek), so n keys cost
+n seeks. The `ancestorOf` direction evaluates as a residual predicate — acceptable because
+hierarchical entities are master-data-sized; should it ever matter, a semi-join emission is an
+emitter-internal upgrade that changes no semantics.
 
 ## 11. Modes
 
@@ -1718,8 +1739,8 @@ the class of bug golden files cannot catch until it ships.
 
 ### 12.4 Invariant hoisting
 
-Subexpressions with no dependency on the current row — the ancestor lookup of `descendantOf`,
-parameter-only arithmetic — are hoisted into variables declared in a prologue
+Subexpressions with no dependency on the current row — the node lookups of the hierarchy
+predicates (§10.10), parameter-only arithmetic — are hoisted into variables declared in a prologue
 (`DECLARE @qx0_v0 … = (SELECT …)`; naming per §13.1) and evaluated once per statement. Context functions need no
 hoisting; they are already single parameter slots (§10.6).
 
@@ -2198,10 +2219,10 @@ implementer's, with a README at the folder root and everything working on Window
 | QX3200 | Incompatible operand types |
 | QX3201 | Operand type not valid for this operator or position |
 | QX3202 | Expression has no determinable type; cast the null |
-| QX3300 | `descendantOf`: first argument must be a path |
-| QX3301 | `descendantOf`: entity is not hierarchical |
-| QX3302 | `descendantOf`: property is not unique |
-| QX3303 | `descendantOf`: second argument must not contain a path |
+| QX3300 | `descendantOf`/`ancestorOf`: first argument must be a path |
+| QX3301 | `descendantOf`/`ancestorOf`: entity is not hierarchical |
+| QX3302 | `descendantOf`/`ancestorOf`: property is not unique |
+| QX3303 | `descendantOf`/`ancestorOf`: key argument must not contain a path |
 | QX3400 | Parameter is used at conflicting types (inference, §6.4) |
 
 **Mode and usage**
@@ -2379,3 +2400,8 @@ The load-bearing decisions, where not already evident above:
     watching every stage react as the input changes; a minimal Kestrel host with one static page
     delivers that cross-platform with no build step, on an ephemeral port so parallel worktrees
     coexist (§19).
+26. **The hierarchy predicates come in both directions and take N keys** — `ancestorOf` is the
+    mirror of `descendantOf`, and both accept a variadic key list with any-of semantics, so
+    loading the ancestor closure of a filtered page is one leaf with one parameter per row
+    instead of a giant OR of leaves; unmatched keys contribute nothing, preserving totality, and
+    the `Rest` signature marker is machinery `coalesce` needed anyway (§10.1, §10.10).
