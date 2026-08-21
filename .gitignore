@@ -433,6 +433,7 @@ FodyWeavers.xsd
 *.msp
 
 .claude/
+.codex/
 temp/
 
 # Per-worktree local dev ports

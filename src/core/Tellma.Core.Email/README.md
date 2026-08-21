@@ -1,8 +1,10 @@
 # Tellma.Core.Email
 
 The email pipeline: everything between "business code composed a message" and "a connector put it on
-a wire". Every host adds it explicitly — it is not referenced by `Tellma.Core`, so a worker, the
-identity server, or a landing app composes email without dragging in the distribution machinery.
+a wire". It depends on no Tellma package but `Tellma.Core.Abstractions`, so a worker, the identity
+server, or a landing app references it and gets email without the distribution machinery. Every host
+adds it explicitly, distributions included: `Tellma.Core` does not reference it, so no composition
+acquires the pipeline — or the startup validation below — without asking for it.
 
 ```csharp
 services.AddTellmaEmail();                          // this package
