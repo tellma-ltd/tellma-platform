@@ -52,13 +52,13 @@ one implementation behind it.
   XML-documented, dependency-free.
 - Ship the composition surface security depends on: `FilterTree`, with its identity elements and
   degenerate-shape semantics pinned by tests.
-- Ship the authoring surface: `Validate` for binding without SQL, `Discover` for enumerating
-  parameters, paths, and functions — including parameter type inference — over input that need not
-  fully compile.
+- Ship the authoring surface: `Validate` for binding without SQL, `Discover` and `DiscoverQuery`
+  for enumerating parameters, paths, and functions — including parameter type inference, shared
+  across a query's clauses — over input that need not fully compile.
 - Ship the conformance corpus, golden SQL snapshots, the differential in-memory interpreter, and
   the property test suites that pin the semantics.
-- Ship a small command-line inspection tool under `eng/queryex-inspection/` with a built-in test
-  schema, for humans to explore the compiler by hand.
+- Ship a small inspection playground under `eng/queryex-inspection/` with a built-in test
+  schema, for humans to explore the compiler live (§19).
 
 **Non-goals (explicitly out of scope)**
 
@@ -89,7 +89,7 @@ one implementation behind it.
 | The engine | `src/core/Tellma.Core.Queryex/` | Published NuGet `Tellma.Core.Queryex`, namespace `Tellma.Core.Queryex`. References **no** package — no Tellma package, no third party. |
 | Tests | `test/core/Tellma.Core.Queryex.Tests/` | Offline, hermetic, cross-platform: corpus, golden snapshots, interpreter, property tests. |
 | Differential suite | `test/core/Tellma.Core.Queryex.IntegrationTests/` | Executes emitted SQL against the developer/CI SQL Server and compares with the interpreter (§18.3), following the repository's `*.IntegrationTests` convention for suites needing external resources. |
-| Inspection tool | `eng/queryex-inspection/` | Console project + README (§19). In the solution so CI keeps it compiling; never packed. |
+| Inspection tool | `eng/queryex-inspection/` | Self-hosted playground web app + README (§19). In the solution so CI keeps it compiling; never packed. |
 
 `Tellma.Core.Queryex` is a Core-layer library, but not one of the composed-only optional packages
 (`Tellma.Core.Email`, `Tellma.Core.Webhooks`, `Tellma.Core.Testing`): the CRUD stack and report
@@ -199,6 +199,10 @@ public sealed class QueryexEngine
     ///     functions — over input that need not fully bind.</summary>
     public DiscoveryResult Discover(string text, DiscoveryOptions options);
 
+    /// <summary>Reports what a whole query's clauses refer to, with parameter inference shared
+    ///     across clauses (§2.4) — the entry point for authoring stored definitions.</summary>
+    public DiscoveryResult DiscoverQuery(QueryDiscoverySpec spec, DiscoveryOptions options);
+
     /// <summary>Compiles a full query — the only entry point that produces SQL.</summary>
     public QueryexResult<CompiledQuery> CompileQuery(QuerySpec spec, QueryCompilationOptions options);
 }
@@ -299,7 +303,9 @@ public sealed record DiscoveryOptions
     /// <summary>The root entity, when a schema is supplied.</summary>
     public EntityDescriptor? Root { get; init; }
 
-    /// <summary>The intended mode, when known; enables mode diagnostics.</summary>
+    /// <summary>The intended mode, when known; enables mode diagnostics. Consulted by
+    ///     <see cref="QueryexEngine.Discover"/> only — <see cref="QueryexEngine.DiscoverQuery"/>
+    ///     derives each clause's mode itself.</summary>
     public QueryexMode? Mode { get; init; }
 
     /// <summary>The resource limits for this call site (§15).</summary>
@@ -401,6 +407,13 @@ public sealed record QueryCompilationOptions
 
     /// <summary>Whether execution will have a signed-in user; drives <c>me()</c> (§10.6).</summary>
     public bool HasUser { get; init; } = true;
+
+    /// <summary>The zero-based position of this query among the compiled queries the host will
+    ///     execute as one T-SQL command (batch fetching). Namespaces every engine-emitted
+    ///     parameter and variable name so compiled queries — and the host's own raw SQL —
+    ///     compose side by side without collisions (§13.1). Default 0 for a query executed
+    ///     alone.</summary>
+    public int BatchOrdinal { get; init; }
 
     /// <summary>The resource limits for this call site (§15).</summary>
     public QueryexLimits Limits { get; init; } = QueryexLimits.Default;
@@ -528,7 +541,7 @@ Requirements:
 - **Each leaf caches on its own text** (§16), so a criterion shared across requests is parsed and
   bound once.
 
-### 2.4 `Discover` and parameter inference
+### 2.4 `Discover`, `DiscoverQuery`, and parameter inference
 
 Authoring tools need to know what an expression *refers to* before, and independently of, whether
 it compiles. `Discover` succeeds on any input that lexes and parses: `@Name` is lexically
@@ -547,25 +560,68 @@ public sealed record DiscoveryResult(
     bool UsesAggregation,
     IReadOnlyList<QueryexDiagnostic> Diagnostics);
 
+/// <summary>A span within one of a compilation's input texts, named the way diagnostics are:
+///     <see cref="Location"/> is null for a single expression list, or a clause-and-item path
+///     such as "Select[2]" or "Filter.Or[1]".</summary>
+public sealed record QueryexTextSite(string? Location, QueryexSpan Span);
+
 /// <summary>One named parameter's uses across the input.</summary>
 /// <param name="Name">The parameter name, without the <c>@</c>.</param>
-/// <param name="Occurrences">Every occurrence's span.</param>
+/// <param name="Occurrences">Every occurrence's site.</param>
 /// <param name="InferredType">The solved type when inference found exactly one (§6.4); null when
 ///     unconstrained or conflicting, or when no schema was supplied.</param>
-/// <param name="Conflicts">When uses demand incompatible types: each demanded type with the span
+/// <param name="Conflicts">When uses demand incompatible types: each demanded type with the site
 ///     that demanded it. Empty otherwise.</param>
 public sealed record ParameterUse(
     string Name,
-    IReadOnlyList<QueryexSpan> Occurrences,
+    IReadOnlyList<QueryexTextSite> Occurrences,
     QueryexType? InferredType,
     IReadOnlyList<TypeConflict> Conflicts);
 
 /// <summary>One incompatible type demand on a parameter.</summary>
-public sealed record TypeConflict(QueryexType Type, QueryexSpan Span);
+public sealed record TypeConflict(QueryexType Type, QueryexTextSite Site);
 
 /// <summary>One resolved path use.</summary>
-public sealed record PathUse(IReadOnlyList<string> Segments, QueryexSpan Span);
+public sealed record PathUse(IReadOnlyList<string> Segments, QueryexTextSite Site);
 ```
+
+A stored definition's parameters are referenced across its clauses, and inference must see every
+use together. Per-clause discovery is not merely inconvenient, it is wrong in one case:
+variable-to-variable links. With `@a = @b` in the filter and `@a > PostingDate` in the ordering,
+`@b` is only datable *through* `@a` — a link that per-clause results discard, so no caller-side
+merge can recover it. `DiscoverQuery` therefore runs one shared inference context over all the
+clauses of a query under authoring:
+
+```csharp
+namespace Tellma.Core.Queryex;
+
+/// <summary>The clauses of a query under authoring — a lax mirror of <see cref="QuerySpec"/>
+///     for <see cref="QueryexEngine.DiscoverQuery"/>. Every clause is optional, so a
+///     half-written definition still discovers.</summary>
+public sealed record QueryDiscoverySpec
+{
+    /// <summary>The select list, when present.</summary>
+    public string? Select { get; init; }
+
+    /// <summary>True when the query under authoring is aggregate; fixes each clause's mode.</summary>
+    public bool Aggregate { get; init; }
+
+    /// <summary>The filter, when present.</summary>
+    public FilterTree? Filter { get; init; }
+
+    /// <summary>The aggregate filter, when present; caller error unless
+    ///     <see cref="Aggregate"/>.</summary>
+    public FilterTree? Having { get; init; }
+
+    /// <summary>The ordering list, when present.</summary>
+    public string? OrderBy { get; init; }
+}
+```
+
+Each clause binds in the mode `CompileQuery` would give it, and every occurrence, conflict, and
+path in the result carries its site. The designer flow: `DiscoverQuery` proposes declarations,
+the author confirms or overrides them, and the definition is stored with its declarations — from
+then on `Validate` checks each clause independently and inference plays no further part.
 
 Inference semantics are specified in §6.4. Inference is for authoring only: `Validate` and
 `CompileQuery` require every parameter declared (QX3007) — an expression must not acquire a type by
@@ -647,6 +703,11 @@ public sealed class PropertyDescriptor
     /// <summary>True when the column is backed by a unique constraint or index. Must be
     ///     truthful; <c>descendantOf</c> (§10.10) depends on it for correctness.</summary>
     public bool IsUnique { get; }
+
+    /// <summary>The physical column type, structured — never free text. Consulted only to type
+    ///     parameter slots whose values are compared against this column (§13.1); the language
+    ///     semantics never read it. Null applies the default parameter mapping.</summary>
+    public QueryexStoreType? StoreType { get; }
 }
 
 /// <summary>One navigation: a foreign key on this entity referencing the target's key.</summary>
@@ -663,6 +724,29 @@ public sealed class NavigationDescriptor
     ///     <see cref="PropertyDescriptor.IsNotNull"/> drives join kind (§12.2) and path nullity
     ///     (§6.2).</summary>
     public PropertyDescriptor ForeignKey { get; }
+}
+
+/// <summary>A SQL Server column type as a closed, structured set — a family plus its facets.
+///     Structured rather than textual so no host-supplied type text can reach emitted SQL.
+///     Carries static factory helpers (<c>QueryexStoreType.Int</c>,
+///     <c>QueryexStoreType.NVarChar(255)</c>, <c>QueryexStoreType.Decimal(19, 4)</c>, …).</summary>
+/// <param name="Family">The type family.</param>
+/// <param name="Size">Length for the character families (null = max), precision for
+///     <see cref="QueryexStoreFamily.Decimal"/>, fractional-second scale for the time families;
+///     null where the family has no such facet.</param>
+/// <param name="Scale">The scale, for <see cref="QueryexStoreFamily.Decimal"/> only.</param>
+public readonly record struct QueryexStoreType(
+    QueryexStoreFamily Family,
+    int? Size = null,
+    int? Scale = null);
+
+/// <summary>The closed set of SQL Server type families a column may declare.</summary>
+public enum QueryexStoreFamily
+{
+    Bit, TinyInt, SmallInt, Int, BigInt, Decimal, Float, Real,
+    Char, VarChar, NChar, NVarChar,
+    UniqueIdentifier, Date, DateTime, DateTime2, DateTimeOffset,
+    HierarchyId, Geography,
 }
 ```
 
@@ -688,6 +772,8 @@ Rules, enforced by `Build()` as caller errors:
   resolution is case-insensitive, so a case-only collision would be ambiguous).
 - Every entity has a `Key`; every navigation's foreign key unifies in type with its target's key;
   a `TreeNode` property has type `HierarchyId`.
+- A declared `StoreType` must belong to its property's Queryex type (`VarChar` under `String`,
+  `Int` under `Numeric`, …).
 - `Source` is non-empty and `Column` values are non-empty and unique per entity.
 
 **The injection boundary.** `Source` and `Column` are host-authored and are the only host-supplied
@@ -1634,7 +1720,7 @@ the class of bug golden files cannot catch until it ships.
 
 Subexpressions with no dependency on the current row — the ancestor lookup of `descendantOf`,
 parameter-only arithmetic — are hoisted into variables declared in a prologue
-(`DECLARE @V1 … = (SELECT …)`) and evaluated once per statement. Context functions need no
+(`DECLARE @qx0_v0 … = (SELECT …)`; naming per §13.1) and evaluated once per statement. Context functions need no
 hoisting; they are already single parameter slots (§10.6).
 
 ### 12.5 Position assignment
@@ -1656,15 +1742,15 @@ The same node emits differently depending only on position:
 |---|---|---|
 | `filter = IsPosted` | Predicate | `[T].[IsPosted] = 1` |
 | `select = IsPosted` | Value | `[T].[IsPosted]` |
-| `filter = Amount > 100` | Predicate | `[T].[Amount] > @p0` |
-| `select = Amount > 100` | Value | `CASE WHEN [T].[Amount] > @p0 THEN 1 ELSE 0 END` |
+| `filter = Amount > 100` | Predicate | `[T].[Amount] > @qx0_p0` |
+| `select = Amount > 100` | Value | `CASE WHEN [T].[Amount] > @qx0_p0 THEN 1 ELSE 0 END` |
 
 **The `if` rule.** `if` evaluates its branches in `Value` position regardless of its own position;
 a `Bool`-typed `if` in predicate position is emitted as its `CASE` compared against 1:
 
 ```
 filter = if(Amount > 0, IsPosted, false)
-  →  (CASE WHEN [T].[Amount] > @p0 THEN [T].[IsPosted] ELSE 0 END) = 1
+  →  (CASE WHEN [T].[Amount] > @qx0_p0 THEN [T].[IsPosted] ELSE 0 END) = 1
 ```
 
 The alternative expansion — `(c AND a) OR (NOT c AND b)` — would emit the condition twice,
@@ -1704,8 +1790,12 @@ public enum QueryexParameterOrigin
 /// <summary>One parameter of a compiled query. The host binds each slot before executing:
 ///     literals from <see cref="Value"/>, context slots from its clock/user/tenant, declared
 ///     slots from the values supplied for <see cref="DeclaredName"/>.</summary>
-/// <param name="Name">The parameter name as it appears in the SQL ("@p0", "@p1", …).</param>
-/// <param name="Type">The Queryex type; fixes the SQL parameter type per the table below.</param>
+/// <param name="Name">The parameter name as it appears in the SQL ("@qx0_p0", "@qx0_p1", …;
+///     see the naming rules below).</param>
+/// <param name="Type">The Queryex type.</param>
+/// <param name="StoreType">The SQL type to bind the parameter as: the store type of the column
+///     the value is compared against, or the default mapping for <paramref name="Type"/> when
+///     no column informs the slot (see below).</param>
 /// <param name="Origin">Where the value comes from.</param>
 /// <param name="Value">The value, for <see cref="QueryexParameterOrigin.Literal"/> slots.</param>
 /// <param name="DeclaredName">The declared parameter's name, for
@@ -1713,12 +1803,20 @@ public enum QueryexParameterOrigin
 public sealed record QueryexParameterSlot(
     string Name,
     QueryexType Type,
+    QueryexStoreType StoreType,
     QueryexParameterOrigin Origin,
     object? Value = null,
     string? DeclaredName = null);
 ```
 
-| `QueryexType` | SQL parameter type |
+**Slot store types.** A parameter compared against a column must bind as the column's own type,
+or the backend converts the *column* side of the comparison and the predicate stops being
+sargable — the classic case being an `nvarchar` parameter against a `varchar` column, which
+turns an index seek into a scan. A slot whose value flows into comparison or unification with a
+path therefore takes that column's declared `StoreType` (§3). The default mapping applies only
+to slots no column informs (literal against literal, computed positions):
+
+| `QueryexType` | Default SQL parameter type |
 |---|---|
 | `Bool` | `bit` |
 | `Numeric` | `decimal` with the value's own precision and scale |
@@ -1728,9 +1826,21 @@ public sealed record QueryexParameterSlot(
 | `DateTime` | `datetime2(7)` |
 | `DateTimeOffset` | `datetimeoffset(7)` |
 
-Slots are assigned in a deterministic order (clause order, pre-order within each clause);
-identical literal values of identical type share one slot. `Skip`/`Take` values bind through two
-further engine-authored slots when paging is present.
+Slots are assigned in a deterministic order (clause order, pre-order within each clause).
+Identical literal values sharing a store type share one slot; a declared parameter used against
+columns of different store types yields one slot per store type, each carrying the same
+`DeclaredName`, and the host binds them all from the one supplied value. `Skip`/`Take` values
+bind through two further engine-authored slots when paging is present.
+
+**Naming and batch composition.** Every engine-emitted name lives in a reserved namespace:
+parameters are `@qx{b}_p{n}` and hoisted variables (§12.4) are `@qx{b}_v{n}`, where `{b}` is
+`QueryCompilationOptions.BatchOrdinal` and `{n}` a deterministic sequence number. The host may
+therefore concatenate several compiled queries — and its own raw SQL — into one command and walk
+the result sets with `NextResult()`: distinct ordinals keep the engine's names disjoint, table
+aliases need no namespacing because they are statement-scoped, and raw SQL composed alongside
+compiled queries must avoid `@qx`-prefixed names — `@qx` is the platform's reserved parameter
+namespace. The ordinal is part of the compilation's identity: same spec, same ordinal,
+byte-identical SQL (§13.5).
 
 ### 13.2 Bool realisation
 
@@ -1770,7 +1880,7 @@ lowering and reach this table only in the two constant rows shown.
 `CompileQuery` lays the fragments out as:
 
 ```
-DECLARE @V1 …                                  -- hoisted invariants (§12.4)
+DECLARE @qx0_v0 …                              -- hoisted invariants (§12.4)
 
 SELECT   <select items, in source order>
 FROM     <root Source> AS [T]
@@ -1780,7 +1890,7 @@ WHERE    <filter>
 GROUP BY <grouping keys>                       -- iff Aggregate and at least one key derived
 HAVING   <aggregate filter>
 ORDER BY <ordering items, tiebreakers, direction>
-OFFSET @pS ROWS FETCH NEXT @pT ROWS ONLY       -- iff paging
+OFFSET <skip slot> ROWS FETCH NEXT <take slot> ROWS ONLY   -- iff paging
 ```
 
 Requirements:
@@ -1803,8 +1913,9 @@ Requirements:
 
 ### 13.5 Determinism
 
-Given the same query spec text, schema version, options, and engine version, emission produces
-byte-identical SQL with identically named parameters; only parameter *values* vary per request.
+Given the same query spec text, schema version, options (batch ordinal included), and engine
+version, emission produces byte-identical SQL with identically named parameters; only parameter
+*values* vary per request.
 Hash-ordered collections, culture-sensitive formatting, or unstable alias assignment anywhere in
 the pipeline are defects.
 
@@ -1956,10 +2067,14 @@ Fixture properties the corpus requires — each easy to omit and each load-beari
 - A `DateTimeOffset` column, so the zone rules of §10.3 are exercised rather than assumed; a
   `Guid` column; a nullable navigation chain in front of a non-nullable one, so the join-kind
   propagation of §12.2 is observable.
+- A `varchar` column beside the `nvarchar` ones, so store-type slot typing (§13.1) is visible in
+  the slot snapshots.
 - A non-unique property on a hierarchical entity, so QX3302 is reachable.
 
-`Discover` and inference get their own entries: solved, unconstrained, and conflicting parameters,
-and discovery over input that parses but does not bind. `FilterTree` composition gets the
+`Discover` and inference get their own entries: solved, unconstrained, and conflicting
+parameters; discovery over input that parses but does not bind; and cross-clause inference
+through `DiscoverQuery`, including a variable-to-variable link that only resolves across clauses
+(§2.4). `FilterTree` composition gets the
 security-critical degenerate shapes: `Or([])` denies, `And([])` permits, and a leaf whose own text
 contains a top-level `or` must not escape the conjunction above it.
 
@@ -1993,18 +2108,25 @@ values, and asserts the soundness obligation of §8.2: for every node the analys
 
 ## 19. The inspection tool — `eng/queryex-inspection/`
 
-A small console project (checked into the solution so CI keeps it compiling; `IsPackable` false;
-never shipped) that lets a human reviewer play with the compiler, following the precedent of
-`eng/identity-ui-inspection/`. It ships with a built-in fixture schema — several entities with
-navigations, a hierarchy, divergent logical/physical names, and every Queryex type — and lets the
-user type an expression or query and see each stage's view: tokens, syntax tree, bound tree with
-types and nullities, diagnostics with carets, and the emitted SQL with its parameter slots.
-Optionally, given a connection string to a developer SQL Server, it creates and seeds the fixture
-schema and executes compiled queries so results can be eyeballed against expectations.
+A small, self-hosted web playground (checked into the solution so CI keeps it compiling;
+`IsPackable` false; never shipped) that lets a human reviewer explore the compiler live,
+following the folder precedent of `eng/identity-ui-inspection/`. A minimal ASP.NET Core host
+serves a single static page — plain HTML and vanilla JavaScript, no build step and no Angular
+workspace involvement — with input fields mirroring `QuerySpec` (select, aggregate, filter,
+having, order by, paging) plus a single-expression mode, and a JSON endpoint that compiles on
+every keystroke. The page renders each stage's view as the user types: tokens, syntax tree,
+bound tree with types and nullities, diagnostics with carets, and the emitted SQL with its
+parameter slots.
 
-The details — command surface, output formats, seeding — are the implementer's, within the repo's
-rules: a README at the folder root, cross-platform, and nothing written next to itself (transient
-output goes to the gitignored `.tmp`).
+It ships with a built-in fixture schema — several entities with navigations, a hierarchy,
+divergent logical/physical names, and every Queryex type — and, optionally, given a connection
+string to a developer SQL Server, creates and seeds the fixture schema and executes compiled
+queries so results can be eyeballed against expectations.
+
+Two repo rules bind it: it binds an ephemeral port and prints/opens its URL, so parallel
+worktrees can run it simultaneously without mutating tracked files; and transient output goes to
+the gitignored `.tmp` directory. The rest — page layout, endpoint shape, seeding — is the
+implementer's, with a README at the folder root and everything working on Windows and Linux.
 
 ## 20. Definition of done
 
@@ -2015,8 +2137,9 @@ output goes to the gitignored `.tmp`).
   gates, wired into `Tellma.slnx`.
 - **Behavior**: the grammar and precedence of §5, the type and nullity systems of §7–§8, the
   semantics tables of §9, the full §10 function library (calendar code `'gc'`), the mode rules of
-  §11, lowering per §12 (join-kind propagation included), and emission per §13 (parameterization,
-  Bool realisation, null guards, assembly, tiebreakers, session-settings independence) — all
+  §11, lowering per §12 (join-kind propagation included), and emission per §13 (parameterization
+  with store-typed slots and batch-composable naming, Bool realisation, null guards, assembly,
+  tiebreakers, session-settings independence) — all
   implemented and pinned by the suites of §18: corpus, golden snapshots, differential
   interpreter, and property tests, green in CI.
 - **API discipline**: the public surface is exactly §1.4, §2, §3, and the supporting records —
@@ -2238,3 +2361,21 @@ The load-bearing decisions, where not already evident above:
 21. **A differential in-memory interpreter, no performance suite** — the interpreter is the
     defence for null semantics and nullity soundness; complexity obligations are design
     requirements exercised by deep-nesting corpus entries, not benchmarked in CI (§18).
+22. **Engine names live in a reserved `@qx{ordinal}_` namespace** — `BatchOrdinal` namespaces
+    every emitted parameter and variable per compiled query, so the CRUD stack can concatenate
+    compiled queries and its own raw SQL into one round trip (`NextResult()` batch fetching)
+    without collisions; raw SQL stays out of the `@qx` prefix, and determinism is untouched
+    because the ordinal is part of the compilation's identity (§13.1).
+23. **Cross-clause inference is engine-owned** — `DiscoverQuery` runs one inference context over
+    all of a query's clauses, because per-clause results discard variable-to-variable links
+    (`@a = @b` in the filter, `@a` dated in the ordering) that no caller-side merge can recover
+    (§2.4).
+24. **Parameter slots bind as the compared column's store type** — schema properties carry a
+    structured store-type facet consulted only for slot typing, because a mistyped parameter
+    (`nvarchar` against a `varchar` column) forces the column-side conversion and kills the
+    index seek; the facet is a closed enum plus sizes, so no host type text reaches SQL through
+    a new door (§3, §13.1).
+25. **The inspection tool is a live web playground, not a console** — a compiler is explored by
+    watching every stage react as the input changes; a minimal Kestrel host with one static page
+    delivers that cross-platform with no build step, on an ephemeral port so parallel worktrees
+    coexist (§19).
