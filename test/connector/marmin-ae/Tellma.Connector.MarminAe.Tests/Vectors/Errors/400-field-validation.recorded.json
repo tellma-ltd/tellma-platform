@@ -1,0 +1,1 @@
+{"errors":{"document_currency_code":"Document currency code must be a valid currency code","tax_currency_code":"Tax currency code is required for non AED documents","profile_execution_id":"Profile execution id must be 8 digits and only contain 0 or 1"}}

@@ -29,6 +29,7 @@
   </Folder>
   <Folder Name="/src/connector/">
     <Project Path="src/connector/acs-email/Tellma.Connector.AcsEmail.Adapter/Tellma.Connector.AcsEmail.Adapter.csproj" />
+    <Project Path="src/connector/marmin-ae/Tellma.Connector.MarminAe/Tellma.Connector.MarminAe.csproj" />
     <Project Path="src/connector/sendgrid/Tellma.Connector.SendGrid/Tellma.Connector.SendGrid.csproj" />
     <Project Path="src/connector/sendgrid/Tellma.Connector.SendGrid.Adapter/Tellma.Connector.SendGrid.Adapter.csproj" />
     <Project Path="src/connector/smtp/Tellma.Connector.Smtp.Adapter/Tellma.Connector.Smtp.Adapter.csproj" />
@@ -50,6 +51,8 @@
   <Folder Name="/test/connector/">
     <Project Path="test/connector/acs-email/Tellma.Connector.AcsEmail.Adapter.Tests/Tellma.Connector.AcsEmail.Adapter.Tests.csproj" />
     <Project Path="test/connector/acs-email/Tellma.Connector.AcsEmail.IntegrationTests/Tellma.Connector.AcsEmail.IntegrationTests.csproj" />
+    <Project Path="test/connector/marmin-ae/Tellma.Connector.MarminAe.Tests/Tellma.Connector.MarminAe.Tests.csproj" />
+    <Project Path="test/connector/marmin-ae/Tellma.Connector.MarminAe.IntegrationTests/Tellma.Connector.MarminAe.IntegrationTests.csproj" />
     <Project Path="test/connector/sendgrid/Tellma.Connector.SendGrid.Tests/Tellma.Connector.SendGrid.Tests.csproj" />
     <Project Path="test/connector/sendgrid/Tellma.Connector.SendGrid.Adapter.Tests/Tellma.Connector.SendGrid.Adapter.Tests.csproj" />
     <Project Path="test/connector/sendgrid/Tellma.Connector.SendGrid.IntegrationTests/Tellma.Connector.SendGrid.IntegrationTests.csproj" />

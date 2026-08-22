@@ -218,6 +218,8 @@ tellma-platform/
 │   ├── connector/                       # external-system integrations and adapters, one grouping folder per vendor
 │   │   ├── acs-email/
 │   │   │   └── Tellma.Connector.AcsEmail.Adapter/            # adapter-only: Azure.Communication.Email is a fit first-party client
+│   │   ├── marmin-ae/
+│   │   │   └── Tellma.Connector.MarminAe/                    # raw client library, because the vendor publishes no .NET SDK
 │   │   ├── sendgrid/
 │   │   │   ├── Tellma.Connector.SendGrid/                    # raw client library, because the official SDK is dormant
 │   │   │   └── Tellma.Connector.SendGrid.Adapter/            # adapter implementing upper-layer interfaces

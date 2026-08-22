@@ -64,6 +64,30 @@ namespace Tellma.Core.Testing.Tests.Diagnostics
             Assert.Equal(expected, LiveTestEnvironment.MaskMailbox(address));
         }
 
+        [Theory]
+        [InlineData("org_1234567890abcdef", 8, "org_1234… (20 characters)")]
+        [InlineData("MBP-LEUYV0IANC", 4, "MBP-… (14 characters)")]
+        [InlineData("short", 8, "short (5 characters)")]
+        [InlineData("", 8, "(not set)")]
+        [InlineData(null, 8, "(not set)")]
+        public void Masks_an_identifier_to_a_prefix_and_a_length(string? value, int prefixLength, string expected)
+        {
+            Assert.Equal(expected, LiveTestEnvironment.MaskIdentifier(value, prefixLength));
+        }
+
+        [Fact]
+        public void Keeps_the_tail_of_an_identifier_out_of_the_log()
+        {
+            const string identifier = "org_prefix_and_a_distinctive_tail";
+
+            string description = LiveTestEnvironment.MaskIdentifier(identifier);
+
+            // The prefix is what says which environment a run was pointed at; the tail is the part
+            // that would make the value usable, and a public repository publishes these logs.
+            Assert.StartsWith("org_pref", description, StringComparison.Ordinal);
+            Assert.DoesNotContain("distinctive_tail", description, StringComparison.Ordinal);
+        }
+
         [Fact]
         public void Describes_a_secret_without_disclosing_it()
         {

@@ -1,0 +1,13 @@
+{
+  "documentType": "CREDIT_NOTE",
+  "documentUuid": "bd63aefd-df82-430a-858c-ff77108584fe",
+  "lastUpdated": 1775193892692,
+  "toC3": null,
+  "toC5": {
+    "status": "A_STATUS_THIS_CLIENT_HAS_NEVER_SEEN",
+    "transmissionResponse": null
+  },
+  "validationResults": [
+    { "flag": "fatal", "reasonCode": "IBR-108-AE", "location": "/Invoice/cac:TaxTotal", "test": "false()", "text": "The tax breakdown does not reconcile" }
+  ]
+}

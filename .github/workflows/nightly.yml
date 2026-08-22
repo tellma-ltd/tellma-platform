@@ -1,6 +1,7 @@
 name: Nightly live connector suites
 
-# The live SendGrid and ACS suites talk to real third-party APIs, so they are never a PR gate: an
+# The live SendGrid, ACS and Marmin UAE suites talk to real third-party APIs, so they are never a
+# PR gate: an
 # external service on the merge path is a permanent flakiness tax, and fork PRs cannot read the
 # secrets anyway — they would only ever skip. A daily pulse plus the offline vectors detects API or
 # credential drift within a day.
@@ -89,10 +90,58 @@ jobs:
           dotnet test Tellma.slnx -c Release
           --filter "Live=true&FullyQualifiedName~AcsEmail"
 
+  marminae-live:
+    if: github.repository == 'tellma-ltd/tellma-platform'
+    runs-on: ubuntu-latest
+    # A separate environment from the email suites: an e-invoicing credential has no business being
+    # readable by a job that only needs to send mail.
+    environment: live-einvoicing-tests
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      # The suite gates itself on these variables being present, so a missing or expired secret
+      # would otherwise skip every test and report a green run.
+      - name: Require the Marmin UAE sandbox credentials
+        env:
+          TELLMA_MARMINAE_TEST_CLIENTID: ${{ vars.MARMINAE_TEST_CLIENTID }}
+          TELLMA_MARMINAE_TEST_CLIENTSECRET: ${{ secrets.MARMINAE_TEST_CLIENTSECRET }}
+          TELLMA_MARMINAE_TEST_PROFILEID: ${{ secrets.MARMINAE_TEST_PROFILEID }}
+        run: |
+          set -euo pipefail
+          : "${TELLMA_MARMINAE_TEST_CLIENTID:?MARMINAE_TEST_CLIENTID is not set on the live-einvoicing-tests environment}"
+          : "${TELLMA_MARMINAE_TEST_CLIENTSECRET:?MARMINAE_TEST_CLIENTSECRET is not set on the live-einvoicing-tests environment}"
+          : "${TELLMA_MARMINAE_TEST_PROFILEID:?MARMINAE_TEST_PROFILEID is not set on the live-einvoicing-tests environment}"
+      - name: Marmin UAE live suite (sandbox — no counterparty, no authority, no delete)
+        env:
+          TELLMA_MARMINAE_TEST_CLIENTID: ${{ vars.MARMINAE_TEST_CLIENTID }}
+          TELLMA_MARMINAE_TEST_CLIENTSECRET: ${{ secrets.MARMINAE_TEST_CLIENTSECRET }}
+          TELLMA_MARMINAE_TEST_PROFILEID: ${{ secrets.MARMINAE_TEST_PROFILEID }}
+          # Unset means the sandbox host the suite defaults to.
+          TELLMA_MARMINAE_TEST_BASEADDRESS: ${{ vars.MARMINAE_TEST_BASEADDRESS }}
+        # Solution-wide and filtered by trait, for the same reason the suites above are. The
+        # logger takes no file name: every project in the solution writes into this one directory,
+        # and a fixed name would have them overwrite each other's results.
+        run: >
+          dotnet test Tellma.slnx -c Release
+          --filter "Live=true&FullyQualifiedName~MarminAe"
+          --logger trx
+          --results-directory artifacts/marminae-live
+      # Every response body the run saw, named for the offline vector it would become. This artifact
+      # is how a hand-authored vector gets replaced by a capture, and how a failure is read at all.
+      - name: Upload the live transcript and response bodies
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: marminae-live-transcript
+          path: artifacts/marminae-live
+          if-no-files-found: warn
+
   # A nightly that fails silently is a nightly that does not exist.
   report-failure:
     if: ${{ always() && github.repository == 'tellma-ltd/tellma-platform' && contains(needs.*.result, 'failure') }}
-    needs: [sendgrid-live, acs-live]
+    needs: [sendgrid-live, acs-live, marminae-live]
     runs-on: ubuntu-latest
     permissions:
       issues: write
