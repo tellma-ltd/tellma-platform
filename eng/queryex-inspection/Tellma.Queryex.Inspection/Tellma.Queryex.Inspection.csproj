@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <Description>A self-hosted playground for the Queryex compiler: one static page that shows tokens, syntax tree, bound tree, diagnostics, plan, and emitted SQL as you type. A developer tool, never shipped.</Description>
+    <!-- eng/ has no Directory.Build.props, so the root one applies as written and would make this
+         packable. It is tooling; packing it would be meaningless. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Queryex\Tellma.Core.Queryex.csproj" />
+    <!-- The same fixture schema and stage-by-stage probe the conformance suites use. Sharing them
+         is the point: what a reviewer eyeballs here is the thing CI pins, and it costs no second
+         grant of the engine's internals. -->
+    <ProjectReference Include="..\..\..\test\shared\Tellma.Queryex.Testing\Tellma.Queryex.Testing.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Only the optional execution mode uses this; without a connection string the tool never
+         opens a connection. -->
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+  </ItemGroup>
+
+</Project>

@@ -33,6 +33,12 @@
     <!-- Pinned to the exact Roslyn version Microsoft.EntityFrameworkCore.Design depends on
          (its Workspaces dependency demands = 5.0.0). -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
+    <!-- SQL Server access without EF Core, for the Queryex differential suite and the
+         inspection tool's optional execution mode. Both compare or eyeball the engine's own
+         emitted SQL, so anything between them and the server would blur what is being tested.
+         Kept on the version Microsoft.EntityFrameworkCore.SqlServer resolves to, so the
+         solution has exactly one SqlClient. -->
+    <PackageVersion Include="Microsoft.Data.SqlClient" Version="6.1.1" />
     <!-- ICU MessageFormat: the only maintained .NET implementation of the syntax
          translators and every TMS already speak. Needed for grammatical gender, which
          composite formatting cannot express. -->
