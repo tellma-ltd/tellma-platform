@@ -95,6 +95,21 @@ namespace Tellma.Connector.MarminAe.Tests.Auth
         }
 
         [Fact]
+        public void Signs_a_message_longer_than_the_stack_buffer_identically_to_a_short_one()
+        {
+            // The message is buffered on its own branch, and no caller in this connector signs one
+            // long enough to take it — which is exactly why it is worth pinning here rather than
+            // discovering the day a longer message needs signing.
+            string longMessage = new('m', 4096);
+            string expected = Convert.ToBase64String(
+                System.Security.Cryptography.HMACSHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(ClientSecret),
+                    System.Text.Encoding.UTF8.GetBytes(longMessage)));
+
+            Assert.Equal(expected, MarminAeSignature.Compute(ClientSecret, longMessage));
+        }
+
+        [Fact]
         public async Task Sends_the_known_answer_signature_on_the_token_request()
         {
             using var harness = MarminAeHarness.Create(
