@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Globalization;
 using System.Net;
 using Tellma.Connector.MarminAe.Tests.Infrastructure;
 
@@ -27,7 +28,8 @@ namespace Tellma.Connector.MarminAe.Tests.Responses
         {
             MarminAeDocument invoice = await ReadAsync("Documents/sales-invoice", MarminAeDocumentKind.SalesInvoice);
 
-            Assert.Equal("2026-08-22", invoice.IssueDate?.ToString("yyyy-MM-dd", null));
+            Assert.Equal(
+                "2026-08-22", invoice.IssueDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
             Assert.Equal("380", invoice.InvoiceTypeCode);
             Assert.Equal("380", invoice.TypeCode);
             Assert.Equal("AED", invoice.DocumentCurrencyCode);
