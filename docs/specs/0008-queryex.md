@@ -243,8 +243,10 @@ public sealed record QueryexDiagnostic(
 
 Every diagnostic is an error; a severity axis is added when the first warning exists, not before.
 User input produces diagnostics, never exceptions. Exceptions are reserved for **caller errors** —
-malformed schemas, contradictory options, `Having` without `Aggregate` — which are host bugs, not
-user input, and throw `ArgumentException` at the API boundary.
+malformed schemas, contradictory options, `Having` without `Aggregate`, a null where an options
+record declares a default — which are host bugs, not user input, and throw `ArgumentException` or
+`ArgumentNullException` at the API boundary. An optional option with a default still refuses null,
+at the property that was set rather than wherever the value is first read.
 
 Options and engine options:
 
@@ -468,6 +470,12 @@ A count query needs no dedicated API: `Select = "count()"` with `Aggregate = tru
 keys is a grand total. Likewise `DISTINCT` needs no keyword: an aggregate query whose select list
 is aggregation-free returns the distinct combinations of its items by construction.
 
+One aggregate shape is degenerate and is left as written rather than diagnosed: a select list with
+neither an aggregation nor a grouping key, such as `Select = "1"`, reads no rows and groups by
+nothing, so it emits one row per underlying row rather than the single row a grand total would
+give. No diagnostic separates it from the grand total the same shape describes when an aggregation
+is present.
+
 ### 2.2 One emit context
 
 Clauses must not be compiled independently and concatenated. `CompileQuery` binds every clause
@@ -478,9 +486,14 @@ clause is written.
 
 Clauses bind in a fixed order — `Filter`, `Select`, `Having`, `OrderBy` — and the leaves of a
 `FilterTree` in pre-order, so alias and parameter assignment are deterministic (§13.5) regardless
-of which clauses are present or how a filter tree is shaped. Binding `Select` first among the
-group-level clauses also fixes the grouping keys — and with them the grouping-key fact that
-aggregate nullity reads (§8.3) — before `Having` or `OrderBy` needs them.
+of which clauses are present or how a filter tree is shaped.
+
+Whether the query has any grouping key is settled **before** any clause binds, from the parse of
+the select list alone: a key is an item that contains no aggregation and mentions at least one
+path, and both are syntactic facts — call-versus-path is decided by the parenthesis alone (§5.3)
+and which names are aggregations is a registry fact needing no schema. It has to be settled that
+early because the select list's own measures consume it (§8.3) and because it is a component of
+the bind cache key (§16), so it cannot be a result of binding the thing that depends on it.
 
 ### 2.3 Filter composition — `FilterTree`
 
@@ -519,6 +532,10 @@ public abstract class FilterTree
 
     /// <summary>The negation of <paramref name="operand"/>.</summary>
     public static FilterTree Not(FilterTree operand);
+
+    /// <summary>The deepest a composed tree may be. Exceeding it is a caller error, raised by
+    ///     the factory that would have crossed it.</summary>
+    public const int MaxDepth = 64;
 }
 ```
 
@@ -551,6 +568,9 @@ Requirements:
   tree shape.
 - **Each leaf caches on its own text** (§16), so a criterion shared across requests is parsed and
   bound once.
+- **The tree is depth-bounded** at construction rather than by a limits profile: the engine reads
+  it by recursion in several places, one of them the compilation cache key, which is consulted
+  before the caller's limits (§15) are looked at.
 
 ### 2.4 `Discover`, `DiscoverQuery`, and parameter inference
 
@@ -690,7 +710,7 @@ public sealed class EntityDescriptor
     /// <summary>The navigations (each a many-to-one reference to another entity).</summary>
     public IReadOnlyList<NavigationDescriptor> Navigations { get; }
 
-    /// <summary>The hierarchy-node property (type <see cref="QueryexType.HierarchyId"/>) when
+    /// <summary>The hierarchy-node property (type <see cref="QueryexType.QxHierarchyId"/>) when
     ///     the entity is hierarchical; enables <c>descendantOf</c> and <c>ancestorOf</c>
     ///     (§10.10). Null otherwise.</summary>
     public PropertyDescriptor? TreeNode { get; }
@@ -740,13 +760,13 @@ public sealed class NavigationDescriptor
 
 /// <summary>A SQL Server column type as a closed, structured set — a family plus its facets.
 ///     Structured rather than textual so no host-supplied type text can reach emitted SQL.
-///     Carries static factory helpers (<c>QueryexStoreType.Int</c>,
-///     <c>QueryexStoreType.NVarChar(255)</c>, <c>QueryexStoreType.Decimal(19, 4)</c>, …).</summary>
+///     Carries static factory helpers (<c>QueryexStoreType.QxInt</c>,
+///     <c>QueryexStoreType.QxNVarChar(255)</c>, <c>QueryexStoreType.QxDecimal(19, 4)</c>, …).</summary>
 /// <param name="Family">The type family.</param>
 /// <param name="Size">Length for the character families (null = max), precision for
-///     <see cref="QueryexStoreFamily.Decimal"/>, fractional-second scale for the time families;
+///     <see cref="QueryexStoreFamily.QxDecimal"/>, fractional-second scale for the time families;
 ///     null where the family has no such facet.</param>
-/// <param name="Scale">The scale, for <see cref="QueryexStoreFamily.Decimal"/> only.</param>
+/// <param name="Scale">The scale, for <see cref="QueryexStoreFamily.QxDecimal"/> only.</param>
 public readonly record struct QueryexStoreType(
     QueryexStoreFamily Family,
     int? Size = null,
@@ -755,10 +775,10 @@ public readonly record struct QueryexStoreType(
 /// <summary>The closed set of SQL Server type families a column may declare.</summary>
 public enum QueryexStoreFamily
 {
-    Bit, TinyInt, SmallInt, Int, BigInt, Decimal,
-    Char, VarChar, NChar, NVarChar,
-    UniqueIdentifier, Date, DateTime, DateTime2, DateTimeOffset,
-    HierarchyId, Geography,
+    QxBit, QxTinyInt, QxSmallInt, QxInt, QxBigInt, QxDecimal,
+    QxChar, QxVarChar, QxNChar, QxNVarChar,
+    QxUniqueIdentifier, QxDate, QxDateTime, QxDateTime2, QxDateTimeOffset,
+    QxHierarchyId, QxGeography,
 }
 ```
 
@@ -770,9 +790,9 @@ sketch:
 ```csharp
 var b = new QueryexSchemaBuilder(version: modelHash);
 var account = b.Entity("Account", source: "[gl].[Accounts]");
-account.Key("Id", QueryexType.Numeric, column: "Id");
-account.Property("Concept", QueryexType.String, column: "Concept", isNotNull: true, isUnique: true);
-account.Property("Node", QueryexType.HierarchyId, column: "Node", isNotNull: true);
+account.Key("Id", QueryexType.QxNumeric, column: "Id");
+account.Property("Concept", QueryexType.QxString, column: "Concept", isNotNull: true, isUnique: true);
+account.Property("Node", QueryexType.QxHierarchyId, column: "Node", isNotNull: true);
 account.TreeNode("Node");
 account.Navigation("Parent", target: "Account", foreignKey: "ParentId");
 QueryexSchema schema = b.Build();
@@ -790,7 +810,13 @@ Rules, enforced by `Build()` as caller errors:
   type `HierarchyId`.
 - A declared `StoreType` must belong to its property's Queryex type (`VarChar` under `String`,
   `Int` under `Numeric`, …).
-- `Source` is non-empty and `Column` values are non-empty and unique per entity.
+- `Source` is a non-empty sequence of bracket-quoted parts, each non-empty. A `]` inside a part is
+  written doubled, the backend's own escape, so `[a]]b]` is one part; a part that ends its own
+  quoting is malformed.
+- `Column` values are non-empty and unique per entity.
+- No logical name and no part of a `Source` may contain a character that emitted SQL or a
+  diagnostic could not carry: the control characters, and `U+2028`/`U+2029`, which are not control
+  characters by the platform's classification but are line breaks to every reader and diff.
 
 **The contract assumes enforced referential integrity.** A non-null foreign key is taken to
 reference an existing target row: join kind (§12.2) turns it into an `INNER` join, and join
@@ -1031,7 +1057,9 @@ truthfulness obligation like a column's (§8.2): the guards of §13.3 are omitte
 so a host that declares it and then binds an absent value forfeits the two-valued guarantees of
 §9. Parameters are opaque to constant folding: the engine must not assume anything about their
 values. A parameter is scalar; declaring one as `HierarchyId` or `Geography` is a caller error
-(neither has a parameter representation, §13.1).
+(neither has a parameter representation, §13.1), as is declaring a name no expression could refer
+to — a declaration nothing can reach is a host mistake worth hearing about at the boundary, and
+the name reaches the key a compilation is remembered under (§16).
 
 ### 6.4 Parameter type inference
 
@@ -1070,25 +1098,29 @@ public enum QueryexType
     /// <summary>true / false. The one boolean type: storable, selectable, comparable — whether
     ///     it is realised in SQL as a predicate or a value is an emission concern (§13.2),
     ///     invisible in the language.</summary>
-    Bool,
+    QxBool,
     /// <summary>Exact decimal, at most 38 significant digits.</summary>
-    Numeric,
+    QxNumeric,
     /// <summary>Unicode text.</summary>
-    String,
+    QxString,
     /// <summary>A globally unique identifier.</summary>
-    Guid,
+    QxGuid,
     /// <summary>A calendar date.</summary>
-    Date,
+    QxDate,
     /// <summary>A date and time without offset.</summary>
-    DateTime,
+    QxDateTime,
     /// <summary>An instant with a UTC offset.</summary>
-    DateTimeOffset,
+    QxDateTimeOffset,
     /// <summary>A node in a hierarchy.</summary>
-    HierarchyId,
+    QxHierarchyId,
     /// <summary>A spatial value.</summary>
-    Geography,
+    QxGeography,
 }
 ```
+
+Every member of an enum whose values name types carries a `Qx` prefix — `QueryexType` and
+`QueryexStoreFamily` (§3) — applied to every member of an affected enum, not only the colliding
+ones. Prose names the types without it: the type is `Numeric`, the member is `QxNumeric`.
 
 Two internal type properties gate operations:
 
@@ -1162,6 +1194,10 @@ DateTime        YYYY-MM-DD[T ]HH:MM[:SS[.fff]]
 DateTimeOffset  <DateTime>(Z | ±HH:MM)
 ```
 
+A `DateTimeOffset` literal must denote a moment inside the type's domain once its offset is
+applied, not merely a local part inside it: one minute east of the first midnight is a moment in
+the year before the first year, and it does not coerce.
+
 String-literal GUID parsing accepts the hyphenated form only (`8-4-4-4-12` hex digits,
 case-insensitive, no braces).
 
@@ -1180,19 +1216,31 @@ Unify(a, b):
 
 For *n* operands, fold left. The order is fixed, so the result is deterministic.
 
+An operand with no type of its own never seeds the result — `Synth(null)` is the internal `Null`
+type and `Synth` of an ill-formed operand is `Error` — and neither does a string literal, whose
+coercion (§7.3) runs in the checking direction only. The two `Check` fallbacks then carry the
+answer, which is what types `coalesce(null, 1)` and `coalesce('2024-01-01', PostingDate)`.
+
 ### 7.5 Overload resolution
 
 Every function is a registry entry (§10.1) with one or more signatures. Resolution:
 
 1. Select candidates by name (case-insensitive). None → QX3003 (unknown function).
 2. Filter by arity. None left → QX3004, reported distinctly from unknown name.
-3. For each candidate, `Check` each argument against the declared parameter type, binding type
-   variables as first encountered.
+3. For each candidate, `Check` each argument against the declared parameter type. A type variable
+   is bound by the routine of §7.4, not by first encounter.
 4. Score each surviving candidate: an argument satisfied without coercion scores 2, with coercion
    scores 1.
 5. The unique highest-scoring candidate wins. No survivor → QX3005, listing every candidate
    signature and the first failing argument position of each. A tie → QX3006 — and a registry
    that permits a tie is a registry defect, caught by a test over the registry itself.
+
+The search suppresses only diagnostics about how an argument *fitted* a candidate. A diagnostic
+about the argument itself — an operator applied to an operand whose type it does not accept — is
+true under every candidate and is reported regardless, because results are memoized (§7.2) and a
+complaint withheld during the search is withheld from every later reader of that node. A call
+whose argument did not bind does not bind either: no tree the pipeline treats as healthy may
+contain a node the binder gave up on.
 
 ## 8. Nullity analysis
 
@@ -1224,10 +1272,16 @@ correctness depends on it and because it is the subject of a dedicated soundness
 ### 8.2 The soundness obligation
 
 > If the analysis assigns `NotNull` to a node, that node must not be capable of evaluating to
-> absent for any database state permitted by the schema.
+> absent for any database state permitted by the schema. If it assigns `Null`, that node must not
+> be capable of evaluating to a present value.
 
-`Nullable` is always a safe answer; `NotNull` is a claim the emitter relies on to omit guards
-(§13.3). Where presence cannot be proven, the analysis returns `Nullable`.
+`Nullable` is always a safe answer; the two ends of the lattice are claims. `NotNull` is the claim
+the emitter relies on to omit guards (§13.3), so an over-strong one loses rows. `Null` is the claim
+folding relies on to erase a subexpression (§8.4), so an over-strong one erases something that
+would have mattered. Where neither can be proven, the analysis returns `Nullable`.
+
+The obligation is stated over the **bound tree**: it is what the analysis annotates and what the
+soundness sweep (§18.3) walks, and folding has already removed nodes from the plan.
 
 ### 8.3 Rules
 
@@ -1281,13 +1335,18 @@ performed.
 - `+` is arithmetic only; it is never string concatenation, so no operand is ever typed
   speculatively. `%` is the remainder.
 - `+ - * %` follow the backend's exact-decimal result rules over the operand types. **`/` and
-  `avg` guarantee at least six fractional digits**: the emitter widens operands so that integer
-  division never truncates and `avg` over integers is not an integer (§13.6). Beyond that
-  guarantee, result scale follows the backend's decimal rules.
+  `avg` guarantee at least six fractional digits.** The backend already delivers that whenever a
+  decimal operand is involved, so the emitter widens in exactly the case it does not: `/` when
+  **both** operands are of an integer family, and `avg` when its argument is. Widening is confined
+  there because an integer operand has no scale to round, while widening a high-scale one would.
+  Beyond the guarantee, result scale follows the backend's decimal rules (§13.6).
 - Division by zero is an execution-time error, not a compile error.
 - **Nullity is `Union`**: if either operand is absent the result is absent — including `||`, which
   propagates absence rather than treating it as an empty string. Use `coalesce(s, '')` for the
   other behaviour.
+- **`||` never truncates.** Joining two operands of the backend's ordinary string width yields
+  that same width, silently dropping the tail; where the declared sizes make that reachable the
+  emitter promotes one operand to the unbounded form, so the result grows instead.
 
 ### 9.2 Comparison
 
@@ -1318,10 +1377,12 @@ Consequences to document for users:
 
 `Bool` operands compare like any other type: `IsPosted = IsApproved` is well-typed. String
 comparison follows the column's backend collation — case and accent sensitivity included — and
-the backend's padding rule: trailing spaces are insignificant to `=` and the ordering comparisons
-(`'a'` equals `'a '`), while the functions of §10.9 count and match them. The engine neither
-normalises nor overrides; the reference interpreter implements exactly these rules under the
-fixture's declared collation (§18.3).
+the backend's padding rule: trailing spaces are insignificant to `=` and the ordering comparisons,
+so `'a'` equals `'a '`. The functions of §10.9 do not pad: `contains`, `startsWith`, and
+`endsWith` treat a trailing space as an ordinary character to be matched, and `length` reports the
+backend's own count, which excludes trailing spaces. The engine neither normalises nor overrides;
+the reference interpreter implements exactly these rules under the fixture's declared collation
+(§18.3).
 
 ### 9.3 `is null` / `is not null`
 
@@ -1380,18 +1441,34 @@ internal sealed record FunctionParameter(
     TypeSpec Type,                                // concrete type, OneOf(types), or Var(name, bound)
     bool Optional,
     bool Rest,                                    // variadic tail: matches one or more further arguments
-    ParameterConstraint Constraint);              // None | LiteralOnly | MemberOf(set)
+    ParameterConstraint Constraint);
+
+// None | LiteralOnly | MemberOf(set) | TreeNodeKeyPath | PathFree, each carrying whether the
+// argument is Consumed — read at compile time and not emitted.
+internal sealed record ParameterConstraint(
+    ParameterConstraintKind Kind,
+    bool Consumed = false,
+    IReadOnlySet<string>? Values = null);
 ```
+
+The set is closed and every constraint the library declares is one of its members. `TreeNodeKeyPath`
+and `PathFree` are what §10.10 needs; a constraint the set could not express would have to live in
+a binder code path, which principle 6 forbids.
 
 Type variables bind on first use within a signature; the bound `Ordered` admits the Ordered types
 (§7.1), `Any` admits all. A `Rest` parameter must be a signature's last and matches one or more
 trailing arguments, each checked against its type and constraint — how `coalesce` and the
-hierarchy predicates (§10.10) take their variadic tails. `LiteralOnly` arguments are consumed whole at
-compile time — selecting an emit template, or resolving a compile-time mapping such as `local`'s
-zone lookup (§10.3) — and the author's text never reaches the backend (QX3100 when not a literal;
-QX3101 when the value is not accepted in the position). Registry-declared `AlwaysNotNull` obliges the emit template to be **total** —
-false (or a value) for absent operands — which the differential suite verifies per function
-(§18.3).
+hierarchy predicates (§10.10) take their variadic tails.
+
+A `LiteralOnly` argument must be written as a literal (QX3100), and its value must be one the
+position accepts (QX3101). Whether it is then **consumed** is a separate flag, because the two
+uses differ: a *consumed* argument — a calendar code, a cast target, a zone id — is read at
+compile time to choose an emit template or resolve a mapping, and the author's text never reaches
+the backend at all; an argument that is merely statically known — `round`'s `digits` — still has to
+be emitted, and travels as an ordinary literal-origin parameter slot. Neither is interpolated.
+
+Registry-declared `AlwaysNotNull` obliges the emit template to be **total** — false (or a value)
+for absent operands — which the differential suite verifies per function (§18.3).
 
 ### 10.2 Aggregations
 
@@ -1410,6 +1487,19 @@ max(x: T: Ordered [, c: Bool])  -> T
 - Aggregations may not nest at any depth (QX4003, on the inner call's span).
 - Aggregations are permitted only where the mode's grouping axis is `Group` (QX4002).
 - Nullity per §8.3.
+
+Three emission obligations follow from the backend rather than from the language, and each exists
+to stop a well-typed expression producing a backend error:
+
+- **`count` counts wide.** The backend's plain row count returns a 32-bit integer and errors past
+  its range; the emitter uses the 64-bit form, the same reasoning §10.5 applies to date
+  differences.
+- **`sum` widens an integer argument** before summing. Summing a 32-bit column overflows at the
+  32-bit boundary where the widened form returns the right answer, and `Numeric` promises the
+  right answer.
+- **`min`/`max` over `Bool` round-trip through a one-byte integer.** §7.1 makes `Bool` Ordered, so
+  `min(IsPosted)` is well-typed, but the backend refuses its bit type in an ordering aggregate.
+  This is emission only: nothing in the language changes.
 
 ### 10.3 Date and time — the instant/calendar split
 
@@ -1449,10 +1539,13 @@ diffHours(PostedAt, now())  →  fine: instant operation, no zone needed
 Type aliases used below:
 
 ```
-Instant   = OneOf(Date, DateTime, DateTimeOffset)
+Instant   = a type variable bound over Date, DateTime, DateTimeOffset
 Cal       = OneOf(Date, DateTime)     // zone-resolved
 TimeOfDay = DateTime                  // has a time component and a zone
 ```
+
+`Instant` is a variable, so a signature using it twice binds both occurrences to one type (§10.5);
+`Cal` and `TimeOfDay` constrain each argument independently.
 
 *Rationale.* This turns a data-dependent wrong answer — one that varies row by row with the stored
 offset and is nearly invisible in a report — into a compile error with one obvious fix.
@@ -1478,9 +1571,14 @@ startOfDay(d: Cal)            -> Date
 addYears(d: Cal, n: Numeric [, cal])   -> Cal    // variable-length: calendar-aware
 addMonths(d: Cal, n: Numeric [, cal])  -> Cal    // clamps to the target month's last valid day
 
-diffYears(d1: Cal, d2: Cal [, cal])   -> Numeric   whole calendar years,  d2 − d1
-diffMonths(d1: Cal, d2: Cal [, cal])  -> Numeric   whole calendar months, d2 − d1
+diffYears(d1: Cal, d2: Cal [, cal])   -> Numeric   completed calendar years,  d2 − d1
+diffMonths(d1: Cal, d2: Cal [, cal])  -> Numeric   completed calendar months, d2 − d1
 ```
+
+The two `diff` functions count **completed** units, not boundary crossings: `diffYears` of
+`'2024-12-31'` and `'2025-01-01'` is 0, because a day is not a year. Boundary counting is the
+backend's own default and is the other defensible reading, which is why the choice is pinned here
+and by a corpus row rather than left to the emit template.
 
 `cal` is `String`, `LiteralOnly`, `MemberOf(CalendarCodes)` — a compile-time selector that chooses
 an emit template. **This version implements `'gc'` (Gregorian, the default) only**; `'uq'`
@@ -1514,9 +1612,16 @@ diffMinutes(d1: Instant, d2: Instant)  -> Numeric   fractional
 diffSeconds(d1: Instant, d2: Instant)  -> Numeric   whole seconds
 ```
 
-The date is the first argument in every case; `n` may be negative; the return type equals the
-first argument's type. `addMonths`/`addYears` on a `DateTimeOffset` is QX3103 — a variable-length
-unit is calendar-dependent — while `addDays(PostedAt, 1)` is fine.
+The date is the first argument in every case; `n` may be negative, and a fractional `n` truncates
+toward zero rather than rounding. `addMonths`/`addYears` on a `DateTimeOffset` is QX3103 — a
+variable-length unit is calendar-dependent — while `addDays(PostedAt, 1)` is fine.
+
+`Instant` is a **type variable** over the three date types, not an alias admitting each
+independently: the two operands of a `diff` share one binding, so `diffDays(PostingDate, now())`
+is QX3200 rather than a silent computation. Mixing is exactly what §7.3 refuses between the date
+types and §10.3 refuses between the calendar and the instant, and it is the same hazard in a
+worse place — the backend would read the `Date` as UTC midnight and return a number that is wrong
+by the local offset, row by row, with nothing to see.
 
 The `diff` functions measure **elapsed time**, not calendar distance: each is computed in the next
 finer unit and divided, so `diffDays` has hour resolution. The emitter counts in the backend's
@@ -1572,6 +1677,15 @@ cast(x: Any, type: String) -> <the named type>
 | DateTime | ✗ | ✓ | ✗ | ✗ | ✓ | — | ✗ |
 | DateTimeOffset | ✗ | ✓ | ✗ | ✗ | ✓ | ✓ | — |
 
+The diagonal — `—` above — is the identity conversion. It is legal and emits its argument
+unchanged: it costs nothing, and `cast(null, 'numeric')` needs the diagonal to exist in order to
+give a bare-`Null` item a type at all.
+
+`cast(x, 'numeric')` from `String` targets `decimal(38, 6)` — the scale that matches the six-digit
+guarantee of §9.1, at the widest precision the domain allows. The target is fixed here because it
+is observable: a narrower scale would round, and a wider one would refuse values the domain
+admits.
+
 The `null` literal casts to every target in the set, `'bool'` included — the idiom that gives a
 bare-`Null` item a column type (§7.1) — with result nullity `Null`. A conversion marked ✗ is
 QX3102. A conversion marked ✓ that fails at run time
@@ -1608,9 +1722,8 @@ endsWith(s: String, suffix: String)          -> Bool
 - `substring` is 1-based; `len` omitted means "to the end". Edge arguments follow the backend and
   are pinned by differential entries: `substring` clips its window at position 1 rather than
   erroring on a smaller start; a negative length in `substring`, `left`, or `right` is an
-  execution-time error like division by zero (§9.1); `round` rounds halves away from zero;
-  `length` counts characters excluding trailing spaces — the backend's rule, normative here
-  (§9.2).
+  execution-time error like division by zero (§9.1); `round` rounds halves away from zero. Trailing
+  spaces follow §9.2: `length` excludes them, the three predicates match them.
 - The three `Bool`-returning functions are **total**: absent argument ⇒ `false`.
 - Their second argument is matched **literally** — `contains(Name, '100%')` matches the characters
   `100%`. The emitter must realise this with a mechanism that has no pattern metacharacters at all
@@ -1786,8 +1899,14 @@ each trie node becomes one join.
   parent join is `INNER`** (the root counts as `INNER`); otherwise `LEFT`. The propagation clause
   matters: behind a `LEFT` join, even a non-null foreign key may have no row — an `INNER` join
   there would silently drop rows whose optional ancestor is absent.
-- Joins no surviving node references — because a subtree folded to a constant — are pruned.
-- Exceeding `MaxJoins` is QX5006, not a truncation.
+- **Pruning is by reachability from what survived**, computed once the clauses are lowered, and it
+  removes joins, value bindings, hoisted variables, and parameter slots alike. Reachability rather
+  than a mark made while lowering, because a subexpression has already claimed its joins and slots
+  by the time it folds to a constant, and a join nothing reads is not merely untidy: on a mandatory
+  navigation it is an `INNER` join that drops every row whose target row is missing.
+- **`MaxJoins` counts what survives** (QX5006, never a truncation). Counting before pruning would
+  refuse a query over joins that were never emitted — here, an access-control criterion granting
+  everything would cost a reader the query they were entitled to.
 
 ### 12.3 Value bindings
 
@@ -1797,9 +1916,19 @@ each trie node becomes one join.
 Null-guarded comparison (§13.3) naturally wants its operands twice or more. Lowering therefore
 hoists any non-atomic operand of a guarded construct into a **value binding**, which the emitter
 realises as a single-row lateral join — `CROSS APPLY (VALUES (…)) AS [B1](v)` — and references by
-alias. One exception: inside aggregate arguments a lateral binding is not expressible, and the
-backend optimizer recognises identical aggregate expressions and computes them once; textual
-repetition of an identical aggregate expression is permitted there, and only there.
+alias.
+
+A lateral join runs at **row** grain, and that, not aggregation, is what bounds where a binding may
+be used. Row-grain operands take bindings: everywhere in an ungrouped query, and in a grouped one
+inside an aggregate's arguments and in the items that become grouping keys. A **group**-grain
+operand — a comparison between aggregates in `HAVING`, or one in a grouped select item — cannot
+reference a binding at all, because the value it needs does not exist per row. Those use
+single-emission forms instead: `EXISTS (SELECT l INTERSECT SELECT r)` reproduces the totality of
+§9.2 for `=` and `!=` while mentioning each operand once, and a `CASE` compared against 1 does the
+same for the ordering comparisons.
+
+Every position therefore either takes a binding or has a single-emission form; the rule at the top
+of this section has no exceptions.
 
 *Rationale.* Repetition is not a style problem: re-evaluating a non-deterministic-cost
 subexpression multiplies its cost, and keeping guards correct across divergent copies is exactly
@@ -1911,18 +2040,28 @@ the family: size, precision, and scale always come from the default mapping belo
 the column, because the data provider silently truncates a string to a slot's declared size and
 rounds a decimal to its declared scale — an adopted facet would compare against a mangled value,
 while a parameter wider than its column costs nothing, since the backend converts the parameter
-side only. Family adoption is itself bounded by losslessness: a `Char`/`VarChar`-family slot
-binds `varchar(8000)` (`varchar(max)` beyond) only when the value survives the column's code
-page — otherwise the host binds the `String` default and accepts the scan — and the integer and
-`DateTime` families are never adopted at all, since binding `1.5` as `int` or a precise instant
-as `datetime` would round the probe value, and the backend keeps numeric- and date-family
-comparisons seekable across widths. The default mapping applies as written to slots no column
-informs (literal against literal, computed positions):
+side only.
+
+Adoption is bounded by losslessness, and losslessness has to be **decidable at compile time**. The
+store type names a family, not a code page, so whether an arbitrary value survives a `Char`/
+`VarChar` column's collation is not a question the engine can answer. Adoption therefore applies
+only where it can: to a **literal-origin** slot whose value is entirely ASCII, since every code
+page the backend supports for those collations agrees with ASCII, so the round trip is lossless
+without knowing which one it is. A declared or context slot has no compile-time value to test and
+never adopts; it binds the `String` default and accepts the scan. Adoption always takes the
+variable-width counterpart of the family, never the fixed-width one, which would pad the probe.
+
+The integer and `DateTime` families are never adopted at all: binding `1.5` as `int` or a precise
+instant as `datetime` would round the probe value, and the backend keeps numeric- and date-family
+comparisons seekable across widths anyway.
+
+The default mapping applies as written to slots no column informs (literal against literal,
+computed positions):
 
 | `QueryexType` | Default SQL parameter type |
 |---|---|
 | `Bool` | `bit` |
-| `Numeric` | `decimal` with the value's own precision and scale |
+| `Numeric` | `decimal` with the value's own precision and scale; with **no** precision or scale where there is no compile-time value, letting the provider derive them from what the host binds — the only choice that cannot round the caller's value |
 | `String` | `nvarchar(4000)`; `nvarchar(max)` beyond 4000 characters |
 | `Guid` | `uniqueidentifier` |
 | `Date` | `date` |
@@ -1986,10 +2125,14 @@ never match an absent element, either of which would break the totality of §9.4
 |---|---|
 | `v` NotNull, every `eᵢ` NotNull | `v IN (e₁, …, eₙ)` |
 | `v` Nullable, every `eᵢ` NotNull | `v IS NOT NULL AND v IN (e₁, …, eₙ)` |
-| any `eᵢ` Nullable or Null | the disjunction of the `=` forms above, one per element |
+| `v` Null | the disjunction of `eᵢ IS NULL` |
+| some `eᵢ` not NotNull | the `IN` of the NotNull elements, disjoined with one `=` form per remaining element |
 
-The first two rows — the overwhelmingly common ones, since elements are typically literals and
-declared parameters — still reach the backend as the single, seekable `IN` that §9.4 promises.
+The elements are **partitioned** rather than abandoned wholesale. One nullable element among
+literals would otherwise turn the whole test into a chain of comparisons and cost the seek that
+§9.4 exists to deliver, so `x in (1, 2, @maybeNull)` keeps `1, 2` in a single `IN` and adds one
+guarded disjunct for the parameter. A `Null`-nullity element contributes `v IS NULL`, since absence
+matches absence and nothing else.
 
 ### 13.4 Statement assembly
 
@@ -2013,6 +2156,15 @@ Requirements:
 
 - An aggregate query with no grouping keys is a grand total and emits no `GROUP BY` — precisely
   the case that makes its aggregates `Nullable` (§8.3).
+- **A grouping key is lowered without folding.** Folding is an optimization everywhere else, but a
+  grouping expression that folded to a constant reads no column, which the backend refuses
+  outright — and dropping the key instead would turn a query over no rows from zero rows into one,
+  falsifying the very aggregate nullity the grouping was what established (§8.3). Keys therefore
+  emit in the general form, which always mentions what it reads, and the select item and the
+  grouping entry are the same expression because the backend requires them to be.
+- **An ordering term that reads nothing is dropped.** A term whose lowered form contains no column
+  and no aggregation is the same for every row, so it orders nothing; written out it would be a
+  bare parameter or a constant, both of which the backend refuses in an ordering position.
 - **An ordering term must not alter the grouping** (QX4005). In `Group` grouping, every `ORDER BY`
   term must be a measure or structurally equal (§11.3) to one of the select list's grouping keys.
   The keys are derived from the select list alone; if the ordering could contribute keys, changing
@@ -2032,6 +2184,13 @@ Requirements:
   incidental: sort order is a total order even where comparison (§9.2) is not, and paging depends
   on it being stable.
 
+**Result columns carry the Queryex type, not a SQL type.** One Queryex type reaches the host in
+several backend types — `year(x)` is a 32-bit integer, `count()` a 64-bit one, `sum(Amount)` a
+decimal; a `Bool` item is a bit or an integer by shape — and forcing a uniform conversion to make
+them agree would round or overflow the very values the language promises exactly.
+`CompiledQuery.Columns` therefore reports `QueryexType`, and a host reads the column tolerantly
+within that type.
+
 ### 13.5 Determinism
 
 Given the same query spec text, schema version, options (batch ordinal included), and engine
@@ -2043,11 +2202,21 @@ the pipeline are defects.
 ### 13.6 Session-settings independence
 
 Emitted SQL must not change meaning with session state: no bare `DATEPART(WEEKDAY, …)` (which
-reads `SET DATEFIRST`), no `CONVERT` styles or date-string literals that read `SET LANGUAGE`/
-`SET DATEFORMAT` (dates travel as typed parameters, §13.1), no reliance on session collation.
-`weekday` and `startOfWeek` emit `DATEFIRST`-independent formulas, and `week` counts ISO weeks,
-which no session setting moves; `/` and `avg` emit the operand widening that delivers the ≥ 6
-fractional digits of §9.1. The golden corpus (§18.2) pins each of these shapes.
+reads `SET DATEFIRST`), no reliance on session collation, and no conversion whose reading depends
+on `SET LANGUAGE`/`SET DATEFORMAT` — which means the month-name family and the style-less
+conversions, not conversion styles as such. The explicitly language-neutral styles are the tool
+that makes a conversion safe rather than the thing to avoid, and the emitter uses them; dates
+otherwise travel as typed parameters (§13.1). `weekday` and `startOfWeek` emit
+`DATEFIRST`-independent formulas, and `week` counts ISO weeks, which no session setting moves;
+`/` and `avg` emit the operand widening that delivers the ≥ 6 fractional digits of §9.1. The
+golden corpus (§18.2) pins each of these shapes.
+
+Four settings are outside what emission can defend against, because they change the meaning of
+constructs the engine has no alternative to. `CONCAT_NULL_YIELDS_NULL`, `ANSI_WARNINGS`,
+`ARITHABORT`, and `NUMERIC_ROUNDABORT` must each be left at the value the backend's own defaults
+give them; a host that changes one breaks the guarantees of §9 for every query, not only for
+Queryex's. This is a host obligation, stated here because it belongs with the other things that
+would silently change an answer.
 
 ## 14. Diagnostics
 
@@ -2061,7 +2230,10 @@ fractional digits of §9.1. The golden corpus (§18.2) pins each of these shapes
 - Compilation reports as many independent diagnostics as the input allows — per list item, per
   filter-tree leaf, per argument position — rather than stopping at the first.
 - Every code in Appendix A is reachable by at least one conformance-corpus entry asserting its
-  code and span (§18.1).
+  code, its span, and the arguments its message needs. A code alone says something is wrong
+  somewhere; the span and the arguments are what a host builds a usable report from.
+- The code catalogue is internal to the engine, so Appendix A is the contract a host's message
+  catalogue is written against: hosts key on the literal codes.
 
 ## 15. Limits and safety
 
@@ -2076,9 +2248,24 @@ bindings keep guard operands atomic and SQL therefore grows linearly with typed-
 | Token count | 4 096 | QX5002 |
 | Syntax depth | 64 | QX5003 |
 | Typed node count (per query) | 4 096 | QX5004 |
-| List items | 128 | QX5005 |
-| Joins (per query) | 32 | QX5006 |
-| Parameter slots (per query) | 512 | QX5007 |
+| List items (per list) | 128 | QX5005 |
+| Joins (per query, after pruning) | 32 | QX5006 |
+| Parameter slots (per query, after pruning) | 512 | QX5007 |
+
+Three of these say something more specific than their names suggest, and the specificity is what
+makes them work:
+
+- **Syntax depth bounds the tree, not the descent that built it.** A run of one operator at one
+  precedence is consumed by a loop that re-wraps what it has so far, so a chain of a thousand terms
+  is one level of recursion and a thousand levels of tree. Every later pass — binding, nullity,
+  lowering, structural comparison, emission — walks that tree recursively, so the tree's own height
+  is the quantity that has to be bounded, and a run nested inside groups counts as deep as both
+  together. A composed `FilterTree` is bounded separately and at construction (§2.3), because the
+  engine reads it before it has looked at these ceilings at all.
+- **The list ceiling applies to every comma-separated list**, each measured on its own: the
+  top-level list, a membership test's elements, and a variadic call's arguments. The total across
+  an input needs no separate ceiling, since every item costs at least one token.
+- **Joins and slots are counted after pruning** (§12.2), over what the statement will contain.
 
 ```csharp
 namespace Tellma.Core.Queryex;
@@ -2115,20 +2302,38 @@ Three layers inside the engine instance, each keyed on exactly the inputs its st
 | Layer | Key | Value |
 |---|---|---|
 | L1 | expression text, limits | `SyntaxTree` |
-| L2 | text hash, schema version, root entity, mode, directions, `HasUser`, `HasGroupingKeys` (Group axis), limits, language version | bound tree + nullity |
-| L3 | the L2 keys of every clause, filter-tree shape, paging shape, batch ordinal | SQL template + slot map |
+| L2 | expression text, schema, root entity, mode, directions, `HasUser`, `HasGroupingKeys` (Group axis), the declarations the text refers to, limits, language version | bound tree + nullity |
+| L3 | schema, every clause's text with the shape of the filter tree it came from, options, declarations | SQL template + slot map |
 
 With L3 warm, per-request work is reduced to binding parameter values into a cached template.
 Rules:
 
+- **Keys hold text, never a hash of it.** A hash collision compiles a different expression than the
+  one that was asked for; on a permission criterion that is a privilege escalation, which is the
+  thing §2.3 exists to prevent. Text is compared ordinally, after the cheap fields, with the hash
+  memoized — so a digest still does the bucketing work, it just does not decide the answer.
+- **Every rendered key is unambiguous.** A key that flattens several fields into one string
+  length-prefixes each, or two different queries render alike: an ordering clause that is absent
+  and one that is empty are not the same query, and they do not compile the same way.
+- **The schema is held by identity**, not by version, and it is in the L3 key as well as the L2
+  ones — an L3 hit is served before any clause is looked at, so a key without it returns one
+  schema's SQL for another's query. Identity rather than version also keeps descriptor-reference
+  equality sound across a hit, which the structural comparison of §11.3 relies on; a host that
+  rebuilds an unchanged model gets SQL against the schema it just built.
+- **The declarations participate**, projected onto the parameter names the text actually refers
+  to. A bound tree carries each parameter's type and nullity, so the same text under
+  `@x : Numeric NOT NULL` and under `@x : Numeric NULL` binds to different trees with different
+  guards (§13.3); sharing one entry emits guards for the wrong nullity. The projection is what
+  keeps that from fragmenting the cache on declarations the text never mentions, and it is
+  computable before binding because parameters are lexically identifiable (§2.4).
 - **Every cache is bounded** (§1.4 engine options) with an LRU-flavoured eviction policy. The
   engine accepts untrusted input; an attacker feeding distinct texts must age entries out, never
   grow memory without bound.
 - The **limits profile participates in the key**: a text admitted under one call site's generous
   ceilings must not satisfy a stricter call site from cache.
-- The **schema version** is the invalidation lever: bound trees hold descriptors, not names, so a
-  host rename without a version change would keep emitting a stale column. The schema contract
-  (§3) makes the version's obligations explicit.
+- The **schema version** remains the host's invalidation lever across instances: bound trees hold
+  descriptors, not names, so a host rename without a version change would keep emitting a stale
+  column. The schema contract (§3) makes the version's obligations explicit.
 
 *Guidance.* Access-control criteria and stored report filters recompile on essentially every
 request with unchanging text; these layers are where the engine earns its performance, not
@@ -2194,10 +2399,27 @@ Fixture properties the corpus requires — each easy to omit and each load-beari
   slot typing (§13.1) is visible in the slot snapshots — which must show the default sizing,
   never the columns' facets.
 - A non-unique property on a hierarchical entity, so QX3302 is reachable.
-- String rows that differ only by case, only by accent, and only by trailing spaces, so the
-  collation and padding rules of §9.2 are differential facts rather than assumptions.
+- String rows that differ only by case and only by trailing spaces, so those rules of §9.2 are
+  differential facts rather than assumptions. Accent sensitivity is a declared property of the
+  fixture's collation but is not exercised by data: the repertoire over which the interpreter's
+  own weights and the backend's collation provably agree is ASCII, and widening it would trade a
+  test that means one thing for a test that means different things on different operating
+  systems (§18.3).
 - Grouped entries whose keys are computed items (`year(PostingDate)`), so the item-level grouping
   of §11.3 shows in golden `GROUP BY` output and QX4005, QX4007, and QX4008 are reachable.
+- A **nullable column of every type**, so the totality sweep over `AlwaysNotNull` functions gets
+  absence from data. A `null` literal folds at lowering and would leave the emit template
+  unexercised — the template being the thing the sweep is there to check.
+- A **fixed-width character column holding shorter values**, since storage padding behaves
+  differently from a trailing space in a variable-width one, and §9.2 rules on both.
+- A **keyword-named and a function-named property**, which Appendix B's own parsing vectors
+  (`[not]`, `count` against `count()`) require in order to be checkable at all.
+
+Every case is executed as well as bound. A differential entry whose filter matches no row compares
+nothing and passes forever, so a case that matches nothing declares that it does; and the corpus
+is run against the server per function, since a snapshot only says the emitter still produces what
+it produced yesterday — a template naming the wrong backend function agrees with its own snapshot
+perfectly.
 
 `Discover` and inference get their own entries: solved, unconstrained, and conflicting
 parameters; discovery over input that parses but does not bind; and cross-clause inference
@@ -2387,6 +2609,11 @@ Typing, against a fixture with `PostingDate : Date`, `PostedAt : DateTimeOffset`
 | `addDays(PostedAt, 1)` | `DateTimeOffset` — fixed-length unit |
 | `addMonths(PostedAt, 1)` | QX3103 — variable-length unit is calendar-dependent |
 | `year(PostingDate)` | `Numeric` — a `Date` is already zone-resolved |
+| `diffDays(PostingDate, now())` | QX3200 — one `Instant` variable, two date types |
+| `endsWith(-Code, 'x')` | QX3201 — an operand's own type error is reported, not absorbed by the overload search |
+| `PostedAt = '0001-01-01T00:00+01:00'` | QX3200 — the moment it denotes falls outside the domain |
+| `coalesce(null, 1)` | `Numeric` — an operand with no type of its own seeds nothing |
+| `coalesce('2024-01-01', PostingDate)` | `Date` — the literal coerces rather than seeding `String` |
 
 Parameter inference, no declarations supplied:
 
@@ -2419,6 +2646,10 @@ Null semantics, `A` absent and `B = 5`:
 | `not (A = B)` | true |
 | `contains(A, 'x')` | false |
 | `A \|\| 'x'` | absent |
+| `diffYears('2024-12-31', '2025-01-01')` | 0 — completed units, not boundary crossings |
+| `'a' = 'a '` | true — the backend pads `=` |
+| `endsWith('a ', ' ')` | true — the predicates do not pad |
+| `length('ab  ')` | 2 — the backend's own count |
 
 ## Appendix C — Reserved words
 
@@ -2461,9 +2692,11 @@ The load-bearing decisions, where not already evident above:
 9. **Join kind propagates** — `INNER` only where the foreign key is non-null *and* the parent
    join is `INNER`; anything behind a `LEFT` join stays `LEFT`, or absent optional ancestors
    would silently drop rows (§12.2).
-10. **No subexpression is emitted twice unless atomic** — null guards reference operands through
-    `CROSS APPLY (VALUES …)` bindings; the sole exception is identical aggregate expressions,
-    where a lateral binding is inexpressible and the backend deduplicates (§12.3).
+10. **No subexpression is emitted twice unless atomic, with no exceptions** — a lateral binding
+    serves every row-grain operand, and the group-grain positions where one cannot exist use
+    single-emission forms (`EXISTS (SELECT l INTERSECT SELECT r)`, a `CASE` compared against 1)
+    that reproduce the same totality. Grain, not aggregation, is what decides which applies
+    (§12.3).
 11. **`Guid` is Equatable but not Ordered; `Geography` is neither** — uniqueidentifier ordering
     is a backend accident, and spatial equality does not exist in the backend; both surface as
     bind-time diagnostics instead of backend errors (§7.1).
@@ -2517,7 +2750,27 @@ The load-bearing decisions, where not already evident above:
     watching every stage react as the input changes; a minimal Kestrel host with one static page
     delivers that cross-platform with no build step, on an ephemeral port so parallel worktrees
     coexist (§19).
-26. **The hierarchy predicates come in both directions and take N keys** — `ancestorOf` is the
+26. **Folding may erase a subexpression, never a claim** — a grouping key is lowered with folding
+    off, because the backend refuses a grouping expression reading no column and dropping the key
+    would change a grouped query over no rows from zero rows to one, falsifying the aggregate
+    nullity the grouping established; joins, bindings, variables, and slots are pruned by
+    reachability from what survived, since a subexpression has already claimed them by the time
+    it folds (§12.2, §13.4).
+27. **Cache keys hold text and schema identity, never digests or versions alone** — a hash
+    collision compiles the wrong expression, which on a permission criterion is a privilege
+    escalation, and an L3 hit is served before any clause is inspected, so the schema has to be in
+    that key too. The declarations are in the bind key, projected onto the names the text
+    mentions, because nullity declarations change the guards (§16).
+28. **Every ceiling bounds the thing that actually grows** — syntax depth bounds the tree rather
+    than the parser's recursion, because a left-associative run is built by a loop and every later
+    pass walks the result recursively; joins and slots are counted after pruning; and a composed
+    `FilterTree` is bounded at construction, since it is read before any limits profile is (§2.3,
+    §15).
+29. **The two ends of the nullity lattice are both claims** — `NotNull` licenses omitting a guard
+    and `Null` licenses erasing a subexpression, so the soundness obligation runs in both
+    directions, over the bound tree, which is the artifact the analysis annotates and the sweep
+    can walk (§8.2).
+30. **The hierarchy predicates come in both directions and take N keys** — `ancestorOf` is the
     mirror of `descendantOf`, and both accept a variadic key list with any-of semantics, so
     loading the ancestor closure of a filtered page is one leaf with one parameter per row
     instead of a giant OR of leaves; unmatched keys contribute nothing, preserving totality, and
