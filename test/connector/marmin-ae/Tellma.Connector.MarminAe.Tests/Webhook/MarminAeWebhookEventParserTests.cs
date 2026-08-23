@@ -149,6 +149,8 @@ namespace Tellma.Connector.MarminAe.Tests.Webhook
         [InlineData("\"resource_id\": \"\"")]
         [InlineData("\"webhook_event_id\": 12345")]
         [InlineData("\"resource_url\": \"/api/sales-invoices/1\"")]
+        [InlineData("\"resource_url\": \"file:///etc/passwd\"")]
+        [InlineData("\"resource_url\": \"javascript:alert(1)\"")]
         [InlineData("\"event_timestamp\": \"the fourteenth\"")]
         public void Refuses_a_payload_whose_field_is_not_what_it_claims(string replacement)
         {

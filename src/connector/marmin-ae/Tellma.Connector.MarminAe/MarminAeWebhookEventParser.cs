@@ -109,7 +109,20 @@ namespace Tellma.Connector.MarminAe
             string? text = ReadText(root, name);
             value = null;
 
-            return !string.IsNullOrWhiteSpace(text) && Uri.TryCreate(text, UriKind.Absolute, out value);
+            // Absolute is not a strong enough test on its own. A Unix host reads an absolute-looking
+            // path as a file URI, so a relative link in a delivery would be accepted here and handed
+            // to a caller as somewhere to fetch from — and the payload it came in is attacker-shaped
+            // until the signature says otherwise. The scheme has to be one the vendor can serve.
+            if (string.IsNullOrWhiteSpace(text)
+                || !Uri.TryCreate(text, UriKind.Absolute, out Uri? parsed)
+                || (parsed.Scheme != Uri.UriSchemeHttps && parsed.Scheme != Uri.UriSchemeHttp))
+            {
+                return false;
+            }
+
+            value = parsed;
+
+            return true;
         }
 
         private static bool TryReadTimestamp(JsonElement root, string name, out DateTimeOffset value)
