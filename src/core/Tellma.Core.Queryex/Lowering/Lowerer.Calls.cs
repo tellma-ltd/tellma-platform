@@ -55,7 +55,8 @@ namespace Tellma.Core.Queryex.Lowering
                 return new PlanNullValue(call.Span, call.Type);
             }
 
-            if (call.Signature.Nullity.Kind == NullityRuleKind.Conditional
+            if (_folding
+                && call.Signature.Nullity.Kind == NullityRuleKind.Conditional
                 && call.Arguments.Length == 3
                 && call.Arguments[0] is TypedLiteral { Value: bool taken })
             {
@@ -196,7 +197,16 @@ namespace Tellma.Core.Queryex.Lowering
             List<PlanPredicate> disjuncts = [];
             for (int index = 1; index < call.Arguments.Length; index++)
             {
+                // The key is hoisted into a declaration that runs ahead of the statement, so it is
+                // not at row grain and nothing lateral is in scope for it yet: a binding allocated
+                // here would be read by the declaration and defined by the CROSS APPLY that only
+                // comes with the statement. Denying bindings sends a shared operand to the form
+                // that writes itself out instead.
+                bool savedBindings = _bindingsAllowed;
+                _bindingsAllowed = false;
                 PlanValue key = LowerValueAgainst(call.Arguments[index], keyStore);
+                _bindingsAllowed = savedBindings;
+
                 HoistedVariable variable = Hoist(table.Entity, keyPath.Property, treeNode, key);
                 PlanVariableRef looked = new(call.Arguments[index].Span, variable);
 

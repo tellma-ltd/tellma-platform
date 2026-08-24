@@ -61,35 +61,21 @@ namespace Tellma.Core.Queryex.Lexing
                 }
 
                 int start = index;
-                Token token;
+                Token token = default;
+                bool failed = false;
 
                 switch (current)
                 {
                     case '\'':
-                        if (!TryScanString(text, ref index, scope, out token))
-                        {
-                            healthy = false;
-                            continue;
-                        }
-
+                        failed = !TryScanString(text, ref index, scope, out token);
                         break;
 
                     case '[':
-                        if (!TryScanBracketedIdentifier(text, ref index, scope, out token))
-                        {
-                            healthy = false;
-                            continue;
-                        }
-
+                        failed = !TryScanBracketedIdentifier(text, ref index, scope, out token);
                         break;
 
                     case '@':
-                        if (!TryScanParameter(text, ref index, scope, out token))
-                        {
-                            healthy = false;
-                            continue;
-                        }
-
+                        failed = !TryScanParameter(text, ref index, scope, out token);
                         break;
 
                     default:
@@ -97,26 +83,31 @@ namespace Tellma.Core.Queryex.Lexing
                         {
                             token = ScanIdentifier(text, ref index, startWidth);
                         }
-                        else if (IsPlainDigit(current))
+                        else
                         {
-                            if (!TryScanNumber(text, ref index, scope, out token))
-                            {
-                                healthy = false;
-                                continue;
-                            }
-                        }
-                        else if (!TryScanPunctuator(text, ref index, scope, out token))
-                        {
-                            healthy = false;
-                            continue;
+                            failed = IsPlainDigit(current)
+                                ? !TryScanNumber(text, ref index, scope, out token)
+                                : !TryScanPunctuator(text, ref index, scope, out token);
                         }
 
                         break;
                 }
 
-                if (!budget.TryConsumeToken(token.Span, scope))
+                // A run the scanner could not read is charged against the ceiling just as a token is.
+                // The ceiling exists to bound how much work one text can ask for, and unreadable text
+                // asks for the most of it: every character can report its own problem, so a text that
+                // scans as nothing at all would otherwise be the one input the ceiling never sees.
+                if (!budget.TryConsumeToken(
+                    failed ? new QueryexSpan(start, Math.Max(index - start, 1)) : token.Span,
+                    scope))
                 {
                     return false;
+                }
+
+                if (failed)
+                {
+                    healthy = false;
+                    continue;
                 }
 
                 scanned.Add(token);

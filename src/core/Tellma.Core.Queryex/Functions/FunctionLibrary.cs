@@ -393,10 +393,14 @@ namespace Tellma.Core.Queryex.Functions
         /// <returns>The definitions.</returns>
         private static IEnumerable<FunctionDefinition> InstantOperations()
         {
-            yield return InstantAdd("addDays", "DAY");
-            yield return InstantAdd("addHours", "HOUR");
-            yield return InstantAdd("addMinutes", "MINUTE");
-            yield return InstantAdd("addSeconds", "SECOND");
+            yield return InstantAdd("addDays", "DAY", subDay: false);
+
+            // A sub-day shift is refused a calendar date rather than offered one: the backend has no
+            // DATEADD of hours over a date, and the result type would be a date the shift does not
+            // fit in even if it had.
+            yield return InstantAdd("addHours", "HOUR", subDay: true);
+            yield return InstantAdd("addMinutes", "MINUTE", subDay: true);
+            yield return InstantAdd("addSeconds", "SECOND", subDay: true);
 
             // Measured in the next finer unit and divided, which is what gives a fractional answer.
             // Counted in the backend's wide difference form throughout: a narrow count of seconds
@@ -419,15 +423,17 @@ namespace Tellma.Core.Queryex.Functions
         /// <summary>Adding a fixed-length unit.</summary>
         /// <param name="name">The function name.</param>
         /// <param name="unit">The backend's name for the unit.</param>
+        /// <param name="subDay">Whether the unit is shorter than a day.</param>
         /// <returns>The definition.</returns>
-        private static FunctionDefinition InstantAdd(string name, string unit)
+        private static FunctionDefinition InstantAdd(string name, string unit, bool subDay)
         {
+            TypeSpec operand = subDay ? TypeSpecs.SubDayInstant("T") : TypeSpecs.Instant("T");
             return Define(
                 name,
                 FunctionCategory.Scalar,
                 Signature(
-                    [Parameter("d", TypeSpecs.Instant("T")), Parameter("n", TypeSpecs.Numeric)],
-                    TypeSpecs.Instant("T"),
+                    [Parameter("d", operand), Parameter("n", TypeSpecs.Numeric)],
+                    operand,
                     NullityRule.Union(0, 1),
                     Sql.Value($"DATEADD({unit}, {{1}}, {{0}})")));
         }

@@ -1081,6 +1081,13 @@ Three outcomes are reported distinctly:
 | **Unconstrained** | no use determines a type — e.g. `@a = @b` | `InferredType` null. Not an error; the author must choose. |
 | **Conflicting** | uses demand incompatible types | `Conflicts` lists each type with the span that demanded it; QX3400 |
 
+A use demands a type only from the reading that survives. Checking (§7.2) and unification (§7.4)
+both try a type and abandon it for another, and what an abandoned attempt asked of the parameters
+inside it is discarded along with the tree it built. The outcome therefore does not depend on
+which operand was written first: `coalesce(@p, '2024-01-01') = PostingDate` solves `@p : Date`
+exactly as its mirror image does, rather than reporting the `String` an intermediate reading
+passed through as a conflict.
+
 Inference never guesses nullity: nothing in an expression constrains whether a value may be
 absent. Inferred parameters default to `Nullable` — the safe direction — and the author marks a
 parameter required.
@@ -1191,12 +1198,14 @@ String-literal date parsing accepts ISO 8601 only, culture-invariant:
 ```
 Date            YYYY-MM-DD
 DateTime        YYYY-MM-DD[T ]HH:MM[:SS[.fff]]
-DateTimeOffset  <DateTime>(Z | ±HH:MM)
+DateTimeOffset  <DateTime>(Z | ±HH:MM)     offset magnitude at most 14:00
 ```
 
-A `DateTimeOffset` literal must denote a moment inside the type's domain once its offset is
-applied, not merely a local part inside it: one minute east of the first midnight is a moment in
-the year before the first year, and it does not coerce.
+A `DateTimeOffset` literal has two domain tests to pass, and both are the reader's to fail rather
+than the platform's to throw on. Its offset is at most fourteen hours either way — the widest any
+zone runs from UTC — and the moment it denotes must lie inside the type's domain once that offset
+is applied, not merely the local part written beside it: one minute east of the first midnight is
+a moment in the year before the first year. A literal failing either test does not coerce.
 
 String-literal GUID parsing accepts the hyphenated form only (`8-4-4-4-12` hex digits,
 case-insensitive, no braces).
@@ -1318,7 +1327,8 @@ guards.
 An expression whose nullity is `Null` in a value position emits as the typed absent value. A
 predicate whose operand nullity makes it constant folds at lowering (to the fixed tokens `1 = 1` /
 `1 = 0` in SQL). Folding is an optimization; the results specified in §9 hold whether or not it is
-performed.
+performed. Grouping keys are the one position where it is suppressed outright rather than merely
+optional (§13.4).
 
 ## 9. Expression semantics
 
@@ -1602,9 +1612,9 @@ Nullity: `Propagate(0)` for extraction and truncation, `Union(0, 1)` for `add` a
 
 ```
 addDays(d: Instant, n: Numeric)     -> Instant    // fixed-length units
-addHours(d: Instant, n: Numeric)    -> Instant
-addMinutes(d: Instant, n: Numeric)  -> Instant
-addSeconds(d: Instant, n: Numeric)  -> Instant
+addHours(d: SubDay, n: Numeric)     -> SubDay
+addMinutes(d: SubDay, n: Numeric)   -> SubDay
+addSeconds(d: SubDay, n: Numeric)   -> SubDay
 
 diffDays(d1: Instant, d2: Instant)     -> Numeric   fractional
 diffHours(d1: Instant, d2: Instant)    -> Numeric   fractional
@@ -1622,6 +1632,13 @@ is QX3200 rather than a silent computation. Mixing is exactly what §7.3 refuses
 types and §10.3 refuses between the calendar and the instant, and it is the same hazard in a
 worse place — the backend would read the `Date` as UTC midnight and return a number that is wrong
 by the local offset, row by row, with nothing to see.
+
+`SubDay` is the same kind of variable over the two date types that carry a time of day. A `Date`
+has nowhere to put an hour, so `addHours(PostingDate, 30)` is QX3005: the shift would have to
+land in a result the type cannot hold, and the sensible readings of it — truncate to a day, or
+promote the operand to a `DateTime` at some assumed zone — are the author's choice to make with
+`cast`, not the engine's to guess. The `diff` functions keep the wider `Instant`, since measuring
+across a day boundary is well defined whether or not the operands carry a clock reading.
 
 The `diff` functions measure **elapsed time**, not calendar distance: each is computed in the next
 finer unit and divided, so `diffDays` has hour resolution. The emitter counts in the backend's
@@ -1922,10 +1939,12 @@ A lateral join runs at **row** grain, and that, not aggregation, is what bounds 
 be used. Row-grain operands take bindings: everywhere in an ungrouped query, and in a grouped one
 inside an aggregate's arguments and in the items that become grouping keys. A **group**-grain
 operand — a comparison between aggregates in `HAVING`, or one in a grouped select item — cannot
-reference a binding at all, because the value it needs does not exist per row. Those use
-single-emission forms instead: `EXISTS (SELECT l INTERSECT SELECT r)` reproduces the totality of
-§9.2 for `=` and `!=` while mentioning each operand once, and a `CASE` compared against 1 does the
-same for the ordering comparisons.
+reference a binding at all, because the value it needs does not exist per row. Neither can a
+hoisted variable's own definition (§12.4): the prologue runs ahead of the statement that
+introduces the aliases, so nothing lateral is in scope for it yet, however row-invariant the
+expression being hoisted is. All of these use single-emission forms instead: `EXISTS (SELECT l
+INTERSECT SELECT r)` reproduces the totality of §9.2 for `=` and `!=` while mentioning each
+operand once, and a `CASE` compared against 1 does the same for the ordering comparisons.
 
 Every position therefore either takes a binding or has a single-emission form; the rule at the top
 of this section has no exceptions.
@@ -2062,7 +2081,7 @@ computed positions):
 |---|---|
 | `Bool` | `bit` |
 | `Numeric` | `decimal` with the value's own precision and scale; with **no** precision or scale where there is no compile-time value, letting the provider derive them from what the host binds — the only choice that cannot round the caller's value |
-| `String` | `nvarchar(4000)`; `nvarchar(max)` beyond 4000 characters |
+| `String` | `nvarchar` sized to the value — `nvarchar(4000)` up to 4 000 characters, `nvarchar(max)` beyond; with **no** size where there is no compile-time value, for the same reason `Numeric` derives no facets there: a provider silently truncates a string to the declared size, which would probe with a value the caller never supplied |
 | `Guid` | `uniqueidentifier` |
 | `Date` | `date` |
 | `DateTime` | `datetime2(7)` |
@@ -2172,7 +2191,11 @@ Requirements:
 - **Duplicate ordering terms are QX4008.** Two terms with structurally equal bound trees (§11.3)
   in one ordering list are a typo, and the backend rejects a column repeated in `ORDER BY`; the
   engine reports it at bind time rather than letting a backend error through.
-- **Paging requires an explicit ordering** (QX4006): an unordered page is not reproducible.
+- **Paging requires an explicit ordering** (QX4006): an unordered page is not reproducible. The
+  ordering that has to be there is the one that survives lowering, not the one that was written:
+  the rule above drops every term that reads nothing, and a grand total has no keys for the
+  tiebreaker rule below to fall back on — so a grand total ordered only by constants is refused
+  here rather than emitted with a paging clause and nothing to page through.
 - **Paging appends deterministic tiebreakers.** A user ordering rarely reaches a total order, and
   paging over a partial order returns overlapping pages. When paging is present the emitter
   appends, after the user's terms: the root key (`Row` grouping), or every grouping key in select
@@ -2228,7 +2251,12 @@ would silently change an answer.
   as an exception: an exception escaping `Validate`, `Discover`, or `CompileQuery` on user text is
   a defect by definition.
 - Compilation reports as many independent diagnostics as the input allows — per list item, per
-  filter-tree leaf, per argument position — rather than stopping at the first.
+  filter-tree leaf, per argument position — rather than stopping at the first. Two reports are one
+  report only when their code, span, location, **and** arguments all agree; the arguments are part
+  of what makes a problem distinct, so reports that name different things stand separately even
+  where two passes land them on the same span. One conflicting-type report per parameter of a
+  merged set (§6.4) is the case that makes this load-bearing: collapsing those on span alone would
+  leave one parameter's report standing for the others and name the wrong one.
 - Every code in Appendix A is reachable by at least one conformance-corpus entry asserting its
   code, its span, and the arguments its message needs. A code alone says something is wrong
   somewhere; the span and the arguments are what a host builds a usable report from.
@@ -2242,6 +2270,14 @@ binding; the join and parameter-slot ceilings at lowering, where the join trie a
 exist to be counted. No limit reads emitted SQL — bounded input bounds the output, because value
 bindings keep guard operands atomic and SQL therefore grows linearly with typed-node count.
 
+Two properties make a ceiling a bound on work rather than a note about it. A ceiling **stops** the
+work that would exceed it: once one is reported, the stages that spend it do no more, so a blown
+ceiling costs the fragment that blew it and not the rest of the input. And the ceilings apply to
+**every** entry point that binds, `Discover` and `DiscoverQuery` (§2.4) exactly as `Validate` and
+`CompileQuery` — discovery binds as much text as compilation does, a whole query's clauses and a
+whole composed filter tree, and it is the path a keystroke reaches, so it is the last place a
+ceiling should be optional.
+
 | Limit | Default | Diagnostic |
 |---|---|---|
 | Input length (chars, per expression) | 8 192 | QX5001 |
@@ -2252,9 +2288,13 @@ bindings keep guard operands atomic and SQL therefore grows linearly with typed-
 | Joins (per query, after pruning) | 32 | QX5006 |
 | Parameter slots (per query, after pruning) | 512 | QX5007 |
 
-Three of these say something more specific than their names suggest, and the specificity is what
+Four of these say something more specific than their names suggest, and the specificity is what
 makes them work:
 
+- **The token ceiling counts what could not be read as well as what could.** A run of text no
+  scanner accepts is charged to it exactly as a token is. Otherwise the one input that yields the
+  most diagnostics per character — text that scans as nothing at all, every character reporting
+  its own problem — would be the single input the ceiling never saw, which is precisely backwards.
 - **Syntax depth bounds the tree, not the descent that built it.** A run of one operator at one
   precedence is consumed by a loop that re-wraps what it has so far, so a chain of a thousand terms
   is one level of recursion and a thousand levels of tree. Every later pass — binding, nullity,
@@ -2608,10 +2648,12 @@ Typing, against a fixture with `PostingDate : Date`, `PostedAt : DateTimeOffset`
 | `year(local(PostedAt))` | `Numeric` |
 | `addDays(PostedAt, 1)` | `DateTimeOffset` — fixed-length unit |
 | `addMonths(PostedAt, 1)` | QX3103 — variable-length unit is calendar-dependent |
+| `addHours(PostingDate, 30)` | QX3005 — a `Date` has nowhere to put a sub-day shift |
 | `year(PostingDate)` | `Numeric` — a `Date` is already zone-resolved |
 | `diffDays(PostingDate, now())` | QX3200 — one `Instant` variable, two date types |
 | `endsWith(-Code, 'x')` | QX3201 — an operand's own type error is reported, not absorbed by the overload search |
 | `PostedAt = '0001-01-01T00:00+01:00'` | QX3200 — the moment it denotes falls outside the domain |
+| `PostedAt = '2024-06-15T12:00+14:30'` | QX3200 — the offset exceeds fourteen hours |
 | `coalesce(null, 1)` | `Numeric` — an operand with no type of its own seeds nothing |
 | `coalesce('2024-01-01', PostingDate)` | `Date` — the literal coerces rather than seeding `String` |
 

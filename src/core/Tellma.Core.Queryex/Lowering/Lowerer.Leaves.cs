@@ -72,7 +72,8 @@ namespace Tellma.Core.Queryex.Lowering
         /// </remarks>
         private PlanParameterRef LowerParameter(TypedParameter parameter)
         {
-            QueryexStoreType store = StoreTypes.Adopted(parameter.Symbol.Type, null, 0, 0, _hint);
+            QueryexStoreType store = StoreTypes.Unwritten(
+                StoreTypes.Adopted(parameter.Symbol.Type, null, 0, 0, _hint));
             return new PlanParameterRef(
                 parameter.Span,
                 Slot(

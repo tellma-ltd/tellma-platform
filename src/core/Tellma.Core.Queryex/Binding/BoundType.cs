@@ -111,6 +111,12 @@ namespace Tellma.Core.Queryex.Binding
 
         /// <summary>The one date type that carries a time of day and a resolved zone.</summary>
         TimeOfDay = DateTime,
+
+        /// <summary>
+        ///     The date types a sub-day shift accepts: the ones with somewhere to put it. A calendar
+        ///     date has no room for hours, and the backend refuses a sub-day shift of one outright.
+        /// </summary>
+        SubDay = DateTime | DateTimeOffset,
     }
 
     /// <summary>Translations between the binder's type domain and the language's.</summary>

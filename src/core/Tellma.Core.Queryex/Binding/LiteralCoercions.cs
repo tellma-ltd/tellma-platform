@@ -92,7 +92,10 @@ namespace Tellma.Core.Queryex.Binding
                 return false;
             }
 
-            if (hours > 14 || minutes > 59)
+            // Fourteen hours is the whole offset's ceiling, not the hour field's: the constructor
+            // answers +14:30 by throwing, so a written offset past the ceiling has to be refused
+            // here rather than one hour later.
+            if (hours > 14 || minutes > 59 || (hours == 14 && minutes > 0))
             {
                 return false;
             }

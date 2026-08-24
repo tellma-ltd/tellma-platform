@@ -108,11 +108,23 @@ namespace Tellma.Core.Queryex.Tests.Robustness
         ///     first and fails the second fails in production and nowhere else.
         /// </summary>
         /// <param name="text">The expression.</param>
+        /// <param name="accepted">Whether validation is expected to accept it.</param>
+        /// <remarks>
+        ///     Each case says which side of the line it is on, so the two stay agreed about
+        ///     accepted expressions as well as refused ones. Comparing the two answers alone would
+        ///     hold just as well if every case were refused, and a suite of refusals says nothing
+        ///     about the direction that actually reaches production.
+        /// </remarks>
         [Theory]
-        [InlineData("endsWith(-Code, 'x')")]
-        [InlineData("coalesce(-Code, 'x')")]
-        [InlineData("abs(not Amount)")]
-        public void WhatValidationAccepts_Compiles(string text)
+        [InlineData("endsWith(-Code, 'x')", false)]
+        [InlineData("coalesce(-Code, 'x')", false)]
+        [InlineData("abs(not Amount)", false)]
+        [InlineData("Amount + 1", true)]
+        [InlineData("abs(Amount)", true)]
+        [InlineData("coalesce(Memo, 'x')", true)]
+        [InlineData("endsWith(Code, 'x')", true)]
+        [InlineData("addDays(PostingDate, 1)", true)]
+        public void WhatValidationAccepts_Compiles(string text, bool accepted)
         {
             QueryexResult<ValidatedExpression> validated = Engine.Validate(
                 text,
@@ -127,6 +139,7 @@ namespace Tellma.Core.Queryex.Tests.Robustness
                 new QuerySpec { Root = LedgerFixture.Invoice, Select = text },
                 new QueryCompilationOptions { Schema = LedgerFixture.Schema });
 
+            Assert.Equal(accepted, validated.Succeeded);
             Assert.Equal(validated.Succeeded, compiled.Succeeded);
         }
 
@@ -158,6 +171,36 @@ namespace Tellma.Core.Queryex.Tests.Robustness
         [InlineData("9999-12-31T23:59:59.9999999Z")]
         [InlineData("9999-12-31T09:59:59-14:00")]
         public void AnInstantInsideTheDomain_IsStillRead(string literal)
+        {
+            Assert.Empty(Codes("PostedAt = '" + literal + "'", QueryexMode.Filter));
+        }
+
+        /// <summary>
+        ///     Fourteen hours is the whole offset's ceiling and not the hour field's, so an offset
+        ///     past it is refused however ordinary the moment it is written against. The platform
+        ///     answers such an offset by throwing, which no reader's input may provoke.
+        /// </summary>
+        /// <param name="literal">The written instant.</param>
+        [Theory]
+        [InlineData("2024-06-15T12:00+14:30")]
+        [InlineData("2024-06-15T12:00:00+14:01")]
+        [InlineData("2024-06-15T12:00:00-14:59")]
+        [InlineData("2024-06-15T12:00:00+15:00")]
+        [InlineData("2024-06-15T12:00:00+23:59")]
+        public void AnOffsetPastTheCeiling_IsRefusedRatherThanThrown(string literal)
+        {
+            Assert.Equal(
+                ["QX3200"],
+                Codes("PostedAt = '" + literal + "'", QueryexMode.Filter));
+        }
+
+        /// <summary>The widest offset any zone runs is still read, so the ceiling is not a ban.</summary>
+        /// <param name="literal">The written instant.</param>
+        [Theory]
+        [InlineData("2024-06-15T12:00+14:00")]
+        [InlineData("2024-06-15T12:00:00-14:00")]
+        [InlineData("2024-06-15T12:00:00+13:59")]
+        public void AnOffsetAtTheCeiling_IsStillRead(string literal)
         {
             Assert.Empty(Codes("PostedAt = '" + literal + "'", QueryexMode.Filter));
         }

@@ -101,6 +101,16 @@ namespace Tellma.Core.Queryex.Functions
         }
 
         /// <summary>
+        ///     A variable over the date types a sub-day shift can be added to.
+        /// </summary>
+        /// <param name="variable">The variable's name within its signature.</param>
+        /// <returns>The specification.</returns>
+        internal static TypeSpec SubDayInstant(string variable)
+        {
+            return new TypeSpec { Variable = variable, Admits = TypeMask.SubDay };
+        }
+
+        /// <summary>
         ///     A variable over the zone-resolved date types, for calendar operations.
         /// </summary>
         /// <param name="variable">The variable's name within its signature.</param>

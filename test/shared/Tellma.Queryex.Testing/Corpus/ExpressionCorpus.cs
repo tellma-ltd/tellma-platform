@@ -276,6 +276,7 @@ namespace Tellma.Queryex.Testing.Corpus
         {
             yield return Bad("calendar-needs-zone", "year(PostedAt)", "QX3103");
             yield return Bad("calendar-add-months-needs-zone", "addMonths(PostedAt, 1)", "QX3103");
+            yield return Bad("instant-add-hours-needs-a-clock", "addHours(PostingDate, 30)", "QX3005");
             yield return Good("calendar-zoned", "year(local(PostedAt))", QueryexType.QxNumeric);
             yield return Good("calendar-date-is-zoned", "year(PostingDate)", QueryexType.QxNumeric);
             yield return Good("calendar-fixed-unit", "addDays(PostedAt, 1)", QueryexType.QxDateTimeOffset);

@@ -506,6 +506,15 @@ namespace Tellma.Core.Queryex.Pipeline
             }
 
             AppendTiebreakers(select, terms);
+
+            // CheckPaging proved an ordering was written, but the loop above drops every term that
+            // orders nothing and a grand total has no keys for AppendTiebreakers to fall back on —
+            // so the ordering can still be empty here, and OFFSET is grammatically part of ORDER BY.
+            if ((_spec.Skip is not null || _spec.Take is not null) && terms.Count == 0)
+            {
+                _sink.Scope(location).Report(DiagnosticCodes.PagingRequiresOrdering, default);
+            }
+
             return terms.ToImmutable();
         }
 

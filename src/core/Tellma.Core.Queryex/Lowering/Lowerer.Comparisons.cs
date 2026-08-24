@@ -54,13 +54,25 @@ namespace Tellma.Core.Queryex.Lowering
         {
             if (comparison is not (PlanComparison.Equal or PlanComparison.NotEqual))
             {
-                // Nothing is less or greater than a value that is not there.
-                return new PlanConstantPredicate(node.Span, false);
+                // Nothing is less or greater than a value that is not there. Written out rather
+                // than folded where folding is off, because comparing against the absent side
+                // yields the same falsehood while still reading the column the other side names.
+                return _folding
+                    ? new PlanConstantPredicate(node.Span, false)
+                    : Guarded(
+                        node.Span,
+                        comparison,
+                        LowerValueAgainst(node.Left, HintOf(node.Right)),
+                        left,
+                        LowerValueAgainst(node.Right, HintOf(node.Left)),
+                        right);
             }
 
             bool wantsEqual = comparison == PlanComparison.Equal;
             if (left == QueryexNullity.Null && right == QueryexNullity.Null)
             {
+                // Neither side names a column, so there is nothing for the unfolded form to read
+                // and nothing folding could cost.
                 return new PlanConstantPredicate(node.Span, wantsEqual);
             }
 
@@ -68,7 +80,7 @@ namespace Tellma.Core.Queryex.Lowering
             TypedExpr other = leftIsAbsent ? node.Right : node.Left;
             QueryexNullity otherNullity = leftIsAbsent ? right : left;
 
-            if (otherNullity == QueryexNullity.NotNull)
+            if (otherNullity == QueryexNullity.NotNull && _folding)
             {
                 return new PlanConstantPredicate(node.Span, !wantsEqual);
             }
@@ -353,32 +365,40 @@ namespace Tellma.Core.Queryex.Lowering
         /// <returns>The lowered predicate.</returns>
         private PlanPredicate MembershipOfAbsent(TypedIn node, bool anyAbsent, int uncertain)
         {
-            if (anyAbsent)
+            if (anyAbsent && _folding)
             {
                 return new PlanConstantPredicate(node.Span, true);
             }
 
-            if (uncertain == 0)
+            if (uncertain == 0 && _folding)
             {
                 return new PlanConstantPredicate(node.Span, false);
             }
 
             ImmutableArray<PlanPredicate>.Builder disjuncts =
-                ImmutableArray.CreateBuilder<PlanPredicate>(uncertain);
+                ImmutableArray.CreateBuilder<PlanPredicate>(node.Elements.Length);
 
             foreach (TypedExpr element in node.Elements)
             {
-                if (_nullity[element] == QueryexNullity.Nullable)
+                // A missing value belongs to the list exactly when something in the list is
+                // missing too. Where folding is off every element is asked, not just the ones that
+                // might be absent: an element that is never absent answers no and one that is
+                // always absent answers yes, which is what the folded forms above say — and asking
+                // it out loud is what keeps the columns the elements name being read.
+                if (_folding && _nullity[element] != QueryexNullity.Nullable)
                 {
-                    // A missing value belongs to the list exactly when something in the list is
-                    // missing too.
-                    disjuncts.Add(new PlanIsNull(element.Span, LowerValue(element), negated: false));
+                    continue;
                 }
+
+                disjuncts.Add(new PlanIsNull(element.Span, LowerValue(element), negated: false));
             }
 
-            return disjuncts.Count == 1
-                ? disjuncts[0]
-                : new PlanJunction(node.Span, isConjunction: false, disjuncts.ToImmutable());
+            return disjuncts.Count switch
+            {
+                0 => new PlanConstantPredicate(node.Span, false),
+                1 => disjuncts[0],
+                _ => new PlanJunction(node.Span, isConjunction: false, disjuncts.ToImmutable()),
+            };
         }
 
         /// <summary>Lowers a membership test as one set intersection.</summary>
@@ -468,12 +488,19 @@ namespace Tellma.Core.Queryex.Lowering
 
             disjuncts.AddRange(extra);
 
-            return disjuncts.Count switch
+            if (disjuncts.Count == 0)
             {
-                0 => new PlanConstantPredicate(node.Span, false),
-                1 => disjuncts[0],
-                _ => new PlanJunction(node.Span, isConjunction: false, [.. disjuncts]),
-            };
+                // Every element is absent and the value never is, so nothing can match. Asking
+                // whether the value is absent says the same thing where folding is off, and says
+                // it while still reading the column the value names.
+                return _folding
+                    ? new PlanConstantPredicate(node.Span, false)
+                    : new PlanIsNull(node.Span, value, negated: false);
+            }
+
+            return disjuncts.Count == 1
+                ? disjuncts[0]
+                : new PlanJunction(node.Span, isConjunction: false, [.. disjuncts]);
         }
 
         /// <summary>Translates a bound comparison operator to a plan one.</summary>

@@ -63,7 +63,14 @@ namespace Tellma.Queryex.Testing.Probe
 
             if (!clauses.TryBind())
             {
-                return [];
+                // Not an empty finding list: "nothing was written twice" and "nothing was examined"
+                // are the same answer to a caller that only asserts the list is empty, and the
+                // second one means the property this method exists to prove went unchecked.
+                throw new InvalidOperationException(
+                    "The query did not bind, so nothing could be inspected for duplication: "
+                    + string.Join(
+                        ", ",
+                        sink.Drain().Select(diagnostic => diagnostic.Code + "@" + diagnostic.Location)));
             }
 
             RelationalPlan plan = clauses.Lower();

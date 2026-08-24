@@ -44,7 +44,13 @@ namespace Tellma.Core.Queryex.Diagnostics
         private readonly List<Entry> _entries = [];
 
         /// <summary>Suppresses a repeat of an identical problem found by two passes.</summary>
-        private readonly HashSet<(string Code, int Start, int Length, string? Location)> _seen = [];
+        /// <remarks>
+        ///     The arguments are part of what makes a problem identical. Two diagnostics can share a
+        ///     code, a span and a location and still be about different things — one demand per
+        ///     parameter, reported at the site the demand came from — and dropping the second would
+        ///     leave the first standing for a parameter it does not name.
+        /// </remarks>
+        private readonly HashSet<(string Code, int Start, int Length, string? Location, string Arguments)> _seen = [];
 
         /// <summary>Whether anything has been reported.</summary>
         internal bool HasErrors => _entries.Count > 0;
@@ -77,12 +83,36 @@ namespace Tellma.Core.Queryex.Diagnostics
             QueryexSpan span,
             IReadOnlyList<KeyValuePair<string, string>> arguments)
         {
-            if (!_seen.Add((code, span.Start, span.Length, location.Text)))
+            if (!_seen.Add((code, span.Start, span.Length, location.Text, ArgumentKey(arguments))))
             {
                 return;
             }
 
             _entries.Add(new Entry(location.Order, new QueryexDiagnostic(code, span, location.Text, arguments)));
+        }
+
+        /// <summary>Renders a diagnostic's arguments as one comparable string.</summary>
+        /// <param name="arguments">The arguments.</param>
+        /// <returns>The rendering.</returns>
+        /// <remarks>
+        ///     Each part is written after its own length, so no name or value can be spelled in a
+        ///     way that makes one pair read as two and dedupes a diagnostic that was not a repeat.
+        /// </remarks>
+        private static string ArgumentKey(IReadOnlyList<KeyValuePair<string, string>> arguments)
+        {
+            if (arguments.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            System.Text.StringBuilder builder = new();
+            foreach (KeyValuePair<string, string> argument in arguments)
+            {
+                builder.Append(argument.Key.Length).Append(':').Append(argument.Key);
+                builder.Append(argument.Value.Length).Append(':').Append(argument.Value);
+            }
+
+            return builder.ToString();
         }
 
         /// <summary>

@@ -650,7 +650,7 @@ namespace Tellma.Core.Queryex.Binding
             {
                 foreach (SyntaxNode operand in operands)
                 {
-                    BoundType candidate = Synth(operand).Type;
+                    BoundType candidate = ProbeType(operand);
                     if (candidate is not (BoundType.Null or BoundType.Error))
                     {
                         current = candidate;
@@ -672,7 +672,7 @@ namespace Tellma.Core.Queryex.Binding
                 return true;
             }
 
-            BoundType alternative = Synth(operands[failed]).Type;
+            BoundType alternative = ProbeType(operands[failed]);
             if (alternative is not (BoundType.Null or BoundType.Error)
                 && alternative != current.Value
                 && TryBindAll(operands, alternative, out bound, out failed))

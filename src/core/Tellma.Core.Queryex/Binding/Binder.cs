@@ -68,6 +68,23 @@ namespace Tellma.Core.Queryex.Binding
         /// </remarks>
         private int _speculation;
 
+        /// <summary>
+        ///     How deeply inside an attempt whose demands are not yet owed the current node sits.
+        /// </summary>
+        private int _attempts;
+
+        /// <summary>
+        ///     Demands recorded inside an attempt that has not been accepted or abandoned yet.
+        /// </summary>
+        /// <remarks>
+        ///     An attempt binds whole subtrees, and the constructs inside them settle and record
+        ///     what they asked of the parameters they contain. When the enclosing attempt is then
+        ///     abandoned for another type, those demands were asked by a reading that no longer
+        ///     exists — so they are held here until the attempt is accepted, and dropped with it
+        ///     when it is not.
+        /// </remarks>
+        private readonly List<(ImmutableArray<TypedExpr> Operands, BoundType Agreed)> _pending = [];
+
         /// <summary>Initializes a binder over one expression list.</summary>
         /// <param name="context">What the expression depends on besides its own text.</param>
         /// <param name="scope">Where to report problems.</param>
@@ -680,7 +697,7 @@ namespace Tellma.Core.Queryex.Binding
             {
                 foreach (SyntaxNode operand in operands)
                 {
-                    BoundType candidate = Synth(operand).Type;
+                    BoundType candidate = ProbeType(operand);
                     if (candidate is not (BoundType.Null or BoundType.Error))
                     {
                         current = candidate;
@@ -708,7 +725,7 @@ namespace Tellma.Core.Queryex.Binding
                 return Accept(current.Value, allowed, attempt, operatorSpan, out agreed, out bound);
             }
 
-            BoundType alternative = Synth(operands[failed]).Type;
+            BoundType alternative = ProbeType(operands[failed]);
             if (alternative is not (BoundType.Null or BoundType.Error)
                 && alternative != current.Value
                 && TryBindAll(operands, alternative, out attempt, out failed))
@@ -716,7 +733,7 @@ namespace Tellma.Core.Queryex.Binding
                 return Accept(alternative, allowed, attempt, operatorSpan, out agreed, out bound);
             }
 
-            ReportType(DiagnosticCodes.IncompatibleOperandTypes, operands[failed].Span, Synth(operands[failed]).Type);
+            ReportType(DiagnosticCodes.IncompatibleOperandTypes, operands[failed].Span, ProbeType(operands[failed]));
             return false;
         }
 
@@ -768,11 +785,20 @@ namespace Tellma.Core.Queryex.Binding
             out ImmutableArray<TypedExpr> bound,
             out int failed)
         {
+            // What the operands demand of the parameters inside them is only owed if this reading
+            // is the one that survives. Held aside for the duration, so that an attempt abandoned
+            // for another type does not leave a demand behind that nothing in the final tree asked
+            // for — which would otherwise surface as a parameter conflicting with itself.
+            int mark = _pending.Count;
+            _attempts++;
+
             ImmutableArray<TypedExpr>.Builder builder = ImmutableArray.CreateBuilder<TypedExpr>(operands.Count);
             for (int index = 0; index < operands.Count; index++)
             {
                 if (!TryCheck(operands[index], type, out TypedExpr operand, out _))
                 {
+                    _attempts--;
+                    _pending.RemoveRange(mark, _pending.Count - mark);
                     bound = [];
                     failed = index;
                     return false;
@@ -781,9 +807,57 @@ namespace Tellma.Core.Queryex.Binding
                 builder.Add(operand);
             }
 
+            _attempts--;
+            FlushInference();
+
             bound = builder.ToImmutable();
             failed = -1;
             return true;
+        }
+
+        /// <summary>The type an operand has on its own, without owing what that reading demanded.</summary>
+        /// <param name="operand">The operand.</param>
+        /// <returns>Its type.</returns>
+        /// <remarks>
+        ///     Used where only the type is wanted and the tree behind it is thrown away — seeding a
+        ///     unification, and naming the type that would not fit. Whatever that reading asked of
+        ///     the parameters inside it was asked by a reading nothing kept, so it is not owed: the
+        ///     binding that survives asks again, at the type that survived.
+        /// </remarks>
+        private BoundType ProbeType(SyntaxNode operand)
+        {
+            int mark = _pending.Count;
+            _attempts++;
+            try
+            {
+                return Synth(operand).Type;
+            }
+            finally
+            {
+                _attempts--;
+                _pending.RemoveRange(mark, _pending.Count - mark);
+            }
+        }
+
+        /// <summary>Applies the demands of every attempt that has now been accepted.</summary>
+        /// <remarks>
+        ///     Applied in the order they were recorded, so which use of a parameter settles its type
+        ///     and which ones are measured against that answer does not depend on how the binder
+        ///     happened to search.
+        /// </remarks>
+        private void FlushInference()
+        {
+            if (_attempts > 0 || _pending.Count == 0)
+            {
+                return;
+            }
+
+            (ImmutableArray<TypedExpr> Operands, BoundType Agreed)[] owed = [.. _pending];
+            _pending.Clear();
+            foreach ((ImmutableArray<TypedExpr> operands, BoundType agreed) in owed)
+            {
+                ApplyInference(operands, agreed);
+            }
         }
 
         /// <summary>Whether a subtree reads a path from outside every aggregation in it.</summary>
@@ -833,6 +907,26 @@ namespace Tellma.Core.Queryex.Binding
         ///     exactly the relationship that lets a parameter be typed from another clause.
         /// </remarks>
         private void NoteInference(ImmutableArray<TypedExpr> operands, BoundType agreed)
+        {
+            if (_context.Inference is null)
+            {
+                return;
+            }
+
+            if (_attempts > 0)
+            {
+                // Inside an attempt that may yet be abandoned, so not owed until it is accepted.
+                _pending.Add((operands, agreed));
+                return;
+            }
+
+            ApplyInference(operands, agreed);
+        }
+
+        /// <summary>Applies a settled construct's demands to the parameters in it.</summary>
+        /// <param name="operands">The bound operands.</param>
+        /// <param name="agreed">The type they agreed on.</param>
+        private void ApplyInference(ImmutableArray<TypedExpr> operands, BoundType agreed)
         {
             if (_context.Inference is not InferenceContext inference)
             {

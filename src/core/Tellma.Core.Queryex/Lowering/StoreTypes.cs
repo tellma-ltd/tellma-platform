@@ -85,6 +85,22 @@ namespace Tellma.Core.Queryex.Lowering
             };
         }
 
+        /// <summary>The same type with no declared width, for a value that arrives later.</summary>
+        /// <param name="type">The type a written value of the same shape would bind as.</param>
+        /// <returns>The type to bind as.</returns>
+        /// <remarks>
+        ///     A width can only be measured off a written value, and a data provider silently clips
+        ///     a string to the width its slot declares — so a slot the host fills in later declares
+        ///     none, and the value probed with is the value that was passed. The same reasoning as
+        ///     the numeric default, which leaves its facets for the provider to derive.
+        /// </remarks>
+        internal static QueryexStoreType Unwritten(QueryexStoreType type)
+        {
+            return type.Family is QueryexStoreFamily.QxNVarChar or QueryexStoreFamily.QxVarChar
+                ? new QueryexStoreType(type.Family)
+                : type;
+        }
+
         /// <summary>The type a slot binds as, given the column its value is compared against.</summary>
         /// <param name="type">The value's type in the language.</param>
         /// <param name="value">The value, when it is fixed at compile time.</param>

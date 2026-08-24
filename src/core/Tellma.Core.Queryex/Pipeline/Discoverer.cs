@@ -121,6 +121,15 @@ namespace Tellma.Core.Queryex.Pipeline
             /// <summary>Whether any clause aggregates.</summary>
             private bool _aggregates;
 
+            /// <summary>The ceilings that span every text this run reads.</summary>
+            /// <remarks>
+            ///     Discovery binds as much text as a compilation does — a whole query's clauses and
+            ///     a whole filter tree — so the ceiling that spans clauses has to be charged here
+            ///     too. The per-text parse ceilings cannot stand in for it: one is built per text,
+            ///     and it is the number of texts that discovery leaves unbounded.
+            /// </remarks>
+            private readonly CompilationBudget _budget;
+
             /// <summary>Initializes a run.</summary>
             /// <param name="compiler">The stage runner.</param>
             /// <param name="options">The discovery options.</param>
@@ -128,6 +137,7 @@ namespace Tellma.Core.Queryex.Pipeline
             {
                 _compiler = compiler;
                 _options = options;
+                _budget = new CompilationBudget(options.Limits);
             }
 
             /// <summary>Reads one expression list.</summary>
@@ -137,6 +147,13 @@ namespace Tellma.Core.Queryex.Pipeline
             /// <param name="location">Which input this text is.</param>
             internal void Read(string text, QueryexMode mode, bool directions, DiagnosticLocation location)
             {
+                if (_budget.Exceeded)
+                {
+                    // The ceiling is blown and has already said so; reading further texts would only
+                    // add to a total that is over.
+                    return;
+                }
+
                 _locations[location.Text ?? string.Empty] = location;
 
                 if (!_compiler.TryParse(
@@ -179,6 +196,8 @@ namespace Tellma.Core.Queryex.Pipeline
                     _options.Limits,
                     _sink,
                     location);
+
+                _budget.TryConsumeTypedNodes(bound.NodeCount, default, _sink.Scope(location));
 
                 foreach (BoundItem item in bound.Items)
                 {

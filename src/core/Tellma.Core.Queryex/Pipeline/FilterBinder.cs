@@ -134,6 +134,14 @@ namespace Tellma.Core.Queryex.Pipeline
             CompilationBudget budget,
             NullityMap nullity)
         {
+            if (budget.Exceeded)
+            {
+                // The ceiling is already blown and has already said so. Parsing and binding this
+                // leaf could only add to a total that is over, so the ceiling bounds the work done
+                // rather than merely describing it afterwards.
+                return null;
+            }
+
             bool compiled = compiler.TryCompile(
                 leaf.Text,
                 context,
@@ -208,9 +216,16 @@ namespace Tellma.Core.Queryex.Pipeline
 
                 // Every child is bound even after one has failed, because a caller fixing a stored
                 // definition wants to see everything wrong with it rather than one thing at a time.
+                // A blown ceiling is the one exception: it is not a fault in this child, and the
+                // remaining children would only add to a total that is already over.
                 if (operand is null)
                 {
                     failed = true;
+                    if (budget.Exceeded)
+                    {
+                        break;
+                    }
+
                     continue;
                 }
 

@@ -77,21 +77,20 @@ namespace Tellma.Core.Queryex.IntegrationTests
                     counted[0]);
             }
 
+            QuerySpec spec = new()
+            {
+                Root = LedgerFixture.Invoice,
+                Select = "Id, Code, Amount, Rate, Memo, Notes, PostingDate, DueDate, IsPosted,"
+                    + " IsApproved, Count, ExternalId, PostedOn",
+                OrderBy = "Id",
+            };
+
             QueryexResult<CompiledQuery> result = _engine.CompileQuery(
-                new QuerySpec
-                {
-                    Root = LedgerFixture.Invoice,
-                    Select = "Id, Code, Amount, Rate, Memo, Notes, PostingDate, DueDate, IsPosted,"
-                        + " IsApproved, Count, ExternalId, PostedOn",
-                    OrderBy = "Id",
-                },
+                spec,
                 new QueryCompilationOptions { Schema = LedgerFixture.Schema });
 
             Assert.True(result.Succeeded);
-            await Compare(result.Value, QueryCorpus.All[0].Spec with
-            {
-                Select = result.Value.Columns[0].Text,
-            });
+            await Compare(result.Value, spec);
         }
 
         /// <summary>Each case answers the same on the server as it does in memory.</summary>
@@ -180,10 +179,31 @@ namespace Tellma.Core.Queryex.IntegrationTests
         /// <param name="query">The compiled query.</param>
         /// <param name="spec">The query it came from.</param>
         /// <returns>A task that completes when the comparison is done.</returns>
+        /// <remarks>
+        ///     Every value, not just how many of them there are. A row count agrees whenever the
+        ///     fixture inserted the right number of rows, which says nothing about whether it
+        ///     inserted the right ones — and it is the values the rest of this suite trusts.
+        /// </remarks>
         private async Task Compare(CompiledQuery query, QuerySpec spec)
         {
+            IReadOnlyList<IReadOnlyList<QxValue>> expected = ReferenceQuery.Run(spec, Context);
             IReadOnlyList<IReadOnlyList<QxValue>> actual = await Execute(query, Context);
+
             Assert.Equal(LedgerData.Rows(spec.Root).Count, actual.Count);
+            Assert.Equal(expected.Count, actual.Count);
+            Assert.True(actual.Count > 0, "the fixture stored no rows, so nothing was compared");
+
+            for (int row = 0; row < expected.Count; row++)
+            {
+                for (int column = 0; column < expected[row].Count; column++)
+                {
+                    AssertSame(
+                        expected[row][column],
+                        actual[row][column],
+                        "row " + row.ToString(CultureInfo.InvariantCulture)
+                            + " column " + column.ToString(CultureInfo.InvariantCulture));
+                }
+            }
         }
 
         /// <summary>Runs one compiled query on the server.</summary>
