@@ -11,6 +11,37 @@ namespace Tellma.Core.Queryex
         /// <summary>The schema to bind against.</summary>
         public required QueryexSchema Schema { get; init; }
 
+        /// <summary>
+        ///     The language version the expressions were validated under.
+        /// </summary>
+        /// <remarks>
+        ///     Supplied by the host from what it stored alongside the text, not defaulted to the
+        ///     current version: defaulting would stamp every recompilation with whatever version
+        ///     happened to be current, which is the one value that cannot be trusted later. An
+        ///     unsupported version is a caller error rather than a diagnostic — the text may be
+        ///     perfectly well-formed, and what is wrong is the pairing of this engine with data it
+        ///     cannot faithfully compile.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">
+        ///     The version is one this engine does not compile.
+        /// </exception>
+        public required int LanguageVersion
+        {
+            get;
+            init
+            {
+                if (!QueryexLanguage.IsSupported(value))
+                {
+                    throw new ArgumentOutOfRangeException(
+                        nameof(value),
+                        value,
+                        "This engine does not compile that language version.");
+                }
+
+                field = value;
+            }
+        }
+
         /// <summary>The declared parameters, shared by every clause.</summary>
         public IReadOnlyList<QueryexParameterDeclaration> Parameters
         {
@@ -69,6 +100,39 @@ namespace Tellma.Core.Queryex
 
         /// <summary>The position the expression is being validated for.</summary>
         public required QueryexMode Mode { get; init; }
+
+        /// <summary>
+        ///     The language version this text is being validated under.
+        /// </summary>
+        /// <remarks>
+        ///     This is where the stamp is minted: a host validating new text records the version it
+        ///     passed here alongside the text, and passes that same value back every time the text
+        ///     is validated or compiled again. Required rather than defaulted to the current
+        ///     version, because a default would stamp stored text with whatever happened to be
+        ///     current at the moment it was re-checked, which is the one value that cannot be
+        ///     trusted afterwards. An unsupported version is a caller error rather than a
+        ///     diagnostic — the text may be perfectly well-formed, and what is wrong is the pairing
+        ///     of this engine with data it cannot faithfully compile.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">
+        ///     The version is one this engine does not compile.
+        /// </exception>
+        public required int LanguageVersion
+        {
+            get;
+            init
+            {
+                if (!QueryexLanguage.IsSupported(value))
+                {
+                    throw new ArgumentOutOfRangeException(
+                        nameof(value),
+                        value,
+                        "This engine does not compile that language version.");
+                }
+
+                field = value;
+            }
+        }
 
         /// <summary>
         ///     Whether direction suffixes are accepted. Only meaningful for a value shape: the two
@@ -145,6 +209,36 @@ namespace Tellma.Core.Queryex
         ///     clause's mode itself.
         /// </summary>
         public QueryexMode? Mode { get; init; }
+
+        /// <summary>
+        ///     The language version the text is being authored under, current by default.
+        /// </summary>
+        /// <remarks>
+        ///     Defaulted where the two persistence-facing entry points require it, because
+        ///     discovery answers a question about text being written now and its answer is never
+        ///     stored. A host reopening a stored expression for editing supplies the version that
+        ///     text was validated under, so the authoring aid describes it under the rules it was
+        ///     written against.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">
+        ///     The version is one this engine does not compile.
+        /// </exception>
+        public int LanguageVersion
+        {
+            get;
+            init
+            {
+                if (!QueryexLanguage.IsSupported(value))
+                {
+                    throw new ArgumentOutOfRangeException(
+                        nameof(value),
+                        value,
+                        "This engine does not compile that language version.");
+                }
+
+                field = value;
+            }
+        } = QueryexLanguage.Version;
 
         /// <summary>The resource ceilings for this call site.</summary>
         public QueryexLimits Limits

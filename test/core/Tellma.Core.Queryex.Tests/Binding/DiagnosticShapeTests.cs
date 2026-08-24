@@ -97,6 +97,7 @@ namespace Tellma.Core.Queryex.Tests.Binding
                 new string('(', 200) + "1" + new string(')', 200),
                 new ValidationOptions
                 {
+                    LanguageVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Root = LedgerFixture.Invoice,
                     Mode = QueryexMode.Value,
@@ -121,7 +122,11 @@ namespace Tellma.Core.Queryex.Tests.Binding
                     Filter = FilterTree.Leaf("AlsoMissing = 1"),
                     OrderBy = "StillMissing",
                 },
-                new QueryCompilationOptions { Schema = LedgerFixture.Schema });
+                new QueryCompilationOptions
+                {
+                    LanguageVersion = QueryexLanguage.Version,
+                    Schema = LedgerFixture.Schema,
+                });
 
             Assert.False(result.Succeeded);
             Assert.All(result.Diagnostics, d => Assert.False(string.IsNullOrEmpty(d.Location)));
@@ -153,6 +158,7 @@ namespace Tellma.Core.Queryex.Tests.Binding
                 text,
                 new ValidationOptions
                 {
+                    LanguageVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Root = LedgerFixture.Invoice,
                     Mode = QueryexMode.Value,
@@ -176,6 +182,7 @@ namespace Tellma.Core.Queryex.Tests.Binding
                 text,
                 new ValidationOptions
                 {
+                    LanguageVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Root = LedgerFixture.Invoice,
                     Mode = QueryexMode.Value,

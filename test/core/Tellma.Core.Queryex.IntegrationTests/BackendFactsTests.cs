@@ -76,7 +76,11 @@ namespace Tellma.Core.Queryex.IntegrationTests
             {
                 QueryexResult<CompiledQuery> result = _engine.CompileQuery(
                     new QuerySpec { Root = LedgerFixture.Invoice, Select = "Id", Filter = FilterTree.Leaf(expression) },
-                    new QueryCompilationOptions { Schema = LedgerFixture.Schema });
+                    new QueryCompilationOptions
+                    {
+                        LanguageVersion = QueryexLanguage.Version,
+                        Schema = LedgerFixture.Schema,
+                    });
 
                 Assert.True(result.Succeeded, name);
 
@@ -104,7 +108,11 @@ namespace Tellma.Core.Queryex.IntegrationTests
                     Select = "Count / CreatedById",
                     Filter = FilterTree.Leaf("Id = 1"),
                 },
-                new QueryCompilationOptions { Schema = LedgerFixture.Schema });
+                new QueryCompilationOptions
+                {
+                    LanguageVersion = QueryexLanguage.Version,
+                    Schema = LedgerFixture.Schema,
+                });
 
             Assert.True(result.Succeeded);
 
@@ -140,6 +148,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
                     entry.Spec,
                     new QueryCompilationOptions
                     {
+                        LanguageVersion = QueryexLanguage.Version,
                         Schema = LedgerFixture.Schema,
                         Parameters = entry.Parameters,
                         HasUser = entry.HasUser,
@@ -224,7 +233,11 @@ namespace Tellma.Core.Queryex.IntegrationTests
                         ? FilterTree.Not(FilterTree.Leaf(expression))
                         : FilterTree.Leaf(expression),
                 },
-                new QueryCompilationOptions { Schema = LedgerFixture.Schema });
+                new QueryCompilationOptions
+                {
+                    LanguageVersion = QueryexLanguage.Version,
+                    Schema = LedgerFixture.Schema,
+                });
 
             Assert.True(counting.Succeeded, expression);
             return await Rendered(counting.Value, string.Empty);

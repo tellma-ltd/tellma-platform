@@ -56,7 +56,12 @@ namespace Tellma.Queryex.Testing.Probe
             QueryClauses clauses = new(
                 new ExpressionCompiler(new QueryexEngineOptions()),
                 spec,
-                new QueryCompilationOptions { Schema = schema, Parameters = parameters ?? [] },
+                new QueryCompilationOptions
+                {
+                    LanguageVersion = QueryexLanguage.Version,
+                    Schema = schema,
+                    Parameters = parameters ?? [],
+                },
                 sink,
                 budget,
                 new NullityMap());

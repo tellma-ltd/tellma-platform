@@ -62,6 +62,7 @@ namespace Tellma.Core.Queryex.Tests.Corpus
                 entry.Spec,
                 new QueryCompilationOptions
                 {
+                    LanguageVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Parameters = entry.Parameters,
                     HasUser = entry.HasUser,

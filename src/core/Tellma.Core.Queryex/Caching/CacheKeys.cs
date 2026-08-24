@@ -36,10 +36,10 @@ namespace Tellma.Core.Queryex.Caching
     /// </summary>
     /// <remarks>
     ///     Everything the binding depended on, and nothing more. The schema is held by identity
-    ///     rather than by version, so the descriptors a cached tree points at are the very ones the
-    ///     current compilation compares against — matching a grouping key to an ordering term
-    ///     compares descriptors, and two equal-versioned schema instances would fail that comparison
-    ///     for no reason a reader could see.
+    ///     rather than by any digest of what it contains, so the descriptors a cached tree points at
+    ///     are the very ones the current compilation compares against — matching a grouping key to
+    ///     an ordering term compares descriptors, and two structurally identical schema instances
+    ///     would fail that comparison for no reason a reader could see.
     /// </remarks>
     internal sealed class BindKey : IEquatable<BindKey>
     {
@@ -51,6 +51,7 @@ namespace Tellma.Core.Queryex.Caching
         /// <param name="schema">The schema it bound against.</param>
         /// <param name="root">The entity paths resolved from.</param>
         /// <param name="mode">The position it was bound for.</param>
+        /// <param name="languageVersion">The language version it bound under.</param>
         /// <param name="hasUser">Whether execution will have a signed-in user.</param>
         /// <param name="hasGroupingKeys">Whether the enclosing query groups by anything.</param>
         /// <param name="directions">Whether direction suffixes were accepted.</param>
@@ -66,6 +67,7 @@ namespace Tellma.Core.Queryex.Caching
             QueryexSchema schema,
             EntityDescriptor root,
             QueryexMode mode,
+            int languageVersion,
             bool hasUser,
             bool hasGroupingKeys,
             bool directions,
@@ -76,6 +78,7 @@ namespace Tellma.Core.Queryex.Caching
             Schema = schema;
             Root = root;
             Mode = mode;
+            LanguageVersion = languageVersion;
             HasUser = hasUser;
             HasGroupingKeys = hasGroupingKeys;
             Directions = directions;
@@ -87,6 +90,7 @@ namespace Tellma.Core.Queryex.Caching
             hash.Add(schema);
             hash.Add(root);
             hash.Add(mode);
+            hash.Add(languageVersion);
             hash.Add(hasUser);
             hash.Add(hasGroupingKeys);
             hash.Add(directions);
@@ -106,6 +110,9 @@ namespace Tellma.Core.Queryex.Caching
 
         /// <summary>The schema it bound against.</summary>
         internal QueryexSchema Schema { get; }
+
+        /// <summary>The language version it bound under.</summary>
+        internal int LanguageVersion { get; }
 
         /// <summary>The entity paths resolved from.</summary>
         internal EntityDescriptor Root { get; }
@@ -272,6 +279,7 @@ namespace Tellma.Core.Queryex.Caching
             Field(key, spec.OrderBy);
             Field(key, Number(spec.Skip));
             Field(key, Number(spec.Take));
+            Field(key, Number(options.LanguageVersion));
             Field(key, options.HasUser ? "1" : "0");
             Field(key, Number(options.BatchOrdinal));
             Field(key, Ceilings(options.Limits));

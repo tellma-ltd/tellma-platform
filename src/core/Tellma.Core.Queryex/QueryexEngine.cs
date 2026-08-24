@@ -91,6 +91,7 @@ namespace Tellma.Core.Queryex
                 Schema = options.Schema,
                 Root = options.Root,
                 Mode = options.Mode,
+                LanguageVersion = options.LanguageVersion,
                 HasUser = options.HasUser,
                 HasGroupingKeys = options.HasGroupingKeys,
                 Parameters = Symbols.From(options.Parameters),

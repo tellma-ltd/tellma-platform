@@ -23,7 +23,12 @@ namespace Tellma.Core.Queryex.Tests.Emit
         {
             QueryexResult<CompiledQuery> result = Engine.CompileQuery(
                 spec,
-                new QueryCompilationOptions { Schema = LedgerFixture.Schema, Parameters = parameters });
+                new QueryCompilationOptions
+                {
+                    LanguageVersion = QueryexLanguage.Version,
+                    Schema = LedgerFixture.Schema,
+                    Parameters = parameters,
+                });
 
             Assert.True(
                 result.Succeeded,
@@ -413,7 +418,11 @@ namespace Tellma.Core.Queryex.Tests.Emit
                     Select = "Id",
                     Take = 10,
                 },
-                new QueryCompilationOptions { Schema = LedgerFixture.Schema });
+                new QueryCompilationOptions
+                {
+                    LanguageVersion = QueryexLanguage.Version,
+                    Schema = LedgerFixture.Schema,
+                });
 
             Assert.False(result.Succeeded);
             Assert.Equal("QX4006", result.Diagnostics[0].Code);
@@ -431,7 +440,11 @@ namespace Tellma.Core.Queryex.Tests.Emit
                     Select = "Centre.Name, sum(Amount)",
                     OrderBy = "Customer.Name",
                 },
-                new QueryCompilationOptions { Schema = LedgerFixture.Schema });
+                new QueryCompilationOptions
+                {
+                    LanguageVersion = QueryexLanguage.Version,
+                    Schema = LedgerFixture.Schema,
+                });
 
             Assert.False(result.Succeeded);
             Assert.Equal("QX4005", result.Diagnostics[0].Code);
@@ -448,7 +461,11 @@ namespace Tellma.Core.Queryex.Tests.Emit
                     Select = "Id",
                     OrderBy = "PostingDate, PostingDate desc",
                 },
-                new QueryCompilationOptions { Schema = LedgerFixture.Schema });
+                new QueryCompilationOptions
+                {
+                    LanguageVersion = QueryexLanguage.Version,
+                    Schema = LedgerFixture.Schema,
+                });
 
             Assert.False(result.Succeeded);
             Assert.Equal("QX4008", result.Diagnostics[0].Code);
@@ -470,7 +487,11 @@ namespace Tellma.Core.Queryex.Tests.Emit
             string first = Compile(spec).Sql;
             string second = new QueryexEngine().CompileQuery(
                 spec,
-                new QueryCompilationOptions { Schema = LedgerFixture.Schema }).Value!.Sql;
+                new QueryCompilationOptions
+                {
+                    LanguageVersion = QueryexLanguage.Version,
+                    Schema = LedgerFixture.Schema,
+                }).Value!.Sql;
 
             Assert.Equal(first, second);
         }
@@ -486,7 +507,12 @@ namespace Tellma.Core.Queryex.Tests.Emit
                     Select = "Id",
                     Filter = FilterTree.Leaf("Amount > 100"),
                 },
-                new QueryCompilationOptions { Schema = LedgerFixture.Schema, BatchOrdinal = 3 });
+                new QueryCompilationOptions
+                {
+                    LanguageVersion = QueryexLanguage.Version,
+                    Schema = LedgerFixture.Schema,
+                    BatchOrdinal = 3,
+                });
 
             Assert.True(result.Succeeded);
             Assert.Equal("@qx3_p0", result.Value.Parameters[0].Name);

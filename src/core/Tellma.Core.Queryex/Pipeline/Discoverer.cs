@@ -185,6 +185,7 @@ namespace Tellma.Core.Queryex.Pipeline
                     Schema = _options.Schema,
                     Root = _options.Root,
                     Mode = mode,
+                    LanguageVersion = _options.LanguageVersion,
                     Inference = _inference,
                 };
 

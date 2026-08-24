@@ -38,6 +38,16 @@ namespace Tellma.Core.Queryex.Binding
         /// <summary>The position the expression is being compiled for.</summary>
         internal required QueryexMode Mode { get; init; }
 
+        /// <summary>The language version the text is being compiled under.</summary>
+        /// <remarks>
+        ///     Part of the cache key rather than a constant read from <see cref="QueryexLanguage" />,
+        ///     because an engine that compiles two versions compiles the same text to different
+        ///     trees under each, and a key without the version would serve one version's tree for
+        ///     the other's request. It costs nothing while there is only one version, and is what
+        ///     keeps the key correct on the day there are two.
+        /// </remarks>
+        internal int LanguageVersion { get; init; } = QueryexLanguage.Version;
+
         /// <summary>Whether execution will have a signed-in user.</summary>
         internal bool HasUser { get; init; } = true;
 

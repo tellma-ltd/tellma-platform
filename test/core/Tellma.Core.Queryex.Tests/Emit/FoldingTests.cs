@@ -200,7 +200,11 @@ namespace Tellma.Core.Queryex.Tests.Emit
         {
             QueryexResult<CompiledQuery> result = Engine.CompileQuery(
                 spec,
-                new QueryCompilationOptions { Schema = LedgerFixture.Schema });
+                new QueryCompilationOptions
+                {
+                    LanguageVersion = QueryexLanguage.Version,
+                    Schema = LedgerFixture.Schema,
+                });
 
             Assert.True(
                 result.Succeeded,

@@ -243,8 +243,9 @@ public sealed record QueryexDiagnostic(
 
 Every diagnostic is an error; a severity axis is added when the first warning exists, not before.
 User input produces diagnostics, never exceptions. Exceptions are reserved for **caller errors** —
-malformed schemas, contradictory options, `Having` without `Aggregate`, a null where an options
-record declares a default — which are host bugs, not user input, and throw `ArgumentException` or
+malformed schemas, contradictory options, `Having` without `Aggregate`, a language version this
+engine does not compile (§17), a null where an options record declares a default — which are host
+bugs, not user input, and throw `ArgumentException`, `ArgumentOutOfRangeException`, or
 `ArgumentNullException` at the API boundary. An optional option with a default still refuses null,
 at the property that was set rather than wherever the value is first read.
 
@@ -278,6 +279,10 @@ public sealed record ValidationOptions
 
     /// <summary>The position the expression is being validated for (§11).</summary>
     public required QueryexMode Mode { get; init; }
+
+    /// <summary>The language version this text is being validated under (§17). Required: this is
+    ///     where the stamp a host stores beside the text is minted.</summary>
+    public required int LanguageVersion { get; init; }
 
     /// <summary>Whether <c>asc</c>/<c>desc</c> suffixes are accepted. Only meaningful when
     ///     <see cref="Mode"/> has value shape; a predicate mode with directions is a caller
@@ -316,6 +321,10 @@ public sealed record DiscoveryOptions
     ///     <see cref="QueryexEngine.Discover"/> only — <see cref="QueryexEngine.DiscoverQuery"/>
     ///     derives each clause's mode itself.</summary>
     public QueryexMode? Mode { get; init; }
+
+    /// <summary>The language version the text is being authored under (§17); current by default,
+    ///     because a discovery answer is never stored.</summary>
+    public int LanguageVersion { get; init; } = QueryexLanguage.Version;
 
     /// <summary>The resource limits for this call site (§15).</summary>
     public QueryexLimits Limits { get; init; } = QueryexLimits.Default;
@@ -411,6 +420,10 @@ public sealed record QueryCompilationOptions
 {
     /// <summary>The schema to bind against.</summary>
     public required QueryexSchema Schema { get; init; }
+
+    /// <summary>The language version the expressions were validated under (§17). Required: the
+    ///     host supplies what it stored beside the text.</summary>
+    public required int LanguageVersion { get; init; }
 
     /// <summary>The declared parameters, shared by every clause.</summary>
     public IReadOnlyList<QueryexParameterDeclaration> Parameters { get; init; } = [];
@@ -2340,7 +2353,7 @@ Three layers inside the engine instance, each keyed on exactly the inputs its st
 |---|---|---|
 | L1 | expression text, limits | `SyntaxTree` |
 | L2 | expression text, schema, root entity, mode, directions, `HasUser`, `HasGroupingKeys` (Group axis), the declarations the text refers to, limits, language version | bound tree + nullity |
-| L3 | schema, every clause's text with the shape of the filter tree it came from, options, declarations | SQL template + slot map |
+| L3 | schema, every clause's text with the shape of the filter tree it came from, language version, options, declarations | SQL template + slot map |
 
 With L3 warm, per-request work is reduced to binding parameter values into a cached template.
 Rules:
@@ -2386,10 +2399,16 @@ namespace Tellma.Core.Queryex;
 /// <summary>Facts about the Queryex language this engine implements.</summary>
 public static class QueryexLanguage
 {
-    /// <summary>The language version. Incremented only by a change that alters the meaning of
-    ///     some currently-valid expression; additive changes (new functions, new calendar codes)
-    ///     do not.</summary>
+    /// <summary>The language version this engine writes. Incremented only by a change that alters
+    ///     the meaning of some currently-valid expression; additive changes (new functions, new
+    ///     calendar codes) do not.</summary>
     public const int Version = 1;
+
+    /// <summary>The oldest language version this engine still compiles.</summary>
+    public const int Minimum = 1;
+
+    /// <summary>Whether this engine compiles expressions authored under a given version.</summary>
+    public static bool IsSupported(int version);
 }
 ```
 
@@ -2397,11 +2416,30 @@ Queryex text is persisted in configuration — report definitions, saved filters
 criteria — and recompiled long after it was written. Obligations, on hosts and on any future
 version-2 work:
 
-- Hosts persist stored expressions alongside the language version they were validated under.
-- The version participates in every cache key (§16).
+- **The stamp is an input, not a convention.** `ValidationOptions.LanguageVersion` and
+  `QueryCompilationOptions.LanguageVersion` are required, so a host cannot reach either entry
+  point without stating the version its text was validated under. `Validate` is where the stamp is
+  minted: whatever a host passes there is what it stores beside the text and passes back
+  afterwards. Neither is defaulted to the current version — a default would stamp stored text with
+  whatever happened to be current when it was re-checked, which is the one value that cannot be
+  trusted later.
+- **Discovery defaults it.** `DiscoveryOptions.LanguageVersion` is optional and current by
+  default, because discovery answers a question about text being written now and its answer is
+  never stored; it remains settable, so a host reopening a stored expression describes it under the
+  rules it was written against.
+- **An unsupported version is a caller error, not a diagnostic.** The text may be perfectly
+  well-formed; what is wrong is the pairing of this engine with data it cannot faithfully compile.
+  A version above `Version` is refused rather than accepted optimistically — it was authored by a
+  newer engine, under rules this one does not have. Refused where it is supplied, at the options
+  record, rather than carried inward to whatever reads it first.
+- The version participates in every cache key (§16), from the first version rather than the
+  second: two versions bind the same text to different trees, and a key that had never
+  distinguished them would serve one version's tree for the other's request.
 - A meaning-altering change requires a new version, an engine that can compile both, and a
   migration that compiles every stored expression under both versions and reports those whose
-  bound tree or nullity differs, for human review.
+  bound tree or nullity differs, for human review. `Minimum` moves above `Version` only when
+  support for a version is dropped, which strands every expression stored under it until such a
+  migration has rewritten it.
 
 *Rationale.* Expressions used as permission criteria are a security boundary. A semantic change
 that quietly turns a restrictive criterion into a permissive one is not a compatibility

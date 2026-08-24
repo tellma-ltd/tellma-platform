@@ -130,6 +130,7 @@ namespace Tellma.Core.Queryex.Tests.Robustness
                 text,
                 new ValidationOptions
                 {
+                    LanguageVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Root = LedgerFixture.Invoice,
                     Mode = QueryexMode.Value,
@@ -137,7 +138,11 @@ namespace Tellma.Core.Queryex.Tests.Robustness
 
             QueryexResult<CompiledQuery> compiled = Engine.CompileQuery(
                 new QuerySpec { Root = LedgerFixture.Invoice, Select = text },
-                new QueryCompilationOptions { Schema = LedgerFixture.Schema });
+                new QueryCompilationOptions
+                {
+                    LanguageVersion = QueryexLanguage.Version,
+                    Schema = LedgerFixture.Schema,
+                });
 
             Assert.Equal(accepted, validated.Succeeded);
             Assert.Equal(validated.Succeeded, compiled.Succeeded);
@@ -265,7 +270,11 @@ namespace Tellma.Core.Queryex.Tests.Robustness
 
             QueryexResult<CompiledQuery> result = Engine.CompileQuery(
                 new QuerySpec { Root = LedgerFixture.Invoice, Select = "Id", Filter = tree },
-                new QueryCompilationOptions { Schema = LedgerFixture.Schema });
+                new QueryCompilationOptions
+                {
+                    LanguageVersion = QueryexLanguage.Version,
+                    Schema = LedgerFixture.Schema,
+                });
 
             Assert.True(result.Succeeded);
         }
@@ -278,10 +287,20 @@ namespace Tellma.Core.Queryex.Tests.Robustness
         public void ANullOption_IsRefusedWhereItIsSet()
         {
             Assert.Throws<ArgumentNullException>(
-                () => new QueryCompilationOptions { Schema = LedgerFixture.Schema, Limits = null! });
+                () => new QueryCompilationOptions
+                {
+                    LanguageVersion = QueryexLanguage.Version,
+                    Schema = LedgerFixture.Schema,
+                    Limits = null!,
+                });
 
             Assert.Throws<ArgumentNullException>(
-                () => new QueryCompilationOptions { Schema = LedgerFixture.Schema, Parameters = null! });
+                () => new QueryCompilationOptions
+                {
+                    LanguageVersion = QueryexLanguage.Version,
+                    Schema = LedgerFixture.Schema,
+                    Parameters = null!,
+                });
 
             Assert.Throws<ArgumentNullException>(() => new DiscoveryOptions { Limits = null! });
         }
@@ -296,6 +315,7 @@ namespace Tellma.Core.Queryex.Tests.Robustness
                 text,
                 new ValidationOptions
                 {
+                    LanguageVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Root = LedgerFixture.Invoice,
                     Mode = mode,

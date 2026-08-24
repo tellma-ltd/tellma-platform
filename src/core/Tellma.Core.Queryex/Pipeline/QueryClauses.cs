@@ -205,6 +205,7 @@ namespace Tellma.Core.Queryex.Pipeline
                 Schema = _options.Schema,
                 Root = _spec.Root,
                 Mode = mode,
+                LanguageVersion = _options.LanguageVersion,
                 HasUser = _options.HasUser,
                 HasGroupingKeys = _hasGroupingKeys,
                 Parameters = _symbols,

@@ -87,7 +87,11 @@ namespace Tellma.Core.Queryex.IntegrationTests
 
             QueryexResult<CompiledQuery> result = _engine.CompileQuery(
                 spec,
-                new QueryCompilationOptions { Schema = LedgerFixture.Schema });
+                new QueryCompilationOptions
+                {
+                    LanguageVersion = QueryexLanguage.Version,
+                    Schema = LedgerFixture.Schema,
+                });
 
             Assert.True(result.Succeeded);
             await Compare(result.Value, spec);
@@ -106,6 +110,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
                 entry.Spec,
                 new QueryCompilationOptions
                 {
+                    LanguageVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Parameters = entry.Parameters,
                     HasUser = entry.HasUser,
