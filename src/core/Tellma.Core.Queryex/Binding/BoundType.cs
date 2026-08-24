@@ -101,7 +101,9 @@ namespace Tellma.Core.Queryex.Binding
         /// <summary>Every type with a meaningful order.</summary>
         Ordered = Any & ~Geography & ~Guid,
 
-        /// <summary>The three date types, which every elapsed-time operation accepts.</summary>
+        /// <summary>
+        ///     The three date types, which every elapsed-time operation accepts but a sub-day shift.
+        /// </summary>
         Instant = Date | DateTime | DateTimeOffset,
 
         /// <summary>

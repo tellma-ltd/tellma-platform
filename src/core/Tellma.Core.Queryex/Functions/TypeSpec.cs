@@ -92,7 +92,9 @@ namespace Tellma.Core.Queryex.Functions
             return new TypeSpec { Variable = variable, Admits = TypeMask.Ordered };
         }
 
-        /// <summary>A variable over the three date types, for elapsed-time operations.</summary>
+        /// <summary>
+        ///     A variable over the three date types, for elapsed-time operations but a sub-day shift.
+        /// </summary>
         /// <param name="variable">The variable's name within its signature.</param>
         /// <returns>The specification.</returns>
         internal static TypeSpec Instant(string variable)
