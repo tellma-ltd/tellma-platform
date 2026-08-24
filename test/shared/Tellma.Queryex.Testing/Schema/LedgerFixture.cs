@@ -31,9 +31,6 @@ namespace Tellma.Queryex.Testing.Schema
     /// </remarks>
     public static class LedgerFixture
     {
-        /// <summary>The version this fixture presents itself under.</summary>
-        public const string Version = "ledger-1";
-
         /// <summary>The schema, built once.</summary>
         public static QueryexSchema Schema { get; } = Build();
 
@@ -50,7 +47,7 @@ namespace Tellma.Queryex.Testing.Schema
         /// <returns>The schema.</returns>
         private static QueryexSchema Build()
         {
-            QueryexSchemaBuilder builder = new(Version);
+            QueryexSchemaBuilder builder = new();
 
             // The entity name, the key's name, and several columns all differ from what an
             // expression author writes.

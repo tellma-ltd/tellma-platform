@@ -12,9 +12,17 @@ namespace Tellma.Core.Queryex
     /// </summary>
     /// <remarks>
     ///     <para>
-    ///         Built once per model version through <see cref="QueryexSchemaBuilder" />, which
-    ///         validates the host's input and resolves cross-references. A malformed schema is a
-    ///         host bug, so it throws at build time and never becomes a user-facing diagnostic.
+    ///         Built once per model through <see cref="QueryexSchemaBuilder" />, which validates the
+    ///         host's input and resolves cross-references. A malformed schema is a host bug, so it
+    ///         throws at build time and never becomes a user-facing diagnostic.
+    ///     </para>
+    ///     <para>
+    ///         <b>A schema is identified by reference.</b> Every cache the engine keeps holds the
+    ///         instance a compilation ran against, so rebuilding the model produces a schema no
+    ///         earlier entry can be served for. Bound expressions hold descriptors rather than
+    ///         names, and reference identity is what keeps a renamed column from being emitted
+    ///         under its old name out of a cache — a host therefore rebuilds the schema when the
+    ///         model changes rather than mutating the one in hand.
     ///     </para>
     ///     <para>
     ///         <b>The contract assumes enforced referential integrity.</b> A non-null foreign key is
@@ -36,28 +44,14 @@ namespace Tellma.Core.Queryex
         private readonly FrozenDictionary<string, EntityDescriptor> _entitiesByName;
 
         /// <summary>Initializes the schema. Built through <see cref="QueryexSchemaBuilder" />.</summary>
-        /// <param name="version">The model version discriminator.</param>
         /// <param name="entities">The entities, in registration order.</param>
-        internal QueryexSchema(string version, IReadOnlyList<EntityDescriptor> entities)
+        internal QueryexSchema(IReadOnlyList<EntityDescriptor> entities)
         {
-            Version = version;
             Entities = entities;
             _entitiesByName = entities.ToFrozenDictionary(
                 static entity => entity.Name,
                 StringComparer.OrdinalIgnoreCase);
         }
-
-        /// <summary>
-        ///     An opaque version discriminator that participates in every cache key.
-        /// </summary>
-        /// <remarks>
-        ///     Must change whenever any logical name, physical name, type, nullability, uniqueness,
-        ///     or relationship changes — a content hash of the model is the natural choice. It is
-        ///     the invalidation lever the caches depend on: bound expressions hold descriptors
-        ///     rather than names, so a host that renamed a column without moving the version would
-        ///     keep emitting the old one.
-        /// </remarks>
-        public string Version { get; }
 
         /// <summary>The entities, in registration order.</summary>
         public IReadOnlyList<EntityDescriptor> Entities { get; }

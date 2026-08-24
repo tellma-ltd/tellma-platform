@@ -672,17 +672,14 @@ structurally impossible rather than a discipline to maintain.
 ```csharp
 namespace Tellma.Core.Queryex;
 
-/// <summary>An immutable entity schema. Built once per model version via
+/// <summary>An immutable entity schema. Built once per model via
 ///     <see cref="QueryexSchemaBuilder"/>, which validates the host's input and resolves
 ///     cross-references; a malformed schema throws at build time and never becomes a user
-///     diagnostic.</summary>
+///     diagnostic. Identified by reference: every cache holds the instance a compilation ran
+///     against, so a host rebuilds the schema when the model changes rather than mutating the
+///     one in hand.</summary>
 public sealed class QueryexSchema
 {
-    /// <summary>An opaque version discriminator that participates in every cache key. Must
-    ///     change whenever any logical name, physical name, type, nullability, uniqueness, or
-    ///     relationship changes — a content hash of the model is the natural choice.</summary>
-    public string Version { get; }
-
     /// <summary>The entities, in registration order.</summary>
     public IReadOnlyList<EntityDescriptor> Entities { get; }
 
@@ -788,7 +785,7 @@ properties, and navigations by name; `Build()` links names to descriptors and va
 sketch:
 
 ```csharp
-var b = new QueryexSchemaBuilder(version: modelHash);
+var b = new QueryexSchemaBuilder();
 var account = b.Entity("Account", source: "[gl].[Accounts]");
 account.Key("Id", QueryexType.QxNumeric, column: "Id");
 account.Property("Concept", QueryexType.QxString, column: "Concept", isNotNull: true, isUnique: true);
@@ -1041,8 +1038,8 @@ last must resolve to navigations; the last must resolve to a scalar property.
 Resolution yields the `PropertyDescriptor` and the chain of `NavigationDescriptor`s. Everything
 downstream refers to those descriptors; the text the author wrote is retained only for
 diagnostics. Because bound trees hold descriptors rather than names, a host rename can never leave
-a cached tree emitting a stale column — the schema version changes, and the cache entry dies with
-it (§16).
+a cached tree emitting a stale column — the rename produces a new schema instance, and every cache
+entry keyed on the old one is unreachable from it (§16).
 
 ### 6.2 Path type and nullity
 
@@ -2216,9 +2213,9 @@ within that type.
 
 ### 13.5 Determinism
 
-Given the same query spec text, schema version, options (batch ordinal included), and engine
-version, emission produces byte-identical SQL with identically named parameters; only parameter
-*values* vary per request.
+Given the same query spec text, schema, options (batch ordinal included), and engine version,
+emission produces byte-identical SQL with identically named parameters; only parameter *values*
+vary per request.
 Hash-ordered collections, culture-sensitive formatting, or unstable alias assignment anywhere in
 the pipeline are defects.
 
@@ -2371,9 +2368,11 @@ Rules:
   grow memory without bound.
 - The **limits profile participates in the key**: a text admitted under one call site's generous
   ceilings must not satisfy a stricter call site from cache.
-- The **schema version** remains the host's invalidation lever across instances: bound trees hold
-  descriptors, not names, so a host rename without a version change would keep emitting a stale
-  column. The schema contract (§3) makes the version's obligations explicit.
+- **A rebuilt schema is the invalidation lever, and the only one.** Bound trees hold descriptors,
+  not names, so a host that changes its model builds a new `QueryexSchema`; the new instance
+  cannot hit an entry keyed on the old one, and the old entries age out. There is no version
+  string to keep in step — the engine carries no model discriminator a host could get wrong, and
+  a host mutating descriptors in place instead of rebuilding is the one way to defeat this.
 
 *Guidance.* Access-control criteria and stored report filters recompile on essentially every
 request with unchanging text; these layers are where the engine earns its performance, not

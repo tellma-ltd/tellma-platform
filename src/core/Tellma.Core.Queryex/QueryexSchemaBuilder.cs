@@ -27,24 +27,8 @@ namespace Tellma.Core.Queryex
         private readonly Dictionary<string, EntityBuilder> _entitiesByName =
             new(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>The model version discriminator.</summary>
-        private readonly string _version;
-
         /// <summary>Whether <see cref="Build" /> has already run.</summary>
         private bool _built;
-
-        /// <summary>Starts a new schema.</summary>
-        /// <param name="version">
-        ///     An opaque discriminator that must change whenever anything about the model changes.
-        ///     It participates in every cache key, so a stale one keeps stale compilations alive.
-        /// </param>
-        /// <exception cref="ArgumentException"><paramref name="version" /> is null or whitespace.</exception>
-        public QueryexSchemaBuilder(string version)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(version);
-
-            _version = version;
-        }
 
         /// <summary>Declares an entity.</summary>
         /// <param name="name">The logical entity name, unique across the schema case-insensitively.</param>
@@ -109,7 +93,7 @@ namespace Tellma.Core.Queryex
                 descriptors.Add(entity.Descriptor);
             }
 
-            return new QueryexSchema(_version, descriptors);
+            return new QueryexSchema(descriptors);
         }
 
         /// <summary>Formats a message with the invariant culture.</summary>
