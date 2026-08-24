@@ -76,7 +76,7 @@ namespace Tellma.Core.Queryex
 
             foreach (EntityBuilder entity in _entities)
             {
-                entity.Link(_entitiesByName);
+                entity.Link();
             }
 
             // Foreign keys are checked only after every entity has a key, so that the message names
@@ -388,11 +388,13 @@ namespace Tellma.Core.Queryex
             }
 
             /// <summary>Resolves the entity's own members and validates them.</summary>
-            /// <param name="entities">Every entity builder, by logical name.</param>
-            internal void Link(IReadOnlyDictionary<string, EntityBuilder> entities)
+            /// <remarks>
+            ///     Takes nothing, unlike <see cref="LinkNavigations" />: everything checked here is
+            ///     declared by this entity, and that is what makes it safe to run before any other
+            ///     entity has been linked.
+            /// </remarks>
+            internal void Link()
             {
-                _ = entities;
-
                 if (_keyName is null)
                 {
                     throw new InvalidOperationException(
