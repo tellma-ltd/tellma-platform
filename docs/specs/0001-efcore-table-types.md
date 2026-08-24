@@ -1,5 +1,11 @@
 # Spec: EF Core Migrations Extension for SQL Server Table Types (UDTTs)
 
+- **Author:** Ahmad Akra
+- **Date:** 16 June 2026
+
+**Status:** Frozen **historical** record of the design and its reasoning at authoring time. It is not
+updated as the code or its dependencies evolve.
+
 ## Context
 
 Performance is one of the most important design goals in Tellma ERP. All persistence goes
