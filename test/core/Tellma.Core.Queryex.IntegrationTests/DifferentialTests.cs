@@ -169,15 +169,43 @@ namespace Tellma.Core.Queryex.IntegrationTests
         /// <summary>Renders one row so that two of them can be ordered against each other.</summary>
         /// <param name="row">The row.</param>
         /// <returns>The rendering.</returns>
+        /// <remarks>
+        ///     Two rows that are not the same row must not render alike. The ordering is stable, so
+        ///     rows sharing a rendering keep the order they arrived in — which is the order this
+        ///     canonicalisation exists to stop mattering. A key that collapses distinct rows hands
+        ///     them back to the server's whim, and the failure names a value rather than the
+        ///     ordering that actually differed.
+        /// </remarks>
         private static string Rendered(IReadOnlyList<QxValue> row)
         {
-            return string.Join(
-                '\u001f',
-                row.Select(value => value.IsAbsent
-                    ? string.Empty
-                    : value.Type == QueryexType.QxNumeric
-                        ? value.AsNumber.ToString().TrimEnd('0').TrimEnd('.')
-                        : value.ToString()));
+            return string.Join('\u001f', row.Select(Rendered));
+        }
+
+        /// <summary>Renders one value as part of a row's ordering key.</summary>
+        /// <param name="value">The value.</param>
+        /// <returns>The rendering.</returns>
+        private static string Rendered(QxValue value)
+        {
+            if (value.IsAbsent)
+            {
+                // Not the empty string, which is what a present but empty text value renders as:
+                // absence and emptiness are different answers, and a key that conflated them would
+                // tie two rows that differ.
+                return "\u0000";
+            }
+
+            if (value.Type != QueryexType.QxNumeric)
+            {
+                return value.ToString();
+            }
+
+            // Trailing zeros carry no value and the two readings need not agree on how many of them
+            // there are, so 1.50 and 1.5 are one number here. Only after the point: trimming an
+            // integer's zeros would make 1, 10 and 100 one number too.
+            string rendered = value.AsNumber.ToString();
+            return rendered.Contains('.', StringComparison.Ordinal)
+                ? rendered.TrimEnd('0').TrimEnd('.')
+                : rendered;
         }
 
         /// <summary>Compares one compiled query's answers against the second implementation's.</summary>
