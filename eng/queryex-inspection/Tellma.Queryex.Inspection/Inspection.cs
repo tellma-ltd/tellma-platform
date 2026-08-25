@@ -138,7 +138,13 @@ namespace Tellma.Queryex.Inspection
             {
                 compiled = Engine.CompileQuery(
                     spec,
-                    new QueryCompilationOptions { Schema = LedgerFixture.Schema });
+                    new QueryCompilationOptions
+                    {
+                        // The current version, because the page compiles what is being typed right
+                        // now rather than something stored under a version of its own.
+                        LanguageVersion = QueryexLanguage.Version,
+                        Schema = LedgerFixture.Schema,
+                    });
             }
             catch (ArgumentException problem)
             {
