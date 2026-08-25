@@ -33,14 +33,16 @@ namespace Tellma.Core.Queryex.IntegrationTests
         private readonly QueryexEngine _engine = new();
 
         /// <summary>The values the declared parameters are given.</summary>
+        /// <remarks>
+        ///     One entry, because the corpus declares one parameter. A value here is what admits
+        ///     the cases that name it, so an entry nothing names admits nothing and only looks like
+        ///     the suite binds more than it does.
+        /// </remarks>
         private static InterpreterContext Context => InterpreterContext.Fixed with
         {
             Parameters = new Dictionary<string, QxValue>(StringComparer.OrdinalIgnoreCase)
             {
-                ["From"] = QxValue.Date(new DateOnly(2024, 1, 1)),
-                ["To"] = QxValue.Date(new DateOnly(2025, 12, 31)),
-                ["X"] = QxValue.Number(new System.Data.SqlTypes.SqlDecimal(3m)),
-                ["N"] = QxValue.Number(new System.Data.SqlTypes.SqlDecimal(2m)),
+                ["a"] = QxValue.Number(new System.Data.SqlTypes.SqlDecimal(3m)),
             },
         };
 
@@ -131,7 +133,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
             int runnable = Runnable().Count();
 
             Assert.True(
-                runnable >= 126,
+                runnable >= 128,
                 runnable.ToString(CultureInfo.InvariantCulture) + " of " +
                 compiles.ToString(CultureInfo.InvariantCulture) + " compiling cases run");
         }
