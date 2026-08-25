@@ -107,6 +107,32 @@ namespace Tellma.Queryex.Testing.Corpus
             yield return Runs("fn-diff-minutes", "diffMinutes(PostedOn, DueOn)");
             yield return Runs("fn-diff-seconds", "diffSeconds(PostedOn, DueOn)");
 
+            // The values the host supplies at execution. Deterministic in both readings because
+            // both are handed the same context: the engine emits them as parameters rather than as
+            // the backend's own clock, so a comparison against a server is not a race.
+            yield return Runs("fn-today", "today()");
+            yield return Runs("fn-now", "now()");
+
+            // Aggregations, over a grouping, each reading a column that reaches an absent value.
+            // sum and count are exercised by the nullity cases; these are the rest of the family.
+            yield return Runs("fn-avg", "avg(Amount)") with
+            {
+                Mode = QueryexMode.Aggregate,
+                HasGroupingKeys = true,
+            };
+
+            yield return Runs("fn-min", "min(Rate)") with
+            {
+                Mode = QueryexMode.Aggregate,
+                HasGroupingKeys = true,
+            };
+
+            yield return Runs("fn-max", "max(PostingDate)") with
+            {
+                Mode = QueryexMode.Aggregate,
+                HasGroupingKeys = true,
+            };
+
             // Choice and absence.
             yield return Runs("fn-if", "if(IsPosted, Amount, Rate)");
             yield return Runs("fn-coalesce-two", "coalesce(Rate, Amount)");

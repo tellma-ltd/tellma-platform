@@ -37,6 +37,21 @@ namespace Tellma.Core.Queryex.Tests.Coverage
         }
 
         /// <summary>
+        ///     Every function the language has is one a corpus case actually evaluates.
+        /// </summary>
+        /// <remarks>
+        ///     What makes the two checks above mean anything. They compare the registry against a
+        ///     list the second reading keeps, and a name added to that list without an arm in the
+        ///     evaluator satisfies both while evaluating nothing. This runs the evaluator over the
+        ///     corpus, so a function is only covered once some case has actually reached it.
+        /// </remarks>
+        [Fact]
+        public void EveryFunction_IsExercised()
+        {
+            Assert.Empty(ReferenceSemantics.UnexercisedFunctions());
+        }
+
+        /// <summary>
         ///     Every piece of text the fixture holds is one the collation table has weights for.
         /// </summary>
         /// <remarks>

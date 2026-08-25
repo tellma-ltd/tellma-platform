@@ -9,6 +9,7 @@ using Tellma.Core.Queryex.Binding;
 using Tellma.Core.Queryex.Diagnostics;
 using Tellma.Core.Queryex.Functions;
 using Tellma.Core.Queryex.Pipeline;
+using Tellma.Queryex.Testing.Corpus;
 using Tellma.Queryex.Testing.Schema;
 
 namespace Tellma.Queryex.Testing.Semantics
@@ -129,6 +130,93 @@ namespace Tellma.Queryex.Testing.Semantics
             }
 
             return missing;
+        }
+
+        /// <summary>
+        ///     Whether this reading can evaluate a corpus case at all.
+        /// </summary>
+        /// <param name="entry">The case.</param>
+        /// <returns>True when the case is one this reading runs.</returns>
+        /// <remarks>
+        ///     Stated once and read by everything that sweeps the corpus, so that a check claiming
+        ///     to have covered a case and the sweep that would have caught a fault in it cannot
+        ///     disagree about which cases those are.
+        /// </remarks>
+        public static bool CanEvaluate(ExpressionCase entry)
+        {
+            ArgumentNullException.ThrowIfNull(entry);
+
+            // A case that is expected not to compile has no tree to evaluate; the rest are shapes
+            // this reading has no fixture rows or bindings for.
+            return entry.Diagnostics.Count == 0
+                && entry.Parameters.Count == 0
+                && entry.Root == "Invoice"
+                && !entry.Directions;
+        }
+
+        /// <summary>
+        ///     Every function the registry declares that no corpus case actually evaluates.
+        /// </summary>
+        /// <returns>The names.</returns>
+        /// <remarks>
+        ///     The other two checks compare the registry against a list this reading keeps, which
+        ///     is a claim about the reading rather than the reading itself: a name added to that
+        ///     list without an arm in the evaluator would satisfy both and still evaluate nothing.
+        ///     This one runs the evaluator over the corpus and reports what it never reached, so
+        ///     the claim is only ever as good as a case that exercises it — and an uncovered name
+        ///     surfaces as this list rather than as an exception from whichever suite happened to
+        ///     touch it first.
+        /// </remarks>
+        public static IReadOnlyList<string> UnexercisedFunctions()
+        {
+            HashSet<string> evaluated = new(StringComparer.OrdinalIgnoreCase);
+            foreach (ExpressionCase entry in ExpressionCorpus.All)
+            {
+                if (!CanEvaluate(entry))
+                {
+                    continue;
+                }
+
+                InterpreterContext context = entry.HasUser
+                    ? InterpreterContext.Fixed
+                    : InterpreterContext.Fixed with { UserId = null };
+
+                BoundExpression bound = Bind(
+                    entry.Text,
+                    LedgerFixture.Invoice,
+                    entry.Mode,
+                    entry.HasGroupingKeys,
+                    entry.HasUser);
+
+                // One row is enough: the sweep visits every node whatever the row's values are, so
+                // a function under a branch this row does not take is still reached.
+                LedgerRow row = LedgerData.Rows(LedgerFixture.Invoice)[0];
+                Interpreter interpreter = new(row, context)
+                {
+                    Group = LedgerData.Rows(LedgerFixture.Invoice),
+                };
+
+                interpreter.Sweep(bound.Items);
+
+                foreach (TypedExpr node in interpreter.Readings.Keys)
+                {
+                    if (node is TypedCall call)
+                    {
+                        evaluated.Add(call.Definition.Name);
+                    }
+                }
+            }
+
+            List<string> unexercised = [];
+            foreach (FunctionDefinition definition in FunctionRegistry.All)
+            {
+                if (!evaluated.Contains(definition.Name))
+                {
+                    unexercised.Add(definition.Name);
+                }
+            }
+
+            return unexercised;
         }
 
         /// <summary>Every function this reading covers that the registry does not declare.</summary>

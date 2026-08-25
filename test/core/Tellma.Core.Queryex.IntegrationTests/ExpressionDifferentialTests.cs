@@ -131,7 +131,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
             int runnable = Runnable().Count();
 
             Assert.True(
-                runnable >= 124,
+                runnable >= 126,
                 runnable.ToString(CultureInfo.InvariantCulture) + " of " +
                 compiles.ToString(CultureInfo.InvariantCulture) + " compiling cases run");
         }

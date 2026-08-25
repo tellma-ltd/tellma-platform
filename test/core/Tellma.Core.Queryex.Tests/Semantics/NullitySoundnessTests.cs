@@ -173,10 +173,7 @@ namespace Tellma.Core.Queryex.Tests.Semantics
             List<string> violations = [];
             foreach (ExpressionCase entry in ExpressionCorpus.All)
             {
-                if (entry.Diagnostics.Count > 0
-                    || entry.Parameters.Count > 0
-                    || entry.Root != "Invoice"
-                    || entry.Directions)
+                if (!ReferenceSemantics.CanEvaluate(entry))
                 {
                     continue;
                 }
