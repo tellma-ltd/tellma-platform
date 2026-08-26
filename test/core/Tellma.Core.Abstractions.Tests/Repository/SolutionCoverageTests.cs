@@ -68,7 +68,9 @@ namespace Tellma.Core.Abstractions.Tests.Repository
 
         private static IEnumerable<string> ProjectsOnDisk(DirectoryInfo root)
         {
-            foreach (string area in new[] { "src", "test" })
+            // eng/ is scanned too: it holds no shipped code, but a developer tool that drops
+            // out of the solution stops being compiled and rots without anything going red.
+            foreach (string area in new[] { "src", "test", "eng" })
             {
                 string areaPath = Path.Combine(root.FullName, area);
                 foreach (string project in Directory.EnumerateFiles(areaPath, "*.csproj", SearchOption.AllDirectories))

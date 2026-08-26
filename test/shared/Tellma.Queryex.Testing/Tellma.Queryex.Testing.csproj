@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <!-- The test-tree props add a global `using Xunit` for every project under test/. This one is
+         plumbing rather than a suite and references no test framework at all, so the global using
+         would not compile. -->
+    <Using Remove="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Queryex\Tellma.Core.Queryex.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- No test-framework reference of any kind: these are fixtures, a corpus, and an interpreter,
+         not assertions. Omitting Microsoft.NET.Test.Sdk keeps IsTestProject false, so
+         `dotnet test Tellma.slnx` never tries to run this project. -->
+  </ItemGroup>
+
+</Project>

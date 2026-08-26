@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Queryex\Tellma.Core.Queryex.csproj" />
+    <!-- The fixture schema, the conformance corpus, the reference interpreter, and the probe that
+         renders each pipeline stage. Shared with the differential suite so both halves pin the
+         same semantics against the same fixture. -->
+    <ProjectReference Include="..\..\shared\Tellma.Queryex.Testing\Tellma.Queryex.Testing.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>
