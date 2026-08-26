@@ -1,0 +1,51 @@
+{
+  "documentType": "INVOICE",
+  "documentUuid": "bd63aefd-df82-430a-858c-ff77108584fe",
+  "documentXML": "PEludm9pY2UvPg==",
+  "id": "69cf4f21594e7ef2b8404093",
+  "issuedBy": "0235:marmin-1000000002",
+  "issuedTo": "0235:1000000001",
+  "lastUpdated": 1775193892692,
+  "toC3": {
+    "country": "AE",
+    "docTypeId": "urn:peppol:pint:billing-1@ae-1",
+    "documentXml": "PEludm9pY2UvPg==",
+    "lastUpdated": 1775193891678,
+    "mlsResponse": null,
+    "processId": "urn:peppol:bis:billing",
+    "receiverId": "0235:1000000001",
+    "senderId": "0235:marmin-1000000002",
+    "status": "MLS_C3_TRANSMISSION_ERROR",
+    "transmissionResponse": {
+      "conversationId": null,
+      "messageId": null,
+      "overallDurationToTransmit": 1088,
+      "transmissionError": false,
+      "transmissionErrors": null,
+      "transmissionResult": "SUCCESS"
+    },
+    "transmissionUuid": "4ff91b61-d731-458b-bd6e-21cf138c8a1c"
+  },
+  "toC5": {
+    "country": null,
+    "docTypeId": "urn:peppol:schema:taxdata:1.0::TaxData##urn:peppol:taxdata:ae-1::1.0",
+    "documentXml": "PEludm9pY2UvPg==",
+    "lastUpdated": 1775193892694,
+    "mlsResponse": null,
+    "processId": "urn:peppol:taxreporting",
+    "receiverId": "0242:POP000773",
+    "senderId": "0235:marmin-1000000002",
+    "status": "SUBMITTED",
+    "transmissionResponse": {
+      "conversationId": "phase4@Conv5373778413757239022",
+      "messageId": "1eb68454-7cc1-4bac-801f-536da5d1d05a@phase4",
+      "overallDurationToTransmit": 2035,
+      "transmissionError": false,
+      "transmissionErrors": null,
+      "transmissionResult": "SUCCESS"
+    },
+    "transmissionUuid": "b78b13aa-bfa0-43ed-bf5e-cf446ca24db5"
+  },
+  "uuid": "fb4172e3-7589-4a0a-bfb9-739d06420109",
+  "validationResults": []
+}

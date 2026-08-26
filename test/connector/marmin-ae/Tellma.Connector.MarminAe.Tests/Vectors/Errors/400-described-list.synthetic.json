@@ -1,0 +1,1 @@
+{"errors":[{"field":"document_lines[0].price.base_amount","message":"Base amount must not be negative","code":"IBR-027"},{"path":"accounting_customer_party.tin","defaultMessage":"TIN must be exactly 10 characters"}]}

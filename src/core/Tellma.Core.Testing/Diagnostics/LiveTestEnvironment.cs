@@ -62,6 +62,31 @@ namespace Tellma.Core.Testing.Diagnostics
             return at < 0 ? "(no domain part)" : $"***{address[at..]}";
         }
 
+        /// <summary>Reduces an identifier to a leading fragment and its length.</summary>
+        /// <remarks>
+        ///     For the values that are not quite secrets and not quite public — a client id, an
+        ///     account or profile identifier. The prefix is usually the part that says which
+        ///     environment a run was pointed at, and the length is what distinguishes a truncated
+        ///     paste from a wrong value, while neither is enough to act on.
+        /// </remarks>
+        /// <param name="value">The identifier, which may be absent.</param>
+        /// <param name="prefixLength">How many leading characters to keep.</param>
+        /// <returns>A description safe to write to a build log.</returns>
+        public static string MaskIdentifier(string? value, int prefixLength = 8)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(prefixLength);
+
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return "(not set)";
+            }
+
+            string prefix = value.Length <= prefixLength ? value : value[..prefixLength] + "…";
+
+            return string.Create(
+                CultureInfo.InvariantCulture, $"{prefix} ({value.Length} characters)");
+        }
+
         /// <summary>Describes a secret's presence and length, never its value.</summary>
         /// <remarks>
         ///     The length distinguishes the failure modes that matter — an unset variable, an empty

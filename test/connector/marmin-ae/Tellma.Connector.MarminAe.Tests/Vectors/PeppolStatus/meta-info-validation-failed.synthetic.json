@@ -1,0 +1,13 @@
+{
+  "id": "52c2e50b-a76c-4422-8a2d-1552bc0a207f",
+  "meta_info": {
+    "peppol_status": {
+      "participant_status": null,
+      "fta_status": null,
+      "overall_status": "VALIDATION_FAILED",
+      "validation_results": [
+        { "flag": "fatal", "reasonCode": "IBR-141-AE", "location": "/Invoice/cbc:TaxPointDate", "test": "false()", "text": "Tax point date must not be later than the issue date" }
+      ]
+    }
+  }
+}

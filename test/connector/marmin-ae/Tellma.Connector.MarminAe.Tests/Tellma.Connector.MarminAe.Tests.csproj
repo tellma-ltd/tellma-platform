@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\connector\marmin-ae\Tellma.Connector.MarminAe\Tellma.Connector.MarminAe.csproj" />
+    <ProjectReference Include="..\..\..\shared\Tellma.Testing.Support\Tellma.Testing.Support.csproj" />
+    <!-- The token provider's refresh margin and the client's per-request timeout are both driven
+         off an injected clock, so nothing in this suite waits on a real one. -->
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Copied whole rather than by extension, so promoting a sandbox recording over a stand-in is
+         adding one file and never editing this project. Vectors\PROVENANCE.md says which is which. -->
+    <None Update="Vectors\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
