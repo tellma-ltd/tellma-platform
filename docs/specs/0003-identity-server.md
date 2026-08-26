@@ -3,6 +3,9 @@
 - **Author:** Ahmad Akra
 - **Date:** 30 June 2026
 
+**Status:** Frozen **historical** record of the design and its reasoning at authoring time. It is not
+updated as the code or its dependencies evolve.
+
 ## 1. Overview
 
 The Tellma Identity Server (`Tellma.Identity`) is the shared OpenID Connect authority that

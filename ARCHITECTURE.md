@@ -27,6 +27,7 @@ The new shape:
 | **Tellma Platform** | The umbrella product: the reusable `Tellma.Core` library family, the deployable landing app, the deployable identity server, the dev toolchain, and the distribution template. Source lives in the `tellma-platform` GitHub repo. |
 | **Tellma.Core** | The bare-minimum runtime library every distribution references (`Tellma.Core` C# NuGet, `Tellma.Core.EntityFrameworkCore` C# NuGet with its design-time companion `Tellma.Core.EntityFrameworkCore.Design`, `@tellma/core` npm package). Provides cross-cutting services — multi-tenancy, caching, settings, workflow engine, CRUD stack base, report base, feature flags — that every other pack and the distribution consume through `Tellma.Core.Abstractions`. |
 | **Tellma.Core.Abstractions** | The interface surface of `Tellma.Core` — extension-point interfaces (e.g. `IEmailSender`), base entity classes, options types, capability interfaces. Every layer above Core (Module, Industry, Compliance, Locale, Connector Adapter) consumes Core through this package; the full `Tellma.Core` is referenced only by the distribution as the composition root. |
+| **Tellma.Core.Queryex** | The Queryex compiler: lexer, parser, binder, nullity analysis, and SQL emitter, with no Tellma reference and no third-party reference of any kind. Unlike the optional Core-layer packages below it is referenced by `Tellma.Core` itself, because compiling a filter is not something a distribution opts into — it is how every read works. Pack code and tools may reference it directly. |
 | **Optional Core-layer packages** | `Tellma.Core.Email` (the email pipeline: configuration-driven transport selection, the sandbox-tenant routing policy, the Development log sink, delivery-event dispatch, email telemetry), `Tellma.Core.Webhooks` (the shared HTTP fronting for inbound webhook receivers), and `Tellma.Core.Testing` (test doubles and executable conformance suites for the `Tellma.Core.Abstractions` contracts, plus the diagnostics a credentialed suite needs to explain its own failures — the C# sibling of `@tellma/core-ui-testing`). Each depends on no Tellma package other than `Tellma.Core.Abstractions`, which is what lets a non-distribution host (identity, landing, a worker) reference the email pipeline and get only the email pipeline, without the CRUD, multi-tenancy, and jobs machinery. None is referenced by `Tellma.Core` either — a separate rule, buying a separate thing: Core binds to these contracts and never to their implementations, and no host can acquire a pipeline implicitly. Every host, distributions included, composes them explicitly. Third-party dependencies are a separate question — `Tellma.Core.Testing` deliberately exposes xunit on its public surface, because a conformance suite consumers execute has to be written in some test framework. |
 | **`@tellma/core-ui` family** | The Angular UI component library, shipped as Core-layer npm packages (`@tellma/core-ui`, `-tokens`, `-testing`, `-mcp`). Greenfield on `@angular/cdk` + `@angular/aria`; `tm-`-prefixed; signal-first. See [Frontend → UI component library](#ui-component-library). |
 | **Platform pack** | An opt-in library referenced by distributions along one of five extension dimensions: **Module**, **Industry**, **Compliance**, **Connector**, **Locale**. Each pack ships entity classes (where applicable) and services; only the distribution generates migrations. See [Library architecture](#library-architecture). |
@@ -41,7 +42,7 @@ The new shape:
 | **Stack** | The vertical unit of a feature: a table (with optional paired UDTT) generated from a C# entity class, plus the services, controllers/APIs, and Angular page that capture a full CRUD or report feature. The entity class is the single source of truth for storage shape. See [Data Layer](#data-layer). |
 | **UDTT** | SQL Server user-defined table type — the TVP schema of the bulk save path. For tables that opt in, derived by migrations from the same entity class as the table itself (a row image of the table; no separate DTO class). See [Data Layer](#data-layer). |
 | **Capability interface** | A C# interface declaring the columns one specific feature (report, auto-gen, validator) consumes from an entity — per-feature, compile-time column opt-in for forks. See [Data Layer](#data-layer). |
-| **Queryex** | Tellma's typed query engine: entity-model expressions compiled to parameterized SQL at runtime. Powers within-stack CRUD and tier-1 reports. See [Reports — three tiers](#reports--three-tiers). |
+| **Queryex** | Tellma's typed query language and compiler: user- and configuration-supplied expression text, bound against an entity schema and compiled to parameterized SQL. Ships as the dependency-free `Tellma.Core.Queryex` package and powers within-stack CRUD, row-level security criteria, and tier-1 reports. See [Reports — three tiers](#reports--three-tiers). |
 | **`SqlBuilder<T>`** | Typed SQL composition helper used by pack code for tier-2 reports — identifiers via `nameof`, values via `SqlParameter`. See [Reports — three tiers](#reports--three-tiers). |
 
 ## Guiding Principles
@@ -184,7 +185,8 @@ tellma-platform/
 │   ├── package.json
 │   └── tsconfig.json
 ├── docs/                                # repo-level docs not shipped in packages
-├── eng/                                 # repo engineering scripts; not shipped to distributions
+├── eng/                                 # repo engineering scripts and developer tools; not shipped to distributions
+│   └── queryex-inspection/              # self-hosted playground for the Queryex compiler; one static page, ephemeral port
 ├── infra/                               # Bicep for shared platform infra (Log Analytics, ASPs, SQL, …)
 │   ├── shared-platform.bicep
 │   ├── modules/
@@ -198,6 +200,7 @@ tellma-platform/
 │   ├── core/                            # bare-minimum family
 │   │   ├── Tellma.Core.Abstractions/    # .csproj — interfaces, base entity classes, capability interfaces, options. Published as Tellma.Core.Abstractions NuGet.
 │   │   ├── Tellma.Core/                 # .csproj — runtime services and concrete DI registrations. Published as the Tellma.Core NuGet.
+│   │   ├── Tellma.Core.Queryex/         # .csproj — the Queryex compiler: expression text to parameterized SQL. Zero package and project references; referenced by Tellma.Core. Published as Tellma.Core.Queryex NuGet.
 │   │   ├── Tellma.Core.Email/           # .csproj — email pipeline: transport selection, sandbox routing, the Development log sink, delivery-event dispatch. Composed explicitly by each host; never referenced by Tellma.Core.
 │   │   ├── Tellma.Core.EntityFrameworkCore/        # .csproj — EF Core extensions (runtime): table-type (UDTT) configuration, migration operations, migrations SQL generation, metadata API. Never references the EF Design package.
 │   │   ├── Tellma.Core.EntityFrameworkCore.Design/ # .csproj — design-time companion: C# migration operation generator + IDesignTimeServices, discovered via the [assembly: DesignTimeServicesReference] its MSBuild targets inject into the consuming migrator assembly. Referenced only by migrator projects.
@@ -299,6 +302,7 @@ Package names follow the pattern below. Square brackets denote optional segments
 | `Tellma.Core.Abstractions` | `Tellma.Core.Abstractions` | Mandatory. |
 | `Tellma.Core.EntityFrameworkCore` | `Tellma.Core.EntityFrameworkCore` | EF Core extensions (table types/UDTTs): configuration, migration operations, SQL generation, metadata API. Runtime-side — never references the EF `Design` package. |
 | `Tellma.Core.EntityFrameworkCore.Design` | `Tellma.Core.EntityFrameworkCore.Design` | Design-time companion (C# operation generator, `IDesignTimeServices`). Referenced only by the distribution's migrator project. |
+| `Tellma.Core.Queryex` | `Tellma.Core.Queryex` | The Queryex compiler. Depends on nothing at all — no Tellma package, no third-party package — and is referenced by `Tellma.Core`. |
 | `Tellma.Core.Email` | `Tellma.Core.Email` | Optional Core-layer runtime: the email pipeline. Depends on no Tellma package other than `Tellma.Core.Abstractions`; each host adds it explicitly. |
 | `Tellma.Core.Webhooks` | `Tellma.Core.Webhooks` | Optional Core-layer runtime: the shared HTTP fronting for inbound webhook receivers. |
 | `Tellma.Core.Testing` | `Tellma.Core.Testing` | Test doubles for the Abstractions contracts, executable conformance suites, and test-run diagnostics. Referenced by test projects only. |
@@ -338,6 +342,7 @@ flowchart TB
         CoreAbs["Tellma.Core.Abstractions"]:::core
         Core["Tellma.Core"]:::core
         CoreOptional["Tellma.Core.Email<br/>Tellma.Core.Webhooks<br/>Tellma.Core.Testing"]:::core
+        Queryex["Tellma.Core.Queryex"]:::core
         ModuleAbs["Tellma.Module.&lt;m&gt;.Abstractions"]:::module
         Module["Tellma.Module.&lt;m&gt;"]:::module
         Locale["Tellma.Locale.&lt;id&gt;"]:::locale
@@ -349,6 +354,7 @@ flowchart TB
         Adapter["Tellma.Connector.&lt;vendor&gt;[.&lt;c&gt;][.&lt;i&gt;][.&lt;m&gt;].Adapter"]:::connector
 
         Core --> CoreAbs
+        Core --> Queryex
         CoreOptional --> CoreAbs
         Locale --> CoreAbs
         Module --> ModuleAbs
@@ -385,7 +391,7 @@ The rules these arrows encode:
 
 5. **Compliance and Connector Adapter target any subset of upstream Abstractions.** A `Tellma.Compliance.<c>` library implements interfaces from any combination of `Core.Abstractions`, `Module.<m>.Abstractions`, and `Industry.<i>.Abstractions`, whichever its overrides need. Same for `Tellma.Connector.<vendor>.Adapter`, which additionally references the raw `Tellma.Connector.<vendor>` it adapts. Each library declares only the Abstractions packages it actually consumes; the diagram shows the union of possible edges, not edges that must all be present in every library.
 
-6. **The optional Core-layer packages are composed, never inherited.** Two rules, doing different work. First, `Tellma.Core.Email`, `Tellma.Core.Webhooks`, and `Tellma.Core.Testing` depend on no Tellma package other than `Tellma.Core.Abstractions` — that is what lets a non-distribution deployable (the identity server, the landing app, a worker) reference the email pipeline and get only the email pipeline, without the CRUD stack, multi-tenancy, settings, and jobs machinery. Second, none of them is referenced by `Tellma.Core`. That rule buys what the first does not, and not by transitive weight: a `Core` → `Email` edge would never reach a host that does not reference Core in the first place. What it would do is let Core bind to `EmailRouter` and its siblings instead of the contracts, and make it expressible for `AddTellmaCore()` to pull in a pipeline whose startup validation then demands `Email:Provider`, `DeploymentIdentity`, and `ISandboxContext` from a distribution that never sends mail. Every host, distributions included, adds what it wants explicitly.
+6. **The optional Core-layer packages are composed, never inherited.** Two rules, doing different work. First, `Tellma.Core.Email`, `Tellma.Core.Webhooks`, and `Tellma.Core.Testing` depend on no Tellma package other than `Tellma.Core.Abstractions` — that is what lets a non-distribution deployable (the identity server, the landing app, a worker) reference the email pipeline and get only the email pipeline, without the CRUD stack, multi-tenancy, settings, and jobs machinery. Second, none of them is referenced by `Tellma.Core`. That rule buys what the first does not, and not by transitive weight: a `Core` → `Email` edge would never reach a host that does not reference Core in the first place. What it would do is let Core bind to `EmailRouter` and its siblings instead of the contracts, and make it expressible for `AddTellmaCore()` to pull in a pipeline whose startup validation then demands `Email:Provider`, `DeploymentIdentity`, and `ISandboxContext` from a distribution that never sends mail. Every host, distributions included, adds what it wants explicitly. `Tellma.Core.Queryex` is deliberately not one of these: `Tellma.Core` references it, because compiling an expression is not a capability a host chooses but the mechanism every read already goes through. It earns that position by depending on nothing — no Tellma package and no third-party package — so the edge carries no weight and imposes no configuration.
 
 7. **Distributions may reference any platform package directly,** subject to a minimum of `Tellma.Core`. There is no scaffolding restriction; the distribution is the composition root and pulls in whichever combination of full implementations its tenants need.
 
@@ -643,11 +649,11 @@ The pack's default leaf implements its own capability interfaces out of the box.
 
 | Tier | Lives in | When |
 |---|---|---|
-| Tier 1 — Queryex-expressible | C# (Queryex / EF LINQ expression compiled to parameterized SQL at runtime) | List reports, GROUP BY aggregations, simple pivots — most reports |
+| Tier 1 — Queryex-expressible | Queryex expression text compiled to parameterized SQL at runtime, or EF LINQ for pack code that prefers it | List reports, GROUP BY aggregations, simple pivots — most reports |
 | Tier 2 — complex aggregation | C# in the owning pack, SQL built via `SqlBuilder<T>` (typed query builder) | Trial balance, P&L, cost-center rollups, complex pivots beyond Queryex's expressiveness |
 | Tier 3 — analytics, BI, dashboards | Separate analytical store fed by within-stack exports | Out of scope for the OLTP module's contract; designed when needed |
 
-Tier 1 is the default. The Queryex compiler can also delegate to EF Core's expression-to-SQL translator for tier-1 LINQ queries that translate cleanly — reusing EF's mature translator avoids reinventing the wheel for simple projections, while complex tier-2 SQL stays in our own builder. Tier-2 SQL runs server-side in one round-trip — joins, aggregations, reads happen in SQL; C# only composes the text from user-input parameters. Raw `Sql(...)` interpolation is a documented escape hatch, gated by an analyzer that distinguishes identifier interpolation (`nameof`, qualified-table helper) from value interpolation (which must use `SqlParameter`).
+Tier 1 is the default, and it has two authoring paths that meet the database separately. Queryex compiles expression *text* — what a user types into a filter, what a stored report definition holds, what a permission criterion says — through its own binder and emitter, and references no EF package at all; it has to, because that text arrives at run time and no LINQ translator can type-check a string. EF LINQ remains available to pack code writing queries in C#, where the compiler already checks the expression and EF's translator is mature. Neither delegates to the other, and complex tier-2 SQL stays in our own builder. Tier-2 SQL runs server-side in one round-trip — joins, aggregations, reads happen in SQL; C# only composes the text from user-input parameters. Raw `Sql(...)` interpolation is a documented escape hatch, gated by an analyzer that distinguishes identifier interpolation (`nameof`, qualified-table helper) from value interpolation (which must use `SqlParameter`).
 
 ### Validation — what remains useful
 

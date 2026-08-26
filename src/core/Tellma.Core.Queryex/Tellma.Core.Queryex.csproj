@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Queryex: the platform's typed query language. Compiles user- and configuration-supplied expression text against an entity schema into parameterized T-SQL — lexer, parser, binder, nullity analysis, lowering, and emitter. Compiles only; it never opens a connection.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!-- Deliberately no PackageReference and no ProjectReference. The engine is a compiler library
+       that a host references the way it would a System.* library, which is what lets Tellma.Core,
+       pack code, the test suites, and the inspection tool all take it without inheriting anything
+       else. Everything it needs — including SqlDecimal, which models the 38-digit decimal domain
+       the language promises — is in the net10.0 shared framework, and referencing any of that as a
+       package would be pruned (NU1510) and fail the build. -->
+
+  <ItemGroup>
+    <!-- The shared test library mirrors every stage's intermediate representation into public
+         records so the suites and the inspection tool can render and evaluate them. It is the one
+         and only grant: no other project sees an internal type. -->
+    <InternalsVisibleTo Include="Tellma.Queryex.Testing" />
+  </ItemGroup>
+
+</Project>

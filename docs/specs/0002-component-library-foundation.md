@@ -3,9 +3,9 @@
 - **Author:** Ahmad Akra
 - **Date:** 29 June 2026
 
-**Status:** Foundation specification — a frozen, **historical** record of the design and its reasoning
-at implementation time. It is not updated as the code or its dependencies evolve; it captures the
-original intent, not the current state. The research analysis that preceded it is superseded here.
+**Status:** Frozen **historical** record of the design and its reasoning at authoring time. It is not
+updated as the code or its dependencies evolve. The research analysis that preceded it is superseded
+here.
 
 **Departures from the research analysis's locked decisions** (superseded where they conflict):
 - **D12 → no Storybook.** `@storybook/angular` has no Angular 22 support, and running it on

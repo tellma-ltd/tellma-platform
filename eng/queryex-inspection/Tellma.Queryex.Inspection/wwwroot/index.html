@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Queryex inspection</title>
+<style>
+  :root { color-scheme: light dark; --gap: 12px; }
+  body { font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin: 0; padding: var(--gap); }
+  h1 { font-size: 15px; margin: 0 0 var(--gap); font-weight: 600; }
+  h2 { font-size: 12px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: .06em; opacity: .65; }
+  .clauses { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--gap); }
+  label { display: block; }
+  label > span { display: block; font-size: 11px; opacity: .65; margin-bottom: 2px; }
+  input[type=text] { width: 100%; box-sizing: border-box; font: inherit; padding: 4px 6px; }
+  .options { display: flex; gap: 16px; align-items: center; margin: var(--gap) 0; flex-wrap: wrap; }
+  .panes { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--gap); }
+  section { border: 1px solid rgba(128,128,128,.35); border-radius: 4px; padding: 8px; overflow: auto; max-height: 46vh; }
+  pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { text-align: left; padding: 1px 8px 1px 0; vertical-align: top; white-space: nowrap; }
+  th { font-weight: 600; opacity: .65; }
+  .bad { color: #c00; }
+  .indent { opacity: .5; }
+</style>
+</head>
+<body>
+<h1>Queryex inspection &mdash; fixture schema</h1>
+
+<div class="clauses">
+  <label><span>select</span><input type="text" id="select" value="Id, Code, Amount"></label>
+  <label><span>filter</span><input type="text" id="filter" value="Amount &gt; 0"></label>
+  <label><span>having</span><input type="text" id="having" value=""></label>
+  <label><span>order by</span><input type="text" id="orderBy" value=""></label>
+</div>
+
+<div class="options">
+  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="aggregate"> aggregate</label>
+  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="execute"> run it</label>
+  <label style="display:flex;gap:6px;align-items:center">root <select id="root"></select></label>
+  <span id="status"></span>
+</div>
+
+<div class="panes">
+  <section><h2>SQL</h2><pre id="sql"></pre></section>
+  <section><h2>diagnostics</h2><pre id="diagnostics"></pre></section>
+  <section><h2>bound tree</h2><div id="nodes"></div></section>
+  <section><h2>parameters</h2><div id="parameters"></div></section>
+  <section><h2>columns</h2><div id="columns"></div></section>
+  <section><h2>tokens</h2><div id="tokens"></div></section>
+  <section><h2>printed back</h2><pre id="printed"></pre></section>
+  <section><h2>rows</h2><div id="rows"></div></section>
+</div>
+
+<script>
+// Everything the page does is one round trip per keystroke, debounced. The compiler is fast enough
+// that watching every stage react as the input changes is the whole point of the tool.
+const fields = ['select', 'filter', 'having', 'orderBy'];
+const el = id => document.getElementById(id);
+
+function table(headers, rows) {
+  if (!rows || rows.length === 0) { return ''; }
+  const head = '<tr>' + headers.map(h => '<th>' + h + '</th>').join('') + '</tr>';
+  const body = rows.map(r => '<tr>' + r.map(c => '<td>' + escape(c) + '</td>').join('') + '</tr>').join('');
+  return '<table>' + head + body + '</table>';
+}
+
+function escape(value) {
+  return String(value ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+}
+
+async function inspect() {
+  const body = {
+    select: el('select').value,
+    filter: el('filter').value,
+    having: el('having').value,
+    orderBy: el('orderBy').value,
+    aggregate: el('aggregate').checked,
+    root: el('root').value,
+    execute: el('execute').checked
+  };
+
+  el('status').textContent = 'compiling…';
+  const response = await fetch('/api/inspect', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  const result = await response.json();
+  el('status').textContent = '';
+
+  el('sql').textContent = result.sql ?? '';
+  el('printed').textContent = 'canonical: ' + result.canonical + '\nexplicit:  ' + result.explicit;
+
+  const problems = (result.diagnostics ?? []).map(d => d.code + '  ' + (d.location ?? '') + '  @' + d.start + '+' + d.length);
+  if (result.error) { problems.unshift(result.error); }
+  el('diagnostics').innerHTML = '<span class="bad">' + escape(problems.join('\n')) + '</span>';
+
+  el('nodes').innerHTML = table(['node', 'type', 'nullity', 'detail'],
+    (result.nodes ?? []).map(n => ['·'.repeat(n.depth) + ' ' + n.kind, n.type, n.nullity, n.detail]));
+
+  el('parameters').innerHTML = table(['name', 'type', 'stored as', 'origin', 'value'],
+    (result.parameters ?? []).map(p => [p.name, p.type, p.storeType, p.origin, p.value]));
+
+  el('columns').innerHTML = table(['#', 'text', 'type', 'nullity', 'key'],
+    (result.columns ?? []).map(c => [c.ordinal, c.text, c.type, c.nullity, c.isGroupingKey ? 'yes' : '']));
+
+  el('tokens').innerHTML = table(['kind', 'text', 'at'],
+    (result.tokens ?? []).map(t => [t.kind, t.text, t.start + '+' + t.length]));
+
+  el('rows').innerHTML = result.rows
+    ? table((result.columns ?? []).map(c => c.text), result.rows)
+    : '';
+}
+
+let pending;
+function schedule() {
+  clearTimeout(pending);
+  pending = setTimeout(inspect, 150);
+}
+
+async function start() {
+  const schema = await (await fetch('/api/schema')).json();
+  el('root').innerHTML = schema.map(e => '<option>' + escape(e.name) + '</option>').join('');
+  el('root').value = 'Invoice';
+
+  for (const id of fields) { el(id).addEventListener('input', schedule); }
+  for (const id of ['aggregate', 'execute', 'root']) { el(id).addEventListener('change', inspect); }
+  await inspect();
+}
+
+start();
+</script>
+</body>
+</html>

@@ -15,6 +15,9 @@
     <File Path="README.md" />
     <File Path="SECURITY.md" />
   </Folder>
+  <Folder Name="/eng/">
+    <Project Path="eng/queryex-inspection/Tellma.Queryex.Inspection/Tellma.Queryex.Inspection.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/apps/Tellma.Identity/Tellma.Identity.csproj" />
     <Project Path="src/apps/Tellma.Identity.Migrations/Tellma.Identity.Migrations.csproj" />
@@ -24,6 +27,7 @@
     <Project Path="src/core/Tellma.Core.Email/Tellma.Core.Email.csproj" />
     <Project Path="src/core/Tellma.Core.EntityFrameworkCore/Tellma.Core.EntityFrameworkCore.csproj" />
     <Project Path="src/core/Tellma.Core.EntityFrameworkCore.Design/Tellma.Core.EntityFrameworkCore.Design.csproj" />
+    <Project Path="src/core/Tellma.Core.Queryex/Tellma.Core.Queryex.csproj" />
     <Project Path="src/core/Tellma.Core.Testing/Tellma.Core.Testing.csproj" />
     <Project Path="src/core/Tellma.Core.Webhooks/Tellma.Core.Webhooks.csproj" />
   </Folder>
@@ -45,6 +49,8 @@
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Tests/Tellma.Core.EntityFrameworkCore.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Design.Tests/Tellma.Core.EntityFrameworkCore.Design.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.IntegrationTests/Tellma.Core.EntityFrameworkCore.IntegrationTests.csproj" />
+    <Project Path="test/core/Tellma.Core.Queryex.Tests/Tellma.Core.Queryex.Tests.csproj" />
+    <Project Path="test/core/Tellma.Core.Queryex.IntegrationTests/Tellma.Core.Queryex.IntegrationTests.csproj" />
     <Project Path="test/core/Tellma.Core.Testing.Tests/Tellma.Core.Testing.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.Webhooks.Tests/Tellma.Core.Webhooks.Tests.csproj" />
   </Folder>
@@ -59,6 +65,7 @@
     <Project Path="test/connector/smtp/Tellma.Connector.Smtp.Adapter.Tests/Tellma.Connector.Smtp.Adapter.Tests.csproj" />
   </Folder>
   <Folder Name="/test/shared/">
+    <Project Path="test/shared/Tellma.Queryex.Testing/Tellma.Queryex.Testing.csproj" />
     <Project Path="test/shared/Tellma.Testing.Support/Tellma.Testing.Support.csproj" />
   </Folder>
   <Folder Name="/test/assets/">
