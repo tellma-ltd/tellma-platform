@@ -8,8 +8,6 @@
     // Prettier: auto-formatting
     "esbenp.prettier-vscode",
     // C# Dev Kit
-    "ms-dotnettools.csdevkit",
-    // Mermaid diagrams in MD files
-    "bierner.markdown-mermaid"
+    "ms-dotnettools.csdevkit"
   ]
 }
