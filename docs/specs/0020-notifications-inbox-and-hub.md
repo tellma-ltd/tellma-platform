@@ -90,10 +90,10 @@ rendered `Title` column, and the reserved MCP tool `tellma_notifications`.
 
 | Piece | Location | Notes |
 |---|---|---|
-| Contracts | `src/core/Tellma.Core.Abstractions/`, namespaces `Tellma.Core.Abstractions.Notifications` and `Tellma.Core.Abstractions.Realtime` | Every type of §2–§6 and §9.1, §10.1; BCL plus `Tellma.Core.Queryex` only. `NotificationRowList` and `NotificationPreferenceList` live in `Tellma.Core.Abstractions.TableTypes`. |
+| Contracts | `src/core/Tellma.Core.Abstractions/`, namespaces `Tellma.Core.Abstractions.Notifications` and `Tellma.Core.Abstractions.Realtime` | The contract types of §2–§6 — the entity, interfaces, records, descriptors and options sketched under `Tellma.Core.Abstractions.*` — and §9.1, §10.1; the runtime and web-host types of those sections are in the two rows below. BCL plus `Tellma.Core.Queryex` only. `NotificationRowList` and `NotificationPreferenceList` live in `Tellma.Core.Abstractions.TableTypes`. |
 | Runtime | `src/core/Tellma.Core/`, namespace `Tellma.Core.Notifications` | `Notifier`, `NotificationStatements`, `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationRenderer`, `InboxService`, `NotificationPreferencesService`, `NotificationAccessCriteria`, `NotificationRetentionHandler`, `NullClientEventPublisher`, the realizers of `NotificationTypeContributionItem`, `NotificationChannelContributionItem` and `ClientEventContributionItem`. No SignalR reference. |
 | Web host | `src/core/Tellma.Core.AspNetCore/`, namespace `Tellma.Core.AspNetCore.Realtime` | `TellmaHub`, `TellmaUserIdProvider`, `HubConnectionTracker`, `SignalRClientEventPublisher`, `TellmaRealtimeOptions`, `RealtimeApplicationName`, `AddTellmaRealtime`. SignalR from the shared framework `Microsoft.AspNetCore.App`; no Azure or Redis package. |
-| Composition | `Tellma.Core.Composition` | `CoreFeature` contributes the `Notification` stack, the two `[ApiRoute]` services, the criteria provider, the Core notification types this spec owns, the two baseline channels, the four client events, the retention handler and its built-in schedule. |
+| Composition | `Tellma.Core.Composition` | `CoreFeature` contributes the `Notification` stack, the two `[ApiRoute]` services, the criteria provider, the Core notification types this spec owns, the two baseline channels, the client events `inbox.changed` and `session.ended`, the retention handler and its built-in schedule. |
 | Reference distribution | `distributions/acme/` (`Tellma.Distro.Acme.Web`) | Composes realtime through `UseAzureDefaults()` (`Tellma.Defaults.Azure`), which carries the `Microsoft.Azure.SignalR` 1.33.1 pin and selects the mode (spec 0010 §1.3); `Program.cs` stays the three platform calls. `Microsoft.AspNetCore.SignalR.StackExchangeRedis` 10.0.11 is pinned by an on-premises host, not by this distribution. |
 | Tests | `test/core/Tellma.Core.Tests/Notifications/`, `test/core/Tellma.Core.IntegrationTests/Notifications/`, `test/core/Tellma.Core.AspNetCore.Tests/Realtime/`, `test/core/Tellma.Core.AspNetCore.IntegrationTests/Realtime/` | §12. |
 
@@ -171,9 +171,9 @@ carries spec 0013's `NoActivityStampMetadata`, per spec 0015).
 
 ### 2.1 `core.Notifications`
 
-Non-temporal; written only by `INotifier` (the insert and the replace of §3.3) and the inbox verbs
-(`ReadAt`); `[TableType]` (every column; used by the fixture tier only); sequence
-`core.sq_Notifications`.
+Non-temporal; written only by `INotifier` (the insert and the replace of §3.3), the inbox verbs
+(`ReadAt`) and the retention deletes of §7; `[TableType]` (every column; used by the fixture tier
+only); sequence `core.sq_Notifications`.
 
 | Column | Type | Null | Constraints | Notes |
 |---|---|---|---|---|
@@ -229,13 +229,13 @@ avatar column), so the notifications page shows the actor's name and image and n
 them.
 
 **The self-scope.** `NotificationAccessCriteria : IAccessCriteriaProvider` (`Resource =
-"core.Notification"`) returns one criterion for every user: `AccessCriterion("Read", "UserId =
-me()", "self")`. Spec 0013's composition rule makes a criterion alone a `Filtered` decision, so
-every member reads exactly their own rows with no role grant; the pipeline conjoins the filter into
-every query and details read of the stack. A stored role grant on `core.Notification × Read` is
-accepted by the securables registry (the pair exists) and widens the scope by spec 0013's `Or`
-composition — that is the audit path for an administrator who must see what a user was told, and
-no such grant is seeded (review flag 9).
+"core.Notification"`) returns one criterion for every user: `AccessCriterion("Read",
+FilterTree.Leaf("UserId = me()"), "self")`. Spec 0013's composition rule makes a criterion alone a
+`Filtered` decision, so every member reads exactly their own rows with no role grant; the pipeline
+conjoins the filter into every query and details read of the stack. A stored role grant on
+`core.Notification × Read` is accepted by the securables registry (the pair exists) and widens the
+scope by spec 0013's `Or` composition — that is the audit path for an administrator who must see
+what a user was told, and no such grant is seeded (review flag 9).
 
 ### 2.3 The type registry
 
@@ -359,7 +359,7 @@ parameters per request, plus each channel's own.
 `NotificationRowList` (`Tellma.Core.Abstractions.TableTypes`; physical
 `[dbo].[NotificationRowList_<hash8>]` per spec 0001 §5): `Ordinal int PK`, `UserId int`. One row per
 distinct recipient, `Ordinal` from 0 in the recipients' first-seen order. Bound through
-`IDataBatch.Tvp<NotificationRow>(rows)`.
+`IDataBatch.Tvp<NotificationRowList>(rows)`.
 
 ### 3.3 The insert and the replace
 
@@ -417,9 +417,9 @@ counters; the difference between `@tb{b}_n` and the rows returned feeds
 the callback unions the inserted and refreshed user ids of every request in the call and
 publishes one `ClientEvent("inbox.changed", userIds, null)` through
 `IClientEventPublisher.PublishAsync` (§6.4) — one event per user however many requests targeted
-them. Failures in the callback are logged (`InboxEventFailed`, warning) and never thrown, per spec
-0011's `OnCommitted` contract; the row is committed either way and the client's next summary call
-sees it.
+them. The callback catches its own failures and logs them (`InboxEventFailed`, warning), so spec
+0011's `OnCommitted` failure event never fires for it; the row is committed either way and the
+client's next summary call sees it.
 
 ### 3.5 Raising a notification from the pipeline
 
@@ -513,7 +513,7 @@ public sealed class NotificationPreferencesService      // [ApiRoute("notificati
 
 | Member | Annotation and rule |
 |---|---|
-| `Get` | `[ApiAction("get", MemberOnly = true, Idempotent = true)]`. One `Read` batch: `SELECT [Type], [Channel], [Enabled] FROM [core].[NotificationPreferences] WHERE [UserId] = @tm_UserId;`. `Types` lists every registered type descriptor and `Channels` every channel descriptor; the SPA renders their labels, `NotificationType_<Key>` and `NotificationChannel_<Key>` with `.` → `_`, from spec 0012's string pack. |
+| `Get` | `[ApiAction("get", MemberOnly = true, Idempotent = true, Mutation = false)]`. One `Read` batch: `SELECT [Type], [Channel], [Enabled] FROM [core].[NotificationPreferences] WHERE [UserId] = @tm_UserId;`. `Types` lists every registered type descriptor and `Channels` every channel descriptor; the SPA renders their labels, `NotificationType_<Key>` and `NotificationChannel_<Key>` with `.` → `_`, from spec 0012's string pack. |
 | `Save` | `[ApiAction("save", MemberOnly = true)]`. The list is the caller's complete set: rows absent from it revert to defaults. Validation (422, path `[i].type` / `[i].channel` / `[i].enabled`): `Notifications.UnknownType` when `Type` is not registered; `Notifications.UnknownChannel` when `Channel` is not; `Notifications.DuplicatePreference` when a `(Type, Channel)` pair repeats; `Notifications.CannotMute` when `Enabled = false` for `inbox` on a non-mutable type. Rows equal to the channel's default are dropped before binding; the rest bind as `@tb{b}_t0 : NotificationPreferenceList` and run the statement below in one `Persist` batch with `SqlOptions.ForCaller([core.NotificationPreferences])`, so the epilogue bumps the caller's `PreferencesTag`. Returns the same shape as `Get` from the rows just written. |
 
 ```sql
@@ -590,7 +590,7 @@ public sealed class InboxService                        // [ApiRoute("inbox")]; 
 
 | Member | Annotation | Batch |
 |---|---|---|
-| `Summary` | `[ApiAction("summary", MemberOnly = true, Idempotent = true)]`; `NoActivityStampMetadata` (spec 0015) | one `Read` batch through spec 0013's `IGuardedBatchRunner.Run(Read, …)`: the summary statement; `Latest` rows materialised by name |
+| `Summary` | `[ApiAction("summary", MemberOnly = true, Idempotent = true, Mutation = false)]`; `NoActivityStampMetadata` (spec 0013; applied by spec 0015's projection) | one `Read` batch through spec 0013's `IGuardedBatchRunner.Run(Read, …)`: the summary statement; `Latest` rows materialised by name |
 | `Seen` | `[ApiAction("seen", MemberOnly = true, Idempotent = true)]` | one `Persist` batch: the seen statement; `Count` = 1 |
 | `Read` | `[ApiAction("read", MemberOnly = true, Idempotent = true)]`; `IdsRequest.Ids` (spec 0015; `ReturnEntities`, `Select`, `Include` ignored) | one `Persist` batch: the read statement with `@tb{b}_t0 : IdList`; `Count` = rows newly marked |
 | `ReadAll` | `[ApiAction("read-all", MemberOnly = true, Idempotent = true)]` | one `Persist` batch: the read-all statement; `Count` = rows newly marked |
@@ -660,11 +660,12 @@ hub is not a mutation. `Suspended`, `Provisioning` and `Retired` tenants refuse 
 verdicts of spec 0010.
 
 `OnConnectedAsync` reads `IRequestContextAccessor.Current` (`Tenant.Id`, `UserId`, `Subject`,
-`SessionId`), adds the connection to its groups (§6.2), records it in `HubConnectionTracker`, and
-counts `tellma.realtime.connects{outcome = connected}`. `OnDisconnectedAsync` removes it. The hub
-exposes no client-invocable methods — every invocation is refused with a `HubException` and
-counted as `tellma.realtime.connects{outcome = invocation-refused}`; the channel is server→client
-only. `TellmaUserIdProvider : IUserIdProvider` returns the identity `sub`, so SignalR's per-user
+`SessionHandle`, the handle of the session's `catalog.Sessions` row of spec 0010 §7.4), adds
+the connection to its groups (§6.2), records it in `HubConnectionTracker`, and counts
+`tellma.realtime.connects{outcome = connected}`. `OnDisconnectedAsync` removes it. The hub exposes
+no client-invocable methods — every invocation is refused with a `HubException` and counted as
+`tellma.realtime.connects{outcome = invocation-refused}`; the channel is server→client only.
+`TellmaUserIdProvider : IUserIdProvider` returns the identity `sub`, so SignalR's per-user
 addressing (and Azure SignalR's user-scoped operations) names the same principal spec 0003 does.
 Hub options: `KeepAliveInterval` and `ClientTimeoutInterval` from `TellmaRealtimeOptions` (§9.2),
 `MaximumReceiveMessageSize = 4096` (clients send nothing but protocol frames), JSON protocol only,
@@ -681,7 +682,7 @@ server assigns them from spec 0013's connect result.
 | `t{tenantId}` | every connection of the tenant | events with empty `UserIds`; tenant-state closes |
 | `t{tenantId}.u{userId}` | the user's connections in this tenant | every user-addressed event |
 | `t{tenantId}.s{subject}` | the subject's connections in this tenant | `TenantAccessRevokedAsync(tenantId, subject)` |
-| `x{sessionKey}` | the connections of one BFF session, across tenants | `SessionsTerminatedAsync(subject, sessionKeys)` |
+| `x{handle}` | the connections of one BFF session, across tenants (`handle` = `RequestContext.SessionHandle`, spec 0010 §7.4) | `SessionsTerminatedAsync(subject, sessionHandles)` |
 
 A subject open in two tenants holds two connections in two `t{…}` families and never receives the
 other tenant's events; `Clients.User(sub)` is never used for events for exactly that reason.
@@ -702,8 +703,10 @@ public interface IClientEventRegistry                   // singleton; built at c
 ```
 
 Events are registered through spec 0010's `FeatureContribution.ClientEvent(name)`
-(`ClientEventContributionItem`); the name grammar is the type-key grammar of §2.3; publishing an
-unregistered name is `InvalidOperationException`. The Core catalogue:
+(`ClientEventContributionItem`), each once, by the feature code that publishes it (spec 0019's
+registration for `job.changed`, spec 0012's for `cache.changed`, this spec's for the other two);
+the name grammar is the type-key grammar of §2.3; publishing an unregistered name is
+`InvalidOperationException`. The Core catalogue:
 
 | Event | Payload | Publisher | Recipients |
 |---|---|---|---|
@@ -713,9 +716,10 @@ unregistered name is `InvalidOperationException`. The Core catalogue:
 | `session.ended` | `{ reason }` | the hub's listeners (§6.5) | the closing connections |
 
 `session.ended` reasons: `session-terminated`, `access-revoked`, `tenant-unavailable`. Payloads
-are ids and short codes only; the publisher refuses a payload whose serialisation exceeds
-`MaxEventPayloadBytes` (4,096) with `InvalidOperationException` — a thin event that grew is a
-design error, not a runtime condition.
+are ids and short codes only; a payload whose serialisation exceeds `MaxEventPayloadBytes` (4,096)
+is refused with `InvalidOperationException` — a thin event that grew is a design error, not a
+runtime condition. Both refusals are thrown to the caller synchronously by `Publish` and
+`PublishAsync` (§6.4), before any callback is registered or any delivery is attempted.
 
 ### 6.4 `IClientEventPublisher`
 
@@ -730,26 +734,27 @@ public interface IClientEventPublisher                  // scoped
 
 | Member | Meaning |
 |---|---|
-| `Publish` | With a batch: registers an `OnCommitted` callback that calls `PublishAsync`; several `Publish` calls on one batch coalesce into one callback that deduplicates `(Name, UserIds, Payload)` triples. Without a batch: `PublishAsync` fire-and-forget on the scope's `TaskScheduler`, exceptions logged. |
-| `PublishAsync` | Validates the name and payload size, resolves the tenant from `RequestContext.Tenant` (a tenantless scope is `InvalidOperationException`), sends `ClientEventEnvelope` to `t{tenantId}.u{id}` per user id or to `t{tenantId}` when `UserIds` is empty, counts `tellma.realtime.events{event}`. Failures are logged (`ClientEventFailed`, warning) and never thrown to the caller. |
+| `Publish` | Validates the name and the payload size synchronously (§6.3). With a batch: registers an `OnCommitted` callback that calls `PublishAsync`; several `Publish` calls on one batch coalesce into one callback that deduplicates `(Name, UserIds, Payload)` triples. Without a batch: `PublishAsync` fire-and-forget on the scope's `TaskScheduler`, delivery exceptions logged. |
+| `PublishAsync` | Validates the name and the payload size synchronously (`InvalidOperationException`, §6.3), resolves the tenant from `RequestContext.Tenant` (a tenantless scope is `InvalidOperationException`), sends `ClientEventEnvelope` to `t{tenantId}.u{id}` per user id or to `t{tenantId}` when `UserIds` is empty, counts `tellma.realtime.events{event}`. Delivery failures are logged (`ClientEventFailed`, warning) and never thrown to the caller. |
 
-Two implementations: `NullClientEventPublisher` (`Tellma.Core.Notifications`; validates and
-counts nothing, registered with `TryAdd`) and `SignalRClientEventPublisher`
+Two implementations: `NullClientEventPublisher` (`Tellma.Core.Notifications`; applies the refusals
+of §6.3, delivers and counts nothing, registered with `TryAdd`) and `SignalRClientEventPublisher`
 (`Tellma.Core.AspNetCore.Realtime`; `IHubContext<TellmaHub>`), which `AddTellmaRealtime` (§6.6)
-registers in place of the null one. A dedicated worker host therefore publishes nothing, and a
-web host of the same deployment picks the event up on the client's next summary call at worst —
-events are an optimisation, never a dependency (§1.3).
+registers in place of the null one. A dedicated worker host therefore publishes nothing, and a web
+host of the same deployment picks the event up on the client's next summary call at worst — events
+are an optimisation, never a dependency (§1.3).
 
 ### 6.5 Listeners: sessions, revocation, tenant state
 
 `HubConnectionTracker` (singleton) implements spec 0010's `ISessionTerminationListener` and
-`ITenantStateListener` (restated members: `SessionsTerminatedAsync(subject, sessionKeys)`,
+`ITenantStateListener` (restated members: `SessionsTerminatedAsync(subject, sessionHandles)`,
 `TenantAccessRevokedAsync(tenantId, subject)`, `OnStateChangedAsync(tenant, previous)`), and maps
-each connection this instance hosts to `(tenantId, userId, subject, sessionKey, HubCallerContext)`.
+each connection this instance hosts to `(tenantId, userId, subject, handle, HubCallerContext)`; the
+listener delivers handles (spec 0010 §7.4), so no session key is held, matched or logged here.
 
 | Call | Event sent first | Then closed |
 |---|---|---|
-| `SessionsTerminatedAsync(subject, keys)` (back-channel logout, revocation; spec 0010) | `session.ended { session-terminated }` to each `x{key}` | every connection in those groups |
+| `SessionsTerminatedAsync(subject, sessionHandles)` (back-channel logout, revocation; spec 0010) | `session.ended { session-terminated }` to each `x{handle}` | every connection in those groups |
 | `TenantAccessRevokedAsync(tenantId, subject)` (spec 0017's `UserService` after a deactivation commits) | `session.ended { access-revoked }` to `t{tenantId}.s{subject}` | that group |
 | `OnStateChangedAsync(tenant, previous)` with the new state `Suspended` or `Retired` | `session.ended { tenant-unavailable }` to `t{tenantId}` | that group |
 | `OnStateChangedAsync` to `ReadOnly`, `Active` or `Provisioning` | nothing | nothing (reads stay allowed; a reconnect re-runs the verdicts) |
@@ -787,11 +792,16 @@ references decide the mode without `Tellma.Core.AspNetCore` referencing either p
 
 ```csharp
 if (tellma.Configuration["Azure:SignalR:ConnectionString"] is not null)
+{
+    var realtime = tellma.Configuration.GetSection("Tellma:Realtime").Get<TellmaRealtimeOptions>() ?? new();
     tellma.Services.AddTellmaRealtime(s => s.AddAzureSignalR(o =>
     {
         o.ApplicationName = RealtimeApplicationName.From(deployment);   // "etpharma_staging"
         o.ClaimsProvider = c => [c.FindFirst("sub")!];
+        o.AccessTokenLifetime = realtime.AccessTokenLifetime;           // the revocation bound of §6.5
+        o.CloseOnAuthenticationExpiration = true;
     }));
+}
 ```
 
 **Sharing a service instance.** `RealtimeApplicationName.From(DeploymentIdentity)`
@@ -807,12 +817,14 @@ with another: a production instance serves the production deployments of a regio
 instance the staging ones. A distribution hosted by a third party gets its own instance.
 
 Startup fails (spec 0010's realised gate, check `realtime-hosting`) when
-`Azure:SignalR:ConnectionString` is configured and no delegate selected Azure SignalR, or when
-Azure SignalR is selected with an `ApplicationName` other than the deployment's — the check locates
-the SDK's `ServiceOptions` by type name, as it does to detect the mode — and warns when the host
-reports more than one instance (`WEBSITE_INSTANCE_ID` present without Azure SignalR, or
-`Tellma:Realtime:ExpectedInstances > 1`) and no backplane is configured. Redis is required only for
-on-premises multi-instance deployments; single-instance on-premises and SaaS need none.
+`Azure:SignalR:ConnectionString` is configured and no delegate selected Azure SignalR, or when Azure
+SignalR is selected with an `ApplicationName` other than the deployment's,
+`CloseOnAuthenticationExpiration` false, or an `AccessTokenLifetime` other than
+`TellmaRealtimeOptions.AccessTokenLifetime` — the check locates the SDK's `ServiceOptions` by type
+name, as it does to detect the mode — and warns when the host reports more than one instance
+(`WEBSITE_INSTANCE_ID` present without Azure SignalR, or `Tellma:Realtime:ExpectedInstances > 1`)
+and no backplane is configured. Redis is required only for on-premises multi-instance deployments;
+single-instance on-premises and SaaS need none.
 
 ## 7. Retention
 
@@ -891,8 +903,9 @@ configuration, passed to its delegate.
 
 ```csharp
 // Tellma.Core.Abstractions.Notifications
-public static class NotificationsTelemetryNames         // constants; MeterName = "Tellma.Core"
+public static class NotificationsTelemetryNames         // constants
 {
+    public const string MeterName = "Tellma.Core";
     public const string Created = "tellma.notifications.created";
     public const string Suppressed = "tellma.notifications.suppressed";
     public const string Replaced = "tellma.notifications.replaced";
@@ -906,8 +919,9 @@ public static class NotificationsTelemetryNames         // constants; MeterName 
 }
 
 // Tellma.Core.Abstractions.Realtime
-public static class RealtimeTelemetryNames              // constants; MeterName = "Tellma.Core.AspNetCore"; Events is spec 0015's ApiTelemetryNames.RealtimeEvents ("tellma.realtime.events")
+public static class RealtimeTelemetryNames              // constants; Events is spec 0015's ApiTelemetryNames.RealtimeEvents ("tellma.realtime.events")
 {
+    public const string MeterName = "Tellma.Core.AspNetCore";
     public const string Connections = "tellma.realtime.connections";
     public const string Connects = "tellma.realtime.connects";
     public const string Closes = "tellma.realtime.closes";
@@ -939,11 +953,11 @@ delivery on Azure.
 ### 10.2 Log events
 
 Structured events, tenant and user ids in the log scope: `NotificationsInserted` (debug; type,
-requested, inserted), `InboxEventFailed` (warning), `ClientEventFailed` (warning; event name),
-`ClientEventRefused` (error; unregistered name or oversized payload), `NotificationArgumentsInvalid`
-(warning; row id), `HubConnected`/`HubDisconnected` (debug), `HubConnectionRefused` (information;
-reason), `HubConnectionsClosed` (information; group, count, reason), `RealtimeHostingWarning`
-(warning; the backplane check of §6.6).
+requested, inserted), `InboxEventFailed` (warning), `ClientEventFailed` (warning; event name; a
+delivery failure, §6.4), `NotificationArgumentsInvalid` (warning; row id),
+`HubConnected`/`HubDisconnected` (debug), `HubConnectionRefused` (information; reason),
+`HubConnectionsClosed` (information; group, count, reason), `RealtimeHostingWarning` (warning; the
+backplane check of §6.6).
 
 ## 11. Composition and startup checks
 
@@ -955,8 +969,8 @@ no service subclass exists), `ApiService<InboxService>()`,
 `Singleton<INotificationChannelRegistry, NotificationChannelRegistry>()`,
 `Singleton<IClientEventRegistry, ClientEventRegistry>()`,
 `Singleton<IAccessCriteriaProvider, NotificationAccessCriteria>()`,
-`NotificationType(core.user.added)`, `NotificationChannel(inbox)`, `NotificationChannel(email)`,
-`ClientEvent("inbox.changed")`, `ClientEvent("job.changed")`, `ClientEvent("cache.changed")`,
+`NotificationType(core.user.added)`, `NotificationChannel(inbox)`,
+`NotificationChannel(email)`, `ClientEvent("inbox.changed")`,
 `ClientEvent("session.ended")`, `JobHandler<NotificationRetentionHandler>()`,
 `BuiltInSchedule("core.notification-retention", "30 3 * * *")`, and the two standalone table types
 on the model. `IClientEventPublisher` is registered with `TryAdd` as the null publisher.
@@ -975,7 +989,7 @@ only). A failed check names the feature that contributed the offending item.
 |---|---|---|---|
 | Notifications unit | `test/core/Tellma.Core.Tests/Notifications/` | none | request validation (§3.1 table, every `InvalidOperationException` path), recipient dedup and `Ordinal` assignment, the renderer (ICU arguments by JSON kind, dates in the display zone and calendar, missing resource → key, malformed JSON → no arguments), `NotificationsOptions` bounds, the registries' grammar and duplicate rejection, the null publisher, the `OnCommitted` coalescing of §3.4 and §6.4 with a fake batch |
 | Notifications fixture | `test/core/Tellma.Core.IntegrationTests/Notifications/` | `Category=Integration` (LocalDB, RCSI on and off) | the insert: ids contiguous from one range, inactive recipient skipped, muted mutable type skipped, non-mutable type ignores a disabled `inbox` row, a duplicate suppressed against an unread row and not against a read one, `Replace` refreshing the unread duplicate in place (same id; type, arguments, target, actor and `CreatedAt` from the request; both result sets read) and inserting for the rest, unknown recipient skipped, `OUTPUT` matches inserted rows; a fake `INotificationChannel` receives the insert's recipients identifier and its statement runs in the same round trip; the summary caps at `SummaryCountCap` and orders `Latest`; `seen`/`read`/`read-all` counts and the `inbox.changed` publish; preferences `save` synchronises, drops default rows, bumps `PreferencesTag` and refuses `CannotMute`/`UnknownType`/`UnknownChannel`/`DuplicatePreference`; an `email` deviation stored and never read by the insert; the self-scope filter on `query` and `get` (another user's id is 404); retention bands and paging; spec 0012's change-tracking write audit sees exactly the declared tables |
-| Realtime unit | `test/core/Tellma.Core.AspNetCore.Tests/Realtime/` | none | `TestServer` with the in-process mode: connect succeeds for a member and is refused for a non-member and a deactivated user; groups assigned from the context; an event to a user reaches that user's connections only and never a second tenant's; empty `UserIds` reaches the tenant group; payload cap; unregistered name refused; the tracker aborts by session key, by `(tenant, subject)` and by tenant group and sends `session.ended` first; `ReadOnly` connects, `Suspended` refuses; client invocations refused; instruments asserted |
+| Realtime unit | `test/core/Tellma.Core.AspNetCore.Tests/Realtime/` | none | `TestServer` with the in-process mode: connect succeeds for a member and is refused for a non-member and a deactivated user; groups assigned from the context; an event to a user reaches that user's connections only and never a second tenant's; empty `UserIds` reaches the tenant group; payload cap; unregistered name refused; the tracker aborts by session handle, by `(tenant, subject)` and by tenant group and sends `session.ended` first; `ReadOnly` connects, `Suspended` refuses; client invocations refused; instruments asserted |
 | Realtime live | `test/core/Tellma.Core.AspNetCore.IntegrationTests/Realtime/` | `Category=Integration`, `Live=true` | against a real Azure SignalR instance (`Azure:SignalR:ConnectionString` from the CI secret store): connect through the service, group delivery, `session.ended` delivery, token expiry closing the connection within `AccessTokenLifetime`; two hosts with different application names on the one instance never deliver to each other's `t{tenantId}` group |
 
 PR runs the two unit suites and the LocalDB fixture suite; the live suite runs nightly and on

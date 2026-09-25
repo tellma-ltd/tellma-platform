@@ -103,9 +103,9 @@ so a block is never pasted into code. SQL statements are the exact shape to emit
   under `src/connector/azure-blobs/`, following the existing connector layout. The file system has
   nothing to adapt and ships inside `Tellma.Core`.
 - **Package pins** added to `Directory.Packages.props`: `Azure.Storage.Blobs` 12.29.2 (also lifts
-  the identity server's transitive 12.26.0 so the solution carries one copy),
-  `SixLabors.ImageSharp` 4.1.1, `Testcontainers.Azurite` 4.14.0, and `Testcontainers.MsSql` moved
-  from 4.13.0 to 4.14.0 in the same change (the Azurite package requires `Testcontainers` 4.14.0).
+  the identity server's transitive 12.26.0 so the solution carries one copy), `SixLabors.ImageSharp`
+  4.1.1 and `Testcontainers.Azurite` 4.14.0, which requires `Testcontainers` 4.14.0, the line of the
+  `Testcontainers.MsSql` pin of spec 0010 §1.1 and spec 0011 §1.2.
 
 ### 1.2 The flow in one picture
 
@@ -276,11 +276,11 @@ public enum BlobState { Staged, Committed, Released, Deleting }
   (`contribution.Model<BlobConfiguration>()`), never as `contribution.Entity<Blob>()`: it has no
   securable, no endpoints, no service. It is reachable only through the navigation every
   `[BlobReference]` column defines.
-- **Queryex.** Entity `Blob` (source `[core].[Blobs]`, key `Id`) with the scalar properties listed
-  above; `StorageKey` and `Sha256` are never in the schema. Each owner column adds a many-to-one
-  navigation named after the property minus its `Id` suffix (`ImageId` → `Image`, `FileId` →
-  `File`, `ResultFileId` → `ResultFile`), exactly as spec 0011 derives every navigation from an FK.
-  No per-tenant variation, so no schema-key impact.
+- **Queryex.** Entity `core.Blob` (source `[core].[Blobs]`, key `Id`) with the scalar properties
+  listed above; `StorageKey` and `Sha256` are never in the schema. Each owner column adds a
+  many-to-one navigation named after the property minus its `Id` suffix (`ImageId` → `Image`,
+  `FileId` → `File`, `ResultFileId` → `ResultFile`), exactly as spec 0011 derives every navigation
+  from an FK. No per-tenant variation, so no schema-key impact.
 - **Related projection.** `Blob` carries
   `[RelatedSelect("Id,Kind,ContentType,FileName,Size,Width,Height")]` so a details read (spec 0014)
   returns file name and size beside the owner without a second call, and never `CreatedById`.
@@ -344,7 +344,7 @@ public interface IBlobKindRegistry                                    // singlet
 }
 
 public sealed record BlobKindDescriptor(
-    string Kind, BlobKindPolicy Policy, string OwnerResource, string OwnerEntity, TableName OwnerTable,
+    string Kind, BlobKindPolicy Policy, string OwnerResource, TableName OwnerTable,
     string OwnerColumn);
 ```
 
@@ -352,14 +352,14 @@ Presets:
 
 | Preset | `MaxSize` | `AllowedContentTypes` | `Image` |
 |---|---|---|---|
-| `Attachment` | 100 MiB | `application/pdf`; the three OOXML types (`…wordprocessingml.document`, `…spreadsheetml.sheet`, `…presentationml.presentation`); `image/jpeg`, `image/png`, `image/webp`, `image/gif`; `text/plain`, `text/csv`; `application/zip` | none |
+| `Attachment` | 100 MiB | `application/pdf`; the three OOXML types (`…wordprocessingml.document`, `…spreadsheetml.sheet`, `…presentationml.presentation`); `image/jpeg`, `image/png`, `image/webp`, `image/gif`; `text/plain`, `text/csv`, `application/json`; `application/zip` | none |
 | `Avatar` | 10 MiB (input) | `image/jpeg`, `image/png`, `image/webp`, `image/gif` | `MaxDimension 512`, `CoverSquare`, `ThumbnailSize 96`, `WebP` |
 | `Photo` | 10 MiB (input) | the same four image types | `MaxDimension 1600`, `Contain`, `ThumbnailSize 256`, `WebP` |
 
 `BlobKindRegistry` is built once at startup from every `[BlobReference]` property in the realised
-EF model (owner resource `<schema>.<Entity>` from the stack descriptor, owner table and column
-from the model) overlaid with `BlobsBuilder.Kind` / `FeatureContribution.BlobKind` replacements.
-Its checks report into the realised gate (§9).
+EF model (`OwnerResource` is the stack descriptor's `Resource`, the owner's entity name; the owner
+table and column come from the model) overlaid with `BlobsBuilder.Kind` /
+`FeatureContribution.BlobKind` replacements. Its checks report into the realised gate (§9).
 
 ## 3. Staging: the upload
 
@@ -405,8 +405,9 @@ leaves nothing behind.
    exceed `min(policy.MaxSize, BlobOptions.MaxUploadSize)` (`Blob.TooLarge`). The limit is enforced
    again while reading: a body that runs past the declared length is `Blob.TooLarge`.
 3. **Read the bytes.** Image kinds are buffered in memory (bounded by the policy's `MaxSize`).
-   Attachment kinds above 64 KiB stream to a temporary file in the store's temporary area
-   (§6.2) while SHA-256 is computed on the way; smaller bodies stay in memory.
+   Attachment kinds above 64 KiB stream to a temporary file under spec 0010's `Tellma:ScratchPath`
+   (default the operating system's temp directory), opened delete-on-close, while SHA-256 is
+   computed on the way; smaller bodies stay in memory.
 4. **Determine the content type** (§3.3); outside the allowed set → `Blob.UnsupportedType`.
 5. **Process images** (§3.6) for kinds whose policy carries an `Image`; the stored primary is the
    processor's output, never the client's bytes; failures → `Blob.ImageRejected`. The hash, size,
@@ -431,8 +432,8 @@ bytes that only the sweep touches (a missing object is success for the sweep's d
   GIF (`GIF87a`/`GIF89a`), WebP (`RIFF…WEBP`), PDF (`%PDF-`). A `PK` archive takes the declared type
   when it is one of the three OOXML types or `application/zip`, else `application/zip` when that
   is allowed, else rejected.
-- **Text types** (`text/plain`, `text/csv`) take the declared type only when it is in the allowed
-  set and the first 8 KiB contain no NUL byte.
+- **Text types** (`text/plain`, `text/csv`, `application/json`) take the declared type only when
+  it is in the allowed set and the first 8 KiB contain no NUL byte.
 - **Always rejected**, whatever the declaration or the allowed set: executables (`MZ`, ELF
   `7F 45 4C 46`, Mach-O), HTML (a leading `<!DOCTYPE html` or `<html` after whitespace), SVG
   (`<svg` or `<?xml` followed by `<svg` in the first 8 KiB). Anything not sniffable and not a
@@ -537,9 +538,9 @@ guessing an id is useless because only its uploader can attach it, and only once
 
 The rule holds on every save path without exception: the details page save, the `me/save` of spec
 0017 (`ImageId` and `SignatureId` are self-editable columns of that spec's rule, and the caller is
-the uploader), an agent save through MCP, a `SaveSource = System` save from a job scope (the run-as
-user staged the blob), and an import — where spec 0018 excludes blob columns from the sheet, so
-hydration leaves them unchanged and nothing attaches.
+the uploader), an agent save through MCP, an enlisted save from a job frame (spec 0014 §13.3; the
+run-as user staged the blob), and an import — where spec 0018 excludes blob columns from the
+sheet, so hydration leaves them unchanged and nothing attaches.
 
 ### 4.2 The validator
 
@@ -596,28 +597,31 @@ two statements below through `PersistContext.Batch.Sql` with `Writes = { core.Bl
 save, a delete by ids, by query or with descendants, `activate`/`deactivate` and every action — so a
 delete releases exactly what its `OUTPUT deleted` captured; on a delete persist
 `PersistContext.Entities` is empty and `AffectedIds` names the deleted key table, and the statements
-depend only on the capture table. Parameters: `@tb{b}_p0` the column's kind, `@tb{b}_p1` the
-caller's user id (`RequestContext.UserId`). Text for `core.Users.ImageId`:
+depend only on the capture table. Parameters, under the effect statement's own ordinal `b` (spec
+0011 §5.4): `@tb{b}_p0` the column's kind, `@tb{b}_p1` the caller's user id
+(`RequestContext.UserId`); `{s}` below is the save statement's ordinal, which `BlobCaptureName.For`
+derives from `AffectedIds` (§4.3). Text for `core.Users.ImageId`:
 
 ```sql
 -- release blobs the change dereferenced (old value from OUTPUT, never from memory)
 UPDATE b SET [State] = 'Released', [ExpiresAt] = SYSUTCDATETIME()
-FROM [core].[Blobs] AS b INNER JOIN @tb{b}_blob_Users_ImageId AS c ON c.[OldBlobId] = b.[Id]
+FROM [core].[Blobs] AS b INNER JOIN @tb{s}_blob_Users_ImageId AS c ON c.[OldBlobId] = b.[Id]
 WHERE (c.[NewBlobId] IS NULL OR c.[NewBlobId] <> c.[OldBlobId]) AND b.[State] = 'Committed';
 -- confirm newly attached blobs; kind, uploader and expiry re-checked inside the transaction
-DECLARE @tb{b}_expected int = (SELECT COUNT(*) FROM @tb{b}_blob_Users_ImageId
+DECLARE @tb{b}_expected int = (SELECT COUNT(*) FROM @tb{s}_blob_Users_ImageId
                                WHERE [NewBlobId] IS NOT NULL AND ([OldBlobId] IS NULL OR [OldBlobId] <> [NewBlobId]));
 UPDATE b SET [State] = 'Committed', [CommittedAt] = SYSUTCDATETIME(), [ExpiresAt] = NULL
-FROM [core].[Blobs] AS b INNER JOIN @tb{b}_blob_Users_ImageId AS c ON c.[NewBlobId] = b.[Id]
+FROM [core].[Blobs] AS b INNER JOIN @tb{s}_blob_Users_ImageId AS c ON c.[NewBlobId] = b.[Id]
 WHERE (c.[OldBlobId] IS NULL OR c.[OldBlobId] <> c.[NewBlobId])
   AND b.[State] = 'Staged' AND b.[Kind] = @tb{b}_p0 AND b.[CreatedById] = @tb{b}_p1 AND b.[ExpiresAt] > SYSUTCDATETIME();
 IF @@ROWCOUNT <> @tb{b}_expected THROW 50422, N'Blob.NotAttachable', 1;
 ```
 
-- **Placement.** The statements run as the capability step of spec 0014's persist assembly
-  (first among the `ContributeAsync` participants): after the emitter's statements for every
-  table and before the service's `ContributeAsync` statements, the access guards, the row-level
-  post-check and the tag bumps, inside the transaction.
+- **Placement.** The statements are `BlobReferenceEffect<T>`'s `ContributeAsync` contribution
+  (spec 0014 §6.7, §13.1): after the emitter's statements for every table and the service's
+  `ContributeAsync` statements, first among the effects (`CoreFeature` precedes every pack in
+  registration order), and before the access guards, the row-level post-check and the tag bumps,
+  inside the transaction.
 - **The mismatch** (`THROW 50422`) rolls the transaction back under `XACT_ABORT` and surfaces as
   `ValidationException` with code `Blob.NotAttachable` (the message is the code, per spec 0011's
   invariant band): a concurrent save won the blob, it expired between validation and persist, or
@@ -641,14 +645,15 @@ is a later `Retain` release policy.
 ### 4.6 Server-generated blobs
 
 A job that produces a file (spec 0018's export handler) calls `IBlobService.StageAsync` from its
-job scope under the job's run-as user, then saves the owning record — the `Exports` row whose
-`FileId` carries `[BlobReference("export-file", Attachment, ReadAccess = OwnerRead)]` — through the
-pipeline with `SaveSource = System`, which confirms the blob under §4.4 because the run-as user is
-both the uploader and the saver. The recipient downloads through `GET blobs/export-file/{id}`
-authorised by the `Exports` row. Spec 0019's `core.file-retention` deletes expired `Exports` and
-`Imports` rows through the pipeline, so their blobs are released by the capture and reclaimed by
-the sweep; a synchronous import leaves its `import-file` upload staged, and the sweep reclaims it
-after the TTL. No second write path exists.
+job scope under the job's run-as user, then enlists the save of the owning record — the `Exports`
+row whose `FileId` carries `[BlobReference("export-file", Attachment, ReadAccess = OwnerRead)]` —
+with the job frame (spec 0014 §13.3), so the row's statements and the effect of §4.4 ride the
+partition's completion batch and the blob is confirmed inside the completion transaction, the
+run-as user being both the uploader and the saver. The recipient downloads through
+`GET blobs/export-file/{id}` authorised by the `Exports` row. Spec 0019's `core.file-retention`
+deletes expired `Exports` and `Imports` rows through the pipeline, so their blobs are released by
+the capture and reclaimed by the sweep; a synchronous import leaves its `import-file` upload
+staged, and the sweep reclaims it after the TTL. No second write path exists.
 
 ## 5. Downloading
 
@@ -658,14 +663,14 @@ after the TTL. No second write path exists.
 
 1. Resolve the kind → `BlobKindDescriptor`; unknown → `null` (404). Validate `variant` against
    `BlobName.IsValidVariant`; invalid → `BadRequestException` (400, code `bad-request`).
-2. Evaluate `IAccessEvaluator.Evaluate(OwnerResource, "Read")` (spec 0013) unless the policy is
-   `AnyMember`. A `Denied` outcome skips statement 1 below; `Filtered` conjoins `decision.Filter`;
-   `Unrestricted` and `AnyMember` use the column predicate alone.
+2. Evaluate `IAccessEvaluator.EvaluateAsync(OwnerResource, "Read", [])` (spec 0013) unless the
+   policy is `AnyMember`. A `Denied` outcome skips statement 1 below; `Filtered` conjoins
+   `decision.Filter`; `Unrestricted` and `AnyMember` use the column predicate alone.
 3. **One `Read` batch, two statements**, through `IGuardedBatchRunner` (the prologue rides it).
-   Statement 1 (`IDataBatch.Rows`): root = the owner entity, `Select = "Id"`, `Filter =
-   FilterTree.And(Leaf("<OwnerColumn> = @id"), accessFilter?)`, `Take = 1`, `@id` a declared
-   parameter. Statement 2 (`IDataBatch.Sql`, `Idempotent = true`; `@tb{b}_p0` id, `@tb{b}_p1` kind,
-   `@tb{b}_p2` caller id):
+   Statement 1 (`IDataBatch.Rows`): root = `OwnerResource`, `Select = "Id"`,
+   `Filter = FilterTree.And(Leaf("<OwnerColumn> = @id"), accessFilter?)`, `Take = 1`, `@id` a
+   declared parameter. Statement 2 (`IDataBatch.Sql`, `Idempotent = true`; `@tb{b}_p0` id,
+   `@tb{b}_p1` kind, `@tb{b}_p2` caller id):
 
 ```sql
 SELECT [Id], [Kind], [State], [StorageKey], [ContentType], [Size], [FileName], [Width], [Height], [Variants]
@@ -713,12 +718,13 @@ documents server-side and fetched only by a caller who may read the user row; th
   `Results.Stream(stream, contentType, fileDownloadName, entityTag)`, which implements 304 and 412
   from the supplied tag. Range processing is off.
 - **Headers.** `Cache-Control: private, max-age=31536000, immutable` for a `Committed` blob — the
-  bytes behind an id never change, so a year without revalidation is safe and a re-upload
-  changes the record's id and therefore the URL; never `public`. `Cache-Control: private,
-  no-store` for a `Staged` blob. `X-Content-Type-Options: nosniff` always.
-  `Content-Disposition: inline; filename*=UTF-8''…` for image kinds without `download=1`;
-  `attachment; filename*=UTF-8''…` otherwise. `Content-Length` from the row's `Size` for the
-  primary; from the store's `BlobContent.Length` for a variant.
+  bytes behind an id never change, so a year without revalidation is safe and a re-upload changes
+  the record's id and therefore the URL; never `public`. `Cache-Control: private, no-store` for a
+  `Staged` blob. `X-Content-Type-Options: nosniff` always.
+  `Content-Disposition: inline; filename*=UTF-8''…` for image kinds unless `download=true`;
+  `attachment; filename*=UTF-8''…` otherwise (`download` binds as a boolean; absent is `false`).
+  `Content-Length` from the row's `Size` for the primary; from the store's `BlobContent.Length` for
+  a variant.
 - **Exempt from `Tellma-Client`.** A browser cannot decorate an `<img>` request with a custom
   header; the `GET` is side-effect free and relies on spec 0010's `Origin`/`Sec-Fetch-Site` check
   alone (spec 0015 lists it as one of the two exemptions).
@@ -936,7 +942,7 @@ public sealed class BlobRejectedException(
 
 | Code | HTTP status | Problem `code` | When |
 |---|---|---|---|
-| `Blob.UnknownKind` | 404 | `blob-rejected` | the route's kind is not registered |
+| `Blob.UnknownKind` | 404 | `blob-rejected` | the upload route's kind is not registered (the `GET` resolves an unknown kind to `null`, 404 `not-found`, §5.1) |
 | `Blob.LengthRequired` | 411 | `blob-rejected` | no `Content-Length` |
 | `Blob.TooLarge` | 413 | `blob-rejected` | declared or actual length above the kind's or global limit (`Arguments`: `maxBytes`) |
 | `Blob.UnsupportedType` | 415 | `blob-rejected` | content type outside the allowed set or always-rejected (`Arguments`: `contentType`) |
@@ -946,9 +952,10 @@ public sealed class BlobRejectedException(
 Spec 0015 maps `BlobRejectedException` by code to the status above; the problem body carries
 `errors` with one item at path `body` whose `code` and `arguments` are the exception's, rendered
 under the request culture like every validation message. Attach-time failures are ordinary
-validation errors (422 `validation`) at the property path: `Blob.NotAttachable`,
-`Blob.DuplicateReference`. A bad `variant` is 400 `bad-request`; a missing, hidden, released or
-wrong-kind blob is 404 `not-found`; a store failure is 500 `internal`.
+validation errors (422 `validation`): `Blob.NotAttachable` and `Blob.DuplicateReference` at the
+property path from the validator (§4.2), and `Blob.NotAttachable` at `ValidationPath.Root` when
+the persist-time re-check throws (§4.4, spec 0014 §14.2). A bad `variant` is 400 `bad-request`; a
+missing, hidden, released or wrong-kind blob is 404 `not-found`; a store failure is 500 `internal`.
 
 ## 9. Startup checks
 
@@ -1029,9 +1036,9 @@ failed), `BlobSweepRowRetained` (Warning; id), `BlobReconcileReleased` (Warning;
 | Project | Tier | Pins |
 |---|---|---|
 | `test/core/Tellma.Core.Tests/Blobs/` | unit, PR | `BlobName` grammar (valid/invalid kinds, variants, names; traversal strings rejected); content-type determination (§3.3) over fixture byte prefixes including a `PK` OOXML, an `MZ` executable, HTML with leading whitespace, an SVG behind an XML prolog, text with a NUL byte; file-name sanitisation; `BlobKindRegistry` construction and every §9 problem over synthetic models; the abstract `BlobStoreConformanceTests` run against `FileSystemBlobStore` in a temporary directory (create-only conflict, missing read is `null`, delete of missing is success, list by prefix, purge of `.part` files, `EnsureTenantAsync` idempotence, traversal rejected); `BlobService.StageAsync` over a fake store and an in-memory batch (each rejection code, quota mapping, row-before-bytes on a failing store); `ResolveAsync` combination rules (§5.1 step 4) over canned result sets; ETag and header computation of the endpoint |
-| `test/core/Tellma.Core.IntegrationTests/Blobs/` | `Category=Integration`, PR (LocalDB or the `Testcontainers.MsSql` 4.14.0 container) | the stage statement (id from the sequence, quota `50422`); the capture and effect statements over the fixture entity `fixture.BlobOwners (Id, Name, FileId [BlobReference("fixture-file")], PhotoId [BlobReference("fixture-photo", Photo)])`, added to spec 0011's shared fixture project `test/shared/Tellma.Testing.Entities`: attach on insert, replace on update, `null` release, delete by ids/by query/with descendants release, an override save releasing the row's actual old value, the same id on two rows → `Blob.NotAttachable`, an expired row → `Blob.NotAttachable`, a foreign uploader → `Blob.NotAttachable`; the sweep claim with a `TimeProvider` fake (claims only past-`ExpiresAt` rows, re-claims after `SweepReclaimAfter`, deletes rows only in `Deleting`); **the concurrency test** — a transaction confirms a staged row and holds its lock while the claim runs on a second connection under RCSI; the claim must block and then skip the row; the reconcile statement releases an orphan and leaves a young orphan and a referenced blob alone; the `ResolveAsync` round trip through a filtered `Read` grant (visible owner served, hidden owner 404, staged-to-uploader served, staged-to-other 404) |
+| `test/core/Tellma.Core.IntegrationTests/Blobs/` | `Category=Integration`, PR (LocalDB or the `Testcontainers.MsSql` 4.14.0 container) | the stage statement (id from the sequence, quota `50422`); the capture and effect statements over the fixture entity `fixture.BlobOwners (Id, Name, FileId [BlobReference("fixture-file")], PhotoId [BlobReference("fixture-photo", Photo)])`, added to spec 0011's shared fixture project `test/shared/Tellma.Testing.Entities`, whose database carries the full `core.Blobs` and `core.sq_Blobs` (spec 0011 §13.2): attach on insert, replace on update, `null` release, delete by ids/by query/with descendants release, an override save releasing the row's actual old value, the same id on two rows → `Blob.NotAttachable`, an expired row → `Blob.NotAttachable`, a foreign uploader → `Blob.NotAttachable`; the sweep claim with a `TimeProvider` fake (claims only past-`ExpiresAt` rows, re-claims after `SweepReclaimAfter`, deletes rows only in `Deleting`); **the concurrency test** — a transaction confirms a staged row and holds its lock while the claim runs on a second connection under RCSI; the claim must block and then skip the row; the reconcile statement releases an orphan and leaves a young orphan and a referenced blob alone; the `ResolveAsync` round trip through a filtered `Read` grant (visible owner served, hidden owner 404, staged-to-uploader served, staged-to-other 404) |
 | `test/core/Tellma.Core.Imaging.Tests/` | unit, PR | `ImageSharpImageProcessor` over fixtures: each accepted format, `Contain` and `CoverSquare` dimensions, thumbnail sizes, EXIF orientation applied and metadata stripped, a 60-megapixel header rejected before decode, a decompression bomb rejected by the allocator cap, a JPEG/HTML polyglot re-encoded to bytes with no `<` in the first 8 KiB, an animated GIF reduced to one frame, output content type per `ImageFormat` |
-| `test/connector/azure-blobs/Tellma.Connector.AzureBlobs.Adapter.IntegrationTests/` | `Category=Integration`, nightly | the same `BlobStoreConformanceTests` against Azurite (`Testcontainers.Azurite` 4.14.0); container naming and `EnsureTenantAsync`; create-only conflict as `BlobAlreadyExistsException` |
+| `test/connector/azure-blobs/Tellma.Connector.AzureBlobs.Adapter.IntegrationTests/` | `Category=Integration`; PR on the Linux runner (Testcontainers), skipped on a Windows runner without Docker, nightly on both (spec 0010 §10) | the same `BlobStoreConformanceTests` against Azurite (`Testcontainers.Azurite` 4.14.0); container naming and `EnsureTenantAsync`; create-only conflict as `BlobAlreadyExistsException` |
 | `distributions/acme` end-to-end (spec 0010's host tests) | `Category=Integration`, PR | upload → save `User.ImageId` → `GET` 200 with `immutable` → `GET` with `If-None-Match` 304 → save `null` → `GET` 404; a non-member upload 404 `tenant-not-found`; an upload without `Tellma-Client` 403 `csrf-rejected`; an oversize body 413 before the body is read; a `ReadOnly` tenant: upload 403, download 200 |
 
 No `Live=true` tier exists for this spec: the Azure adapter is exercised on Azurite only; the
@@ -1055,8 +1062,8 @@ first Azure deployment verifies that Storage Blob Data Contributor covers contai
 - **Observability**: every §10.1 instrument emitted with its closed tag values and asserted by the
   unit suite; the §10.2 events emitted; the two alert queries checked by the existing monitoring
   test.
-- **CI**: unit and LocalDB suites on every PR; the Azurite suite nightly; the reference
-  distribution's blob end-to-end on every PR.
+- **CI**: the unit and LocalDB suites on every PR; the Azurite suite on the Linux PR runner and
+  nightly on both platforms; the reference distribution's blob end-to-end on every PR.
 - **Docs**: ARCHITECTURE.md updated where this spec touches it — the package naming and
   dependency rules (`Tellma.Core.Imaging` as an Abstractions-plus-ImageSharp package never
   referenced by `Tellma.Core`; `Tellma.Connector.AzureBlobs.Adapter` in the connector list); the
@@ -1120,7 +1127,7 @@ The load-bearing decisions, where not already evident above:
 19. **Temporal owners keep the reference, not the bytes** — history shows that an image changed;
     retention is a later policy (§4.5).
 20. **Server-generated files use the same path** — a job stages under its run-as user and the
-    owner row's save confirms (§4.6).
+    owner row's enlisted save confirms inside the job's completion transaction (§4.6).
 21. **The sweep cadence lives on the built-in schedule, not in options** — one knob, editable by
     the tenant administrator within the rules for built-ins; no second configuration surface
     (§7.4).

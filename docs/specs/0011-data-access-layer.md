@@ -70,8 +70,8 @@ job and notification tables whose rows are inserted by fixed-text statements (sp
   `KeySetRestriction`, `level()`, `CompiledQuery.Prologue/Body`, `Skip`/`Take` as parameter
   slots, the `QueryRowSet` reader, the entity materializer with related entities, children and
   ancestors in one round trip.
-- Ship the DB-call budget: `DataAccessScope`, the `tellma.data.*` instruments, and the four
-  analyzers `TELLMA0001`–`TELLMA0004`.
+- Ship the DB-call budget: `DataAccessScope`, the `tellma.data.*` instruments, and the six
+  analyzers `TELLMA0001`–`TELLMA0006`.
 - Pin the semantics with a unit suite (golden SQL) and a fixture-schema integration suite on
   LocalDB and Testcontainers.
 
@@ -81,8 +81,8 @@ job and notification tables whose rows are inserted by fixed-text statements (sp
   (`RequestContext`, `ITenantConnectionProvider`, `TellmaBuilder`, the provisioning steps, the
   migrator commands, `READ_COMMITTED_SNAPSHOT` at provisioning, the `tellma_app` grants).
 - **Version tags, the versioned caches, `MultilingualShape`, tenant settings** — spec 0012 (this
-  spec consumes `VersionTagDependency`, `VersionTagSnapshot`, `IVersionTagRegistry` and hosts the
-  tag prelude and bump statements as contributor stages).
+  spec consumes `VersionTagDependency`, `VersionTagSnapshot`, `UserVersionTagSnapshot`,
+  `IVersionTagRegistry` and hosts the tag prelude and bump statements as contributor stages).
 - **The connect prologue, securables, row-level security filters, `core.Users` and its
   siblings** — spec 0013 (this spec runs the prologue contributor and wraps the batch body in its
   guard; it never composes a filter).
@@ -161,6 +161,7 @@ connections share one pool key. The compatibility level is pinned so that
 | `EnumStringLengthConvention` | non-unicode, `MaxLength = max(8, longest member name)` unless `[MaxLength]`/`[Unicode]` or fluent facets are present; no `CHECK` |
 | `JsonColumnConvention` | `[JsonColumn]` → `HasColumnType("nvarchar(max)")` |
 | `AuditConvention` | `TopLevelEntity<TKey>`: the four audit FKs to `core.Users` (`NO ACTION`), `datetimeoffset(7)` |
+| `TableTypeConvention` | `[TableType]` on a type → `HasTableType(name?, schema?)`; `[ExcludeFromTableType]` on a property → the column's exclusion (spec 0001's fluent configuration, so the attributes live in `Tellma.Core.Abstractions` without an EF edge, §2.2); inherited by a leaf |
 | `TemporalConvention` | `[Temporal]` → system-versioning with history `<schema>.<Table>History`, period columns as shadow properties excluded from the table type; children of a temporal root follow it unless `[Temporal(false)]`; a TPT root or leaf is a startup error |
 | `ChildConvention` | `[ParentKey]` → FK `FK_<Table>_<Parent>Id` (`NO ACTION`) + `IX_<Table>_<Parent>Id (…) INCLUDE (Id)` |
 | `TreeConvention` | `TreeEntity<TKey>`: self FK on `ParentId` without a CLR navigation, `IX_<Table>_ParentId`, the shadow `Node hierarchyid NOT NULL` with `UX_<Table>_Node`, `ExcludeFromTableType()` on `Node`, defaults `SubtreeCount`/`ActiveSubtreeCount` = 1, `[Tree(MaxDepth)]` recorded |
@@ -254,10 +255,10 @@ public interface IJobEntity
 | `Entity<TKey>` | The keyed base. `TKey` is `int` from `sq_<Table>` by default, `long` by `TopLevelEntity<long>`; `Guid` keys are not offered. `Id = 0` means new on the wire, `Id < 0` is a temporary id unique within the payload (rewritten in every self-typed foreign key and child parent key by the allocator, §7.3), `Id > 0` is an update. System-written entities (`Job`, `Notification`, `Blob` of specs 0019, 0020, 0016) derive from `Entity<int>`, carry `CreatedAt` explicitly, and are never written through `Save`. |
 | `TopLevelEntity<TKey>` | Adds the four audit columns, all server-owned and stamped server-side once per batch from `SYSUTCDATETIME()` (§8.2). `ModifiedAt` is the concurrency token: user-visible mutations (save, `Update` actions, invite) stamp it; bookkeeping never touches the entity row (activity, tags and inbox tracking live on `core.UserStamps`; leases on `core.Jobs`); the one documented exception is the connect prologue's `Invited → Joined` flip of spec 0013. No `rowversion` column exists anywhere. |
 | `ChildEntity<TKey>` | Saved only with its owner and never addressed by a service of its own. No audit columns: a child change stamps the parent (§8.2). The owning foreign key carries `[ParentKey]`. |
-| `TreeEntity<TKey>` | `ParentId` is a self-referencing foreign key configured without a navigation; the Queryex navigation `Parent` derives from the column name exactly like every other navigation-less FK, so `Parent.Name`, `descendantOf`, `ancestorOf` and `level(Node)` work unchanged, and a details read carries the parent row in `Related` (§11.5) because `Parent` is in the default related projection (§2.5). A tree is extended by plain inheritance (`MyCenter : Center`) and registered with `UseEntity<Center, MyCenter>()`; `TLeaf : TDefault` is the one constraint for every entity kind. `Node` is a shadow `hierarchyid` (§10). |
+| `TreeEntity<TKey>` | `ParentId` is a self-referencing foreign key configured without a navigation; the Queryex navigation `Parent` derives from the column name exactly like every other navigation-less FK, so `Parent.Name`, `descendantOf`, `ancestorOf` and `level(Node)` work unchanged, and a details read carries the parent row in `Related` (§11.5) because spec 0014's default details expansion covers every foreign-key navigation, `Parent` included, each projected per §2.5. A tree is extended by plain inheritance (`MyCenter : Center`) and registered with `UseEntity<Center, MyCenter>()`; `TLeaf : TDefault` is the one constraint for every entity kind. `Node` is a shadow `hierarchyid` (§10). |
 | `ActivatableTreeEntity<TKey>` | Adds `IsActive` and `ActiveSubtreeCount` (expanders on the active-only tree view without a subquery). No `Level` column (`level(Node)`), no `IsLeaf` (`SubtreeCount = 1`). |
 | `IActivatable` | A one-property gate. `IsActive` is `ServerOwned` by derivation: every row is created active (the `INSERT` writes the column's default and ignores the payload), and the column changes only through the activate/deactivate actions, which are `IDataBatch.Update` statements (§9.1) — the one path that writes it. A client value on a save or an import is overwritten silently, like every other server-owned column. |
-| `IJobEntity` | The row's link to the job that is processing it. `JobId` is server-owned, set only by spec 0019's enqueue statement in the same transaction or, for a row a schedule-fired entity handler inserts itself, by that handler's `IDataBatch.Update` with `Stamp = false`; it never stamps `ModifiedAt`. |
+| `IJobEntity` | The row's link to the job that is processing it. `JobId` is server-owned: spec 0019's enqueue statement sets it in the same transaction without touching `ModifiedAt`, and a schedule-fired entity handler that inserts its own row supplies it through `EnlistOptions.ServerOwned` on the enlisted insert (spec 0014 §13.3). |
 
 Capability declarations are exactly three kinds: a base class for a shape that adds columns, a
 one-property interface for a gate, an annotation for a declaration. There is no `IAudited`,
@@ -270,6 +271,8 @@ paired per entity.
 ```csharp
 // Tellma.Core.Abstractions.Entities
 public sealed class TemporalAttribute(bool enabled = true) : Attribute;   // on type; inherited; children follow the parent unless [Temporal(false)]
+public sealed class TableTypeAttribute : Attribute;                     // on type; inherited; optional Name and Schema (spec 0001); TableTypeConvention (§1.3) maps it onto the model
+public sealed class ExcludeFromTableTypeAttribute : Attribute;          // on property; inherited: the column is absent from the row image's UDTT
 public sealed class TreeAttribute(int MaxDepth = 32) : Attribute;       // on type; inherited
 public sealed class ParentKeyAttribute : Attribute;                     // on property: the child's owning foreign key
 public sealed class MaxChildrenAttribute(int Count) : Attribute;        // on a [NotMapped] child collection: rows per parent; default 10,000
@@ -282,21 +285,16 @@ public sealed class SearchableAttribute(SearchKind Kind = SearchKind.Contains) :
 public sealed class PreserveWhitespaceAttribute : Attribute;            // on string property: opts out of trim-and-null normalisation
 public sealed class JsonColumnAttribute : Attribute;                    // on string property: nvarchar(max), opaque text
 public sealed class MultilingualAttribute : Attribute;                  // on the primary property of a P/P2/P3 group; twins found by name
-public sealed class CacheableAttribute(int MaxRows = 1000) : Attribute;   // on type; inherited
+public sealed class CacheableAttribute(int MaxRows = 0) : Attribute;   // on type; inherited; 0 = spec 0012's EntityMaxRowsDefault
 public sealed class BumpsVersionTagAttribute(string name) : Attribute;  // on type; repeatable; inherited
 // on type; repeatable; inherited
 public sealed class BumpsUserVersionTagAttribute(
     UserVersionTagNames column, string userIdProperty = "UserId") : Attribute;
-// on int? property
-public sealed class BlobReferenceAttribute(
-    string kind, BlobPreset preset = BlobPreset.Attachment, long? MaxSizeBytes = null,
-    BlobReadAccess ReadAccess = BlobReadAccess.OwnerRead) : Attribute;
+// [BlobReference], BlobPreset and BlobReadAccess: spec 0016 §2.3
 public sealed class ExcludeFromExcelAttribute : Attribute;              // on property
 public sealed class SiblingAttribute(string navigation) : Attribute;    // on type: a one-row-per-owner entity whose key is a foreign key to its owner; declares the owner's navigation to it (§11.1)
 
 public enum SearchKind { Contains, Prefix }
-public enum BlobPreset { Attachment, Avatar, Photo }    // placed here because [BlobReference] names it
-public enum BlobReadAccess { OwnerRead, AnyMember }
 ```
 
 The data layer's own reading of each annotation:
@@ -304,6 +302,7 @@ The data layer's own reading of each annotation:
 | Annotation | What this spec does with it | Semantics owned elsewhere |
 |---|---|---|
 | `[Temporal]` | system-versioning per §4.2; skip-unchanged rows in the emitter (§8.2) | — |
+| `[TableType]`, `[ExcludeFromTableType]` | `TableTypeConvention` (§1.3) maps them onto spec 0001's table-type configuration; the row image `TableTypeBinder` binds by column name | the UDTT's naming, versioning and migration: spec 0001 |
 | `[Tree]` | `MAXRECURSION` cap of the tree statements (§10.2); metadata `Tree.MaxDepth` | — |
 | `[ParentKey]` | child collections (§2.3); the synchronise statements (§8.3) | — |
 | `[MaxChildren]` | metadata `Children[].MaxCount` (§2.3, §3.1) | the ceiling's enforcement, in save step 1: spec 0014 |
@@ -313,7 +312,7 @@ The data layer's own reading of each annotation:
 | `[Searchable]`, `[PreserveWhitespace]`, `[ExcludeFromExcel]` | metadata facets only | search disjunction and trim normalisation: spec 0014; Excel shape: spec 0018 |
 | `[JsonColumn]` | `nvarchar(max)`, bound as text, absent from the Queryex schema (§11.1) | serialisation by the owning service |
 | `[Multilingual]` | the group (§2.6); `Name2`/`Name3` gating in the schema by `MultilingualShape` (§11.1) | labels and negotiation: spec 0012 |
-| `[Cacheable]`, `[BumpsVersionTag]`, `[BumpsUserVersionTag]` | metadata flags `IsCacheable`; the tables' tag names reach the epilogue through spec 0012's `IVersionTagRegistry` (§5.6) | spec 0012 |
+| `[Cacheable]`, `[BumpsVersionTag]`, `[BumpsUserVersionTag]` | metadata flags `IsCacheable`; the tables' tag names reach the epilogue through spec 0012's `IVersionTagRegistry` (§5.3, §5.5 step 7) | spec 0012 |
 | `[BlobReference]` | FK and index (§4.4); `EntityMetadata.BlobReferences`; the capture tables the emitter fills (§8.5) | staging, confirm and release: spec 0016 |
 
 `[Stack]`, `[ApiResource]`, `[DefaultSelect]`, `[RelatedSelect]`, `[DetailsExpand]`,
@@ -343,7 +342,7 @@ the pipeline reports it as `Entity.NotFound`.
 
 | Ownership | Source | Emitter behaviour |
 |---|---|---|
-| `ServerOwned` | `[ServerOwned]`; by derivation `Id`, the four audit columns, `SubtreeCount`, `ActiveSubtreeCount`, `IsActive`, `JobId`, and, on `core.Users`, the invitation-evidence columns (spec 0013 §3.1; `State` is `DatabaseOwned`) | Never in a `SET` list. On `INSERT` the audit columns are stamped by the statement; every other server-owned column is written from the in-memory row after `EntityMetadata.ResetServerOwned(entity)` restored its fresh-instance value. On update the before image wins silently. |
+| `ServerOwned` | `[ServerOwned]` (spec 0013 §3.1 declares it on the invitation-evidence columns of `core.Users`); by derivation `Id`, the four audit columns, `SubtreeCount`, `ActiveSubtreeCount`, `IsActive` and `JobId` | Never in a `SET` list. On `INSERT` the audit columns are stamped by the statement; every other server-owned column is written from the in-memory row after `EntityMetadata.ResetServerOwned(entity)` restored its fresh-instance value (an enlisted insert re-applies the members its `EnlistOptions.ServerOwned` names, spec 0014 §13.3). On update the before image wins silently. |
 | `WriteOnce` | `[WriteOnce]` | Never in a `SET` list; written on `INSERT` from the payload. A changed value on update is reported by the pipeline as `WriteOnce` at the path. |
 | `Derived` | `[Derived]` | In the `SET` list and the `INSERT` column list, from the in-memory row as the pipeline's hooks left it (the preprocess hook, or a validator whose value needs the before image); the client's value never reaches the emitter, because the pipeline calls `EntityMetadata.ResetDerived(entity)` on every row, new and existing, before the hook (spec 0014). Counts as an editable column in the unchanged-row comparison (§8.2). |
 | `DatabaseOwned` | a column with computed SQL in the model (`HasComputedColumnSql`), by derivation; no attribute | Never in the `INSERT` column list, a `SET` list or the unchanged-row comparison, and absent from the UDTT (spec 0001 excludes computed columns); the read-back returns it; a client value is ignored silently. |
@@ -559,7 +558,7 @@ public sealed class QueryRowSet
     public IReadOnlyList<QueryColumn> Columns { get; }
     public int RowCount { get; }
     public int? Count { get; }                          // the capped grand total when RowQueryOptions.CountCap was given; cap + 1 means "more than cap"
-    public QueryRowSet? Ancestors { get; }              // the ancestor rows when RowQueryOptions.Ancestors was given (§11.4)
+    public QueryRowSet? Ancestors { get; }              // the ancestor rows when RowQueryOptions.IncludeAncestors was set (§11.3)
     public Array GetBuffer(int column);                 // int[], long[], decimal[], bool[], string?[], DateOnly[], DateTime[], DateTimeOffset[], byte[][], Guid[]
     public bool IsNull(int column, int row);
     public sealed class Builder(IReadOnlyList<QueryColumn> columns, int capacity);   // filled by the reader through typed getters, one AppendRow per row
@@ -587,9 +586,10 @@ converter; spec 0015 serialises them as its own members beside `rows`.
 
 Tables are plural (`core.Users`, `gl.Centers`); the CLR type and the Queryex entity are singular.
 Schemas are lower-case (`core`, `gl`, `catalog`, `idsvr`, `fixture`); `dbo` holds only
-`__TellmaProvisioning`, `__TellmaSchema` (§4.3) and the standalone table types. Sequences are
-`<schema>.sq_<Table>` (`gl.sq_Centers`), `AS int` (or `bigint`) `START WITH 1000 INCREMENT BY 1 NO
-CYCLE`; the band 1–999 is reserved for `HasData` rows. History tables are `<schema>.<Table>History`.
+`__TellmaProvisioning`, `__TellmaSchema` (§4.3) and the standalone table types. Sequences on
+tenant-model tables are `<schema>.sq_<Table>` (`gl.sq_Centers`), `AS int` (or `bigint`) `START WITH
+1000 INCREMENT BY 1 NO CYCLE`; the band 1–999 is reserved for `HasData` rows (the catalog's
+`sq_Tenants` starts at 1, spec 0010 §7.1). History tables are `<schema>.<Table>History`.
 No `IDENTITY`, no `rowversion`, no triggers, no `ON DELETE CASCADE` except the one-row-per-owner
 sibling tables their owning specs name: `core.UserStamps` and `core.UserPreferences` on `core.Users`
 (spec 0013), `core.NotificationPreferences` on `core.Users` (spec 0020), `core.ScheduleStates` on
@@ -694,8 +694,11 @@ migration history directly.
 ### 4.4 Standalone table types
 
 Standalone shapes are plain `[TableType]` classes in `Tellma.Core.Abstractions.TableTypes`,
-physical `[dbo].[<Name>_<hash8>]`, bound through `TableTypeBinder` by column name like every
-entity row image.
+registered through spec 0010's `Model<T>()` and mapped by `TableTypeConvention` (§1.3) exactly
+as an entity's attribute is; physical `[dbo].[<Name>_<hash8>]`, bound through `TableTypeBinder`
+by column name like every entity row image. The one catalog type, spec 0010 §3.8's
+`TenantMembershipList`, is the class `TenantMembershipRecord` in
+`Tellma.Core.Abstractions.Tenancy` under schema `catalog`.
 
 | Type | Columns | Owner / use |
 |---|---|---|
@@ -703,11 +706,11 @@ entity row image.
 | `BigIdList`, `GuidList`, `StringList` (exist) | `Id bigint / uniqueidentifier / nvarchar(450) PK` | `KeySetRestriction` by key type; `@tm_tagNames` uses `StringList` |
 | `DateList` | `Id date PK` | `KeySetRestriction` for `DateOnly` keys |
 | `IdStampList` | `Id int PK`, `ModifiedAt datetimeoffset(7)` | `DeleteSpec.ByIds` with `ExpectedStamps` (§9.2) |
-| `VersionTagList` | `Name nvarchar(128) PK`, `Tag uniqueidentifier` | spec 0012's tag guard |
+| `VersionTagList` | `Name nvarchar(128) PK`, `Tag uniqueidentifier`, `Bumped bit` | spec 0012's tag guard (§5.5 step 4) |
 | `JobRequestList`, `JobOutcomeList`, `JobProgressList`, `JobLeaseList`, `ScheduleNextList` | per spec 0019 | job statements |
 | `NotificationRowList`, `NotificationPreferenceList` | per spec 0020 | notification statements |
 | `UserPreferenceList`, `UserInvitationOutcomeList` | per specs 0013 and 0017 | self-service and invite write-back |
-| `TenantMembershipRecord` | per spec 0010 | catalog only |
+| `TenantMembershipList` | per spec 0010 | catalog only |
 
 Entity UDTTs are derived per spec 0001 (`<schema>.<Table>List_<hash8>`). `DateList` and
 `IdStampList` are defined here; the others are defined by the specs that name them and registered
@@ -759,6 +762,7 @@ public interface IDataBatch
     BatchPurpose Purpose { get; }
     TransactionMode TransactionMode { get; set; }       // default Auto
     IReadOnlySet<TableName> WrittenTables { get; }      // union of every statement's declared writes
+    IReadOnlySet<TableName> CallerAuthority { get; }    // stack-owned tables a caller statement may write; unowned tables always may
     BatchResult<EntityQueryResult<TEntity>> Query<TEntity>(EntityQuery<TEntity> query);
     BatchResult<QueryRowSet> Rows(QuerySpec spec, QueryArguments? arguments, RowQueryOptions? options);
     BatchResult<int> Count(QuerySpec spec, QueryArguments? arguments, int cap = 10000);
@@ -771,7 +775,7 @@ public interface IDataBatch
     SqlIdentifier Tvp<TRow>(IReadOnlyList<TRow> rows);
     SqlIdentifier DeclareIdTable();
     void DependsOn(IReadOnlyList<VersionTagDependency> dependencies);
-    BatchResult<CachedEntitySet<TEntity>> FromCache<TEntity>();
+    BatchResult<CacheResult<CachedEntitySet<TEntity>>> FromCache<TEntity>();   // Outcome = Oversized, Value null, when the probe overflows
     void BumpVersionTag(string name);
     void OnCommitted(Action<BatchOutcome> callback);
     Task<BatchOutcome> ExecuteAsync();
@@ -783,7 +787,8 @@ public sealed record BatchResult<T>                     // Value throws until ex
     public bool IsCompleted { get; }
 }
 
-public sealed record BatchOutcome(VersionTagSnapshot VersionTags, int RoundTrips);
+public sealed record BatchOutcome(
+    VersionTagSnapshot VersionTags, UserVersionTagSnapshot? UserVersionTags, int RoundTrips);   // UserVersionTags: null on a batch without a connect prologue
 
 public interface IDataBatchContributor                  // scoped DI; prologues ascending by Order, epilogues descending
 {
@@ -807,7 +812,8 @@ public sealed class QueryArguments;                     // IReadOnlyDictionary<s
 public sealed class RowQueryOptions
 {
     public int? CountCap { get; set; }                  // adds the capped grand total
-    public FilterTree? Ancestors { get; set; }          // tree roots only: the access filter alone, for the ancestor rows
+    public bool IncludeAncestors { get; set; } = false; // tree roots only: also returns the page's ancestor rows (§11.3)
+    public FilterTree? AncestorsFilter { get; set; }    // the access filter alone, for the ancestor rows; null when Unrestricted
     public bool CaptureKeys { get; set; } = false;      // also writes the page's ids into a @tb{b}_keys table
 }
 
@@ -821,7 +827,8 @@ public sealed class EntityQuery<TEntity>
     public QueryArguments? Arguments { get; set; }
     public IReadOnlyList<KeySetRestriction> Restrictions { get; set; } = [];
     public IReadOnlyList<string> Children { get; set; } = [];   // [NotMapped] collection names; dotted for grandchildren
-    public FilterTree? Ancestors { get; set; }
+    public bool IncludeAncestors { get; set; } = false;
+    public FilterTree? AncestorsFilter { get; set; }
 }
 
 public sealed record EntityQueryResult<TEntity>(IReadOnlyList<TEntity> Entities, RelatedEntities Related);
@@ -831,14 +838,16 @@ public sealed record SaveReceipt(DateTimeOffset Stamp, int Inserted, int Updated
 public abstract record UpdateSpec<TEntity>              // exactly one shape
 {
     public sealed record ByIds(
-        IReadOnlyList<object> Ids, FilterTree? Filter, IReadOnlyDictionary<string, object?> Assignments,
-        bool Stamp = true, bool AllOrNothing = false) : UpdateSpec<TEntity>;
+        IReadOnlyList<object> Ids, FilterTree? ReadFilter, FilterTree? Filter,
+        IReadOnlyDictionary<string, object?> Assignments, bool Stamp = true, bool AllOrNothing = false)
+        : UpdateSpec<TEntity>;
     public sealed record ByQuery(
         FilterTree Filter, QueryArguments? Arguments, IReadOnlyDictionary<string, object?> Assignments,
         int Cap, int ExpectedCount, bool Stamp = true) : UpdateSpec<TEntity>;
-    // Filter: the caller's access filter (ByIds) or the query, conjoined with the access filter (ByQuery)
-    // Assignments: property -> uniform value; editable or server-owned. Stamp: false only for platform bookkeeping (non-entity rows, or an IJobEntity's JobId)
-    // AllOrNothing: every id must exist (50404) and be visible (50403) before the UPDATE (§9.1)
+    // Filter: the action's grant filter (ByIds) or the query, conjoined with the access filter (ByQuery)
+    // ReadFilter: the caller's Read filter; the AllOrNothing check counts existence under it (hidden equals missing)
+    // Assignments: property -> uniform value; editable or server-owned. Stamp: false only for platform bookkeeping on tables without audit columns
+    // AllOrNothing: every id must be readable under ReadFilter (50404) and pass Filter (50403) before the UPDATE (§9.1)
 }
 
 public sealed record UpdateReceipt(IReadOnlySet<object> UpdatedIds);
@@ -846,10 +855,13 @@ public sealed record UpdateReceipt(IReadOnlySet<object> UpdatedIds);
 public abstract record DeleteSpec<TEntity>              // exactly one shape
 {
     public sealed record ByIds(
-        IReadOnlyList<object> Ids, FilterTree? Filter, IReadOnlyList<DateTimeOffset?>? ExpectedStamps = null)
-        : DeleteSpec<TEntity>;                          // ExpectedStamps: datetimeoffset(7)
-    public sealed record ByQuery(FilterTree Filter, QueryArguments? Arguments, int Cap) : DeleteSpec<TEntity>;
-    public sealed record WithDescendants(IReadOnlyList<object> Ids, FilterTree? Filter) : DeleteSpec<TEntity>;
+        IReadOnlyList<object> Ids, FilterTree? ReadFilter, FilterTree? Filter,
+        IReadOnlyList<DateTimeOffset?>? ExpectedStamps = null) : DeleteSpec<TEntity>;   // ExpectedStamps: datetimeoffset(7)
+    public sealed record ByQuery(FilterTree Filter, QueryArguments? Arguments, int Cap, int ExpectedCount)
+        : DeleteSpec<TEntity>;                          // Cap and ExpectedCount verified in SQL (§9.2)
+    public sealed record WithDescendants(IReadOnlyList<object> Ids, FilterTree? ReadFilter, FilterTree? Filter)
+        : DeleteSpec<TEntity>;
+    // ReadFilter: the caller's Read filter — existence is counted under it (50404; hidden equals missing); Filter: the action's grant (50403)
 }
 
 public sealed record DeleteReceipt(IReadOnlySet<object> DeletedIds);
@@ -861,6 +873,7 @@ public sealed record RawResult(IReadOnlyList<QueryRowSet> ResultSets);
 | `Purpose` | Set at creation. `Read` and `Validate` batches run untransacted; `Persist` batches carry the transaction frame of §5.5; `Maintenance` batches (jobs, sweeps, the migrator) carry the schema guard and spec 0012's prelude alone — no connect prologue and no `@tm_Guard` wrapper — and use the longer command timeout (§6.1). Contributors consult it. |
 | `TransactionMode` | `Auto` (default): the text is wrapped in an in-text transaction when any statement declares a write. `None`: autocommit — for bookkeeping whose composer tolerates a partial re-run (lease renewal, sweeps, the job poll). `Explicit`: a `SqlTransaction` opened and committed from C# — the escape hatch for a decision that must be taken in C# before commit, costing two more round trips, never retried by the executor (§6.5) and never used by the platform's own paths. |
 | `WrittenTables` | The union of every statement's declared writes: `Save`, `Update`, `Delete` derive theirs from metadata (children included); `Sql` declares through `SqlOptions.Writes`. Spec 0012's epilogue resolves tag bumps from it; the fixture tier audits it against change tracking. |
+| `CallerAuthority` | The authority of the current appender (spec 0014 §13.3): the tables, children included, of the stack whose participant holds the batch — the pipeline hands each participant a view of the one batch carrying its own stack's tables, the host's for the host's hooks and effects, the target's for an enlisted group's; empty for a job or provisioning handler's own statements, an `[ApiRoute]` service and a batch outside any frame. This interface's members are the **caller channel**: a `Save`, `Update`, `Delete` or `Sql` whose declared writes include a table that spec 0014's `IStackRegistry.OwnerOf` maps to a stack outside the set is refused at append with `InvalidOperationException` naming the table, its owner and the enlistment remedy; a table no stack owns always passes. The platform's own composers — the emitter, the access guards, the blob effect and the job, notification and progress statements — append through an **internal channel** of `Tellma.Core`'s batch implementation that the check does not cover. |
 | `Query` | Compiles the entity query for `TEntity` (every mapped leaf is a root; `TEntity` may be a base, resolved to its leaf through `IEntityMetadataProvider.Get`), appends it with its child and related queries, and materialises entities plus a `RelatedEntities` dictionary after execution (§11.5). |
 | `Rows` | Appends one compiled `QuerySpec`; `Skip`/`Take` are parameter slots; returns a columnar `QueryRowSet` (§11.3). |
 | `Count` | `SELECT COUNT(*) FROM (<body with Select = "Id", OrderBy = "Id", Take = cap + 1>) AS q`; a result of `cap + 1` means "more than `cap`". |
@@ -873,10 +886,10 @@ public sealed record RawResult(IReadOnlyList<QueryRowSet> ResultSets);
 | `Tvp` | Binds a standalone or table-derived type through `TableTypeBinder` (§6.2) and returns its parameter name for use in a later `Sql` or as a `KeySetRestriction.TableSource`. |
 | `DeclareIdTable` | Declares `@tb{b}_ids TABLE ([Id] int PRIMARY KEY)` for later statements to fill and read. |
 | `DependsOn` | Declares cached inputs; after a `Read` or `Validate` batch the executor applies each dependency's `VersionTagMismatchPolicy` (spec 0012); on a `Persist` batch each dependency, with its `ExpectedTag`, joins `@tm_expectedTags` for the in-transaction guard (§5.5). |
-| `FromCache` | Returns the cached list when its tag matches the snapshot; otherwise appends the load statement after the prologue. On a `Validate` or `Persist` batch the dependency is declared with `Rerun`, never `Refresh`, so a validator never accepts a row from a list that changed under it. |
+| `FromCache` | Returns the cached list (`Hit`) when its tag matches the snapshot; otherwise appends spec 0012 §4.4's capped probe after the prologue, and reports `Oversized` with no list when the probe overflows, so the consumer re-reads through an ordinary query. On a `Validate` or `Persist` batch the dependency is declared with `Rerun`, never `Refresh`, so a validator never accepts a row from a list that changed under it. |
 | `BumpVersionTag` | Adds a tenant-level tag name to the epilogue's bump set for this batch only — the way a service bumps a tag no written table declares. |
 | `OnCommitted` | Runs after the round trip's commit, outside the transaction, in registration order; failures are logged (`DataBatch.OnCommittedFailed`, error level, with the operation name), never thrown. |
-| `ExecuteAsync` | Runs contributors, assembles the text, executes with retry, reads every result set, replaces the tag snapshot (spec 0012's `IVersionTagSnapshots.Replace`), fires `OnCommitted`. A batch executes once; a second call throws. |
+| `ExecuteAsync` | Runs contributors, assembles the text, executes with retry, reads every result set, replaces the tenant tag snapshot (spec 0012's `IVersionTagSnapshots.Replace`) and, after a batch that carried a connect prologue, the caller's user snapshot (`IUserVersionTagSnapshots.Replace`; both in `BatchOutcome`, spec 0012 §2.5), fires `OnCommitted`. A batch executes once; a second call throws. |
 
 ### 5.3 Contributors and stages
 
@@ -911,13 +924,13 @@ one; SQL Server's command limit is 2,100 and the prologue reserves the rest); ex
 lists ride TVPs.
 
 **Key capture.** Any `Query`/`Rows` statement may capture its root keys: the batch compiles a
-keys-only twin of the spec (`Select = "Id"`, same filter, ordering and paging) into `INSERT INTO
-@tb{b}_keys ([Id]) <body>` using `CompiledQuery.Body` (§11.2), then compiles the display query
-restricted by `KeySetRestriction("Id", "@tb{b}_keys")` with the ordering kept and paging dropped.
-Later statements name `@tb{b}_keys` as a restriction source: child collections (`ParentKey IN`),
-ancestors, the row-level-security post-check, delete-by-query, update-by-query. `Query` captures
-when `Children` is non-empty and no id restriction already fixes the roots; `Rows` captures when
-`CaptureKeys` or `Ancestors` is set; deletes and updates always capture.
+keys-only twin of the spec (`Select = "Id"`, same filter, ordering and paging) into
+`INSERT INTO @tb{b}_keys ([Id]) <body>` using `CompiledQuery.Body` (§11.2), then compiles the
+display query restricted by `KeySetRestriction("Id", "@tb{b}_keys")` with the ordering kept and
+paging dropped. Later statements name `@tb{b}_keys` as a restriction source: child collections
+(`ParentKey IN`), ancestors, the row-level-security post-check, delete-by-query, update-by-query.
+`Query` captures when `Children` is non-empty and no id restriction already fixes the roots; `Rows`
+captures when `CaptureKeys` or `IncludeAncestors` is set; deletes and updates always capture.
 
 **Deduplication.** `Query`, `Rows` and `Count` compute a structural key (root, select text, filter
 tree, having, order, skip, take, arguments by value, restrictions, options) and return the existing
@@ -942,8 +955,9 @@ For a `Persist` batch on a caller's behalf the executor emits, in this order:
    THROW 50401, N'CallerInvalid', 1;`.
 6. The caller's statements in composition order — spec 0014's persist assembly: spec 0013's
    `IAccessGuards.ContributeLock` (the application lock), the emitter's statements per table (§8)
-   and the tree statements (§10), capability statements, `ContributeAsync` statements, spec
-   0013's `IAccessGuards.ContributeInvariants`, the row-level post-check over `@tb{b}_saved`, the
+   and the tree statements (§10), the service's and then every effect's `ContributeAsync`
+   statements (spec 0016's blob confirm/release among them), spec 0013's
+   `IAccessGuards.ContributeInvariants`, the row-level post-check over `@tb{b}_saved`, the
    read-back.
 7. The epilogue: spec 0012's bumps over `@tm_tagNames` and `@tm_userIds_<Column>`, last before
    `COMMIT`; the executor binds one `@tm_tag uniqueidentifier` per batch from an
@@ -967,12 +981,12 @@ first round trip):
 | Create (no context loads) | 1 | prologue, persist frame |
 | Update (with children) | 2 | (1) prologue, before images, `Save`-grant count, validation context, id reservation; (2) persist frame |
 | Delete by ids / by query / with descendants | 1 | prologue, keys, checks, child deletes, root delete, recount, bumps |
-| Activate / deactivate / any column action | 1 | prologue, stamped update, recount, bumps |
+| Activate / deactivate (spec 0014's SQL-only fast path; a custom action is 2, as update) | 1 | prologue, stamped update, recount, bumps |
 | Get by parent ids | 1 | one query restricted by a TVP |
-| Import, per chunk of 10,000 roots | 2 (+1 hydration) | as update |
+| Import, per chunk of `MaxSaveCount` roots (spec 0014; 10,000 by default) | 2 (+1 hydration) | as update |
 
 A cold or stale path adds one prologue-only round trip per user per instance; each dependent
-validation round adds one (spec 0014 caps them at three).
+validation round adds one (spec 0014's `MaxValidationRounds`, 3, counts round 1, so at most two).
 
 ## 6. Execution
 
@@ -996,12 +1010,12 @@ public sealed class DataOptions
 {
     public TimeSpan CommandTimeout { get; set; } = TimeSpan.FromSeconds(30);
     public TimeSpan MaintenanceCommandTimeout { get; set; } = TimeSpan.FromSeconds(600);
-    public int RetryAttempts { get; set; } = 3;
+    public int RetryAttempts { get; set; } = 3;                                    // re-runs after the first attempt: four attempts in all
     public TimeSpan RetryBaseDelay { get; set; } = TimeSpan.FromMilliseconds(50);   // 50, 200, 800 ms with ±25 % jitter
     public TimeSpan SlowRoundTripThreshold { get; set; } = TimeSpan.FromSeconds(5);
     public int IdBufferLowWater { get; set; } = 64;
     public int LargeBatchThreshold { get; set; } = 1000;
-    public int ConflictIdsInMessage { get; set; } = 100;
+    public int ConflictIdsInMessage { get; set; } = 100;                            // upper bound per id list of the 50409 message; the effective cap is §8.2's
 }
 ```
 
@@ -1059,13 +1073,13 @@ public static class TellmaSqlErrors                     // THROW numbers, severi
 
 | Number | Raised by | Message | Executor mapping |
 |---|---|---|---|
-| `50401` | the persist frame's caller re-check (§5.5) | `CallerInvalid` | `BatchAssertionFailedException(50401, "CallerInvalid")`; the pipeline raises `TenantNotFoundException` |
-| `50403` | the delete visibility check (§9.2), the all-or-nothing `Update` (§9.1), the post-check (spec 0014) | `RowSecurity` | `RowSecurityException` |
-| `50404` | the delete-by-ids existence check (§9.2), the all-or-nothing `Update` (§9.1) | `Entity.NotFound` | `BatchAssertionFailedException(50404, "Entity.NotFound")` → `NotFoundException` |
-| `50409` | the concurrency guard (§8.1), delete-by-ids with stamps (§9.2) | JSON `{"count","conflicts","missing"}` | `ConcurrencyConflictException(ConflictingIds, MissingIds, Truncated)`; all-missing → `NotFoundException` (404), otherwise `ConcurrencyException` (409) |
-| `50412` | the version-tag guard (§5.5) | `StaleVersionTag` | `BatchAssertionFailedException(50412, …)` → `StaleContextException` |
+| `50401` | the persist frame's caller re-check (§5.5) | `CallerInvalid` | `BatchAssertionFailedException(50401, "CallerInvalid")`; spec 0013's runner raises `TenantNotFoundException` |
+| `50403` | the action-grant checks of delete-by-ids and delete-with-descendants (§9.2) and of the all-or-nothing `Update` (§9.1), the post-check (spec 0014) | `RowSecurity` | `RowSecurityException` |
+| `50404` | the existence checks under `ReadFilter` of delete-by-ids and delete-with-descendants (§9.2) and of the all-or-nothing `Update` (§9.1); a hidden id counts as missing | `Entity.NotFound`; the missing ids are the result set preceding the `THROW` | `BatchAssertionFailedException(50404, "Entity.NotFound")` → `NotFoundException` over that result set |
+| `50409` | the concurrency guard (§8.1), delete-by-ids with stamps (§9.2) | JSON `{"count","conflicts","missing"}`; the conflict rows are the result set preceding the `THROW` | `ConcurrencyConflictException(Conflicts)` over that result set; all-missing → `NotFoundException` (404), otherwise `ConcurrencyException` (409) |
+| `50412` | the version-tag guard (§5.5) | `StaleVersionTag` | `BatchAssertionFailedException(50412, …)`; spec 0013's runner re-connects cold and recomposes once, then raises `StaleContextException` |
 | `50413` | delete-by-query and update-by-query above `Cap` (§9.1, §9.2) | `Delete.CapExceeded`, `Update.CapExceeded` | `BatchAssertionFailedException(50413, …)` → `LimitExceededException` |
-| `50422` | invariants: `Tree.Cycle` (§10.2), `Access.*` (spec 0013), `Blob.NotAttachable` (spec 0016), `Job.LeaseLost`, `Schedule.TickLeaseLost` (spec 0019), `VersionTag.Missing` (spec 0012) | the validation code | `TreeCycleException` when the code is `Tree.Cycle`; otherwise `BatchAssertionFailedException(50422, code)` → `ValidationException` with the code |
+| `50422` | invariants: `Tree.Cycle` (§10.2), `Access.*` (spec 0013), `Blob.NotAttachable` and `Blob.StagingQuotaExceeded` (spec 0016), `Job.LeaseLost`, `Schedule.TickLeaseLost` (spec 0019), `VersionTag.Missing` (spec 0012) | the validation code | `TreeCycleException` when the code is `Tree.Cycle`; otherwise `BatchAssertionFailedException(50422, code)` → `ValidationException` with the code, except `Blob.StagingQuotaExceeded`, which spec 0016's `BlobService` translates to `BlobRejectedException` |
 | `50428` | delete-by-query and update-by-query count verification (§9.1, §9.2) | `Delete.CountMismatch`, `Update.CountMismatch` | `BatchAssertionFailedException(50428, …)` → `CountMismatchException` |
 | `50501` | the schema guard (§4.3) | `SchemaBehind` | `BatchAssertionFailedException(50501, "SchemaBehind")` → spec 0010's `TenantUnavailableException` (`tenant-schema-behind`, 503, `Retry-After: 30`) |
 | `50503` | spec 0013's application-lock timeout (`Access.LockTimeout`) | the code | a reported transient failure: retried (§6.5), then `DataAccessRetryExhaustedException` → `DependencyUnavailableException` |
@@ -1088,12 +1102,17 @@ executor rejects an unknown `50xxx` as an `InvalidOperationException`.
 | every other number | final; surfaces as `SqlException` wrapped in `DataAccessException` (internal base) → 500 |
 
 Internal data-layer exceptions (`Tellma.Core.Data`, never mapped by the web layer, translated by
-spec 0014's pipeline): `DataAccessException` (base), `UniqueConstraintViolationException
-(IndexName)`, `ForeignKeyViolationException(ConstraintName)`, `TreeCycleException(EntityType)`,
-`TreeDepthExceededException(EntityType)`, `RowSecurityException`, `ConcurrencyConflictException
-(ConflictingIds, MissingIds, Truncated)`, `BatchAssertionFailedException(Number, Code)`,
-`DataAccessRetryExhaustedException(Inner, Attempts)`, `DataAccessAmbiguousException(Inner,
-Verdict)`.
+spec 0014's pipeline): `DataAccessException` (base),
+`UniqueConstraintViolationException(IndexName)`, `ForeignKeyViolationException(ConstraintName)`,
+`TreeCycleException(EntityType)`, `TreeDepthExceededException(EntityType)`, `RowSecurityException`,
+`ConcurrencyConflictException(Conflicts)` — one `ConflictRow(Id, IsMissing, ModifiedAt,
+ModifiedById, Name, Name2, Name3)` per row of the guard's result set —
+`BatchAssertionFailedException(Number, Code)`, `DataAccessRetryExhaustedException(Inner, Attempts)`,
+`DataAccessAmbiguousException(Inner, Verdict)`. Every exception one statement raises — the seven
+from `UniqueConstraintViolationException` to `BatchAssertionFailedException` — carries
+`StatementOrdinal`, the batch ordinal (§5.4) of that statement, which the executor resolves from
+`SqlException.LineNumber` against the line offsets it records per statement at assembly; spec 0014
+§13.3 attributes a persist-time error to the enlisted group whose statements hold the ordinal.
 
 ### 6.5 Retry and the commit probe
 
@@ -1102,19 +1121,20 @@ Retry is the executor's job: SqlClient's own retry logic is inert inside a trans
 
 - **Reported transient failure** (the server returned one of §6.4's transient numbers; under
   `XACT_ABORT ON` the transaction is rolled back): the whole round trip is re-run, regardless of
-  idempotence, up to `RetryAttempts` with the jittered delays of §6.1; TVPs re-enumerate; the
-  prologue re-runs with the same premises. Exhaustion → `DataAccessRetryExhaustedException`.
+  idempotence, up to `RetryAttempts` times with the jittered delays of §6.1; TVPs re-enumerate;
+  the prologue re-runs with the same premises. Exhaustion → `DataAccessRetryExhaustedException`.
 - **Ambiguous failure** (the connection dropped; whether `COMMIT` ran is unknown): re-run only
   when every statement is `Idempotent` (`Query`, `Rows`, `Count`, `FromCache` and `Assert` are
   idempotent by construction; `Save`, `Update`, `Delete` are not; `Sql` declares). Otherwise, for
   a `Persist` batch that inserted rows, the **commit probe**: one autocommit round trip `SELECT
   COUNT(*) FROM <root table> WHERE [Id] IN (SELECT [Id] FROM @tb0_t0)` over the inserted root ids
   of the first root table. All present → `Verdict = Committed`: the write succeeded and the
-  results are lost, surfaced as `DataAccessAmbiguousException(Committed)` → spec 0014's
-  `DependencyUnavailableException` with a reload instruction. None present → `NotCommitted`: the
-  round trip is re-run (nothing partial exists under one transaction). No inserted rows to probe
-  (an update-only batch) → `Unknown` → `DataAccessAmbiguousException(Unknown)` →
-  `DependencyUnavailableException`. Metered `tellma.data.commit.probes` by `outcome`.
+  results are lost, surfaced as `DataAccessAmbiguousException(Committed)`, which spec 0014's
+  pipeline answers by re-issuing the read-back on a `Read` batch and running its post-commit
+  effects. None present → `NotCommitted`: the round trip is re-run (nothing partial exists under
+  one transaction). No inserted rows to probe (an update-only batch) → `Unknown` →
+  `DataAccessAmbiguousException(Unknown)` → spec 0014's `DependencyUnavailableException` with a
+  reload instruction. Metered `tellma.data.commit.probes` by `outcome`.
 - **`TransactionMode.None`** batches follow the reported-transient rule of the first bullet — the
   whole round trip is re-run even though statements that autocommitted before the failure then run
   twice, so a `None` batch's composer must tolerate that (spec 0019's stray-claim reconciliation) —
@@ -1148,12 +1168,12 @@ public sealed class IdReservation : IDisposable         // disposable hold
 
 ### 7.2 Reservation
 
-The allocator keeps a buffer of contiguous ranges per `(TenantId, sequence)`. `Reserve`
-computes the exact deficit per table (rows with `Id = 0`, roots and supplied children, recursively),
-takes what the buffer holds — those ranges leave the buffer at `Reserve` time, so concurrent saves
-on one instance never double-count — and, for every sequence still short, appends one statement to
-the batch it is given (the pipeline's first round trip) with a range size of the remaining deficit
-plus the refill to the low-water mark:
+The allocator keeps a buffer of contiguous ranges per `(TenantId, sequence)`. `Reserve` computes
+the exact deficit per table (rows with `Id <= 0`, roots and supplied children, recursively), takes
+what the buffer holds — those ranges leave the buffer at `Reserve` time, so concurrent saves on one
+instance never double-count — and, for every sequence still short, appends one statement to the
+batch it is given (the pipeline's first round trip) with a range size of the remaining deficit plus
+the refill to the low-water mark:
 
 ```sql
 DECLARE @tb1_first sql_variant, @tb1_last sql_variant;
@@ -1185,10 +1205,11 @@ that carried the assigned ids is discarded, so nothing external saw them; a pers
 one that fails — never returns ids. `TakeAsync` serves callers outside any
 batch (a job handler of spec 0019 or 0020 assigning ids to rows it inserts through `Sql` outside
 the pipeline) from the buffer, or with one dedicated autocommit round trip when the buffer is
-empty, metered `tellma.data.ids.refills`. System-written rows inserted by
-fixed-text statements (`core.Jobs`, `core.Notifications`) take their ids inside the statement
-from `sp_sequence_get_range` (`Id = first + ordinal`) and never touch the buffer, so
-`INotifier.Notify` and `IJobQueue.Enqueue` are synchronous.
+empty, metered `tellma.data.ids.refills`. System-written rows inserted by fixed-text statements
+(`core.Jobs`, `core.Notifications`, `core.Blobs`) take their ids inside the statement from the
+table's sequence — `sp_sequence_get_range` with `Id = first + ordinal` for a row list, and
+`NEXT VALUE FOR` for a single row — and never touch the buffer, so `INotifier.Notify` and
+`IJobQueue.Enqueue` are synchronous and spec 0016's staging has no allocator dependency.
 
 ### 7.4 Self-healing
 
@@ -1202,11 +1223,11 @@ A sequence falls behind its table only through an out-of-band insert. Two detect
   the persist is retried once; a second 2627 surfaces as `UniqueConstraintViolationException`.
 
 Consuming the gap needs `UPDATE` on the sequence, never `ALTER`. A 2601/2627 on any other index is
-never a heal. Every heal logs at warning level and increments `tellma.data.ids.healed` (tag
-`sequence`), which is alerted on. Gaps arise only from process crashes with buffered leftovers,
-from a reservation whose round trip failed after the procedure ran, and from the engine's sequence
-cache on an abnormal shutdown; a distribution wanting a smaller cache issues `ALTER SEQUENCE …
-CACHE n` in a raw migration, because EF cannot emit `CACHE`.
+never a heal. Every heal logs `IdAllocator.Healed` at Warning and increments
+`tellma.data.ids.healed` (tag `sequence`), which is alerted on. Gaps arise only from process
+crashes with buffered leftovers, from a reservation whose round trip failed after the procedure
+ran, and from the engine's sequence cache on an abnormal shutdown; a distribution wanting a
+smaller cache issues `ALTER SEQUENCE … CACHE n` in a raw migration, because EF cannot emit `CACHE`.
 
 ## 8. The save emitter
 
@@ -1239,9 +1260,13 @@ LEFT JOIN [core].[Users] AS t WITH (UPDLOCK, ROWLOCK) ON t.[Id] = s.[Id]
 WHERE t.[Id] IS NULL OR (@tb3_p0 = 0 AND t.[ModifiedAt] <> s.[ModifiedAt]);
 IF EXISTS (SELECT 1 FROM @tb3_conflicts)
 BEGIN
+    SELECT c.[Id], c.[Reason], t.[ModifiedAt], t.[ModifiedById], u.[Name], u.[Name2], u.[Name3]   -- result set: the conflict rows, read before the THROW surfaces
+    FROM @tb3_conflicts AS c
+    LEFT JOIN [core].[Users] AS t ON t.[Id] = c.[Id]
+    LEFT JOIN [core].[Users] AS u ON u.[Id] = t.[ModifiedById];
     DECLARE @tb3_msg nvarchar(2048) = N'{"count":' + CAST((SELECT COUNT(*) FROM @tb3_conflicts) AS nvarchar(10))
-        + N',"conflicts":[' + ISNULL((SELECT STRING_AGG(CAST([Id] AS nvarchar(20)), ',') FROM (SELECT TOP (100) [Id] FROM @tb3_conflicts WHERE [Reason] = 'C' ORDER BY [Id]) AS c), N'')
-        + N'],"missing":['   + ISNULL((SELECT STRING_AGG(CAST([Id] AS nvarchar(20)), ',') FROM (SELECT TOP (100) [Id] FROM @tb3_conflicts WHERE [Reason] = 'M' ORDER BY [Id]) AS m), N'')
+        + N',"conflicts":[' + ISNULL((SELECT STRING_AGG(CAST([Id] AS nvarchar(20)), ',') FROM (SELECT TOP (90) [Id] FROM @tb3_conflicts WHERE [Reason] = 'C' ORDER BY [Id]) AS c), N'')   -- TOP (n) is the per-list cap of §8.2: 90 for an int key
+        + N'],"missing":['   + ISNULL((SELECT STRING_AGG(CAST([Id] AS nvarchar(20)), ',') FROM (SELECT TOP (90) [Id] FROM @tb3_conflicts WHERE [Reason] = 'M' ORDER BY [Id]) AS m), N'')
         + N']}';
     THROW 50409, @tb3_msg, 1;
 END;
@@ -1314,15 +1339,21 @@ columns, stamped roots receive `ModifiedAt`/`ModifiedById`.
 - **Children are scoped to their parents.** A child row whose parent is not in the parents TVP is
   neither deleted, updated nor re-parented; `[]` deletes every child of the supplied parents; a
   `null` collection binds an empty parents TVP and touches nothing.
-- **The conflict message** is JSON: `count`, up to `ConflictIdsInMessage` (100) `conflicts` ids
-  and 100 `missing` ids; `Truncated` when `count` exceeds what was listed; the pipeline recovers a
-  full list, when it needs one, with one read over the payload's ids. A `50409` whose conflicts are
-  all `'M'` surfaces as `NotFoundException` — a row deleted under the caller is not a concurrency
-  conflict — and as `ConcurrencyException` (carrying `IsMissing` per id) when any `'C'` is present.
+- **The conflict rows** are a result set the guard selects before its `THROW`: `Id`, `Reason` (`'C'`
+  a stamp mismatch, `'M'` missing), the stored `ModifiedAt` and `ModifiedById`, and the modifier's
+  `Name`, `Name2` and `Name3`; the executor reads it before the exception surfaces and raises
+  `ConcurrencyConflictException(Conflicts)` over it, so the pipeline needs no second read. The
+  `THROW` message is JSON for logs — `count`, then the `conflicts` and `missing` id lists — and fits
+  `THROW`'s `nvarchar(2048)` message: the emitter caps each list at
+  `min(ConflictIdsInMessage, floor((2048 − 48) / 2 / (digits + 1)))`, where 48 is the fixed JSON
+  text around a ten-digit count and `digits` is the key type's maximum digit count, so the cap is 90
+  for an `int` key and 50 for a `bigint` key. A `50409` whose conflicts are all `'M'` surfaces as
+  `NotFoundException` — a row deleted under the caller is not a concurrency conflict — and as
+  `ConcurrencyException` (carrying `IsMissing` per id) when any `'C'` is present.
 - **Plan lanes.** Above `LargeBatchThreshold` (1,000 rows in any TVP of the batch) every DML
   statement gets `OPTION (RECOMPILE)`, so a 10,000-row import does not reuse the one-row plan.
-- **Import chunks** at 10,000 root rows per round-trip pair; `SqlBulkCopy` into a staging table
-  is deferred until measured.
+- **Import chunks** at `MaxSaveCount` root rows per round-trip pair (spec 0014 §2.5; 10,000 by
+  default); `SqlBulkCopy` into a staging table is deferred until measured.
 - **Tree tables** append §10.2's statements after step 4.
 - **Text is cached** per (entity metadata, statement kind, capture layout); the physical UDTT
   names are part of the text, so a model change invalidates it.
@@ -1395,17 +1426,18 @@ the caller's count and the update fails the whole statement. Assigned properties
 or `ServerOwned` — `IsActive` of an `IActivatable` is the server-owned column the
 activate/deactivate actions write, and this statement is the only path that writes it — and a
 `WriteOnce` assignment is a compose-time `ArgumentException`. Rows whose values are already the
-assigned ones are skipped, so a repeated activate writes no history row and moves no stamp. `Stamp =
-false` omits the two stamp columns and is permitted only for platform bookkeeping: tables without
-audit columns, and the server-owned `JobId` of an `IJobEntity` (§2.1). The receipt's `UpdatedIds`
-are the `OUTPUT` rows; a requested id absent from them was missing, invisible or already in the
-target state, which the pipeline distinguishes from the keys table when it needs to. `AllOrNothing =
-true` (spec 0014's built-in `activate`/`deactivate`) applies the delete-by-ids rule of §9.2 ahead of
-the `UPDATE`: the ids of `@tb5_t0` with no row in the table are selected as a result set and `THROW
-50404, N'Entity.NotFound', 1` follows when any exist; then `IF (SELECT COUNT(*) FROM @tb5_keys) <>
-(SELECT COUNT(*) FROM @tb5_t0) THROW 50403, N'RowSecurity', 1;` — every id must exist and be
-visible, and the `UPDATE` then covers every id not already in the target state. Tree tables append
-§10.3's recount over `@tb5_keys` after the `UPDATE`.
+assigned ones are skipped, so a repeated activate writes no history row and moves no stamp.
+`Stamp = false` omits the two stamp columns and is permitted only for platform bookkeeping on tables
+without audit columns. The receipt's `UpdatedIds` are the `OUTPUT` rows; a requested id absent from
+them was missing, invisible or already in the target state, which the pipeline distinguishes from
+the keys table when it needs to. `AllOrNothing = true` (spec 0014's built-in
+`activate`/`deactivate`) applies the delete-by-ids rule of §9.2 ahead of the `UPDATE`: the ids of
+`@tb5_t0` with no row readable under `ReadFilter` are selected as a result set and
+`THROW 50404, N'Entity.NotFound', 1` follows when any exist — a hidden id counts as missing; then
+`THROW 50403, N'RowSecurity', 1` follows when the count of `@tb5_keys` differs from the count of
+`@tb5_t0` — every id must be readable and pass `Filter`, and the `UPDATE` then covers every id
+not already in the target state. Tree tables append §10.3's recount over `@tb5_keys` after the
+`UPDATE`.
 
 ### 9.2 Delete
 
@@ -1415,21 +1447,29 @@ Ordinal 4, `gl.Centers`:
 
 ```sql
 DECLARE @tb4_keys TABLE ([Id] int PRIMARY KEY);
--- ByIds (@tb4_t0 : IdList, or IdStampList when ExpectedStamps was given): 404 before 403, both in SQL, all-or-nothing.
-INSERT INTO @tb4_keys ([Id]) SELECT t.[Id] FROM [gl].[Centers] AS t WITH (UPDLOCK, ROWLOCK) JOIN @tb4_t0 AS s ON s.[Id] = t.[Id];
+-- ByIds (@tb4_t0 : IdList, or IdStampList when ExpectedStamps was given): 404 under ReadFilter before 403 under Filter, both in SQL, all-or-nothing; the ids absent or hidden are a declared result set (empty when none) so the 50404 names them.
+INSERT INTO @tb4_keys ([Id]) SELECT t.[Id] FROM [gl].[Centers] AS t WITH (UPDLOCK, ROWLOCK) JOIN @tb4_t0 AS s ON s.[Id] = t.[Id]
+    WHERE t.[Id] IN (SELECT [Id] FROM (<compiled: Root, Select = "Id", Restrictions = [KeySetRestriction("Id", "@tb4_t0")], ReadFilter>) AS q);   -- the WHERE is omitted when ReadFilter is null
+SELECT s.[Id] FROM @tb4_t0 AS s WHERE s.[Id] NOT IN (SELECT [Id] FROM @tb4_keys);   -- result set: the missing ids, absent and hidden alike
 IF (SELECT COUNT(*) FROM @tb4_keys) <> (SELECT COUNT(*) FROM @tb4_t0) THROW 50404, N'Entity.NotFound', 1;
 IF (SELECT COUNT(*) FROM (<compiled: Root, Select = "Id", Restrictions = [KeySetRestriction("Id", "@tb4_keys")], Filter>) AS q) <> (SELECT COUNT(*) FROM @tb4_keys)
     THROW 50403, N'RowSecurity', 1;
 -- ByIds with stamps only (IdStampList carries ModifiedAt; a NULL stamp is Concurrency.StampRequired in C# before the batch):
-IF EXISTS (SELECT 1 FROM [gl].[Centers] AS t JOIN @tb4_t0 AS s ON s.[Id] = t.[Id] WHERE t.[ModifiedAt] <> s.[ModifiedAt])
-BEGIN  -- @tb4_msg is built exactly as in §8.1 step 1 over the mismatched ids (all 'C'; 'M' is impossible after the 50404 check)
+DECLARE @tb4_conflicts TABLE ([Id] int PRIMARY KEY);
+INSERT INTO @tb4_conflicts ([Id]) SELECT t.[Id] FROM [gl].[Centers] AS t JOIN @tb4_t0 AS s ON s.[Id] = t.[Id] WHERE t.[ModifiedAt] <> s.[ModifiedAt];
+IF EXISTS (SELECT 1 FROM @tb4_conflicts)
+BEGIN  -- the conflict result set and @tb4_msg exactly as in §8.1 step 1 (all 'C'; 'M' is impossible after the 50404 check)
+    SELECT c.[Id], 'C' AS [Reason], t.[ModifiedAt], t.[ModifiedById], u.[Name], u.[Name2], u.[Name3]   -- result set: the conflict rows
+    FROM @tb4_conflicts AS c JOIN [gl].[Centers] AS t ON t.[Id] = c.[Id] LEFT JOIN [core].[Users] AS u ON u.[Id] = t.[ModifiedById];
     THROW 50409, @tb4_msg, 1;
 END;
 -- ByQuery: the query conjoined with Filter, capped (Cap = MaxDeleteByQueryRows), then ExpectedCount verified (@tb4_p0 = Cap, @tb4_p1 = ExpectedCount):
 INSERT INTO @tb4_keys ([Id]) SELECT TOP (@tb4_p0 + 1) [Id] FROM (<compiled keys query>) AS q;
 IF (SELECT COUNT(*) FROM @tb4_keys) > @tb4_p0 THROW 50413, N'Delete.CapExceeded', 1;
 IF (SELECT COUNT(*) FROM @tb4_keys) <> @tb4_p1 THROW 50428, N'Delete.CountMismatch', 1;
--- WithDescendants: the closure by node, then asserted visible under Filter:
+-- WithDescendants: the ByIds check over @tb4_t0 under ReadFilter (missing-ids result set, then 50404), then the closure by node, asserted visible under Filter:
+SELECT s.[Id] FROM @tb4_t0 AS s WHERE s.[Id] NOT IN (SELECT [Id] FROM (<compiled: Root, Select = "Id", Restrictions = [KeySetRestriction("Id", "@tb4_t0")], ReadFilter>) AS q);   -- result set: the missing ids, absent and hidden alike
+IF EXISTS (SELECT 1 FROM @tb4_t0 AS s WHERE s.[Id] NOT IN (SELECT [Id] FROM (<compiled: Root, Select = "Id", Restrictions = [KeySetRestriction("Id", "@tb4_t0")], ReadFilter>) AS q)) THROW 50404, N'Entity.NotFound', 1;
 INSERT INTO @tb4_keys ([Id])
 SELECT d.[Id] FROM [gl].[Centers] AS d
 WHERE EXISTS (SELECT 1 FROM [gl].[Centers] AS a JOIN @tb4_t0 AS s ON s.[Id] = a.[Id]
@@ -1439,8 +1479,8 @@ IF (SELECT COUNT(*) FROM (<compiled: Root, Select = "Id", Restrictions = [KeySet
 -- tree tables: old nodes captured before the delete (§10.3)
 DECLARE @tb4_old TABLE ([Node] hierarchyid NOT NULL);
 INSERT INTO @tb4_old ([Node]) SELECT t.[Node] FROM [gl].[Centers] AS t JOIN @tb4_keys AS k ON k.[Id] = t.[Id];
--- children deepest first, explicit; then the root; blob capture OUTPUT … INTO where declared:
-DELETE c FROM [core].[RoleMemberships] AS c WHERE c.[UserId] IN (SELECT [Id] FROM @tb4_keys);
+-- children deepest first, explicit (gl.Centers has none; the shape per child table, keyed by its parent key); then the root; blob capture OUTPUT … INTO where declared:
+DELETE c FROM [<schema>].[<Child>] AS c WHERE c.[<ParentKey>] IN (SELECT [Id] FROM @tb4_keys);
 DELETE t OUTPUT deleted.[Id] FROM [gl].[Centers] AS t WHERE t.[Id] IN (SELECT [Id] FROM @tb4_keys);
 ```
 
@@ -1558,11 +1598,10 @@ catches what the C# check missed; the C# check exists so the common case is a fi
 path rather than a transaction abort.
 
 `TreeStatements.Verify(metadata)` is the whole-table form of T5b (every row, no scope), shipped
-here and run by the built-in weekly job `core.tree-verify` (handler `TreeVerifyJobHandler` in
-`Tellma.Core.Data`, contributed through spec 0019's `JobHandler<T>()` and `BuiltInSchedule`
-sugars) over every tree table in the model; it repairs drift and meters it
-(`tellma.data.tree.repairs`, tag `entity`), and a non-zero repair count is logged at warning
-level because it means a persist-time recount missed a row.
+here and run by spec 0019's built-in weekly job `core.tree-verify` (§14.5 there) over every tree
+table in the model; it repairs drift and meters it
+(`tellma.data.tree.repairs`, tag `entity`), and a non-zero repair count logs `TreeVerify.Repaired`
+at Warning because it means a persist-time recount missed a row.
 
 ## 11. Queryex host integration
 
@@ -1605,8 +1644,8 @@ Schema rules:
   §2.4). No collections.
 - **Tree node.** The shadow `Node` of every tree entity, declared `HierarchyId` and registered as
   `TreeNode`, so `descendantOf`/`ancestorOf` and `level(Node)` bind.
-- **Read-only roots.** `UserStamp` (over `core.UserStamps`, navigation `User`) and `Blob` are
-  declared by their owning specs' entity classes and reachable as documented there.
+- **Read-only roots.** `core.UserStamp` (over `core.UserStamps`, navigation `User`) and
+  `core.Blob` are declared by their owning specs' entity classes and reachable as documented there.
 
 Row-level-security composition and child-entity path rewriting are `FilterTree` transformations
 at request time (spec 0013), never schema variants. A `map<EntityDescriptor, EntityMetadata>`
@@ -1680,11 +1719,12 @@ and not built.
 per §11.2 item 6, binds `Literal` slots from the compiled query, `Today`/`Now`/`UserId`/`TimeZone`
 slots from `QueryexContextValues`, and `Declared` slots from `QueryArguments` (a declared parameter
 bound against several store types fills every slot of that name from one value; a missing argument
-is `InvalidQueryException` before execution). The reader fills a `QueryRowSet.Builder` from the
+is a compose-time `ArgumentException`, a composer bug — spec 0014's pipeline binds every declared
+parameter, `null` when the request carries none). The reader fills a `QueryRowSet.Builder` from the
 compiled `Columns` through typed getters (`GetInt32`, `GetDecimal`, `GetDateOnly`, …; a
 `HierarchyId` column through the EF `HierarchyId` reader, surfaced as its path string; `DBNull` as
 null). With `CountCap` the capped count (§5.2) rides the same statement and lands in
-`QueryRowSet.Count`; with `Ancestors` (tree roots only) the page keys are captured and:
+`QueryRowSet.Count`; with `IncludeAncestors` (tree roots only) the page keys are captured and:
 
 ```sql
 DECLARE @tb2_anc TABLE ([Id] int PRIMARY KEY);
@@ -1695,22 +1735,22 @@ WHERE a.[Id] NOT IN (SELECT [Id] FROM @tb2_keys)
               WHERE p.[Node].IsDescendantOf(a.[Node]) = 1 AND p.[Id] <> a.[Id]);
 ```
 
-followed by the same select restricted by `KeySetRestriction("Id", "@tb2_anc")` under the
-`Ancestors` filter (the access filter alone — an ancestor need not satisfy the user's filter but
-must be visible), ordering kept, no paging; the rows land in `QueryRowSet.Ancestors`.
-`Count(spec, arguments, cap)` is the standalone form of the capped count.
+followed by the same select restricted by `KeySetRestriction("Id", "@tb2_anc")` under
+`AncestorsFilter` (the access filter alone — an ancestor need not satisfy the user's filter but must
+be visible; null conjoins nothing), ordering kept, no paging; the rows land in
+`QueryRowSet.Ancestors`. `Count(spec, arguments, cap)` is the standalone form of the capped count.
 
 ### 11.4 Entity queries
 
 `Query<TEntity>(EntityQuery)` restricts `Select` to bare paths (a computed item is a compose-time
-`ArgumentException`; user text is validated by spec 0014 before it reaches the batch). The host
-runs spec 0008's `DiscoverQuery` on the select text (cached by the engine) to learn the paths,
-then appends the root `Id` and, for every navigation prefix used, its key path (`Customer.Id`)
-and the FK on its owner (`CustomerId`), compiles, and binds as `Rows` does. `Children` adds one
-`Query` per named collection over the child, restricted by `KeySetRestriction("<ParentKey>",
-<source>)` where the source is the root's ids TVP when the root is restricted by ids and the
-captured `@tb{b}_keys` otherwise; grandchildren recurse through dotted names. `Ancestors` behaves
-as for `Rows` and materialises into `Related` under the root's own entity name.
+`ArgumentException`; user text is validated by spec 0014 before it reaches the batch). The host runs
+spec 0008's `DiscoverQuery` on the select text (cached by the engine) to learn the paths, then
+appends the root `Id` and, for every navigation prefix used, its key path (`Customer.Id`) and the FK
+on its owner (`CustomerId`), compiles, and binds as `Rows` does. `Children` adds one `Query` per
+named collection over the child, restricted by `KeySetRestriction("<ParentKey>", <source>)` where
+the source is the root's ids TVP when the root is restricted by ids and the captured `@tb{b}_keys`
+otherwise; grandchildren recurse through dotted names. `IncludeAncestors` and `AncestorsFilter`
+behave as for `Rows`; the ancestor rows materialise into `Related` under the root's own entity name.
 
 ### 11.5 The materializer
 
@@ -1732,8 +1772,9 @@ property at its default.
 
 ```csharp
 // Tellma.Core.Abstractions.Data
-public static class DataTelemetryNames                  // MeterName = "Tellma.Core"
+public static class DataTelemetryNames
 {
+    public const string MeterName = "Tellma.Core";
     public const string RoundTrips = "tellma.data.roundtrips";
     public const string RoundTripDuration = "tellma.data.roundtrip.duration";
     public const string Statements = "tellma.data.batch.statements";
@@ -1752,7 +1793,10 @@ public static class DataTelemetryNames                  // MeterName = "Tellma.C
     public const string OutcomeTag = "outcome";
     public const string OperationTag = "operation";
     public const string EntityTag = "entity";
-    public const string RoleTag = "tellma.db.role";
+    public const string ClassTag = "class";
+    public const string ErrorTag = "error";
+    public const string SequenceTag = "sequence";
+    public const string RoleTag = "tellma.db.role";        // span attribute (§6.1), never a metric tag
 }
 
 public sealed class DataAccessScope                     // scoped; copied into job scopes
@@ -1788,14 +1832,14 @@ scope and to trace attributes. Alert queries live under `infra/monitoring/`.
 per round trip and per retry; job scopes receive a fresh copy. The pipeline names it
 `"<Resource>:<operation>"` (`gl.Center:query`, `core.User:save`) and a job `"job:<key>"`; the value
 becomes the `operation` tag of `tellma.data.roundtrips` and `tellma.data.roundtrip.duration`. When
-the scope ends the executor records `tellma.data.roundtrips` and stamps it on the request
+the scope ends the executor records `tellma.data.roundtrips` and stamps it on the current
 `Activity`: it is the one round-trip instrument, and every scope — request, job or provisioning — is
 observed through it. Tests assert the budgets of §5.6 with
 `SqlConnection.RetrieveStatistics()["ServerRoundtrips"]` as an independent oracle.
 
 ### 12.3 Analyzers
 
-`Tellma.Core.Analyzers` ships four diagnostics, error severity, in every project that references
+`Tellma.Core.Analyzers` ships six diagnostics, error severity, in every project that references
 `Tellma.Core.Abstractions`:
 
 | Id | Condition |
@@ -1804,9 +1848,11 @@ observed through it. Tests assert the budgets of §5.6 with
 | `TELLMA0002` | An EF query (`Set<T>()`, a `DbSet<T>`, `Database.SqlQuery`) or `SaveChanges`/`SaveChangesAsync` over `TellmaDbContext` outside `Tellma.Core` and projects whose assembly name ends in `.Migrator`: the context is platform-internal. |
 | `TELLMA0003` | An `IDataBatch.Sql` call whose text (parsed with ScriptDom) contains `INSERT`/`UPDATE`/`DELETE`/`MERGE` without `Writes`; contains `MERGE` anywhere; contains `EXEC`/`EXECUTE`/`sp_executesql` other than `sp_sequence_get_range` or `sp_getapplock`; declares a name with a reserved prefix (`@qx`, `@tb`, `@tm`) outside `Tellma.Core`; throws a literal number outside 50400–50699; or has a hole that is neither a `SqlIdentifier`, a `nameof`, a `Tvp` result nor a value. A non-constant text (built by concatenation) is refused because it cannot be parsed. |
 | `TELLMA0004` | A call to a method marked `[ApiAction]` or `[EntityAction]` from outside its declaring type and `Tellma.Core`: an action is invoked through spec 0014's invoker and pipeline, which evaluate its securable. |
+| `TELLMA0005` | A call to `SaveAsync`, `DeleteByIdsAsync`, `DeleteByQueryAsync`, `ExecuteActionAsync`, `ActivateAsync`, `DeactivateAsync` or `DeleteWithDescendantsAsync` of any `EntityService<,>` from a pipeline participant — a hook override, an `[EntityAction]` method, any member of an `IEntityValidator<>` or `IPersistEffect<>`: a participant never runs a nested pipeline; a write into another stack is enlisted through `IEnlists<T>` (spec 0014 §13.3). |
+| `TELLMA0006` | An `IDataBatch.Sql` text whose `INSERT`/`UPDATE`/`DELETE` target (parsed with ScriptDom, as `TELLMA0003`) is the `[Table]` of a mapped entity type or of one of its child collections, or a call to `IDataBatch.Save<T>`, `Update<T>` or `Delete<T>`, from a type outside `Tellma.Core` that is not the table's owner — the service, validator, effect or companion closed over the entity whose table it is: a stack-owned table is written by its owner or through an enlisted write (spec 0014 §13.3). A table no stack owns passes with `Writes`. |
 
-The analyzers run on the platform's own projects too; `Tellma.Core` is exempt from the reserved
-prefix rule alone.
+The analyzers run on the platform's own projects too, except where a condition exempts `Tellma.Core`
+by name.
 
 ## 13. Testing
 
@@ -1826,10 +1872,16 @@ defaults to LocalDB (`(localdb)\MSSQLLocalDB`), absent on Linux the fixture star
 ### 13.2 The fixture schema
 
 This spec owns `TellmaFixtureDbContext`, built through `UseTellmaSqlServer` with the platform
-conventions, and its migrations for schema `fixture`. The migrations also create
-minimal stand-ins `core.Users (Id int PK)` and `core.Jobs (Id int PK)` so the audit and job FKs
-resolve to their production names. The database is created with `READ_COMMITTED_SNAPSHOT ON`, as
-spec 0010's provisioning does, and change tracking is enabled on every fixture table so the
+conventions, and its migrations for schema `fixture`. The context composes the platform's model
+contribution (`dbo.__TellmaSchema`, §4.3), spec 0012's (`core.VersionTags`, seeded as spec 0012 §2.8
+states) and spec 0013's access contribution (`core.Users`, `core.UserStamps`, `core.Roles`,
+`core.RoleMemberships`, `core.Permissions` and `core.UserPreferences`; spec 0013 §1.2), so the
+schema guard, the connect prologue, the persist frame's tag guard (§5.5 step 4) and the audit FKs
+resolve to the production tables. The migrations also create a minimal stand-in
+`core.Jobs (Id int PK)` so the job FK resolves to its production name, and `core.Blobs` with
+`core.sq_Blobs` in full (spec 0016 §2.1) so the `[BlobReference]` FKs resolve and spec 0016 §11's
+suite runs against the fixture database. The database is created with `READ_COMMITTED_SNAPSHOT ON`,
+as spec 0010's provisioning does, and change tracking is enabled on every fixture table so the
 executor in test mode compares `CHANGETABLE(CHANGES …)` with `WrittenTables` after every batch.
 
 | Table | Shape | Columns beyond the capability sets |
@@ -1840,15 +1892,16 @@ executor in test mode compares `CHANGETABLE(CHANGES …)` with `WrittenTables` a
 | `fixture.Nodes` | `ActivatableTreeEntity`, `[Tree(MaxDepth = 8)]` | `Code varchar(50)` unique; `Name nvarchar(255)` |
 | `fixture.Links` | `ChildEntity` of `Nodes` with two FKs to the parent | `NodeId [ParentKey]`; `OtherNodeId`, an ordinary reference |
 | `fixture.Shipments` | `TopLevelEntity<long>`, `IJobEntity` | `State varchar(8)`; `Payload nvarchar(max) NULL`; `long` keys through `BigIdList` |
-| `fixture.Blobs` | stand-in for `core.Blobs` (`Id`, `State varchar(9)`) | the capture tables' target; no blob effect runs |
+| `core.Blobs` | spec 0016 §2.1 in full, with `core.sq_Blobs` | the capture tables' and the `[BlobReference]` FKs' target; this spec's suites run no blob effect |
 
 The fixture entities and `TellmaFixtureDbContext` live in the shared test project
 `test/shared/Tellma.Testing.Entities/`, referenced by every integration project of the runtime
 package. Sibling specs add tables to the same schema through that project for their own suites
 (`fixture.Lookups`, `[Cacheable(MaxRows = 50)]`, spec 0012; `fixture.BlobOwners`, spec 0016); the
 tables above are the ones this spec's suites use. A `FixtureTenant` helper opens `ITenantDatabase`
-for the fixture database with a `System` prologue variant (no `core.Users` row is needed) and
-exposes `TenantId = 1`.
+for the fixture database with a `System` prologue variant and exposes `TenantId = 1`; a suite that
+exercises the caller path seeds `core.Users` rows with their memberships and permissions and
+connects through the ordinary prologue (spec 0014 §18.2).
 
 ### 13.3 Integration assertions
 
@@ -1868,30 +1921,34 @@ Each is a named test; the list is the behavioural contract of this spec:
   changed on update is not written; a server-owned value sent by the client is overwritten; the
   blob capture table carries old and new ids on insert, update, child delete and query delete;
   `OPTION (RECOMPILE)` appears above 1,000 rows and not below.
-- **Allocator.** A warm buffer adds no round trip to a create; a cold reservation adds a statement,
-  never a round trip; validation failure returns ids; a persist failure does not; a sequence behind
-  `MAX(Id)` heals once by consuming; a 2627 on the PK heals once and retries; a 2627 on another
-  index does not heal; temporary ids are rewritten in a self-typed FK, a child parent key and a
-  grandchild parent key; `TakeAsync` pays one round trip when the buffer is empty and none when it
-  is not.
+- **Allocator.** A warm buffer adds no round trip to a create; a cold reservation adds one
+  statement to the batch it is given — spec 0014's first round trip, which a create with nothing
+  else to load runs for the reservation alone; validation failure returns ids; a persist failure
+  does not; a sequence behind `MAX(Id)` heals once by consuming; a 2627 on the PK heals once and
+  retries; a 2627 on another index does not heal; temporary ids are rewritten in a self-typed FK, a
+  child parent key and a grandchild parent key; `TakeAsync` pays one round trip when the buffer is
+  empty and none when it is not.
 - **Trees.** A saved row whose parent is a descendant of another saved row is pathed once;
   id-path nodes survive re-parenting; a cycle written under write skew fails in SQL with
   `Tree.Cycle`; a chain deeper than `MaxDepth` fails with `Tree.TooDeep`; counts of old and new
   ancestors are correct after a move, an activate, a deactivate and a delete-with-descendants;
   `Verify` finds and repairs an injected drift; `hierarchyid` never crosses the TVP boundary; a
   `hierarchyid` result column reads as its path string; `level(Node)` equals `GetLevel()`.
-- **Deletes and updates.** `ByIds` with a missing id is 404 before 403; with an invisible id is
-  403; with stamps mismatching is 409; `ByQuery` above `Cap` is `50413`, with a wrong
-  `ExpectedCount` is `50428`; `WithDescendants` deletes the closure in one statement; 547 on a
-  referenced row is `Fk.InUse`; a repeated activate writes no history row.
-- **Executor.** A deadlock victim is retried and succeeds; an ambiguous failure on an
-  all-idempotent batch is re-run; on a persist with inserts the probe returns `Committed` after a
-  killed connection post-commit and `NotCommitted` pre-commit; a `THROW 50503` is retried three
-  times then surfaces; result sets before a `THROW` are read; `TransactionMode.None` leaves
-  autocommit; the persist frame's guard blocks a stale `permissions` tag with `50412`; a `THROW`
-  outside the bands is refused; `OUTPUT inserted.[Id]` from an `UPDATE` on a system-versioned
-  table works; `INSERT INTO @t … SELECT … OFFSET/FETCH` and a derived table with `OFFSET/FETCH`
-  compile; the change-tracking audit matches `WrittenTables` for every statement kind.
+- **Deletes and updates.** `ByIds` with a missing id is 404; with an id hidden under `ReadFilter` is
+  404, indistinguishable from missing; with a readable id outside `Filter` is 403; with stamps
+  mismatching is 409; `ByQuery` above `Cap` is `50413`, with a wrong `ExpectedCount` is `50428`;
+  `WithDescendants` refuses a hidden root with 404 and a closure not wholly visible under `Filter`
+  with 403, and deletes the closure in one statement; 547 on a referenced row is `Fk.InUse`; a
+  repeated activate writes no history row.
+- **Executor.** A deadlock victim is retried and succeeds; an ambiguous failure on an all-idempotent
+  batch is re-run; on a persist with inserts the probe returns `Committed` after a killed connection
+  post-commit and `NotCommitted` pre-commit; a `THROW 50503` is retried three times then surfaces;
+  result sets before a `THROW` are read; `TransactionMode.None` leaves autocommit; the persist
+  frame's guard blocks a stale `permissions` tag with `50412`; a `THROW` outside the bands is
+  refused; `OUTPUT inserted.[Id]` from an `UPDATE` on a system-versioned table works; `INSERT INTO
+  @t … SELECT … OFFSET/FETCH` and a derived table with `OFFSET/FETCH` compile; the change-tracking
+  audit matches `WrittenTables` for every statement kind; a `THROW` from the statement at ordinal 3
+  and a 547 from the one at ordinal 4 surface with `StatementOrdinal` 3 and 4.
 - **Queries.** A grid page with count and ancestors is one round trip; `cap + 1` is returned above
   the cap; `Skip`/`Take` reuse one plan (two pages, one `sys.dm_exec_query_stats` entry);
   `KeySetRestriction` over `IdList`, `BigIdList`, `StringList`, `DateList` and a `@tb{b}_` table;
@@ -1917,7 +1974,7 @@ Each is a named test; the list is the behavioural contract of this spec:
   row-set reader, entity queries and materializer of §11 — implemented and pinned by the suites of
   §13, green in CI on both platforms.
 - **Observability**: every instrument of §12.1 emitted under the `Tellma.Core` meter and asserted
-  by the integration tier; `DataAccessScope` stamped on the request activity; the span attributes
+  by the integration tier; `DataAccessScope` stamped on the current `Activity`; the span attributes
   of §6.1; log events `DataBatch.SlowRoundTrip`, `DataBatch.OnCommittedFailed`,
   `IdAllocator.Healed`, `TreeVerify.Repaired` asserted by name.
 - **CI**: the unit and analyzer suites on every PR; the integration suite on every PR on LocalDB
@@ -1930,7 +1987,7 @@ Each is a named test; the list is the behavioural contract of this spec:
   platform shadow properties exist and "no *implicit* shadow properties" is the rule); the
   data-layer ID allocation row (exact-deficit reservation on the batch with a warm buffer, healing
   by consuming the gap, landing here); the UDTT/rowversion row (no `rowversion`; `ModifiedAt
-  datetimeoffset(7)` is the concurrency token); the reports/`SqlBuilder` row (raw SQL only through
+  datetimeoffset(7)` is the concurrency token); the reports row (raw SQL only through
   `IDataBatch.Sql` with declared writes and the ScriptDom analyzer; `SaveChanges` banned); the
   temporal row (the emitter skips unchanged rows); the observability row (the `Tellma.Core` meter,
   per-tenant identity on traces and logs only); and the spec-pointers row (ID allocation and the
@@ -1997,9 +2054,10 @@ The load-bearing decisions, where not already evident above:
     both isolation defaults without a second count; deadlocks are retried (§8.2).
 20. **Skip unchanged rows through `EXCEPT`** — temporal history stays honest under merge imports
     (§8.2).
-21. **Conflict ids in a capped JSON `THROW` message** — a stateful result-set walk followed by
-    `ROLLBACK; RETURN` is the alternative; the pipeline recovers a full list with one read when it
-    needs one (§8.2).
+21. **Conflict rows in a result set before the `THROW`, ids capped in its JSON message** — the
+    executor reads the set before the exception surfaces, so every conflict reaches the pipeline
+    in the persist round trip; `ROLLBACK; RETURN` after a result-set walk is the alternative
+    (§8.2).
 22. **Id-path nodes with the `/0/<Id>/` provisional, the affected set computed first, the
     path-count cycle fence, a scoped recount, and a weekly verify job** — siblings never renumber;
     `MAXRECURSION` detects nothing; the recount is O(affected × depth), never the table (§10).
@@ -2017,13 +2075,18 @@ The load-bearing decisions, where not already evident above:
     so a fleet migrates one database at a time (§4.3).
 29. **`UseTellmaSqlServer` pins `UseCompatibilityLevel(160)` and the application name** — one
     model for every host and the migrator; JSON columns never flip type behind the model (§1.3).
-30. **Four analyzers** — hard-coded ordinals, `SaveChanges`, undeclared or reserved raw SQL, and a
-    direct call to an action method are refused at build time rather than found in production
-    (§12.3).
+30. **Six analyzers** — hard-coded ordinals, `SaveChanges`, undeclared or reserved raw SQL, a direct
+    call to an action method, a nested pipeline run from a pipeline participant and a write into a
+    stack-owned table by a type that is not its owner are refused at build time rather than found in
+    production (§12.3).
 31. **The schema guard on every round trip** — the N−1 rule is enforced by a two-row fingerprint
     table and one seek, correct on the first request after a migration and after a restore (§4.3).
 32. **`[Derived]` as an ownership of its own** — a value the service derives from the payload is
     reset before the hook and written by the emitter, so a client can never smuggle one (§2.4).
+33. **`CallerAuthority` on the caller channel, an internal channel for the platform's composers,
+    `StatementOrdinal` on statement-bound exceptions** — a statement a caller appends may write only
+    the tables of its own stack, so another stack's table reaches a batch only as an enlisted group,
+    and a persist-time error is attributed to the group whose statement raised it (§5.2, §6.4).
 
 ## Review flags
 
@@ -2045,9 +2108,9 @@ The load-bearing decisions, where not already evident above:
    job** (§10.2–10.4; S33) — versus the whole-table recount per save, which is simpler and matters
    only above roughly 100,000 rows. Flips if the measured `IsDescendantOf` recount over the scoped
    set is not faster than the whole-table form at reference sizes.
-6. **Conflict ids in a capped `THROW` message** (§8.2) — versus a conflicts result set followed by
-   `ROLLBACK; RETURN` (every id, a stateful walk). Flips if the pipeline's one-read recovery of the
-   full list proves to be the common path rather than the rare one.
+6. **Conflict rows as a result set before the `THROW`** (§8.2) — versus `ROLLBACK; RETURN` after
+   a result-set walk (no exception, a stateful executor). Flips if reading a result set that
+   precedes a thrown error proves unreliable across SqlClient versions.
 7. **U locks in the concurrency guard** (§8.2) — versus an unlocked guard plus a post-update count
    against a precomputed expected set (no U locks held, one more statement, deadlock-free but
    weaker). Flips if deadlock retries on overlapping saves become measurable in production.

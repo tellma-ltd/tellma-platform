@@ -56,8 +56,8 @@ source-generation context (§3.1 names the reflection fallback it would replace)
 **Goals**
 
 - Ship `Tellma.Core.AspNetCore`: `MapTellma()` projecting every registered stack and `[ApiRoute]`
-  service onto the web surface; the CSRF, tenant, negotiation, problem and telemetry
-  filters; JSON options and the columnar-row converters; limits, rate policies, timeouts,
+  service onto the web surface; the tenant, negotiation, problem and telemetry filters; JSON
+  options and the columnar-row converters; limits, rate policies, timeouts,
   compression; the exception mapping; the startup audit that makes an unsecured endpoint a startup
   failure; the blob, hub, health and OpenAPI mappings the sibling specs define.
 - Ship the wire contracts in `Tellma.Core.Abstractions.Api`: request and result records, the
@@ -131,10 +131,9 @@ app.MapTellma();
   problem-details services with the customizer of §7.5, the rate-limiting policies of §8.2, the
   request-timeout policies of §8.3, compression (§8.4), output caching (§8.5), the OpenAPI
   document in Development (§12.1), and `TellmaApiOptions` bound from `Tellma:Api`.
-  `tellma.AddMcp(configure?)` adds `McpFeature` (§11.1), which declares `[Requires<CoreFeature>]`.
-- **`UseTellma(app)`** (spec 0010) installs the middleware order: exception handler (§7.6),
-  forwarded headers, HTTPS redirection, response compression, routing, rate limiter, request
-  timeouts, authentication, authorization, output caching, the tenant middleware.
+  `tellma.AddMcp(configure?)` adds `McpFeature` (§11.1).
+- **`UseTellma(app)`** (spec 0010 §5.1) installs the fixed middleware pipeline; §7.6 and
+  §8.2–§8.5 describe the stages this spec contributes to it.
 - **`MapTellma(app) -> TellmaEndpoints`** maps every surface onto spec 0010's groups — `Web`
   (`/{tenantId:int:min(1)}/api/web`), `Api` (reserved), `Hub`, `Blobs`, `Tenantless` — then runs
   the startup audit of §4.6 and throws `TellmaCompositionException` on any finding. A
@@ -198,20 +197,20 @@ per instance; no limiter shares state across instances.
 
 | Route | Verb | Group / policy | Purpose |
 |---|---|---|---|
-| `/{tenantId:int:min(1)}/api/web/{resource-segment}/{operation}` | POST | `Web` / `Tellma.Web` | Every projected stack operation and `[EntityAction]` (§2.3) |
-| `/{tenantId}/api/web/{route}/{action}` | POST | `Web` / `Tellma.Web` | Every `[ApiRoute]` service action (§2.4) |
+| `/{tenantId:int:min(1)}/api/web/{resource-segment}/{**operation}` | POST | `Web` / `Tellma.Web` | Every projected stack operation and `[EntityAction]` (§2.3) |
+| `/{tenantId}/api/web/{route}/{**action}` | POST | `Web` / `Tellma.Web` | Every `[ApiRoute]` service action (§2.4) |
 | `/{tenantId}/blobs/{kind}?fileName=` | POST, raw body | `Blobs` / `Tellma.Web` | Staged upload (spec 0016); `AcceptsBinaryMetadata(Blobs:MaxUploadSize)` |
 | `/{tenantId}/blobs/{kind}/{id:int}?variant=&download=` | GET | `Blobs` / `Tellma.Web` | The only GET on a tenant surface (spec 0016) |
 | `/{tenantId}/hub` | negotiate + WebSocket | `Hub` / `Tellma.Web` | `TellmaHub` (spec 0020) |
 | `/{tenantId}/mcp` | POST | tenant `Mcp` group / `Tellma.Mcp` | The Tellma Tenant MCP server (§11); GET and DELETE answer 405 |
 | `/{tenantId}/api/v1/…` | reserved | `Api` / `Tellma.Api` | The versioned public surface (§12.2); nothing is mapped |
-| `/.well-known/oauth-protected-resource/{tenantId:int:min(1)}/mcp` | GET | `Tenantless`, anonymous | RFC 9728 protected-resource metadata (§11.2) |
+| `/.well-known/oauth-protected-resource/{tenantId:int:min(1)}/mcp` | GET | tenantless (spec 0010 §5.1), anonymous | RFC 9728 protected-resource metadata (§11.2) |
 | `/api/distribution-info` | GET | `Tenantless`, anonymous | spec 0010 |
 | `/api/strings/{language}` | GET | `Tenantless`, anonymous | spec 0012's string pack; immutable caching when `v` matches the deployment |
 | `/api/webhooks/{key}` | POST | `Tenantless`, anonymous | spec 0007, unchanged |
-| `/bff/login`, `/bff/logout`, `/bff/user` | per spec 0010 | `Tenantless` | The BFF |
-| `/health/live`, `/health/ready` | GET | `Tenantless`, anonymous | §9.4 |
-| `/openapi/web.json` | GET | `Tenantless`, anonymous, Development only | §12.1 |
+| `/bff/login`, `/bff/logout`, `/bff/user` | per spec 0010 | tenantless (spec 0010 §5.1) | The BFF |
+| `/health/live`, `/health/ready` | GET | tenantless (spec 0010 §5.1), anonymous | §9.4 |
+| `/openapi/web.json` | GET | tenantless (spec 0010 §5.1), anonymous, Development only | §12.1 |
 
 Tenant-first routing lets one group carry tenant resolution for every surface and makes the RFC
 9728 path-insertion rule yield a per-tenant metadata document. `{tenantId}` is an `int` constrained
@@ -221,8 +220,7 @@ a slug alias can be mapped onto the same groups later without breaking clients. 
 `openapi`, `signin-oidc`, `signout-callback-oidc` or `.well-known`, nor a tenant-prefixed path
 whose second segment is `api`, `mcp`, `hub` or `blobs`; those four words are reserved second
 segments and a tenant deep link (`/17/centers/5`) never collides with them. Health probes sit
-outside the tenant prefix because they are per instance; liveness never touches a database and
-readiness must (§9.4).
+outside the tenant prefix because they are per instance (§9.4).
 
 ### 2.2 The web surface is POST-only
 
@@ -251,8 +249,8 @@ the table name (`core.Users` → `users`, `gl.Centers` → `centers`, `gl.Invoic
 `invoice-lines`), overridable with `[ApiResource(Segment = …)]`. The securable resource is
 `StackDescriptor.Resource` (`core.User`, `gl.Center`) — the segment is routing only and never a
 permission key. The entity name (`gl.Center`, spec 0011's `EntityMetadata.Name`, equal to the
-securable resource) is the `related` dictionary key and the MCP `entity` argument. `{operation}` is
-a standard segment or an action segment; a standard operation exists only when the stack's
+securable resource) is the `related` dictionary key and the MCP `entity` argument. `{**operation}`
+is a standard segment or an action's `Name`; a standard operation exists only when the stack's
 `Operations` and capabilities imply it:
 
 | Segment | Securable action | Body | Result | Projected when |
@@ -260,37 +258,41 @@ a standard segment or an action segment; a standard operation exists only when t
 | `query` | `Read` | `QueryRequest` | `QueryRowSet` with `count` and `ancestors` (§3.5) | `Query` |
 | `get` | `Read` | `GetRequest` | `EntitiesResult<T>`; 404 when absent or invisible | `Details` |
 | `get-by-ids` | `Read` | `IdsRequest` | `EntitiesResult<T>`; partial, never 404 | `Details` |
-| `get-by-parent-ids` | `Read` | `ParentIdsRequest` | `QueryRowSet` with `count` and `ancestors` (§3.5) | `Query` and the `tree` capability |
+| `get-by-parent-ids` | `Read` | `ParentIdsRequest` | `QueryRowSet` envelope (§3.5); no `count` or `ancestors` | `Query` and the `tree` capability |
 | `all` | `Read` | `AllRequest` | `EntitiesResult<T>` | `Details` and the `cacheable` capability |
 | `save` | `Save` | `SaveRequest<T>` | `EntitiesResult<T>` | `Save` |
 | `delete` | `Delete` | `IdsRequest` | `AffectedResult` | `Delete` |
 | `delete-by-query` | `Delete` | `DeleteByQueryRequest` | `AffectedResult`; never on MCP | `Delete` |
 | `delete-with-descendants` | `Delete` | `IdsRequest` | `AffectedResult` | `Delete` and `tree` |
-| `activate`, `deactivate` | `Activate` | `IdsRequest` | `EntitiesResult<T>` | `activatable` |
+| `activate`, `deactivate` | `Activate` | `IdsRequest` | `EntitiesResult<T>` | `Save` and the `activatable` capability |
 | `export` | `Read` | `ExportRequest` (spec 0018) | `.xlsx` stream, or 202 `JobAccepted` | `Export` |
 | `export-for-import` | `Read` | `ExportForImportRequest` (spec 0018) | `.xlsx` stream, or 202 `JobAccepted` | `Import` |
 | `inspect-import`, `import` | `Save` | `InspectImportRequest`, `ImportRequest` (spec 0018) | `ImportPlan`; `ImportOutcome` or 202 `JobAccepted` | `Import` |
 | `{action-segment}` | `ActionDescriptor.Action` (`MemberOnly` → none) | `IdsRequest` (with `Arguments` for an `[EntityAction]` taking arguments) or the method's body type | `EntitiesResult<T>` or the method's result | Declared on the service |
 
-Securable actions are PascalCase (`Read`, `Save`, `Delete`, `Activate`, `Invite`); action segments
-are kebab-case (`ActionDescriptor.Segment`), and an `[EntityAction("invite")]`'s action defaults to
-the PascalCase form of its name. `activate` and `deactivate` share the `Activate` securable.
+Securable actions are PascalCase (`Read`, `Save`, `Delete`, `Activate`, `Invite`); an action
+segment is the action's whole `Name` (`ActionDescriptor.Segment`): one or more kebab-case segments
+joined by `/` (`invite`, `preferences/set`, `me/preferences/set`), mapped at its literal path after
+the stack or route segment — the catch-alls `{**operation}` and `{**action}` of §2.1 stand for the
+whole name. `Action` defaults from the name's last segment (spec 0014 §2.3). `activate` and
+`deactivate` share the `Activate` securable.
 
 ### 2.4 Service routes
 
 `[ApiRoute(route)]` services project only their `[ApiAction]` methods at
-`/{tenantId}/api/web/{route}/{segment}`. The routes shipped by the Core family, all POST with a
+`/{tenantId}/api/web/{route}/{**action}`. The routes shipped by the Core family, all POST with a
 JSON body (an action with no body accepts an empty object or no body): `users/invite`,
 `users/issue-credentials`, `users/invitation-status`, `users/me`, `users/me/save`,
 `users/me/preferences/set`, `users/me/preferences/delete`, `users/preferences/get`,
 `users/preferences/set`, `users/preferences/delete`, `users/me/test-notification` (spec 0017;
-`UserService` is an entity service whose `[ApiAction]`s project under its stack segment),
-`access/check` (spec 0017), `settings/client`, `settings/entity-tags`, `settings/details`,
-`settings/save`, `settings/refresh-caches` (spec 0012), `inbox/summary`, `inbox/seen`,
-`inbox/read`, `inbox/read-all`, `notification-preferences/get`,
-`notification-preferences/save` (spec 0020), `jobs/retry`, `jobs/cancel`, `jobs/resume`,
-`jobs/error-details`, `schedules/take-over` (spec 0019; entity-service actions).
-`settings/client` is member-only, not anonymous: the client settings document is tenant content.
+`UserService` is an entity service: `invite`, `issue-credentials`, `preferences/set` and
+`preferences/delete` are `[EntityAction]`s of §2.3, the rest `[ApiAction]`s, all under its stack
+segment), `access/check` (spec 0017), `settings/client`, `settings/entity-tags`, `settings/details`,
+`settings/save`, `settings/refresh-caches` (spec 0012), `inbox/summary`, `inbox/seen`, `inbox/read`,
+`inbox/read-all`, `notification-preferences/get`, `notification-preferences/save` (spec 0020),
+`jobs/retry`, `jobs/cancel`, `jobs/resume`, `jobs/error-details`, `schedules/take-over` (spec 0019;
+entity-service actions). `settings/client` is member-only, not anonymous: the client settings
+document is tenant content.
 
 ### 2.5 The reserved `v1` surface
 
@@ -320,17 +322,17 @@ registered by `AddTellma` and used by every tenant endpoint, the MCP tools and t
   takes `[ServerOwned]` values from the before image or the fresh default; a changed `[WriteOnce]`
   value on an update is the validation error `WriteOnce` at its path, a `[Derived]` value is
   discarded and recomputed by the service on every save, and a database-computed column is never
-  written (spec 0014). Audit columns, `Id`, `SubtreeCount`, `ActiveSubtreeCount`, `JobId` and every
-  invitation-evidence column of `core.Users` are server-owned by derivation, `IsActive` included;
-  `State` is database-owned. The wire tolerates every property on the way in — a details payload
-  must round-trip into `save` unchanged — and the OpenAPI document and `tellma_describe` report the
-  split (`readOnly`, `editable: false`) so no client guesses.
+  written (spec 0014). Audit columns, `Id`, `SubtreeCount`, `ActiveSubtreeCount`, `JobId` and
+  `IsActive` are server-owned by derivation, the invitation-evidence columns of `core.Users` by
+  their `[ServerOwned]` attributes; `State` is database-owned. The wire tolerates every property on
+  the way in — a details payload must round-trip into `save` unchanged — and the OpenAPI document
+  and `tellma_describe` report the split (`readOnly`, `editable: false`) so no client guesses.
 - `[JsonIgnore]` is the "never on the wire" marker. A mapped `[JsonIgnore]` property that is not
   `[ServerOwned]` fails the realised startup gate: the pipeline would otherwise map a default value
   into the row.
 - Multilingual twins the tenant has not configured (`name2`, `name3` under `MultilingualShape`)
-  are absent on the way out and, when supplied on the way in, are the validation error
-  `Import.LanguageNotConfigured` at the path (spec 0014).
+  are absent on the way out and, when supplied on the way in, are discarded before validation
+  (spec 0014 §6.2); only an import reports `Import.LanguageNotConfigured` at the path.
 - **Source generation.** `TellmaApiJsonContext` (metadata mode) covers every request and result
   record of §3.3–§3.4, the problem body, `QueryRowSet`, `RelatedEntities` and the scalar types;
   entity, child and `[ApiAction]` body types resolve through a `DefaultJsonTypeInfoResolver`
@@ -370,8 +372,9 @@ every row set so a generic client (the grid, an agent, a test) picks a parser pe
 knowing the select.
 
 **Wire ids.** Request records carry ids as `long`; a JSON number outside the entity's key range
-(`int` keys) is a 400 `bad-request` before the service is called. Result records carry the
-entity's own key type (`JobAccepted.JobId: int`, `UserProfileView.Id: int`).
+(`int` keys) is a 400 `bad-request`, raised by spec 0014's pipeline when it narrows the id to the
+key type (spec 0014 §4.2), so every caller meets one check. Result records carry the entity's own
+key type (`JobAccepted.JobId: int`, `UserProfileView.Id: int`).
 
 ### 3.3 Request records
 
@@ -379,12 +382,12 @@ entity's own key type (`JobAccepted.JobId: int`, `UserProfileView.Id: int`).
 // Tellma.Core.Abstractions.Api
 public sealed class QueryRequest
 {
-    public string? Select { get; set; }                     // null = [DefaultSelect]; absent that, Id + natural key + the [Multilingual] Name group
+    public string? Select { get; set; }                     // null = StackDescriptor.DefaultSelect (spec 0014 §2.2)
     public string? Filter { get; set; }                     // Queryex predicate; row-level security is conjoined server-side, the FilterTree never travels
     public string? Having { get; set; }                     // with Aggregate only
     public string? OrderBy { get; set; }
     public int Skip { get; set; } = 0;                      // Skip + Take ≤ MaxSkipWindow, else 400 bad-request
-    public int? Take { get; set; }                          // absent = 50; clamped to min(MaxTake, StackLimits.MaxTake)
+    public int? Take { get; set; }                          // absent = 50; above min(MaxTake, StackLimits.MaxTake) is 413 limit-exceeded (spec 0014 §2.5)
     public string? Search { get; set; }                     // carried unchanged; ≤ StackLimits.MaxSearchLength; semantics in spec 0014
     public IReadOnlyDictionary<string, JsonElement>? Arguments { get; set; }   // JSON scalars; types inferred with DiscoverQuery before CompileQuery
     public bool IncludeCount { get; set; } = false;         // the capped count in the same round trip
@@ -446,7 +449,7 @@ public sealed class EntitiesResult<TEntity>
 
 public sealed record AffectedResult(int Count);
 
-public sealed record JobAccepted(int JobId, int? ResourceId);   // the 202 body; ResourceId = the Exports/Imports row (spec 0019)
+public sealed record JobAccepted(int JobId, int? ResourceId);   // the 202 body; ResourceId = the Exports/Imports row (spec 0018)
 
 public sealed record MeResult(
     UserProfileView User, string PreferencesTag, IReadOnlyDictionary<string, string> Preferences,   // the caller's bag (spec 0013)
@@ -486,8 +489,9 @@ deploy without a tag row. `UserKind`, `UserState`, `AccessProblem` are spec 0013
 
 `query` and `get-by-parent-ids` return spec 0011's `QueryRowSet` — one typed buffer per column plus
 a null bitmap per nullable column, filled by the data-access reader through typed getters. The
-response's `rows` is that row set, `count` and `countCapped` come from its `Count` and `ancestors`
-from its `Ancestors`. This spec owns the row set's JSON converter, which writes row-major arrays
+response's `rows` is that row set; on `query`, `count` and `countCapped` come from its `Count` and
+`ancestors` from its `Ancestors` (`get-by-parent-ids` requests neither, spec 0014 §5.4, so the
+three are absent). This spec owns the row set's JSON converter, which writes row-major arrays
 with `Utf8JsonWriter`, switching on `QueryColumn.Kind` once per column. The members this spec
 reads (the converter the buffers, the response envelope `Count` and `Ancestors`):
 
@@ -530,21 +534,23 @@ Request and response of `centers/query`:
 
 - `columns` is always present, even when `select` was explicit; the cost is a few hundred bytes
   and it lets a generic client interpret values without knowing the select.
-- **Paging.** `take` absent is 50; `take` above the effective maximum is clamped, never an error;
-  `skip + take` above `MaxSkipWindow` is 400 `bad-request`. Spec 0011 emits `Skip`/`Take` as
-  parameter slots so every page shares one plan.
-- **Count is capped inside SQL in the same round trip.** `includeCount` adds spec 0011's
-  `IDataBatch.Count(spec, arguments, cap)` statement to the query batch with `cap =
-  min(MaxCount, StackLimits.CountCap)`; the response reports `count = min(Count, cap)` and
-  `countCapped = Count > cap` from the row set's `Count`. Never a second round trip, never an
-  uncapped `COUNT(*)`.
-- **Ancestors** ride the same batch for tree stacks (`RowQueryOptions.Ancestors`), carried by the
-  row set as a separate row set with the same columns so the UI never confuses them with matches.
-- **Arguments** are JSON scalars typed by `DiscoverQuery` (spec 0008) before `CompileQuery`; the
-  engine's text-keyed caches make the second bind a hit, and
-  `tellma.api.query.discover.duration` makes the cost visible. A declared parameter with no
-  argument, or an argument that cannot convert, is 400 `query-invalid` with a diagnostic on the
-  clause that declares it.
+- **Paging.** `take` absent is 50; `take` above `min(MaxTake, StackLimits.MaxTake)` is 413
+  `limit-exceeded` (spec 0014 §2.5: a ceiling is never silently clamped); `skip + take` above
+  `MaxSkipWindow` is 400 `bad-request`. Spec 0011 emits `Skip`/`Take` as parameter slots so every
+  page shares one plan.
+- **Count is capped inside SQL in the same round trip.** `includeCount` makes spec 0014's pipeline
+  set spec 0011's `RowQueryOptions.CountCap` on the query's own `Rows` statement (spec 0014 §5.2),
+  with `cap = min(MaxCount, StackLimits.CountCap)`; the response reports `count = min(Count, cap)`
+  and `countCapped = Count > cap` from the row set's `Count`. Never a second statement, never a
+  second round trip, never an uncapped `COUNT(*)`.
+- **Ancestors** ride the same batch for tree stacks (`RowQueryOptions.IncludeAncestors`), carried
+  by the row set as a separate row set with the same columns so the UI never confuses them with
+  matches.
+- **Arguments** are JSON scalars typed through spec 0008's discovery by spec 0014 §4.3 before
+  `CompileQuery`; the engine's text-keyed caches make the second bind a hit, and spec 0014's
+  `tellma.crud.query.discover.duration` makes the cost visible. An argument that cannot convert to
+  the inferred type is 400 `bad-request` naming the parameter; a parameter the clauses mention
+  without an argument is bound `null`, and an argument the clauses never mention is ignored.
 - **Diagnostics** from spec 0008 are 400 `query-invalid`: `errorDetails.diagnostics[]` carries
   `QueryDiagnostic` items (the `QueryexDiagnostic` code, position and arguments verbatim, plus the
   clause name) for editors; `errors[]` carries one localized item per diagnostic with `path` = the
@@ -558,7 +564,7 @@ shape in `tellma_get` and `tellma_save`:
 
 ```json
 { "ids": [5],
-  "entities": [ { "id": 5, "code": "E-01", "name": "East region", "parentId": 1, "centerType": "Operation",
+  "entities": [ { "id": 5, "code": "E-01", "name": "East region", "parentId": 1, "centerType": "BusinessUnit",
                   "isActive": true, "subtreeCount": 4, "activeSubtreeCount": 3,
                   "createdAt": "2026-08-01T06:12:44.1234567+00:00", "createdById": 1,
                   "modifiedAt": "2026-08-30T12:02:10.0000000+00:00", "modifiedById": 3 } ],
@@ -576,12 +582,13 @@ shape in `tellma_get` and `tellma_save`:
   `Avatar`-preset `[BlobReference]` column — so `CreatedBy.Email`, `CreatedBy.Subject` and the
   contact columns never travel. `related` holds only those columns for the entities that any
   foreign key on the main entities or their children points at, loaded along the stack's
-  `[DetailsExpand]` navigations (default: every FK navigation of the entity and its children,
-  depth ≤ `StackLimits.MaxExpandDepth`). It is keyed by entity name and holds an **array**: the
-  client indexes by `id`, the server writes one typed list per entity type through one
-  `JsonTypeInfo` lookup per type per response, and the shape is identical for `int` and `long`
-  keys. The `RelatedEntities` members this spec's converter reads are `Sets: map<string,
-  RelatedEntitySet>` and `RelatedEntitySet(EntityType, Entities, Projection)` (spec 0011).
+  `[DetailsExpand]` navigations (default: every FK navigation of the entity and its children at
+  depth 1; a declared navigation reaches at most `StackLimits.MaxExpandDepth`, spec 0014 §2.2).
+  It is keyed by entity name and holds an **array**: the client indexes by `id`, the server
+  writes one typed list per entity type through one `JsonTypeInfo` lookup per type per response,
+  and the shape is identical for `int` and `long` keys. The `RelatedEntities` members this spec's
+  converter reads are `Sets: map<string, RelatedEntitySet>` and `RelatedEntitySet(EntityType,
+  Entities, Projection)` (spec 0011).
 - **`extras`** is the per-service open bag (`IDetailsContributor.Extras` names, spec 0014)
   selected by `include`; an unknown name is 400 `bad-request`; at most `StackLimits.MaxExtras`
   names per request.
@@ -635,30 +642,34 @@ shape in `tellma_get` and `tellma_save`:
 ### 3.8 Delete on the wire
 
 `delete`, `delete-with-descendants` and the id-shaped actions take `IdsRequest`; a delete is a
-command over ids and carries no stamps on the web surface (`ExpectedStamps` remains reachable at the
-service level). Existence is checked before visibility inside the transaction, so a missing id and
-an invisible id both surface as 404 `not-found` naming the resource and the ids; a foreign-key
-restriction is the validation error `Fk.InUse` at `ids[i]` naming the referencing entity and
-property, never a 500.
+command over ids and carries no stamps on the web surface (`DeleteByIdsAsync`'s `expectedStamps`
+remains reachable at the service level, spec 0014 §3.1). The statement counts the ids under the
+caller's `Read` filter before the action's grant (spec 0014 §9.2), so a missing id and a hidden id
+both surface as 404 `not-found` naming the resource and the ids and a readable id outside the grant
+as 403 `forbidden`; a foreign-key restriction is the validation error `Fk.InUse` at `ids[i]` naming
+the referencing entity and property, never a 500.
 
 `delete-by-query` takes `DeleteByQueryRequest`. The count is verified **inside** the delete
-transaction by spec 0014's statement — `TOP (MaxDeleteByQueryRows + 1)` with `THROW 50413` above
-the cap, then `@@ROWCOUNT <> @expected` → `THROW 50428` — so there is no window between the count
-the user was shown and the rows deleted; a mismatch is 409 `count-mismatch` with `expected` and
-`actual`, and nothing was deleted. `expectedCount` turns the most dangerous endpoint into a
-two-phase confirm without server state. The operation is never exposed on MCP.
+transaction by spec 0011's statement, which spec 0014 §10.2 composes: the matching keys are
+collected `TOP (MaxDeleteByQueryRows + 1)`, `THROW 50413` fires above the cap and `THROW 50428`
+when their count differs from `expectedCount`, both before any row is deleted — so there is no
+window between the count the user was shown and the rows deleted; a mismatch is 409
+`count-mismatch` with `expected` and `actual`, and nothing was deleted. `expectedCount` turns the
+most dangerous endpoint into a two-phase confirm without server state. The operation is never
+exposed on MCP.
 
 ### 3.9 Hand-offs and streams
 
 - **Excel.** `export`/`export-for-import` stream `ExportOutcome.Workbook` as
   `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` with `Content-Disposition:
   attachment; filename="<ascii>"; filename*=UTF-8''<utf8>` and no `Content-Length` (chunked);
-  compression is off for the stream (§8.4). `Background = true`, or a request above the
-  synchronous thresholds of spec 0018, returns 202 `JobAccepted(JobId, ExportId | ImportId)` with
-  `Location: /{tenantId}/api/web/exports/get` semantics carried in the body rather than a header
-  (the SPA polls through the standard `get` on `exports`/`imports` and the hub's `job.changed`).
-  `import` and `inspect-import` take JSON bodies naming a staged `FileId`; no multipart endpoint
-  exists in this release.
+  compression is off for the stream (§8.4). `Background = true` returns 202
+  `JobAccepted(JobId, ExportId | ImportId)` with `Location: /{tenantId}/api/web/exports/get`
+  semantics carried in the body rather than a header (the SPA polls through the standard `get` on
+  `exports`/`imports` and the hub's `job.changed`); a synchronous request above the thresholds of
+  spec 0018 §2.3 fails with that spec's 413 or 422 and is never promoted to background. `import`
+  and `inspect-import` take JSON bodies naming a staged `FileId`; no multipart endpoint exists in
+  this release.
 - **Blobs.** The upload is a raw body (`AcceptsBinaryMetadata`); the download is the one GET
   (§9.1).
 - **`me`.** `users/me` returns `MeResult`, the caller's preference bag included; the SPA calls it
@@ -707,7 +718,7 @@ public sealed record StackDescriptor(
 public sealed record ActionDescriptor(
     string Name, string Segment, string? Action, ActionKind Kind, bool SupportsFilter, Type? ArgumentsType,
     Type? RequestType, Type ResultType, string? Description, bool IsBuiltIn, bool PostCheck, bool MemberOnly,
-    bool Idempotent, bool Destructive, McpExposure Mcp, Type HandlerType);
+    bool Mutation, bool Idempotent, bool Destructive, McpExposure Mcp, Type HandlerType);
 
 public sealed record ApiServiceDescriptor(string Route, Type ServiceType, IReadOnlyList<ActionDescriptor> Actions);
 
@@ -763,9 +774,10 @@ contract is unchanged either way.
 
 `[EntityAction]` and `[ApiAction]` methods are mapped through one generated delegate per action
 that reads the single body parameter with the platform options (an `[EntityAction]` reads
-`IdsRequest` and passes `Arguments` deserialized as `ActionDescriptor.ArgumentsType`; an
-`[ApiAction]` reads `RequestType`, or nothing when the method takes no body) and hands it to spec
-0014 — `IApiActionInvoker.InvokeAsync(descriptor, body)` for an `[ApiAction]`, the service's
+`IdsRequest` and passes `Arguments` as received — the pipeline deserializes it as
+`ActionDescriptor.ArgumentsType`, spec 0014 §11.2; an `[ApiAction]` reads `RequestType`, or
+nothing when the method takes no body) and hands it to spec 0014 —
+`IApiActionInvoker.InvokeAsync(descriptor, body)` for an `[ApiAction]`, the service's
 `ExecuteActionAsync` for an `[EntityAction]` — which evaluates the securable and invokes the
 method; the result serializes like any envelope. The web layer never calls an action method
 itself. The attribute is the security boundary: a public helper method never becomes an endpoint by
@@ -773,9 +785,9 @@ convention.
 
 ### 4.3 Endpoint metadata
 
-Every projected endpoint carries: `TenantEndpointMetadata(Web, IsMutation)` (`IsMutation = true`
-for `save`, `delete*`, `activate`, `deactivate`, `import`, `inspect-import` and every action not
-marked `Idempotent`; spec 0010's tenant middleware refuses mutations on a `ReadOnly` tenant);
+Every projected endpoint carries: `TenantEndpointMetadata(Web, IsMutation)` (`IsMutation` is
+`ActionDescriptor.Mutation` for an action and spec 0014 §2.3's classification for a standard
+operation; spec 0010's access guard refuses mutations on a `ReadOnly` tenant);
 `SecurableEndpointMetadata(Resource, Action)` or, for `MemberOnly` actions,
 `MemberEndpointMetadata()` (spec 0013); `NoActivityStampMetadata()` on `users/me`,
 `settings/client`, `settings/entity-tags` and `inbox/summary` (polling endpoints must not stamp
@@ -794,20 +806,21 @@ A custom action is one attribute on a method that had to exist anyway.
 *Illustration*
 
 ```csharp
-[EntityAction("invite", Idempotent = true, Description = "Invite the selected users by email; safe to repeat.")]
+[EntityAction("invite", Description = "Invite the selected users through the identity server.")]
 public async Task InviteAsync(ActionContext<User, int> context) { … }
 ```
 
 Rules: the method is public and instance on the service or on a stack companion attached through
 spec 0014's `EntityCompanion` (the endpoint calls spec 0014's `IApiActionInvoker`, which evaluates
-the securable and invokes `HandlerType`); `[EntityAction]` takes `ActionContext<TEntity, TKey>` and
-optionally a typed arguments parameter; `[ApiAction]` takes at most one body parameter plus an
-optional cancellation token and returns a task of a result or a bare task; the route is `POST
-/{tenantId}/api/web/{segment}/{action-segment}`; the securable is `(Descriptor.Resource, Action)`
-for an entity service and the explicit `(Resource, Action)` for an `[ApiRoute]` service, none when
-`MemberOnly`; `Destructive = true` makes the MCP action require confirmation (§11.6); `Mcp =
-Hidden` hides it from `tellma_action`. Spec 0013's contributor registers every pair; the audit of
-§4.6 fails on any pair nobody registered.
+the securable, opens the frame of spec 0014 §13.3 and invokes `HandlerType`); `[EntityAction]`
+takes `ActionContext<TEntity, TKey>` and optionally a typed arguments parameter; `[ApiAction]` takes
+at most one body parameter plus an optional cancellation token and returns a task of a result or a
+bare task; the route is the action's `Name` under the stack or route segment (§2.1, §2.3); the
+securable is `(Descriptor.Resource, Action)` for an entity service and the explicit
+`(Resource, Action)` for an `[ApiRoute]` service, none when `MemberOnly`; `Destructive = true`
+makes the MCP action require confirmation (§11.6); `Mcp = Hidden` hides it from `tellma_action`.
+Spec 0014's `StackSecurableContributor` registers every pair; the audit of §4.6 fails on any pair
+nobody registered.
 
 ### 4.5 The escape hatch
 
@@ -822,28 +835,26 @@ tellma.Web.MapPost("reports/aging/stream", AgingReport.StreamAsync).RequireSecur
 ```
 
 `RequireSecurable(resource, action)`, `AllowMember()`, `AcceptsBinary(maxBytes)`,
-`WithMutation(isMutation)` and `AsTenantlessEndpoint(reason)` (spec 0010's `TellmaEndpoints`
+`WithMutation(isMutation)` and `AsTenantlessEndpoint(reason)` (spec 0010's endpoint
 conventions) are the only ways to satisfy the audit on a hand-mapped endpoint; a resource named
 this way must be registered through `FeatureContribution.Securables(...)` (spec 0013).
 
 ### 4.6 The startup audit
 
-`MapTellma` walks `EndpointDataSource` after mapping and reports into the realised composition
-gate (spec 0010); any finding fails startup with `TellmaCompositionException`, one line per
-problem, and the audit runs host-free in tests through `TellmaComposition.Validate`. The rules:
+`MapTellma` runs spec 0010 §5.3's `TellmaEndpointAudit` over `EndpointDataSource` after mapping and
+reports into the realised composition gate; the tenant-prefix, tenantless, `AllowAnonymous`, CORS
+and reserved-prefix rules are that spec's, and the securable rules are spec 0013 §4.5's — every
+`(Resource, Action)` resolves through `ISecurableRegistry`, so a typo in
+`[ApiAction(Action = "Aprove")]` is a startup failure rather than a silently unreachable action.
+Any finding fails startup with `TellmaCompositionException`, one line per problem. Tests exercise
+the audit under `WebApplicationFactory` (§13.1). The projection adds four rules of its own:
 
-- Every endpoint whose template begins with `/{tenantId:int:min(1)}` carries
-  `TenantEndpointMetadata`, an authorization policy (`Tellma.Web`, `Tellma.Api` or `Tellma.Mcp`),
-  exactly one of `SecurableEndpointMetadata` and `MemberEndpointMetadata`, the API-endpoint marker,
-  and never `AllowAnonymous`; its `(Resource, Action)` resolves through
-  `ISecurableRegistry.Find` (a typo in `[ApiAction(Action = "Aprove")]` is a startup failure, not
-  a silently unreachable action).
-- Every endpoint outside the prefix carries `TenantlessEndpointMetadata` (with `AllowAnonymous`
-  or the `Tellma.ControlPlane` policy) — an accidentally tenantless business endpoint fails too.
+- Every endpoint on a tenant group carries the API-endpoint marker of §4.3.
 - No endpoint on a tenant group carries `DisableAntiforgery`, `DisableRateLimiting` or
   `DisableRequestTimeout`.
-- Every `[ApiAction]`/`[EntityAction]` segment is unique per service and is not a standard
-  segment; every `[ApiRoute]` route is unique and is not a stack segment.
+- Every `[ApiAction]`/`[EntityAction]` segment (the full `Name`, `/` included) is unique per
+  service and is not a standard segment; every `[ApiRoute]` route is unique and is not a stack
+  segment.
 - Every registered entity, child, action request and action result type resolves a
   `JsonTypeInfo` (§3.1).
 
@@ -854,16 +865,16 @@ it — every group carries its policy explicitly.
 
 ### 5.1 The filter chain
 
-Endpoint filters on the `Web` group run in this order, and each stops the request on refusal
-before the next runs: **CSRF** (§5.3, before any body read) → **tenant** (spec 0010's
-`ITenantAccessGuard.EnsureAccessAsync(TenantAccessRequirement(IsMutation, Assurance))`: resolves
-the tenant, runs the request-context initializers of §6.3, applies the tenant-state verdicts and
-the assurance check) → **telemetry** (§10.1; opens the log scope and the timer, runs the handler,
+Spec 0010's CSRF middleware (§5.3) has passed before the first filter runs, so no body is read on
+a request it refuses. Endpoint filters on the `Web` group run in this order, and each stops the
+request on refusal before the next runs: **tenant** (spec 0010's
+`ITenantAccessGuard.EnsureAccessAsync(TenantAccessRequirement(IsMutation, Assurance))`: applies
+the tenant-state verdicts, runs the request-context initializers of §6.3, then the assurance
+check) → **telemetry** (§10.1; opens the log scope and the timer, runs the handler,
 stamps the response headers) → the handler → the **witness** (spec 0013: an operation that
 evaluated no securable is a 500 `internal` and `tellma.access.witness.missing`). No filter
 evaluates a securable; the handler's service does (§5.4). The `Hub` group and the blob `GET` carry
-the same chain minus the `Tellma-Client` requirement (§5.3), which the blob upload `POST` keeps;
-the tenant `Mcp` group carries the chain of §11.4.
+the same chain; the tenant `Mcp` group carries the chain of §11.4.
 
 ### 5.2 Credentials
 
@@ -878,26 +889,14 @@ surface.
 
 ### 5.3 CSRF
 
-`CsrfEndpointFilter` runs first on every tenant group and rejects with 403 `csrf-rejected` unless
-all of the following hold:
+CSRF is spec 0010 §5.4's `TellmaCsrfMiddleware`, which runs before every endpoint filter: the
+`Origin`/`Sec-Fetch-Site` rules, the `Tellma-Client` requirement against `ClientNames` (§1.3),
+the JSON-only body rule with its `AcceptsBinaryMetadata` exception, the exemption of the blob
+`GET` and the hub negotiate from the header, the 403 `csrf-rejected` and 415 refusals, and the
+`tellma.auth.csrf_rejections{rule}` counter (spec 0010 §9). This surface adds no rule and issues
+no antiforgery token (§5.2).
 
-1. On the `Web` group and the blob upload `POST`, `Tellma-Client` is present, of the form
-   `<name>/<version>`, and `<name>` is
-   in `TellmaApiOptions.ClientNames` (`web`, `cli`). A custom header forces a CORS preflight no
-   foreign origin can pass, since the host registers no CORS policy. An unknown name is 403 with
-   reason `unknown_client`. The blob GET and the hub negotiate — requests a browser cannot decorate
-   — are exempt from the header and rely on rule 3 alone; the hub additionally rejects any
-   cross-origin negotiate outright.
-2. `Content-Type` is `application/json` (parameters ignored), or `application/octet-stream`/any
-   type on an endpoint carrying `AcceptsBinaryMetadata` (the blob upload). Form-encoded and
-   multipart bodies are refused everywhere (reason `unsupported_media`, 415), closing the form-post
-   vector; a GET has no body rule.
-3. When `Origin` is present it equals `Tellma:PublicOrigin` exactly — never the `Host` header,
-   which is attacker-influenced wherever host filtering is not pinned; when `Sec-Fetch-Site` is
-   present it is `same-origin` or `none`. A request carrying neither header passes on rules 1–2.
 
-The filter increments `tellma.api.requests.rejected{reason}` on every refusal. `Tellma-Client`
-doubles as the `tellma.client` telemetry tag (name only, never the version).
 
 ### 5.4 The service check
 
@@ -914,10 +913,11 @@ doubles as the `tellma.client` telemetry tag (name only, never the version).
 
 Failure modes of the connect prologue as web-layer obligations: a caller who is not a member or
 whose user is deactivated is 404 `tenant-not-found` (identical for both, so a membership is never
-disclosed); a stale permissions tag makes spec 0014's guarded runner recompose once and re-run,
-counted by `tellma.api.permissions.stale`, and a second staleness is 503 `stale-context` with
-`Retry-After: 1`; a `settings` mismatch never fails a request (the result is served and the cache
-refreshes).
+disclosed); a stale `permissions` tag, or a stale `settings` tag on a validation or persist batch,
+makes spec 0013's guarded runner recompose once and re-run (spec 0014 §5.1, counted by its
+`tellma.crud.stale_context.reruns`), and a second staleness is 503 `stale-context` with
+`Retry-After: 1`; a stale `settings` tag on a read batch never fails the request (the result is
+served and the cache refreshes).
 
 ### 5.5 Tenant-state verdicts and step-up
 
@@ -937,7 +937,7 @@ After `DiscoverQuery` and before `CompileQuery`, spec 0014's query pipeline walk
 `select`, `filter`, `orderBy` and `having`. For each path that crosses a navigation into an entity
 `E` other than the root: when the caller holds `Read` on `E`'s resource (with any filter) the path
 is allowed; otherwise the terminal property must be in `E`'s `[RelatedSelect]` projection (§3.6),
-or the request is 403 `forbidden` naming `E`'s resource and the offending path in `arguments`.
+or the request is 403 `forbidden` naming `E`'s resource (`ForbiddenException`, spec 0014 §5.2).
 Paths through child entities resolve to their owning top-level entity. The rule is enforced in the
 service so MCP inherits it, and `tellma_describe` documents it per navigation ("reachable: Id,
 Code, Name"). The joined rows are **not** filtered by `E`'s row-level security in either case — a
@@ -954,7 +954,7 @@ is an oracle.
 | `Accept-Language` | standard | The message language and formatting culture, negotiated by spec 0012's `ILocalizationNegotiator` against the distribution's shipped language catalogue — not against the tenant's content languages, a different axis; `-u-` extensions are stripped before negotiation | `User.PreferredLanguage` → tenant primary language → `en` |
 | `Tellma-Time-Zone` | IANA id (`Asia/Riyadh`) | `RequestContext.TimeZone`, the display zone: formats instants in messages and Excel | `User.PreferredTimeZone` → tenant zone |
 | `Tellma-Calendar` | `gc`, `uq`, `et` | `RequestContext.Calendar`: date formatting in messages and Excel | `User.PreferredCalendar` → tenant primary calendar |
-| `Tellma-Client` | `<name>/<version>` | CSRF control (§5.3); `RequestContext.Client`; the `tellma.client` tag | required on the `Web` group; the MCP filter sets `mcp` and a job scope sets `worker` (spec 0019) — neither passes the CSRF filter |
+| `Tellma-Client` | `<name>/<version>` | CSRF control (spec 0010 §5.4); `RequestContext.Client`; the `tellma.client` tag | required on the `Web` group and the blob upload; the MCP filter sets `mcp` and a job scope sets `worker` (spec 0019) — neither is in `ClientNames` |
 
 An unparseable `Tellma-Time-Zone` or `Tellma-Calendar` is ignored (the precedence continues) and
 counted by `tellma.localization.headers.rejected{header}`; negotiation never throws. There is no
@@ -969,12 +969,13 @@ carries (§7.2), logged by the SPA beside a slow call.
 Every tenant-surface response also carries `Content-Language` (the resolved message language),
 `Tellma-Calendar` (the effective calendar), `Tellma-Build` (§3.10) and
 `Tellma-Version-Tags: settings=<tag>, permissions=<tag>, preferences=<tag>, entities=<tag>` — the
-wire tags (`"{FormatVersion}.{guid:N}"`, spec 0012) after this request's bumps, from spec 0012's
-post-batch snapshot, set by the telemetry filter after the handler returns and before the result
-executes, so the SPA revalidates its settings, permissions, preferences and cached entity lists
-without an extra call. `Retry-After`
-accompanies every 429 and 503. `Server-Timing: db;dur=<ms>;desc="<n> calls"` is emitted when
-`ServerTiming` is on.
+wire tags (`"{FormatVersion}.{guid:N}"`, spec 0012) after this request's bumps: `settings`,
+`permissions` and `entities` from the last batch's `BatchOutcome.VersionTags`, `preferences` from
+its `BatchOutcome.UserVersionTags.Preferences` (spec 0012 §2.5), set by the telemetry filter after
+the handler returns and before the result executes, so the SPA revalidates its settings,
+permissions, preferences and cached entity lists without an extra call. `Retry-After` accompanies
+every 429 and 503. `Server-Timing: db;dur=<ms>;desc="<n> calls"` is emitted when `ServerTiming` is
+on.
 
 ### 6.3 Populating the request context
 
@@ -1005,9 +1006,9 @@ computed in its own zone.
 ### 7.1 The mapping
 
 The service pipeline throws only spec 0014's closed set (`TellmaException` base in
-`Tellma.Core.Abstractions.Errors`, with spec 0010's three tenancy and step-up types and spec 0016's
-`BlobRejectedException`). The edge maps by type, never by an interface an exception could
-implement:
+`Tellma.Core.Abstractions.Errors`, with spec 0010's four tenancy and step-up types, spec 0016's
+`BlobRejectedException` and spec 0018's `ImportException`). The edge maps by type, never by an
+interface an exception could implement:
 
 | Exception | Status | `code` | Body members beyond the base |
 |---|---|---|---|
@@ -1020,30 +1021,26 @@ implement:
 | `TenantNotFoundException` | 404 | `tenant-not-found` | — (also non-members and deactivated users) |
 | `NotFoundException(Resource, Ids)` | 404 | `not-found` | `arguments.resource`, `arguments.ids` — identical for a missing row and a row hidden by row-level security |
 | `ConcurrencyException(Code, Conflicts)` | 409 | `concurrency-conflict` | `errorDetails.conflicts[]: ConcurrencyConflict(Id, ModifiedAt, ModifiedById, ModifiedByName, IsMissing)` |
+| `TenantStateException(Code, Detail)` | 409 | the `Code` in kebab case: `tenant-registration-refused`, `tenant-illegal-transition` | `arguments.code` (the `Code` as raised); `detail` is `Detail` verbatim |
 | `CountMismatchException(Expected, Actual)` | 409 | `count-mismatch` | `arguments.expected`, `arguments.actual` |
 | `LimitExceededException(Limit, Actual, Maximum)` | 413 | `limit-exceeded` | `arguments.limit`, `.actual`, `.maximum` |
 | `ValidationException(Errors)` | 422 | `validation` | `errors[]` (§7.3) |
-| `ImportException(Errors, TotalErrors)` | 422 | `validation` | `errors[]` with `sheet`, `row`, `column`, `header`; `arguments.totalErrors` |
+| `ImportException(Errors, TotalErrors)` | 422 | `validation` | `errors[]` items carrying `sheet`, `row`, `column`, `header`, `property`, `code`, `arguments` (§7.3); `errorDetails.totalErrors` |
 | `BlobRejectedException(Code, Arguments)` | by code: 413 `Blob.TooLarge`, 415 `Blob.UnsupportedType`, 404 `Blob.UnknownKind`, 411 `Blob.LengthRequired`, 422 otherwise | `blob-rejected` | `errors[]` with `path = "body"` and the blob code |
 | `PartialFailureException(Code, Results, Failed)` | 502 | `partial-failure` | `errorDetails.results` (the partial results), `errorDetails.failed[]` |
 | `TenantUnavailableException` with `Code` `catalog-unavailable`, `tenant-schema-behind` | 503 | that code | `Retry-After` from `RetryAfter` (default 30) |
 | `StaleContextException(Dependencies)` | 503 | `stale-context` | `Retry-After: 1`; `errorDetails.dependencies[]` names |
-| `DependencyUnavailableException(Dependency, RetryAfter)` | 503 | `dependency-unavailable` | `arguments.dependency` ∈ `database`, `identity`, `blobs`; `Retry-After` (default 1) |
-| CSRF refusal (§5.3) | 403 | `csrf-rejected` | `arguments.reason` |
+| `DependencyUnavailableException(Dependency, RetryAfter)` | 503 | `dependency-unavailable` | `arguments.dependency` ∈ `database`, `identity`, `email`; `Retry-After` (default 1) |
+| CSRF refusal (spec 0010 §5.4) | 403, or 415 for the body rule | `csrf-rejected` | `arguments.rule`, spec 0010's closed set |
 | `OperationCanceledException` on the request's aborted token | — | — | no response, the connection closed, nothing logged (spec 0014 §14.1) |
 | anything else | 500 | `internal` | nothing but the trace id outside Development |
 
-The mapping matches the most-derived type first, so `ImportException` never falls into the
-`ValidationException` row.
+Every member of the closed set is sealed, so no Tellma exception reaches a row through a base
+type; the rows that share `TenantUnavailableException` are told apart by its `Code`.
 
-Two data-layer translations are fixed here and implemented by spec 0014: a `THROW 50409` whose
-conflicts are all missing rows is `NotFoundException` (404) and `ConcurrencyException` (409) only
-when at least one row exists with a differing stamp; a `THROW 50503` (the access applock timeout)
-is retried by the executor and, exhausted, is `DependencyUnavailableException("database")` with
-`Retry-After: 1`, never a validation error. Unique-index violations (2601/2627) reach the wire as
-422 at the property the index covers; a foreign-key restriction (547) as 422 `Fk.InUse`; a deadlock
-(1205) or transient error after the executor's three attempts as 503 `dependency-unavailable`; a
-SQL command timeout as 503 with `Retry-After: 5`.
+Data-layer failures — a `THROW 50409`, a unique-index or foreign-key violation, an exhausted
+retry, an ambiguous outcome such as a command timeout — reach the wire through spec 0014 §14.2's
+translation into the rows above.
 
 ### 7.2 The body
 
@@ -1051,7 +1048,7 @@ RFC 9457, `application/problem+json`:
 
 ```json
 { "type": "https://tellma.com/problems/validation", "title": "Validation failed", "status": 422,
-  "detail": "2 errors in 1 entity.", "instance": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+  "detail": "2 errors in 1 entity.", "instance": "4bf92f3577b34da6a3ce929d0e0e4736",
   "code": "validation",
   "errors": [ { "path": "entities[0].name", "code": "Required", "message": "The Name (E) field is required.", "arguments": { "property": "Name" } },
               { "path": "entities[0].parentId", "code": "Tree.Cycle", "message": "A center cannot be its own ancestor.", "arguments": { } } ],
@@ -1060,11 +1057,12 @@ RFC 9457, `application/problem+json`:
 
 - `type` is `ProblemTypeBase + code` (`https://tellma.com/problems/<code>`); `title` is the
   code's `Problem_` resource (spec 0012) under the request culture; `status`; `detail` is its
-  `_Detail` resource rendered the same way, arguments substituted; `instance` is the
-  request's trace id (the W3C `traceparent`), the one identifier a support ticket needs; `code`
-  is the kebab-case problem code (Appendix A); `errors[]` carries validation items; `errorDetails`
-  carries structured extras (conflicts, diagnostics, partial results, dependencies) or `null`;
-  `arguments` carries the exception's display data. Nothing else appears outside Development.
+  `_Detail` resource rendered the same way, arguments substituted; `instance` is the request's
+  W3C trace id, the value the `Tellma-Trace-Id` header carries (§6.2); `code` is the kebab-case
+  problem code (§7.1 and §7.5); `errors[]` carries validation items; `errorDetails` carries
+  structured extras (conflicts, diagnostics, partial results, dependencies, the import error
+  total) or `null`; `arguments` carries the exception's display data. Nothing else appears outside
+  Development.
 - `title`, `detail` and `errors[].message` are rendered under the request culture for readers
   without a string pack — MCP, scripts, support tickets. The SPA renders `code` and `errors[].code`
   with their `arguments` from spec 0012's string pack, reading `message` only for a key no pack
@@ -1076,22 +1074,26 @@ RFC 9457, `application/problem+json`:
 
 ### 7.3 Validation error paths
 
-`errors[].path` renders spec 0014's `ValidationPath` segments: an index segment as `[i]`, a
-property segment through this spec's JSON naming policy, giving the camelCase index grammar
-`entities[3].roleMemberships[1].roleId`, `ids[2]`, `filter`, `body`. A path is a segment list and
-is never parsed on either side. The framework's built-in validation (`AddValidation()`; shape-only,
-synchronous, PascalCase-keyed) is not enabled on tenant endpoints. Rendered messages are localized
-with `ILabelProvider` labels for property names (`Name (E)`) and the `ValidationCodes` resource
-keys, and the SPA resolves `arguments.property` to its own label; the code vocabulary is the union
-of spec 0014's `ValidationCodes`, spec 0013's access codes, spec 0016's blob codes and spec 0018's
-`ExcelErrorCodes`. Excel items add `sheet`, `row`, `column`, `header`. At most
-`ExcelOptions.MaxReportedErrors` items travel; `arguments.totalErrors` says how many exist.
+`errors[].path` renders spec 0014's `ValidationPath` segments: an index segment as `[i]`, a property
+segment through this spec's JSON naming policy, and a leading index segment — a payload row — under
+the request member that carries the rows (`entities` on a save, `ids` on an action), giving the
+camelCase index grammar `entities[3].roleMemberships[1].roleId`, `ids[2]`, `filter`, `body`. A path
+is a segment list and is never parsed on either side. The framework's built-in validation
+(`AddValidation()`; shape-only, synchronous, PascalCase-keyed) is not enabled on tenant endpoints.
+Rendered messages are localized with `ILabelProvider` labels for property names (`Name (E)`) and the
+`ValidationCodes` resource keys, and the SPA resolves `arguments.property` to the label key
+`<Schema>_<Entity>_<Property>` of spec 0012 §10.1 (`Gl_Center_Name`) for the path's entity; the
+code vocabulary is the union of spec 0014's `ValidationCodes`, spec 0013's access codes, spec 0016's
+blob codes and spec 0018's `ExcelErrorCodes`. An `ImportException` item carries `sheet`, `row`,
+`column`, `header` and `property` in place of `path` — an import error names the property, never a
+path. At most `ExcelOptions.MaxReportedErrors` items travel; `errorDetails.totalErrors` says how
+many exist.
 
 ### 7.4 Concurrency conflicts
 
 ```json
 { "type": "https://tellma.com/problems/concurrency-conflict", "title": "The record was changed by someone else", "status": 409,
-  "detail": "1 of 1 records changed since you loaded them.", "instance": "00-…-01", "code": "concurrency-conflict",
+  "detail": "1 of 1 records changed since you loaded them.", "instance": "4bf92f3577b34da6a3ce929d0e0e4736", "code": "concurrency-conflict",
   "errors": [], "errorDetails": { "conflicts": [ { "id": 5, "modifiedAt": "2026-08-30T12:02:10.0000000+00:00", "modifiedById": 3, "modifiedByName": "Sara", "isMissing": false } ] } }
 ```
 
@@ -1103,20 +1105,21 @@ the request's language (spec 0014 §8); `isMissing = true` marks a row deleted u
 
 `AddProblemDetails()` with a customizer that adds `code` and sets `instance` to the trace id serves
 the problems the framework raises before a handler runs: malformed JSON and `MaxDepth` overflow →
-400 `bad-request` with `arguments.reason = "malformed-json"`; unsupported media type → 415
-`unsupported-media`; a body above the size metadata → 413 `limit-exceeded` (`limit = "body"`);
-rate limiting → 429 `rate-limited` with `Retry-After`; request timeout → 504 `timeout` when nothing
-was written; a route miss under a tenant prefix → 404 `not-found`; 405 `method-not-allowed`. The
-unhandled backstop writes `code: "internal"`, the trace id and nothing else outside Development;
-in Development it adds `arguments.exception` (type and message, no stack).
+400 `bad-request` with `arguments.reason = "malformed-json"`; a bearer credential on a cookie-only
+surface (§5.2) → 401 `unsupported-credential`; unsupported media type → 415 `unsupported-media`;
+a body above the size metadata → 413 `limit-exceeded` (`limit = "body"`); rate limiting → 429
+`rate-limited` with `Retry-After`; request timeout → 504 `timeout` when nothing was written; a
+route miss under a tenant prefix → 404 `not-found`; 405 `method-not-allowed`. The unhandled
+backstop writes `code: "internal"`, the trace id and nothing else outside Development; in
+Development it adds `arguments.exception` (type and message, no stack).
 
 ### 7.6 Where the mapping runs
 
-The mapping is an `IExceptionHandler` registered with the exception middleware, first in
-`UseTellma`'s pipeline, so it covers endpoint filters, the tenant middleware and hand-mapped
-endpoints alike; it records `tellma.api.problems{status, code}` and writes the body through
-`TellmaApiJsonContext`. The MCP request filter applies the same mapping to tool results (§11.7),
-so a tool error carries the same `code`.
+The mapping is an `IExceptionHandler` registered with the exception middleware, which spec 0010 §5.1
+places ahead of routing in `UseTellma`'s pipeline, so it covers endpoint filters, the tenant
+middleware and hand-mapped endpoints alike; it records `tellma.api.problems{status, code}` and
+writes the body through `TellmaApiJsonContext`. The MCP request filter applies the same mapping to
+tool results (§11.7), so a tool error carries the same `code`.
 
 ## 8. Limits, timeouts, compression, and caching
 
@@ -1127,11 +1130,11 @@ so a tool error carries the same `code`.
 | JSON body | `MaxJsonBodyBytes` 8 MB | request-size metadata on the `Web` group; 413 before the body is read |
 | Raw upload body | `Blobs:MaxUploadSize` 100 MiB (spec 0016) | `AcceptsBinaryMetadata(MaxBytes)` per endpoint; `Content-Length` required (411 otherwise) |
 | Entities per save / ids per request | 1,000 / 10,000 (also `StackLimits.MaxSaveCount`/`MaxIds`; the smaller wins) | the endpoint → 413 `limit-exceeded` |
-| `take` / count cap / skip window | 10,000 / 10,000 / 100,000 (also `StackLimits`) | clamp / SQL cap / 400 |
-| Search length, extras, expand depth | `StackLimits` | the pipeline → 422 or 400 |
+| `take` / count cap / skip window | 10,000 / 10,000 / 100,000 (`take` and the count cap also `StackLimits.MaxTake`/`CountCap`, the smaller wins; the skip window is this surface's alone) | 413 `limit-exceeded` / SQL cap / 400 |
+| Search length / extras per request | `StackLimits.MaxSearchLength` 200 / `MaxExtras` 16 (spec 0014 §2.5) | the pipeline → 413 `limit-exceeded`; an unknown extra name is 400 `bad-request` (§3.6) |
 | Rows per save at every depth | `StackLimits.MaxRowsPerSave` 100,000 | the pipeline → 413 `limit-exceeded` |
 | Children per parent per collection | `[MaxChildren]` 10,000 (spec 0011 §2.2) | the pipeline → 413 `limit-exceeded` |
-| Queryex ceilings | `QueryexLimits.Default` (spec 0008) | engine diagnostics → 400 `query-invalid` |
+| Queryex ceilings | `PipelineLimits` (spec 0014 §5.2) | engine diagnostics → 400 `query-invalid` |
 | String lengths, precision | entity metadata | the pipeline → 422 |
 | Tool result size | `MaxToolResultChars` 60,000 | truncation with guidance (§11.7) |
 
@@ -1142,7 +1145,7 @@ cardinality and length are validation; nothing here needs shared state.
 
 All partitions are per instance (`System.Threading.RateLimiting`; `UseRateLimiter` after
 `UseAuthentication` so the partition key is the principal); every rejection is 429 with
-`Retry-After` and `tellma.api.requests.rejected{reason}`:
+`Retry-After` and `tellma.api.requests.rejected{reason = rate_limited}`:
 
 | Policy | Partition | Limit |
 |---|---|---|
@@ -1176,12 +1179,12 @@ secret. `EnableCompression = false` turns it off.
 
 ### 8.5 Caching
 
-Output caching: five minutes on `/api/distribution-info`, the protected-resource metadata
-documents and `/openapi/web.json`; never under `/{tenantId}` — output caching cannot serve
-authenticated responses, and entity freshness is spec 0012's tag-validated cache. Response cache
-headers on tenant JSON are `Cache-Control: no-store`; `/api/strings/{language}` carries the
-immutable-or-`no-store` header spec 0012 §10.4 defines. The blob GET's `ETag`/immutable caching is
-spec 0016's.
+Output caching: one minute on `/api/distribution-info` (its `max-age`, spec 0010 §5.9), five minutes
+on the protected-resource metadata documents and `/openapi/web.json`; never under `/{tenantId}` —
+output caching cannot serve authenticated responses, and entity freshness is spec 0012's
+tag-validated cache. Response cache headers on tenant JSON are `Cache-Control: no-store`;
+`/api/strings/{language}` carries the immutable-or-`no-store` header spec 0012 §10.4 defines. The
+blob GET's `ETag`/immutable caching is spec 0016's.
 
 ## 9. Host integration
 
@@ -1194,10 +1197,10 @@ the SPA uploads; a browser form cannot) and the `tellma-long` timeout; it calls
 `IBlobService.StageAsync` and returns `BlobDescriptor` (201). `GET /{tenantId}/blobs/{kind}/{id}`
 carries `MemberEndpointMetadata` and `TenantEndpointMetadata(Blobs, IsMutation = false)`, is
 exempt from `Tellma-Client` (§5.3), calls `IBlobService.ResolveAsync` (which applies the kind's
-read access), and answers through `Results.Stream` with `ETag "{id}"`, `Content-Type`,
-`Content-Disposition` (`inline`, or `attachment` when `download=true`), `Cache-Control` per state
-(spec 0016), 304 on `If-None-Match`; a `null` resolution is 404 `not-found`. Staging ids travel
-inside entity JSON as ordinary `int?` properties.
+read access), and answers through `Results.Stream` with the `ETag`, `Content-Type`,
+`Content-Disposition` and `Cache-Control` headers of spec 0016 §5.3 and 304 on `If-None-Match`; a
+`null` resolution is 404 `not-found`. Staging ids travel inside entity JSON as ordinary `int?`
+properties.
 
 ### 9.2 The hub
 
@@ -1218,10 +1221,9 @@ operations.
 
 ### 9.4 Health and tenantless endpoints
 
-`/health/live` answers 200 without I/O once the composition gate passed (an outage must not make
-the orchestrator kill healthy instances); `/health/ready` checks the tenant registry source (one
-catalog query) and the data-protection key ring (a protect/unprotect round trip), so a new
-instance receives no traffic before it can resolve tenants and validate cookies and confirmation
+`/health/live` and `/health/ready` are spec 0010 §5.9's probes with the checks stated there:
+liveness does no I/O (an outage must not make the orchestrator kill healthy instances), and
+readiness fails until the instance can resolve tenants and validate cookies and confirmation
 tokens. Both carry `TenantlessEndpointMetadata` and the `tellma-anonymous` policy, as does
 `/api/strings/{language}`, which `MapTellma` maps over spec 0012's `IStringPackProvider` (404 for
 `null`; headers per §8.5). Spec 0010 owns `/api/distribution-info` and the BFF; spec 0007 owns
@@ -1240,14 +1242,13 @@ saves mid-flight.
 
 ```csharp
 // Tellma.Core.Abstractions.Api — constants
-public static class ApiTelemetryNames                           // MeterName = "Tellma.Core.AspNetCore"
+public static class ApiTelemetryNames
 {
-    public const string RequestsRejected = "tellma.api.requests.rejected";          // counter; reason
+    public const string MeterName = "Tellma.Core.AspNetCore";
+    public const string RequestsRejected = "tellma.api.requests.rejected";          // counter; reason = rate_limited (CSRF refusals are spec 0010 §9's)
     public const string Problems = "tellma.api.problems";                           // counter; status, code
     public const string OperationDuration = "tellma.api.operation.duration";        // histogram, s; tellma.resource, tellma.operation, tellma.client
-    public const string PermissionsStale = "tellma.api.permissions.stale";          // counter
     public const string UnknownMembers = "tellma.api.unknown_members";              // counter; type
-    public const string QueryDiscoverDuration = "tellma.api.query.discover.duration";   // histogram, s
     public const string RealtimeEvents = "tellma.realtime.events";                  // counter; event
     public const string ResourceTag = "tellma.resource";
     public const string OperationTag = "tellma.operation";
@@ -1256,8 +1257,9 @@ public static class ApiTelemetryNames                           // MeterName = "
     public const string EventTag = "event";
 }
 
-public static class McpTelemetryNames                           // MeterName = "Tellma.Core.Mcp"
+public static class McpTelemetryNames
 {
+    public const string MeterName = "Tellma.Core.Mcp";
     public const string ToolCalls = "tellma.mcp.tool.calls";                        // counter; tool, outcome ∈ ok | error | denied | truncated | confirm
     public const string ToolDuration = "tellma.mcp.tool.duration";                  // histogram, s; tool
     public const string ResultChars = "tellma.mcp.result.chars";                    // histogram, {char}; tool
@@ -1268,14 +1270,14 @@ public static class McpTelemetryNames                           // MeterName = "
 
 Tag values are closed sets: resources from the registry, operations from the standard segments
 plus declared action segments, client names from `ClientNames` plus `mcp` and `worker`, tool names
-from the seven tools plus distribution-authored tool names, reasons from Appendix B. No tenant or
-user tag on any instrument. Round trips per operation are spec 0011's `tellma.data.roundtrips`,
+from the seven tools plus distribution-authored tool names, reasons from §8.2. No tenant
+or user tag on any instrument. Round trips per operation are spec 0011's `tellma.data.roundtrips`,
 recorded by the executor at scope end and tagged with the `operation` value the pipeline sets
 (`gl.Center:query`) — what finds an N+1 per operation on day one; the round-trip budget of spec
 0014 is what it is compared against in tests.
 
-The telemetry filter opens one logging scope `{TenantId, UserId, Client, Resource, Operation}`
-(logs carry tenant ids; metrics never do) and tags the request `Activity` with
+The telemetry filter adds `Client`, `Resource` and `Operation` to the request's logger scope of
+spec 0010 §9 (logs carry tenant ids; metrics never do) and tags the request `Activity` with
 `tellma.resource`, `tellma.operation`, `tellma.client`. Spans of the executor carry
 `tellma.db.role` (spec 0011). Log events: `ApiRequestRejected(reason)` at Information,
 `ApiProblem(status, code)` at Information (4xx) or Warning (5xx), `ApiUnhandledException` at Error
@@ -1287,24 +1289,25 @@ with the trace id, `ApiSecurableAuditFailed(problems)` at Critical before the st
 The two meters are registered with the host's `IMeterFactory` and exported by spec 0010's
 OpenTelemetry composition. Alert queries under `infra/monitoring/` (owned by spec 0011's
 convention): a rise in `tellma.api.problems{status=500}`,
-`tellma.api.requests.rejected{reason=csrf}` above a floor (a misdeployed origin), and
+`tellma.auth.csrf_rejections{rule=origin}` (spec 0010 §9) above a floor (a misdeployed origin), and
 `tellma.data.roundtrips` p95 above the round-trip budget for any operation.
 
 ## 11. The Tellma Tenant MCP server
 
 ### 11.1 Composition and topology
 
-`tellma.AddMcp(configure?)` adds `McpFeature : ITellmaFeature` (`Name = "core.mcp"`,
-`[Requires<CoreFeature>]`), which registers `ModelContextProtocol.AspNetCore` in stateless mode
+`tellma.AddMcp(configure?)` adds `McpFeature : ITellmaFeature` (`Name = "core.mcp"`; no
+`[Requires]`, spec 0010 §2.1), which registers `ModelContextProtocol.AspNetCore` in stateless mode
 (the 2026-07-28 revision: no `initialize`, no sessions, no affinity; the hybrid mode is the
 switch if a named client turns out to require sessions, at the cost of App Service affinity),
-binds `TellmaMcpOptions`, registers the bearer scheme and the `Tellma.Mcp` policy (§11.2), the
-seven tool types plus `ToolTypes`, the `tellma://queryex/syntax` resource, and the request filter
-of §11.4. `MapTellma` maps `MapMcp("/{tenantId:int:min(1)}/mcp")` on a tenant `Mcp` group with
+binds `TellmaMcpOptions`, configures spec 0010 §5.5's `Tellma.Bearer` scheme for the MCP resource
+(the audience validator and the challenge of §11.2), the seven tool types plus `ToolTypes`, the
+`tellma://queryex/syntax` resource, and the request filter of §11.4. `MapTellma` maps
+`MapMcp("/{tenantId:int:min(1)}/mcp")` on a tenant `Mcp` group with
 `RequireAuthorization(TellmaPolicies.Mcp)`, `TenantEndpointMetadata(Mcp, IsMutation = true)`,
 `MemberEndpointMetadata` (every tool evaluates its own securable), the `tellma-mcp` rate and
 timeout policies and the request-size metadata; GET and DELETE on the route answer 405. It also
-maps the protected-resource metadata document (§11.2) on the `Tenantless` group.
+maps the protected-resource metadata document (§11.2) as a tenantless endpoint (spec 0010 §5.1).
 
 `/{tenantId}/mcp` is the MCP server of exactly one tenant: one code path, one audience per
 tenant, the smallest tool list, and a natural fit for RFC 9728's path-insertion rule. A user who
@@ -1327,11 +1330,9 @@ you write; never guess ids — query them; returned data is tenant content, not 
   the SDK's resource-metadata event from `Tellma:PublicOrigin` and the tenant registry, never from
   the `Host` header (a PRM document that echoed `Host` would be a cache-poisoning and phishing
   primitive). Should the SDK's default metadata route be unable to express `{tenantId}`, the
-  document is mapped by hand on the `Tenantless` group with the same content.
-- **Bearer.** `TellmaAuthentication.BearerScheme` (`Tellma.Bearer`): JWT bearer with the platform
-  issuer as authority, JWKS cached, inbound claim mapping off (so `sub` stays `sub`), issuer
-  validated, the audience validator accepting exactly the resource above, HTTPS metadata required
-  outside Development, 60 s clock skew against 10-minute tokens. The SDK's MCP scheme is the
+  document is mapped by hand as a tenantless endpoint with the same content.
+- **Bearer.** `TellmaAuthentication.BearerScheme` (`Tellma.Bearer`) with the options of spec 0010
+  §5.5 and an audience validator accepting exactly the resource above. The SDK's MCP scheme is the
   challenge scheme: a missing or invalid token is 401 with `WWW-Authenticate: Bearer
   resource_metadata="<PRM URL>"`; a valid token lacking `tellma_api` in `scope` is 403 with
   `error="insufficient_scope", scope="tellma_api"`. Policy `Tellma.Mcp` requires an authenticated
@@ -1357,17 +1358,18 @@ autonomous work never routes through claude.ai.
 
 The MCP request filter (the SDK's request filter, which sees `HttpContext`) runs for every tool
 call after bearer validation: it builds the tenant facts from the route value and the principal
-(`Kind = User`, `Subject = sub`, `ClientId`, `Client = "mcp"`, `Assurance` from `acr`/`auth_time`
-claims), runs spec 0010's `ITenantAccessGuard.EnsureAccessAsync` (tenant-state verdicts; the
-initializers of §6.3 with `RequestContextInputs(AcceptLanguage = null, RequestedCalendar = null,
-RequestedTimeZone = null, Client = "mcp")`, so language, calendar and zone come from the user's
-stored preferences, then the tenant), and populates the same `IRequestContextHolder` the web
-surface uses, so `ISandboxContext` and every service see one shape. The tool then calls the
-service; the service's connect prologue re-checks subject → active member on every call, so a
-deactivated user is denied on the next call even though the token is still valid (signed-only
-JWTs cannot be revoked; the 10-minute lifetime bounds the rest), and a tenant that left `Active`
-is refused by the verdicts. Rate limit 120 tool calls per minute per `{tenantId}:{sub}`; 60 s per
-call. A handle is a name, not a capability: `tellma_describe` listing an entity grants nothing.
+(`Kind` per spec 0010 §5.5, `Subject = sub`, `ClientId`, `Client = "mcp"`, `Assurance` from
+`acr`/`auth_time` claims), runs spec 0010's `ITenantAccessGuard.EnsureAccessAsync` (tenant-state
+verdicts; the initializers of §6.3 with `RequestContextInputs(AcceptLanguage = null,
+RequestedCalendar = null, RequestedTimeZone = null, Client = "mcp")`, so language, calendar and
+zone come from the user's stored preferences, then the tenant), and populates the same
+`IRequestContextHolder` the web surface uses, so `ISandboxContext` and every service see one shape.
+The tool then calls the service; the service's connect prologue re-checks subject → active member
+on every call, so a deactivated user is denied on the next call even though the token is still
+valid (signed-only JWTs cannot be revoked; the 10-minute lifetime bounds the rest), and a tenant
+that left `Active` is refused by the verdicts. Rate limit 120 tool calls per minute per
+`{tenantId}:{sub}`; 60 s per call. A handle is a name, not a capability: `tellma_describe` listing
+an entity grants nothing.
 
 ### 11.5 The tools
 
@@ -1379,13 +1381,13 @@ ordinal-ignore-case against `IStackRegistry.Stacks`.
 
 | Tool | Arguments | Annotations | Result |
 |---|---|---|---|
-| `tellma_whoami` | none | `readOnlyHint`, `idempotentHint`, `openWorldHint = false`; `outputSchema` declared | `WhoamiResult`: the user (id, name, email), the tenant (id, name, category `Live`/`Sandbox`, languages, calendars, zone), the permission matrix from `IAccessEvaluator.EvaluateAll()` grouped `entity → allowed operations and actions` with `filtered: true` where a filter applies, `securablesFingerprint`, the version tags |
+| `tellma_whoami` | none | `readOnlyHint`, `idempotentHint`, `openWorldHint = false`; `outputSchema` declared | `WhoamiResult`: the user (id, name, email), the tenant (id, name, category `Live`/`Sandbox`, languages, calendars, zone), the permission matrix from `IAccessEvaluator.EvaluateAll()` grouped `entity → allowed operations and actions`, with `filtered` naming the actions granted under a row-level filter, `securablesFingerprint`, the version tags |
 | `tellma_describe` | `entity?`, `detail` ∈ `list` (default) \| `full` | `readOnlyHint`, `idempotentHint`; `outputSchema` declared | without `entity`: the catalogue — one line per stack with `Mcp ≠ Hidden` (entity, title, description, operations, actions, capabilities); with `entity`: properties (name, type, store type, nullable, editable, maxLength, precision/scale, enum values, multilingual group, navigation target and its reachable columns), child collections, searchable columns, natural keys, default select, and three example filters; per tenant (`Name2`/`Name3` gating), cached per `(TenantId, Entity)` under the `settings` tag |
 | `tellma_query` | `entity`, `select?`, `filter?`, `orderBy?`, `skip?`, `top` (default `DefaultTop`, max `MaxTop`), `arguments?`, `includeCount?`, `format` ∈ `table` (default) \| `objects` | `readOnlyHint` | one text block: a Markdown table (columns from `QueryColumn.Name`) or a JSON array of objects keyed by column name; `count`/`countCapped` when requested; `truncated: true` with guidance ("narrow the select or filter, or page with skip") when the character cap is hit; no `outputSchema` |
 | `tellma_get` | `entity`, `ids` (1..`MaxIdsPerCall`), `include?` | `readOnlyHint` | `EntitiesResult` in JSON: `entities` with `modifiedAt`, `related` projections, `extras`; absent ids reported in a trailing line; no `outputSchema` |
 | `tellma_save` | `entity`, `entities` (1..`MaxIdsPerCall`) | `destructiveHint = false`, `idempotentHint = false` | **no override argument**; `concurrency` is always `Check`; success returns ids and display names (the `Name` group or `Code`) in concise form; a conflict returns `isError` with the stored `modifiedAt`, `modifiedByName` and the instruction "re-get the record, re-apply your change, and save again with the current modifiedAt" |
 | `tellma_delete` | `entity`, `ids` (1..`MaxIdsPerCall`), `withDescendants?`, `confirmation?` | `destructiveHint` | without `confirmation`: a preview (count, display names, descendant count when `withDescendants`) and a `confirmation` token; with it: the delete and `AffectedResult`. When the client declares `elicitation.form`, a form-mode elicitation ("Delete N record(s) of `<entity>`?") replaces the two calls |
-| `tellma_action` | `entity`, `action` (`activate`, `deactivate`, or an action segment), `ids?`, `input?` | from `ActionDescriptor` (`Idempotent`, `Destructive`) | the action's result in concise form; `Destructive` actions use the confirmation of `tellma_delete`; `input` is the action's arguments or body |
+| `tellma_action` | `entity`, `action` (`activate`, `deactivate`, or an action's `Name`, `/` included), `ids?`, `input?`, `confirmation?` | from `ActionDescriptor` (`Mutation` → `readOnlyHint`, `Idempotent`, `Destructive`) | the action's result in concise form; `Destructive` actions use the confirmation of `tellma_delete`; `input` is the action's arguments or body |
 
 ```csharp
 // Tellma.Core.Mcp (runtime) — tool argument and result shapes
@@ -1468,11 +1470,11 @@ page would.
   `confirm: true` flag — an agent offered one sets it.
 - **Never exposed:** `delete-by-query`, `settings/details`, `settings/save`,
   `settings/refresh-caches`, `notification-preferences/save`, actions marked `Mcp = Hidden`, and the
-  write tools on a stack marked `Mcp = ReadOnly` (`tellma_save`, `tellma_delete` and non-idempotent
-  `tellma_action` answer `isError` with "this entity is read-only for agents"). Sensitive
-  securables (`IsSensitive`)
-  require an assurance the bearer's `acr`/`auth_time` claims must satisfy per
-  `Tellma:Session:StepUp`; a bearer below it is `isError` with the step-up instruction (the
+  write tools on a stack marked `Mcp = ReadOnly` (`tellma_save`, `tellma_delete` and a
+  `tellma_action` whose descriptor has `Mutation = true`, spec 0014 §2.3, answer `isError` with
+  "this entity is read-only for agents"). Sensitive securables (`IsSensitive`) on a bearer whose
+  `acr`/`auth_time` claims fall below `Tellma:Session:StepUp` are refused by the pipeline's
+  `RequireAsync` (spec 0014 §9.1); the tool answers `isError` with the step-up instruction (the
   hosted clients re-authorize), never a 401 mid-stream.
 
 ### 11.7 Result shaping and errors
@@ -1498,13 +1500,14 @@ page would.
 
 `tellma_export`, `tellma_import` (long-running; the tasks extension once it stabilizes, else a
 `tellma_job` pair), `tellma_job`, `tellma_notifications`, `tellma_upload` (the staged upload a
-`tellma_import` `FileId` needs) and `tellma_check_access` are reserved and ship with specs 0018,
-0019, 0020 and 0016; no tool of another name may be added to the `tellma_` prefix by a
-distribution. Clients re-list tools per `ttlMs`, so adding tools, optional arguments and
-description text is safe; renaming or removing a tool or a required argument breaks saved prompts,
-skills and workflows that name it — tool and argument names are a compatibility surface under the
-N−1 rules of §3.10. Under ten tools stays far below the 30–50 tool degradation threshold; entity
-discovery inside `tellma_describe` is the progressive-disclosure shape agents handle best.
+`tellma_import` `FileId` needs) and `tellma_check_access` are reserved for specs 0013, 0016, 0018,
+0019 and 0020, which ship them in a later release; no tool of another name may be added to the
+`tellma_` prefix by a distribution. Clients re-list tools per `ttlMs`, so adding tools, optional
+arguments and description text is safe; renaming or removing a tool or a required argument breaks
+saved prompts, skills and workflows that name it — tool and argument names are a compatibility
+surface under the N−1 rules of §3.10. Under ten tools stays far below the 30–50 tool degradation
+threshold; entity discovery inside `tellma_describe` is the progressive-disclosure shape agents
+handle best.
 
 ### 11.9 Distribution-authored tools and the identity-server amendment
 
@@ -1548,7 +1551,7 @@ and the bearer credential over the same `StackDescriptor`; nothing else is built
 
 | Project | Tier | Pins |
 |---|---|---|
-| `test/core/Tellma.Core.AspNetCore.Tests/` | unit, host-free | JSON options and the scalar table (§3.1–§3.2); the `QueryRowSet` and `RelatedEntities` converters (§3.5–§3.6); request-record rules (id range, `take` clamp, skip window, cardinality); the projection table (§2.3) and binding (§4.2); the startup audit (§4.6) through `TellmaComposition.Validate`; the CSRF filter (§5.3); header parsing and precedence (§6.1); the exception mapping and problem body (§7.1–§7.5); rate-policy partition keys and the closed tag sets (§8.2, §10.1) |
+| `test/core/Tellma.Core.AspNetCore.Tests/` | unit (`WebApplicationFactory`, fake authentication) | JSON options and the scalar table (§3.1–§3.2); the `QueryRowSet` and `RelatedEntities` converters (§3.5–§3.6); request-record rules (`take` ceiling, skip window, cardinality); the projection table (§2.3) and binding (§4.2); the startup audit (§4.6) under `WebApplicationFactory`; header parsing and precedence (§6.1); the exception mapping and problem body (§7.1–§7.5); rate-policy partition keys and the closed tag sets (§8.2, §10.1) |
 | `test/core/Tellma.Core.AspNetCore.IntegrationTests/` | `Category=Integration` | The full `Web`, `Blobs` and `Hub` chains against the reference distribution (`acme`) in an in-process test server over a provisioned tenant database: every projected `Center`, `User` and `Role` operation end to end (§2.3–§2.4, §3.6–§3.9); the tenant-state verdicts and step-up (§5.5); navigation traversal (§5.6); `Tellma-Version-Tags` and the response headers (§6.2); limits, timeouts, compression and caching (§8); health probes and drain (§9.4–§9.5); the instruments and log events (§10.1); the round-trip budget per operation; the strings endpoint (§9.4): the pack of an offered language with the immutable header only for the matching `v`, 404 for an unknown language |
 | `test/core/Tellma.Core.Mcp.Tests/` | unit, host-free | Argument validation and `entity` matching (§11.5); the table and objects renderings and row-by-row truncation (§11.7); the confirmation token's binding, expiry and single use (§11.6); `ReadOnly`/`Hidden` gating; tool-list determinism and the `tellma_` prefix rule (§11.8–§11.9) |
 | `test/core/Tellma.Core.Mcp.IntegrationTests/` | `Category=Integration`; `Live=true` for the identity-server cases | The SDK client against the in-process host with tokens from a test issuer: bearer and challenge (§11.2), the request filter (§11.4), the seven tools end to end (§11.5), write safety (§11.6), the problem `code` on `isError` results (§11.7), the resource `tellma://queryex/syntax`. `Live=true`: JWKS discovery, issuer validation and the 401 challenge against a running platform identity server |
@@ -1589,8 +1592,8 @@ behavior in plain words; none cites a section, a specification number or a docum
   stamp is 409 with `modifiedByName`, `Override` still yields 404 for a deleted row; `expectedCount`
   mismatch is 409 `count-mismatch` with nothing deleted; every 4xx row of §7.1 is produced by a test
   that throws that exception type.
-- **Security.** Bearer on the web surface is 401 `unsupported-credential`; each CSRF rule fails
-  alone (`unknown_client`, `unsupported_media`, foreign `Origin`, `cross-site` `Sec-Fetch-Site`);
+- **Security.** Bearer on the web surface is 401 `unsupported-credential`; each CSRF rule of spec
+  0010 §5.4 fails alone (`rule` = `sec_fetch_site`, `origin`, `header`, `content_type`);
   a denial from a set older than `FastDenyWindow` re-checks once and a fresh one does not; an
   operation that evaluates no securable is a 500 with `tellma.access.witness.missing`; a non-member
   and a deactivated member both receive 404 `tenant-not-found` with identical bodies; an
@@ -1610,8 +1613,8 @@ behavior in plain words; none cites a section, a specification number or a docum
   next call is denied while the token is still valid.
 - **Observability.** Every instrument of §10.1 is observed with its declared tags on at least one
   path; `tellma.data.roundtrips` per operation is at or under the round-trip budget of
-  spec 0014 (a regression above it fails the suite); the log scope carries `TenantId`, `UserId`,
-  `Client`, `Resource`, `Operation`.
+  spec 0014 (a regression above it fails the suite); the log scope carries `Client`, `Resource` and
+  `Operation` beside the members of spec 0010 §9.
 
 ### 13.4 PR versus nightly
 
@@ -1646,9 +1649,8 @@ tenant so the character cap of §11.7 is checked against measured output.
   tenant-independent GETs); the MCP topology (two named servers, `tellma-dev` and
   `tellma-tenant`, the latter in `Tellma.Core.Mcp` at `/{tenantId}/mcp` with a per-tenant
   audience); the package rules (`Tellma.Core.AspNetCore` and `Tellma.Core.Mcp` as adapters of
-  `Tellma.Core`); the observability meters `Tellma.Core.AspNetCore` and `Tellma.Core.Mcp`; and
-  the identity-server amendments of spec 0021. Public XML docs and error
-  messages reference no `docs/` paths, per repo rule.
+  `Tellma.Core`); and the observability meters `Tellma.Core.AspNetCore` and `Tellma.Core.Mcp`.
+  Public XML docs and error messages reference no `docs/` paths, per repo rule.
 - **Not in scope of done**: the `v1` surface (§12.2); the reserved tools of §11.8; the autonomous
   MCP path (§11.3); the identity-server work itself (spec 0021 — this spec is done when the MCP
   surface validates a token whose `aud` is the tenant resource, whichever issuer path minted it);
@@ -1665,7 +1667,7 @@ The load-bearing decisions, where not already evident above:
    body, one verb gives one CSRF story and one binding pattern, and REST verbs buy nothing on a
    surface that never uses HTTP caching (§2.2, §9.1).
 3. **The client retry contract is written, not inferred** — a POST-only surface has no verb-based
-   idempotency signal, so reads and `Idempotent` actions retry and mutations never do (§2.2).
+   idempotency signal, so reads and `Idempotent` actions retry and nothing else does (§2.2).
 4. **The entity class is the wire shape; ownership is enforced below the wire** — no DTO layer,
    and the emitter, never an edge convention, keeps `[ServerOwned]` and `[WriteOnce]` columns
    out of updates (§3.1).
@@ -1685,7 +1687,7 @@ The load-bearing decisions, where not already evident above:
     endpoint methods** — endpoints, tools, securables and Excel share one descriptor; the
     framework sees real parameter types and no reflection runs per request (§4.1–§4.2).
 11. **An unsecured endpoint is a startup failure** — the audit walks every endpoint and reports
-    into the composition gate, host-free in tests (§4.6).
+    into the composition gate, exercised in tests under `WebApplicationFactory` (§4.6).
 12. **Cookie-only credentials on the web surface with a header-based CSRF control and no
     antiforgery token** — one credential type keeps the CSRF reasoning valid; the custom header
     forces a preflight no foreign origin can pass (§5.2–§5.3).
