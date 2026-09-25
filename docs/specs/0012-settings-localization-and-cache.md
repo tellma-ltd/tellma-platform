@@ -92,7 +92,7 @@ so a block is never pasted into code. SQL statements are the exact shape to emit
 | Project | What this spec adds | Dependency edges |
 |---|---|---|
 | `Tellma.Core.Abstractions` | Namespaces `Tellma.Core.Abstractions.Caching` (tags, snapshot, registry, cache contracts, `CacheTelemetryNames`), `.Settings` (`SettingKey<T>`, `TenantSettings`, `TenantSettingsForClient`, `TenantSettingsDetails`, `SettingKeyDescriptor`, `TenantSettingsPatch`, `MultilingualShape`, the entities `Settings` and `SettingEntry`), `.Localization` (`LanguageInfo`, `ILanguageCatalog`, `ILabelProvider`, `LocalizationContext`, `ILocalizationNegotiator`, `CoreStrings`, `IStringPackProvider`, `StringPack`, `LocalizationTelemetryNames`), `.Calendars` (`ICalendarSystem`, `ICalendarRegistry`, `CalendarCodes`, `DateStyle`); `VersionTagList` in `.TableTypes` | `Tellma.Core.Queryex` only (existing edge); BCL `System.Text.Json`, `System.Globalization` |
-| `Tellma.Core` | Folders `Caching/` (`VersionedCache`, `VersionTagRegistry`, `VersionTagSnapshots`, the prologue and epilogue contributors, `CacheableEntityStore`, `CacheableEntities`), `Settings/` (`TenantSettingsStore`, `TenantSettingsCache`, `SettingKeyRegistry`, `SettingsService`, the `core.settings` provisioning step), `Localization/` (`LanguageCatalog`, `LocalizationNegotiator`, `LabelProvider`, `IcuStringLocalizerFactory`, `StringPackComposer`), `Calendars/` (`GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`), `Resources/Strings.resx` and satellites | adds `MessageFormat` 8.0.0, `Microsoft.Extensions.Caching.Memory`, `Microsoft.Extensions.Localization`, `Microsoft.AspNetCore.DataProtection.Abstractions` (`IDataProtectionProvider`, registered by spec 0010's web host; optional elsewhere, §5.3) |
+| `Tellma.Core` | Folders `Caching/` (`VersionedCache`, `VersionTagRegistry`, `VersionTagSnapshots`, `UserVersionTagSnapshots`, the prologue and epilogue contributors, `CacheableEntityStore`, `CacheableEntities`), `Settings/` (`TenantSettingsStore`, `TenantSettingsCache`, `SettingKeyRegistry`, `SettingsService`, the `core.settings` provisioning step), `Localization/` (`LanguageCatalog`, `LocalizationNegotiator`, `LabelProvider`, `IcuStringLocalizerFactory`, `StringPackComposer`), `Calendars/` (`GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`), `Resources/Strings.resx` and satellites | adds `MessageFormat` 8.0.0, `Microsoft.Extensions.Caching.Memory`, `Microsoft.Extensions.Localization`, `Microsoft.AspNetCore.DataProtection.Abstractions` (`IDataProtectionProvider`, registered by spec 0010's web host; optional elsewhere, §5.3) |
 | `Tellma.Core.Migrator` | Runs the `core.VersionTags` seed and wholesale bump (§2.8) on every `migrate` | unchanged |
 | `test/core/Tellma.Core.Tests`, `test/core/Tellma.Core.IntegrationTests` | The suites of §12 | unchanged |
 | `test/shared/Tellma.Testing.Resources` | The resource-audit helper of §12, referenced by every suite that owns a `Strings.resx` | new; BCL only |
@@ -107,29 +107,29 @@ addresses Core's strings through `CoreStrings` (§10.1).
 `CoreFeature` (spec 0010's `ITellmaFeature`, added unconditionally) contributes, through spec
 0010's `FeatureContribution`: the EF configurations of `Settings`, `SettingEntry`,
 `core.VersionTags` and the tag columns of `core.UserStamps` (`Model<T>()`); `IVersionTagSnapshots`,
-`IVersionTagRegistry`, `ISettingKeyRegistry`, `ILanguageCatalog`, `ILocalizationNegotiator`,
-`ILabelProvider`, `IStringPackProvider`, `ICalendarRegistry` (`Singleton<,>()`) and the two
-stores `TenantSettingsStore` and `CacheableEntityStore` as concrete singletons;
-`ITenantSettingsCache` and `ICacheableEntities`, the façades over those stores that hold the
-scope's `ITenantDatabase` and snapshot (§3.2), and the prelude and bump contributors of §2.5 and
-the cold-load contributor of §5.7 as spec 0011's `IDataBatchContributor` (`Scoped<,>()`);
-`IRequestContextInitializer` at `Order` 200 (§9.3);
+`IUserVersionTagSnapshots`, `IVersionTagRegistry`, `ISettingKeyRegistry`, `ILanguageCatalog`,
+`ILocalizationNegotiator`, `ILabelProvider`, `IStringPackProvider`, `ICalendarRegistry`
+(`Singleton<,>()`) and the two stores `TenantSettingsStore` and `CacheableEntityStore` as concrete
+singletons; `ITenantSettingsCache` and `ICacheableEntities`, the façades over those stores that
+hold the scope's `ITenantDatabase` and snapshot (§3.2), and the prelude and bump contributors of
+§2.5 and the cold-load contributor of §5.7 as spec 0011's `IDataBatchContributor` (`Scoped<,>()`);
+`IRequestContextInitializer` at `Order` 200 (§9.3); `ClientEvent("cache.changed")` (§2.5);
 `Calendar<GregorianCalendarSystem>()`, `Calendar<UmAlQuraCalendarSystem>()`,
 `Calendar<EthiopianCalendarSystem>()`; `ApiService<SettingsService>()`; `Securables(...)` for
 `core.Settings.General` and every `core.Settings.<Category>` of §5.5;
 `ProvisioningStep<SettingsProvisioningStep>()` (§5.7); and the `IStartupCheck`s of §1.3.
 
-The distribution author's whole surface is four builder calls of spec 0010's `TellmaBuilder`:
-`Languages(codes)`, `AddLanguage(info)`, and per feature `SettingKeys(declaringType)` and
-`Calendar<TCalendar>()`. `AddTellma` replaces the framework's `IStringLocalizerFactory` with
-`IcuStringLocalizerFactory` (§10.2).
+The distribution author's whole surface is two builder calls of spec 0010's `TellmaBuilder`,
+`Languages(codes)` and `AddLanguage(info)`, plus two calls on spec 0010's `FeatureContribution` per
+feature, `SettingKeys(declaringType)` and `Calendar<TCalendar>()`. `AddTellma` replaces the
+framework's `IStringLocalizerFactory` with `IcuStringLocalizerFactory` (§10.2).
 
 ### 1.3 Startup checks
 
 All report into spec 0010's realised gate as `CompositionProblem`s; none throws on its own.
 
-- **Version-tag registry**: every name matches the grammar of §2.1; `entity:` names come only
-  from `[Cacheable]`; no two entities yield one `entity:` name; every `[BumpsUserVersionTag]`
+- **Version-tag registry**: every name has one of the two forms of §2.1; `entity:` names come
+  only from `[Cacheable]`; no two entities yield one `entity:` name; every `[BumpsUserVersionTag]`
   names an `int` property of its entity; every raw-SQL site the analyzer of spec 0011 flags for a
   user-level table declares `SqlOptions.UserIds`.
 - **Cacheable entities**: the checks of §4.2.
@@ -140,9 +140,8 @@ All report into spec 0010's realised gate as `CompositionProblem`s; none throws 
 - **String pack**: no `Strings` key is declared by two composed assemblies (§10.4).
 - **Calendars**: registered codes are unique, lower-case, ≤ 16 characters; `gc`, `uq`, `et`
   are present and agree with spec 0008's reserved codes.
-- **Globalization mode**: the process runs ICU (`CultureInfo("en-US").CompareInfo.Version`
-  probe); invariant and NLS modes fail the gate because IANA conversion and the calendar
-  catalogue require ICU.
+- **Globalization mode**: the ICU requirement is spec 0010 §2.3's built-in `core.globalization`
+  check, registered by `AddTellma` itself rather than contributed here.
 
 ## 2. Version tags
 
@@ -172,11 +171,12 @@ validated at **two levels**: a role or permission edit changes what every member
 the tenant `permissions` tag; a membership edit changes one user and bumps that user's
 `PermissionsTag`; a permissions cache entry is valid only when both match.
 
-**Name grammar.** A tenant-level name is lower-case ASCII, `^[a-z][a-z0-9.-]*$`, ≤ 128 characters
-(`VersionTagNames.MaxNameLength`); `entity:` is a reserved prefix followed by the entity's name
-(spec 0011's `EntityMetadata.Name`, `gl.Center`), produced only by `VersionTagNames.ForEntity`;
-`[BumpsVersionTag("entity:…")]` written by hand fails the startup gate. Names are compared
-ordinally.
+**Name grammar.** A name has one of two forms, both at most 128 characters
+(`VersionTagNames.MaxNameLength`) and compared ordinally. A plain tenant-level name — the three
+platform names and every pack name — is lower-case ASCII, `^[a-z][a-z0-9.-]*$`. An entity name
+is the reserved prefix `entity:` followed verbatim by the entity's name, spec 0011's
+`EntityMetadata.Name` (`entity:gl.Center`), produced only by `VersionTagNames.ForEntity`;
+`[BumpsVersionTag("entity:…")]` written by hand fails the startup gate.
 
 ### 2.2 Contracts
 
@@ -201,7 +201,7 @@ public static class VersionTagNames
 
 public enum UserVersionTagNames { Permissions, Preferences }   // columns PermissionsTag, PreferencesTag on core.UserStamps
 
-public sealed record VersionTagSnapshot(
+public sealed record VersionTagSnapshot(                // tenant-level names only
     int TenantId, IReadOnlyDictionary<string, VersionTag> Tags, DateTimeOffset ReadAtUtc)
 {
     public VersionTag this[string name] { get; }        // None when absent
@@ -211,7 +211,16 @@ public sealed record VersionTagSnapshot(
 public interface IVersionTagSnapshots
 {
     VersionTagSnapshot Current(int tenantId);
-    void Replace(VersionTagSnapshot snapshot);          // by the executor after every batch
+    void Replace(VersionTagSnapshot snapshot);          // by the executor after every batch; tenant entries only
+}
+
+public sealed record UserVersionTagSnapshot(            // the caller's two core.UserStamps columns
+    int TenantId, int UserId, VersionTag Preferences, VersionTag Permissions, DateTimeOffset ReadAtUtc);
+
+public interface IUserVersionTagSnapshots
+{
+    UserVersionTagSnapshot? Current(int tenantId, int userId);   // null until the user's first connect on this instance
+    void Replace(UserVersionTagSnapshot snapshot);      // by the executor after every batch that carried a connect prologue
 }
 
 public enum VersionTagMismatchPolicy { Rerun, Refresh }
@@ -237,7 +246,7 @@ public sealed class BumpsVersionTagAttribute(string name) : Attribute;   // on e
 public sealed class BumpsUserVersionTagAttribute(
     UserVersionTagNames column, string userIdProperty = "UserId") : Attribute;   // on entity class, repeatable, inherited
 
-public sealed class CacheableAttribute(int MaxRows = 1000) : Attribute;   // on entity class, inherited
+public sealed class CacheableAttribute(int MaxRows = 0) : Attribute;   // on entity class, inherited; 0 = TellmaCacheOptions.EntityMaxRowsDefault
 
 // Tellma.Core.Abstractions.TableTypes — [TableType] standalone shape beside IdList and StringList; physical [dbo].[VersionTagList_<hash8>]
 public sealed class VersionTagList
@@ -251,8 +260,10 @@ public sealed class VersionTagList
 | Member | Meaning |
 |---|---|
 | `VersionTag.None` | The empty tag; matches no entry, so a comparison against it always loads. |
-| `VersionTagSnapshot` | The tags of one tenant as last read by a batch prelude, overlaid with that batch's own bumps; `ReadAtUtc` is the instance clock at the read. |
+| `VersionTagSnapshot` | The tenant-level tags of one tenant as last read by a batch prelude, overlaid with that batch's own bumps; `ReadAtUtc` is the instance clock at the read. Holds no user-level entry. |
 | `IVersionTagSnapshots` | A process-wide store bounded by `TellmaCacheOptions.TagSnapshots` entries (private `MemoryCache`, least-recently-used eviction); an absent tenant yields an empty snapshot, which is what makes every cache miss on a fresh instance. |
+| `UserVersionTagSnapshot` | One user's `PreferencesTag` and `PermissionsTag` as the connect prologue's result set 0 read them (spec 0013 §7.3), overlaid with the batch's own bump of either (§2.5). |
+| `IUserVersionTagSnapshots` | A process-wide store keyed `(tenantId, userId)`, bounded by `TellmaCacheOptions.PreferencesEntries` entries (private `MemoryCache`, least-recently-used eviction); filled only by the executor after a batch that carried a connect prologue. |
 | `VersionTagDependency` | A cached input a batch composed; the executor guards writes and applies `OnMismatch` to reads (§2.6). |
 | `IVersionTagRegistry.Resolve` | Maps the union of a batch's declared written tables to the tenant names to bump and the user-level rules that fired. `[Cacheable]` yields `entity:<Name>` and `entities`. |
 | `UserVersionTagRule` | One user-level rule: rows written to `Table` bump `Column` for every distinct value of `UserIdColumn`. Attributes yield rules; `core.UserPreferences` and `core.NotificationPreferences` (not entities) have fixed rules. |
@@ -273,7 +284,7 @@ the migrator (§2.8): no `HasData` row and no provisioning step, because only th
 deployment knows the names it needs.
 
 **`core.UserStamps`** — non-temporal; no UDTT; owned jointly with spec 0013 (which adds
-`LastActiveAt`, and spec 0020 `InboxSeenAt`); exposed to Queryex read-only as `UserStamp`
+`LastActiveAt`, and spec 0020 `InboxSeenAt`); exposed to Queryex read-only as `core.UserStamp`
 (navigation `User`). The columns this spec owns:
 
 | Column | Type | Null | Constraints | Notes |
@@ -392,11 +403,15 @@ int NOT NULL PRIMARY KEY);` (and the `Preferences` twin), so the join never mult
   that instance: every request loads, `cache.outcome = uncached`, one `VersionTagRowMissing`
   Warning per name per process. A missing row costs performance, never correctness. There is no
   self-healing insert on the write path.
-- **The post-batch snapshot needs no read-back:** the executor overlays the bumped names — and the
-  caller's own `PermissionsTag` and `PreferencesTag` when a user-level rule named the caller — with
-  `@tm_tag` on the prologue's rows and calls `IVersionTagSnapshots.Replace`;
-  `BatchOutcome.VersionTags` is that snapshot, and the response header (§2.7) carries post-bump
-  values.
+- **The post-batch snapshots need no read-back:** the executor overlays the bumped tenant names
+  with `@tm_tag` on the prelude's rows and calls `IVersionTagSnapshots.Replace` with tenant entries
+  only; `BatchOutcome.VersionTags` is that snapshot. On a batch that carried a connect prologue it
+  builds the `UserVersionTagSnapshot` from the prologue's result set 0 (`PreferencesTag`,
+  `UserPermissionsTag`; spec 0013 §7.3), overlays `@tm_tag` on whichever column a user-level rule
+  bumped for the caller, and calls `IUserVersionTagSnapshots.Replace`;
+  `BatchOutcome.UserVersionTags` is that snapshot, null on a batch without a connect prologue (a
+  `Maintenance` batch, a `System` scope's batch). The response header (§2.7) carries post-bump
+  values from both.
 - **The bump publishes `cache.changed`.** For every bumped name that is `settings` or an
   `entity:<Name>`, the epilogue contributor calls spec 0020's
   `IClientEventPublisher.Publish(batch, ClientEvent("cache.changed", [], { tag: <name> }))` — the
@@ -441,12 +456,13 @@ DTOs keyed by that string and refetches when it changes for any reason. The data
 a format version; the in-process cache dies with the process and needs none.
 
 Every authenticated response carries `Tellma-Version-Tags: settings=<wire>, permissions=<wire>,
-preferences=<wire>, entities=<wire>` (spec 0015 writes it from `BatchOutcome.VersionTags` under its
-`TellmaHeaders.VersionTags`). `entity:*` tags are deliberately absent from the
-header (unbounded count); a changed `entities` composite makes the client fetch
-`settings/entity-tags` (§6.2) and refetch only the lists whose tag moved. The raw Guids also travel
-in spec 0015's `MeResult.Tags`. They double as a coarse activity signal — the tenant `permissions`
-tag changes whenever any role changes — which is accepted and is never to be replaced by a counter.
+preferences=<wire>, entities=<wire>`: spec 0015 writes `settings`, `permissions` and `entities`
+from `BatchOutcome.VersionTags` and `preferences` from `BatchOutcome.UserVersionTags.Preferences`
+under its `TellmaHeaders.VersionTags`. `entity:*` tags are deliberately absent from the header
+(unbounded count); a changed `entities` composite makes the client fetch `settings/entity-tags`
+(§6.2) and refetch only the lists whose tag moved. The same four wire tags travel in spec 0015's
+`MeResult.Tags`. They double as a coarse activity signal — the tenant `permissions` tag changes
+whenever any role changes — which is accepted and is never to be replaced by a counter.
 
 **The discipline is enforced by a test, not remembered:** `Tellma.Core.Tests` holds a checked-in
 snapshot of each DTO's serialized property tree (names and JSON kinds, from the source-generated
@@ -487,8 +503,8 @@ public sealed class StaleContextException(IReadOnlyList<VersionTagDependency> De
 ```
 
 `Dependencies` holds the dependencies the prologue reported stale; it is empty after a `50412`,
-whose `THROW` names none.
-`TenantDatabaseMismatchException` (§5.6) is internal to `Tellma.Core` and surfaces as a 500.
+whose `THROW` names none. `TenantDatabaseMismatchException` (§5.7) is internal to `Tellma.Core` and
+surfaces as a 500.
 
 ### 2.10 Round trips
 
@@ -507,7 +523,7 @@ round trip of its own on a warm path.
 // Tellma.Core.Abstractions.Caching
 public enum CacheOutcome { Hit, Miss, Stale, Oversized, Uncached }
 
-public sealed record CacheResult<TValue>(TValue Value, VersionTag Tag, CacheOutcome Outcome);
+public sealed record CacheResult<TValue>(TValue? Value, VersionTag Tag, CacheOutcome Outcome);   // Value null only when Outcome = Oversized (§4.4)
 
 public sealed class TellmaCacheOptions                  // Tellma:Cache; ValidateOnStart
 {
@@ -535,7 +551,7 @@ public abstract class VersionedCache<TKey, TValue>
 
 | Member | Meaning |
 |---|---|
-| `GetAsync` | Returns the entry when `entry.Tag == currentTag` (`Hit`); otherwise loads through `LoadAsync` on `database` — the caller's scoped handle, spec 0011's `ITenantDatabase`, because the store is a singleton and holds no scope — stores, and returns `Miss` (no entry) or `Stale` (an entry with another tag). `currentTag = VersionTag.None` always loads and, because the prelude of the load's own batch supplies the tag, the stored entry is stamped correctly even on a fresh instance. Returns `Uncached` — value loaded, nothing stored — when the tag `LoadAsync` returned is `VersionTag.None`: the load's own prelude found no `core.VersionTags` row for the kind's name (§2.5). |
+| `GetAsync` | Returns the entry when `entry.Tag == currentTag` (`Hit`); otherwise loads through `LoadAsync` on `database` — the caller's scoped handle, spec 0011's `ITenantDatabase`, because the store is a singleton and holds no scope — stores, and returns `Miss` (no entry) or `Stale` (an entry with another tag). `currentTag = VersionTag.None` always loads and, because the prelude of the load's own batch supplies the tag, the stored entry is stamped correctly even on a fresh instance. Returns `Uncached` — value loaded, nothing stored — when the tag `LoadAsync` returned is `VersionTag.None`: the load's own prelude found no `core.VersionTags` row for the kind's name (§2.5). Returns `Oversized` — no value, nothing stored — when the `entities` kind's probe overflows (§4.4). |
 | `Peek` | The entry when present and its tag equals `currentTag`; otherwise `null`. Never loads: what `ITenantSettingsCache.Peek`, `ICacheableEntities.Peek` and spec 0013's evaluator within its deny window read through. |
 | `Set` | Stores a value under the tag it is valid for: a save's new state under the batch's post-bump tag, so the writing instance is warm without a reload; spec 0013's prologue rows under the tags that prologue read. |
 | `Remove` | Drops one entry when present; metered `cache.reason = removed`. Spec 0013's `Invalidate` and a refusing prologue. |
@@ -580,24 +596,26 @@ from `Tellma:Cache`; a distribution changes a number in configuration, never in 
 
 ### 4.1 Declaration
 
-A distribution marks an entity cacheable with one attribute, `[Cacheable(MaxRows)]` (§2.2), default
-`MaxRows = TellmaCacheOptions.EntityMaxRowsDefault` (1,000). What qualifies: small, read-mostly
-reference data read by pickers on most screens — countries, currencies, units. Users, roles and
-anything with row-level security are not cacheable; their display names reach the client through
-the details page's related-entity projection. Calendar month names are resources, not entities.
+A distribution marks an entity cacheable with one attribute, `[Cacheable(MaxRows)]` (§2.2); an
+unspecified `MaxRows` (`0`) resolves at startup to `TellmaCacheOptions.EntityMaxRowsDefault`
+(1,000 unless configured), so the limit is a number of configuration, never of code. What
+qualifies: small, read-mostly reference data read by pickers on most screens — countries,
+currencies, units. Users, roles and anything with row-level security are not cacheable; their
+display names reach the client through the details page's related-entity projection. Calendar
+month names are resources, not entities.
 
 What the declaration produces, with no further code:
 
 1. **Tags.** `entity:<Name>` — the entity's name, spec 0011's `EntityMetadata.Name`
    (`entity:gl.Center`) — is registered with `IVersionTagRegistry` and seeded by the migrator;
    writes to the table bump it and the composite `entities`.
-2. **Securable.** Spec 0013's stack contributor registers the entity's `Read` securable with
-   `FilterRoot = null`: a cached list is shared by every reader, so a row-level filter on it could
-   only be silently ignored. A caller must still hold `Read` on the resource.
+2. **Securable.** Spec 0014's `StackSecurableContributor` registers the entity's `Read`
+   securable with `FilterRoot = null`: a cached list is shared by every reader, so a row-level
+   filter on it could only be silently ignored. A caller must still hold `Read` on the resource.
 3. **Projection.** Spec 0014 projects
    `EntityService<TEntity, TKey>.GetAllCachedAsync(DetailsRequest)` and spec 0015 the route
-   `<entity>/all` (body `AllRequest(Select, Include)`); the unfiltered `Read` is the only
-   permission either checks.
+   `{resource-segment}/all` (body `AllRequest(Select, Include)`); the unfiltered `Read` is the
+   only permission either checks.
 4. **Server cache.** `ICacheableEntities.GetAsync<TEntity>()` in service code, or
    `IDataBatch.FromCache<TEntity>()` when the consumer is already composing a round trip
    (validation context, an import's natural-key resolution).
@@ -605,9 +623,10 @@ What the declaration produces, with no further code:
 ### 4.2 Startup checks
 
 Reported into the realised gate: the entity is top-level (`TopLevelEntity<int>`; the key type is
-`int` because `CachedEntitySet.ById` is keyed by `int`); it declares no child collection; `MaxRows`
-is between 1 and `EntityMaxRowsCeiling` (10,000) — a "cacheable" type above that is a
-configuration bug; and spec 0013's registry answers `Find(resource, "Read").FilterRoot == null`.
+`int` because `CachedEntitySet.ById` is keyed by `int`); it declares no child collection; the
+resolved `MaxRows` (§4.1) is between 1 and `EntityMaxRowsCeiling` (10,000) — a "cacheable" type
+above that is a configuration bug; and spec 0013's registry answers
+`Find(resource, "Read").FilterRoot == null`.
 
 ### 4.3 Contracts
 
@@ -630,7 +649,7 @@ public interface ICacheableEntities                    // scoped façade over th
 
 | Member | Meaning |
 |---|---|
-| `GetAsync` | The `entities` kind's `GetAsync` under the snapshot's `entity:<Name>` tag; a miss runs one `Read` batch carrying the load statement of §4.4. |
+| `GetAsync` | The `entities` kind's `GetAsync` under the snapshot's `entity:<Name>` tag; a miss runs one `Read` batch carrying the probe of §4.4; `Oversized` with a null `Value` when the probe overflows. |
 | `Peek` | The current entry when present and its tag matches the snapshot; otherwise `null`. Never loads. |
 | `GetWireTagsAsync` | For every `[Cacheable]` entity of the composition, `entity:<Name>` from the current snapshot as `ToWire(CachedEntitySet.FormatVersion)`; a name absent from the snapshot yields `VersionTag.None.ToWire(...)`, which never matches a client's stored value. Served by `settings/entity-tags` (§6.2). |
 
@@ -639,17 +658,20 @@ public interface ICacheableEntities                    // scoped façade over th
 
 ### 4.4 Loading
 
-The load is one `IDataBatch.Query<TEntity>` with `Select` = every scalar property of the entity
-(no navigations), no `Filter`, `OrderBy = "Id"`, `Take = MaxRows + 1`, emitted after the prelude.
-`FromCache<TEntity>` checks the cache first and appends this statement only on a miss; the result
-populates the cache before the consumer's `BatchResult` resolves, so a cold lookup costs no round
-trip of its own. On a `Validate` or `Persist` batch `FromCache` declares
+The load is a capped probe: one `IDataBatch.Query<TEntity>` with `Select` = every scalar property
+of the entity (no navigations), no `Filter`, `OrderBy = "Id"`, `Take = MaxRows + 1`, emitted after
+the prelude. `FromCache<TEntity>` checks the cache first and appends the probe only on a miss; the
+result populates the cache before the consumer's `BatchResult` resolves, so a cold lookup costs no
+round trip of its own. On a `Validate` or `Persist` batch `FromCache` declares
 `VersionTagDependency(entity:<Name>, tag, Rerun)`; on a `Read` batch, `Refresh` (§2.6).
 
-**Overflow.** When `MaxRows + 1` rows come back the list is **not cached**: the consumer still
-receives all rows, the load is metered `cache.outcome = oversized`, and
-`CacheableEntityOverflow(entity, rows, maxRows)` is logged once per type per process. The
-uncached list keeps working until an operator raises `MaxRows` or un-declares the attribute.
+**Overflow.** `MaxRows + 1` rows coming back is a signal, not a list: the rows are discarded,
+nothing is cached, and `ICacheableEntities.GetAsync` and `FromCache` report `Outcome = Oversized`
+with a null `Value`. The consumer re-reads the table through an ordinary query — spec 0014's
+`GetAllCachedAsync` through one `Query<TEntity>` round trip (spec 0014 §5.5), a validator through
+its loader (spec 0014 §7.2) — metered `cache.outcome = oversized`, with
+`CacheableEntityOverflow(entity, rows, maxRows)` logged once per type per process. The table keeps
+working uncached until an operator raises `MaxRows` or removes the attribute.
 
 ## 5. Tenant settings
 
@@ -672,8 +694,9 @@ token), `[Temporal]`, `[TableType]`, and `[BumpsVersionTag("settings")]`. There 
 persistence path: the settings save hydrates, merges, validates and persists through spec 0011's
 emitter like any entity, which is what makes audit stamping, the concurrency check, the history
 row and the tag bump automatic. Neither is contributed as a stack; both are mapped leaves and
-therefore roots of the Queryex schema (`Settings`, `SettingEntry`), reachable by reports later,
-with no endpoint of their own beyond `SettingsService`.
+therefore roots of the Queryex schema under their entity names (`core.Settings`,
+`core.SettingEntry`), reachable by reports later, with no endpoint of their own beyond
+`SettingsService`.
 
 ### 5.2 Tables
 
@@ -951,9 +974,9 @@ public sealed record TenantSettingsPatch(               // field mask; a listed 
 
 | Member | Annotation |
 |---|---|
-| `Client` | `[ApiAction]` `client`, member-only, idempotent |
-| `EntityTags` | `[ApiAction]` `entity-tags`, member-only, idempotent |
-| `Details` | `[ApiAction]` `details`, member-only, idempotent; in code, one `IAccessEvaluator.Evaluate` over `core.Settings.General` and every category × `Read` (a `Save` grant satisfies `Read`, spec 0013), `ForbiddenException` when none is granted; the view holds the categories granted |
+| `Client` | `[ApiAction]` `client`, member-only, idempotent, `Mutation = false` |
+| `EntityTags` | `[ApiAction]` `entity-tags`, member-only, idempotent, `Mutation = false` |
+| `Details` | `[ApiAction]` `details`, member-only, idempotent, `Mutation = false`; in code, one `IAccessEvaluator.Evaluate` over `core.Settings.General` and every category × `Read` (a `Save` grant satisfies `Read`, spec 0013), `ForbiddenException` when none is granted; the view holds the categories granted |
 | `Save` | `[ApiAction]` `save`, member-only; in code (§6.3 step 1), `core.Settings.General × Save` when `Fields` names a typed member and `core.Settings.<Category> × Save` per listed entry key, through spec 0013's `RequireAsync`, which carries the typed row's step-up; calls `batch.BumpVersionTag("permissions")` only when a language column changed (the Queryex schema shape follows the languages), so an ordinary settings edit never cold-paths every user |
 | `RefreshCaches` | `[ApiAction]` `refresh-caches`, resource `core.Settings.General`, action `Save`, idempotent; sensitive; bumps every tag |
 
@@ -961,10 +984,10 @@ public sealed record TenantSettingsPatch(               // field mask; a listed 
 
 `Client(ifTag)` returns `ITenantSettingsCache.GetForClientAsync()`: the pre-serialized
 bytes and their wire tag, or the *unchanged* result when `ifTag` equals the current wire tag (spec
-0015 shapes both). `EntityTags()` returns `ICacheableEntities.GetWireTagsAsync()`: `{ "Country":
-"1.<guid>", … }` for every cacheable entity of the composition. Both run on a `Read` batch through
-spec 0013's `IGuardedBatchRunner` so the prelude keeps the snapshot current; on a warm instance
-neither adds a statement.
+0015 shapes both). `EntityTags()` returns `ICacheableEntities.GetWireTagsAsync()`:
+`{ "gl.Center": "1.<guid>", … }`, keyed by entity name, for every cacheable entity of the
+composition. Both run on a `Read` batch through spec 0013's `IGuardedBatchRunner` so the prelude
+keeps the snapshot current; on a warm instance neither adds a statement.
 
 `Details()` serves the settings editor from the same cache, on a `Read` batch through the runner
 whose only statements are the related queries below. `General` is the typed row, its
@@ -1018,8 +1041,8 @@ Pipeline, two round trips through `IGuardedBatchRunner`:
    columns changed. The executor adds the guard, the audit stamps, the history rows and the
    `settings` bump.
 5. **Warm the writer**: rebuild both views from the saved rows under
-   `BatchOutcome.VersionTags["settings"]` and `Set` them; return `TenantSettingsForClient` with its
-   wire tag. No reload.
+   `BatchOutcome.VersionTags["settings"]` and `Set` them; return `TenantSettingsForClient`, whose
+   new wire tag rides the response header (§2.7). No reload.
 6. **Mirror the names**: when the name group or the content-language list changed, spec 0010's
    `ITenantCatalog.RenameAsync(tenantId, names)` runs after the commit, registered through the
    persist batch's `OnCommitted` hook (spec 0011); a failure is logged, never surfaced, and the
@@ -1156,11 +1179,11 @@ Excel, MCP and message composition; the SPA renders the same keys from the strin
 
 | Call | Lookup order |
 |---|---|
-| `PropertyLabel(T, p)` | `<Entity>_<Property>` in the declaring assembly's `Strings` → each base class's assembly → `<Property>` in Core's `Strings` (`Name`, `Code`, `IsActive`, `Description`, `CreatedAt`, … ship there) → the humanized property name |
+| `PropertyLabel(T, p)` | `<Schema>_<Entity>_<Property>` (the key grammar of §10.1) in the declaring assembly's `Strings` → each base class's assembly → `<Property>` in Core's `Strings` (`Name`, `Code`, `IsActive`, `Description`, `CreatedAt`, … ship there) → the humanized property name |
 | twin `<Name>2` / `<Name>3` | the primary's label + `" (" + Symbol + ")"` of the tenant language at that position (`Name (E)`, `Name (ع)`); for a mono-lingual tenant the primary carries no suffix; a twin beyond the shape has no label and is not offered |
-| `EntityLabel(T)` | `<Entity>` in the declaring assembly → base assemblies → the humanized class name |
-| `EntityLabel(T, plural: true)` | `<Entity>_Plural` in the declaring assembly → base assemblies → the singular label; serves Excel sheet names (spec 0018) and list titles |
-| `EnumValueLabel(E, v)` | `<Enum>_<Value>` in the declaring assembly → the humanized value |
+| `EntityLabel(T)` | `<Schema>_<Entity>` in the declaring assembly → base assemblies → the humanized class name |
+| `EntityLabel(T, plural: true)` | `<Schema>_<Entity>_Plural` in the declaring assembly → base assemblies → the singular label; serves Excel sheet names (spec 0018) and list titles |
+| `EnumValueLabel(E, v)` | `<Schema>_<Enum>_<Value>` in the declaring assembly → the humanized value |
 | `SettingLabel(key)` | §5.4 |
 
 The same provider serves Excel headers (spec 0018) and validation messages naming a field (spec
@@ -1229,8 +1252,9 @@ successor when scheduled.
 
 Tenant settings carry `PrimaryCalendar` (required, default `gc`) and `SecondaryCalendar`; a user
 may prefer either through spec 0013's `User.PreferredCalendar`; a request may override with the
-`Tellma-Calendar` header (§9). A calendar outside the tenant's pair in a preference is spec 0013's
-validation error `Calendar.NotOffered`; in a header it is ignored (§9.2).
+`Tellma-Calendar` header (§9). A code outside `ICalendarRegistry.Codes` in a preference is spec
+0017's validation error `Users.CalendarUnknown`; a code outside the tenant's pair, in a preference
+or in a header, is ignored by negotiation (§9.2).
 
 ### 8.3 Formatting rules
 
@@ -1324,15 +1348,20 @@ Each assembly with user-facing text ships `Resources/Strings.resx` (neutral = En
 `NeutralResourcesLanguage("en")`) with satellites `Strings.<lang>.resx`, and a marker class
 `Strings` in its `Resources` namespace (`Tellma.Core.Resources.Strings`,
 `Tellma.Module.Gl.Resources.Strings`) — the base name the folder-and-file convention yields with no
-`ResourcesPath`. Keys are `PascalCase_Underscored`: labels `<Entity>`, `<Entity>_Plural` and
-`<Entity>_<Property>`, settings
-`Setting_<key with '.' → '_'>`, validation codes as written (`Settings.LanguageNotOffered` looks up
-`Settings_LanguageNotOffered`), problem titles and details `Problem_<code with '-' → '_'>` and
-`Problem_<…>_Detail` (`Problem_concurrency_conflict`), month names `Calendar_<code>_Month<n>`. A
-pack references
-`Microsoft.Extensions.Localization.Abstractions` for `IStringLocalizer<Strings>` and addresses
-Core's strings through `IStringLocalizerFactory.Create(CoreStrings.BaseName, CoreStrings.Assembly)`
-— the framework's own API, never a type from `Tellma.Core`.
+`ResourcesPath`. Keys are `PascalCase_Underscored`. A label key begins with the qualified entity
+name, spec 0011's `EntityMetadata.Name`, with the schema in PascalCase and `.` as `_`: labels
+`<Schema>_<Entity>`, `<Schema>_<Entity>_Plural` and `<Schema>_<Entity>_<Property>` (`gl.Center` →
+`Gl_Center`, `Gl_Center_Plural`, `Gl_Center_Name`; `core.User` → `Core_User_Email`); an enum's
+values `<Schema>_<Enum>_<Value>` under the schema of the entities that carry it
+(`Gl_CenterType_Abstract`); the bare `<Property>` keys of Core's `Strings` are the shared fallback
+of §7.6. The prefix keeps two packs that each ship an `Invoice` apart in one string pack (§10.4).
+Settings are `Setting_<key with '.' → '_'>`; a validation code is looked up as written, `.` → `_`
+(`Settings.LanguageNotOffered` → `Settings_LanguageNotOffered`); problem titles and details are
+`Problem_<code with '-' → '_'>` and `Problem_<…>_Detail` (`Problem_concurrency_conflict`); month
+names `Calendar_<code>_Month<n>`. For `IStringLocalizer<Strings>` a pack references
+`Microsoft.Extensions.Localization.Abstractions`, and it addresses Core's strings through
+`IStringLocalizerFactory.Create(CoreStrings.BaseName, CoreStrings.Assembly)` — the framework's own
+API, never a type from `Tellma.Core`.
 
 `Strings` is the shared base name: everything in it also reaches the SPA through the string pack
 (§10.4). Text the SPA never renders — an email subject or body, a document footer — goes in a
@@ -1400,14 +1429,14 @@ fetches those packs and the English one, with the `DistributionVersion` stamped 
 `v`, merges each into its dictionary for that language beside its own strings, and renders every
 server-originated text itself: a validation `code` becomes the key by the `.` → `_` mapping of
 §10.1 and a problem `code` its `Problem_` key, with the response's `arguments` as ICU parameters,
-raw values it formats in the active calendar; a label key (`<Entity>_<Property>`,
+raw values it formats in the active calendar; a label key (`<Schema>_<Entity>_<Property>`,
 `Setting_<key>`, `NotificationType_<key>`) is looked up as is, and `arguments.property` is
-resolved to a label the same way. A key the pack lacks falls through to the English pack, then to
-the server-rendered `message` the response also carries (spec 0015). No response the SPA caches
-carries culture-dependent text, so switching the UI language re-renders labels, messages and
-multilingual content in place, with no request and no cache invalidation. Server-side rendering —
-`ILabelProvider`, the rendered `message` — remains for Excel, MCP, email and every client without
-a pack.
+resolved to its `<Schema>_<Entity>_<Property>` key the same way. A key the pack lacks falls
+through to the English pack, then to the server-rendered `message` the response also carries
+(spec 0015). No response the SPA caches carries culture-dependent text, so switching the UI
+language re-renders labels, messages and multilingual content in place, with no request and no
+cache invalidation. Server-side rendering — `ILabelProvider`, the rendered `message` — remains for
+Excel, MCP, email and every client without a pack.
 
 ## 11. Telemetry and configuration
 
@@ -1460,19 +1489,17 @@ public static class LocalizationTelemetryNames
 | `tellma.localization.missing` | counter | `{lookup}` | `culture` |
 | `tellma.localization.headers.rejected` | counter | `{header}` | `header` ∈ accept-language, calendar, time-zone |
 
-`tellma.cache.size` and `tellma.cache.limit` share the kind's unit, so a fill ratio, and a
-thrash alert — capacity evictions rising while misses rise at the limit — are telemetry-only
-queries. No tenant, user, entity-name or key-name tag anywhere; those are structured log
-properties.
-Structured events (level): `VersionTagRowMissing(name)` Warning once per process;
+`tellma.cache.size` and `tellma.cache.limit` share the kind's unit, so a fill ratio, and a thrash
+alert — capacity evictions rising while misses rise at the limit — are telemetry-only queries. No
+tenant, user, entity-name or key-name tag anywhere; those are structured log properties. Structured
+events (level): `VersionTagRowMissing(name)` Warning once per name per process;
 `CacheableEntityOverflow(entity, rows, maxRows)` Warning once per type per process;
 `StaleVersionTagRetry(names)` Information; `SettingsEntryUndeclared(key)` Warning;
 `SettingsEntryInvalid(key)` Warning; `SettingsSecretUnreadable(key)` Critical;
-`SettingsValueUnresolvable(column, value)` Critical; `MissingResourceString(baseName, key,
-culture)` Warning once; `MessageFormatMalformed(baseName, key)` Warning once;
-`TenantDatabaseMismatch(expected, actual)` Critical. No event carries a setting value. Alert
-queries live under
-`infra/monitoring/` and are cross-checked by the existing name test.
+`SettingsValueUnresolvable(column, value)` Critical; `MissingResourceString(baseName, key, culture)`
+Warning once; `MessageFormatMalformed(baseName, key)` Warning once;
+`TenantDatabaseMismatch(expected, actual)` Critical. No event carries a setting value. Alert queries
+live under `infra/monitoring/` and are cross-checked by the existing name test.
 
 **Configuration.** `Tellma:Cache` → `TellmaCacheOptions` (§3.1), `ValidateOnStart`: every limit
 ≥ 1, `EntityMaxRowsDefault ≤ EntityMaxRowsCeiling`. Nothing else is configurable: the language list
@@ -1559,7 +1586,8 @@ Testcontainers on Linux; spec 0011's fixture database, whose shared project
 - **Isolation**: two tenant databases sharing user ids and subjects never see each other's cache
   entries.
 
-Runs on PR: the unit suite; nightly and on PRs touching `src/core/`: the integration suite.
+Runs on every PR: the unit suite and the integration suite (LocalDB on Windows, Testcontainers on
+Linux); nightly: the full matrix.
 
 ## 13. Definition of done
 
@@ -1577,8 +1605,8 @@ Runs on PR: the unit suite; nightly and on PRs touching `src/core/`: the integra
 - **Observability**: every instrument and structured event of §11 emitted and asserted at least
   once in the suites; the alert queries under `infra/monitoring/` name only instruments that
   exist.
-- **CI**: the PR tier runs the unit suite; the nightly tier runs the integration suite on both
-  operating systems.
+- **CI**: the PR tier runs the unit and integration suites on both operating systems; the nightly
+  tier runs the full matrix.
 - **Docs**: ARCHITECTURE.md updated where this spec touches it — the per-dimension contents row
   (calendars `gc`/`uq`/`et` implemented and registered by Core, server-side `.resx` satellites
   shipping with the owning package, Locale packs keeping number-to-words and client assets, the

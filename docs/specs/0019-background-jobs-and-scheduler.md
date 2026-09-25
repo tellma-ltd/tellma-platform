@@ -83,7 +83,7 @@ handler are left to later specs; the scope boundary with spec 0020 is two interf
 
 | Piece | Location | Notes |
 |---|---|---|
-| Contracts | `src/core/Tellma.Core.Abstractions/`, namespace `Tellma.Core.Abstractions.Jobs` | Every type of §2–§4, §7.1, §12.1 and §13.1; BCL plus `Tellma.Core.Queryex` only. |
+| Contracts | `src/core/Tellma.Core.Abstractions/`, namespace `Tellma.Core.Abstractions.Jobs` | Every type of §2–§4, §7.1, §12.1 and §13; BCL plus `Tellma.Core.Queryex` only. |
 | Runtime | `src/core/Tellma.Core/`, namespace `Tellma.Core.Jobs` | `JobWorker`, `TenantPoller`, `JobStatements`, `JobQueue`, `JobService`, `ScheduleService`, the Cronos scheduler, the retention and tree-verify handlers, the contribution realizers. Adds the `Cronos` 0.13.0 package reference to `Tellma.Core`. |
 | Composition | `Tellma.Core.Composition` | `CoreFeature` contributes the handlers, built-in schedules, notification types, the `job.changed` event, the stacks and the worker's hosted service. |
 | Tests | `test/core/Tellma.Core.Tests/Jobs/`, `test/core/Tellma.Core.IntegrationTests/Jobs/` | §16. |
@@ -123,7 +123,8 @@ statement's batch ordinal.
    step compare the token and the affected row count and `THROW 50422` on a mismatch, so nothing a
    handler wrote survives a lost lease.
 4. **The machinery never writes a business table.** Business rows reference jobs; the enqueue
-   statement sets that one column, inside the caller's transaction, and nothing else.
+   statement sets that one column inside the caller's transaction (a schedule-fired handler
+   supplies it on its own insert, §2.4), and nothing else.
 5. **Nudges are an optimisation, never a dependency.** Every job is processed within
    `MaxPollInterval` with no nudge at all.
 6. **Bookkeeping never touches audit columns.** `core.Jobs` carries no `ModifiedAt`; the
@@ -142,17 +143,18 @@ and parameter names use the reserved `@tb{b}_` prefix (`@tb{b}_claimed`, `@tb{b}
 | heartbeat-and-gap-hold, claim, tick step 1 (one poll round trip) | `Maintenance` | `None` | `false` | system tenant scope, no prologue |
 | renew | `Maintenance` | `None` | `false` | system tenant scope |
 | append (`IJobProgress.Append`) | the caller's | the caller's | `false` | the handler's chunk batch |
-| complete | `Persist` | `Auto` | `false` | the run-as user's scope, prologue and guard |
+| complete | `Persist` | `Auto` | `false` | the run-as user's scope, prologue and guard; the system tenant scope, completion statement only, when the run-as connect raises `TenantNotFoundException` (§8) |
 | tick step 2 | `Persist` | `Auto` | `false` | system tenant scope, `System` prologue |
 | enqueue | the caller's (`Persist`) | the caller's (`Auto`) | `false` | the caller's scope |
 
-`Maintenance` batches carry no connect prologue and no tag epilogue; none of the four job tables
-carries a version-tag attribute, so nothing here bumps a tag. A `None` batch autocommits each
-statement; the executor's whole-round-trip retry on a reported transient failure applies to it, and
-§6.8 states how the worker reconciles rows leased by a statement that committed before the failure.
-`READPAST` appears only beside `UPDLOCK, ROWLOCK` (a bare `READPAST` is a no-op under
-read-committed snapshot isolation, which is on by default on Azure SQL and off on-premises) and
-never under `SNAPSHOT` isolation (error 650): the executor runs these batches at `READ COMMITTED`.
+`Maintenance` batches carry no connect prologue, and their epilogue bumps only the tags their
+declared writes resolve to (spec 0011 §5.5); none of the four job tables carries a version-tag
+attribute, so nothing here bumps a tag. A `None` batch autocommits each statement; the executor's
+whole-round-trip retry on a reported transient failure applies to it, and §6.8 states how the
+worker reconciles rows leased by a statement that committed before the failure. `READPAST` appears
+only beside `UPDLOCK, ROWLOCK` (a bare `READPAST` is a no-op under read-committed snapshot
+isolation, which is on by default on Azure SQL and off on-premises) and never under `SNAPSHOT`
+isolation (error 650): the executor runs these batches at `READ COMMITTED`.
 
 ## 2. The job table and the `Job` entity
 
@@ -274,13 +276,15 @@ Spec 0011's capability interface, restated verbatim as consumed here:
 // Tellma.Core.Abstractions.Entities (spec 0011)
 public interface IJobEntity
 {
-    int? JobId { get; set; }                            // FK -> core.Jobs ON DELETE SET NULL; unique filtered index IX_<Table>_JobId WHERE JobId IS NOT NULL
+    int? JobId { get; set; }                            // server-owned; FK -> core.Jobs ON DELETE SET NULL; unique where not null
 }
 ```
 
-One business row is one job. The relation is set by the enqueue statement (§4.2) and cleared by
-retention (`SET NULL`); the machinery never writes the business table otherwise. Work that spans
-many rows is an arguments-only job whose handler queries the rows itself.
+One business row is one job. The relation is set by the enqueue statement (§4.2), or supplied by
+a schedule-fired handler that inserts its own row with `JobId` under `EnlistOptions.ServerOwned`
+(§14.1), and cleared by retention (`SET NULL`); the machinery never writes the business table
+otherwise. Work that spans many rows is an arguments-only job whose handler queries the rows
+itself.
 
 ### 2.5 Standalone table types
 
@@ -359,7 +363,7 @@ public sealed record JobBatch<TItem>
 public sealed record JobItem<TItem>
 {
     public Job Job { get; init; }
-    public TItem Item { get; init; }
+    public TItem? Item { get; init; }                  // null only for a schedule-fired row of a Schedulable entity-backed handler (§5.1)
     public CancellationToken CancellationToken { get; init; }
     public IJobProgress Progress { get; init; }
     public TArgs Arguments<TArgs>();                    // tolerant JSON
@@ -381,15 +385,15 @@ public sealed record JobError(string Code, string Message, string? Details);
 
 public enum JobCancellationReason { None, LeaseLost, CancelRequested, HostStopping }
 
-public sealed class JobFailedException(JobError Error) : TellmaException;   // fails every unmarked item permanently
+public sealed class JobFailedException(JobError Error) : Exception;         // fails every unmarked item permanently; never reaches a request
 ```
 
 | Member | Meaning |
 |---|---|
 | `JobBatch.Items` | The partition handed to this invocation (§3.5), in claim order. |
-| `JobBatch.Batch` | A `Persist` batch in the run-as scope. Statements the handler appends (`Sql` with declared writes, `Save`, `Update`, `Delete`) execute in the completion transaction after the completion statement (§5.6). Nothing appended here runs if the lease is lost. |
+| `JobBatch.Batch` | A `Persist` batch in the run-as scope. Statements the handler appends (`Sql` with declared writes, `Save`, `Update`, `Delete`) execute in the completion transaction after the completion statement (§5.6) and write unowned tables only: a table a stack owns is written by enlisting the rows with the job frame (§8; spec 0014 §13.3), whose groups the frame places on this batch, and a statement appended here that writes such a table is refused at append (spec 0014 §13.3). Nothing appended here runs if the lease is lost. |
 | `JobBatch.CancellationReason` | `None` until the batch token is cancelled; then the reason the handler's outcomes are mapped under (§3.4). |
-| `JobItem.Item` | The job itself for `IJobHandler`; the entity row for `IEntityJobHandler`. |
+| `JobItem.Item` | The job itself for `IJobHandler`; the entity row for `IEntityJobHandler`, `null` only for a schedule-fired row of a `Schedulable` entity-backed handler, whose handler inserts the row itself (§5.1, §14.1). |
 | `JobItem.CancellationToken` | Linked to the batch token; also cancelled when a renewal returns a `CancelRequestedAt` for this row. For a batch of one, item and batch tokens coincide. |
 | `JobItem.Arguments<TArgs>` | Deserializes `ArgumentsJson` with the platform JSON options: unknown members ignored, missing members defaulted; `null` when the column is null and `TArgs` is nullable, else a fresh default instance. |
 | `JobItem.State<TState>` | The last checkpoint written through `Report`, `Flush` or `Append`; `null` when none. |
@@ -433,9 +437,10 @@ The guarantee is at-least-once: a lost lease, a crashed instance, an ambiguous c
 a `Retry` re-runs the item, possibly on another instance, with `Attempts` incremented. A handler is
 correct when either every step is idempotent or it checkpoints through `StateJson` (`Report` +
 `Flush`, or `Append` inside its own transaction) and resumes from the checkpoint. Statements a
-handler appends to `JobBatch.Batch` are inside the completion transaction and therefore atomic with
-the outcome; side effects outside the database (an email sent, a file written) must be recorded in
-that transaction (the outbox row marked sent, the export's `FileId`) so a re-run can detect them.
+handler appends to `JobBatch.Batch` and the writes it enlists with the job frame (§8) are inside
+the completion transaction and therefore atomic with the outcome; side effects outside the database
+(an email sent, a file written) must be recorded in that transaction (the outbox row marked sent,
+the export's `FileId`) so a re-run can detect them.
 
 ### 3.7 Registration and the key grammar
 
@@ -529,8 +534,8 @@ round trip.
 ### 5.1 The claim
 
 One claim per registered handler key that has free concurrency slots on this instance for this
-tenant, all in the poll round trip (§6.3). `@tb{b}_p1 = min(BatchSize, free slots × BatchSize)`,
-never above 500.
+tenant, all in the poll round trip (§6.3); `@tb{b}_p1 = BatchSize` (§3.1), so one claim is one
+batch of at most 500 rows and a further free slot of the key fills on the next poll (§6.4).
 
 ```sql
 -- CLAIM (one per handler key with free slots; @tb{b}_p0 key, @tb{b}_p1 n <= 500, @tb{b}_p2 token, @tb{b}_p3 leaseSeconds, @tb{b}_p4 owner, @tb{b}_p5 MaxAttempts)
@@ -568,7 +573,10 @@ SELECT [j].* FROM [core].[Jobs] AS [j] INNER JOIN @tb{b}_claimed AS [c] ON [c].[
   the index and are walked as residual rows by every claim of that key; the cost is bounded by
   `MaxConcurrency × BatchSize` per instance.
 - A claimed entity-backed row whose join load returns no entity (the business row was deleted) is
-  completed `Cancelled` with `ErrorCode = 'entity_missing'` without invoking the handler.
+  completed `Cancelled` with `ErrorCode = 'entity_missing'` without invoking the handler. Exempt is
+  a schedule-fired row (`ScheduleId IS NOT NULL`) of a `Schedulable` entity-backed handler: it
+  carries no entity until the handler inserts the row itself (§14.1) and is invoked with
+  `Item = null`, the only case in which `JobItem.Item` is null.
 - The token `@tb{b}_p2` is a fresh `Guid` per claim statement; `@tb{b}_p4` is
   `<DeploymentIdentity.Application>/<instance id>/<process id>` (instance id =
   `WEBSITE_INSTANCE_ID` when set, else the machine name), truncated to 128 characters.
@@ -625,8 +633,10 @@ partially applied import chunk — rolls back with it under `XACT_ABORT`.
 
 One completion per handler invocation (per partition), in one `Persist` batch in the run-as scope
 (§8): the connect prologue of spec 0013 (`ForUser` or `System` variant) heads the batch; inside the
-transaction, after the platform's guard statements, the completion statement is the first statement,
-then the handler's appended statements, then the worker's notifications (§10), then the epilogue.
+transaction, after the platform's guard statements, the completion statement is the first
+statement, then the handler's appended statements, then the worker's notifications (§10), then the
+epilogue. A partition whose run-as connect raises `TenantNotFoundException` is completed in the
+system tenant scope by a batch that carries the completion statement only (§8).
 
 ```sql
 -- COMPLETE (one per batch, one READ COMMITTED transaction; the FIRST statement after the platform's guards, before the handler's statements
@@ -674,11 +684,14 @@ executes. The `OUTPUT` rows drive the instruments (§13) and the `job.changed` e
 ### 5.6 The completion transaction
 
 Contents, in order, all in one round trip: the prologue; `BEGIN TRAN` and the platform's guards;
-the completion statement; the handler's statements (which must declare their writes; distribution
-guards throw in the `50600–50699` band and surface as the batch's failure); one spec 0020
-`INotifier.Notify` per notification the worker raises (§10) and per `NotifyOnSuccess` request of an
-item that succeeded; the epilogue; `COMMIT`. Post-commit: `job.changed` for every completed row with
-a `RequestedById`, and the nudge when any outcome is `Retry` with a zero delay.
+the completion statement; the handler's statements (which must declare their writes and write
+unowned tables only, §3.3; distribution guards throw in the `50600–50699` band and surface as the
+batch's failure) and the groups of every write the handler enlisted with the job frame (§8; spec
+0014 §13.3), each group the target stack's emitter, `ContributeAsync` and effects, appended where
+the handler awaited `PersistAsync`; one spec 0020 `INotifier.Notify` per notification the worker
+raises (§10) and per `NotifyOnSuccess` request of an item that succeeded; the epilogue; `COMMIT`.
+Post-commit: the post-commit of every enlisted target (spec 0014 §13.2), `job.changed` for every
+completed row with a `RequestedById`, and the nudge when any outcome is `Retry` with a zero delay.
 
 Failure handling: a `Job.LeaseLost` fence maps to `LeaseLost` (nothing to do; another instance owns
 the rows); a reported transient failure re-runs the whole round trip through the executor's retry
@@ -688,8 +701,10 @@ the lease is left to lapse and the rows are re-claimed, which is why handlers ap
 statements or checkpoint (§3.6); a guard failure (`GuardPassed = false` because the run-as user's
 permissions changed during execution) is answered by applying the connect result and executing a
 fresh completion batch that carries only the completion statement with every item mapped to `Retry`
-(`RetryAfterSeconds = 0`) — the handler's statements are discarded and the work re-runs under the
-new permissions; any other failure logs at `Error` with the job ids and lets the lease lapse.
+(`RetryAfterSeconds = 0`) — the handler's statements and enlisted groups are discarded and the work
+re-runs under the new permissions; any other failure — a persist-time error inside an enlisted
+group included, attributed to its group by `StatementOrdinal` (spec 0014 §13.3) — logs at `Error`
+with the job ids and lets the lease lapse.
 
 ## 6. The worker
 
@@ -757,12 +772,12 @@ the row's `CancelRequestedAt`). `JobBatch.CancellationReason` names the cause th
 ### 6.7 Shutdown and drain
 
 `StoppingAsync`: stop polling; cancel every batch token with reason `HostStopping`; wait up to
-`DrainTimeout` (default 4 s, under the 5 s Linux App Service default) for handlers to return.
-Batches whose handler returned or never started are completed in one completion batch per
-partition with the outcomes of §3.4 (`Released` for untouched items); batches whose handler is
-still running keep their lease — it lapses and another instance reclaims — because releasing a row
-under a still-running handler is the one way to run a job twice concurrently. Handlers are then
-abandoned (§5.2).
+`DrainTimeout` (default 4 s; §12.1 bounds it below the host's 30 s `ShutdownTimeout` of §12.3) for
+handlers to return. Batches whose handler returned or never started are completed in one completion
+batch per partition with the outcomes of §3.4 (`Released` for untouched items); batches whose
+handler is still running keep their lease — it lapses and another instance reclaims — because
+releasing a row under a still-running handler is the one way to run a job twice concurrently.
+Handlers are then abandoned (§5.2).
 
 ### 6.8 Stray claims
 
@@ -860,8 +875,8 @@ only through the actions.
 |---|---|---|---|---|
 | `Id` | `int` | no | PK clustered | built-ins in the reserved band (§7.9) |
 | `Code` | `nvarchar(64)` | yes | `UX_Schedules_Code WHERE Code IS NOT NULL` | |
-| `Name` | `nvarchar(256)` | no | | |
-| `Name2`, `Name3` | `nvarchar(256)` | yes | | gated by tenant languages |
+| `Name` | `nvarchar(255)` | no | | |
+| `Name2`, `Name3` | `nvarchar(255)` | yes | | gated by tenant languages |
 | `HandlerKey` | `nvarchar(64)` | no | `IX_Schedules_HandlerKey` | |
 | `ArgumentsJson` | `nvarchar(max)` | yes | | ≤ 64 KB |
 | `CronExpression` | `nvarchar(128)` | no | | validated on save |
@@ -1012,7 +1027,7 @@ state change) plus a `ScheduleStates` update, appended to tick step 2's batch:
 
 | Cause | `PausedReason` | Notification |
 |---|---|---|
-| the run-as user is inactive at tick time | `OwnerInactive` | `core.schedule.paused` to administrators (`IAdministratorDirectory.GetAdministratorIds()`), target `core.Schedule`, arguments `{ scheduleId, name, reason }` |
+| the run-as user is inactive at tick time | `OwnerInactive` | `core.schedule.paused` to administrators (`IAdministratorDirectory.GetAdministratorIdsAsync()`), target `core.Schedule`, arguments `{ scheduleId, name, reason }` |
 | `GetNextOccurrence` returns null | `Exhausted` | the same, to the owner when it is a person, else administrators |
 
 Reactivation through `activate` clears `PausedReason` and recomputes `NextDueAt` from now (§7.8); a
@@ -1099,31 +1114,51 @@ a built-in's `CronExpression` and `TimeZoneId` and its names, nothing else (§7.
   original `RunAsUserId`, never the administrator's.
 - **The job scope.** Before invoking a handler the worker builds a `RequestContextSnapshot`
   (`TenantId`, `Kind = User` or `System`, `UserId = RunAsUserId`, `Subject` = the user's subject or
-  `"system"`, locale fields from the user's `PreferredLanguage`/`PreferredCalendar`/
-  `PreferredTimeZone` or the tenant defaults, `Client = "worker"` — a value of spec 0015's client
-  set that never reaches a request filter — and `TraceParent` = the job's) and
-  opens `ITenantScopeFactory.CreateScopeAsync(snapshot)`; `TenantUnavailableException` (the tenant
-  left `Active`) leaves the lease to lapse. Inside the scope the worker calls
-  `IUserConnector.ConnectAsUser(RunAsUserId)` (the `ForUser` prologue: tags and `IsActive`, no
-  activity stamp, no state flip) or `ConnectAsSystem()` for the system user. A run-as user who is
-  inactive completes the partition `Failed` with `ErrorCode = 'user_inactive'` without invoking the
-  handler; its schedule pauses at the next tick.
+  `"system"`, the platform-default locale fields, `Client = "worker"` — a value of spec 0015's
+  client set that never reaches a request filter — and `TraceParent` = the job's when the partition
+  holds one job, else null: log-correlation data that fills `RequestContext.OriginTraceParent`, spec
+  0010 §4.1, while the links of §9 carry every job) and opens
+  `ITenantScopeFactory.CreateScopeAsync(snapshot)` (spec 0010 §4.4) inside the `process <key>`
+  activity of §9; `TenantUnavailableException` (the tenant left `Active`) leaves the lease to lapse.
+  The scope factory runs the connect initializer — `IUserConnector.ConnectAsUser(RunAsUserId)` (the
+  `ForUser` prologue: tags and `IsActive`, no activity stamp, no state flip) or `ConnectAsSystem()`
+  for the system user — and resolves the locale fields from the user's `PreferredLanguage`/
+  `PreferredCalendar`/`PreferredTimeZone` or the tenant defaults (spec 0012 §9.3), so a handler
+  invocation pays one connect. A run-as user who is inactive fails the connect with
+  `TenantNotFoundException` (spec 0013 §7.6): the handler is not invoked, and the partition's
+  completion — every item `Failed` with `ErrorCode = 'user_inactive'` — is written in the system
+  tenant scope (`ConnectAsSystem()`) by a batch that carries the completion statement (§5.4) only,
+  as the exhausted pass of §5.1 fails its rows without opening a run-as scope: each row raises
+  `core.job.failed` (§10) in a separate `Persist` batch under the system user and counts
+  `tellma.jobs.completed{outcome=failed}`; the schedule pauses at the next tick (§7.7).
+- **The job frame.** Around each `ExecuteAsync` the worker opens the frame of spec 0014 §13.3
+  — the scoped `IWriteHost` of the job scope, `Kind = Job`, `Operation = "job:<key>"` — bound to
+  the partition's completion batch. A handler that writes rows a stack owns implements
+  `IEnlists<TTarget>` and enlists them with the frame; its `PersistAsync` places every group on
+  `JobBatch.Batch` after the completion statement (§5.6), so the rows commit with the outcome and
+  never survive a lost lease. The run-as scope authorises the frame; an enlisted group carries no
+  decision of its own (spec 0013 §5.3). A `ValidationException` from `PersistAsync` surfaces
+  inside `ExecuteAsync` and follows §3.4 unless the handler marks the item.
 - **Permissions at run time.** Handlers evaluate permissions through spec 0013's
-  `IAccessEvaluator.Evaluate(resource, action)` exactly as a request does, so a schedule can never
-  read more than its owner may read today. Handlers of system jobs never read data on behalf of a
-  person: they operate on platform tables or on data the tenant as a whole owns.
+  `IAccessEvaluator.EvaluateAsync(resource, action, bespoke)` exactly as a request does, so a
+  schedule can never read more than its owner may read today. Handlers of system jobs never read
+  data on behalf of a person: they operate on platform tables or on data the tenant as a whole owns.
 - **`DataAccessScope`** is fresh per invocation (`Operation = "job:<key>"`) so the round-trip
   budget instruments cover jobs.
 
 ## 9. Trace linkage and logging
 
-- `Enqueue` stores the enqueuing activity's `traceparent` (§4.3). The worker starts every handler
-  invocation as a **new root** activity — `ActivitySource("Tellma.Jobs").StartActivity("process
-  <key>", ActivityKind.Consumer, parentContext: default, tags, links)` with one `ActivityLink` per
-  claimed row that has a `TraceParent` — so the enqueuing request's trace closes when the request
-  does and its sampling decision does not decide the job's. The claim is a `Client` span
-  `receive <key>` and the completion a `Client` span `settle <key>`, both children of the poll or
-  process activity.
+- `Enqueue` stores the enqueuing activity's `traceparent` (§4.3). The worker owns one activity per
+  handler invocation: it clears `Activity.Current`, then starts `process <key>` as a **true root**
+  — `ActivitySource("Tellma.Core").StartActivity("process <key>", ActivityKind.Consumer,
+  parentContext: default, tags, links)` with one `ActivityLink` per claimed row that has a
+  `TraceParent` — so the enqueuing request's trace closes when the request does and its sampling
+  decision does not decide the job's. The job scope (§8) is opened inside it, so the connect, the
+  handler and the data spans nest under `process <key>`; the completion is its child `Client` span
+  `settle <key>`. The claim is a `Client` span `receive <key>` under the activity the worker starts
+  for each poll round trip (§6.3). A partition of several jobs has a null snapshot `TraceParent` and
+  the links carry the detail; the snapshot's `TraceParent` only ever fills
+  `RequestContext.OriginTraceParent` (spec 0010 §4.1) and never parents or links anything.
 - Tags are bounded: `messaging.system = "tellma.jobs"`, `messaging.destination.name = <key>`,
   `messaging.operation.name ∈ { receive, process, settle }`, `messaging.batch.message_count`,
   `tellma.jobs.attempt`. Tenant id, job ids and user id go to the log scope, never to tags or
@@ -1142,14 +1177,14 @@ Notification types this spec registers through spec 0010's `FeatureContribution.
 |---|---|---|---|---|---|
 | `core.job.failed` | false | `core.Job` | a completion or exhausted pass ends `Failed` | `RequestedById`, else administrators | `{ handlerKey, errorCode, errorMessage }` |
 | `core.job.held` | false | `core.Job` | the gap hold | `RequestedById`, else administrators | `{ handlerKey, dueAt }` |
-| `core.schedule.paused` | true | `core.Schedule` | §7.7 | the owner, else administrators | `{ scheduleId, name, reason }` |
+| `core.schedule.paused` | true | `core.Schedule` | §7.7 | `Exhausted`: the owner when a person, else administrators; `OwnerInactive`: administrators | `{ scheduleId, name, reason }` |
 | `core.scheduler.gap` | false | none | §6.10; `DedupKey = 'core.scheduler.gap'` | administrators | `{ previousTickAt, now, heldCount }` |
 
 Notifications ride the completion or tick batch through spec 0020's `INotifier.Notify(batch,
-requests)` (restated members: `NotificationRequest(Type, RecipientIds, Arguments, TargetResource,
-TargetId, ActorUserId, DedupKey)`); the poll's post-processing uses its own `Persist` batch under
+requests)` with `NotificationRequest`s of spec 0020 §3.1 (the gap notification relies on the
+default `OnDuplicate = Suppress`); the poll's post-processing uses its own `Persist` batch under
 the system user. Administrators come from spec 0013's
-`IAdministratorDirectory.GetAdministratorIds()`.
+`IAdministratorDirectory.GetAdministratorIdsAsync()`.
 
 The hub event `job.changed { jobId }` is registered through `FeatureContribution.ClientEvent` and
 published through spec 0020's `IClientEventPublisher.Publish(batch, ClientEvent(Name, UserIds,
@@ -1169,7 +1204,7 @@ public class JobService : EntityService<Job>            // Operations = Query | 
     public Task RetryAsync(ActionContext<Job, int> context);            // [EntityAction] "retry", action Retry
     public Task CancelAsync(ActionContext<Job, int> context);           // [EntityAction] "cancel", action Cancel, destructive
     public Task ResumeAsync(ActionContext<Job, int> context);           // [EntityAction] "resume", action Resume
-    public Task<IReadOnlyDictionary<int, string?>> ErrorDetailsAsync(IdsRequest request);   // [ApiAction] "error-details", action Diagnose; the only reader of Jobs.ErrorDetails
+    public Task<IReadOnlyDictionary<int, string?>> ErrorDetailsAsync(IdsRequest request);   // [ApiAction] "error-details", action Diagnose, Idempotent = true, Mutation = false; the only reader of Jobs.ErrorDetails
 }
 ```
 
@@ -1210,10 +1245,12 @@ UPDATE [j] SET [Status] = 'Pending', [DueAt] = @tb{b}_now,
 FROM [core].[Jobs] AS [j] INNER JOIN @tb{b}_t0 AS [i] ON [i].[Id] = [j].[Id];
 ```
 
-Each action runs in one `Persist` batch through the pipeline's action path (pre-check under the
-caller's `Read` filter, then the statement over the visible ids, then the post-check); `retry` and
-`resume` nudge the local poller after commit. Actions are `Idempotent = true` for MCP exposure
-except `cancel` (`Destructive = true`).
+Each action runs through the pipeline's general action path (spec 0014 §11.2): RT1 loads the
+targets under the action's own grant filter and evaluates the precondition, RT2 appends the
+statement over the loaded ids to the `Persist` batch; no post-check. `retry` and `resume` nudge
+the local poller after commit. `retry`, `resume` and `error-details` are `Idempotent = true`
+(retry-safe, spec 0015 §2.2); `cancel` is `Destructive = true`; the three write actions keep the
+default `Mutation = true`.
 
 ### 11.2 Securables
 
@@ -1283,14 +1320,16 @@ able to reach every tenant database; there is no worker-to-tenant affinity.
 ## 13. Telemetry
 
 Constants in `JobsTelemetryNames` (`Tellma.Core.Abstractions.Jobs`); meter `Tellma.Core`;
-`ActivitySourceName = "Tellma.Jobs"`. Tags: `handler` (bounded by the registry), `outcome ∈
+`ActivitySourceName = "Tellma.Core"`. Tags: `handler` (bounded by the registry), `outcome ∈
 { succeeded, retry, failed, released, cancelled, lease_lost, held }`, `policy ∈ { coalesce,
 replay_all, skip }`. The tenant is never a tag.
 
 ```csharp
 // Tellma.Core.Abstractions.Jobs
-public static class JobsTelemetryNames                  // MeterName = "Tellma.Core"; ActivitySourceName = "Tellma.Jobs"
+public static class JobsTelemetryNames
 {
+    public const string MeterName = "Tellma.Core";
+    public const string ActivitySourceName = "Tellma.Core";
     public const string Claimed = "tellma.jobs.claimed";
     public const string Completed = "tellma.jobs.completed";
     public const string Duration = "tellma.jobs.duration";
@@ -1337,32 +1376,44 @@ tenant.
 ### 14.1 Export (spec 0018)
 
 The `core.export` handler is `IEntityJobHandler<Export>` with `[JobHandler("core.export",
-BatchSize = 1, LeaseSeconds = 600, MaxAttempts = 3, Schedulable = true)]`. The export operation,
-when it decides on background work, inserts the `Export` row and enqueues in the same persist batch
-with `Entity` = the row and `RunAsUserId = RequestedById` = the caller, returning
-`JobAccepted(JobId, ExportId)`. The handler re-evaluates `Read` on the resource in the job scope,
+BatchSize = 1, LeaseSeconds = 600, MaxAttempts = 3, Schedulable = true)]` and implements
+`IEnlists<Export>`. The export operation, when it decides on background work, enlists the `Export`
+row in the invoker's frame and awaits `PersistAsync`; `ExportService.ContributeAsync` enqueues
+every new row whose `JobId` is null with `Entity` = the row and `RunAsUserId = RequestedById` =
+the caller, so the row and its job commit together and the operation returns `JobAccepted(JobId,
+ExportId)` (spec 0018 §12.2). The handler re-evaluates `Read` on the resource in the job scope,
 streams the query in pages, reports progress per page, stages the workbook through spec 0016's
-`IBlobService`, saves `Export.FileId` and `RowCount` through `ExportService.SaveAsync` in a persist
-round trip of its own (its blob effect confirms the staged file), and calls `NotifyOnSuccess` with
-`core.export.ready` (target `core.Export`, id = the export), which rides the completion batch. A
-user schedule naming `core.export` carries the request in `ArgumentsJson`; the fired job's handler
-inserts the `Export` row itself as `RunAsUserId` and links it through `IDataBatch.Update` (`JobId`,
-`Stamp = false`) on the completion batch.
+`IBlobService`, enlists with the job frame (§8) an update of the claimed row carrying `FileId`,
+`FileName` and `RowCount` (`Concurrency = Check` against the stamp the claim loaded), and calls
+`NotifyOnSuccess` with `core.export.ready` (target `core.Export`, id = the export): the update, the
+confirmation of the staged file by its blob effect and the notification ride the completion batch,
+one round trip atomic with the outcome, so a lost lease leaves no `FileId` behind (spec 0018
+§12.3). A user schedule naming `core.export` carries the request in `ArgumentsJson`; the fired
+job's handler runs with `Item = null` (§5.1) and enlists one insert of the `Export` row at the end
+of the run, `FileId` set and `JobId = Job.Id` under `ServerOwned = [nameof(Export.JobId)]`, which
+`ContributeAsync` skips, so the row commits with the outcome already linked to its job.
 
 ### 14.2 Import (spec 0018)
 
 `core.import`: `IEntityJobHandler<Import>`, `[JobHandler("core.import", BatchSize = 1,
-LeaseSeconds = 600, MaxAttempts = 1)]` — a partially committed import must never re-run blindly; a
-crash mid-import surfaces as `attempts_exhausted` and `core.import.failed`. The handler commits per
-chunk through its own `Persist` batches and checkpoints the chunk index with
-`IJobProgress.Append(batch, …)` inside each chunk's transaction, so a `Job.LeaseLost` fence rolls
-the chunk back with the checkpoint. The staged upload's TTL (24 h) exceeds the queue-latency budget.
+LeaseSeconds = 600, MaxAttempts = 1)]`, implementing `IEnlists<Import>` — a partially committed
+import must never re-run blindly; a crash mid-import surfaces as `attempts_exhausted` and
+`core.job.failed` (§10). The handler commits each chunk through the target stack's front door,
+`SaveAsync` in a `Persist` batch of its own (the handler is a host, not a participant of a
+pipeline, spec 0014 §13.3), and checkpoints the chunk index with `IJobProgress.Append(batch, …)`
+inside each chunk's transaction, so a `Job.LeaseLost` fence rolls the chunk back with the
+checkpoint. The completion columns — `ResultFileId`, `RowCount`, `ErrorCount` — are an enlisted
+update of the claimed `Import` row with the job frame (§8) on the completion batch, one round trip
+atomic with the outcome (spec 0018 §12.4, §12.6). The enqueue transaction attaches the staged
+upload to the `Import` row (spec 0018 §12.2), so queue latency is not bounded by the staging TTL.
 
 ### 14.3 Blob sweep and reconcile (spec 0016)
 
 `core.blob-sweep` (every 15 minutes) and `core.blob-reconcile` (weekly) are arguments-only
-`IJobHandler`s shipped by the blob feature, running as the system user with `Report` progress per
-page of 500. They are the reference shape for a maintenance handler: idempotent, paged, bounded.
+`IJobHandler`s shipped by the blob feature, running as the system user: the sweep pages by
+`BlobOptions.SweepBatchSize` and reports progress per page, the reconcile runs one `Maintenance`
+batch per registered kind (spec 0016 §7.1, §7.2). They are the reference shape for a maintenance
+handler: idempotent and bounded.
 
 ### 14.4 Retention (this spec)
 
@@ -1397,8 +1448,9 @@ nothing is deleted post-commit.
 
 `core.tree-verify` (`0 1 * * 0`): for every tree table in the model, one `Maintenance` round trip
 running spec 0011's tree recount statement in whole-table scope, `Idempotent = true`, as the system
-user; repaired rows count on spec 0011's `tellma.data.tree.repairs`. The weekly pass is the
-backstop for the per-save affected-set recount.
+user; repaired rows count on spec 0011's `tellma.data.tree.repairs` and a non-zero count logs its
+`TreeVerify.Repaired` at Warning. The weekly pass is the backstop for the per-save affected-set
+recount.
 
 ### 14.6 The email outbox (the outbox spec)
 
@@ -1419,11 +1471,10 @@ five standalone table types; the model configuration for the four tables (the `E
 shadow column, the filtered indexes, `LOCK_ESCALATION = DISABLE`, `HasData` rows); the
 `JobWorker` hosted service (when `Enabled`); `JobsOptions`.
 
-Realized-gate checks (`IStartupCheck`s named `jobs.handlers`, `jobs.schedules`): duplicate or
-malformed keys, option ranges, entity-backed handlers over unmapped or non-`IJobEntity` types,
-`core.` keys outside `CoreFeature`, built-in schedules whose cron fails to parse or whose key has no
-handler (a warning, not a failure — a schedule for a handler another host runs is legal), and
-`JobsOptions` ranges.
+The handler realizer's checks (§3.7) and the `JobsOptions` bounds (§12.1) report into the
+composition gate. Realized-gate checks (`IStartupCheck`s named `jobs.handlers`, `jobs.schedules`):
+built-in schedules whose cron fails to parse (`jobs.schedules`) or whose key has no handler
+(`jobs.handlers`; a warning, not a failure — a schedule for a handler another host runs is legal).
 
 Illustration (a distribution registering a handler and a nightly schedule for it):
 
@@ -1447,18 +1498,20 @@ the worker under a fake `TimeProvider` — adaptive interval doubling and reset,
 handlers completed `Released`, running handlers left leased, the abandonment warning); Cronos
 policies with fixed zones and DST transitions (`Coalesce`, `ReplayAll` with the catch-up window,
 `Skip`'s window, exhaustion, the gap degradation); the statement text of §4–§7 and §11.1 as golden
-files; `JobsTelemetryNames` against `infra/monitoring/`; the composition checks of §15 with the
-`TellmaComposition.Validate` host-free entry point.
+files; `JobsTelemetryNames` against `infra/monitoring/`; the composition checks of §15, each
+`IStartupCheck` invoked directly over a composed service provider.
 
 Integration suite pins, on a fixture tenant database: the claim under contention from two
 connections (disjoint sets, order by `DueAt, Id`, the exhausted pass), the filtered-index seek plan
-for the claim (the plan test; its failure is the review flag of §6 alternative index shape); renew
+for the claim (the plan test; its failure flips review flag 4 on the index shape of §2.1); renew
 fencing (a reclaimed row is absent from the output); append and complete fencing (`Job.LeaseLost`
-rolls back the handler's statements); `Released` un-counting; `entity_missing`; the gap hold and
-the heartbeat throttle; tick step 1 leasing and step 2's overlap predicate, the tick-lease fence,
-`sp_sequence_get_range` id assignment, and the `ScheduleStates` advance; enqueue riding a persist
-batch with `Entity` (the owner's `JobId` set in the same transaction, ids in request order, the
-post-commit nudge observed); the job actions' preconditions; the schedule validator codes and
+rolls back the handler's statements and the groups it enlisted with the job frame, §8); an
+enlisted group's rows committing with the outcome in the one completion round trip; `Released`
+un-counting; `entity_missing`; `user_inactive` (the system-scope completion of §8); the gap hold
+and the heartbeat throttle; tick step 1 leasing and step 2's overlap predicate, the tick-lease
+fence, `sp_sequence_get_range` id assignment, and the `ScheduleStates` advance; enqueue riding a
+persist batch with `Entity` (the owner's `JobId` set in the same transaction, ids in request order,
+the post-commit nudge observed); the job actions' preconditions; the schedule validator codes and
 `take-over`; retention paging and `SET NULL`; the stray-claims rule of §6.8 (a forced retry of a
 poll leaves no double execution). An end-to-end test runs a fixture handler through enqueue, claim,
 progress, completion and `job.changed` with in-memory `INotifier` and `IClientEventPublisher`
@@ -1527,6 +1580,10 @@ The load-bearing decisions, where not already evident above:
     keep a request trace open for hours or inherit its sampling decision (§9).
 16. **`ErrorDetails` behind `Diagnose`** — stack traces never travel in the standard read shape
     (§2.3, §11.1).
+17. **A handler writes a stack-owned table only by enlisting with the job frame** — the target's
+    pipeline runs as a participant of the completion transaction, so a `FileId`, a completion
+    column or a schedule-fired row's `JobId` commits with the outcome in the one completion round
+    trip, and no second write path into a stack exists (§3.3, §5.6, §8; spec 0014 §13.3).
 
 ## Review flags
 

@@ -18,10 +18,10 @@ stack (spec 0017) each depend on a change to that server that no tenant-side spe
 of those specs excludes the change from its own definition of done.
 
 This spec collects the changes: seven deltas to spec 0003, each stated once with the behaviour it
-replaces and the test that proves it. Nothing else about the server changes. Every rule of spec
-0003 not named here stands: PKCE S256 required, `iss` in authorization responses, refresh-token
-rotation with reuse detection, exact redirect-URI matching, no wildcard trust, and no CORS policy on
-the server's endpoints.
+replaces and, where the delta is code rather than seed configuration, the test that proves it.
+Nothing else about the server changes. Every rule of spec 0003 not named here stands: PKCE S256
+required, `iss` in authorization responses, refresh-token rotation with reuse detection, exact
+redirect-URI matching, no wildcard trust, and no CORS policy on the server's endpoints.
 
 The order below is the implementation order. The `Distribution` seed kind (§2) unblocks the
 reference distribution's in-proc identity mode; per-tenant resources (§3) and client ID metadata
@@ -39,7 +39,8 @@ optional; `existingOnly` (§8) unblocks sandbox invites.
   copy the accepted resource into `aud`.
 - Support OAuth client ID metadata documents for public and `private_key_jwt` clients, and
   advertise `none` among the token-endpoint authentication methods.
-- Seed the interim native clients hosted coding agents use until metadata documents ship.
+- Seed the interim `Native` clients coding agents use until metadata documents ship: three with
+  loopback redirects for local agents, two with the vendors' callback URIs for hosted agents.
 - Grant the control-plane client each distribution's origin so its tokens carry a distribution
   audience.
 - Stamp `tellma_kind` on every access token.
@@ -63,7 +64,7 @@ so a block is never pasted into code.
 
 | Project | Location | Change |
 |---|---|---|
-| `Tellma.Identity` (the engine) | `src/apps/Tellma.Identity/` | the seed kind and descriptor (§2), resource evaluation (§3), the metadata-document resolver and discovery changes (§4), the seeded interim clients (§5), the control-plane grants (§6), the claim (§7), the invite flag (§8) |
+| `Tellma.Identity` (the engine) | `src/apps/Tellma.Identity/` | the seed kind and descriptor (§2), resource evaluation (§3), the metadata-document resolver and discovery changes (§4), the control-plane grants (§6), the claim (§7), the invite flag (§8) |
 | `Tellma.Identity.Migrations` | `src/apps/Tellma.Identity.Migrations/` | none: no table changes; metadata documents are cached in memory |
 | `Tellma.Identity.Web` | `src/apps/Tellma.Identity.Web/` | configuration only (§4, §5, §6) |
 | Tests | `test/apps/Tellma.Identity.Tests`, `test/apps/Tellma.Identity.IntegrationTests` | §9 |
@@ -198,15 +199,15 @@ an in-proc host sets them in code where spec 0010 §5.7 configures the engine.
 
 ## 5. Interim native clients
 
-Until §4 has served production traffic for one release, the platform configuration seeds three
-`Native` clients — `claude-code`, `codex`, `cursor` — with port-less loopback redirect URIs, the
-`tellma_api` scope, and `Resources` holding every distribution origin, which onboarding maintains;
-and two public web clients — `claude-web` and `codex-web` — for hosted Claude and hosted Codex,
-whose redirect URIs are the vendors' published callback URIs carried by the seed entry and whose
-client ids an organisation enters in the vendor's connector dialog. After that release the five
-entries are removed from the platform configuration and an operator deletes the five applications
-from the identity store — the seeder never deletes an application (§2) — after which a client that
-presents one of the ids receives `invalid_client`.
+Until §4 has served production traffic for one release, the platform configuration seeds five
+`Native` entries (§2's kind; public, PKCE, `tellma_api`, `Resources` holding every distribution
+origin, which onboarding maintains): three — `claude-code`, `codex`, `cursor` — with port-less
+loopback redirect URIs for local agents, and two public web clients — `claude-web` and `codex-web` —
+for hosted Claude and hosted Codex, whose redirect URIs are the vendors' published callback URIs
+carried by the entry's `RedirectUris` and whose client ids an organisation enters in the vendor's
+connector dialog. After that release the five entries are removed from the platform configuration
+and an operator deletes the five applications from the identity store — the seeder never deletes an
+application (§2) — after which a client that presents one of the ids receives `invalid_client`.
 
 ## 6. Control-plane grants
 
@@ -253,7 +254,7 @@ validation code.
 | Suite | Tier | Pins |
 |---|---|---|
 | `test/apps/Tellma.Identity.Tests` | unit | The resource evaluator's vectors (`origin` exact; `origin/17/mcp` accepted; `origin/017/mcp`, `origin/17/mcp/`, `origin/17/other`, `origin/17/mcp?x`, `other-origin/17/mcp` and `origin/0/mcp` refused; a granted resource with a path never anchors the pattern; a document client's `resource` evaluated against the distribution-origin list of §4, an origin outside that list refused); document validation vectors (`client_id` mismatch, missing redirects, `client_secret_basic`, inline `jwks`, off-origin `jwks_uri`, loopback port relaxation); fetch guards against a fake handler (private address, redirect, oversize, wrong content type, timeout); cache clamping; the seed descriptor of a `Distribution` entry (both applications, all permissions, idempotence, secret rotation, never deleting); `tellma_kind` by grant type; `existingOnly` outcomes. |
-| `test/apps/Tellma.Identity.IntegrationTests` | `Category=Integration` | The full code flow of a document client against a local document server, with consent showing the host; `resource=origin/17/mcp` through code exchange and refresh with `aud` asserted, a refresh to `origin/18/mcp` refused, a refresh to `origin` refused; a control-plane token with a distribution audience; a `Distribution` seed applied twice; the bulk invite with mixed `existingOnly` items asserting no mail queued for them. |
+| `test/apps/Tellma.Identity.IntegrationTests` | `Category=Integration` | The full code flow of a document client against a local document server, with consent showing the host; `resource=origin/17/mcp` through code exchange and refresh with `aud` asserted, a refresh to `origin/18/mcp` refused, a refresh to `origin` refused; a control-plane token with a distribution audience; a `Distribution` seed applied twice; the bulk invite with mixed `existingOnly` items asserting no mail queued for them; the discovery document advertising `client_id_metadata_document_supported: true` and `none` among `token_endpoint_auth_methods_supported`. |
 
 Both tiers run on Windows and Linux; the pull-request tier runs the unit suite, the nightly tier
 both.
@@ -266,9 +267,9 @@ both.
   configuration carried by the `Tellma.Identity.Web` row of §1 and is not pinned by a suite; the
   discovery document changes of §4 asserted.
 - **Observability**: audit events `client.metadata.fetched`, `client.metadata.rejected` (reason),
-  `resource.refused` (client, requested), `seed.distribution.applied`; the existing
-  `tellma.identity.*` meters gain `outcome` tags for document fetches. No `client_id` URL is a
-  metric tag.
+  `resource.refused` (client, requested), `seed.distribution.applied`; the counter
+  `tellma.identity.client_metadata.fetches` (tag `outcome` ∈ `fetched | rejected | failed`) on the
+  `Tellma.Identity` meter. No `client_id` URL is a metric tag.
 - **CI**: pull-request tier green on both platforms; the nightly integration suite green.
 - **Docs**: the architecture document's identity section updated for metadata-document support,
   per-tenant resources by path pattern, the `Distribution` seed kind and the control-plane grants.
