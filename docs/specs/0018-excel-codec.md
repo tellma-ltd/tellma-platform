@@ -1095,7 +1095,7 @@ sequence `core.sq_Exports`.
 | `Kind` | `varchar(9)` | no | | `Display` / `ForImport` |
 | `RequestJson` | `nvarchar(max)` | yes | | the serialized request; ≤ 64 KB |
 | `FileName` | `nvarchar(255)` | yes | | §4.3; the blob file-name length of spec 0016 §3.5 |
-| `FileId` | `int` | yes | `FK_Exports_FileId → core.Blobs`, `IX_Exports_FileId` | `[BlobReference("export-file", Attachment, ReadAccess = OwnerRead)]` |
+| `FileId` | `int` | yes | `FK_Exports_FileId → core.Blobs`, `UX_Exports_FileId WHERE FileId IS NOT NULL` | `[BlobReference("export-file", Attachment, ReadAccess = OwnerRead)]` |
 | `RowCount` | `int` | yes | | data rows written |
 | `ExpiresAt` | `datetimeoffset(3)` | no | `IX_Exports_ExpiresAt (ExpiresAt)` | set on insert from `RequestContext.Now` plus `ExportFileRetentionDays` |
 | `JobId` | `int` | yes | `FK_Exports_JobId → core.Jobs ON DELETE SET NULL`, `UX_Exports_JobId WHERE JobId IS NOT NULL` | |
@@ -1109,8 +1109,8 @@ sequence `core.sq_Exports`.
 | `Resource` | `varchar(128)` | no | | |
 | `Mode` | `varchar(8)` | no | | `Insert` / `Update` / `Upsert` |
 | `RequestJson` | `nvarchar(max)` | yes | | the serialized request; ≤ 64 KB |
-| `FileId` | `int` | yes | `FK_Imports_FileId → core.Blobs`, `IX_Imports_FileId` | `[BlobReference("import-file", Attachment, ReadAccess = OwnerRead)]`; the uploaded workbook |
-| `ResultFileId` | `int` | yes | `FK_Imports_ResultFileId → core.Blobs`, `IX_Imports_ResultFileId` | `[BlobReference("import-result", Attachment, ReadAccess = OwnerRead)]`; the `ImportOutcome` or `ImportException` as JSON |
+| `FileId` | `int` | yes | `FK_Imports_FileId → core.Blobs`, `UX_Imports_FileId WHERE FileId IS NOT NULL` | `[BlobReference("import-file", Attachment, ReadAccess = OwnerRead)]`; the uploaded workbook |
+| `ResultFileId` | `int` | yes | `FK_Imports_ResultFileId → core.Blobs`, `UX_Imports_ResultFileId WHERE ResultFileId IS NOT NULL` | `[BlobReference("import-result", Attachment, ReadAccess = OwnerRead)]`; the `ImportOutcome` or `ImportException` as JSON |
 | `RowCount` | `int` | yes | | parent rows in the file |
 | `ErrorCount` | `int` | yes | | `TotalErrors` of a failed import; 0 on success |
 | `ExpiresAt` | `datetimeoffset(3)` | no | `IX_Imports_ExpiresAt (ExpiresAt)` | set on insert from `RequestContext.Now` plus `ImportFileRetentionDays` |
@@ -1541,7 +1541,8 @@ The load-bearing decisions, where not already evident above:
     routinely exceeds `MaxReportedErrors` in telemetry.
 12. **By-query editable export in pages, children fetched per page of parent ids** (§5.2) versus
     one round trip by re-anchoring the parent filter through the child's parent navigation
-    (spec 0013's reserved `FilterTree.Via`). Flips when `Via` ships.
+    (`FilterTree.Via`, spec 0011 §11.2). Flips when a measured export shows the per-page child
+    fetch dominating.
 13. **One read round trip per lookup** (§1.4, §10.1) — `IExcelRowSource.Rows` takes one query —
     versus a `Rows(list<ExcelQuery>)` overload batching every lookup into one round trip with
     `NextResult()`. Flips on `tellma.excel.import.lookups` showing wide reference fans (more than

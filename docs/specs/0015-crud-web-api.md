@@ -161,6 +161,8 @@ public sealed class TellmaApiOptions
     public int AnonymousRequestsPerMinutePerIp { get; set; } = 60;
     public int ConcurrentExportsPerUser { get; set; } = 2;
     public int ConcurrentImportsPerUser { get; set; } = 1;
+    public int ConcurrentBlobReadsPerTenant { get; set; } = 32;
+    public int BlobReadQueuePerTenant { get; set; } = 256;
     public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromSeconds(30);
     public TimeSpan LongRequestTimeout { get; set; } = TimeSpan.FromMinutes(5);
     public bool EnableCompression { get; set; } = true;
@@ -1240,6 +1242,7 @@ All partitions are per instance (`System.Threading.RateLimiting`; `UseRateLimite
 | `tellma-tenant` | `{tenantId}` | `ConcurrentRequestsPerTenant` 64 concurrent, queue 0 — a burst on one tenant must not exhaust the instance for others, and because the SQL pool is per connection string this also bounds pool waits |
 | `tellma-anonymous` | client IP | `AnonymousRequestsPerMinutePerIp` 60, fixed window (PRM documents, distribution-info, strings, health, OpenAPI, BFF login) |
 | `tellma-export` / `tellma-import` | `{tenantId}:{sub}` | `ConcurrentExportsPerUser` 2 / `ConcurrentImportsPerUser` 1 concurrent |
+| `tellma-blobs` | `{tenantId}` | `ConcurrentBlobReadsPerTenant` 32 concurrent, queue `BlobReadQueuePerTenant` 256 oldest-first — the blob `GET` alone (spec 0016 §5.3); a cold-cache tile grid over HTTP/2 opens up to a hundred streams at once, and a queued request waits instead of failing, because a browser never retries an `<img>` |
 | `tellma-mcp` | `{tenantId}:{sub}` | `ToolCallsPerMinutePerUser` 120, sliding window |
 
 Idle partitions are disposed by the limiter's own timer, which bounds memory for per-user keys.
@@ -1280,13 +1283,15 @@ blob GET's `ETag`/immutable caching is spec 0016's.
 Spec 0016's two endpoints are mapped by `MapTellma` onto the `Blobs` group. `POST
 /{tenantId}/blobs/{kind}?fileName=` carries `MemberEndpointMetadata`, `AcceptsBinaryMetadata`,
 `TenantEndpointMetadata(Blobs, IsMutation = true)`, the `Tellma-Client` requirement (a script or
-the SPA uploads; a browser form cannot) and the `tellma-long` timeout; it calls
-`IBlobService.StageAsync` and returns `BlobDescriptor` (201). `GET /{tenantId}/blobs/{kind}/{id}`
-carries `MemberEndpointMetadata` and `TenantEndpointMetadata(Blobs, IsMutation = false)`, is
-exempt from `Tellma-Client` (§5.3), calls `IBlobService.ResolveAsync` (which applies the kind's
-read access), and answers through `Results.Stream` with the `ETag`, `Content-Type`,
-`Content-Disposition` and `Cache-Control` headers of spec 0016 §5.3 and 304 on `If-None-Match`; a
-`null` resolution is 404 `not-found`. Staging ids travel inside entity JSON as ordinary `int?`
+the SPA uploads; a browser form cannot), the `Web` group's rate policies `tellma-user` and
+`tellma-tenant` (§1.2) and the `tellma-long` timeout; it calls `IBlobService.StageAsync` and
+returns `BlobDescriptor` (201). `GET /{tenantId}/blobs/{kind}/{id}` carries
+`MemberEndpointMetadata`, `TenantEndpointMetadata(Blobs, IsMutation = false)` and the rate policy
+`tellma-blobs` (§8.2), neither `tellma-user` nor `tellma-tenant`; it is exempt from
+`Tellma-Client` (§5.3), calls `IBlobService.ResolveAsync` (which applies the kind's read access),
+and answers through `Results.Stream` with the `ETag`, `Content-Type`, `Content-Disposition` and
+`Cache-Control` headers, 304 on `If-None-Match` and range processing of spec 0016 §5.3; a `null`
+resolution is 404 `not-found`. Staging ids travel inside entity JSON as ordinary `int?`
 properties.
 
 ### 9.2 The hub
