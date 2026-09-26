@@ -84,7 +84,7 @@ full feature-composition design.
 - **The hub, its groups and events** (spec 0020); this spec defines the listeners the hub
   implements and the `Hub` route group.
 - **Job scopes' contents and the worker** (spec 0019); this spec defines the scope factory and the
-  snapshot the worker stores.
+  snapshot the worker composes.
 - **Self-serve provisioning, sandbox cloning, the manifest source generator, the Builder tool,
   the bypass analyzer, `Recommends`/`Excludes`/slots** — later releases.
 - **Identity-server changes** — the `Distribution` seed kind, per-tenant resources, client ID
@@ -526,7 +526,7 @@ id:
 | Surface | Route | Scheme / policy |
 |---|---|---|
 | Web API (SPA) | `/{tenantId:int:min(1)}/api/web/...` | session cookie; `Tellma.Web` |
-| Public API | `/{tenantId:int:min(1)}/api/v1/...` | bearer; `Tellma.Api` (seam; nothing mapped this release) |
+| Public API | `/{tenantId:int:min(1)}/api/v{version:apiVersion}/...` | bearer; `Tellma.Api` (seam; nothing mapped this release) |
 | MCP | `/{tenantId:int:min(1)}/mcp` | bearer; `Tellma.Mcp` |
 | SignalR hub | `/{tenantId:int:min(1)}/hub` | session cookie; `Tellma.Web` |
 | Blobs | `/{tenantId:int:min(1)}/blobs/{kind}` (POST), `/{tenantId:int:min(1)}/blobs/{kind}/{id}` (GET) | session cookie; `Tellma.Web` |
@@ -745,11 +745,11 @@ Binding on every host:
 ```csharp
 // Tellma.Core.Tenancy (runtime)
 public sealed record TenantRegistration(
-    string Name, TenantCategory Category, int? LiveTenantId, TenantLocation? Location, int? Id);
+    string Name, TenantCategory Category, int? LiveTenantId, TenantLocation? Location);
 
 public interface ITenantCatalog                             // every member is one catalog transaction + version bump + local refresh
 {
-    Task<TenantDescriptor> RegisterAsync(TenantRegistration registration, string actor);
+    Task<TenantDescriptor> RegisterAsync(TenantRegistration registration, string actor, int? requestedId = null);
     Task<TenantDescriptor> SetStateAsync(int tenantId, TenantState state, string? reason, string actor);
     Task RenameAsync(int tenantId, TenantDisplayNames names);
     Task RelocateAsync(int tenantId, TenantLocation location, string actor);
@@ -762,7 +762,7 @@ public sealed class TenantStateException(string Code, string Detail) : TellmaExc
 
 | Member | Meaning |
 |---|---|
-| `RegisterAsync` | Inserts a `Provisioning` row (id from `catalog.sq_Tenants`, or the requested `Id` when free — the migrator's seed path); `Location` defaults to the catalog's own server and `<DatabasePrefix>.<Id>` under `default`; `Language1` is the distribution's default language; refuses a `LiveTenantId` on a `Live` registration or one naming a tenant that is not `Live` (`TenantStateException` with `Code = Tenant.RegistrationRefused`; 409 on the wire, spec 0015 §7.1). |
+| `RegisterAsync` | Inserts a `Provisioning` row (id from `catalog.sq_Tenants`, or `requestedId` when free — passed only by the migrator's seed path and `provision --tenant <id>`, §6.1; the admin surface of §5.9 never passes it); `Location` defaults to the catalog's own server and `<DatabasePrefix>.<Id>` under `default`; `Language1` is the distribution's default language; refuses a `LiveTenantId` on a `Live` registration or one naming a tenant that is not `Live` (`TenantStateException` with `Code = Tenant.RegistrationRefused`; 409 on the wire, spec 0015 §7.1). |
 | `SetStateAsync` | The suspension hook: validates the transition against §3.3's table (an illegal one is `TenantStateException` with `Code = Tenant.IllegalTransition`; a transition lost to a concurrent one is the same exception, translated from the `THROW 50409` of §7.5), runs the statement of §7.5, refreshes the local registry and notifies the listeners. `actor` is a subject, a client id, or `migrator`. |
 | `RenameAsync` | Mirrors the tenant's name group and content-language codes from tenant settings (spec 0012's `SettingsService.Save` calls it post-commit, best effort). |
 | `RelocateAsync` | Changes `Server`/`Database`/`CredentialProfile`; the tenant must be `ReadOnly` or `Provisioning`; every instance reloads the snapshot within one interval and drops the tenant's pooled context factory. |
@@ -857,7 +857,7 @@ public sealed record RequestContext                         // immutable; one pe
     public DateTimeOffset Now { get; init; }
     public DateOnly Today { get; init; }                    // in TenantTimeZone
     public TenantSettings? TenantSettings { get; init; }    // null for tenantless work
-    public string Client { get; init; } = "web";            // web | cli | mcp | worker — spec 0015's client set
+    public string Client { get; init; } = "web";            // web | mcp | worker — spec 0015's client set
     public string? OriginTraceParent { get; init; }         // log correlation only; never a tracing instruction
     public bool IsSandbox { get; }                          // derived
     public bool IsSystem { get; }                           // derived: Kind = System
@@ -867,8 +867,7 @@ public sealed record RequestContext                         // immutable; one pe
 }
 
 public sealed record RequestContextSnapshot(
-    int TenantId, PrincipalKind Kind, string? Subject, string? ClientId, int? UserId, string Language,
-    string Culture, string Calendar, string TimeZoneId, string Client, string? TraceParent);
+    int TenantId, PrincipalKind Kind, string? Subject, int? UserId, string Client, string? TraceParent);
 
 public interface IRequestContextAccessor
 {
@@ -882,7 +881,8 @@ public interface IRequestContextInitializer
 }
 
 public sealed record RequestContextInputs(
-    string? AcceptLanguage, string? RequestedCalendar, string? RequestedTimeZone, string? Client);
+    string? AcceptLanguage, string? RequestedCalendar, string? RequestedTimeZone, string? Client,
+    string? MessageLanguage, string? MessageCalendar);
 ```
 
 | Member | Meaning |
@@ -891,13 +891,13 @@ public sealed record RequestContextInputs(
 | `SessionId`, `SessionHandle` | `SessionId` is the authority's `sid`. `SessionHandle` is the handle of the `catalog.Sessions` row (§7.4), read by the tenant middleware from the cookie ticket's properties (§5.5); null on bearer surfaces and in background scopes. It is the value that addresses one BFF session across tenants (spec 0020 §6.2); the session key itself never leaves the session store. |
 | `OriginTraceParent` | Log-correlation data: the scope factory copies the snapshot's `TraceParent` into it and the logger scope of §9 carries it. Nothing starts, parents or links an activity from it — the activity a scope runs under belongs to the caller (§4.4; spec 0019 §9). |
 | `UserId` | Set by spec 0013's connect initializer at `Order` 100; `null` before it and for `Anonymous`. A `System` snapshot binds `WellKnownIds.SystemUserId`. |
-| `Language`, `Culture`, `CultureInfo`, `Calendar`, `CalendarSystem`, `ContentLanguageIndex`, `TimeZone`, `TenantTimeZone`, `Today`, `TenantSettings` | Set by spec 0012's negotiation initializer at `Order` 200 with the precedence request header → the user's stored preference → the tenant's settings → platform defaults (`en`, `gc`, `UTC`). Culture names are stripped of `-u-` extensions before negotiation; the calendar is never encoded in the culture name. |
+| `Language`, `Culture`, `CultureInfo`, `Calendar`, `CalendarSystem`, `ContentLanguageIndex`, `TimeZone`, `TenantTimeZone`, `Today`, `TenantSettings` | Set by spec 0012's negotiation initializer at `Order` 200 with the precedence request header → the user's stored preference → the tenant's settings → platform defaults (`en`, `gc`, `UTC`); where set, the message inputs of `RequestContextInputs` come first (below). Culture names are stripped of `-u-` extensions before negotiation; the calendar is never encoded in the culture name. |
 | `TimeZone` versus `TenantTimeZone` | The display zone formats instants in messages and exports; the tenant zone computes `Today` and binds spec 0008's `today()` and `TimeZone` slots. No client header asserts today: a client cannot move a tenant's business date. |
-| `Client` | From the `Tellma-Client` header's name part (`web \| cli`); the MCP request filter sets `mcp`. |
+| `Client` | From the `Tellma-Client` header's name part, one of `TellmaApiOptions.ClientNames` (§5.4); the MCP request filter sets `mcp`. |
 | `Tenantless` | `Tenant = null`, `Kind = Anonymous`, platform defaults; the holder's value on tenantless surfaces. |
-| `RequestContextSnapshot` | The serialisable copy a background caller hands to `CreateScopeAsync` (§4.4); spec 0019's worker composes it from the job row's `RunAsUserId` and `TraceParent` (null for a partition of several jobs, spec 0019 §8), and the locale fields are resolved at scope creation from the run-as user's preferences or the tenant defaults. |
+| `RequestContextSnapshot` | The serialisable copy a background caller hands to `CreateScopeAsync` (§4.4): the principal, the client and the trace parent, never a locale field. Spec 0019's worker composes it from the job row's `RunAsUserId` and `TraceParent` (null for a partition of several jobs, spec 0019 §8); the migrator's step runner composes a `System` one (§6.2). The locale fields are resolved in the scope by spec 0012's negotiation initializer (§4.4). |
 | `IRequestContextInitializer` | A pure function from a context and the request inputs to a new context; run in `Order` by the access guard and the scope factory. Spec 0013 at 100, spec 0012 at 200. |
-| `RequestContextInputs` | Extracted by the host from `Accept-Language`, `Tellma-Calendar`, `Tellma-Time-Zone` and `Tellma-Client`; empty in job scopes. |
+| `RequestContextInputs` | On the web surface, the first four are extracted by the host from `Accept-Language`, `Tellma-Calendar`, `Tellma-Time-Zone` and `Tellma-Client`, and neither message member is passed; spec 0015 §11.4's MCP filter passes both. `MessageLanguage`, when set and offered by the language catalogue, is the message language and formatting culture; `MessageCalendar`, when set, is the formatting calendar even outside the tenant's pair; `ContentLanguageIndex` derives from the rest of the negotiation, never from `MessageLanguage` (spec 0012 §9.2). Empty in a background scope (§4.4). |
 
 ### 4.2 The holder and the two writers
 
@@ -974,7 +974,6 @@ service pipeline relies on. The guard touches no tenant database itself. Its ver
 public interface ITenantScopeFactory
 {
     Task<TenantScope> CreateScopeAsync(RequestContextSnapshot snapshot, bool allowNonActive = false);
-    RequestContextSnapshot Capture();
 }
 
 public sealed record TenantScope(IServiceProvider Services) : IAsyncDisposable;
@@ -982,18 +981,20 @@ public sealed record TenantScope(IServiceProvider Services) : IAsyncDisposable;
 
 `CreateScopeAsync` re-resolves the tenant from the registry (its state may have changed) and throws
 `TenantUnavailableException` for every state but `Active`; creates an `AsyncServiceScope`; sets the
-holder from the snapshot with `Kind`, `Subject`, `ClientId`, `UserId`, `Client`, the locale fields
-and `OriginTraceParent` (the snapshot's `TraceParent`, log-correlation data per §4.1); and runs the
-initializers (`IUserConnector.ConnectAsUser` for `User`, `ConnectAsSystem` for `System`, which
-binds `WellKnownIds.SystemUserId`). It starts no activity: the caller owns the activity the scope
-runs under — spec 0019 §9's worker opens the scope inside its `process <key>` root and the
+holder from the snapshot with `Kind`, `Subject`, `UserId`, `Client` and `OriginTraceParent` (the
+snapshot's `TraceParent`, log-correlation data per §4.1); and runs the initializers:
+`IUserConnector.ConnectAsUser` for `User` and `ConnectAsSystem` for `System` (which binds
+`WellKnownIds.SystemUserId`), then spec 0012's negotiation initializer at `Order` 200 with empty
+`RequestContextInputs`, which resolves the locale fields from the run-as user's stored preferences,
+then the tenant's settings (spec 0012 §9.3). It starts no activity: the caller owns the activity the
+scope runs under — spec 0019 §9's worker opens the scope inside its `process <key>` root and the
 migrator's step runner inside its step activity (§6.2) — so the connect and data spans nest under
 the caller's. `allowNonActive: true` is the migrator's door: it also accepts `Provisioning` and
-`ReadOnly` (never `Suspended` or `Retired`) and requires `Kind = System` — any other `Kind` with
-the flag set throws `InvalidOperationException` before a scope exists. Only the migrator's step
-runner (§6.2) passes it; a job scope never does. `Capture()` snapshots the ambient context for
-enqueuing. Callers: spec 0019's worker (the only background caller) and the migrator's provisioning
-steps (`Kind = System`). Scopes meter `tellma.tenancy.scopes` by `kind ∈ request | background`.
+`ReadOnly` (never `Suspended` or `Retired`) and requires `Kind = System` — any other `Kind` with the
+flag set throws `InvalidOperationException` before a scope exists. Only the migrator's step runner
+(§6.2) passes it; a job scope never does. Callers: spec 0019's worker (the only background caller)
+and the migrator's provisioning steps (`Kind = System`). Scopes meter `tellma.tenancy.scopes` by
+`kind ∈ request | background`.
 
 ### 4.5 Listeners
 
@@ -1123,8 +1124,8 @@ public sealed record AcceptsBinaryMetadata(long MaxBytes);
   response compression (spec 0015 §8.4), `UseRouting`, `UseTellmaIdentity` (in-proc only),
   `UseAuthentication`, `UseAuthorization`, the rate limiter (spec 0015 §8.2; after authentication
   so the partition key is the principal), request timeouts (spec 0015 §8.3), output caching
-  (spec 0015 §8.5), `TellmaCsrfMiddleware`, `TenantMiddleware`. Custom middleware goes between
-  `UseTellma()` and `MapTellma()`.
+  (spec 0015 §8.5), `TellmaCsrfMiddleware`, `TellmaContractMiddleware` (spec 0015 §3.10),
+  `TenantMiddleware`. Custom middleware goes between `UseTellma()` and `MapTellma()`.
 - **`MapTellma()`** maps `/api/distribution-info`, `/health/live`, `/health/ready`, `/bff/*`,
   `/api/admin/*` (when enabled, §5.9), `/api/webhooks/{key}` (when `Tellma.Core.Webhooks` is
   composed), the in-proc identity endpoints,
@@ -1149,8 +1150,8 @@ public sealed record AcceptsBinaryMetadata(long MaxBytes);
 - `Web` = `/{tenantId:int:min(1)}/api/web`, `RequireAuthorization(TellmaPolicies.Web)`,
   `AddEndpointFilter<TenantAccessFilter>()`, metadata `TenantEndpointMetadata(Web, …)`, spec 0015's
   JSON conventions.
-- `Api` = `/{tenantId:int:min(1)}/api/v1`, policy `Tellma.Api` (a seam; nothing mapped this
-  release).
+- `Api` = `/{tenantId:int:min(1)}/api/v{version:apiVersion}`, policy `Tellma.Api` (the public API's
+  seam; nothing mapped this release; spec 0015 §12.2).
 - `Hub` = `/{tenantId:int:min(1)}/hub` and `Blobs` = `/{tenantId:int:min(1)}/blobs`, sibling groups
   on `TellmaPolicies.Web` with the same filter and their own `Surface`.
 - The MCP endpoint `/{tenantId:int:min(1)}/mcp` on `Tellma.Mcp` when spec 0015's MCP feature is
@@ -1200,7 +1201,7 @@ whose method is not `GET`, `HEAD` or `OPTIONS`, in order:
 2. If `Origin` (or, when absent, `Referer`) is present its origin must equal `Tellma:PublicOrigin`;
    else `403` (`rule = origin`).
 3. The request must carry `Tellma-Client: <name>/<version>` with `<name>` in
-   `TellmaApiOptions.ClientNames` (`web`, `cli`) and a non-empty `<version>`; else `403`
+   `TellmaApiOptions.ClientNames` (default `web`) and a non-empty `<version>`; else `403`
    (`rule = header`). The name part is `RequestContext.Client` and spec 0015's `tellma.client`
    tag, a closed set; the version part is logged, never a metric tag. A custom header forces a
    CORS preflight for any cross-origin caller, and no CORS policy exists anywhere in the platform,
@@ -1432,15 +1433,16 @@ public interface ITenantProvisioningTrigger                 // Tellma.Core.Tenan
 - **Admin surface** (`Tellma.ControlPlane`, tenantless, JSON; mapped only when
   `Tellma:Admin:Enabled` is true, which defaults to true under `Tellma:Identity:Mode = Standalone`
   and to false under `InProc`, whose engine seeds no control-plane client — an on-premises operator
-  uses the migrator commands of §6.1 instead; `/api/admin` stays a reserved prefix either way): `GET
-  /api/admin/info` (the information document plus tenant counts by state); `GET /api/admin/tenants`
-  (descriptors, never locations); `POST /api/admin/tenants/{id}/state` with `{ "state": "Active" |
-  "ReadOnly" | "Suspended" | "Retired", "reason": "…" }` → the descriptor plus `{
-  "effectiveWithinSeconds": 15 }`, `409` for an illegal transition; `POST /api/admin/tenants` with
-  `TenantRegistration` → registers a `Provisioning` row and calls
-  `ITenantProvisioningTrigger.StartAsync`, `501` while only `NotConfiguredProvisioningTrigger` is
-  registered; `GET /api/admin/tenants/{id}/members` (the hint table). The policy's audience and
-  its grant are §5.5's.
+  uses the migrator commands of §6.1 instead; `/api/admin` stays a reserved prefix either way):
+  `GET /api/admin/info` (the information document plus tenant counts by state);
+  `GET /api/admin/tenants` (descriptors, never locations); `POST /api/admin/tenants/{id}/state` with
+  `{ "state": "Active" | "ReadOnly" | "Suspended" | "Retired", "reason": "…" }` → the descriptor
+  plus `{ "effectiveWithinSeconds": 15 }`, `409` for an illegal transition;
+  `POST /api/admin/tenants` with `TenantRegistration` → registers a `Provisioning` row under a
+  sequence-allocated id (the caller never chooses one: `RegisterAsync` without `requestedId`, §3.7)
+  and calls `ITenantProvisioningTrigger.StartAsync`, `501` while only
+  `NotConfiguredProvisioningTrigger` is registered; `GET /api/admin/tenants/{id}/members` (the hint
+  table). The policy's audience and its grant are §5.5's.
 
 The identity-server changes this spec and its siblings depend on — the `Distribution` seed client
 kind, per-tenant resources under a granted origin, client ID metadata documents, the interim native
@@ -1470,8 +1472,8 @@ public abstract class TellmaDesignTimeDbContextFactory<TContext> : IDesignTimeDb
 
 | Command | Does |
 |---|---|
-| `migrate [--catalog-only] [--tenant <id>]* [--all-tenants] [--parallelism N]` | Migrates the catalog under `sp_getapplock('tellma:migrate:catalog')` (`idsvr` too in in-proc mode); registers and provisions every `Tellma:Seed:Tenants` entry not yet in the catalog; then for every `Active`, `ReadOnly` or `Provisioning` tenant (the default and `--all-tenants`) or the named ones: the tenant lock of §7.5, `Migrate()`, the schema fingerprint row of spec 0011 §4.3, the `tellma_app` grants (§6.4), the version-tag seed of spec 0012, provisioning steps whose recorded `Version` is behind, spec 0013's `IPermissionDriftScanner.ScanAsync` with its items printed. Bounded parallelism (default 4), continues past failures, per-tenant report. |
-| `provision [--tenant <id>] [--name …] [--category Live\|Sandbox] [--live-tenant <id>] [--server …] [--database …] [--admin-email …] [--admin-subject …]` | With `--name` and `--category`, inserts the row as `Provisioning` (`--tenant` is then the requested id, else the sequence allocates one); with `--tenant` alone, resumes the `Provisioning` row of that id (the admin surface's). `CREATE DATABASE` (Azure: `(EDITION = …, SERVICE_OBJECTIVE = ELASTIC_POOL(name = …))` from `Tellma:Provisioning:CreateDatabaseTemplate`; on-prem: plain); `ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON` and `SET QUERY_STORE = ON (OPERATION_MODE = READ_WRITE, QUERY_CAPTURE_MODE = AUTO, MAX_STORAGE_SIZE_MB = 1024, CLEANUP_POLICY = (STALE_QUERY_THRESHOLD_DAYS = 30))` on the fresh database; the application principal and `tellma_app`; migrations and the schema fingerprint row; the version-tag seed; every step in `Order`; the administrator's membership hint; the administrator's invite (spec 0017 §6.1; `--admin-subject` is Development-only, §6.2); then `SetStateAsync(Active, actor: "migrator")`. Idempotent: rerunning converges. |
+| `migrate [--catalog-only] [--tenant <id>]* [--all-tenants] [--parallelism N]` | Migrates the catalog under `sp_getapplock('tellma:migrate:catalog')` (`idsvr` too in in-proc mode); registers (the entry's `Id` as `RegisterAsync`'s `requestedId`, §3.7) and provisions every `Tellma:Seed:Tenants` entry not yet in the catalog; then for every `Active`, `ReadOnly` or `Provisioning` tenant (the default and `--all-tenants`) or the named ones: the tenant lock of §7.5, `Migrate()`, the schema fingerprint row of spec 0011 §4.3, the `tellma_app` grants (§6.4), the version-tag seed of spec 0012, provisioning steps whose recorded `Version` is behind, spec 0013's `IPermissionDriftScanner.ScanAsync` with its items printed. Bounded parallelism (default 4), continues past failures, per-tenant report. |
+| `provision [--tenant <id>] [--name …] [--category Live\|Sandbox] [--live-tenant <id>] [--server …] [--database …] [--admin-email …] [--admin-subject …]` | With `--name` and `--category`, inserts the row as `Provisioning` (`--tenant` is then `RegisterAsync`'s `requestedId`, §3.7, else the sequence allocates one); with `--tenant` alone, resumes the `Provisioning` row of that id (the admin surface's). `CREATE DATABASE` (Azure: `(EDITION = …, SERVICE_OBJECTIVE = ELASTIC_POOL(name = …))` from `Tellma:Provisioning:CreateDatabaseTemplate`; on-prem: plain); `ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON` and `SET QUERY_STORE = ON (OPERATION_MODE = READ_WRITE, QUERY_CAPTURE_MODE = AUTO, MAX_STORAGE_SIZE_MB = 1024, CLEANUP_POLICY = (STALE_QUERY_THRESHOLD_DAYS = 30))` on the fresh database; the application principal and `tellma_app`; migrations and the schema fingerprint row; the version-tag seed; every step in `Order`; the administrator's membership hint; the administrator's invite (spec 0017 §6.1; `--admin-subject` is Development-only, §6.2); then `SetStateAsync(Active, actor: "migrator")`. Idempotent: rerunning converges. |
 | `set-state --tenant <id> --state … [--reason …]` | `ITenantCatalog.SetStateAsync` with actor `migrator`. |
 | `status` | Lists tenants with state, the recorded schema fingerprints (`dbo.__TellmaSchema`, spec 0011 §4.3) against the running model's, and pending migrations; runs `TellmaComposition.Validate` and prints its problems. |
 
@@ -1499,19 +1501,22 @@ public interface ITenantProvisioningStep                    // registered throug
 }
 ```
 
-Steps run in `Order` inside a tenant scope with `Kind = System`, created by
-`ITenantScopeFactory.CreateScopeAsync(snapshot, allowNonActive: true)` (§4.4) because the tenant is
-`Provisioning` on `provision` and may be `ReadOnly` on `migrate`, and through the service pipeline.
-The step runner opens one `Provisioning` frame per step (spec 0014 §13.3), the host of every write
-the step enlists. The step runner starts one root activity per step, named after the step's `Name`,
-the way spec 0019 §9's worker starts `process <key>` — `Activity.Current` cleared, no parent — and
-opens the scope inside it, so the step's connect and data spans nest under it. Each completion is
-recorded in the tenant database's `dbo.__TellmaProvisioning (Step nvarchar(128) PK, Version int NOT
-NULL, CompletedAt datetimeoffset(3) NOT NULL, PlatformVersion nvarchar(64) NOT NULL)`. A step runs
-when no row exists or its `Version` exceeds the recorded one; a step with the same name registered
-twice is a composition problem. `IsNew` is true while the tenant is `Provisioning` — under
-`provision` and under `migrate`'s provisioning of a seed tenant — and false on a `migrate` of an
-`Active` or `ReadOnly` tenant. `AdminEmail` comes from `--admin-email` or, in Development, from
+Steps run in `Order` inside a tenant scope and through the service pipeline. The step runner creates
+the scope from a `System` snapshot — `Kind = System`, `Subject = "system"`,
+`UserId = WellKnownIds.SystemUserId`, `Client = "worker"` and a null `TraceParent` — with
+`ITenantScopeFactory.CreateScopeAsync(snapshot, allowNonActive: true)` (§4.4), because the tenant is
+`Provisioning` on `provision` and may be `ReadOnly` on `migrate`. The step runner opens one
+`Provisioning` frame per step (spec 0014 §13.3) and registers it in the scope as `IOpenWriteHost`;
+the step injects it, enlists its writes with it and awaits its `PersistAsync`. The step runner
+starts one root activity per step, named after the step's `Name`, the way spec 0019 §9's worker
+starts `process <key>` — `Activity.Current` cleared, no parent — and opens the scope inside it, so
+the step's connect and data spans nest under it. Each completion is recorded in the tenant
+database's `dbo.__TellmaProvisioning` table (`Step nvarchar(128) PK`, `Version int NOT NULL`,
+`CompletedAt datetimeoffset(3) NOT NULL`, `PlatformVersion nvarchar(64) NOT NULL`). A step runs when
+no row exists or its `Version` exceeds the recorded one; a step with the same name registered twice
+is a composition problem. `IsNew` is true while the tenant is `Provisioning` — under `provision` and
+under `migrate`'s provisioning of a seed tenant — and false on a `migrate` of an `Active` or
+`ReadOnly` tenant. `AdminEmail` comes from `--admin-email` or, in Development, from
 `Tellma:Seed:AdminEmail`. `AdminSubject` is Development-only: it comes from `--admin-subject`, or is
 the fixed development subject when `Tellma:Seed:AdminEmail` supplies the email; the bootstrapper
 refuses a subject outside Development (spec 0013 §11), and a deployed administrator obtains one
@@ -1775,7 +1780,7 @@ The `Tellma` section; keys are additive-only within a family major. Every option
 | `DataProtection:*`, `ForwardedHeaders:*` | §5.8. |
 | `Provisioning:CreateDatabaseTemplate` | §6.1; `{database}` is substituted. |
 | `Admin:Enabled` | §5.9; `null` selects the identity-mode default. |
-| `Seed:Tenants` (`Id`, `Name`, `Category`, `LiveTenantId`), `Seed:AdminEmail` | §5.7, §6.1; Development only by convention, not enforced. |
+| `Seed:Tenants` (`Id`, `Name`, `Category`, `LiveTenantId`), `Seed:AdminEmail` | §5.7, §6.1; `Id` is `RegisterAsync`'s `requestedId` (§3.7). Development only by convention, not enforced. |
 | `ScratchPath` | The temporary directory specs 0016 and 0018 use; default the operating system's. |
 
 `Serilog`, `Azure:SignalR:ConnectionString` and `APPLICATIONINSIGHTS_CONNECTION_STRING` sit outside

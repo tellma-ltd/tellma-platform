@@ -91,7 +91,7 @@ so a block is never pasted into code. SQL statements are the exact shape to emit
 
 | Project | What this spec adds | Dependency edges |
 |---|---|---|
-| `Tellma.Core.Abstractions` | Namespaces `Tellma.Core.Abstractions.Caching` (tags, snapshot, registry, cache contracts, `CacheTelemetryNames`), `.Settings` (`SettingKey<T>`, `TenantSettings`, `TenantSettingsForClient`, `TenantSettingsDetails`, `SettingKeyDescriptor`, `TenantSettingsPatch`, `MultilingualShape`, the entities `Settings` and `SettingEntry`), `.Localization` (`LanguageInfo`, `ILanguageCatalog`, `ILabelProvider`, `LocalizationContext`, `ILocalizationNegotiator`, `CoreStrings`, `IStringPackProvider`, `StringPack`, `LocalizationTelemetryNames`), `.Calendars` (`ICalendarSystem`, `ICalendarRegistry`, `CalendarCodes`, `DateStyle`); `VersionTagList` in `.TableTypes` | `Tellma.Core.Queryex` only (existing edge); BCL `System.Text.Json`, `System.Globalization` |
+| `Tellma.Core.Abstractions` | Namespaces `Tellma.Core.Abstractions.Caching` (tags, snapshot, registry, cache contracts, `CacheTelemetryNames`), `.Settings` (`SettingKey<T>`, `TenantSettings`, `TenantSettingsForClient`, `TenantSettingsDetails`, `SettingKeyDescriptor`, `SettingValueType`, `TenantSettingsPatch`, `MultilingualShape`, the entities `Settings` and `SettingEntry`), `.Localization` (`LanguageInfo`, `ILanguageCatalog`, `ILabelProvider`, `LocalizationContext`, `ILocalizationNegotiator`, `CoreStrings`, `IStringPackProvider`, `StringPack`, `LocalizationTelemetryNames`), `.Calendars` (`ICalendarSystem`, `ICalendarRegistry`, `CalendarCodes`, `DateStyle`); `VersionTagList` in `.TableTypes` | `Tellma.Core.Queryex` only (existing edge); BCL `System.Text.Json`, `System.Globalization` |
 | `Tellma.Core` | Folders `Caching/` (`VersionedCache`, `VersionTagRegistry`, `VersionTagSnapshots`, `UserVersionTagSnapshots`, the prologue and epilogue contributors, `CacheableEntityStore`, `CacheableEntities`), `Settings/` (`TenantSettingsStore`, `TenantSettingsCache`, `SettingKeyRegistry`, `SettingsService`, the `core.settings` provisioning step), `Localization/` (`LanguageCatalog`, `LocalizationNegotiator`, `LabelProvider`, `IcuStringLocalizerFactory`, `StringPackComposer`), `Calendars/` (`GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`), `Resources/Strings.resx` and satellites | adds `MessageFormat` 8.0.0, `Microsoft.Extensions.Caching.Memory`, `Microsoft.Extensions.Localization`, `Microsoft.AspNetCore.DataProtection.Abstractions` (`IDataProtectionProvider`, registered by spec 0010's web host; optional elsewhere, §5.3) |
 | `Tellma.Core.Migrator` | Runs the `core.VersionTags` seed and wholesale bump (§2.8) on every `migrate` | unchanged |
 | `test/core/Tellma.Core.Tests`, `test/core/Tellma.Core.IntegrationTests` | The suites of §12 | unchanged |
@@ -705,7 +705,7 @@ therefore roots of the Queryex schema under their entity names (`core.Settings`,
 
 | Column | Type | Null | Constraints | Notes |
 |---|---|---|---|---|
-| `Id` | `int` | no | `PK_Settings`; `CK_Settings_Id CHECK ([Id] = 1)` | the sequence `core.sq_Settings` that spec 0011's convention emits for every keyed table exists and is never consumed: the single row is a `HasData` placeholder completed by provisioning (§5.7) |
+| `Id` | `int` | no | `PK_Settings`; `CK_Settings_Id CHECK ([Id] > 0)`; `CK_Settings_SingleRow CHECK ([Id] = 1)` | the sequence `core.sq_Settings` that spec 0011's convention emits for every keyed table exists and is never consumed: the single row is a `HasData` placeholder completed by provisioning (§5.7) |
 | `TenantId` | `int` | no | | routing guard, never a filter; `0` = unprovisioned placeholder |
 | `Name` | `nvarchar(255)` | no | | tenant display name, primary language |
 | `Name2` | `nvarchar(255)` | yes | | |
@@ -740,7 +740,7 @@ sequence `core.sq_SettingEntries`; carries `TopLevelEntity`.
 
 | Column | Type | Null | Constraints | Notes |
 |---|---|---|---|---|
-| `Id` | `int` | no | `PK_SettingEntries`, sequence `core.sq_SettingEntries` | |
+| `Id` | `int` | no | `PK_SettingEntries`, `CK_SettingEntries_Id CHECK ([Id] > 0)`, sequence `core.sq_SettingEntries` | |
 | `Key` | `nvarchar(128)` | no | `UX_SettingEntries_Key` | `gl.posting.autoNumberOnPost`; `[Unique]` |
 | `Value` | `nvarchar(max)` | no | | one JSON value; `[JsonColumn]` |
 | `CreatedAt` | `datetimeoffset(7)` | no | | server-owned |
@@ -963,8 +963,10 @@ public sealed record TenantSettingsDetails(             // the editor's view: on
     IReadOnlyList<string> SetKeys, RelatedEntities Related);
 
 public sealed record SettingKeyDescriptor(
-    string Name, string Category, SettingVisibility Visibility, string ValueType, bool IsNullable, bool IsArray,
-    IReadOnlyList<string>? EnumValues, string? References, JsonElement DefaultJson);
+    string Name, string Category, SettingVisibility Visibility, SettingValueType ValueType, bool IsNullable,
+    bool IsArray, IReadOnlyList<string>? EnumValues, string? References, JsonElement DefaultJson);
+
+public enum SettingValueType { Boolean, Int32, Int64, Decimal, String, Date, Time, Guid, Enum, Json }
 
 public sealed record TenantSettingsPatch(               // field mask; a listed null clears
     IReadOnlyList<string> Fields, string? Name, string? Name2, string? Name3, string? PrimaryLanguage,
@@ -990,24 +992,23 @@ composition. Both run on a `Read` batch through spec 0013's `IGuardedBatchRunner
 keeps the snapshot current; on a warm instance neither adds a statement.
 
 `Details()` serves the settings editor from the same cache, on a `Read` batch through the runner
-whose only statements are the related queries below. `General` is the typed row, its
-`ModifiedAt` the stamp `save` expects back, present when the caller holds `Read` on
-`core.Settings.General`; `Keys` describes every declared key of a held category: `ValueType` ∈
-`Boolean`, `Int32`, `Int64`, `Decimal`, `String`, `Date`, `Time`, `Guid`, `Enum`, `Json` — spec
-0011's `QueryColumnKind` names for the scalars, `Enum` with `EnumValues`, `Json` for a key with
-its own `JsonTypeInfo<T>` — with `IsNullable` and `IsArray` for the admitted forms, and
-`References` the referenced entity's name; `Values` carries each such key's current
-value, stored or default, except a `Secret` key's; `SetKeys` names the keys a row exists for,
-which is all the editor learns about a secret. `Related` holds, for every key with `References`,
-the rows whose ids appear in `Values`: one `Query<TEntity>` per referenced type — the generic
-closed over `SettingKey.References` once per type and cached by the service, spec 0011 offering
-no non-generic entity query — restricted through spec 0011's `KeySetRestriction("Id", IdList)` to
-those ids and to the target stack's `RelatedSelect` projection (spec 0014's `StackDescriptor`),
-with no row-level filter, as spec 0014 treats the related entities of a details read — a caller
-who may read a setting may read the display projection of what it points at; an id whose row no
-longer exists is absent and the editor shows the bare id. `settings/client` carries no related
-entities: its bytes are cached under the `settings` tag while a referenced name changes under it,
-and the SPA resolves a `Client`-visible reference through the cacheable lists or the picker.
+whose only statements are the related queries below. `General` is the typed row, its `ModifiedAt`
+the stamp `save` expects back, present when the caller holds `Read` on `core.Settings.General`;
+`Keys` describes every declared key of a held category: `ValueType` is a `SettingValueType` — a
+scalar, `Enum` with `EnumValues`, or `Json` for a key with its own `JsonTypeInfo<T>` — with
+`IsNullable` and `IsArray` for the admitted forms, and `References` the referenced entity's name;
+`Values` carries each such key's current value, stored or default, except a `Secret` key's;
+`SetKeys` names the keys a row exists for, which is all the editor learns about a secret. `Related`
+holds, for every key with `References`, the rows whose ids appear in `Values`: one `Query<TEntity>`
+per referenced type — the generic closed over `SettingKey.References` once per type and cached by
+the service, spec 0011 offering no non-generic entity query — restricted through spec 0011's
+`KeySetRestriction("Id", IdList)` to those ids and to the target stack's `RelatedSelect` projection
+(spec 0014's `StackDescriptor`), with no row-level filter, as spec 0014 treats the related entities
+of a details read — a caller who may read a setting may read the display projection of what it
+points at; an id whose row no longer exists is absent and the editor shows the bare id.
+`settings/client` carries no related entities: its bytes are cached under the `settings` tag while a
+referenced name changes under it, and the SPA resolves a `Client`-visible reference through the
+cacheable lists or the picker.
 
 ### 6.3 `save`
 
@@ -1287,19 +1288,20 @@ public sealed record LocalizationContext(               // copied onto RequestCo
 
 public sealed record NegotiationInput(
     string? AcceptLanguage, string? CalendarHeader, string? TimeZoneHeader, string? PreferredLanguage,
-    string? PreferredCalendar, string? PreferredTimeZone, TenantSettings Settings);
+    string? PreferredCalendar, string? PreferredTimeZone, string? MessageLanguage, string? MessageCalendar,
+    TenantSettings Settings);
 
 public interface ILocalizationNegotiator
 {
-    LocalizationContext Negotiate(NegotiationInput input);   // header -> preference -> tenant -> distribution default; extensions stripped; never throws
+    LocalizationContext Negotiate(NegotiationInput input);   // override -> header -> preference -> tenant -> distribution default; extensions stripped; never throws
 }
 ```
 
-| Value | 1st | 2nd | 3rd | 4th |
-|---|---|---|---|---|
-| Culture | `Accept-Language`: q-ordered, first three ranges; `-u-`/`-x-`/`-t-` extensions stripped; matched by language subtag with parent fallback against `ILanguageCatalog.Offered`; the region is kept when the header carried one (`ar-SA`) | `PreferredLanguage` | tenant `PrimaryLanguage` when offered | the distribution default |
-| Calendar | `Tellma-Calendar`: a code ∈ the tenant's pair | `PreferredCalendar` when ∈ the pair | tenant `PrimaryCalendar` | — |
-| Display zone | `Tellma-Time-Zone`: an IANA id `TryFindSystemTimeZoneById` accepts | `PreferredTimeZone` | tenant `TimeZone` | — |
+| Value | Override | 1st | 2nd | 3rd | 4th |
+|---|---|---|---|---|---|
+| Culture | `MessageLanguage` when offered by `ILanguageCatalog.Offered` | `Accept-Language`: q-ordered, first three ranges; `-u-`/`-x-`/`-t-` extensions stripped; matched by language subtag with parent fallback against `ILanguageCatalog.Offered`; the region is kept when the header carried one (`ar-SA`) | `PreferredLanguage` | tenant `PrimaryLanguage` when offered | the distribution default |
+| Calendar | `MessageCalendar` when ∈ `ICalendarRegistry.Codes`, even outside the tenant's pair | `Tellma-Calendar`: a code ∈ the tenant's pair | `PreferredCalendar` when ∈ the pair | tenant `PrimaryCalendar` | — |
+| Display zone | — | `Tellma-Time-Zone`: an IANA id `TryFindSystemTimeZoneById` accepts | `PreferredTimeZone` | tenant `TimeZone` | — |
 
 `Accept-Language` sits first because the SPA sets it explicitly to the user's chosen language on
 every call, while non-browser clients fall through to the stored preference. A header value that is
@@ -1310,11 +1312,16 @@ not lock a user out. The response carries `Content-Language` and `Tellma-Calenda
 calendar) keeps working and corrects itself. The header names are spec 0015's `TellmaHeaders`;
 the negotiator sees values only.
 
-`ContentLanguageIndex` (1..3) is derived: the position of the tenant content language whose
-language subtag equals the negotiated culture's, else 1. Servers use it wherever they must pick
-"the" name of an entity (a message naming a record, an export's default name column); no stored
-preference exists for it. Formatting culture = request culture in this release; a user who wants a
-region's digits and separators stores a regioned `PreferredLanguage` (`ar-SA`).
+`MessageLanguage` and `MessageCalendar` are a surface's fixed choice for the language and calendar
+of its messages, not the user's: the MCP surface passes them (spec 0015 §11.4), the web surface
+passes neither. `ContentLanguageIndex` (1..3) is derived from the culture the rest of the
+negotiation yields (header → preference → tenant primary), never from `MessageLanguage`: the
+position of the tenant content language whose language subtag equals that culture's, else 1, so a
+message in the override language still names records in the user's content language. Servers use
+it wherever they must pick "the" name of an entity (a message naming a record, an export's default
+name column); no stored preference exists for it. Formatting culture = request culture in this
+release; a user who wants a region's digits and separators stores a regioned `PreferredLanguage`
+(`ar-SA`).
 
 The negotiated `CultureInfo` is a clone of the matched predefined culture with
 `DateTimeFormat.Calendar = GregorianCalendar` where `OptionalCalendars` allows it (true for every
@@ -1326,19 +1333,21 @@ rendering is always explicit through `ICalendarSystem`.
 `CoreFeature` registers spec 0010's `IRequestContextInitializer` at `Order` 200. It receives the
 context spec 0013's connect initializer (`Order` 100) produced — `UserId` and, through the
 `preferences` cache, the caller's `PreferredLanguage`/`PreferredCalendar`/`PreferredTimeZone` — and
-spec 0010's `RequestContextInputs(AcceptLanguage, RequestedCalendar, RequestedTimeZone, Client)`;
-it ensures `TenantSettings` (§5.6), calls `Negotiate`, and returns the context with `Language`,
-`Culture`, `CultureInfo`, `Calendar`, `CalendarSystem`, `TimeZone`, `TenantTimeZone`, `Today`,
-`ContentLanguageIndex` and `TenantSettings` set. It then sets `CultureInfo.CurrentCulture` and
-`CurrentUICulture` for the request (they flow with the execution context); the scoped context is
-the source of truth and the thread cultures are set from it, never the other way round.
-`RequestLocalizationMiddleware` is not used: its default culture is static and this one is per
-tenant. Spec 0013's runner re-runs this initializer after applying a prologue's fresh settings
-(§5.7), so a recomposed batch sees the new context.
+spec 0010's `RequestContextInputs(AcceptLanguage, RequestedCalendar, RequestedTimeZone, Client,
+MessageLanguage, MessageCalendar)`; it ensures `TenantSettings` (§5.6), calls `Negotiate` with the
+three headers, the three preferences and the two message inputs (§9.2), and returns the context
+with `Language`, `Culture`, `CultureInfo`, `Calendar`, `CalendarSystem`, `TimeZone`,
+`TenantTimeZone`, `Today`, `ContentLanguageIndex` and `TenantSettings` set. It then sets
+`CultureInfo.CurrentCulture` and `CurrentUICulture` for the request (they flow with the execution
+context); the scoped context is the source of truth and the thread cultures are set from it, never
+the other way round. `RequestLocalizationMiddleware` is not used: its default culture is static and
+this one is per tenant. Spec 0013's runner re-runs this initializer after applying a prologue's
+fresh settings (§5.7), so a recomposed batch sees the new context.
 
-Job scopes (spec 0019) build their snapshot from `(tenantId, RunAsUserId)`; the locale fields are
-resolved at scope creation from the run-as user's stored preferences, or from the tenant defaults
-for system work, through the same negotiator with no headers.
+A background scope (spec 0010 §4.4), a job's or a provisioning step's, carries no locale field in
+its snapshot: the scope factory runs this initializer with empty `RequestContextInputs`, so the
+locale fields resolve from the run-as user's stored preferences, then the tenant's settings, through
+the same negotiator with no headers.
 
 ## 10. Resources and ICU messages
 
@@ -1517,7 +1526,9 @@ suite.
   assignable for the offered set × a region sample (`ar-SA`, `ar-EG`, `am-ET`, `en-US`, `fr-FR`).
 - **Negotiation table**: headers × preferences × tenant for culture, calendar and display zone;
   extension stripping (`ar-SA-u-ca-islamic-umalqura → ar-SA`, the calendar taken from the header
-  only); an invalid header ignored and counted; `ContentLanguageIndex` derivation.
+  only); an invalid header ignored and counted; `ContentLanguageIndex` derivation; a
+  `MessageLanguage` setting the culture while `ContentLanguageIndex` follows the header's; a
+  `MessageCalendar` outside the tenant's pair taken as the calendar.
 - **Calendars**: Ethiopian conformance vectors (Appendix A) and round trips against the Julian day
   number; `ICalendarSystem` golden strings per calendar × style × culture; the AH 1500 overflow
   through `HijriCalendar`; `TryParse` inverts `Format(…, Short)`.

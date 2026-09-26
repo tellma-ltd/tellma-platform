@@ -166,7 +166,7 @@ this spec and never through `IDataBatch.Save`.
 
 | Column | Type | Null | Constraints | Notes |
 |---|---|---|---|---|
-| `Id` | `int` | no | PK clustered | assigned inside the enqueue and tick statements from `core.sq_Jobs` |
+| `Id` | `int` | no | PK clustered; `CK_Jobs_Id CHECK ([Id] > 0)` | assigned inside the enqueue and tick statements from `core.sq_Jobs` |
 | `HandlerKey` | `nvarchar(64)` | no | | §3.7 grammar |
 | `Status` | `varchar(9)` | no | | `JobStatus` as text |
 | `DueAt` | `datetimeoffset(3)` | no | | earliest claim time; moved by retry backoff and `retry`/`resume` |
@@ -280,11 +280,10 @@ public interface IJobEntity
 }
 ```
 
-One business row is one job. The relation is set by the enqueue statement (§4.2), or supplied by
-a schedule-fired handler that inserts its own row with `JobId` under `EnlistOptions.ServerOwned`
+One business row is one job. The relation is set by the enqueue statement (§4.2), or supplied by a
+schedule-fired handler that inserts its own row with `JobId` under `EnlistSaveOptions.ServerOwned`
 (§14.1), and cleared by retention (`SET NULL`); the machinery never writes the business table
-otherwise. Work that spans many rows is an arguments-only job whose handler queries the rows
-itself.
+otherwise. Work that spans many rows is an arguments-only job whose handler queries the rows itself.
 
 ### 2.5 Standalone table types
 
@@ -632,8 +631,8 @@ partially applied import chunk — rolls back with it under `XACT_ABORT`.
 ### 5.4 Complete
 
 One completion per handler invocation (per partition), in one `Persist` batch in the run-as scope
-(§8): the connect prologue of spec 0013 (`ForUser` or `System` variant) heads the batch; inside the
-transaction, after the platform's guard statements, the completion statement is the first
+(§8): the connect prologue of spec 0013 (`ConnectPremises.ForUser` or `ForSystem`) heads the batch;
+inside the transaction, after the platform's guard statements, the completion statement is the first
 statement, then the handler's appended statements, then the worker's notifications (§10), then the
 epilogue. A partition whose run-as connect raises `TenantNotFoundException` is completed in the
 system tenant scope by a batch that carries the completion statement only (§8).
@@ -816,8 +815,9 @@ WHERE [Id] = 1 AND ([LastTickAt] IS NULL OR [LastTickAt] < DATEADD(second, -60, 
 SELECT @tb{b}_last AS [PreviousTickAt], @tb{b}_now AS [Now];
 ```
 
-- `core.JobWorkerState` is a single-row table: `Id int PK` with `CK_JobWorkerState_Id (Id = 1)`,
-  `LastTickAt datetimeoffset(3) NULL`, `LastTickOwner nvarchar(128) NULL`; seeded
+- `core.JobWorkerState` is a single-row table: `Id int PK` with
+  `CK_JobWorkerState_SingleRow (Id = 1)` beside the positive-key check of spec 0011's
+  convention, `LastTickAt datetimeoffset(3) NULL`, `LastTickOwner nvarchar(128) NULL`; seeded
   `(1, NULL, NULL)` by `HasData`, so a new tenant's first tick sees no gap.
 - `@tb{b}_p0` is `JobsOptions.GapThreshold` in minutes (default 360). When `PreviousTickAt` is
   older than the threshold the worker logs the gap at `Warning`, counts
@@ -873,7 +873,7 @@ only through the actions.
 
 | Column | Type | Null | Constraints | Notes |
 |---|---|---|---|---|
-| `Id` | `int` | no | PK clustered | built-ins in the reserved band (§7.9) |
+| `Id` | `int` | no | PK clustered; `CK_Schedules_Id CHECK ([Id] > 0)` | built-ins in the reserved band (§7.9) |
 | `Code` | `nvarchar(64)` | yes | `UX_Schedules_Code WHERE Code IS NOT NULL` | |
 | `Name` | `nvarchar(255)` | no | | |
 | `Name2`, `Name3` | `nvarchar(255)` | yes | | gated by tenant languages |
@@ -1064,12 +1064,15 @@ the property path:
 | `Schedules.BuiltInAlwaysActive` | `deactivate` targets a built-in (`ValidateActionAsync`) |
 
 `ContributeAsync` (a save hook; the activatable recipe invokes it after `activate`/`deactivate` as
-well): for every saved or activated row computes `next = GetNextOccurrence(Now, zone)` in C#
-(`Now` = `RequestContext.Now`, the one place the application clock enters — the next tick corrects
-it against the database clock) and appends, with a `ScheduleNextList` TVP, an upsert of
-`core.ScheduleStates` (`INSERT` for new ids, `UPDATE … SET NextDueAt` otherwise; `NextDueAt = NULL`
-for deactivated rows) and, on activation, an `UPDATE [core].[Schedules] SET [PausedReason] = NULL`
-for the affected ids; declares `Writes = { core.ScheduleStates, core.Schedules }`.
+well, on an `ActionPersistContext<Schedule>` whose `Action` names which; the service overrides
+`ValidateActionAsync` for both actions, so they take spec 0014 §11.2's general path and the context
+carries the target rows): for every saved or activated row computes
+`next = GetNextOccurrence(Now, zone)` in C# (`Now` = `RequestContext.Now`, the one place the
+application clock enters — the next tick corrects it against the database clock) and appends, with a
+`ScheduleNextList` TVP, an upsert of `core.ScheduleStates` (`INSERT` for new ids,
+`UPDATE … SET NextDueAt` otherwise; `NextDueAt = NULL` for deactivated rows) and, on activation, an
+`UPDATE [core].[Schedules] SET [PausedReason] = NULL` for the affected ids; declares
+`Writes = { core.ScheduleStates, core.Schedules }`.
 
 `TakeOver`: an `[EntityAction("take-over", Action = "Save")]` over ids; validation refuses
 built-ins; the action is `IDataBatch.Update<Schedule>` with `Assignments = { RunAsUserId: caller
@@ -1113,32 +1116,33 @@ a built-in's `CronExpression` and `TimeZoneId` and its names, nothing else (§7.
   only by `take-over`. User-triggered jobs run as the requester. Admin `retry` and `resume` keep the
   original `RunAsUserId`, never the administrator's.
 - **The job scope.** Before invoking a handler the worker builds a `RequestContextSnapshot`
-  (`TenantId`, `Kind = User` or `System`, `UserId = RunAsUserId`, `Subject` = the user's subject or
-  `"system"`, the platform-default locale fields, `Client = "worker"` — a value of spec 0015's
-  client set that never reaches a request filter — and `TraceParent` = the job's when the partition
-  holds one job, else null: log-correlation data that fills `RequestContext.OriginTraceParent`, spec
-  0010 §4.1, while the links of §9 carry every job) and opens
-  `ITenantScopeFactory.CreateScopeAsync(snapshot)` (spec 0010 §4.4) inside the `process <key>`
-  activity of §9; `TenantUnavailableException` (the tenant left `Active`) leaves the lease to lapse.
-  The scope factory runs the connect initializer — `IUserConnector.ConnectAsUser(RunAsUserId)` (the
-  `ForUser` prologue: tags and `IsActive`, no activity stamp, no state flip) or `ConnectAsSystem()`
-  for the system user — and resolves the locale fields from the user's `PreferredLanguage`/
-  `PreferredCalendar`/`PreferredTimeZone` or the tenant defaults (spec 0012 §9.3), so a handler
-  invocation pays one connect. A run-as user who is inactive fails the connect with
-  `TenantNotFoundException` (spec 0013 §7.6): the handler is not invoked, and the partition's
-  completion — every item `Failed` with `ErrorCode = 'user_inactive'` — is written in the system
-  tenant scope (`ConnectAsSystem()`) by a batch that carries the completion statement (§5.4) only,
-  as the exhausted pass of §5.1 fails its rows without opening a run-as scope: each row raises
-  `core.job.failed` (§10) in a separate `Persist` batch under the system user and counts
+  (`TenantId`, `Kind = User` or `System`, `Subject` = the user's subject or `"system"`,
+  `UserId = RunAsUserId`, `Client = "worker"` — a value of spec 0015's client set that never reaches
+  a request filter — and `TraceParent` = the job's when the partition holds one job, else null:
+  log-correlation data that fills `RequestContext.OriginTraceParent`, spec 0010 §4.1, while the
+  links of §9 carry every job) and opens `ITenantScopeFactory.CreateScopeAsync(snapshot)` (spec 0010
+  §4.4) inside the `process <key>` activity of §9; `TenantUnavailableException` (the tenant left
+  `Active`) leaves the lease to lapse. The scope factory runs the connect initializer —
+  `IUserConnector.ConnectAsUser(RunAsUserId)` (`ConnectPremises.ForUser`: tags and `IsActive`, no
+  activity stamp, no state flip) or `ConnectAsSystem()` for the system user — and then spec 0012's
+  negotiation initializer, which resolves the locale fields from the run-as user's
+  `PreferredLanguage`, `PreferredCalendar` and `PreferredTimeZone`, else the tenant defaults (spec
+  0012 §9.3), so a handler invocation pays one connect. A run-as user who is inactive fails the
+  connect with `TenantNotFoundException` (spec 0013 §7.6): the handler is not invoked, and the
+  partition's completion — every item `Failed` with `ErrorCode = 'user_inactive'` — is written in
+  the system tenant scope (`ConnectAsSystem()`) by a batch that carries the completion statement
+  (§5.4) only, as the exhausted pass of §5.1 fails its rows without opening a run-as scope: each row
+  raises `core.job.failed` (§10) in a separate `Persist` batch under the system user and counts
   `tellma.jobs.completed{outcome=failed}`; the schedule pauses at the next tick (§7.7).
-- **The job frame.** Around each `ExecuteAsync` the worker opens the frame of spec 0014 §13.3
-  — the scoped `IWriteHost` of the job scope, `Kind = Job`, `Operation = "job:<key>"` — bound to
-  the partition's completion batch. A handler that writes rows a stack owns implements
-  `IEnlists<TTarget>` and enlists them with the frame; its `PersistAsync` places every group on
-  `JobBatch.Batch` after the completion statement (§5.6), so the rows commit with the outcome and
-  never survive a lost lease. The run-as scope authorises the frame; an enlisted group carries no
-  decision of its own (spec 0013 §5.3). A `ValidationException` from `PersistAsync` surfaces
-  inside `ExecuteAsync` and follows §3.4 unless the handler marks the item.
+- **The job frame.** Around each `ExecuteAsync` the worker opens the frame of spec 0014 §13.3 —
+  `Kind = Job`, `Operation = "job:<key>"` — bound to the partition's completion batch and registered
+  in the job scope as the scoped `IOpenWriteHost`. A handler that writes rows a stack owns
+  implements `IEnlists<TTarget>`, enlists them with the frame and awaits the injected frame's
+  `PersistAsync`, which places every group on `JobBatch.Batch` after the completion statement
+  (§5.6), so the rows commit with the outcome and never survive a lost lease. The run-as scope
+  authorises the frame; an enlisted group carries no decision of its own (spec 0013 §5.3). A
+  `ValidationException` from `PersistAsync` surfaces inside `ExecuteAsync` and follows §3.4 unless
+  the handler marks the item.
 - **Permissions at run time.** Handlers evaluate permissions through spec 0013's
   `IAccessEvaluator.EvaluateAsync(resource, action, bespoke)` exactly as a request does, so a
   schedule can never read more than its owner may read today. Handlers of system jobs never read
@@ -1375,23 +1379,25 @@ tenant.
 
 ### 14.1 Export (spec 0018)
 
-The `core.export` handler is `IEntityJobHandler<Export>` with `[JobHandler("core.export",
-BatchSize = 1, LeaseSeconds = 600, MaxAttempts = 3, Schedulable = true)]` and implements
-`IEnlists<Export>`. The export operation, when it decides on background work, enlists the `Export`
-row in the invoker's frame and awaits `PersistAsync`; `ExportService.ContributeAsync` enqueues
-every new row whose `JobId` is null with `Entity` = the row and `RunAsUserId = RequestedById` =
-the caller, so the row and its job commit together and the operation returns `JobAccepted(JobId,
-ExportId)` (spec 0018 §12.2). The handler re-evaluates `Read` on the resource in the job scope,
-streams the query in pages, reports progress per page, stages the workbook through spec 0016's
-`IBlobService`, enlists with the job frame (§8) an update of the claimed row carrying `FileId`,
-`FileName` and `RowCount` (`Concurrency = Check` against the stamp the claim loaded), and calls
-`NotifyOnSuccess` with `core.export.ready` (target `core.Export`, id = the export): the update, the
-confirmation of the staged file by its blob effect and the notification ride the completion batch,
-one round trip atomic with the outcome, so a lost lease leaves no `FileId` behind (spec 0018
-§12.3). A user schedule naming `core.export` carries the request in `ArgumentsJson`; the fired
-job's handler runs with `Item = null` (§5.1) and enlists one insert of the `Export` row at the end
-of the run, `FileId` set and `JobId = Job.Id` under `ServerOwned = [nameof(Export.JobId)]`, which
-`ContributeAsync` skips, so the row commits with the outcome already linked to its job.
+The `core.export` handler is `IEntityJobHandler<Export>` with `[JobHandler]` (key `core.export`,
+`BatchSize = 1`, `LeaseSeconds = 600`, `MaxAttempts = 3`, `Schedulable = true`) and implements
+`IEnlists<Export>`. The `export/start` and `export-for-import/start` actions enlist the `Export` row
+in the invoker's frame and await the injected `IOpenWriteHost`'s `PersistAsync`;
+`ExportService.ContributeAsync` enqueues every new row whose `JobId` is null with `Entity` = the row
+and `RunAsUserId = RequestedById` = the caller, so the row and its job commit together and the
+action returns `JobAccepted(JobId, ExportId)` (spec 0018 §12.2). The handler re-evaluates `Read` on
+the resource in the job scope, streams the query in pages, reports progress per page, stages the
+workbook through spec 0016's `IBlobService`, enlists with the job frame (§8) an update of the
+claimed row carrying `FileId`, `FileName` and `RowCount` (`Concurrency = Check` against the stamp
+the claim loaded), and calls `NotifyOnSuccess` with `core.export.ready` (target `core.Export`, id =
+the export): the update, the confirmation of the staged file by its blob effect and the notification
+ride the completion batch, one round trip atomic with the outcome, so a lost lease leaves no
+`FileId` behind (spec 0018 §12.3). A user schedule naming `core.export` carries in `ArgumentsJson`
+an `ExportJobArguments` with its `kind` (spec 0018 §12.1); the fired job's handler runs with
+`Item = null` (§5.1) and enlists one insert of the `Export` row at the end of the run, its `Kind`
+from the arguments' case, `FileId` set and `JobId = Job.Id` under
+`EnlistSaveOptions.ServerOwned = [nameof(Export.JobId)]`, which `ContributeAsync` skips, so the row
+commits with the outcome already linked to its job.
 
 ### 14.2 Import (spec 0018)
 

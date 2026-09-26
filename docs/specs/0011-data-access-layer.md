@@ -170,6 +170,7 @@ connections share one pool key. The compatibility level is pinned so that
 | `UniqueConvention` | `[Unique]`, `[NaturalKey]` → `UX_<Table>_<Col>`, filtered `WHERE <Col> IS NOT NULL` when nullable; on a child, `(ParentKey, Col)` |
 | `BlobReferenceConvention` | `[BlobReference]` → `FK_<Table>_<Column> → core.Blobs(Id)` (`NO ACTION`), `IX_<Table>_<Column>` |
 | `SequenceConvention` | every keyed table → `HasSequence` `<schema>.sq_<Table>` `AS int` (or `bigint`) `START WITH 1000 INCREMENT BY 1 NO CYCLE` |
+| `PositiveKeyConvention` | every keyed table → `CK_<Table>_Id` `CHECK ([Id] > 0)`: the wire gives `0` (new) and negative ids (temporary) a meaning, so a stored non-positive id would be a row no save can address; sequences start at 1000 and seeded rows use 1–999 (§4.1), so only a hand-written seed, migration or script could produce one |
 | `MultilingualConvention` | `[Multilingual]` groups share `MaxLength` and unicode; `P2`/`P3` nullable |
 
 Constraint and index names follow `PK_<Table>`, `FK_<Table>_<Column>`, `UX_<Table>_<Cols>`,
@@ -258,7 +259,7 @@ public interface IJobEntity
 | `TreeEntity<TKey>` | `ParentId` is a self-referencing foreign key configured without a navigation; the Queryex navigation `Parent` derives from the column name exactly like every other navigation-less FK, so `Parent.Name`, `descendantOf`, `ancestorOf` and `level(Node)` work unchanged, and a details read carries the parent row in `Related` (§11.5) because spec 0014's default details expansion covers every foreign-key navigation, `Parent` included, each projected per §2.5. A tree is extended by plain inheritance (`MyCenter : Center`) and registered with `UseEntity<Center, MyCenter>()`; `TLeaf : TDefault` is the one constraint for every entity kind. `Node` is a shadow `hierarchyid` (§10). |
 | `ActivatableTreeEntity<TKey>` | Adds `IsActive` and `ActiveSubtreeCount` (expanders on the active-only tree view without a subquery). No `Level` column (`level(Node)`), no `IsLeaf` (`SubtreeCount = 1`). |
 | `IActivatable` | A one-property gate. `IsActive` is `ServerOwned` by derivation: every row is created active (the `INSERT` writes the column's default and ignores the payload), and the column changes only through the activate/deactivate actions, which are `IDataBatch.Update` statements (§9.1) — the one path that writes it. A client value on a save or an import is overwritten silently, like every other server-owned column. |
-| `IJobEntity` | The row's link to the job that is processing it. `JobId` is server-owned: spec 0019's enqueue statement sets it in the same transaction without touching `ModifiedAt`, and a schedule-fired entity handler that inserts its own row supplies it through `EnlistOptions.ServerOwned` on the enlisted insert (spec 0014 §13.3). |
+| `IJobEntity` | The row's link to the job that is processing it. `JobId` is server-owned: spec 0019's enqueue statement sets it in the same transaction without touching `ModifiedAt`, and a schedule-fired entity handler that inserts its own row supplies it through `EnlistSaveOptions.ServerOwned` on the enlisted insert (spec 0014 §13.3). |
 
 Capability declarations are exactly three kinds: a base class for a shape that adds columns, a
 one-property interface for a gate, an annotation for a declaration. There is no `IAudited`,
@@ -342,7 +343,7 @@ the pipeline reports it as `Entity.NotFound`.
 
 | Ownership | Source | Emitter behaviour |
 |---|---|---|
-| `ServerOwned` | `[ServerOwned]` (spec 0013 §3.1 declares it on the invitation-evidence columns of `core.Users`); by derivation `Id`, the four audit columns, `SubtreeCount`, `ActiveSubtreeCount`, `IsActive` and `JobId` | Never in a `SET` list. On `INSERT` the audit columns are stamped by the statement; every other server-owned column is written from the in-memory row after `EntityMetadata.ResetServerOwned(entity)` restored its fresh-instance value (an enlisted insert re-applies the members its `EnlistOptions.ServerOwned` names, spec 0014 §13.3). On update the before image wins silently. |
+| `ServerOwned` | `[ServerOwned]` (spec 0013 §3.1 declares it on the invitation-evidence columns of `core.Users`); by derivation `Id`, the four audit columns, `SubtreeCount`, `ActiveSubtreeCount`, `IsActive` and `JobId` | Never in a `SET` list. On `INSERT` the audit columns are stamped by the statement; every other server-owned column is written from the in-memory row after `EntityMetadata.ResetServerOwned(entity)` restored its fresh-instance value (an enlisted insert re-applies the members its `EnlistSaveOptions.ServerOwned` names, spec 0014 §13.3). On update the before image wins silently. |
 | `WriteOnce` | `[WriteOnce]` | Never in a `SET` list; written on `INSERT` from the payload. A changed value on update is reported by the pipeline as `WriteOnce` at the path. |
 | `Derived` | `[Derived]` | In the `SET` list and the `INSERT` column list, from the in-memory row as the pipeline's hooks left it (the preprocess hook, or a validator whose value needs the before image); the client's value never reaches the emitter, because the pipeline calls `EntityMetadata.ResetDerived(entity)` on every row, new and existing, before the hook (spec 0014). Counts as an editable column in the unchanged-row comparison (§8.2). |
 | `DatabaseOwned` | a column with computed SQL in the model (`HasComputedColumnSql`), by derivation; no attribute | Never in the `INSERT` column list, a `SET` list or the unchanged-row comparison, and absent from the UDTT (spec 0001 excludes computed columns); the read-back returns it; a client value is ignored silently. |
@@ -365,9 +366,10 @@ entity is fixed and narrow: `Id`, the `[Multilingual]` `Name` group, `Code` when
 one, and every `[BlobReference]` column whose preset is `Avatar`. A declaration replaces the
 default rather than extending it. Core's `User` and `Role` carry no declaration and are projected
 by the default (`Id, Name, Name2, Name3, ImageId` and `Id, Name, Name2, Name3, Code`), so
-`CreatedBy.Email`, `CreatedBy.Subject` and the contact columns never travel through a navigation.
-The materializer records each related set's projection (§11.5); the navigation-traversal rule that
-refuses a select outside it is spec 0014's.
+`CreatedBy.Email`, `CreatedBy.Subject` and the contact columns travel through a navigation only
+for a caller whose `Read` on `User` is unfiltered. The materializer records each related set's
+projection (§11.5); the traversal rule (spec 0014 §5.2) confines a path to it unless the caller's
+`Read` on the target is unfiltered.
 
 ### 2.6 Multilingual groups, enums, JSON columns
 
@@ -543,26 +545,19 @@ references `.Api`; spec 0015 owns their JSON converters:
 
 ```csharp
 // Tellma.Core.Abstractions.Data
-public enum QueryColumnKind
-{
-    Int32, Int64, Int16, Byte, Decimal, Double, Boolean, String, Date, DateTime, DateTimeOffset, Time, Guid,
-    Binary, HierarchyId
-}
-
 public sealed record QueryColumn(
-    string Name, string Type, string? StoreType, QueryColumnKind Kind, bool Nullable,
-    IReadOnlyList<string>? Path, bool GroupingKey);
+    string Name, QueryexType Type, int? Scale, bool Nullable, IReadOnlyList<string>? Path, bool GroupingKey);
 
 public sealed class QueryRowSet
 {
     public IReadOnlyList<QueryColumn> Columns { get; }
     public int RowCount { get; }
-    public int? Count { get; }                          // the capped grand total when RowQueryOptions.CountCap was given; cap + 1 means "more than cap"
-    public QueryRowSet? Ancestors { get; }              // the ancestor rows when RowQueryOptions.IncludeAncestors was set (§11.3)
-    public Array GetBuffer(int column);                 // int[], long[], decimal[], bool[], string?[], DateOnly[], DateTime[], DateTimeOffset[], byte[][], Guid[]
+    public Array GetBuffer(int column);                 // one of §11.3's buffers: int[], long[], short[], byte[], decimal[], double[], bool[], string?[], Guid[], DateOnly[], DateTime[], DateTimeOffset[]
     public bool IsNull(int column, int row);
-    public sealed class Builder(IReadOnlyList<QueryColumn> columns, int capacity);   // filled by the reader through typed getters, one AppendRow per row
+    public sealed class Builder(IReadOnlyList<QueryColumn> columns, IReadOnlyList<Type> fieldTypes, int capacity);   // created from the open reader's metadata before the first Read (§11.3); one AppendRow per row
 }
+
+public sealed record RowPage(QueryRowSet Rows, int? Count, QueryRowSet? Ancestors);   // Count: the capped count when CountCap was given; cap + 1 means more than the cap
 
 public sealed class RelatedEntities                     // typed sets restricted to each entity's related projection
 {
@@ -575,10 +570,15 @@ public sealed record RelatedEntitySet(
 ```
 
 `QueryColumn` is the projection of spec 0008's `QueryexColumn` (`Ordinal` becomes the position,
-`Path` the navigation path, `GroupingKey` its `IsGroupingKey`); `Kind` is derived from the
-column's `QueryexType` and store type so a reader picks a typed buffer without consulting the
-schema. `Count` and `Ancestors` are filled by the executor and never serialised by the row-set
-converter; spec 0015 serialises them as its own members beside `rows`.
+`Path` the navigation path, `GroupingKey` its `IsGroupingKey`). `Type` is the column's Queryex type
+(spec 0008 §7.1). `Scale` is set on `Numeric` columns only: `0` for an integer result (`int`,
+`bigint`, `smallint`, `tinyint`), the decimal's scale for a `decimal` result, `null` for a floating
+result (`float`, `real`); it is `null` on every other type, and the reader takes it from the result
+set's own metadata (§11.3).
+
+`QueryRowSet` is the columnar buffer alone. `RowPage` is what `IDataBatch.Rows` returns (§5.2):
+the page's rows, the capped count when `RowQueryOptions.CountCap` was given, and the ancestor rows
+when `RowQueryOptions.IncludeAncestors` was set (§11.3); spec 0015 §3.5 serialises the page.
 
 ## 4. Column vocabulary and schema conventions
 
@@ -603,7 +603,8 @@ and is never a platform timestamp.
 
 ### 4.2 Standard column sets
 
-**Keyed** (`Entity<TKey>`): `Id int NOT NULL` (or `bigint`), `PK_<Table>` clustered, `sq_<Table>`.
+**Keyed** (`Entity<TKey>`): `Id int NOT NULL` (or `bigint`), `PK_<Table>` clustered,
+`CK_<Table>_Id CHECK ([Id] > 0)`, `sq_<Table>`.
 
 **Top-level audit** (`TopLevelEntity<TKey>`):
 
@@ -764,7 +765,7 @@ public interface IDataBatch
     IReadOnlySet<TableName> WrittenTables { get; }      // union of every statement's declared writes
     IReadOnlySet<TableName> CallerAuthority { get; }    // stack-owned tables a caller statement may write; unowned tables always may
     BatchResult<EntityQueryResult<TEntity>> Query<TEntity>(EntityQuery<TEntity> query);
-    BatchResult<QueryRowSet> Rows(QuerySpec spec, QueryArguments? arguments, RowQueryOptions? options);
+    BatchResult<RowPage> Rows(QuerySpec spec, QueryArguments? arguments, RowQueryOptions? options);
     BatchResult<int> Count(QuerySpec spec, QueryArguments? arguments, int cap = 10000);
     BatchResult<SaveReceipt> Save<TEntity>(
         IReadOnlyList<TEntity> rows, ConcurrencyMode concurrency = ConcurrencyMode.Check);
@@ -875,7 +876,7 @@ public sealed record RawResult(IReadOnlyList<QueryRowSet> ResultSets);
 | `WrittenTables` | The union of every statement's declared writes: `Save`, `Update`, `Delete` derive theirs from metadata (children included); `Sql` declares through `SqlOptions.Writes`. Spec 0012's epilogue resolves tag bumps from it; the fixture tier audits it against change tracking. |
 | `CallerAuthority` | The authority of the current appender (spec 0014 §13.3): the tables, children included, of the stack whose participant holds the batch — the pipeline hands each participant a view of the one batch carrying its own stack's tables, the host's for the host's hooks and effects, the target's for an enlisted group's; empty for a job or provisioning handler's own statements, an `[ApiRoute]` service and a batch outside any frame. This interface's members are the **caller channel**: a `Save`, `Update`, `Delete` or `Sql` whose declared writes include a table that spec 0014's `IStackRegistry.OwnerOf` maps to a stack outside the set is refused at append with `InvalidOperationException` naming the table, its owner and the enlistment remedy; a table no stack owns always passes. The platform's own composers — the emitter, the access guards, the blob effect and the job, notification and progress statements — append through an **internal channel** of `Tellma.Core`'s batch implementation that the check does not cover. |
 | `Query` | Compiles the entity query for `TEntity` (every mapped leaf is a root; `TEntity` may be a base, resolved to its leaf through `IEntityMetadataProvider.Get`), appends it with its child and related queries, and materialises entities plus a `RelatedEntities` dictionary after execution (§11.5). |
-| `Rows` | Appends one compiled `QuerySpec`; `Skip`/`Take` are parameter slots; returns a columnar `QueryRowSet` (§11.3). |
+| `Rows` | Appends one compiled `QuerySpec`; `Skip`/`Take` are parameter slots; returns a `RowPage`: the columnar `QueryRowSet` with the capped count and the ancestor rows its options ask for (§3.3, §11.3). |
 | `Count` | `SELECT COUNT(*) FROM (<body with Select = "Id", OrderBy = "Id", Take = cap + 1>) AS q`; a result of `cap + 1` means "more than `cap`". |
 | `Save` | Appends the emitter's statements for the root type and its supplied children (§8); `Override` disables the stamp comparison, never the existence check. |
 | `Update` | One stamped `UPDATE` over the captured keys — `Ids` conjoined with `Filter`, or the query capped and count-verified exactly like delete-by-query (§9.1); assigned properties are editable or server-owned, never write-once; tree tables append the recount. |
@@ -1720,11 +1721,30 @@ per §11.2 item 6, binds `Literal` slots from the compiled query, `Today`/`Now`/
 slots from `QueryexContextValues`, and `Declared` slots from `QueryArguments` (a declared parameter
 bound against several store types fills every slot of that name from one value; a missing argument
 is a compose-time `ArgumentException`, a composer bug — spec 0014's pipeline binds every declared
-parameter, `null` when the request carries none). The reader fills a `QueryRowSet.Builder` from the
-compiled `Columns` through typed getters (`GetInt32`, `GetDecimal`, `GetDateOnly`, …; a
-`HierarchyId` column through the EF `HierarchyId` reader, surfaced as its path string; `DBNull` as
-null). With `CountCap` the capped count (§5.2) rides the same statement and lands in
-`QueryRowSet.Count`; with `IncludeAncestors` (tree roots only) the page keys are captured and:
+parameter, `null` when the request carries none).
+
+SQL Server sends a result set's column metadata before its first row, even for an empty result, so
+the buffers and `Columns` never depend on the data. After `ExecuteReader` and before the first
+`Read`, the reader creates the `QueryRowSet.Builder` from the compiled `Columns` and the open
+reader's metadata. Each `Numeric` column's `Scale` (§3.3) comes from the reader's field type, and
+for a `decimal` from `DbColumn.NumericScale` in the reader's column schema, so a computed decimal
+(`Sum(Amount)`) reports the scale SQL Server computed. Each column's buffer is chosen by the pair
+(Queryex type, the logical target; the reader's `GetFieldType(i)`, the physical source):
+
+| Queryex type | Field type | Buffer | Read |
+|---|---|---|---|
+| `Numeric` | `int` / `long` / `short` / `byte` / `decimal` / `double` / `float` | `int[]` / `long[]` / `short[]` / `byte[]` / `decimal[]` / `double[]` (a `real` widens to `double`) | the matching typed getter |
+| `Bool` | `bool` or an integer | `bool[]` | `GetBoolean`, or non-zero for an integer (how Queryex emits a predicate is its concern, spec 0008 §13.2) |
+| `String` | `string` | `string?[]` | `GetString` |
+| `Guid` | `Guid` | `Guid[]` | `GetGuid` |
+| `Date` | `DateTime` (SQL `date`) | `DateOnly[]` | `GetFieldValue<DateOnly>` |
+| `DateTime` | `DateTime` | `DateTime[]` | `GetDateTime` |
+| `DateTimeOffset` | `DateTimeOffset` | `DateTimeOffset[]` | `GetDateTimeOffset` |
+| `HierarchyId` | the UDT | `string?[]` | EF's `HierarchyId` reader, surfaced as its path string |
+
+Any other pair is a composer bug and throws `InvalidOperationException` naming the column; `DBNull`
+reads as null. With `CountCap` the capped count (§5.2) rides the same statement and lands in
+`RowPage.Count`; with `IncludeAncestors` (tree roots only) the page keys are captured and:
 
 ```sql
 DECLARE @tb2_anc TABLE ([Id] int PRIMARY KEY);
@@ -1738,7 +1758,7 @@ WHERE a.[Id] NOT IN (SELECT [Id] FROM @tb2_keys)
 followed by the same select restricted by `KeySetRestriction("Id", "@tb2_anc")` under
 `AncestorsFilter` (the access filter alone — an ancestor need not satisfy the user's filter but must
 be visible; null conjoins nothing), ordering kept, no paging; the rows land in
-`QueryRowSet.Ancestors`. `Count(spec, arguments, cap)` is the standalone form of the capped count.
+`RowPage.Ancestors`. `Count(spec, arguments, cap)` is the standalone form of the capped count.
 
 ### 11.4 Entity queries
 
@@ -1860,7 +1880,7 @@ by name.
 
 | Suite | Location | Tier | What it pins |
 |---|---|---|---|
-| Unit | `test/core/Tellma.Core.Tests/Data/` | PR | golden SQL per emitter statement kind against the fixture metadata (§8, §9, §10, §11.3); `SaveReceipt` reading from canned result sets; allocator deficit and buffer arithmetic, temporary-id rewriting, hold/return; metadata construction and every §3.2 rule as a failing model; `SchemaFingerprint` stability; natural-key inference order; enum sizing (nullable enums included); retry classification for every number of §6.4; the commit-probe verdicts; `QueryRowSet.Builder` typed buffers; materializer routing (root, related, children, grandchildren, missing column); the persist frame assembly order of §5.5; parameter-count and result-set-count guards |
+| Unit | `test/core/Tellma.Core.Tests/Data/` | PR | golden SQL per emitter statement kind against the fixture metadata (§8, §9, §10, §11.3); `SaveReceipt` reading from canned result sets; allocator deficit and buffer arithmetic, temporary-id rewriting, hold/return; metadata construction and every §3.2 rule as a failing model; `SchemaFingerprint` stability; natural-key inference order; enum sizing (nullable enums included); retry classification for every number of §6.4; the commit-probe verdicts; `QueryRowSet.Builder` buffers for every (Queryex type, field type) pair of §11.3, `Scale` per numeric field type, and the `InvalidOperationException` for any other pair; materializer routing (root, related, children, grandchildren, missing column); the persist frame assembly order of §5.5; parameter-count and result-set-count guards |
 | Integration | `test/core/Tellma.Core.IntegrationTests/Data/` | `Category=Integration`, PR on Windows (LocalDB) and Linux (Testcontainers), nightly full matrix | everything in §13.3 |
 | Analyzers | `test/core/Tellma.Core.Analyzers.Tests/` | PR | each `TELLMA000n` condition and its negative |
 
@@ -2167,9 +2187,11 @@ The load-bearing decisions, where not already evident above:
     (§5.3, §5.5) — versus a third `DataBatchStage` for transaction-head statements owned by the
     contributors. Flips if a fourth contributor needs a transaction-head statement that the
     executor's fixed frame cannot express.
-23. **`QueryRowSet.Count` and `QueryRowSet.Ancestors` as members of the row set** (§3.3) — versus
-    a separate result record from `Rows`. Flips if the JSON converter's need to ignore the two
-    members proves error-prone.
+23. **`Rows` returns a `RowPage` carrying the count and the ancestor rows beside a buffer-only
+    `QueryRowSet`** (§3.3) — versus `Count` and `Ancestors` as members of the row set (one type
+    fewer; the row-set converter must skip them, and every other row set, a raw result set or the
+    ancestor rows, carries two members it never fills). Flips if the wrapper proves noise at every
+    `Rows` call site.
 24. **No LINQ surface; `TellmaDbContext` platform-internal** (§1.3, §5.1) — versus a counted,
     unfiltered `IQueryable` escape hatch for pack reads. Flips if a pack read proves inexpressible
     in Queryex and raw SQL alike.

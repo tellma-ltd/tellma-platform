@@ -136,10 +136,10 @@ model configuration of the six tables, and the singleton `ISecurableRegistry`, s
 | `TopLevelEntity`, `ChildEntity`, `IActivatable`, `[Temporal]`, `[ServerOwned]`, `[Derived]`, `[WriteOnce]`, `[NaturalKey]`, `[Unique]`, `[Searchable]`, `[Multilingual]`, `[ParentKey]`, `[MaxChildren]` | spec 0011 | the entity shapes |
 | `ITenantDatabase` (`Schema`), `KeySetRestriction` | spec 0011 | filter validation (§3.7, §9) and the post-check |
 | `VersionTag`, `VersionTagNames`, `UserVersionTagNames`, `[BumpsVersionTag]`, `[BumpsUserVersionTag]`, `VersionedCache<TKey, TValue>`, `TellmaCacheOptions`, `core.VersionTags`, the `50412` guard and the bump statements | spec 0012 | tags, caches, the persist re-check |
-| `IStackRegistry`, `StackDescriptor`, `ActionDescriptor`, `[EntityAction]`, `[ApiAction]`, `[ApiRoute]`, `IEntityValidator<T>`, `SaveContext`, `DeleteContext`, `ActionContext`, `ValidationErrors` | spec 0014 | securable registration from stacks; the validators |
+| `IStackRegistry`, `StackDescriptor`, `EntityActionDescriptor`, `ApiActionDescriptor`, `[EntityAction]`, `[ApiAction]`, `[ApiRoute]`, `IEntityValidator<T>`, `SaveContext`, `DeleteContext`, `ActionContext`, `IPersistEffect<T>`, `SavePersistContext<TEntity>`, `ValidationErrors` | spec 0014 | securable registration from stacks; the validators; the companion `UserStamps` insert (§8.2) |
 | `RequestContext`, `IRequestContextAccessor`, `IRequestContextInitializer`, `RequestContextInputs`, `TenantState`, `PrincipalKind`, `ITenantProvisioningStep`, `TenantProvisioningContext` | spec 0010 | the connect initializer, ReadOnly premises, the bootstrap step |
 | `FeatureContribution.Securables(...)`, `SecurablesContributionItem` | spec 0010 | non-entity securables |
-| `MeResult`, `UserProfileView`, `AccessSummary`, `SecurableSummary`, `IdsRequest` | spec 0015 | the `me` payload (shape shared with this spec) |
+| `MeResult`, `UserProfileView`, `AccessSummary`, `SecurableSummary`, `AccessCheckRequest` | spec 0015 | the `me` payload (shape shared with this spec) and the `access/check` request (§10) |
 | `INotifier` predicates on `core.NotificationPreferences` | spec 0020 | the bump rule for `PreferencesTag` |
 | `[BlobReference]`, `BlobPreset`, `BlobReadAccess`, `IBlobService`, kind `user-image` | spec 0016 | `User.ImageId` |
 | `IBlobService`, kind `user-signature` | spec 0016 | `User.SignatureId` |
@@ -275,7 +275,7 @@ public class User : TopLevelEntity, IActivatable
 
 | Column | Type | Null | Constraints | Notes |
 |---|---|---|---|---|
-| `Id` | `int` | no | PK clustered | 1 = the system user |
+| `Id` | `int` | no | PK clustered; `CK_Users_Id CHECK ([Id] > 0)` | 1 = the system user |
 | `Kind` | `varchar(8)` | no | `DF_Users_Kind 'Human'` | write-once |
 | `Subject` | `varchar(255)` | yes | `COLLATE Latin1_General_100_BIN2`; `UX_Users_Subject (Subject) WHERE Subject IS NOT NULL INCLUDE (Kind, IsActive, State)` | server-owned; the prologue's covering seek |
 | `Email` | `nvarchar(255)` | yes | `UX_Users_Email (Email) WHERE Email IS NOT NULL` | natural key; editable while `New` |
@@ -463,7 +463,7 @@ public class Role : TopLevelEntity, IActivatable
 
 | Column | Type | Null | Constraints | Notes |
 |---|---|---|---|---|
-| `Id` | `int` | no | PK clustered | 1 = Administrator |
+| `Id` | `int` | no | PK clustered; `CK_Roles_Id CHECK ([Id] > 0)` | 1 = Administrator |
 | `Name` | `nvarchar(255)` | no | `UX_Roles_Name` | |
 | `Name2`, `Name3` | `nvarchar(255)` | yes | `UX_Roles_Name2 WHERE Name2 IS NOT NULL`, `UX_Roles_Name3 WHERE Name3 IS NOT NULL` | |
 | `Code` | `nvarchar(50)` | yes | `UX_Roles_Code WHERE Code IS NOT NULL` | natural key for seeds and import |
@@ -500,14 +500,15 @@ public class RoleMembership : ChildEntity
 ```
 
 **`core.RoleMemberships`** — temporal → `core.RoleMembershipsHistory`; UDTT `RoleMembershipsList`;
-`core.sq_RoleMemberships`: `Id int PK clustered`; `UserId int NOT NULL FK_RoleMemberships_UserId →
-core.Users(Id)` NO ACTION; `RoleId int NOT NULL FK_RoleMemberships_RoleId → core.Roles(Id)` NO
-ACTION; `Notes nvarchar(1024) NULL`; `UX_RoleMemberships_UserId_RoleId (UserId, RoleId)`;
-`IX_RoleMemberships_RoleId_UserId (RoleId, UserId)` for "members of this role" (the members extra,
-the invariants); period. A child of `User` only: synchronised under the user save (a membership
-absent from the saved list is deleted), read-only from the role side. `Notes` stays: "added per
-ticket 4711" is what an access review asks for. Each membership write bumps that user's
-`PermissionsTag`; the attribute is inherited by distribution leaves.
+`core.sq_RoleMemberships`: `Id int PK clustered`; `CK_RoleMemberships_Id CHECK ([Id] > 0)`; `UserId
+int NOT NULL FK_RoleMemberships_UserId → core.Users(Id)` NO ACTION; `RoleId int NOT NULL
+FK_RoleMemberships_RoleId → core.Roles(Id)` NO ACTION; `Notes nvarchar(1024) NULL`;
+`UX_RoleMemberships_UserId_RoleId (UserId, RoleId)`; `IX_RoleMemberships_RoleId_UserId (RoleId,
+UserId)` for "members of this role" (the members extra, the invariants); period. A child of `User`
+only: synchronised under the user save (a membership absent from the saved list is deleted),
+read-only from the role side. `Notes` stays: "added per ticket 4711" is what an access review asks
+for. Each membership write bumps that user's `PermissionsTag`; the attribute is inherited by
+distribution leaves.
 
 ### 3.7 `Permission` and `core.Permissions`
 
@@ -526,10 +527,10 @@ public class Permission : ChildEntity
 ```
 
 **`core.Permissions`** — temporal → `core.PermissionsHistory`; UDTT `PermissionsList`;
-`core.sq_Permissions`: `Id int PK clustered`; `RoleId int NOT NULL FK_Permissions_RoleId →
-core.Roles(Id)` NO ACTION; `Resource varchar(128) NOT NULL`; `Action varchar(32) NOT NULL`; `Filter
-nvarchar(2048) NULL`; `FilterLanguageVersion int NULL`; `Notes nvarchar(1024) NULL`;
-`CK_Permissions_WildcardHasNoFilter (Resource <> '*' OR Filter IS NULL)`;
+`core.sq_Permissions`: `Id int PK clustered`; `CK_Permissions_Id CHECK ([Id] > 0)`; `RoleId int NOT
+NULL FK_Permissions_RoleId → core.Roles(Id)` NO ACTION; `Resource varchar(128) NOT NULL`; `Action
+varchar(32) NOT NULL`; `Filter nvarchar(2048) NULL`; `FilterLanguageVersion int NULL`; `Notes
+nvarchar(1024) NULL`; `CK_Permissions_WildcardHasNoFilter (Resource <> '*' OR Filter IS NULL)`;
 `CK_Permissions_FilterVersion ((Filter IS NULL) = (FilterLanguageVersion IS NULL))`;
 `IX_Permissions_RoleId (RoleId) INCLUDE (Resource, Action, Filter, FilterLanguageVersion)` so the
 load by role is index-only; period. No unique index (`Filter` exceeds the key limit); exact
@@ -638,6 +639,7 @@ public sealed class SecurableRegistryBuilder
         string resource, string action, string? filterRoot, bool isSensitive = false, SecurableOwner? owner = null);
     public SecurableRegistryBuilder Alias(string oldResource, string newResource);
     public SecurableRegistryBuilder MarkSensitive(string resource, string action);
+    public SecurableRegistryBuilder MarkNotSensitive(string resource, string action);
 }
 
 public interface ISecurableContributor
@@ -667,7 +669,8 @@ public sealed record NoActivityStampMetadata();
 | `SecurableDescriptor.Feature` | The composition feature that registered it; diagnostics only. |
 | `Add` | Declares a securable. The same tuple with the same filter root is idempotent; a different filter root is a composition problem. |
 | `Alias` | Stored permissions naming `oldResource` resolve to `newResource` for one release while the migrator's data step rewrites them. |
-| `MarkSensitive` | Adds to the step-up set (§4.3). Core's defaults cannot be removed. |
+| `MarkSensitive` | Adds a pair to the step-up set (§4.3). |
+| `MarkNotSensitive` | Removes a pair from the step-up set, Core's defaults included; marking the same pair both ways is a composition problem. |
 | `Find` | The evaluator's and the validators' resolution; `null` for an unknown pair. |
 | `Fingerprint` | SHA-256 over the sorted `Resource\|Action\|FilterRoot\|IsSensitive` lines; changes only on deploy; travels in `me` so the role editor caches the securables list under it. Never stored in a tenant database. |
 | `SecurableEndpointMetadata` | Stamped on every projected stack endpoint and on hand-mapped endpoints through spec 0010's `RequireSecurable(resource, action)`; metadata for the startup audit, OpenAPI and step-up — enforcement is spec 0014's pipeline and `IApiActionInvoker`. |
@@ -678,17 +681,18 @@ public sealed record NoActivityStampMetadata();
 
 A distribution writes no securable registration for its own entities and actions:
 
-- The stack feature's `ISecurableContributor` (spec 0014 §2.7) reads `IStackRegistry` and
-  registers, per `StackDescriptor`, every standard operation's action of spec 0014 §2.4 (`Read`
-  when the stack has `Query`, `Details` or `Export`; `Save`, `Delete` per `Operations`;
-  `Activate` when the stack is activatable and has `Save`) as `(Resource, Action, FilterRoot =
-  Resource)`, every `[EntityAction].Action` (`FilterRoot = Resource` when `SupportsFilter`, else
-  `null`) and every `[ApiAction].Action` of the service and its companions with `FilterRoot =
-  Resource`. Tree stacks add nothing (`get-by-parent-ids` is `Read`, `delete-with-descendants` is
-  `Delete`); export is `Read`; import is `Save`. `[Cacheable]` stacks register `Read` with
-  `FilterRoot = null`.
-- `contribution.ApiService<T>()` registers each `[ApiAction(Resource, Action)]` pair of an
-  `[ApiRoute]` service with `FilterRoot = null`.
+- The stack feature's `ISecurableContributor` (spec 0014 §2.7) reads `IStackRegistry` and registers,
+  per `StackDescriptor`, every standard operation's action of spec 0014 §2.4 (`Read` when the stack
+  has `Query`, `Details` or `Export`; `Save`, `Delete` per `Operations`; `Activate` when the stack
+  is activatable and has `Save`) as `(Resource, Action, FilterRoot = Resource)`, every
+  `EntityActionDescriptor.Action` (`FilterRoot = Resource` when `SupportsFilter`, else `null`) and
+  every non-null `ApiActionDescriptor.Securable` of the service and its companions with
+  `FilterRoot = Resource`. Tree stacks add nothing (`get-by-parent-ids` is `Read`,
+  `delete-with-descendants` is `Delete`); export is `Read`; import is `Save`. `[Cacheable]` stacks
+  register `Read` with `FilterRoot = null`.
+- `contribution.ApiService<T>()` registers the `Securable` of every `ApiActionDescriptor` of an
+  `[ApiRoute]` service (the attribute's `Resource` and `Action`) with `FilterRoot = null`; a
+  member-only action has a null `Securable` and registers nothing.
 - `contribution.Securables(configure)` (spec 0010's `SecurablesContributionItem`) is for non-entity
   securables: settings categories (`core.Settings.General` and `core.Settings.<Category>` ×
   `Read | Save`, registered by spec 0012) and hand-mapped endpoints.
@@ -701,12 +705,13 @@ A distribution writes no securable registration for its own entities and actions
 so `delete-by-query` is sensitive exactly when `(R, Delete)` is. Core's defaults: `core.User` ×
 `Save | Delete | Activate | Invite | Credentials`, `core.Role` × `Save | Delete | Activate`,
 `core.Settings.General` × `Save`, `core.Schedule` × `Save | Delete | Activate`. A distribution may
-add pairs (`MarkSensitive`) and may not remove Core's (a composition problem). The projection
-(spec 0015) copies the flag onto the endpoint as spec 0010's `RequireAssuranceMetadata` from
-`Tellma:Session:StepUp { Acr, MaxAge }`, the host issues spec 0003's
-`401 insufficient_user_authentication` challenge when the session's assurance is below the bar, and
-spec 0014's pipeline raises `StepUpRequiredException` through `RequireAsync` (§5.1) for a caller
-no endpoint guard saw. Member endpoints are never sensitive.
+add pairs (`MarkSensitive`) and remove any, Core's defaults included (`MarkNotSensitive`, §4.1).
+A sensitive pair is refused on the MCP surface (spec 0015 §11.6), so removing one also opens its
+operation to agents. The projection (spec 0015) copies the flag onto the endpoint as spec 0010's
+`RequireAssuranceMetadata` from `Tellma:Session:StepUp { Acr, MaxAge }`, the host issues
+spec 0003's `401 insufficient_user_authentication` challenge when the session's assurance is
+below the bar, and spec 0014's pipeline raises `StepUpRequiredException` through `RequireAsync`
+(§5.1) for a caller no endpoint guard saw. Member endpoints are never sensitive.
 
 ### 4.4 The registry as data source and oracle
 
@@ -720,10 +725,12 @@ Aggregated with the realised gate of spec 0010: no duplicate `(Resource, Action)
 filter roots; every `FilterRoot` resolves to a top-level entity of the distribution's Queryex schema
 and is not a child entity; every `Owner` names a registered resource and an existing navigation;
 `*` is not a resource or action name; every resource and action matches the grammar of §2; every
-`SecurableEndpointMetadata` on any endpoint names a registered pair. The endpoint-shape rules —
-exactly one of the two metadata records on every tenant endpoint, `AllowAnonymous` only on a
-tenantless endpoint — are spec 0010 §5.3's `TellmaEndpointAudit`, which walks
-`EndpointDataSource` in the same gate; any finding of either check fails startup.
+`SecurableEndpointMetadata` on any endpoint names a registered pair, which an attribute's pair
+always is, because §4.2 registers the pair the attribute names (what that means for a misspelled
+action: spec 0015 §4.6). The endpoint-shape rules — exactly one of the two metadata records on
+every tenant endpoint, `AllowAnonymous` only on a tenantless endpoint — are spec 0010 §5.3's
+`TellmaEndpointAudit`, which walks `EndpointDataSource` in the same gate; any finding of either
+check fails startup.
 
 ### 4.6 Hard to leave unsecured
 
@@ -763,13 +770,18 @@ why the check lives where every caller passes.
 // Tellma.Core.Abstractions.Access
 public enum AccessOutcome { Denied, Filtered, Unrestricted }
 
-public enum AccessGrantSource { Role, PublicRole, Bespoke, System }
-
 public enum AccessProblemCode { UnknownResource, UnknownAction, FilterUnsupported, FilterInvalid, VersionUnsupported }
 
-public sealed record AccessGrant(
-    AccessGrantSource Source, int? RoleId, string? RoleName, int? PermissionId, string Resource, string Action,
-    string? Filter, string? Reason);
+public abstract record AccessGrant(string Resource, string Action);
+
+public sealed record RoleAccessGrant(
+    string Resource, string Action, int PermissionId, int RoleId, string RoleName, bool IsPublic, string? Filter,
+    int? FilterLanguageVersion) : AccessGrant(Resource, Action);
+
+public sealed record BespokeAccessGrant(string Resource, string Action, string? Filter, string Reason)
+    : AccessGrant(Resource, Action);
+
+public sealed record SystemAccessGrant(string Resource, string Action) : AccessGrant(Resource, Action);
 
 public sealed record AccessProblem(
     int PermissionId, int RoleId, AccessProblemCode Code, IReadOnlyList<QueryexDiagnostic> Diagnostics);
@@ -799,7 +811,7 @@ public sealed record UserAccess                                 // the cached se
     public DateTimeOffset ComputedAt { get; init; }
     public DateTimeOffset ValidatedAt { get; init; }
     public bool IsSystem { get; init; }
-    public IReadOnlyList<AccessGrant> Grants { get; init; }
+    public IReadOnlyList<RoleAccessGrant> Grants { get; init; }
     public IReadOnlyList<AccessProblem> Problems { get; init; }
     public AccessDecision Decide(
         SecurableDescriptor securable, IReadOnlyList<AccessCriterion> bespoke, string? queryRoot);
@@ -820,13 +832,16 @@ public interface IAccessEvaluator                               // scoped
 
 | Member | Meaning |
 |---|---|
-| `AccessGrant` | One matching stored row (`Resource`/`Action` as stored, wildcards preserved; `Filter` `null` = unrestricted), a bespoke criterion (`Source = Bespoke`, `Reason` = its reason key), or the system short-circuit. |
+| `AccessGrant` | One grant behind a decision. On the wire (`access/check`, spec 0015 §3.3) a grant carries a `kind` discriminator ∈ `role`, `bespoke`, `system` (JSON-polymorphic under the platform options). |
+| `RoleAccessGrant` | One matching stored row of an active role the caller belongs to or of an active public role (`IsPublic`): `Resource`/`Action` as stored, wildcards preserved; `Filter` `null` = unrestricted; `FilterLanguageVersion` the row's stamp, which the leaf of §5.2 step 5 carries. `UserAccess.Grants` holds these. |
+| `BespokeAccessGrant` | A bespoke criterion that contributed to a `Filtered` decision: `Resource` the decided securable's, `Action` the criterion's, `Filter` its tree as text, `Reason` its reason key. |
+| `SystemAccessGrant` | The system short-circuit (§5.2 step 1). |
 | `AccessProblem` | A stored row that grants nothing and why (§9). |
 | `UserAccess.Tag` / `UserTag` | The tenant `permissions` tag and the caller's `PermissionsTag` the set was built under; the entry is valid only while both match. |
 | `UserAccess.ValidatedAt` | The last prologue that confirmed both tags; bounds the deny re-check. |
 | `Evaluate` | Loads or reuses the caller's set (§6), resolves the securable, collects the bespoke criteria — the `bespoke` list the caller passes (spec 0014's pipeline and `IApiActionInvoker` pass the service's `BespokeGrant` result as one criterion, or an empty list; a caller with no criterion of its own passes an empty list) plus those of every `IAccessCriteriaProvider` registered for the resource — calls `Decide`, records the witness, counts `tellma.access.decisions{outcome}`. A `Denied` decision from a set whose `ValidatedAt` is older than `FastDenyWindow` is re-verified by one prologue-only round trip and decided again on the refreshed set (§6.4). A caller context with no user is `Denied` for everything. |
 | `Require` | `Evaluate`, then `ForbiddenException` on `Denied` and `StepUpRequiredException` when the pair is sensitive (§4.3) and the session's assurance is below spec 0010's bar. The call spec 0014's pipeline makes for every operation and `IApiActionInvoker` for every `[ApiAction]` (spec 0014 §9.1), so the refusal reaches every caller, request or not. |
-| `EvaluateFor` | The "can they, and why" path for another user: loads that user's rows through `ConnectPrologue.ForUser` (§7.5) once per scope — the load is memoised, so every `EvaluateFor` of one scope shares it — without touching the caller's set or the cache. |
+| `EvaluateFor` | The "can they, and why" path for another user: loads that user's rows through a `ConnectPremises.ForUser` whose nullable expected tags are `null` (§7.5) once per scope — the load is memoised, so every `EvaluateFor` of one scope shares it — without touching the caller's set or the cache. |
 | `Invalidate` | Drops the cached set; called by the connector when a prologue reports a deactivated user. |
 
 ### 5.2 The composition contract
@@ -834,7 +849,7 @@ public interface IAccessEvaluator                               // scoped
 `UserAccess.Decide` is a pure function over the cached, resolved set — no I/O, no clock, no ambient
 state. For a securable `(R, A)`:
 
-1. `IsSystem` → `Unrestricted` with one `System` grant.
+1. `IsSystem` → `Unrestricted` with one `SystemAccessGrant`.
 2. Candidates = the caller's grants (active-role memberships and every active public role, resolved
    at build time) whose resource equals `R` or is `*` and whose action equals `A`, is `*`, or —
    when `A = Read` — is any action: **a grant on `(R, A' ≠ Read)` also matches `(R, Read)` with the
@@ -842,22 +857,22 @@ state. For a securable `(R, A)`:
 3. When the securable's `FilterRoot` is `null`, candidates keep only unfiltered rows: a filtered row
    never grants a non-filterable action.
 4. Any unfiltered candidate → `Unrestricted`; `Grants` lists every candidate.
-5. Otherwise leaves = the distinct `(text, stamp)` pairs of the candidates, sorted ordinally by
-   text then by stamp, each as `FilterTree.Leaf(text, stamp)` carrying the row's
-   `FilterLanguageVersion` (spec 0011 §11.2), plus the `Filter` tree of every bespoke criterion
-   whose `Action` equals `A` or `*`. Empty → `Denied` (`Grants` empty; `Problems` = the excluded
-   rows that would have matched). Otherwise `Filtered` with `Filter = FilterTree.Or(leaves)`,
-   wrapped in `Via(Owner.Navigation)` when `queryRoot` is a weak root (§5.5); `Grants` = the
-   filtered rows and the bespoke sources.
+5. Otherwise leaves = the distinct `(Filter, FilterLanguageVersion)` pairs of the candidates, sorted
+   ordinally by text then by stamp, each as `FilterTree.Leaf(text, stamp)` (spec 0011 §11.2), plus
+   the `Filter` tree of every bespoke criterion whose `Action` equals `A` or `*`. Empty → `Denied`
+   (`Grants` empty; `Problems` = the excluded rows that would have matched). Otherwise `Filtered`
+   with `Filter = FilterTree.Or(leaves)`, wrapped in `Via(Owner.Navigation)` when `queryRoot` is a
+   weak root (§5.5); `Grants` = the filtered candidates and one `BespokeAccessGrant` per
+   contributing criterion.
 
 Rules encoded: inactive roles were excluded at load and memberships of inactive users never reach
-evaluation (the prologue refuses); a public role's rows are in every caller's set, marked
-`PublicRole`; drifted rows contribute nothing; an unfiltered grant absorbs every filtered one;
+evaluation (the prologue refuses); a public role's rows are in every caller's set as grants with
+`IsPublic` set; drifted rows contribute nothing; an unfiltered grant absorbs every filtered one;
 filters union; an empty `Or` is `false` and the decision short-circuits to `Denied` before anything
 compiles; identical filter texts under one stamp across roles contribute one leaf and leaves are
 sorted, so two users with the same grant shape produce byte-identical SQL and the engine's caches
-are hit rather than fragmented; bespoke criteria can allow access on their own (the shape
-"documents assigned to me" needs) and never absorb or remove anything.
+are hit rather than fragmented; bespoke criteria can allow access on their own (the shape "documents
+assigned to me" needs) and never absorb or remove anything.
 
 ### 5.3 What the pipeline does with a decision
 
@@ -865,8 +880,14 @@ Stated here because this spec owns the semantics; spec 0014 implements them:
 
 - `decision.Filter` is conjoined into every read, update and delete as
   `FilterTree.And([userFilter, decision.Filter])`; the access filter alone is passed as
-  `AncestorsFilter` on tree reads; navigation traversal is limited to the target's
-  `[RelatedSelect]` projection when the caller lacks `Read` on the target (spec 0015's rule).
+  `AncestorsFilter` on tree reads.
+- A navigation path into an entity `E` other than the query's root may touch every column of `E`
+  only when the caller's `Read` decision on `E` is `Unrestricted`; a filtered grant, like no grant,
+  limits the path to `E`'s `[RelatedSelect]` projection in select, filter, order and having alike,
+  and a column outside it is `ForbiddenException` (403) naming `E` (spec 0014 §5.2 step 4). A
+  traversal therefore never reveals more than a direct query of `E` would, apart from the declared
+  display projection. The joined rows are not filtered by `E`'s row-level security; only projection
+  columns are reachable through a filtered or absent grant, so nothing hidden leaks.
 - Collection operations on `Denied` throw `ForbiddenException` (403, so the SPA can hide the page);
   a by-id read whose row is outside the filter is `NotFoundException` (404 — the same response as a
   non-existent row).
@@ -884,9 +905,9 @@ Stated here because this spec owns the semantics; spec 0014 implements them:
   the rows as saved; if permissions changed between the two round trips the persist guard fails
   first (§7.4) and the recomposed persist evaluates the new filter.
 - Details pages load related entities and extras under the root's `Read` without further
-  row-level filtering, narrowed to each target's `[RelatedSelect]` projection. This is the one
-  place the row filter is knowingly bypassed: a document's customer name is visible to whoever can
-  see the document.
+  row-level filtering, narrowed to each target's `[RelatedSelect]` projection — the same bound as
+  a traversal, and the same knowing bypass of the row filter: a document's customer name is
+  visible to whoever can see the document.
 - FK references in a save are validated under the target's `Read` filter (spec 0014).
 - Jobs, exports, imports and notifications are self-scoped by a bespoke criterion their owning
   spec supplies (spec 0019 §11.2, spec 0018 §12.1, spec 0020 §2.2), so a caller with no stored
@@ -936,9 +957,10 @@ path.
 
 ### 6.2 Entry, store, build
 
-- **Entry** — `UserAccess`: the two tags, `ComputedAt`, `ValidatedAt`, the resolved grants (filter
-  texts interned per instance so a role's filter is one object however many members it has), the
-  problems (§9), memoised composed trees per `(resource, action)`, and `FormatVersion = 1`.
+- **Entry** — `UserAccess`: the two tags, `ComputedAt`, `ValidatedAt`, the resolved
+  `RoleAccessGrant`s, each with its filter text and `FilterLanguageVersion` (filter texts interned
+  per instance so a role's filter is one object however many members it has), the problems (§9),
+  memoised composed trees per `(resource, action)`, and `FormatVersion = 1`.
 - **Store** — spec 0012's `VersionedCache<(int TenantId, int UserId), UserAccess>` of kind
   `permissions`: a private bounded `MemoryCache` sized in entries by spec 0012's
   `TellmaCacheOptions.PermissionsEntries` (no age limit in the store; eviction is the runtime's
@@ -996,16 +1018,19 @@ public sealed record ConnectedUser(
     int UserId, UserKind Kind, UserState State, UserProfile Profile, Guid PreferencesTag, UserAccess Access,
     IReadOnlyDictionary<string, Guid> TenantTags, DateTimeOffset? LastActivityStampedAt);
 
-public sealed record ConnectPremises(
-    string? Subject, int? UserId, int? ExpectedUserId, Guid? ExpectedPermissionsTag, Guid? ExpectedUserPermissionsTag,
-    Guid? ExpectedPreferencesTag, Guid ExpectedSettingsTag, bool StampActivity, bool AllowStateFlip,
-    bool ReloadPermissions)
+public abstract record ConnectPremises
 {
-    public static ConnectPremises Cold(string subject, Guid expectedSettingsTag, bool stampActivity, bool allowStateFlip);
-    public static ConnectPremises For(ConnectedUser user, string subject, bool stampActivity, bool allowStateFlip);
+    public sealed record ForSubject(
+        string Subject, int? ExpectedUserId, ConnectExpectations Expected, bool StampActivity, bool AllowStateFlip,
+        bool ReloadPermissions) : ConnectPremises;
+    public sealed record ForUser(int UserId, ConnectExpectations Expected, bool ReloadPermissions) : ConnectPremises;
+    public sealed record ForSystem(Guid ExpectedSettingsTag) : ConnectPremises;       // not "System": that would shadow the namespace
+    public static ForSubject Cold(string subject, Guid expectedSettingsTag, bool stampActivity, bool allowStateFlip);
+    public static ForSubject For(ConnectedUser user, string subject, bool stampActivity, bool allowStateFlip);
 }
 
-public enum ConnectPrologue { ForSubject, ForUser, System }
+public sealed record ConnectExpectations(
+    Guid? PermissionsTag, Guid? UserPermissionsTag, Guid? PreferencesTag, Guid SettingsTag);
 
 public sealed record PermissionRow(
     int PermissionId, int RoleId, string RoleName, bool IsPublic, string Resource, string Action, string? Filter,
@@ -1035,33 +1060,35 @@ public interface IGuardedBatchRunner       // scoped; the only way a service exe
 | Member | Meaning |
 |---|---|
 | `ConnectedUser.LastActivityStampedAt` | The per-instance throttle memo: when within `ActivityStampInterval`, the premises carry `StampActivity = false` and the `UPDATE` is not even attempted. |
-| `ConnectPremises.Cold` | Every nullable `Expected*` tag `null`, `ExpectedUserId` `null`, `ExpectedSettingsTag` the cached settings entry's tag or `Guid.Empty`: the prologue returns rows and profile unconditionally, and the settings when the tag differs. |
-| `ConnectPremises.For` | Expected values from the cached entry; `ReloadPermissions = true` when the set is older than `PermissionsMaxAge`. Both flags are `false` on a `ReadOnly` tenant. |
+| `ConnectPremises` | What one prologue assumes; the case selects the variant of §7.3: `ForSubject` resolves the caller by subject and may stamp and flip, `ForUser` resolves a user by id and never stamps or flips, `ForSystem` looks no user up. |
+| `ConnectExpectations` | The cached tags the prologue compares (§7.2); a `null` tag is not cached, and that part reads stale. |
+| `ConnectPremises.Cold` | A `ForSubject` with every nullable tag of `Expected` `null`, `ExpectedUserId` `null`, `Expected.SettingsTag` the cached settings entry's tag or `Guid.Empty`: the prologue returns rows and profile unconditionally, and the settings when the tag differs. |
+| `ConnectPremises.For` | A `ForSubject` with the expected values from the cached entry; `ReloadPermissions = true` when the set is older than `PermissionsMaxAge`. `StampActivity` and `AllowStateFlip` are `false` on a `ReadOnly` tenant. |
 | `Connect` | The cache keyed `(TenantId, Subject)`, or a cold prologue-only round trip (`BatchPurpose.Read`, no body), single-flighted per key. Throws `TenantNotFoundException` for an unknown subject or a deactivated user. |
-| `ConnectAsUser` | Job scopes (spec 0019): `ConnectPrologue.ForUser`; no stamp, no flip. |
-| `ConnectAsSystem` | `ConnectPrologue.System`; tags, and the settings on a miss; `UserAccess.System`. Throws `InvalidOperationException` unless `RequestContext.Kind = System` (the migrator, provisioning steps, system job scopes) — never reachable from a request scope. |
+| `ConnectAsUser` | Job scopes (spec 0019): a `ConnectPremises.ForUser`; no stamp, no flip. |
+| `ConnectAsSystem` | A `ConnectPremises.ForSystem`; tags, and the settings on a miss; `UserAccess.System`. Throws `InvalidOperationException` unless `RequestContext.Kind = System` (the migrator, provisioning steps, system job scopes) — never reachable from a request scope. |
 | `Contribute` | The `IDataBatchContributor` at `Order` 100 for the prologue stage: prepends the text of §7.3, binds its parameters, and returns the result read from sets 0–3. Spec 0012's contributors at `Order` 50 and 60 yield to it on caller batches: set 1 is the tag read, and the settings sets after set 3 are the cold load's. |
 | `Apply` | Replaces the connect, permissions and profile cache entries from a result and sets `RequestContext.UserId`. |
 | `Run` | Connects (cache or cold), creates the batch for `purpose`, calls `Contribute(batch, premises)` — which marks the batch as carrying the connect prologue, the mark spec 0012's contributors at `Order` 50 and 60 yield to — composes, executes, reads. On `GuardPassed = false` it applies the result (fresh rows, fresh profile, and the fresh settings spec 0012's contributor read from the same round trip, after which spec 0012's initializer re-runs so the context carries them) and recomposes **once**; a second failure raises `StaleContextException` (503, `Retry-After: 1`) and logs `AccessEvents.GuardThrash`. A `50412` from the persist re-check (§7.4) counts as one failure: the runner re-connects cold, which returns fresh rows, profile, settings and tags, and recomposes once; a second `50412` is the second failure. |
 
 ### 7.2 Parameters
 
-Bound by the contributor; `@tm_` is reserved for the prologue, the tag prelude, the guard and the
-bump, as `@qx` is for the engine and `@tb` for per-statement platform names. Distribution SQL uses
-none of them.
+Bound by the contributor from the `ConnectPremises` case and its `ConnectExpectations` (`Expected`);
+`@tm_` is reserved for the prologue, the tag prelude, the guard and the bump, as `@qx` is for the
+engine and `@tb` for per-statement platform names. Distribution SQL uses none of them.
 
 | Parameter | Type | Value |
 |---|---|---|
-| `@tm_Subject` | `varchar(255)` | the caller's `sub` (`ForSubject`); a service account's client id when `Kind = Service` |
-| `@tm_UserId` | `int` | `ForUser` only: bound as a parameter instead of declared; the resolve reads `WHERE U.[Id] = @tm_UserId` |
-| `@tm_StampActivity` | `bit` | 0 under `NoActivityStampMetadata`, within the throttle memo, on `ReadOnly` tenants, and in the `ForUser`/`System` variants |
-| `@tm_AllowFlip` | `bit` | 0 on `ReadOnly` tenants and in the `ForUser`/`System` variants |
-| `@tm_ExpectedUserId` | `int` | the cached user id; `NULL` on the cold path |
-| `@tm_ExpectedPermissionsTag` | `uniqueidentifier` | the cached set's tenant tag; `NULL` when not cached |
-| `@tm_ExpectedUserPermissionsTag` | `uniqueidentifier` | the cached set's user tag; `NULL` when not cached |
-| `@tm_ExpectedPreferencesTag` | `uniqueidentifier` | the cached profile's tag; `NULL` when not cached |
-| `@tm_ExpectedSettingsTag` | `uniqueidentifier` | the tenant `settings` tag the schema was built from |
-| `@tm_ReloadPermissions` | `bit` | 1 when the cached set is older than `PermissionsMaxAge` |
+| `@tm_Subject` | `varchar(255)` | `ForSubject.Subject`: the caller's `sub`; a service account's client id when `Kind = Service` |
+| `@tm_UserId` | `int` | `ForUser.UserId`, in that variant only: bound as a parameter instead of declared; the resolve reads `WHERE U.[Id] = @tm_UserId` |
+| `@tm_StampActivity` | `bit` | `ForSubject.StampActivity`: 0 under `NoActivityStampMetadata`, within the throttle memo and on `ReadOnly` tenants; 0 in the `ForUser`/`ForSystem` variants |
+| `@tm_AllowFlip` | `bit` | `ForSubject.AllowStateFlip`: 0 on `ReadOnly` tenants; 0 in the `ForUser`/`ForSystem` variants |
+| `@tm_ExpectedUserId` | `int` | `ForSubject.ExpectedUserId`: the cached user id, `NULL` on the cold path; `ForUser.UserId` in that variant |
+| `@tm_ExpectedPermissionsTag` | `uniqueidentifier` | `Expected.PermissionsTag`: the cached set's tenant tag; `NULL` when not cached |
+| `@tm_ExpectedUserPermissionsTag` | `uniqueidentifier` | `Expected.UserPermissionsTag`: the cached set's user tag; `NULL` when not cached |
+| `@tm_ExpectedPreferencesTag` | `uniqueidentifier` | `Expected.PreferencesTag`: the cached profile's tag; `NULL` when not cached |
+| `@tm_ExpectedSettingsTag` | `uniqueidentifier` | `Expected.SettingsTag` (`ForSystem.ExpectedSettingsTag`): the tenant `settings` tag the schema was built from |
+| `@tm_ReloadPermissions` | `bit` | `ReloadPermissions`: 1 when the cached set is older than `PermissionsMaxAge`; 0 in the `ForSystem` variant |
 | `@tm_SettingsStrict` | `bit` | 1 on `Validate` and `Persist` batches: a stale `settings` tag fails the guard (spec 0012's `Rerun` policy for those purposes) |
 | `@tm_LoadSettings` | `bit` | bound by spec 0012's cold-load contributor: 1 when its cache missed at composition |
 
@@ -1156,10 +1183,11 @@ tenant `permissions` and the user's `PermissionsTag` follow the `Rerun` policy t
 parameters always bind with the same SQL types; a batch's plan differs from another's only by its
 body, exactly as without the prologue.
 
-**Variants.** `ForUser`: `@tm_UserId` bound, resolve by `U.[Id]`, `@tm_StampActivity = 0`,
-`@tm_AllowFlip = 0` (job scopes running as a user). `System`: no user lookup; sets 0 and 1 (set 0
-carries `UserId = 1`, `Kind = System`, `GuardPassed = 1`, `PermissionsStale = 0`) and, under
-`@tm_LoadSettings = 1`, spec 0012's settings sets; the set is `UserAccess.System`, never loaded.
+**Variants.** The `ConnectPremises` case selects the text. `ForUser`: `@tm_UserId` bound, resolve by
+`U.[Id]`, `@tm_StampActivity = 0`, `@tm_AllowFlip = 0` (job scopes running as a user, and the load
+of `EvaluateFor`, §5.1). `ForSystem`: no user lookup; sets 0 and 1 (set 0 carries `UserId = 1`,
+`Kind = System`, `GuardPassed = 1`, `PermissionsStale = 0`) and, under `@tm_LoadSettings = 1`, spec
+0012's settings sets; the set is `UserAccess.System`, never loaded.
 
 ### 7.4 The persist-time re-checks
 
@@ -1198,7 +1226,7 @@ lock only, so no update lock ever serialises a tenant's saves on it.
 | Activate / deactivate / delete by ids on the users and roles stacks | 2 | (1) prologue; the target rows under the action's grant; the loads `UserAccessRules` and `RoleAccessRules` declare (§8.4) — (2) prologue; transaction; update or delete; bumps; guards; `COMMIT` |
 | Role save | 2 | (1) prologue; the roles' before images with their permissions (the stamp rule, §3.7), the roles' members; the caller's set is in memory — (2) persist; bump; guards |
 | "Can I, and why" for the caller | 0 | in memory |
-| "Can I, and why" for another user | 2 | (1) prologue; the target row under the caller's `core.User × Read` decision — (2) that user's rows through `ForUser` with `@tm_ExpectedPermissionsTag = NULL`, once per scope (§5.1) |
+| "Can I, and why" for another user | 2 | (1) prologue; the target row under the caller's `core.User × Read` decision — (2) that user's rows through a `ConnectPremises.ForUser`, once per scope (§5.1) |
 | `me` at application start | 1 | prologue; the caller's preference bag |
 
 "+1" applies on the cold or stale path: exactly one extra round trip, once per user per instance or
@@ -1241,14 +1269,15 @@ humans only (§8.3).
 
 `ConnectInitializer : IRequestContextInitializer` at `Order` 100 (spec 0010 runs it inside the
 tenant endpoint filter and in job scopes): for `PrincipalKind.User` and `ServiceAccount` it calls
-`IUserConnector.Connect()` on a request and `ConnectAsUser(UserId)` in a job scope (the context
-spec 0010's scope factory builds from a `RequestContextSnapshot` carries the user id; §7.1), and
-returns the context with `UserId` bound and the member witness recorded; for `System` it calls
-`ConnectAsSystem()`; for `Anonymous` on a tenant endpoint it throws `TenantNotFoundException`. On
-a request it composes the premises from the tenant state (`ReadOnly` → both flags `false`), the
-endpoint's `NoActivityStampMetadata`, and the throttle memo; a job scope stamps nothing and flips
-nothing (§7.2). Spec 0012's negotiation initializer at `Order` 200 then reads
-`User.PreferredLanguage/PreferredCalendar/PreferredTimeZone` from the connected profile.
+`IUserConnector.Connect()` on a request and `ConnectAsUser(UserId)` in a job scope (the context spec
+0010's scope factory builds from a `RequestContextSnapshot` carries the user id; §7.1), and returns
+the context with `UserId` bound and the member witness recorded; for `System` it calls
+`ConnectAsSystem()`; for `Anonymous` on a tenant endpoint it throws `TenantNotFoundException`. On a
+request it composes a `ConnectPremises.ForSubject` (`Cold` or `For`, §7.1) from the tenant state
+(`ReadOnly` → both flags `false`), the endpoint's `NoActivityStampMetadata`, and the throttle memo;
+a job scope's `ForUser` premises stamp nothing and flip nothing (§7.2). Spec 0012's negotiation
+initializer at `Order` 200 then reads `User.PreferredLanguage/PreferredCalendar/PreferredTimeZone`
+from the connected profile.
 
 ## 8. Write paths, tag bumps, and the security guards
 
@@ -1277,7 +1306,9 @@ nothing (§7.2). Spec 0012's negotiation initializer at `Order` 200 then reads
 ### 8.2 The companion `UserStamps` insert
 
 The Core feature's `IPersistEffect<User>` appends this statement after every `core.Users` insert, in
-the same transaction, over the emitter's `@tb{b}_new` set (`@tm_tag` is the batch's bump Guid):
+the same transaction, over the inserted roots of a save: `SavePersistContext<User>.NewIds`, the
+emitter's `@tb{b}_new` (spec 0014 §13.1). An action or a delete inserts no user, so its context gets
+no statement. `@tm_tag` is the batch's bump Guid:
 
 ```sql
 INSERT [core].[UserStamps] ([UserId], [LastActiveAt], [PermissionsTag], [PreferencesTag], [InboxSeenAt])
@@ -1448,12 +1479,12 @@ notices. The scan is read-only and takes no lock.
 - **`access/check`** — spec 0017's `AccessService.Check` (route `access/check`, member-only,
   idempotent) takes spec 0015's `AccessCheckRequest(UserId?, Securables: list<SecurableRef>)` and
   returns one `AccessDecision` per securable: outcome, the composed filter rendered for display,
-  grants (source, role id and name, permission id, resource, action, filter, bespoke reason, or
-  `System`), problems. `UserId` omitted means the caller (in memory). Naming another user requires
-  `core.User` × `Read` on that user's row (filtered) and `core.Role` × `Read` (effective grants are
-  role-editor information), costs two round trips (the visibility read, then the one `ForUser`
-  load every `EvaluateFor` of the request shares; §5.1, §7.5), and never records a witness for the
-  target.
+  grants (the `AccessGrant` cases of §5.1 under their `kind` discriminator: a role grant with its
+  permission, role and filter, a bespoke criterion with its reason, or the system short-circuit),
+  problems. `UserId` omitted means the caller (in memory). Naming another user requires `core.User`
+  × `Read` on that user's row (filtered) and `core.Role` × `Read` (effective grants are role-editor
+  information), costs two round trips (the visibility read, then the one `ForUser` load every
+  `EvaluateFor` of the request shares; §5.1, §7.5), and never records a witness for the target.
 - **`IAdministratorDirectory`** — the recipients of administrative notices:
 
 ```csharp
@@ -1466,7 +1497,8 @@ public interface IAdministratorDirectory
 
 - **MCP** — spec 0015's `tellma_whoami` carries the `me` payload compacted to the user (id, name,
   email, locale), the tenant, the securables fingerprint, the version tags, and entities with
-  their operations and actions and which of them are filtered; `tellma_check_access` is reserved.
+  their operations and actions outside the step-up set (§4.3) and which of them are filtered;
+  `tellma_check_access` is reserved.
 
 ## 11. Bootstrap
 
@@ -1596,15 +1628,17 @@ the identity-server client is spec 0017's; this spec's tests stub it.
 **Unit (every PR).** `Decide` over hand-built sets: absorption, union, implied read with the same
 filter, wildcard-and-filter interaction, `(R, *)` with a filter granting no non-filterable action,
 inactive and public roles, the system set, bespoke-only access, drift exclusion, leaf
-deduplication and ordering (byte-identical SQL for equal grant shapes), empty set → `Denied`, no
-user → `Denied`. Both escalation rules and every validator code of Appendix A; `RoleAccessRules`
-over a scripted before image: the stamping matrix (new, changed, unchanged, null stamp, below
-`Minimum`), engine diagnostics → `Permissions.FilterInvalid`, wildcard root resolution. The
-resource and action grammar. Registry freezing, duplicates, aliases, `Fingerprint` stability across
-registration order. The startup audit over an in-memory `EndpointDataSource` (an endpoint naming
-an unregistered securable, a `FilterRoot` naming a child entity; the endpoint-shape rules are
-spec 0010's). The prologue reader against scripted result sets: every presence combination of
-sets 2–3 and the body.
+deduplication and ordering (byte-identical SQL for equal grant shapes), each leaf carrying its
+grant's `FilterLanguageVersion`, empty set → `Denied`, no user → `Denied`. `Grants` of every kind
+(`RoleAccessGrant`, `BespokeAccessGrant`, `SystemAccessGrant`) and their `kind` discriminator
+through the platform JSON options. Both escalation rules and every validator code of Appendix A;
+`RoleAccessRules` over a scripted before image: the stamping matrix (new, changed, unchanged, null
+stamp, below `Minimum`), engine diagnostics → `Permissions.FilterInvalid`, wildcard root resolution.
+The resource and action grammar. Registry freezing, duplicates, aliases, `MarkNotSensitive` removing
+a Core default, a pair marked both ways refused, `Fingerprint` stability across registration order.
+The startup audit over an in-memory `EndpointDataSource` (an endpoint naming an unregistered
+securable, a `FilterRoot` naming a child entity; the endpoint-shape rules are spec 0010's). The
+prologue reader against scripted result sets: every presence combination of sets 2–3 and the body.
 `FormatVersion` mismatch → miss with `reason=format`. `Evaluate`'s deny re-check inside and outside
 `FastDenyWindow`. The drift table of §9 row by row. `Via` composition shape.
 
@@ -1612,23 +1646,23 @@ sets 2–3 and the body.
 The schema of §3 applied by migrations and every constraint name present; the `HasData` rows. The
 prologue end to end: cold, warm, stale permissions (tenant tag), stale permissions (user tag),
 stale settings served on a read and refused on a validate with the rows in the same round trip,
-stale profile, unknown subject, deactivated, `ForUser`, `System`, the join flip exactly once under
-two concurrent first requests, and a service account resolved by its client id. `State` derived from
-its evidence for every kind and `Kind` write-once. The throttled stamp writes once per minute under
-1,000 requests and `core.UsersHistory` gains zero rows from traffic. Tag bumps for every declared
-write path (role save → `permissions`; membership save → that user's `PermissionsTag` only; user
-save → that user's `PreferencesTag`; the bag statement → `PreferencesTag`) and none for
-`core.Users`-only writes on `permissions`. The companion `UserStamps` insert. A role re-save of an
-untouched filter keeps its stamp, a changed filter takes the current version, and a stamp below
-`Minimum` is refused. The persist re-checks: a role save committed between the two round trips of
-one save forces exactly one recompose; a deactivation committed between them is `50401`. L1–L3
-under two concurrent administrator removals (exactly one succeeds; the lock serialises); guard
-violations roll the whole transaction back; the system context bypasses. The write-set audit
-catches an undeclared write. The witness filter replaces a 2xx with 500. Temporal history rows per
-save (unchanged children write none). Two tenant databases sharing user ids and subjects never see
-each other's cache entries. The bootstrap: idempotent on email, the Development subject path,
-refusal outside Development. `ReadOnly`: reads succeed against a `READ_ONLY` database with no
-prologue write.
+stale profile, unknown subject, deactivated, `ConnectPremises.ForUser` and `ForSystem`, the join
+flip exactly once under two concurrent first requests, and a service account resolved by its client
+id. `State` derived from its evidence for every kind and `Kind` write-once. The throttled stamp
+writes once per minute under 1,000 requests and `core.UsersHistory` gains zero rows from traffic.
+Tag bumps for every declared write path (role save → `permissions`; membership save → that user's
+`PermissionsTag` only; user save → that user's `PreferencesTag`; the bag statement →
+`PreferencesTag`) and none for `core.Users`-only writes on `permissions`. The companion `UserStamps`
+insert. A role re-save of an untouched filter keeps its stamp, a changed filter takes the current
+version, and a stamp below `Minimum` is refused. The persist re-checks: a role save committed
+between the two round trips of one save forces exactly one recompose; a deactivation committed
+between them is `50401`. L1–L3 under two concurrent administrator removals (exactly one succeeds;
+the lock serialises); guard violations roll the whole transaction back; the system context bypasses.
+The write-set audit catches an undeclared write. The witness filter replaces a 2xx with 500.
+Temporal history rows per save (unchanged children write none). Two tenant databases sharing user
+ids and subjects never see each other's cache entries. The bootstrap: idempotent on email, the
+Development subject path, refusal outside Development. `ReadOnly`: reads succeed against a
+`READ_ONLY` database with no prologue write.
 
 **Nightly.** The drift scanner against a database seeded with a filter over a column the next
 migration renames, and against a tenant lacking a language a stored filter names.
@@ -1720,6 +1754,9 @@ The load-bearing decisions, where not already evident above:
 25. **An enlisted group carries no decision of its own** — a row another stack writes as a
     participant of the host's frame is platform-written by declaration, so a second evaluation would
     grant nothing the host's decision did not (§5.3).
+26. **Access grants and connect premises are record hierarchies** — each case carries only the
+    members it has: a role grant its permission, role and filter stamp, a bespoke grant its reason,
+    a subject connect its two flags, a system connect its settings tag alone (§5.1, §7.1).
 
 ## Review flags
 
@@ -1768,8 +1805,9 @@ The load-bearing decisions, where not already evident above:
     Flips only with a uniform non-temporal alternative.
 19. **Inbox tracking as `InboxSeenAt` plus capped counts** (§3.3) versus materialised counters.
     Flips if the capped count query shows on the profile.
-20. **Sensitive securables default-on for role and user edits** (§4.3) versus opt-in per
-    distribution. Flips if step-up friction on routine user edits is reported.
+20. **Sensitive securables default-on for role and user edits, removable per distribution through
+    `MarkNotSensitive`** (§4.3) versus opt-in per distribution. Flips if step-up friction on
+    routine user edits is reported.
 21. **`PermissionsMaxAge` of two hours** (§6.2) versus none. Flips with evidence that no
     out-of-band path exists or that the reload cost shows.
 22. **`Users.OnlyNewUsersDeletable`** (§3.9) versus allowing deletes with audit FKs surfacing as

@@ -219,7 +219,7 @@ immutable except `State`, `CommittedAt` and `ExpiresAt`.
 
 | Column | Type | Null | Constraints | Notes |
 |---|---|---|---|---|
-| `Id` | `int` | no | `PK_Blobs` clustered | app-assigned from `core.sq_Blobs` inside the stage statement (§3.4) |
+| `Id` | `int` | no | `PK_Blobs` clustered; `CK_Blobs_Id CHECK ([Id] > 0)` | app-assigned from `core.sq_Blobs` inside the stage statement (§3.4) |
 | `Kind` | `nvarchar(40)` | no | | registered kind; grammar `^[a-z][a-z0-9-]{1,39}$` |
 | `StorageKey` | `nvarchar(120)` | no | `UX_Blobs_StorageKey` | full object name of the primary variant, e.g. `user-image/3f/3fa9…`; never client-visible |
 | `State` | `varchar(9)` | no | | `Staged`, `Committed`, `Released`, `Deleting` |
@@ -590,17 +590,18 @@ public static class BlobCaptureName
 ### 4.4 The effect
 
 `BlobReferenceEffect<TEntity>` is an `IPersistEffect<TEntity>` registered beside the validator. Its
-`ContributeAsync(PersistContext)` appends, per `[BlobReference]` column of the entity's table, the
-two statements below through `PersistContext.Batch.Sql` with `Writes = { core.Blobs }` and
-`Idempotent = false`; `AfterCommitAsync` does nothing. Spec 0014's
-`IPersistEffect<T>.ContributeAsync` rule runs it for every `Persist` batch on the stack's table — a
-save, a delete by ids, by query or with descendants, `activate`/`deactivate` and every action — so a
-delete releases exactly what its `OUTPUT deleted` captured; on a delete persist
-`PersistContext.Entities` is empty and `AffectedIds` names the deleted key table, and the statements
-depend only on the capture table. Parameters, under the effect statement's own ordinal `b` (spec
-0011 §5.4): `@tb{b}_p0` the column's kind, `@tb{b}_p1` the caller's user id
-(`RequestContext.UserId`); `{s}` below is the save statement's ordinal, which `BlobCaptureName.For`
-derives from `AffectedIds` (§4.3). Text for `core.Users.ImageId`:
+`ContributeAsync(PersistContext<TEntity>)` reads only the base context and appends, per
+`[BlobReference]` column of the entity's table, the two statements below through
+`PersistContext.Batch.Sql` with `Writes = { core.Blobs }` and `Idempotent = false`;
+`AfterCommitAsync` does nothing. Spec 0014's `IPersistEffect<T>.ContributeAsync` rule runs it for
+every `Persist` batch on the stack's table — a save, a delete by ids, by query or with descendants,
+`activate`/`deactivate` and every action — so a delete releases exactly what its `OUTPUT deleted`
+captured; on a delete persist (`DeletePersistContext<TEntity>`) `Entities` is empty and
+`AffectedIds` names the deleted key table, and the statements depend only on the capture table.
+Parameters, under the effect statement's own ordinal `b` (spec 0011 §5.4): `@tb{b}_p0` the column's
+kind, `@tb{b}_p1` the caller's user id (`RequestContext.UserId`); `{s}` below is the save
+statement's ordinal, which `BlobCaptureName.For` derives from `AffectedIds` (§4.3). Text for
+`core.Users.ImageId`:
 
 ```sql
 -- release blobs the change dereferenced (old value from OUTPUT, never from memory)
@@ -1197,12 +1198,12 @@ The load-bearing decisions, where not already evident above:
 19. **The blob id taken inside the stage statement** (§3.4; decision 4) versus
     `IIdAllocator.TakeAsync`. In-statement matches the other system-written rows and removes a
     dependency; a wish to keep every `int` id on one allocator path would flip it.
-20. **Persist effects run on delete and action persists with an empty `PersistContext.Entities`**
-    (§4.4; the `IPersistEffect<T>.ContributeAsync` participation rule of spec 0014, on which the
-    release of every deleted owner's blob and spec 0019's `core.file-retention` depend) versus a
-    dedicated delete-effect contract. One component per capability keeps the registration surface
-    small; a second capability needing delete-time logic with entity images would argue for a
-    `DeleteContext`-shaped hook.
+20. **Persist effects run on delete and action persists, whose `PersistContext.Entities` may be
+    empty** (§4.4; the `IPersistEffect<T>.ContributeAsync` participation rule of spec 0014, on
+    which the release of every deleted owner's blob and spec 0019's `core.file-retention` depend)
+    versus a dedicated delete-effect contract. One component per capability keeps the registration
+    surface small; a second capability needing delete-time logic with entity images would argue for
+    a `DeleteContext`-shaped hook.
 21. **The sweep cadence on the built-in schedule alone** (§7.4; decision 21) versus a
     `SweepInterval` option that seeds the schedule. One knob; a deployment wanting to set the
     cadence from configuration rather than tenant by tenant would flip it.

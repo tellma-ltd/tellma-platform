@@ -177,7 +177,7 @@ only); sequence `core.sq_Notifications`.
 
 | Column | Type | Null | Constraints | Notes |
 |---|---|---|---|---|
-| `Id` | `int` | no | `PK_Notifications` clustered; `core.sq_Notifications` | reserved inside the insert |
+| `Id` | `int` | no | `PK_Notifications` clustered; `CK_Notifications_Id CHECK ([Id] > 0)`; `core.sq_Notifications` | reserved inside the insert |
 | `UserId` | `int` | no | `FK_Notifications_UserId → core.Users(Id)` NO ACTION | the recipient |
 | `Type` | `nvarchar(64)` | no | | registered type key |
 | `ArgumentsJson` | `nvarchar(4000)` | yes | | ICU arguments; the client's click data |
@@ -592,7 +592,7 @@ public sealed class InboxService                        // [ApiRoute("inbox")]; 
 |---|---|---|
 | `Summary` | `[ApiAction("summary", MemberOnly = true, Idempotent = true, Mutation = false)]`; `NoActivityStampMetadata` (spec 0013; applied by spec 0015's projection) | one `Read` batch through spec 0013's `IGuardedBatchRunner.Run(Read, …)`: the summary statement; `Latest` rows materialised by name |
 | `Seen` | `[ApiAction("seen", MemberOnly = true, Idempotent = true)]` | one `Persist` batch: the seen statement; `Count` = 1 |
-| `Read` | `[ApiAction("read", MemberOnly = true, Idempotent = true)]`; `IdsRequest.Ids` (spec 0015; `ReturnEntities`, `Select`, `Include` ignored) | one `Persist` batch: the read statement with `@tb{b}_t0 : IdList`; `Count` = rows newly marked |
+| `Read` | `[ApiAction("read", MemberOnly = true, Idempotent = true)]`; `IdsRequest` (spec 0015 §3.3) | one `Persist` batch: the read statement with `@tb{b}_t0 : IdList`; `Count` = rows newly marked |
 | `ReadAll` | `[ApiAction("read-all", MemberOnly = true, Idempotent = true)]` | one `Persist` batch: the read-all statement; `Count` = rows newly marked |
 
 Each of `Seen`, `Read` and `ReadAll` publishes `ClientEvent("inbox.changed", [callerId], null)`

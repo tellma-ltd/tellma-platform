@@ -130,9 +130,9 @@ public static void Compose(TellmaBuilder tellma) => tellma.UseAzureDefaults().Ad
 | `EntityService<TEntity, TKey>`, hooks, `[EntityAction]`, `[ApiAction]`, `[ApiRoute]`, `SaveOptions`, `ActionContext`, `SaveContext`, `PersistContext`, `PersistOutcome`, `IContextLoader`, `ValidationErrors` | spec 0014 | §3, §4, §5 |
 | `IDataBatch.Sql`, `Tvp`, `OnCommitted`, `SqlOptions(Writes, UserIds, ForCaller)`, `BatchOutcome` | spec 0011's batch contract | §3.3, §3.5 |
 | `IGuardedBatchRunner.Run`, `IUserConnector`, `ConnectedUser` | spec 0013's connect contract | §3.4, §3.5, §3.7 |
-| `IAccessEvaluator`, `AccessDecision`, `AccessGrant`, `AccessGrantSource`, `SecurableRef`, `ISecurableRegistry`, `UserAccessRules<TUser>`, `RoleAccessRules<TRole>`, `IAdministratorDirectory`, `ITenantBootstrapper`, `WellKnownIds`, `CoreResources`, `AccessActions` | spec 0013 | §3, §4, §6 |
+| `IAccessEvaluator`, `AccessDecision`, `AccessGrant`, `BespokeAccessGrant`, `SecurableRef`, `ISecurableRegistry`, `UserAccessRules<TUser>`, `RoleAccessRules<TRole>`, `IAdministratorDirectory`, `ITenantBootstrapper`, `WellKnownIds`, `CoreResources`, `AccessActions` | spec 0013 | §3, §4, §6 |
 | `User`, `Role`, `RoleMembership`, `Permission`, `UserState`, `InviteStatus`, `UserKind`, `Gender`, `UserProfile` | spec 0013's entities | §3 |
-| `MeResult`, `AccessCheckRequest`, `IdsRequest`, `SaveRequest<T>`, `EntitiesResult<T>`, `PartialFailureException` | spec 0015's wire records and exception set | §3, §3.7 |
+| `MeResult`, `AccessCheckRequest`, `IdsRequest`, `EntityActionRequest`, `EntityActionRequest<TArguments>`, `SaveRequest<T>`, `EntitiesResult<T>`, `PartialFailureException` | spec 0015's wire records and exception set | §3, §3.7 |
 | `[BlobReference]` on `User.ImageId` and `User.SignatureId`, kinds `user-image` and `user-signature` | spec 0016 | §3.5 |
 | `INotifier.Notify`, `NotificationRequest`, type `core.user.added` | spec 0020 | §3.3 |
 | `TenantSettings`, `ILanguageCatalog`, `ICalendarRegistry`, `IStringLocalizer` | spec 0012 | §3.2, §3.3, §3.5 |
@@ -286,21 +286,21 @@ public static class UsersTelemetryNames
 
 | Member | Annotation and route |
 |---|---|
-| `Invite` | `[EntityAction("invite", Description = "Invite users through the identity server")]`; securable action `Invite` (`core.User × Invite`, filtered, sensitive by spec 0013's default); `POST /{tenantId}/api/web/users/invite` with `IdsRequest`. |
-| `IssueCredentials` | `[EntityAction("issue-credentials", Action = "Credentials", Description = "Issue or rotate a service account's client credentials")]`; securable action `Credentials` (`core.User × Credentials`, filtered, sensitive by spec 0013's default); `POST /{tenantId}/api/web/users/issue-credentials` with `IdsRequest` of exactly one id. |
+| `Invite` | `[EntityAction("invite", Description = "Invite users through the identity server")]`; securable action `Invite` (`core.User × Invite`, filtered, sensitive by spec 0013's default); `POST /{tenantId}/api/web/users/invite` with `IdsRequest`, answering the method's `list<InviteResult>` (an action with its own result, spec 0014 §3.1). |
+| `IssueCredentials` | `[EntityAction("issue-credentials", Action = "Credentials", Description = "Issue or rotate a service account's client credentials")]`; securable action `Credentials` (`core.User × Credentials`, filtered, sensitive by spec 0013's default); `POST /{tenantId}/api/web/users/issue-credentials` with an `IdsRequest` of exactly one id, answering the method's `list<CredentialsResult>` (an action with its own result, spec 0014 §3.1). |
 | `GetInvitationStatus` | `[ApiAction("invitation-status", Action = "Read", Idempotent = true, Mutation = false)]`; `users/invitation-status`. |
 | `Me` | `[ApiAction("me", MemberOnly = true, Idempotent = true, Mutation = false)]`; `users/me`. |
 | `SaveMe` | `[ApiAction("me/save", MemberOnly = true)]`; `users/me/save`. |
 | `SetMyPreferences`, `DeleteMyPreferences` | `[ApiAction("me/preferences/set", MemberOnly = true)]`, `[ApiAction("me/preferences/delete", MemberOnly = true)]`. |
 | `GetPreferences` | `[ApiAction("preferences/get", Action = "Preferences", Idempotent = true, Mutation = false)]`; `users/preferences/get`; body `{ userId }`. |
-| `SetPreferences`, `DeletePreferences` | `[EntityAction("preferences/set", Action = "Preferences")]`, `[EntityAction("preferences/delete", Action = "Preferences")]`; exactly one id; `users/preferences/set`, `users/preferences/delete`. |
+| `SetPreferences`, `DeletePreferences` | `[EntityAction("preferences/set", Action = "Preferences")]`, `[EntityAction("preferences/delete", Action = "Preferences")]`; exactly one id; `users/preferences/set`, `users/preferences/delete`, bodies `EntityActionRequest<UserPreferencesArguments>` and `EntityActionRequest<UserPreferenceKeysArguments>`. |
 | `SendTestNotification` | `[ApiAction("me/test-notification", MemberOnly = true)]`; body `{ channel }`. |
 
 Every other operation (`query`, `get`, `get-by-ids`, `save`, `delete`, `delete-by-query`,
-`activate`, `deactivate`, the Excel four) is the standard projection of spec 0014 over the stack
-descriptor; this service adds hooks, never operations. Securables: `core.User × Read | Save |
-Delete | Activate | Invite | Preferences | Credentials`, all with `FilterRoot = core.User`,
-registered by the stack feature; `Preferences` is not sensitive.
+`activate`, `deactivate`, the Excel operations of spec 0018 §1.2) is the standard projection of
+spec 0014 over the stack descriptor; this service adds hooks, never operations. Securables:
+`core.User × Read | Save | Delete | Activate | Invite | Preferences | Credentials`, all with
+`FilterRoot = core.User`, registered by the stack feature; `Preferences` is not sensitive.
 
 ### 3.2 Hooks
 
@@ -322,7 +322,7 @@ registered by the stack feature; `Preferences` is not sensitive.
 | `PreferredTimeZone` is `null` or resolvable by `TimeZoneInfo.TryFindSystemTimeZoneById` | `Users.TimeZoneUnknown` (`PreferredTimeZone`) |
 | `ContactEmail` is `null` or a valid address (`MailAddress` parse, one `@`) | `Users.ContactEmailInvalid` (`ContactEmail`) |
 | `ContactMobile` is `null` or E.164 (`^\+[1-9][0-9]{6,14}$`) | `Users.MobileInvalid` (`ContactMobile`) |
-| A save whose `Save` decision on `core.User` is satisfied only by the bespoke criterion (every matching `AccessGrant.Source = Bespoke`) changes only the self-editable columns `UserService` lists (`Name`, `Name2`, `Name3`, `ImageId`, `SignatureId`, `PreferredLanguage`, `PreferredCalendar`, `PreferredTimeZone`, `Gender`, `ContactEmail`, `ContactMobile`) | `Users.NotSelfEditable` (the changed column) |
+| A save whose `Save` decision on `core.User` is satisfied only by the bespoke criterion (every matching grant a `BespokeAccessGrant`) changes only the self-editable columns `UserService` lists (`Name`, `Name2`, `Name3`, `ImageId`, `SignatureId`, `PreferredLanguage`, `PreferredCalendar`, `PreferredTimeZone`, `Gender`, `ContactEmail`, `ContactMobile`) | `Users.NotSelfEditable` (the changed column) |
 | The same save carries `RoleMemberships = null` or an unchanged set | `Users.NotSelfEditable` (`RoleMemberships`) |
 
 The two rules make the admin `save` endpoint and `me/save` one path for a member who holds only the
@@ -563,8 +563,8 @@ WHERE u.[Kind] = 'Service';
 public class RoleService<TRole> : EntityService<TRole> where TRole : Role;
 ```
 
-`RoleService` adds no operations: `query`, `get`, `get-by-ids`, `save`, `delete`,
-`delete-by-query`, `activate`, `deactivate` and the Excel four are the standard projection;
+`RoleService` adds no operations: `query`, `get`, `get-by-ids`, `save`, `delete`, `delete-by-query`,
+`activate`, `deactivate` and the Excel operations of spec 0018 §1.2 are the standard projection;
 securables `core.Role × Read | Save | Delete | Activate` (`FilterRoot = core.Role`).
 `RoleMemberships` is a child of `User` only; the role details page shows members through a details
 extra (`IDetailsContributor<Role>` named `members`, one `Rows` query over `core.RoleMembership`
@@ -665,7 +665,7 @@ derives from `ParentId`. `CenterType` is stored under spec 0011's enum-as-string
 
 | Column | Type | Null | Constraints | Notes |
 |---|---|---|---|---|
-| `Id` | `int` | no | `PK_Centers` clustered | |
+| `Id` | `int` | no | `PK_Centers` clustered; `CK_Centers_Id CHECK ([Id] > 0)` | |
 | `ParentId` | `int` | yes | `FK_Centers_ParentId → gl.Centers(Id)` NO ACTION; `IX_Centers_ParentId` | |
 | `CenterType` | `varchar(12)` | no | | enum as string |
 | `Name` | `nvarchar(255)` | no | | |
@@ -734,8 +734,8 @@ unique index. Securables `gl.Center × Read | Save | Delete | Activate` (`Filter
 are registered by the stack feature from the descriptor; the module registers none by hand. The
 projected routes are `/{tenantId}/api/web/centers/{operation}` with `{operation}` one of `query`,
 `get`, `get-by-ids`, `get-by-parent-ids`, `save`, `delete`, `delete-by-query`,
-`delete-with-descendants`, `activate`, `deactivate`, `export`, `export-for-import`,
-`inspect-import` and `import`; the MCP exposure is `Full`.
+`delete-with-descendants`, `activate`, `deactivate`, `export`, `export/start`, `export-for-import`,
+`export-for-import/start`, `inspect-import` and `import`; the MCP exposure is `Full`.
 
 ### 5.6 `gl.sample-centers`
 
@@ -793,7 +793,8 @@ and a membership in role 1. What this spec adds is the second half:
   database reset re-provisions it.
 - **Deployed (`provision --admin-email`).** After the steps complete, the migrator's `provision`
   command resolves `UserService<TUser>` from the same system scope and calls
-  `ExecuteActionAsync("invite", [adminId], null, ActionOptions())`. `RequestContext.Kind = System`
+  `ExecuteActionAsync<IReadOnlyList<InviteResult>>("invite", [adminId], null, ActionOptions())`, the
+  overload of spec 0014 §3.1 for an action with its own result. `RequestContext.Kind = System`
   bypasses the `Invite` securable (`UserAccess.System`); the flow of §3.3 runs unchanged, so the
   administrator receives the welcome email and the `core.user.added` notice, and the identity
   server's invitation email unless they already hold a credential. The migrator therefore binds
@@ -1013,9 +1014,9 @@ The load-bearing decisions, where not already evident above:
    `IGuardedBatchRunner.Run` and then throwing. Chosen: the pipeline rule, one code path for the
    write-back. Flips if spec 0014's action path cannot honour it cheaply.
 3. **Bespoke self grant on `Save` with a validation confinement** (§3.2) versus a `Read`-only
-   bespoke grant and membership-only authorisation for `me/save`. Chosen: the grant, so the
-   witness and the pre-check see an ordinary decision. Flips if the `AccessGrant.Source` inspection
-   in a validator proves fragile.
+   bespoke grant and membership-only authorisation for `me/save`. Chosen: the grant, so the witness
+   and the pre-check see an ordinary decision. Flips if the `BespokeAccessGrant` type test in a
+   validator proves fragile.
 4. **`RoleMemberships` single-owned by `User`, members as a read-only role extra** (§4) versus
    dual ownership with cross-owner stamp bumps. Chosen: single ownership — a simpler emitter and
    no stale-owner deletion race. Flips if admins reject "add members" as a bulk user save.
