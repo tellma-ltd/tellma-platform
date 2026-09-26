@@ -60,11 +60,11 @@ restates a member of a contract another spec owns, it restates only what it call
   `IStackRegistry`, `IApiActionInvoker` as the one entry to every `[ApiAction]` method, the
   `[Stack]`, `[EntityAction]`, `[ApiAction]` and `[ApiRoute]` annotations, the contribution items,
   and the startup checks that make an omission fail startup with the entity named.
-- Ship the standard operations with their rules: query returning spec 0011's `QueryRowSet` with
-  search, capped count and ancestors; details with the related projection, extras and row echo;
-  save with child synchronisation, property ownership, temporary ids, two-stage pre-check, bounded
-  validation rounds and the in-transaction post-check; delete by ids, by query and with
-  descendants; get by parent ids; get all cached; built-in and custom actions.
+- Ship the standard operations with their rules: query returning spec 0011's `RowPage` with search,
+  capped count and ancestors; details with the related projection, extras and row echo; save with
+  child synchronisation, property ownership, temporary ids, two-stage pre-check, bounded validation
+  rounds and the in-transaction post-check; delete by ids, by query and with descendants; get by
+  parent ids; get all cached; built-in and custom actions.
 - Ship the validation framework: contexts, the batched and deduplicated `IContextLoader`, parked
   validators and bounded rounds, errors carrying a structured `ValidationPath` beside a code and
   arguments, the platform codes, index-backed uniqueness and database-checked foreign keys.
@@ -95,7 +95,8 @@ restates a member of a contract another spec owns, it restates only what it call
   ships only the row source it streams from and the save it calls.
 - **Job leasing, schedules, notifications and the hub** — specs 0019 and 0020.
 - **Deferred capabilities**: `[GatedBy]` (no user once `IsActive` is server-owned), composite
-  natural keys, weak entities as securable roots (`FilterTree.Via`), the public `v1` surface.
+  natural keys, weak entities as securable roots (`FilterTree.Via`), the public API's plumbing
+  (spec 0015 §12.2).
 
 ## 1. Placement and architecture
 
@@ -187,20 +188,29 @@ public sealed record StackDescriptor(
     IReadOnlyList<ChildCollectionDescriptor> Children,
     IReadOnlyList<(string, SearchKind)> SearchableProperties, IReadOnlyList<string> NaturalKeys,
     string DefaultSelect, IReadOnlySet<string> RelatedSelect,
-    IReadOnlyList<string> DetailsExpand, StackLimits Limits, McpExposure Mcp, bool Public);
+    IReadOnlyList<string> DetailsExpand, StackLimits Limits, McpExposure Mcp, int ContractRevision);
 
-public sealed record ActionDescriptor(
-    string Name, string Segment, string? Action, ActionKind Kind, bool SupportsFilter, Type? ArgumentsType,
-    Type? RequestType, Type ResultType, string? Description, bool IsBuiltIn, bool PostCheck, bool MemberOnly,
-    bool Mutation, bool Idempotent, bool Destructive, McpExposure Mcp, Type HandlerType);
+public abstract record ActionDescriptor(
+    string Name, string? Description, bool Mutation, bool Idempotent, bool Destructive, McpExposure Mcp,
+    int ContractRevision, Type ResultType);
 
-public enum ActionKind { EntityAction, ApiAction }
+public sealed record EntityActionDescriptor(
+    string Name, string? Description, bool Mutation, bool Idempotent, bool Destructive, McpExposure Mcp,
+    int ContractRevision, Type ResultType, string Action, bool SupportsFilter, bool LoadChildren, bool PostCheck,
+    bool IsBuiltIn, Type? ArgumentsType)
+    : ActionDescriptor(Name, Description, Mutation, Idempotent, Destructive, Mcp, ContractRevision, ResultType);
+
+public sealed record ApiActionDescriptor(
+    string Name, string? Description, bool Mutation, bool Idempotent, bool Destructive, McpExposure Mcp,
+    int ContractRevision, Type ResultType, SecurableRef? Securable, Type? RequestType, Type HandlerType)
+    : ActionDescriptor(Name, Description, Mutation, Idempotent, Destructive, Mcp, ContractRevision, ResultType);
 
 public sealed record ChildCollectionDescriptor(string Property, Type ChildType, string ParentKeyProperty, int MaxCount);
 
 public sealed record StackLimits(
-    int MaxTake, int CountCap, int MaxSaveCount, int MaxRowsPerSave, int MaxIds, int MaxDeleteByQueryRows,
-    int MaxExpandDepth, int MaxValidationRounds, int MaxSearchLength, int MaxExtras);
+    int MaxTake, int CountCap, int MaxSkipWindow, int MaxSaveCount, int MaxRowsPerSave, int MaxIds,
+    int MaxDeleteByQueryRows, int MaxExpandDepth, int MaxValidationRounds, int MaxSearchLength,
+    int MaxExtras);
 
 [Flags]
 public enum StackOperations
@@ -212,7 +222,7 @@ public enum StackOperations
 }
 
 public sealed record ApiServiceDescriptor(
-    string Route, Type ServiceType, IReadOnlyList<ActionDescriptor> Actions);
+    string Route, Type ServiceType, IReadOnlyList<ApiActionDescriptor> Actions);
 
 public sealed record EnlistmentDescriptor(Type WriterKey, string WriterName, string TargetResource);   // one declared writer → target pair (§13.3)
 
@@ -239,14 +249,17 @@ public sealed record ApiServiceContributionItem(Type ServiceType) : FeatureContr
 | `EntityType`, `ServiceType`, `KeyType` | The leaf, the closed service type, `int` or `long`. |
 | `Operations` | `[Stack(Operations)]` on the entity, overridden by `StackContributionItem.Operations`; default `All`. An absent operation is not projected, registers no securable, and its service member throws `InvalidOperationException` (an authoring bug, never a user outcome). `Enlist` is outside `All`: a stack accepts enlisted writes (§13.3) only by naming it. |
 | `Capabilities` | Closed vocabulary: `activatable`, `tree`, `temporal`, `multilingual`, `cacheable`, `blobs`, `job-entity`, `searchable`, `excel` (§12). |
-| `Actions` | Built-in actions (`activate`, `deactivate`), every `[EntityAction]` and `[ApiAction]` method of the service in declaration order, then the `[ApiAction]` methods of each stack companion (§11.3; spec 0018's `ExcelOperations<T>`) in registration order. `HandlerType` is the type declaring the method — the service, the companion closed over the leaf, or the `[ApiRoute]` service — which `IApiActionInvoker` (§11.3) resolves from DI per request. |
+| `Actions` | Every action of the stack, each as its kind: an `EntityActionDescriptor` per built-in action (`activate`, `deactivate`) and per `[EntityAction]` method, an `ApiActionDescriptor` per `[ApiAction]` method. Order: the built-in actions, the service's `[EntityAction]` and `[ApiAction]` methods in declaration order, then the `[ApiAction]` methods of each stack companion (§11.3; spec 0018's `ExcelOperations<T>`) in registration order. |
+| `ActionDescriptor` | The members both kinds share. `Name` is the action's whole route under the stack or route segment (§2.3); `Description`, `Mutation`, `Idempotent`, `Destructive`, `Mcp` and `ContractRevision` come from the attribute (§2.3), or from the capability for a built-in action (§11.1). `ResultType` is what the caller receives: for an `EntityActionDescriptor`, `EntitiesResult<TEntity>` when the method returns no value, else the method's `TResult` (§3.1, §11.2); for an `ApiActionDescriptor`, the method's result type. |
+| `EntityActionDescriptor` | `Action`, `SupportsFilter`, `LoadChildren` and `PostCheck` as `[EntityAction]` declares them (§2.3), or as the capability declares a built-in action, which carries `IsBuiltIn` (§11.1); `ArgumentsType` is the method's `TArguments`, null when it takes none. The handler is the stack's `ServiceType`, the one class an `[EntityAction]` is declared on. |
+| `ApiActionDescriptor` | `Securable` is the spec 0013 §4.1 `SecurableRef(Resource, Action)` the invoker evaluates (§11.3) — the stack's `Resource` for an action of the entity service or a stack companion, the attribute's `Resource` for an `[ApiRoute]` action — and null exactly for a member-only action (`MemberOnly = true`); `RequestType` is the body type, null when the method takes none; `HandlerType` is the type declaring the method — the service, the companion closed over the leaf, or the `[ApiRoute]` service — which `IApiActionInvoker` (§11.3) resolves from DI per request. |
 | `Properties`, `Children` | From spec 0011's `EntityMetadata` for the leaf: every mapped property with its `PropertyOwnership`, and every `[NotMapped]` child collection with the `MaxCount` its `[MaxChildren]` declares. |
 | `SearchableProperties`, `NaturalKeys` | The `[Searchable(Kind)]` string properties and `EntityMetadata.NaturalKeys` in order. |
 | `DefaultSelect` | `[DefaultSelect]` text, else the platform default: `Id`, the natural keys, the `[Multilingual]` `Name` group, `Code`, `IsActive`, the four audit columns — the columns pickers and the MCP query tool use when they pass nothing. |
 | `RelatedSelect` | The projection visible through navigations (spec 0011's default when `[RelatedSelect]` is absent: `Id`, the `Name` group, `Code`, `Avatar`-preset blob columns). |
 | `DetailsExpand` | `[DetailsExpand]` navigations, else every foreign-key navigation of the entity and its children at depth 1. |
 | `Limits` | `[Stack(...)]` ceilings with the platform defaults of §2.3. |
-| `Mcp`, `Public`, `Description` | From `[ApiResource]` (spec 0015) when present; defaults `Full`, `false`, the entity's XML summary. |
+| `Mcp`, `ContractRevision`, `Description` | From `[ApiResource]` (spec 0015) when present; defaults `Full`, `0`, the entity's XML summary. `ContractRevision` is bumped by hand when the stack's wire meaning changes with no change of shape, and enters the contract fingerprint of every endpoint of the stack (spec 0015 §3.10). |
 
 ### 2.3 Annotations
 
@@ -255,23 +268,24 @@ public sealed record ApiServiceContributionItem(Type ServiceType) : FeatureContr
 // on entity type; inherited
 public sealed class StackAttribute(
     StackOperations Operations = StackOperations.All, int MaxTake = 10000, int CountCap = 10000,
-    int MaxSaveCount = 10000, int MaxRowsPerSave = 100000, int MaxIds = 10000,
-    int MaxDeleteByQueryRows = 10000, int MaxExpandDepth = 3, int MaxValidationRounds = 3,
-    int MaxSearchLength = 200, int MaxExtras = 16, string? DefaultSelect = null)
+    int MaxSkipWindow = 100000, int MaxSaveCount = 10000, int MaxRowsPerSave = 100000,
+    int MaxIds = 10000, int MaxDeleteByQueryRows = 10000, int MaxExpandDepth = 3,
+    int MaxValidationRounds = 3, int MaxSearchLength = 200, int MaxExtras = 16,
+    string? DefaultSelect = null)
     : Attribute;
 
-// on a method of an EntityService: M(ActionContext<TEntity, TKey> context [, TArguments arguments])
+// on a method of an EntityService returning Task, ValueTask, Task<TResult> or ValueTask<TResult>: M(ActionContext<TEntity, TKey> context [, TArguments arguments])
 public sealed class EntityActionAttribute(
     string Name, string? Action = null, bool SupportsFilter = true, bool LoadChildren = false,
     bool PostCheck = false, bool Mutation = true, bool Idempotent = false, bool Destructive = false,
-    McpExposure Mcp = McpExposure.Full, string? Description = null)
+    McpExposure Mcp = McpExposure.Full, string? Description = null, int ContractRevision = 0)
     : Attribute;
 
 // on a public method taking one body (or none) on an entity service, a stack companion or an [ApiRoute] service
 public sealed class ApiActionAttribute(
     string Name, string? Action = null, string? Resource = null, bool MemberOnly = false,
     bool Mutation = true, bool Idempotent = false, bool Destructive = false,
-    McpExposure Mcp = McpExposure.Full, string? Description = null)
+    McpExposure Mcp = McpExposure.Full, string? Description = null, int ContractRevision = 0)
     : Attribute;
 
 // on a non-entity service class ("inbox", "settings", "access")
@@ -280,12 +294,12 @@ public sealed class ApiRouteAttribute(string Route) : Attribute;
 
 | Member | Meaning |
 |---|---|
-| `[EntityAction].Name` | One or more kebab-case segments joined by `/` (`invite`, `take-over`, `preferences/set`; `[ApiAction].Name` likewise, `me/save`): the path under the stack or route segment, which spec 0015 maps at its literal path, and the MCP action name (spec 0015 §11.5); unique per stack over the whole string; reserved names (the standard operation segments of §2.4) are a startup failure. `Segment` is the whole name; `Action` defaults to the PascalCase form of the last segment (`Invite`, `TakeOver`, `preferences/set` → `Set`); several actions may share one (`activate`/`deactivate` → `Activate`). |
+| `[EntityAction].Name` | One or more kebab-case segments joined by `/` (`invite`, `take-over`, `preferences/set`; `[ApiAction].Name` likewise, `me/save`): the path under the stack or route segment, which spec 0015 maps at its literal path, and the MCP action name (spec 0015 §11.5); unique per stack over the whole string; reserved names (the standard operation segments of §2.4) are a startup failure. `Action` defaults to the PascalCase form of the last segment (`Invite`, `TakeOver`, `preferences/set` → `Set`); several actions may share one (`activate`/`deactivate` → `Activate`). |
 | `[EntityAction].SupportsFilter` | The securable is registered with `FilterRoot = Resource`; the action's target rows are loaded under the grant's filter. `false` registers `FilterRoot = null` and the grant is all-or-nothing. |
 | `[EntityAction].LoadChildren` | The target rows arrive with every child collection populated (one statement per collection, keyed by the target ids). |
 | `[EntityAction].PostCheck` | Re-run the grant's filter over the target rows after the write (§9.3); off by default because an action commonly moves a row out of the filter that permitted it. |
-| `[EntityAction].Mutation`, `[ApiAction].Mutation` | `ActionDescriptor.Mutation`: whether the operation writes tenant data; the tenant-state verdict (spec 0010 §3.3) and the MCP read-only gate (spec 0015 §11.6) read it and nothing else. A read-shaped action declares `Mutation = false`. Standard operations are classified once: `query`, `get`, `get-by-ids`, `get-by-parent-ids`, `all`, `export`, `export-for-import` and `inspect-import` are not mutations; `save`, `delete`, `delete-by-query`, `delete-with-descendants`, `activate`, `deactivate` and `import` are. |
-| `[EntityAction].Idempotent`, `Destructive`, `Mcp`, `Description` | Projection metadata read by spec 0015: `Idempotent` is retry safety (spec 0015 §2.2) and says nothing about writing — a mutation may be retry-safe; `Destructive` is confirmation, `Mcp` tool exposure, `Description` tool text. |
+| `[EntityAction].Mutation`, `[ApiAction].Mutation` | `ActionDescriptor.Mutation`: whether the operation writes tenant data; the tenant-state verdict (spec 0010 §3.3) and the MCP read-only gate (spec 0015 §11.6) read it and nothing else. A read-shaped action declares `Mutation = false`. Standard operations are classified once: `query`, `get`, `get-by-ids`, `get-by-parent-ids`, `all`, `export`, `export-for-import` and `inspect-import` are not mutations; `save`, `delete`, `delete-by-query`, `delete-with-descendants`, `activate`, `deactivate`, `import`, `export/start` and `export-for-import/start` (each of the last two enqueues a job) are. |
+| `[EntityAction]` and `[ApiAction]` `Idempotent`, `Destructive`, `Mcp`, `Description`, `ContractRevision` | Projection metadata read by spec 0015: `Idempotent` is retry safety (spec 0015 §2.2) and says nothing about writing — a mutation may be retry-safe; `Destructive` is confirmation, `Mcp` tool exposure, `Description` tool text; `ContractRevision` (default 0) is bumped by hand when the action's meaning changes with no change of shape, and enters its endpoint's contract fingerprint (spec 0015 §3.10). |
 | `[ApiAction].Action` | The securable action the operation requires on the entity service's resource (`ErrorDetails` names `Diagnose`); `MemberOnly = true` means any connected active member and no securable. On an `[ApiRoute]` service `Resource` is required beside `Action` unless `MemberOnly`. |
 | `[Stack].Operations` | `Read` for lookups; `Query \| Details \| Delete \| Enlist` for platform-written stacks such as spec 0018's `Export`, whose rows arrive only by enlistment (§13.3); `All` otherwise, plus `Enlist` on any stack another stack's writer posts into. |
 | `[Stack]` ceilings | §2.5. |
@@ -304,8 +318,8 @@ public sealed class ApiRouteAttribute(string Route) : Attribute;
 | Delete by query | `DeleteByQueryAsync` | `Delete`; web surface only | `delete-by-query` | `Delete` |
 | Delete with descendants | `DeleteWithDescendantsAsync` (extension) | `Delete` and `tree` | `delete-with-descendants` | `Delete` |
 | Activate, deactivate | `ActivateAsync`, `DeactivateAsync` (extensions) | `Save` and `activatable` | `activate`, `deactivate` | `Activate` |
-| Export | spec 0018's `ExcelOperations<T>`, a stack companion (§11.3) | `Export` | `export` | `Read` |
-| Export for import | spec 0018's `ExcelOperations<T>`, a stack companion (§11.3) | `Import` | `export-for-import` | `Read` |
+| Export | spec 0018's `ExcelOperations<T>`, a stack companion (§11.3) | `Export` | `export`, `export/start` | `Read` |
+| Export for import | spec 0018's `ExcelOperations<T>`, a stack companion (§11.3) | `Import` | `export-for-import`, `export-for-import/start` | `Read` |
 | Inspect import, import | spec 0018's `ExcelOperations<T>`, a stack companion (§11.3) | `Import` | `inspect-import`, `import` | `Save` |
 | Custom bulk action | an `[EntityAction]` method | declared | its `Name` | its `Action` |
 | Custom operation | an `[ApiAction]` method | declared | its `Name` | its `Action` |
@@ -319,14 +333,16 @@ an operation is a mutation is §2.3's `Mutation` classification.
 
 Every ceiling lives on the stack, defaulted by the platform and overridable per entity with
 `[Stack(...)]`; the same numbers bind the web surface, MCP, import and background callers, and
-spec 0015 may only lower them per surface (its `MaxEntitiesPerSave = 1000` on the web surface is
-such a lowering). Exceeding one throws `LimitExceededException(Limit, Actual, Maximum)` before any
-round trip; a value is never silently clamped, because clamping breaks paging arithmetic.
+spec 0015 may only lower them per surface (the web surface's `MaxEntitiesPerSave = 1000` and MCP's
+`MaxTop = 500` are such lowerings). Exceeding one throws `LimitExceededException(Limit, Actual,
+Maximum)` before any round trip; a value is never silently clamped, because clamping breaks paging
+arithmetic.
 
 | Ceiling | Default | Bounds |
 |---|---|---|
 | `MaxTake` | 10,000 | `QueryRequest.Take`; absent = 50 |
-| `CountCap` | 10,000 | the capped grand-total count; `QueryRowSet.Count` is `cap + 1` above it (spec 0011 §3.3) |
+| `CountCap` | 10,000 | the capped grand-total count; `RowPage.Count` is `cap + 1` above it (spec 0011 §3.3) |
+| `MaxSkipWindow` | 100,000 | `QueryRequest.Skip + Take` (`Limit = "skipWindow"`) |
 | `MaxSaveCount` | 10,000 | entities per `SaveAsync`; the codec's import chunk never exceeds it (spec 0018 §12.4) |
 | `MaxRowsPerSave` | 100,000 | rows a save carries at every depth; the codec's chunk never exceeds it |
 | `MaxIds` | 10,000 | ids per `GetByIdsAsync`, `DeleteByIdsAsync`, `ExecuteActionAsync`, `GetByParentIdsAsync` |
@@ -360,22 +376,23 @@ schema; a `[Cacheable]` stack whose `Read` securable would carry a filter root; 
 for an entity no stack owns; a registration of `IEntityPipelineFactory` or of any
 `IEntityPipeline<,>` whose implementation type is not the platform's. The check `core.enlistments`
 fails startup on an `IEnlists<T>` whose `T` is no stack's entity or whose stack omits `Enlist`, and
-on a cycle in the declared pair graph, self-loops included (§13.3). The securables audit — every
-projected operation, every `[EntityAction].Action` and every `[ApiAction].Action` registered — is
-spec 0013's check over `IStackRegistry`, run in the same gate.
+on a cycle in the declared pair graph, self-loops included (§13.3). The securables audit — that
+every projected operation, every `EntityActionDescriptor.Action` and every non-null
+`ApiActionDescriptor.Securable` is registered — is spec 0013's check over `IStackRegistry`, run in
+the same gate.
 
 ### 2.7 Securable registration
 
 `StackSecurableContributor` (`Tellma.Core.Crud`, an `ISecurableContributor` of spec 0013) reads
 `IStackRegistry` and registers, per stack, every standard operation's action of §2.4 as
-`(Resource, Action, FilterRoot = Resource)`, every `[EntityAction].Action` (with `FilterRoot =
-Resource` when `SupportsFilter`, else `null`), every `[ApiAction].Action` of the service and of its
-companions with `FilterRoot = Resource`, and — for `[Cacheable]` stacks — `Read` with `FilterRoot =
-null`. For every
-`[ApiRoute]` service it registers each `[ApiAction(Resource, Action)]` pair with `FilterRoot =
-null`. `IsSensitive` defaults are spec 0013's table. A distribution therefore writes no securable
-registration for its own entities and actions; spec 0010's `Securables(...)` exists for non-entity
-resources only.
+`(Resource, Action, FilterRoot = Resource)`, every `EntityActionDescriptor.Action` (with
+`FilterRoot = Resource` when its `SupportsFilter`, else `null`), every non-null
+`ApiActionDescriptor.Securable` of the service and of its companions with `FilterRoot = Resource`,
+and — for `[Cacheable]` stacks — `Read` with `FilterRoot = null`. For every `[ApiRoute]` service it
+registers each non-null `ApiActionDescriptor.Securable` with `FilterRoot = null`. It reads the
+descriptors of §2.2, never the attributes. `IsSensitive` defaults are spec 0013's table. A
+distribution therefore writes no securable registration for its own entities and actions; spec
+0010's `Securables(...)` exists for non-entity resources only.
 
 ## 3. The service base, the pipeline, and the hooks
 
@@ -389,7 +406,7 @@ public abstract class EntityService<TEntity, TKey>
 {
     protected EntityService(IEntityPipelineFactory factory);
     public StackDescriptor Descriptor { get; }
-    public Task<QueryRowSet> QueryAsync(QueryRequest request);
+    public Task<RowPage> QueryAsync(QueryRequest request);
     public Task<EntitiesResult<TEntity>> GetByIdAsync(TKey id, DetailsRequest request);
     public Task<EntitiesResult<TEntity>> GetByIdsAsync(IReadOnlyList<TKey> ids, DetailsRequest request);
     public Task<EntitiesResult<TEntity>> GetAllCachedAsync(DetailsRequest request);
@@ -398,8 +415,10 @@ public abstract class EntityService<TEntity, TKey>
         IReadOnlyList<TKey> ids, IReadOnlyList<DateTimeOffset?>? expectedStamps = null);   // stamps are datetimeoffset(7)
     public Task<AffectedResult> DeleteByQueryAsync(DeleteByQueryRequest request);
     public Task<EntitiesResult<TEntity>> ExecuteActionAsync(
-        string action, IReadOnlyList<TKey> ids, object? arguments, ActionOptions options);
-    public IExcelRowSource ExcelRowSource(ExportSourceRequest source);
+        string action, IReadOnlyList<TKey> ids, object? arguments, ActionOptions options);    // an action without a result
+    public Task<TResult> ExecuteActionAsync<TResult>(
+        string action, IReadOnlyList<TKey> ids, object? arguments, ActionOptions options);    // an action with its own result
+    public IExcelRowSource ExcelRowSource(ExportSource source);
     // overridable hooks, empty defaults; the pipeline sees them through IEntityBehavior
     protected virtual Task PreprocessAsync(SaveContext<TEntity> context);
     protected virtual Task ValidateAsync(SaveContext<TEntity> context);
@@ -417,7 +436,7 @@ public abstract class EntityService<TEntity> : EntityService<TEntity, int>;
 // Tellma.Core.Crud implements; public because EntityService lives in Abstractions; not for distributions
 public interface IEntityPipeline<TEntity, TKey>
 {
-    Task<QueryRowSet> QueryAsync(QueryRequest request);
+    Task<RowPage> QueryAsync(QueryRequest request);
     Task<EntitiesResult<TEntity>> GetByIdAsync(TKey id, DetailsRequest request);
     Task<EntitiesResult<TEntity>> GetByIdsAsync(IReadOnlyList<TKey> ids, DetailsRequest request);
     Task<EntitiesResult<TEntity>> GetAllCachedAsync(DetailsRequest request);
@@ -427,9 +446,11 @@ public interface IEntityPipeline<TEntity, TKey>
     Task<AffectedResult> DeleteByQueryAsync(DeleteByQueryRequest request);
     Task<EntitiesResult<TEntity>> ExecuteActionAsync(
         string action, IReadOnlyList<TKey> ids, object? arguments, ActionOptions options);
+    Task<TResult> ExecuteActionAsync<TResult>(
+        string action, IReadOnlyList<TKey> ids, object? arguments, ActionOptions options);
     Task<QueryRowSet> GetByParentIdsAsync(ParentIdsRequest request);                        // tree stacks
     Task<AffectedResult> DeleteWithDescendantsAsync(IReadOnlyList<TKey> ids);               // tree stacks
-    IExcelRowSource CreateExcelRowSource(ExportSourceRequest source);
+    IExcelRowSource CreateExcelRowSource(ExportSource source);
     StackDescriptor Descriptor { get; }
 }
 
@@ -481,8 +502,8 @@ public static class EntityServiceExtensions
 | `GetAllCachedAsync` | `[Cacheable]` stacks only (§5.5; the cacheable row of §12); served from spec 0012's `ICacheableEntities` under the tenant `entity:<Name>` tag; no row-level filter (the securable carries none). |
 | `SaveAsync` | §6. Takes an array; the details page sends one. |
 | `DeleteByIdsAsync` | All-or-nothing over the ids (§10.1); `expectedStamps`, when given, is parallel to `ids`; a `null` entry beside an id is `Concurrency.StampRequired` at `Ids[i]`. |
-| `ExecuteActionAsync` | Built-in or `[EntityAction]` actions by `Name` (§11); an unknown name is `InvalidOperationException`. |
-| `ExcelRowSource` | The row source spec 0018's exporter streams from (§15). |
+| `ExecuteActionAsync` | Built-in or `[EntityAction]` actions by `Name` (§11), through the overload the action's `EntityActionDescriptor.ResultType` (§2.2) selects: an action whose method returns no value answers `EntitiesResult<TEntity>` — the target ids and, per `ActionOptions.ReturnEntities`, the read-back; an action with its own result answers the method's `TResult` through `ExecuteActionAsync<TResult>`, and no read-back runs. An unknown name, or the overload that does not match the action, is `InvalidOperationException` (an authoring bug). |
+| `ExcelRowSource` | The row source spec 0018's codec streams from, bound to one `ExportSource` case (§4.2, §15). |
 | `PreprocessAsync` | After the platform's normalisation and before id assignment: defaults, derived fields, every `[Derived]` value, normalisations (`User.Email` lower-casing). Runs once, before round 1. |
 | `ValidateAsync`, `ValidateDeleteAsync`, `ValidateActionAsync` | Rules with batched context loads (§7). The service's hook runs first; components follow in registration order. |
 | `ContributeAsync` | Transactional participation: statements appended to the persist batch with declared writes, notifications, job rows (§13.1). |
@@ -532,11 +553,12 @@ through spec 0010's `contribution.Validator<TEntity, TValidator>()`, `PersistEff
 runs for the leaf (`MyCenter`); the pipeline resolves them once per stack at startup for the leaf
 and every base up to `Entity<TKey>`. A component may implement `IEnlists<TTarget>` and, from its
 validation methods, enlist writes into another stack through the context's `Host` (§13.3). Order:
-the service's own hook first, then components in registration order — feature order (the
-`Requires` closure) then declaration order within a feature. `DeleteContext<TEntity>`,
+the service's own hook first, then components in registration order — feature order (the `Requires`
+closure) then declaration order within a feature. `DeleteContext<TEntity>`,
 `ActionContext<TEntity>`, `PersistOutcome<TEntity>` and `DetailsPlan<TEntity>` are the key-erased
 views of the contexts of §7 and §13 that a component written against a base sees;
-`SaveContext<TEntity>` and `PersistContext<TEntity>` have one shape.
+`SaveContext<TEntity>` and the `PersistContext<TEntity>` kinds of §13.1 carry no key and have no
+erased view.
 
 ### 3.3 Pack services and distribution extension
 
@@ -605,8 +627,8 @@ public sealed record ActionOptions(bool ReturnEntities = false, DetailsRequest? 
 |---|---|
 | `SaveOptions.ReturnEntities` | The read-back rides the persist transaction (§6.9); `false` skips it and the result carries ids only. The default flips to `false` when `Source = Import` unless set explicitly. |
 | `SaveOptions.Concurrency` | Spec 0011's `ConcurrencyMode`. `Check`: a default `ModifiedAt` on an update is `Concurrency.StampRequired`; `Override`: the comparison is skipped, never the existence check (§8). |
-| `SaveOptions.Source` | Recorded on `tellma.crud.*` as `crud.source` and visible to hooks through `SaveContext.Options`; it never weakens a rule — a rule that differs by source is a rule that will be bypassed — and it admits nothing: an operation a stack omits is refused whatever the source (§2.2), and a platform-written stack is written by enlistment (§13.3). The web projection sets `Web`, MCP `Agent`, spec 0018 `Import`, provisioning steps and handlers `System`; an enlisted write records the host's source unless `EnlistOptions.Source` names another. |
-| `ActionOptions` | Whether an action returns the affected rows in details shape and with which echo and extras. |
+| `SaveOptions.Source` | Recorded on `tellma.crud.*` as `crud.source` and visible to hooks through `SaveContext.Options`; it never weakens a rule — a rule that differs by source is a rule that will be bypassed — and it admits nothing: an operation a stack omits is refused whatever the source (§2.2), and a platform-written stack is written by enlistment (§13.3). The web projection sets `Web`, MCP `Agent`, spec 0018 `Import`, provisioning steps and handlers `System`; an enlisted write records the host's source unless the `Source` of its `EnlistSaveOptions` or `EnlistDeleteOptions` names another (§13.3). |
+| `ActionOptions` | Whether an action without its own result returns the affected rows in details shape and with which echo and extras; an action with its own result (§3.1) runs no read-back and ignores them. |
 
 ### 4.2 Wire records this spec consumes
 
@@ -649,23 +671,23 @@ public sealed class EntitiesResult<TEntity>
 
 public sealed record AffectedResult(int Count);
 
-public class ExportSourceRequest                        // Tellma.Core.Abstractions.Excel (spec 0018); the members this spec reads
+public abstract record ExportSource                     // Tellma.Core.Abstractions.Excel (spec 0018)
 {
-    public IReadOnlyList<long>? Ids { get; set; }
-    public string? Filter { get; set; }
-    public string? OrderBy { get; set; }
-    public string? Search { get; set; }
-    public IReadOnlyDictionary<string, JsonElement>? Arguments { get; set; }
+    public sealed record ByIds(IReadOnlyList<long> Ids, string? OrderBy) : ExportSource;   // rows in OrderBy order, else by Id
+    public sealed record ByQuery(
+        string? Filter, string? Search, string? OrderBy, IReadOnlyDictionary<string, JsonElement>? Arguments)
+        : ExportSource;
+    public sealed record All : ExportSource;                                                // no clauses: the access filter alone (the importer's lookups, spec 0018 §10.1)
 }
 ```
 
 Wire ids arrive as `long` in request records; the pipeline narrows them to `TKey` and reports a
-value outside the key's range as `BadRequestException`. `EntitiesResult.Ids` is in input order for
-a save and in request order for a get-by-ids; `Entities` is parallel to it. `Related` is spec
-0011's `RelatedEntities` restricted to each entity's `RelatedSelect` projection; `Rows` is the row
-echo — one row per entity, in the same order, compiled from `DetailsRequest.Select`. `QueryAsync`
-and `GetByParentIdsAsync` return spec 0011's `QueryRowSet`, whose `Count` (`cap + 1` meaning more
-than the cap) and `Ancestors` are the members spec 0015 serialises beside `rows`.
+value outside the key's range as `BadRequestException`. `EntitiesResult.Ids` is in input order for a
+save and in request order for a get-by-ids; `Entities` is parallel to it. `Related` is spec 0011's
+`RelatedEntities` restricted to each entity's `RelatedSelect` projection; `Rows` is the row echo —
+one row per entity, in the same order, compiled from `DetailsRequest.Select`. `QueryAsync` returns
+spec 0011's `RowPage` (the page's `Rows`, the capped `Count` when requested and the `Ancestors`
+set), which spec 0015 §3.5 serialises; `GetByParentIdsAsync` returns a bare `QueryRowSet`.
 
 ### 4.3 Arguments
 
@@ -727,9 +749,8 @@ attribute round trips per operation. Reads run on `BatchPurpose.Read`; validatio
 1. **Checks the type-level grant.** `RequireAsync(Resource, "Read", bespoke)` per §9.1, the
    bespoke list from `BespokeGrant("Read", context)`. The resource name in a refusal is public
    metadata, so it leaks nothing.
-2. **Enforces ceilings.** `Take` absent = 50; `Take > MaxTake` or `Search` longer than
-   `MaxSearchLength` → `LimitExceededException`; `Skip + Take` above spec 0015's window is that
-   spec's 400.
+2. **Enforces ceilings.** `Take` absent = 50; `Take > MaxTake`, `Skip + Take > MaxSkipWindow` or
+   `Search` longer than `MaxSearchLength` → `LimitExceededException`.
 3. **Builds the `QuerySpec`.** `Root = Resource`; `Select = request.Select ?? DefaultSelect`;
    `Filter = And(user filter, activatable conjunct, search filter, access filter)` where the user
    filter is `Leaf(request.Filter)`, the activatable conjunct is `Leaf("IsActive = true")` on
@@ -741,12 +762,21 @@ attribute round trips per operation. Reads run on `BatchPurpose.Read`; validatio
    (the floor the composed permission disjunction of spec 0013 §12.2 requires), every other member
    as `QueryexLimits.Default`; any diagnostic is `InvalidQueryException(Diagnostics)` before the
    round trip — the engine never throws for user input, and neither does the pipeline.
-4. **Applies the navigation-traversal rule.** After discovery, every navigation path the request's
-   clauses traverse is checked: a path into an entity the caller may not `Read` may touch only
-   that entity's `RelatedSelect` projection (`CreatedBy.Name` passes, `CreatedBy.Email` is
-   `ForbiddenException("forbidden", target resource, "Read")`); a caller with `Read` on the target
-   traverses freely, with the target's access filter left to the target's own stack (a query is
-   filtered at its root only).
+4. **Applies the navigation-traversal and select-type rules.** After discovery, every navigation
+   path the request's clauses traverse is checked. A path into an entity `E` other than the root may
+   touch every column of `E` only when the caller's `Read` decision on `E` is unrestricted (no
+   row-level filter); a filtered grant, like no grant, limits the path to `E`'s `RelatedSelect`
+   projection in select, filter, order and having alike (`CreatedBy.Name` passes, `CreatedBy.Email`
+   is `ForbiddenException("forbidden", E, "Read")`). A traversal therefore never reveals more than a
+   direct query of `E` would, apart from the declared display projection. The joined rows are not
+   filtered by `E`'s row-level security (a query is filtered at its root only); only projection
+   columns are reachable through a filtered or absent grant, so nothing hidden leaks. A select item
+   whose Queryex type is `Geography` is refused until a spec defines a JSON encoding for geography
+   values: `InvalidQueryException` carrying one `QueryexDiagnostic` with
+   `Code = ValidationCodes.QueryGeographyNotSelectable`, `Location = "Select[i]"` (the item's
+   zero-based ordinal), a `Span` covering the whole item and
+   `Arguments = [("item", <the item text>)]`; filters and orderings over geography functions are
+   unaffected.
 5. **Appends the statements.** `IDataBatch.Rows(spec, arguments, RowQueryOptions { CountCap =
    IncludeCount ? CountCap : null, IncludeAncestors = request.IncludeAncestors, AncestorsFilter =
    the access filter (null when Unrestricted), CaptureKeys = request.IncludeAncestors })`. With
@@ -755,8 +785,9 @@ attribute round trips per operation. Reads run on `BatchPurpose.Read`; validatio
    ancestor closure of @tb{b}_keys)]` through spec 0011's `IncludeAncestors` option, filtered by
    `AncestorsFilter` alone (never by the user's filter, so the tree renders complete branches),
    excluding the page's own rows — in the same round trip.
-6. **Returns the row set**: `Count` when requested, `Ancestors` as a separate row set in the same
-   column shape so the client distinguishes matches from context.
+6. **Returns the `RowPage`**: the page's `Rows`, `Count` when requested, and `Ancestors` as a
+   separate `QueryRowSet` in the same column shape, so the client distinguishes matches from
+   context.
 
 #### 5.2.1 Search
 
@@ -831,12 +862,13 @@ public sealed class DetailsPlan<TEntity, TKey> : DetailsPlan<TEntity>
 ### 5.4 Get by parent ids
 
 `GetByParentIdsAsync(request)` on tree stacks is one `Read` round trip returning a `QueryRowSet`:
-`Rows(QuerySpec { Root, Select = request.Select ?? DefaultSelect, Filter = And(Leaf(request.Filter),
-activatable conjunct unless IncludeInactive, access filter, roots ? Leaf("ParentId = null") :
-null), Restrictions = roots ? [] : [KeySetRestriction("ParentId", parent ids TVP)], OrderBy = "Id"
-unless the select carries an OrderBy })`. A `null` or empty `ParentIds` means the roots; ids
-beyond `MaxIds` are `LimitExceededException`. The parent-id index serves the seek; the result
-renders the initial tree plus every expanded node in one call.
+the `Rows` of the `RowPage` that `IDataBatch.Rows` yields for a `QuerySpec` with `Root`,
+`Select = request.Select ?? DefaultSelect`, `Filter` = the `And` of `Leaf(request.Filter)`, the
+activatable conjunct unless `IncludeInactive`, the access filter and, for the roots,
+`Leaf("ParentId = null")`; `Restrictions` = `[KeySetRestriction("ParentId", parent ids TVP)]` except
+for the roots; and `OrderBy = "Id"` unless the select carries an `OrderBy`. A `null` or empty
+`ParentIds` means the roots; ids beyond `MaxIds` are `LimitExceededException`. The parent-id index
+serves the seek; the result renders the initial tree plus every expanded node in one call.
 
 ### 5.5 Get all cached
 
@@ -998,10 +1030,10 @@ spec 0011, 0013 and 0012 text the executor places) and the fixed suffix (tag bum
    `@tb{b}_saved`, `@tb{b}_new`, `@tb{b}_touched`, guards concurrency under `UPDLOCK`, inserts,
    synchronises, updates changed rows only, stamps, captures blob references, and appends the tree
    statements for tree tables.
-2. **The service hook.** `ContributeAsync` on the service, receiving `PersistContext` (§13.1):
-   raw `Sql` with declared writes (a distribution guard is `THROW 50600–50699`, mapped to
-   `ValidationException` with the message as the code), notifications through `Notify`, job rows
-   through spec 0019's `IJobQueue.Enqueue(batch, …)`.
+2. **The service hook.** `ContributeAsync` on the service, receiving the
+   `SavePersistContext<TEntity>` (§13.1): raw `Sql` with declared writes (a distribution guard is
+   `THROW 50600–50699`, mapped to `ValidationException` with the message as the code), notifications
+   through `Notify`, job rows through spec 0019's `IJobQueue.Enqueue(batch, …)`.
 3. **The effects.** Every `IPersistEffect<T>` in registration order with the same context; spec
    0016's `BlobReferenceEffect<T>` (the blob release/confirm statements), registered by
    `CoreFeature`, precedes every pack's effect.
@@ -1099,8 +1131,7 @@ public abstract class ActionContext<TEntity>
     // one UpdateSpec<TEntity>.ByIds over the target ids under the grant's filter
     public void Update(IReadOnlyDictionary<string, object?> assignments);
     public void Notify(NotificationRequest request);
-    public IWriteHost Host { get; set; }                    // the frame; the method enlists through it (§13.3)
-    public EnlistmentDescriptor? Enlistment { get; set; }   // null: an action is never enlisted
+    public IWriteHost Host { get; set; }                    // the pipeline frame; the method enlists through it (§13.3)
 }
 
 public sealed class ActionContext<TEntity, TKey> : ActionContext<TEntity>
@@ -1112,8 +1143,9 @@ public sealed class ActionContext<TEntity, TKey> : ActionContext<TEntity>
 `Before` is primed from RT1: a validator asking for a before image or its children through the
 loader costs no statement. `DeleteContext.Entities` are the rows the delete targets, loaded under
 the `Delete` grant when `ValidateDeleteAsync` is overridden. `ActionContext` is §11. `Host` is the
-frame the context runs in and `Enlistment` the declared pair the payload was enlisted under, null
-on a front-door payload (§13.3).
+frame the context runs in; `Enlistment` on a save or delete context is the declared pair the payload
+was enlisted under, null on a front-door payload, and an action context has none because an action
+is never enlisted (§13.3).
 
 ### 7.2 The loader and the rounds
 
@@ -1231,6 +1263,7 @@ public static class ValidationCodes
     public const string BlobDuplicateReference = "Blob.DuplicateReference";
     public const string ConcurrencyStampRequired = "Concurrency.StampRequired";
     public const string ImportLanguageNotConfigured = "Import.LanguageNotConfigured";
+    public const string QueryGeographyNotSelectable = "Query.GeographyNotSelectable";   // a query diagnostic (§5.2)
 }
 
 // Tellma.Core.Abstractions.Errors
@@ -1401,18 +1434,18 @@ statement counts the ids under the caller's `Read` filter (`50404`, hidden equal
 under the `Delete` grant (`50403`), then checks stamps (`50409`), inside the transaction and
 all-or-nothing, deletes children deepest first by explicit statements, then the roots, captures blob
 references for spec 0016's release effect, and appends the tree recount on tree tables; then the
-`ContributeAsync` participants of §13.1 with `PersistContext.Entities` empty and `AffectedIds`
-naming the deleted key table, the access guards (§6.7 step 4), and the tag bumps. With a hook, RT1
-first loads the target rows under the `Delete` grant (`Query<TEntity>` restricted by the ids; a
-short result is `NotFoundException` with the missing ids), runs `ValidateDeleteAsync` and the
-components with their rounds, then the persist. Translation: `50404` →
-`NotFoundException(Resource, missing ids)`; `50403` → `ForbiddenException`; `50409` →
-`ConcurrencyException`; 547 → `ValidationException(Fk.InUse at Ids[i], entity = the referencing
-entity name, property = the referencing property)` — no C# pre-check for references, the constraint
-is the guarantee. A silent partial delete would hide a concurrent change from the user who selected
-the rows a second ago; every id must exist and be visible or nothing is deleted. An enlisted delete
-is a group of the host's persist batch: `DeleteSpec.ByIds(ids, ReadFilter: null, Filter: null)`
-with no expected stamps, its hook round riding the host's rounds (§13.3).
+`ContributeAsync` participants of §13.1 over a `DeletePersistContext`, the access guards of §6.7
+step 4, and the tag bumps. With a hook, RT1 first loads the target rows under the `Delete` grant
+(`Query<TEntity>` restricted by the ids; a short result is `NotFoundException` with the missing
+ids), runs `ValidateDeleteAsync` and the components with their rounds, then the persist.
+Translation: `50404` → `NotFoundException(Resource, missing ids)`; `50403` → `ForbiddenException`;
+`50409` → `ConcurrencyException`; 547 → `ValidationException` with `Fk.InUse` at `Ids[i]`, its
+`entity` the referencing entity name and its `property` the referencing property — no C# pre-check
+for references, the constraint is the guarantee. A silent partial delete would hide a concurrent
+change from the user who selected the rows a second ago; every id must exist and be visible or
+nothing is deleted. An enlisted delete is a group of the host's persist batch, composing
+`DeleteSpec.ByIds(ids, ReadFilter: null, Filter: null)` with no expected stamps, its hook round
+riding the host's rounds (§13.3).
 
 ### 10.2 Delete by query
 
@@ -1445,11 +1478,12 @@ before the delete and recounts the ancestors after it. The hook round and the tr
 
 ### 11.1 The built-in `activate` and `deactivate`
 
-Registered by the activatable capability as `EntityAction`s with `Action = "Activate"`,
+Registered by the activatable capability as `EntityActionDescriptor`s with `Action = "Activate"`,
 `SupportsFilter = true`, `PostCheck = false`, `Idempotent = true`. When neither the service nor a
 component overrides `ValidateActionAsync` for the action, the action is a **SQL-only fast path** —
-one `Persist` round trip: the update with its pre-check, the participants of §13.1, the recount, the
-bumps, the read-back when `ReturnEntities`. The pipeline appends one statement of its own,
+one `Persist` round trip: the update with its pre-check, the participants of §13.1 (with an empty
+`Entities`; `AffectedIds` names the target ids), the recount, the bumps, the read-back when
+`ReturnEntities`. The pipeline appends one statement of its own,
 `IDataBatch.Update(new UpdateSpec<TEntity>.ByIds(ids, read filter, activate grant, { IsActive:
 target }, Stamp: true, AllOrNothing: true))`: spec 0011's statement, in its all-or-nothing form,
 counts every id under the caller's `Read` filter — a hidden id counts as missing — and selects the
@@ -1466,25 +1500,29 @@ overrides `ValidateActionAsync("deactivate", …)`, which moves the action onto 
 
 ### 11.2 The general action path
 
-`ExecuteActionAsync(name, ids, arguments, options)` for an `[EntityAction]` method (and for a
-built-in action with a validation hook): `MaxIds`; the `descriptor.Action` check of §9.1;
-`arguments` deserialised to the method's `TArguments` (spec 0015's options; a shape failure is
-`BadRequestException`) with its `ValidationAttribute`s walked. **RT1** (`Validate`): the target rows
-through `Query<TEntity>` restricted by the ids under the grant's filter (`SupportsFilter`) — with
-every child collection when `LoadChildren` — plus every load `ValidateActionAsync` and the method
-declare before their first await; a row missing from the result is `NotFoundException` with the
-missing ids (the filtered load is the pre-check, as for save). Then
-`ValidateActionAsync(name, context)` and the method run as validator and mutator over
-`ActionContext`: `Errors` collects; `Save(entities)` marks rows for the emitter,
-`Update(assignments)` composes one `UpdateSpec<TEntity>.ByIds` over the target ids under the grant's
-filter, `Batch` takes statements with declared writes, `Notify` appends notifications, `Host` takes
-enlisted writes into other stacks (§13.3); further rounds as declared. Any error →
-`ValidationException`. **RT2** (`Persist`): the emitter for the rows marked by `Save` under
-`ConcurrencyMode.Override` (an action is a command over rows it just loaded, never an edit of a
-loaded copy; a row deleted in between still conflicts as missing), the update specs, the method's
-statements, the effects, the enlisted groups at their declared positions, the post-check over the
-marked and updated ids when `PostCheck`, the read-back when `options.ReturnEntities`, the bumps.
-`EntitiesResult.Ids` are the target ids in request order. Common cost: two round trips.
+`ExecuteActionAsync(name, ids, arguments, options)` — or `ExecuteActionAsync<TResult>` for an action
+with its own result (§3.1) — for an `[EntityAction]` method (and for a built-in action with a
+validation hook): the `EntityActionDescriptor` named `name`; `MaxIds`; the `descriptor.Action` check
+of §9.1; `arguments` used as is when it arrives as a `TArguments` instance (the web layer), or
+deserialised to `TArguments` under spec 0015's options when it arrives as a `JsonElement` (MCP's
+`tellma_action`, jobs), a shape failure being `BadRequestException`; either way its
+`ValidationAttribute`s are walked. **RT1** (`Validate`): the target rows through `Query<TEntity>`
+restricted by the ids under the grant's filter (`SupportsFilter`) — with every child collection when
+the descriptor's `LoadChildren` — plus every load `ValidateActionAsync` and the method declare
+before their first await; a row missing from the result is `NotFoundException` with the missing ids
+(the filtered load is the pre-check, as for save). Then `ValidateActionAsync(name, context)` and the
+method run as validator and mutator over `ActionContext`: `Errors` collects; `Save(entities)` marks
+rows for the emitter, `Update(assignments)` composes one `UpdateSpec<TEntity>.ByIds` over the target
+ids under the grant's filter, `Batch` takes statements with declared writes, `Notify` appends
+notifications, `Host` takes enlisted writes into other stacks (§13.3); further rounds as declared.
+Any error → `ValidationException`. **RT2** (`Persist`): the emitter for the rows marked by `Save`
+under `ConcurrencyMode.Override` (an action is a command over rows it just loaded, never an edit of
+a loaded copy; a row deleted in between still conflicts as missing), the update specs, the method's
+statements, the `ContributeAsync` participants over an `ActionPersistContext` (§13.1), the enlisted
+groups at their declared positions, the post-check over the marked and updated ids when `PostCheck`,
+the read-back when `options.ReturnEntities` and the action has no result of its own, the bumps. An
+action without a result answers `EntitiesResult` with the target ids in request order; an action
+with one answers the value its method returned, once RT2 committed. Common cost: two round trips.
 
 **Partial failure.** A method that calls an external system per id (spec 0017's `invite`) may
 throw `PartialFailureException(Code, Results, Failed)` after composing — marking rows through
@@ -1508,17 +1546,17 @@ from `PostArguments`, and the UI button metadata.
 
 ### 11.3 `[ApiAction]` operations and `[ApiRoute]` services
 
-A single-body operation that is not id-shaped — `me/save`, `error-details`, the four Excel
-operations, everything on `inbox`, `settings`, `access` — is a public method marked `[ApiAction]`
-on an entity service, on a **stack companion**, or on an `[ApiRoute]` service registered with
-`contribution.ApiService<TService>()`. A companion is a class generic over the entity that a
-feature attaches to every stack it applies to with
-`contribution.EntityCompanion<TEntity, TCompanion>()` (a `StackCompanionContributionItem`; spec
-0018 attaches `ExcelOperations<TEntity>` to every stack with `Export` or `Import`): the realizer
-closes it over the leaf, resolves it from DI per request, and projects its `[ApiAction]` methods
-into the stack's `Actions` with `HandlerType = the closed companion` — under the stack's segment
-and resource, exactly as the service's own. The pipeline registers each operation's securable
-(§2.7) and lists it in the descriptor.
+A single-body operation that is not id-shaped — `me/save`, `error-details`, the Excel operations,
+everything on `inbox`, `settings`, `access` — is a public method marked `[ApiAction]` on an entity
+service, on a **stack companion**, or on an `[ApiRoute]` service registered with
+`contribution.ApiService<TService>()`. A companion is a class generic over the entity that a feature
+attaches to every stack it applies to with `contribution.EntityCompanion<TEntity, TCompanion>()` (a
+`StackCompanionContributionItem`; spec 0018 attaches `ExcelOperations<TEntity>` to every stack with
+`Export` or `Import`): the realizer closes it over the leaf, resolves it from DI per request, and
+projects its `[ApiAction]` methods into the stack's `Actions` as `ApiActionDescriptor`s whose
+`HandlerType` is the closed companion — under the stack's segment and resource, exactly as the
+service's own. The pipeline registers each operation's securable (§2.7) and lists it in the
+descriptor.
 
 Every `[ApiAction]` method is reached through one entry:
 
@@ -1526,26 +1564,26 @@ Every `[ApiAction]` method is reached through one entry:
 // Tellma.Core.Abstractions.Crud; Tellma.Core implements; the one entry to every [ApiAction] method
 public interface IApiActionInvoker
 {
-    Task<object?> InvokeAsync(ActionDescriptor action, object? body);
+    Task<object?> InvokeAsync(ApiActionDescriptor action, object? body);
 }
 ```
 
 It resolves `HandlerType` from DI per request (the service, the closed companion or the `[ApiRoute]`
-service), calls `RequireAsync(Resource, action.Action, bespoke)` per §9.1 — the bespoke list from
-the stack service's `BespokeGrant(action.Action, context)`, empty for an `[ApiRoute]` service,
-which has no hook — or, for `MemberOnly`, requires a connected active member (the connect cache,
-else a prologue-only round trip), opens the frame of §13.3 with `Kind = ApiAction` and
-`Operation = "<Resource>:<name>"`, then invokes the method with the body. Spec 0015 projects
-`POST /{tenantId}/api/web/<segment>/<name>` and the MCP entry from `HandlerType` and calls
-`IApiActionInvoker` per request; the MCP tools, jobs and tests call through it too, and
-`[EntityAction]` methods are reached only through `ExecuteActionAsync`, which evaluates the same
-way. A call to a method marked `[ApiAction]` or `[EntityAction]` from outside its declaring type and
-`Tellma.Core` is the analyzer error `TELLMA0004` (spec 0011 §12.3), so a caller cannot reach a
-method whose securable nobody evaluated. Inside, the method composes what it needs: the stack's own
-operations (`SaveAsync`, `GetByIdsAsync`), enlisted writes into other stacks persisted through the
-frame's `PersistAsync` (§13.3), or its own batches through spec 0013's `IGuardedBatchRunner`
-injected into the subclass, with declared writes on every raw statement. It never opens a
-connection and never throws outside the closed set of §14.
+service), calls `RequireAsync(Securable.Resource, Securable.Action, bespoke)` per §9.1 — the bespoke
+list from the stack service's `BespokeGrant(Securable.Action, context)`, empty for an `[ApiRoute]`
+service, which has no hook — or, when `Securable` is null, requires a connected active member (the
+connect cache, else a prologue-only round trip), registers the frame of §13.3 in the scope as the
+`IOpenWriteHost` with `Kind = ApiAction` and `Operation = "<Resource>:<name>"`, then invokes the
+method with the body. Spec 0015 projects `POST /{tenantId}/api/web/<segment>/<name>` and the MCP
+entry from `HandlerType` and calls `IApiActionInvoker` per request; the MCP tools, jobs and tests
+call through it too, and `[EntityAction]` methods are reached only through `ExecuteActionAsync`,
+which evaluates the same way. A call to a method marked `[ApiAction]` or `[EntityAction]` from
+outside its declaring type and `Tellma.Core` is the analyzer error `TELLMA0004` (spec 0011 §12.3),
+so a caller cannot reach a method whose securable nobody evaluated. Inside, the method composes what
+it needs: the stack's own operations (`SaveAsync`, `GetByIdsAsync`), enlisted writes into other
+stacks persisted through `PersistAsync` on the `IOpenWriteHost` it injects (§13.3), or its own
+batches through spec 0013's `IGuardedBatchRunner` injected into the subclass, with declared writes
+on every raw statement. It never opens a connection and never throws outside the closed set of §14.
 
 ## 12. Capability recipes
 
@@ -1561,9 +1599,9 @@ through `StackDescriptor` and the pipeline. Nothing is declared a second time.
 | Blob reference | `[BlobReference]` on an `int?` property | `BlobReferenceValidator<T>` (context load of the staged rows, `Blob.NotAttachable`, `Blob.DuplicateReference`) and `BlobReferenceEffect<T>`, an `IPersistEffect` (release/confirm ending in `THROW 50422, N'Blob.NotAttachable'`), registered by the blob feature; the property stays `Editable`; excluded from Excel; the download authorisation is spec 0016's |
 | Multilingual | `[Multilingual]` on the primary of a `P/P2/P3` group | twins gated by `MultilingualShape` (dropped from the payload and absent from the schema); `(E)`/`(ع)` labels; search over the configured columns of the group |
 | Cacheable | `[Cacheable(MaxRows)]` | the `entity:<Name>` tag bumped by every write; `all` (`GetAllCachedAsync`); `Read` registered with `FilterRoot = null`; `settings/entity-tags` lists the tag |
-| Job entity | `IJobEntity` | `JobId` server-owned; the claim's entity join load (spec 0019); `JobRequest.Entity` sets the column inside the enqueue statement, and a schedule-fired handler that inserts its own row supplies it through `EnlistOptions.ServerOwned` on the enlisted insert (§13.3) |
+| Job entity | `IJobEntity` | `JobId` server-owned; the claim's entity join load (spec 0019); `JobRequest.Entity` sets the column inside the enqueue statement, and a schedule-fired handler that inserts its own row supplies it through `EnlistSaveOptions.ServerOwned` on the enlisted insert (§13.3) |
 | Searchable | `[Searchable(Kind)]` | the `Search` disjunction (§5.2.1); `SearchableProperties` in the descriptor |
-| Excel | `Export` or `Import` in `Operations` | `export` (`Read`) under `Export`; `export-for-import` (`Read`), `inspect-import` and `import` (`Save`) under `Import` — spec 0018's `ExcelOperations<T>` attached as a stack companion (§11.3); `ExcelRowSource` (§15) |
+| Excel | `Export` or `Import` in `Operations` | `export` and `export/start` (`Read`) under `Export`; `export-for-import` and `export-for-import/start` (`Read`), `inspect-import` and `import` (`Save`) under `Import` — spec 0018's `ExcelOperations<T>` attached as a stack companion (§11.3); `ExcelRowSource` (§15) |
 
 Read-only stacks are `[Stack(Operations = Read)]`, not a type: write operations and securables are
 not registered and no write routes are projected. A distribution leaf adding a capability interface
@@ -1604,20 +1642,31 @@ source. On `ActivatableTreeEntity` the `ActiveSubtreeCount` recount follows ever
 
 ```csharp
 // Tellma.Core.Abstractions.Crud
-public sealed class PersistContext<TEntity>
+public abstract class PersistContext<TEntity>
 {
-    public IReadOnlyList<TEntity> Entities { get; set; }    // the payload with final ids; empty on a delete
-    public TEntity? Before(int index);
+    public IReadOnlyList<TEntity> Entities { get; set; }    // save: the payload with final ids; action: the target rows (empty on §11.1's fast path); delete: empty
     public RequestContext Context { get; set; }
-    public SaveOptions Options { get; set; }
     public IDataBatch Batch { get; set; }                   // the persist batch; append-only for participants
-    public SqlIdentifier AffectedIds { get; set; }          // @tb{b}_saved on a save; the deleted key table on a delete; the target ids on an action
-    public SqlIdentifier NewIds { get; set; }               // @tb{b}_new — inserted roots; empty on deletes and actions
-    public SqlIdentifier TouchedIds { get; set; }           // @tb{b}_touched — parents of synchronised children; empty on deletes and actions
-    public IWriteHost Host { get; set; }                    // the frame (§13.3); enlistment is refused here
+    public SqlIdentifier AffectedIds { get; set; }          // save: @tb{b}_saved; action: the target ids; delete: the deleted key table
     public EnlistmentDescriptor? Enlistment { get; set; }   // non-null on the context of an enlisted group
     public void Notify(NotificationRequest request);        // INotifier.Notify on Batch
 }
+
+public sealed class SavePersistContext<TEntity> : PersistContext<TEntity>
+{
+    public TEntity? Before(int index);
+    public SaveOptions Options { get; set; }                // an enlisted save: Concurrency and Source from EnlistSaveOptions, the rest default
+    public SqlIdentifier NewIds { get; set; }               // @tb{b}_new — inserted roots
+    public SqlIdentifier TouchedIds { get; set; }           // @tb{b}_touched — parents of synchronised children
+}
+
+public sealed class ActionPersistContext<TEntity> : PersistContext<TEntity>
+{
+    public string Action { get; set; }                      // the action's Name
+    public object? Arguments { get; set; }
+}
+
+public sealed class DeletePersistContext<TEntity> : PersistContext<TEntity>;
 
 public abstract class PersistOutcome<TEntity>
 {
@@ -1636,26 +1685,27 @@ public sealed class PersistOutcome<TEntity, TKey> : PersistOutcome<TEntity>
 }
 ```
 
-`ContributeAsync(PersistContext)` — the service hook, then every `IPersistEffect<T>` in registration
-order — runs for **every** `Persist` batch on the stack's table: a save, a delete by ids, by query
-or with descendants, `activate`/`deactivate`, every action, and every enlisted group, which has a
-`PersistContext<TEntity>` of its own with `Enlistment` set (§13.3). It runs after the operation's
-own statements are appended and before the batch is sent, with final ids; on a delete `Entities` is
-empty and `AffectedIds` names the deleted key table, on an action `Entities` are the target rows. An
-effect that must act on removal — spec 0016's blob release — therefore needs no second contract. It
-may only append to `Batch`: raw `Sql` with declared `Writes` (and `SqlOptions.UserIds`
-when the written table carries a user-level tag rule), `Tvp`, `DeclareIdTable`, `Query`/`Rows`
-readers whose results are read in `AfterCommitAsync` through `BatchResult.Value`, `Notify`
-(spec 0020's `INotifier.Notify(batch, …)`: ids assigned inside the statement, the `inbox.changed`
-event registered through `OnCommitted`), spec 0019's `IJobQueue.Enqueue(batch, …)` for durable
-work, spec 0016's confirm/release. It performs no I/O of its own; the context exposes no
-connection. Everything appended commits or rolls back with the save; a distribution guard is
-`THROW` in the band `50600–50699`, which the executor maps to `BatchAssertionFailedException` and
-the pipeline to `ValidationException` with the message as the code at `ValidationPath.Root`. Tag
-bumps are never hand-written: the executor derives them from every statement's declared writes
-plus explicit `BumpVersionTag` calls (spec 0012). Anything that must eventually happen — an email,
-an e-invoice filing — is a job row appended here and executed by spec 0019's worker; the pipeline
-has no pre-commit non-transactional phase.
+`ContributeAsync(PersistContext<TEntity>)` — the service hook, then every `IPersistEffect<T>` in
+registration order — runs for **every** `Persist` batch on the stack's table, with the context kind
+of its operation: a `SavePersistContext` for a save, a `DeletePersistContext` for a delete by ids,
+by query or with descendants, an `ActionPersistContext` for `activate`/`deactivate` and every
+action. Every enlisted group has a context of its own kind with `Enlistment` set (§13.3). A
+participant that needs a save-only member type-tests `context is SavePersistContext<TEntity> save`.
+It runs after the operation's own statements are appended and before the batch is sent, with final
+ids. An effect that must act on removal — spec 0016's blob release — reads the
+`DeletePersistContext`'s `AffectedIds` and needs no second contract. It may only append to `Batch`:
+raw `Sql` with declared `Writes` (and `SqlOptions.UserIds` when the written table carries a
+user-level tag rule), `Tvp`, `DeclareIdTable`, `Query`/`Rows` readers whose results are read in
+`AfterCommitAsync` through `BatchResult.Value`, `Notify` (spec 0020's `INotifier.Notify(batch, …)`:
+ids assigned inside the statement, the `inbox.changed` event registered through `OnCommitted`), spec
+0019's `IJobQueue.Enqueue(batch, …)` for durable work, spec 0016's confirm/release. It performs no
+I/O of its own; the context exposes no connection. Everything appended commits or rolls back with
+the operation; a distribution guard is `THROW` in the band `50600–50699`, which the executor maps to
+`BatchAssertionFailedException` and the pipeline to `ValidationException` with the message as the
+code at `ValidationPath.Root`. Tag bumps are never hand-written: the executor derives them from
+every statement's declared writes plus explicit `BumpVersionTag` calls (spec 0012). Anything that
+must eventually happen — an email, an e-invoice filing — is a job row appended here and executed by
+spec 0019's worker; the pipeline has no pre-commit non-transactional phase.
 
 ### 13.2 Post-commit
 
@@ -1681,24 +1731,35 @@ public interface IEnlists<TTarget>;                             // marker on a w
 
 public enum WriteHostKind { Pipeline, ApiAction, Job, Provisioning }
 
-public interface IWriteHost                                     // scoped; the current frame; contexts expose it as Host
+public interface IWriteHost                                     // the current frame; contexts expose it as Host
 {
     WriteHostKind Kind { get; }
-    string Operation { get; }                                   // "gl.Invoice:post", "gl.Center:export", "job:core.export", "provisioning:<step>"
-    Task<EnlistmentOutcome> PersistAsync();                     // non-pipeline hosts only; InvalidOperationException in a pipeline
+    string Operation { get; }                                   // "gl.Invoice:post", "gl.Center:export/start", "job:core.export", "provisioning:<step>"
+}
+
+public interface IOpenWriteHost : IWriteHost                    // scoped; the frame of an [ApiAction], a job or a provisioning step
+{
+    Task<EnlistmentOutcome> PersistAsync();
 }
 
 public sealed record EnlistmentOutcome(DateTimeOffset Stamp, VersionTagSnapshot VersionTags);
 
 public enum EnlistOrder { AfterHost, BeforeHost }
 
-public sealed class EnlistOptions
+public sealed class EnlistSaveOptions
 {
-    public EnlistOrder Order { get; set; }                      // default: AfterHost for a save, BeforeHost for a delete
-    public Func<ValidationPath, ValidationPath> MapPath { get; set; }   // target path → host path; default: everything to Root
+    public EnlistOrder Order { get; set; } = EnlistOrder.AfterHost;
+    public Func<ValidationPath, ValidationPath>? MapPath { get; set; }          // target path → host path; null: everything to Root
     public ConcurrencyMode Concurrency { get; set; } = ConcurrencyMode.Override;   // Check for a row the writer loaded itself
-    public IReadOnlySet<string> ServerOwned { get; set; } = [];         // server-owned members the writer supplies; never an audit column or IsActive
-    public SaveSource? Source { get; set; }                     // default: the host's
+    public IReadOnlySet<string> ServerOwned { get; set; } = [];                    // server-owned members the writer supplies; never an audit column or IsActive
+    public SaveSource? Source { get; set; }                                        // default: the host's
+}
+
+public sealed class EnlistDeleteOptions
+{
+    public EnlistOrder Order { get; set; } = EnlistOrder.BeforeHost;
+    public Func<ValidationPath, ValidationPath>? MapPath { get; set; }
+    public SaveSource? Source { get; set; }
 }
 
 public sealed class EnlistedSave<TEntity>
@@ -1716,81 +1777,86 @@ public sealed class EnlistedDelete<TKey>
 public static class EnlistmentExtensions                        // the receiver constraint is the compile-time gate
 {
     public static Task<EnlistedSave<TTarget>> EnlistSaveAsync<TTarget>(
-        this IEnlists<TTarget> writer, IWriteHost host, IReadOnlyList<TTarget> rows, EnlistOptions? options = null);
+        this IEnlists<TTarget> writer, IWriteHost host, IReadOnlyList<TTarget> rows, EnlistSaveOptions? options = null);
     public static EnlistedDelete<TKey> EnlistDelete<TTarget, TKey>(
-        this IEnlists<TTarget> writer, IWriteHost host, IReadOnlyList<TKey> ids, EnlistOptions? options = null)
+        this IEnlists<TTarget> writer, IWriteHost host, IReadOnlyList<TKey> ids, EnlistDeleteOptions? options = null)
         where TTarget : Entity<TKey> where TKey : struct;
 }
 ```
 
-`Enlist`, `EnlistmentDescriptor` and the registry's `Enlistments` and `OwnerOf` are §2.2; `Host`
-and `Enlistment` on the contexts are §7.1 and §13.1.
+`Enlist`, `EnlistmentDescriptor` and the registry's `Enlistments` and `OwnerOf` are §2.2; `Host` on
+the validation contexts and `Enlistment` on the save and delete contexts are §7.1, `Enlistment` on
+the persist contexts §13.1.
 
 **The shape.** A **writer** — a service, an `IEntityValidator<T>` component, a stack companion, a
 job handler, a provisioning step — that must write rows of another stack's entity enlists the write
-with its **host**, the frame the platform opened around the work it is doing, and the target
-stack's stages run as participants of that frame: the target's checks and validators are more tasks
-on the host's scheduler, the target's statements are one more **group** in the host's persist batch
-at a declared position, and the target's post-commit runs after the host's commit. Two
-declarations gate a pair: the target's entity carries `Enlist` in its `[Stack]` operations, and the
-writer implements `IEnlists<TTarget>`, the receiver constraint of `EnlistSaveAsync` and
-`EnlistDelete`, so an undeclared pair is a compile error. The realizer reads every pair from the
-types the contribution items already register into `IStackRegistry.Enlistments`; nothing is
-declared a second time. A **frame** is an `IWriteHost` the platform opens on the scope: the
-pipeline around a save, a delete or an action (`Kind = Pipeline`), `IApiActionInvoker` around an
-`[ApiAction]` method (§11.3), spec 0019's worker around a handler's `ExecuteAsync`, spec 0010's
-step runner around a provisioning step. Frames nest: a front-door operation entered inside an
-*open* frame — spec 0018's import handler saving a chunk on the target stack, an `[ApiAction]`
-calling `SaveAsync` — runs its own pipeline frame with its own transaction inside it, and the
-innermost frame is the `Host` its participants see; the outer frame's groups are untouched by it.
-`Operation` is `"<Resource>:<operation>"` for a pipeline or `[ApiAction]` host (`gl.Invoice:post`,
-`gl.Center:export`), `"job:<key>"` for a job and `"provisioning:<step>"` for a step. A pipeline
-frame is *composing* from id assignment to the close of the last validation round; a non-pipeline
-frame is *open* until `PersistAsync`.
+with its **host**, the frame the platform opened around the work it is doing, and the target stack's
+stages run as participants of that frame: the target's checks and validators are more tasks on the
+host's scheduler, the target's statements are one more **group** in the host's persist batch at a
+declared position, and the target's post-commit runs after the host's commit. Two declarations gate
+a pair: the target's entity carries `Enlist` in its `[Stack]` operations, and the writer implements
+`IEnlists<TTarget>`, the receiver constraint of `EnlistSaveAsync` and `EnlistDelete`, so an
+undeclared pair is a compile error. The realizer reads every pair from the types the contribution
+items already register into `IStackRegistry.Enlistments`; nothing is declared a second time. A
+**frame** is an `IWriteHost` the platform opens around the work: the pipeline around a save, a
+delete or an action (`Kind = Pipeline`), `IApiActionInvoker` around an `[ApiAction]` method (§11.3),
+spec 0019's worker around a handler's `ExecuteAsync`, spec 0010's step runner around a provisioning
+step. The last three are *open* frames: each registers its frame in the scope as an
+`IOpenWriteHost`, the `IWriteHost` that adds `PersistAsync`, which the method, handler or step
+injects; a pipeline frame is an `IWriteHost` alone, reached only as a context's `Host`. Frames nest:
+a front-door operation entered inside an open frame — spec 0018's import handler saving a chunk on
+the target stack, an `[ApiAction]` calling `SaveAsync` — runs its own pipeline frame with its own
+transaction inside it, and the innermost frame is the `Host` its participants see; the outer frame's
+groups are untouched by it. `Operation` is `"<Resource>:<operation>"` for a pipeline or
+`[ApiAction]` host (`gl.Invoice:post`, `gl.Center:export/start`), `"job:<key>"` for a job and
+`"provisioning:<step>"` for a step. A pipeline frame is *composing* from id assignment to the close
+of the last validation round; an open frame stays open until its `PersistAsync`.
 
 **Where enlistment is allowed.** In a pipeline host, while the frame is composing: `ValidateAsync`,
 `ValidateDeleteAsync`, `ValidateActionAsync`, an `[EntityAction]` method, an `IEntityValidator<T>`.
 `PreprocessAsync` is refused (host ids are not yet assigned, §6.1 step 3 precedes step 4);
-`ContributeAsync` and `AfterCommitAsync` are refused (the rounds are over). In an `[ApiAction]`,
-job or provisioning host, any time while the frame is open. The receiver must be a participant of
-the frame — the host's service, one of its components, the type the frame was opened for, or a
-participant of a group inside it. Each refusal is `InvalidOperationException`: an authoring bug,
-never a user outcome.
+`ContributeAsync` and `AfterCommitAsync` are refused (the rounds are over). In an open frame — an
+`[ApiAction]`, job or provisioning host — any time before its `PersistAsync`. The receiver must be a
+participant of the frame — the host's service, one of its components, the type the frame was opened
+for, or a participant of a group inside it. Each refusal is `InvalidOperationException`: an
+authoring bug, never a user outcome.
 
 **What the call does.** `EnlistSaveAsync` checks the pair is declared and the receiver a
 participant, then runs the target's pre-persist stages over `rows` as a task on the host's
 scheduler: shape and ceilings (§6.1 step 1), the platform preprocessing and the target's
 `PreprocessAsync` (§6.3), `IIdAllocator.Reserve` (immediate on a warm buffer, otherwise parked at
 `LoadAsync` like a validator's load, §6.4), the before images of every update row loaded unfiltered
-in the current round, the checks of §6.6 — a missing before image is `Entity.NotFound` at the
-mapped path, never a 404 — and then the target's `ValidateAsync` and every
-`IEntityValidator<TTarget>` as further tasks. Every payload row of every participating stack is
-primed on the shared loader (§7.2), so a target `ByIds` for a host id costs nothing and a target
-row referencing a host row inserted in the same batch validates; the FK pre-load of §7.4 is
-skipped for enlisted rows, and 547 through the target's constraint names is their check. Rounds
-are shared and bounded by the host's `MaxValidationRounds`. `EnlistedSave.Rows` carry final ids
-once the task completed and the batch stamp after commit. `EnlistDelete` registers a delete group
-and runs the target's `ValidateDeleteAsync` and its components over the target rows, loaded
-unfiltered in the current round. `ServerOwned` names server-owned members the writer supplies
-(`JobId` on an `IJobEntity`): the pipeline re-applies them from the writer's rows after
+in the current round, the checks of §6.6 — a missing before image is `Entity.NotFound` at the mapped
+path, never a 404 — and then the target's `ValidateAsync` and every `IEntityValidator<TTarget>` as
+further tasks. Every payload row of every participating stack is primed on the shared loader (§7.2),
+so a target `ByIds` for a host id costs nothing and a target row referencing a host row inserted in
+the same batch validates; the FK pre-load of §7.4 is skipped for enlisted rows, and 547 through the
+target's constraint names is their check. Rounds are shared and bounded by the host's
+`MaxValidationRounds`. `EnlistedSave.Rows` carry final ids once the task completed and the batch
+stamp after commit. `EnlistDelete` registers a delete group and runs the target's
+`ValidateDeleteAsync` and its components over the target rows, loaded unfiltered in the current
+round. `EnlistSaveOptions.ServerOwned` names server-owned members the writer supplies (`JobId` on an
+`IJobEntity`): the pipeline re-applies them from the writer's rows after
 `EntityMetadata.ResetServerOwned` (spec 0011 §2.4); an audit column or `IsActive` there is refused.
 `Source` is recorded, never a rule input (§4.1): a pipeline host's `SaveOptions.Source`, the
 request's client (`Web`, `Agent`, `PublicApi`) for an `[ApiAction]` host, `System` for a job or
-provisioning frame, unless `EnlistOptions.Source` names another.
+provisioning frame, unless the `Source` of the `EnlistSaveOptions` or `EnlistDeleteOptions` names
+another.
 
-**Assembly for a pipeline host.** A group is the target's emitter — `Save<TTarget>(rows,
-options.Concurrency)`, or `Delete<TTarget>(DeleteSpec.ByIds(ids, ReadFilter: null, Filter: null))`
-with no expected stamps — followed by the target's `ContributeAsync` and every
-`IPersistEffect<TTarget>` with a `PersistContext<TTarget>` of their own (§13.1). The persist batch
-of §6.7 places `BeforeHost` groups ahead of the host's emitter and `AfterHost` groups after the
-host's effects, each set in enlistment order, and calls the access guards over the union of every
-group's declared writes. A host's group is composite — its own statements plus its nested groups
-in their declared positions — and a nested enlistment is positioned relative to its *immediate*
-host's group: when A enlists B with `BeforeHost` and B enlists C with `AfterHost`, the batch order
-is B, C, A. Ids flow both ways in memory because every stack's ids are assigned before assembly; a
-row that must reference a row of a *later* group is unsupported (SQL Server checks a foreign key
-per statement), so the author orders or splits the enlistments. One target enlisted twice in one
-host is two groups; a root id present in both is refused at the second enlistment.
+**Assembly for a pipeline host.** A group is the target's emitter — for a save
+`Save<TTarget>(rows, options.Concurrency)`, for a delete `Delete<TTarget>` of the
+`DeleteSpec.ByIds(ids, ReadFilter: null, Filter: null)` of §10.1 with no expected stamps — followed
+by the target's `ContributeAsync` and every `IPersistEffect<TTarget>` with a
+`SavePersistContext<TTarget>` or `DeletePersistContext<TTarget>` of their own (§13.1). The persist
+batch of §6.7 places `BeforeHost` groups ahead of the host's emitter and `AfterHost` groups after
+the host's effects, each set in enlistment order, and calls the access guards over the union of
+every group's declared writes. A host's group is composite — its own statements plus its nested
+groups in their declared positions — and a nested enlistment is positioned relative to its
+*immediate* host's group: when A enlists B with `BeforeHost` and B enlists C with `AfterHost`, the
+batch order is B, C, A. Ids flow both ways in memory because every stack's ids are assigned before
+assembly; a row that must reference a row of a *later* group is unsupported (SQL Server checks a
+foreign key per statement), so the author orders or splits the enlistments. One target enlisted
+twice in one host is two groups; a root id present in both is refused at the second enlistment.
 
 **Nesting.** A target's own hooks may enlist a further target through `context.Host` when that
 pair is declared. The declared pair graph over stacks is acyclic at startup, self-loops included
@@ -1799,11 +1865,11 @@ Write-back belongs to the document's own action: an invoice's `void` enlists the
 delete; a transaction never writes its source.
 
 **The `[ApiAction]` host.** The invoker evaluates the securable, opens the frame and invokes the
-method (§11.3); the method enlists what it needs and awaits `host.PersistAsync()`: the pending
-rounds run through the guarded runner on `Validate` batches (zero round trips when nothing
-declared a load), then one `Persist` batch carries every group in declared order, the access
-guards when due, no post-check and the bumps; post-commit follows §13.2. The outcome is the batch
-stamp and the version tags after the bumps. A second call, or a call inside a pipeline host, is
+method (§11.3); the method enlists what it needs and awaits `host.PersistAsync()` on the
+`IOpenWriteHost` it injects: the pending rounds run through the guarded runner on `Validate` batches
+(zero round trips when nothing declared a load), then one `Persist` batch carries every group in
+declared order, the access guards when due, no post-check and the bumps; post-commit follows §13.2.
+The outcome is the batch stamp and the version tags after the bumps. A second call is
 `InvalidOperationException`.
 
 **The job host.** Spec 0019's worker opens the frame around each `ExecuteAsync`, bound to the
@@ -1836,11 +1902,12 @@ with the ids as an argument; a `50422` from the target's blob effect, a 2601/262
 `5060x` from the target's `ContributeAsync` land under the group's mapped path — even when two
 writers enlist one target in one host.
 
-**Concurrency.** An enlisted write is a platform command: `Override` by default — U locks still
-taken, a vanished row still conflicts as missing (§8) — with every written target root stamped
-with the batch stamp and the acting user; `Check` when the writer carries a stamp it loaded itself,
-a default stamp then being `Concurrency.StampRequired` at the mapped path. Two writers of one
-mutable target row serialise on the lock; a target meant for many writers is append-or-delete.
+**Concurrency.** An enlisted save is a platform command: `Override` by default — U locks still
+taken, a vanished row still conflicts as missing (§8) — with every written target root stamped with
+the batch stamp and the acting user; `EnlistSaveOptions.Concurrency = Check` when the writer carries
+a stamp it loaded itself, a default stamp then being `Concurrency.StampRequired` at the mapped path.
+An enlisted delete carries no expected stamps (§10.1). Two writers of one mutable target row
+serialise on the lock; a target meant for many writers is append-or-delete.
 
 **Telemetry.** One counter, `tellma.crud.enlistments` (§16.1). Round trips stay on the host's
 `DataAccessScope.Operation`; spec 0011's `tellma.data.rows.saved` counts the target's rows; no
@@ -1851,17 +1918,18 @@ existing instrument gains a tag.
 `ActivateAsync`, `DeactivateAsync`, `DeleteWithDescendantsAsync` — from a pipeline participant, and
 `TELLMA0006` refuses a raw statement or a `Save<T>`, `Update<T>` or `Delete<T>` that writes a
 stack-owned table from a type outside `Tellma.Core` that is not the table's owner; spec 0011 §12.3
-states both. At startup, the `core.enlistments` check of §2.6. At run time,
-`InvalidOperationException` — a 500 with a trace id, never a user outcome — for a front-door
-operation entered while a frame is composing (what the analyzer cannot follow through helpers), an
-undeclared pair, a non-participant receiver, a closed phase, and a statement appended through
-`IDataBatch`'s public members whose declared writes include a table `OwnerOf` maps to a stack
-outside the appender's `CallerAuthority` — the stack whose participant holds the batch: the host's
-stack for the host's hooks and effects, the target's stack for a group's, nothing for a job or
-provisioning handler's own statements — refused at append naming the table, its owner and the
-remedy. The platform's own composers — the emitter, `IJobQueue`, `INotifier`, `IJobProgress.Append`,
-`IAccessGuards`, the blob effect — append through the internal channel of spec 0011 §5.2, which the
-authority check does not cover.
+states both. A pipeline participant holds its frame as an `IWriteHost`, which has no `PersistAsync`.
+At startup, the `core.enlistments` check of §2.6. At run time, `InvalidOperationException` — a 500
+with a trace id, never a user outcome — for a front-door operation entered while a frame is
+composing (what the analyzer cannot follow through helpers), an undeclared pair, a non-participant
+receiver, a closed phase, a `PersistAsync` on an open frame while a pipeline frame nested in it is
+composing, and a statement appended through `IDataBatch`'s public members whose declared writes
+include a table `OwnerOf` maps to a stack outside the appender's `CallerAuthority` — the stack whose
+participant holds the batch: the host's stack for the host's hooks and effects, the target's stack
+for a group's, nothing for a job or provisioning handler's own statements — refused at append naming
+the table, its owner and the remedy. The platform's own composers — the emitter, `IJobQueue`,
+`INotifier`, `IJobProgress.Append`, `IAccessGuards`, the blob effect — append through the internal
+channel of spec 0011 §5.2, which the authority check does not cover.
 
 **Round trips.** An enlistment adds no round trip to its host; it adds one only when made after
 the writer's last dispatch and the target declares a load (§16.2). An action host whose target
@@ -1875,9 +1943,9 @@ The consumers:
 
 | Consumer | Writer and host | Round trips |
 |---|---|---|
-| `export`/`import` `[ApiAction]`, background branch (spec 0018 §12.2) | `ExcelOperations<TEntity> : IEnlists<Export>, IEnlists<Import>` enlists one row in the invoker's frame and awaits `PersistAsync`; `ExportService.ContributeAsync` enqueues every new row whose `JobId` is null | export 1; import 2 (the staged-upload attach loads the blob row) |
-| The export handler's completion (spec 0018 §12.3) | `ExportJobHandler : IEnlists<Export>`: an enlisted update on the completion batch with `Concurrency = Check` on the claimed row; the blob effect confirms inside the completion transaction | 1, atomic with completion |
-| A schedule-fired export's own row (spec 0018 §12.3) | one enlisted insert at the end of the run with `FileId` set, `ServerOwned = [nameof(Export.JobId)]` and `JobId = Job.Id`, which `ContributeAsync` skips | 1, atomic with completion |
+| `export/start`, `export-for-import/start` and `import` with `Background = true` (spec 0018 §12.2) | `ExcelOperations<TEntity> : IEnlists<Export>, IEnlists<Import>` enlists one row in the invoker's frame and awaits `PersistAsync` on the injected `IOpenWriteHost`; `ExportService.ContributeAsync` enqueues every new row whose `JobId` is null | export 1; import 2 (the staged-upload attach loads the blob row) |
+| The export handler's completion (spec 0018 §12.3) | `ExportJobHandler : IEnlists<Export>`: an enlisted update on the completion batch with `EnlistSaveOptions.Concurrency = Check` on the claimed row; the blob effect confirms inside the completion transaction | 1, atomic with completion |
+| A schedule-fired export's own row (spec 0018 §12.3) | one enlisted insert at the end of the run with `FileId` set, `EnlistSaveOptions.ServerOwned = [nameof(Export.JobId)]` and `JobId = Job.Id`, which `ContributeAsync` skips | 1, atomic with completion |
 | The import handler's completion (spec 0018 §12.4) | `ImportJobHandler : IEnlists<Import>`: the chunks are front-door `SaveAsync` on the target stack (the handler is a host, not a participant); the completion row is an enlisted update on the completion batch | 1 per completion |
 | A document's `post` into a ledger transaction stack (the `post` action of §11.2) | the transaction stack declares `Enlist`; the document service implements `IEnlists<>` of it; `post` builds the transaction rows and enlists them with a `MapPath` onto the document lines; `unpost` enlists a delete (`BeforeHost` by default) | post 2, or 3 when the target declares validator loads (the recipe above); unpost 2, or 3 with a delete validator |
 
@@ -1969,9 +2037,9 @@ filter and no grant count, so `50403` never arises from one, and its `50404` is
 ## 15. The Excel row source
 
 Spec 0018's exporter streams rows through `IExcelRowSource` and never opens a connection; the
-pipeline implements it. `EntityService.ExcelRowSource(source)` returns an `ExcelRowSource<TEntity,
-TKey>` bound to an `ExportSourceRequest` — `Ids`, or `Filter`/`Search`/`OrderBy`/`Arguments` —
-after the `Read` check of §9.1. The members of spec 0018's contract it implements, verbatim:
+pipeline implements it: after the `Read` check of §9.1, `EntityService.ExcelRowSource(source)`
+returns an `ExcelRowSource<TEntity, TKey>` bound to one `ExportSource` case (§4.2). The members of
+spec 0018's contract it implements, verbatim:
 
 ```csharp
 public sealed record ExcelQuery(
@@ -1985,20 +2053,23 @@ public interface IExcelRowSource
 ```
 
 Every `RootEntity` is an entity name (`gl.Center`, `core.RoleMembership`); the stack's own is
-`Descriptor.Resource`. `Rows(query)` on the stack's own root builds `QuerySpec { Root, Select =
-SelectPaths joined, Filter = And(Leaf(source.Filter), search filter, access filter), OrderBy =
-query.OrderBy ?? source.OrderBy ?? "Id", Restrictions = [source.Ids as KeySetRestriction("Id",
-TVP)] + [query.Restriction bound to RestrictionValues] }` and streams it in pages of `MaxTake`
-through `Rows` on `Read` batches — one round trip per page, `Skip`/`Take` as parameter slots, the
-same `ConnectedUser` reconnected per page through the runner so a revocation mid-export stops the
-stream — yielding each row as the column values in `SelectPaths` order. No activatable conjunct is
-applied: the display export mirrors the grid's own filter and the editable export must carry
-inactive rows. A `query` whose `RootEntity` is a child collection (spec 0018's child sheets) is
-compiled on the child root with the restriction on its parent key; a `RootEntity` that is a lookup
-target (natural-key resolution) is compiled on that entity under the caller's `Read` decision for
-its resource — `Denied` yields no rows, so an unreadable reference resolves as not found. `Take`
-caps the total; the exporter's row limit is spec 0018's. A cell value is the reader's CLR value
-(`long`, `decimal`, `DateOnly`, `string`, `bool`, `Guid`); formatting is the codec's.
+`Descriptor.Resource`. `Rows(query)` on the stack's own root builds a `QuerySpec` with `Root`,
+`Select` = the `SelectPaths` joined, `Filter = And(source filter, access filter)`,
+`OrderBy = query.OrderBy ?? source.OrderBy ?? "Id"` and `Restrictions` = the source restriction plus
+`query.Restriction` bound to `RestrictionValues`, composing the source per case: `ByIds` is the
+restriction `KeySetRestriction("Id", TVP)` over its `Ids`; `ByQuery` is the filter `Leaf(Filter)`
+with the search filter of its `Search` (§5.2.1), bound with its `Arguments`; `All` has no clause and
+no `OrderBy`, so the access filter alone applies. It streams in pages of `MaxTake` through `Rows` on
+`Read` batches — one round trip per page, `Skip`/`Take` as parameter slots, the same `ConnectedUser`
+reconnected per page through the runner so a revocation mid-export stops the stream — yielding each
+row as the column values in `SelectPaths` order. No activatable conjunct is applied: the display
+export mirrors the grid's own filter and the editable export must carry inactive rows. A `query`
+whose `RootEntity` is a child collection (spec 0018's child sheets) is compiled on the child root
+with the restriction on its parent key; a `RootEntity` that is a lookup target (natural-key
+resolution) is compiled on that entity under the caller's `Read` decision for its resource —
+`Denied` yields no rows, so an unreadable reference resolves as not found. `Take` caps the total;
+the exporter's row limit is spec 0018's. A cell value is the reader's CLR value (`long`, `decimal`,
+`DateOnly`, `string`, `bool`, `Guid`); formatting is the codec's.
 
 ## 16. Telemetry and the round-trip budget
 
@@ -2080,11 +2151,12 @@ through `tellma.data.roundtrips`.
 A platform minor may add hooks (with default bodies), context members, capability interfaces and
 annotations, validation codes, request and result members, descriptor members, and instruments. It
 may not rename a hook, remove or rename a code, change the path segment kinds or their rendering,
-reorder pipeline steps observably, or change a default ceiling. Servers ignore unknown JSON members
-and clients tolerate new ones (N−1 during swaps). The emitter binds by metadata, so a pack adding a
-column reorders nothing observable. Hooks take one context object each, so a minor adds members to a
-context, never parameters to a hook. A test pins the public surface of
-`Tellma.Core.Abstractions.Crud`, `.Validation` and `.Errors` with an API golden.
+reorder pipeline steps observably, or change a default ceiling. Servers ignore unknown JSON members;
+a web client built against a different contract is refused before anything runs (spec 0015 §3.10).
+The emitter binds by metadata, so a pack adding a column reorders nothing observable. Hooks take one
+context object each, so a minor adds members to a context, never parameters to a hook. A test pins
+the public surface of `Tellma.Core.Abstractions.Crud`, `.Validation` and `.Errors` with an API
+golden.
 
 ## 18. Testing
 
@@ -2095,23 +2167,24 @@ the statements appended and replays canned result sets. Pins: the attribute walk
 `ValidationAttribute` on roots and children, all failures reported, `IValidatableObject` ignored);
 id assignment and temporary-id rewriting across every self-typed FK, `Entity.NotFound` for an
 undefined temporary id, ids returned on validation failure and never on a persist attempt; the
-ordering rule of §6.4 on an immediate versus a deferred reservation; property ownership (§6.2)
-per ownership kind including the multilingual gate and the `Import.LanguageNotConfigured`
-exception; child synchronisation semantics (`null`, `[]`, list; foreign ids; nesting overrides the
-payload parent key; grandchildren); the path segments and the JSON-policy independence; the
-parking scheduler — dedup by structural key, select union, one dispatch per `LoadAsync` round, the
+ordering rule of §6.4 on an immediate versus a deferred reservation; property ownership (§6.2) per
+ownership kind including the multilingual gate and the `Import.LanguageNotConfigured` exception;
+child synchronisation semantics (`null`, `[]`, list; foreign ids; nesting overrides the payload
+parent key; grandchildren); the path segments and the JSON-policy independence; the parking
+scheduler — dedup by structural key, select union, one dispatch per `LoadAsync` round, the
 `MaxValidationRounds` bug surfacing, and the property test that validators awaiting foreign tasks
 still terminate and never dispatch early; `Search` lowering per `SearchKind` and per language shape;
 the final filter composition `And(user, activatable, search, access)` with empty conjuncts dropped;
 the navigation-traversal rule; argument discovery, conversion and `BadRequestException`; every
-ceiling; every translation row of §14.2; the enlistment rules of §13.3 over the scripted batch —
-the pair gate (an undeclared pair, a non-participant receiver and a closed phase refused), a
-front-door call from inside a composing frame refused, the group order including the nested
-`BeforeHost`-then-`AfterHost` case (B, C, A) and the composite group, `MapPath` composed through
-the nesting with `enlistedResource` on every re-rooted error, the double enlistment of one root id
-refused, a `StatementOrdinal` attributed to its group; descriptor derivation for every fixture
-entity and every startup check of §2.6 (each with a failing fixture, `core.enlistments` included);
-the API golden of §17.
+ceiling; every translation row of §14.2; the two `ExecuteActionAsync` overloads (the method's own
+`TResult` answered with no read-back, the overload that does not match the action's `ResultType`
+refused); the enlistment rules of §13.3 over the scripted batch — the pair gate (an undeclared pair,
+a non-participant receiver and a closed phase refused), a front-door call from inside a composing
+frame refused, the group order including the nested `BeforeHost`-then-`AfterHost` case (B, C, A) and
+the composite group, `MapPath` composed through the nesting with `enlistedResource` on every
+re-rooted error, the double enlistment of one root id refused, a `StatementOrdinal` attributed to
+its group; descriptor derivation for every fixture entity and every startup check of §2.6 (each with
+a failing fixture, `core.enlistments` included); the API golden of §17.
 
 ### 18.2 Integration suite — `test/core/Tellma.Core.IntegrationTests` (`Crud/`)
 
@@ -2281,8 +2354,10 @@ The load-bearing decisions, where not already evident above:
     attribute and a log field (§16.1).
 22. **Stack companions project `[ApiAction]`s through the descriptor with `HandlerType`** — a
     feature adds operations to every stack without a member on `EntityService` (§2.2, §11.3).
-23. **`IPersistEffect` contributing on every persist, deletes included** — one effect contract
-    covers attach and release; a second delete-time contract would be forgotten (§13.1).
+23. **`IPersistEffect` contributing on every persist, deletes included, through one base context
+    with a kind per operation** — one effect contract covers attach and release (a second
+    delete-time contract would be forgotten), and a save-only member is reached by a type test,
+    never read empty on an action or a delete (§13.1).
 24. **`[ApiAction]` methods run only through `IApiActionInvoker`, `[EntityAction]` methods only
     through `ExecuteActionAsync`, and the analyzer refuses a direct call** — one check per operation
     for every caller, HTTP or not (§11.3).
@@ -2296,6 +2371,13 @@ The load-bearing decisions, where not already evident above:
     ends (`Enlist` on the target, `IEnlists<>` on the writer) and gated at compile time, at
     startup and at run time, so no write reaches a stack-owned table around its owner's rules
     (§13.3).
+29. **An action descriptor's record type is its kind** — over one shared base,
+    `EntityActionDescriptor` and `ApiActionDescriptor` carry only the members their kind has, and a
+    member-only action is a null `Securable`, so no consumer reads a member that means nothing for
+    the action it holds (§2.2).
+30. **Only an open frame persists** — `PersistAsync` is on `IOpenWriteHost`, which an `[ApiAction]`
+    method, a job handler or a provisioning step injects; a pipeline frame is an `IWriteHost` alone,
+    so no participant can persist a frame that is still composing (§13.3).
 
 ## Review flags
 
