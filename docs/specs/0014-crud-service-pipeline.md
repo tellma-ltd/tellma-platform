@@ -95,8 +95,7 @@ restates a member of a contract another spec owns, it restates only what it call
   ships only the row source it streams from and the save it calls.
 - **Job leasing, schedules, notifications and the hub** — specs 0019 and 0020.
 - **Deferred capabilities**: `[GatedBy]` (no user once `IsActive` is server-owned), composite
-  natural keys, weak entities as securable roots (`FilterTree.Via`), the public API's plumbing
-  (spec 0015 §12.2).
+  natural keys, the public API's plumbing (spec 0015 §12.2).
 
 ## 1. Placement and architecture
 
@@ -1026,10 +1025,12 @@ its host's group. What it appends, in order, between the fixed prefix (the schem
 spec 0011, 0013 and 0012 text the executor places) and the fixed suffix (tag bumps, `COMMIT`):
 
 1. **The emitter.** `IDataBatch.Save<TEntity>(rows, options.Concurrency)` with the payload's roots
-   and their supplied collections. Spec 0011's emitter binds the new/existing TVPs per table, keeps
-   `@tb{b}_saved`, `@tb{b}_new`, `@tb{b}_touched`, guards concurrency under `UPDLOCK`, inserts,
-   synchronises, updates changed rows only, stamps, captures blob references, and appends the tree
-   statements for tree tables.
+   and their supplied collections, returning the `SaveHandle` whose `SavedIds` (as `AffectedIds`),
+   `NewIds`, `TouchedIds` and `Captures` the `SavePersistContext` of §13.1 carries. Spec 0011's
+   emitter binds the new/existing TVPs per table, keeps `@tb{b}_saved`, `@tb{b}_new`,
+   `@tb{b}_touched`, guards concurrency under `UPDLOCK`, inserts, synchronises, updates changed rows
+   only, stamps, captures blob references (spec 0011 §8.5), and appends the tree statements for tree
+   tables.
 2. **The service hook.** `ContributeAsync` on the service, receiving the
    `SavePersistContext<TEntity>` (§13.1): raw `Sql` with declared writes (a distribution guard is
    `THROW 50600–50699`, mapped to `ValidationException` with the message as the code), notifications
@@ -1421,7 +1422,9 @@ Excel path agree: a caller cannot reference a row they could not see.
 ## 10. Delete operations
 
 Every delete composes spec 0011's `IDataBatch.Delete<TEntity>(DeleteSpec)` — the statements are
-that spec's — and adds the type-level check, the ceilings, the hook round, and the translation.
+that spec's, and the `DeletePersistContext` of §13.1 carries the returned `DeleteHandle`'s
+`DeletedIds` (as `AffectedIds`) and `Captures` — and adds the type-level check, the ceilings, the
+hook round, and the translation.
 
 ### 10.1 Delete by ids
 
@@ -1596,7 +1599,7 @@ through `StackDescriptor` and the pipeline. Nothing is declared a second time.
 | Activatable | `IActivatable` | `Activate` securable (both directions); `activate`, `deactivate` fast path (§11.1); the activatable conjunct lifted by `IncludeInactive`; `IsActive` server-owned (created active, changed only through the actions); the inactive-banner metadata; `ActiveSubtreeCount` recount on trees |
 | Tree | `TreeEntity<TKey>` | `get-by-parent-ids`, `delete-with-descendants`; `IncludeAncestors`; `ParentId` editable, `SubtreeCount`/`ActiveSubtreeCount`/`Node` server-owned; `TreeCycleValidator<T>` in RT1 and the SQL fence in RT2; the recount after save, `Update` actions and deletes; temporary ids in `ParentId` |
 | Temporal | `[Temporal]` | skip-unchanged rows (no no-op history row); a parent whose children changed is still stamped |
-| Blob reference | `[BlobReference]` on an `int?` property | `BlobReferenceValidator<T>` (context load of the staged rows, `Blob.NotAttachable`, `Blob.DuplicateReference`) and `BlobReferenceEffect<T>`, an `IPersistEffect` (release/confirm ending in `THROW 50422, N'Blob.NotAttachable'`), registered by the blob feature; the property stays `Editable`; excluded from Excel; the download authorisation is spec 0016's |
+| Blob reference | `[BlobReference]` on an `int?` property of the root or of a child entity of the aggregate | `BlobReferenceValidator<T>` (context load of the staged rows, `Blob.NotAttachable`, `Blob.DuplicateReference`) and `BlobReferenceEffect<T>`, an `IPersistEffect` (release/confirm ending in `THROW 50422, N'Blob.NotAttachable'`), registered by the blob feature; the property stays `Editable`; excluded from Excel; the download authorisation is spec 0016's |
 | Multilingual | `[Multilingual]` on the primary of a `P/P2/P3` group | twins gated by `MultilingualShape` (dropped from the payload and absent from the schema); `(E)`/`(ع)` labels; search over the configured columns of the group |
 | Cacheable | `[Cacheable(MaxRows)]` | the `entity:<Name>` tag bumped by every write; `all` (`GetAllCachedAsync`); `Read` registered with `FilterRoot = null`; `settings/entity-tags` lists the tag |
 | Job entity | `IJobEntity` | `JobId` server-owned; the claim's entity join load (spec 0019); `JobRequest.Entity` sets the column inside the enqueue statement, and a schedule-fired handler that inserts its own row supplies it through `EnlistSaveOptions.ServerOwned` on the enlisted insert (§13.3) |
@@ -1648,6 +1651,7 @@ public abstract class PersistContext<TEntity>
     public RequestContext Context { get; set; }
     public IDataBatch Batch { get; set; }                   // the persist batch; append-only for participants
     public SqlIdentifier AffectedIds { get; set; }          // save: @tb{b}_saved; action: the target ids; delete: the deleted key table
+    public IReadOnlyList<ColumnCapture> Captures { get; set; }   // the emitter's captures of this persist; empty on an action persist
     public EnlistmentDescriptor? Enlistment { get; set; }   // non-null on the context of an enlisted group
     public void Notify(NotificationRequest request);        // INotifier.Notify on Batch
 }
@@ -1692,20 +1696,21 @@ by query or with descendants, an `ActionPersistContext` for `activate`/`deactiva
 action. Every enlisted group has a context of its own kind with `Enlistment` set (§13.3). A
 participant that needs a save-only member type-tests `context is SavePersistContext<TEntity> save`.
 It runs after the operation's own statements are appended and before the batch is sent, with final
-ids. An effect that must act on removal — spec 0016's blob release — reads the
-`DeletePersistContext`'s `AffectedIds` and needs no second contract. It may only append to `Batch`:
-raw `Sql` with declared `Writes` (and `SqlOptions.UserIds` when the written table carries a
-user-level tag rule), `Tvp`, `DeclareIdTable`, `Query`/`Rows` readers whose results are read in
-`AfterCommitAsync` through `BatchResult.Value`, `Notify` (spec 0020's `INotifier.Notify(batch, …)`:
-ids assigned inside the statement, the `inbox.changed` event registered through `OnCommitted`), spec
-0019's `IJobQueue.Enqueue(batch, …)` for durable work, spec 0016's confirm/release. It performs no
-I/O of its own; the context exposes no connection. Everything appended commits or rolls back with
-the operation; a distribution guard is `THROW` in the band `50600–50699`, which the executor maps to
-`BatchAssertionFailedException` and the pipeline to `ValidationException` with the message as the
-code at `ValidationPath.Root`. Tag bumps are never hand-written: the executor derives them from
-every statement's declared writes plus explicit `BumpVersionTag` calls (spec 0012). Anything that
-must eventually happen — an email, an e-invoice filing — is a job row appended here and executed by
-spec 0019's worker; the pipeline has no pre-commit non-transactional phase.
+ids. An effect that acts on a captured column — spec 0016's blob confirm and release, on a save and
+a delete alike — looks the capture's identifier up by `(Table, Column)` in `Captures` and needs no
+second contract. It may only append to `Batch`: raw `Sql` with declared `Writes` (and
+`SqlOptions.UserIds` when the written table carries a user-level tag rule), `Tvp`, `DeclareIdTable`,
+`Query`/`Rows` readers whose results are read in `AfterCommitAsync` through `BatchResult.Value`,
+`Notify` (spec 0020's `INotifier.Notify(batch, …)`: ids assigned inside the statement, the
+`inbox.changed` event registered through `OnCommitted`), spec 0019's `IJobQueue.Enqueue(batch, …)`
+for durable work, spec 0016's confirm/release. It performs no I/O of its own; the context exposes no
+connection. Everything appended commits or rolls back with the operation; a distribution guard is
+`THROW` in the band `50600–50699`, which the executor maps to `BatchAssertionFailedException` and
+the pipeline to `ValidationException` with the message as the code at `ValidationPath.Root`. Tag
+bumps are never hand-written: the executor derives them from every statement's declared writes plus
+explicit `BumpVersionTag` calls (spec 0012). Anything that must eventually happen — an email, an
+e-invoice filing — is a job row appended here and executed by spec 0019's worker; the pipeline has
+no pre-commit non-transactional phase.
 
 ### 13.2 Post-commit
 
@@ -2015,10 +2020,10 @@ own assertions (spec 0016 §3.4's staging quota, spec 0019 §5.3's lease fence);
 | `BatchAssertionFailedException(50404, "Entity.NotFound")` | delete/action pre-check | `NotFoundException(Resource, ids from the preceding result set)` |
 | `BatchAssertionFailedException(50413, …)` | delete-by-query cap | `LimitExceededException("MaxDeleteByQueryRows", actual, cap)` |
 | `BatchAssertionFailedException(50428, …)` | delete-by-query count | `CountMismatchException(expected, actual)` |
-| `BatchAssertionFailedException(50422, code)` | any invariant other than `Tree.Cycle` (`Blob.NotAttachable`, `Access.LastAdministrator`, `VersionTag.Missing`, `Job.LeaseLost`) | `ValidationException` with one error, `Path = ValidationPath.Root`, `Code = code` |
+| `BatchAssertionFailedException(50422, code)` | any invariant other than `Tree.Cycle` (`Blob.NotAttachable`, `Access.LastAdministrator`, `VersionTag.Missing`, `Job.LeaseLost`) | `ValidationException` with one error, `Path = ValidationPath.Root`, `Code = code`; `Blob.NotAttachable` carries the argument `reason = persist` (spec 0016 §4.4) |
 | `BatchAssertionFailedException(50600–50699, code)` | a distribution guard | `ValidationException` with one error, `Path = ValidationPath.Root`, `Code = code` |
 | `TreeCycleException`, `TreeDepthExceededException` | the path-count fence; error 530 | `ValidationException(Tree.Cycle)`, `ValidationException(Tree.TooDeep)` at `ValidationPath.Root` |
-| `UniqueConstraintViolationException(IndexName)` | 2601/2627 on `UX_<Table>_<Col>` | `ValidationException(Unique)` at `[i].<Property>` when one payload row carries that property, else at `ValidationPath.Root` with `property` as an argument — the race case; the validator of §6.6 reports the ordinary duplicate |
+| `UniqueConstraintViolationException(IndexName)` | 2601/2627 on `UX_<Table>_<Col>` | `ValidationException(Unique)` at `[i].<Property>` when one payload row carries that property, else at `ValidationPath.Root` with `property` as an argument — the race case; the validator of §6.6 reports the ordinary duplicate. A `UX_<Table>_<Column>` of a `[BlobReference]` column maps to `Blob.NotAttachable` (`reason = persist`) at the property path — two concurrent saves attaching one staged id |
 | `ForeignKeyViolationException(ConstraintName)` | 547 on `FK_<Table>_<Column>` | save: `ValidationException(Fk.NotFound)` at `[i].<Property>` with `entity` and `id`; delete: `ValidationException(Fk.InUse)` at `Ids[i]` with `entity` and `property`, both derived from the constraint name |
 | `DataAccessAmbiguousException` after an inconclusive probe | connection lost around `COMMIT`, update-only | `DependencyUnavailableException("database", RetryAfter = 1 s)` |
 | `DataAccessRetryExhaustedException(Inner, Attempts)` | retries exhausted on `50503` (applock timeout) or a reported transient failure (deadlocks) | `DependencyUnavailableException("database", RetryAfter = 1 s)` |

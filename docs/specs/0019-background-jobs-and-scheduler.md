@@ -1100,8 +1100,8 @@ take `Id = 100 + ordinal` in realization order, and the migration diff exposes a
 | 2 | `core.notification-retention` | `30 3 * * *` | spec 0020 |
 | 3 | `core.file-retention` | `0 4 * * *` | this spec (§14.4) |
 | 4 | `core.blob-sweep` | `*/15 * * * *` | spec 0016 |
-| 5 | `core.blob-reconcile` | `0 2 * * 0` | spec 0016 |
-| 6 | `core.tree-verify` | `0 1 * * 0` | this spec (§14.5) |
+| 5 | `core.blob-reconcile` | `0 2 * * 6` | spec 0016 |
+| 6 | `core.tree-verify` | `0 1 * * 6` | this spec (§14.5) |
 
 This table is the record of every built-in's id and expression; the contributing specs cite it.
 Platform code never changes a shipped built-in's seeded values (that would scaffold an
@@ -1452,7 +1452,7 @@ nothing is deleted post-commit.
 
 ### 14.5 Tree verify (this spec)
 
-`core.tree-verify` (`0 1 * * 0`): for every tree table in the model, one `Maintenance` round trip
+`core.tree-verify` (`0 1 * * 6`): for every tree table in the model, one `Maintenance` round trip
 running spec 0011's tree recount statement in whole-table scope, `Idempotent = true`, as the system
 user; repaired rows count on spec 0011's `tellma.data.tree.repairs` and a non-zero count logs its
 `TreeVerify.Repaired` at Warning. The weekly pass is the backstop for the per-save affected-set

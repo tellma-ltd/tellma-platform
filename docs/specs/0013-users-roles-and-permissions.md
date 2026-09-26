@@ -46,8 +46,8 @@ inside the same runner call — one recompose, never a query run under stale pre
 
 The spec deliberately leaves to later specs: the user and role services and every endpoint that
 projects them (spec 0017); invitation and delivery status (spec 0017); the image bytes (spec 0016);
-notification preferences (spec 0020); push subscriptions (a later spec); weak entities as
-securable query roots (`FilterTree.Via`, reserved here, built by a later amendment).
+notification preferences (spec 0020); push subscriptions (a later spec); every stack over a child
+entity, which is a securable root through its `Owner` (§5.5).
 
 ## Goals / Non-goals
 
@@ -258,8 +258,8 @@ public class User : TopLevelEntity, IActivatable
     [Multilingual, Searchable] public string Name { get; set; }
     public string? Name2 { get; set; }
     public string? Name3 { get; set; }
-    [BlobReference("user-image", BlobPreset.Avatar, ReadAccess = AnyMember)] public int? ImageId { get; set; }
-    [BlobReference("user-signature", BlobPreset.Photo, MaxSizeBytes = 1_048_576)] public int? SignatureId { get; set; }   // a raster of the stylus capture; OwnerRead
+    [BlobReference("user-image", BlobPreset.Avatar, ReadAccess = BlobReadAccess.AnyMember)] public int? ImageId { get; set; }
+    [BlobReference("user-signature", BlobPreset.Signature, MaxSizeBytes = 1_048_576, ReadAccess = BlobReadAccess.AnyMember)] public int? SignatureId { get; set; }   // a transparent PNG of the stylus capture; AnyMember
     public string? PreferredLanguage { get; set; }                // BCP 47; null = tenant primary
     public string? PreferredCalendar { get; set; }                // gc | uq | et; null = tenant primary
     public string? PreferredTimeZone { get; set; }                // IANA; null = tenant zone
@@ -286,8 +286,8 @@ public class User : TopLevelEntity, IActivatable
 | `JoinedAt` | `datetimeoffset(3)` | yes | | server-owned; the join evidence |
 | `Name` | `nvarchar(255)` | no | | |
 | `Name2`, `Name3` | `nvarchar(255)` | yes | | present per the tenant's languages |
-| `ImageId` | `int` | yes | `FK_Users_ImageId → core.Blobs(Id)` NO ACTION; `IX_Users_ImageId` | |
-| `SignatureId` | `int` | yes | `FK_Users_SignatureId → core.Blobs(Id)` NO ACTION; `IX_Users_SignatureId` | |
+| `ImageId` | `int` | yes | `FK_Users_ImageId → core.Blobs(Id)` NO ACTION; `UX_Users_ImageId (ImageId) WHERE ImageId IS NOT NULL` | |
+| `SignatureId` | `int` | yes | `FK_Users_SignatureId → core.Blobs(Id)` NO ACTION; `UX_Users_SignatureId (SignatureId) WHERE SignatureId IS NOT NULL` | |
 | `PreferredLanguage` | `varchar(35)` | yes | | |
 | `PreferredCalendar` | `varchar(16)` | yes | | |
 | `PreferredTimeZone` | `varchar(64)` | yes | | |
@@ -338,11 +338,9 @@ Rules on the columns:
   through the `activate`/`deactivate` actions under the `Activate` securable.
 - **`ImageId`** is an `int?` FK to `core.Blobs`; the attach rule, the staged upload and the bytes
   are spec 0016's. The row carries the key only.
-- **`SignatureId`** is the same shape for kind `user-signature` (`Photo` preset narrowed to 1 MiB,
-  `OwnerRead`): the SPA captures the stylus strokes and uploads a raster, since spec 0016 stores
-  no SVG; only a caller who may read the user row — the user through the bespoke grant, an
-  administrator through `core.User × Read` — downloads it, and documents render it server-side
-  (a later spec).
+- **`SignatureId`** is the same shape for kind `user-signature` (`Signature` preset narrowed to
+  1 MiB, `AnyMember`): the SPA captures the stylus strokes and uploads a raster, since spec 0016
+  stores no SVG; any member renders it over the approval stamp of a document they can read.
 - **Row 1** (the system user) accepts no edits, activation or deletion: `Users.SystemUserImmutable`.
 - **The self-editable column set** is spec 0017's `UserService` rule (`Users.NotSelfEditable`), not
   an annotation.
@@ -625,7 +623,7 @@ core.User`, `Image → core.Blob`, `core.RoleMembership.User`/`.Role`, `core.Per
 // Tellma.Core.Abstractions.Access
 public sealed record SecurableRef(string Resource, string Action);
 
-public sealed record SecurableOwner(string Resource, string Navigation);   // reserved: weak entities as query roots (§5.5)
+public sealed record SecurableOwner(string Resource, string Navigation);   // a child entity's owner: its grants reach the child through Navigation, a to-one path (§5.5)
 
 public sealed record SecurableDescriptor(
     string Resource, string Action, string? FilterRoot, bool IsSensitive, string Feature, SecurableOwner? Owner)
@@ -722,15 +720,16 @@ spec 0012's string pack), the validators' oracle (§3.7), and the drift oracle
 ### 4.5 Startup validation
 
 Aggregated with the realised gate of spec 0010: no duplicate `(Resource, Action)` with different
-filter roots; every `FilterRoot` resolves to a top-level entity of the distribution's Queryex schema
-and is not a child entity; every `Owner` names a registered resource and an existing navigation;
-`*` is not a resource or action name; every resource and action matches the grammar of §2; every
-`SecurableEndpointMetadata` on any endpoint names a registered pair, which an attribute's pair
-always is, because §4.2 registers the pair the attribute names (what that means for a misspelled
-action: spec 0015 §4.6). The endpoint-shape rules — exactly one of the two metadata records on
-every tenant endpoint, `AllowAnonymous` only on a tenantless endpoint — are spec 0010 §5.3's
-`TellmaEndpointAudit`, which walks `EndpointDataSource` in the same gate; any finding of either
-check fails startup.
+filter roots; every `FilterRoot` resolves to an entity of the distribution's Queryex schema; a child
+entity is accepted only when the securable declares `Owner`, whose `Navigation` is a to-one path
+from `FilterRoot` to the owner resource's filter root; every `Owner` names a registered resource,
+and the owner chain is acyclic; `*` is not a resource or action name; every resource and action
+matches the grammar of §2; every `SecurableEndpointMetadata` on any endpoint names a registered
+pair, which an attribute's pair always is, because §4.2 registers the pair the attribute names (what
+that means for a misspelled action: spec 0015 §4.6). The endpoint-shape rules — exactly one of the
+two metadata records on every tenant endpoint, `AllowAnonymous` only on a tenantless endpoint — are
+spec 0010 §5.3's `TellmaEndpointAudit`, which walks `EndpointDataSource` in the same gate; any
+finding of either check fails startup.
 
 ### 4.6 Hard to leave unsecured
 
@@ -814,7 +813,7 @@ public sealed record UserAccess                                 // the cached se
     public IReadOnlyList<RoleAccessGrant> Grants { get; init; }
     public IReadOnlyList<AccessProblem> Problems { get; init; }
     public AccessDecision Decide(
-        SecurableDescriptor securable, IReadOnlyList<AccessCriterion> bespoke, string? queryRoot);
+        SecurableDescriptor securable, IReadOnlyList<AccessCriterion> bespoke, AccessDecision? owner);   // owner: the (Owner.Resource, Action) decision, evaluated first; null without Owner
     public static UserAccess System { get; }                    // unrestricted; never loaded
 }
 
@@ -861,9 +860,10 @@ state. For a securable `(R, A)`:
    ordinally by text then by stamp, each as `FilterTree.Leaf(text, stamp)` (spec 0011 §11.2), plus
    the `Filter` tree of every bespoke criterion whose `Action` equals `A` or `*`. Empty → `Denied`
    (`Grants` empty; `Problems` = the excluded rows that would have matched). Otherwise `Filtered`
-   with `Filter = FilterTree.Or(leaves)`, wrapped in `Via(Owner.Navigation)` when `queryRoot` is a
-   weak root (§5.5); `Grants` = the filtered candidates and one `BespokeAccessGrant` per
-   contributing criterion.
+   with `Filter = FilterTree.Or(leaves)`; `Grants` = the filtered candidates and one
+   `BespokeAccessGrant` per contributing criterion. For a securable that declares `Owner`, steps 4
+   and 5 give the direct side, and the decision is the owner's filter rebased through
+   `Via(Owner.Navigation)` per §5.5, unioned with the direct leaves.
 
 Rules encoded: inactive roles were excluded at load and memberships of inactive users never reach
 evaluation (the prologue refuses); a public role's rows are in every caller's set as grants with
@@ -927,18 +927,26 @@ the predicate — a fail-open hazard; the "can I, and why" query needs the model
 tenant isolation, the headline RLS use case, is already physical. `SESSION_CONTEXT` is reserved for
 correlation ids, never for authorisation.
 
-### 5.5 Weak entities as query roots — `FilterTree.Via` (reserved)
+### 5.5 Child entities as query roots — `FilterTree.Via`
 
-When child entities become queryable roots (reports over `RoleMembership`; later, invoice lines),
-the securable of a child declares `Owner = (OwnerResource, OwnerNavigation)` —
-`core.RoleMembership` → (`core.User`, `User`) — and the evaluator decides the owner's securable and
-rebases the resulting filter through the navigation with a new node `FilterTree.Via(navigation,
-inner)`, under which every path in `inner` resolves from the navigation's target and context
-functions bind as usual; diagnostics carry `Filter.Via[User]` locations. The engine amendment is
-spec 0011's to document; until it ships no child entity is a query root and the registry refuses a
-securable whose `FilterRoot` is a child entity (§4.5). Rewriting permission text
-(`PostingDate > X` → `Parent.PostingDate > X`) is rejected: it needs a parser on the host side,
-mangles literals and `me()`, and would re-stamp language versions.
+A child entity exposed as a query root (a read-only reporting stack over `RoleMembership`; later,
+invoice lines) is a securable in its own right. Its securable declares its owner,
+`Owner = (OwnerResource, OwnerNavigation)` — `core.RoleMembership` → (`core.User`, `User`) — and a
+caller's permissions for `(C, A)` are their own grants on `(C, A)` **plus** their grants on
+`(OwnerResource, A)`, rebased through `FilterTree.Via(navigation, inner)` (spec 0011 §11.2), under
+which every path in `inner` resolves from the navigation's target. The evaluator decides
+`(OwnerResource, A)` first, recursively, since the owner may itself be a child with an owner (an
+owner pair the registry does not hold is `Denied`), and passes that decision to `Decide`, which
+composes it with the direct side of §5.2:
+
+- the direct candidates or the owner's decision `Unrestricted` → `Unrestricted`;
+- both `Denied` → `Denied`;
+- otherwise `Filtered` with `Filter = Or(directLeaves…, Via(Owner.Navigation, ownerFilter))`,
+  omitting whichever side is empty.
+
+`Grants` lists the direct candidates and the owner's grants; `Problems` lists both sides'. Rewriting
+permission text (`PostingDate > X` → `Parent.PostingDate > X`) is rejected: it needs a parser on the
+host side, mangles literals and `me()`, and would re-stamp language versions.
 
 ## 6. The permission set and its cache
 
@@ -1637,10 +1645,12 @@ stamp, below `Minimum`), engine diagnostics → `Permissions.FilterInvalid`, wil
 The resource and action grammar. Registry freezing, duplicates, aliases, `MarkNotSensitive` removing
 a Core default, a pair marked both ways refused, `Fingerprint` stability across registration order.
 The startup audit over an in-memory `EndpointDataSource` (an endpoint naming an unregistered
-securable, a `FilterRoot` naming a child entity; the endpoint-shape rules are spec 0010's). The
-prologue reader against scripted result sets: every presence combination of sets 2–3 and the body.
-`FormatVersion` mismatch → miss with `reason=format`. `Evaluate`'s deny re-check inside and outside
-`FastDenyWindow`. The drift table of §9 row by row. `Via` composition shape.
+securable, a child-entity `FilterRoot` without `Owner`; the endpoint-shape rules are spec 0010's).
+The prologue reader against scripted result sets: every presence combination of sets 2–3 and the
+body. `FormatVersion` mismatch → miss with `reason=format`. `Evaluate`'s deny re-check inside and
+outside `FastDenyWindow`. The drift table of §9 row by row. The owner composition of §5.5: direct
+grants only, owner grants only, both (`Or` of the direct leaves and the `Via` node), neither
+(`Denied`), either side `Unrestricted`, and an owner that is itself a child.
 
 **Integration (every PR; LocalDB or Testcontainers; fixture tenant database with change tracking).**
 The schema of §3 applied by migrations and every constraint name present; the `HasData` rows. The

@@ -118,11 +118,11 @@ design-time factory — and carries pre-generated migrations for the catalog alo
 distribution contributes to the catalog schema and every catalog must be identical for the identity
 engine's schema to sit beside it; the tenant model's migrations, core, packs and distribution tables
 together, are generated in the distribution's Migrator project. `Tellma.Core.Imaging`
-(`Tellma.Core.Abstractions` + `SixLabors.ImageSharp`, spec 0016) is never referenced by
-`Tellma.Core`. `Tellma.Defaults.Azure` is a distribution-layer bundle: it sits above the connectors
-it references, and no Core package references it. Modules (`Tellma.Module.<M>`) reference only
-Abstractions packages; the feature contract lives in Abstractions because a module must ship a
-feature without an edge to `Tellma.Core`.
+(`Tellma.Core.Abstractions` + SkiaSharp, spec 0016) is never referenced by `Tellma.Core`.
+`Tellma.Defaults.Azure` is a distribution-layer bundle: it sits above the connectors it references,
+and no Core package references it. Modules (`Tellma.Module.<M>`) reference only Abstractions
+packages; the feature contract lives in Abstractions because a module must ship a feature without an
+edge to `Tellma.Core`.
 
 **Package pins added or moved by this spec.** `Microsoft.Data.SqlClient` 6.1.6 (required by EF
 SqlServer 10.0.11 and by spec 0011's `hierarchyid` reader), `Microsoft.EntityFrameworkCore.*`
@@ -231,7 +231,7 @@ public static void Compose(TellmaBuilder tellma) => tellma.UseAzureDefaults().Ad
 explicit call: `AddTellmaEmail()` with the ACS and SendGrid transports registered and the sender
 chosen by `Email:Provider` (spec 0007; the call is the explicit email composition spec 0007 requires
 of every host), `AddTellmaWebhooks()`, `AddAzureBlobStore()` bound from `Tellma:Blobs:Azure` with
-the host's `TokenCredential`, `AddTellmaImageSharp()`, and the Azure SignalR backplane when
+the host's `TokenCredential`, `AddTellmaSkia()`, and the Azure SignalR backplane when
 `Azure:SignalR:ConnectionString` is present (spec 0020). A distribution that wants a different
 sender, store or processor composes those calls itself instead of the bundle. On-premises
 deployments compose a different set (SMTP, the file-system store, a Redis backplane) and receive
@@ -296,7 +296,8 @@ public sealed record NotificationTypeContributionItem(
 public sealed record NotificationChannelContributionItem(
     NotificationChannelDescriptor Descriptor) : FeatureContributionItem;
 public sealed record ClientEventContributionItem(string Name) : FeatureContributionItem;
-public sealed record BlobKindContributionItem(string Kind, BlobKindPolicy Policy) : FeatureContributionItem;
+public sealed record BlobKindContributionItem(
+    string Kind, Func<BlobKindPolicy, BlobKindPolicy> Configure) : FeatureContributionItem;
 public sealed record ValidatorContributionItem(
     Type EntityType, Type ComponentType, ComponentKind Kind) : FeatureContributionItem;
 public sealed record StackCompanionContributionItem(
@@ -332,7 +333,7 @@ public sealed class FeatureContribution
     public FeatureContribution NotificationType(NotificationTypeDescriptor descriptor);
     public FeatureContribution NotificationChannel(NotificationChannelDescriptor descriptor);
     public FeatureContribution ClientEvent(string name);
-    public FeatureContribution BlobKind(string kind, BlobKindPolicy policy);
+    public FeatureContribution BlobKind(string kind, Func<BlobKindPolicy, BlobKindPolicy> configure);
     public FeatureContribution RequiresShape<TEntity, TShape>();                    // §2.4; TShape is an interface
 }
 
@@ -365,7 +366,7 @@ public sealed class TellmaCompositionException(
 | `ProvisioningStep` | Registers the step as a scoped service and adds it to the migrator's ordered list (§6.2). |
 | `JobHandler`, `BuiltInSchedule` | Realised by spec 0019. |
 | `NotificationType`, `NotificationChannel`, `ClientEvent` | Realised by spec 0020. |
-| `BlobKind` | Realised by spec 0016. |
+| `BlobKind` | Realised by spec 0016: transforms the policy the kind's `[BlobReference]` preset produced (spec 0016 §1.3). |
 | `RequiresShape` | Realised by the `core.entity-shapes` check (§2.3, §2.4). |
 | `IStartupCheck` | Registered as a service by any package; the realised gate runs every check and aggregates the problems. |
 | `CompositionProblem.Fix` | The remedy, phrased as the code or configuration to add; every built-in check supplies one. |
@@ -376,7 +377,7 @@ content of specs 0012, 0013 and 0017. Core is implicit: every other feature foll
 topological order without declaring it, so `GlFeature` carries no `[Requires]` (spec 0017 §5.5) and
 a feature declares only the packs it builds on, by name (`[Requires(GlModule.FeatureName)]`). A
 distribution's own feature uses the identical items. Store registrations stay on `Services`
-(`AddFileSystemBlobStore`, `AddAzureBlobStore`, `AddTellmaImageSharp`).
+(`AddFileSystemBlobStore`, `AddAzureBlobStore`, `AddTellmaSkia`).
 
 ### 2.2 The composition root and the builder
 
@@ -1911,7 +1912,7 @@ cite a document.
   `Tellma.Core` referencing EF, SqlClient, HierarchyId, Cronos, OpenXml, the Data Protection
   abstractions; `Tellma.Core.Abstractions` referencing `Tellma.Core.Queryex`;
   `Tellma.Core.AspNetCore`, `Tellma.Core.Mcp`, `Tellma.Core.Migrator` as adapters of `Tellma.Core`;
-  `Tellma.Core.Imaging` licence-isolated; the defaults bundle `src/defaults/Tellma.Defaults.Azure/`
+  `Tellma.Core.Imaging` native-isolated; the defaults bundle `src/defaults/Tellma.Defaults.Azure/`
   as a distribution-layer package that references connectors and that no Core package references);
   the distribution repository layout (`Entities/`, `Services/`, `Endpoints/`; no `Data/`);
   multi-tenancy (one catalog database per distribution, schema `catalog`, the five states);
@@ -2070,7 +2071,7 @@ The load-bearing decisions, where not already evident above:
     Flips if distributions accumulate dozens of packs.
 16. **One `Tellma.Core` runtime package** (§1.1): data, pipeline, access, settings, blobs, Excel,
     jobs and notifications folded into `Tellma.Core`, `Tellma.Core.Abstractions` referencing
-    `Tellma.Core.Queryex`, ImageSharp alone isolated in `Tellma.Core.Imaging`, versus seven runtime
+    `Tellma.Core.Queryex`, SkiaSharp alone isolated in `Tellma.Core.Imaging`, versus seven runtime
     packages and a separate data Abstractions. Flips if a distribution needs to omit a whole area
     for licence or size reasons.
 17. **Workers skip every non-`Active` tenant** (§4.4; restates flag 8 from the worker's side).
