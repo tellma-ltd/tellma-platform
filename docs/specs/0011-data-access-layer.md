@@ -790,8 +790,7 @@ public sealed record BatchResult<T>                     // Value throws until ex
     public bool IsCompleted { get; }
 }
 
-public sealed record BatchOutcome(
-    VersionTagSnapshot VersionTags, UserVersionTagSnapshot? UserVersionTags, int RoundTrips);   // UserVersionTags: null on a batch without a connect prologue
+public sealed record BatchOutcome(VersionTagSnapshot VersionTags, UserVersionTagSnapshot? UserVersionTags, int RoundTrips);   // UserVersionTags: null on a batch without a connect prologue
 
 public interface IDataBatchContributor                  // scoped DI; prologues ascending by Order, epilogues descending
 {
@@ -1719,9 +1718,9 @@ public abstract class FilterTree
    `QueryCompilationOptions.LanguageVersion`; an unsupported version is refused at construction, as
    the options records refuse theirs; the L3 key's rendering of the tree carries each leaf's version
    beside its text. Consumers: spec 0013's evaluator, whose leaves carry each stored row's
-   `FilterLanguageVersion`. Every clause a host authors — a user's filter, `SearchFilter`,
-   `BespokeGrant`, a stack's declared filters — compiles under `QueryexLanguage.Version`; only
-   stored text carries an older stamp, per leaf.
+   `FilterLanguageVersion`. Every clause a host authors — a user's filter, `SearchFilter`, an
+   `IAccessCriteriaProvider` criterion, a stack's declared filters — compiles under
+   `QueryexLanguage.Version`; only stored text carries an older stamp, per leaf.
 7. **`Via(navigation, inner)`.** `navigation` is a dotted path of to-one navigations from the
    current root (`Invoice`, `Line.Invoice`); `inner` binds with the path's target as its root:
    every path in `inner` resolves from the target, the joins ride the path, context functions bind

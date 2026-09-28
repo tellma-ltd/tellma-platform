@@ -283,7 +283,7 @@ is a standard segment or an action's `Name`; a standard operation exists only wh
 | `export-for-import` | `Read` | `ExportForImportRequest` (spec 0018) | `.xlsx` stream | `Import` |
 | `export-for-import/start` | `Read` | `ExportForImportRequest` (spec 0018) | 202 `JobAccepted` | `Import` |
 | `inspect-import`, `import` | `Save` | `InspectImportRequest`, `ImportRequest` (spec 0018) | `ImportPlan`; `ImportOutcome`, or 202 `JobAccepted` for an `ImportAccepted` (§3.9) | `Import` |
-| `{action-segment}` | an `[EntityAction]`: `EntityActionDescriptor.Action`; an `[ApiAction]`: `ApiActionDescriptor.Securable` (null → none) | an `[EntityAction]` answering `EntitiesResult<T>`: `EntityActionRequest`, or `EntityActionRequest<TArguments>` when it takes arguments; one with its own result: `IdsRequest`, or `IdsRequest<TArguments>` when it takes arguments; an `[ApiAction]`: the method's body type | `EntitiesResult<T>` or the method's result (the descriptor's `ResultType`) | Declared on the service |
+| `{action-segment}` | an `[EntityAction]`: `EntityActionDescriptor.Action`; an `[ApiAction]`: `ApiActionDescriptor.Securable` (null → none) | an `[EntityAction]` answering `EntitiesResult<T>`: `EntityActionRequest`, or `EntityActionRequest<TArguments>` when it takes arguments; one with its own result: `IdsRequest`, or `IdsRequest<TArguments>` when it takes arguments, and one marked `SingleTarget` (spec 0014 §2.3): `IdRequest`, or `IdRequest<TArguments>` when it takes arguments; an `[ApiAction]`: the method's body type | `EntitiesResult<T>` or the method's result (the descriptor's `ResultType`) | Declared on the service |
 
 Securable actions are PascalCase (`Read`, `Save`, `Delete`, `Activate`, `Invite`); an action segment
 is the action's whole `Name`: one or more kebab-case segments joined by `/` (`invite`,
@@ -419,9 +419,13 @@ public sealed record GetRequest(long Id, string? Select, IReadOnlyList<string>? 
 
 public sealed record AllRequest(string? Select, IReadOnlyList<string>? Include);   // the all body; maps to DetailsRequest
 
-public sealed record IdsRequest(IReadOnlyList<long> Ids);   // delete, delete-with-descendants, an [EntityAction] with its own result, ids-only [ApiAction] bodies
+public sealed record IdsRequest(IReadOnlyList<long> Ids);   // delete, delete-with-descendants, an [EntityAction] with its own result that is not SingleTarget, ids-only [ApiAction] bodies
 
-public sealed record IdsRequest<TArguments>(IReadOnlyList<long> Ids, TArguments Arguments);   // an [EntityAction] with its own result taking TArguments
+public sealed record IdsRequest<TArguments>(IReadOnlyList<long> Ids, TArguments Arguments);   // an [EntityAction] with its own result that is not SingleTarget, taking TArguments
+
+public sealed record IdRequest(long Id);   // a SingleTarget [EntityAction] with its own result
+
+public sealed record IdRequest<TArguments>(long Id, TArguments Arguments);   // a SingleTarget [EntityAction] taking TArguments
 
 public sealed record GetByIdsRequest(IReadOnlyList<long> Ids, string? Select, IReadOnlyList<string>? Include);
 
@@ -461,11 +465,13 @@ public sealed record AccessCheckRequest(int? UserId, IReadOnlyList<SecurableRef>
 The `Ids` of `IdsRequest`, `IdsRequest<TArguments>`, `GetByIdsRequest` and `EntityActionRequest`
 (and so of `EntityActionRequest<TArguments>`) is required with 1 ≤ count ≤ `StackLimits.MaxIds`
 (spec 0014 §2.5), else 413 `limit-exceeded`; it binds as `ids`, so a validation path reads `ids[i]`
-(§7.3). `ConcurrencyMode = Check | Override` and `KeySetRestriction` are spec 0011's; `SecurableRef`
-and `AccessDecision` are spec 0013's, and each grant in an `AccessDecision` carries the `kind`
-discriminator (`role`, `bespoke`, `system`) of spec 0013 §5.1. The Excel requests (`ExportRequest`,
-`ExportForImportRequest`, `InspectImportRequest`, `ImportRequest`) are spec 0018's `.Excel` records
-and serialize under the same options.
+(§7.3). The `Id` of `IdRequest` and `IdRequest<TArguments>` is required and positive; it binds as
+`id`, so a validation path on the target row reads `id` (§7.3). `ConcurrencyMode = Check | Override`
+and `KeySetRestriction` are spec 0011's; `SecurableRef` and `AccessDecision` are spec 0013's, and
+each grant in an `AccessDecision` carries the `kind` discriminator (`role`, `bespoke`, `system`) of
+spec 0013 §5.1. The Excel requests (`ExportRequest`, `ExportForImportRequest`,
+`InspectImportRequest`, `ImportRequest`) are spec 0018's `.Excel` records and serialize under the
+same options.
 
 ### 3.4 Result records
 
@@ -489,8 +495,9 @@ public sealed record MeResult(
     AccessSummary Access, IReadOnlyDictionary<string, string> Tags, string SecurablesFingerprint);
 
 public sealed record UserProfileView(
-    int Id, UserKind Kind, UserState State, string Name, string? Name2, string? Name3, string? Email, int? ImageId, int? SignatureId,
-    string? PreferredLanguage, string? PreferredCalendar, string? PreferredTimeZone);
+    int Id, UserKind Kind, UserState State, string Name, string? Name2, string? Name3, string? Email,
+    string? ContactEmail, string? ContactMobile, int? ImageId, int? SignatureId, string? PreferredLanguage,
+    string? PreferredCalendar, string? PreferredTimeZone, Gender? Gender);
 
 public sealed record AccessSummary(
     string Tag, int FormatVersion, bool IsSystem, IReadOnlyList<SecurableSummary> Securables,
@@ -668,8 +675,8 @@ cache-update path and an agent sees one shape in `tellma_get` and `tellma_save`:
   value and the emitter never writes it from the payload.
 - **Precision.** A number whose textual form exceeds the property's precision or scale is the
   validation error `Precision` at the path; the server never rounds silently.
-- **Self-service.** `users/me/save` is an ordinary save under spec 0017's bespoke self grant
-  (`Id = me()`), confined by that spec's `Users.NotSelfEditable` rule.
+- **Self-service.** `users/me/save` takes spec 0017's `MeSaveRequest` and answers `MeResult`: an
+  enlisted write of the caller's own row (spec 0017 §3.5), not a save under a `Save` grant.
 
 ### 3.8 Delete on the wire
 
@@ -851,14 +858,16 @@ reads the single body parameter with the platform options and hands it to spec 0
 the securable and invokes the method; the web layer never calls an action method itself. An
 `EntityActionDescriptor` whose `ResultType` is `EntitiesResult<T>` reads
 `EntityActionRequest<TArguments>` closed over its `ArgumentsType`, or `EntityActionRequest` when the
-action takes none, and calls the service's `ExecuteActionAsync`; one with its own result reads
+action takes none, and calls the service's `ExecuteActionAsync`; one with `SingleTarget` reads
+`IdRequest<TArguments>`, or `IdRequest` when the action takes none, and calls
+`ExecuteActionAsync<TResult>` with the one id; any other with its own result reads
 `IdsRequest<TArguments>`, or `IdsRequest` when the action takes none, and calls
-`ExecuteActionAsync<TResult>` closed over `ResultType`, which answers the method's result with no
-read-back (spec 0014 §11.2). Either passes the typed `Arguments` on, so OpenAPI shows the real
-argument schema. An `ApiActionDescriptor` reads its `RequestType`, or nothing when the method takes
-no body, and calls `IApiActionInvoker.InvokeAsync(descriptor, body)`. The result serializes like any
-envelope. The attribute is the security boundary: a public helper method never becomes an endpoint
-by convention.
+`ExecuteActionAsync<TResult>`. `ExecuteActionAsync<TResult>` is closed over `ResultType` and answers
+the method's result with no read-back (spec 0014 §11.2). Every mapping passes the typed `Arguments`
+on, so OpenAPI shows the real argument schema. An `ApiActionDescriptor` reads its `RequestType`, or
+nothing when the method takes no body, and calls `IApiActionInvoker.InvokeAsync(descriptor, body)`.
+The result serializes like any envelope. The attribute is the security boundary: a public helper
+method never becomes an endpoint by convention.
 
 ### 4.3 Endpoint metadata
 
@@ -1164,18 +1173,18 @@ RFC 9457, `application/problem+json`:
 
 `errors[].path` renders spec 0014's `ValidationPath` segments: an index segment as `[i]`, a property
 segment through this spec's JSON naming policy, and a leading index segment — a payload row — under
-the request member that carries the rows (`entities` on a save, `ids` on an action), giving the
-camelCase index grammar `entities[3].roleMemberships[1].roleId`, `ids[2]`, `filter`, `body`. A path
-is a segment list and is never parsed on either side. The framework's built-in validation
-(`AddValidation()`; shape-only, synchronous, PascalCase-keyed) is not enabled on tenant endpoints.
-Rendered messages are localized with `ILabelProvider` labels for property names (`Name (E)`) and the
-`ValidationCodes` resource keys, and the SPA resolves `arguments.property` to the label key
-`<Schema>_<Entity>_<Property>` of spec 0012 §10.1 (`Gl_Center_Name`) for the path's entity; the
-code vocabulary is the union of spec 0014's `ValidationCodes`, spec 0013's access codes, spec 0016's
-blob codes and spec 0018's `ExcelErrorCodes`. An `ImportException` item carries `sheet`, `row`,
-`column`, `header` and `property` in place of `path` — an import error names the property, never a
-path. At most `ExcelOptions.MaxReportedErrors` items travel; `errorDetails.totalErrors` says how
-many exist.
+the request member that carries the rows (`entities` on a save, `ids` on an action, `id` in place of
+`ids[0]` on a `SingleTarget` action), giving the camelCase index grammar
+`entities[3].roleMemberships[1].roleId`, `ids[2]`, `id`, `filter`, `body`. A path is a segment list
+and is never parsed on either side. The framework's built-in validation (`AddValidation()`;
+shape-only, synchronous, PascalCase-keyed) is not enabled on tenant endpoints. Rendered messages are
+localized with `ILabelProvider` labels for property names (`Name (E)`) and the `ValidationCodes`
+resource keys, and the SPA resolves `arguments.property` to the label key
+`<Schema>_<Entity>_<Property>` of spec 0012 §10.1 (`Gl_Center_Name`) for the path's entity; the code
+vocabulary is the union of spec 0014's `ValidationCodes`, spec 0013's access codes, spec 0016's blob
+codes and spec 0018's `ExcelErrorCodes`. An `ImportException` item carries `sheet`, `row`, `column`,
+`header` and `property` in place of `path` — an import error names the property, never a path. At
+most `ExcelOptions.MaxReportedErrors` items travel; `errorDetails.totalErrors` says how many exist.
 
 ### 7.4 Concurrency conflicts
 
@@ -1480,14 +1489,14 @@ against `IStackRegistry.Stacks`.
 
 | Tool | Arguments | Annotations | Result |
 |---|---|---|---|
-| `tellma_whoami` | none | `readOnlyHint`, `idempotentHint`; `outputSchema` declared | `WhoamiResult`: the user (id, name, email), the tenant (id, name, category `Live`/`Sandbox`, languages, calendars, zone), the permission matrix from `IAccessEvaluator.EvaluateAll()` grouped `entity → allowed operations and actions`, with `filtered` naming the actions granted under a row-level filter, `securablesFingerprint`, the version tags |
-| `tellma_describe` | `entity?`, `search?` | `readOnlyHint`, `idempotentHint` | without `entity`: the catalogue — one short line per stack with `Mcp ≠ Hidden` (entity name and title), filtered by `search` (case-insensitive over name, title and description) when given; with `entity`: properties (name, type, store type, nullable, editable, maxLength, precision/scale, enum values, multilingual group, navigation target and its reachable columns), child collections, searchable columns, natural keys, default select, operations, capabilities, the actions with their argument JSON schemas (from `EntityActionDescriptor.ArgumentsType` or `ApiActionDescriptor.RequestType`), and three example filters; per tenant (`Name2`/`Name3` gating), cached per `(TenantId, Entity)` under the `settings` tag; no `outputSchema` |
+| `tellma_whoami` | none | `readOnlyHint`, `idempotentHint`; `outputSchema` declared | `WhoamiResult`: the user (id, name, email), the tenant (id, name, category `Live`/`Sandbox`, languages, calendars, zone), the permission matrix from `IAccessEvaluator.EvaluateAllAsync()` grouped `entity → allowed operations and actions`, with `filtered` naming the actions granted under a row-level filter, `securablesFingerprint`, the version tags |
+| `tellma_describe` | `entity?`, `search?` | `readOnlyHint`, `idempotentHint` | without `entity`: the catalogue — one short line per stack with `Mcp ≠ Hidden` (entity name and title), filtered by `search` (case-insensitive over name, title and description) when given; with `entity`: properties (name, type, store type, nullable, editable, maxLength, precision/scale, enum values, multilingual group, navigation target and its reachable columns), child collections, searchable columns, natural keys, default select, operations, capabilities, the actions with their argument JSON schemas (from `EntityActionDescriptor.ArgumentsType` or `ApiActionDescriptor.RequestType`), each single-target action marked `singleTarget` (spec 0014 §2.3), and three example filters; per tenant (`Name2`/`Name3` gating), cached per `(TenantId, Entity)` under the `settings` tag; no `outputSchema` |
 | `tellma_query` | `entity`, `select?`, `filter?`, `orderBy?`, `skip?`, `top` (default `DefaultTop`, max `MaxTop`), `arguments?`, `includeCount?`, `format` ∈ `table` (default) \| `objects` | `readOnlyHint` | one text block: a Markdown table (columns from `QueryColumn.Name`) or a JSON array of objects keyed by column name; `count`/`countCapped` from the `RowPage`'s `Count` when requested; `truncated: true` with guidance ("narrow the select or filter, or page with skip") when the character cap is hit; no `outputSchema`. The description tells the model never to compute totals from its rows and to call `tellma_aggregate` |
 | `tellma_aggregate` | `entity`, `select` (grouping keys and aggregations, spec 0008's aggregate mode), `filter?`, `having?`, `orderBy?`, `skip?`, `top` (default `DefaultTop`, max `MaxTop`), `arguments?`, `format` ∈ `table` (default) \| `objects` | `readOnlyHint`, `idempotentHint` | one text block rendered from the `RowPage`'s `Rows` as `tellma_query` renders, truncation with guidance included; no `count`; no `outputSchema` |
 | `tellma_get` | `entity`, `ids` (1..`MaxIdsPerCall`), `include?`, `collection?`, `skip?`, `top?` (max `MaxChildTop`) | `readOnlyHint` | `EntitiesResult` in JSON: `entities` with `modifiedAt`, each entity's header first, then each child collection up to `DefaultChildTop` rows with the collection's total count and `truncated: true` when rows were left out; `related` projections, `extras`; with `collection` (a child collection's JSON name; `ids` then holds exactly one id), one window of that collection by `skip` and `top`; the tool slices the loaded entity, and the per-parent `[MaxChildren]` cap bounds what the server loads; absent ids reported in a trailing line; no `outputSchema` |
 | `tellma_save` | `entity`, `entities` (1..`MaxIdsPerCall`) | `idempotentHint = false`; `destructiveHint` at the protocol default `true`, since a save overwrites columns and deletes children missing from a sent collection | **no override argument**; `concurrency` is always `Check`; success returns ids and display names (the `Name` group or `Code`) in concise form; a conflict returns `isError` with the stored `modifiedAt`, `modifiedByName` and the instruction "re-get the record, re-apply your change, and save again with the current modifiedAt" |
 | `tellma_delete` | `entity`, `ids` (1..`MaxIdsPerCall`), `withDescendants?`, `confirmation?` | `destructiveHint` | without `confirmation`: a preview (count, display names, descendant count when `withDescendants`) and a `confirmation` token; with it: the delete and `AffectedResult`. When the client declares `elicitation.form`, a form-mode elicitation ("Delete N record(s) of `<entity>`?") replaces the two calls |
-| `tellma_action` | `entity`, `action` (`activate`, `deactivate`, or an action's `Name`, `/` included), `ids?`, `input?`, `confirmation?` | from `ActionDescriptor` (`Mutation` → `readOnlyHint`, `Idempotent`, `Destructive`) | the action's result in concise form; `Destructive` actions use the confirmation of `tellma_delete`; `input` is the action's arguments or body |
+| `tellma_action` | `entity`, `action` (`activate`, `deactivate`, or an action's `Name`, `/` included), `ids?`, `id?`, `input?`, `confirmation?` | from `ActionDescriptor` (`Mutation` → `readOnlyHint`, `Idempotent`, `Destructive`) | the action's result in concise form; a `SingleTarget` action takes `id` and refuses `ids`, every other action takes `ids` and refuses `id`; `Destructive` actions use the confirmation of `tellma_delete`; `input` is the action's arguments or body |
 
 ```csharp
 // Tellma.Core.Mcp (runtime) — tool argument and result shapes
@@ -1528,7 +1537,7 @@ public sealed record DeleteInput(
     string Entity, IReadOnlyList<long> Ids, bool WithDescendants = false, string? Confirmation = null);
 
 public sealed record ActionInput(
-    string Entity, string Action, IReadOnlyList<long>? Ids, JsonElement? Input, string? Confirmation);
+    string Entity, string Action, IReadOnlyList<long>? Ids, long? Id, JsonElement? Input, string? Confirmation);
 
 public static class McpToolNames
 {
@@ -1555,11 +1564,12 @@ Every tool calls the same `EntityService` operations the web surface calls (`tel
 `SaveAsync` with `SaveOptions { Concurrency = Check, Source = Agent, ReturnEntities = true }`;
 `tellma_delete` → `DeleteByIdsAsync`/`DeleteWithDescendantsAsync`; `tellma_action` →
 `ActivateAsync`, `DeactivateAsync`, the `ExecuteActionAsync` overload an `EntityActionDescriptor`'s
-`ResultType` selects (spec 0014 §3.1), with `input` reaching the pipeline as the `JsonElement` it
-arrived as (spec 0014 §11.2), or spec 0014's `IApiActionInvoker.InvokeAsync(descriptor, body)` for
-an `ApiActionDescriptor`), so every permission, filter, validation and concurrency rule is the
-service's. `SaveInput.Entities` are deserialized into the stack's entity type under the options of
-§3.1 — an agent sends the same JSON a details page would.
+`ResultType` selects (spec 0014 §3.1), with the one `id` for a `SingleTarget` action and with
+`input` reaching the pipeline as the `JsonElement` it arrived as (spec 0014 §11.2), or spec 0014's
+`IApiActionInvoker.InvokeAsync(descriptor, body)` for an `ApiActionDescriptor`), so every
+permission, filter, validation and concurrency rule is the service's. `SaveInput.Entities` are
+deserialized into the stack's entity type under the options of §3.1 — an agent sends the same JSON a
+details page would.
 
 ### 11.6 Write safety
 
@@ -1667,7 +1677,7 @@ version.
 
 | Project | Tier | Pins |
 |---|---|---|
-| `test/core/Tellma.Core.AspNetCore.Tests/` | unit (`WebApplicationFactory`, fake authentication) | JSON options and the scalar table (§3.1–§3.2); the `RowPage`, `QueryRowSet` and `RelatedEntities` converters (§3.5–§3.6); request-record rules (the entities-per-save lowering, cardinality); the contract fingerprints (§3.10); the projection table (§2.3) and binding (§4.2) for both descriptor kinds, an `[EntityAction]` with its own result on `IdsRequest` and `IdsRequest<TArguments>` included; the startup audit (§4.6) under `WebApplicationFactory`; header parsing and precedence (§6.1); the exception mapping and problem body (§7.1–§7.5); rate-policy partition keys and the closed tag sets (§8.2, §10.1) |
+| `test/core/Tellma.Core.AspNetCore.Tests/` | unit (`WebApplicationFactory`, fake authentication) | JSON options and the scalar table (§3.1–§3.2); the `RowPage`, `QueryRowSet` and `RelatedEntities` converters (§3.5–§3.6); request-record rules (the entities-per-save lowering, cardinality); the contract fingerprints (§3.10); the projection table (§2.3) and binding (§4.2) for both descriptor kinds, an `[EntityAction]` with its own result on `IdsRequest` and `IdsRequest<TArguments>` and a `SingleTarget` one on `IdRequest` and `IdRequest<TArguments>` included; the startup audit (§4.6) under `WebApplicationFactory`; header parsing and precedence (§6.1); the exception mapping and problem body (§7.1–§7.5); rate-policy partition keys and the closed tag sets (§8.2, §10.1) |
 | `test/core/Tellma.Core.AspNetCore.IntegrationTests/` | `Category=Integration` | The full `Web`, `Blobs` and `Hub` chains against the reference distribution (`acme`) in an in-process test server over a provisioned tenant database: every projected `Center`, `User` and `Role` operation end to end (§2.3–§2.4, §3.6–§3.9); the contract check (§3.10); the tenant-state verdicts and step-up (§5.5); navigation traversal (§5.6); `Tellma-Version-Tags` and the response headers (§6.2); limits, timeouts, compression and caching (§8); health probes and drain (§9.4–§9.5); the instruments and log events (§10.1); the round-trip budget per operation; the strings endpoint (§9.4): the pack of an offered language with the immutable header only for the matching `v`, 404 for an unknown language |
 | `test/core/Tellma.Core.Mcp.Tests/` | unit, host-free | Argument validation and `entity` matching (§11.5); the describe catalogue and its `search` filter (§11.5); the table and objects renderings, row-by-row truncation and child-collection windows (§11.5, §11.7); the confirmation token's binding, expiry and single use (§11.6); `ReadOnly`/`Hidden` gating and the sensitive-securable refusal (§11.6); tool-list determinism and the `tellma_` prefix rule (§11.8–§11.9) |
 | `test/core/Tellma.Core.Mcp.IntegrationTests/` | `Category=Integration`; `Live=true` for the identity-server cases | The SDK client against the in-process host with tokens from a test issuer: bearer and challenge (§11.2), the request filter (§11.4), the eight tools end to end (§11.5), write safety (§11.6), the problem `code` on `isError` results (§11.7), the resource `tellma://queryex/syntax`. `Live=true`: JWKS discovery, issuer validation and the 401 challenge against a running platform identity server |

@@ -97,7 +97,7 @@ synchronous import, composite natural keys, per-row child action columns, and th
 | Piece | Location | Notes |
 |---|---|---|
 | Contracts | `src/core/Tellma.Core.Abstractions/`, namespace `Tellma.Core.Abstractions.Excel` | Requests, plans, outcomes, `ImportError`, `ImportMode`, `ExportKind`, `ExcelQuery`, `IExcelRowSource`, `Export`/`Import` entities, `ExcelOptions`, `ExcelErrorCodes`, `ExcelTelemetryNames`, `ImportException`; `[ExcludeFromExcel]` lives in `Tellma.Core.Abstractions.Entities` (spec 0011). |
-| Codec and operations | `src/core/Tellma.Core/`, namespace `Tellma.Core.Excel` (folder `Excel/`) | `ExcelOperations<TEntity>`, `IExcelExporter`/`IExcelImporter` and their implementations, `ExportService`, `ImportService`, the two job handlers. Internal: `WorkbookWriter`, `WorkbookReader`, `SharedStringStore`, `NumberFormatBuilder`, `CellCodec`, `ExportPlanner`, `ImportMapper`, `ImportResolver`, `ImportCheckpointEffect<TEntity>`. |
+| Codec and operations | `src/core/Tellma.Core/`, namespace `Tellma.Core.Excel` (folder `Excel/`) | `ExcelOperations<TEntity>`, `IExcelExporter`/`IExcelImporter` and their implementations, `ExportService`, `ImportService`, `ExportAccessCriteria`, `ImportAccessCriteria`, the two job handlers. Internal: `WorkbookWriter`, `WorkbookReader`, `SharedStringStore`, `NumberFormatBuilder`, `CellCodec`, `ExportPlanner`, `ImportMapper`, `ImportResolver`, `ImportCheckpointEffect<TEntity>`. |
 | Package pin | `Directory.Packages.props` | `DocumentFormat.OpenXml` 3.5.1 (MIT), referenced by `Tellma.Core` only. |
 | Unit tests | `test/core/Tellma.Core.Tests/Excel/` | Pure: no database, no network; the workbook corpus under `Excel/Corpus/`. |
 | Integration tests | `test/core/Tellma.Core.IntegrationTests/Excel/` | spec 0011's fixture entities (`test/shared/Tellma.Testing.Entities`); `Category=Integration`. |
@@ -133,6 +133,9 @@ contribution items, realised by `Tellma.Core`:
   `IPersistEffect<TEntity>` (§12.5).
 - `contribution.Entity<Export, ExportService>()` and `contribution.Entity<Import, ImportService>()`
   with `[Stack(Operations = Query | Details | Delete | Enlist)]` on both entities (§12.1).
+- `contribution.Singleton<IAccessCriteriaProvider, ExportAccessCriteria>()` and
+  `contribution.Singleton<IAccessCriteriaProvider, ImportAccessCriteria>()` — the self-scope
+  criteria of §12.1.
 - `contribution.JobHandler<ExportJobHandler>()` and `contribution.JobHandler<ImportJobHandler>()`
   (§12.3, §12.4).
 - `contribution.NotificationType(...)` for `core.export.ready`, `core.import.completed`,
@@ -1056,9 +1059,11 @@ public sealed class Import : TopLevelEntity, IJobEntity
 }
 
 // Tellma.Core.Excel (runtime)
-// BespokeGrant: CreatedById = me() for Read and Delete; ContributeAsync enqueues core.export for every new row whose JobId is null
+// ContributeAsync enqueues core.export for every new row whose JobId is null
 public sealed class ExportService : EntityService<Export>;
 public sealed class ImportService : EntityService<Import>;   // the same for core.import
+public sealed class ExportAccessCriteria : IAccessCriteriaProvider;   // Resource = core.Export; CreatedById = me() for Read and Delete, reason self
+public sealed class ImportAccessCriteria : IAccessCriteriaProvider;   // the same for core.Import
 
 // stored in Jobs.ArgumentsJson
 public sealed record ExcelJobCulture(string Culture, string Calendar, string TimeZone, string Language);
@@ -1077,13 +1082,14 @@ handlers need and no client can reach because the stacks project `query`, `get`,
 `delete`, `delete-by-query` and register `core.Export`/`core.Import` × `Read | Delete` — no `Save`
 securable and no `save` endpoint. Both stacks declare `Enlist`, and every save of a row is an
 enlisted save (spec 0014 §13.3): `ExcelOperations<TEntity> : IEnlists<Export>, IEnlists<Import>`
-enlists the request path's insert with the invoker's frame (§12.2), and `ExportJobHandler :
-IEnlists<Export>` and `ImportJobHandler : IEnlists<Import>` enlist the handlers' writes with the
-job frame (§12.3, §12.4, §12.6), so each row runs its own stack's validators and effects as a
-participant of the frame that authorises it. `BespokeGrant` returns the self-scope criterion
-`CreatedById = me()` for `Read` and `Delete`, so every member sees and may delete their own rows
-("My exports"); an administrator with a stored grant sees all. Deleting a row releases its blobs
-through the emitter's `[BlobReference]` capture (spec 0016).
+enlists the request path's insert with the invoker's frame (§12.2), and
+`ExportJobHandler : IEnlists<Export>` and `ImportJobHandler : IEnlists<Import>` enlist the handlers'
+writes with the job frame (§12.3, §12.4, §12.6), so each row runs its own stack's validators and
+effects as a participant of the frame that authorises it. `ExportAccessCriteria` and
+`ImportAccessCriteria` supply the self-scope criterion `CreatedById = me()` for `Read` and `Delete`
+(spec 0013 §5.1), so every member sees and may delete their own rows ("My exports"); an
+administrator with a stored grant sees all. Deleting a row releases its blobs through the emitter's
+`[BlobReference]` capture (spec 0016).
 
 **`core.Exports`** — carries `TopLevelEntity` and `IJobEntity`; non-temporal; `[TableType]`;
 sequence `core.sq_Exports`.
@@ -1158,7 +1164,7 @@ of the run-as user, inside the job frame spec 0019's worker opens around `Execut
    and its `kind` in `ArgumentsJson` (spec 0019 §14.1): the handler then builds the row from the
    arguments — `Resource`, `Kind` from the case, `RequestJson` from `Request`, `ExpiresAt` — and
    inserts it at step 5.
-2. Re-evaluate `IAccessEvaluator.Require(Resource, "Read")`; a denial completes the item
+2. Re-evaluate `IAccessEvaluator.RequireAsync(Resource, "Read")`; a denial completes the item
    `Fail(JobError("forbidden", …))`.
 3. Build the `ExcelContext` from the arguments' `ExcelJobCulture` (culture, calendar, zone,
    language); plan the case's `Request` in its shape (`PlanDisplay` or `PlanEditable`); stream the
@@ -1484,10 +1490,10 @@ The load-bearing decisions, where not already evident above:
     transactions, honest committed-range reporting, and a retry that can never re-apply a chunk
     (§12.4, §12.5).
 17. **`Export`/`Import` are server-owned entities on `Query | Details | Delete | Enlist` stacks with
-    a self-scope grant, saved only by enlisted saves** — "My exports" is a standard query, the
-    row owns the blob, retention is an ordinary delete, and the request path and both handlers
-    write through the entities' own pipelines as participants of the frame that authorises them,
-    so a handler's completion row commits with the job outcome and its blob confirms inside the
+    a self-scope criterion, saved only by enlisted saves** — "My exports" is a standard query, the
+    row owns the blob, retention is an ordinary delete, and the request path and both handlers write
+    through the entities' own pipelines as participants of the frame that authorises them, so a
+    handler's completion row commits with the job outcome and its blob confirms inside the
     completion transaction (§12.1–§12.6).
 18. **`core.import` with `MaxAttempts = 1`, resumed only by an explicit `retry`** — a partially
     committed import never re-runs blindly (§12.4).

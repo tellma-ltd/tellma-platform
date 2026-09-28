@@ -575,10 +575,10 @@ or a child row removed from its collection, releases its blob. The token *is* th
 guessing an id is useless because only its uploader can attach it, and only once.
 
 The rule holds on every save path without exception: the details page save, the `me/save` of spec
-0017 (`ImageId` and `SignatureId` are self-editable columns of that spec's rule, and the caller is
-the uploader), an agent save through MCP, an enlisted save from a job frame (spec 0014 §13.3; the
-run-as user staged the blob), and an import — where spec 0018 excludes blob columns from the
-sheet, so hydration leaves them unchanged and nothing attaches.
+0017, an enlisted save of the caller's row whose `ImageId` and `SignatureId` the caller staged, an
+agent save through MCP, an enlisted save from a job frame (spec 0014 §13.3; the run-as user staged
+the blob), and an import — where spec 0018 excludes blob columns from the sheet, so hydration
+leaves them unchanged and nothing attaches.
 
 ### 4.2 The validator
 
@@ -701,9 +701,9 @@ staged, and the sweep reclaims it after the TTL. No second write path exists.
 
 1. Resolve the kind → `BlobKindDescriptor`; unknown → `null` (404). Validate `variant` against
    `BlobName.IsValidVariant`; invalid → `BadRequestException` (400, code `bad-request`).
-2. Evaluate `IAccessEvaluator.EvaluateAsync(OwnerResource, "Read", [])` (spec 0013) unless the
-   policy is `AnyMember`. A `Denied` outcome skips statement 1 below; `Filtered` conjoins
-   `decision.Filter`; `Unrestricted` and `AnyMember` use the column predicate alone.
+2. Evaluate `IAccessEvaluator.EvaluateAsync(OwnerResource, "Read")` (spec 0013) unless the policy is
+   `AnyMember`. A `Denied` outcome skips statement 1 below; `Filtered` conjoins `decision.Filter`;
+   `Unrestricted` and `AnyMember` use the column predicate alone.
 3. **One `Read` batch, two statements**, through `IGuardedBatchRunner` (the prologue rides it).
    Statement 1 (`IDataBatch.Rows`): root = `OwnerEntity`, `Select = "Id"`, `Take = 1`, `@id` a
    declared parameter, and `Filter` = the column leaf `Leaf("<OwnerColumn> = @id")` conjoined
