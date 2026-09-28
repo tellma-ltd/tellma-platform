@@ -203,12 +203,16 @@ public sealed class IdentityServerClient : IIdentityServerClient;
   (spec 0003 §6.2), the one its management API accepts; the client is authenticated with
   `ClientId`/`ServiceClientSecret`. The token is cached process-wide until 60 s before its expiry
   under a single-flight lock (concurrent callers await one fetch). One `401` on an API call
-  discards the cached token, fetches once and retries the call once; a second `401` is final.
-- **Failures.** A transport failure, a `5xx`, or a token failure before any chunk completed raises
-  `DependencyUnavailableException` (503, `Retry-After: 1`); after at least one chunk completed, the
-  client returns the prefix and the caller decides (§3.3). A `4xx` other than `401` is an
-  `InvalidOperationException` (a 500 with a trace id: the distribution's registration is wrong, not
-  the caller's request). Every call is logged at Information as
+  discards the cached token, fetches once and retries the call once.
+- **Failures.** Before any chunk completed, a failure raises by its cause. The identity server
+  unreachable — a transport failure or a `5xx` from the token endpoint or the API — is
+  `DependencyUnavailableException` (503, `Retry-After: 1`). The identity server refusing the
+  distribution — a `4xx` from the token endpoint (`invalid_client`, `invalid_scope`), a second
+  `401`, any other `4xx` from the API — is `InvalidOperationException` (a 500 with a trace id: the
+  distribution's credentials or registration are wrong, not the caller's request, and no retry
+  fixes them). The identity server's `401` never reaches the caller, whose own session it does not
+  concern. After at least one chunk completed, any failure returns the prefix and the caller
+  decides (§3.3). Every call is logged at Information as
   `IdentityCall(endpoint, count, outcome, elapsedMs)`; secrets and tokens never appear in logs.
 - **Telemetry.** `tellma.identity.calls` (counter; tags `identity.endpoint` ∈
   `invite | delivery | service-account`, `outcome` ∈ `ok | partial | unavailable | error`) and
@@ -396,7 +400,8 @@ WHERE o.[Subject] IS NOT NULL AND u.[Subject] <> o.[Subject];
      batch (audience `Transactional`) to each such user's `Email`: the welcome email, the one
      message a user keeps to find the distribution again. Template `UserAdded`, rendered under the
      user's `PreferredLanguage` falling back to the tenant primary; subject "You have been added to
-     {TenantName}"; the body names the actor and the tenant and links `ReturnUrl`. For `Invited` and
+     {TenantName}"; the body names the actor and the tenant and links the tenant
+     (`<Tellma:PublicOrigin>/<tenantId>`, the invitation's `ReturnUrl`). For `Invited` and
      `Reinvited` the body adds that a separate message from the identity server carries the link
      that sets up their sign-in, to be used before the distribution link; it never says that message
      has arrived, because the identity server queues its link and this send follows the commit, so
@@ -601,10 +606,11 @@ and `RoleAccessRules`'s loads in RT1, the persist in RT2 (spec 0013 §7.5).
 
 `src/module/gl/Tellma.Module.Gl.Abstractions/` (package `Tellma.Module.Gl.Abstractions`, namespace
 `Tellma.Module.Gl`, references `Tellma.Core.Abstractions`) holds the entity, the enum, the resource
-constant, `GlModule.FeatureName` (what a dependent's `[Requires]` names, spec 0010 §2.1) and the
+constant, the sample-data seam (`IGlSampleCenters`, `SampleCenter`, `SampleCenterName`, §5.6),
+`GlModule.FeatureName` (what a dependent's `[Requires]` names, spec 0010 §2.1) and the
 validation codes: a distribution's own modules must reference `gl.Centers` without `Tellma.Core`.
 `src/module/gl/Tellma.Module.Gl/` (package `Tellma.Module.Gl`, same namespace, references its
-Abstractions) holds the service, the feature, the provisioning step and `Resources/Strings.resx`
+Abstractions) holds the service, the feature, the provisioning step, `DefaultGlSampleCenters` and `Resources/Strings.resx`
 (base name `Tellma.Module.Gl.Resources.Strings`; keys `Gl_Center`, `Gl_Center_Plural`,
 `Gl_Center_Name`, `Gl_Center_Code`, `Gl_Center_CenterType`, `Gl_Center_ParentId`,
 `Gl_Center_IsActive`, `Gl_CenterType_Abstract` … `Gl_CenterType_Sale`,
@@ -718,7 +724,8 @@ public class CenterService<TCenter> : EntityService<TCenter> where TCenter : Cen
 - No `PreprocessAsync`, `ContributeAsync` or `AfterCommitAsync` overrides: the tree recompute is the
   emitter's.
 
-Round trips: create with in-payload parents 2 (the `Code` key load in RT1); update 2; delete 2
+Round trips: create 2 (RT1 carries the `Code` key load and, for parents outside the payload, their
+load); update 2; delete 2
 (the `SubtreeCount` load in RT1); activate/deactivate 1 (plus the recount inside the same batch).
 
 ### 5.5 `GlFeature`
@@ -728,7 +735,7 @@ Round trips: create with in-payload parents 2 (the `Code` key load in RT1); upda
 public sealed class GlFeature : ITellmaFeature                // Name = GlModule.FeatureName; no [Requires]: Core is implicit (spec 0010 §2.1)
 {
     public void Declare(FeatureDeclaration declaration);      // declares no required feature
-    public void Contribute(FeatureContribution contribution); // Entity<Center, CenterService<Center>>(); ProvisioningStep<GlSampleCentersStep>(); Model<CenterConfiguration>()
+    public void Contribute(FeatureContribution contribution); // Entity<Center, CenterService<Center>>(); ProvisioningStep<GlSampleCentersStep>(); Singleton<IGlSampleCenters, DefaultGlSampleCenters>(); Model<CenterConfiguration>()
 }
 ```
 
@@ -744,19 +751,47 @@ projected routes are `/{tenantId}/api/web/centers/{operation}` with `{operation}
 ### 5.6 `gl.sample-centers`
 
 ```csharp
+// Tellma.Module.Gl.Abstractions (namespace Tellma.Module.Gl)
+public sealed record SampleCenterName(string Language, string Text);   // Language: a language subtag ("en", "ar")
+
+public sealed record SampleCenter(
+    string Code, IReadOnlyList<SampleCenterName> Names, CenterType CenterType, string? ParentCode);   // Names: the first is the fallback
+
+public interface IGlSampleCenters                                    // singleton; replaceable by a dependent feature
+{
+    int Version { get; }                                             // the step's Version
+    IReadOnlyList<SampleCenter> Centers { get; }
+}
+
 // Tellma.Module.Gl
-public sealed class GlSampleCentersStep : ITenantProvisioningStep;   // Name = "gl.sample-centers"; Order = 100; Version = 1
+public sealed class DefaultGlSampleCenters : IGlSampleCenters;       // Version = 1; the rows below
+public sealed class GlSampleCentersStep : ITenantProvisioningStep;   // Name = "gl.sample-centers"; Order = 100; Version = IGlSampleCenters.Version
 ```
 
-Runs after the platform steps in the migrator's step-runner scope (spec 0010's
+The step writes the rows `IGlSampleCenters` supplies. `GlFeature` registers
+`DefaultGlSampleCenters`; a distribution built for one customer or sector replaces it from a
+feature that requires `GlModule.FeatureName` and contributes
+`Singleton<IGlSampleCenters, TImplementation>()` (spec 0010's rule: a dependent feature's
+registration overrides its dependency's). An empty `Centers` makes the step write nothing. The
+implementation bumps `Version` when its rows change, so developer tenants re-run the step. Every
+`ParentCode` must name another row of the list; a `ParentCode` that does not is an
+`InvalidOperationException` naming the implementation type, raised before any write, and the save's
+own validation reports the rest (duplicate codes, parent types, cycles).
+
+The step runs after the platform steps in the migrator's step-runner scope (spec 0010's
 `ITenantScopeFactory.CreateScopeAsync(snapshot, allowNonActive: true)`, `Kind = System`). When
 `IHostEnvironment.IsDevelopment()` is false the step records completion and writes nothing (sample
 data is a development convenience). Otherwise it resolves the existing rows first — one
-`CenterService<TCenter>.QueryAsync` filtered by `Code` over the eight codes, projecting `Id, Code`
-— then saves the tree below through `CenterService<TCenter>.SaveAsync` with
+`CenterService<TCenter>.QueryAsync` filtered by `Code` over the list's codes, projecting `Id, Code`
+— then saves the list through `CenterService<TCenter>.SaveAsync` with
 `SaveOptions(Source = System, ReturnEntities = false)`, each resolved row carrying its id, so a
 re-run at a higher `Version` updates names and types and never duplicates; parents are referenced
-by temporary negative ids within the payload. Round trips: the read, then the save's two (§5.4).
+by temporary negative ids within the payload. `Name` is the text for the tenant's primary language,
+else the row's first `Names` entry; `Name2` and `Name3` are the texts for the second and third
+languages, else `null` (`TenantSettings.Languages`, matched by language subtag). Round trips: the
+read, then the save's two (§5.4); none when `Centers` is empty.
+
+The default rows (`DefaultGlSampleCenters`):
 
 | Code | Name (en / ar) | Type | Parent |
 |---|---|---|---|
@@ -768,9 +803,6 @@ by temporary negative ids within the payload. Round trips: the read, then the sa
 | `OP-MFG` | Production / الإنتاج | `Operation` | `BU-MFG` |
 | `SV-IT` | Information Technology / تقنية المعلومات | `Service` | `HQ` |
 | `SV-HR` | Human Resources / الموارد البشرية | `Service` | `HQ` |
-
-`Name2` is written only when the tenant's second language is Arabic (`TenantSettings.Shape`
-gates the twin; the step reads `Languages` and drops the value otherwise).
 
 ### 5.7 `taxonomy.json`
 
@@ -923,16 +955,16 @@ tagged with `identity.count` and `identity.outcome`.
 
 | Project | Tier | What it pins |
 |---|---|---|
-| `test/core/Tellma.Core.Tests` | unit | `IdentityServerClient` against a fake `HttpMessageHandler`: chunking at 1,000 and input order; token caching, the 60 s margin and single flight (`FakeTimeProvider`); one `401` retry then final; prefix on a failed chunk and on cancellation; `DependencyUnavailableException` before any chunk; `ExistingOnly` serialised; options validation (`https` outside Development). `UserService` with a fake client and a fake pipeline: invite argument mapping (`Locale` fallback, `DisplayName` in `Locale`'s content language with its `Name` fallback, `ReturnUrl`, sandbox `ExistingOnly`); `InviteResult` order and `SubjectMismatch`; `PartialFailureException` carries the prefix in `Results` and the not-attempted ids in `Failed`; issue-credentials mapping (`DisplayName = Name`, the resource), the secret absent from every log; §3.2 rules including the bespoke-only save restriction; preference key grammar and limits; test-notification outcomes. `AccessService`: self vs other, the `core.Role × Read` requirement, the 200 cap. `taxonomy.json` module consistency. |
-| `test/module/gl/Tellma.Module.Gl.Tests` | unit | `CenterService` rules with a fake loader (parent in payload, parent loaded, type change with children, self-parent); delete of a row with children; the sample tree is acyclic, codes unique, Arabic twins present; the package's reference closure excludes `Tellma.Core`; `GlFeature` declares no required feature, `GlModule.FeatureName` is its `Name`, and it contributes exactly three items; spec 0012's resource audit over the GL assemblies. |
+| `test/core/Tellma.Core.Tests` | unit | `IdentityServerClient` against a fake `HttpMessageHandler`: chunking at 1,000 and input order; token caching, the 60 s margin and single flight (`FakeTimeProvider`); one `401` retry, a second `401` and a token-endpoint `4xx` as `InvalidOperationException`; prefix on a failed chunk and on cancellation; `DependencyUnavailableException` before any chunk on a transport failure or `5xx`; `ExistingOnly` serialised; options validation (`https` outside Development). `UserService` with a fake client and a fake pipeline: invite argument mapping (`Locale` fallback, `DisplayName` in `Locale`'s content language with its `Name` fallback, `ReturnUrl`, sandbox `ExistingOnly`); `InviteResult` order and `SubjectMismatch`; `PartialFailureException` carries the prefix in `Results` and the not-attempted ids in `Failed`; issue-credentials mapping (`DisplayName = Name`, the resource), the secret absent from every log; §3.2 rules including the bespoke-only save restriction; preference key grammar and limits; test-notification outcomes. `AccessService`: self vs other, the `core.Role × Read` requirement, the 200 cap. `taxonomy.json` module consistency. |
+| `test/module/gl/Tellma.Module.Gl.Tests` | unit | `CenterService` rules with a fake loader (parent in payload, parent loaded, type change with children, self-parent); delete of a row with children; the default sample tree is acyclic, codes unique, Arabic twins present; the step with a fake `IGlSampleCenters` (a replacement's rows written instead of the default's, an empty list writing nothing, an unknown `ParentCode` refused before any write, names mapped to the tenant's language positions with the first-entry fallback); the package's reference closure excludes `Tellma.Core`; `GlFeature` declares no required feature, `GlModule.FeatureName` is its `Name`, and it contributes exactly four items; spec 0012's resource audit over the GL assemblies. |
 | `test/core/Tellma.Core.IntegrationTests` | `Category=Integration` (LocalDB or Testcontainers) | The write-back statement: state transitions, `InvitedAt` set once, `LastInviteError` cleared by a later success, `SubjectMismatch` rows untouched, `2627` on `UX_Users_Subject` → `Unique` at `Subject`, `PreferencesTag` bumped for invited users only, `ModifiedAt` stamped; `core.user.added` inserted for every outcome with a status and deduplicated; the welcome email queued for each, with the sign-in paragraph for `Invited` and `Reinvited` only; the membership hint recorded; the credentials write-back (`Subject`, `JoinedAt` set once, `PreferencesTag` bumped), rotation deleting the old client after commit, deactivation deleting the client, `Kind` write-once, a `Service` row refused by `invite` and a `Human` row by `issue-credentials`; `SaveMe` with a membership row is 422 and grants nothing; a member's admin `save` on their own row confined to the self-editable columns; the preferences statement (set, delete, the `MaxPreferenceKeys` cap, tag bump, second user unaffected); `gl.Centers` save with in-payload parents in two round trips (the `Code` key load in RT1), the parent-type rule, `Centers.HasChildren`, `delete-with-descendants`, activate/deactivate recounts, `ParentMustBeGrouping` on a type change; every §8.1 budget through `DataAccessScope`; `preferences/get`, `set` and `delete` for another user under the `Preferences` filter, bumping the target's `PreferencesTag`, a hidden target not found; `SignatureId` saved through `me/save` and the user save. |
-| `test/core/Tellma.Core.IntegrationTests` | `Live=true` | Against the in-proc identity server: invite end to end (`Invited`, `Reinvited`, `Active`, a refused account's per-user error), `ExistingOnly` on a sandbox tenant, delivery status after a real send through the email log sink; a service account created end to end, a `client_credentials` token obtained and the connect prologue resolving the row as `ServiceAccount` through a test-mapped bearer endpoint under spec 0010's `Tellma.Api` policy. |
+| `test/core/Tellma.Core.IntegrationTests` | `Category=Integration` (the in-proc identity server) | Invite end to end (`Invited`, `Reinvited`, `Active`, a refused account's per-user error), `ExistingOnly` on a sandbox tenant (skipped until spec 0021 §8 ships, the skip reason naming it), delivery status after a real send through the email log sink; a service account created end to end, a `client_credentials` token obtained and the connect prologue resolving the row as `ServiceAccount` through a test-mapped bearer endpoint under spec 0010's `Tellma.Api` policy. |
 | `distributions/acme/test/Tellma.Distro.Acme.IntegrationTests` | `Category=Integration` | `migrate` then `provision` from an empty server creates `gl.Centers`, records `gl.sample-centers` with `Version = 1`, seeds eight centers in Development and none otherwise; `admin@localhost` is `Invited` and becomes `Joined` on first sign-in; a deployed-style `provision --admin-email` invites through the in-proc identity server; a bumped step version re-runs idempotently; model parity (§7); spec 0012's resource audit over the distribution's assemblies. |
 
 PR runs the unit tier and `Category=Integration` on LocalDB (Windows) and Testcontainers (Linux);
-nightly adds `Live=true`. Fixture: tenant 1 with `en`/`ar`, the reserved-band rows, one
-administrator, three plain users (`New`, `Invited`, `Joined`), one service account, two roles (one
-public), the sample centers.
+no suite here is `Live=true`, since none reaches a third-party account. Fixture: tenant 1 with
+`en`/`ar`, the reserved-band rows, one administrator, three plain users (`New`, `Invited`,
+`Joined`), one service account, two roles (one public), the sample centers.
 
 ## 10. Definition of done
 
@@ -950,9 +982,9 @@ public), the sample centers.
   implemented and pinned by the suites of §9, green in CI.
 - **Observability**: every instrument and log event of §8.2 emitted and asserted; every §8.1
   budget asserted.
-- **CI**: unit and `Category=Integration` on PR (Windows LocalDB, Linux Testcontainers); `Live=true`
-  nightly against the in-proc identity server; the `acme` smoke deployment provisions a tenant
-  and invites its administrator.
+- **CI**: unit and `Category=Integration` on PR (Windows LocalDB, Linux Testcontainers), the
+  in-proc identity server included; the `acme` smoke deployment provisions a tenant and invites its
+  administrator.
 - **Docs**: ARCHITECTURE.md updated where this spec touches it — the migrations/migrator section
   (the migrator holds the distribution's service-client credentials and invites the first
   administrator through the `invite` action of `UserService` after the provisioning steps), the
@@ -961,8 +993,9 @@ public), the sample centers.
   `Tellma.Module.<M>` pair, `src/module/gl/`), and the reserved-slug/taxonomy section
   (`taxonomy.json` gains the `Gl` module). Public XML docs and error messages reference no
   `docs/` paths, per repo rule.
-- **Not in scope of done**: the identity-server work itself (spec 0021 — the `Live=true` sandbox
-  row of §9 requires an in-proc identity server carrying spec 0021 §8); the settings edit API
+- **Not in scope of done**: the identity-server work itself (spec 0021 — §9's sandbox
+  `ExistingOnly` test stays skipped until the in-proc identity server carries spec 0021 §8); the
+  settings edit API
   (spec 0012), Excel over these stacks (spec 0018), the inbox page (spec 0020), the email outbox,
   SMS.
 
@@ -1045,18 +1078,15 @@ The load-bearing decisions, where not already evident above:
 10. **`ExpectedModifiedAt` required on the settings patch** (spec 0012's `TenantSettingsPatch`;
     the API left this spec's scope) versus optional. Chosen: required. Flips if MCP agents cannot
     reliably read before writing.
-11. **Reserved band `1..999` with positive ids** (spec 0013's `HasData`; the sample step uses
-    ordinary ids) versus negative ids for well-known rows. Chosen: positive — readable in URLs and
-    logs. Flips if an import that resets a sequence low ever collides.
-12. **Delete restricted to `State = New` users** (§3.6; spec 0013's rule) versus deleting any user
+11. **Delete restricted to `State = New` users** (§3.6; spec 0013's rule) versus deleting any user
     and mapping FK failures per referencing table. Chosen: restricted — predictable. Flips if
     admins need to purge mistaken invitations after sign-in.
-13. **The migrator invites the deployed first administrator** (§6.1) versus provisioning only
+12. **The migrator invites the deployed first administrator** (§6.1) versus provisioning only
     seeding the row and a web-side bootstrap endpoint sending the invite. Chosen: the migrator —
     one path, no second privileged endpoint; the cost is the service secret in the migrator's
     configuration. Flips if operators forbid secrets on the migration host.
-14. **Sample centers only in Development** (§5.6) versus seeding them on every provisioned tenant
+13. **Sample centers only in Development** (§5.6) versus seeding them on every provisioned tenant
     as a starter tree. Chosen: Development — a customer's tree is their own. Flips if onboarding
     wants a starter chart.
-15. **`Tellma.Module.Gl` declares no meter** (§8.2) versus a `Tellma.Module.Gl` meter for future GL
+14. **`Tellma.Module.Gl` declares no meter** (§8.2) versus a `Tellma.Module.Gl` meter for future GL
     instruments. Chosen: none until an instrument exists; adding one later is additive.
