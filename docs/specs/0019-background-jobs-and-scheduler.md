@@ -1410,8 +1410,12 @@ pipeline, spec 0014 §13.3), and checkpoints the chunk index with `IJobProgress.
 inside each chunk's transaction, so a `Job.LeaseLost` fence rolls the chunk back with the
 checkpoint. The completion columns — `ResultFileId`, `RowCount`, `ErrorCount` — are an enlisted
 update of the claimed `Import` row with the job frame (§8) on the completion batch, one round trip
-atomic with the outcome (spec 0018 §12.4, §12.6). The enqueue transaction attaches the staged
-upload to the `Import` row (spec 0018 §12.2), so queue latency is not bounded by the staging TTL.
+atomic with the outcome (spec 0018 §12.4, §12.6). The `import/start` action enlists the
+`Import` row in the invoker's frame and awaits the injected `IOpenWriteHost`'s `PersistAsync`;
+`ImportService.ContributeAsync` enqueues every new row whose `JobId` is null, so the row, its job
+and the attach of the staged upload to the row commit together and the action returns
+`JobAccepted(JobId, ImportId)` (spec 0018 §12.2), and queue latency is not bounded by the
+staging TTL.
 
 ### 14.3 Blob sweep and reconcile (spec 0016)
 

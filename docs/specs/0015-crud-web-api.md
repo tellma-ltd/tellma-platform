@@ -250,10 +250,11 @@ rule is written here and implemented by the SPA and the MCP tool layer: reads (`
 `get-by-ids`, `get-by-parent-ids`, `all`) and every `[ApiAction]` with `Idempotent = true` —
 `export`, `export-for-import` and `inspect-import` among them — are retried on network failure, on
 429 and on 503 with `Retry-After`; `save`, `import`, `delete`, `delete-by-query`,
-`delete-with-descendants`, `activate`, `deactivate`, `export/start`, `export-for-import/start` and
-every action without `Idempotent = true` are never retried — a lost response to a create is shown to
-the user, who re-queries. A retried create with app-assigned ids is a duplicate row and no client
-key exists on this surface to dedupe it; `Idempotency-Key` belongs to the public API (§12.2).
+`delete-with-descendants`, `activate`, `deactivate`, `export/start`, `export-for-import/start`,
+`import/start` and every action without `Idempotent = true` are never retried — a lost response to
+a create is shown to the user, who re-queries. A retried create with app-assigned ids is a duplicate
+row and no client key exists on this surface to dedupe it; `Idempotency-Key` belongs to the public
+API (§12.2).
 
 ### 2.3 Stack operations and segments
 
@@ -282,7 +283,9 @@ is a standard segment or an action's `Name`; a standard operation exists only wh
 | `export/start` | `Read` | `ExportRequest` (spec 0018) | 202 `JobAccepted` | `Export` |
 | `export-for-import` | `Read` | `ExportForImportRequest` (spec 0018) | `.xlsx` stream | `Import` |
 | `export-for-import/start` | `Read` | `ExportForImportRequest` (spec 0018) | 202 `JobAccepted` | `Import` |
-| `inspect-import`, `import` | `Save` | `InspectImportRequest`, `ImportRequest` (spec 0018) | `ImportPlan`; `ImportOutcome`, or 202 `JobAccepted` for an `ImportAccepted` (§3.9) | `Import` |
+| `inspect-import` | `Save` | `InspectImportRequest` (spec 0018) | `ImportPlan` | `Import` |
+| `import` | `Save` | `ImportRequest` (spec 0018) | `ImportOutcome` | `Import` |
+| `import/start` | `Save` | `ImportRequest` (spec 0018) | 202 `JobAccepted` | `Import` |
 | `{action-segment}` | an `[EntityAction]`: `EntityActionDescriptor.Action`; an `[ApiAction]`: `ApiActionDescriptor.Securable` (null → none) | an `[EntityAction]` answering `EntitiesResult<T>`: `EntityActionRequest`, or `EntityActionRequest<TArguments>` when it takes arguments; one with its own result: `IdsRequest`, or `IdsRequest<TArguments>` when it takes arguments, and one marked `SingleTarget` (spec 0014 §2.3): `IdRequest`, or `IdRequest<TArguments>` when it takes arguments; an `[ApiAction]`: the method's body type | `EntitiesResult<T>` or the method's result (the descriptor's `ResultType`) | Declared on the service |
 
 Securable actions are PascalCase (`Read`, `Save`, `Delete`, `Activate`, `Invite`); an action segment
@@ -704,14 +707,13 @@ exposed on MCP.
   `Content-Disposition: attachment; filename="<ascii>"; filename*=UTF-8''<utf8>` and no
   `Content-Length` (chunked); compression is off for the stream (§8.4). A synchronous request above
   the thresholds of spec 0018 §2.3 fails with that spec's 413 or 422, whose message names the
-  `/start` route, and is never promoted to background. `export/start` and `export-for-import/start`
-  take the same request records and are the only background path for an export; they return 202
-  `JobAccepted(JobId, ExportId)`. `import` answers spec 0018's `ImportResult` by case: an
-  `ImportOutcome` as 200, and an `ImportAccepted(JobId, ImportId)` (`Background = true`) as 202
-  `JobAccepted(JobId, ImportId)`. A 202 carries its polling target in the body rather than a
-  `Location` header (the SPA polls through the standard `get` on `exports`/`imports` and the hub's
-  `job.changed`). `import` and `inspect-import` take JSON bodies naming a staged `FileId`; no
-  multipart endpoint exists in this release.
+  `/start` route, and is never promoted to background. `export/start`, `export-for-import/start` and
+  `import/start` take the same request records as their synchronous routes and are the only
+  background path; they return 202 `JobAccepted(JobId, ExportId)` or `JobAccepted(JobId, ImportId)`.
+  `import` answers spec 0018's `ImportOutcome` as 200. A 202 carries its polling target in the body
+  rather than a `Location` header (the SPA polls through the standard `get` on `exports`/`imports`
+  and the hub's `job.changed`). `inspect-import`, `import` and `import/start` take JSON bodies
+  naming a staged `FileId`; no multipart endpoint exists in this release.
 - **Blobs.** The upload is a raw body (`AcceptsBinaryMetadata`); the download is the one GET
   (§9.1).
 - **`me`.** `users/me` returns `MeResult`, the caller's preference bag included; the SPA calls it
@@ -884,8 +886,8 @@ instead of redirecting; `ProducesProblem` metadata for 400, 401, 403, 404, 409, 
 the request-size metadata; and the `tellma.resource`/`tellma.operation` activity tags (§10.1). The
 long synchronous operations (`export`, `export-for-import`, `inspect-import`, `import`) carry the
 `tellma-long` timeout policy and the `tellma-export`/`tellma-import` concurrency policies
-(§8.2–§8.3); `export/start` and `export-for-import/start` only enqueue and run under the ordinary
-`tellma-web` timeout.
+(§8.2–§8.3); `export/start`, `export-for-import/start` and `import/start` only enqueue and run under
+the ordinary `tellma-web` timeout.
 
 ### 4.4 Service routes and custom actions
 
@@ -1313,12 +1315,12 @@ properties.
 
 ### 9.3 Excel and job hand-off
 
-The six Excel operations are `[ApiAction]`s contributed by spec 0018's `ExcelOperations<TEntity>`
+The seven Excel operations are `[ApiAction]`s contributed by spec 0018's `ExcelOperations<TEntity>`
 and projected like any action (§2.3) under the policies of §4.3. The synchronous exports stream
-(§3.9); `export/start`, `export-for-import/start` and a background `import` answer 202
-`JobAccepted`. Job progress reaches the SPA through `jobs/query` (self-scope) and the hub's
-`job.changed`; the finished artifact through `exports/get` (`FileId`) and the blob GET. No polling
-endpoint exists beyond the standard operations.
+(§3.9); `export/start`, `export-for-import/start` and `import/start` answer 202 `JobAccepted`. Job
+progress reaches the SPA through `jobs/query` (self-scope) and the hub's `job.changed`; the finished
+artifact through `exports/get` (`FileId`) and the blob GET. No polling endpoint exists beyond the
+standard operations.
 
 ### 9.4 Health and tenantless endpoints
 

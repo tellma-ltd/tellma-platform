@@ -752,7 +752,8 @@ are registered by the stack feature from the descriptor; the module registers no
 projected routes are `/{tenantId}/api/web/centers/{operation}` with `{operation}` one of `query`,
 `get`, `get-by-ids`, `get-by-parent-ids`, `save`, `delete`, `delete-by-query`,
 `delete-with-descendants`, `activate`, `deactivate`, `export`, `export/start`, `export-for-import`,
-`export-for-import/start`, `inspect-import` and `import`; the MCP exposure is `Full`.
+`export-for-import/start`, `inspect-import`, `import` and `import/start`; the MCP exposure is
+`Full`.
 
 ### 5.6 `gl.sample-centers`
 
