@@ -1144,9 +1144,9 @@ a built-in's `CronExpression` and `TimeZoneId` and its names, nothing else (§7.
   `ValidationException` from `PersistAsync` surfaces inside `ExecuteAsync` and follows §3.4 unless
   the handler marks the item.
 - **Permissions at run time.** Handlers evaluate permissions through spec 0013's
-  `IAccessEvaluator.EvaluateAsync(resource, action, bespoke)` exactly as a request does, so a
-  schedule can never read more than its owner may read today. Handlers of system jobs never read
-  data on behalf of a person: they operate on platform tables or on data the tenant as a whole owns.
+  `IAccessEvaluator.EvaluateAsync(resource, action)` exactly as a request does, so a schedule can
+  never read more than its owner may read today. Handlers of system jobs never read data on behalf
+  of a person: they operate on platform tables or on data the tenant as a whole owns.
 - **`DataAccessScope`** is fresh per invocation (`Operation = "job:<key>"`) so the round-trip
   budget instruments cover jobs.
 

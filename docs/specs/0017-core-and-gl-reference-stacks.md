@@ -51,20 +51,25 @@ post-commit call), and the second GL entity.
 
 - Ship `IIdentityServerClient` and its runtime implementation: bulk invite (with the sandbox-only
   `ExistingOnly` flag) and bulk delivery status, chunked at 1,000, with a cached service token.
-- Ship `UserService<TUser>`: the `invite` action, `invitation-status`, `me`, `me/save`,
-  `me/preferences/set`, `me/preferences/delete`, `preferences/get`, `preferences/set`,
-  `preferences/delete`, `me/test-notification`, the user-specific validation and preprocessing
-  rules, the post-commit side effects (session revocation, catalog membership hint, the
-  `core.user.added` notice and the welcome email).
+- Ship `UserService<TUser>`: the `invite` and `issue-credentials` actions, `invitation-status`,
+  `me`, `me/save` (an enlisted write of the caller's own row), `me/preferences/set`,
+  `me/preferences/delete`, `preferences/get`, `preferences/set`, `preferences/delete`,
+  `me/test-notification`, the user-specific validation and preprocessing rules, the post-commit side
+  effects (session revocation, catalog membership hint, the `core.user.added` notice and the welcome
+  email).
+- Ship `UserAccessCriteria` (every connected member reads their own row) and
+  `EmailNotificationChannel` (the `email` channel's test send).
 - Ship `RoleService<TRole>`: the standard projection over `Role` and the `members` details extra.
 - Ship `AccessService` (`access/check`).
 - Ship `Tellma.Module.Gl.Abstractions` (`Center`, `CenterType`, `GlModule`, `GlResources`,
-  `GlValidationCodes`) and `Tellma.Module.Gl` (`CenterService<TCenter>`, `GlFeature`,
-  `GlSampleCentersStep`), the `gl.Centers` table, and the `Gl` entry in `taxonomy.json`.
+  `GlValidationCodes`, `IGlSampleCenters`, `SampleCenter`, `SampleCenterName`) and
+  `Tellma.Module.Gl` (`CenterService<TCenter>`, `GlFeature`, `GlSampleCentersStep`,
+  `DefaultGlSampleCenters`), the `gl.Centers` table, and the `Gl` entry in `taxonomy.json`.
 - Ship the reference distribution's tenant migration set and its Development bootstrap: the
   `admin@localhost` administrator that the in-proc identity server also seeds, and the deployed
   flow in which the migrator invites a tenant's first administrator.
-- Pin every budget: two database round trips per invite, one per self-service write, one for `me`.
+- Pin every budget (§8.1): two database round trips per invite, one per self-service preference
+  write, three for `me/save`, one for `me`.
 
 **Non-goals (explicitly out of scope)**
 
@@ -77,7 +82,8 @@ post-commit call), and the second GL entity.
 - Endpoint projection, wire records, problem details, the `MeResult` shape — spec 0015.
 - `core.Blobs`, the `user-image` and `user-signature` kinds, staging and the download endpoint —
   spec 0016.
-- `core.Notifications`, `core.NotificationPreferences`, `INotifier`, `TellmaHub` — spec 0020.
+- `core.Notifications`, `core.NotificationPreferences`, `INotifier`, the channel registry and the
+  `INotificationChannel` seam, `TellmaHub` — spec 0020.
 - Provisioning steps as a mechanism, the migrator commands, the catalog, `taxonomy.json` itself —
   spec 0010.
 - Push subscriptions, an SMS transport, the email outbox.
@@ -89,10 +95,10 @@ post-commit call), and the second GL entity.
 | Piece | Location | References | Notes |
 |---|---|---|---|
 | Identity client contract, user-stack result records | `src/core/Tellma.Core.Abstractions/` (namespaces `Tellma.Core.Abstractions.Identity`, `.Access`) | `Tellma.Core.Queryex` only | Grown by this spec; no new package. |
-| Identity client, user and role services, access service | `src/core/Tellma.Core/` (namespaces `Tellma.Core.Identity`, `Tellma.Core.Users`, `Tellma.Core.Access`) | as spec 0011's `Tellma.Core` | `IdentityServerClient` uses `IHttpClientFactory`; nothing else new is referenced. |
-| GL contracts | `src/module/gl/Tellma.Module.Gl.Abstractions/` (namespace `Tellma.Module.Gl`) | `Tellma.Core.Abstractions` | `Center`, `CenterType`, `GlModule`, `GlResources`, `GlValidationCodes`. Creates `src/module/`. |
-| GL runtime | `src/module/gl/Tellma.Module.Gl/` (namespace `Tellma.Module.Gl`) | `Tellma.Module.Gl.Abstractions` | `CenterService<TCenter>`, `GlFeature`, `GlSampleCentersStep`, `Resources/Strings.resx`. Never references `Tellma.Core`. |
-| Reference distribution | `distributions/acme/src/Tellma.Distro.Acme.Web/`, `.Migrator/` | gain `Tellma.Module.Gl`, `Tellma.Module.Gl.Abstractions` | Migrations live in the Migrator project (§7). |
+| Identity client, user and role services, access service, email notification channel | `src/core/Tellma.Core/` (namespaces `Tellma.Core.Identity`, `Tellma.Core.Users`, `Tellma.Core.Access`, `Tellma.Core.Notifications`) | as spec 0011's `Tellma.Core` | `IdentityServerClient` uses `IHttpClientFactory`; nothing else new is referenced. |
+| GL contracts | `src/module/gl/Tellma.Module.Gl.Abstractions/` (namespace `Tellma.Module.Gl`) | `Tellma.Core.Abstractions` | `Center`, `CenterType`, `GlModule`, `GlResources`, `GlValidationCodes`, `IGlSampleCenters`, `SampleCenter`, `SampleCenterName`. Creates `src/module/`. |
+| GL runtime | `src/module/gl/Tellma.Module.Gl/` (namespace `Tellma.Module.Gl`) | `Tellma.Module.Gl.Abstractions` | `CenterService<TCenter>`, `GlFeature`, `GlSampleCentersStep`, `DefaultGlSampleCenters`, `Resources/Strings.resx`. Never references `Tellma.Core`. |
+| Reference distribution | `distributions/acme/src/Tellma.Distro.Acme/`, `Tellma.Distro.Acme.Web/`, `Tellma.Distro.Acme.Migrator/` | `Tellma.Distro.Acme` gains `Tellma.Module.Gl`, `Tellma.Module.Gl.Abstractions` | `Tellma.Distro.Acme` is the composition library the Web and Migrator projects reference (spec 0010 §1.2); migrations live in the Migrator project (§7). |
 | Tests | `test/core/Tellma.Core.Tests`, `test/core/Tellma.Core.IntegrationTests`, `test/module/gl/Tellma.Module.Gl.Tests`, `distributions/acme/test/Tellma.Distro.Acme.IntegrationTests` | | §9. |
 
 `Tellma.Module.Gl` compiles against `EntityService<TEntity, TKey>` in Abstractions and receives the
@@ -108,11 +114,13 @@ so a block is never pasted into code. SQL statements are the exact shape to emit
 
 `CoreFeature` (spec 0010) registers `contribution.Entity<User, UserService<User>>()`,
 `contribution.Entity<Role, RoleService<Role>>()`, `contribution.ApiService<AccessService>()`,
-`contribution.Singleton<IIdentityServerClient, IdentityServerClient>()`, and binds
-`IdentityServerClientOptions` from `Tellma:Identity`; the notification type `core.user.added` is
-spec 0020's own `CoreFeature` contribution, consumed here (§3.3). `GlFeature`
-(§5.5) is added by a distribution with `tellma.AddFeature<GlFeature>()`. A distribution substitutes
-its leaves with `tellma.UseEntity<User, MyUser>()`, `tellma.UseEntity<Role, MyRole>()`,
+`contribution.Singleton<IIdentityServerClient, IdentityServerClient>()`,
+`contribution.Singleton<IAccessCriteriaProvider, UserAccessCriteria>()` (§3.2) and
+`contribution.Scoped<INotificationChannel, EmailNotificationChannel>()` (§3.5), and binds
+`IdentityServerClientOptions` from `Tellma:Identity`; the notification type `core.user.added` (§3.3)
+and the `email` channel's descriptor are spec 0020's own `CoreFeature` contributions, consumed here.
+`GlFeature` (§5.5) is added by a distribution with `tellma.AddFeature<GlFeature>()`. A distribution
+substitutes its leaves with `tellma.UseEntity<User, MyUser>()`, `tellma.UseEntity<Role, MyRole>()`,
 `tellma.UseEntity<Center, MyCenter>()`; the platform closes `UserService<MyUser>`,
 `RoleService<MyRole>`, `CenterService<MyCenter>`.
 
@@ -127,14 +135,16 @@ public static void Compose(TellmaBuilder tellma) => tellma.UseAzureDefaults().Ad
 
 | Seam | Owner | Members used here |
 |---|---|---|
-| `EntityService<TEntity, TKey>`, hooks, `[EntityAction]`, `[ApiAction]`, `[ApiRoute]`, `SaveOptions`, `ActionContext`, `SaveContext`, `PersistContext`, `PersistOutcome`, `IContextLoader`, `ValidationErrors` | spec 0014 | §3, §4, §5 |
-| `IDataBatch.Sql`, `Tvp`, `OnCommitted`, `SqlOptions(Writes, UserIds, ForCaller)`, `BatchOutcome` | spec 0011's batch contract | §3.3, §3.5 |
+| `EntityService<TEntity, TKey>`, hooks, `[EntityAction]` with `SingleTarget`, `[ApiAction]`, `[ApiRoute]`, `SaveOptions`, `ActionContext` with `Update` and `Persisted`, `SaveContext`, `PersistContext`, `PersistOutcome`, `IContextLoader`, `ValidationErrors` | spec 0014 | §3, §4, §5 |
+| `IEnlists<TTarget>`, `IOpenWriteHost`, `EnlistSaveOptions`, `EnlistedSave<T>`, `EnlistmentOutcome` | spec 0014 §13.3 | §3.5 |
+| `IDataBatch.Sql`, `Tvp`, `OnCommitted`, `SqlOptions(Writes, ResultSets, UserIds, ForCaller)`, `BatchResult`, `BatchOutcome` | spec 0011's batch contract | §3.3, §3.5 |
 | `IGuardedBatchRunner.Run`, `IUserConnector`, `ConnectedUser` | spec 0013's connect contract | §3.4, §3.5, §3.7 |
-| `IAccessEvaluator`, `AccessDecision`, `AccessGrant`, `BespokeAccessGrant`, `SecurableRef`, `ISecurableRegistry`, `UserAccessRules<TUser>`, `RoleAccessRules<TRole>`, `IAdministratorDirectory`, `ITenantBootstrapper`, `WellKnownIds`, `CoreResources`, `AccessActions` | spec 0013 | §3, §4, §6 |
+| `IAccessEvaluator`, `AccessDecision`, `AccessGrant`, `IAccessCriteriaProvider`, `AccessCriterion`, `SecurableRef`, `ISecurableRegistry`, `UserAccessRules<TUser>`, `RoleAccessRules<TRole>`, `IAdministratorDirectory`, `ITenantBootstrapper`, `WellKnownIds`, `CoreResources`, `AccessActions` | spec 0013 | §3, §4, §6 |
 | `User`, `Role`, `RoleMembership`, `Permission`, `UserState`, `InviteStatus`, `UserKind`, `Gender`, `UserProfile` | spec 0013's entities | §3 |
-| `MeResult`, `AccessCheckRequest`, `IdsRequest`, `EntityActionRequest`, `EntityActionRequest<TArguments>`, `SaveRequest<T>`, `EntitiesResult<T>`, `PartialFailureException` | spec 0015's wire records and exception set | §3, §3.7 |
+| `MeResult`, `AccessCheckRequest`, `IdsRequest`, `IdRequest`, `IdRequest<TArguments>`, `PartialFailureException` | spec 0015's wire records and exception set | §3, §3.7 |
 | `[BlobReference]` on `User.ImageId` and `User.SignatureId`, kinds `user-image` and `user-signature` | spec 0016 | §3.5 |
 | `INotifier.Notify`, `NotificationRequest`, type `core.user.added` | spec 0020 | §3.3 |
+| `INotificationChannel`, `INotificationChannelRegistry`, `TestNotificationResult`, code `Notifications.UnknownChannel` | spec 0020 | §3.1, §3.5 |
 | `TenantSettings`, `ILanguageCatalog`, `ICalendarRegistry`, `IStringLocalizer` | spec 0012 | §3.2, §3.3, §3.5 |
 | `ITenantProvisioningStep`, `TenantProvisioningContext`, `dbo.__TellmaProvisioning`, migrator commands | spec 0010 | §5.6, §6 |
 | `RequestContext`, `ITenantMembershipDirectory.RecordAsync`, `ISessionTerminationListener.TenantAccessRevokedAsync`, `Tellma:PublicOrigin` | spec 0010 | §3.3, §3.6 |
@@ -232,20 +242,23 @@ by length. No chunk is ever retried by the client except the single `401` retry:
 
 ```csharp
 // Tellma.Core.Users (runtime)
-public class UserService<TUser> : EntityService<TUser> where TUser : User
+public class UserService<TUser> : EntityService<TUser>, IEnlists<TUser> where TUser : User
 {
     public Task<IReadOnlyList<InviteResult>> InviteAsync(ActionContext<TUser, int> context);
-    public Task<IReadOnlyList<CredentialsResult>> IssueCredentialsAsync(ActionContext<TUser, int> context);
+    public Task<CredentialsResult> IssueCredentialsAsync(ActionContext<TUser, int> context);
     public Task<IReadOnlyList<InvitationStatus>> GetInvitationStatusAsync(IdsRequest request);
     public Task<MeResult> MeAsync();
-    public Task<EntitiesResult<TUser>> SaveMeAsync(SaveRequest<TUser> request);
+    public Task<MeResult> SaveMeAsync(MeSaveRequest request);
     public Task<PreferencesResult> SetMyPreferencesAsync(IReadOnlyList<KeyValueItem> items);
     public Task<PreferencesResult> DeleteMyPreferencesAsync(IReadOnlyList<string> keys);
-    public Task<PreferencesResult> GetPreferencesAsync(UserPreferencesRequest request);
-    public Task SetPreferencesAsync(ActionContext<TUser, int> context, UserPreferencesArguments arguments);
-    public Task DeletePreferencesAsync(ActionContext<TUser, int> context, UserPreferenceKeysArguments arguments);
-    public Task<TestNotificationResult> SendTestNotificationAsync(TestNotificationChannel channel);
+    public Task<UserPreferencesResult> GetPreferencesAsync(UserPreferencesRequest request);
+    public Task<UserPreferencesResult> SetPreferencesAsync(ActionContext<TUser, int> context, UserPreferencesArguments arguments);
+    public Task<UserPreferencesResult> DeletePreferencesAsync(ActionContext<TUser, int> context, UserPreferenceKeysArguments arguments);
+    public Task<TestNotificationResult> SendTestNotificationAsync(string channel);
 }
+
+public sealed class UserAccessCriteria : IAccessCriteriaProvider;   // Resource = core.User; one criterion: ("Read", Leaf("Id = me()"), "self")
+public sealed class EmailNotificationChannel : INotificationChannel;   // Tellma.Core.Notifications; Key = "email"; Append appends nothing (delivery is the outbox spec's, spec 0020 §4.1); SendTestAsync through IEmailSender
 
 // Tellma.Core.Abstractions.Access — results and requests
 public sealed record InviteResult(int Id, InviteStatus? Status, string? Error);
@@ -254,6 +267,11 @@ public sealed record UserPreferencesRequest(int UserId);
 public sealed record UserPreferencesArguments(IReadOnlyList<KeyValueItem> Items);
 public sealed record UserPreferenceKeysArguments(IReadOnlyList<string> Keys);
 
+public sealed record MeSaveRequest(
+    string Name, string? Name2, string? Name3, int? ImageId, int? SignatureId,
+    string? PreferredLanguage, string? PreferredCalendar, string? PreferredTimeZone, Gender? Gender,
+    string? ContactEmail, string? ContactMobile, DateTimeOffset ModifiedAt);   // the self-editable members and the expected stamp
+
 public sealed record InvitationStatus(
     int Id, UserState State, InviteStatus? InviteStatus, string? LastInviteError,
     IdentityDeliveryStatus? Delivery);
@@ -261,10 +279,7 @@ public sealed record InvitationStatus(
 public sealed record KeyValueItem(string Key, string Value);
 
 public sealed record PreferencesResult(IReadOnlyDictionary<string, string> Preferences, string PreferencesTag);
-
-public enum TestNotificationChannel { Email, Sms }
-
-public enum TestNotificationResult { Sent, NoContactAddress, NotConfigured }
+public sealed record UserPreferencesResult(IReadOnlyDictionary<string, string> Preferences);   // another user's bag, for the administrative operations
 
 [TableType("UserInvitationOutcomeList")]
 public sealed class UserInvitationOutcome                    // standalone; the invite write-back row
@@ -291,14 +306,14 @@ public static class UsersTelemetryNames
 | Member | Annotation and route |
 |---|---|
 | `Invite` | `[EntityAction("invite", Description = "Invite users through the identity server")]`; securable action `Invite` (`core.User × Invite`, filtered, sensitive by spec 0013's default); `POST /{tenantId}/api/web/users/invite` with `IdsRequest`, answering the method's `list<InviteResult>` (an action with its own result, spec 0014 §3.1). |
-| `IssueCredentials` | `[EntityAction("issue-credentials", Action = "Credentials", Description = "Issue or rotate a service account's client credentials")]`; securable action `Credentials` (`core.User × Credentials`, filtered, sensitive by spec 0013's default); `POST /{tenantId}/api/web/users/issue-credentials` with an `IdsRequest` of exactly one id, answering the method's `list<CredentialsResult>` (an action with its own result, spec 0014 §3.1). |
+| `IssueCredentials` | `[EntityAction("issue-credentials", Action = "Credentials", SingleTarget = true, Description = "Issue or rotate a service account's client credentials")]`; securable action `Credentials` (`core.User × Credentials`, filtered, sensitive by spec 0013's default); `POST /{tenantId}/api/web/users/issue-credentials` with `IdRequest`, answering the method's `CredentialsResult` (a single-target action with its own result, spec 0014 §2.3, §3.1). |
 | `GetInvitationStatus` | `[ApiAction("invitation-status", Action = "Read", Idempotent = true, Mutation = false)]`; `users/invitation-status`. |
 | `Me` | `[ApiAction("me", MemberOnly = true, Idempotent = true, Mutation = false)]`; `users/me`. |
-| `SaveMe` | `[ApiAction("me/save", MemberOnly = true)]`; `users/me/save`. |
+| `SaveMe` | `[ApiAction("me/save", MemberOnly = true)]`; `users/me/save`; body `MeSaveRequest`, answering `MeResult`. |
 | `SetMyPreferences`, `DeleteMyPreferences` | `[ApiAction("me/preferences/set", MemberOnly = true)]`, `[ApiAction("me/preferences/delete", MemberOnly = true)]`. |
-| `GetPreferences` | `[ApiAction("preferences/get", Action = "Preferences", Idempotent = true, Mutation = false)]`; `users/preferences/get`; body `{ userId }`. |
-| `SetPreferences`, `DeletePreferences` | `[EntityAction("preferences/set", Action = "Preferences")]`, `[EntityAction("preferences/delete", Action = "Preferences")]`; exactly one id; `users/preferences/set`, `users/preferences/delete`, bodies `EntityActionRequest<UserPreferencesArguments>` and `EntityActionRequest<UserPreferenceKeysArguments>`. |
-| `SendTestNotification` | `[ApiAction("me/test-notification", MemberOnly = true)]`; body `{ channel }`. |
+| `GetPreferences` | `[ApiAction("preferences/get", Action = "Preferences", Idempotent = true, Mutation = false)]`; `users/preferences/get`; body `{ userId }`, answering `UserPreferencesResult`. |
+| `SetPreferences`, `DeletePreferences` | `[EntityAction("preferences/set", Action = "Preferences", SingleTarget = true)]`, `[EntityAction("preferences/delete", Action = "Preferences", SingleTarget = true)]`; `users/preferences/set`, `users/preferences/delete`, bodies `IdRequest<UserPreferencesArguments>` and `IdRequest<UserPreferenceKeysArguments>`, answering the method's `UserPreferencesResult`. |
+| `SendTestNotification` | `[ApiAction("me/test-notification", MemberOnly = true)]`; `users/me/test-notification`; body `{ channel }`, a channel key of spec 0020 §4.1's registry, answering `TestNotificationResult`. |
 
 Every other operation (`query`, `get`, `get-by-ids`, `save`, `delete`, `delete-by-query`,
 `activate`, `deactivate`, the Excel operations of spec 0018 §1.2) is the standard projection of
@@ -308,10 +323,11 @@ spec 0014 over the stack descriptor; this service adds hooks, never operations. 
 
 ### 3.2 Hooks
 
-- **`BespokeGrant(action, context)`** returns `FilterTree.Leaf("Id = me()")` for `Read` and `Save`
-  and `null` otherwise: every connected member can read and save their own row. The evaluator
-  disjoins it with stored grants as an `AccessCriterion` (spec 0013), so a caller with no role grant
-  on `core.User` still gets `Filtered` on their own id.
+- **Own-row read.** `UserAccessCriteria` (§3.1) supplies `Read` with `Id = me()`, so every connected
+  member reads their own row with no role grant; the evaluator disjoins it with stored grants
+  (spec 0013 §5.1). No criterion covers `Save`: the admin `save` is administrative, a member holding
+  no `Save` grant is refused on their own row like any other, and self-service writes go through
+  `me/save` (§3.5).
 - **`PreprocessAsync`.** `Email`, `ContactEmail`: trim, lower-case the domain and the local part
   (the identity server compares case-insensitively), `null` when empty. `Name`, `Name2`, `Name3`,
   `ContactMobile`: trim. `PreferredLanguage`: canonical BCP 47 casing, extensions stripped.
@@ -326,12 +342,6 @@ spec 0014 over the stack descriptor; this service adds hooks, never operations. 
 | `PreferredTimeZone` is `null` or resolvable by `TimeZoneInfo.TryFindSystemTimeZoneById` | `Users.TimeZoneUnknown` (`PreferredTimeZone`) |
 | `ContactEmail` is `null` or a valid address (`MailAddress` parse, one `@`) | `Users.ContactEmailInvalid` (`ContactEmail`) |
 | `ContactMobile` is `null` or E.164 (`^\+[1-9][0-9]{6,14}$`) | `Users.MobileInvalid` (`ContactMobile`) |
-| A save whose `Save` decision on `core.User` is satisfied only by the bespoke criterion (every matching grant a `BespokeAccessGrant`) changes only the self-editable columns `UserService` lists (`Name`, `Name2`, `Name3`, `ImageId`, `SignatureId`, `PreferredLanguage`, `PreferredCalendar`, `PreferredTimeZone`, `Gender`, `ContactEmail`, `ContactMobile`) | `Users.NotSelfEditable` (the changed column) |
-| The same save carries `RoleMemberships = null` or an unchanged set | `Users.NotSelfEditable` (`RoleMemberships`) |
-
-The two rules make the admin `save` endpoint and `me/save` one path for a member who holds only the
-bespoke self grant: the pipeline admits the row (it is visible under `Id = me()`), and the rules
-confine the change to the self-editable columns.
 
 - **`ValidateActionAsync("invite")`** per target row: `Kind = Human` else `Users.NotHuman`;
   `IsActive = 1` else `Users.Inactive`; `State ≠ Joined` else `Users.AlreadyJoined`. Rows the
@@ -364,8 +374,8 @@ call.
    `@tb{b}_t0 : UserInvitationOutcomeList` (one row per invited id; `Subject`, `InviteStatus`,
    `LastInviteError` from the result) beside `@tb{b}_t1 : IdList` holding the same ids, and one
    statement is appended through `context.Batch.Sql` with `SqlOptions(Writes = { core.Users },
-   UserIds = @tb{b}_t1)` so the epilogue bumps each invited user's `PreferencesTag` (the
-   `[BumpsUserVersionTag(Preferences, "Id")]` rule on `core.Users`):
+   UserIds = @tb{b}_t1, ResultSets = 1)` so the epilogue bumps each invited user's
+   `PreferencesTag` (the `[BumpsUserVersionTag(Preferences, "Id")]` rule on `core.Users`):
 
 ```sql
 DECLARE @tb{b}_now datetimeoffset(7) = SYSUTCDATETIME();
@@ -412,9 +422,10 @@ WHERE o.[Subject] IS NOT NULL AND u.[Subject] <> o.[Subject];
      notice already composed for it; the email skips the ids the second result set excluded.
    - The `OnCommitted` callback also calls `ITenantMembershipDirectory.RecordAsync` with
      `(TenantId, Subject, IsActive)` for every row that gained a subject (§3.6).
-4. **Result.** `list<InviteResult>` in request order: `Status` and `Error` from the identity result,
-   `Users.SubjectMismatch` for excluded rows. `tellma.users.invites` counts one per id with
-   `outcome` ∈ `Invited | Reinvited | Active | Error | SubjectMismatch | NotAttempted`.
+4. **Result.** The method awaits `context.Persisted` (spec 0014 §11.2) and reads the second result
+   set, then answers `list<InviteResult>` in request order: `Status` and `Error` from the identity
+   result, `Users.SubjectMismatch` for mismatched rows. `tellma.users.invites` counts one per id
+   with `outcome` ∈ `Invited | Reinvited | Active | Error | SubjectMismatch | NotAttempted`.
 
 **Partial failure.** When the client returns a prefix (§2.3), the action composes the write-back
 for the prefix only and throws `PartialFailureException("partial-failure", Results = the
@@ -444,22 +455,28 @@ then one `GetInvitationDeliveryAsync` call for the subjects of rows with `State 
 ### 3.5 Self-service
 
 - **`Me()`** returns spec 0015's `MeResult` built from `ConnectedUser` (the profile),
-  `IAccessEvaluator.EvaluateAll()` for `AccessSummary`, `ISecurableRegistry.Fingerprint`, the
+  `IAccessEvaluator.EvaluateAllAsync()` for `AccessSummary`, `ISecurableRegistry.Fingerprint`, the
   tenant tags from `BatchOutcome.VersionTags` and the caller's `PreferencesTag` from
   `BatchOutcome.UserVersionTags` (spec 0012 §2.5) as wire tags, and the caller's preference bag,
   read by one `Read` batch that is also the cold prologue's round trip
   (`SELECT [Key], [Value] FROM [core].[UserPreferences] WHERE [UserId] = @tm_UserId`). One round
   trip.
-- **`SaveMe(SaveRequest<TUser>)`.** Exactly one entity (`BadRequestException` otherwise). Runs
-  `SaveAsync` with `SaveOptions(ReturnEntities = true, Details = DetailsRequest(Select =
-  request.Select, Include = request.Include), Concurrency = request.Concurrency, Source = Web)`
-  under the caller's `Save` decision on `core.User`, which this service's `BespokeGrant`
-  (`Id = me()`, §3.2) satisfies for the caller's own row; another id is invisible or unsaveable and
-  fails the pipeline's pre-check. The `Users.NotSelfEditable` rule of §3.2 confines the change to
-  the self-editable columns, the hooks of §3.2 run, and the epilogue bumps the caller's
-  `PreferencesTag` through the entity's declared rule. A changed `ImageId` or `SignatureId` goes
-  through spec 0016's attach rule (its kind, staged by the caller, unexpired). Two round trips
-  (before image, then persist).
+- **`SaveMe(MeSaveRequest)`.** Three round trips. (1) One `Read` batch through `IGuardedBatchRunner`
+  loads the caller's row by id — every mapped column of the leaf, no children — and the caller's bag
+  (`SELECT [Key], [Value] FROM [core].[UserPreferences] WHERE [UserId] = @tm_UserId`); a
+  `request.ModifiedAt` that differs from the row's stamp is `ConcurrencyException` (409) with
+  nothing written. (2) The method copies the request's eleven self-editable members onto the loaded
+  row, leaves `RoleMemberships` null and enlists the row with the invoker's frame: `EnlistSaveAsync`
+  into the injected `IOpenWriteHost`, with `EnlistSaveOptions.Concurrency = Check` on the loaded
+  stamp and a `MapPath` that drops the row index, so `Users.LanguageNotOffered` lands at
+  `preferredLanguage` and `Blob.NotAttachable` at `imageId`. The host's `PersistAsync` runs the
+  validation round — the before image, spec 0016's blob loads, the §3.2 rules and spec 0013's
+  `UserAccessRules<TUser>` — then (3) the persist, whose epilogue bumps the caller's
+  `PreferencesTag` through the entity's rule. The result is `MeResult` composed as `Me` composes it:
+  the profile from the saved row (`EnlistedSave.Rows[0]`, stamped), the bag from the first batch,
+  `AccessSummary` from `EvaluateAllAsync` over the cached set, and the tenant tags and the caller's
+  `PreferencesTag` from `EnlistmentOutcome` (spec 0014 §13.3). A stale stamp that slipped the first
+  check conflicts at persist (409). The self-editable set is `MeSaveRequest`'s member list.
 - **`SetMyPreferences(items)` / `DeleteMyPreferences(keys)`.** Validation in memory: a key matches
   `^[a-z][a-zA-Z0-9]*(\.[a-z][a-zA-Z0-9]*)*$` and is at most 128 characters
   (`Users.PreferenceKeyInvalid`, path `items[i].key`); a value is at most spec 0013's
@@ -475,25 +492,25 @@ then one `GetInvitationDeliveryAsync` call for the subjects of rows with `State 
   THROW 50422, N'Users.TooManyPreferenceKeys', 1;` after the `INSERT`). The result carries the bag
   and the caller's new `PreferencesTag` from `BatchOutcome.UserVersionTags` (spec 0012 §2.5) as a
   wire tag. One round trip.
-- **`SendTestNotification(channel)`.** `Email`: the address is `ContactEmail ?? Email` from
-  `ConnectedUser.Profile` (zero round trips); absent → `NoContactAddress`; otherwise one
+- **`SendTestNotification(channel)`.** `inbox` is `Users.ChannelNotTestable` at `channel` (422); a
+  key the registry does not hold is spec 0020 §4.3's `Notifications.UnknownChannel` at `channel`
+  (422); a registered channel with no `INotificationChannel` answers `NotConfigured`; any other
+  channel answers its `SendTestAsync` (spec 0020 §4.4). `EmailNotificationChannel` sends to
+  `ContactEmail ?? Email` from `ConnectedUser.Profile` (zero round trips) through one
   `IEmailSender.SendAsync` (audience `Transactional`, template `TestNotification` rendered under the
-  caller's `PreferredLanguage` and `PreferredCalendar` with the current tenant time) → `Sent`, or
-  `DependencyUnavailableException("email")` when the sender throws. `Sms` → `NotConfigured` (no
-  transport this release). `tellma.users.test_notifications` counts by `channel` and `outcome`.
-
-- **`GetPreferences(UserPreferencesRequest)`, `SetPreferences`, `DeletePreferences`.** The path
-  for a caller holding `core.User × Preferences` (spec 0013 §3.4): `get` runs one `Read` batch
-  loading the target's `Id` under the grant's filter (an id the filter hides is
-  `NotFoundException`), the target's rows from `core.UserPreferences` and its `PreferencesTag` from
-  `core.UserStamps`, returned as `PreferencesResult`; `set` and `delete` are entity actions over
-  exactly one id (`Users.OnePreferencesTarget` otherwise) whose RT1 loads the target under the same
-  grant and whose method appends the bag statement's halves through `context.Batch` with
-  `Writes = { core.UserPreferences }` and `SqlOptions.UserIds` naming a one-row `IdList` TVP holding
-  the target's id, so RT2's epilogue bumps the target's `PreferencesTag`; they return nothing beyond
-  the projected `EntitiesResult`, the caller re-reading through `get` when it needs the bag. The key
-  grammar, the caps and the per-request checks apply as for `me/preferences/set` (spec 0013 §3.4
-  for what the server does and does not enforce).
+  caller's `PreferredLanguage` and `PreferredCalendar` with the current tenant time).
+  `tellma.users.test_notifications` counts by `channel` (the key) and `outcome`.
+- **`GetPreferences(UserPreferencesRequest)`, `SetPreferences`, `DeletePreferences`.** The path for
+  a caller holding `core.User × Preferences` (spec 0013 §3.4): `get` runs one `Read` batch loading
+  the target's `Id` under the grant's filter (an id the filter hides is `NotFoundException`) and
+  the target's rows from `core.UserPreferences`, answered as `UserPreferencesResult`; `set` and
+  `delete` are single-target entity actions (spec 0014 §2.3) whose RT1 loads the target under the
+  same grant. The method appends the bag statement's halves and the trailing `SELECT [Key], [Value]`
+  for the target through `context.Batch` (`Writes = { core.UserPreferences }`, `SqlOptions.UserIds`
+  naming the one-row `IdList` holding the target's id, `ResultSets = 1`), so RT2's epilogue bumps
+  the target's `PreferencesTag`; it awaits `context.Persisted` (spec 0014 §11.2) and answers
+  `UserPreferencesResult` from that result set. The key grammar, the caps and the per-request checks
+  apply as for `me/preferences/set` (spec 0013 §3.4 for what the server does and does not enforce).
 
 ### 3.6 Post-commit side effects
 
@@ -521,47 +538,36 @@ public sealed class AccessService
 
 `[ApiAction("check", MemberOnly = true, Idempotent = true, Mutation = false)]`. `UserId = null` →
 the caller: `IAccessEvaluator.EvaluateAsync(request.Securables)`. Another user →
-`IAccessEvaluator.RequireAsync("core.Role", "Read", [])` (effective grants are role-editor
-information) and one `Read` round trip asserting the target row is visible under the caller's
-`core.User × Read` decision (absent → `NotFoundException`); then `EvaluateForAsync(userId,
-resource, action)` per securable, in request order, over the one `ForUser` load the scope memoises
-(spec 0013 §5.1): two round trips. Unknown securables are `Denied` with
-`AccessProblemCode.UnknownResource`/`UnknownAction`, never a 400. At most 200 securables per request
-(`LimitExceededException`).
+`IAccessEvaluator.RequireAsync("core.Role", "Read")` (effective grants are role-editor information)
+and one `Read` round trip asserting the target row is visible under the caller's `core.User × Read`
+decision (absent → `NotFoundException`); then `EvaluateForAsync(userId, resource, action)` per
+securable, in request order, over the one `ForUser` load the scope memoises (spec 0013 §5.1): two
+round trips. An unknown securable is `Denied` with `AccessProblemCode.UnknownResource` or
+`UnknownAction`, never a 400. At most 200 securables per request (`LimitExceededException`).
 
 ### 3.8 The `issue-credentials` action
 
-Exactly one id (`Users.OneCredentialsTarget` at `Ids` otherwise); three phases across two round
-trips with no transaction open during the remote call, as for `invite`:
+A `SingleTarget` action (spec 0014 §2.3) in three phases across two round trips, with no transaction
+open during the remote call, as for `invite`:
 
 1. **Load and validate (RT1).** The pipeline loads the row under the caller's `Credentials` grant;
    `ValidateActionAsync("issue-credentials")`: `Kind = Service` else `Users.NotService`;
    `IsActive = 1` else `Users.Inactive`.
-2. **Remote call.** `CreateServiceAccountAsync(Name)`. A failure is
-   `DependencyUnavailableException` with nothing written.
-3. **Write-back (RT2).** One statement through `context.Batch.Sql` with
-   `SqlOptions(Writes = { core.Users }, UserIds = @tb{b}_t0)`, a one-row `IdList`, so the epilogue
-   bumps the row's `PreferencesTag`:
-
-```sql
-DECLARE @tb{b}_now datetimeoffset(7) = SYSUTCDATETIME();
-UPDATE u SET
-    u.[Subject]      = @tb{b}_p0,
-    u.[JoinedAt]     = COALESCE(u.[JoinedAt], @tb{b}_now),
-    u.[ModifiedAt]   = @tb{b}_now,
-    u.[ModifiedById] = @tm_UserId
-FROM [core].[Users] AS u JOIN @tb{b}_t0 AS t ON t.[Id] = u.[Id]
-WHERE u.[Kind] = 'Service';
-```
+2. **Remote call.** `CreateServiceAccountAsync(Name)`. A failure raises per §2.2 with nothing
+   written.
+3. **Write-back (RT2).** `context.Update` (spec 0014 §11.2) with `Subject = clientId` and, when the
+   loaded row's `JoinedAt` is null, `JoinedAt = RequestContext.Now`: one `UpdateSpec<TUser>.ByIds`
+   over the target id under the grant's filter, stamped by the emitter, its `PreferencesTag` bump
+   from the entity's rule.
 
    `OnCommitted`: `ITenantMembershipDirectory.RecordAsync([(tenantId, clientId, true)])` and, when
    the row held a previous subject, `DeleteServiceAccountAsync(previous)`: the old client dies
    after the new one is recorded, so a failure between the two leaves working credentials and the
    action is simply re-run; a delete failure is logged (`ServiceAccountDeleteFailed(userId)`), and
-   the identity server's ownership-scoped delete is the operator's path. A persist failure after
-   the remote call deletes the new client, best effort, before surfacing; an orphaned client is
-   harmless (spec 0013 §7.7).
-4. **Result.** `CredentialsResult(Id, ClientId, ClientSecret)`: the secret crosses once, in this
+   the identity server's ownership-scoped delete is the operator's path. The method awaits
+   `context.Persisted` (spec 0014 §11.2): a faulted persist deletes the new client, best effort,
+   before the exception surfaces; an orphaned client is harmless (spec 0013 §7.7).
+4. **Result.** One `CredentialsResult(Id, ClientId, ClientSecret)`: the secret crosses once, in this
    response, and is never logged or stored; the SPA shows it once. The call is tagged
    `identity.endpoint = service-account`.
 
@@ -607,13 +613,13 @@ and `RoleAccessRules`'s loads in RT1, the persist in RT2 (spec 0013 §7.5).
 `src/module/gl/Tellma.Module.Gl.Abstractions/` (package `Tellma.Module.Gl.Abstractions`, namespace
 `Tellma.Module.Gl`, references `Tellma.Core.Abstractions`) holds the entity, the enum, the resource
 constant, the sample-data seam (`IGlSampleCenters`, `SampleCenter`, `SampleCenterName`, §5.6),
-`GlModule.FeatureName` (what a dependent's `[Requires]` names, spec 0010 §2.1) and the
-validation codes: a distribution's own modules must reference `gl.Centers` without `Tellma.Core`.
+`GlModule.FeatureName` (what a dependent's `[Requires]` names, spec 0010 §2.1) and the validation
+codes: a distribution's own modules must reference `gl.Centers` without `Tellma.Core`.
 `src/module/gl/Tellma.Module.Gl/` (package `Tellma.Module.Gl`, same namespace, references its
-Abstractions) holds the service, the feature, the provisioning step, `DefaultGlSampleCenters` and `Resources/Strings.resx`
-(base name `Tellma.Module.Gl.Resources.Strings`; keys `Gl_Center`, `Gl_Center_Plural`,
-`Gl_Center_Name`, `Gl_Center_Code`, `Gl_Center_CenterType`, `Gl_Center_ParentId`,
-`Gl_Center_IsActive`, `Gl_CenterType_Abstract` … `Gl_CenterType_Sale`,
+Abstractions) holds the service, the feature, the provisioning step, `DefaultGlSampleCenters` and
+`Resources/Strings.resx` (base name `Tellma.Module.Gl.Resources.Strings`; keys `Gl_Center`,
+`Gl_Center_Plural`, `Gl_Center_Name`, `Gl_Center_Code`, `Gl_Center_CenterType`,
+`Gl_Center_ParentId`, `Gl_Center_IsActive`, `Gl_CenterType_Abstract` … `Gl_CenterType_Sale`,
 `Centers_ParentMustBeGrouping`, `Centers_HasChildren`, in English and Arabic; the key grammar of
 spec 0012 §10.1). Both carry a README and the Apache-2.0 header; both build with warnings-as-errors
 and XML docs on every member.
@@ -725,8 +731,8 @@ public class CenterService<TCenter> : EntityService<TCenter> where TCenter : Cen
   emitter's.
 
 Round trips: create 2 (RT1 carries the `Code` key load and, for parents outside the payload, their
-load); update 2; delete 2
-(the `SubtreeCount` load in RT1); activate/deactivate 1 (plus the recount inside the same batch).
+load); update 2; delete 2 (the `SubtreeCount` load in RT1); activate/deactivate 1 (plus the recount
+inside the same batch).
 
 ### 5.5 `GlFeature`
 
@@ -845,22 +851,22 @@ and a membership in role 1. What this spec adds is the second half:
 
 ### 6.2 Composition parity
 
-The Web and Migrator hosts of the reference distribution build the same composition (spec 0010),
-so `UserService`, `IIdentityServerClient`, `INotifier` and `IEmailSender` resolve identically in
-both; the migrator's `IEmailSender` is spec 0007's configured sender with the same sandbox routing.
-The distribution's Development configuration sets `Tellma:Identity:Mode = InProc`,
-`Authority = https://localhost:4200/id` (`{PublicOrigin}/id`, spec 0010 §5.7; 7052 is only the Web
-project's Kestrel port behind the SPA proxy) and the seeded stable secrets; `ClientId` is
-`acme-svc` from the slug (spec 0010 §5.7); a test asserts no secret is tracked (spec 0010's rule).
+The Web and Migrator hosts of the reference distribution both reference `Tellma.Distro.Acme` and
+build its composition (spec 0010 §1.2), so `UserService`, `IIdentityServerClient`, `INotifier` and
+`IEmailSender` resolve identically in both; the migrator's `IEmailSender` is spec 0007's configured
+sender with the same sandbox routing. The distribution's Development configuration sets
+`Tellma:Identity:Mode = InProc`, `Authority = https://localhost:4200/id` (`{PublicOrigin}/id`, spec
+0010 §5.7; 7052 is only the Web project's Kestrel port behind the SPA proxy) and the seeded stable
+secrets; `ClientId` is `acme-svc` from the slug (spec 0010 §5.7); a test asserts no secret is
+tracked (spec 0010's rule).
 
 ### 6.3 From a fresh clone
 
-`dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Migrator -- migrate` creates the
-catalog, provisions tenants 1 (`Acme`, Live) and 2 (`Acme Sandbox`) with `admin@localhost`, runs
-`core.bootstrap-administrator`, `core.settings`, `core.blob-container` and `gl.sample-centers`;
-`dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Web` serves the site; the
+Spec 0010 §6.6 gives the commands (`pnpm install` in the Client project, `migrate`, then the Web
+project). `migrate` provisions tenants 1 and 2 with `admin@localhost` and runs
+`core.bootstrap-administrator`, `core.settings`, `core.blob-container` and `gl.sample-centers`; the
 administrator signs in with the console code, and the centers tree lists the eight sample rows on
-tenant 1. Both commands run unchanged on Windows and Linux.
+tenant 1. The commands run unchanged on Windows and Linux.
 
 ## 7. Reference distribution migrations
 
@@ -912,7 +918,7 @@ or stale path).
 | `users/invitation-status` | 1 | ⌈m/1000⌉ delivery calls (m = invited subjects) |
 | `users/save` (admin) | 2 | — |
 | `users/me` | 1 | — |
-| `users/me/save` | 2 | — |
+| `users/me/save` | 3 | — |
 | `users/me/preferences/set` / `delete` | 1 | — |
 | `users/preferences/get` | 1 | — |
 | `users/preferences/set` / `delete` | 2 | — |
@@ -955,9 +961,9 @@ tagged with `identity.count` and `identity.outcome`.
 
 | Project | Tier | What it pins |
 |---|---|---|
-| `test/core/Tellma.Core.Tests` | unit | `IdentityServerClient` against a fake `HttpMessageHandler`: chunking at 1,000 and input order; token caching, the 60 s margin and single flight (`FakeTimeProvider`); one `401` retry, a second `401` and a token-endpoint `4xx` as `InvalidOperationException`; prefix on a failed chunk and on cancellation; `DependencyUnavailableException` before any chunk on a transport failure or `5xx`; `ExistingOnly` serialised; options validation (`https` outside Development). `UserService` with a fake client and a fake pipeline: invite argument mapping (`Locale` fallback, `DisplayName` in `Locale`'s content language with its `Name` fallback, `ReturnUrl`, sandbox `ExistingOnly`); `InviteResult` order and `SubjectMismatch`; `PartialFailureException` carries the prefix in `Results` and the not-attempted ids in `Failed`; issue-credentials mapping (`DisplayName = Name`, the resource), the secret absent from every log; §3.2 rules including the bespoke-only save restriction; preference key grammar and limits; test-notification outcomes. `AccessService`: self vs other, the `core.Role × Read` requirement, the 200 cap. `taxonomy.json` module consistency. |
+| `test/core/Tellma.Core.Tests` | unit | `IdentityServerClient` against a fake `HttpMessageHandler`: chunking at 1,000 and input order; token caching, the 60 s margin and single flight (`FakeTimeProvider`); one `401` retry, a second `401` and a token-endpoint `4xx` as `InvalidOperationException`; prefix on a failed chunk and on cancellation; `DependencyUnavailableException` before any chunk on a transport failure or `5xx`; `ExistingOnly` serialised; options validation (`https` outside Development). `UserService` with a fake client and a fake pipeline: invite argument mapping (`Locale` fallback, `DisplayName` in `Locale`'s content language with its `Name` fallback, `ReturnUrl`, sandbox `ExistingOnly`); `InviteResult` order and `SubjectMismatch`; `PartialFailureException` carries the prefix in `Results` and the not-attempted ids in `Failed`; issue-credentials mapping (`DisplayName = Name`, the resource), the secret absent from every log; §3.2 rules; `SaveMe`: the request mapped onto the loaded row, `RoleMemberships` left null, a stamp mismatch as 409 with no enlistment; preference key grammar and limits; test-notification: `inbox` refused, an unknown key refused, a channel without a sender `NotConfigured`, the email send. `AccessService`: self vs other, the `core.Role × Read` requirement, the 200 cap. `taxonomy.json` module consistency. |
 | `test/module/gl/Tellma.Module.Gl.Tests` | unit | `CenterService` rules with a fake loader (parent in payload, parent loaded, type change with children, self-parent); delete of a row with children; the default sample tree is acyclic, codes unique, Arabic twins present; the step with a fake `IGlSampleCenters` (a replacement's rows written instead of the default's, an empty list writing nothing, an unknown `ParentCode` refused before any write, names mapped to the tenant's language positions with the first-entry fallback); the package's reference closure excludes `Tellma.Core`; `GlFeature` declares no required feature, `GlModule.FeatureName` is its `Name`, and it contributes exactly four items; spec 0012's resource audit over the GL assemblies. |
-| `test/core/Tellma.Core.IntegrationTests` | `Category=Integration` (LocalDB or Testcontainers) | The write-back statement: state transitions, `InvitedAt` set once, `LastInviteError` cleared by a later success, `SubjectMismatch` rows untouched, `2627` on `UX_Users_Subject` → `Unique` at `Subject`, `PreferencesTag` bumped for invited users only, `ModifiedAt` stamped; `core.user.added` inserted for every outcome with a status and deduplicated; the welcome email queued for each, with the sign-in paragraph for `Invited` and `Reinvited` only; the membership hint recorded; the credentials write-back (`Subject`, `JoinedAt` set once, `PreferencesTag` bumped), rotation deleting the old client after commit, deactivation deleting the client, `Kind` write-once, a `Service` row refused by `invite` and a `Human` row by `issue-credentials`; `SaveMe` with a membership row is 422 and grants nothing; a member's admin `save` on their own row confined to the self-editable columns; the preferences statement (set, delete, the `MaxPreferenceKeys` cap, tag bump, second user unaffected); `gl.Centers` save with in-payload parents in two round trips (the `Code` key load in RT1), the parent-type rule, `Centers.HasChildren`, `delete-with-descendants`, activate/deactivate recounts, `ParentMustBeGrouping` on a type change; every §8.1 budget through `DataAccessScope`; `preferences/get`, `set` and `delete` for another user under the `Preferences` filter, bumping the target's `PreferencesTag`, a hidden target not found; `SignatureId` saved through `me/save` and the user save. |
+| `test/core/Tellma.Core.IntegrationTests` | `Category=Integration` (LocalDB or Testcontainers) | The write-back statement: state transitions, `InvitedAt` set once, `LastInviteError` cleared by a later success, `SubjectMismatch` rows untouched, `2627` on `UX_Users_Subject` → `Unique` at `Subject`, `PreferencesTag` bumped for invited users only, `ModifiedAt` stamped; `core.user.added` inserted for every outcome with a status and deduplicated; the welcome email queued for each, with the sign-in paragraph for `Invited` and `Reinvited` only; the membership hint recorded; the credentials write-back (`Subject`, `JoinedAt` set once, `PreferencesTag` bumped), rotation deleting the old client after commit, deactivation deleting the client, `Kind` write-once, a `Service` row refused by `invite` and a `Human` row by `issue-credentials`; `me/save` by a member holding no `Save` grant changes the request's members only and bumps `PreferencesTag`; the admin `save` of their own row by the same member is 403; a stale `ModifiedAt` on `me/save` is 409; a member holding no role grant reads their own row and no other (`UserAccessCriteria`); the preferences statement (set, delete, the `MaxPreferenceKeys` cap, tag bump, second user unaffected); `gl.Centers` save with in-payload parents in two round trips (the `Code` key load in RT1), the parent-type rule, `Centers.HasChildren`, `delete-with-descendants`, activate/deactivate recounts, `ParentMustBeGrouping` on a type change; every §8.1 budget through `DataAccessScope`; `preferences/get`, `set` and `delete` for another user under the `Preferences` filter, `set` and `delete` answering the target's bag and bumping the target's `PreferencesTag`, a hidden target not found; `SignatureId` saved through `me/save` and the user save. |
 | `test/core/Tellma.Core.IntegrationTests` | `Category=Integration` (the in-proc identity server) | Invite end to end (`Invited`, `Reinvited`, `Active`, a refused account's per-user error), `ExistingOnly` on a sandbox tenant (skipped until spec 0021 §8 ships, the skip reason naming it), delivery status after a real send through the email log sink; a service account created end to end, a `client_credentials` token obtained and the connect prologue resolving the row as `ServiceAccount` through a test-mapped bearer endpoint under spec 0010's `Tellma.Api` policy. |
 | `distributions/acme/test/Tellma.Distro.Acme.IntegrationTests` | `Category=Integration` | `migrate` then `provision` from an empty server creates `gl.Centers`, records `gl.sample-centers` with `Version = 1`, seeds eight centers in Development and none otherwise; `admin@localhost` is `Invited` and becomes `Joined` on first sign-in; a deployed-style `provision --admin-email` invites through the in-proc identity server; a bumped step version re-runs idempotently; model parity (§7); spec 0012's resource audit over the distribution's assemblies. |
 
@@ -971,7 +977,7 @@ no suite here is `Live=true`, since none reaches a third-party account. Fixture:
 - **Projects**: `src/module/gl/Tellma.Module.Gl.Abstractions`, `src/module/gl/Tellma.Module.Gl`,
   `test/module/gl/Tellma.Module.Gl.Tests` (new), `src/core/Tellma.Core.Abstractions`,
   `src/core/Tellma.Core`, `test/core/Tellma.Core.Tests`, `test/core/Tellma.Core.IntegrationTests`,
-  `distributions/acme/src/Tellma.Distro.Acme.Web`,
+  `distributions/acme/src/Tellma.Distro.Acme`, `distributions/acme/src/Tellma.Distro.Acme.Web`,
   `distributions/acme/src/Tellma.Distro.Acme.Migrator`,
   `distributions/acme/test/Tellma.Distro.Acme.IntegrationTests` (grown) — each with a README, XML
   docs on every member, building and testing on Windows and Linux under warnings-as-errors, wired
@@ -993,9 +999,8 @@ no suite here is `Live=true`, since none reaches a third-party account. Fixture:
   `Tellma.Module.<M>` pair, `src/module/gl/`), and the reserved-slug/taxonomy section
   (`taxonomy.json` gains the `Gl` module). Public XML docs and error messages reference no
   `docs/` paths, per repo rule.
-- **Not in scope of done**: the identity-server work itself (spec 0021 — §9's sandbox
-  `ExistingOnly` test stays skipped until the in-proc identity server carries spec 0021 §8); the
-  settings edit API
+- **Not in scope of done**: the identity-server work itself (spec 0021 — §9's sandbox `ExistingOnly`
+  test stays skipped until the in-proc identity server carries spec 0021 §8); the settings edit API
   (spec 0012), Excel over these stacks (spec 0018), the inbox page (spec 0020), the email outbox,
   SMS.
 
@@ -1015,9 +1020,10 @@ The load-bearing decisions, where not already evident above:
    (§2.1, §3.3).
 4. **Delivery state is a live drill-down, never stored** — the identity server owns delivery; the
    tenant stores only the outcome it needs to interpret `NotFound` (§3.4).
-5. **The bespoke self grant covers `Read` and `Save`, and a bespoke-only save is confined by
-   validation** — one save path and one RLS mechanism for self-service, with the admin endpoint
-   made safe by a rule rather than a second grant model (§3.2, §3.5).
+5. **Self-service is an enlisted write of the caller's own row, never a bespoke `Save` grant** —
+   `me/save` loads the row, applies `MeSaveRequest` and enlists it with the invoker's frame
+   (spec 0014 §13.3), so the admin `save` stays administrative and no per-column confinement rule
+   exists (§3.5).
 6. **`RoleService<TRole>` carries no filter logic** — filter validation and the language-version
    stamp are spec 0013's `RoleAccessRules<TRole>`, a component a substituted leaf cannot bypass
    (§4).
@@ -1050,19 +1056,20 @@ The load-bearing decisions, where not already evident above:
    (§3.3) versus the action performing the prefix write-back through a second
    `IGuardedBatchRunner.Run` and then throwing. Chosen: the pipeline rule, one code path for the
    write-back. Flips if spec 0014's action path cannot honour it cheaply.
-3. **Bespoke self grant on `Save` with a validation confinement** (§3.2) versus a `Read`-only
-   bespoke grant and membership-only authorisation for `me/save`. Chosen: the grant, so the witness
-   and the pre-check see an ordinary decision. Flips if the `BespokeAccessGrant` type test in a
-   validator proves fragile.
+3. **`me/save` as an enlisted write** (§3.5) versus a bespoke `Save` grant confined by a validation
+   rule. Chosen: the enlisted write — one authority model, no grant-kind test. Flips if a
+   distribution needs a leaf's extra columns self-editable, which `MeSaveRequest` does not carry;
+   until then such a distribution adds its own `[ApiAction]`.
 4. **`RoleMemberships` single-owned by `User`, members as a read-only role extra** (§4) versus
    dual ownership with cross-owner stamp bumps. Chosen: single ownership — a simpler emitter and
    no stale-owner deletion race. Flips if admins reject "add members" as a bulk user save.
 5. **Weak rows carry no audit columns** (§4; `Permissions`, `RoleMemberships` are spec 0013's)
    versus `ModifiedById` on the two security children. Chosen: none — the owner's stamp plus the
    child's period answer "who changed this". Flips on an auditor requirement for a per-row actor.
-6. **`Gender` kept on `core.Users`** (§3.3) versus dropping it and sending no gender to the
-   identity server. Chosen: kept — inflecting invitation grammars need it. Flips if the identity
-   server adopts neutral templates.
+6. **`Gender` kept on `core.Users`** (§3.3) versus dropping it and sending no gender to the identity
+   server. Chosen: kept — for the invitation's grammar and for the SPA's gender-inflected strings
+   about the current user through `UserProfileView` (spec 0015 §3.4). Flips if both the identity
+   server's templates and the SPA's strings go neutral.
 7. **`ExistingOnly` as a spec 0021 amendment** (§2.1) versus refusing invites on sandboxes
    outright. Chosen: the amendment. Flips if the identity server cannot ship it before this spec
    is implemented, in which case sandbox invites return `Users.SandboxRequiresExistingIdentity`

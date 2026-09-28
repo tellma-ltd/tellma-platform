@@ -41,9 +41,10 @@ schedule notifications through the same `INotifier`, and its `core.notification-
 runs the retention handler this spec ships. Spec 0010 defines the listeners the hub implements and
 the route group the hub is mapped on; spec 0015 maps it.
 
-Deliberately left to later specs: the `email` channel's sender (the outbox spec, behind the channel
-seam of §4.4), push channels and their device subscriptions, a cross-instance nudge over the hub, a
-rendered `Title` column, and the reserved MCP tool `tellma_notifications`.
+Deliberately left to later specs: the `email` channel's delivery (the outbox spec, behind the
+channel seam of §4.4; the channel's test send is spec 0017's), push channels and their device
+subscriptions, a cross-instance nudge over the hub, a rendered `Title` column, and the reserved MCP
+tool `tellma_notifications`.
 
 ## Goals / Non-goals
 
@@ -55,9 +56,9 @@ rendered `Title` column, and the reserved MCP tool `tellma_notifications`.
   mute and duplicate predicates inside the statement (a duplicate suppressed or replaced in
   place), ids reserved inside the statement, and the `inbox.changed` event published after
   commit; `NotifyAsync` for callers with no batch.
-- Ship the channel registry with `inbox` and `email`, the channel seam a sender implements,
-  `core.NotificationPreferences`, its self-service `get`/`save` operations, the
-  `Notifications.CannotMute` rule and the `PreferencesTag` bump.
+- Ship the channel registry with `inbox` and `email`, the channel seam a sender implements with its
+  test send (`TestNotificationResult`), `core.NotificationPreferences`, its self-service
+  `get`/`save` operations, the `Notifications.CannotMute` rule and the `PreferencesTag` bump.
 - Ship the inbox: `InboxSeenAt`, `inbox/summary` with capped counts and the latest ten,
   `inbox/seen`, `inbox/read`, `inbox/read-all`, and the notifications page as the standard query
   over `core.Notification` under the self-scope criterion.
@@ -71,8 +72,8 @@ rendered `Title` column, and the reserved MCP tool `tellma_notifications`.
 
 - **The job machinery, the scheduler and their notifications' triggers** — spec 0019; this spec
   only defines the contracts they call and lists their types in the catalogue.
-- **Email delivery** — the outbox spec ships the `email` channel's sender behind §4.4; the channel
-  is registered and its preference editable now, consumed later.
+- **Email delivery** — the outbox spec supplies it behind §4.4; the `email` channel is registered
+  here with an editable preference, and spec 0017 ships its test send (§4.1).
 - **Push channels and device subscriptions** — a later spec, or a distribution, registers them as
   channels (§4.1); nothing is reserved for them here.
 - **The welcome email** — spec 0017 sends it post-commit through `IEmailSender` to every user an
@@ -94,7 +95,7 @@ rendered `Title` column, and the reserved MCP tool `tellma_notifications`.
 | Runtime | `src/core/Tellma.Core/`, namespace `Tellma.Core.Notifications` | `Notifier`, `NotificationStatements`, `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationRenderer`, `InboxService`, `NotificationPreferencesService`, `NotificationAccessCriteria`, `NotificationRetentionHandler`, `NullClientEventPublisher`, the realizers of `NotificationTypeContributionItem`, `NotificationChannelContributionItem` and `ClientEventContributionItem`. No SignalR reference. |
 | Web host | `src/core/Tellma.Core.AspNetCore/`, namespace `Tellma.Core.AspNetCore.Realtime` | `TellmaHub`, `TellmaUserIdProvider`, `HubConnectionTracker`, `SignalRClientEventPublisher`, `TellmaRealtimeOptions`, `RealtimeApplicationName`, `AddTellmaRealtime`. SignalR from the shared framework `Microsoft.AspNetCore.App`; no Azure or Redis package. |
 | Composition | `Tellma.Core.Composition` | `CoreFeature` contributes the `Notification` stack, the two `[ApiRoute]` services, the criteria provider, the Core notification types this spec owns, the two baseline channels, the client events `inbox.changed` and `session.ended`, the retention handler and its built-in schedule. |
-| Reference distribution | `distributions/acme/` (`Tellma.Distro.Acme.Web`) | Composes realtime through `UseAzureDefaults()` (`Tellma.Defaults.Azure`), which carries the `Microsoft.Azure.SignalR` 1.33.1 pin and selects the mode (spec 0010 §1.3); `Program.cs` stays the three platform calls. `Microsoft.AspNetCore.SignalR.StackExchangeRedis` 10.0.11 is pinned by an on-premises host, not by this distribution. |
+| Reference distribution | `distributions/acme/src/Tellma.Distro.Acme.Web/` (`Program.cs`, spec 0010 §1.2) | Composes realtime from the `composeWeb` delegate of `AddTellma` (spec 0010 §5) through `UseAzureWebDefaults()` (`Tellma.Defaults.Azure.AspNetCore`), which carries the `Microsoft.Azure.SignalR` 1.33.1 pin and selects the mode (spec 0010 §1.3). `Microsoft.AspNetCore.SignalR.StackExchangeRedis` 10.0.11 is pinned by an on-premises host, not by this distribution. |
 | Tests | `test/core/Tellma.Core.Tests/Notifications/`, `test/core/Tellma.Core.IntegrationTests/Notifications/`, `test/core/Tellma.Core.AspNetCore.Tests/Realtime/`, `test/core/Tellma.Core.AspNetCore.IntegrationTests/Realtime/` | §12. |
 
 Dependency edges: `Tellma.Core.Abstractions` → `Tellma.Core.Queryex`; `Tellma.Core` →
@@ -462,10 +463,11 @@ key is rejected at startup. `Key` follows the category grammar of §2.3 (`^[a-z]
 most 16 characters; its label is `NotificationChannel_<Key>` in the declaring package's resources.
 `DefaultEnabled` is what a user who saved nothing gets. `CoreFeature` registers the two baseline
 channels of every distribution: `inbox` (`DefaultEnabled = true`), which is the statement of §3.3,
-and `email` (`DefaultEnabled = false`), whose sender the outbox spec ships behind §4.4. A module or
-a distribution registers further channels (`push`, `sms`, `whatsapp`) the same way, each with its
-sender; a distribution hides nothing, because a channel it did not register does not exist on its
-instance.
+and `email` (`DefaultEnabled = false`), whose `INotificationChannel` is spec 0017's
+`EmailNotificationChannel`: it ships the channel's test send alone, and its `Append` appends nothing
+until the outbox spec supplies delivery behind §4.4. A module or a distribution registers further
+channels (`push`, `sms`, `whatsapp`) the same way, each with its sender; a distribution hides
+nothing, because a channel it did not register does not exist on its instance.
 
 ### 4.2 `core.NotificationPreferences`
 
@@ -540,30 +542,42 @@ exists for a removed channel.
 // Tellma.Core.Abstractions.Notifications
 public sealed record NotifyStatement(SqlIdentifier Recipients);   // the insert's recipient rows, as IDataBatch.Tvp returned them
 
+public enum TestNotificationResult { Sent, NoContactAddress, NotConfigured }
+
 public interface INotificationChannel                   // scoped; at most one per registered channel other than inbox
 {
     string Key { get; }
     void Append(IDataBatch batch, NotificationRequest request, NotifyStatement insert);
+    Task<TestNotificationResult> SendTestAsync();       // one test message to the caller through the channel's transport; outside any batch
 }
 ```
 
 `inbox` is the notifier's own statement; every other registered channel delivers through an
-`INotificationChannel`, registered as a scoped service by the feature that registered the
-descriptor (the startup check of §11 verifies the pairing; a channel with no sender stores its
-preference and delivers nothing). After appending a request's insert, `Notify` calls `Append` on
-every channel in registration order, in the same call and on the same batch, so a channel's work
-rides the caller's transaction and costs no round trip. A channel that delivers through a table
-(the outbox spec's `email`) appends its own fixed-text statement under its own ordinal `{c}`, with
+`INotificationChannel`, registered as a scoped service by the feature that registered the descriptor
+(the startup check of §11 verifies the pairing; a channel with no sender stores its preference and
+delivers nothing). After appending a request's insert, `Notify` calls `Append` on every channel in
+registration order, in the same call and on the same batch, so a channel's work rides the caller's
+transaction and costs no round trip. A channel that delivers through a table (the `email` delivery
+the outbox spec supplies) appends its own fixed-text statement under its own ordinal `{c}`, with
 `SqlOptions.Writes` naming its tables, selecting from the insert's recipient rows through the
-identifier it was handed and deciding each recipient itself: the active-user predicate of §3.3,
-its own preference rows — `COALESCE((SELECT [p].[Enabled] FROM [core].[NotificationPreferences]
-AS [p] WHERE [p].[UserId] = [r].[UserId] AND [p].[Type] = @tb{c}_p0 AND [p].[Channel] =
-@tb{c}_p1), @tb{c}_p2) = 1` — and whatever else its transport needs; the inbox's duplicate rule is
-not its concern. A channel that
-delivers through an API call appends a `SELECT` of the same shape, reads its result set after
-execution, and sends from a `batch.OnCommitted` callback, so nothing leaves the process for a
-transaction that did not commit. A channel never raises past the batch: a statement it appends
+identifier it was handed and deciding each recipient itself: the active-user predicate of §3.3, the
+preference predicate below over its own rows, and whatever else its transport needs; the inbox's
+duplicate rule is not its concern.
+
+```sql
+COALESCE((SELECT [p].[Enabled] FROM [core].[NotificationPreferences] AS [p] WHERE [p].[UserId] = [r].[UserId] AND [p].[Type] = @tb{c}_p0 AND [p].[Channel] = @tb{c}_p1), @tb{c}_p2) = 1
+```
+
+A channel that delivers through an API call appends a `SELECT` of the same shape, reads its result
+set after execution, and sends from a `batch.OnCommitted` callback, so nothing leaves the process
+for a transaction that did not commit. A channel never raises past the batch: a statement it appends
 fails the batch like any other statement, and an `OnCommitted` failure is logged.
+
+`SendTestAsync` serves spec 0017 §3.5's `me/test-notification`: it runs outside any batch, resolves
+the caller's address from `ConnectedUser.Profile` (`ContactEmail ?? Email` for `email`,
+`ContactMobile` for an SMS channel), and answers `NoContactAddress` when the profile holds none,
+`NotConfigured` when the channel's transport is not configured on this instance, and `Sent` after
+one send; a transport failure is `DependencyUnavailableException`.
 
 ## 5. The inbox
 
@@ -776,11 +790,12 @@ tenant's connection stays up.
 `services.AddTellmaRealtime(Action<ISignalRServerBuilder>? configure = null)`
 (`Tellma.Core.AspNetCore`) registers the hub, the user id provider, the tracker, the publisher and
 `TellmaRealtimeOptions`; `MapTellma` maps the hub. `AddTellmaAspNetCore` — inside `AddTellma`, after
-`compose` — calls `AddTellmaRealtime()` with no delegate, which never replaces a delegate a composer
-registered earlier; a host selects a mode by calling `AddTellmaRealtime(configure)` on
-`TellmaBuilder.Services` from `compose`. The delegate receives the framework's
-`ISignalRServerBuilder` after `AddSignalR(hubOptions)` has run, so the composing host's own package
-references decide the mode without `Tellma.Core.AspNetCore` referencing either package:
+`compose` and `composeWeb` — calls `AddTellmaRealtime()` with no delegate, which never replaces a
+delegate a composer registered earlier; a host selects a mode by calling
+`AddTellmaRealtime(configure)` on `TellmaBuilder.Services` from the web host's `composeWeb` delegate
+(spec 0010 §5). The delegate receives the framework's `ISignalRServerBuilder` after
+`AddSignalR(hubOptions)` has run, so the composing host's own package references decide the mode
+without `Tellma.Core.AspNetCore` referencing either package:
 
 | Mode | When | Requirements |
 |---|---|---|
@@ -788,7 +803,7 @@ references decide the mode without `Tellma.Core.AspNetCore` referencing either p
 | Redis backplane | on-premises, two or more instances | `AddStackExchangeRedis(connectionString, o => o.Configuration.ChannelPrefix = RedisChannel.Literal(prefix))`; sticky sessions at the load balancer; `prefix` = `DeploymentIdentity.DeploymentId` (spec 0007) so two deployments sharing a Redis never cross |
 | Azure SignalR Service | SaaS; `Azure:SignalR:ConnectionString` present | `AddAzureSignalR(o => { o.ApplicationName = RealtimeApplicationName.From(deployment); o.ClaimsProvider = c => [sub]; o.AccessTokenLifetime = …; o.CloseOnAuthenticationExpiration = true; })`; the hub-only token carries `sub` and nothing else (spec 0003 §7.4); the application name isolates the deployment on a shared service instance (below) |
 
-*Illustration* — the realtime line inside `UseAzureDefaults()` (`Tellma.Defaults.Azure`):
+*Illustration* — the realtime line of `UseAzureWebDefaults()` (`Tellma.Defaults.Azure.AspNetCore`):
 
 ```csharp
 if (tellma.Configuration["Azure:SignalR:ConnectionString"] is not null)
@@ -1000,9 +1015,10 @@ inactive user, and a `fixture.Documents` row to target; the hub tests host `Core
 
 - **Projects**: the `Tellma.Core.Abstractions.Notifications`/`.Realtime` namespaces, the
   `Tellma.Core.Notifications` and `Tellma.Core.AspNetCore.Realtime` runtime namespaces, the four
-  test folders, and the realtime composition inside `UseAzureDefaults()` (`Tellma.Defaults.Azure`)
-  with its `Microsoft.Azure.SignalR` pin — each project with a README, XML docs on every member,
-  building and testing on Windows and Linux under warnings-as-errors, wired into `Tellma.slnx`.
+  test folders, and the realtime composition inside `UseAzureWebDefaults()`
+  (`Tellma.Defaults.Azure.AspNetCore`) with its `Microsoft.Azure.SignalR` pin — each project with a
+  README, XML docs on every member, building and testing on Windows and Linux under
+  warnings-as-errors, wired into `Tellma.slnx`.
 - **Behavior**: §2 table, entity, stack, self-scope, registry and renderer; §3 `INotifier`, the
   insert and the replace; §4 channels and preferences; §5 the inbox; §6 the hub, groups, events,
   publisher, listeners and hosting modes; §7 retention; §8 securables and endpoints; §11 composition
@@ -1014,14 +1030,14 @@ inactive user, and a `fixture.Documents` row to target; the hub tests host `Core
 - **Docs**: ARCHITECTURE.md updated where this spec touches it — the "Library architecture — package
   naming and dependency rules" section (notifications are a namespace inside `Tellma.Core`; the hub
   and the SignalR publisher live in `Tellma.Core.AspNetCore`; the Azure SignalR pin lives in
-  `Tellma.Defaults.Azure` and the Redis pin in the on-premises host), the "Hosting on Azure" section
-  (Redis required only for on-premises multi-instance SignalR; Azure SignalR Service with the
-  hub-only token in SaaS), and the "Observability" section (meter `Tellma.Core` for
+  `Tellma.Defaults.Azure.AspNetCore` and the Redis pin in the on-premises host), the "Hosting on
+  Azure" section (Redis required only for on-premises multi-instance SignalR; Azure SignalR Service
+  with the hub-only token in SaaS), and the "Observability" section (meter `Tellma.Core` for
   `tellma.notifications.*`, `Tellma.Core.AspNetCore` for `tellma.realtime.*`). Public XML docs and
   error messages reference no `docs/` paths, per repo rule.
-- **Not in scope of done**: the `email` channel's sender, push channels, the `Title` column, the
-  cross-instance nudge, `tellma_notifications`, and the descriptors declared by specs 0017, 0018
-  and 0019.
+- **Not in scope of done**: the `email` channel's delivery (the outbox spec's), push channels, the
+  `Title` column, the cross-instance nudge, `tellma_notifications`, and the descriptors declared by
+  specs 0017, 0018 and 0019.
 
 ## Decisions record
 
@@ -1049,7 +1065,7 @@ The load-bearing decisions, where not already evident above:
     per-user, per-subject and per-session addressing for events and closes (§6.2).
 11. **Publishers never see SignalR; the null publisher is the default** — worker hosts and tests
     compose without the web package (§6.4).
-12. **The composing host (directly or through `UseAzureDefaults()`) selects the hosting mode by
+12. **The composing host (directly or through `UseAzureWebDefaults()`) selects the hosting mode by
     delegate** — `Tellma.Core.AspNetCore` references neither Azure SignalR nor Redis; on Azure the
     deployment's application name lets the deployments of one environment share one service
     instance (§6.6).
@@ -1111,7 +1127,7 @@ The load-bearing decisions, where not already evident above:
     broadcast (every user of a large tenant) is needed before a "tenant broadcast" type exists.
 12. **`Notification` stack is `Query | Details` with no Excel operations** (§2.2). Alternative:
     include `Export` so a user can export their notifications. Flips on the first request for it.
-13. **The composing host (directly or through `UseAzureDefaults()`) selects the hosting mode by
+13. **The composing host (directly or through `UseAzureWebDefaults()`) selects the hosting mode by
     delegate, and startup fails when the Azure connection string is present without it** (§6.6).
     Alternative: `Tellma.Core.AspNetCore` references `Microsoft.Azure.SignalR` and selects
     automatically. Flips if every host ends up writing the same two lines.

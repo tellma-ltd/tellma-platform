@@ -165,9 +165,10 @@ tellma-platform/
 ├── distributions/                       # Phase-1 distributions, each in distribution-repo shape (see Rollout & Phasing)
 │   └── acme/                            # the reference distribution: a fictional customer, slug `acme`, the platform's smoke deployment
 │       ├── src/
-│       │   ├── Tellma.Distro.Acme.Web/          # ASP.NET host; Entities/, Services/, Endpoints/; tracked launchSettings.json
+│       │   ├── Tellma.Distro.Acme.Web/          # ASP.NET host → Tellma.Distro.Acme + the host adapters; Program.cs, Endpoints/, wwwroot/; tracked launchSettings.json
+│       │   ├── Tellma.Distro.Acme/              # class library — the composition both hosts reference: AcmeComposition.cs, Entities/, Services/
 │       │   ├── Tellma.Distro.Acme.Client/       # the Angular application — esproj (JavaScript SDK); proxy.conf.js, aspnetcore-https.js
-│       │   └── Tellma.Distro.Acme.Migrator/     # console host → the Web project + Tellma.Core.Migrator; owns Migrations/
+│       │   └── Tellma.Distro.Acme.Migrator/     # console host → Tellma.Distro.Acme + Tellma.Core.Migrator; owns Migrations/
 │       └── test/
 │           ├── Tellma.Distro.Acme.Web.Tests/
 │           ├── Tellma.Distro.Acme.IntegrationTests/
@@ -253,7 +254,8 @@ tellma-platform/
 │   ├── locale/                          # cultural and presentation primitives
 │   │   └── Tellma.Locale.Ar/
 │   ├── defaults/                        # distribution-layer bundles: one deployment shape's common composition in one call
-│   │   └── Tellma.Defaults.Azure/       # .csproj — UseAzureDefaults(): email (ACS, SendGrid), webhooks, Azure blobs, SkiaSharp imaging, Azure SignalR (docs/specs/0010-distribution-host-and-multitenancy.md)
+│   │   ├── Tellma.Defaults.Azure/       # .csproj — UseAzureDefaults(): email (ACS, SendGrid), webhooks, Azure blobs, SkiaSharp imaging; no ASP.NET package (docs/specs/0010-distribution-host-and-multitenancy.md)
+│   │   └── Tellma.Defaults.Azure.AspNetCore/   # .csproj — UseAzureWebDefaults(): the Azure SignalR backplane; references Tellma.Core.AspNetCore (docs/specs/0010-distribution-host-and-multitenancy.md)
 │   ├── apps/                            # deployable services
 │   │   ├── Tellma.Identity/             # .csproj — OpenIddict + ASP.NET Core Identity engine (Razor Class Library); referenced by Tellma.Identity.Web and by distributions running in-proc
 │   │   ├── Tellma.Identity.Web/         # .csproj — deployable standalone identity App Service (hosts Tellma.Identity)
@@ -322,7 +324,7 @@ Package names follow the pattern below. Square brackets denote optional segments
 | `Tellma.Core` | `Tellma.Core` | Mandatory; every host references it. The one runtime package: data access, the CRUD pipeline, access, settings and cache, users and provisioning, blobs, the Excel codec, jobs and the scheduler, notifications. References `Tellma.Core.Abstractions`, `Tellma.Core.EntityFrameworkCore`, `Microsoft.EntityFrameworkCore.SqlServer` (+ `.HierarchyId`), `Microsoft.Data.SqlClient`, `Cronos`, `DocumentFormat.OpenXml`, `MessageFormat`. |
 | `Tellma.Core.Abstractions` | `Tellma.Core.Abstractions` | Mandatory. Every contract of every Core feature. References `Tellma.Core.Queryex` and nothing else. |
 | `Tellma.Core.Queryex` | `Tellma.Core.Queryex` | The Queryex compiler. Depends on nothing at all — no Tellma package, no third-party package — and is referenced by `Tellma.Core.Abstractions`. |
-| `Tellma.Core.AspNetCore` | `Tellma.Core.AspNetCore` | Core adapter: the ASP.NET Core host (BFF, CSRF, tenant middleware, endpoint projection, problem mapping, blob endpoints, `TellmaHub`, health, OpenAPI). References `Tellma.Core` + the framework, which ships SignalR; the Azure SignalR pin lives in `Tellma.Defaults.Azure`, the Redis backplane pin in the on-premises host. |
+| `Tellma.Core.AspNetCore` | `Tellma.Core.AspNetCore` | Core adapter: the ASP.NET Core host (BFF, CSRF, tenant middleware, endpoint projection, problem mapping, blob endpoints, `TellmaHub`, health, OpenAPI). References `Tellma.Core` + the framework, which ships SignalR; the Azure SignalR pin lives in `Tellma.Defaults.Azure.AspNetCore`, the Redis backplane pin in the on-premises host. |
 | `Tellma.Core.Mcp` | `Tellma.Core.Mcp` | Core adapter: the Tellma Tenant MCP server. References `Tellma.Core.AspNetCore` + `ModelContextProtocol.AspNetCore`; separate so air-gapped distributions can omit it. |
 | `Tellma.Core.Migrator` | `Tellma.Core.Migrator` | Core adapter: `TellmaMigrator`, the platform-owned catalog migrations, and the design-time factory. References `Tellma.Core` + `Tellma.Core.EntityFrameworkCore.Design` + `Microsoft.EntityFrameworkCore.Design`; referenced only by migrator projects. |
 | `Tellma.Core.EntityFrameworkCore` | `Tellma.Core.EntityFrameworkCore` | EF Core extensions (table types/UDTTs): configuration, migration operations, SQL generation, metadata API. Runtime-side — never references the EF `Design` package. |
@@ -332,7 +334,8 @@ Package names follow the pattern below. Square brackets denote optional segments
 | `Tellma.Core.Webhooks` | `Tellma.Core.Webhooks` | Optional Core-layer runtime: the shared HTTP fronting for inbound webhook receivers. |
 | `Tellma.Core.Testing` | `Tellma.Core.Testing` | Test doubles for the Abstractions contracts, executable conformance suites, and test-run diagnostics. Referenced by test projects only. |
 | `Tellma.Core.Analyzers` | `Tellma.Core.Analyzers` | The platform's Roslyn analyzers (`TELLMA0001–0006`). A project, not a referenced package: packed as an analyzer asset of `Tellma.Core.Abstractions`, so every project that references the contract runs them. |
-| `Tellma.Defaults.Azure` | `Tellma.Defaults.Azure` | Distribution-layer bundle: `UseAzureDefaults()` composes email (ACS, SendGrid), webhooks, the Azure blob store, SkiaSharp imaging and the Azure SignalR backplane from configuration. References Core adapters and connectors; referenced by no Core package. An on-premises bundle follows with the first on-premises distribution. |
+| `Tellma.Defaults.Azure` | `Tellma.Defaults.Azure` | Distribution-layer bundle: `UseAzureDefaults()` composes email (ACS, SendGrid), webhooks, the Azure blob store and SkiaSharp imaging from configuration. References `Tellma.Core.Email`, `Tellma.Core.Webhooks`, `Tellma.Core.Imaging` and the ACS, SendGrid and Azure Blobs adapters, and no ASP.NET package, directly or transitively; referenced by no Core package. |
+| `Tellma.Defaults.Azure.AspNetCore` | `Tellma.Defaults.Azure.AspNetCore` | Distribution-layer bundle for the web host: `UseAzureWebDefaults()` selects the Azure SignalR backplane when `Azure:SignalR:ConnectionString` is present. References `Tellma.Core.AspNetCore` + `Microsoft.Azure.SignalR` (the Azure SignalR pin); referenced by the Web project only, from the `composeWeb` delegate of `AddTellma`, and by no Core package. An on-premises pair of bundles follows with the first on-premises distribution. |
 | `Tellma.Module.<m>` | `Tellma.Module.Sales` | `<m>` ∈ Modules registry. |
 | `Tellma.Module.<m>.Abstractions` | `Tellma.Module.Sales.Abstractions` | |
 | `Tellma.Locale.<id>` | `Tellma.Locale.Ar` | `<id>` ad-hoc. |
@@ -381,6 +384,7 @@ flowchart TB
         Connector["Tellma.Connector.&lt;vendor&gt;"]:::connector
         Adapter["Tellma.Connector.&lt;vendor&gt;[.&lt;c&gt;][.&lt;i&gt;][.&lt;m&gt;].Adapter"]:::connector
         Defaults["Tellma.Defaults.Azure"]:::distro
+        DefaultsWeb["Tellma.Defaults.Azure.AspNetCore"]:::distro
 
         Core --> CoreAbs
         CoreAbs --> Queryex
@@ -400,9 +404,9 @@ flowchart TB
         Adapter --> ModuleAbs
         Adapter --> IndustryAbs
         Adapter --> ComplianceAbs
-        Defaults --> CoreAdapters
         Defaults --> CoreOptional
         Defaults --> Adapter
+        DefaultsWeb --> CoreAdapters
     end
 
     subgraph DIST["Tellma Distribution Repo — git-hash versioning"]
@@ -424,11 +428,11 @@ The rules these arrows encode:
 
 5. **Compliance and Connector Adapter target any subset of upstream Abstractions.** A `Tellma.Compliance.<c>` library implements interfaces from any combination of `Core.Abstractions`, `Module.<m>.Abstractions`, and `Industry.<i>.Abstractions`, whichever its overrides need. Same for `Tellma.Connector.<vendor>.Adapter`, which additionally references the raw `Tellma.Connector.<vendor>` it adapts. Each library declares only the Abstractions packages it actually consumes; the diagram shows the union of possible edges, not edges that must all be present in every library.
 
-6. **The optional Core-layer packages are composed, never inherited.** Two rules, doing different work. First, `Tellma.Core.Email`, `Tellma.Core.Webhooks`, `Tellma.Core.Imaging`, and `Tellma.Core.Testing` depend on no Tellma package other than `Tellma.Core.Abstractions` — that is what lets a non-distribution deployable (the identity server, the landing app, a worker) reference the email pipeline and get only the email pipeline, without the CRUD stack, multi-tenancy, settings, and jobs machinery. Second, none of them is referenced by `Tellma.Core`. That rule buys what the first does not, and not by transitive weight: a `Core` → `Email` edge would never reach a host that does not reference Core in the first place. What it would do is let Core bind to `EmailRouter` and its siblings instead of the contracts, and make it expressible for `AddTellma()` to pull in a pipeline whose startup validation then demands `Email:Provider`, `DeploymentIdentity`, and `ISandboxContext` from a distribution that never sends mail — or, for `Tellma.Core.Imaging`, to load Skia's and PDFium's native binaries into every distribution. Every host, distributions included, adds what it wants explicitly. A distribution-layer bundle — `Tellma.Defaults.Azure`, whose `UseAzureDefaults()` composes email, webhooks, the blob store, imaging and the SignalR backplane for an Azure deployment in one call — is that explicit composition packaged for one deployment shape: it sits above the connectors it references, and no Core package references it. `Tellma.Core.Queryex` is deliberately not one of these: `Tellma.Core.Abstractions` references it, because compiling an expression is not a capability a host chooses but the mechanism every read already goes through, and the filter and query types module code authors against are Queryex types. It earns that position by depending on nothing — no Tellma package and no third-party package — so the edge carries no weight and imposes no configuration.
+6. **The optional Core-layer packages are composed, never inherited.** Two rules, doing different work. First, `Tellma.Core.Email`, `Tellma.Core.Webhooks`, `Tellma.Core.Imaging`, and `Tellma.Core.Testing` depend on no Tellma package other than `Tellma.Core.Abstractions` — that is what lets a non-distribution deployable (the identity server, the landing app, a worker) reference the email pipeline and get only the email pipeline, without the CRUD stack, multi-tenancy, settings, and jobs machinery. Second, none of them is referenced by `Tellma.Core`. That rule buys what the first does not, and not by transitive weight: a `Core` → `Email` edge would never reach a host that does not reference Core in the first place. What it would do is let Core bind to `EmailRouter` and its siblings instead of the contracts, and make it expressible for `AddTellma()` to pull in a pipeline whose startup validation then demands `Email:Provider`, `DeploymentIdentity`, and `ISandboxContext` from a distribution that never sends mail — or, for `Tellma.Core.Imaging`, to load Skia's and PDFium's native binaries into every distribution. Every host, distributions included, adds what it wants explicitly. The distribution-layer bundles — `Tellma.Defaults.Azure`, whose `UseAzureDefaults()` composes email, webhooks, the blob store and imaging for an Azure deployment in one call, and `Tellma.Defaults.Azure.AspNetCore`, whose `UseAzureWebDefaults()` composes the web host's SignalR backplane — are that explicit composition packaged for one deployment shape: they sit above the connectors and adapters they reference, and no Core package references either. `Tellma.Core.Queryex` is deliberately not one of these: `Tellma.Core.Abstractions` references it, because compiling an expression is not a capability a host chooses but the mechanism every read already goes through, and the filter and query types module code authors against are Queryex types. It earns that position by depending on nothing — no Tellma package and no third-party package — so the edge carries no weight and imposes no configuration.
 
 7. **One runtime, adapted per host technology.** Everything every distribution ships — data access, the pipeline, access, settings, blobs, Excel, jobs, notifications — is one `Tellma.Core` package (separate runtime packages would buy isolation nobody consumes while multiplying composition calls). `Tellma.Core.AspNetCore`, `Tellma.Core.Mcp`, and `Tellma.Core.Migrator` are its **adapters**: each references `Tellma.Core` and one host framework, and nothing else in the platform references them. Modules reference only Abstractions packages; every host references `Tellma.Core`. Codified in [docs/specs/0010-distribution-host-and-multitenancy.md](docs/specs/0010-distribution-host-and-multitenancy.md).
 
-8. **Distributions may reference any platform package directly,** subject to a minimum of `Tellma.Core`. There is no scaffolding restriction; the distribution is the composition root and pulls in whichever combination of full implementations its tenants need. The reference distribution references `Tellma.Core`, `.AspNetCore`, `.Mcp`, `Tellma.Defaults.Azure` (which brings `.Email`, `.Webhooks`, `.Imaging` and the Azure connectors), `Tellma.Identity` (in-proc), and `Tellma.Module.Gl` (+ `.Abstractions`); its migrator references the Web project and `Tellma.Core.Migrator`.
+8. **Distributions may reference any platform package directly,** subject to a minimum of `Tellma.Core`. There is no scaffolding restriction; the distribution is the composition root and pulls in whichever combination of full implementations its tenants need. The reference distribution's composition library `Tellma.Distro.Acme` references `Tellma.Core`, `Tellma.Defaults.Azure` (which brings `.Email`, `.Webhooks`, `.Imaging` and the Azure connectors) and `Tellma.Module.Gl` (+ `.Abstractions`), and never an ASP.NET package, directly or transitively; its Web project references that library plus `Tellma.Core.AspNetCore`, `Tellma.Core.Mcp`, `Tellma.Defaults.Azure.AspNetCore` and `Tellma.Identity` (in-proc), and its migrator references that library and `Tellma.Core.Migrator`.
 
 #### Per-dimension contents
 
@@ -461,23 +465,25 @@ tellma-<slug>/
 │   ├── main.bicep
 │   └── modules/
 ├── src/
-│   ├── Tellma.Distro.<Slug>.Web/        # ASP.NET host — references Tellma.Core + Tellma.Core.AspNetCore + Tellma.Defaults.Azure (Azure deployments) + opt-in packs, and the Client esproj (ReferenceOutputAssembly=false) with Microsoft.AspNetCore.SpaProxy. Never references Design-time packages.
+│   ├── Tellma.Distro.<Slug>.Web/        # ASP.NET host — references Tellma.Distro.<Slug> + Tellma.Core.AspNetCore + Tellma.Defaults.Azure.AspNetCore (Azure deployments) + any other host adapter it serves (e.g. Tellma.Core.Mcp), and the Client esproj (ReferenceOutputAssembly=false) with Microsoft.AspNetCore.SpaProxy. Never references Design-time packages.
 │   │   ├── Program.cs                   # three platform calls: build, compose, map
-│   │   ├── <Slug>Composition.cs         # Slug + Compose(TellmaBuilder); shared with the migrator
 │   │   ├── Properties/
 │   │   │   ├── launchSettings.template.json    # tracked (target; until the CLI exists launchSettings.json itself is tracked with fixed ports)
 │   │   │   └── launchSettings.json             # gitignored, generated by Tellma.Core.targets
-│   │   ├── Entities/                    # distro-specific entity classes (sealed leaves that inherit from pack defaults; new distro-only entities). See Data Layer.
-│   │   ├── Services/                    # custom services, validators, effects
 │   │   ├── Endpoints/                   # custom endpoints mapped onto the groups the platform returns
 │   │   ├── wwwroot/                     # the published SPA (build output, untracked)
 │   │   └── Tellma.Distro.<Slug>.Web.csproj   # SpaRoot, SpaProxyServerUrl, SpaProxyLaunchCommand
+│   ├── Tellma.Distro.<Slug>/            # class library — the composition both hosts reference. References Tellma.Core + Tellma.Defaults.Azure (Azure deployments) + opt-in packs; never a host adapter, a Design-time package or the Client esproj, and never an ASP.NET package, directly or transitively.
+│   │   ├── <Slug>Composition.cs         # Slug + Compose(TellmaBuilder)
+│   │   ├── Entities/                    # distro-specific entity classes (sealed leaves that inherit from pack defaults; new distro-only entities). See Data Layer.
+│   │   ├── Services/                    # custom services, validators, effects
+│   │   └── Tellma.Distro.<Slug>.csproj
 │   ├── Tellma.Distro.<Slug>.Client/     # the Angular application — an esproj (Microsoft.VisualStudio.JavaScript.Sdk) scaffolded from a current Angular CLI workspace (vitest, pnpm); the Visual Studio template is a guide only
 │   │   ├── src/
 │   │   ├── proxy.conf.js                # forwards every non-SPA prefix (/bff, /api, /id, /signin-oidc, /signout-callback-oidc, /health, /.well-known, /{tenantId}/api|hub|blobs|mcp) to the Web project in Development
 │   │   ├── aspnetcore-https.js          # exports the ASP.NET Core development certificate for the dev server
 │   │   └── Tellma.Distro.<Slug>.Client.esproj
-│   └── Tellma.Distro.<Slug>.Migrator/   # console host — EF design-time target + deploy-time migrator. References the Web project (same composition) + Tellma.Core.Migrator, which carries the Design packages. See Data Layer → Migrations & seeding.
+│   └── Tellma.Distro.<Slug>.Migrator/   # console host — EF design-time target + deploy-time migrator. References Tellma.Distro.<Slug> + Tellma.Core.Migrator, which carries the Design packages; never the Web project or the esproj, so its build needs no Node. See Data Layer → Migrations & seeding.
 │       ├── <Slug>DesignTimeFactory.cs   # derives TellmaDesignTimeDbContextFactory<TellmaDbContext>
 │       ├── Migrations/                  # tenant-model EF Core migrations + ModelSnapshot, generated by `dotnet ef migrations add` and committed to source control.
 │       └── Tellma.Distro.<Slug>.Migrator.csproj
@@ -497,7 +503,7 @@ tellma-<slug>/
 └── Tellma.Distro.<Slug>.slnx
 ```
 
-`Tellma.Distro.<Slug>` is the .NET project and namespace prefix (e.g. `Tellma.Distro.Etpharma.Web`), matching the `Tellma.Distro.<slug>` slot reserved in [Package naming](#package-naming); the `Distro` segment keeps distribution namespaces unambiguously outside the platform's package namespace. `Entities/`, `Services/`, `Endpoints/` name what a distribution adds; there is no `Data/` folder, because a distribution owns no data-access code — the tenant `DbContext` (`TellmaDbContext`) is platform-internal (see [Migration generation](#migration-generation--tenant-model-distro-owned-catalog-platform-owned)). The distribution carries no `Directory.Build.targets` — the heavy MSBuild logic ships inside the `Tellma.Core` NuGet under `build/Tellma.Core.targets` and is auto-imported. Distribution repos own only the configuration layer described in [Logic vs. configuration](#logic-vs-configuration); cross-cutting fixes flow in through dependabot.
+`Tellma.Distro.<Slug>` is the .NET project and namespace prefix — the composition library itself (`Tellma.Distro.Etpharma`) and its hosts (`Tellma.Distro.Etpharma.Web`, `Tellma.Distro.Etpharma.Migrator`) — matching the `Tellma.Distro.<slug>` slot reserved in [Package naming](#package-naming); the `Distro` segment keeps distribution namespaces unambiguously outside the platform's package namespace. `Entities/`, `Services/`, `Endpoints/` name what a distribution adds; there is no `Data/` folder, because a distribution owns no data-access code — the tenant `DbContext` (`TellmaDbContext`) is platform-internal (see [Migration generation](#migration-generation--tenant-model-distro-owned-catalog-platform-owned)). The distribution carries no `Directory.Build.targets` — the heavy MSBuild logic ships inside the `Tellma.Core` NuGet under `build/Tellma.Core.targets` and is auto-imported. Distribution repos own only the configuration layer described in [Logic vs. configuration](#logic-vs-configuration); cross-cutting fixes flow in through dependabot.
 
 In addition to the file layout, every distribution exposes:
 
@@ -646,7 +652,7 @@ The allocator **self-heals from sequence desync** caused by out-of-band inserts 
 
 ### Migrations & seeding — the deploy-time migrator
 
-Migrations are applied by a dedicated console project per distribution — `Tellma.Distro.<Slug>.Migrator`, a one-line host over `Tellma.Core.Migrator`'s `TellmaMigrator` — deployed as its own versioned artifact and invoked on demand, **never run in the web process**. The migrator references the Web project, so the same composition that serves traffic builds the model that generates and applies migrations (a test asserts the two models are byte-identical); it is also the `dotnet ef` design-time target and owns the tenant-model `Migrations/` folder, while the catalog's migrations ship inside `Tellma.Core.Migrator`. This keeps Design-time dependencies (Roslyn, templating) out of the web server's publish output entirely — and because the web app triggers the migrator rather than migrating itself (see *Hosting* below), the web publish needs neither the Design packages nor the migration-apply path at all. (*Applying* migrations needs no Design packages regardless — scaffolded migration files call runtime-side operations and `Migrate()` lives in the runtime relational package; Design is needed only to *scaffold*.)
+Migrations are applied by a dedicated console project per distribution — `Tellma.Distro.<Slug>.Migrator`, a one-line host over `Tellma.Core.Migrator`'s `TellmaMigrator` — deployed as its own versioned artifact and invoked on demand, **never run in the web process**. The migrator and the Web project both reference the distribution's composition library `Tellma.Distro.<Slug>`, so the same composition that serves traffic builds the model that generates and applies migrations (a test asserts the two models are byte-identical) while a migrator build never builds the SPA; the migrator is also the `dotnet ef` design-time target and owns the tenant-model `Migrations/` folder, while the catalog's migrations ship inside `Tellma.Core.Migrator`. This keeps Design-time dependencies (Roslyn, templating) out of the web server's publish output entirely — and because the web app triggers the migrator rather than migrating itself (see *Hosting* below), the web publish needs neither the Design packages nor the migration-apply path at all. (*Applying* migrations needs no Design packages regardless — scaffolded migration files call runtime-side operations and `Migrate()` lives in the runtime relational package; Design is needed only to *scaffold*.)
 
 The migrator has four commands: `migrate` (converge the catalog and every tenant), `provision` (create and provision one tenant, with `--admin-email` / `--admin-subject` naming its first administrator), `set-state` (move a tenant between its five states), and `status`. Per tenant database, a run executes: `migrate` → **provisioning steps** — `ITenantProvisioningStep`s (`Name`, `Order`, `Version`) recorded in `dbo.__TellmaProvisioning`, re-run when a step's `Version` exceeds the recorded one, transactional and idempotent, seeding through the bulk save pipeline so seeded rows draw IDs from the allocator. Provisioning also enables read-committed snapshot isolation and creates the `tellma_app` database role with its grants (see [Open Questions](#open-questions)). The platform step at order 10 bootstraps the first administrator; for a deployed tenant the migrator then invites that administrator after the steps through the `invite` action of `UserService` (`ExecuteActionAsync`, the one entry to an entity action) under the migrator's system scope, before the tenant turns `Active` — the migrator, not the web app, holds the distribution's service-client credentials for the identity server. Contracts in [docs/specs/0010-distribution-host-and-multitenancy.md](docs/specs/0010-distribution-host-and-multitenancy.md); the reference provisioning in [docs/specs/0017-core-and-gl-reference-stacks.md](docs/specs/0017-core-and-gl-reference-stacks.md).
 
