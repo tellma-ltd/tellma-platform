@@ -12,14 +12,14 @@ code or its dependencies evolve.
 Every entity stack the platform projects (spec 0014's `StackDescriptor`) has two spreadsheet
 faces. The **display shape** is the grid as a sheet: the same columns, the same rows, the same
 filter and ordering the user sees on the search page, without paging. The **editable shape** is
-the entity as a rectangular table that round-trips: every editable property, every child
-collection on its own sheet, every foreign key expressed as a natural key of the referenced entity
-rather than a surrogate id, and a hidden manifest that records how the file was written so that
-the file can be re-imported unchanged into the same tenant, another tenant of the same
-distribution, or a distribution that shares the entity schema. This spec ships the codec that
-writes both shapes and reads the editable one back, the four operations that expose them on every
-eligible stack, the natural-key conventions references depend on, and the hand-off of large files
-to background work.
+the entity as rectangular tables that round-trip: every editable property, every child collection
+at every depth on its own sheet with each row linked to its owner row by that row's `Id`, every
+foreign key expressed as a natural key of the referenced entity rather than a surrogate id, and a
+hidden manifest that records how the file was written so that the file can be re-imported
+unchanged into the same tenant, another tenant of the same distribution, or a distribution that
+shares the entity schema. This spec ships the codec that writes both shapes and reads the editable
+one back, the four operations that expose them on every eligible stack, the natural-key
+conventions references depend on, and the hand-off of large files to background work.
 
 The codec is a pure component: it plans workbooks from `EntityMetadata` (spec 0011's
 `EntityMetadata`), encodes cells by property type, decodes cells by the mapped property's type,
@@ -28,8 +28,8 @@ leave it as entity instances handed to spec 0014's `SaveAsync` with `SaveSource 
 security, validation, concurrency, tree maintenance, and version-tag bumps are the pipeline's, not
 the codec's. The codec adds what a spreadsheet user needs and the pipeline cannot know: sheet, row
 and column coordinates on every error, language-aware column mapping, bulk translation of natural
-keys into surrogate ids under the caller's read filter, and in-sheet resolution of parents that are
-new in the same file.
+keys into surrogate ids under the caller's read filter, links between sheets by `Id`, and in-chunk
+binding of self-references to rows that are new in the same file.
 
 The workbook is written and read with the Open XML SDK in forward-only mode, so memory stays flat
 with row count in both directions. Values are encoded by type with text fallbacks where Excel's
@@ -42,9 +42,9 @@ import correctly under an English Gregorian one.
 Files enter and leave through spec 0016's blob storage: an import file is a staged upload named by
 its `FileId`, a background export's artifact is a blob owned by a `core.Exports` row. Background
 work rides spec 0019's `core.Jobs` through two handlers, `core.export` and `core.import`; a large
-import commits in chunks and checkpoints the chunk index inside each chunk's transaction, so a
-re-leased job resumes after the last committed chunk and never re-applies one. Notifications
-(`core.export.ready`, `core.import.completed`, `core.import.failed`) are spec 0020's.
+import commits in chunks and checkpoints its position, the first uncommitted parent row, inside
+each chunk's transaction, so a re-leased job resumes there and never re-applies or skips a row.
+Notifications (`core.export.ready`, `core.import.completed`, `core.import.failed`) are spec 0020's.
 
 Deliberately left to later specs: multi-entity workbooks, CSV, reference dropdowns backed by lookup
 sheets, an errors workbook echoing the upload with an error column, partial success inside a
@@ -62,13 +62,14 @@ synchronous import, composite natural keys, per-row child action columns, and th
   `[ApiAction]`s on every stack with `Export` (the display export) or `Import` (the other three) in
   its operation set, with `export/start`, `export-for-import/start` and `import/start` as the
   background paths of the two exports and the import — zero lines in a distribution.
-- Ship the import semantics: modes `Insert | Update | Upsert`, row identity by natural key or
-  same-source `Id`, hydration of partial sheets, blank-cell and child-sheet rules, bulk
-  natural-to-surrogate resolution under the target's read filter, tree import with in-sheet
-  parents and cycle detection, coordinates on every error, all-or-nothing synchronous imports.
+- Ship the import semantics: modes `Insert | Update | Upsert`, row identity by `Id` (the default on
+  a same-source file) or by natural key, hydration of partial sheets, blank-cell rules, child
+  sheets at every depth linked to their owners by `Id`, bulk natural-to-surrogate resolution under
+  the target's read filter, self-references (tree parents and any other) bound within a chunk with
+  cycle detection, coordinates on every error, all-or-nothing synchronous imports.
 - Ship the `Export` and `Import` entities over `core.Exports`/`core.Imports`, the `core.export`
-  and `core.import` job handlers, chunked and resumable background import, and the synchronous
-  thresholds that decide between the two paths.
+  and `core.import` job handlers, chunked background import resumable from a position checkpoint,
+  and the synchronous thresholds that decide between the two paths.
 - Ship `ExcelOptions` (`Tellma:Excel`), `ExcelErrorCodes`, `ExcelTelemetryNames`, and the test
   corpus that pins every encoding, mapping and resolution rule.
 
@@ -96,20 +97,20 @@ synchronous import, composite natural keys, per-row child action columns, and th
 
 | Piece | Location | Notes |
 |---|---|---|
-| Contracts | `src/core/Tellma.Core.Abstractions/`, namespace `Tellma.Core.Abstractions.Excel` | Requests, plans, outcomes, `ImportError`, `ImportMode`, `ExportKind`, `ExcelQuery`, `IExcelRowSource`, `Export`/`Import` entities, `ExcelOptions`, `ExcelErrorCodes`, `ExcelTelemetryNames`, `ImportException`; `[ExcludeFromExcel]` lives in `Tellma.Core.Abstractions.Entities` (spec 0011). |
-| Codec and operations | `src/core/Tellma.Core/`, namespace `Tellma.Core.Excel` (folder `Excel/`) | `ExcelOperations<TEntity>`, `IExcelExporter`/`IExcelImporter` and their implementations, `ExportService`, `ImportService`, `ExportAccessCriteria`, `ImportAccessCriteria`, the two job handlers. Internal: `WorkbookWriter`, `WorkbookReader`, `SharedStringStore`, `NumberFormatBuilder`, `CellCodec`, `ExportPlanner`, `ImportMapper`, `ImportResolver`, `ImportCheckpointEffect<TEntity>`. |
+| Contracts | `src/core/Tellma.Core.Abstractions/`, namespace `Tellma.Core.Abstractions.Excel` | Requests, plans, outcomes, `ImportError`, `ImportMode`, `ExportKind`, `ExcelQuery`, `ExcelPage`, `IExcelRowSource`, `Export`/`Import` entities, `ExcelOptions`, `ExcelErrorCodes`, `ExcelTelemetryNames`, `ImportException`; `[ExcludeFromExcel]` lives in `Tellma.Core.Abstractions.Entities` (spec 0011). |
+| Codec and operations | `src/core/Tellma.Core/`, namespace `Tellma.Core.Excel` (folder `Excel/`) | `ExcelOperations<TEntity>`, `IExcelExporter`/`IExcelImporter` and their implementations, `ExcelImportSession<TEntity>`, `ImportCheckpointState`, `ExportService`, `ImportService`, `ExportAccessCriteria`, `ImportAccessCriteria`, the two job handlers. Internal: `WorkbookWriter`, `WorkbookReader`, `SharedStringStore`, `NumberFormatBuilder`, `CellCodec`, `ExportPlanner`, `HeaderIndex`, `ImportMapper`, `ImportResolver`. |
 | Package pin | `Directory.Packages.props` | `DocumentFormat.OpenXml` 3.5.1 (MIT), referenced by `Tellma.Core` only. |
 | Unit tests | `test/core/Tellma.Core.Tests/Excel/` | Pure: no database, no network; the workbook corpus under `Excel/Corpus/`. |
 | Integration tests | `test/core/Tellma.Core.IntegrationTests/Excel/` | spec 0011's fixture entities (`test/shared/Tellma.Testing.Entities`); `Category=Integration`. |
 
 Dependency edges: `Tellma.Core.Abstractions` references `Tellma.Core.Queryex` and nothing else;
 `Tellma.Core` references `Tellma.Core.Abstractions`, EF Core, SqlClient, `DocumentFormat.OpenXml`
-and the other runtime pins named by spec 0010. The codec depends on the pipeline (it calls
-`SaveAsync`, `GetByIdsAsync`, `ExcelRowSource`, `IAccessEvaluator`, `IBlobService`, `IJobQueue`, and
-enlists the `Export`/`Import` rows it writes with the `IOpenWriteHost` of the frame it runs in,
-which persists them, spec 0014 §13.3); the pipeline never depends on the codec — it knows only
-`IExcelRowSource` and the stack-companion contribution. No module and no distribution references
-Open XML.
+and the other runtime pins named by spec 0010. The codec depends on the pipeline: it calls
+`SaveAsync`, `GetByIdsAsync`, `ExcelRowSource`, `IAccessEvaluator`, `IBlobService` and `IJobQueue`,
+and `ExcelOperations` enlists the `Import` rows it writes and the handlers the `Export` and `Import`
+rows with the `IOpenWriteHost` of the frame each runs in, which persists them (spec 0014 §13.3).
+The pipeline never depends on the codec — it knows only `IExcelRowSource` and the stack-companion
+contribution. No module and no distribution references Open XML.
 
 **Contract blocks are C# sketches: names and shapes are normative; `using` directives, XML
 documentation, cancellation-token parameters, method bodies and accessibility details are omitted,
@@ -130,8 +131,6 @@ contribution items, realised by `Tellma.Core`:
   (`Action = "Save"`, `Mutation = false`, `Idempotent = true`), `import` (`Action = "Save"`) and
   `import/start` (`Action = "Save"`, `Mutation = true`, `Idempotent = false`) on stacks with
   `Import`.
-- For every stack whose `Operations` include `Import`: `ImportCheckpointEffect<TEntity>` as an
-  `IPersistEffect<TEntity>` (§12.5).
 - `contribution.Entity<Export, ExportService>()` and `contribution.Entity<Import, ImportService>()`
   with `[Stack(Operations = Query | Details | Delete | Enlist)]` on both entities (§12.1).
 - `contribution.Singleton<IAccessCriteriaProvider, ExportAccessCriteria>()` and
@@ -144,10 +143,10 @@ contribution items, realised by `Tellma.Core`:
 - `ExcelOptions` bound from `Tellma:Excel`; `IExcelExporter`, `IExcelImporter` as singletons;
   `ExcelOperations<TEntity>` scoped.
 
-The stack feature's securable contributor registers each `[ApiAction]` pair
-(`<Resource>`, `Read` / `Save`, `FilterRoot = Resource`); the pairs already exist for every stack,
-so Excel adds **no securable** (no `Export` action; review flag 10). The blob kinds `export-file`,
-`import-file`, `import-result` are spec 0016's; the codec names them.
+The stack feature's securable contributor registers each `[ApiAction]` pair (`<Resource>`, `Read` /
+`Save`, `FilterRoot = Resource`); the pairs already exist for every stack, so Excel adds **no
+securable** (no `Export` action; review flag 10). The blob kinds `export-file` and `import-file` are
+spec 0016's; the codec names them.
 
 Startup checks reported into the realised gate (spec 0010): a warning for every
 `[ExcludeFromExcel]` on a server-owned property (redundant); the scratch directory exists and is
@@ -156,14 +155,20 @@ writable. Natural-key checks are spec 0011 §3.2's startup validation (§6.3).
 ### 1.3 Vocabulary
 
 "Display shape" and "editable shape" (`ExportKind = Display | ForImport`); `Upsert`, never
-"merge"; **row key** for the column that identifies a row in `Update`/`Upsert`; **reference key**
-for the natural key a foreign-key column is expressed in; **manifest** for the hidden `_tellma`
-sheet; **stamp** for the concurrency-token column, whose header is `Stamp` and whose value is
-`ModifiedAt`'s wire string exactly as spec 0015 encodes `DateTimeOffset` (ISO 8601,
+"merge"; **parent sheet** for the sheet of the stack's own entity; **child sheet** for the sheet of
+a child collection at any depth; **owner sheet** for the sheet of the rows a child sheet's rows
+belong to (the parent sheet for a first-level collection, the child sheet one level up for a
+grandchild collection); **collection path** for the dotted `ChildCollectionMetadata.Property` names
+that lead from the stack's entity to a collection (`RoleMemberships`, `WidgetParts.WidgetPartNotes`;
+§8.3); **link** for a child row's reference to its owner row by the owner row's `Id` within the
+workbook (§9.5); **row key** for the column that identifies a parent row in `Update`/`Upsert`;
+**reference key** for the target property a reference column is expressed in; **manifest** for the
+hidden `_tellma` sheet; **stamp** for the concurrency-token column, whose header is `Stamp` and
+whose value is `ModifiedAt`'s wire string exactly as spec 0015 encodes `DateTimeOffset` (ISO 8601,
 `yyyy-MM-ddTHH:mm:ss.fffffffzzz`: seven fractional digits and the offset, `+00:00` for a stamp);
-**same-source** for a file whose manifest names the running distribution and the target tenant
-(§5.4); **lookup** for one resolution query per (target entity, key path); **chunk** for the
-unit of commit in a background import.
+**same-source** for a file whose manifest names the running deployment and the target tenant
+(§5.4); **lookup** for one resolution query per (target entity, key path); **chunk** for the unit
+of commit, a run of parent rows with every descendant row (§12.4).
 
 ### 1.4 The two paths and their round trips
 
@@ -173,20 +178,20 @@ its own. Round trips per operation, warm caches:
 
 | Operation | Round trips | What each carries |
 |---|---|---|
-| `export`, display shape, by query or by ids | `⌈rows / MaxTake⌉` reads (1 for `≤ MaxTake` rows) | the grid query, pages of `StackLimits.MaxTake` through spec 0014's row source; ids as a `KeySetRestriction` |
-| `export-for-import`, by ids | parent pages + one query per child collection per page of parent ids | parent flat query, then each child collection restricted by the page's parent ids |
-| `export-for-import`, by query | the same | parent pages first (`Take = cap + 1`), then children by the collected parent ids |
+| `export`, display shape, by query or by ids | `⌈rows / MaxTake⌉` reads (1 for `≤ MaxTake` rows) | the grid query, pages of `StackLimits.MaxTake` through spec 0014's row source, the first page of a by-query export carrying the capped count (§4.2); ids as a `KeySetRestriction` |
+| `export-for-import`, by ids or by query | `⌈parents / MaxTake⌉` reads | each page carries the parent rows and every selected collection at every depth, restricted by the page's captured keys (§5.2); the first page of a by-query export carries the capped parent count; a collection with more than `MaxTake` rows under one page adds follow-up reads |
 | `inspect-import` | 1 | the staged blob's `IBlobService.ResolveAsync` read (spec 0016's `Read` batch), the prologue riding it; the securable check and the plan computed from the file cost no further round trip |
 | `import`, `Insert`, no reference columns | `1 + 2` | the staged blob's `ResolveAsync` read (as for `inspect-import`); RT1 validation context (ids assigned, before images none); persist |
-| `import`, any mode with references, or `Update`/`Upsert` | `1 + L + H + 2` | the blob read, then `L` lookup reads (one per distinct lookup, typically 1–3), `H = 1` hydration through `GetByIdsAsync` (0 for `Insert`), then validation and persist |
-| `export/start`, `export-for-import/start`, `import/start` | 1 (export), 2 (import) | the enlisted insert of the `Export`/`Import` row and the job enqueue in one persist batch (§12.2); the import pays a validation round first, in which spec 0016's validator loads the staged upload's blob row |
-| background export (`core.export`) | `⌈rows / MaxTake⌉ + 1` | the pages as above in the job scope; one validation round for the enlisted update of the `Export` row (§12.3), whose persist rides the partition's completion batch, atomic with the job outcome |
-| background import (`core.import`), `N` chunks | `1 + N × (L + H + 2) + 1` | the blob read once in the job scope, then the same per chunk, the checkpoint riding the chunk's persist transaction; one validation round for the enlisted update of the `Import` row (§12.6), whose persist rides the completion batch |
+| `import`, any mode with references, or `Update`/`Upsert` | `1 + L + H + 2` | the blob read; `L = 1` read for every lookup together (§10.1), 0 when there is none — a same-source `Id` row key with no reference column has none; `H = 1` hydration through `GetByIdsAsync` (0 for `Insert`); validation and persist; each concurrency retry of §11.2 adds 3 |
+| `export/start`, `export-for-import/start` | 1 | the job enqueue through `IJobQueue.EnqueueAsync` (§12.2) |
+| `import/start` | 2 | a validation round in which spec 0016's validator loads the staged upload's blob row, then the enlisted insert of the `Import` row and the job enqueue in one persist batch (§12.2) |
+| background export (`core.export`) | `⌈rows / MaxTake⌉ + 1` | the pages as above in the job scope; one validation round for the enlisted insert of the `Export` row (§12.3), whose persist rides the partition's completion batch, atomic with the job outcome |
+| background import (`core.import`), `N` chunks | `1 + N × (L + H + 2) + 1` | the blob read once in the job scope, then the same per chunk, `L` and `H` per chunk, the checkpoint riding the chunk's persist transaction (§12.5); one validation round for the enlisted update of the `Import` row (§12.6), whose persist rides the completion batch |
 
-No lock or connection is held across file I/O: an export drains each query into a temp file and
-releases the connection before the first byte reaches the response or the blob store; an import
-parses the whole file before its first database call, and the persist transaction opens inside
-the pipeline after every file read has completed.
+No lock or connection is held across file I/O: an export streams the parent sheet into the package
+and spools each child sheet to its own temp file, releasing the connection before the first byte
+reaches the response or the blob store; an import parses the whole file before its first database
+call, and the persist transaction opens inside the pipeline after every file read has completed.
 
 ## 2. The four operations
 
@@ -197,20 +202,22 @@ the pipeline after every file read has completed.
 public enum ImportMode { Insert, Update, Upsert }
 public enum ExportKind { Display, ForImport }
 
-public class ExportSourceRequest                            // either Ids or the clauses, never both
+public class ExportSourceRequest                            // Ids or the clauses (each optional), never both
 {
     public IReadOnlyList<long>? Ids { get; set; }
     public string? Filter { get; set; }
     public string? OrderBy { get; set; }
     public string? Search { get; set; }
     public IReadOnlyDictionary<string, JsonElement>? Arguments { get; set; }
+    public bool IncludeInactive { get; set; } = false;      // as the grid's query: lifts the activatable conjunct
 }
 
 public abstract record ExportSource                         // the service seam's source; one case per request
 {
     public sealed record ByIds(IReadOnlyList<long> Ids, string? OrderBy) : ExportSource;   // rows in OrderBy order, else by Id
     public sealed record ByQuery(
-        string? Filter, string? Search, string? OrderBy, IReadOnlyDictionary<string, JsonElement>? Arguments)
+        string? Filter, string? Search, string? OrderBy, IReadOnlyDictionary<string, JsonElement>? Arguments,
+        bool IncludeInactive)
         : ExportSource;
     public sealed record All : ExportSource;                                                // no clauses: the access filter alone (the importer's lookups, §10.1)
 }
@@ -223,17 +230,22 @@ public sealed class ExportRequest : ExportSourceRequest     // display shape
 
 public sealed class ExportForImportRequest : ExportSourceRequest   // editable shape
 {
-    public IReadOnlyList<string>? Columns { get; set; }   // subset of editable property paths; all when null
-    public bool IncludeChildren { get; set; } = true;
+    public IReadOnlyList<string>? Columns { get; set; }            // subset of the parent's editable column paths; all when null
     // FK property -> target property (CenterId -> Code)
     public IReadOnlyDictionary<string, string> ReferenceKeys { get; set; }
+    public IReadOnlyList<ExportCollection>? Children { get; set; } // every collection at every depth when null; none when empty
 }
+
+// one collection of the parent or of an enclosing collection; members as the request's, for its entity
+public sealed record ExportCollection(
+    string Collection, IReadOnlyList<string>? Columns, IReadOnlyDictionary<string, string>? ReferenceKeys,
+    IReadOnlyList<ExportCollection>? Children);
 
 public sealed record ExportOutcome(Stream Workbook, string FileName, int Rows);
 
-// Column = header text or letter; Path null = ignore
+// Column = the column letter (A, AB) as ImportPlanColumn.Column reports it; Path per §8.3; null = ignore
 public sealed record ImportColumnMapping(string Sheet, string Column, string? Path);
-// "" = parent sheet; null = ignore
+// Collection: "" = the parent sheet; a collection path (§8.3) = that collection's sheet; null = ignore
 public sealed record ImportSheetMapping(string Sheet, string? Collection);
 
 public sealed class InspectImportRequest
@@ -243,23 +255,27 @@ public sealed class InspectImportRequest
     public IReadOnlyList<ImportColumnMapping> ColumnMappings { get; set; } = [];
 }
 
-public sealed class ImportRequest
+public class ImportRequest
 {
     public int FileId { get; set; }             // required
     public ImportMode Mode { get; set; } = ImportMode.Insert;
-    // natural-key path or "Id"; required for Update/Upsert unless the manifest supplies one
+    // natural-key path or "Id"; required for Update/Upsert unless a default resolves (§9.2)
     public string? RowKey { get; set; }
     public IReadOnlyList<ImportSheetMapping> SheetMappings { get; set; } = [];
     public IReadOnlyList<ImportColumnMapping> ColumnMappings { get; set; } = [];
     public bool IgnoreUnmappedColumns { get; set; } = false;
-    public ConcurrencyMode Concurrency { get; set; } = ConcurrencyMode.Check;
-    public bool Atomic { get; set; } = false;   // import/start only: one transaction for the whole file
+    public bool IgnoreSheetStamps { get; set; } = false;
+}
+
+public sealed class StartImportRequest : ImportRequest
+{
+    public bool Atomic { get; set; } = false;   // one transaction for the whole file; ceilings in pass 1 (§12.4)
 }
 
 public sealed record ImportPlan(
     string? Entity, int ManifestVersion, bool ManifestPresent, bool SameSource, bool SchemaFingerprintMatches,
     IReadOnlyList<ImportPlanSheet> Sheets, IReadOnlyList<string> RowKeyCandidates, string? DefaultRowKey,
-    long TotalRows, bool RequiresBackground, IReadOnlyList<ImportError> Warnings);
+    long TotalRows, bool RequiresBackground, bool AtomicAllowed, IReadOnlyList<ImportError> Warnings);
 
 public sealed record ImportPlanSheet(
     string Sheet, string? Collection, ImportSheetStatus Status, long Rows,
@@ -267,9 +283,9 @@ public sealed record ImportPlanSheet(
 
 public sealed record ImportPlanColumn(
     string Column, string Header, string? Path, ImportColumnStatus Status, string? Language,
-    string? ReferenceKey, IReadOnlyList<string> Suggestions);
+    IReadOnlyList<string> Suggestions);
 
-public enum ImportSheetStatus { Parent, Child, Manifest, Ignored }
+public enum ImportSheetStatus { Parent, Child, Manifest, Ignored, Duplicate }
 public enum ImportColumnStatus { Mapped, Unmapped, Ignored, Duplicate, ServerOwned }
 
 // CodedError: spec 0014 §7.3
@@ -282,8 +298,10 @@ public sealed record ImportOutcome(
     int Inserted, int Updated, int ChildrenInserted, int ChildrenUpdated, int ChildrenDeleted,
     IReadOnlyList<(int From, int To)> CommittedRowRanges, IReadOnlyList<ImportError> Warnings);
 
-// 422 validation with coordinates; a member of spec 0014 §14.1's closed set
-public sealed class ImportException(IReadOnlyList<ImportError> Errors, int TotalErrors) : TellmaException;
+// 422 validation with coordinates; a member of spec 0014 §14.1's closed set; CommittedRowRanges empty for a synchronous import
+public sealed class ImportException(
+    IReadOnlyList<ImportError> Errors, int TotalErrors, IReadOnlyList<(int From, int To)> CommittedRowRanges)
+    : TellmaException;
 
 // Tellma.Core.Excel (runtime)
 // stack companion (spec 0014), closed over the leaf
@@ -302,25 +320,29 @@ public sealed class ExcelOperations<TEntity> where TEntity : class
     // [ApiAction] "import", Action = "Save"
     public Task<ImportOutcome> ImportAsync(ImportRequest request);
     // [ApiAction] "import/start", Action = "Save", Mutation = true, Idempotent = false
-    public Task<JobAccepted> StartImportAsync(ImportRequest request);
+    public Task<JobAccepted> StartImportAsync(StartImportRequest request);
 }
 ```
 
 | Member | Meaning |
 |---|---|
-| `ExportSourceRequest.Ids` | An `export` or `export-for-import` request carries `Ids` or the clauses (`Filter`, `OrderBy`, `Search`, `Arguments`), and `ExcelOperations` maps it to exactly one `ExportSource` case: `Ids` to `ByIds` with `OrderBy` beside it, the clauses to `ByQuery`; `Ids` together with `Filter`, `Search` or `Arguments`, or neither `Ids` nor a clause, is `BadRequestException`. With `Ids`: at most `StackLimits.MaxIds`; an empty list is valid for `ExportForImport` and yields the entity's template (headers, validation lists, manifest, no rows) and `BadRequestException` for `Export`. The clauses are the wire `QueryRequest`'s, interpreted by spec 0014's row source exactly as `query` interprets them (`Search` through `SearchFilter`, the access filter conjoined, no activatable conjunct). |
+| `ExportSourceRequest.Ids` | An `export` or `export-for-import` request carries `Ids` or the clauses (`Filter`, `OrderBy`, `Search`, `Arguments`, `IncludeInactive`), and `ExcelOperations` maps it to exactly one `ExportSource` case: `Ids` non-null to `ByIds` with `OrderBy` beside it; otherwise the clauses to `ByQuery`, each optional — with none, only the access filter and the activatable conjunct below apply and rows are in `Id` order (spec 0014 §15), the unfiltered, unsorted grid. `Ids` together with `Filter`, `Search`, `Arguments` or `IncludeInactive = true` is `BadRequestException`. With `Ids`: at most `StackLimits.MaxIds`; an empty list is valid for `ExportForImport` and yields the entity's template (headers, validation lists, manifest, no rows) and `BadRequestException` for `Export`. The clauses are the wire `QueryRequest`'s, interpreted by spec 0014's row source exactly as `query` interprets them (`Search` through `SearchFilter`, the access filter conjoined, and the activatable conjunct unless `IncludeInactive`, as the next row says). |
+| `ExportSourceRequest.IncludeInactive` | As the grid's `query`, for both shapes: `false` (default) joins the activatable conjunct on an activatable stack, so an export by query carries the rows the grid shows; `true` lifts it. `ExcelOperations` passes it to `ByQuery`; a `ByIds` source applies no activatable conjunct, the ids naming the rows (spec 0014 §15). |
 | `ExportSource` | The source `EntityService.ExcelRowSource` takes (spec 0014 §15 composes `ByIds` as a `KeySetRestriction`, `ByQuery` as the clauses, `All` as the access filter alone). `ByIds` and `ByQuery` come from a request; `All` never does: it is the importer's lookup source (§10.1). |
 | `ExportRequest.Select` | The grid's select, verbatim; every item becomes one column. `Headers[i]` (each ≤ 255 characters) names column `i`; a null list derives headers (§4.1). |
 | `ExportForImportRequest.Columns` | Property paths of the parent entity restricted to a subset; `Id`, `Stamp` and the default natural key column are always kept; a path that is not editable is `BadRequestException`. |
 | `ExportForImportRequest.ReferenceKeys` | Per foreign-key property, the target property to express it in; overrides the target's default natural key; any scalar property of the target is allowed (a non-unique one makes import ambiguity possible, §10.3). |
+| `ExportForImportRequest.Children` | The child collections that get a sheet (§5.2): null selects every collection at every depth, `[]` none, a list that subset; a collection left out has no sheet, so a re-import leaves it untouched (§9.5). |
+| `ExportCollection` | One selected collection. `Collection` is a `ChildCollectionMetadata.Property` of its owner — `RoleMemberships`; under `WidgetParts`, `WidgetPartNotes` — and an unknown name or one repeated among siblings is `BadRequestException`. `Columns` and `ReferenceKeys` follow the request's rules for the collection's entity, a path that is not editable being `BadRequestException`; the parent reference, `Id` and the entity's default natural key are always kept. `Children` follows the same null/empty rule one level down. |
 | `ExportOutcome` | The synchronous result: `Workbook` is a readable, seekable stream over the spooled temp file (deleted on dispose), `FileName` per §4.3, `Rows` the data rows written. |
-| `StartExportAsync`, `StartExportForImportAsync`, `StartImportAsync` | The background path of the two exports and the import, taking the same request record as the synchronous method: the `Export`/`Import` row is inserted and its job enqueued (§12.2), and the result is spec 0015's `JobAccepted(JobId, ExportId)` or `JobAccepted(JobId, ImportId)`, which the web layer answers with 202. |
-| `ImportRequest.RowKey` | A property path of the parent entity that is in `EntityMetadata.NaturalKeys`, or `"Id"`; `"Id"` only for same-source files (§9.2). |
-| `ImportRequest.Concurrency` | `Check` (default) compares each hydrated row's expected stamp inside the transaction; `Override` disables the comparison, never the existence check. |
-| `ImportRequest.Atomic` | `import/start` only: the whole file in one transaction, under the ceilings of §2.3 (§12.4). `Atomic = true` on `import` is `BadRequestException`: a synchronous import is one save and atomic already. |
-| `ImportPlan` | The mapping result before any row is decoded beyond the header row and the `dimension` element; `RequiresBackground` is true when the file is above any synchronous limit of §2.3, so only `import/start` can run it. |
-| `ImportOutcome` | The result of `import` and the content of a completed background import's `ResultFileId` blob (§12.6): the counts; `CommittedRowRanges` lists parent-sheet row ranges (1-based Excel rows, header excluded) that committed — one range for a synchronous import, one per committed chunk for a background one; `Warnings` are the mapping warnings (`Excel.Import.UnconfiguredLanguageColumn`) and never errors. |
-| `ImportException` | Thrown by `import` for any error in a synchronous import; `Errors` is capped at `ExcelOptions.MaxReportedErrors` and `TotalErrors` says how many exist; spec 0015 §7.1 maps it to 422 with `sheet`, `row`, `column`, `header` and `property` on each item and `totalErrors` beside them. |
+| `ImportColumnMapping.Column` | The column letter (`A`..`XFD`, case-insensitive), as `ImportPlanColumn.Column` reports it; anything else is `BadRequestException` before the blob is read. Header text never addresses a column: a header may repeat, be blank, or be a valid letter itself (`Id`). |
+| `StartExportAsync`, `StartExportForImportAsync`, `StartImportAsync` | The background path of the two exports and the import. The exports take their synchronous request, enqueue one `core.export` job and return spec 0015's `JobAccepted(JobId, null)`: the handler inserts the `Export` row when it has a file for the row to own (§12.3). `StartImportAsync` takes `StartImportRequest`, the `ImportRequest` plus `Atomic`, inserts the `Import` row and enqueues its job in one persist batch, and returns `JobAccepted(JobId, ImportId)` (§12.2). The web layer answers each with 202. |
+| `ImportRequest.RowKey` | A member of the parent entity's `EntityMetadata.NaturalKeys`, or `"Id"`, which only a same-source file accepts (§9.2); any other value is `BadRequestException` before the blob is read. Null takes the default of §9.2 (`Id` on a same-source file). |
+| `ImportRequest.IgnoreSheetStamps` | `false` (default): on a same-source file with a mapped `Stamp` column, a non-blank cell is the row's expected stamp, so a row edited since the export conflicts; `true`: the import runs as if the sheet carried no stamps — the `ModifiedAt` read at hydration is every row's expected stamp (§9.3, §11.2). Every import saves under `Check`. |
+| `StartImportRequest.Atomic` | The whole file in one transaction. Its ceilings are checked in the handler's pass 1 (§12.4), since the `/start` path reads no file; a breach is `Excel.Import.TooLargeForAtomic` in the job's outcome. |
+| `ImportPlan` | The mapping result before any row is decoded beyond the header row and the `dimension` element. A sheet's `Collection` is its collection path (§8.3, `""` for the parent sheet), `Duplicate` marks two sheets bound to one target (§8.1), and each column's `Path` is its resolved path (§8.3). `RequiresBackground` is true when the file is above any synchronous limit of §2.3, so only `import/start` can run it; `AtomicAllowed` is true when `TotalRows ≤ MaxAtomicImportRows`, the parent rows are within the parent ceiling (§2.3) and `TotalRows ≤ MaxRowsPerSave`, so a client offers `Atomic` only for a file that qualifies. |
+| `ImportOutcome` | The result of `import` and, serialized, `Imports.ResultJson` of a completed background import (§12.6): the counts, the final checkpoint state's for a background import (whole-file across attempts), each `Children*` count summed over every depth; `ChildrenDeleted` counts the existing children the import dropped (§9.5), never the descendants deleted with a dropped child (spec 0011 §8.3); `CommittedRowRanges` lists the Excel rows (1-based, header excluded) of every parent row the import committed, across all its attempts, as maximal runs of consecutive rows (a fully blank row never breaks a run) — one run for a synchronous import; `Warnings` are `Excel.Import.UnconfiguredLanguageColumn` and `Excel.Import.IdentityColumnIgnored` and never errors. |
+| `ImportException` | Thrown by `import` for any error in a synchronous import but the pipeline's `ForbiddenException`, which passes through as 403 (§13), and by `inspect-import` for a mapping that names a sheet, column or path the workbook or entity lacks (§8.1); `Errors` is capped at `ExcelOptions.MaxReportedErrors` and `TotalErrors` says how many exist; `CommittedRowRanges` is empty for a synchronous import and, in a failed background import's `ResultJson`, the checkpoint's runs (§12.6); spec 0015 §7.1 maps it to 422 with `sheet`, `row`, `column`, `header` and `property` on each item and `totalErrors` and `committedRowRanges` beside them. |
 
 ### 2.2 Projection and securables
 
@@ -329,29 +351,36 @@ stack (§1.2); spec 0015 projects them to `POST /{tenantId}/api/web/{resource-se
 where `{method}` is `export`, `export/start`, `export-for-import`, `export-for-import/start`,
 `inspect-import`, `import` or `import/start`. The synchronous exports, `inspect-import` and
 `import` run under the long request timeout and the per-user export/import concurrency limits of
-`TellmaApiOptions`; the three `/start` methods only insert a row and enqueue its job (§12.2) and
-run under the ordinary web timeout. Each method exists when its operation is declared — `export`
-and `export/start` under `Export`, the other five under `Import` — and the securable of each
-(`Read` for the four export methods, `Save` for the three import methods) is evaluated by
-spec 0014's `IApiActionInvoker` before the method runs, so the methods hold no securable check of
-their own. The read decision's filter is applied by the row source; the save decision is enforced
-by the pipeline's two-stage pre-check and post-check on the rows the import hands it (§13).
+`TellmaApiOptions`; the two export `/start` methods only enqueue a job, `import/start` only inserts
+the `Import` row and enqueues its job (§12.2), and the three run under the ordinary web timeout.
+Each method exists when its operation is declared — `export` and `export/start` under `Export`, the
+other five under `Import` — and the securable of each (`Read` for the four export methods, `Save`
+for the three import methods) is evaluated by spec 0014's `IApiActionInvoker` before the method
+runs, so the methods hold no securable check of their own. The read decision's filter is applied
+by the row source; the save decision is enforced by the pipeline's two-stage pre-check and
+post-check on the rows the import hands it (§13).
 
 ### 2.3 Synchronous or background
+
+The **parent ceiling** of a save is the smaller of the stack's `MaxSaveCount` and `MaxIds`:
+hydration reads every updated parent of a save in one `GetByIdsAsync` (§9.3), which refuses more
+than `MaxIds` ids.
 
 | Operation | Synchronous when | Otherwise |
 |---|---|---|
 | `Export` | the query returns `≤ MaxSynchronousExportRows` rows | above the cap: `LimitExceededException("Excel.Export.RowLimitExceeded", rows, cap)` (413) — the export **fails**, never truncates; the message names `export/start`, which runs the same request in the background |
 | `ExportForImport` | the same, counting parent rows; each sheet is additionally capped by `MaxExportRows` | the same; the message names `export-for-import/start` |
 | `export/start`, `export-for-import/start` | never | the job fails a sheet above `MaxExportRows` (§4.2, §12.3) |
-| `Import` | `TotalRows ≤ MaxSynchronousImportRows` (summed over every mapped sheet), the file fits one save (parent rows `≤` the stack's `MaxSaveCount`, `TotalRows ≤ MaxRowsPerSave`) and the file `≤ MaxSynchronousImportFileBytes` | above any limit: `ImportException` with one error `Excel.Import.TooLargeForSynchronous` (arguments `rows`, `maxRows` — the row limit crossed — `bytes`, `maxBytes`), whose message names `import/start`, which runs the same request in the background |
-| `import/start` | never | `Atomic = true` above `MaxAtomicImportRows`, or above the stack's `MaxSaveCount` parents or `MaxRowsPerSave` (§12.4), is `Excel.Import.TooLargeForSynchronous` with `maxRows` = the ceiling exceeded |
+| `Import` | `TotalRows ≤ MaxSynchronousImportRows` (summed over every mapped sheet), the file fits one save (parent rows within the parent ceiling, `TotalRows ≤ MaxRowsPerSave`), the file `≤ MaxSynchronousImportFileBytes` and its parts' uncompressed sum (§7.2) `≤ MaxSynchronousImportUncompressedBytes` | above any limit: `ImportException` with one error `Excel.Import.TooLargeForSynchronous` (arguments `rows`, `maxRows` — the row limit crossed — and `bytes`, `maxBytes` — the byte limit crossed, compressed or uncompressed), whose message names `import/start`, which runs the same request in the background |
+| `import/start` | never | `Atomic = true` above `MaxAtomicImportRows`, parent rows above the parent ceiling or above the stack's `MaxRowsPerSave` fails the job in pass 1 with `Excel.Import.TooLargeForAtomic` (§12.4) |
 
-A `/start` request inserts an `Export` or `Import` row (§12.1) and enqueues the job in the same
-persist batch (§12.2); the result is `JobAccepted`, carrying the job id and the row id (§2.1). A
-synchronous export or import never promotes itself to background: the response shape would change
-mid-request. In either mode a parent with more child rows than its collection's `MaxCount` is
-`Excel.Import.TooManyChildren` as the child sheet is read (§8.1); no background chunk can hold it.
+An export `/start` request enqueues its job alone; `import/start` inserts the `Import` row (§12.1)
+and enqueues its job in the same persist batch (§12.2). The result is `JobAccepted`, carrying the
+job id and, for an import, the row id (§2.1). A synchronous export or import never promotes itself
+to background: the response shape would change mid-request. In either mode an owner row with more
+child rows than its collection's `MaxCount`, or a parent row whose rows at every depth exceed the
+stack's `MaxRowsPerSave`, fails as the child sheets are read (`Excel.Import.TooManyChildren`,
+`Excel.Import.TooManyDescendants`, §8.1); no background chunk can hold it.
 
 ## 3. Cells: encoding, decoding, and localization
 
@@ -427,14 +456,16 @@ parsing of **text** date cells; a serial is a serial in every calendar.
 ### 3.3 Sheet names, headers, labels
 
 Sheet names are scrubbed of `/ \ ? * : [ ]`, trimmed to 31 characters, never `History` (reserved
-by Excel), and made unique with ` (2)`, ` (3)` suffixes. Headers come from `ILabelProvider` in the
-request culture: `EntityLabel(entityType, plural: true)` (spec 0012's `<Schema>_<Entity>_Plural`
-key, `Gl_Center_Plural`, which falls back to the singular label) for sheet names, `PropertyLabel`
-for columns (twins carry ` (E)` / ` (ع)`), `PropertyLabel` of the navigation and of the key joined
-by ` / ` for reference columns (`Center / Code`, `Parent / Code`, `Role / Name (E)`). Duplicate
-headers within a sheet get the technical path in parentheses (`Name (Name2)`). Labels are cached
-per (entity, culture, settings tag); the connect prologue reads the settings tag before the
-operation runs, so labels are never older than the request.
+by Excel), and made unique with ` (2)`, ` (3)` suffixes; a child sheet's name is composed per §5.2.
+Headers come from `ILabelProvider` in the request culture: `EntityLabel(entityType, plural: true)`
+(spec 0012's `<Schema>_<Entity>_Plural` key, `Gl_Center_Plural`, which falls back to the singular
+label) for sheet names, `PropertyLabel` for columns (twins carry ` (E)` / ` (ع)`), `PropertyLabel`
+of the navigation and of the key joined by ` / ` for reference columns (`Center / Code`,
+`Parent / Code`, `Role / Name (E)`). Headers that coincide within a sheet — two properties sharing
+a label — get the technical path in parentheses (`Date (PostingDate)`, `Date (DueDate)`). Labels
+and the header index built from them (§8.1) are cached per (entity, culture, settings tag); the
+connect prologue reads the settings tag before the operation runs, so neither is older than the
+request.
 
 The header row is bold, frozen (`pane ySplit="1"`), and filterable (`autoFilter` over the used
 range); column widths derive from the header length and the type (dates 12, numbers 14, text
@@ -446,12 +477,14 @@ the request culture is right-to-left.
 ### 4.1 The plan
 
 `Export` runs exactly the query `query` would run for the same request — the same `Select`,
-`Filter`, `OrderBy`, `Search`, `Arguments`, the same access composition, `Skip = 0`, no count, no
-ancestors — through `EntityService.ExcelRowSource(source)`, `source` the request's `ExportSource`
-case (§2.1), with an `ExcelQuery` of `RootEntity = Descriptor.Resource`, the select items as
-`SelectPaths`, `OrderBy = request.OrderBy`, no `Restriction` and a `Take` of
-`MaxSynchronousExportRows + 1` (background: `MaxExportRows + 1`), and writes one data sheet plus the
-manifest sheet (`Shape = Display`):
+`Filter`, `OrderBy`, `Search`, `Arguments`, `IncludeInactive`, the same access composition,
+`Skip = 0`, no ancestors — through `EntityService.ExcelRowSource(source)`, `source` the request's
+`ExportSource` case (§2.1), with an `ExcelQuery` of `RootEntity = Descriptor.Resource`, the select
+items as `SelectPaths`, `OrderBy = request.OrderBy`, no `Restriction`, no `Dependents` and
+`Take = cap + 1`, the cap being `MaxSynchronousExportRows` (background: `MaxExportRows`).
+A by-query export also sets `CountCap = cap`, so the first page's `Count` decides the cap before
+any row is spooled (§4.2); a by-ids export sets no `CountCap`, since it holds at most `MaxIds`
+rows. The export writes one data sheet plus the manifest sheet (`Shape = Display`):
 
 - Sheet name: the entity's plural label (§3.3).
 - Header row: `request.Headers[i]` when supplied, else derived — the localized property-label chain
@@ -464,24 +497,28 @@ manifest sheet (`Shape = Display`):
 // Tellma.Core.Abstractions.Excel
 public sealed record ExcelQuery(
     string RootEntity, IReadOnlyList<string> SelectPaths, string? OrderBy, KeySetRestriction? Restriction,
-    IReadOnlyList<object>? RestrictionValues, int? Take);
+    IReadOnlyList<object>? RestrictionValues, int? Take, int? CountCap, IReadOnlyList<ExcelQuery>? Dependents);
+
+public sealed record ExcelPage(
+    IReadOnlyList<IReadOnlyList<object?>> Rows, IReadOnlyList<ExcelPage> Dependents, int? Count);
 
 // implemented by spec 0014 over IDataBatch.Rows with the caller's read filter
 public interface IExcelRowSource
 {
-    IAsyncEnumerable<IReadOnlyList<object?>> Rows(ExcelQuery query);
+    IAsyncEnumerable<ExcelPage> Pages(ExcelQuery query);
+    Task<IReadOnlyList<IReadOnlyList<IReadOnlyList<object?>>>> ReadAsync(IReadOnlyList<ExcelQuery> queries);
 }
 
 // Tellma.Core.Excel (runtime; the codec is pure — it never opens a connection)
 public sealed record ExcelContext(
-    int TenantId, string DistributionSlug, IReadOnlyList<string> TenantLanguages, CultureInfo Culture,
-    ICalendarSystem Calendar, TimeZoneInfo TimeZone, ILabelProvider Labels);
+    int TenantId, string DeploymentId, DateTimeOffset Now, IReadOnlyList<string> TenantLanguages, CultureInfo Culture,
+    ICalendarSystem Calendar, TimeZoneInfo TimeZone, ILabelProvider Labels, ILanguageCatalog Catalog);
 
 public sealed record ExcelColumnSpec(
     string Header, QueryexType Type, int? Scale, IReadOnlyList<string>? Path);
 
 public sealed record ExcelWorkbookPlan(
-    EntityMetadata Entity, ExportKind Shape, IReadOnlyList<ExcelSheetPlan> Sheets,
+    EntityMetadata Entity, ExportKind Shape, string FileName, IReadOnlyList<ExcelSheetPlan> Sheets,
     IReadOnlyDictionary<string, string> Manifest);
 
 public sealed record ExcelSheetPlan(
@@ -501,33 +538,42 @@ public interface IExcelExporter
 | Member | Meaning |
 |---|---|
 | `ExcelQuery` | Flat rows over one root; `RootEntity` is an entity name (spec 0011's `EntityMetadata.Name`, `gl.Center`) — the stack's own, a child collection's, or a lookup target's; `Restriction` names a path and a table source the row source binds from `RestrictionValues` (`IdList`/`BigIdList`/`GuidList`/`StringList`/`DateList` by the path's key type); the row source conjoins the caller's read filter on the root's resource. |
-| `ExcelContext` | Built by `ExcelOperations` from `RequestContext`: `TenantId`, `DistributionSlug = DeploymentIdentity.Application` (spec 0007), `TenantLanguages` from `TenantSettings.Languages` in slot order, `Culture = CultureInfo`, `Calendar = CalendarSystem`, `TimeZone` from the display zone, `Labels = ILabelProvider`. |
+| `ExcelQuery.Dependents` | Child-collection queries (`RootEntity` a child entity) that ride every page of the query they belong to; the row source restricts each to the children of that page's rows through the child entity's `[ParentKey]` and the keys the page captured (spec 0011 §5.4), at any depth; a dependent's `Restriction` and `RestrictionValues` are null. |
+| `ExcelQuery.CountCap` | The capped count the first page of a root query carries (spec 0011's `RowQueryOptions.CountCap`; `cap + 1` means more than the cap); null on dependents. |
+| `ExcelPage` | One page of a root query: its `Rows` in `SelectPaths` order; `Dependents` parallel to the query's, each the complete rows of that collection under this page's rows with its own `Dependents`; `Count` on the first page of a query with `CountCap`, else null. |
+| `Pages` | One Read round trip per page of `StackLimits.MaxTake` root rows, every dependent at every depth riding it; a dependent with more than `MaxTake` rows under one page is completed by follow-up reads before the page is yielded. |
+| `ReadAsync` | Independent unpaged queries (the importer's lookups, §10.1) in one Read round trip; results parallel to the input; a result that reaches `MaxTake` rows is completed by follow-up reads. |
+| `ExcelContext` | Built by `ExcelOperations` from `RequestContext`: `TenantId`, `DeploymentId = DeploymentIdentity.DeploymentId` (spec 0007 §1.6), `Now = RequestContext.Now` (spec 0010 §4.1; in the handlers, the job scope's), `TenantLanguages` from `TenantSettings.Languages` in slot order, `Culture = CultureInfo`, `Calendar = CalendarSystem`, `TimeZone` from the display zone, `Labels = ILabelProvider`, `Catalog = ILanguageCatalog` (spec 0012, for language symbols, §8.1). `Now` is the codec's only instant — the manifest's `ExportedAt` and the file name's timestamp (§4.3); the codec reads no clock. |
 | `ExcelColumnSpec` | One display column: the header, the Queryex result type, the scale for a bare-path decimal, and the path (null for an expression). `ExcelOperations` builds the list from `QueryexEngine.Validate` over the request's select (spec 0008 §2) so the plan exists before the first row. |
-| `ExcelWorkbookPlan` | Immutable; `Write` streams from it. `Manifest` is the key/value header block of §5.3. |
-| `Write` | Writes every sheet in plan order, pulling each sheet's `Query` from `rows`; returns the data rows written; throws `LimitExceededException("Excel.Export.RowLimitExceeded", rows, cap)` when a sheet's query yields more than its cap (the plan's `Take` is `cap + 1`, so the `cap + 1`-th row is the signal). |
+| `ExcelWorkbookPlan` | Immutable; `Write` streams from it. `FileName` is the download name of §4.3; `Manifest` is the key/value header block of §5.3. |
+| `Write` | Writes every sheet in plan order, pulling the parent sheet's `Query` through `rows.Pages` with each child sheet's query among its `Dependents` at its depth (§4.2); returns the data rows written; throws `LimitExceededException("Excel.Export.RowLimitExceeded", rows, cap)` when a by-query root's first-page `Count` is `cap + 1`, before any row is spooled (`ExportForImport` counts parent rows), and when a sheet without a count — a by-ids root, a child sheet — reaches its `cap + 1`-th row. |
 
 ### 4.2 Spooling and caps
 
-Rows drain from the row source into a temp file under `Tellma:ScratchPath` (spec 0010; default the
-operating system's temp directory) opened with delete-on-close; the writer emits the sheet part
-forward-only as rows arrive, so peak memory is one row plus the shared-string-free package
-buffers. The connection is released when the last page completes (spec 0014's row source pages
-through `MaxTake`, one read round trip per page). The file is then copied to the HTTP response
-(synchronous) or uploaded through `IBlobService.StageAsync` (background). The workbook uses
-inline strings (`t="inlineStr"`) throughout: no shared-string table is built, so export memory is
-flat with row count.
+The package is written to a temp file under `Tellma:ScratchPath` (spec 0010; default the operating
+system's temp directory) opened with delete-on-close. The parent sheet streams into the package
+forward-only as each page arrives, and each child sheet spools to a temp file of its own that is
+copied into the package after the parent sheet, so peak memory is one page and its dependents plus
+the package buffers. The connection is released when the last page completes (one read round trip
+per page, §4.1), before the first byte reaches the HTTP response (synchronous) or the blob store
+through `IBlobService.StageAsync` (background). The workbook uses inline strings
+(`t="inlineStr"`) throughout: no shared-string table is built, so export memory is flat with row
+count.
 
 The synchronous cap is `MaxSynchronousExportRows` (default 100,000); a background export is capped
 at `MaxExportRows` (default 1,048,575 — one sheet under a header). Exceeding either fails the
 export with `LimitExceededException("Excel.Export.RowLimitExceeded", rows, cap)`, whose message
-names the sheet — never truncation, never multi-sheet chunking.
+names the sheet — on a by-query export at the first page, before any row is spooled — never by
+truncation, never by multi-sheet chunking.
 
 ### 4.3 File name
 
-`<Entity plural, ASCII-safe> <yyyy-MM-dd HHmm>.xlsx`, the timestamp in the request display zone;
-the ASCII form drops every character outside `[A-Za-z0-9 _-]` and falls back to the entity's
-technical name when the label leaves nothing. Spec 0015 adds the `filename*` UTF-8 form carrying
-the unscrubbed label. A background export stores the same name in `Exports.FileName`.
+The planner sets `ExcelWorkbookPlan.FileName` from `ExcelContext.Now` in the request display zone:
+`<Entity plural, ASCII-safe> <yyyy-MM-dd HHmm>.xlsx`, whose ASCII form drops every character
+outside `[A-Za-z0-9 _-]` and falls back to the entity's technical name when the label leaves
+nothing. `ExportOutcome.FileName` and the export handler's staging (§12.3) read it, and a
+background export stores it in `Exports.FileName`; spec 0015 adds the `filename*` UTF-8 form that
+carries the unscrubbed label.
 
 ## 5. Editable-shape export
 
@@ -535,7 +581,8 @@ the unscrubbed label. A background export stores the same name in `Exports.FileN
 
 `ExportForImport` produces one parent sheet named as in §3.3 with these columns in order:
 
-1. `Id` — number for `int` keys, text for `long` keys.
+1. `Id` — number for `int` keys, text for `long` keys; the row's identity on a same-source file
+   (§5.4) and the link its child sheets' parent references name (§5.2).
 2. `Stamp` — hidden column (`<col hidden="1">`), `@`, the `ModifiedAt` wire string.
 3. Every **editable** scalar property (`Ownership ∈ Editable`, plus `WriteOnce` properties; never
    `Derived`, which the service recomputes on import, nor `DatabaseOwned`) in declaration order,
@@ -560,36 +607,40 @@ target without one is exported by surrogate id (`Center / Id`, number or text by
 manifest marks the column `KeyKind = Surrogate`. A multilingual target key is written in the slot
 of the tenant's primary language and its language recorded in the manifest.
 
-Property columns are queried as bare paths; reference columns as `<Navigation>.<Key>` paths
-(`Parent.Code`), so the parent flat query is one `ExcelQuery` with `RootEntity = entity`,
-`OrderBy = request.OrderBy ?? "Id"`, `Take = cap + 1` and the select paths
-`[Id, ModifiedAt, …properties…, Parent.Code, Center.Code]`, drawn through
-`EntityService.ExcelRowSource(source)` over the request's `ExportSource` case (§4.1).
+Property columns are queried as bare paths and reference columns as their column paths of §8.3
+(`Parent.Code`), so the parent query is one `ExcelQuery` with `RootEntity = entity`,
+`OrderBy = request.OrderBy ?? "Id"`, the `Take` and `CountCap` of §4.1, the select paths
+`[Id, ModifiedAt, …properties…, Parent.Code, Center.Code]` and the child sheets' queries as its
+`Dependents` (§5.2), drawn through `EntityService.ExcelRowSource(source)` over the request's
+`ExportSource` case (§4.1).
 
 ### 5.2 Child sheets
 
-One sheet per child collection (`EntityMetadata.Children`) when `request.IncludeChildren`, named
-`<Parent plural> · <Collection label>` truncated to 31 characters (the manifest maps sheet names,
-so truncation is safe; a post-truncation collision gets a ` (2)` suffix). Columns: the **parent
-reference column** first (`User / Email` — the parent's default natural key, or `User / Id` flagged
-`Surrogate` when the parent has none), then the child's `Id`, then the child's editable properties
-and reference columns as in §5.1. Child rows are grouped under their parent in parent order.
+One sheet per collection path the request selects (`ExportForImportRequest.Children`, §2.1), at
+every depth. Its name joins the parent's plural label and the label of each path segment with ` · `
+(`Widgets · Widget Parts · Widget Part Notes`); over 31 characters, leading segments are dropped
+first (never the last), then the name is trimmed; a collision gets ` (2)` (§3.3). The manifest maps
+sheet names, so this is safe.
 
-Child rows are fetched per page of parent ids: after each parent page is written and its ids
-collected, one `ExcelQuery(RootEntity = child entity, SelectPaths = [<ParentKey>, Id, …],
-OrderBy = "<ParentKey>, Id", Restriction = KeySetRestriction("<ParentKey>", TVP),
-RestrictionValues = the page's parent ids)` per collection — bounded by the parent cap, at most
-`MaxIds` ids per query. The parent reference column's value is taken from the parent row already
-written (the child query does not join the parent), so a child sheet never repeats a lookup.
+Columns: the **parent reference** first, headed `<Owner navigation label> / Id` with path
+`<Navigation>.Id` (`User / Id`, `User.Id`), its value the owner row's `Id` — the link of §9.5; then
+the sheet's own `Id`; then the collection's editable properties and reference columns as in §5.1,
+restricted by its `ExportCollection.Columns` and keyed per its `ReferenceKeys`.
 
-Per-sheet cap: `MaxExportRows` per sheet, children included; exceeding it fails the export with
+Rows: the collection's query (`SelectPaths = [<ParentKey>, Id, …]`, `OrderBy = "<ParentKey>, Id"`)
+is a `Dependent` of its owner's query, riding the parent page's round trip (§4.1); a collection with
+selected collections of its own captures its keys for them (spec 0011 §5.4). Rows are written
+grouped under their owner in that order. The parent reference value is the child row's
+`<ParentKey>`, which is the owner's `Id`, so no lookup is needed.
+
+Per-sheet cap: `MaxExportRows` per sheet at every depth; exceeding it fails the export with
 `Excel.Export.RowLimitExceeded` (§4.2).
 
 ### 5.3 The manifest sheet `_tellma`
 
 A hidden sheet (`state="hidden"`, not `veryHidden`, so a curious user can inspect it), protected
 without a password (`sheetProtection` with `sheet="1"`) against accidental edits, written for both
-shapes. Column A is the key, columns B… the values. Rows 1–14 are the header block; the columns
+shapes. Column A is the key, columns B… the values. Rows 1–13 are the header block; the columns
 table follows after one blank row.
 
 ```
@@ -597,36 +648,38 @@ Row  A                   B…
 1    Tellma.Manifest     1                       -- manifest format version (int)
 2    Shape               Editable | Display
 3    Entity              gl.Center               -- entity name (EntityMetadata.Name)
-4    Distribution        <distribution slug>     -- DeploymentIdentity.Application; part of the same-source gate
+4    Deployment          <deployment id>         -- DeploymentIdentity.DeploymentId; part of the same-source gate
 5    Platform            <Tellma.Core version>
 6    SourceTenantId      <int>                   -- part of the same-source gate
-7    ExportedAt          <ISO 8601, offset zero>
+7    ExportedAt          <ISO 8601, offset zero> -- ExcelContext.Now
 8    Culture             ar-SA
 9    Calendar            uq                      -- CalendarCodes value
 10   TimeZone            Asia/Riyadh             -- the display zone the file was written in
 11   Languages           en, ar                  -- tenant slots 1..3 in order
 12   SchemaFingerprint   <hex>                   -- EntityMetadata.SchemaFingerprint
 13   Truncated           false                   -- reserved; always false (exports fail, never truncate)
-14   RowKey              Code                    -- default row key for Update/Upsert (editable shape; blank when none)
-15   (blank)
-16   Sheet | Collection | Column | Header | Path | Type | Role | Language | ReferenceEntity | ReferenceKey | KeyKind | DateEncoding | DatePattern
-17…  Centers |        | A | Id            | Id        | Numeric | Id        |    |        |      |         |        |
-     Centers |        | B | Stamp         | Stamp     | String  | Stamp     |    |        |      |         |        |
-     Centers |        | C | Code          | Code      | String  | Property  |    |        |      |         |        |
-     Centers |        | D | Name (E)      | Name      | String  | Property  | en |        |      |         |        |
-     Centers |        | E | Name (ع)      | Name2     | String  | Property  | ar |        |      |         |        |
-     Centers |        | F | Parent / Code | ParentId  | String  | Reference |    | gl.Center | Code | Natural |        |
-     Centers |        | G | Center Type   | CenterType| String  | Property  |    |        |      |         |        |
-     Centers |        | H | Opened On     | OpenedOn  | Date    | Property  |    |        |      |         | Serial | dd/mm/yyyy
-     Users · Role Memberships | RoleMemberships | A | User / Email | (parent) | String | ParentReference | | core.User | Email | Natural | |
+14   (blank)
+15   Sheet | Collection | Column | Header | Path | Type | Role | Language | ReferenceEntity | KeyKind | DateEncoding | DatePattern
+16…  Centers |        | A | Id            | Id          | Numeric | Id        |    |           |         |        |
+     Centers |        | B | Stamp         | Stamp       | String  | Stamp     |    |           |         |        |
+     Centers |        | C | Code          | Code        | String  | Property  |    |           |         |        |
+     Centers |        | D | Name (E)      | Name        | String  | Property  | en |           |         |        |
+     Centers |        | E | Name (ع)      | Name        | String  | Property  | ar |           |         |        |
+     Centers |        | F | Parent / Code | Parent.Code | String  | Reference |    | gl.Center | Natural |        |
+     Centers |        | G | Center Type   | CenterType  | String  | Property  |    |           |         |        |
+     Centers |        | H | Opened On     | OpenedOn    | Date    | Property  |    |           |         | Serial | dd/mm/yyyy
+     Users · Role Memberships | RoleMemberships | A | User / Id | User.Id | Numeric | ParentReference | | core.User | | |
+     Widgets · Widget Parts · Widget Part Notes | WidgetParts.WidgetPartNotes | A | Widget Part / Id | WidgetPart.Id | Numeric | ParentReference | | fixture.WidgetPart | | |
 ```
 
-`Role ∈ Id | Stamp | Property | Reference | ParentReference`; `KeyKind ∈ Natural | Surrogate`;
-`DateEncoding ∈ Serial | Text`; `Type` is the column's Queryex type name (spec 0008 §7.1);
-`Language` is the BCP 47 code of a multilingual column's slot; `Path` is the entity property path
-(`(parent)` for the parent reference column). A display-shape manifest records every column with
-`Role = Property` or `Reference` and `Path` = the select item's path (blank for an expression) so
-that feeding a display export back yields precise `ServerOwnedColumn` errors rather than unmapped
+`Role ∈ Id | Stamp | Property | Reference | ParentReference`; `KeyKind ∈ Natural | Surrogate`, set
+on `Reference` rows only; `DateEncoding ∈ Serial | Text`; `Type` is the column's Queryex type name
+(spec 0008 §7.1); `Language` is the BCP 47 code of a multilingual column's slot; `Collection` is the
+collection path (blank for the parent sheet); `Path` is the column path of §8.3, a multilingual
+column or reference key written language-relative (`Name` with `Language = ar`, never `Name2`). A
+display-shape manifest records every column with `Role = Reference` for a `<Navigation>.<Key>` path
+and `Property` otherwise, and `Path` = the select item's path (blank for an expression), so that
+feeding a display export back yields precise `ServerOwnedColumn` errors rather than unmapped
 columns.
 
 The manifest is **untrusted input** on import: every path must exist on the entity and be
@@ -636,11 +689,13 @@ never grants anything (§13).
 
 ### 5.4 The same-source gate
 
-A file is **same-source** when the manifest's `Distribution` equals `DeploymentIdentity.Application`
-and `SourceTenantId` equals the target tenant id. Only same-source files may use `Id` as a row
-key, match children by `Id`, or supply `Stamp`; a sandbox export carries the sandbox's tenant id,
-so an `Id` round trip into the live tenant is refused (`Excel.Import.IdKeyRequiresSameTenant`). The
-gate uses the distribution slug because tenant ids are unique only within a distribution.
+A file is **same-source** when the manifest's `Deployment` equals `DeploymentIdentity.DeploymentId`
+(ordinal) and its `SourceTenantId` equals the target tenant id. Tenant ids are allocated per
+catalog, that is per deployment (spec 0010 §3.2), so a staging deployment's tenant 5 and
+production's tenant 5 are unrelated, and a sandbox tenant has an id of its own. Only a same-source
+file may use `Id` as row identity or supply `Stamp`; on any other file `Id` only links rows between
+sheets (§9.5) and `Stamp` is ignored, each reported with `Excel.Import.IdentityColumnIgnored`
+(§8.1), never silently.
 
 `SchemaFingerprintMatches` (the manifest's fingerprint equals `EntityMetadata.SchemaFingerprint`)
 is informational in the plan; a mismatch changes nothing by itself — mapping proceeds by header
@@ -693,23 +748,24 @@ first entry or null. Core declares `core.User.Email`, `core.Role.Code`, `gl.Cent
 
 - A multilingual group is one natural key named after its primary member; the slot used for a
   file column is chosen per the column's language (§8.2).
-- The **default reference key** of a target is `Target.NaturalKey`; `ExportForImportRequest.
-  ReferenceKeys` and `ImportColumnMapping.Path` (`Center.Region`) override it per column with any
+- The **default reference key** of a target is `Target.NaturalKey`; an export's `ReferenceKeys`
+  (§2.1) and `ImportColumnMapping.Path` (`Center.Region`, §8.3) override it per column with any
   scalar property of the target, unique or not; ambiguity is then `Excel.Import.ReferenceAmbiguous`
   (§10.3).
-- **Row identity** (`ImportRequest.RowKey`) accepts only a member of `EntityMetadata.NaturalKeys`
-  or `Id`. A key cell is rendered and parsed by its property's type like any other cell: a numeric
-  serial number is a number, a date is a date, never text.
-- **Child identity** within a parent uses the child's `NaturalKey` scoped by the parent key; a
-  child without one is identified by `Id` (same-source) or replaced (§9.5).
+- **Row identity** (`ImportRequest.RowKey`) is `Id` or a member of `EntityMetadata.NaturalKeys`,
+  `Id` by default on a same-source file (§9.2). A key cell is rendered and parsed by its property's
+  type like any other cell: a numeric serial number is a number, a date is a date, never text.
+- **Child identity** is within its owner: `Id` on a same-source `Update`/`Upsert` under a hydrated
+  owner, else the child's `NaturalKey`, else the collection is replaced (§9.5).
 
 ### 6.3 Surrogate fallback
 
-A target with no natural key is referenced by its surrogate `Id`, the column flagged
-`KeyKind = Surrogate` in the manifest. Importing such a column into a non-same-source tenant is
-`Excel.Import.SurrogateReferenceFromOtherTenant` at the column (row null) unless the caller remaps
-it through `ColumnMappings`. Spec 0011 §3.2's startup validation warns for a referenced entity
-without a natural key.
+A target with no natural key is referenced by its surrogate `Id` (`Center.Id`, §8.3), the column
+flagged `KeyKind = Surrogate` in the manifest. A `Reference` column of that kind on a file that is
+not same-source (§5.4) is `Excel.Import.SurrogateReferenceFromOtherTenant` at the column (row null)
+unless the caller remaps it through `ColumnMappings`; a parent reference is matched within the
+workbook (§9.5), never looked up, so it never raises it. Spec 0011 §3.2's startup validation warns
+for a referenced entity without a natural key.
 
 ## 7. Import intake and parsing
 
@@ -737,7 +793,7 @@ error at (sheet null, row null):
 | Check | Limit | Code |
 |---|---|---|
 | Compressed size | `min(MaxImportFileBytes, the import-file kind's MaxSize)` — 100 MiB with the defaults of §14.1 and of spec 0016 §2.4's `Attachment` preset; the synchronous byte limit is §2.3's | `Excel.Import.PackageTooLarge` (`bytes`, `max`) |
-| Uncompressed size, sum of part lengths from the zip central directory | `MaxImportUncompressedBytes` (2 GB) | `Excel.Import.PackageTooLarge` |
+| Uncompressed size, sum of part lengths from the zip central directory | `MaxImportUncompressedBytes` (2 GB); the synchronous limit is §2.3's | `Excel.Import.PackageTooLarge` |
 | Any part read past its declared length (counting stream) | the declared length | `Excel.Import.PackageTooLarge` |
 | Package structure: one workbook part, a `[Content_Types].xml`, no external links, no external relationships | — | `Excel.Import.MalformedWorkbook` (`reason`) |
 | XML well-formedness of the parts read | — | `Excel.Import.MalformedWorkbook` |
@@ -748,11 +804,15 @@ from each sheet's `dimension` element, or from a forward count when it is absent
 
 ### 7.3 Shared strings
 
-The shared-string part streams into `SharedStringStore`: in memory up to
-`MaxInMemorySharedStringBytes` (32 MB of UTF-16 text), beyond that an offset index over a temp file
-(`tellma.excel.sst.spilled` incremented). Rich-text runs are flattened at store time. The store is
-the only unbounded part of a user-saved file; bounding it by bytes rather than entries is what
-keeps a web host serving several imports at once.
+The shared-string part streams into `SharedStringStore`. Each entry is charged its UTF-16 text
+bytes plus a fixed 16 bytes against `MaxInMemorySharedStringBytes` (32 MB), so a flood of empty
+entries (`<si/>`) counts like text; beyond the budget the text and a fixed-width offset index both
+spill to a temp file under `Tellma:ScratchPath` (`tellma.excel.sst.spilled` incremented), so
+resident memory stays bounded whatever the entry count. A part with more than
+`MaxSharedStringEntries` entries is `Excel.Import.TooManySharedStrings` (arguments `entries`,
+`max`; sheet and row null). Rich-text runs are flattened at store time; `inspect-import` reads the
+whole part under the same limits. The byte budget and the entry cap are what keep a web host
+serving several imports at once.
 
 ### 7.4 Sheet reading
 
@@ -769,63 +829,114 @@ sequence. Hidden sheets other than `_tellma` are read like any other; a `veryHid
 ### 8.1 The plan
 
 Mapping runs at `inspect-import` and again at `import` time (the plan is not stored; the request
-carries the overrides) and produces an `ImportPlan`:
+carries the overrides) and produces an `ImportPlan`. Before the blob is read, both operations
+refuse with `BadRequestException` the request faults judged against `EntityMetadata` alone: two
+`SheetMappings` for one sheet; two `ColumnMappings` for one (sheet, column); two `SheetMappings`
+mapping to one target (the same collection path, `""` included); a `Collection` that is neither
+`""`, null nor a collection path of the entity (§8.3); a malformed column letter (§2.1); a
+`RowKey` that is neither `"Id"` nor a member of `EntityMetadata.NaturalKeys`. Faults against the
+workbook are the errors of the steps below, thrown as `ImportException` by both operations.
 
-1. **Sheets.** A sheet is matched to the parent entity or a child collection by the manifest's sheet
-   table, else by its name against the entity's plural label and each collection's label in every
-   tenant language and English, else against the technical collection name (`RoleMemberships`).
-   Without a manifest, the first non-hidden sheet is the parent sheet. Unmatched sheets are
-   `Ignored` in the plan, without a warning. `request.SheetMappings` overrides (`Collection = ""`
-   for the parent sheet, `null` to ignore).
+1. **Sheets.** A sheet is matched to the parent entity or a collection path by the manifest's sheet
+   table, else by name: against the generated sheet name of the parent and of every collection
+   path (§5.2's naming, with labels in every tenant language and English), then against the
+   technical collection path (`RoleMemberships`, `WidgetParts.WidgetPartNotes`). Without a
+   manifest, when no sheet matched the parent, the parent sheet is the first non-hidden sheet that
+   matched nothing. Other sheets are `Ignored`, without a warning (`_tellma` is `Manifest`).
+   `request.SheetMappings` overrides (§2.1); a `SheetMappings` or `ColumnMappings` entry naming a
+   sheet the workbook lacks is `Excel.Import.UnknownSheet`. Two sheets bound to one target by any
+   mix of manifest, name and override are both `Duplicate` in the plan and
+   `Excel.Import.DuplicateSheet` (argument `collection`) at both sheets at import — never a first
+   match.
 2. **Columns.** Each header cell is matched, in order: (a) the manifest's column table by header
-   text (exact), yielding the path, the language of a multilingual column and the reference key
-   of a reference column; (b) the header parsed as `<Label>`, `<Label> (<symbol>)`, or
-   `<Navigation label> / <Key label>[ (<symbol>)]`, labels resolved in every tenant language and
-   English through `ILabelProvider` and symbols through `LanguageInfo.Symbol` (spec 0012's
-   `ILanguageCatalog`); (c) the technical path (`Name2`, `Parent.Code`, `CenterId`). A header
-   `Name` without a symbol maps to the primary slot; `Id` and `Stamp` match by technical name.
-3. **Override.** `request.ColumnMappings` (sheet + header text or column letter → path, or → null
-   to ignore) wins over everything.
-4. **Unmapped columns** are errors (`Excel.Import.UnmappedColumn`, with up to three `Suggestions`
-   ranked by label similarity — Damerau-Levenshtein over the lower-cased header against every
-   label and path) unless `request.IgnoreUnmappedColumns`, in which case they are `Ignored`.
-5. **Duplicates.** Two columns mapping to the same path is `Excel.Import.DuplicateColumn` at both
-   columns.
+   text (exact), yielding the path and the language of a multilingual column; (b) the **header
+   index** of the sheet's entity: every header the editable or display export could write for each
+   column path, importable or not (step 6 decides), plus the technical paths (§8.3), in every
+   candidate culture — the request culture, each tenant language and English: property labels; twin
+   labels with every symbol of spec 0012's language catalogue (`ExcelContext.Catalog`; a symbol of a
+   language the target does not configure maps to that language for §8.2's warning); reference
+   headers `<Navigation label> / <Key label>` and `<Navigation label> / <Key path>` for every
+   key-typed scalar of the target, both halves in one culture; the parent reference
+   `<Owner navigation label> / Id`; the disambiguated form `<Label> (<Path>)`. `Id` and `Stamp` are
+   candidates by technical name and label. Each candidate is normalised — NFC, trimmed, whitespace
+   runs collapsed to one space, no space next to `/`, `(` or `)`, compared ordinal-ignore-case — and
+   a header normalised the same way is matched exactly; no header is parsed. A normalised key that
+   two different column paths produce is removed from the index, and the header becomes
+   `UnmappedColumn` with both paths among its suggestions — never a first-match guess. Labels in
+   another culture are read through `ILabelProvider` under a `CultureInfo.CurrentUICulture` scope
+   set to that culture (spec 0012 §7.6 resolves labels under the current culture). The index is
+   built once per (entity, settings tag, request culture) and cached with the labels (§3.3); it
+   holds a few hundred keys for a typical entity and about 5,000 for a wide one.
+3. **Override.** `request.ColumnMappings` (sheet + column letter → path, or → null to ignore) wins
+   over everything. A letter with no header cell, or on a sheet the plan ignores, is
+   `Excel.Import.UnknownColumn`; a `Path` that is not a column path of the sheet's entity under
+   §8.3 is `Excel.Import.UnknownPath` (argument `path`).
+4. **Unmapped columns** are errors (`Excel.Import.UnmappedColumn`, with up to three `Suggestions`:
+   the header-index keys nearest the normalised header by Damerau-Levenshtein distance) unless
+   `request.IgnoreUnmappedColumns`, in which case they are `Ignored`.
+5. **Duplicates.** Two columns of one sheet mapping to the same path is
+   `Excel.Import.DuplicateColumn` at both columns.
 6. **Ownership.** A path whose ownership is `ServerOwned`, `Derived` or `DatabaseOwned`, or a
    `[BlobReference]`, `[JsonColumn]`, `[ExcludeFromExcel]`, `hierarchyid` or `byte[]` property, is
    `ServerOwned` in the plan and the error `Excel.Import.ServerOwnedColumn` at import;
    `WriteOnce` paths are mappable (§9.3).
+7. **Identity columns.** On a file that is not same-source (§5.4), every mapped `Id` and `Stamp`
+   column of every sheet gets the warning `Excel.Import.IdentityColumnIgnored`, in the plan and at
+   import (`reason = ForeignSource` with the manifest's `deployment` and `sourceTenantId`, or
+   `NoManifest`); a `Stamp` column is `Ignored`, and an `Id` column stays `Mapped` when it links a
+   present child sheet (§9.5), else `Ignored`. The `InsertMode` case arises at `import` alone
+   (§9.1), so `inspect-import` needs no `Mode`; `IgnoreSheetStamps = true` raises no warning for a
+   `Stamp` column (the caller asked).
 
-`ImportPlan.RowKeyCandidates` lists `EntityMetadata.NaturalKeys` paths present in the parent
-sheet plus `Id` when same-source; `DefaultRowKey` per §9.2; `TotalRows` sums every mapped sheet's
-data rows; `RequiresBackground` per §2.3; `Entity` is the manifest's entity name (null without
-one); `ManifestVersion` 0 without a manifest; a manifest naming a different entity than the stack
-is `Excel.Import.MalformedWorkbook` (`reason = entity`).
+`ImportPlan.RowKeyCandidates` lists `Id` first when the file is same-source and the parent sheet
+maps an `Id` column, then the `EntityMetadata.NaturalKeys` paths mapped in the parent sheet;
+`DefaultRowKey` per §9.2; `TotalRows` sums every mapped sheet's data rows; `RequiresBackground` per
+§2.3 and `AtomicAllowed` per §2.1; `Entity` is the manifest's entity name (null without one);
+`ManifestVersion` 0 without a manifest; a manifest naming a different entity than the stack is
+`Excel.Import.MalformedWorkbook` (`reason = entity`).
 
-At `import` time each child sheet's rows are also counted per parent-reference value as the sheet
-is read (§7.4): a parent with more rows in one collection than the collection's `MaxCount` (spec
-0011 §2.2) is `Excel.Import.TooManyChildren` (arguments `collection`, `max`, `count`) at the
-parent-reference column of the first row beyond the cap — before any round trip and in either
-mode, since no chunk (§12.4) can hold such a parent.
+At `import` time each child sheet's rows are also counted per owner row (the row they link to,
+§9.5) as the sheet is read (§7.4), at every depth: more rows under one owner row than the
+collection's `MaxCount` (spec 0011 §2.2) is `Excel.Import.TooManyChildren` (arguments
+`collection` as the collection path, `max`, `count`) at the parent reference column of the first
+row beyond the cap; a parent-sheet row that, with its rows at every depth, exceeds the stack's
+`MaxRowsPerSave` is `Excel.Import.TooManyDescendants` (arguments `rows`, `max`) at that parent
+row. Both arise before any round trip and in either mode, since no chunk (§12.4) can hold such a
+parent.
 
 ### 8.2 Language-aware mapping
 
-A multilingual column maps to the tenant slot of the column's **language**: a file column
-recorded (or parsed) as Arabic maps to whichever of `Name`/`Name2`/`Name3` is Arabic in the target
-tenant (`TenantSettings.Languages` in slot order), so a file exported from a tenant whose languages
-are `ar, en` imports correctly into one whose languages are `en, ar`. A column in a language the
-target does not configure is **ignored with the warning `Excel.Import.UnconfiguredLanguageColumn`**
-(the value has no home; review flag 5). A column that names a slot technically (`Name2`) maps to
-that slot regardless of language and is subject to spec 0014's `Import.LanguageNotConfigured` when
-the slot is gated off.
+A multilingual column maps to the tenant slot of the column's **language**: a file column recorded
+in the manifest or identified by its symbol as Arabic maps to whichever of `Name`/`Name2`/`Name3` is
+Arabic in the target tenant (`TenantSettings.Languages` in slot order), so a file exported from a
+tenant whose languages are `ar, en` imports correctly into one whose languages are `en, ar`; the
+plan reports the resolved slot (§8.3). A column in a language the target does not configure is
+**ignored with the warning `Excel.Import.UnconfiguredLanguageColumn`** (the value has no home;
+review flag 5). A column that names a slot technically (`Name2`) maps to that slot regardless of
+language and is subject to spec 0014's `Import.LanguageNotConfigured` when the slot is gated off.
 
-### 8.3 Reference columns
+### 8.3 Column and collection paths
 
-A reference column carries `Path` = the foreign-key property and `ReferenceKey` = the target
-property the values are expressed in (from the manifest, the parsed key label, or the override
-path `Center.Region`). The plan reports `ReferenceKey` per column. A reference column whose key is
-multilingual resolves through the slot of the **column's** language, so the lookup path is `Name2`
-rather than `Name` when that is the slot (§10.1).
+One grammar names columns and sheets in the manifest (§5.3), the plan (§8.1) and the overrides
+(`ImportColumnMapping.Path`, `ImportSheetMapping.Collection`, §2.1).
+
+- A **column path** is relative to its sheet's entity. `<Property>` is a scalar; a twin name
+  (`Name2`) is that slot; the group's primary name (`Name`) is the primary slot unless a language
+  accompanies it (the manifest's `Language`, a header symbol), in which case it is that language's
+  slot in the target tenant (§8.2). `<Navigation>.<Key>` is a reference column: the foreign key
+  behind the navigation (`EntityMetadata.References`) expressed in the target's scalar `Key`
+  (`Parent.Code`, `Center.Region`, `Role.Name2`); `<Navigation>.Id` is the surrogate form
+  (`Center.Id`). A reference key that is multilingual resolves through the slot of the
+  **column's** language, so the lookup path is `Name2` rather than `Name` when that is the slot
+  (§10.1). A child sheet's **parent reference** is the reference whose foreign key is the
+  collection's `ParentKey`, always in the form `<Navigation>.Id` (`User.Id`, `WidgetPart.Id`) and
+  matched within the workbook (§9.5). A bare foreign-key name (`CenterId`) is accepted as input
+  for `<Navigation>.Id` and never written by the manifest or the plan.
+- A **collection path** is `<Collection>(.<Collection>)*`: the `ChildCollectionMetadata.Property`
+  names from the stack's entity (`RoleMemberships`, `WidgetParts.WidgetPartNotes`), in the dotted
+  form spec 0011 uses for nested collections; `""` is the parent sheet.
+- The plan reports every column's **resolved** path — the target slot of a multilingual column,
+  the key of a reference — so any plan column echoed back as an override keeps its meaning.
 
 ## 9. Import semantics
 
@@ -833,32 +944,37 @@ rather than `Name` when that is the slot (§10.1).
 
 | Mode | Parent rows | `Id` / `Stamp` columns |
 |---|---|---|
-| `Insert` | every row is new | ignored (the pipeline assigns ids); duplicates against the database surface through the pipeline's `[Unique]` validators and, for the race, 2601/2627 mapped to the column — and to the row only when the chunk carries one (spec 0014 §14.2) |
-| `Update` | every row must resolve through `RowKey` to an existing, readable row; a miss is `Excel.Import.RowNotFound` at (row, key column) | `Id` is the row key when `RowKey = "Id"`; `Stamp` is the expected stamp when present |
-| `Upsert` | resolved rows follow the `Update` path, the rest the `Insert` path | as `Update` for the resolved rows |
+| `Insert` | every row is new | `Id` only links rows between sheets (§9.5) and `Stamp` is ignored, both reported with `Excel.Import.IdentityColumnIgnored` (`reason = InsertMode`) in the outcome; duplicates against the database surface through the pipeline's `[Unique]` validators and, for the race, 2601/2627 mapped to the column — and to the row only when the chunk carries one (spec 0014 §14.2) |
+| `Update` | every row must resolve through the row key (§9.2) to an existing, readable row; a miss is `Excel.Import.RowNotFound` at (row, key column) | `Id` is the default row key on a same-source file (§9.2); `Stamp` per §9.3 |
+| `Upsert` | resolved rows follow the `Update` path, the rest the `Insert` path; with `RowKey = "Id"` only a negative or blank `Id` is a new row | as `Update` for the resolved rows |
 
 `IsActive` is server-owned: it is absent from the editable shape, every imported row is created
 active, and deactivation is the action, never the sheet; the display export still includes it.
 
 ### 9.2 Row identity
 
-`RowKey` defaults to the manifest's `RowKey` when that column is present in the sheet, else the
-entity's `NaturalKey` when its column is present, else `Id` when the file is same-source; `Update`
-and `Upsert` with no resolvable default and no `RowKey` in the request is `BadRequestException`.
-`Id` as a row key on a non-same-source file is `Excel.Import.IdKeyRequiresSameTenant` (row null).
-Before any database call, duplicate row-key values within the sheet (after §10.3 normalisation)
-are `Excel.Import.DuplicateRowKey` at every duplicate row, and duplicate values in any `[Unique]`
-column are reported the same way against both rows.
+`RowKey` defaults to `Id` when the file is same-source (§5.4) and the parent sheet maps an `Id`
+column, else to the first member of `EntityMetadata.NaturalKeys` whose column is mapped; `Update`
+and `Upsert` with no default and no `RowKey` in the request is `BadRequestException`. With
+`RowKey = "Id"`, a positive value hydration does not return is `Excel.Import.RowNotFound` in both
+modes — a vanished row is never re-inserted — and a negative or blank value is a new row in
+`Upsert` and `Excel.Import.RowNotFound` in `Update`. `Id` as a row key on a non-same-source file is
+`Excel.Import.IdKeyRequiresSameTenant` (row null). Before any database call, duplicate row-key
+values, duplicate values in any `[Unique]` column of the parent sheet, and duplicate `Id` values
+on any sheet that owns a present child sheet (§9.5) are `Excel.Import.DuplicateRowKey` at every
+duplicate row, compared after §10.3 normalisation.
 
 ### 9.3 Hydration and write-once columns
 
-For `Update` and `Upsert`, resolved ids are hydrated through `EntityService.GetByIdsAsync(ids,
-DetailsRequest.None)` — the complete entity with its child collections, under the caller's read
-filter, so a row the caller cannot read is absent and reported as `RowNotFound` (§10). The codec
-overlays the mapped columns on the hydrated entity, so a partial sheet touches only the columns it
-contains; the hydrated `ModifiedAt` stays on the entity as the expected stamp unless the sheet
-carries `Stamp` on a same-source file, in which case the sheet's value is parsed and set instead
-(an unparsable stamp is `Excel.Import.InvalidCell` at the cell).
+For `Update` and `Upsert`, the ids the row key resolved are hydrated through
+`EntityService.GetByIdsAsync(ids, DetailsRequest.None)` — the complete entity with its child
+collections at every depth (spec 0014's details plan), under the caller's read filter, so a row the
+caller cannot read is absent and reported as `RowNotFound` (§10). The codec overlays the mapped
+columns on the hydrated entity, so a partial sheet touches only the columns it contains. The
+hydrated `ModifiedAt` stays on the entity as the expected stamp unless the file is same-source
+(§5.4), the `Stamp` column is mapped, `ImportRequest.IgnoreSheetStamps` is false and the cell is
+not blank; then the sheet's value is parsed and set instead (an unparsable stamp is
+`Excel.Import.InvalidCell` at the cell).
 
 `WriteOnce` paths are mappable in every mode; on an update a mapped value differing from the
 hydrated value is `Excel.Import.WriteOnceChanged` at the cell (the codec's early form of the
@@ -873,50 +989,77 @@ sheet or map it to null. No sentinel exists.
 
 ### 9.5 Children
 
-- A child sheet **present** in the workbook means "these are the complete children of every parent
-  row present in the parent sheet": each parent's collection is synchronised to its sheet rows.
-  A child row whose parent reference matches no parent-sheet row is `Excel.Import.OrphanChildRow`
-  at the child's parent column.
-- A child sheet **absent** from the workbook leaves children untouched: the collection is passed
-  as `null` (spec 0011's "untouched" value).
-- A parent row present in the parent sheet with **no rows** in a present child sheet gets an
-  empty list: its children are deleted (review flag 6).
-- Existing children come from hydration (§9.3). Child rows match existing children by the child's
-  `Id` column when same-source and present, else by the child's `NaturalKey` within the parent,
-  else the collection is replaced (every existing child deleted, every sheet row inserted). A
-  matched child keeps its id and is overlaid like a parent; an unmatched sheet row is new (`Id =
-  0`); an unmatched existing child is dropped from the list and thereby deleted by the emitter.
-- In `Insert` mode child sheets are inserts only; a child `Id` column is ignored.
+- A child sheet **present** in the workbook means "these are the complete children of every owner
+  row present in its owner sheet": each owner's collection is synchronised to its sheet rows, at
+  every depth.
+- **Link:** a parent reference cell (§8.3) is matched within the workbook against the owner
+  sheet's `Id` column (after §10.3 normalisation), never looked up. A row whose value matches no
+  owner row is `Excel.Import.OrphanChildRow` at its parent reference column; an orphan's own
+  descendants raise nothing further. An owner row with a blank `Id` has no child rows. The owner
+  sheet's `Id` values must be unique when it owns a present child sheet (`DuplicateRowKey`, §9.2).
+- A child sheet whose owner sheet is absent or ignored, or whose owner sheet maps no `Id` column,
+  is `Excel.Import.OwnerSheetAbsent` (child sheet / — / —, `collection`, `owner`).
+- A child sheet **absent** from the workbook leaves that collection untouched at its depth: it is
+  passed as `null` (spec 0011's "untouched" value). An owner row with **no rows** in a present
+  child sheet gets an empty list: its children are deleted (review flag 6).
+- **`Id` values:** a positive `Id` identifies an existing row only on a same-source file in
+  `Update` or `Upsert` (and, for a child row, under an owner that was hydrated); a negative `Id`
+  marks a new row; a blank `Id` is a new row nothing in the workbook can link to. On a
+  foreign-source file and in `Insert` mode every `Id` only links rows between sheets, and every
+  child row is new.
+- **Matching the children of an existing owner** (hydrated at every depth, §9.3): by `Id` per the
+  rule above (a positive `Id` that is not an existing child of that owner is
+  `Excel.Import.RowNotFound`); else by the child's `NaturalKey` within the owner when its column is
+  mapped; else the collection is **replaced**: every existing child and its descendants deleted
+  (spec 0011 §8.3), every sheet row inserted. Replacement requires every editable column of the
+  child mapped and every descendant collection's sheet present, else
+  `Excel.Import.IncompleteChildSheet` (child sheet / — / —, `collection`, `missingColumns`,
+  `missingCollections`), whatever produced the file — a user can delete columns by hand. A matched
+  child keeps its id and is overlaid like a parent; an unmatched sheet row is new (`Id = 0` in the
+  payload, or the codec's temporary id); an unmatched existing child is dropped from the list and
+  deleted with its descendants.
 
-### 9.6 Trees
+### 9.6 Trees and self-references
 
-For a tree entity (`EntityMetadata.Tree` non-null) the `Parent / <Key>` column is an ordinary
-reference column. Resolution order: in-sheet match, then database lookup, then
-`ReferenceNotFound`. After resolution the codec assigns every new row a temporary id (`-1, -2, …`,
-unique within the payload), sets `ParentId` to the parent's id — the hydrated id for an existing
-parent, the temporary id for an in-sheet new parent, the resolved id for a database parent — and
-orders rows so that in-sheet parents precede their children (Kahn's algorithm over the in-sheet
-graph). A cycle among sheet rows is `Excel.Import.ParentCycle` reported at every row in the cycle
-(arguments `rows`), before any database call. The pipeline rewrites temporary ids in every
-self-typed foreign key and validates cycles against the loaded ancestor chains (spec 0014's tree
-capability); a single bulk `INSERT` from one TVP satisfies the self-referencing foreign key
-regardless of order, so the ordering serves chunk boundaries (§12.4) and readable errors, not
-insert correctness.
+Every self-typed reference (an `EntityMetadata.References` entry whose `Target` is the entity: the
+tree parent of a tree entity and any other) from a sheet row to a **new** sheet row is an edge of
+the in-sheet graph; the column itself is an ordinary reference column (§8.3). At parse the graph
+orders the parent rows — Kahn's algorithm, ready rows taken in ascending Excel row, so the order is
+a pure function of the file and the mapping — and detects cycles: a cycle among new rows through
+any self-typed reference is `Excel.Import.ParentCycle` (arguments `rows`, `path`) at every row in
+it, before any database call.
+
+Binding is per chunk (§12.4; the whole file is one chunk in a synchronous or `Atomic` import): a
+reference to a new row of the same chunk takes that row's temporary id (`-1, -2, …`, the codec's
+own sequence, restarted per chunk). A self-reference naming, by its negative `Id` (`Parent.Id`,
+§8.3), a new row an earlier chunk committed binds to the id `CommittedNewIds` records for it
+(§12.5); a resumed job reads the map back with the rest of the state, so the rule holds across a
+crash. Every other self-reference — an existing row, or an earlier chunk's row named by its key —
+resolves through the chunk's lookup (§10.1), the referenced row being committed by then. Resolution
+order for a self-reference: in-chunk match (§10.2), then the map for a negative `Id`, which is never
+looked up, and the lookup for any other value, then `ReferenceNotFound`. The pipeline rewrites
+temporary ids in every self-typed foreign key and validates cycles against the loaded ancestor
+chains (spec 0014's tree capability); a single bulk `INSERT` from one TVP satisfies the
+self-referencing foreign key regardless of order, so the order serves chunk boundaries and readable
+errors, not insert correctness.
 
 ## 10. Bulk resolution
 
 ### 10.1 Lookups
 
-The codec emits one `ExcelQuery` per distinct **(target entity, key path)** pair across every sheet
-and column — the row key, every reference column, every child sheet's parent reference, tree parents
-not found in-sheet — with `SelectPaths = [<KeyPath>, Id]`, a `KeySetRestriction("<KeyPath>", TVP)`
-as `Restriction`, and `RestrictionValues` = the distinct sheet values of that key after §10.3
-normalisation, in chunks of `MaxIds` values. `ExcelOperations` runs each through
-`EntityService.ExcelRowSource(ExportSource.All)` of the **imported** stack (no clauses: the
-restriction is the whole predicate): spec 0014 compiles a query whose `RootEntity` is a lookup
-target on that entity under the caller's `Read` decision for its resource — `Denied` yields no rows,
-so an unreadable reference resolves as not found. The compiled shape, illustratively (the row source
-binds the TVP as `@tb{b}_t{i}` and names it as the restriction's `TableSource`):
+Lookups are per chunk: the codec emits one `ExcelQuery` per distinct **(target entity, key path)**
+pair across the chunk's sheets and columns — every reference column, the row key when it is a
+natural key, and the self-references not bound within the chunk or through the checkpoint's map
+(§9.6), never a parent reference (§9.5) nor a self-reference's negative `Id`, which names no
+database row — with `SelectPaths = [<KeyPath>, Id]`, a `KeySetRestriction("<KeyPath>", TVP)` as
+`Restriction`, and `RestrictionValues` = the distinct values of that key in the chunk after §10.3
+normalisation, each group of `MaxIds` values a separate query. `ExcelOperations` reads them all in
+one round trip through `ReadAsync` over `EntityService.ExcelRowSource(ExportSource.All)` of the
+**imported** stack (no clauses: the restriction is the whole predicate): spec 0014 compiles a query
+whose `RootEntity` is a lookup target on that entity under the caller's `Read` decision for its
+resource — `Denied` yields no rows, so an unreadable reference resolves as not found. The compiled
+shape of one query, illustratively (the row source binds the TVP as `@tb{b}_t{i}` and names it as
+the restriction's `TableSource`):
 
 ```sql
 SELECT [T].[Code], [T].[Id]
@@ -930,13 +1073,13 @@ key's CLR type; a key value longer than 450 characters is `Excel.Import.KeyTooLo
 before any query. A multilingual key restricts on the slot of the file column's language (`Name2`
 when that is the Arabic slot).
 
-### 10.2 In-sheet first
+### 10.2 In-chunk first
 
-Before a lookup for a reference to the entity being imported (tree parents; any self-reference),
-the value is matched against the sheet's own rows by the same key — the sheet's *mapped* column for
-that key, after normalisation. A hit binds the reference to that row's entity (its temporary id
-for a new row, its hydrated id for an existing one) and the value is excluded from the lookup's
-TVP. Only misses go to the database.
+Before a lookup for a self-reference (§9.6), the value is matched against the rows of the same
+chunk by the same key — the sheet's *mapped* column for that key, after normalisation. A hit binds
+the reference to that row's entity (its temporary id for a new row, its hydrated id for an existing
+one) and the value is excluded from the lookup's TVP; every other value binds by §9.6's resolution
+order.
 
 ### 10.3 Matching
 
@@ -946,8 +1089,9 @@ Exactly one row ⇒ resolved; zero ⇒ `Excel.Import.ReferenceNotFound` at (row,
 also what a row hidden by the caller's read filter yields; more than one ⇒
 `Excel.Import.ReferenceAmbiguous` with argument `count`. A database row the codec cannot attribute
 to any sheet value (a collation equivalence beyond case: accent- or width-insensitivity) is
-`ReferenceNotFound` with argument `collation = true` so the message can hint at it. The row key
-lookup is a lookup like any other; its resolved ids feed hydration (§9.3).
+`ReferenceNotFound` with argument `collation = true` so the message can hint at it. A natural-key
+row key is a lookup like any other; its resolved ids feed hydration (§9.3); an `Id` row key feeds
+hydration directly.
 
 ### 10.4 The session
 
@@ -963,13 +1107,17 @@ public interface IExcelImporter
 
 public sealed class ExcelImportSession<TEntity>
 {
-    // deduplicated by (entity, key path); RestrictionValues filled
-    public IReadOnlyList<ExcelQuery> Lookups { get; }
-    public int RowCount { get; }   // parent rows in topological order
+    public int RowCount { get; }                       // parent rows in topological order
+    public IReadOnlyList<int> SheetRows { get; }       // the Excel row of each position
+    public string OrderHash { get; }                   // over SheetRows; a resumed job compares it (§12.4)
+    public IReadOnlyList<ExcelQuery> LookupsFor(int fromRow, int toRow);
+    public IReadOnlyList<object> HydrationIds(
+        int fromRow, int toRow, IReadOnlyDictionary<ExcelQuery, IReadOnlyList<IReadOnlyList<object?>>> lookupRows);
     public ExcelChunk<TEntity> Resolve(
         int fromRow, int toRow,
         IReadOnlyDictionary<ExcelQuery, IReadOnlyList<IReadOnlyList<object?>>> lookupRows,
-        Func<int, IReadOnlyList<object>> allocateIds);
+        IReadOnlyList<TEntity> hydrated, IReadOnlyDictionary<long, long> committedNewIds);
+    public IReadOnlyDictionary<long, long> LaterReferencedIds(int fromRow, int toRow, ExcelChunk<TEntity> chunk);
 }
 
 public sealed record ExcelChunk<TEntity>(
@@ -980,35 +1128,45 @@ public sealed record ExcelCell(string Sheet, int Row, string Column);
 
 | Member | Meaning |
 |---|---|
-| `Parse` | Reads the whole workbook once: mapping (§8), decoding of every mapped cell (§3.1), in-file uniqueness (§9.2), the in-sheet parent graph and cycle check (§9.6), child grouping (§9.5). Any error is collected; `Parse` throws `ImportException` when errors exist, so no lookup runs for a file that cannot be saved. |
-| `Lookups` | The queries of §10.1; `ExcelOperations` runs them and, for `Update`/`Upsert`, hydrates the row key's ids through `GetByIdsAsync`. |
-| `Resolve` | For parent rows `fromRow..toRow` (0-based indexes into the topological order): binds lookup results, overlays hydrated entities (passed through `lookupRows` under the row-key query, one hydrated entity per resolved id), assigns temporary ids to new rows through `allocateIds` (the codec's own negative sequence; the allocator is never involved), attaches children, sets tree parent keys, and returns the chunk's entities with the coordinate map and the resolution errors (`ReferenceNotFound`, `ReferenceAmbiguous`, `RowNotFound`, `WriteOnceChanged`, `OrphanChildRow`). |
-| `CoordinateMap` | `ValidationPath` segments → cell, matched segment by segment (shown here in rendered form): `[i]` → the parent row; `[i].<Property>` → its column when present in the sheet; `[i].<Collection>[j]` → the child row; `[i].<Collection>[j].<Property>` → its column. A path with no column maps to the row alone. |
+| `Parse` | Reads the whole workbook once: mapping (§8), decoding of every mapped cell (§3.1), in-file uniqueness (§9.2), links and grouping at every depth (§9.5), per-owner counts (§8.1), the self-reference order and cycle check (§9.6). Any error is collected; `Parse` throws `ImportException` when errors exist, so no lookup runs for a file that cannot be saved. |
+| `LookupsFor` | The chunk's lookups of §10.1 for positions `fromRow..toRow` (0-based indexes into the topological order); `ExcelOperations` reads them in one round trip. |
+| `HydrationIds` | For `Update`/`Upsert`, the ids of the chunk's rows that name existing rows: the sheet's `Id` under an `Id` row key, the row-key lookup's ids otherwise; `ExcelOperations` hydrates them through `GetByIdsAsync` (§9.3). |
+| `Resolve` | Binds lookup results, overlays the hydrated entities, matches children (§9.5), assigns temporary ids (§9.6), sets self-references — one naming, by its negative `Id`, a row an earlier chunk committed through `committedNewIds` (§9.6, §12.5) — and returns the chunk's entities with the coordinate map and the resolution errors (`ReferenceNotFound`, `ReferenceAmbiguous`, `RowNotFound`, `WriteOnceChanged`, `IncompleteChildSheet`); deterministic for a range, so §11.2's retry re-invokes it with refreshed hydrated entities. |
+| `LaterReferencedIds` | For the chunk's new rows that a row at a later position references by a negative `Id`, that sheet value mapped to the id the pipeline assigned to the row (spec 0014 §6.4), read from `chunk.Entities`; the entries the checkpoint adds to `CommittedNewIds` (§12.5). |
+| `CoordinateMap` | `ValidationPath` segments → cell, matched segment by segment at any depth (shown here in rendered form): `[i]` → the parent row; `[i].<Property>` → its column when mapped; `[i].<C1>[j]` → the row on the `C1` sheet; `[i].<C1>[j].<C2>[k]` → the row on the `C1.C2` sheet; a property after any row → its column when mapped. A path with no column maps to the row alone. |
 
 ## 11. The save, concurrency, and errors
 
 ### 11.1 The save
 
-`ExcelOperations.Import` hands each chunk's entities to `EntityService.SaveAsync(entities,
-SaveOptions { ReturnEntities = false, Details = None, Concurrency = request.Concurrency, Source =
-Import })`. Entities carry `Id = 0` or a temporary id for inserts, the hydrated id and expected
-`ModifiedAt` for updates, child collections as `null` (untouched), `[]` (delete all) or the
-synchronised list; server-owned members at their defaults for the pipeline to overwrite. The
-pipeline runs preprocessing, validation (the two-stage access pre-check on the hydrated ids,
-`[Unique]` and foreign-key validators, tree cycle validation), persist and effects exactly as for a
-JSON save; an import bumps whatever version tags the emitter bumps.
+`ExcelOperations.Import` hands each chunk's entities to `EntityService.SaveAsync` with
+`SaveOptions { ReturnEntities = false, Details = None, Concurrency = Check, Source = Import }`, plus
+`OnPersist` set to the checkpoint of §12.5 on a background chunk. Entities carry `Id = 0` or a
+temporary id for inserts, the hydrated id and expected `ModifiedAt` for updates, child collections
+at every depth as `null` (untouched), `[]` (delete all) or the synchronised list; server-owned
+members at their defaults for the pipeline to overwrite. The pipeline runs preprocessing, validation
+(the two-stage access pre-check on the hydrated ids, `[Unique]` and foreign-key validators, tree
+cycle validation), persist and effects exactly as for a JSON save; an import bumps whatever version
+tags the emitter bumps.
 
 ### 11.2 Concurrency
 
-Every hydrated row saves under `Check` with its expected stamp — the sheet's `Stamp` on a
-same-source file, else the `ModifiedAt` read at hydration — so a concurrent edit to any column
-between hydration and persist is a conflict, never a silent overwrite. The pipeline's
-`ConcurrencyException` is translated: each `ConcurrencyConflict.Id` maps through the resolved ids
-to its sheet row and becomes `Excel.Import.ConcurrencyConflict` at (row, `Stamp` column when
-present, else the row) with arguments `modifiedAt`, `modifiedBy`; a conflict marked `IsMissing`
-becomes `Excel.Import.RowNotFound`. `Concurrency = Override` on the request disables the stamp
-comparison for the whole import (`tellma.crud.concurrency.overrides` counts it), never the
-existence check.
+Every hydrated row saves under `Check` with its expected stamp — the sheet's `Stamp` or the
+`ModifiedAt` read at hydration, under §9.3's rule — and there is no override, so a concurrent edit
+to any column between hydration and persist is a conflict, never a silent overwrite. When
+`SaveAsync` throws `ConcurrencyException`, each `ConcurrencyConflict.Id` maps through the chunk's
+resolved ids to its sheet row. When every conflict has `IsMissing = false` and every conflicting
+row's expected stamp came from hydration, the codec re-hydrates the conflicting ids through
+`GetByIdsAsync`, re-runs `Resolve` for the same rows with the refreshed entities and saves again, at
+most `ExcelOptions.ImportConcurrencyRetries` times (`tellma.excel.import.retries` counts each); the
+lookups are not re-run. The pipeline cannot do this itself: only the codec knows which columns the
+sheet carried. A conflict on a row whose expected stamp came from the sheet is the user's stale
+file, so that save's conflicts are reported at once, as are those that remain after the last retry:
+each is `Excel.Import.ConcurrencyConflict` at (row, the `Stamp` column when the sheet's stamp was
+the expected stamp, else the row) with arguments `modifiedAt`, `modifiedBy`, and a conflict marked
+`IsMissing` is `Excel.Import.RowNotFound`. A `NotFoundException` from `SaveAsync` — an updated row
+deleted, or hidden from the caller, between hydration and the save (spec 0014 §6.6) — is
+`Excel.Import.RowNotFound` at each id's (row, key column), never retried.
 
 ### 11.3 Error translation
 
@@ -1022,8 +1180,9 @@ map cannot place (a validator error on the whole payload) yields sheet null, row
 are already `ImportError`s with `ExcelErrorCodes`. `ImportException.Errors` is capped at
 `MaxReportedErrors` in sheet, row, column order with `TotalErrors` uncapped.
 
-A synchronous import is one transaction: any error anywhere — parse, resolution, validation,
-persist — rolls back everything and returns `ImportException` (422). No partial success.
+A synchronous import is one transaction: any error anywhere — parse, resolution, validation, persist
+— rolls back everything and returns `ImportException` (422) with an empty `CommittedRowRanges`, or
+the pipeline's `ForbiddenException` (403) unchanged (§13). No partial success.
 
 ## 12. Background exports and imports
 
@@ -1050,16 +1209,16 @@ public sealed class Import : TopLevelEntity, IJobEntity
     public ImportMode Mode { get; set; }
     public string? RequestJson { get; set; }
     public int? FileId { get; set; }
-    public int? ResultFileId { get; set; }
+    public string? ResultJson { get; set; }
     public int? RowCount { get; set; }
     public int? ErrorCount { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }           // datetimeoffset(3)
 }
 
 // Tellma.Core.Excel (runtime)
-// ContributeAsync enqueues core.export for every new row whose JobId is null
-public sealed class ExportService : EntityService<Export>;
-public sealed class ImportService : EntityService<Import>;   // the same for core.import
+public sealed class ExportService : EntityService<Export>;   // no enqueue: the export handler inserts the row (§12.3)
+// ContributeAsync enqueues core.import for every new row whose JobId is null
+public sealed class ImportService : EntityService<Import>;
 public sealed class ExportAccessCriteria : IAccessCriteriaProvider;   // Resource = core.Export; CreatedById = me() for Read and Delete, reason self
 public sealed class ImportAccessCriteria : IAccessCriteriaProvider;   // the same for core.Import
 
@@ -1070,24 +1229,31 @@ public sealed record DisplayExportJobArguments(string Resource, ExcelJobCulture 
     : ExportJobArguments(Resource, Culture);
 public sealed record ForImportExportJobArguments(string Resource, ExcelJobCulture Culture, ExportForImportRequest Request)
     : ExportJobArguments(Resource, Culture);
-public sealed record ImportJobArguments(string Resource, ExcelJobCulture Culture, ImportRequest Request);
+public sealed record ImportJobArguments(string Resource, ExcelJobCulture Culture, StartImportRequest Request);
 ```
+
+`Export` declares `[DefaultSelect]` over `Id`, `Resource`, `Kind`, `FileName`, `FileId`, `RowCount`,
+`ExpiresAt`, `JobId` and the four audit columns, and `Import` over `Id`, `Resource`, `Mode`,
+`FileId`, `RowCount`, `ErrorCount`, `ExpiresAt`, `JobId` and the four audit columns — never
+`RequestJson` or `ResultJson`, which a client selects on the details page (spec 0014 §2.2's
+`DefaultSelect`).
 
 The server-written columns — `Id`, the four audit columns and `JobId` — are `[ServerOwned]`;
 `Resource`, `Kind`/`Mode`, `RequestJson` and `ExpiresAt` are `[WriteOnce]`, fixed when the row is
-enqueued; `FileName`, `FileId`, `RowCount`, `ResultFileId` and `ErrorCount` are editable, which the
+inserted; `FileName`, `FileId`, `RowCount`, `ResultJson` and `ErrorCount` are editable, which the
 handlers need and no client can reach because the stacks project `query`, `get`, `get-by-ids`,
 `delete`, `delete-by-query` and register `core.Export`/`core.Import` × `Read | Delete` — no `Save`
-securable and no `save` endpoint. Both stacks declare `Enlist`, and every save of a row is an
-enlisted save (spec 0014 §13.3): `ExcelOperations<TEntity> : IEnlists<Export>, IEnlists<Import>`
-enlists the request path's insert with the invoker's frame (§12.2), and
-`ExportJobHandler : IEnlists<Export>` and `ImportJobHandler : IEnlists<Import>` enlist the handlers'
-writes with the job frame (§12.3, §12.4, §12.6), so each row runs its own stack's validators and
-effects as a participant of the frame that authorises it. `ExportAccessCriteria` and
-`ImportAccessCriteria` supply the self-scope criterion `CreatedById = me()` for `Read` and `Delete`
-(spec 0013 §5.1), so every member sees and may delete their own rows ("My exports"); an
-administrator with a stored grant sees all. Deleting a row releases its blobs through the emitter's
-`[BlobReference]` capture (spec 0016).
+securable and no `save` endpoint. A row exists when it has a file to own: an `Import` row from the
+request, owning the upload, and an `Export` row from the run's completion, owning the produced file.
+Both stacks declare `Enlist`, and every save of a row is an enlisted save (spec 0014 §13.3):
+`ExcelOperations<TEntity> : IEnlists<Import>` enlists `import/start`'s insert with the invoker's
+frame (§12.2), and `ExportJobHandler : IEnlists<Export>` (the insert at the end of a run) and
+`ImportJobHandler : IEnlists<Import>` (the completion update) enlist with the job frame (§12.3,
+§12.6), so each row runs its own stack's validators and effects as a participant of the frame that
+authorises it. `ExportAccessCriteria` and `ImportAccessCriteria` supply the self-scope criterion
+`CreatedById = me()` for `Read` and `Delete` (spec 0013 §5.1), so every member sees and may delete
+their own rows ("My exports"); an administrator with a stored grant sees all. Deleting a row
+releases its blobs through the emitter's `[BlobReference]` capture (spec 0016).
 
 **`core.Exports`** — carries `TopLevelEntity` and `IJobEntity`; non-temporal; `[TableType]`;
 sequence `core.sq_Exports`.
@@ -1101,8 +1267,8 @@ sequence `core.sq_Exports`.
 | `FileName` | `nvarchar(255)` | yes | | §4.3; the blob file-name length of spec 0016 §3.5 |
 | `FileId` | `int` | yes | `FK_Exports_FileId → core.Blobs`, `UX_Exports_FileId WHERE FileId IS NOT NULL` | `[BlobReference("export-file", Attachment, ReadAccess = OwnerRead)]` |
 | `RowCount` | `int` | yes | | data rows written |
-| `ExpiresAt` | `datetimeoffset(3)` | no | `IX_Exports_ExpiresAt (ExpiresAt)` | set on insert from `RequestContext.Now` plus `ExportFileRetentionDays` |
-| `JobId` | `int` | yes | `FK_Exports_JobId → core.Jobs ON DELETE SET NULL`, `UX_Exports_JobId WHERE JobId IS NOT NULL` | |
+| `ExpiresAt` | `datetimeoffset(3)` | no | `IX_Exports_ExpiresAt (ExpiresAt)` | set on insert from the job scope's `RequestContext.Now` plus `ExportFileRetentionDays` |
+| `JobId` | `int` | yes | `FK_Exports_JobId → core.Jobs ON DELETE SET NULL`, `UX_Exports_JobId WHERE JobId IS NOT NULL` | set by the handler's insert (§12.3) |
 | audit set | | | `FK_Exports_CreatedById`, `FK_Exports_ModifiedById` | `IX_Exports_CreatedBy (CreatedById, CreatedAt DESC)` |
 
 **`core.Imports`** — the same shape; sequence `core.sq_Imports`.
@@ -1114,148 +1280,182 @@ sequence `core.sq_Exports`.
 | `Mode` | `varchar(8)` | no | | `Insert` / `Update` / `Upsert` |
 | `RequestJson` | `nvarchar(max)` | yes | | the serialized request; ≤ 64 KB |
 | `FileId` | `int` | yes | `FK_Imports_FileId → core.Blobs`, `UX_Imports_FileId WHERE FileId IS NOT NULL` | `[BlobReference("import-file", Attachment, ReadAccess = OwnerRead)]`; the uploaded workbook |
-| `ResultFileId` | `int` | yes | `FK_Imports_ResultFileId → core.Blobs`, `UX_Imports_ResultFileId WHERE ResultFileId IS NOT NULL` | `[BlobReference("import-result", Attachment, ReadAccess = OwnerRead)]`; the `ImportOutcome` or `ImportException` as JSON |
+| `ResultJson` | `nvarchar(max)` | yes | | the `ImportOutcome` when `ErrorCount = 0`, else the `ImportException`'s `errors`, `totalErrors` and `committedRowRanges`, serialized with the platform JSON options; about 300 bytes per reported error |
 | `RowCount` | `int` | yes | | parent rows in the file |
 | `ErrorCount` | `int` | yes | | `TotalErrors` of a failed import; 0 on success |
 | `ExpiresAt` | `datetimeoffset(3)` | no | `IX_Imports_ExpiresAt (ExpiresAt)` | set on insert from `RequestContext.Now` plus `ImportFileRetentionDays` |
 | `JobId` | `int` | yes | `FK_Imports_JobId → core.Jobs ON DELETE SET NULL`, `UX_Imports_JobId WHERE JobId IS NOT NULL` | |
 | audit set | | | | `IX_Imports_CreatedBy (CreatedById, CreatedAt DESC)` |
 
-Both are Queryex roots (`core.Export`, `core.Import`) with the navigations `File`, `ResultFile`,
-`Job`, `CreatedBy`, `ModifiedBy` derived from their foreign keys. Retention: spec 0019's
+Both are Queryex roots (`core.Export`, `core.Import`) with the navigations `File`, `Job`,
+`CreatedBy` and `ModifiedBy` derived from their foreign keys. Retention: spec 0019's
 `core.file-retention` (daily) selects the ids of rows whose `ExpiresAt` has passed in pages of 500
 and deletes them through `DeleteByIdsAsync` on both stacks as the system user; the capture releases
 their blobs and `core.blob-sweep` reclaims the bytes.
 
 ### 12.2 Enqueue
 
-On `export/start`, `export-for-import/start` and `import/start`, `ExcelOperations` builds one
-`Export`/`Import` row — `Resource = Descriptor.Resource`, `Kind`/`Mode`, `RequestJson` (the
-serialized request), `FileId = request.FileId` on an import (which attaches the staged upload), and
-`ExpiresAt` computed from `RequestContext.Now` plus `ExportFileRetentionDays` or
-`ImportFileRetentionDays` — enlists its insert (`EnlistSaveAsync`) with the `IOpenWriteHost` that
-`IApiActionInvoker` registers in the scope for the frame it opens around the method, and awaits
-`host.PersistAsync()` on it (spec 0014 §13.3). The service's `ContributeAsync` type-tests its
-context as a `SavePersistContext` and, for every new row (its `Before(i)` null) whose `JobId` is
-null, calls `IJobQueue.Enqueue(context.Batch, requests)` with one `JobRequest` per row —
-`HandlerKey` `core.export` or `core.import`, `Arguments` the row's job arguments, `DueAt = null`,
+`export/start` and `export-for-import/start` enqueue one `core.export` job through
+`IJobQueue.EnqueueAsync` with no entity — `HandlerKey` `core.export`, `Arguments` the
+`ExportJobArguments` of the request's case (§12.1), `DueAt = null`, `RequestedById` and
+`RunAsUserId` the caller — and return `JobAccepted(JobId, null)`: no `Export` row exists until the
+handler has a file for it to own (§12.3). `import/start` builds one `Import` row —
+`Resource = Descriptor.Resource`, `Mode`, `RequestJson` (the serialized request),
+`FileId = request.FileId` (which attaches the staged upload) and `ExpiresAt` from
+`RequestContext.Now` plus `ImportFileRetentionDays` — enlists its insert (`EnlistSaveAsync`) with
+the `IOpenWriteHost` that `IApiActionInvoker` registers in the scope for the frame it opens around
+the method, and awaits `host.PersistAsync()` on it (spec 0014 §13.3). `ImportService`'s
+`ContributeAsync` type-tests its context as a `SavePersistContext` and, for every new row (its
+`Before(i)` null) whose `JobId` is null, calls `IJobQueue.Enqueue(context.Batch, requests)` with one
+`JobRequest` per row — `HandlerKey` `core.import`, `Arguments` the row's `ImportJobArguments`
+carrying the `StartImportRequest` deserialized from its `RequestJson`, `DueAt = null`,
 `RequestedById` and `RunAsUserId` the caller, `Entity` the row — so the row insert, the job insert
-and the `JobId` write-back are one transaction (spec 0019's enqueue statement). The arguments
-(§12.1) are an `ExportJobArguments` of the row's `Kind` case or an `ImportJobArguments`, each
-carrying the typed request deserialized from the row's `RequestJson` and an `ExcelJobCulture` of
-`context.Context`'s negotiated `Culture`, `Calendar`, `TimeZone` (display zone) and `Language`, so
-the job renders exactly as the request would have. The `/start` methods return
-`JobAccepted(JobId, ExportId)` or `JobAccepted(JobId, ImportId)`, which spec 0015 answers with 202.
-The client follows progress through `jobs/query` (self-scope) and the hub's `job.changed`, and the
-artifact through `exports/get` and the blob GET.
+and the `JobId` write-back are one transaction (spec 0019's enqueue statement); the method returns
+`JobAccepted(JobId, ImportId)`. Both kinds of arguments carry the typed request and an
+`ExcelJobCulture` of the request's negotiated `Culture`, `Calendar`, `TimeZone` (display zone) and
+`Language`, so the job renders exactly as the request would have; spec 0015 answers `JobAccepted`
+with 202.
+
+The client follows a job through `jobs/query` (self-scope) and the hub's `job.changed`, and may
+cancel a job it requested (spec 0019 §11.2); it finds a finished export's row through
+`exports/query` on `JobId` or the `core.export.ready` notification's `TargetId`, a finished import's
+result in its row's `ResultJson` (`imports/get`), and either file through the blob GET.
 
 ### 12.3 The export handler
 
-`ExportJobHandler : IEntityJobHandler<Export>, IEnlists<Export>` with `[JobHandler("core.export",
-BatchSize = 1, LeaseSeconds = 600, MaxAttempts = 3, Schedulable = true)]`. Steps, in the job scope
-of the run-as user, inside the job frame spec 0019's worker opens around `ExecuteAsync` (spec 0014
-§13.3):
+`ExportJobHandler : IJobHandler, IEnlists<Export>` carries `[JobHandler]` with key `core.export`,
+`BatchSize = 1`, `LeaseSeconds = 600`, `MaxAttempts = 3` and `Schedulable = true`. A run that
+`export/start` enqueued and a run that a user schedule fired (spec 0019 §14.1) are the same: the
+job's `ArgumentsJson` is an `ExportJobArguments` and no `Export` row exists yet. Steps, in the job
+scope of the run-as user, inside the job frame spec 0019's worker opens around `ExecuteAsync` (spec
+0014 §13.3):
 
-1. `Item` is the `Export` row and the job's `ArgumentsJson` its `ExportJobArguments` (§12.2). `Item`
-   is null when a user schedule naming `core.export` fired the job with an `ExportJobArguments` JSON
-   and its `kind` in `ArgumentsJson` (spec 0019 §14.1): the handler then builds the row from the
-   arguments — `Resource`, `Kind` from the case, `RequestJson` from `Request`, `ExpiresAt` — and
-   inserts it at step 5.
+1. Read the item's `ExportJobArguments` (`Arguments<ExportJobArguments>()`, JSON-polymorphic on
+   `kind`).
 2. Re-evaluate `IAccessEvaluator.RequireAsync(Resource, "Read")`; a denial completes the item
    `Fail(JobError("forbidden", …))`.
 3. Build the `ExcelContext` from the arguments' `ExcelJobCulture` (culture, calendar, zone,
-   language); plan the case's `Request` in its shape (`PlanDisplay` or `PlanEditable`); stream the
-   query through the row source in pages under the `MaxExportRows` cap; `Progress.Report` after each
-   page (`percent = rows / cap`, message = rows written).
-4. Stage the spooled file through `IBlobService.StageAsync(BlobStageRequest("export-file", stream,
-   length, xlsx content type, FileName))`.
-5. Enlist the row's write with the job frame (`EnlistSaveAsync`): when `Item` is set, an update of
-   it with `FileId`, `FileName`, `RowCount` under `EnlistSaveOptions.Concurrency = Check` against
-   the stamp the claim delivered; for a schedule-fired run, an insert of the row built at step 1
-   with `FileId`, `FileName`, `RowCount` and `JobId = Job.Id`, naming `JobId` in
-   `EnlistSaveOptions.ServerOwned`, which `ExportService.ContributeAsync` skips because `JobId` is
-   set (§12.2). Awaiting `host.PersistAsync()` on the `IOpenWriteHost` spec 0019's worker registers
-   for the job frame runs the row's validation round and appends the group to the partition's
-   completion batch, so the row commits with the job outcome and the blob effect confirms the staged
-   file inside the completion transaction (the run-as user is uploader and saver, spec 0016 §4.6).
-6. `Item.NotifyOnSuccess(NotificationRequest("core.export.ready", [RunAsUserId], Arguments = {
-   fileName, rowCount }, TargetResource = "core.Export", TargetId = ExportId))` — the argument
-   names are spec 0020's catalogue entries for the type; `ExportId` is the row's id, which
-   `EnlistedSave.Rows` carries for a schedule-fired run; `Succeed()`.
+   language) and the job scope's `RequestContext.Now`; plan the case's `Request` in its shape
+   (`PlanDisplay` or `PlanEditable`); stream the root query through `Pages` with
+   `CountCap = MaxExportRows`, a first-page `Count` of `cap + 1` failing the item before any row is
+   written; after each page, `Progress.Report` with `percent = min(99, 100 × rows / total)`, where
+   `total` is the first page's `Count` (by query) or `request.Ids.Count` (by ids), and the rows
+   written as the message. The handler never reports 100: spec 0019 §5.4's completion statement
+   writes it.
+4. Stage the spooled file through `IBlobService.StageAsync` with a `BlobStageRequest` of kind
+   `export-file`, the stream, its length, the xlsx content type and `plan.FileName`.
+5. Enlist the **insert** of the `Export` row with the job frame (`EnlistSaveAsync`): `Resource`,
+   `Kind` from the case, `RequestJson` from `Request`, `FileId`, `FileName`, `RowCount`, `ExpiresAt`
+   from the job scope's `RequestContext.Now` plus `ExportFileRetentionDays`, and `JobId = Job.Id`,
+   naming `JobId` in `EnlistSaveOptions.ServerOwned`. Awaiting `host.PersistAsync()` on the
+   `IOpenWriteHost` spec 0019's worker registers for the job frame runs the row's validation round
+   and appends the group to the partition's completion batch, so the row commits with the job
+   outcome and the blob effect confirms the staged file inside the completion transaction (the
+   run-as user is uploader and saver, spec 0016 §4.6).
+6. The item's `NotifyOnSuccess` with a `NotificationRequest("core.export.ready", …)` to
+   `[RunAsUserId]` — arguments `fileName`, `rowCount` (spec 0020's catalogue entries for the type),
+   `TargetResource = "core.Export"`, `TargetId` the inserted row's id, which `EnlistedSave.Rows`
+   carries — and `Succeed()`.
 
-Re-runs are safe: a re-run re-stages and enlists the write again on the fresh claim, and the
-capture releases a `FileId` an earlier attempt confirmed. A cap overflow completes the item
-`Fail(JobError("Excel.Export.RowLimitExceeded", …))` without a notification of its own (spec
-0019's `core.job.failed` covers it).
+Re-runs are safe: an attempt that did not complete inserted no row, and its staged file is never
+confirmed (spec 0016's sweep reclaims it). A cap overflow, at the first page or on a child sheet
+(§4.2), completes the item `Fail(JobError("Excel.Export.RowLimitExceeded", …))` without a
+notification of its own (spec 0019's `core.job.failed` covers it).
 
 ### 12.4 The import handler
 
-`ImportJobHandler : IEntityJobHandler<Import>, IEnlists<Import>` with `[JobHandler("core.import",
-BatchSize = 1, LeaseSeconds = 600, MaxAttempts = 1)]` — a partially committed import never re-runs
-blindly; a crash mid-import surfaces as `attempts_exhausted` and spec 0019's `core.job.failed`; an
-administrator's `retry` action (`core.Job × Retry`) resets attempts and the handler resumes from
-its checkpoint. The handler is a host, not a participant of the target stack's pipeline (spec 0014
-§13.3): each chunk's `SaveAsync` is the target stack's front door, and only the `Import` row's
-completion write is enlisted (§12.6). Two passes over the local copy of `Import.FileId` (§7.1):
+`ImportJobHandler : IEntityJobHandler<Import>, IEnlists<Import>` carries `[JobHandler]` with key
+`core.import`, `BatchSize = 1`, `LeaseSeconds = 600` and `MaxAttempts = 1` — a partially committed
+import never re-runs blindly; a crash mid-import surfaces as `attempts_exhausted` and spec 0019's
+`core.job.failed`; an administrator's `retry` action (`core.Job × Retry`) resets attempts and the
+handler resumes from its checkpoint. The handler is a host, not a participant of the target stack's
+pipeline (spec 0014 §13.3): each chunk's `SaveAsync` is the target stack's front door, and only the
+`Import` row's completion write is enlisted (§12.6). Two passes over the local copy of
+`Import.FileId` (§7.1):
 
 1. **Pass 1 (no database):** `Parse` of the job's `ImportJobArguments.Request` under an
-   `ExcelContext` built from its `Culture` — mapping, decoding of every cell, in-file uniqueness,
-   the in-sheet parent graph and cycle check, row counts. Any error completes the item with the
-   outcome of §12.6 before any commit.
-2. **Pass 2:** parent rows in topological order are processed in chunks of `ImportChunkRows`
-   (default 10,000 parent rows plus their child rows; a tree parent's chunk never follows its
-   child's). A chunk is closed early when it would otherwise exceed the stack's `MaxSaveCount`
-   parents or its `StackLimits.MaxRowsPerSave` counted over every row at every depth — parents,
-   children and grandchildren — so no chunk is refused by the save (spec 0014 §2.5, §6.8). Each
-   chunk runs resolution (§10), hydration, `Resolve`, and `SaveAsync` as its own transaction.
-   **The checkpoint rides the chunk's persist transaction** (§12.5): `StateJson =
-   { ChunkIndex, RowsProcessed }`, `ProgressPercent = RowsProcessed / RowCount`. A job re-leased
-   after a crash or lease loss re-runs pass 1 (the file is immutable) and resumes at
-   `ChunkIndex + 1` — a committed chunk is never re-applied. A validation or persist error in chunk
-   `k` stops the job: chunks `< k` stay committed; the outcome reports `CommittedRowRanges` and the
-   errors of chunk `k`. Cancellation (`CancelRequestedAt`, lease loss, host stop) takes effect at a
-   chunk boundary; an in-flight transaction rolls back with its checkpoint.
+   `ExcelContext` built from its `Culture` and the job scope's `RequestContext.Now` (§10.4). With
+   `Atomic = true`, a file above `MaxAtomicImportRows` rows, the parent ceiling (§2.3) in parent
+   rows or the stack's `MaxRowsPerSave` rows is `Excel.Import.TooLargeForAtomic` (`rows`,
+   `maxRows`): the `/start` path reads no file, so these ceilings are checked here. When the item
+   carries a checkpoint (§12.5), a session `OrderHash` that differs from the checkpoint's is
+   `Excel.Import.ResumeMismatch` (`expected`, `actual`). Any error completes the item with the
+   outcome of §12.6 before this attempt commits anything.
+2. **Pass 2:** from the checkpoint's `NextRow` (0 on a first run), parent rows in topological order
+   are processed in chunks of `ImportChunkRows` (default 10,000 parent rows with every descendant
+   row). A chunk is closed early when it would otherwise exceed the parent ceiling (§2.3) or the
+   stack's `StackLimits.MaxRowsPerSave` counted over every row at every depth, so no chunk is
+   refused by its hydration or its save (spec 0014 §2.5, §6.8). Each chunk reads its lookups in one
+   round trip (`LookupsFor`, §10.1), hydrates (`HydrationIds`, §9.3), runs `Resolve` and runs
+   `SaveAsync` as its own transaction with §11.2's retries; a self-reference binds within the
+   chunk, through the checkpoint's map or by lookup (§9.6). **The checkpoint rides the chunk's
+   persist transaction** (§12.5), with `ProgressPercent = min(99, 100 × NextRow / RowCount)`. A
+   re-leased or retried job re-runs pass 1 (the file is immutable) and resumes at `NextRow`,
+   re-chunked under the current `ImportChunkRows`, parent ceiling and `MaxRowsPerSave` — a
+   committed row is never re-applied and none is skipped. A validation or persist error in a chunk,
+   after §11.2's retries, stops the job: the earlier chunks stay committed; the outcome reports the
+   checkpoint's `CommittedRowRanges` and the chunk's errors. Cancellation (`CancelRequestedAt` from
+   the requester's or an administrator's `cancel`, lease loss, host stop) takes effect at a chunk
+   boundary; an in-flight transaction rolls back with its checkpoint.
 
-`ImportRequest.Atomic = true` runs the whole file as one chunk (one transaction) and is refused
-above `MaxAtomicImportRows`, above the stack's `MaxSaveCount` parents, or above its
-`MaxRowsPerSave`, at request time (§2.3); a parent above its collection's `MaxCount` is refused as
-its child sheet is read, in either mode (§8.1). Progress phases (`ProgressMessage`): `Parsing`,
-`Resolving`, `Validating`, `Saving`, `Uploading`; the worker renews the lease while the handler
-runs. Lock escalation inside a 10,000-row chunk is accepted: the transaction is short and the
-escalation is the one a 10,000-row JSON save incurs.
+`StartImportRequest.Atomic = true` runs the whole file as one chunk (one transaction) under the
+ceilings of pass 1; a parent above its collection's `MaxCount`, or with more rows at every depth
+than `MaxRowsPerSave`, is refused as its child sheets are read, in either mode (§8.1). Progress
+phases (`ProgressMessage`): `Parsing`, `Resolving`, `Validating`, `Saving`; the worker renews the
+lease while the handler runs. Lock escalation inside a 10,000-row chunk is accepted: the transaction
+is short and the escalation is the one a 10,000-row JSON save incurs.
 
-### 12.5 The checkpoint effect
+### 12.5 The checkpoint
 
-`ImportCheckpointEffect<TEntity> : IPersistEffect<TEntity>` is registered by the Excel feature for
-every stack with `Import`. It reads a scoped holder `ImportCheckpoint` (`Tellma.Core.Excel`, members
-`Progress: IJobProgress?`, `Percent`, `Message`, `State`) that `ImportJobHandler` sets before each
-chunk's `SaveAsync` and clears after; when set, `ContributeAsync(context)` calls
-`ImportCheckpoint.Progress.Append(context.Batch, percent, message, state)` with the `Batch` of the
-base `PersistContext<TEntity>` (no save-only member) — spec 0019's fenced checkpoint, which throws
+```csharp
+// Tellma.Core.Excel (runtime); the StateJson of a core.import job
+public sealed record ImportCheckpointState(
+    int NextRow, string OrderHash, int Inserted, int Updated, int ChildrenInserted, int ChildrenUpdated,
+    int ChildrenDeleted, IReadOnlyList<(int From, int To)> CommittedRowRanges,
+    IReadOnlyDictionary<long, long> CommittedNewIds);
+```
+
+| Member | Meaning |
+|---|---|
+| `NextRow` | The position in the topological order (§10.4) of the first uncommitted parent row. |
+| `OrderHash` | The session's `OrderHash` (§10.4) when the checkpoint was written; a resumed job compares its own with it (§12.4). |
+| `Inserted` … `ChildrenDeleted` | Running totals over every committed chunk, children counted at every depth; `ChildrenDeleted` counts the children synchronisation dropped, never the descendants deleted with them. |
+| `CommittedRowRanges` | The Excel rows of every committed parent row as maximal runs of consecutive rows in ascending order; a fully blank row never breaks a run. |
+| `CommittedNewIds` | For every committed new row that a row at a later position references by its negative `Id`, that sheet value mapped to the id the row was committed with (§9.6); rows referenced only within their own chunk are not entered. |
+
+Each background chunk's `SaveAsync` carries `SaveOptions.OnPersist` (spec 0014 §4.1), a delegate
+that calls the job item's `Progress.Append(batch, percent, message, state)` with the chunk's new
+`ImportCheckpointState` — spec 0019's fenced checkpoint (spec 0019 §5.3), which throws
 `50422 Job.LeaseLost` inside the transaction when the lease is gone, so the chunk and its checkpoint
-roll back together. Outside a background import the holder is empty and the effect is inert.
-`AfterCommitAsync` does nothing.
+commit or roll back together. The delegate builds the new state with the ids the pipeline assigned
+to the chunk's new rows before the persist (spec 0014 §6.4), adding the session's
+`LaterReferencedIds` for the chunk to `CommittedNewIds` (§10.4), so the map commits with the chunk
+and the next chunk's `Resolve` receives it. A re-save of §11.2 carries the same delegate; a
+synchronous import passes no `OnPersist`. A resumed job reads the state back through
+`State<ImportCheckpointState>()` (spec 0019 §3.3).
 
 ### 12.6 Completion
 
-On success the handler writes the `ImportOutcome` as JSON to a staged `import-result` blob and
-enlists an update of the `Import` row with the job frame (`EnlistSaveAsync`, spec 0014 §13.3):
-`ResultFileId`, `RowCount`, `ErrorCount = 0`, under `EnlistSaveOptions.Concurrency = Check` against
-the stamp the claim delivered; `await host.PersistAsync()` on the injected `IOpenWriteHost` places
-the row and its blob confirmation on the completion batch exactly as §12.3 step 5 does for the
-`Export` row; then `NotifyOnSuccess` with a `NotificationRequest("core.import.completed", …)` to
+On success the handler builds the `ImportOutcome` from the final checkpoint state — the counts and
+`CommittedRowRanges` across every attempt — and the warnings, and enlists an update of the `Import`
+row with the job frame (`EnlistSaveAsync`, spec 0014 §13.3): `ResultJson` (the outcome, §12.1),
+`RowCount`, `ErrorCount = 0`, under `EnlistSaveOptions.Concurrency = Check` against the stamp the
+claim delivered. Awaiting `host.PersistAsync()` on the injected `IOpenWriteHost` runs the row's
+validation round and places the row on the completion batch, so it commits with the job outcome;
+then the handler calls `NotifyOnSuccess` with a `NotificationRequest("core.import.completed", …)` to
 `[RunAsUserId]` — arguments `fileName`, `rowCount`, `errorCount`, `TargetResource = "core.Import"`,
-`TargetId = ImportId` — and `Succeed()`. On a deliberate failure (pass-1 errors, chunk `k` errors)
-it writes the capped `ImportException` payload (errors, `TotalErrors`, `CommittedRowRanges`) to the
-`import-result` blob, enlists the row's update the same way with `ResultFileId` and
-`ErrorCount = TotalErrors` and awaits `host.PersistAsync()`, appends
+`TargetId = ImportId` — and `Succeed()`. On a deliberate failure (pass-1 errors, a chunk's errors)
+it enlists the same update with `ResultJson` holding the errors capped at `MaxReportedErrors`,
+`TotalErrors` and the checkpoint's `CommittedRowRanges` (empty when no chunk committed) and with
+`ErrorCount = TotalErrors`, and awaits `host.PersistAsync()`; it then appends
 `INotifier.Notify(batch.Batch, [request])` to the completion batch with a
 `NotificationRequest("core.import.failed", …)` to `[RunAsUserId]` — arguments `fileName` and
 `errorCode` (the first error's code), `TargetResource = "core.Import"`, `TargetId = ImportId` — and
-`Fail(JobError("Excel.Import.Failed", message, details = null))`. The argument names of all three
-are spec 0020's catalogue entries. The three notification types are `Mutable = false` (spec 0020):
-the user cannot mute them, because the result is also reachable from the `imports` page and muting
-would strand nothing, and the default stays on.
+completes the item `Fail(JobError("Excel.Import.Failed", message, details = null))`. The argument
+names of all three are spec 0020's catalogue entries; the `fileName` of both import notifications is
+the uploaded workbook's `FileName` from the blob the handler resolved (§7.1). The three notification
+types are `Mutable = false` (spec 0020): the user cannot mute them, because the result is also
+reachable from the `imports` page and muting would strand nothing, and the default stays on.
 
 ## 13. Access control and security
 
@@ -1263,24 +1463,30 @@ would strand nothing, and the default stays on.
   `Save`, evaluated by the invoker before the method runs (§2.2); the read decision's filter is
   applied through the row source exactly as `query` and `get` apply it.
 - The pipeline's pre-check runs on the hydrated rows (before images under `Read`, the `Save`-grant
-  count beside them) and its post-check over `@tb{b}_saved` after the write; a row visible for
-  reading but not writable is the pipeline's `ForbiddenException` translated to the row.
+  count beside them) and its post-check over `@tb{b}_saved` after the write. A row visible for
+  reading but not writable fails a synchronous import with the pipeline's `ForbiddenException`
+  (403), which names no rows (spec 0014 §6.6); in a background import it stops the job like a chunk
+  error, reported as one `ImportError` at (sheet null, row null) carrying the exception's code
+  (§11.3, §12.6).
 - Reference resolution applies the target's read filter (§10.1); a hidden row is
   `ReferenceNotFound`, so the importer is never an existence oracle. Foreign keys arriving as raw
-  ids through JSON are validated under the same rule by spec 0014, so Excel and JSON agree.
-- Ids from a sheet are never inserted; they select rows that hydration (under `Read`) and the
-  pre-check (under `Save`) verify.
+  ids through JSON are validated under the same rule by spec 0014, so Excel and JSON agree. A child
+  sheet's parent reference is matched within the workbook, never against the database (§9.5).
+- Ids from a sheet are never inserted: a positive `Id` on a same-source `Update` or `Upsert`
+  selects a row that hydration (under `Read`) and the pre-check (under `Save`) verify; every other
+  `Id` only links rows between sheets (§9.2, §9.5).
 - The manifest is validated, never trusted (§5.3); the same-source gate is a mapping decision, not
   an authorisation.
-- Package limits (§7.2), the shared-string byte budget (§7.3), prohibited DTDs and external
-  resolvers bound the parser; the temp files under `Tellma:ScratchPath` are delete-on-close and
-  never named after user input.
+- Package limits (§7.2), the shared-string budget and entry cap (§7.3), prohibited DTDs and
+  external resolvers bound the parser; the temp files under `Tellma:ScratchPath` are delete-on-close
+  and never named after user input.
 - A staged import file is readable only by its uploader (spec 0016's rule), so `FileId` cannot
   name another user's upload.
-- An `Export`/`Import` row is saved only as an enlisted save (§12.1) under the authority of the
-  frame that hosts it — the `export/start`, `export-for-import/start` or `import/start` action's own
-  securable on the request path, the job's run-as scope in the handlers (spec 0014 §13.3) — and the
-  stacks register no `Save` securable, so no request can save one.
+- An `Export` row is saved only by the export handler's enlisted insert and an `Import` row only
+  by `import/start`'s enlisted insert and the import handler's enlisted update (§12.1), under the
+  authority of the frame that hosts it — `import/start`'s own securable on the request path, the
+  job's run-as scope in the handlers (spec 0014 §13.3) — and the stacks register no `Save`
+  securable, so no request can save one.
 - No `Export` securable action exists this release (review flag 10).
 
 ## 14. Configuration, error codes, telemetry
@@ -1296,26 +1502,31 @@ public sealed class ExcelOptions
     public int MaxSynchronousImportRows { get; set; } = 10000;
     public int MaxAtomicImportRows { get; set; } = 100000;
     public int ImportChunkRows { get; set; } = 10000;
-    public long MaxSynchronousImportFileBytes { get; set; } = 16L * 1024 * 1024;        // 16 MB
-    public long MaxImportFileBytes { get; set; } = 100L * 1024 * 1024;                  // 100 MiB
-    public long MaxImportUncompressedBytes { get; set; } = 2L * 1024 * 1024 * 1024;     // 2 GB
-    public long MaxInMemorySharedStringBytes { get; set; } = 32L * 1024 * 1024;         // 32 MB
-    public int MaxReportedErrors { get; set; } = 1000;
+    public int ImportConcurrencyRetries { get; set; } = 2;
+    public long MaxSynchronousImportFileBytes { get; set; } = 16L * 1024 * 1024;                // 16 MB
+    public long MaxSynchronousImportUncompressedBytes { get; set; } = 512L * 1024 * 1024;       // 512 MiB
+    public long MaxImportFileBytes { get; set; } = 100L * 1024 * 1024;                          // 100 MiB
+    public long MaxImportUncompressedBytes { get; set; } = 2L * 1024 * 1024 * 1024;             // 2 GB
+    public long MaxInMemorySharedStringBytes { get; set; } = 32L * 1024 * 1024;                 // 32 MB
+    public int MaxSharedStringEntries { get; set; } = 16000000;
+    public int MaxReportedErrors { get; set; } = 100;
     public int ExportFileRetentionDays { get; set; } = 7;
     public int ImportFileRetentionDays { get; set; } = 7;
 }
 ```
 
-Validated at startup (reported into the realised gate): every value positive;
-`MaxSynchronousExportRows ≤ MaxExportRows ≤ 1,048,575`; `ImportChunkRows ≤
-MaxAtomicImportRows`; `MaxSynchronousImportFileBytes ≤ MaxImportFileBytes ≤
-MaxImportUncompressedBytes`.
+Validated at startup (reported into the realised gate): every value positive except
+`ImportConcurrencyRetries` (`≥ 0`); `MaxSynchronousExportRows` ≤ `MaxExportRows` ≤ 1,048,575;
+`ImportChunkRows` ≤ `MaxAtomicImportRows`; `MaxSynchronousImportFileBytes` ≤ `MaxImportFileBytes` ≤
+`MaxImportUncompressedBytes`; `MaxSynchronousImportFileBytes` ≤
+`MaxSynchronousImportUncompressedBytes` ≤ `MaxImportUncompressedBytes`.
 
 ### 14.2 Error codes
 
 `ExcelErrorCodes` (constants; hosts localize through the request culture): the closed set in
-Appendix A. Codes are dotted PascalCase resource keys; `Excel.Import.UnconfiguredLanguageColumn`
-is the only warning.
+Appendix A. Codes are dotted PascalCase resource keys; the warnings are
+`Excel.Import.UnconfiguredLanguageColumn` and `Excel.Import.IdentityColumnIgnored`; every other
+code is an error.
 
 ### 14.3 Telemetry
 
@@ -1332,14 +1543,16 @@ is the only warning.
 | `tellma.excel.import.errors` | counter | `entity`, `code` |
 | `tellma.excel.import.chunks` | histogram (chunks per background import) | `entity` |
 | `tellma.excel.import.resumed` | counter | `entity` |
+| `tellma.excel.import.retries` | counter (chunk re-saves after a hydration-stamp conflict) | `entity` |
 | `tellma.excel.sst.spilled` | counter | — |
 
 Tag names as constants `EntityTag`, `ShapeTag`, `ModeTag`, `BackgroundTag`, `CodeTag`. No tenant
 or user tags; tenant and user ids go to the log scope. Log events (`Tellma.Core.Excel` category):
 `ExportCompleted` (entity, rows, ms), `ExportRejected` (entity, rows, cap), `ImportCompleted`
 (entity, mode, inserted, updated, ms), `ImportFailed` (entity, mode, total errors, first code),
-`ImportChunkCommitted` (import id, chunk index, rows), `ImportResumed` (import id, chunk index),
-`SharedStringsSpilled` (bytes) — all at Information except `ImportFailed` (Warning).
+`ImportChunkCommitted` (import id, next row, rows), `ImportChunkRetried` (import id or none, first
+row, attempt, conflicts), `ImportResumed` (import id, next row), `SharedStringsSpilled` (bytes) —
+all at Information except `ImportFailed` (Warning).
 
 ## 15. Testing
 
@@ -1350,53 +1563,80 @@ Testcontainers SQL Server of spec 0011's fixture). No suite carries `Live=true`.
 **Pure suite** (runs on every PR, Windows and Linux):
 
 - The planner over spec 0011's fixture entities (`test/shared/Tellma.Testing.Entities`:
-  `fixture.Widgets`, multilingual with three languages, with children `fixture.WidgetParts`, the
-  tree `fixture.Nodes`, the `long`-keyed `fixture.Shipments`): column
-  sets, header labels per culture, number formats, sheet names, truncation and collision suffixes,
-  the `Columns` subset rule, reference-key defaults and overrides, surrogate fallback.
+  `fixture.Widgets`, multilingual with three languages, with children `fixture.WidgetParts` and
+  grandchildren `fixture.WidgetPartNotes`, the tree `fixture.Nodes`, the `long`-keyed
+  `fixture.Shipments`): column sets, header labels per culture, number formats, sheet names at
+  every depth with leading segments dropped, truncation and collision suffixes, the `Columns` and
+  `Children` subset rules at every depth, reference-key defaults and overrides, surrogate fallback.
 - Encoder/decoder round trips for every row of §3.1 including the 15-digit boundary for `long`
   and `decimal`, ISO 8601 with offsets, `TimeOnly` fractions; date systems (1900 and 1904 workbooks;
   serial 60 refused); every cell kind of §3.1 (shared, inline, rich text, `str`, cached formula,
   formula without a cached value, error cell).
 - Number-format construction for `en-US`, `ar-SA` (`gc` and `uq`), `am-ET` (`et` → text with the
   manifest pattern), a custom culture with no LCID.
-- Manifest write and read, the same-source gate, `SchemaFingerprintMatches`, a hostile manifest
-  (out-of-range indexes, unknown paths, wrong entity).
+- Manifest write and read; the same-source gate, including a manifest from another deployment of
+  the same application (`etpharma-staging` into `etpharma`) that is not same-source;
+  `SchemaFingerprintMatches`; a fixed `ExcelContext.Now` giving a deterministic `ExportedAt` and
+  file name; a hostile manifest (out-of-range indexes, unknown paths, wrong entity).
 - Mapping across tenant-language permutations (`en, ar` → `ar, en`; a language the target lacks;
-  technical paths; header parsing with symbols; overrides by header and by letter; suggestions).
-- In-file uniqueness, in-sheet resolution, topological ordering and cycle detection, the
-  per-parent child cap (`TooManyChildren`); the coordinate map for every path shape of §10.4;
-  error capping and `TotalErrors`.
+  technical paths); the header index (every candidate kind, normalisation, collisions, catalogue
+  symbols, the disambiguated form); overrides by letter; suggestions; every plan column echoed as
+  an override is a fixed point across `en, ar` → `ar, en`; `IdentityColumnIgnored` on a
+  foreign-source and on a manifest-less file.
+- Invalid mappings: every request fault refused with `BadRequestException` before the blob is read;
+  `UnknownSheet`, `UnknownColumn` and `UnknownPath`; a plan with two `Duplicate` sheets.
+- In-file uniqueness, in-chunk resolution, the stable topological order and `OrderHash`, cycle
+  detection through self-references beyond the tree parent; links at depth 2 (negative, duplicate
+  and blank `Id`s, `OrphanChildRow`, `OwnerSheetAbsent`); `IncompleteChildSheet` for a missing
+  column and for a missing descendant sheet; `TooManyChildren` at depth 2 and `TooManyDescendants`;
+  the coordinate map for every path shape of §10.4 at depth 2; error capping and `TotalErrors`.
 - The workbook corpus under `Excel/Corpus/`: files saved by Excel, LibreOffice and Google Sheets
   (shared-string table present, `dimension` absent, renamed headers, inserted columns, a 1904
   workbook, a `veryHidden` sheet, an error cell, a formula without a cached value, an `.xlsm`);
-  package-limit rejection with crafted zips (oversized part, external link, two workbook parts).
+  package-limit rejection with crafted zips (oversized part, external link, two workbook parts);
+  the shared-string entry charge and `TooManySharedStrings` with a crafted `<si/>` flood.
 - Option validation.
 - Request validation: an export body mapped to exactly one `ExportSource` case (`Ids` beside a
-  filter clause, and a body with neither, refused; an empty `Ids` list the `ExportForImport`
-  template); `Atomic = true` on `import` refused with `BadRequestException`; `ExportJobArguments`
-  round-tripping through JSON on its `kind` for both cases.
+  filter clause refused; an empty body mapped to `ByQuery` with every clause null; an empty `Ids`
+  list the `ExportForImport` template); a display and an editable request each mapped to `ByQuery`
+  with its own `IncludeInactive` (false by default, excluding inactive rows); `Ids` beside
+  `IncludeInactive = true` refused; `ExportCollection` validation (unknown and repeated collections,
+  non-editable paths); `ExportJobArguments` round-tripping through JSON on its `kind` for both
+  cases.
 
-**Integration suite** (PR on LocalDB; nightly on Testcontainers):
+**Integration suite** (`Category=Integration`; every PR, per spec 0010 §10):
 
-- Export → import round trip of the fixture entities in all three modes with children and the tree,
-  same-source and cross-tenant (two fixture tenants), asserting row and child counts, `IsActive`
-  absent from the editable shape and true after `Insert`, `WriteOnceChanged` on `Update`.
+- Export → import round trip of the fixture entities in all three modes with the tree and
+  `fixture.Widgets` → `WidgetParts` → `WidgetPartNotes`, same-source and cross-tenant (two fixture
+  tenants), asserting row and child counts at every depth, `IsActive` absent from the editable
+  shape and true after `Insert`, `WriteOnceChanged` on `Update`; replacing a part deletes its
+  notes; a same-source `Update` renaming `Code` updates the row; a copied row with a stale `Id` is
+  `DuplicateRowKey`.
 - Resolution under row-level security: a hidden reference is `ReferenceNotFound`; a readable but
-  unwritable row is the pipeline's 403 translated to the row.
-- Concurrency: a row edited between hydration and persist is `ConcurrencyConflict`; `Override`
-  passes; a same-source `Stamp` older than the row conflicts.
-- Synchronous caps: `MaxSynchronousExportRows + 1` rows rejected with a message naming
-  `export/start` and no job enqueued; `TooLargeForSynchronous` with a message naming `import/start`.
-- Background export through `export/start` and the job worker (spec 0019's test harness): the
-  `Export` row completed in the job's completion transaction with its blob confirmed there, the
-  notification, retention deleting the row and releasing the blob; a schedule-fired `core.export`
-  run with `ForImportExportJobArguments` inserting its own row with `Kind = ForImport` and `JobId`
-  set and enqueuing no second job.
+  unwritable row fails a synchronous import with the pipeline's 403 and a background chunk with one
+  error at (sheet null, row null).
+- Concurrency: a row edited between hydration and persist is re-hydrated and saved on one retry
+  (`tellma.excel.import.retries` = 1); a same-source `Stamp` older than the row conflicts at once;
+  `IgnoreSheetStamps = true` saves it.
+- Synchronous caps: a by-query export of `MaxSynchronousExportRows + 1` rows rejected at the first
+  page (one round trip, no temp file) with a message naming `export/start` and no job enqueued;
+  `TooLargeForSynchronous` with a message naming `import/start`.
+- Background export through `export/start` and the job worker (spec 0019's test harness): the call
+  answering `JobAccepted(JobId, null)`; the `Export` row inserted in the job's completion
+  transaction with `JobId` set and its blob confirmed there; no progress of 100 reported by the
+  handler; the notification; retention deleting the row and releasing the blob; a schedule-fired
+  `core.export` run with `ForImportExportJobArguments` behaving identically, its row inserted with
+  `Kind = ForImport`; the requester cancelling their own pending export.
 - Chunked background import through `import/start` with `ImportChunkRows = 100`, the call answering
-  `JobAccepted`: a forced failure in chunk 2 reports `CommittedRowRanges` for chunk 1; a simulated
-  lease loss during chunk 3 rolls back the chunk and its checkpoint, and `retry` resumes at chunk 3
-  without re-applying chunks 1–2 (`tellma.excel.import.resumed`); `Atomic` runs one transaction.
+  `JobAccepted(JobId, ImportId)`: a tree whose new parent lands in chunk 1 and its child in chunk 2
+  imports; a tree without a natural key whose new parent (negative `Id`) lands in chunk 1 and whose
+  child, referencing it by `Parent.Id`, lands in chunk 2 imports, and does so across a simulated
+  crash between the two chunks; a forced failure in chunk 2 reports `CommittedRowRanges` for the
+  first chunk; a simulated lease loss during chunk 3 rolls back the chunk and its checkpoint, and
+  `retry` resumes without re-applying a committed row (`tellma.excel.import.resumed`); a resume
+  under a changed `ImportChunkRows` (100 → 37) commits every remaining row exactly once; a changed
+  order is `ResumeMismatch`; `ResultJson` carries the outcome; `Atomic` runs one transaction, and
+  above its ceiling fails the job with `TooLargeForAtomic`.
 - The round-trip table of §1.4 asserted through `DataAccessScope` for each operation.
 - One manual milestone check on Windows desktop Excel: `[$-170401]` renders Um Al Qura dates; the
   hidden manifest survives a save from Excel, LibreOffice and Google Sheets.
@@ -1417,9 +1657,8 @@ Testcontainers SQL Server of spec 0011's fixture). No suite carries `Live=true`.
   suites of §15, green in CI.
 - **Observability**: every instrument of §14.3 emitted and asserted at least once by the
   integration suite; the log events of §14.3 asserted through the test logger.
-- **CI**: the pure suite on every PR on both operating systems; the integration suite on PR
-  against LocalDB and nightly against Testcontainers; the corpus checked in under
-  `test/core/Tellma.Core.Tests/Excel/Corpus/`.
+- **CI**: the pure suite on every PR on both operating systems; the integration suite on every PR
+  (spec 0010 §10); the corpus checked in under `test/core/Tellma.Core.Tests/Excel/Corpus/`.
 - **Docs**: ARCHITECTURE.md updated where this spec touches it — the library-architecture package
   rows (`Tellma.Core` carries the Excel codec and the `DocumentFormat.OpenXml` reference; no
   separate Excel package), the reports-tier wording naming display-shape export as the
@@ -1446,7 +1685,8 @@ The load-bearing decisions, where not already evident above:
    (§1.1, §1.2).
 3. **Four operations as two axes** — source (ids or clauses) × shape (display or editable) on one
    flat wire request each, mapped to one `ExportSource` case at the service seam so the row source
-   never sees both; the empty-ids template falls out for free (§2.1).
+   never sees both; an empty request is the unfiltered query, and the empty-ids template falls out
+   for free (§2.1).
 4. **Fail at the cap, never truncate or promote; the background export and import are their own
    actions** — silent truncation is data loss the user cannot see, a mid-request switch to
    background would change the response shape, and a separate `/start` route gives each route one
@@ -1455,49 +1695,60 @@ The load-bearing decisions, where not already evident above:
    text fallbacks as the only lossless carrier for wide types, and no locale guesswork (§3.1).
 6. **Per-column `[$-CCLLLL]` number formats; Ethiopian as text with the pattern in the manifest**
    — Excel renders Hijri and Um Al Qura natively and has no Ethiopian calendar (§3.2).
-7. **`Id` and `Stamp` in the editable sheet, gated by the same-source manifest** — exact identity
-   and change detection for the dominant export-fix-import loop, refused across tenants (§5.1,
-   §5.4).
-8. **One sheet per child collection keyed by the parent's natural key, a hidden protected manifest
-   sheet** — rectangular tables sort and paste cleanly; a hidden sheet is the one manifest carrier
-   every spreadsheet application round-trips (§5.2, §5.3).
+7. **`Id` and `Stamp` in the editable sheet, gated by the same-source manifest** — exact identity,
+   change detection and the default row key for the dominant export-fix-import loop; on any other
+   file `Id` only links rows between sheets (§5.1, §5.4, §9.2).
+8. **One sheet per collection path at every depth, each row naming its owner by the owner's `Id`,
+   and a hidden protected manifest sheet** — rectangular tables sort and paste cleanly; `Id` links
+   work for new rows, owners without a natural key and nullable keys; a hidden sheet is the one
+   manifest carrier every spreadsheet application round-trips (§5.2, §5.3, §9.5).
 9. **Natural keys are the entity contract's; references may use any target property on request**
    — uniqueness is a database guarantee, the surrogate fallback is visible, and ambiguity is an
    error rather than a first-match guess (§6).
 10. **Staged-blob intake with package limits before parsing** — one intake path shared with
     attachments, a local file that can be read twice, and zip bombs stopped by the central
     directory (§7.1, §7.2).
-11. **Manifest → header parse → labels in every tenant language → technical path, with a human
-    override; unmapped columns are errors** — unchanged files map with zero input, renamed files
-    still map, and the classic silent "column ignored" loss cannot happen (§8.1).
-12. **Blank means null; a present child sheet means complete replacement; an absent one means
-    untouched** — the save contract's own semantics, each statable in one sentence and never
-    silently dropping data (§9.4, §9.5).
-13. **Hydration through `GetByIdsAsync` and every hydrated row saved under `Check`** — a partial
-    sheet touches only its columns, and a concurrent edit between hydration and persist is a
-    conflict, never an overwrite (§9.3, §11.2).
-14. **Temporary negative ids from the codec, not the allocator** — the pipeline already rewrites
-    them in self-typed foreign keys and child parent keys, so in-sheet parents need no
-    reservation round trip (§9.6, §10.4).
-15. **Lookups as Queryex queries with a `KeySetRestriction` under the target's read filter** —
-    row-level security composes only through `CompileQuery`; distinct-value TVPs make the cost
-    O(distinct values) (§10.1).
+11. **Manifest → generated header index in every tenant language and English → technical path,
+    with a human override; unmapped columns are errors** — unchanged files map with zero input,
+    renamed files still map, and the classic silent "column ignored" loss cannot happen (§8.1).
+12. **Blank means null; a present child sheet means the complete children of its owners; an absent
+    one means untouched** — the save contract's own semantics, each statable in one sentence;
+    replacing a collection requires every editable column and every descendant sheet
+    (`IncompleteChildSheet`), so it never drops data the file did not carry (§9.4, §9.5).
+13. **Hydration through `GetByIdsAsync`, every hydrated row saved under `Check`, and a
+    hydration-window conflict retried by the codec** — a partial sheet touches only its columns, a
+    concurrent edit is never overwritten, and a race no user can see never fails an import (§9.3,
+    §11.2).
+14. **Temporary negative ids from the codec, within a chunk** — the pipeline rewrites them in
+    self-typed foreign keys and child parent keys, so in-chunk new rows need no reservation round
+    trip; a row of an earlier chunk is committed and resolves by key, or by its negative `Id`
+    through the checkpoint's `CommittedNewIds` (§9.6, §10.2, §12.5).
+15. **Lookups as Queryex queries with a `KeySetRestriction` under the target's read filter, read
+    together in one round trip** — row-level security composes only through `CompileQuery`;
+    distinct-value TVPs make the cost O(distinct values) (§10.1).
 16. **Chunked background commits with the checkpoint inside the chunk's transaction** — bounded
-    transactions, honest committed-range reporting, and a retry that can never re-apply a chunk
+    transactions, honest committed-range reporting, and a position checkpoint that can never
+    re-apply or skip a row, written through `SaveOptions.OnPersist` and `IJobProgress.Append`
     (§12.4, §12.5).
 17. **`Export`/`Import` are server-owned entities on `Query | Details | Delete | Enlist` stacks with
     a self-scope criterion, saved only by enlisted saves** — "My exports" is a standard query, the
-    row owns the blob, retention is an ordinary delete, and the request path and both handlers write
-    through the entities' own pipelines as participants of the frame that authorises them, so a
-    handler's completion row commits with the job outcome and its blob confirms inside the
-    completion transaction (§12.1–§12.6).
+    row owns the blob and exists only when it has a file to own, retention is an ordinary delete,
+    and `import/start` and both handlers write through the entities' own pipelines as participants
+    of the frame that authorises them, so a handler's row commits with the job outcome and its blob
+    confirms inside the completion transaction (§12.1–§12.6).
 18. **`core.import` with `MaxAttempts = 1`, resumed only by an explicit `retry`** — a partially
     committed import never re-runs blindly (§12.4).
 19. **No `Export` securable** — bulk extraction is `Read`; a separate action is one registry line
     away when wanted (§13, review flag 10).
-20. **Typed job arguments, polymorphic on the export kind** — a schedule-fired `core.export` has no
-    `Export` row to read, so its arguments alone name the shape and carry the typed request; on
-    the request path both services build the arguments from the row's `RequestJson` (§12.1–§12.3).
+20. **Typed job arguments, polymorphic on the export kind** — no `core.export` run has an `Export`
+    row to read; its arguments alone name the shape and carry the typed request, so a run
+    `export/start` enqueued and a schedule-fired run are one path (§12.1–§12.3).
+21. **One round trip per page at any depth, and one for every lookup** — a page carries its child
+    collections at every depth through captured keys and the importer reads all its lookups
+    together, so neither collections nor reference columns multiply round trips (§1.4, §4.1, §10.1).
+22. **`IgnoreSheetStamps`, never a concurrency override** — an import writes the whole hydrated row,
+    so an override would revert columns the sheet never carried; ignoring the sheet's stamps keeps
+    the hydration check and lets the sheet's columns win (§9.3, §11.2).
 
 ## Review flags
 
@@ -1513,14 +1764,15 @@ The load-bearing decisions, where not already evident above:
    break their sorting.
 4. **`Id` and `Stamp` in the editable sheet** (§5.1; decision 7) versus a natural-keys-only file
    that loses bulk edits of the key columns themselves and change detection. Flips if the
-   same-source gate proves confusing (sandbox → live refusals as support load).
+   same-source gate proves confusing despite the `IdentityColumnIgnored` warning (sandbox → live
+   support load).
 5. **Columns in an unconfigured language ignored with a warning** (§8.2) versus a hard
    `UnmappedColumn` error forcing the user to remove the column. Flips if silent-warning imports
    generate "where did my Arabic names go" tickets.
-6. **Child sheet present ⇒ complete replacement of the listed parents' children** (§9.5; decision
-   12) — the sharpest edge in the design — versus a per-row `Action` column (`Keep | Delete`) on
-   child sheets. Flips on the first accidental mass deletion of children through a partial child
-   sheet.
+6. **Child sheet present ⇒ the complete children of every owner row present, at every depth**
+   (§9.5; decision 12) — the sharpest edge in the design, guarded on replacement by
+   `IncompleteChildSheet` — versus a per-row `Action` column (`Keep | Delete`) on child sheets.
+   Flips on the first accidental mass deletion of children through a partial child sheet.
 7. **References resolved under the target's read filter, and the same rule applied to raw
    foreign-key ids on the JSON path** (§10.1, §13) versus Excel-only strictness with JSON saves
    posting any id. Flips if a legitimate workflow needs to reference rows the caller may not read
@@ -1528,31 +1780,23 @@ The load-bearing decisions, where not already evident above:
 8. **Staging-only intake** (§7.1) — one extra round trip for tiny synchronous imports — versus a
    multipart convenience endpoint. Flips if agent clients (MCP `tellma_import`) find two calls
    burdensome; the codec does not change either way.
-9. **Chunked background commits, 10,000-row chunks, checkpoint through `IJobProgress.Append`**
-   (§12.4, §12.5; decision 16) versus `Atomic` by default with a hard cap and no chunking, or
-   5,000-row chunks under the lock-escalation threshold, or a dedicated checkpoint column on the
-   `Imports` row instead of `Jobs.StateJson`. Flips on lock-escalation contention measured in the
-   integration suite at 10,000 rows, or on operators needing the checkpoint visible on the import
-   row itself.
+9. **Chunked background commits, 10,000-row chunks, checkpoint through `SaveOptions.OnPersist` and
+   `IJobProgress.Append`** (§12.4, §12.5; decision 16) versus `Atomic` by default with a hard cap
+   and no chunking, or 5,000-row chunks under the lock-escalation threshold, or a dedicated
+   checkpoint column on the `Imports` row instead of `Jobs.StateJson`. Flips on lock-escalation
+   contention measured in the integration suite at 10,000 rows, or on operators needing the
+   checkpoint visible on the import row itself.
 10. **No `Export` securable action** (§13; decision 19) versus an `Export` action in the securables
     registry so administrators can forbid bulk extraction to users who may read on screen. Flips
     on the first customer asking to restrict exports; the change is one line in the stack feature's
     securable contributor plus `Action = "Export"` on four `[ApiAction]`s.
 11. **Errors workbook deferred** (Non-goals) — the upload echoed with an error column is the most
     usable channel for thousands of errors and fits the coordinate map. Flips when `TotalErrors`
-    routinely exceeds `MaxReportedErrors` in telemetry.
-12. **By-query editable export in pages, children fetched per page of parent ids** (§5.2) versus
-    one round trip by re-anchoring the parent filter through the child's parent navigation
-    (`FilterTree.Via`, spec 0011 §11.2). Flips when a measured export shows the per-page child
-    fetch dominating.
-13. **One read round trip per lookup** (§1.4, §10.1) — `IExcelRowSource.Rows` takes one query —
-    versus a `Rows(list<ExcelQuery>)` overload batching every lookup into one round trip with
-    `NextResult()`. Flips on `tellma.excel.import.lookups` showing wide reference fans (more than
-    three lookups per import is common).
-14. **The `Exports` row owns the export blob and one daily `core.file-retention` schedule deletes
+    routinely exceeds `MaxReportedErrors` (100) in telemetry.
+12. **The `Exports` row owns the export blob and one daily `core.file-retention` schedule deletes
     expired `Exports` and `Imports`** (§12.1) versus the notification owning the artifact with its
     own retention. Flips if "My exports" is not wanted as a page.
-15. **`core.import` at `MaxAttempts = 1` with resume through the administrator's `retry`** (§12.4;
+13. **`core.import` at `MaxAttempts = 1` with resume through the administrator's `retry`** (§12.4;
     decision 18) versus `MaxAttempts = 3` with automatic resume from the checkpoint. Flips if
     transient failures (a lost lease on a busy instance) leave too many imports waiting on an
     administrator; the checkpoint already makes automatic resume safe.
@@ -1564,26 +1808,37 @@ All codes are constants on `ExcelErrorCodes`; coordinates are as listed (`—` =
 | Code | Sheet / Row / Column | Arguments | Condition |
 |---|---|---|---|
 | `Excel.Export.RowLimitExceeded` | — / — / — | `limit` (this code), `actual` (rows), `maximum` (the cap) | a sheet's query yields more than its cap (§2.3, §4.2); raised as `LimitExceededException(Limit = this code, Actual, Maximum)` (413) and the job error code of an overflowing background export (§12.3) |
-| `Excel.Import.TooLargeForSynchronous` | — / — / — | `rows`, `maxRows`, `bytes`, `maxBytes` | a synchronous or atomic request above its limits (§2.3) |
+| `Excel.Import.TooLargeForSynchronous` | — / — / — | `rows`, `maxRows`, `bytes`, `maxBytes` | a synchronous request above its limits (§2.3) |
+| `Excel.Import.TooLargeForAtomic` | — / — / — | `rows`, `maxRows` | an `Atomic` background import above `MaxAtomicImportRows`, the parent ceiling (§2.3) or the stack's `MaxRowsPerSave`, found in pass 1 (§12.4); the job's outcome carries it as its one error |
 | `Excel.Import.PackageTooLarge` | — / — / — | `bytes`, `max` | §7.2 |
+| `Excel.Import.TooManySharedStrings` | — / — / — | `entries`, `max` | the shared-string part holds more than `MaxSharedStringEntries` entries (§7.3) |
 | `Excel.Import.MalformedWorkbook` | sheet? / — / — | `reason` | package structure, XML, or a manifest naming another entity (§7.2, §8.1) |
+| `Excel.Import.UnknownSheet` | sheet / — / — | — | a `SheetMappings` or `ColumnMappings` entry names a sheet the workbook lacks (§8.1) |
+| `Excel.Import.DuplicateSheet` | sheet / — / — | `collection` | two sheets bound to one target by any mix of manifest, name and override; raised at both sheets (§8.1) |
+| `Excel.Import.OwnerSheetAbsent` | child sheet / — / — | `collection`, `owner` | a present child sheet whose owner sheet is absent or ignored, or maps no `Id` column (§9.5) |
 | `Excel.Import.UnmappedColumn` | sheet / 1 / column | `header`, `suggestions` | no mapping and `IgnoreUnmappedColumns = false` (§8.1) |
+| `Excel.Import.UnknownColumn` | sheet / 1 / column | — | a `ColumnMappings` letter with no header cell, or on a sheet the plan ignores (§8.1) |
+| `Excel.Import.UnknownPath` | sheet / 1 / column | `path` | an override `Path` that is not a column path of the sheet's entity (§8.3) |
 | `Excel.Import.DuplicateColumn` | sheet / 1 / column | `path` | two columns map to one path (§8.1) |
 | `Excel.Import.ServerOwnedColumn` | sheet / 1 / column | `path` | a mapped server-owned, derived, database-computed or excluded path (§8.1) |
 | `Excel.Import.UnconfiguredLanguageColumn` | sheet / 1 / column | `language` | warning; the column is ignored (§8.2) |
+| `Excel.Import.IdentityColumnIgnored` | sheet / 1 / column | `path` (`Id` or `Stamp`), `reason` (`ForeignSource`, `NoManifest` or `InsertMode`), `deployment`?, `sourceTenantId`? | warning: the column is mapped but not used as row identity or expected stamp — the file is not same-source (§5.4; plan and import) or the mode is `Insert` (§9.1; import only); an `Id` column still links rows between sheets (§9.5) |
 | `Excel.Import.WriteOnceChanged` | sheet / row / column | `path` | a write-once value differs from the hydrated one on update (§9.3) |
-| `Excel.Import.RowNotFound` | sheet / row / key column | `key`, `value` | `Update` row key resolves to nothing readable (§9.1); also a missing-row concurrency conflict (§11.2) |
-| `Excel.Import.DuplicateRowKey` | sheet / row / key column | `value` | duplicate row-key or unique-column value in the file (§9.2) |
-| `Excel.Import.IdKeyRequiresSameTenant` | — / — / — | `distribution`, `sourceTenantId` | `RowKey = "Id"` on a non-same-source file (§9.2) |
-| `Excel.Import.SurrogateReferenceFromOtherTenant` | sheet / — / column | `entity` | a `KeyKind = Surrogate` column on a non-same-source file (§6.3) |
+| `Excel.Import.RowNotFound` | sheet / row / key column | `key`, `value` | an `Update` row key that resolves to nothing readable (§9.1); under `RowKey = "Id"`, a positive `Id` hydration does not return, or a negative or blank `Id` in `Update` (§9.2); a positive child `Id` that is not an existing child of its owner (§9.5); a missing-row concurrency conflict, or a row that vanished before the save (§11.2) |
+| `Excel.Import.DuplicateRowKey` | sheet / row / key column | `value` | a duplicate row-key or `[Unique]`-column value in the parent sheet, or a duplicate `Id` on a sheet that owns a present child sheet, after §10.3 normalisation (§9.2) |
+| `Excel.Import.IdKeyRequiresSameTenant` | — / — / — | `deployment`, `sourceTenantId` | `RowKey = "Id"` on a non-same-source file (§9.2) |
+| `Excel.Import.SurrogateReferenceFromOtherTenant` | sheet / — / column | `entity` | a `Reference` column with `KeyKind = Surrogate` on a non-same-source file (§6.3); never a parent reference, which is matched within the workbook (§9.5) |
 | `Excel.Import.ReferenceNotFound` | sheet / row / column | `entity`, `key`, `value`, `collation`? | no readable target row (§10.3) |
 | `Excel.Import.ReferenceAmbiguous` | sheet / row / column | `entity`, `key`, `value`, `count` | more than one target row (§10.3) |
 | `Excel.Import.KeyTooLong` | sheet / row / column | `max` | a key value above 450 characters (§10.1) |
-| `Excel.Import.OrphanChildRow` | child sheet / row / parent column | `value` | a child row whose parent is absent from the parent sheet (§9.5) |
-| `Excel.Import.ParentCycle` | sheet / row / parent column | `rows` | a cycle among in-sheet parents (§9.6) |
-| `Excel.Import.TooManyChildren` | child sheet / row / parent column | `collection`, `max`, `count` | more rows for one parent in a collection than its `MaxCount`, at the first row beyond the cap (§8.1) |
+| `Excel.Import.OrphanChildRow` | child sheet / row / parent reference column | `value` | a child row whose parent reference matches no `Id` in its owner sheet (§9.5) |
+| `Excel.Import.IncompleteChildSheet` | child sheet / — / — | `collection`, `missingColumns`, `missingCollections` | a collection to be replaced (neither `Id` nor natural key matches its children, §9.5) whose sheet lacks an editable column of the child or whose descendant collections' sheets are not all present |
+| `Excel.Import.ParentCycle` | sheet / row / self-reference column | `rows`, `path` | a cycle among new sheet rows through any self-typed reference — the tree parent or another — which no order can satisfy (§9.6) |
+| `Excel.Import.TooManyChildren` | child sheet / row / parent reference column | `collection`, `max`, `count` | more rows under one owner row in a collection than its `MaxCount`, at any depth, at the first row beyond the cap; `collection` is the collection path (§8.1) |
+| `Excel.Import.TooManyDescendants` | parent sheet / row / — | `rows`, `max` | more rows under one parent row, at every depth together, than the stack's `MaxRowsPerSave` (§8.1) |
 | `Excel.Import.InvalidCell` | sheet / row / column | `expected`, `value` | any decode failure (§3.1) |
-| `Excel.Import.ConcurrencyConflict` | sheet / row / `Stamp` column or — | `modifiedAt`, `modifiedBy` | the row changed since hydration or since the sheet's stamp (§11.2) |
+| `Excel.Import.ConcurrencyConflict` | sheet / row / `Stamp` column when the sheet's stamp was the expected stamp, else — | `modifiedAt`, `modifiedBy` | the row changed since the sheet's stamp, or since hydration on every attempt of §11.2's retry |
+| `Excel.Import.ResumeMismatch` | — / — / — | `expected`, `actual` | a resumed job's recomputed `OrderHash` differs from its checkpoint's (§12.4) |
 | `Excel.Import.Failed` | — / — / — | — | the `JobError.Code` of a failed background import (§12.6); `Imports.ErrorCount` carries the total |
 
 Pipeline codes translated with coordinates keep their own names (`Required`, `MaxLength`,

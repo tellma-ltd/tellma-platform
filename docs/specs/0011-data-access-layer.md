@@ -742,7 +742,7 @@ public sealed record QueryexContextValues(
 
 public enum BatchPurpose { Read, Validate, Persist, Maintenance }
 public enum TransactionMode { Auto, None, Explicit }
-public enum ConcurrencyMode { Check, Override }         // defined once, here; used by .Crud, .Api, .Excel
+public enum ConcurrencyMode { Check, Override }         // defined once, here; used by .Crud, .Api
 ```
 
 The scoped `ITenantDatabase` is opened by tenant id alone; `Context` and `Schema` are read from
@@ -937,6 +937,9 @@ keys-only twin of the spec (`Select = "Id"`, same filter, ordering and paging) i
 display query restricted by `KeySetRestriction("Id", "@tb{b}_keys")` with the ordering kept and
 paging dropped. Later statements name `@tb{b}_keys` as a restriction source: child collections
 (`ParentKey IN`), ancestors, the row-level-security post-check, delete-by-query, update-by-query.
+The keys-only twin carries the statement's restrictions, so a statement restricted by another
+statement's `@tb{a}_keys` captures only its own rows, and a later statement can restrict on its
+`@tb{b}_keys` in turn — a grandchild collection on its child collection's keys, at any depth.
 `Query` captures when `Children` is non-empty and no id restriction already fixes the roots; `Rows`
 captures when `CaptureKeys` or `IncludeAncestors` is set; deletes and updates always capture.
 
@@ -991,7 +994,7 @@ first round trip):
 | Delete by ids / by query / with descendants | 1 | prologue, keys, checks, child deletes, root delete, recount, bumps |
 | Activate / deactivate (spec 0014's SQL-only fast path; a custom action is 2, as update) | 1 | prologue, stamped update, recount, bumps |
 | Get by parent ids | 1 | one query restricted by a TVP |
-| Import, per chunk of `MaxSaveCount` roots (spec 0014; 10,000 by default) | 2 (+1 hydration) | as update |
+| Import, per chunk of at most the smaller of `MaxSaveCount` and `MaxIds` roots (spec 0014 §6.8; 10,000 each by default) | 2 (+1 hydration) | as update |
 
 A cold or stale path adds one prologue-only round trip per user per instance; each dependent
 validation round adds one (spec 0014's `MaxValidationRounds`, 3, counts round 1, so at most two).
@@ -1360,8 +1363,9 @@ columns, stamped roots receive `ModifiedAt`/`ModifiedById`.
   `ConcurrencyException` (carrying `IsMissing` per id) when any `'C'` is present.
 - **Plan lanes.** Above `LargeBatchThreshold` (1,000 rows in any TVP of the batch) every DML
   statement gets `OPTION (RECOMPILE)`, so a 10,000-row import does not reuse the one-row plan.
-- **Import chunks** at `MaxSaveCount` root rows per round-trip pair (spec 0014 §2.5; 10,000 by
-  default); `SqlBulkCopy` into a staging table is deferred until measured.
+- **Import chunks** hold at most the smaller of `MaxSaveCount` and `MaxIds` root rows per
+  round-trip pair (spec 0014 §2.5, §6.8; 10,000 each by default); `SqlBulkCopy` into a staging
+  table is deferred until measured.
 - **Tree tables** append §10.2's statements after step 4.
 - **Text is cached** per (entity metadata, statement kind, capture layout); the physical UDTT
   names are part of the text, so a model change invalidates it.
@@ -1376,6 +1380,29 @@ are the grandchild's UDTT, and its `OUTPUT` marks the *child* touched (which in 
 root touched through the child's `UPDATE` where a column changed, or directly through the touched
 set). Child collections are processed in metadata order; `[Collection]` is the position of the
 collection in `EntityMetadata.Children` of its owner.
+
+A child row the synchronise `DELETE` removes takes its descendants with it, exactly as the root
+delete of §9.2 takes its children. When the collection's entity owns collections of its own, step 3
+first captures the ids its `DELETE` removes into `@tb{b}_gone{n}` (`n` numbering such collections
+in the batch), then deletes every descendant table deepest first — the grandchild table by its
+parent key over those ids, a deeper table through its chain of parent keys — with the blob capture
+of §8.5 where declared, and then deletes the child rows by those ids. Without it the `NO ACTION`
+foreign key of `ChildConvention` fails the child `DELETE` with 547 on every save path. The
+descendant deletes write nothing to `@tb{b}_touched`, so the receipt's `Deleted` (§8.1) never
+counts them. The fragment for `fixture.WidgetParts` under `fixture.Widgets`, ordinal 6 (parents
+`@tb6_t2`, new parts `@tb6_t3`, existing `@tb6_t4`):
+
+```sql
+DECLARE @tb6_gone0 TABLE ([Id] int PRIMARY KEY);
+INSERT INTO @tb6_gone0 ([Id])
+SELECT c.[Id] FROM [fixture].[WidgetParts] AS c
+WHERE c.[WidgetId] IN (SELECT [Id] FROM @tb6_t2)
+  AND NOT EXISTS (SELECT 1 FROM @tb6_t3 AS s WHERE s.[Id] = c.[Id])
+  AND NOT EXISTS (SELECT 1 FROM @tb6_t4 AS s WHERE s.[Id] = c.[Id]);
+DELETE g FROM [fixture].[WidgetPartNotes] AS g WHERE g.[WidgetPartId] IN (SELECT [Id] FROM @tb6_gone0);   -- deepest first; blob capture OUTPUT … INTO where declared
+DELETE c OUTPUT deleted.[WidgetId], 0, 'D' INTO @tb6_touched ([Id], [Collection], [Op])
+FROM [fixture].[WidgetParts] AS c WHERE c.[Id] IN (SELECT [Id] FROM @tb6_gone0);
+```
 
 ### 8.4 The capture rule
 
@@ -1900,7 +1927,7 @@ by name.
 | Suite | Location | Tier | What it pins |
 |---|---|---|---|
 | Unit | `test/core/Tellma.Core.Tests/Data/` | PR | golden SQL per emitter statement kind against the fixture metadata (§8, §9, §10, §11.3); `SaveReceipt` reading from canned result sets; the `SaveHandle` and `DeleteHandle` listing one `ColumnCapture` per `[BlobReference]` column of every written table; `FilterTree.Via` binding (a one-segment and a two-segment path, a nested node, a to-many segment refused at compile time, a diagnostic inside `inner` located at `Filter.Via[<navigation>]`, distinct L3 keys for one inner filter under two navigations); allocator deficit and buffer arithmetic, temporary-id rewriting, hold/return; metadata construction and every §3.2 rule as a failing model; `SchemaFingerprint` stability; natural-key inference order; enum sizing (nullable enums included); retry classification for every number of §6.4; the commit-probe verdicts; `QueryRowSet.Builder` buffers for every (Queryex type, field type) pair of §11.3, `Scale` per numeric field type, and the `InvalidOperationException` for any other pair; materializer routing (root, related, children, grandchildren, missing column); the persist frame assembly order of §5.5; parameter-count and result-set-count guards |
-| Integration | `test/core/Tellma.Core.IntegrationTests/Data/` | `Category=Integration`, PR on Windows (LocalDB) and Linux (Testcontainers), nightly full matrix | everything in §13.3 |
+| Integration | `test/core/Tellma.Core.IntegrationTests/Data/` | `Category=Integration`, PR on Windows (LocalDB) and Linux (Testcontainers) | everything in §13.3 |
 | Analyzers | `test/core/Tellma.Core.Analyzers.Tests/` | PR | each `TELLMA000n` condition and its negative |
 
 No `Live=true` suite exists in this spec: nothing here talks to an external service. One
@@ -2017,9 +2044,8 @@ Each is a named test; the list is the behavioural contract of this spec:
   by the integration tier; `DataAccessScope` stamped on the current `Activity`; the span attributes
   of §6.1; log events `DataBatch.SlowRoundTrip`, `DataBatch.OnCommittedFailed`,
   `IdAllocator.Healed`, `TreeVerify.Repaired` asserted by name.
-- **CI**: the unit and analyzer suites on every PR; the integration suite on every PR on LocalDB
-  and Testcontainers; the nightly run adds the full retry and probe matrix with connection-kill
-  fault injection.
+- **CI**: the unit, analyzer and integration suites on every PR, the integration suite on LocalDB
+  and Testcontainers with the full retry and probe matrix under connection-kill fault injection.
 - **Docs**: ARCHITECTURE.md updated where this spec touches it — the package naming and dependency
   rules (`Tellma.Core.Abstractions` references `Tellma.Core.Queryex`; one runtime `Tellma.Core`
   carrying data access; `Tellma.Core.Analyzers`); the data-layer entity class and hierarchy (Core's

@@ -197,9 +197,8 @@ The blob feature is part of `CoreFeature` (spec 0010's `ITellmaFeature`): it con
 handlers, the two built-in schedules (§7.4), the provisioning step (§6.4) and the startup check
 (§9). The kinds shipped by Core are declared by attributes on Core entities: `user-image`
 (`User.ImageId`, spec 0013; `Avatar`, `AnyMember`), `user-signature` (`User.SignatureId`, spec
-0013; `Signature`, `AnyMember`), `export-file` (`Export.FileId`, spec 0018), `import-file` and
-`import-result` (`Import.FileId`/`ResultFileId`, spec 0018), the last three `Attachment` with
-`OwnerRead`.
+0013; `Signature`, `AnyMember`), `export-file` (`Export.FileId`, spec 0018) and `import-file`
+(`Import.FileId`, spec 0018), the last two `Attachment` with `OwnerRead`.
 
 *Illustration* (a distribution that composes the store and processor itself instead of the Azure
 bundle, running in Development, where `RootPath` takes its default of §6.2):
@@ -279,8 +278,8 @@ public enum BlobState { Staged, Committed, Released, Deleting }
 - **Queryex.** Entity `core.Blob` (source `[core].[Blobs]`, key `Id`) with the scalar properties
   listed above; `StorageKey` and `Sha256` are never in the schema. Each owner column adds a
   many-to-one navigation named after the property minus its `Id` suffix (`ImageId` → `Image`,
-  `FileId` → `File`, `ResultFileId` → `ResultFile`), exactly as spec 0011 derives every navigation
-  from an FK. No per-tenant variation, so no schema-key impact.
+  `FileId` → `File`), exactly as spec 0011 derives every navigation from an FK. No per-tenant
+  variation, so no schema-key impact.
 - **Related projection.** `Blob` carries
   `[RelatedSelect("Id,Kind,ContentType,FileName,Size,Width,Height,Variants")]`, never
   `CreatedById`, so a details read (spec 0014) returns file name and size beside the owner without
@@ -683,15 +682,15 @@ is a later `Retain` release policy.
 ### 4.6 Server-generated blobs
 
 A job that produces a file (spec 0018's export handler) calls `IBlobService.StageAsync` from its
-job scope under the job's run-as user, then enlists the save of the owning record — the `Exports`
-row whose `FileId` carries `[BlobReference("export-file", Attachment, ReadAccess = OwnerRead)]` —
-with the job frame (spec 0014 §13.3), so the row's statements and the effect of §4.4 ride the
-partition's completion batch and the blob is confirmed inside the completion transaction, the
-run-as user being both the uploader and the saver. The recipient downloads through
-`GET blobs/export-file/{id}` authorised by the `Exports` row. Spec 0019's `core.file-retention`
-deletes expired `Exports` and `Imports` rows through the pipeline, so their blobs are released by
-the capture and reclaimed by the sweep; a synchronous import leaves its `import-file` upload
-staged, and the sweep reclaims it after the TTL. No second write path exists.
+job scope under the job's run-as user, then enlists the insert of the owning `Exports` row — whose
+`FileId` carries `[BlobReference("export-file", Attachment, ReadAccess = OwnerRead)]` — with the
+job frame (spec 0014 §13.3), so the row's statements and the effect of §4.4 ride the partition's
+completion batch and the blob is confirmed inside the completion transaction, the run-as user being
+both the uploader and the saver. The recipient downloads through `GET blobs/export-file/{id}`
+authorised by the `Exports` row. Spec 0019's `core.file-retention` deletes expired `Exports` and
+`Imports` rows through the pipeline, so their blobs are released by the capture and reclaimed by
+the sweep; a synchronous import leaves its `import-file` upload staged, and the sweep reclaims it
+after the TTL. No second write path exists.
 
 ## 5. Downloading
 
@@ -743,8 +742,8 @@ through its parent's grants, and through its own when it is a securable root (sp
 
 `user-image` and `user-signature` are `AnyMember`: avatars render on documents everywhere, and a
 signature is layered as a transparent PNG over the approval stamp of any document the member can
-read. `export-file`, `import-file` and `import-result` are `OwnerRead` (the `Exports`/`Imports` rows
-are self-scoped by spec 0018).
+read. `export-file` and `import-file` are `OwnerRead` (the `Exports`/`Imports` rows are self-scoped
+by spec 0018).
 
 ### 5.3 The endpoint
 
@@ -1111,7 +1110,7 @@ abrupt process exit is attributable to its last such line. Messages name no spec
 | `test/core/Tellma.Core.Tests/Blobs/` | unit, PR | `BlobName` grammar (valid/invalid kinds, variants, names; traversal strings rejected); content-type determination (§3.3) over fixture byte prefixes including a `PK` OOXML, an `MZ` executable, HTML with leading whitespace, an SVG behind an XML prolog, text with a NUL byte; file-name sanitisation; `BlobKindRegistry` construction (`OwnerResource`, `OwnerEntity` and `OwnerPath` for a root, a child and a grandchild kind) and every §9 problem over synthetic models; the abstract `BlobStoreConformanceTests` run against `FileSystemBlobStore` in a temporary directory (create-only conflict, missing read is `null`, delete of missing is success, list by prefix, purge of `.part` files, `EnsureTenantAsync` idempotence, traversal rejected, a write into a missing tenant directory created and retried, a read stream seekable and of the object's length); `BlobService.StageAsync` over a fake store and an in-memory batch (each rejection code, quota mapping, row-before-bytes on a failing store, a `null` thumbnail staged with no `thumb` variant); `ResolveAsync` combination rules (§5.1 step 4, an unlisted variant `null`) over canned result sets; ETag and header computation of the endpoint (`inline` per served content type, `attachment` otherwise and on `download=true`, `frame-ancestors 'self'`) |
 | `test/core/Tellma.Core.IntegrationTests/Blobs/` | `Category=Integration`, PR (LocalDB or the `Testcontainers.MsSql` 4.14.0 container) | the stage statement (id from the sequence, quota `50422`); the capture and effect statements over the fixture entity `fixture.BlobOwners (Id, Name, FileId [BlobReference("fixture-file")], PhotoId [BlobReference("fixture-photo", Photo)])` and its child `fixture.BlobOwnerFiles (Id, BlobOwnerId [ParentKey], FileId [BlobReference("fixture-child-file")])`, added to spec 0011's shared fixture project `test/shared/Tellma.Testing.Entities`, whose database carries the full `core.Blobs` and `core.sq_Blobs` (spec 0011 §13.2): attach on insert, replace on update, `null` release, delete by ids/by query/with descendants release, an override save releasing the row's actual old value, attach on a new child row, replace on a child row, a child row removed from the collection releasing, a delete of the root releasing the children's blobs, the same id on two rows refused by `UX_BlobOwners_FileId`, an expired row → `Blob.NotAttachable`, a foreign uploader → `Blob.NotAttachable`; the sweep claim with a `TimeProvider` fake (claims only past-`ExpiresAt` rows, re-claims after `SweepReclaimAfter`, deletes rows only in `Deleting`); **the concurrency test** — a transaction confirms a staged row and holds its lock while the claim runs on a second connection under RCSI; the claim must block and then skip the row; the reconcile statement releases an orphan and leaves a young orphan and a referenced blob alone; the `ResolveAsync` round trip through a filtered `Read` grant (visible owner served, hidden owner 404, staged-to-uploader served, staged-to-other 404) and, for `fixture-child-file`, through the parent's filtered `Read` grant (visible parent served, hidden parent 404) |
 | `test/core/Tellma.Core.Imaging.Tests/` | unit, PR | `SkiaImageProcessor` over fixtures: each accepted format, `Contain` and `CoverSquare` dimensions, thumbnail sizes, `EncodedOrigin` applied and metadata absent from the output, a header declaring 60 megapixels refused before decode, a JPEG/HTML polyglot re-encoded to bytes with no `<` in the first 8 KiB, an animated GIF reduced to one frame, output content type per `ImageFormat`, the `Signature` preset preserving alpha, PDF page 1 rendered at the thumbnail size, an encrypted PDF and an OOXML file yielding no thumbnail |
-| `test/connector/azure-blobs/Tellma.Connector.AzureBlobs.Adapter.IntegrationTests/` | `Category=Integration`; PR on the Linux runner (Testcontainers), skipped on a Windows runner without Docker, nightly on both (spec 0010 §10) | the same `BlobStoreConformanceTests` against Azurite (`Testcontainers.Azurite` 4.14.0); container naming and `EnsureTenantAsync`; create-only conflict as `BlobAlreadyExistsException` |
+| `test/connector/azure-blobs/Tellma.Connector.AzureBlobs.Adapter.IntegrationTests/` | `Category=Integration`; every PR on the Linux runner (Testcontainers), skipped on a Windows runner without Docker (spec 0010 §10) | the same `BlobStoreConformanceTests` against Azurite (`Testcontainers.Azurite` 4.14.0); container naming and `EnsureTenantAsync`; create-only conflict as `BlobAlreadyExistsException` |
 | `distributions/acme` end-to-end (spec 0010's host tests) | `Category=Integration`, PR | upload → save `User.ImageId` → `GET` 200 with `immutable` → `GET` with `If-None-Match` 304 → `GET` with a satisfiable `Range` 206 and an unsatisfiable one 416 → save `null` → `GET` 404; a non-member upload 404 `tenant-not-found`; an upload without `Tellma-Client` 403 `csrf-rejected`; an oversize body 413 before the body is read; a `ReadOnly` tenant: upload 403, download 200 |
 
 No `Live=true` tier exists for this spec: the Azure adapter is exercised on Azurite only; the
@@ -1135,8 +1134,8 @@ first Azure deployment verifies that Storage Blob Data Contributor covers contai
 - **Observability**: every §10.1 instrument emitted with its closed tag values and asserted by the
   unit suite; the §10.2 events emitted; the three alert queries checked by the existing monitoring
   test.
-- **CI**: the unit and LocalDB suites on every PR; the Azurite suite on the Linux PR runner and
-  nightly on both platforms; the reference distribution's blob end-to-end on every PR.
+- **CI**: the unit and LocalDB suites and the reference distribution's blob end-to-end on every PR;
+  the Azurite suite on every PR on the Linux runner.
 - **Docs**: ARCHITECTURE.md updated where this spec touches it — the package naming and dependency
   rules (`Tellma.Core.Imaging` as an Abstractions-plus-Skia package never referenced by
   `Tellma.Core`; `Tellma.Connector.AzureBlobs.Adapter` in the connector list); the guiding principle

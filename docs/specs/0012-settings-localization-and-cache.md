@@ -1597,8 +1597,7 @@ Testcontainers on Linux; spec 0011's fixture database, whose shared project
 - **Isolation**: two tenant databases sharing user ids and subjects never see each other's cache
   entries.
 
-Runs on every PR: the unit suite and the integration suite (LocalDB on Windows, Testcontainers on
-Linux); nightly: the full matrix.
+Both suites run on every PR on Windows and Linux (spec 0010 §10).
 
 ## 13. Definition of done
 
@@ -1616,8 +1615,7 @@ Linux); nightly: the full matrix.
 - **Observability**: every instrument and structured event of §11 emitted and asserted at least
   once in the suites; the alert queries under `infra/monitoring/` name only instruments that
   exist.
-- **CI**: the PR tier runs the unit and integration suites on both operating systems; the nightly
-  tier runs the full matrix.
+- **CI**: the PR tier runs the unit and integration suites on both operating systems.
 - **Docs**: ARCHITECTURE.md updated where this spec touches it — the per-dimension contents row
   (calendars `gc`/`uq`/`et` implemented and registered by Core, server-side `.resx` satellites
   shipping with the owning package, Locale packs keeping number-to-words and client assets, the

@@ -256,8 +256,8 @@ validation code.
 | `test/apps/Tellma.Identity.Tests` | unit | The resource evaluator's vectors (`origin` exact; `origin/17/mcp` accepted; `origin/017/mcp`, `origin/17/mcp/`, `origin/17/other`, `origin/17/mcp?x`, `other-origin/17/mcp` and `origin/0/mcp` refused; a granted resource with a path never anchors the pattern; a document client's `resource` evaluated against the distribution-origin list of §4, an origin outside that list refused); document validation vectors (`client_id` mismatch, missing redirects, `client_secret_basic`, inline `jwks`, off-origin `jwks_uri`, loopback port relaxation); fetch guards against a fake handler (private address, redirect, oversize, wrong content type, timeout); cache clamping; the seed descriptor of a `Distribution` entry (both applications, all permissions, idempotence, secret rotation, never deleting); `tellma_kind` by grant type; `existingOnly` outcomes. |
 | `test/apps/Tellma.Identity.IntegrationTests` | `Category=Integration` | The full code flow of a document client against a local document server, with consent showing the host; `resource=origin/17/mcp` through code exchange and refresh with `aud` asserted, a refresh to `origin/18/mcp` refused, a refresh to `origin` refused; a control-plane token with a distribution audience; a `Distribution` seed applied twice; the bulk invite with mixed `existingOnly` items asserting no mail queued for them; the discovery document advertising `client_id_metadata_document_supported: true` and `none` among `token_endpoint_auth_methods_supported`. |
 
-Both tiers run on Windows and Linux; the pull-request tier runs the unit suite, the nightly tier
-both.
+Both suites run on every pull request on Windows and Linux (spec 0010 §10); no `Live=true` suite
+exists, so the nightly tier runs nothing for this spec.
 
 ## 10. Definition of done
 
@@ -270,7 +270,7 @@ both.
   `resource.refused` (client, requested), `seed.distribution.applied`; the counter
   `tellma.identity.client_metadata.fetches` (tag `outcome` ∈ `fetched | rejected | failed`) on the
   `Tellma.Identity` meter. No `client_id` URL is a metric tag.
-- **CI**: pull-request tier green on both platforms; the nightly integration suite green.
+- **CI**: unit and integration suites green on every pull request on both platforms.
 - **Docs**: the architecture document's identity section updated for metadata-document support,
   per-tenant resources by path pattern, the `Distribution` seed kind and the control-plane grants.
   Public XML docs and error messages reference no `docs/` paths, per repo rule.
