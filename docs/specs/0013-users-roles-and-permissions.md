@@ -1678,10 +1678,9 @@ The write-set audit catches an undeclared write. The witness filter replaces a 2
 Temporal history rows per save (unchanged children write none). Two tenant databases sharing user
 ids and subjects never see each other's cache entries. The bootstrap: idempotent on email, the
 Development subject path, refusal outside Development. `ReadOnly`: reads succeed against a
-`READ_ONLY` database with no prologue write.
-
-**Nightly.** The drift scanner against a database seeded with a filter over a column the next
-migration renames, and against a tenant lacking a language a stored filter names.
+`READ_ONLY` database with no prologue write. The drift scanner against a database seeded with a
+filter over a column the next migration renames, and against a tenant lacking a language a stored
+filter names.
 
 ## 15. Definition of done
 
@@ -1698,7 +1697,7 @@ migration renames, and against a tenant lacking a language a stored filter names
   scanner; the `me`/`access/check` semantics of §10 (endpoints by spec 0017); the bootstrap of §11.
 - **Observability**: every instrument of §13 emitted and asserted through `MetricCollector<T>`;
   every `AccessEvents` id asserted with a capturing logger.
-- **CI**: unit and integration suites green on every PR on both platforms; the nightly drift job.
+- **CI**: unit and integration suites green on every PR on both platforms.
 - **Docs**: ARCHITECTURE.md updated where this spec touches it — the Data Layer entity-class row
   (Abstractions also holds Core's default leaves `User` and `Role`, because modules reference
   `core.Users` and never `Tellma.Core`), and the Identity row (the distribution owns sensitive

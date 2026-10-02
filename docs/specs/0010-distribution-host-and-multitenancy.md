@@ -1875,13 +1875,13 @@ under `infra/monitoring/` are checked in and cross-checked by the existing instr
 ## 10. Testing
 
 Test projects mirror `src/`. Two traits select CI tiers: `Category=Integration` (infrastructure the
-suite brings up itself; every pull request on Windows with LocalDB and on Linux with Testcontainers
-`mcr.microsoft.com/mssql/server:2022-latest`, and the nightly full matrix) and `Live=true` (nightly
-and on demand; none in this spec). A `Category=Integration` suite that needs Docker runs on the
-Linux pull-request runner and in the nightly matrix on both platforms; a Windows runner without
-Docker skips it. Everything else runs on every pull request on Windows and Linux.
-`distributions/acme/test/Tellma.Distro.Acme.E2E` (Playwright) is scaffolded with no tests and
-runs, empty, on every pull request until the UI specs ship.
+suite brings up itself; every pull request, on Windows with LocalDB and on Linux with Testcontainers
+`mcr.microsoft.com/mssql/server:2022-latest`) and `Live=true` (real third-party services; nightly
+and on demand, the only suites the nightly run carries; none in this spec). A `Category=Integration`
+suite that needs Docker runs on the Linux pull-request runner; a Windows runner without Docker skips
+it. Everything else runs on every pull request on Windows and Linux.
+`distributions/acme/test/Tellma.Distro.Acme.E2E` (Playwright) is scaffolded with no tests and runs,
+empty, on every pull request until the UI specs ship.
 
 | Suite | Tier | Pins |
 |---|---|---|
@@ -1922,7 +1922,7 @@ cite a document.
   name test; the log events of §9 asserted in the unit suites; `infra/monitoring/` alert queries
   cross-checked.
 - **CI**: pull-request tier, including the two `Category=Integration` suites, green on Windows and
-  Linux, and the nightly matrix green; the `acme` smoke deployment built from `distributions/acme/`.
+  Linux; the `acme` smoke deployment built from `distributions/acme/`.
 - **Docs**: the architecture document updated where this spec touches it — the platform repository
   layout (`distributions/acme/` in distribution-repo shape with the Client esproj; `TellmaDbContext`
   platform-internal); library architecture's package naming and dependency rules (one runtime

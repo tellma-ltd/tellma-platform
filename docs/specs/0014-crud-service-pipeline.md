@@ -614,6 +614,7 @@ public sealed class SaveOptions
     public DetailsRequest Details { get; set; } = DetailsRequest.None;
     public ConcurrencyMode Concurrency { get; set; } = ConcurrencyMode.Check;
     public SaveSource Source { get; set; } = SaveSource.Web;
+    public Action<IDataBatch>? OnPersist { get; set; }      // the caller's own statements on the persist batch
 }
 
 public enum SaveSource { Web, PublicApi, Agent, Import, System }
@@ -626,6 +627,7 @@ public sealed record ActionOptions(bool ReturnEntities = false, DetailsRequest? 
 | `SaveOptions.ReturnEntities` | The read-back rides the persist transaction (§6.9); `false` skips it and the result carries ids only. The default flips to `false` when `Source = Import` unless set explicitly. |
 | `SaveOptions.Concurrency` | Spec 0011's `ConcurrencyMode`. `Check`: a default `ModifiedAt` on an update is `Concurrency.StampRequired`; `Override`: the comparison is skipped, never the existence check (§8). |
 | `SaveOptions.Source` | Recorded on `tellma.crud.*` as `crud.source` and visible to hooks through `SaveContext.Options`; it never weakens a rule — a rule that differs by source is a rule that will be bypassed — and it admits nothing: an operation a stack omits is refused whatever the source (§2.2), and a platform-written stack is written by enlistment (§13.3). The web projection sets `Web`, MCP `Agent`, spec 0018 `Import`, provisioning steps and handlers `System`; an enlisted write records the host's source unless the `Source` of its `EnlistSaveOptions` or `EnlistDeleteOptions` names another (§13.3). |
+| `SaveOptions.OnPersist` | Invoked once with the persist batch after the effects and before the access guards' invariants (§6.7), under the caller's authority (§13.3): it may write unowned tables and append through the platform composers — `IJobProgress.Append`, `IJobQueue.Enqueue`, `INotifier.Notify` — and a statement writing a stack-owned table is refused at append. Everything it appends commits or rolls back with the save; a validation failure never reaches it. Never set from the wire; its consumer is an open-frame host's checkpoint (spec 0018's chunked import). |
 | `ActionOptions` | Whether an action without its own result returns the affected rows in details shape and with which echo and extras; an action with its own result (§3.1) runs no read-back and ignores them. |
 
 ### 4.2 Wire records this spec consumes
@@ -673,7 +675,8 @@ public abstract record ExportSource                     // Tellma.Core.Abstracti
 {
     public sealed record ByIds(IReadOnlyList<long> Ids, string? OrderBy) : ExportSource;   // rows in OrderBy order, else by Id
     public sealed record ByQuery(
-        string? Filter, string? Search, string? OrderBy, IReadOnlyDictionary<string, JsonElement>? Arguments)
+        string? Filter, string? Search, string? OrderBy, IReadOnlyDictionary<string, JsonElement>? Arguments,
+        bool IncludeInactive)
         : ExportSource;
     public sealed record All : ExportSource;                                                // no clauses: the access filter alone (the importer's lookups, spec 0018 §10.1)
 }
@@ -1018,9 +1021,12 @@ every `entity:*` dependency the validation round trips declared, with the tags t
 under, so that spec 0012's guard holds them (§5.1). Every enlisted write is a group of §13.3 placed
 among the steps below at its declared position: `BeforeHost` groups precede step 1 and `AfterHost`
 groups follow step 3, each set in enlistment order, and a nested group sits at its position inside
-its host's group. What it appends, in order, between the fixed prefix (the schema guard of spec
-0011 §4.3, the prologue, the guard, `BEGIN TRAN`, the version-tag guard, the caller re-check —
-spec 0011, 0013 and 0012 text the executor places) and the fixed suffix (tag bumps, `COMMIT`):
+its host's group. A save's `SaveOptions.OnPersist` (§4.1) is invoked once, after step 3 and the
+`AfterHost` groups and before step 4's `ContributeInvariants`: it is the host's statement, never
+repeated per group. What the pipeline appends, in order, between the fixed prefix (the schema guard
+of spec 0011 §4.3, the prologue, the guard, `BEGIN TRAN`, the version-tag guard, the caller
+re-check — spec 0011, 0013 and 0012 text the executor places) and the fixed suffix (tag bumps,
+`COMMIT`):
 
 1. **The emitter.** `IDataBatch.Save<TEntity>(rows, options.Concurrency)` with the payload's roots
    and their supplied collections, returning the `SaveHandle` whose `SavedIds` (as `AffectedIds`),
@@ -1054,19 +1060,22 @@ holds a connection; `PersistContext` exposes the batch, never a connection.
 
 ### 6.8 Import
 
-Spec 0018's importer calls `SaveAsync` in chunks of at most `MaxSaveCount` parents and
-`MaxRowsPerSave` rows, each chunk's `SaveOptions` carrying `ReturnEntities = false`,
-`Concurrency = request.Concurrency` and `Source = Import`; `Update`/`Upsert` hydrate through
-`GetByIdsAsync(ids, DetailsRequest.None)` (spec 0018 §9.3). `Insert` sends ids of `0`; `Update` and
-`Upsert` send the ids the natural-key lookup resolved with the hydrated `ModifiedAt` (or the sheet's
-`Stamp`) as the expected stamp, so a concurrent edit between hydration and persist is a conflict per
-row, never a silent overwrite. `IsActive` is server-owned (§12.2): `Insert` rows and the insert half
-of `Upsert` are created active, an update leaves it untouched, and a sheet column mapped to it is
-`Excel.Import.ServerOwnedColumn` (spec 0018) — deactivation is the action, never an import. Each
-chunk is its own transaction; atomicity across chunks is a background-job concern. The persist
-statements' text is identical for one row and ten thousand; above `DataOptions.LargeBatchThreshold`
-(spec 0011 §8.2) the emitter switches plan lanes so a one-row save's plan never serves a large
-import.
+Spec 0018's importer calls `SaveAsync` in chunks of at most the smaller of `MaxSaveCount` and
+`MaxIds` parents (hydration reads them in one `GetByIdsAsync`) and `MaxRowsPerSave` rows, each
+chunk's `SaveOptions` carrying `ReturnEntities = false`, `Concurrency = Check`, `Source = Import`
+and, on the background path, an `OnPersist` that appends the job's checkpoint (spec 0018 §12.5);
+`Update`/`Upsert` hydrate through `GetByIdsAsync(ids, DetailsRequest.None)` (spec 0018 §9.3).
+`Insert` sends ids of `0`, or the codec's temporary ids for new rows a self-reference names
+(spec 0018 §9.6); `Update` and `Upsert` send the ids the row key resolved (the sheet's `Id` on a
+same-source file, else a natural-key lookup) with the hydrated `ModifiedAt` (or the sheet's
+`Stamp`) as the expected stamp, so a concurrent edit between hydration and persist is a conflict
+per row, never a silent overwrite. `IsActive` is server-owned (§12.2): `Insert` rows and the insert
+half of `Upsert` are created active, an update leaves it untouched, and a sheet column mapped to it
+is `Excel.Import.ServerOwnedColumn` (spec 0018) — deactivation is the action, never an import. Each
+chunk is its own transaction, its checkpoint inside it; atomicity across chunks is a background-job
+concern. The persist statements' text is identical for one row and ten thousand; above
+`DataOptions.LargeBatchThreshold` (spec 0011 §8.2) the emitter switches plan lanes so a one-row
+save's plan never serves a large import.
 
 ### 6.9 The read-back and the response
 
@@ -1610,7 +1619,7 @@ through `StackDescriptor` and the pipeline. Nothing is declared a second time.
 | Blob reference | `[BlobReference]` on an `int?` property of the root or of a child entity of the aggregate | `BlobReferenceValidator<T>` (context load of the staged rows, `Blob.NotAttachable`, `Blob.DuplicateReference`) and `BlobReferenceEffect<T>`, an `IPersistEffect` (release/confirm ending in `THROW 50422, N'Blob.NotAttachable'`), registered by the blob feature; the property stays `Editable`; excluded from Excel; the download authorisation is spec 0016's |
 | Multilingual | `[Multilingual]` on the primary of a `P/P2/P3` group | twins gated by `MultilingualShape` (dropped from the payload and absent from the schema); `(E)`/`(ع)` labels; search over the configured columns of the group |
 | Cacheable | `[Cacheable(MaxRows)]` | the `entity:<Name>` tag bumped by every write; `all` (`GetAllCachedAsync`); `Read` registered with `FilterRoot = null`; `settings/entity-tags` lists the tag |
-| Job entity | `IJobEntity` | `JobId` server-owned; the claim's entity join load (spec 0019); `JobRequest.Entity` sets the column inside the enqueue statement, and a schedule-fired handler that inserts its own row supplies it through `EnlistSaveOptions.ServerOwned` on the enlisted insert (§13.3) |
+| Job entity | `IJobEntity` | `JobId` server-owned; the claim's entity join load (spec 0019); `JobRequest.Entity` sets the column inside the enqueue statement, and a handler that inserts its own row (`core.export`) supplies it through `EnlistSaveOptions.ServerOwned` on the enlisted insert (§13.3) |
 | Searchable | `[Searchable(Kind)]` | the `Search` disjunction (§5.2.1); `SearchableProperties` in the descriptor |
 | Excel | `Export` or `Import` in `Operations` | `export` and `export/start` (`Read`) under `Export`; `export-for-import` and `export-for-import/start` (`Read`), `inspect-import`, `import` and `import/start` (`Save`) under `Import` — spec 0018's `ExcelOperations<T>` attached as a stack companion (§11.3); `ExcelRowSource` (§15) |
 
@@ -1643,9 +1652,9 @@ concurrency guard U-locks the saved rows, so two saves that would close a cycle 
 and the insert half of `Upsert` ignore the payload's value, like every server-owned column — and
 afterwards it changes only through the actions under the `Activate` securable, the one path that
 writes it; the save-bypasses-activate hole is closed without a diff gate. The activatable conjunct
-`Leaf("IsActive = true")` joins the filter of `query` and `get-by-parent-ids` unless
-`IncludeInactive`, and never that of details by id, delete by query, actions or the Excel row
-source. On `ActivatableTreeEntity` the `ActiveSubtreeCount` recount follows every activation.
+`Leaf("IsActive = true")` joins the filter of `query`, `get-by-parent-ids` and the Excel row
+source's `ByQuery` (§15) unless `IncludeInactive`, and never that of details by id, delete by query
+or actions. On `ActivatableTreeEntity` the `ActiveSubtreeCount` recount follows every activation.
 
 ## 13. Side effects and post-commit
 
@@ -1718,7 +1727,8 @@ the pipeline to `ValidationException` with the message as the code at `Validatio
 bumps are never hand-written: the executor derives them from every statement's declared writes plus
 explicit `BumpVersionTag` calls (spec 0012). Anything that must eventually happen — an email, an
 e-invoice filing — is a job row appended here and executed by spec 0019's worker; the pipeline has
-no pre-commit non-transactional phase.
+no pre-commit non-transactional phase. A front-door caller's own statements reach a save's persist
+batch through `SaveOptions.OnPersist` (§4.1, §6.7), never through an effect or ambient state.
 
 ### 13.2 Post-commit
 
@@ -1747,7 +1757,7 @@ public enum WriteHostKind { Pipeline, ApiAction, Job, Provisioning }
 public interface IWriteHost                                     // the current frame; contexts expose it as Host
 {
     WriteHostKind Kind { get; }
-    string Operation { get; }                                   // "gl.Invoice:post", "gl.Center:export/start", "job:core.export", "provisioning:<step>"
+    string Operation { get; }                                   // "gl.Invoice:post", "gl.Center:import/start", "job:core.export", "provisioning:<step>"
 }
 
 public interface IOpenWriteHost : IWriteHost                    // scoped; the frame of an [ApiAction], a job or a provisioning step
@@ -1823,7 +1833,7 @@ a front-door operation entered inside an open frame — spec 0018's import handl
 the target stack, an `[ApiAction]` calling `SaveAsync` — runs its own pipeline frame with its own
 transaction inside it, and the innermost frame is the `Host` its participants see; the outer frame's
 groups are untouched by it. `Operation` is `"<Resource>:<operation>"` for a pipeline or
-`[ApiAction]` host (`gl.Invoice:post`, `gl.Center:export/start`), `"job:<key>"` for a job and
+`[ApiAction]` host (`gl.Invoice:post`, `gl.Center:import/start`), `"job:<key>"` for a job and
 `"provisioning:<step>"` for a step. A pipeline frame is *composing* from id assignment to the close
 of the last validation round; an open frame stays open until its `PersistAsync`.
 
@@ -1944,10 +1954,11 @@ receiver, a closed phase, a `PersistAsync` on an open frame while a pipeline fra
 composing, and a statement appended through `IDataBatch`'s public members whose declared writes
 include a table `OwnerOf` maps to a stack outside the appender's `CallerAuthority` — the stack whose
 participant holds the batch: the host's stack for the host's hooks and effects, the target's stack
-for a group's, nothing for a job or provisioning handler's own statements — refused at append naming
-the table, its owner and the remedy. The platform's own composers — the emitter, `IJobQueue`,
-`INotifier`, `IJobProgress.Append`, `IAccessGuards`, the blob effect — append through the internal
-channel of spec 0011 §5.2, which the authority check does not cover.
+for a group's, the caller's for a `SaveOptions.OnPersist` delegate (§4.1), nothing for a job or
+provisioning handler's own statements or delegate — refused at append naming the table, its owner
+and the remedy. The platform's own composers — the emitter, `IJobQueue`, `INotifier`,
+`IJobProgress.Append`, `IAccessGuards`, the blob effect — append through the internal channel of
+spec 0011 §5.2, which the authority check does not cover.
 
 **Round trips.** An enlistment adds no round trip to its host; it adds one only when made after
 the writer's last dispatch and the target declares a load (§16.2). An action host whose target
@@ -1961,10 +1972,9 @@ The consumers:
 
 | Consumer | Writer and host | Round trips |
 |---|---|---|
-| `export/start`, `export-for-import/start` and `import/start` (spec 0018 §12.2) | `ExcelOperations<TEntity> : IEnlists<Export>, IEnlists<Import>` enlists one row in the invoker's frame and awaits `PersistAsync` on the injected `IOpenWriteHost`; `ExportService.ContributeAsync` and `ImportService.ContributeAsync` enqueue every new row whose `JobId` is null | export 1; import 2 (the staged-upload attach loads the blob row) |
-| The export handler's completion (spec 0018 §12.3) | `ExportJobHandler : IEnlists<Export>`: an enlisted update on the completion batch with `EnlistSaveOptions.Concurrency = Check` on the claimed row; the blob effect confirms inside the completion transaction | 1, atomic with completion |
-| A schedule-fired export's own row (spec 0018 §12.3) | one enlisted insert at the end of the run with `FileId` set, `EnlistSaveOptions.ServerOwned = [nameof(Export.JobId)]` and `JobId = Job.Id`, which `ContributeAsync` skips | 1, atomic with completion |
-| The import handler's completion (spec 0018 §12.4) | `ImportJobHandler : IEnlists<Import>`: the chunks are front-door `SaveAsync` on the target stack (the handler is a host, not a participant); the completion row is an enlisted update on the completion batch | 1 per completion |
+| `import/start` (spec 0018 §12.2) | `ExcelOperations<TEntity> : IEnlists<Import>` enlists one `Import` row in the invoker's frame and awaits `PersistAsync` on the injected `IOpenWriteHost`; `ImportService.ContributeAsync` enqueues every new row whose `JobId` is null | 2 (the staged-upload attach loads the blob row) |
+| The export handler's row (spec 0018 §12.3) | `ExportJobHandler : IEnlists<Export>`: one enlisted insert at the end of every run with `FileId` set, `JobId = Job.Id` named in `EnlistSaveOptions.ServerOwned`; the blob effect confirms inside the completion transaction | 1, atomic with completion |
+| The import handler's completion (spec 0018 §12.4, §12.6) | `ImportJobHandler : IEnlists<Import>`: the chunks are front-door `SaveAsync` on the target stack (the handler is a host, not a participant) carrying the checkpoint through `SaveOptions.OnPersist`; the completion row is an enlisted update on the completion batch | 1 per completion |
 | A document's `post` into a ledger transaction stack (the `post` action of §11.2) | the transaction stack declares `Enlist`; the document service implements `IEnlists<>` of it; `post` builds the transaction rows and enlists them with a `MapPath` onto the document lines; `unpost` enlists a delete (`BeforeHost` by default) | post 2, or 3 when the target declares validator loads (the recipe above); unpost 2, or 3 with a delete validator |
 | `users/me/save` (spec 0017 §3.5) | `UserService<TUser> : IEnlists<TUser>`: the caller's own row, loaded by the method, enlisted in the invoker's frame with `Concurrency = Check` | 3: the load, the validation round, the persist |
 
@@ -2055,40 +2065,54 @@ filter and no grant count, so `50403` never arises from one, and its `50404` is
 
 ## 15. The Excel row source
 
-Spec 0018's exporter streams rows through `IExcelRowSource` and never opens a connection; the
-pipeline implements it: after the `Read` check of §9.1, `EntityService.ExcelRowSource(source)`
-returns an `ExcelRowSource<TEntity, TKey>` bound to one `ExportSource` case (§4.2). The members of
-spec 0018's contract it implements, verbatim:
+Spec 0018's codec reads rows through `IExcelRowSource` and never opens a connection; the pipeline
+implements it: after the `Read` check of §9.1, `EntityService.ExcelRowSource(source)` returns an
+`ExcelRowSource<TEntity, TKey>` bound to one `ExportSource` case (§4.2). The members of spec 0018's
+contract it implements, verbatim:
 
 ```csharp
 public sealed record ExcelQuery(
     string RootEntity, IReadOnlyList<string> SelectPaths, string? OrderBy, KeySetRestriction? Restriction,
-    IReadOnlyList<object>? RestrictionValues, int? Take);
+    IReadOnlyList<object>? RestrictionValues, int? Take, int? CountCap, IReadOnlyList<ExcelQuery>? Dependents);
 
+public sealed record ExcelPage(
+    IReadOnlyList<IReadOnlyList<object?>> Rows, IReadOnlyList<ExcelPage> Dependents, int? Count);
+
+// implemented by spec 0014 over IDataBatch.Rows with the caller's read filter
 public interface IExcelRowSource
 {
-    IAsyncEnumerable<IReadOnlyList<object?>> Rows(ExcelQuery query);
+    IAsyncEnumerable<ExcelPage> Pages(ExcelQuery query);
+    Task<IReadOnlyList<IReadOnlyList<IReadOnlyList<object?>>>> ReadAsync(IReadOnlyList<ExcelQuery> queries);
 }
 ```
 
 Every `RootEntity` is an entity name (`gl.Center`, `core.RoleMembership`); the stack's own is
-`Descriptor.Resource`. `Rows(query)` on the stack's own root builds a `QuerySpec` with `Root`,
-`Select` = the `SelectPaths` joined, `Filter = And(source filter, access filter)`,
+`Descriptor.Resource`. A query on the stack's own root builds a `QuerySpec` with `Root`, `Select` =
+the `SelectPaths` joined, `Filter = And(source filter, access filter)`,
 `OrderBy = query.OrderBy ?? source.OrderBy ?? "Id"` and `Restrictions` = the source restriction plus
 `query.Restriction` bound to `RestrictionValues`, composing the source per case: `ByIds` is the
 restriction `KeySetRestriction("Id", TVP)` over its `Ids`; `ByQuery` is the filter `Leaf(Filter)`
-with the search filter of its `Search` (§5.2.1), bound with its `Arguments`; `All` has no clause and
-no `OrderBy`, so the access filter alone applies. It streams in pages of `MaxTake` through `Rows` on
-`Read` batches — one round trip per page, `Skip`/`Take` as parameter slots, the same `ConnectedUser`
-reconnected per page through the runner so a revocation mid-export stops the stream — yielding each
-row as the column values in `SelectPaths` order. No activatable conjunct is applied: the display
-export mirrors the grid's own filter and the editable export must carry inactive rows. A `query`
-whose `RootEntity` is a child collection (spec 0018's child sheets) is compiled on the child root
-with the restriction on its parent key; a `RootEntity` that is a lookup target (natural-key
-resolution) is compiled on that entity under the caller's `Read` decision for its resource —
-`Denied` yields no rows, so an unreadable reference resolves as not found. `Take` caps the total;
-the exporter's row limit is spec 0018's. A cell value is the reader's CLR value (`long`, `decimal`,
-`DateOnly`, `string`, `bool`, `Guid`); formatting is the codec's.
+with the search filter of its `Search` (§5.2.1), bound with its `Arguments`, joined with the
+activatable conjunct `Leaf("IsActive = true")` on an activatable stack unless its
+`IncludeInactive`, exactly as `query` does (§5.2); `All` has no clause and no `OrderBy`, and
+neither it nor `ByIds` joins the conjunct. With no clause and no conjunct the access filter alone
+applies.
+
+`Pages(query)` runs one `Read` batch per page of `MaxTake` root rows — `Skip`/`Take` as parameter
+slots, the same `ConnectedUser` reconnected per page through the runner so a revocation mid-export
+stops the stream: `Rows` on the root spec with `RowQueryOptions.CountCap = query.CountCap` on the
+first page (null on the rest) and `CaptureKeys` when `Dependents` is non-empty, then one `Rows` per
+dependent on the child root, restricted by `KeySetRestriction("<ParentKey>", "@tb{a}_keys")` of its
+owner statement and itself capturing when it has dependents, at any depth (spec 0011 §5.4). A
+dependent that reaches `MaxTake` rows is completed by follow-up `Read` round trips over the page's
+owner ids, bound as an `IdList` TVP with `Skip` advancing, before the page is yielded.
+`ReadAsync(queries)` composes one `Rows` with its `Tvp` per query on one `Read` batch, completing
+any result that reaches `MaxTake` the same way. A row is the column values in `SelectPaths` order.
+A `RootEntity` that is a lookup target (natural-key resolution) is compiled on that entity under
+the caller's `Read` decision for its resource — `Denied` yields no rows, so an unreadable reference
+resolves as not found. `Take` caps the total; the exporter's row limit is spec 0018's. A cell value
+is the reader's CLR value (`long`, `decimal`, `DateOnly`, `string`, `bool`, `Guid`); formatting is
+the codec's.
 
 ## 16. Telemetry and the round-trip budget
 
@@ -2157,8 +2181,8 @@ Warm caches, warm id buffer, no transient failure:
 | Activate / deactivate | **1** | `ValidateActionAsync` overridden (→ 2) |
 | Custom action | **2** | +1 per dependent validation round |
 | Enlisted write, any host | **+0** | +1 when enlisted after the writer's last dispatch and the target declares a load; an action host whose target declares validator loads: 3, back to 2 with persist-time checks in the target's `ContributeAsync` (§13.3); a standalone `[ApiAction]` or provisioning host: as a save of the target; a job host: 0–1 for validation, the persist rides the completion batch |
-| Import, per chunk | **2**, +1 hydration for `Update`/`Upsert`, +1 per distinct lookup (spec 0018 §1.4) | as for save |
-| Excel export | 1 per page of `MaxTake` | — |
+| Import, per chunk | **2**, +1 hydration for `Update`/`Upsert`, +1 for every lookup together (spec 0018 §1.4) | as for save |
+| Excel export | 1 per page of `MaxTake`, child collections at every depth riding the page | +1 per follow-up read of a collection with more than `MaxTake` rows under one page (§15) |
 | Any operation after a transient failure | +1 per retry (up to `DataOptions.RetryAttempts`, 3 by default: four attempts in all) | — |
 
 The budget is asserted by the conformance tests through `DataAccessScope.RoundTrips` (and
@@ -2204,9 +2228,10 @@ non-participant receiver, a closed phase and a self-pair from a pipeline frame r
 front-door call from inside a composing frame refused, the group order including the nested
 `BeforeHost`-then-`AfterHost` case (B, C, A) and the composite group, `MapPath` composed through the
 nesting with `enlistedResource` on every re-rooted error, the double enlistment of one root id
-refused, a `StatementOrdinal` attributed to its group; descriptor derivation for every fixture
-entity and every startup check of §2.6 (each with a failing fixture, `core.enlistments` included, a
-self-pair passing it); the API golden of §17.
+refused, a `StatementOrdinal` attributed to its group; `SaveOptions.OnPersist` invoked once at its
+§6.7 position, never on a validation failure, and a stack-owned write from it refused at append;
+descriptor derivation for every fixture entity and every startup check of §2.6 (each with a failing
+fixture, `core.enlistments` included, a self-pair passing it); the API golden of §17.
 
 ### 18.2 Integration suite — `test/core/Tellma.Core.IntegrationTests` (`Crud/`)
 
@@ -2254,14 +2279,18 @@ the fixture's foreign keys (a `Shipment` row pointing at a `Widget` inserted in 
 a `Widget` pointing at a `BeforeHost` `Shipment`), the target's validators and effect run, its
 errors re-rooted at the mapped path with `enlistedResource`, `Concurrency = Check` on a loaded row
 refusing a default stamp; a job handler's enlisted update appended to the completion batch and
-rolled back with a lost lease; a caller-channel statement writing a `Shipment` column from
-`WidgetService` refused at append; every raw statement's declared writes covering its targets
-under the fixture tier's change-tracking audit; the cacheable stack served with zero round trips
-after warm-up and refreshed after a write; `MaxRowsPerSave` and a `[MaxChildren]` cap at depth two;
-a denial re-checked after `FastDenyWindow` and admitted; an `[ApiAction]` invoked through
-`IApiActionInvoker` refused for a caller without its action; the Excel row source paging, its
-`Denied` lookup yielding nothing, and a revocation mid-stream; `MetricCollector<T>` over every
-instrument of §16.1.
+rolled back with a lost lease; a `SaveOptions.OnPersist` statement committed inside the save's
+transaction and rolled back with it when a later statement throws; a caller-channel statement
+writing a `Shipment` column from `WidgetService` refused at append; every raw statement's declared
+writes covering its targets under the fixture tier's change-tracking audit; the cacheable stack
+served with zero round trips after warm-up and refreshed after a write; `MaxRowsPerSave` and a
+`[MaxChildren]` cap at depth two; a denial re-checked after `FastDenyWindow` and admitted; an
+`[ApiAction]` invoked through `IApiActionInvoker` refused for a caller without its action; the Excel
+row source — `WidgetParts` and `WidgetPartNotes` riding each page's one round trip, the first
+page's capped count, an empty `ByQuery` in `Id` order, a `ByQuery` excluding inactive rows unless
+`IncludeInactive`, a dependent beyond `MaxTake` completed before its page is yielded, `ReadAsync`
+answering several lookups in one round trip, an unreadable lookup target yielding nothing, and a
+revocation mid-stream; `MetricCollector<T>` over every instrument of §16.1.
 
 ### 18.3 The conformance base — `Tellma.Core.Testing`
 

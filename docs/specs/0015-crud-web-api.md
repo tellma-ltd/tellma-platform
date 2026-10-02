@@ -285,7 +285,7 @@ is a standard segment or an action's `Name`; a standard operation exists only wh
 | `export-for-import/start` | `Read` | `ExportForImportRequest` (spec 0018) | 202 `JobAccepted` | `Import` |
 | `inspect-import` | `Save` | `InspectImportRequest` (spec 0018) | `ImportPlan` | `Import` |
 | `import` | `Save` | `ImportRequest` (spec 0018) | `ImportOutcome` | `Import` |
-| `import/start` | `Save` | `ImportRequest` (spec 0018) | 202 `JobAccepted` | `Import` |
+| `import/start` | `Save` | `StartImportRequest` (spec 0018) | 202 `JobAccepted` | `Import` |
 | `{action-segment}` | an `[EntityAction]`: `EntityActionDescriptor.Action`; an `[ApiAction]`: `ApiActionDescriptor.Securable` (null → none) | an `[EntityAction]` answering `EntitiesResult<T>`: `EntityActionRequest`, or `EntityActionRequest<TArguments>` when it takes arguments; one with its own result: `IdsRequest`, or `IdsRequest<TArguments>` when it takes arguments, and one marked `SingleTarget` (spec 0014 §2.3): `IdRequest`, or `IdRequest<TArguments>` when it takes arguments; an `[ApiAction]`: the method's body type | `EntitiesResult<T>` or the method's result (the descriptor's `ResultType`) | Declared on the service |
 
 Securable actions are PascalCase (`Read`, `Save`, `Delete`, `Activate`, `Invite`); an action segment
@@ -473,8 +473,8 @@ The `Ids` of `IdsRequest`, `IdsRequest<TArguments>`, `GetByIdsRequest` and `Enti
 and `KeySetRestriction` are spec 0011's; `SecurableRef` and `AccessDecision` are spec 0013's, and
 each grant in an `AccessDecision` carries the `kind` discriminator (`role`, `bespoke`, `system`) of
 spec 0013 §5.1. The Excel requests (`ExportRequest`, `ExportForImportRequest`,
-`InspectImportRequest`, `ImportRequest`) are spec 0018's `.Excel` records and serialize under the
-same options.
+`InspectImportRequest`, `ImportRequest`, `StartImportRequest`) are spec 0018's `.Excel` records
+and serialize under the same options.
 
 ### 3.4 Result records
 
@@ -491,7 +491,7 @@ public sealed class EntitiesResult<TEntity>
 
 public sealed record AffectedResult(int Count);
 
-public sealed record JobAccepted(int JobId, int? ResourceId);   // the 202 body; ResourceId = the Exports/Imports row (spec 0018)
+public sealed record JobAccepted(int JobId, int? ResourceId);   // the 202 body; ResourceId = the Imports row (spec 0018); null for an export, whose row the handler inserts on completion
 
 public sealed record MeResult(
     UserProfileView User, string PreferencesTag, IReadOnlyDictionary<string, string> Preferences,   // the caller's bag (spec 0013)
@@ -708,12 +708,13 @@ exposed on MCP.
   `Content-Length` (chunked); compression is off for the stream (§8.4). A synchronous request above
   the thresholds of spec 0018 §2.3 fails with that spec's 413 or 422, whose message names the
   `/start` route, and is never promoted to background. `export/start`, `export-for-import/start` and
-  `import/start` take the same request records as their synchronous routes and are the only
-  background path; they return 202 `JobAccepted(JobId, ExportId)` or `JobAccepted(JobId, ImportId)`.
+  `import/start` take the request records of their synchronous routes, `import/start`'s adding
+  `Atomic` (spec 0018's `StartImportRequest`), and are the only background path; they return 202
+  `JobAccepted(JobId, null)` for the exports and `JobAccepted(JobId, ImportId)` for `import/start`.
   `import` answers spec 0018's `ImportOutcome` as 200. A 202 carries its polling target in the body
-  rather than a `Location` header (the SPA polls through the standard `get` on `exports`/`imports`
-  and the hub's `job.changed`). `inspect-import`, `import` and `import/start` take JSON bodies
-  naming a staged `FileId`; no multipart endpoint exists in this release.
+  rather than a `Location` header; the SPA follows the job as §9.3 describes. `inspect-import`,
+  `import` and `import/start` take JSON bodies naming a staged `FileId`; no multipart endpoint
+  exists in this release.
 - **Blobs.** The upload is a raw body (`AcceptsBinaryMetadata`); the download is the one GET
   (§9.1).
 - **`me`.** `users/me` returns `MeResult`, the caller's preference bag included; the SPA calls it
@@ -1123,7 +1124,7 @@ interface an exception could implement:
 | `CountMismatchException(Expected, Actual)` | 409 | `count-mismatch` | `arguments.expected`, `arguments.actual` |
 | `LimitExceededException(Limit, Actual, Maximum)` | 413 | `limit-exceeded` | `arguments.limit`, `.actual`, `.maximum` |
 | `ValidationException(Errors)` | 422 | `validation` | `errors[]` (§7.3) |
-| `ImportException(Errors, TotalErrors)` | 422 | `validation` | `errors[]` items carrying `sheet`, `row`, `column`, `header`, `property`, `code`, `arguments` (§7.3); `errorDetails.totalErrors` |
+| `ImportException(Errors, TotalErrors, CommittedRowRanges)` | 422 | `validation` | `errors[]` items carrying `sheet`, `row`, `column`, `header`, `property`, `code`, `arguments` (§7.3); `errorDetails.totalErrors`, `errorDetails.committedRowRanges` |
 | `BlobRejectedException(Code, Arguments)` | by code: 413 `Blob.TooLarge`, 415 `Blob.UnsupportedType`, 404 `Blob.UnknownKind`, 411 `Blob.LengthRequired`, 422 otherwise | `blob-rejected` | `errors[]` with `path = "body"` and the blob code |
 | `PartialFailureException(Code, Results, Failed)` | 502 | `partial-failure` | `errorDetails.results` (the partial results), `errorDetails.failed[]` |
 | `TenantUnavailableException` with `Code` `catalog-unavailable`, `tenant-schema-behind` | 503 | that code | `Retry-After` from `RetryAfter` (default 30) |
@@ -1186,7 +1187,8 @@ resource keys, and the SPA resolves `arguments.property` to the label key
 vocabulary is the union of spec 0014's `ValidationCodes`, spec 0013's access codes, spec 0016's blob
 codes and spec 0018's `ExcelErrorCodes`. An `ImportException` item carries `sheet`, `row`, `column`,
 `header` and `property` in place of `path` — an import error names the property, never a path. At
-most `ExcelOptions.MaxReportedErrors` items travel; `errorDetails.totalErrors` says how many exist.
+most `ExcelOptions.MaxReportedErrors` items travel; `errorDetails.totalErrors` says how many exist
+and `errorDetails.committedRowRanges` which sheet rows were committed (spec 0018).
 
 ### 7.4 Concurrency conflicts
 
@@ -1318,9 +1320,10 @@ properties.
 The seven Excel operations are `[ApiAction]`s contributed by spec 0018's `ExcelOperations<TEntity>`
 and projected like any action (§2.3) under the policies of §4.3. The synchronous exports stream
 (§3.9); `export/start`, `export-for-import/start` and `import/start` answer 202 `JobAccepted`. Job
-progress reaches the SPA through `jobs/query` (self-scope) and the hub's `job.changed`; the finished
-artifact through `exports/get` (`FileId`) and the blob GET. No polling endpoint exists beyond the
-standard operations.
+progress reaches the SPA through `jobs/query` (self-scope) and the hub's `job.changed`; a finished
+export's row through `exports/query` on `JobId` or the inbox notice, then the file through the blob
+GET; a finished import's outcome through `imports/get` (`ResultJson`). No polling endpoint exists
+beyond the standard operations.
 
 ### 9.4 Health and tenantless endpoints
 
@@ -1766,10 +1769,10 @@ section, a specification number or a document path.
 
 ### 13.4 PR versus nightly
 
-Every PR runs the unit projects and `Category=Integration` on Windows and Linux; `Live=true` is
-excluded by filter. Nightly runs the full matrix including `Live=true` against the platform
-identity server, and additionally records `tellma.mcp.result.chars` per tool over the fixture
-tenant so the character cap of §11.7 is checked against measured output.
+Every PR runs the unit projects and every `Category=Integration` suite on Windows and Linux,
+`Live=true` excluded by filter, and records `tellma.mcp.result.chars` per tool over the fixture
+tenant so the character cap of §11.7 is checked against measured output. Nightly runs the
+`Live=true` cases only, against the platform identity server (spec 0010 §10).
 
 ## 14. Definition of done
 
@@ -1932,7 +1935,7 @@ The load-bearing decisions, where not already evident above:
     from the start; the contract is identical. Flips if the request-delegate factory refuses the
     delegate.
 16. **`MaxToolResultChars = 60,000`** (§11.7) against a client cap of about 25,000 tokens. Flips on
-    the nightly measurement of `tellma.mcp.result.chars` (§13.4).
+    the pull-request measurement of `tellma.mcp.result.chars` (§13.4).
 17. **Form-mode elicitation replaces the two-call confirmation when the client declares it** (§11.5)
     versus one path for every client. Flips if elicitation support diverges across the named
     clients.
