@@ -21,8 +21,8 @@ application instance fresh without a message bus.
 The cache design is the load-bearing part. One application database per tenant is served by many
 stateless instances, so an in-process cache is only safe when the database itself carries the
 invalidation signal. That signal is a small non-temporal table of opaque tags, read at the head of
-every round trip, after spec 0011's schema guard, and bumped as the last statement before every
-commit — by the batch executor of spec 0011, from declarations on entity classes, never by service
+every round trip, after spec 0012's schema guard, and bumped as the last statement before every
+commit — by the batch executor of spec 0012, from declarations on entity classes, never by service
 code. A service author cannot forget to bump a tag because no service ever bumps one.
 
 The spec builds on the frozen engine and conventions: spec 0008 fixes `today()` as the current
@@ -31,7 +31,7 @@ reserves the calendar codes `'gc'`, `'uq'`, `'et'` (spec 0008 §10.4), and keys 
 identity (spec 0008 §16); spec 0001 supplies the standalone table types and the reserved seed
 band; spec 0007 supplies `DeploymentIdentity`. The batch abstraction, the entity contract, the
 request context, the connect prologue, and the securables registry are defined by the concurrent
-specs 0010, 0011, 0013 and 0014; this spec consumes them by contract name and restates only the
+specs 0011, 0012, 0014 and 0015; this spec consumes them by contract name and restates only the
 members it uses.
 
 Two axes that are easy to conflate are kept apart throughout: the tenant's **content languages**
@@ -43,8 +43,8 @@ apart from the **display zone** (a per-request formatting choice).
 
 The settings edit endpoint ships here as `SettingsService`, so that the settings row, its cache
 and its save are one design; the user's own preferences (`core.UserPreferences`, the typed
-preference columns on `core.Users`) belong to spec 0013, and the permission cache's value type to
-spec 0013 as well — this spec supplies the cache primitive and the tags they validate against.
+preference columns on `core.Users`) belong to spec 0014, and the permission cache's value type to
+spec 0014 as well — this spec supplies the cache primitive and the tags they validate against.
 
 ## Goals / Non-goals
 
@@ -70,15 +70,15 @@ spec 0013 as well — this spec supplies the cache primitive and the tags they v
 
 **Non-goals (explicitly out of scope)**
 
-- **The batch executor, emitter and analyzers** that emit this spec's statements (spec 0011).
-- **The connect prologue, the permissions cache value and `core.UserPreferences`** (spec 0013).
+- **The batch executor, emitter and analyzers** that emit this spec's statements (spec 0012).
+- **The connect prologue, the permissions cache value and `core.UserPreferences`** (spec 0014).
 - **The pipeline that declares dependencies, re-runs once, projects `[Cacheable]` and nulls gated
-  twins** (spec 0014); **the routes, headers and problem mapping** on the wire (spec 0015).
+  twins** (spec 0015); **the routes, headers and problem mapping** on the wire (spec 0016).
 - **Number-to-words and other language utilities, and fonts** — Locale packs, later. The SPA's own
   strings are the client workspace's; the server's reach it through the string pack (§10.4).
 - **A per-tenant default culture, a pack-level language declaration, and the `uq` month-map engine
   amendment** — deferred; the surfaces below leave room for each.
-- **Ethiopian calendar rendering in Excel number formats** — impossible in Excel; spec 0018 renders
+- **Ethiopian calendar rendering in Excel number formats** — impossible in Excel; spec 0019 renders
   text.
 
 ## 1. Placement and architecture
@@ -92,7 +92,7 @@ so a block is never pasted into code. SQL statements are the exact shape to emit
 | Project | What this spec adds | Dependency edges |
 |---|---|---|
 | `Tellma.Core.Abstractions` | Namespaces `Tellma.Core.Abstractions.Caching` (tags, snapshot, registry, cache contracts, `CacheTelemetryNames`), `.Settings` (`SettingKey<T>`, `TenantSettings`, `TenantSettingsForClient`, `TenantSettingsDetails`, `SettingKeyDescriptor`, `SettingValueType`, `TenantSettingsPatch`, `MultilingualShape`, the entities `Settings` and `SettingEntry`), `.Localization` (`LanguageInfo`, `ILanguageCatalog`, `ILabelProvider`, `LocalizationContext`, `ILocalizationNegotiator`, `CoreStrings`, `IStringPackProvider`, `StringPack`, `LocalizationTelemetryNames`), `.Calendars` (`ICalendarSystem`, `ICalendarRegistry`, `CalendarCodes`, `DateStyle`); `VersionTagList` in `.TableTypes` | `Tellma.Core.Queryex` only (existing edge); BCL `System.Text.Json`, `System.Globalization` |
-| `Tellma.Core` | Folders `Caching/` (`VersionedCache`, `VersionTagRegistry`, `VersionTagSnapshots`, `UserVersionTagSnapshots`, the prologue and epilogue contributors, `CacheableEntityStore`, `CacheableEntities`), `Settings/` (`TenantSettingsStore`, `TenantSettingsCache`, `SettingKeyRegistry`, `SettingsService`, the `core.settings` provisioning step), `Localization/` (`LanguageCatalog`, `LocalizationNegotiator`, `LabelProvider`, `IcuStringLocalizerFactory`, `StringPackComposer`), `Calendars/` (`GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`), `Resources/Strings.resx` and satellites | adds `MessageFormat` 8.0.0, `Microsoft.Extensions.Caching.Memory`, `Microsoft.Extensions.Localization`, `Microsoft.AspNetCore.DataProtection.Abstractions` (`IDataProtectionProvider`, registered by spec 0010's web host; optional elsewhere, §5.3) |
+| `Tellma.Core` | Folders `Caching/` (`VersionedCache`, `VersionTagRegistry`, `VersionTagSnapshots`, `UserVersionTagSnapshots`, the prologue and epilogue contributors, `CacheableEntityStore`, `CacheableEntities`), `Settings/` (`TenantSettingsStore`, `TenantSettingsCache`, `SettingKeyRegistry`, `SettingsService`, the `core.settings` provisioning step), `Localization/` (`LanguageCatalog`, `LocalizationNegotiator`, `LabelProvider`, `IcuStringLocalizerFactory`, `StringPackComposer`), `Calendars/` (`GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`), `Resources/Strings.resx` and satellites | adds `MessageFormat` 8.0.0, `Microsoft.Extensions.Caching.Memory`, `Microsoft.Extensions.Localization`, `Microsoft.AspNetCore.DataProtection.Abstractions` (`IDataProtectionProvider`, registered by spec 0011's web host; optional elsewhere, §5.3) |
 | `Tellma.Core.Migrator` | Runs the `core.VersionTags` seed and wholesale bump (§2.8) on every `migrate` | unchanged |
 | `test/core/Tellma.Core.Tests`, `test/core/Tellma.Core.IntegrationTests` | The suites of §12 | unchanged |
 | `test/shared/Tellma.Testing.Resources` | The resource-audit helper of §12, referenced by every suite that owns a `Strings.resx` | new; BCL only |
@@ -104,33 +104,33 @@ addresses Core's strings through `CoreStrings` (§10.1).
 
 ### 1.2 Composition
 
-`CoreFeature` (spec 0010's `ITellmaFeature`, added unconditionally) contributes, through spec
-0010's `FeatureContribution`: the EF configurations of `Settings`, `SettingEntry`,
+`CoreFeature` (spec 0011's `ITellmaFeature`, added unconditionally) contributes, through spec
+0011's `FeatureContribution`: the EF configurations of `Settings`, `SettingEntry`,
 `core.VersionTags` and the tag columns of `core.UserStamps` (`Model<T>()`); `IVersionTagSnapshots`,
 `IUserVersionTagSnapshots`, `IVersionTagRegistry`, `ISettingKeyRegistry`, `ILanguageCatalog`,
 `ILocalizationNegotiator`, `ILabelProvider`, `IStringPackProvider`, `ICalendarRegistry`
 (`Singleton<,>()`) and the two stores `TenantSettingsStore` and `CacheableEntityStore` as concrete
 singletons; `ITenantSettingsCache` and `ICacheableEntities`, the façades over those stores that
 hold the scope's `ITenantDatabase` and snapshot (§3.2), and the prelude and bump contributors of
-§2.5 and the cold-load contributor of §5.7 as spec 0011's `IDataBatchContributor` (`Scoped<,>()`);
+§2.5 and the cold-load contributor of §5.7 as spec 0012's `IDataBatchContributor` (`Scoped<,>()`);
 `IRequestContextInitializer` at `Order` 200 (§9.3); `ClientEvent("cache.changed")` (§2.5);
 `Calendar<GregorianCalendarSystem>()`, `Calendar<UmAlQuraCalendarSystem>()`,
 `Calendar<EthiopianCalendarSystem>()`; `ApiService<SettingsService>()`; `Securables(...)` for
 `core.Settings.General` and every `core.Settings.<Category>` of §5.5;
 `ProvisioningStep<SettingsProvisioningStep>()` (§5.7); and the `IStartupCheck`s of §1.3.
 
-The distribution author's whole surface is two builder calls of spec 0010's `TellmaBuilder`,
-`Languages(codes)` and `AddLanguage(info)`, plus two calls on spec 0010's `FeatureContribution` per
+The distribution author's whole surface is two builder calls of spec 0011's `TellmaBuilder`,
+`Languages(codes)` and `AddLanguage(info)`, plus two calls on spec 0011's `FeatureContribution` per
 feature, `SettingKeys(declaringType)` and `Calendar<TCalendar>()`. `AddTellma` replaces the
 framework's `IStringLocalizerFactory` with `IcuStringLocalizerFactory` (§10.2).
 
 ### 1.3 Startup checks
 
-All report into spec 0010's realised gate as `CompositionProblem`s; none throws on its own.
+All report into spec 0011's realised gate as `CompositionProblem`s; none throws on its own.
 
 - **Version-tag registry**: every name has one of the two forms of §2.1; `entity:` names come
   only from `[Cacheable]`; no two entities yield one `entity:` name; every `[BumpsUserVersionTag]`
-  names an `int` property of its entity; every raw-SQL site the analyzer of spec 0011 flags for a
+  names an `int` property of its entity; every raw-SQL site the analyzer of spec 0012 flags for a
   user-level table declares `SqlOptions.UserIds`.
 - **Cacheable entities**: the checks of §4.2.
 - **Setting keys**: the grammar, uniqueness, type, `References` and `Secret` rules of §5.3.
@@ -140,7 +140,7 @@ All report into spec 0010's realised gate as `CompositionProblem`s; none throws 
 - **String pack**: no `Strings` key is declared by two composed assemblies (§10.4).
 - **Calendars**: registered codes are unique, lower-case, ≤ 16 characters; `gc`, `uq`, `et`
   are present and agree with spec 0008's reserved codes.
-- **Globalization mode**: the ICU requirement is spec 0010 §2.3's built-in `core.globalization`
+- **Globalization mode**: the ICU requirement is spec 0011 §2.3's built-in `core.globalization`
   check, registered by `AddTellma` itself rather than contributed here.
 
 ## 2. Version tags
@@ -159,7 +159,7 @@ Tenant-level tags live in `core.VersionTags`, one row per name:
 | Name | Bumped by writes to | Read by |
 |---|---|---|
 | `settings` | `core.Settings`, `core.SettingEntries` | the settings cache, schema-shape selection, negotiation |
-| `permissions` | `core.Roles`, `core.Permissions` (spec 0013 declares); `SettingsService.Save` when a language column changed (§6.3) | the permissions cache, together with the user's `PermissionsTag` |
+| `permissions` | `core.Roles`, `core.Permissions` (spec 0014 declares); `SettingsService.Save` when a language column changed (§6.3) | the permissions cache, together with the user's `PermissionsTag` |
 | `entities` | any `[Cacheable]` entity's table (composite) | the client: "some cached list changed" |
 | `entity:<EntityName>` | that entity's table | the server list cache; the client's per-entity list |
 | pack names | tables carrying `[BumpsVersionTag("<name>")]` | the pack's own caches |
@@ -174,7 +174,7 @@ the tenant `permissions` tag; a membership edit changes one user and bumps that 
 **Name grammar.** A name has one of two forms, both at most 128 characters
 (`VersionTagNames.MaxNameLength`) and compared ordinally. A plain tenant-level name — the three
 platform names and every pack name — is lower-case ASCII, `^[a-z][a-z0-9.-]*$`. An entity name
-is the reserved prefix `entity:` followed verbatim by the entity's name, spec 0011's
+is the reserved prefix `entity:` followed verbatim by the entity's name, spec 0012's
 `EntityMetadata.Name` (`entity:gl.Center`), produced only by `VersionTagNames.ForEntity`;
 `[BumpsVersionTag("entity:…")]` written by hand fails the startup gate.
 
@@ -240,7 +240,7 @@ public sealed record VersionTagEffects(
 public sealed record UserVersionTagRule(                // core.UserPreferences and core.NotificationPreferences -> Preferences, "UserId" are fixed rules
     TableName Table, UserVersionTagNames Column, string UserIdColumn);
 
-// Tellma.Core.Abstractions.Entities (declared with spec 0011's entity contract; semantics here)
+// Tellma.Core.Abstractions.Entities (declared with spec 0012's entity contract; semantics here)
 public sealed class BumpsVersionTagAttribute(string name) : Attribute;   // on entity class, repeatable, inherited
 
 public sealed class BumpsUserVersionTagAttribute(
@@ -262,7 +262,7 @@ public sealed class VersionTagList
 | `VersionTag.None` | The empty tag; matches no entry, so a comparison against it always loads. |
 | `VersionTagSnapshot` | The tenant-level tags of one tenant as last read by a batch prelude, overlaid with that batch's own bumps; `ReadAtUtc` is the instance clock at the read. Holds no user-level entry. |
 | `IVersionTagSnapshots` | A process-wide store bounded by `TellmaCacheOptions.TagSnapshots` entries (private `MemoryCache`, least-recently-used eviction); an absent tenant yields an empty snapshot, which is what makes every cache miss on a fresh instance. |
-| `UserVersionTagSnapshot` | One user's `PreferencesTag` and `PermissionsTag` as the connect prologue's result set 0 read them (spec 0013 §7.3), overlaid with the batch's own bump of either (§2.5). |
+| `UserVersionTagSnapshot` | One user's `PreferencesTag` and `PermissionsTag` as the connect prologue's result set 0 read them (spec 0014 §7.3), overlaid with the batch's own bump of either (§2.5). |
 | `IUserVersionTagSnapshots` | A process-wide store keyed `(tenantId, userId)`, bounded by `TellmaCacheOptions.PreferencesEntries` entries (private `MemoryCache`, least-recently-used eviction); filled only by the executor after a batch that carried a connect prologue. |
 | `VersionTagDependency` | A cached input a batch composed; the executor guards writes and applies `OnMismatch` to reads (§2.6). |
 | `IVersionTagRegistry.Resolve` | Maps the union of a batch's declared written tables to the tenant names to bump and the user-level rules that fired. `[Cacheable]` yields `entity:<Name>` and `entities`. |
@@ -283,8 +283,8 @@ No index beyond the primary key: the prelude scans the one-page table, the guard
 the migrator (§2.8): no `HasData` row and no provisioning step, because only the registry of a
 deployment knows the names it needs.
 
-**`core.UserStamps`** — non-temporal; no UDTT; owned jointly with spec 0013 (which adds
-`LastActiveAt`, and spec 0020 `InboxSeenAt`); exposed to Queryex read-only as `core.UserStamp`
+**`core.UserStamps`** — non-temporal; no UDTT; owned jointly with spec 0014 (which adds
+`LastActiveAt`, and spec 0021 `InboxSeenAt`); exposed to Queryex read-only as `core.UserStamp`
 (navigation `User`). The columns this spec owns:
 
 | Column | Type | Null | Constraints | Notes |
@@ -293,7 +293,7 @@ deployment knows the names it needs.
 | `PermissionsTag` | `uniqueidentifier` | no | `DF_UserStamps_PermissionsTag NEWID()` | bumped by writes to the user's `RoleMemberships` |
 | `PreferencesTag` | `uniqueidentifier` | no | `DF_UserStamps_PreferencesTag NEWID()` | bumped by writes to the user's own `Users` row, `UserPreferences`, `NotificationPreferences` |
 
-`HasData` (spec 0013): `(1, NULL, 00000000-0000-0000-0000-000000000001,
+`HasData` (spec 0014): `(1, NULL, 00000000-0000-0000-0000-000000000001,
 00000000-0000-0000-0000-000000000002, NULL)`.
 
 Tables that never bump anything and carry no tag attribute: `core.Jobs`, `core.UserStamps`,
@@ -306,9 +306,9 @@ user-level columns through fixed rules, never a tenant-level name).
 | Entity | Attribute | Effect |
 |---|---|---|
 | `Settings`, `SettingEntry` | `[BumpsVersionTag("settings")]` | this spec |
-| `Role`, `Permission` | `[BumpsVersionTag("permissions")]` | spec 0013 |
-| `RoleMembership` | `[BumpsUserVersionTag(Permissions, "UserId")]` | spec 0013 |
-| `User` | `[BumpsUserVersionTag(Preferences, "Id")]` | spec 0013 |
+| `Role`, `Permission` | `[BumpsVersionTag("permissions")]` | spec 0014 |
+| `RoleMembership` | `[BumpsUserVersionTag(Permissions, "UserId")]` | spec 0014 |
+| `User` | `[BumpsUserVersionTag(Preferences, "Id")]` | spec 0014 |
 | any `[Cacheable]` entity | implied `entity:<Name>` + `entities` | §4 |
 | `core.UserPreferences`, `core.NotificationPreferences` | fixed rule → `Preferences`, `UserId` | this spec's registry |
 
@@ -318,19 +318,19 @@ ordinary settings edit never sends every user down the cold path.
 
 ### 2.5 The statements
 
-The executor of spec 0011 emits four statements from this spec; the contributors below hand it
+The executor of spec 0012 emits four statements from this spec; the contributors below hand it
 the text and the parameters. Parameter names use the `@tm_` prefix, which is reserved for the
 once-per-batch fixed text and never used by Queryex or by distribution SQL.
 
 **The prelude** — `IDataBatchContributor` at `Order` 50, stage `Prologue`. It contributes the
 statement to every tenant batch that carries no connect prologue (a batch composed outside spec
-0013's `IGuardedBatchRunner`: a cache loader, a maintenance batch, the migrator); on a caller's
+0014's `IGuardedBatchRunner`: a cache loader, a maintenance batch, the migrator); on a caller's
 batch the connect prologue's result set 1 is this same statement, and the contributor reads that
 result set instead of adding its own. Either way the rows are the first thing the round trip reads
-after spec 0011's schema guard.
+after spec 0012's schema guard.
 
 ```sql
--- Prelude (prologue contributor at Order 50; the first statement after spec 0011's schema guard in every tenant batch; on caller batches the connect prologue reads it instead):
+-- Prelude (prologue contributor at Order 50; the first statement after spec 0012's schema guard in every tenant batch; on caller batches the connect prologue reads it instead):
 SELECT [Name], [Tag] FROM [core].[VersionTags];
 ```
 
@@ -341,7 +341,7 @@ dependency the batch declared through `DependsOn`, each with its `ExpectedTag`, 
 on every name the batch itself bumps — known at composition from its written tables and
 `BumpVersionTag` calls;
 `@tm_UserId` and `@tm_ExpectedUserPermissionsTag` are the connect prologue's parameters (spec
-0013). The guard seeks the expected rows (`FORCESEEK`), so no other row is locked. A row the batch
+0014). The guard seeks the expected rows (`FORCESEEK`), so no other row is locked. A row the batch
 only reads is read under `REPEATABLEREAD`, which holds its shared lock to `COMMIT`: a concurrent
 bump of it — a role save, a settings save — waits for this transaction instead of committing under
 it, a wait bounded by one round trip and paid by the writers of those rows and by any persist
@@ -360,7 +360,7 @@ IF EXISTS (SELECT 1 FROM [core].[VersionTags] AS t WITH (REPEATABLEREAD, ROWLOCK
     THROW 50412, N'StaleVersionTag', 1;
 ```
 
-Spec 0013's caller re-check (`THROW 50401`) follows immediately; the business statements follow
+Spec 0014's caller re-check (`THROW 50401`) follows immediately; the business statements follow
 that.
 
 **The bump** — `IDataBatchContributor` at `Order` 50, stage `Epilogue`; contributed to every batch
@@ -388,7 +388,7 @@ int NOT NULL PRIMARY KEY);` (and the `Preferences` twin), so the join never mult
 
 **Rules the executor honours.**
 
-- **Ordering is load-bearing.** Every cold load in a batch (settings, spec 0013's permission rows
+- **Ordering is load-bearing.** Every cold load in a batch (settings, spec 0014's permission rows
   and profile, cacheable lists) is emitted after the prelude and stamped with the tag the prelude
   returned. A bump landing between the tag read and the rows makes the rows newer than their stamp,
   which the next prelude detects and reloads (convergent); the reverse order would stamp stale
@@ -398,7 +398,7 @@ int NOT NULL PRIMARY KEY);` (and the `Preferences` twin), so the join never mult
   never across business statements (there is no client I/O inside a batch) — unless both guards
   read the row, in which case the guard's update lock serialises them from the guard onward.
 - **`UPDATE` only; a missing row never fails silently.** `THROW 50422 VersionTag.Missing` surfaces
-  as spec 0014's `ValidationException` with that code, and is metered. A name absent from the
+  as spec 0015's `ValidationException` with that code, and is metered. A name absent from the
   *prelude* (`VersionTagSnapshot.Has(name) = false`) marks the cache kind behind it uncacheable on
   that instance: every request loads, `cache.outcome = uncached`, one `VersionTagRowMissing`
   Warning per name per process. A missing row costs performance, never correctness. There is no
@@ -407,18 +407,18 @@ int NOT NULL PRIMARY KEY);` (and the `Preferences` twin), so the join never mult
   with `@tm_tag` on the prelude's rows and calls `IVersionTagSnapshots.Replace` with tenant entries
   only; `BatchOutcome.VersionTags` is that snapshot. On a batch that carried a connect prologue it
   builds the `UserVersionTagSnapshot` from the prologue's result set 0 (`PreferencesTag`,
-  `UserPermissionsTag`; spec 0013 §7.3), overlays `@tm_tag` on whichever column a user-level rule
+  `UserPermissionsTag`; spec 0014 §7.3), overlays `@tm_tag` on whichever column a user-level rule
   bumped for the caller, and calls `IUserVersionTagSnapshots.Replace`;
   `BatchOutcome.UserVersionTags` is that snapshot, null on a batch without a connect prologue (a
   `Maintenance` batch, a `System` scope's batch). The response header (§2.7) carries post-bump
   values from both.
 - **The bump publishes `cache.changed`.** For every bumped name that is `settings` or an
-  `entity:<Name>`, the epilogue contributor calls spec 0020's
+  `entity:<Name>`, the epilogue contributor calls spec 0021's
   `IClientEventPublisher.Publish(batch, ClientEvent("cache.changed", [], { tag: <name> }))` — the
   batch form fires after the commit, to every connected user of the tenant — so an open client
   refetches the list or the settings without waiting for its next response header. The
   `permissions` and user-level bumps publish nothing: the next request's guard handles them. The
-  publisher's null default (spec 0020) publishes nothing.
+  publisher's null default (spec 0021) publishes nothing.
 - **Out-of-band writes** (a DBA script, a distribution's own `SqlConnection`) are documented for
   operators: run the wholesale bump of §2.8 afterwards, or the admin action
   `settings/refresh-caches` (§6.4).
@@ -432,12 +432,12 @@ guard, as `permissions` and `settings` always do.
 
 | Dependency | Declared by | Policy | Behaviour |
 |---|---|---|---|
-| `permissions` and the user's `PermissionsTag` | spec 0013's connect prologue (always) | `Rerun` | The result is discarded, the permissions cache refreshes, and the batch re-runs **once** (spec 0013's `IGuardedBatchRunner`); a second mismatch surfaces as `StaleContextException` (§2.9) (503, `Retry-After: 1`) and is metered `stale.phase = exhausted`. Rows never reach a caller from a run whose permissions moved. |
+| `permissions` and the user's `PermissionsTag` | spec 0014's connect prologue (always) | `Rerun` | The result is discarded, the permissions cache refreshes, and the batch re-runs **once** (spec 0014's `IGuardedBatchRunner`); a second mismatch surfaces as `StaleContextException` (§2.9) (503, `Retry-After: 1`) and is metered `stale.phase = exhausted`. Rows never reach a caller from a run whose permissions moved. |
 | `settings` on a `Read` batch | every caller batch (a `TenantSettings` is always in use) | `Refresh` | The result is served — physical columns never disappear, so a query compiled under the old shape still executes; the fresh settings ride the same round trip (§5.7) and warm the cache, and the response carries the new tag. |
 | `settings` on a `Validate` or `Persist` batch | every caller batch | `Rerun` | The connect prologue reports `SettingsStale` and fails its guard; the fresh settings ride the failed round trip, the runner applies them and re-runs this spec's initializer (§9.3), and the batch is recomposed once. A validator never decides under a setting that changed under it. |
-| `PreferencesTag` | spec 0013's profile cache | `Refresh` | As settings. |
+| `PreferencesTag` | spec 0014's profile cache | `Refresh` | As settings. |
 | `entity:<Name>` | `FromCache<TEntity>` on a `Read` batch | `Refresh` | The cached list is invalidated; the result came from the database anyway. |
-| `entity:<Name>` | `FromCache<TEntity>` on a `Validate` batch; re-declared by spec 0014's persist batch through `DependsOn` | `Rerun` | A validator never accepts a row from a list that changed under it. |
+| `entity:<Name>` | `FromCache<TEntity>` on a `Validate` batch; re-declared by spec 0015's persist batch through `DependsOn` | `Rerun` | A validator never accepts a row from a list that changed under it. |
 
 The write guard leaves no window on the rows it holds: a bump of any expected name, tenant-level
 or user-level, that would commit after the guard read waits for this transaction. What remains
@@ -449,18 +449,18 @@ service names it with `DependsOn`.
 
 Every client-facing cached shape carries a `FormatVersion` constant (initially `1`):
 `TenantSettingsForClient.FormatVersion`, `CachedEntitySet.FormatVersion` (the list shape), and
-spec 0013's `UserAccess.FormatVersion`, which spec 0015's `AccessSummary.FormatVersion` carries to
+spec 0014's `UserAccess.FormatVersion`, which spec 0016's `AccessSummary.FormatVersion` carries to
 the client. The wire form of
 a tag is `VersionTag.ToWire(formatVersion)` = `"{FormatVersion}.{Value:N}"`; the browser stores
 DTOs keyed by that string and refetches when it changes for any reason. The database never stores
 a format version; the in-process cache dies with the process and needs none.
 
 Every authenticated response carries `Tellma-Version-Tags: settings=<wire>, permissions=<wire>,
-preferences=<wire>, entities=<wire>`: spec 0015 writes `settings`, `permissions` and `entities`
+preferences=<wire>, entities=<wire>`: spec 0016 writes `settings`, `permissions` and `entities`
 from `BatchOutcome.VersionTags` and `preferences` from `BatchOutcome.UserVersionTags.Preferences`
 under its `TellmaHeaders.VersionTags`. `entity:*` tags are deliberately absent from the header
 (unbounded count); a changed `entities` composite makes the client fetch `settings/entity-tags`
-(§6.2) and refetch only the lists whose tag moved. The same four wire tags travel in spec 0015's
+(§6.2) and refetch only the lists whose tag moved. The same four wire tags travel in spec 0016's
 `MeResult.Tags`. They double as a coarse activity signal — the tenant `permissions` tag changes
 whenever any role changes — which is accepted and is never to be replaced by a counter.
 
@@ -490,10 +490,10 @@ on the next `migrate`; an instance running the new code against a database not y
 
 | Number | Code | Raised by | Surfaces as |
 |---|---|---|---|
-| `50412` | `StaleVersionTag` | the guard | spec 0013's runner re-connects cold and recomposes once, then `StaleContextException` (503, `stale-context`, `Retry-After: 1`) |
-| `50422` | `VersionTag.Missing` | the bump | spec 0014's `ValidationException` with code `VersionTag.Missing`; metered |
+| `50412` | `StaleVersionTag` | the guard | spec 0014's runner re-connects cold and recomposes once, then `StaleContextException` (503, `stale-context`, `Retry-After: 1`) |
+| `50422` | `VersionTag.Missing` | the bump | spec 0015's `ValidationException` with code `VersionTag.Missing`; metered |
 
-`StaleContextException` is this spec's member of spec 0014's closed exception set (§14.1 of that
+`StaleContextException` is this spec's member of spec 0015's closed exception set (§14.1 of that
 spec maps it at 503):
 
 ```csharp
@@ -508,7 +508,7 @@ surfaces as a 500.
 
 ### 2.10 Round trips
 
-The numbers spec 0014 must meet, for a warm instance: read 1; create 1; update 2; +1 on a cold or
+The numbers spec 0015 must meet, for a warm instance: read 1; create 1; update 2; +1 on a cold or
 stale path (the cold settings load, the cold connect, a `Rerun`); +2 when the in-transaction guard
 fires (a cold re-connect and the recomposed persist; §2.9); a request that needs no other
 statement still executes the prelude (or the connect prologue that absorbs it) alone — one page
@@ -551,11 +551,11 @@ public abstract class VersionedCache<TKey, TValue>
 
 | Member | Meaning |
 |---|---|
-| `GetAsync` | Returns the entry when `entry.Tag == currentTag` (`Hit`); otherwise loads through `LoadAsync` on `database` — the caller's scoped handle, spec 0011's `ITenantDatabase`, because the store is a singleton and holds no scope — stores, and returns `Miss` (no entry) or `Stale` (an entry with another tag). `currentTag = VersionTag.None` always loads and, because the prelude of the load's own batch supplies the tag, the stored entry is stamped correctly even on a fresh instance. Returns `Uncached` — value loaded, nothing stored — when the tag `LoadAsync` returned is `VersionTag.None`: the load's own prelude found no `core.VersionTags` row for the kind's name (§2.5). Returns `Oversized` — no value, nothing stored — when the `entities` kind's probe overflows (§4.4). |
-| `Peek` | The entry when present and its tag equals `currentTag`; otherwise `null`. Never loads: what `ITenantSettingsCache.Peek`, `ICacheableEntities.Peek` and spec 0013's evaluator within its deny window read through. |
-| `Set` | Stores a value under the tag it is valid for: a save's new state under the batch's post-bump tag, so the writing instance is warm without a reload; spec 0013's prologue rows under the tags that prologue read. |
-| `Remove` | Drops one entry when present; metered `cache.reason = removed`. Spec 0013's `Invalidate` and a refusing prologue. |
-| `LoadAsync` | The loader of a kind that loads on a miss (`settings`, `entities`): exactly one `Read` batch created on the handle it was passed (`database.CreateBatch(Read)`), carrying no connect prologue, returning the value together with the tag that batch's prelude returned and the entry's size in the kind's unit. The kinds whose rows ride spec 0013's connect prologue (`permissions`, `preferences`) read through `Peek`, are fed by `Set`, never call `GetAsync`, and leave the base. |
+| `GetAsync` | Returns the entry when `entry.Tag == currentTag` (`Hit`); otherwise loads through `LoadAsync` on `database` — the caller's scoped handle, spec 0012's `ITenantDatabase`, because the store is a singleton and holds no scope — stores, and returns `Miss` (no entry) or `Stale` (an entry with another tag). `currentTag = VersionTag.None` always loads and, because the prelude of the load's own batch supplies the tag, the stored entry is stamped correctly even on a fresh instance. Returns `Uncached` — value loaded, nothing stored — when the tag `LoadAsync` returned is `VersionTag.None`: the load's own prelude found no `core.VersionTags` row for the kind's name (§2.5). Returns `Oversized` — no value, nothing stored — when the `entities` kind's probe overflows (§4.4). |
+| `Peek` | The entry when present and its tag equals `currentTag`; otherwise `null`. Never loads: what `ITenantSettingsCache.Peek`, `ICacheableEntities.Peek` and spec 0014's evaluator within its deny window read through. |
+| `Set` | Stores a value under the tag it is valid for: a save's new state under the batch's post-bump tag, so the writing instance is warm without a reload; spec 0014's prologue rows under the tags that prologue read. |
+| `Remove` | Drops one entry when present; metered `cache.reason = removed`. Spec 0014's `Invalidate` and a refusing prologue. |
+| `LoadAsync` | The loader of a kind that loads on a miss (`settings`, `entities`): exactly one `Read` batch created on the handle it was passed (`database.CreateBatch(Read)`), carrying no connect prologue, returning the value together with the tag that batch's prelude returned and the entry's size in the kind's unit. The kinds whose rows ride spec 0014's connect prologue (`permissions`, `preferences`) read through `Peek`, are fed by `Set`, never call `GetAsync`, and leave the base. |
 
 ### 3.2 Behaviour
 
@@ -569,26 +569,26 @@ public abstract class VersionedCache<TKey, TValue>
   written only through the pipeline; a write that bypasses the executor — a script against a
   reference table — is repaired by `settings/refresh-caches` (§6.4) or the migrator's wholesale
   bump (§2.8), and a server-side reload would not move the tag the SPA caches on anyway.
-  Permissions alone carry a backstop, spec 0013's `PermissionsMaxAge`, applied by the connect
+  Permissions alone carry a backstop, spec 0014's `PermissionsMaxAge`, applied by the connect
   prologue rather than by the store.
 - **Every key begins with the tenant id** because user ids are per-tenant integers and one subject
   belongs to several tenants.
 - **Scoped façades, singleton stores.** `ITenantSettingsCache` and `ICacheableEntities` are
   scoped: each holds the scope's `ITenantDatabase` and its view of `IVersionTagSnapshots` and
   passes the handle to its store, the process-wide `VersionedCache`; a singleton never sees the
-  ambient request context (spec 0010), so the store takes the handle as an argument.
+  ambient request context (spec 0011), so the store takes the handle as an argument.
 - **Instances are shared and immutable.** A cached value is handed to every caller by reference;
-  mutating one is a bug the value types prevent (`TenantSettings`, `CachedEntitySet`, spec 0013's
+  mutating one is a bug the value types prevent (`TenantSettings`, `CachedEntitySet`, spec 0014's
   `UserProfile` and `UserAccess` are immutable records with read-only collections).
 
 | Kind | Key | Value | Size unit / limit | Owner of the value |
 |---|---|---|---|---|
 | `settings` | `(TenantId)` | `TenantSettings` + the pre-serialized `TenantSettingsForClient` bytes, one entry | entries / `SettingsEntries` | this spec |
-| `preferences` | `(TenantId, UserId)` | `UserProfile` | entries / `PreferencesEntries` | spec 0013 |
-| `permissions` | `(TenantId, UserId)` | `UserAccess`; valid when both `permissions` and `PermissionsTag` match | entries / `PermissionsEntries` | spec 0013 |
+| `preferences` | `(TenantId, UserId)` | `UserProfile` | entries / `PreferencesEntries` | spec 0014 |
+| `permissions` | `(TenantId, UserId)` | `UserAccess`; valid when both `permissions` and `PermissionsTag` match | entries / `PermissionsEntries` | spec 0014 |
 | `entities` | `(TenantId, EntityName)` | `CachedEntitySet<TEntity>` | rows / `EntityRows` | §4 |
 
-Spec 0013's connect cache, keyed `(TenantId, Subject)`, is not a `VersionedCache` kind: it holds
+Spec 0014's connect cache, keyed `(TenantId, Subject)`, is not a `VersionedCache` kind: it holds
 the last `ConnectedUser` whose premises the prologue re-validates on every request. Limits come
 from `Tellma:Cache`; a distribution changes a number in configuration, never in code.
 
@@ -606,14 +606,14 @@ month names are resources, not entities.
 
 What the declaration produces, with no further code:
 
-1. **Tags.** `entity:<Name>` — the entity's name, spec 0011's `EntityMetadata.Name`
+1. **Tags.** `entity:<Name>` — the entity's name, spec 0012's `EntityMetadata.Name`
    (`entity:gl.Center`) — is registered with `IVersionTagRegistry` and seeded by the migrator;
    writes to the table bump it and the composite `entities`.
-2. **Securable.** Spec 0014's `StackSecurableContributor` registers the entity's `Read`
+2. **Securable.** Spec 0015's `StackSecurableContributor` registers the entity's `Read`
    securable with `FilterRoot = null`: a cached list is shared by every reader, so a row-level
    filter on it could only be silently ignored. A caller must still hold `Read` on the resource.
-3. **Projection.** Spec 0014 projects
-   `EntityService<TEntity, TKey>.GetAllCachedAsync(DetailsRequest)` and spec 0015 the route
+3. **Projection.** Spec 0015 projects
+   `EntityService<TEntity, TKey>.GetAllCachedAsync(DetailsRequest)` and spec 0016 the route
    `{resource-segment}/all` (body `AllRequest(Select, Include)`); the unfiltered `Read` is the
    only permission either checks.
 4. **Server cache.** `ICacheableEntities.GetAsync<TEntity>()` in service code, or
@@ -625,7 +625,7 @@ What the declaration produces, with no further code:
 Reported into the realised gate: the entity is top-level (`TopLevelEntity<int>`; the key type is
 `int` because `CachedEntitySet.ById` is keyed by `int`); it declares no child collection; the
 resolved `MaxRows` (§4.1) is between 1 and `EntityMaxRowsCeiling` (10,000) — a "cacheable" type
-above that is a configuration bug; and spec 0013's registry answers
+above that is a configuration bug; and spec 0014's registry answers
 `Find(resource, "Read").FilterRoot == null`.
 
 ### 4.3 Contracts
@@ -667,9 +667,9 @@ round trip of its own. On a `Validate` or `Persist` batch `FromCache` declares
 
 **Overflow.** `MaxRows + 1` rows coming back is a signal, not a list: the rows are discarded,
 nothing is cached, and `ICacheableEntities.GetAsync` and `FromCache` report `Outcome = Oversized`
-with a null `Value`. The consumer re-reads the table through an ordinary query — spec 0014's
-`GetAllCachedAsync` through one `Query<TEntity>` round trip (spec 0014 §5.5), a validator through
-its loader (spec 0014 §7.2) — metered `cache.outcome = oversized`, with
+with a null `Value`. The consumer re-reads the table through an ordinary query — spec 0015's
+`GetAllCachedAsync` through one `Query<TEntity>` round trip (spec 0015 §5.5), a validator through
+its loader (spec 0015 §7.2) — metered `cache.outcome = oversized`, with
 `CacheableEntityOverflow(entity, rows, maxRows)` logged once per type per process. The table keeps
 working uncached until an operator raises `MaxRows` or removes the attribute.
 
@@ -691,7 +691,7 @@ packs cannot all be that base), so pack settings are entries by construction.
 
 Both entities carry `TopLevelEntity` (the four audit columns, `ModifiedAt` as the concurrency
 token), `[Temporal]`, `[TableType]`, and `[BumpsVersionTag("settings")]`. There is no special
-persistence path: the settings save hydrates, merges, validates and persists through spec 0011's
+persistence path: the settings save hydrates, merges, validates and persists through spec 0012's
 emitter like any entity, which is what makes audit stamping, the concurrency check, the history
 row and the tag bump automatic. Neither is contributed as a stack; both are mapped leaves and
 therefore roots of the Queryex schema under their entity names (`core.Settings`,
@@ -705,7 +705,7 @@ therefore roots of the Queryex schema under their entity names (`core.Settings`,
 
 | Column | Type | Null | Constraints | Notes |
 |---|---|---|---|---|
-| `Id` | `int` | no | `PK_Settings`; `CK_Settings_Id CHECK ([Id] > 0)`; `CK_Settings_SingleRow CHECK ([Id] = 1)` | the sequence `core.sq_Settings` that spec 0011's convention emits for every keyed table exists and is never consumed: the single row is a `HasData` placeholder completed by provisioning (§5.7) |
+| `Id` | `int` | no | `PK_Settings`; `CK_Settings_Id CHECK ([Id] > 0)`; `CK_Settings_SingleRow CHECK ([Id] = 1)` | the sequence `core.sq_Settings` that spec 0012's convention emits for every keyed table exists and is never consumed: the single row is a `HasData` placeholder completed by provisioning (§5.7) |
 | `TenantId` | `int` | no | | routing guard, never a filter; `0` = unprovisioned placeholder |
 | `Name` | `nvarchar(255)` | no | | tenant display name, primary language |
 | `Name2` | `nvarchar(255)` | yes | | |
@@ -804,9 +804,9 @@ in declaration order.
 | Uniqueness across the composition (ordinal) | startup gate |
 | `T` ∈ `bool`, `int`, `long`, `decimal`, `string`, `DateOnly`, `TimeOnly`, `Guid`, enums (as strings), their nullable and array forms — or the key supplies a `JsonTypeInfo<T>` from the declaring package's own source-generated context (the platform's context cannot know a pack's record type) | startup gate |
 | `Category` is a single grammar segment; `general` (ordinal-ignore-case) shares the typed row's securables `core.Settings.General` | startup gate |
-| `References` names a stack entity of spec 0014's `IStackRegistry` (a base resolves to its leaf through spec 0011's `IEntityMetadataProvider.Get`, so `typeof(Center)` stands for a distribution's leaf) keyed by `int`, and `T` ∈ `int`, `int?`, `int[]`; the value is never checked against the target table, so a deleted target leaves an id the editor shows bare | startup gate; documented |
+| `References` names a stack entity of spec 0015's `IStackRegistry` (a base resolves to its leaf through spec 0012's `IEntityMetadataProvider.Get`, so `typeof(Center)` stands for a distribution's leaf) keyed by `int`, and `T` ∈ `int`, `int?`, `int[]`; the value is never checked against the target table, so a deleted target leaves an id the editor shows bare | startup gate; documented |
 | `Secret` and `References` are exclusive | startup gate |
-| A `Secret` key's row holds, as a JSON string, the Data Protection ciphertext of its JSON (`IDataProtectionProvider.CreateProtector("Tellma.Core.Settings.Secret", <the tenant id's invariant decimal string>)`), written by `save` (§6.3) and unprotected on the first `Get<T>` — never on load, so the migrator and a process without the key ring never touch it; a value that fails to unprotect is treated as the default, logged `SettingsSecretUnreadable(key)` Critical and metered `tellma.settings.entries.invalid`, which is what a clone, or a restore under another tenant id, key ring or application name (spec 0010), yields; the history table holds ciphertext only. `TenantSettingsStore` takes `IDataProtectionProvider?`: a host without one reads every `Secret` key as its default with the same event, and a host whose job handlers read `Secret` keys registers Data Protection with the web host's application name and key ring (spec 0010) | `save`; `Get<T>` |
+| A `Secret` key's row holds, as a JSON string, the Data Protection ciphertext of its JSON (`IDataProtectionProvider.CreateProtector("Tellma.Core.Settings.Secret", <the tenant id's invariant decimal string>)`), written by `save` (§6.3) and unprotected on the first `Get<T>` — never on load, so the migrator and a process without the key ring never touch it; a value that fails to unprotect is treated as the default, logged `SettingsSecretUnreadable(key)` Critical and metered `tellma.settings.entries.invalid`, which is what a clone, or a restore under another tenant id, key ring or application name (spec 0011), yields; the history table holds ciphertext only. `TenantSettingsStore` takes `IDataProtectionProvider?`: a host without one reads every `Secret` key as its default with the same event, and a host whose job handlers read `Secret` keys registers Data Protection with the web host's application name and key ring (spec 0011) | `save`; `Get<T>` |
 | `Validate` returns a dotted PascalCase validation code or `null` | documented; a thrown exception in the delegate is a 500 |
 | A stored value that fails to parse as `T` or fails `Validate` is treated as the default, logged `SettingsEntryInvalid(key)` and metered `tellma.settings.entries.invalid`; an undeclared key in the table is `SettingsEntryUndeclared(key)` (Warning) and ignored | load path (`Get<T>` for a `Secret` key) |
 
@@ -821,14 +821,14 @@ the same key from the string pack (§10.4).
 
 ### 5.5 Securables
 
-`CoreFeature` registers, through spec 0013's `SecurableRegistryBuilder`, two actions per settings
+`CoreFeature` registers, through spec 0014's `SecurableRegistryBuilder`, two actions per settings
 resource: `core.Settings.General` × `Read` and × `Save` (`FilterRoot = null`; `Save` sensitive —
-step-up per spec 0013) for the typed row and `settings/refresh-caches`; and
+step-up per spec 0014) for the typed row and `settings/refresh-caches`; and
 `core.Settings.<Category>` × `Read` and × `Save` (`FilterRoot = null`, not sensitive) per distinct
 `ISettingKeyRegistry.Categories` entry other than `general`. `Category` is written verbatim into
 the resource name (`core.Settings.gl`); comparison is ordinal-ignore-case, as for every
 securable. `Read` on a
-category — which a `Save` grant satisfies (spec 0013) — admits it to `settings/details` (§6.2);
+category — which a `Save` grant satisfies (spec 0014) — admits it to `settings/details` (§6.2);
 `Save` admits it to `settings/save` (§6.3), whose step-up for the typed row is asserted in code.
 `settings/client` needs no securable: every member reads it, and it carries
 `Client`-visible keys only. `Server` keys leave the server only through `details`; `Secret` keys
@@ -876,16 +876,16 @@ public interface ITenantSettingsCache                  // scoped façade over th
 | `Languages` | One to three `LanguageInfo` in position order, resolved against `ILanguageCatalog`. |
 | `Shape` | `Languages.Count` as `MultilingualShape`; the Queryex schema key (§7.4). |
 | `Calendars` | One or two `ICalendarSystem`, primary first. |
-| `TimeZone` / `SqlServerTimeZoneName` | The tenant zone as `TimeZoneInfo`, and the Windows id (`TimeZoneInfo.TryConvertIanaIdToWindowsId`, computed once per load) that spec 0011 binds to spec 0008's `TimeZone` slot. |
+| `TimeZone` / `SqlServerTimeZoneName` | The tenant zone as `TimeZoneInfo`, and the Windows id (`TimeZoneInfo.TryConvertIanaIdToWindowsId`, computed once per load) that spec 0012 binds to spec 0008's `TimeZone` slot. |
 | `Entries` | Stored values by key, undeclared keys dropped; a `Secret` key's value as stored, protected. |
 | `Get<T>` | The stored value parsed as `T`, else `DefaultValue`; a `Secret` value first run through `Unprotect`, which the loader binds to the tenant-scoped protector (§5.3); parsed once and memoized per entry. |
-| `Today` | `clock.GetUtcNow()` converted to `TimeZone`, date part — the value spec 0011 binds to `today()`. |
+| `Today` | `clock.GetUtcNow()` converted to `TimeZone`, date part — the value spec 0012 binds to `today()`. |
 | `TenantSettingsForClient` | Everything an authenticated member may know: names; languages (code, symbol, native name, direction); calendar codes; the IANA zone id; `Client`-visible entries, stored or default (the client never learns which), never a `Server` or `Secret` value and no related entities (§6.2). Materialized as pre-serialized UTF-8 JSON beside `TenantSettings`; `settings/client` writes the bytes and never serializes on the hot path. |
 | `GetAsync` | `settings` kind: compares the snapshot's `settings` tag with the entry; a hit returns the instance with no round trip; a miss single-flight loads (§5.7). |
 | `Peek` | The current entry when present and matching the snapshot; never loads. |
 
-**Read path.** Spec 0010's request-context initializer chain calls `GetAsync()` after the
-connect initializer (spec 0013, `Order` 100) and before negotiation (`Order` 200, §9.3); the value
+**Read path.** Spec 0011's request-context initializer chain calls `GetAsync()` after the
+connect initializer (spec 0014, `Order` 100) and before negotiation (`Order` 200, §9.3); the value
 lands on `RequestContext.TenantSettings`. On a cold connect the load rides the connect round trip
 (§5.7); on a warm connect with an evicted entry, or one a loader batch's prelude outdated, it
 costs one `Read` batch of its own — the "+1 cold" of §2.10. A stale entry a caller batch's
@@ -894,7 +894,7 @@ prologue discovers is refreshed by that same round trip (§5.7).
 ### 5.7 Cold load, the tenant-id guard, and provisioning
 
 **Cold load** — `IDataBatchContributor` at `Order` 60, stage `Prologue`. On a caller's batch the
-connect prologue of spec 0013 absorbs it, as it absorbs the prelude: the contributor adds no
+connect prologue of spec 0014 absorbs it, as it absorbs the prelude: the contributor adds no
 statement of its own but hands the prologue its two statements and its parameter
 `@tm_LoadSettings` — bound `1` when `ITenantSettingsCache.Peek()` is `null` or its tag differs
 from the snapshot's at composition — and reads its two result sets from the prologue's result,
@@ -920,7 +920,7 @@ the zone, drops undeclared entries, parses every non-`Secret` entry against its 
 `Secret` entry as stored — neither parsed nor unprotected before `Get<T>` (§5.3) — builds both
 views, and stamps the entry with the tag the prelude returned. The contributor reads the sets
 whenever they are present and `Set`s the views under that tag; when the guard failed on
-`SettingsStale`, spec 0013's runner re-runs this spec's initializer (§9.3) before recomposing, so
+`SettingsStale`, spec 0014's runner re-runs this spec's initializer (§9.3) before recomposing, so
 the recomposed batch sees the new shape, calendar pair, zone and `Today`.
 
 **Tenant-id guard.** `TenantId` is not a partition key (the database is the tenant); it is a
@@ -931,10 +931,10 @@ Critical as `TenantDatabaseMismatch(expected, actual)`, surfacing as a 500. `Ten
 the unprovisioned placeholder: it is accepted only in a `System` scope (`RequestContext.Kind =
 System`, the provisioning run) and is a mismatch everywhere else.
 
-**Provisioning.** `SettingsProvisioningStep` — spec 0010's `ITenantProvisioningStep` with
-`Name = "core.settings"`, `Order = 15`, `Version = 1`, listed among spec 0010's platform steps
+**Provisioning.** `SettingsProvisioningStep` — spec 0011's `ITenantProvisioningStep` with
+`Name = "core.settings"`, `Order = 15`, `Version = 1`, listed among spec 0011's platform steps
 between `core.bootstrap-administrator` (10) and `core.blob-container` (20) — runs in the migrator's
-step-runner scope (spec 0010's
+step-runner scope (spec 0011's
 `ITenantScopeFactory.CreateScopeAsync(snapshot, allowNonActive: true)`, `Kind = System`) and
 completes the placeholder through the pipeline: `TenantId` = the tenant's id, `Name` =
 `TenantProvisioningContext.Tenant.Name`, `PrimaryLanguage` = the distribution's default language,
@@ -947,7 +947,7 @@ migrator's wholesale bump (§2.8) covers the `HasData` row itself.
 ### 6.1 Contract
 
 ```csharp
-// Tellma.Core.Settings (runtime; [ApiRoute("settings")] of spec 0014, registered by CoreFeature through contribution.ApiService<SettingsService>())
+// Tellma.Core.Settings (runtime; [ApiRoute("settings")] of spec 0015, registered by CoreFeature through contribution.ApiService<SettingsService>())
 public sealed class SettingsService
 {
     public Task<(byte[] Json, string WireTag)?> ClientAsync(string? ifTag);   // null = unchanged
@@ -978,17 +978,17 @@ public sealed record TenantSettingsPatch(               // field mask; a listed 
 |---|---|
 | `Client` | `[ApiAction]` `client`, member-only, idempotent, `Mutation = false` |
 | `EntityTags` | `[ApiAction]` `entity-tags`, member-only, idempotent, `Mutation = false` |
-| `Details` | `[ApiAction]` `details`, member-only, idempotent, `Mutation = false`; in code, one `IAccessEvaluator.Evaluate` over `core.Settings.General` and every category × `Read` (a `Save` grant satisfies `Read`, spec 0013), `ForbiddenException` when none is granted; the view holds the categories granted |
-| `Save` | `[ApiAction]` `save`, member-only; in code (§6.3 step 1), `core.Settings.General × Save` when `Fields` names a typed member and `core.Settings.<Category> × Save` per listed entry key, through spec 0013's `RequireAsync`, which carries the typed row's step-up; calls `batch.BumpVersionTag("permissions")` only when a language column changed (the Queryex schema shape follows the languages), so an ordinary settings edit never cold-paths every user |
+| `Details` | `[ApiAction]` `details`, member-only, idempotent, `Mutation = false`; in code, one `IAccessEvaluator.Evaluate` over `core.Settings.General` and every category × `Read` (a `Save` grant satisfies `Read`, spec 0014), `ForbiddenException` when none is granted; the view holds the categories granted |
+| `Save` | `[ApiAction]` `save`, member-only; in code (§6.3 step 1), `core.Settings.General × Save` when `Fields` names a typed member and `core.Settings.<Category> × Save` per listed entry key, through spec 0014's `RequireAsync`, which carries the typed row's step-up; calls `batch.BumpVersionTag("permissions")` only when a language column changed (the Queryex schema shape follows the languages), so an ordinary settings edit never cold-paths every user |
 | `RefreshCaches` | `[ApiAction]` `refresh-caches`, resource `core.Settings.General`, action `Save`, idempotent; sensitive; bumps every tag |
 
 ### 6.2 `client`, `entity-tags` and `details`
 
 `Client(ifTag)` returns `ITenantSettingsCache.GetForClientAsync()`: the pre-serialized
 bytes and their wire tag, or the *unchanged* result when `ifTag` equals the current wire tag (spec
-0015 shapes both). `EntityTags()` returns `ICacheableEntities.GetWireTagsAsync()`:
+0016 shapes both). `EntityTags()` returns `ICacheableEntities.GetWireTagsAsync()`:
 `{ "gl.Center": "1.<guid>", … }`, keyed by entity name, for every cacheable entity of the
-composition. Both run on a `Read` batch through spec 0013's `IGuardedBatchRunner` so the prelude
+composition. Both run on a `Read` batch through spec 0014's `IGuardedBatchRunner` so the prelude
 keeps the snapshot current; on a warm instance neither adds a statement.
 
 `Details()` serves the settings editor from the same cache, on a `Read` batch through the runner
@@ -1001,9 +1001,9 @@ scalar, `Enum` with `EnumValues`, or `Json` for a key with its own `JsonTypeInfo
 `SetKeys` names the keys a row exists for, which is all the editor learns about a secret. `Related`
 holds, for every key with `References`, the rows whose ids appear in `Values`: one `Query<TEntity>`
 per referenced type — the generic closed over `SettingKey.References` once per type and cached by
-the service, spec 0011 offering no non-generic entity query — restricted through spec 0011's
+the service, spec 0012 offering no non-generic entity query — restricted through spec 0012's
 `KeySetRestriction("Id", IdList)` to those ids and to the target stack's `RelatedSelect` projection
-(spec 0014's `StackDescriptor`), with no row-level filter, as spec 0014 treats the related entities
+(spec 0015's `StackDescriptor`), with no row-level filter, as spec 0015 treats the related entities
 of a details read — a caller who may read a setting may read the display projection of what it
 points at; an id whose row no longer exists is absent and the editor shows the bare id.
 `settings/client` carries no related entities: its bytes are cached under the `settings` tag while a
@@ -1020,12 +1020,12 @@ listed entry whose value is `null` resets the key to its default and deletes the
 
 Pipeline, two round trips through `IGuardedBatchRunner`:
 
-1. **Authorization** before any batch, through spec 0013's `RequireAsync`, which raises the typed
+1. **Authorization** before any batch, through spec 0014's `RequireAsync`, which raises the typed
    row's step-up: `core.Settings.General × Save` when `Fields` names any typed member;
    `core.Settings.<Category> × Save` for every distinct category of the listed entry keys
    (`general` maps to the typed row's securable); a request touching two categories needs both.
 2. **Validate batch**: `Query<Settings>` (the single row) and `Query<SettingEntry>` restricted to
-   the listed keys through spec 0011's `KeySetRestriction("Key", StringList)`; a moved `settings`
+   the listed keys through spec 0012's `KeySetRestriction("Key", StringList)`; a moved `settings`
    tag recomposes it (§2.6).
 3. **Merge and validate** in memory (codes in §6.5): unknown field names; languages ∈ the
    distribution's declared set, distinct, tertiary ⇒ secondary; calendars ∈ the registry,
@@ -1044,14 +1044,14 @@ Pipeline, two round trips through `IGuardedBatchRunner`:
 5. **Warm the writer**: rebuild both views from the saved rows under
    `BatchOutcome.VersionTags["settings"]` and `Set` them; return `TenantSettingsForClient`, whose
    new wire tag rides the response header (§2.7). No reload.
-6. **Mirror the names**: when the name group or the content-language list changed, spec 0010's
+6. **Mirror the names**: when the name group or the content-language list changed, spec 0011's
    `ITenantCatalog.RenameAsync(tenantId, names)` runs after the commit, registered through the
-   persist batch's `OnCommitted` hook (spec 0011); a failure is logged, never surfaced, and the
+   persist batch's `OnCommitted` hook (spec 0012); a failure is logged, never surfaced, and the
    next save that changes them retries the mirror.
 
 A language change also switches every subsequent request of the tenant to the schema of the new
 `MultilingualShape` on this instance and, through the `permissions` bump, forces every user's next
-request to recompose against it (§7.4); spec 0014's preprocessing nulls gated twins from then on.
+request to recompose against it (§7.4); spec 0015's preprocessing nulls gated twins from then on.
 
 ### 6.4 `refresh-caches`
 
@@ -1072,7 +1072,7 @@ composition.
 
 ### 6.5 Validation codes
 
-Dotted PascalCase resource keys, rendered by spec 0015 through `IStringLocalizer` under the request
+Dotted PascalCase resource keys, rendered by spec 0016 through `IStringLocalizer` under the request
 culture; the path is the patch member or `entries.<key>`.
 
 | Code | Condition |
@@ -1090,7 +1090,7 @@ culture; the path is the patch member or `entries.<key>`.
 | the key's own code | returned by `SettingKey<T>.Validate` |
 | `Concurrency.StampRequired` | `ExpectedModifiedAt` absent |
 
-A stale `ExpectedModifiedAt` is spec 0014's `ConcurrencyException` (409) from the emitter's
+A stale `ExpectedModifiedAt` is spec 0015's `ConcurrencyException` (409) from the emitter's
 comparison.
 
 ## 7. Languages and the multilingual shape
@@ -1151,7 +1151,7 @@ are labelled, and nothing else.
 
 ### 7.4 `MultilingualShape` and the Queryex schema
 
-Spec 0011's `IQueryexSchemaProvider.GetSchema(shape)` returns one immutable schema per shape —
+Spec 0012's `IQueryexSchemaProvider.GetSchema(shape)` returns one immutable schema per shape —
 `Primary`, `PrimaryAndSecondary`, `All` — omitting the `*2`/`*3` twins of `[Multilingual]` groups
 beyond the shape: at most three schemas per process, built lazily, shared by every tenant with that
 shape. The tenant's shape is `TenantSettings.Shape`, selected per request from the settings cache,
@@ -1163,15 +1163,15 @@ composition and child-entity path rewriting are `FilterTree` work, never schema 
 
 ### 7.5 `[Multilingual]` semantics
 
-`[Multilingual]` (declared in `Tellma.Core.Abstractions.Entities` with spec 0011's entity contract)
+`[Multilingual]` (declared in `Tellma.Core.Abstractions.Entities` with spec 0012's entity contract)
 sits on the primary property of a text group; the twins `<Name>2` and `<Name>3` are found by name
-and must be nullable strings of the same maximum length (startup check by spec 0011's metadata
+and must be nullable strings of the same maximum length (startup check by spec 0012's metadata
 builder). What the declaration produces: schema gating (§7.4); the twin labels (§7.6); Excel column
-mapping through the shape (spec 0018); search across the group (spec 0014); and **gated twins are
-nulled** by spec 0014's preprocessing before validation, so a client that still sends `Name3` after
+mapping through the shape (spec 0019); search across the group (spec 0015); and **gated twins are
+nulled** by spec 0015's preprocessing before validation, so a client that still sends `Name3` after
 the tertiary language was removed writes nothing. An Excel column mapped to a gated twin is spec
-0014's `Import.LanguageNotConfigured` when a value is supplied. A twin beyond the tenant's shape is
-absent from the wire (spec 0015).
+0015's `Import.LanguageNotConfigured` when a value is supplied. A twin beyond the tenant's shape is
+absent from the wire (spec 0016).
 
 ### 7.6 Labels
 
@@ -1183,12 +1183,12 @@ Excel, MCP and message composition; the SPA renders the same keys from the strin
 | `PropertyLabel(T, p)` | `<Schema>_<Entity>_<Property>` (the key grammar of §10.1) in the declaring assembly's `Strings` → each base class's assembly → `<Property>` in Core's `Strings` (`Name`, `Code`, `IsActive`, `Description`, `CreatedAt`, … ship there) → the humanized property name |
 | twin `<Name>2` / `<Name>3` | the primary's label + `" (" + Symbol + ")"` of the tenant language at that position (`Name (E)`, `Name (ع)`); for a mono-lingual tenant the primary carries no suffix; a twin beyond the shape has no label and is not offered |
 | `EntityLabel(T)` | `<Schema>_<Entity>` in the declaring assembly → base assemblies → the humanized class name |
-| `EntityLabel(T, plural: true)` | `<Schema>_<Entity>_Plural` in the declaring assembly → base assemblies → the singular label; serves Excel sheet names (spec 0018) and list titles |
+| `EntityLabel(T, plural: true)` | `<Schema>_<Entity>_Plural` in the declaring assembly → base assemblies → the singular label; serves Excel sheet names (spec 0019) and list titles |
 | `EnumValueLabel(E, v)` | `<Schema>_<Enum>_<Value>` in the declaring assembly → the humanized value |
 | `SettingLabel(key)` | §5.4 |
 
-The same provider serves Excel headers (spec 0018) and validation messages naming a field (spec
-0015).
+The same provider serves Excel headers (spec 0019) and validation messages naming a field (spec
+0016).
 
 ## 8. Calendars
 
@@ -1237,7 +1237,7 @@ public interface ICalendarRegistry
 | `Format(date, …)` | The platform's own rendering by `DateStyle`; digits always ASCII. |
 | `Format(instant, zone, …)` | Converts to `zone`, then formats the date and, when `includeTime`, the time in the culture's short time pattern. |
 | `MonthName` | From Core's resources for `uq`/`et` (`Calendar_uq_Month1` … `Calendar_et_Month13`), from the culture's `DateTimeFormat` for `gc`. |
-| `TryParse` | The inverse of `Format(…, Short)` and of the numeric `yyyy-MM-dd` form in this calendar; `null` on failure. Used by spec 0018's text-date import. |
+| `TryParse` | The inverse of `Format(…, Short)` and of the numeric `yyyy-MM-dd` form in this calendar; `null` on failure. Used by spec 0019's text-date import. |
 | `ICalendarRegistry` | The systems composed into the distribution, by code; `this[code]` throws `KeyNotFoundException`. `TryGet` compares ordinal-ignore-case. |
 
 ### 8.2 The three systems
@@ -1252,9 +1252,9 @@ further system through `contribution.Calendar<TCalendar>()`. The `uq` month-map 
 successor when scheduled.
 
 Tenant settings carry `PrimaryCalendar` (required, default `gc`) and `SecondaryCalendar`; a user
-may prefer either through spec 0013's `User.PreferredCalendar`; a request may override with the
+may prefer either through spec 0014's `User.PreferredCalendar`; a request may override with the
 `Tellma-Calendar` header (§9). A code outside `ICalendarRegistry.Codes` in a preference is spec
-0017's validation error `Users.CalendarUnknown`; a code outside the tenant's pair, in a preference
+0018's validation error `Users.CalendarUnknown`; a code outside the tenant's pair, in a preference
 or in a header, is ignored by negotiation (§9.2).
 
 ### 8.3 Formatting rules
@@ -1272,7 +1272,7 @@ exact range.
 
 ### 9.1 Two zones
 
-`core.Settings.TimeZone` is the **tenant zone**, a business fact: spec 0011 binds spec 0008's
+`core.Settings.TimeZone` is the **tenant zone**, a business fact: spec 0012 binds spec 0008's
 `Today` slot to `TenantSettings.Today(clock)` and the `TimeZone` slot to
 `TenantSettings.SqlServerTimeZoneName`, so two colleagues filtering `PostingDate = today()` see the
 same rows and no client controls a security-relevant filter. The **display zone**
@@ -1308,12 +1308,12 @@ every call, while non-browser clients fall through to the stored preference. A h
 present but invalid — an unknown calendar code, an unparseable range, an unknown zone — is
 **ignored** with a `tellma.localization.headers.rejected` count, never a 400: a stale browser must
 not lock a user out. The response carries `Content-Language` and `Tellma-Calendar` with the
-*effective* values (spec 0015), so a client that drifted (the administrator removed the secondary
-calendar) keeps working and corrects itself. The header names are spec 0015's `TellmaHeaders`;
+*effective* values (spec 0016), so a client that drifted (the administrator removed the secondary
+calendar) keeps working and corrects itself. The header names are spec 0016's `TellmaHeaders`;
 the negotiator sees values only.
 
 `MessageLanguage` and `MessageCalendar` are a surface's fixed choice for the language and calendar
-of its messages, not the user's: the MCP surface passes them (spec 0015 §11.4), the web surface
+of its messages, not the user's: the MCP surface passes them (spec 0016 §11.4), the web surface
 passes neither. `ContentLanguageIndex` (1..3) is derived from the culture the rest of the
 negotiation yields (header → preference → tenant primary), never from `MessageLanguage`: the
 position of the tenant content language whose language subtag equals that culture's, else 1, so a
@@ -1330,10 +1330,10 @@ rendering is always explicit through `ICalendarSystem`.
 
 ### 9.3 The initializer and the context
 
-`CoreFeature` registers spec 0010's `IRequestContextInitializer` at `Order` 200. It receives the
-context spec 0013's connect initializer (`Order` 100) produced — `UserId` and, through the
+`CoreFeature` registers spec 0011's `IRequestContextInitializer` at `Order` 200. It receives the
+context spec 0014's connect initializer (`Order` 100) produced — `UserId` and, through the
 `preferences` cache, the caller's `PreferredLanguage`/`PreferredCalendar`/`PreferredTimeZone` — and
-spec 0010's `RequestContextInputs(AcceptLanguage, RequestedCalendar, RequestedTimeZone, Client,
+spec 0011's `RequestContextInputs(AcceptLanguage, RequestedCalendar, RequestedTimeZone, Client,
 MessageLanguage, MessageCalendar)`; it ensures `TenantSettings` (§5.6), calls `Negotiate` with the
 three headers, the three preferences and the two message inputs (§9.2), and returns the context
 with `Language`, `Culture`, `CultureInfo`, `Calendar`, `CalendarSystem`, `TimeZone`,
@@ -1341,10 +1341,10 @@ with `Language`, `Culture`, `CultureInfo`, `Calendar`, `CalendarSystem`, `TimeZo
 `CultureInfo.CurrentCulture` and `CurrentUICulture` for the request (they flow with the execution
 context); the scoped context is the source of truth and the thread cultures are set from it, never
 the other way round. `RequestLocalizationMiddleware` is not used: its default culture is static and
-this one is per tenant. Spec 0013's runner re-runs this initializer after applying a prologue's
+this one is per tenant. Spec 0014's runner re-runs this initializer after applying a prologue's
 fresh settings (§5.7), so a recomposed batch sees the new context.
 
-A background scope (spec 0010 §4.4), a job's or a provisioning step's, carries no locale field in
+A background scope (spec 0011 §4.4), a job's or a provisioning step's, carries no locale field in
 its snapshot: the scope factory runs this initializer with empty `RequestContextInputs`, so the
 locale fields resolve from the run-as user's stored preferences, then the tenant's settings, through
 the same negotiator with no headers.
@@ -1358,7 +1358,7 @@ Each assembly with user-facing text ships `Resources/Strings.resx` (neutral = En
 `Strings` in its `Resources` namespace (`Tellma.Core.Resources.Strings`,
 `Tellma.Module.Gl.Resources.Strings`) — the base name the folder-and-file convention yields with no
 `ResourcesPath`. Keys are `PascalCase_Underscored`. A label key begins with the qualified entity
-name, spec 0011's `EntityMetadata.Name`, with the schema in PascalCase and `.` as `_`: labels
+name, spec 0012's `EntityMetadata.Name`, with the schema in PascalCase and `.` as `_`: labels
 `<Schema>_<Entity>`, `<Schema>_<Entity>_Plural` and `<Schema>_<Entity>_<Property>` (`gl.Center` →
 `Gl_Center`, `Gl_Center_Plural`, `Gl_Center_Name`; `core.User` → `Core_User_Email`); an enum's
 values `<Schema>_<Enum>_<Value>` under the schema of the entities that carry it
@@ -1422,11 +1422,11 @@ public interface IStringPackProvider                    // singleton; composed a
 ```
 
 At startup `StringPackComposer` (`Tellma.Core.Localization`) builds one pack per language of
-`ILanguageCatalog.Offered`: for every assembly that declares a composed feature (spec 0010) — Core,
+`ILanguageCatalog.Offered`: for every assembly that declares a composed feature (spec 0011) — Core,
 each pack, the distribution — it enumerates that culture's own resource set (the neutral set
 for `en`) and merges the entries into one flat JSON object, resx keys verbatim; a key declared by
-two assemblies is a `CompositionProblem` (spec 0010). `Version` is
-`DeploymentVersions.DistributionVersion`. Spec 0015 serves the pack at
+two assemblies is a `CompositionProblem` (spec 0011). `Version` is
+`DeploymentVersions.DistributionVersion`. Spec 0016 serves the pack at
 `GET /api/strings/{language}?v=<version>`, tenantless and anonymous, compressed, with
 `Cache-Control: public, max-age=31536000, immutable` when `v` equals the pack's version and
 `no-store` otherwise; a language outside the offered set is 404. The bytes are held once per
@@ -1442,7 +1442,7 @@ raw values it formats in the active calendar; a label key (`<Schema>_<Entity>_<P
 `Setting_<key>`, `NotificationType_<key>`) is looked up as is, and `arguments.property` is
 resolved to its `<Schema>_<Entity>_<Property>` key the same way. A key the pack lacks falls
 through to the English pack, then to the server-rendered `message` the response also carries
-(spec 0015). No response the SPA caches carries culture-dependent text, so switching the UI
+(spec 0016). No response the SPA caches carries culture-dependent text, so switching the UI
 language re-renders labels, messages and multilingual content in place, with no request and no
 cache invalidation. Server-side rendering — `ILabelProvider`, the rendered `message` — remains for
 Excel, MCP, email and every client without a pack.
@@ -1537,14 +1537,14 @@ suite.
   test assembly.
 - **String pack**: one pack per offered language, keys verbatim, the neutral set for `en`; a key
   declared by two assemblies refused; `ServerStrings` entries absent; the endpoint and its headers
-  are spec 0015's to pin.
+  are spec 0016's to pin.
 - **Resource audit**: every key of each composed assembly's neutral `Strings.resx` and
   `ServerStrings.resx` is either derived by convention from the composed model — entity, plural
   and property labels, enum values, `Setting_`, `Notification_`, `NotificationType_`,
   `NotificationChannel_`, `Problem_`, `Calendar_` months — or appears verbatim, or in its dotted
   form, as a string literal under `src/`; an orphan fails the test, as does a satellite key absent
   from its neutral file. The audit is `test/shared/Tellma.Testing.Resources` (§1.1), run here over
-  Core and by each pack's and distribution's own suite over its own assemblies (spec 0017's
+  Core and by each pack's and distribution's own suite over its own assemblies (spec 0018's
   reference stacks first).
 - **`VersionedCache`**: tag mismatch is a miss; one loader under 64 concurrent callers; a
   faulted loader retried; bounds and eviction; `Uncached`, nothing stored, when the loader's
@@ -1559,12 +1559,12 @@ suite.
   `Save`.
 - **Version-tag registry**: attribute resolution to names and rules; the fixed preference-table
   rules; hand-written `entity:` names rejected; `[Cacheable]` startup checks.
-- **`[Multilingual]`**: twin discovery, label suffixes per shape, schema gating over spec 0011's
+- **`[Multilingual]`**: twin discovery, label suffixes per shape, schema gating over spec 0012's
   fixture model.
 - **Settings patch**: field-mask merge semantics, every code of §6.5, the gated-twin nulling.
 
 **`test/core/Tellma.Core.IntegrationTests`** (`Category=Integration`; LocalDB on Windows,
-Testcontainers on Linux; spec 0011's fixture database, whose shared project
+Testcontainers on Linux; spec 0012's fixture database, whose shared project
 `test/shared/Tellma.Testing.Entities` gains a `[Cacheable(MaxRows = 50)]` fixture entity
 `fixture.Lookups` for this suite):
 
@@ -1597,7 +1597,7 @@ Testcontainers on Linux; spec 0011's fixture database, whose shared project
 - **Isolation**: two tenant databases sharing user ids and subjects never see each other's cache
   entries.
 
-Both suites run on every PR on Windows and Linux (spec 0010 §10).
+Both suites run on every PR on Windows and Linux (spec 0011 §10).
 
 ## 13. Definition of done
 
@@ -1625,10 +1625,10 @@ Both suites run on every PR on Windows and Linux (spec 0010 §10).
   spec-pointers row (calendar codes land with this spec, not with the Locale packs). Public XML
   docs and error messages reference no `docs/` paths, per repo rule.
 - **Not in scope of done**: the executor, emitter and analyzers that emit this spec's statements
-  (spec 0011); the connect prologue, `UserProfile`, `UserAccess` and `core.UserPreferences` (spec
-  0013); the pipeline's dependency declarations, re-run and preprocessing (spec 0014); routes,
-  headers and problem mapping (spec 0015); the hub that delivers `cache.changed` and the publisher's
-  default (spec 0020); the `uq` engine amendment; Locale packs.
+  (spec 0012); the connect prologue, `UserProfile`, `UserAccess` and `core.UserPreferences` (spec
+  0014); the pipeline's dependency declarations, re-run and preprocessing (spec 0015); routes,
+  headers and problem mapping (spec 0016); the hub that delivers `cache.changed` and the publisher's
+  default (spec 0021); the `uq` engine amendment; Locale packs.
 
 ## Decisions record
 
@@ -1651,7 +1651,7 @@ The load-bearing decisions, where not already evident above:
    rows the batch bumps** — closes the revocation race and the settings race at the cost of one
    bounded wait for the writers of those rows and the saves queued behind a pending bump, with no
    deadlock between two writers of one row; writers of different rows that each read the other's
-   remain a retried victim (spec 0011) (§2.5).
+   remain a retried victim (spec 0012) (§2.5).
 7. **`UPDATE`-only bump with `VersionTag.Missing`; migrator-only seed** — a self-healing insert
    would race across instances for no gain; a missing row degrades to uncacheable, never to
    stale (§2.5, §2.8).
@@ -1738,22 +1738,22 @@ The load-bearing decisions, where not already evident above:
     culture → tenant primary → English. Flips if tenants ship translations the distribution does
     not, which the resource model does not allow today.
 11. **No age limit on any kind (§3.2).** Chosen: the tag is the only channel; `refresh-caches` and
-    the migrator's wholesale bump repair out-of-band writes, and spec 0013's `PermissionsMaxAge`
+    the migrator's wholesale bump repair out-of-band writes, and spec 0014's `PermissionsMaxAge`
     stands alone as the security backstop. Alternative: a bounded age per kind, which reloads
     lists the SPA would still cache under the unmoved tag. Flips if scripted writes to reference
     tables go unnoticed in production.
 12. **`UPDLOCK` on the tag rows a batch bumps, `REPEATABLEREAD` on the rest (§2.5).** Alternative:
     shared locks everywhere, accepting a deadlock-and-retry between two writers of one row (two
-    role saves), as spec 0011 accepts for its concurrency guard. Flips if the update lock's
+    role saves), as spec 0012 accepts for its concurrency guard. Flips if the update lock's
     serialisation of concurrent writers of one cacheable table shows up under load.
 13. **Explicit `SettingKeys(typeof(…))` registration (§5.3).** Alternative: manifest or reflection
     discovery. Flips when the manifest generator exists.
 14. **`core.UserPreferences`, not `UserSettings` (settled; §2.1).** The opaque bag owned by spec
-    0013 keeps "preferences" as the person's word and "settings" as the tenant's; symmetry with
+    0014 keeps "preferences" as the person's word and "settings" as the tenant's; symmetry with
     `Settings` lost.
 15. **Tenant-level keys only; the person's preferences are the opaque bag (§5.3; cross-cutting
     S24).** Alternative: declared `SettingKey<T>` user-scope keys with validation and labels. Flips
-    if the administrator-written keys of spec 0013 (`nav.pinned`) ever need a schema.
+    if the administrator-written keys of spec 0014 (`nav.pinned`) ever need a schema.
 16. **Locks on the tag rows inside the persist transaction (§2.5; cross-cutting S26).**
     Alternative: an unlocked re-check leaving a race with a concurrent revocation. Flips if the
     waits on the tag rows measurably delay permission or settings writers under load.
