@@ -13,8 +13,8 @@ Spec 0003 shipped the identity server as the platform's shared OpenID Connect au
 confidential BFF client per distribution with exact redirect URIs, resource indicators validated
 against per-client resource grants, a fixed scope catalog, the bulk invite and delivery-status
 APIs, and seeded clients — public for the CLI and native applications, confidential for the control
-plane. The distribution host (spec 0010), the web API with its MCP surface (spec 0015) and the user
-stack (spec 0017) each depend on a change to that server that no tenant-side spec can own, and each
+plane. The distribution host (spec 0011), the web API with its MCP surface (spec 0016) and the user
+stack (spec 0018) each depend on a change to that server that no tenant-side spec can own, and each
 of those specs excludes the change from its own definition of done.
 
 This spec collects the changes: seven deltas to spec 0003, each stated once with the behaviour it
@@ -48,10 +48,10 @@ optional; `existingOnly` (§8) unblocks sandbox invites.
 
 **Non-goals (explicitly out of scope)**
 
-- **Service-account creation from a tenant** — the API exists in spec 0003; spec 0017's
+- **Service-account creation from a tenant** — the API exists in spec 0003; spec 0018's
   `issue-credentials` action is the tenant side and needs nothing here.
 - **Distribution self-registration** and the operator surface beyond spec 0003 §11.4 — later.
-- **The MCP tools, request filters and rate limits** — spec 0015.
+- **The MCP tools, request filters and rate limits** — spec 0016.
 - **Metadata documents for clients with a shared secret** — only `none` and `private_key_jwt`
   are accepted; a confidential client with a secret is registered, never discovered.
 - **Every deferral of spec 0003 §17** — unchanged.
@@ -107,7 +107,7 @@ registers, and nothing the automation would not:
 - **Validated at startup.** `ClientId` lowercase, letter-first, at most fifteen characters;
   `Origin` absolute and `https` (`http` only in Development); `ClientSecret` and
   `ServiceClientSecret` non-empty outside Development. A failure names the entry.
-- **Consumers.** Spec 0010 §5.7 writes one entry from `Tellma:Identity:ClientSecret`,
+- **Consumers.** Spec 0011 §5.7 writes one entry from `Tellma:Identity:ClientSecret`,
   `ServiceClientSecret` and `PublicOrigin`; a per-boot secret in Development is the host's choice,
   never the seeder's.
 
@@ -166,7 +166,7 @@ public sealed class ClientMetadataDocumentOptions            // Tellma.Identity.
 ```
 
 The options are a nested member of the engine's root options beside `Lifetimes`, `Keys` and `Seed`;
-an in-proc host sets them in code where spec 0010 §5.7 configures the engine.
+an in-proc host sets them in code where spec 0011 §5.7 configures the engine.
 
 - **Recognition.** A `client_id` that parses as an absolute `https` URL with a host and no fragment
   is a document client; anything else is looked up as a registered client, so registered clients
@@ -214,7 +214,7 @@ application (§2) — after which a client that presents one of the ids receives
 The control-plane seed client gains `Resources` holding every distribution origin, maintained by
 onboarding beside §5's list, so a `client_credentials` token with scope `tellma_control_plane` may
 name `resource = {origin}` and carry that origin as `aud`. A distribution's control-plane policy
-(spec 0010 §5.5) validates scope and `aud = PublicOrigin`. The fixed platform audience of spec 0003
+(spec 0011 §5.5) validates scope and `aud = PublicOrigin`. The fixed platform audience of spec 0003
 is the audience of the identity server's own operator API alone; a distribution does not accept
 it.
 
@@ -224,7 +224,7 @@ Every access token carries `tellma_kind`: `human` when the token descends from a
 `authorization_code` or `device_code` grant (refreshes inherit it); `service` for
 `client_credentials` and for token exchange of a machine token. The claim is set from the grant
 type at issuance and is never client-supplied. Resource servers prefer it to the `auth_time`
-inference (spec 0010 §5.5) when present.
+inference (spec 0011 §5.5) when present.
 
 ## 8. `existingOnly` on the bulk invite
 
@@ -246,7 +246,7 @@ With `ExistingOnly = true` the item is a lookup: an existing user who holds a cr
 error `existing_user_has_no_credential`; an unknown email answers `unknown_email`. No user is
 created, no link is issued and no email is sent for such an item, whatever the rest of the batch
 does. A `disabled` or `purged` user answers the existing refusal. The delivery-status API is
-unaffected. Spec 0017's user stack sets the flag on sandbox tenants and maps both errors to one
+unaffected. Spec 0018's user stack sets the flag on sandbox tenants and maps both errors to one
 validation code.
 
 ## 9. Testing
@@ -256,7 +256,7 @@ validation code.
 | `test/apps/Tellma.Identity.Tests` | unit | The resource evaluator's vectors (`origin` exact; `origin/17/mcp` accepted; `origin/017/mcp`, `origin/17/mcp/`, `origin/17/other`, `origin/17/mcp?x`, `other-origin/17/mcp` and `origin/0/mcp` refused; a granted resource with a path never anchors the pattern; a document client's `resource` evaluated against the distribution-origin list of §4, an origin outside that list refused); document validation vectors (`client_id` mismatch, missing redirects, `client_secret_basic`, inline `jwks`, off-origin `jwks_uri`, loopback port relaxation); fetch guards against a fake handler (private address, redirect, oversize, wrong content type, timeout); cache clamping; the seed descriptor of a `Distribution` entry (both applications, all permissions, idempotence, secret rotation, never deleting); `tellma_kind` by grant type; `existingOnly` outcomes. |
 | `test/apps/Tellma.Identity.IntegrationTests` | `Category=Integration` | The full code flow of a document client against a local document server, with consent showing the host; `resource=origin/17/mcp` through code exchange and refresh with `aud` asserted, a refresh to `origin/18/mcp` refused, a refresh to `origin` refused; a control-plane token with a distribution audience; a `Distribution` seed applied twice; the bulk invite with mixed `existingOnly` items asserting no mail queued for them; the discovery document advertising `client_id_metadata_document_supported: true` and `none` among `token_endpoint_auth_methods_supported`. |
 
-Both suites run on every pull request on Windows and Linux (spec 0010 §10); no `Live=true` suite
+Both suites run on every pull request on Windows and Linux (spec 0011 §10); no `Live=true` suite
 exists, so the nightly tier runs nothing for this spec.
 
 ## 10. Definition of done
@@ -275,8 +275,8 @@ exists, so the nightly tier runs nothing for this spec.
   per-tenant resources by path pattern, the `Distribution` seed kind and the control-plane grants.
   Public XML docs and error messages reference no `docs/` paths, per repo rule.
 - **Not in scope of done**: retiring the interim clients of §5 (a later configuration change plus an
-  operator deletion); distribution self-registration; the tenant side of every item (specs 0010,
-  0015, 0017).
+  operator deletion); distribution self-registration; the tenant side of every item (specs 0011,
+  0016, 0018).
 
 ## Decisions record
 

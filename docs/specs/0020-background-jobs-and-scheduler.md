@@ -25,10 +25,10 @@ the system principal) the run-as rules rest on; spec 0007's email outbox is the 
 machinery was reserved for — its `IEmailOutbox` and `EmailEnqueueRequest` shape (spec 0007 §13)
 needs no change and its "signal after commit" is the post-commit nudge defined here; spec 0008's
 `QuerySpec` and `KeySetRestriction` amendment are how an entity-backed handler receives its rows.
-The batch abstraction of spec 0011 executes every statement in this document; spec 0013's connect
-prologue runs at the head of every job's completion batch; spec 0014's pipeline exposes the enqueue
-call to services at the transactional side-effects step; spec 0018 ships the export and import
-handlers; spec 0016 ships the blob sweep and reconcile handlers; spec 0020 ships the notifications
+The batch abstraction of spec 0012 executes every statement in this document; spec 0014's connect
+prologue runs at the head of every job's completion batch; spec 0015's pipeline exposes the enqueue
+call to services at the transactional side-effects step; spec 0019 ships the export and import
+handlers; spec 0017 ships the blob sweep and reconcile handlers; spec 0021 ships the notifications
 and hub events the worker raises.
 
 The design departs from an entity-column shape deliberately: no business table carries lease or
@@ -37,8 +37,8 @@ single nullable foreign key, and the machinery never writes a business table. Cr
 in one table, `core.Schedules`, never on a business entity.
 
 Tenantless (catalog-scoped) jobs, a cross-instance nudge, push delivery, and the email outbox's own
-handler are left to later specs; the scope boundary with spec 0020 is two interfaces (`INotifier`,
-`IClientEventPublisher`) that this spec consumes and spec 0020 implements.
+handler are left to later specs; the scope boundary with spec 0021 is two interfaces (`INotifier`,
+`IClientEventPublisher`) that this spec consumes and spec 0021 implements.
 
 ## Goals / Non-goals
 
@@ -67,14 +67,14 @@ handler are left to later specs; the scope boundary with spec 0020 is two interf
 
 **Non-goals (explicitly out of scope)**
 
-- **Notifications, the inbox, the hub** — spec 0020; this spec raises notifications and the
+- **Notifications, the inbox, the hub** — spec 0021; this spec raises notifications and the
   `job.changed` event through its contracts only.
-- **The export and import handlers and the `Export`/`Import` entities** — spec 0018; this spec
+- **The export and import handlers and the `Export`/`Import` entities** — spec 0019; this spec
   states the contract they meet.
-- **The blob sweep and reconcile handlers** — spec 0016.
+- **The blob sweep and reconcile handlers** — spec 0017.
 - **The email outbox handler** — the outbox spec; the alignment rules are recorded in §14.
 - **Tenantless (catalog-scoped) jobs and schedules** — a later spec; the catalog session sweep is
-  a hosted timer in spec 0010, not a job.
+  a hosted timer in spec 0011, not a job.
 - **A cross-instance nudge** (Redis or Azure SignalR as a server bus) — deferred; pickup on other
   instances is bounded by `MaxPollInterval`.
 - **Per-handler opt-out of the gap hold** (`HoldAfterGap`) — deferred.
@@ -96,7 +96,7 @@ Dependency edges: `Tellma.Core.Abstractions` → `Tellma.Core.Queryex`; `Tellma.
 `Microsoft.Extensions.Hosting.Abstractions`, `Cronos`. Nothing here references SignalR or ASP.NET
 Core: the worker runs in any host that composes `AddTellma`, including a future dedicated worker
 host, which registers Data Protection sharing the web host's application name and key ring when its
-handlers read spec 0012's `Secret` settings. `Quartz.Extensions.Hosting` stays pinned for the
+handlers read spec 0013's `Secret` settings. `Quartz.Extensions.Hosting` stays pinned for the
 identity server alone; tenant scheduling never uses it.
 
 Contract blocks are C# sketches: names and shapes are normative; `using` directives, XML
@@ -135,18 +135,18 @@ statement's batch ordinal.
 
 ### 1.4 Statement execution rules
 
-Every statement in §4–§7 and §11.1 is fixed text owned by this spec, executed through spec 0011's
+Every statement in §4–§7 and §11.1 is fixed text owned by this spec, executed through spec 0012's
 `IDataBatch.Sql(sql, options)` with `SqlOptions.Writes` naming each table it writes. Table-variable
 and parameter names use the reserved `@tb{b}_` prefix (`@tb{b}_claimed`, `@tb{b}_due`,
 `@tb{b}_fired`, `@tb{b}_gap`, `@tb{b}_jobIds`, `@tb{b}_room`, `@tb{b}_p{i}`, `@tb{b}_t{i}`);
 distribution code never emits them. Statements name other specs' columns (`core.Users`' `IsActive`
-in §7.4, an owner's `JobId` in §4.2) under spec 0011 §3.2's column-name rule.
+in §7.4, an owner's `JobId` in §4.2) under spec 0012 §3.2's column-name rule.
 
 | Statement | `Purpose` | `TransactionMode` | `Idempotent` | Scope |
 |---|---|---|---|---|
 | gap check and hold, claim, tick step 1, the samples, the retired-key cancel, heartbeat stamp (one poll round trip) | `Maintenance` | `None` | `true` | system tenant scope, no prologue |
 | renew | `Maintenance` | `None` | `true` | system tenant scope |
-| append (`IJobProgress.Append`) | the caller's | the caller's | `false` | the handler's chunk batch, reached through spec 0014's `SaveOptions.OnPersist` |
+| append (`IJobProgress.Append`) | the caller's | the caller's | `false` | the handler's chunk batch, reached through spec 0015's `SaveOptions.OnPersist` |
 | complete | `Persist` | `Auto` | `false` | the run-as user's scope, prologue and guard; the system tenant scope, completion statement and notifications only, for rows completed without a handler (§5.4) |
 | tick step 2 | `Persist` | `Auto` | `false` | system tenant scope, `System` prologue |
 | enqueue | the caller's (`Persist`) | the caller's (`Auto`) | `false` | the caller's scope |
@@ -154,10 +154,10 @@ in §7.4, an owner's `JobId` in §4.2) under spec 0011 §3.2's column-name rule.
 | retry, cancel, resume (§11.1) | the action's (`Persist`) | `Auto` | `true` | the caller's scope |
 
 `Maintenance` batches carry no connect prologue, and their epilogue bumps only the tags their
-declared writes resolve to (spec 0011 §5.5); none of the four job tables carries a version-tag
+declared writes resolve to (spec 0012 §5.5); none of the four job tables carries a version-tag
 attribute, so nothing here bumps a tag. A `None` batch autocommits each statement; the executor
 re-runs the whole round trip after a reported transient failure, and after an ambiguous one when
-every statement is `Idempotent` (spec 0011 §6.5); §6.8 states why every poll statement and the
+every statement is `Idempotent` (spec 0012 §6.5); §6.8 states why every poll statement and the
 renewal tolerate the re-run. `READPAST` appears only beside `UPDLOCK, ROWLOCK` (a bare `READPAST`
 is a no-op under read-committed snapshot isolation, which is on by default on Azure SQL and off
 on-premises) and never under `SNAPSHOT` isolation (error 650): the executor runs these batches at
@@ -274,25 +274,25 @@ public class Job : Entity<int>                              // system-written; t
 }
 ```
 
-- `Job` derives from spec 0011's `Entity<int>` (no audit columns) and carries every member as
+- `Job` derives from spec 0012's `Entity<int>` (no audit columns) and carries every member as
   `[ServerOwned]`; the stack is `[Stack(Operations = Query | Details)]` with `[DefaultSelect]`
   covering every member minus `ArgumentsJson`, `LeaseOwner` and `TraceParent`; the details page
-  selects `ArgumentsJson`, as spec 0018 §12.1's pages select their JSON payloads. `ErrorTraceId`
-  is the identifier a requester quotes in a support ticket, as with spec 0015 §6.2's trace id.
+  selects `ArgumentsJson`, as spec 0019 §12.1's pages select their JSON payloads. `ErrorTraceId`
+  is the identifier a requester quotes in a support ticket, as with spec 0016 §6.2's trace id.
 - `StateJson` and `LeaseToken` are the machinery's columns: the jobs feature's model configuration
   maps them as shadow properties, never members; they are absent from the Queryex schema (spec
-  0011 §11.1) and excluded from the Jobs UDTT (`ExcludeFromTableType()`, as spec 0011's tree
+  0012 §11.1) and excluded from the Jobs UDTT (`ExcludeFromTableType()`, as spec 0012's tree
   convention excludes `Node`); the worker reads them from the claim's result set through the job
-  reader of spec 0011 §4.3.
+  reader of spec 0012 §4.3.
 - Queryex navigations `RunAsUser`, `RequestedBy`, `Schedule` derive from the foreign keys;
-  `[RelatedSelect]` is the default projection of spec 0011.
+  `[RelatedSelect]` is the default projection of spec 0012.
 
 ### 2.4 `IJobEntity`
 
-Spec 0011's capability interface, restated verbatim as consumed here:
+Spec 0012's capability interface, restated verbatim as consumed here:
 
 ```csharp
-// Tellma.Core.Abstractions.Entities (spec 0011)
+// Tellma.Core.Abstractions.Entities (spec 0012)
 public interface IJobEntity
 {
     int? JobId { get; set; }                            // server-owned; FK -> core.Jobs ON DELETE SET NULL; unique where not null
@@ -360,7 +360,7 @@ public interface IEntityJobHandler<TEntity> where TEntity : IJobEntity   // enti
 ```
 
 A handler class implements exactly one of the two and carries `[JobHandler]`. For
-`IEntityJobHandler<TEntity>` the worker appends spec 0011's `Query<TEntity>` with `Restrictions =
+`IEntityJobHandler<TEntity>` the worker appends spec 0012's `Query<TEntity>` with `Restrictions =
 [KeySetRestriction("JobId", "@tb{b}_claimed")]` to the claim round trip, so the claimed rows and
 their entities arrive together; `TEntity` must be a mapped leaf (the composition gate resolves the
 registered leaf through `UseEntity`). Handlers are resolved from the job's tenant scope (§8) with
@@ -402,7 +402,7 @@ public interface IJobProgress
 }
 
 public sealed record JobError(string Code, IReadOnlyDictionary<string, object?> Arguments)
-    : CodedError(Code, Arguments);                                                      // CodedError: spec 0014 §7.3
+    : CodedError(Code, Arguments);                                                      // CodedError: spec 0015 §7.3
 
 public enum JobCancellationReason { None, LeaseLost, CancelRequested, HostStopping }
 
@@ -412,7 +412,7 @@ public sealed class JobFailedException(JobError Error) : Exception;         // f
 | Member | Meaning |
 |---|---|
 | `JobBatch.Items` | The partition handed to this invocation (§3.5), in claim order. |
-| `JobBatch.Batch` | A `Persist` batch in the run-as scope. Statements the handler appends (`Sql` with declared writes, `Save`, `Update`, `Delete`) execute in the completion transaction after the completion statement (§5.6) and write unowned tables only: a table a stack owns is written by enlisting the rows with the job frame (§8; spec 0014 §13.3), whose groups the frame places on this batch, and a statement appended here that writes such a table is refused at append (spec 0014 §13.3). Nothing appended here runs if the lease is lost. |
+| `JobBatch.Batch` | A `Persist` batch in the run-as scope. Statements the handler appends (`Sql` with declared writes, `Save`, `Update`, `Delete`) execute in the completion transaction after the completion statement (§5.6) and write unowned tables only: a table a stack owns is written by enlisting the rows with the job frame (§8; spec 0015 §13.3), whose groups the frame places on this batch, and a statement appended here that writes such a table is refused at append (spec 0015 §13.3). Nothing appended here runs if the lease is lost. |
 | `JobItem.Item` | The job itself for `IJobHandler`; the entity row for `IEntityJobHandler`. Never null: a claimed row whose entity is missing is completed without invoking the handler (§5.1). |
 | `JobItem.CancellationToken` | Linked to the batch token; also cancelled alone when a renewal reports this row's `CancelRequestedAt` (§5.2). For a batch of one, item and batch tokens coincide. |
 | `JobItem.CancellationReason` | `None` until the item's token is cancelled; then `CancelRequested`, `LeaseLost` or `HostStopping`, the reason §3.4 maps the item under; once set it changes only to `LeaseLost`. |
@@ -420,11 +420,11 @@ public sealed class JobFailedException(JobError Error) : Exception;         // f
 | `JobItem.State<TState>` | The checkpoint the claim returned or the handler last wrote through `Report`, `Flush` or `Append`; `null` when none. |
 | `JobItem.Succeed` / `Retry` / `Fail` | Explicit per-item outcomes; the last call wins; unmarked items follow §3.4. A handler never marks an item `Cancelled`: it leaves the item unmarked and §3.4 maps it from its reason. |
 | `JobItem.Retry(after)` | `after` null ⇒ the backoff of §5.5; a supplied delay is used verbatim (capped at 30 days). |
-| `JobItem.NotifyOnSuccess` | Queues a spec 0020 `NotificationRequest` that the worker appends to the completion batch only when the item's final outcome is `Succeeded`. |
+| `JobItem.NotifyOnSuccess` | Queues a spec 0021 `NotificationRequest` that the worker appends to the completion batch only when the item's final outcome is `Succeeded`. |
 | `IJobProgress.Report` | Buffers one `JobProgressList` row for this job; the next renewal carries it (§5.2); repeated calls overwrite. |
 | `IJobProgress.Flush` | Executes one renew round trip now carrying the buffered rows of every in-flight job of the tenant on this instance; a checkpoint before a non-idempotent step. |
-| `IJobProgress.Append` | Appends the append statement (§5.3) to a batch the handler owns — a chunked import's per-chunk persist batch, reached through spec 0014's `SaveOptions.OnPersist` — so the checkpoint commits with the chunk or not at all. |
-| `JobMessage`, `JobError` | A resource key and its arguments. The SPA renders the key with its arguments from the string pack (spec 0012 §10.4), exactly as it renders a validation code; the worker renders it in English for the log (§9). A handler's keys live in its own assembly's `Strings.resx` (spec 0012 §10.1); the platform's `Jobs.*` keys (§2.1) are Core's. The arguments serialise with the platform JSON options into an `nvarchar(4000)` column (§2.1); beyond 4,000 characters `Report`, `Append`, `Retry`, `Fail` and `JobFailedException`'s constructor throw `ArgumentException`, a programmer error as in §4.1. |
+| `IJobProgress.Append` | Appends the append statement (§5.3) to a batch the handler owns — a chunked import's per-chunk persist batch, reached through spec 0015's `SaveOptions.OnPersist` — so the checkpoint commits with the chunk or not at all. |
+| `JobMessage`, `JobError` | A resource key and its arguments. The SPA renders the key with its arguments from the string pack (spec 0013 §10.4), exactly as it renders a validation code; the worker renders it in English for the log (§9). A handler's keys live in its own assembly's `Strings.resx` (spec 0013 §10.1); the platform's `Jobs.*` keys (§2.1) are Core's. The arguments serialise with the platform JSON options into an `nvarchar(4000)` column (§2.1); beyond 4,000 characters `Report`, `Append`, `Retry`, `Fail` and `JobFailedException`'s constructor throw `ArgumentException`, a programmer error as in §4.1. |
 
 ### 3.4 Outcome rules
 
@@ -441,7 +441,7 @@ Evaluated by the worker per item after `Execute` returns or throws, in this orde
 |---|---|
 | returned normally | `Succeeded` |
 | threw `JobFailedException` | `Failed` with its `JobError` |
-| threw `ValidationException` | `Failed` at once with the code and arguments of its first error (spec 0014 §7.3) |
+| threw `ValidationException` | `Failed` at once with the code and arguments of its first error (spec 0015 §7.3) |
 | threw `OperationCanceledException` | `Released` when the handler never observed the item (no progress, no state, no explicit outcome), else `Retry` with `after = 0` |
 | threw anything else | `Retry` with `Jobs.Internal`; the exception goes to `JobHandlerFailed` (§9) |
 
@@ -449,7 +449,7 @@ Every outcome that records an `ErrorCode` records `ErrorTraceId`, the trace id o
 activity: `process <key>` (§9) for an invocation, an inactive run-as user's completion included
 (§8), and the poll's activity for a row completed without a handler (§5.1). `Jobs.Internal`
 carries no arguments; `JobHandlerFailed` logs the exception at `Error` inside `process <key>`, so
-its `TraceId` equals the row's `ErrorTraceId` (spec 0010 §9 puts the trace id and the job id on
+its `TraceId` equals the row's `ErrorTraceId` (spec 0011 §9 puts the trace id and the job id on
 every log line). `Retry` becomes `Failed` (with the same error, or `Jobs.AttemptsExhausted` when
 none) when the row's `Attempts` (already incremented by the claim) is at or above `MaxAttempts`.
 
@@ -482,7 +482,7 @@ Keys are persisted on rows and seeds and are stable for the life of a distributi
 change to a handler's arguments is a new key. Notification type keys and hub event names follow the
 same grammar.
 
-A feature registers a handler through spec 0010's `FeatureContribution.JobHandler<THandler>()`
+A feature registers a handler through spec 0011's `FeatureContribution.JobHandler<THandler>()`
 (`JobHandlerContributionItem`). The realizer reads `[JobHandler]`, infers the shape from the
 implemented interface, validates the grammar, the option ranges, the `core.` reservation (only
 `CoreFeature` may use it), that `TEntity` implements `IJobEntity` and is mapped, and that no key is
@@ -490,7 +490,7 @@ registered twice; every problem reports into the composition gate. The realized 
 (`IStartupCheck` `jobs.handlers`) additionally warns when a built-in schedule names a key no
 handler registered.
 
-A feature that removes or replaces a handler retires its key through spec 0010's
+A feature that removes or replaces a handler retires its key through spec 0011's
 `FeatureContribution.RetiredJobKey(key)` (`RetiredJobKeyContributionItem`); the realizer validates
 the grammar and the `core.` reservation and refuses a key some handler registers or a built-in
 schedule names. A retired key's rows are cancelled (§6.9); a user schedule naming it pauses (§7.7).
@@ -526,8 +526,8 @@ Validation at enqueue, all programmer errors: the key is registered on this inst
 (`InvalidOperationException` naming the key); `Entity` is an `IJobEntity` whose `Id > 0` (a row with
 a temporary id is enqueued through the pipeline's `ContributeAsync`, after ids are assigned);
 `Entity.JobId` is null or refers to a terminal job (an active job on a row is a duplicate request).
-The pipeline of spec 0014 exposes `PersistContext.Batch` to `ContributeAsync`, which is where a
-service hands off work: spec 0018's `ImportService` enqueues `core.import` through it with the
+The pipeline of spec 0015 exposes `PersistContext.Batch` to `ContributeAsync`, which is where a
+service hands off work: spec 0019's `ImportService` enqueues `core.import` through it with the
 `Import` row as `Entity`.
 
 ### 4.2 The enqueue statement
@@ -548,8 +548,8 @@ SELECT [Ordinal], [JobId] FROM @tb{b}_jobIds ORDER BY [Ordinal];   -- result set
 ```
 
 The `UPDATE` line is emitted once per request that names an `Entity` (the `[core].[Imports]` line
-is the shape): it takes the owner's table from spec 0011's `EntityMetadata` and names its `Id` and
-`JobId` columns literally under spec 0011 §3.2's column-name rule. The owner's `ModifiedAt` is not
+is the shape): it takes the owner's table from spec 0012's `EntityMetadata` and names its `Id` and
+`JobId` columns literally under spec 0012 §3.2's column-name rule. The owner's `ModifiedAt` is not
 touched: `JobId` is bookkeeping. The `sp_sequence_get_range` call is the reason the executor's
 analyzer whitelists `EXEC sys.sp_sequence_get_range` in platform statements.
 
@@ -671,7 +671,7 @@ The executor maps `50422` to `BatchAssertionFailedException`; the worker treats 
 ### 5.4 Complete
 
 One completion per handler invocation (per partition), in one `Persist` batch in the run-as scope
-(§8): the connect prologue of spec 0013 (`ConnectPremises.ForUser` or `ForSystem`) heads the batch;
+(§8): the connect prologue of spec 0014 (`ConnectPremises.ForUser` or `ForSystem`) heads the batch;
 inside the transaction, after the platform's guard statements, the completion statement is the first
 statement, then the handler's appended statements, then the worker's notifications (§10), then the
 epilogue. Rows completed without invoking a handler — the three kinds of §5.1 and the items of a
@@ -731,16 +731,16 @@ Contents, in order, all in one round trip: the prologue; `BEGIN TRAN` and the pl
 the completion statement; the handler's statements (which must declare their writes and write
 unowned tables only, §3.3; distribution guards throw in the `50600–50699` band and surface as the
 batch's failure) and the groups of every write the handler enlisted with the job frame (§8; spec
-0014 §13.3), each group the target stack's emitter, `ContributeAsync` and effects, appended where
-the handler awaited `PersistAsync`; one spec 0020 `INotifier.Notify` per notification the worker
+0015 §13.3), each group the target stack's emitter, `ContributeAsync` and effects, appended where
+the handler awaited `PersistAsync`; one spec 0021 `INotifier.Notify` per notification the worker
 raises (§10) and per `NotifyOnSuccess` request of an item that succeeded; the epilogue; `COMMIT`.
-Post-commit: the post-commit of every enlisted target (spec 0014 §13.2), `job.changed` for every
+Post-commit: the post-commit of every enlisted target (spec 0015 §13.2), `job.changed` for every
 completed row with a `RequestedById`, and the nudge when any outcome is `Retry` with a zero delay.
 
 Failure handling:
 
 - A `Job.LeaseLost` fence maps to `LeaseLost`: nothing to do; another instance owns the rows. Any
-  other `50422` code — spec 0016's `Blob.NotAttachable` from an export's blob effect, for example —
+  other `50422` code — spec 0017's `Blob.NotAttachable` from an export's blob effect, for example —
   is a final failure (the last case below), never `LeaseLost`.
 - A reported transient failure re-runs the whole round trip through the executor's retry (the
   completion is a single transaction, so re-running is safe even though it is not marked
@@ -748,7 +748,7 @@ Failure handling:
 - An ambiguous failure (connection lost during `COMMIT`) is treated as not committed — the lease is
   left to lapse and the rows are re-claimed, which is why handlers append idempotent statements or
   checkpoint (§3.6).
-- A guard failure — `GuardPassed = false` at the prologue, or `50412` at spec 0013 §7.4's
+- A guard failure — `GuardPassed = false` at the prologue, or `50412` at spec 0014 §7.4's
   in-transaction re-check (`StaleContextException`) — is answered by applying the connect result
   and executing a fresh completion batch that carries only the completion statement with every item
   `Retry` (`RetryAfterSeconds = 0`); the handler's statements and enlisted groups are discarded and
@@ -756,8 +756,8 @@ Failure handling:
   run-as user was deactivated during the run) takes the inactive-user path of §8.
 - Every other failure is final for the attempt: a constraint violation, invariant or distribution
   guard in a statement the handler appended or in an enlisted group, which the worker translates to
-  a `ValidationException` by spec 0014 §14.2's rows (an enlisted group's error attributed to its
-  group by `StatementOrdinal`, spec 0014 §13.3), a `DependencyUnavailableException`, anything else.
+  a `ValidationException` by spec 0015 §14.2's rows (an enlisted group's error attributed to its
+  group by `StatementOrdinal`, spec 0015 §13.3), a `DependencyUnavailableException`, anything else.
   The worker logs it (`JobCompletionFailed` at `Error`, job ids in scope), discards the handler's
   statements and enlisted groups, and executes a fresh completion batch carrying only the completion
   statement and the worker's notifications (§10), every item mapped by §3.4's rules for an exception
@@ -779,7 +779,7 @@ poller iteration catches, logs at `Error` with the tenant id in the log scope, a
 ### 6.2 Tenant pollers
 
 The worker holds one `TenantPoller` per tenant whose `TenantDescriptor.State` is `Active` in spec
-0010's `ITenantRegistry.Tenants`, created and retired on the registry's refresh cadence and on
+0011's `ITenantRegistry.Tenants`, created and retired on the registry's refresh cadence and on
 `ITenantStateListener.OnStateChangedAsync` (the worker implements the listener): a tenant leaving
 `Active` stops its poller after the current poll; in-flight batches finish and complete (the
 completion scope is created before the state change is observed; a scope creation refused with
@@ -927,19 +927,19 @@ WHERE [Id] = 1 AND ([LastTickAt] IS NULL OR [LastTickAt] < DATEADD(second, -60, 
 ```
 
 - `core.JobWorkerState` is a single-row table: `Id int PK` with
-  `CK_JobWorkerState_SingleRow (Id = 1)` beside the positive-key check of spec 0011's
+  `CK_JobWorkerState_SingleRow (Id = 1)` beside the positive-key check of spec 0012's
   convention, `LastTickAt datetimeoffset(3) NULL`, `LastTickOwner nvarchar(128) NULL`; seeded
   `(1, NULL, NULL)` by `HasData`, so a new tenant's first tick sees no gap.
 - `@tb{b}_p0` of the gap check is `JobsOptions.GapThreshold` in minutes (default 360); `@tb{b}_p0`
   of the stamp is the poll's lease owner, the string of §5.1's `@tb{b}_p4`. When `PreviousTickAt`
   is older than the threshold the worker logs `SchedulerGapDetected` at `Warning`, counts
   `tellma.schedules.gap_detected`, and, in `Persist` batches under the system user after the poll
-  (as many as spec 0011's parameter cap requires), raises `core.scheduler.gap` to administrators
+  (as many as spec 0012's parameter cap requires), raises `core.scheduler.gap` to administrators
   with `DedupKey = 'core.scheduler.gap'` and `heldCount` = the sum of the block's per-requester
   counts, and one `core.job.held` to each non-null `RequestedById` of those counts with its `count`
   and `DedupKey = 'core.job.held'`; rows with no requester are reported by the gap notice alone.
   The counts cover every `Held` row, not only this statement's, so a re-run (§6.8) or a second
-  instance that found the rows already held still reports them; both notices rely on spec 0020's
+  instance that found the rows already held still reports them; both notices rely on spec 0021's
   default `OnDuplicate = Suppress`, so a repeat while the first is unread adds nothing.
 - Held rows are work that was already more than `GapThreshold` overdue when the worker came back:
   the thousands of rows a restored backup brings, or work queued before a long outage. They wait
@@ -983,11 +983,11 @@ public class Schedule : TopLevelEntity, IActivatable    // stack resource core.S
 
 `Schedule` is an ordinary editable top-level entity: `[Stack]` with the full operation set,
 `[Searchable]` on `Name` and `Code`, `[DefaultSelect]` of every column but `ArgumentsJson`, which
-`[JsonColumn]` keeps out of the Queryex schema (spec 0011 §2.6); the details read carries it (spec
-0014 §5.3). Activate and deactivate come from the activatable recipe of spec 0014; `IsActive` is
+`[JsonColumn]` keeps out of the Queryex schema (spec 0012 §2.6); the details read carries it (spec
+0015 §5.3). Activate and deactivate come from the activatable recipe of spec 0015; `IsActive` is
 server-owned and changes only through the actions.
 
-A schedule is built-in exactly when its id lies in the reserved band (spec 0013 §2; spec 0011
+A schedule is built-in exactly when its id lies in the reserved band (spec 0014 §2; spec 0012
 §4.1), `Id <= WellKnownIds.ReservedIdBandEnd`: the `HasData` rows of §7.9 and nothing else. Every
 built-in this spec names is one of these, and the Schedules page derives its badge and locked
 fields from the id. `ReplayAll` requires `OverlapPolicy.Allow` (§7.8): replayed occurrences are
@@ -1035,7 +1035,7 @@ write no history rows and never touch `ModifiedAt`:
   and the `@daily`-style macros; no seconds field (the poll ceiling is 30 s).
 - `TimeZoneId` resolves with `TimeZoneInfo.FindSystemTimeZoneById` (IANA and Windows ids both
   resolve on Windows and Linux under .NET's ICU conversion); null means the tenant's zone,
-  `TenantSettings.TimeZone` of spec 0012, read at fire time so a settings change takes effect at the
+  `TenantSettings.TimeZone` of spec 0013, read at fire time so a settings change takes effect at the
   next tick.
 - DST follows Cronos: a skipped local time fires at the next valid instant; a repeated local time
   fires once.
@@ -1222,7 +1222,7 @@ the property path:
 
 `ContributeAsync` (a save hook; the activatable recipe invokes it after `activate`/`deactivate` as
 well, on an `ActionPersistContext<Schedule>` whose `Action` names which; the service overrides
-`ValidateActionAsync` for both actions, so they take spec 0014 §11.2's general path and the context
+`ValidateActionAsync` for both actions, so they take spec 0015 §11.2's general path and the context
 carries the target rows): for every saved or activated row computes
 `next = GetNextOccurrence(Now, zone)` in C# (`Now` = `RequestContext.Now`, the one place the
 application clock enters — the next tick corrects it against the database clock) and appends, with a
@@ -1242,7 +1242,7 @@ without a grant filter, whether a `Pending` or `Running` job carries its id (a s
 `IX_Jobs_ScheduleActive`); under `OverlapPolicy = Skip` such a job refuses the action with
 `Schedules.RunInProgress`. `IsActive` and `PausedReason` are no preconditions: a paused schedule
 can be run once. RT2 appends the statement below (`Writes = { core.Jobs }`); the method awaits
-`Persisted` and returns `JobAccepted(JobId, null)` (spec 0015 §3.3); the post-commit hook nudges
+`Persisted` and returns `JobAccepted(JobId, null)` (spec 0016 §3.3); the post-commit hook nudges
 the local poller (§4.4). The job runs as the caller for a user schedule and as the system user for
 a built-in, with the caller as `RequestedById` either way (§8); `ScheduledFor` stays null, and
 `core.ScheduleStates` is untouched, so the cron's next due time and last fired job stay the cron's.
@@ -1263,7 +1263,7 @@ and sets `Jobs.ScheduleId` to null through the FK.
 
 ### 7.9 Built-in schedules
 
-Declared through spec 0010's `FeatureContribution.BuiltInSchedule` (the id, handler key, cron,
+Declared through spec 0011's `FeatureContribution.BuiltInSchedule` (the id, handler key, cron,
 arguments and time zone) and realized as `HasData` rows in the reserved band — a `core.Schedules`
 row with `Code = Name = HandlerKey`, `RunAsUserId = WellKnownIds.SystemUserId`, `IsActive = 1`,
 `MissedPolicy = Coalesce`, `OverlapPolicy = Skip` and the system user in its audit columns — plus
@@ -1281,10 +1281,10 @@ cannot tell apart. A retired built-in retires its id with it.
 | Id | Key | Cron | Shipped by |
 |---|---|---|---|
 | 1 | `core.job-retention` | `0 3 * * *` | this spec (§14.4) |
-| 2 | `core.notification-retention` | `30 3 * * *` | spec 0020 |
+| 2 | `core.notification-retention` | `30 3 * * *` | spec 0021 |
 | 3 | `core.file-retention` | `0 4 * * *` | this spec (§14.4) |
-| 4 | `core.blob-sweep` | `*/15 * * * *` | spec 0016 |
-| 5 | `core.blob-reconcile` | `0 2 * * 6` | spec 0016 |
+| 4 | `core.blob-sweep` | `*/15 * * * *` | spec 0017 |
+| 5 | `core.blob-reconcile` | `0 2 * * 6` | spec 0017 |
 | 6 | `core.tree-verify` | `0 1 * * 6` | this spec (§14.5) |
 
 This table is the record of every Core built-in's id and expression; the contributing specs cite
@@ -1302,33 +1302,33 @@ a built-in's `CronExpression` and `TimeZoneId` and its names, nothing else (§7.
   original `RunAsUserId`, never the administrator's.
 - **The job scope.** Before invoking a handler the worker builds a `RequestContextSnapshot`
   (`TenantId`, `Kind = User` or `System`, `Subject` = the user's subject or `"system"`,
-  `UserId = RunAsUserId`, `Client = "worker"` — a value of spec 0015's client set that never
+  `UserId = RunAsUserId`, `Client = "worker"` — a value of spec 0016's client set that never
   reaches a request filter — and `TraceParent` = the job's when the partition holds one job, else
-  null: log-correlation data that fills `RequestContext.OriginTraceParent`, spec 0010 §4.1, while
+  null: log-correlation data that fills `RequestContext.OriginTraceParent`, spec 0011 §4.1, while
   the links of §9 carry every job) and opens `ITenantScopeFactory.CreateScopeAsync(snapshot)` (spec
-  0010 §4.4) inside the `process <key>` activity of §9; `TenantUnavailableException` (the tenant
+  0011 §4.4) inside the `process <key>` activity of §9; `TenantUnavailableException` (the tenant
   left `Active`) leaves the lease to lapse. The scope factory runs the connect initializer —
   `IUserConnector.ConnectAsUser(RunAsUserId)` (`ConnectPremises.ForUser`: tags and `IsActive`, no
-  activity stamp, no state flip) or `ConnectAsSystem()` for the system user — and then spec 0012's
+  activity stamp, no state flip) or `ConnectAsSystem()` for the system user — and then spec 0013's
   negotiation initializer, which resolves the locale fields from the run-as user's
   `PreferredLanguage`, `PreferredCalendar` and `PreferredTimeZone`, else the tenant defaults (spec
-  0012 §9.3), so a handler invocation pays one connect. A run-as user who is inactive fails the
-  connect with `TenantNotFoundException` (spec 0013 §7.6): the handler is not invoked, and every
+  0013 §9.3), so a handler invocation pays one connect. A run-as user who is inactive fails the
+  connect with `TenantNotFoundException` (spec 0014 §7.6): the handler is not invoked, and every
   item of the partition is `Failed` with `Jobs.UserInactive` by a completion without a handler
   (§5.4), which raises `core.job.failed` for each (§10). A run-as user deactivated during the run
   takes the same path when the completion's re-check fails (§5.6). The schedule pauses at the next
   tick (§7.7).
-- **The job frame.** Around each `ExecuteAsync` the worker opens the frame of spec 0014 §13.3 —
+- **The job frame.** Around each `ExecuteAsync` the worker opens the frame of spec 0015 §13.3 —
   `Kind = Job`, `Operation = "job:<key>"` — bound to the partition's completion batch and
   registered in the job scope as the scoped `IOpenWriteHost`. A handler that writes rows a stack
   owns implements `IEnlists<TTarget>`, enlists them with the frame and awaits the injected frame's
   `PersistAsync`, which places every group on `JobBatch.Batch` after the completion statement
   (§5.6), so the rows commit with the outcome and never survive a lost lease. The run-as scope
-  authorises the frame; an enlisted group carries no decision of its own (spec 0013 §5.3). A
+  authorises the frame; an enlisted group carries no decision of its own (spec 0014 §5.3). A
   `ValidationException` from `PersistAsync` surfaces inside `ExecuteAsync` and follows §3.4: it
   fails the item at once; one raised at persist time, in the completion round trip, fails it the
   same way (§5.6).
-- **Permissions at run time.** Handlers evaluate permissions through spec 0013's
+- **Permissions at run time.** Handlers evaluate permissions through spec 0014's
   `IAccessEvaluator.EvaluateAsync(resource, action)` exactly as a request does, so a schedule can
   never read more than its owner may read today. Handlers of system jobs never read data on behalf
   of a person: they operate on platform tables or on data the tenant as a whole owns.
@@ -1347,7 +1347,7 @@ a built-in's `CronExpression` and `TimeZoneId` and its names, nothing else (§7.
   `settle <key>`. The claim is a `Client` span `receive <key>` under the activity the worker starts
   for each poll round trip (§6.3). A partition of several jobs has a null snapshot `TraceParent` and
   the links carry the detail; the snapshot's `TraceParent` only ever fills
-  `RequestContext.OriginTraceParent` (spec 0010 §4.1) and never parents or links anything.
+  `RequestContext.OriginTraceParent` (spec 0011 §4.1) and never parents or links anything.
 - Tags are bounded: `messaging.system = "tellma.jobs"`, `messaging.destination.name = <key>`,
   `messaging.operation.name ∈ { receive, process, settle }`, `messaging.batch.message_count`,
   `tellma.jobs.attempt`. Tenant id, job ids and user id go to the log scope, never to tags or
@@ -1359,14 +1359,14 @@ a built-in's `CronExpression` and `TimeZoneId` and its names, nothing else (§7.
   `JobHandlerAbandoned`, `SchedulerGapDetected`, `SchedulePaused`, `SchedulerHandlerUnknown`,
   `WorkerDrainTimedOut`; messages cite no document.
 - A progress or error key (§3.3) is rendered for the log in English, in the invariant culture,
-  through spec 0012 §10.2's `IcuStringLocalizerFactory`: a handler's keys from its handler type's
-  assembly's `Strings`, then Core's, which holds the `Jobs.*` keys (spec 0020 §2.4 renders
+  through spec 0013 §10.2's `IcuStringLocalizerFactory`: a handler's keys from its handler type's
+  assembly's `Strings`, then Core's, which holds the `Jobs.*` keys (spec 0021 §2.4 renders
   notifications the same way).
 
 ## 10. Notifications and hub events raised by the machinery
 
-Notification types this spec registers through spec 0010's `FeatureContribution.NotificationType`
-(spec 0020's `NotificationTypeDescriptor(Key, Category, Mutable, TargetResource)`), all with
+Notification types this spec registers through spec 0011's `FeatureContribution.NotificationType`
+(spec 0021's `NotificationTypeDescriptor(Key, Category, Mutable, TargetResource)`), all with
 `Category = "jobs"`:
 
 | Key | `Mutable` | Target | Raised | Recipients | Arguments |
@@ -1376,17 +1376,17 @@ Notification types this spec registers through spec 0010's `FeatureContribution.
 | `core.schedule.paused` | true | `core.Schedule` | §7.7 | `Exhausted` or `HandlerRetired`: the owner when a person, else administrators; `OwnerInactive`: administrators | `{ scheduleId, name, reason }` |
 | `core.scheduler.gap` | false | none | §6.10; `DedupKey = 'core.scheduler.gap'` | administrators | `{ previousTickAt, now, heldCount }` |
 
-Notifications ride the completion or tick batch as `NotificationRequest`s of spec 0020 §3.1 through
+Notifications ride the completion or tick batch as `NotificationRequest`s of spec 0021 §3.1 through
 `INotifier.Notify(batch, requests)`; the gap notices (`core.scheduler.gap`, `core.job.held`) and
 nothing else use their own `Persist` batches under the system user after the poll (§6.10).
 `core.job.failed` names the error by its code; the job pages render it with its arguments (§11.3).
-Administrators come from `IAdministratorDirectory.GetAdministratorIdsAsync()` (spec 0013).
+Administrators come from `IAdministratorDirectory.GetAdministratorIdsAsync()` (spec 0014).
 
 The hub event `job.changed { jobId }` is registered through `FeatureContribution.ClientEvent` and
-published through spec 0020's `IClientEventPublisher.Publish(batch, ClientEvent(Name, UserIds,
+published through spec 0021's `IClientEventPublisher.Publish(batch, ClientEvent(Name, UserIds,
 Payload))` on the completion batch and `PublishAsync` after claims and progress-carrying renewals,
 only when the row's `RequestedById` is set and only to that user. `INotifier` is always present;
-`IClientEventPublisher` resolves to spec 0020's `NullClientEventPublisher` (registered with
+`IClientEventPublisher` resolves to spec 0021's `NullClientEventPublisher` (registered with
 `TryAdd`) on a host without the hub, so the worker runs unchanged on a dedicated worker host.
 
 ## 11. The administrative surface
@@ -1444,12 +1444,12 @@ FROM [core].[Jobs] AS [j] INNER JOIN @tb{b}_t0 AS [i] ON [i].[Id] = [j].[Id]
 WHERE [j].[Status] = 'Held';
 ```
 
-Each action runs through the pipeline's general action path (spec 0014 §11.2): RT1 loads the
+Each action runs through the pipeline's general action path (spec 0015 §11.2): RT1 loads the
 targets under the action's own grant filter and evaluates the precondition, RT2 appends the
 statement over the loaded ids to the `Persist` batch; no post-check. `retry` and `resume` nudge the
 local poller after commit. Each statement repeats its precondition in its `WHERE`, so its batch
 declares `Idempotent = true` (§1.4): a repeat matches no rows, save a `Running` row's cancel flag,
-which it sets again. None of the three declares spec 0015 §2.2's `Idempotent` (retry-safe): a
+which it sets again. None of the three declares spec 0016 §2.2's `Idempotent` (retry-safe): a
 client's retry after a commit would fail the precondition. `cancel` is `Destructive = true`; the
 three keep the default `Mutation = true`.
 
@@ -1457,7 +1457,7 @@ three keep the default `Mutation = true`.
 
 Registered by the stack feature from the descriptors, each resource with its actions: `core.Job` ×
 `Read | Retry | Cancel | Resume`; `core.Schedule` × `Read | Save | Delete | Activate` (the three
-write actions are sensitive by default and require step-up per spec 0013; `core.Job × Cancel` is
+write actions are sensitive by default and require step-up per spec 0014; `core.Job × Cancel` is
 not sensitive). The bespoke self-scope criterion `RequestedById = me()` is registered for
 `core.Job × Read` and `core.Job × Cancel` through an `IAccessCriteriaProvider`, so every member
 sees "My jobs" and cancels the jobs they requested without a role; `retry` and `resume` are never
@@ -1466,9 +1466,9 @@ bespoke. Route segments: `jobs` and `schedules`; action segments `retry`, `cance
 
 ### 11.3 Endpoints and pages
 
-Spec 0015's `MapTellma` projects both stacks from their `StackDescriptor`s: the standard operations
+Spec 0016's `MapTellma` projects both stacks from their `StackDescriptor`s: the standard operations
 for `schedules` plus `take-over` and `run-now`; query, details, `retry`, `cancel` and `resume` for
-`jobs`. A background operation answers 202 with spec 0015's `JobAccepted(JobId, ResourceId?)`:
+`jobs`. A background operation answers 202 with spec 0016's `JobAccepted(JobId, ResourceId?)`:
 `run-now` and an export carry a null `ResourceId` (§7.8; an export's row is inserted by its handler
 on completion, §14.1). Client pages render a job's progress and error from the string pack (§3.3):
 **Schedules** (standard search and details; owner, next due, last fired, take-over and run-now
@@ -1579,48 +1579,48 @@ tenant.
 
 ## 14. First consumers
 
-### 14.1 Export (spec 0018)
+### 14.1 Export (spec 0019)
 
 The `core.export` handler is an arguments-only `IJobHandler` with `[JobHandler]` (key `core.export`,
 `BatchSize = 1`, `LeaseSeconds = 600`, `MaxAttempts = 3`, `Schedulable = true`) and implements
 `IEnlists<Export>`. The `export/start` and `export-for-import/start` actions enqueue it through
 `IJobQueue.EnqueueAsync` with no `Entity`, `Arguments` the request's `ExportJobArguments` (spec
-0018 §12.1) and `RunAsUserId = RequestedById` = the caller, and return `JobAccepted(JobId, null)`
-(spec 0018 §12.2); a user schedule naming `core.export` carries the same `ExportJobArguments` in
+0019 §12.1) and `RunAsUserId = RequestedById` = the caller, and return `JobAccepted(JobId, null)`
+(spec 0019 §12.2); a user schedule naming `core.export` carries the same `ExportJobArguments` in
 its `ArgumentsJson`, so a request-triggered run and a schedule-fired run are the same and neither
 has an `Export` row to read. The handler re-evaluates `Read` on the resource in the job scope,
-streams the query in pages, reports progress per page, stages the workbook through spec 0016's
+streams the query in pages, reports progress per page, stages the workbook through spec 0017's
 `IBlobService`, and at the end of every run enlists with the job frame (§8) one insert of the
 `Export` row — `Kind` from the arguments' case, `FileId`, `FileName` and `RowCount` set,
 `JobId = Job.Id` under `EnlistSaveOptions.ServerOwned` — and calls `NotifyOnSuccess` with
 `core.export.ready` (target `core.Export`, id = the inserted row): the insert, the confirmation of
 the staged file by its blob effect and the notification ride the completion batch, one round trip
-atomic with the outcome, so a lost lease leaves no `Export` row behind (spec 0018 §12.3).
+atomic with the outcome, so a lost lease leaves no `Export` row behind (spec 0019 §12.3).
 
-### 14.2 Import (spec 0018)
+### 14.2 Import (spec 0019)
 
 `core.import`: an `IEntityJobHandler<Import>` implementing `IEnlists<Import>`, declared with
 `[JobHandler("core.import", BatchSize = 1, LeaseSeconds = 600, MaxAttempts = 1)]` — a partially
 committed import must never re-run blindly; a crash mid-import surfaces as `Jobs.AttemptsExhausted`
 and `core.job.failed` (§10). The handler commits each chunk through the target stack's front door,
 `SaveAsync` in a `Persist` batch of its own (the handler is a host, not a participant of a pipeline,
-spec 0014 §13.3), and checkpoints the position of the first uncommitted row (spec 0018 §12.5) with
-`IJobProgress.Append(batch, …)` through spec 0014's `SaveOptions.OnPersist`, inside each chunk's
+spec 0015 §13.3), and checkpoints the position of the first uncommitted row (spec 0019 §12.5) with
+`IJobProgress.Append(batch, …)` through spec 0015's `SaveOptions.OnPersist`, inside each chunk's
 persist transaction, so a `Job.LeaseLost` fence rolls the chunk back with the checkpoint. The
 completion columns — `ResultJson`, `RowCount`, `ErrorCount` — are an enlisted update of the claimed
 `Import` row with the job frame (§8) on the completion batch, one round trip atomic with the outcome
-(spec 0018 §12.4, §12.6). The `import/start` action enlists the `Import` row in the invoker's frame
+(spec 0019 §12.4, §12.6). The `import/start` action enlists the `Import` row in the invoker's frame
 and awaits the injected `IOpenWriteHost`'s `PersistAsync`; `ImportService.ContributeAsync` enqueues
 every new row whose `JobId` is null, so the row, its job and the attach of the staged upload to the
-row commit together and the action returns `JobAccepted(JobId, ImportId)` (spec 0018 §12.2), and
+row commit together and the action returns `JobAccepted(JobId, ImportId)` (spec 0019 §12.2), and
 queue latency is not bounded by the staging TTL.
 
-### 14.3 Blob sweep and reconcile (spec 0016)
+### 14.3 Blob sweep and reconcile (spec 0017)
 
 `core.blob-sweep` (every 15 minutes) and `core.blob-reconcile` (weekly) are arguments-only
 `IJobHandler`s shipped by the blob feature, running as the system user: the sweep pages by
 `BlobOptions.SweepBatchSize` and reports progress per page, the reconcile runs one `Maintenance`
-batch per registered kind (spec 0016 §7.1, §7.2). They are the reference shape for a maintenance
+batch per registered kind (spec 0017 §7.1, §7.2). They are the reference shape for a maintenance
 handler: idempotent and bounded.
 
 ### 14.4 Retention (this spec)
@@ -1648,15 +1648,15 @@ rows and `ScheduleStates.LastJobId` go null through their FKs. `Held` and `Pendi
 deleted.
 
 `core.file-retention` (`0 4 * * *`): selects expired `Export` and `Import` ids (`ExpiresAt < now`)
-in pages of 500 and deletes them through spec 0014's `DeleteByIdsAsync` on the two stacks as the
+in pages of 500 and deletes them through spec 0015's `DeleteByIdsAsync` on the two stacks as the
 system user, so the `[BlobReference]` release effect runs and the sweep reclaims the bytes later;
 nothing is deleted post-commit.
 
 ### 14.5 Tree verify (this spec)
 
 `core.tree-verify` (`0 1 * * 6`): for every tree table in the model, one `Maintenance` round trip
-running spec 0011's tree recount statement in whole-table scope, `Idempotent = true`, as the system
-user; repaired rows count on spec 0011's `tellma.data.tree.repairs` and a non-zero count logs its
+running spec 0012's tree recount statement in whole-table scope, `Idempotent = true`, as the system
+user; repaired rows count on spec 0012's `tellma.data.tree.repairs` and a non-zero count logs its
 `TreeVerify.Repaired` at Warning. The weekly pass is the backstop for the per-save affected-set
 recount.
 
@@ -1816,17 +1816,17 @@ The load-bearing decisions, where not already evident above:
 15. **A new root span per invocation, linked to each job's enqueuing context** — a job must not
     keep a request trace open for hours or inherit its sampling decision (§9).
 16. **Unexpected failures store a generic code and the attempt's trace id** — the exception goes to
-    the log, never to the tenant database or a member's notification: spec 0015 §7.1's 500 rule
+    the log, never to the tenant database or a member's notification: spec 0016 §7.1's 500 rule
     applied to jobs (§3.4, §9).
 17. **A handler writes a stack-owned table only by enlisting with the job frame** — the target's
     pipeline runs as a participant of the completion transaction, so an export's `Export` row with
     its `FileId` and `JobId`, or an import's completion columns, commit with the outcome in the one
     completion round trip, and no second write path into a stack exists (§3.3, §5.6, §8; spec
-    0014 §13.3).
+    0015 §13.3).
 18. **Members cancel the jobs they requested** — every handler already tolerates an administrator's
     cancel, so letting the requester cancel changes who may, not what happens; a running import
     stops at a chunk boundary with the committed chunks kept (§11.2).
-19. **Progress and error text are resource keys plus arguments, rendered by the reader** — spec 0020
+19. **Progress and error text are resource keys plus arguments, rendered by the reader** — spec 0021
     §1.3's rule; the log gets the English rendering (§3.3, §9).
 20. **The poll is keyed by its tokens and re-runnable** — a re-run returns what an earlier attempt
     leased, so no row is ever leased and untracked (§6.8).
