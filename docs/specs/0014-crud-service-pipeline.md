@@ -301,7 +301,7 @@ public sealed class ApiRouteAttribute(string Route) : Attribute;
 | `[EntityAction].SingleTarget` | The action targets exactly one row: spec 0015 maps its body as `IdRequest` or `IdRequest<TArguments>` (spec 0015 §3.3) and its MCP action takes one `id` (spec 0015 §11.5); the pipeline runs §11.2 over a one-element list; the method must return its own result (§3.1), so the answer is the method's `TResult` and never a read-back. |
 | `[EntityAction].Mutation`, `[ApiAction].Mutation` | `ActionDescriptor.Mutation`: whether the operation writes tenant data; the tenant-state verdict (spec 0010 §3.3) and the MCP read-only gate (spec 0015 §11.6) read it and nothing else. A read-shaped action declares `Mutation = false`. Standard operations are classified once: `query`, `get`, `get-by-ids`, `get-by-parent-ids`, `all`, `export`, `export-for-import` and `inspect-import` are not mutations; `save`, `delete`, `delete-by-query`, `delete-with-descendants`, `activate`, `deactivate`, `import`, `export/start`, `export-for-import/start` and `import/start` (each of the last three enqueues a job) are. |
 | `[EntityAction]` and `[ApiAction]` `Idempotent`, `Destructive`, `Mcp`, `Description`, `ContractRevision` | Projection metadata read by spec 0015: `Idempotent` is retry safety (spec 0015 §2.2) and says nothing about writing — a mutation may be retry-safe; `Destructive` is confirmation, `Mcp` tool exposure, `Description` tool text; `ContractRevision` (default 0) is bumped by hand when the action's meaning changes with no change of shape, and enters its endpoint's contract fingerprint (spec 0015 §3.10). |
-| `[ApiAction].Action` | The securable action the operation requires on the entity service's resource (`ErrorDetails` names `Diagnose`); `MemberOnly = true` means any connected active member and no securable. On an `[ApiRoute]` service `Resource` is required beside `Action` unless `MemberOnly`. |
+| `[ApiAction].Action` | The securable action the operation requires on the entity service's resource (`users/invitation-status` names `Read`, spec 0017); `MemberOnly = true` means any connected active member and no securable. On an `[ApiRoute]` service `Resource` is required beside `Action` unless `MemberOnly`. |
 | `[Stack].Operations` | `Read` for lookups; `Query \| Details \| Delete \| Enlist` for platform-written stacks such as spec 0018's `Export`, whose rows arrive only by enlistment (§13.3); `All` otherwise, plus `Enlist` on any stack an enlisted write targets (§13.3). |
 | `[Stack]` ceilings | §2.5. |
 
@@ -1566,9 +1566,9 @@ from `PostArguments`, and the UI button metadata.
 
 ### 11.3 `[ApiAction]` operations and `[ApiRoute]` services
 
-A single-body operation that is not id-shaped — `me/save`, `error-details`, the Excel operations,
-everything on `inbox`, `settings`, `access` — is a public method marked `[ApiAction]` on an entity
-service, on a **stack companion**, or on an `[ApiRoute]` service registered with
+A single-body operation that is not id-shaped — `me/save`, the Excel operations, everything on
+`inbox`, `settings`, `access` — is a public method marked `[ApiAction]` on an entity service, on a
+**stack companion**, or on an `[ApiRoute]` service registered with
 `contribution.ApiService<TService>()`. A companion is a class generic over the entity that a feature
 attaches to every stack it applies to with `contribution.EntityCompanion<TEntity, TCompanion>()` (a
 `StackCompanionContributionItem`; spec 0018 attaches `ExcelOperations<TEntity>` to every stack with
@@ -2034,8 +2034,9 @@ it under `crud.outcome = cancelled`. A timeout the host imposes is spec 0015's 5
 ### 14.2 Translation
 
 The executor raises spec 0011's internal data-layer exceptions; the pipeline translates them for
-every stack operation, and a service that runs its own batch outside the pipeline translates its
-own assertions (spec 0016 §3.4's staging quota, spec 0019 §5.3's lease fence); nothing else does.
+every stack operation, a service that runs its own batch outside the pipeline translates its own
+assertions (spec 0016 §3.4's staging quota, spec 0019 §5.3's lease fence), and spec 0019's worker
+translates a completion batch's failure by the rows below (spec 0019 §5.6); nothing else does.
 
 | Raised by the executor | Trigger | The pipeline raises |
 |---|---|---|

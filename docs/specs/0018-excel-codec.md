@@ -1333,15 +1333,15 @@ scope of the run-as user, inside the job frame spec 0019's worker opens around `
 1. Read the item's `ExportJobArguments` (`Arguments<ExportJobArguments>()`, JSON-polymorphic on
    `kind`).
 2. Re-evaluate `IAccessEvaluator.RequireAsync(Resource, "Read")`; a denial completes the item
-   `Fail(JobError("forbidden", …))`.
+   `Fail(JobError("forbidden", { resource, action }))`, the code and arguments of the denial.
 3. Build the `ExcelContext` from the arguments' `ExcelJobCulture` (culture, calendar, zone,
    language) and the job scope's `RequestContext.Now`; plan the case's `Request` in its shape
    (`PlanDisplay` or `PlanEditable`); stream the root query through `Pages` with
    `CountCap = MaxExportRows`, a first-page `Count` of `cap + 1` failing the item before any row is
    written; after each page, `Progress.Report` with `percent = min(99, 100 × rows / total)`, where
-   `total` is the first page's `Count` (by query) or `request.Ids.Count` (by ids), and the rows
-   written as the message. The handler never reports 100: spec 0019 §5.4's completion statement
-   writes it.
+   `total` is the first page's `Count` (by query) or `request.Ids.Count` (by ids), and the message
+   `Excel.Export.Progress` with `{ rows }`, the rows written so far. The handler never reports 100:
+   spec 0019 §5.4's completion statement writes it.
 4. Stage the spooled file through `IBlobService.StageAsync` with a `BlobStageRequest` of kind
    `export-file`, the stream, its length, the xlsx content type and `plan.FileName`.
 5. Enlist the **insert** of the `Export` row with the job frame (`EnlistSaveAsync`): `Resource`,
@@ -1352,25 +1352,25 @@ scope of the run-as user, inside the job frame spec 0019's worker opens around `
    and appends the group to the partition's completion batch, so the row commits with the job
    outcome and the blob effect confirms the staged file inside the completion transaction (the
    run-as user is uploader and saver, spec 0016 §4.6).
-6. The item's `NotifyOnSuccess` with a `NotificationRequest("core.export.ready", …)` to
-   `[RunAsUserId]` — arguments `fileName`, `rowCount` (spec 0020's catalogue entries for the type),
-   `TargetResource = "core.Export"`, `TargetId` the inserted row's id, which `EnlistedSave.Rows`
-   carries — and `Succeed()`.
+6. The item's `NotifyOnSuccess` with a `NotificationRequest("core.export.ready", …)` to the item's
+   `Job.RequestedById` — arguments `fileName`, `rowCount` (spec 0020's catalogue entries for the
+   type), `TargetResource = "core.Export"`, `TargetId` the inserted row's id, which
+   `EnlistedSave.Rows` carries — and `Succeed()`.
 
 Re-runs are safe: an attempt that did not complete inserted no row, and its staged file is never
 confirmed (spec 0016's sweep reclaims it). A cap overflow, at the first page or on a child sheet
-(§4.2), completes the item `Fail(JobError("Excel.Export.RowLimitExceeded", …))` without a
-notification of its own (spec 0019's `core.job.failed` covers it).
+(§4.2), completes the item `Fail(JobError("Excel.Export.RowLimitExceeded", …))` with the arguments
+of Appendix A and without a notification of its own (spec 0019's `core.job.failed` covers it).
 
 ### 12.4 The import handler
 
 `ImportJobHandler : IEntityJobHandler<Import>, IEnlists<Import>` carries `[JobHandler]` with key
 `core.import`, `BatchSize = 1`, `LeaseSeconds = 600` and `MaxAttempts = 1` — a partially committed
-import never re-runs blindly; a crash mid-import surfaces as `attempts_exhausted` and spec 0019's
-`core.job.failed`; an administrator's `retry` action (`core.Job × Retry`) resets attempts and the
-handler resumes from its checkpoint. The handler is a host, not a participant of the target stack's
-pipeline (spec 0014 §13.3): each chunk's `SaveAsync` is the target stack's front door, and only the
-`Import` row's completion write is enlisted (§12.6). Two passes over the local copy of
+import never re-runs blindly; a crash mid-import surfaces as `Jobs.AttemptsExhausted` and spec
+0019's `core.job.failed`; an administrator's `retry` action (`core.Job × Retry`) resets attempts
+and the handler resumes from its checkpoint. The handler is a host, not a participant of the target
+stack's pipeline (spec 0014 §13.3): each chunk's `SaveAsync` is the target stack's front door, and
+only the `Import` row's completion write is enlisted (§12.6). Two passes over the local copy of
 `Import.FileId` (§7.1):
 
 1. **Pass 1 (no database):** `Parse` of the job's `ImportJobArguments.Request` under an
@@ -1400,10 +1400,11 @@ pipeline (spec 0014 §13.3): each chunk's `SaveAsync` is the target stack's fron
 
 `StartImportRequest.Atomic = true` runs the whole file as one chunk (one transaction) under the
 ceilings of pass 1; a parent above its collection's `MaxCount`, or with more rows at every depth
-than `MaxRowsPerSave`, is refused as its child sheets are read, in either mode (§8.1). Progress
-phases (`ProgressMessage`): `Parsing`, `Resolving`, `Validating`, `Saving`; the worker renews the
-lease while the handler runs. Lock escalation inside a 10,000-row chunk is accepted: the transaction
-is short and the escalation is the one a 10,000-row JSON save incurs.
+than `MaxRowsPerSave`, is refused as its child sheets are read, in either mode (§8.1). The progress
+messages are the phase keys `Excel.Import.Parsing`, `Excel.Import.Resolving`,
+`Excel.Import.Validating` and `Excel.Import.Saving`; the worker renews the lease while the handler
+runs. Lock escalation inside a 10,000-row chunk is accepted: the transaction is short and the
+escalation is the one a 10,000-row JSON save incurs.
 
 ### 12.5 The checkpoint
 
@@ -1424,15 +1425,15 @@ public sealed record ImportCheckpointState(
 | `CommittedNewIds` | For every committed new row that a row at a later position references by its negative `Id`, that sheet value mapped to the id the row was committed with (§9.6); rows referenced only within their own chunk are not entered. |
 
 Each background chunk's `SaveAsync` carries `SaveOptions.OnPersist` (spec 0014 §4.1), a delegate
-that calls the job item's `Progress.Append(batch, percent, message, state)` with the chunk's new
-`ImportCheckpointState` — spec 0019's fenced checkpoint (spec 0019 §5.3), which throws
-`50422 Job.LeaseLost` inside the transaction when the lease is gone, so the chunk and its checkpoint
-commit or roll back together. The delegate builds the new state with the ids the pipeline assigned
-to the chunk's new rows before the persist (spec 0014 §6.4), adding the session's
-`LaterReferencedIds` for the chunk to `CommittedNewIds` (§10.4), so the map commits with the chunk
-and the next chunk's `Resolve` receives it. A re-save of §11.2 carries the same delegate; a
-synchronous import passes no `OnPersist`. A resumed job reads the state back through
-`State<ImportCheckpointState>()` (spec 0019 §3.3).
+that calls the job item's `Progress.Append(batch, percent, message, state)` with the
+`Excel.Import.Saving` `JobMessage` and the chunk's new `ImportCheckpointState` — spec 0019's
+fenced checkpoint (spec 0019 §5.3), which throws `50422 Job.LeaseLost` inside the transaction when
+the lease is gone, so the chunk and its checkpoint commit or roll back together. The delegate
+builds the new state with the ids the pipeline assigned to the chunk's new rows before the persist
+(spec 0014 §6.4), adding the session's `LaterReferencedIds` for the chunk to `CommittedNewIds`
+(§10.4), so the map commits with the chunk and the next chunk's `Resolve` receives it. A re-save of
+§11.2 carries the same delegate; a synchronous import passes no `OnPersist`. A resumed job reads
+the state back through `State<ImportCheckpointState>()` (spec 0019 §3.3).
 
 ### 12.6 Completion
 
@@ -1442,20 +1443,21 @@ row with the job frame (`EnlistSaveAsync`, spec 0014 §13.3): `ResultJson` (the 
 `RowCount`, `ErrorCount = 0`, under `EnlistSaveOptions.Concurrency = Check` against the stamp the
 claim delivered. Awaiting `host.PersistAsync()` on the injected `IOpenWriteHost` runs the row's
 validation round and places the row on the completion batch, so it commits with the job outcome;
-then the handler calls `NotifyOnSuccess` with a `NotificationRequest("core.import.completed", …)` to
-`[RunAsUserId]` — arguments `fileName`, `rowCount`, `errorCount`, `TargetResource = "core.Import"`,
-`TargetId = ImportId` — and `Succeed()`. On a deliberate failure (pass-1 errors, a chunk's errors)
-it enlists the same update with `ResultJson` holding the errors capped at `MaxReportedErrors`,
-`TotalErrors` and the checkpoint's `CommittedRowRanges` (empty when no chunk committed) and with
-`ErrorCount = TotalErrors`, and awaits `host.PersistAsync()`; it then appends
-`INotifier.Notify(batch.Batch, [request])` to the completion batch with a
-`NotificationRequest("core.import.failed", …)` to `[RunAsUserId]` — arguments `fileName` and
-`errorCode` (the first error's code), `TargetResource = "core.Import"`, `TargetId = ImportId` — and
-completes the item `Fail(JobError("Excel.Import.Failed", message, details = null))`. The argument
-names of all three are spec 0020's catalogue entries; the `fileName` of both import notifications is
-the uploaded workbook's `FileName` from the blob the handler resolved (§7.1). The three notification
-types are `Mutable = false` (spec 0020): the user cannot mute them, because the result is also
-reachable from the `imports` page and muting would strand nothing, and the default stays on.
+then the handler calls `NotifyOnSuccess` with a `NotificationRequest("core.import.completed", …)`
+to the item's `Job.RequestedById` — arguments `fileName`, `rowCount`, `errorCount`,
+`TargetResource = "core.Import"`, `TargetId = ImportId` — and `Succeed()`. On a deliberate failure
+(pass-1 errors, a chunk's errors) it enlists the same update with `ResultJson` holding the errors
+capped at `MaxReportedErrors`, `TotalErrors` and the checkpoint's `CommittedRowRanges` (empty when
+no chunk committed) and with `ErrorCount = TotalErrors`, and awaits `host.PersistAsync()`; it then
+appends `INotifier.Notify(batch.Batch, [request])` to the completion batch with a
+`NotificationRequest("core.import.failed", …)` to the item's `Job.RequestedById` — arguments
+`fileName` and `errorCode` (the first error's code), `TargetResource = "core.Import"`,
+`TargetId = ImportId` — and completes the item `Fail(JobError("Excel.Import.Failed", { }))`, a code
+with no arguments. The argument names of all three are spec 0020's catalogue entries; the
+`fileName` of both import notifications is the uploaded workbook's `FileName` from the blob the
+handler resolved (§7.1). The three notification types are `Mutable = false` (spec 0020): the user
+cannot mute them, because the result is also reachable from the `imports` page and muting would
+strand nothing, and the default stays on.
 
 ## 13. Access control and security
 

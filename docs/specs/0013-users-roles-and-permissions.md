@@ -168,8 +168,8 @@ model configuration of the six tables, and the singleton `ISecurableRegistry`, s
 - **Action** — a PascalCase identifier ≤ 32 characters. Platform set: `Read` (query, details, export
   in any format), `Save` (create and update, import included), `Delete` (by ids, by query, with
   descendants), `Activate` (both directions), `Invite`, `Preferences` (another user's bag, spec
-  0017), `Credentials` (a service account's client, spec 0017), `Retry`, `Cancel`, `Resume`,
-  `Diagnose`; capability- and service-declared additions follow.
+  0017), `Credentials` (a service account's client, spec 0017), `Retry`, `Cancel`, `Resume`;
+  capability- and service-declared additions follow.
 - **Wildcard** — `*` is the only wildcard, valid in either position of a stored permission; the
   registry refuses `*` as a real name. There are no prefix wildcards (`gl.*`).
 - **Display form** in logs, diagnostics and the role editor: `resource:action`. Route segments are
@@ -211,7 +211,6 @@ public static class AccessActions
     public const string Retry = "Retry";
     public const string Cancel = "Cancel";
     public const string Resume = "Resume";
-    public const string Diagnose = "Diagnose";
     public const string Wildcard = "*";
 }
 
