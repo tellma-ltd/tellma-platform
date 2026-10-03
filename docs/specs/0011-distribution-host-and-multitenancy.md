@@ -811,7 +811,7 @@ public interface ITenantMembershipDirectory
 ```
 
 `catalog.TenantMemberships` is a navigation hint, never an authorization source. Writers: spec
-0018's `UserService.AfterCommitAsync` after an invite, activation or deactivation commits (a second
+0018 §3.6's `UserService` effects after an invite, activation or deactivation commits (a second
 transaction against the catalog; a failure is logged and metered, never surfaced); the migrator's
 provisioning (the bootstrap administrator's hint); and `MembershipReconcileService`, a hosted timer
 in `Tellma.Core.AspNetCore` (`Tellma:Tenancy:MembershipReconcileInterval`, default 24 h; first run
@@ -821,11 +821,11 @@ the catalog with a zero timeout, so exactly one instance runs, and rebuilds the 
 statements of §7.5 — one tenant query and one catalog transaction per tenant, a failed tenant
 logged and the run continued. The timer repairs any post-commit write that failed, without a
 deployment. Readers: `GET /bff/user` (the company picker), the sign-in redirect that skips the
-picker for a single live membership (§5.5), and the admin
-`GET /api/admin/tenants/{id}/members` (§5.9). The directory answers in one catalog query and never
-opens a tenant database; every entry into a tenant is re-verified by the connect initializer, so a
-stale hint can at most show a tenant that answers `404` or hide one reachable by URL until the next
-deployment. The connect step never writes the hint.
+picker for a single live membership (§5.5), and the admin `GET /api/admin/v1/tenants/{id}/members`
+(§5.9). The directory answers in one catalog query and never opens a tenant database; every entry
+into a tenant is re-verified by the connect initializer, so a stale hint can at most show a tenant
+that answers `404` or hide one reachable by URL until the next deployment. The connect step never
+writes the hint.
 
 ### 3.9 The sandbox context
 
@@ -968,9 +968,9 @@ request delegates that endpoint filters do not reach). It runs, in order:
    raises the same exception on a failed deferred check so the optimistic path fails closed), then
    spec 0013's negotiation.
 3. **Assurance.** When `requirement.Assurance` is present: a `ServiceAccount` principal, which has
-   no `auth_time` to step up, gets spec 0015's `HumanRequiredException` (403 `human-required`);
-   otherwise, when the session's `acr` differs from `Assurance.Acr`, or `MaxAge` is set and
-   `AcrAuthTime` (else `AuthTime`) is older than it, the guard raises
+   no `auth_time` to step up, gets spec 0015's `IndividualRequiredException` (403
+   `individual-required`); otherwise, when the session's `acr` differs from `Assurance.Acr`, or
+   `MaxAge` is set and `AcrAuthTime` (else `AuthTime`) is older than it, the guard raises
    `StepUpRequiredException(Acr, MaxAge)` — as does spec 0014's `RequireAsync` for a sensitive
    pair a service checks in code, under the same bar — which the host answers with spec 0003's
    `401 insufficient_user_authentication` challenge (`StepUpChallenge.Write`).
@@ -1371,7 +1371,7 @@ tenantless, `Cache-Control: public, max-age=300`) with `resource` = that URI,
 `authorization_servers = [Tellma:Identity:Authority]`, `scopes_supported = ["tellma_api"]`,
 `bearer_methods_supported = ["header"]`; the `401` challenge names it. Token validation requires the
 exact endpoint audience `{PublicOrigin}/{tenantId}/mcp`; membership is verified by the connect
-initializer. Human users arrive through a client ID metadata document or a pre-registered public
+initializer. Individuals arrive through a client ID metadata document or a pre-registered public
 native client and are resolved by `sub`; autonomous agents wait for the machine-token transport
 (spec 0016). An agent that needs two tenants configures two servers; live and sandbox are two URLs.
 The server name is `tellma-tenant`; tool shape and listing are spec 0016's; the developer-tooling
@@ -1429,7 +1429,8 @@ path with the code in the console.
 // Tellma.Core.AspNetCore
 public sealed record DistributionInfo(
     string Slug, string DisplayName, string DeploymentId, string PlatformVersion, string DistributionVersion,
-    IdentityInfo Identity, IReadOnlyDictionary<string, string?> Surfaces, string Login);
+    IdentityInfo Identity, IReadOnlyDictionary<string, string?> Surfaces, string Login,
+    IReadOnlyList<int> AdminVersions);
 
 public sealed record IdentityInfo(string Authority, string Mode);
 
@@ -1445,29 +1446,39 @@ public interface ITenantProvisioningTrigger                 // Tellma.Core.Tenan
   carry the source commit),
   `identity: { authority, mode: "Standalone" | "InProc" }`,
   `surfaces: { "web": "/{tenantId}/api/web", "mcp": "/{tenantId}/mcp" | null, "api": null }`,
-  `login: "/bff/login"`. No tenant list, no secrets, no instance identity.
+  `login: "/bff/login"`, `adminVersions` (the admin versions this instance maps: `[1]`, or `[]`
+  when the admin surface is off). No tenant list, no secrets, no instance identity.
 - **`GET /health/live`** (process up; no I/O) and **`GET /health/ready`** (registry snapshot loaded
   and within `MaxStaleness`; Data Protection keys loadable; the authority's discovery document
   cached), both anonymous, both tenantless.
 - **Admin surface** (`Tellma.ControlPlane`, tenantless, JSON; mapped only when
   `Tellma:Admin:Enabled` is true, which defaults to true under `Tellma:Identity:Mode = Standalone`
   and to false under `InProc`, whose engine seeds no control-plane client — an on-premises operator
-  uses the migrator commands of §6.1 instead; `/api/admin` stays a reserved prefix either way):
-  `GET /api/admin/info` (the information document plus tenant counts by state);
-  `GET /api/admin/tenants` (descriptors, never locations); `POST /api/admin/tenants/{id}/state` with
-  `{ "state": "Active" | "ReadOnly" | "Suspended" | "Retired", "reason": "…" }` → the descriptor
-  plus `{ "effectiveWithinSeconds": 15 }`, `409` for an illegal transition;
-  `POST /api/admin/tenants` with `TenantRegistration` → registers a `Provisioning` row under a
+  uses the migrator commands of §6.1 instead; `/api/admin` stays a reserved prefix either way),
+  every route under a version segment `/api/admin/v{n}`, of which this release maps `v1`:
+  `GET /api/admin/v1/info` (the information document plus tenant counts by state);
+  `GET /api/admin/v1/tenants` (descriptors, no locations); `POST /api/admin/v1/tenants/{id}/state`
+  with `{ "state": "Active" | "ReadOnly" | "Suspended" | "Retired", "reason": "…" }` → the
+  descriptor plus `{ "effectiveWithinSeconds": 15 }`, `409` for an illegal transition;
+  `POST /api/admin/v1/tenants` with `TenantRegistration` → registers a `Provisioning` row under a
   sequence-allocated id (the caller never chooses one: `RegisterAsync` without `requestedId`, §3.7)
   and calls `ITenantProvisioningTrigger.StartAsync`, `501` while only
-  `NotConfiguredProvisioningTrigger` is registered; `GET /api/admin/tenants/{id}/members` (the hint
-  table). The policy's audience and its grant are §5.5's.
+  `NotConfiguredProvisioningTrigger` is registered; `GET /api/admin/v1/tenants/{id}/members` (the
+  hint table). The policy's audience and its grant are §5.5's.
+- **Admin versions.** The control plane calls every distribution, and each distribution adopts
+  platform releases on its own schedule, so the admin contract carries its own version, independent
+  of the public API's. A new endpoint, response member or optional request member stays within a
+  version, and a caller ignores members it does not know. A breaking change maps `v{n+1}` beside
+  `v{n}` in one platform release; the control plane moves a distribution to `v{n+1}` once its
+  `adminVersions` lists it, and the platform removes `v{n}` only after the control plane no longer
+  calls it. Instances of one distribution differ during a rolling deployment, so a caller retries a
+  `404` on the newer version once on the older one.
 
 The identity-server changes this spec and its siblings depend on — the `Distribution` seed client
 kind, per-tenant resources under a granted origin, client ID metadata documents, the interim native
-clients, the control-plane audience, the optional `tellma_kind` claim and the invite API's
-`existingOnly` flag — are specified by spec 0010, which ships before this spec and the rest of the
-family (specs 0011–0021).
+clients, the control-plane audience, the optional `tellma_kind` claim, the invite API's
+`existingOnly` flag and the versioned management routes — are specified by spec 0010, which ships
+before this spec and the rest of the family (specs 0011–0021).
 
 ## 6. Provisioning and the migrator
 
@@ -1889,7 +1900,7 @@ empty, on every pull request until the UI specs ship.
 |---|---|---|
 | `test/core/Tellma.Core.Tests` | unit | The graph gate (aggregation of every problem, cycles, unknown item types, `Fix` text, duplicate names, double options binding); topological override of a pack service by a dependent feature; registry snapshot semantics with `FakeTimeProvider` (unchanged version → no reload; changed → reload; `!=` on an older GUID; single flight; listener calls only for changed descriptors; staleness bound → `catalog-unavailable`); connection composition (profile precedence, `Application Name`, refusal of `;`/`=`, never logged) and every profile rule; the state-transition table including the illegal ones; `RequestContext` immutability, `Tenantless`, `RequireTenant`, snapshot round trip; the holder is set exactly by the two writers; `TenantSandboxContext` throws unbound; `taxonomy.json` consistency; `TellmaComposition.Validate` host-free. |
 | `test/core/Tellma.Core.IntegrationTests` | `Category=Integration` | Catalog migrations apply from empty and are idempotent; registration and state transitions bump `CatalogState.Version`; concurrent transitions (one wins, the other raises `TenantStateException` with `Code = Tenant.IllegalTransition`); membership list and TVP reconciliation (upsert plus per-tenant delete); `tellma_app` role and grants recomputed from the model and covering every schema and sequence; session store CRUD (the handle computed at creation, carried by the retrieved ticket and output by the termination deletes); refresh CAS with two concurrent refreshers (exactly one redeems); sweep deletes only rows expired for a day; `ITenantScopeFactory` against each state, with and without `allowNonActive` (`Provisioning` and `ReadOnly` open only with it and only for `Kind = System`), starting no activity of its own. |
-| `test/core/Tellma.Core.AspNetCore.Tests` | unit (`WebApplicationFactory`, fake authentication) | The tenant verdict matrix (unknown, retired, provisioning, suspended, read-only, active × read, write × anonymous, member, non-member); the CSRF matrix (each rule, each exemption, `AcceptsBinaryMetadata`, `415`); scheme isolation (a cookie on a bearer route fails, a bearer on the web route fails); every endpoint-audit violation named by route and method; back-channel token vectors (bad `iss`, bad `aud`, wrong `typ`, missing `events`, `nonce` present, expired, `sub`-only, replay → `200` no-op) and the listener receiving handles, never keys; `SessionHandle` bound on the cookie scheme and null on the bearer schemes; the step-up challenge shape; `/bff/user` shape and `401`; the information document shape and headers; health before and after the first snapshot; the PRM document shape; `PrincipalKind` derivation; `SessionSweepService` and `MembershipReconcileService` fire on their intervals, the latter only on the lock holder. |
+| `test/core/Tellma.Core.AspNetCore.Tests` | unit (`WebApplicationFactory`, fake authentication) | The tenant verdict matrix (unknown, retired, provisioning, suspended, read-only, active × read, write × anonymous, member, non-member); the CSRF matrix (each rule, each exemption, `AcceptsBinaryMetadata`, `415`); scheme isolation (a cookie on a bearer route fails, a bearer on the web route fails); every endpoint-audit violation named by route and method; back-channel token vectors (bad `iss`, bad `aud`, wrong `typ`, missing `events`, `nonce` present, expired, `sub`-only, replay → `200` no-op) and the listener receiving handles, never keys; `SessionHandle` bound on the cookie scheme and null on the bearer schemes; the step-up challenge shape; `/bff/user` shape and `401`; the information document shape and headers; the admin routes mapped under `v1` only, matching `adminVersions`; health before and after the first snapshot; the PRM document shape; `PrincipalKind` derivation; `SessionSweepService` and `MembershipReconcileService` fire on their intervals, the latter only on the lock holder. |
 | `distributions/acme/test/Tellma.Distro.Acme.Web.Tests` | unit | Composition parity (the web host and the migrator build byte-identical models); the audit passes for every mapped endpoint; one-way dependency (no `src/` project references `distributions/`); no secrets in tracked configuration; `Program.cs` contains exactly the three platform calls. |
 | `distributions/acme/test/Tellma.Distro.Acme.IntegrationTests` | `Category=Integration` | `migrate` then `provision` against the tier's SQL Server from an empty server; the seed tenants exist and are `Active`; `dbo.__TellmaProvisioning` records the platform steps with their versions and a bumped step re-runs; full sign-in through the in-proc engine (reusing the identity suite's OIDC flow client); the first tenant request binds `UserId`; a suspension takes effect on the next request and within one refresh on a second host; back-channel logout end to end; a refresh rejection ends the session; readiness before and after catalog availability; `ReadOnly` read succeeds and mutation is `403` against a database set `READ_ONLY`. |
 
@@ -2039,6 +2050,9 @@ The load-bearing decisions, where not already evident above:
     no ASP.NET package (§1.3).
 27. **A pack extends another feature's entity through a required shape or a sibling table, never
     by touching the class** — the leaf stays the one place columns are added (§2.4).
+28. **The admin surface carries its own URL version, advertised in the information document** —
+    one control plane calls distributions on different platform releases, so a breaking change
+    ships beside the old shape and the old one retires once nothing calls it (§5.9).
 
 ## Review flags
 

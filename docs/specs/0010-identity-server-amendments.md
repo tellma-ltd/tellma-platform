@@ -17,7 +17,7 @@ plane. The distribution host (spec 0011), the web API with its MCP surface (spec
 stack (spec 0018) each depend on a change to that server that no tenant-side spec can own, and each
 of those specs excludes the change from its own definition of done.
 
-This spec collects the changes: seven deltas to spec 0003, each stated once with the behaviour it
+This spec collects the changes: eight deltas to spec 0003, each stated once with the behaviour it
 replaces and, where the delta is code rather than seed configuration, the test that proves it.
 Nothing else about the server changes. Every rule of spec 0003 not named here stands: PKCE S256
 required, `iss` in authorization responses, refresh-token rotation with reuse detection, exact
@@ -27,7 +27,8 @@ The order below is the implementation order. The `Distribution` seed kind (§2) 
 reference distribution's in-proc identity mode; per-tenant resources (§3) and client ID metadata
 documents (§4) unblock the MCP surface, with the interim native clients (§5) bridging until §4
 ships; the control-plane grants (§6) unblock the admin surface; the `tellma_kind` claim (§7) is
-optional; `existingOnly` (§8) unblocks sandbox invites.
+optional; `existingOnly` (§8) unblocks sandbox invites; the versioned management routes (§9) ship
+before spec 0018's identity client, the API's first distribution caller.
 
 ## Goals / Non-goals
 
@@ -45,6 +46,8 @@ optional; `existingOnly` (§8) unblocks sandbox invites.
   audience.
 - Stamp `tellma_kind` on every access token.
 - Add `existingOnly` to the bulk invite API so a sandbox tenant never causes an email.
+- Put the management API under a version segment so a breaking change rolls out across
+  distributions on different platform releases.
 
 **Non-goals (explicitly out of scope)**
 
@@ -64,10 +67,10 @@ so a block is never pasted into code.
 
 | Project | Location | Change |
 |---|---|---|
-| `Tellma.Identity` (the engine) | `src/apps/Tellma.Identity/` | the seed kind and descriptor (§2), resource evaluation (§3), the metadata-document resolver and discovery changes (§4), the control-plane grants (§6), the claim (§7), the invite flag (§8) |
+| `Tellma.Identity` (the engine) | `src/apps/Tellma.Identity/` | the seed kind and descriptor (§2), resource evaluation (§3), the metadata-document resolver and discovery changes (§4), the control-plane grants (§6), the claim (§7), the invite flag (§8), the versioned routes (§9) |
 | `Tellma.Identity.Migrations` | `src/apps/Tellma.Identity.Migrations/` | none: no table changes; metadata documents are cached in memory |
 | `Tellma.Identity.Web` | `src/apps/Tellma.Identity.Web/` | configuration only (§4, §5, §6) |
-| Tests | `test/apps/Tellma.Identity.Tests`, `test/apps/Tellma.Identity.IntegrationTests` | §9 |
+| Tests | `test/apps/Tellma.Identity.Tests`, `test/apps/Tellma.Identity.IntegrationTests` | §10 |
 
 No new package is referenced. The metadata-document fetch uses the engine's existing
 `IHttpClientFactory` registration with a named client `Tellma.Identity.ClientMetadata`.
@@ -220,7 +223,7 @@ it.
 
 ## 7. The `tellma_kind` claim
 
-Every access token carries `tellma_kind`: `human` when the token descends from an
+Every access token carries `tellma_kind`: `individual` when the token descends from an
 `authorization_code` or `device_code` grant (refreshes inherit it); `service` for
 `client_credentials` and for token exchange of a machine token. The claim is set from the grant
 type at issuance and is never client-supplied. Resource servers prefer it to the `auth_time`
@@ -249,31 +252,59 @@ does. A `disabled` or `purged` user answers the existing refusal. The delivery-s
 unaffected. Spec 0018's user stack sets the flag on sandbox tenants and maps both errors to one
 validation code.
 
-## 9. Testing
+## 9. Management API versions
+
+The management API of spec 0003 §11.4 moves under a version segment, relative to the authority;
+the unversioned routes are removed, and their only callers, the server's own suites and engineering
+scripts, move to `v1`:
+
+| Routes | API |
+|---|---|
+| `POST api/identity/v1/invitations` | bulk invite (§8) |
+| `POST api/identity/v1/invitations/delivery-status` | bulk delivery status |
+| `POST api/identity/v1/service-accounts`; `GET`, `DELETE api/identity/v1/service-accounts/{clientId}` | service accounts |
+| `GET api/identity/v1/users/{sub}`; `POST api/identity/v1/users/{sub}/temporary-access-passes` | operator |
+
+The version is the API's own integer, independent of the engine's release. One server answers every
+distribution, and each distribution adopts platform releases on its own schedule, so:
+
+- A new endpoint, response member or optional request member stays within a version, as §8's
+  `ExistingOnly` does, and a caller ignores response members it does not know.
+- A breaking change maps `v{n+1}` beside `v{n}` in one server release, before any platform release
+  calls it; `v{n}` is removed once nothing calls it.
+- Every call is counted on `tellma.identity.api.calls` (tags `version`, `endpoint`) and logged with
+  the calling client, so an operator sees when a version falls silent and who still calls it.
+
+An in-proc engine answers only its own distribution, whose identity client ships in the same
+platform release, so the overlap matters for the shared server alone.
+
+## 10. Testing
 
 | Suite | Tier | Pins |
 |---|---|---|
 | `test/apps/Tellma.Identity.Tests` | unit | The resource evaluator's vectors (`origin` exact; `origin/17/mcp` accepted; `origin/017/mcp`, `origin/17/mcp/`, `origin/17/other`, `origin/17/mcp?x`, `other-origin/17/mcp` and `origin/0/mcp` refused; a granted resource with a path never anchors the pattern; a document client's `resource` evaluated against the distribution-origin list of §4, an origin outside that list refused); document validation vectors (`client_id` mismatch, missing redirects, `client_secret_basic`, inline `jwks`, off-origin `jwks_uri`, loopback port relaxation); fetch guards against a fake handler (private address, redirect, oversize, wrong content type, timeout); cache clamping; the seed descriptor of a `Distribution` entry (both applications, all permissions, idempotence, secret rotation, never deleting); `tellma_kind` by grant type; `existingOnly` outcomes. |
-| `test/apps/Tellma.Identity.IntegrationTests` | `Category=Integration` | The full code flow of a document client against a local document server, with consent showing the host; `resource=origin/17/mcp` through code exchange and refresh with `aud` asserted, a refresh to `origin/18/mcp` refused, a refresh to `origin` refused; a control-plane token with a distribution audience; a `Distribution` seed applied twice; the bulk invite with mixed `existingOnly` items asserting no mail queued for them; the discovery document advertising `client_id_metadata_document_supported: true` and `none` among `token_endpoint_auth_methods_supported`. |
+| `test/apps/Tellma.Identity.IntegrationTests` | `Category=Integration` | The full code flow of a document client against a local document server, with consent showing the host; `resource=origin/17/mcp` through code exchange and refresh with `aud` asserted, a refresh to `origin/18/mcp` refused, a refresh to `origin` refused; a control-plane token with a distribution audience; a `Distribution` seed applied twice; the bulk invite with mixed `existingOnly` items asserting no mail queued for them; the discovery document advertising `client_id_metadata_document_supported: true` and `none` among `token_endpoint_auth_methods_supported`; every management route answering under `v1` and `404` without the segment. |
 
 Both suites run on every pull request on Windows and Linux (spec 0011 §10); no `Live=true` suite
 exists, so the nightly tier runs nothing for this spec.
 
-## 10. Definition of done
+## 11. Definition of done
 
 - **Projects**: `src/apps/Tellma.Identity` grown, its README updated, XML docs on every member,
   building and testing on Windows and Linux under warnings-as-errors; no new project.
-- **Behavior**: §2, §3, §4, §6, §7 and §8 implemented and pinned by the suites of §9; §5 is seed
-  configuration carried by the `Tellma.Identity.Web` row of §1 and is not pinned by a suite; the
-  discovery document changes of §4 asserted.
+- **Behavior**: §2, §3, §4, §6, §7, §8 and §9 implemented and pinned by the suites of §10; §5 is
+  seed configuration carried by the `Tellma.Identity.Web` row of §1 and is not pinned by a suite;
+  the discovery document changes of §4 asserted.
 - **Observability**: audit events `client.metadata.fetched`, `client.metadata.rejected` (reason),
-  `resource.refused` (client, requested), `seed.distribution.applied`; the counter
-  `tellma.identity.client_metadata.fetches` (tag `outcome` ∈ `fetched | rejected | failed`) on the
-  `Tellma.Identity` meter. No `client_id` URL is a metric tag.
+  `resource.refused` (client, requested), `seed.distribution.applied`; the counters
+  `tellma.identity.client_metadata.fetches` (tag `outcome` ∈ `fetched | rejected | failed`) and
+  `tellma.identity.api.calls` (§9) on the `Tellma.Identity` meter. No `client_id` URL is a metric
+  tag.
 - **CI**: unit and integration suites green on every pull request on both platforms.
 - **Docs**: the architecture document's identity section updated for metadata-document support,
-  per-tenant resources by path pattern, the `Distribution` seed kind and the control-plane grants.
-  Public XML docs and error messages reference no `docs/` paths, per repo rule.
+  per-tenant resources by path pattern, the `Distribution` seed kind, the control-plane grants and
+  the versioned management routes. Public XML docs and error messages reference no `docs/` paths,
+  per repo rule.
 - **Not in scope of done**: retiring the interim clients of §5 (a later configuration change plus an
   operator deletion); distribution self-registration; the tenant side of every item (specs 0011,
   0016, 0018).
@@ -297,6 +328,9 @@ The load-bearing decisions, where not already evident above:
    principal kind from `auth_time` (§7).
 7. **The `Distribution` seed kind mirrors the onboarding automation exactly** — in-proc and
    standalone deployments register the same two applications (§2).
+8. **A URL version segment on the management API, additive changes inside a version** — one
+   server answers distributions on different platform releases, so a breaking change ships beside
+   the old shape and the old one retires once nothing calls it (§9).
 
 ## Review flags
 
@@ -313,5 +347,5 @@ The load-bearing decisions, where not already evident above:
    self-registration exists.
 6. **`existing_user_has_no_credential` as an error** (§8) versus answering `Active` for any
    existing user. Flips if sandbox users commonly exist without a credential.
-7. **The claim name `tellma_kind` with values `human | service`** (§7). Flips only with a
+7. **The claim name `tellma_kind` with values `individual | service`** (§7). Flips only with a
    platform-wide claim-naming review.
