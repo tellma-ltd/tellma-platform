@@ -300,7 +300,8 @@ public sealed record CalendarContributionItem(Type CalendarType) : FeatureContri
 public sealed record ProvisioningStepContributionItem(Type StepType) : FeatureContributionItem;
 public sealed record JobHandlerContributionItem(Type HandlerType) : FeatureContributionItem;
 public sealed record BuiltInScheduleContributionItem(
-    string HandlerKey, string Cron, object? Arguments, string? TimeZoneId) : FeatureContributionItem;
+    int Id, string HandlerKey, string Cron, object? Arguments, string? TimeZoneId) : FeatureContributionItem;
+public sealed record RetiredJobKeyContributionItem(string Key) : FeatureContributionItem;
 public sealed record NotificationTypeContributionItem(
     NotificationTypeDescriptor Descriptor) : FeatureContributionItem;
 public sealed record NotificationChannelContributionItem(
@@ -339,7 +340,8 @@ public sealed class FeatureContribution
     public FeatureContribution ProvisioningStep<TStep>() where TStep : ITenantProvisioningStep;
     public FeatureContribution JobHandler<THandler>();
     public FeatureContribution BuiltInSchedule(
-        string handlerKey, string cron, object? arguments = null, string? timeZoneId = null);
+        int id, string handlerKey, string cron, object? arguments = null, string? timeZoneId = null);
+    public FeatureContribution RetiredJobKey(string key);
     public FeatureContribution NotificationType(NotificationTypeDescriptor descriptor);
     public FeatureContribution NotificationChannel(NotificationChannelDescriptor descriptor);
     public FeatureContribution ClientEvent(string name);
@@ -374,7 +376,7 @@ public sealed class TellmaCompositionException(
 | `Securables` | Realised by spec 0013 (`ISecurableContributor`). |
 | `SettingKeys`, `Calendar` | Realised by spec 0012. |
 | `ProvisioningStep` | Registers the step as a scoped service and adds it to the migrator's ordered list (§6.2). |
-| `JobHandler`, `BuiltInSchedule` | Realised by spec 0019. |
+| `JobHandler`, `BuiltInSchedule`, `RetiredJobKey` | Realised by spec 0019. |
 | `NotificationType`, `NotificationChannel`, `ClientEvent` | Realised by spec 0020. |
 | `BlobKind` | Realised by spec 0016: transforms the policy the kind's `[BlobReference]` preset produced (spec 0016 §1.3). |
 | `RequiresShape` | Realised by the `core.entity-shapes` check (§2.3, §2.4). |

@@ -286,7 +286,7 @@ is a standard segment or an action's `Name`; a standard operation exists only wh
 | `inspect-import` | `Save` | `InspectImportRequest` (spec 0018) | `ImportPlan` | `Import` |
 | `import` | `Save` | `ImportRequest` (spec 0018) | `ImportOutcome` | `Import` |
 | `import/start` | `Save` | `StartImportRequest` (spec 0018) | 202 `JobAccepted` | `Import` |
-| `{action-segment}` | an `[EntityAction]`: `EntityActionDescriptor.Action`; an `[ApiAction]`: `ApiActionDescriptor.Securable` (null → none) | an `[EntityAction]` answering `EntitiesResult<T>`: `EntityActionRequest`, or `EntityActionRequest<TArguments>` when it takes arguments; one with its own result: `IdsRequest`, or `IdsRequest<TArguments>` when it takes arguments, and one marked `SingleTarget` (spec 0014 §2.3): `IdRequest`, or `IdRequest<TArguments>` when it takes arguments; an `[ApiAction]`: the method's body type | `EntitiesResult<T>` or the method's result (the descriptor's `ResultType`) | Declared on the service |
+| `{action-segment}` | an `[EntityAction]`: `EntityActionDescriptor.Action`; an `[ApiAction]`: `ApiActionDescriptor.Securable` (null → none) | an `[EntityAction]` answering `EntitiesResult<T>`: `EntityActionRequest`, or `EntityActionRequest<TArguments>` when it takes arguments; one with its own result: `IdsRequest`, or `IdsRequest<TArguments>` when it takes arguments, and one marked `SingleTarget` (spec 0014 §2.3): `IdRequest`, or `IdRequest<TArguments>` when it takes arguments; an `[ApiAction]`: the method's body type | `EntitiesResult<T>` or the method's result (the descriptor's `ResultType`); 202 when that result is `JobAccepted` (§3.9) | Declared on the service |
 
 Securable actions are PascalCase (`Read`, `Save`, `Delete`, `Activate`, `Invite`); an action segment
 is the action's whole `Name`: one or more kebab-case segments joined by `/` (`invite`,
@@ -308,7 +308,7 @@ JSON body (an action with no body accepts an empty object or no body): `users/in
 segment), `access/check` (spec 0017), `settings/client`, `settings/entity-tags`, `settings/details`,
 `settings/save`, `settings/refresh-caches` (spec 0012), `inbox/summary`, `inbox/seen`, `inbox/read`,
 `inbox/read-all`, `notification-preferences/get`, `notification-preferences/save` (spec 0020),
-`jobs/retry`, `jobs/cancel`, `jobs/resume`, `jobs/error-details`, `schedules/take-over` (spec 0019;
+`jobs/retry`, `jobs/cancel`, `jobs/resume`, `schedules/take-over`, `schedules/run-now` (spec 0019;
 entity-service actions). `settings/client` is member-only, not anonymous: the client settings
 document is tenant content.
 
@@ -491,7 +491,7 @@ public sealed class EntitiesResult<TEntity>
 
 public sealed record AffectedResult(int Count);
 
-public sealed record JobAccepted(int JobId, int? ResourceId);   // the 202 body; ResourceId = the Imports row (spec 0018); null for an export, whose row the handler inserts on completion
+public sealed record JobAccepted(int JobId, int? ResourceId);   // the 202 body (§3.9); ResourceId = the Imports row (spec 0018); null for an export, whose row the handler inserts on completion, and for a schedule's run-now (spec 0019)
 
 public sealed record MeResult(
     UserProfileView User, string PreferencesTag, IReadOnlyDictionary<string, string> Preferences,   // the caller's bag (spec 0013)
@@ -709,12 +709,13 @@ exposed on MCP.
   the thresholds of spec 0018 §2.3 fails with that spec's 413 or 422, whose message names the
   `/start` route, and is never promoted to background. `export/start`, `export-for-import/start` and
   `import/start` take the request records of their synchronous routes, `import/start`'s adding
-  `Atomic` (spec 0018's `StartImportRequest`), and are the only background path; they return 202
-  `JobAccepted(JobId, null)` for the exports and `JobAccepted(JobId, ImportId)` for `import/start`.
-  `import` answers spec 0018's `ImportOutcome` as 200. A 202 carries its polling target in the body
-  rather than a `Location` header; the SPA follows the job as §9.3 describes. `inspect-import`,
-  `import` and `import/start` take JSON bodies naming a staged `FileId`; no multipart endpoint
-  exists in this release.
+  `Atomic` (spec 0018's `StartImportRequest`), and return `JobAccepted(JobId, null)` for the exports
+  and `JobAccepted(JobId, ImportId)` for `import/start` (202, below). `import` answers spec 0018's
+  `ImportOutcome` as 200. `inspect-import`, `import` and `import/start` take JSON bodies naming a
+  staged `FileId`; no multipart endpoint exists in this release.
+- **Jobs.** Every operation whose result is `JobAccepted` answers 202: the three `/start` operations
+  above and spec 0019's `schedules/run-now`. A 202 carries its polling target in the body rather
+  than a `Location` header; the SPA follows the job as §9.3 describes.
 - **Blobs.** The upload is a raw body (`AcceptsBinaryMetadata`); the download is the one GET
   (§9.1).
 - **`me`.** `users/me` returns `MeResult`, the caller's preference bag included; the SPA calls it
@@ -1319,11 +1320,11 @@ properties.
 
 The seven Excel operations are `[ApiAction]`s contributed by spec 0018's `ExcelOperations<TEntity>`
 and projected like any action (§2.3) under the policies of §4.3. The synchronous exports stream
-(§3.9); `export/start`, `export-for-import/start` and `import/start` answer 202 `JobAccepted`. Job
-progress reaches the SPA through `jobs/query` (self-scope) and the hub's `job.changed`; a finished
-export's row through `exports/query` on `JobId` or the inbox notice, then the file through the blob
-GET; a finished import's outcome through `imports/get` (`ResultJson`). No polling endpoint exists
-beyond the standard operations.
+(§3.9); the three `/start` operations answer 202 `JobAccepted`, as every operation with that result
+does (§3.9). Job progress reaches the SPA through `jobs/query` (self-scope) and the hub's
+`job.changed`; a finished export's row through `exports/query` on `JobId` or the inbox notice, then
+the file through the blob GET; a finished import's outcome through `imports/get` (`ResultJson`). No
+polling endpoint exists beyond the standard operations.
 
 ### 9.4 Health and tenantless endpoints
 

@@ -924,8 +924,9 @@ and, once per run, `IBlobStore.PurgeIncompleteAsync(tenantId, now − 24 h)`.
 - **An FK violation** on the row delete is impossible by construction (only `Staged`, `Released`
   and `Deleting` rows are deleted; only `Staged` rows can be attached) and, if it ever occurs, is
   logged (`BlobSweepRowRetained`), counted in `tellma.blobs.sweep.failures` and skipped.
-- **Progress** through `IJobProgress.Report` after each batch (message: rows claimed, objects
-  deleted); the job's cancellation token is checked between batches.
+- **Progress** through `IJobProgress.Report` after each batch, with the message
+  `Blob.SweepProgress` and the arguments `{ claimed, deleted }` (rows claimed, objects deleted);
+  the job's cancellation token is checked between batches.
 - **Erasure latency.** A replaced or deleted blob is physically gone within one sweep interval
   (15 minutes) of the commit that released it, never at the commit itself. A released blob is
   already unreachable — its owner no longer points at it and the `GET` authorises through the
@@ -964,13 +965,13 @@ the migrator's identity and never touches rows.
 
 ### 7.4 Schedules
 
-`CoreFeature` contributes `BuiltInSchedule("core.blob-sweep", "*/15 * * * *")` and
-`BuiltInSchedule("core.blob-reconcile", "0 2 * * 6")` (Saturday 02:00 in the tenant zone; Saturday
-is the one day inside both the Friday–Saturday and the Saturday–Sunday weekend) — the expressions of
-record in spec 0019's built-in schedule table — realised as spec 0019's built-in `core.Schedules`
-rows: `OverlapPolicy = Skip`, `MissedPolicy = Coalesce`, run as the system user, immutable except
-for `Name*`, `CronExpression` and `TimeZoneId`. A tenant that needs faster erasure edits the sweep's
-cron; it cannot deactivate it.
+`CoreFeature` contributes `BuiltInSchedule(4, "core.blob-sweep", "*/15 * * * *")` and
+`BuiltInSchedule(5, "core.blob-reconcile", "0 2 * * 6")` (Saturday 02:00 in the tenant zone;
+Saturday is the one day inside both the Friday–Saturday and the Saturday–Sunday weekend) — the ids
+and expressions of record in spec 0019's built-in schedule table — realised as spec 0019's built-in
+`core.Schedules` rows: `OverlapPolicy = Skip`, `MissedPolicy = Coalesce`, run as the system user,
+immutable except for `Name*`, `CronExpression` and `TimeZoneId`. A tenant that needs faster erasure
+edits the sweep's cron; it cannot deactivate it.
 
 ## 8. The web surface
 

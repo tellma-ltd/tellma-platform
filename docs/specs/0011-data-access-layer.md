@@ -514,6 +514,12 @@ start on any error). Rules:
 - **Mapped capability columns.** Every property declared by a platform base or capability
   interface is mapped: a leaf cannot un-inherit, so the only way to break the contract is
   `[NotMapped]`/`Ignore()`, which is refused.
+- **Column and table names.** Every property a platform base, a capability interface or a default
+  leaf declares maps under its CLR name: a `[Column]` name or a `HasColumnName` on it is a model
+  problem (`[Column(TypeName = …)]` is allowed), and a leaf that re-declares `[Table]` names its
+  default's schema and table. The platform's fixed-text statements name those tables and columns
+  literally on this guarantee; a statement over a table the caller chooses takes the table from
+  `EntityMetadata`.
 - **Child pairing.** Every `[ParentKey]` is a foreign key to a top-level table; every `[NotMapped]`
   `list<TChild : ChildEntity>` pairs with the one `[ParentKey]` foreign key on `TChild`, which
   declares exactly one; a `[NotMapped]` list of a non-child type is an error.
@@ -1148,8 +1154,8 @@ Retry is the executor's job: SqlClient's own retry logic is inert inside a trans
   reload instruction. Metered `tellma.data.commit.probes` by `outcome`.
 - **`TransactionMode.None`** batches follow the reported-transient rule of the first bullet — the
   whole round trip is re-run even though statements that autocommitted before the failure then run
-  twice, so a `None` batch's composer must tolerate that (spec 0019's stray-claim reconciliation) —
-  and are re-run after an ambiguous failure only when every statement is `Idempotent`.
+  twice, so a `None` batch's composer must tolerate that (spec 0019 §6.8) — and are re-run after an
+  ambiguous failure only when every statement is `Idempotent`.
 - **`TransactionMode.Explicit`** batches are never re-run in either class: a transient error has
   already rolled back the explicit transaction on the server, so the error surfaces at once and
   the caller re-runs its whole unit of work.
@@ -1672,7 +1678,8 @@ Schema rules:
   (filtered included) covers it, and the structured `StoreType` from EF's type mapping (enums
   through their converter: `String` with `VarChar(n)`). Absent: `[NotMapped]` members, period
   columns, `[JsonColumn]` strings, `varbinary`, `time`, `float`/`real`, `Blob.StorageKey`,
-  `Blob.Sha256`, `Job.ErrorDetails`. `P2`/`P3` of a `[Multilingual]` group are present per shape.
+  `Blob.Sha256`, `Job.StateJson`, `Job.LeaseToken`. `P2`/`P3` of a `[Multilingual]` group are
+  present per shape.
 - **Navigations.** Every many-to-one foreign key, named by the CLR navigation when one exists and
   by the FK column minus `Id` otherwise (`ParentId` → `Parent`, `CreatedById` → `CreatedBy`,
   `UserId` → `User`, `RoleId` → `Role`, `ImageId` → `Image`); a `[ParentKey]` yields the child's
@@ -2153,6 +2160,8 @@ The load-bearing decisions, where not already evident above:
     `StatementOrdinal` on statement-bound exceptions** — a statement a caller appends may write only
     the tables of its own stack, so another stack's table reaches a batch only as an enlisted group,
     and a persist-time error is attributed to the group whose statement raised it (§5.2, §6.4).
+34. **Literal names in fixed-text statements rest on the §3.2 gate** — renames inside the platform
+    are caught by the integration suites, which execute every statement (§3.2).
 
 ## Review flags
 

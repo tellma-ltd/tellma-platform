@@ -269,8 +269,8 @@ catalogue, with the spec whose code raises each type and therefore declares its 
 | `core.export.ready` | `files` | false | `core.Export` | spec 0018's export handler | `{ fileName, rowCount }` |
 | `core.import.completed` | `files` | false | `core.Import` | spec 0018's import handler | `{ fileName, rowCount, errorCount }` |
 | `core.import.failed` | `files` | false | `core.Import` | spec 0018's import handler | `{ fileName, errorCode }` |
-| `core.job.failed` | `jobs` | false | `core.Job` | spec 0019 | `{ handlerKey, errorCode, errorMessage }` |
-| `core.job.held` | `jobs` | false | `core.Job` | spec 0019 | `{ handlerKey, dueAt }` |
+| `core.job.failed` | `jobs` | false | `core.Job` | spec 0019 | `{ handlerKey, errorCode }` |
+| `core.job.held` | `jobs` | false | none | spec 0019 (`DedupKey = 'core.job.held'`) | `{ count }` |
 | `core.schedule.paused` | `jobs` | true | `core.Schedule` | spec 0019 | `{ scheduleId, name, reason }` |
 | `core.scheduler.gap` | `jobs` | false | none | spec 0019 (`DedupKey = 'core.scheduler.gap'`) | `{ previousTickAt, now, heldCount }` |
 | `core.user.added` | `users` | true | none | spec 0017's `UserService.Invite` | `{ tenantName, actorName }` |
@@ -843,11 +843,11 @@ single-instance on-premises and SaaS need none.
 
 ## 7. Retention
 
-`NotificationRetentionHandler` (`Tellma.Core.Notifications`) is an arguments-only
-`IJobHandler` with `[JobHandler("core.notification-retention", LeaseSeconds = 600)]` (spec 0019's
-attribute), registered through `FeatureContribution.JobHandler<NotificationRetentionHandler>()`
-and scheduled by `FeatureContribution.BuiltInSchedule("core.notification-retention", "30 3 * * *")`
-— the schedule row lives in spec 0019's reserved band, runs as the system user, and fires after
+`NotificationRetentionHandler` (`Tellma.Core.Notifications`) is an arguments-only `IJobHandler`
+with `[JobHandler("core.notification-retention", LeaseSeconds = 600)]` (spec 0019's attribute),
+registered through `FeatureContribution.JobHandler<NotificationRetentionHandler>()` and scheduled by
+`FeatureContribution.BuiltInSchedule(2, "core.notification-retention", "30 3 * * *")` — the schedule
+row lives in spec 0019's reserved band, runs as the system user, and fires after
 `core.job-retention`. Each page is its own `Maintenance` round trip, `Idempotent = true`
 (`@tb{b}_p0` = `RetentionPageSize`, `@tb{b}_p1` = `ReadRetention` in seconds, `@tb{b}_p2` =
 `UnreadRetention` in seconds; `ResultSets = 1`), looping per band until a page is short and
@@ -987,8 +987,8 @@ no service subclass exists), `ApiService<InboxService>()`,
 `NotificationType(core.user.added)`, `NotificationChannel(inbox)`,
 `NotificationChannel(email)`, `ClientEvent("inbox.changed")`,
 `ClientEvent("session.ended")`, `JobHandler<NotificationRetentionHandler>()`,
-`BuiltInSchedule("core.notification-retention", "30 3 * * *")`, and the two standalone table types
-on the model. `IClientEventPublisher` is registered with `TryAdd` as the null publisher.
+`BuiltInSchedule(2, "core.notification-retention", "30 3 * * *")`, and the two standalone table
+types on the model. `IClientEventPublisher` is registered with `TryAdd` as the null publisher.
 
 `IStartupCheck`s reporting into spec 0010's realised gate: `notification-types` (every key and
 category matches its grammar; keys unique; every non-null `TargetResource` is a registered
