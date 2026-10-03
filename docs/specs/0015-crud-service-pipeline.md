@@ -426,7 +426,7 @@ public abstract class EntityService<TEntity, TKey>
     protected virtual Task ValidateDeleteAsync(DeleteContext<TEntity, TKey> context);
     protected virtual Task ValidateActionAsync(string action, ActionContext<TEntity, TKey> context);
     protected virtual Task ContributeAsync(PersistContext<TEntity> context);
-    protected virtual Task AfterCommitAsync(PersistOutcome<TEntity, TKey> outcome);
+    protected virtual Task AfterCommitAsync(PersistOutcome<TEntity> outcome);
     protected virtual void ContributeDetails(DetailsPlan<TEntity, TKey> plan);
     protected virtual FilterTree? SearchFilter(string search);
 }
@@ -470,7 +470,7 @@ public interface IEntityBehavior<TEntity, TKey>
     Task ValidateDeleteAsync(DeleteContext<TEntity, TKey> context);
     Task ValidateActionAsync(string action, ActionContext<TEntity, TKey> context);
     Task ContributeAsync(PersistContext<TEntity> context);
-    Task AfterCommitAsync(PersistOutcome<TEntity, TKey> outcome);
+    Task AfterCommitAsync(PersistOutcome<TEntity> outcome);
     void ContributeDetails(DetailsPlan<TEntity, TKey> plan);
     FilterTree? SearchFilter(string search);
 }
@@ -553,9 +553,10 @@ and every base up to `Entity<TKey>`. A component may implement `IEnlists<TTarget
 validation methods, enlist writes into another stack through the context's `Host` (§13.3). Order:
 the service's own hook first, then components in registration order — feature order (the `Requires`
 closure) then declaration order within a feature. `DeleteContext<TEntity>`,
-`ActionContext<TEntity>`, `PersistOutcome<TEntity>` and `DetailsPlan<TEntity>` are the key-erased
-views of the contexts of §7 and §13 that a component written against a base sees;
-`SaveContext<TEntity>` and the `PersistContext<TEntity>` kinds of §13.1 carry no key and have no
+`ActionContext<TEntity>`, `DeletePersistOutcome<TEntity>`, `ActionPersistOutcome<TEntity>` and
+`DetailsPlan<TEntity>` are the key-erased views of the contexts of §7, the outcomes of §13.1 and the
+plan of §5.3 that a component written against a base sees; `SaveContext<TEntity>`, the
+`PersistContext<TEntity>` kinds of §13.1 and `SavePersistOutcome<TEntity>` carry no key and have no
 erased view.
 
 ### 3.3 Pack services and distribution extension
@@ -1290,7 +1291,7 @@ root-level name (`Ids[2]`) is a property segment then an index; a whole-payload 
 enlistment's `MapPath` into the host's list and carries the target's entity name under
 `enlistedResource` (§13.3). Prose elsewhere writes paths in the rendered form (`[i].ParentId`,
 `Ids[i]`). Codes are dotted PascalCase resource keys; the platform's are the constants above, packs
-and distributions publish theirs beside them (`Centers.ParentMustBeGrouping`, `Users.NotHuman`);
+and distributions publish theirs beside them (`Centers.ParentMustBeGrouping`, `Users.NotService`);
 arguments are named raw values — strings, numbers, booleans, `DateOnly` and `DateTimeOffset`, never
 pre-formatted text — that feed ICU MessageFormat twice: on the server under the request culture for
 the rendered message, and in the SPA from spec 0013's string pack in the language the user is
@@ -1691,18 +1692,35 @@ public sealed class DeletePersistContext<TEntity> : PersistContext<TEntity>;
 
 public abstract class PersistOutcome<TEntity>
 {
-    public IReadOnlyList<TEntity> Entities { get; set; }
-    public TEntity? Before(int index);
+    public IReadOnlyList<TEntity> Entities { get; set; }    // save: the payload with final ids; action: the target rows (empty on §11.1's fast path); delete: empty
     public DateTimeOffset Stamp { get; set; }               // datetimeoffset(7)
     public RequestContext Context { get; set; }
     public VersionTagSnapshot VersionTags { get; set; }     // after the bumps; BatchOutcome.VersionTags
     public UserVersionTagSnapshot? UserVersionTags { get; set; }   // BatchOutcome.UserVersionTags (spec 0013 §2.5)
 }
 
-public sealed class PersistOutcome<TEntity, TKey> : PersistOutcome<TEntity>
+public sealed class SavePersistOutcome<TEntity> : PersistOutcome<TEntity>
 {
-    public IReadOnlyList<TKey> AffectedIds { get; set; }
-    public IReadOnlyList<TKey> DeletedIds { get; set; }
+    public TEntity? Before(int index);
+    public SaveOptions Options { get; set; }
+}
+
+public abstract class DeletePersistOutcome<TEntity> : PersistOutcome<TEntity>;
+
+public sealed class DeletePersistOutcome<TEntity, TKey> : DeletePersistOutcome<TEntity>
+{
+    public IReadOnlyList<TKey> DeletedIds { get; set; }     // descendants included for a delete with descendants
+}
+
+public abstract class ActionPersistOutcome<TEntity> : PersistOutcome<TEntity>
+{
+    public string Action { get; set; }                      // the action's Name
+    public object? Arguments { get; set; }
+}
+
+public sealed class ActionPersistOutcome<TEntity, TKey> : ActionPersistOutcome<TEntity>
+{
+    public IReadOnlyList<TKey> Ids { get; set; }            // the target ids, request order
 }
 ```
 
@@ -1733,14 +1751,19 @@ batch through `SaveOptions.OnPersist` (§4.1, §6.7), never through an effect or
 ### 13.2 Post-commit
 
 `AfterCommitAsync(PersistOutcome)` — the hook, then every `IPersistEffect<T>` — runs after the
-commit is acknowledged, outside any transaction, with the entities, their before images, the
-affected ids, the deleted ids, the batch stamp and the version tags after the bumps; the batch's
-`OnCommitted` callbacks (the hub nudge, `job.changed`) run in the same phase. Uses: SignalR pushes,
-best-effort external calls a distribution accepts as best-effort, spec 0011's membership hint
-write-back. Failures are logged with the save's trace id and counted on
-`tellma.crud.effects.failures` (tag `crud.effect` = the component's type name); they never change
-the response and are never retried by the executor. No blob is deleted here: replaced blobs are
-released inside the transaction and swept by spec 0017's job.
+commit is acknowledged, outside any transaction, with the outcome kind of the operation that
+committed, paired with the context kind of §13.1: a `SavePersistOutcome` (the payload with final
+ids, the before images, the options), a `DeletePersistOutcome` (the deleted ids) or an
+`ActionPersistOutcome` (the action's name, its arguments, the target ids), each carrying the batch
+stamp and the version tags after the bumps. A participant that reacts to one kind type-tests
+`outcome is ActionPersistOutcome<TEntity> { Action: "activate" }`; the service hook, knowing its
+key, tests the keyed kind for the ids. The batch's `OnCommitted` callbacks (the hub nudge,
+`job.changed`) run in the same phase. Uses: SignalR pushes, best-effort external calls a
+distribution accepts as best-effort, spec 0011's membership hint write-back. Failures are logged
+with the operation's trace id and counted on `tellma.crud.effects.failures` (tag `crud.effect` = the
+component's type name); they never change the response and are never retried by the executor. No
+blob is deleted here: replaced blobs are released inside the transaction and swept by spec 0017's
+job.
 
 ### 13.3 Enlisted writes
 
@@ -2009,8 +2032,8 @@ public sealed class InvalidQueryException(IReadOnlyList<QueryexDiagnostic> Diagn
     : TellmaException;                                  // 400 query-invalid
 public sealed class BadRequestException(string? Detail)
     : TellmaException;                                  // 400 bad-request
-public sealed class HumanRequiredException()
-    : TellmaException;                                  // 403 human-required
+public sealed class IndividualRequiredException()
+    : TellmaException;                                  // 403 individual-required
 public sealed class DependencyUnavailableException(string Dependency, TimeSpan? RetryAfter, Exception? Inner)
     : TellmaException;                                  // 503 dependency-unavailable
 public sealed class PartialFailureException(string Code, object Results, IReadOnlyList<string> Failed)
@@ -2407,9 +2430,9 @@ The load-bearing decisions, where not already evident above:
 22. **Stack companions project `[ApiAction]`s through the descriptor with `HandlerType`** — a
     feature adds operations to every stack without a member on `EntityService` (§2.2, §11.3).
 23. **`IPersistEffect` contributing on every persist, deletes included, through one base context
-    with a kind per operation** — one effect contract covers attach and release (a second
-    delete-time contract would be forgotten), and a save-only member is reached by a type test,
-    never read empty on an action or a delete (§13.1).
+    and one base outcome, each with a kind per operation** — one effect contract covers attach and
+    release (a second delete-time contract would be forgotten), and a kind-only member is reached by
+    a type test, never read empty on another kind (§13.1, §13.2).
 24. **`[ApiAction]` methods run only through `IApiActionInvoker`, `[EntityAction]` methods only
     through `ExecuteActionAsync`, and the analyzer refuses a direct call** — one check per operation
     for every caller, HTTP or not (§11.3).

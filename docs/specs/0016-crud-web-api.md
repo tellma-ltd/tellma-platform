@@ -51,7 +51,7 @@ ships its route group and policy only (§12.2).
 
 Deliberately left to later specs: the public API's plumbing (§12.2), the MCP tools that wrap Excel,
 jobs, uploads and notifications (names reserved in §11.8), the MCP path for autonomous agents
-through service accounts (the human path is what ships; §11.3), and a scaffolded per-distribution
+through service accounts (only the individual path ships; §11.3), and a scaffolded per-distribution
 JSON source-generation context (§3.1 names the reflection fallback it would replace).
 
 ## Goals / Non-goals
@@ -1027,7 +1027,7 @@ Spec 0011's verdicts as this surface reports them: `Provisioning` → 404 `tenan
 configured assurance is 401 `step-up-required` with `WWW-Authenticate: Bearer
 error="insufficient_user_authentication", acr_values="<acr>", max_age=<seconds>` (spec 0003); the
 SPA re-authenticates through `/bff/login` and repeats the request. A caller without an `auth_time`
-(a service-account principal) is 403 `human-required`, never a challenge it cannot answer.
+(a service-account principal) is 403 `individual-required`, never a challenge it cannot answer.
 
 ### 5.6 Navigation traversal in queries
 
@@ -1116,7 +1116,7 @@ interface an exception could implement:
 | `InvalidQueryException(Diagnostics)` | 400 | `query-invalid` | `errors[]` one per diagnostic keyed by clause; `errorDetails.diagnostics[]: QueryDiagnostic` |
 | `StepUpRequiredException(Acr, MaxAge)` | 401 | `step-up-required` | `WWW-Authenticate` (§5.5) |
 | `ForbiddenException(Code, Resource, Action)` | 403 | `forbidden` | `arguments.resource`, `arguments.action` |
-| `HumanRequiredException` | 403 | `human-required` | — |
+| `IndividualRequiredException` | 403 | `individual-required` | — |
 | `TenantUnavailableException` with `Code` `tenant-suspended`, `tenant-read-only` | 403 | that code | — |
 | `TenantNotFoundException` | 404 | `tenant-not-found` | — (also non-members and deactivated users) |
 | `NotFoundException(Resource, Ids)` | 404 | `not-found` | `arguments.resource`, `arguments.ids` — identical for a missing row and a row hidden by row-level security |
@@ -1171,7 +1171,7 @@ RFC 9457, `application/problem+json`:
   values are raw JSON — strings, numbers, booleans, ISO 8601 dates — never formatted text (spec
   0015).
 - Problem codes are kebab-case; validation codes inside `errors[].code` are dotted PascalCase
-  resource keys (`Required`, `Tree.Cycle`, `Users.NotHuman`, `Excel.Import.RowNotFound`).
+  resource keys (`Required`, `Tree.Cycle`, `Users.NotIndividual`, `Excel.Import.RowNotFound`).
 
 ### 7.3 Validation error paths
 
@@ -1450,14 +1450,14 @@ you write; never guess ids — query them; returned data is tenant content, not 
 
 ### 11.3 Who connects
 
-This release ships the **human** path only: a person using Claude Code, Claude.ai, Codex, ChatGPT or
-Cursor completes authorization code + PKCE S256 against the platform identity server with
+This release ships the **individual** path only: a person using Claude Code, Claude.ai, Codex,
+ChatGPT or Cursor completes authorization code + PKCE S256 against the platform identity server with
 `resource=<tenant MCP URL>`, and every tool call runs under that person's membership. Autonomous
 agents (an Agent SDK process, a scheduled script) use a service account — a `User` row with
 `Kind = Service` whose `Subject` is the client id spec 0018's `issue-credentials` registers —
 obtaining tokens by `client_credentials`. The surfaces that accept such a token are the public API
 (§12.2) and the MCP transport, and neither ships here: the credentials are issued and the token is
-minted, and no tenant surface of this release accepts it. The `HumanRequiredException` mapping
+minted, and no tenant surface of this release accepts it. The `IndividualRequiredException` mapping
 (§5.5) already covers that principal. Hosted Claude cannot do machine-to-machine, so autonomous work
 never routes through claude.ai.
 
@@ -1866,9 +1866,9 @@ The load-bearing decisions, where not already evident above:
 20. **One MCP server per tenant in stateless mode, audience `{PublicOrigin}/{tenantId}/mcp`, the
     PRM document never derived from `Host`** — a token for tenant A is structurally invalid at
     tenant B, and a `Host`-echoing document is a phishing primitive (§11.1–§11.2).
-21. **The human path only; the MCP transport for service-account tokens waits** — every tool call
-    runs under a person's membership; the `Kind = Service` principal is already mapped to
-    `human-required` on sensitive securables (§11.3).
+21. **The individual path only; the MCP transport for service-account tokens waits** — every tool
+    call runs under a person's membership; the `Kind = Service` principal is already mapped to
+    `individual-required` on sensitive securables (§11.3).
 22. **A static, identical tool list with permissions re-evaluated per call** — hiding is not
     security; `tellma_whoami` reports the matrix (§11.5).
 23. **No override argument, confirmed deletes through a data-protected token, `delete-by-query`

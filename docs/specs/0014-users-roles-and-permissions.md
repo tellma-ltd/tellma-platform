@@ -20,7 +20,7 @@ delete; the permissions cache validated by version tags; the fixed-text connect 
 every batch run on a caller's behalf and the guard that skips the body when its premises no longer
 hold; the in-transaction invariants that make a tenant lockout impossible; the drift policy for
 permissions a deployment invalidates; and the bootstrap that seeds the system user, the
-Administrator role and the first human administrator.
+Administrator role and the first individual administrator.
 
 The design builds on three frozen specs. Spec 0001 gives every table its user-defined table type and
 its reserved id band. Spec 0003 gives the distribution its callers: OIDC relying parties behind a
@@ -74,7 +74,7 @@ entity, which is a securable root through its `Owner` (§5.5).
 - Ship service accounts as `Kind = Service` rows: a write-once kind, credential evidence on the row,
   resolution by client id (§7.7); spec 0018 issues the credentials.
 - Ship the bootstrap: `HasData` rows in the reserved band and `ITenantBootstrapper` for the first
-  human administrator, including the Development in-proc path.
+  individual administrator, including the Development in-proc path.
 
 **Non-goals (explicitly out of scope)**
 
@@ -182,9 +182,9 @@ model configuration of the six tables, and the singleton `ISecurableRegistry`, s
 
 ```csharp
 // Tellma.Core.Abstractions.Access
-public enum UserKind { Human, System, Service }         // Service: a service account (§7.7)
+public enum UserKind { Individual, System, Service }    // Service: a service account (§7.7)
 
-public enum UserState { New, Invited, Joined }          // Joined: a human who signed in once; a service account holding credentials
+public enum UserState { New, Invited, Joined }          // Joined: an individual who signed in once; a service account holding credentials
 
 public enum InviteStatus { Invited, Reinvited, Active } // the identity server's word, stored verbatim
 
@@ -247,14 +247,14 @@ parent.
  Stack(Operations = StackOperations.All | StackOperations.Enlist)]
 public class User : TopLevelEntity, IActivatable
 {
-    [WriteOnce] public UserKind Kind { get; set; } = UserKind.Human;   // Human | Service at creation; System is row 1 only
+    [WriteOnce] public UserKind Kind { get; set; } = UserKind.Individual;   // Individual | Service at creation; System is row 1 only
     [ServerOwned] public string? Subject { get; set; }            // the OIDC sub, or a service account's client id; written by spec 0018's write-backs and the bootstrap
-    [NaturalKey, Searchable] public string? Email { get; set; }   // required for Human; normalised; locked after invite
+    [NaturalKey, Searchable] public string? Email { get; set; }   // required for Individual; normalised; locked after invite
     public UserState State { get; set; }   // persisted computed column over InvitedAt/JoinedAt; DatabaseOwned (spec 0012 §2.4)
     [ServerOwned] public DateTimeOffset? InvitedAt { get; set; }  // datetimeoffset(3)
     [ServerOwned] public InviteStatus? InviteStatus { get; set; }
     [ServerOwned] public string? LastInviteError { get; set; }    // the identity server's per-user error, verbatim
-    [ServerOwned] public DateTimeOffset? JoinedAt { get; set; }   // datetimeoffset(3); first sign-in (Human) or credentials issued (Service)
+    [ServerOwned] public DateTimeOffset? JoinedAt { get; set; }   // datetimeoffset(3); first sign-in (Individual) or credentials issued (Service)
     [Multilingual, Searchable] public string Name { get; set; }
     public string? Name2 { get; set; }
     public string? Name3 { get; set; }
@@ -276,7 +276,7 @@ public class User : TopLevelEntity, IActivatable
 | Column | Type | Null | Constraints | Notes |
 |---|---|---|---|---|
 | `Id` | `int` | no | PK clustered; `CK_Users_Id CHECK ([Id] > 0)` | 1 = the system user |
-| `Kind` | `varchar(8)` | no | `DF_Users_Kind 'Human'` | write-once |
+| `Kind` | `varchar(10)` | no | `DF_Users_Kind 'Individual'` | write-once |
 | `Subject` | `varchar(255)` | yes | `COLLATE Latin1_General_100_BIN2`; `UX_Users_Subject (Subject) WHERE Subject IS NOT NULL INCLUDE (Kind, IsActive, State)` | server-owned; the prologue's covering seek |
 | `Email` | `nvarchar(255)` | yes | `UX_Users_Email (Email) WHERE Email IS NOT NULL` | natural key; editable while `New` |
 | `State` | `varchar(8)` | no | persisted computed: `CASE WHEN [JoinedAt] IS NOT NULL THEN 'Joined' WHEN [InvitedAt] IS NOT NULL THEN 'Invited' ELSE 'New' END` | database-owned; in the covering index |
@@ -298,10 +298,10 @@ public class User : TopLevelEntity, IActivatable
 | audit set | | no | `FK_Users_CreatedById`, `FK_Users_ModifiedById → core.Users(Id)` | the system user's rows self-reference |
 | `ValidFrom`, `ValidTo` | `datetime2(7)` | no | period, shadow | not in the UDTT |
 
-Checks: `CK_Users_KindEmail ((Kind = 'Human') = (Email IS NOT NULL))`;
+Checks: `CK_Users_KindEmail ((Kind = 'Individual') = (Email IS NOT NULL))`;
 `CK_Users_SystemIsRowOne (Kind <> 'System' OR Id = 1)`;
 `CK_Users_SystemHasNoSubject (Kind <> 'System' OR Subject IS NULL)`;
-`CK_Users_HumanEvidence (Kind <> 'Human' OR (((Subject IS NULL) = (InvitedAt IS NULL))
+`CK_Users_IndividualEvidence (Kind <> 'Individual' OR (((Subject IS NULL) = (InvitedAt IS NULL))
 AND (JoinedAt IS NULL OR InvitedAt IS NOT NULL)))`;
 `CK_Users_ServiceEvidence (Kind <> 'Service' OR (InvitedAt IS NULL AND InviteStatus IS NULL
 AND ((Subject IS NULL) = (JoinedAt IS NULL))))`. Index
@@ -314,13 +314,14 @@ Rules on the columns:
   before image on update and from the fresh-instance default on insert. `Subject`, `InvitedAt`,
   `InviteStatus` and `LastInviteError` are written only by spec 0018's write-backs (`invite`,
   `issue-credentials`) and the bootstrap (§11); `JoinedAt` only by the prologue's flip (§7.3),
-  `issue-credentials` and the bootstrap.
-- **`Kind`** is write-once: `Human` or `Service` at creation and never changed; `System` in a
+  `issue-credentials` and the bootstrap; sandbox cloning clears a service account's `Subject` and
+  `JoinedAt` (§7.7).
+- **`Kind`** is write-once: `Individual` or `Service` at creation and never changed; `System` in a
   payload is `Users.KindNotAllowed`; a service account is §7.7.
 - **`State`** is a persisted computed column over `InvitedAt` and `JoinedAt`, `DatabaseOwned` by
   spec 0012's derivation: never in a payload, the UDTT or a `SET` list, and never at odds with its
   evidence.
-- **`Email`** is normalised (trim, lower-case) in preprocessing; required when `Kind = Human`,
+- **`Email`** is normalised (trim, lower-case) in preprocessing; required when `Kind = Individual`,
   refused otherwise (`Users.EmailNotAllowed`); editable only while `State = New` — afterwards a
   change is `Users.EmailLockedAfterInvite`, because `Email` is the creates-or-gets key at the
   identity server (spec 0003) and editing it desynchronises the two systems. Uniqueness is validated
@@ -355,10 +356,11 @@ Rules on the columns:
 | From | To | Trigger | Written |
 |---|---|---|---|
 | — | `New` | the row is created (UI, import, bootstrap) | `Subject`, `InvitedAt`, `JoinedAt` all `NULL` |
-| `New`, `Invited` | `Invited` | the bulk-invite call returns `Invited`, `Reinvited` or `Active` (Human) | `Subject`, `InvitedAt`, `InviteStatus`; `LastInviteError = NULL`; `ModifiedAt` stamped |
+| `New`, `Invited` | `Invited` | the bulk-invite call returns `Invited`, `Reinvited` or `Active` (Individual) | `Subject`, `InvitedAt`, `InviteStatus`; `LastInviteError = NULL`; `ModifiedAt` stamped |
 | `New`, `Invited` | unchanged | the bulk-invite call returns a per-user error | `LastInviteError`; `ModifiedAt` stamped |
-| `Invited` | `Joined` | the first request in which the prologue resolves this subject (Human) | `JoinedAt`; `ModifiedAt` untouched (§7.3) |
+| `Invited` | `Joined` | the first request in which the prologue resolves this subject (Individual) | `JoinedAt`; `ModifiedAt` untouched (§7.3) |
 | `New`, `Joined` | `Joined` | spec 0018's `issue-credentials` (Service) | `Subject`, `JoinedAt` (once); `ModifiedAt` stamped |
+| `Joined` | `New` | sandbox cloning (Service, §7.7) | `Subject`, `JoinedAt` cleared |
 
 `IsActive` is orthogonal: an administrator's switch that refuses every request regardless of
 `State`. Re-inviting a `New` or `Invited` user is allowed (`InviteStatus` keeps the server's word);
@@ -1108,7 +1110,7 @@ engine and `@tb` for per-statement platform names. Distribution SQL uses none of
 ### 7.3 The prologue text (`ForSubject` variant)
 
 ```sql
-DECLARE @tm_UserId int, @tm_Kind varchar(8), @tm_IsActive bit, @tm_State varchar(8),
+DECLARE @tm_UserId int, @tm_Kind varchar(10), @tm_IsActive bit, @tm_State varchar(8),
         @tm_PreferencesTag uniqueidentifier, @tm_UserPermissionsTag uniqueidentifier,
         @tm_PermissionsTag uniqueidentifier, @tm_SettingsTag uniqueidentifier,
         @tm_PermissionsStale bit = 0, @tm_ProfileStale bit = 0, @tm_SettingsStale bit = 0, @tm_Guard bit = 0,
@@ -1271,12 +1273,14 @@ client at the identity server, writes back `Subject` = the client id and `Joined
 client id and the secret once; nothing tenant-side stores the secret. A row with a subject reads
 `Joined`, without one `New`. Re-issuing rotates: a new client, the new subject written back, the old
 client deleted after commit. Deactivation deletes the client after commit, so a deactivated service
-account obtains no token at all; reactivation needs `issue-credentials` again. A token is resolved
-exactly like a human's: `@tm_Subject` binds the client id, the covering index seek finds the row,
-and its memberships and the public roles compose its set; a client id with no row is
+account obtains no token at all; reactivation needs `issue-credentials` again. Sandbox cloning, a
+later command (spec 0011 §6.3), clears `Subject` and `JoinedAt` on every service account, so a
+sandbox never shares a client with its live tenant. A token is resolved exactly like an
+individual's: `@tm_Subject` binds the client id, the covering index seek finds the row, and its
+memberships and the public roles compose its set; a client id with no row is
 `TenantNotFoundException`, which is also why an orphaned client is harmless. Sensitive securables
-answer `HumanRequiredException` to a service account (spec 0016), and the lockout invariant counts
-humans only (§8.3).
+answer `IndividualRequiredException` to a service account (spec 0016), and the lockout invariant
+counts individuals only (§8.3).
 
 ### 7.8 The request-context initializer
 
@@ -1361,10 +1365,10 @@ IF @tm_Lock < 0 THROW 50503, N'Access.LockTimeout', 1;
 -- ... the emitter's statements and every ContributeAsync contribution ...
 
 -- ContributeInvariants: after the writes, before the post-check.
--- L1: at least one active, invited-or-joined human administrator remains.
+-- L1: at least one active, invited-or-joined individual administrator remains.
 IF NOT EXISTS (SELECT 1 FROM [core].[Users] AS U
                JOIN [core].[RoleMemberships] AS M ON M.[UserId] = U.[Id]
-               WHERE M.[RoleId] = 1 AND U.[Kind] = 'Human' AND U.[IsActive] = 1 AND U.[State] IN ('Invited', 'Joined'))
+               WHERE M.[RoleId] = 1 AND U.[Kind] = 'Individual' AND U.[IsActive] = 1 AND U.[State] IN ('Invited', 'Joined'))
     THROW 50422, N'Access.LastAdministrator', 1;
 -- L2: public roles have no members.
 IF EXISTS (SELECT 1 FROM [core].[RoleMemberships] AS M JOIN [core].[Roles] AS R ON R.[Id] = M.[RoleId] WHERE R.[IsPublic] = 1)
@@ -1414,7 +1418,7 @@ path with the component's loads in RT1: two round trips (§7.5).
   in role 1. A hand-over is "make Bob an administrator, then Bob removes you".
 - `Users.EmailLockedAfterInvite` (§3.1); `Users.OnlyNewUsersDeletable` (§3.9).
 - `Users.KindNotAllowed` — `Kind = System` in a payload; `Users.EmailNotAllowed` — an `Email` on a
-  row whose `Kind` is not `Human`; `Required` at `Email` on a `Human` row that carries none.
+  row whose `Kind` is not `Individual`; `Required` at `Email` on an `Individual` row without one.
 - `Users.TooManyRoles` — more than `MaxRolesPerUser` memberships.
 - `Users.MembershipEscalation` — adding a membership to a role requires that every permission of
   that role passes the escalation test below against the caller's set.
@@ -1504,7 +1508,7 @@ notices. The scan is read-only and takes no lock.
 // Tellma.Core.Abstractions.Access
 public interface IAdministratorDirectory
 {
-    Task<IReadOnlyList<int>> GetAdministratorIdsAsync();   // active human members of role 1 with State Invited or Joined; ordered by Id; capped at 20
+    Task<IReadOnlyList<int>> GetAdministratorIdsAsync();   // active individual members of role 1 with State Invited or Joined; ordered by Id; capped at 20
 }
 ```
 
@@ -1526,7 +1530,7 @@ public interface ITenantBootstrapper                            // runs in a Sys
 ```
 
 The `HasData` rows of §3.8 seed the system user, the Administrator role, its `*/*` permission and
-the system user's membership. The **first human administrator** is not `HasData` (its email is
+the system user's membership. The **first individual administrator** is not `HasData` (its email is
 environment-specific): spec 0011's platform provisioning step `10 core.bootstrap-administrator`
 calls `BootstrapAdministrator` from `TenantProvisioningContext.AdminEmail`/`AdminSubject`
 (`Tellma:Seed:AdminEmail` in Development; `provision --admin-email` otherwise; `AdminSubject` is
@@ -1866,7 +1870,7 @@ The load-bearing decisions, where not already evident above:
 |---|---|---|
 | `Users.EmailLockedAfterInvite` | `UserAccessRules` | `Email` changed while `State <> New` |
 | `Users.KindNotAllowed` | `UserAccessRules` | `Kind = System` in a payload |
-| `Users.EmailNotAllowed` | `UserAccessRules` | an `Email` on a row whose `Kind` is not `Human` |
+| `Users.EmailNotAllowed` | `UserAccessRules` | an `Email` on a row whose `Kind` is not `Individual` |
 | `Users.CannotDeactivateSelf` | `UserAccessRules` | own id in `deactivate` |
 | `Users.CannotDeleteSelf` | `UserAccessRules` | own id in a delete |
 | `Users.CannotRemoveOwnAdministratorMembership` | `UserAccessRules` | own membership in role 1 removed |
@@ -1887,7 +1891,7 @@ The load-bearing decisions, where not already evident above:
 | `Permissions.FilterVersionUnsupported` | `RoleAccessRules` | an unchanged filter whose stored stamp is below `QueryexLanguage.Minimum` |
 | `Permissions.WildcardResourceOnPublicRole` | `RoleAccessRules` | `Resource = '*'` on a public role |
 | `Permissions.EscalationBeyondSelf` | `RoleAccessRules` | permission the caller lacks unrestricted |
-| `Access.LastAdministrator` | guard L1, `THROW 50422` | no active invited-or-joined human administrator remains |
+| `Access.LastAdministrator` | guard L1, `THROW 50422` | no active invited-or-joined individual administrator remains |
 | `Access.PublicRoleHasMembers` | guard L2, `THROW 50422` | a public role has a membership |
 | `Access.AdministratorRoleDamaged` | guard L3, `THROW 50422` | role 1 inactive, public, or without its `*/*` |
 | `Access.LockTimeout` | `THROW 50503` | the application lock was not acquired within `SecurityLockTimeout`; transient |
