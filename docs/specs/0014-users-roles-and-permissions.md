@@ -151,7 +151,9 @@ model configuration of the six tables, and the singleton `ISecurableRegistry`, s
   `core.VersionTags` (spec 0013); the two user-level tags live on `core.UserStamps` (§3.3).
 - **Stamp** — a timestamp: `LastActiveAt`, and `ModifiedAt`, the optimistic-concurrency token of
   every top-level entity (spec 0012). User-visible saves and actions move `ModifiedAt`; bookkeeping
-  never does. The one documented exception is the prologue's `Invited → Joined` flip (§7.3).
+  never touches a top-level entity row. The two documented exceptions (spec 0012 §2.1) are the
+  prologue's `Invited → Joined` flip (§7.3) and the outbox's pre-mark, settle and delivery update
+  (`OutboxStatements`, spec 0022 §5, §6).
 - **Fingerprint** — the deployment-derived hash of the securables registry (§4.4). It changes only
   on deploy and travels in `me`; it is never stored in a tenant database.
 - **Format version** — a `const int` per cached shape (`UserAccess.FormatVersion = 1`), bumped by
@@ -223,6 +225,7 @@ public static class CoreResources
     public const string Job = "core.Job";
     public const string Schedule = "core.Schedule";
     public const string Notification = "core.Notification";
+    public const string OutgoingEmail = "core.OutgoingEmail";
     public const string Export = "core.Export";
     public const string Import = "core.Import";
     public const string Wildcard = "*";
@@ -366,13 +369,13 @@ Rules on the columns:
 `State`. Re-inviting a `New` or `Invited` user is allowed (`InviteStatus` keeps the server's word);
 re-inviting a `Joined` user is spec 0018's `Users.AlreadyJoined`. The invite status `Active` means
 "already holds a credential, no email was sent": the tenant state still becomes `Invited`, and spec
-0018's welcome email and `core.user.added` notice reach every invited user. Delivery detail
-(`Pending | Sent | Delivered | Bounced | …`) is a live drill-down through the identity server's
-delivery-status API from the user details page and is never persisted. The identity server's own
-lifecycle is invisible to the tenant except as an invite error. The three states are exhaustive for
-what the tenant can know. `State` is computed from `InvitedAt` and `JoinedAt`, so the stored state
-cannot drift from its evidence; the evidence CHECKs of §3.1 keep `Subject` in step with it per
-kind.
+0018's welcome email and `core.user.added` notice reach every invited user. Invitation delivery
+detail (`Pending | Sent | Delivered | Bounced | …`) is a live drill-down through the identity
+server's delivery-status API from the user details page and is never persisted. The identity
+server's own lifecycle is invisible to the tenant except as an invite error. The three states are
+exhaustive for what the tenant can know. `State` is computed from `InvitedAt` and `JoinedAt`, so the
+stored state cannot drift from its evidence; the evidence CHECKs of §3.1 keep `Subject` in step with
+it per kind.
 
 ### 3.3 `core.UserStamps` — the non-temporal sibling
 

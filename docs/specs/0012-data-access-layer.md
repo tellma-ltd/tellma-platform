@@ -255,7 +255,7 @@ public interface IJobEntity
 | Member | Meaning |
 |---|---|
 | `Entity<TKey>` | The keyed base. `TKey` is `int` from `sq_<Table>` by default, `long` by `TopLevelEntity<long>`; `Guid` keys are not offered. `Id = 0` means new on the wire, `Id < 0` is a temporary id unique within the payload (rewritten in every self-typed foreign key and child parent key by the allocator, §7.3), `Id > 0` is an update. System-written entities (`Job`, `Notification`, `Blob` of specs 0020, 0021, 0017) derive from `Entity<int>`, carry `CreatedAt` explicitly, and are never written through `Save`. |
-| `TopLevelEntity<TKey>` | Adds the four audit columns, all server-owned and stamped server-side once per batch from `SYSUTCDATETIME()` (§8.2). `ModifiedAt` is the concurrency token: user-visible mutations (save, `Update` actions, invite) stamp it; bookkeeping never touches the entity row (activity, tags and inbox tracking live on `core.UserStamps`; leases on `core.Jobs`); the one documented exception is the connect prologue's `Invited → Joined` flip of spec 0014. No `rowversion` column exists anywhere. |
+| `TopLevelEntity<TKey>` | Adds the four audit columns, all server-owned and stamped server-side once per batch from `SYSUTCDATETIME()` (§8.2). `ModifiedAt` is the concurrency token: user-visible mutations (save, `Update` actions, invite) stamp it; bookkeeping never touches the entity row (activity, tags and inbox tracking live on `core.UserStamps`; leases on `core.Jobs`). The two documented exceptions are the connect prologue's `Invited → Joined` flip of spec 0014 and the outbox's pre-mark, settle and delivery update (`OutboxStatements`, spec 0022 §5, §6), which write only server-owned columns of `core.OutgoingEmails`, never the audit columns, through the internal channel (§5.2). No `rowversion` column exists anywhere. |
 | `ChildEntity<TKey>` | Saved only with its owner and never addressed by a service of its own. No audit columns: a child change stamps the parent (§8.2). The owning foreign key carries `[ParentKey]`. |
 | `TreeEntity<TKey>` | `ParentId` is a self-referencing foreign key configured without a navigation; the Queryex navigation `Parent` derives from the column name exactly like every other navigation-less FK, so `Parent.Name`, `descendantOf`, `ancestorOf` and `level(Node)` work unchanged, and a details read carries the parent row in `Related` (§11.5) because spec 0015's default details expansion covers every foreign-key navigation, `Parent` included, each projected per §2.5. A tree is extended by plain inheritance (`MyCenter : Center`) and registered with `UseEntity<Center, MyCenter>()`; `TLeaf : TDefault` is the one constraint for every entity kind. `Node` is a shadow `hierarchyid` (§10). |
 | `ActivatableTreeEntity<TKey>` | Adds `IsActive` and `ActiveSubtreeCount` (expanders on the active-only tree view without a subquery). No `Level` column (`level(Node)`), no `IsLeaf` (`SubtreeCount = 1`). |
@@ -719,6 +719,7 @@ by column name like every entity row image. The one catalog type, spec 0011 §3.
 | `JobRequestList`, `JobOutcomeList`, `JobProgressList`, `JobLeaseList`, `ScheduleNextList` | per spec 0020 | job statements |
 | `NotificationRowList`, `NotificationPreferenceList` | per spec 0021 | notification statements |
 | `UserPreferenceList`, `UserInvitationOutcomeList` | per specs 0014 and 0018 | self-service and invite write-back |
+| `OutgoingEmailOutcomeList`, `EmailDeliveryEventList` | per spec 0022 | outbox settle and delivery update |
 | `TenantMembershipList` | per spec 0011 | catalog only |
 
 Entity UDTTs are derived per spec 0001 (`<schema>.<Table>List_<hash8>`). `DateList` and
@@ -738,7 +739,7 @@ public interface ITenantDatabase                        // scoped: one per reque
     IDataBatch CreateBatch(BatchPurpose purpose);
 }
 
-public interface ITenantDatabaseFactory                 // singleton; used by scope factories and the migrator
+public interface ITenantDatabaseFactory                 // singleton; used by scope factories, the migrator and spec 0022 §6's delivery handler
 {
     Task<ITenantDatabase> OpenAsync(int tenantId);
 }
@@ -858,7 +859,7 @@ public abstract record UpdateSpec<TEntity>              // exactly one shape
         int Cap, int ExpectedCount, bool Stamp = true) : UpdateSpec<TEntity>;
     // Filter: the action's grant filter (ByIds) or the query, conjoined with the access filter (ByQuery)
     // ReadFilter: the caller's Read filter; the AllOrNothing check counts existence under it (hidden equals missing)
-    // Assignments: property -> uniform value; editable or server-owned. Stamp: false only for platform bookkeeping on tables without audit columns
+    // Assignments: property -> uniform value; editable or server-owned. Stamp: false only for platform bookkeeping (§9.1)
     // AllOrNothing: every id must be readable under ReadFilter (50404) and pass Filter (50403) before the UPDATE (§9.1)
 }
 
@@ -887,7 +888,7 @@ public sealed record RawResult(IReadOnlyList<QueryRowSet> ResultSets);
 | `Purpose` | Set at creation. `Read` and `Validate` batches run untransacted; `Persist` batches carry the transaction frame of §5.5; `Maintenance` batches (jobs, sweeps, the migrator) carry the schema guard and spec 0013's prelude alone — no connect prologue and no `@tm_Guard` wrapper — and use the longer command timeout (§6.1). Contributors consult it. |
 | `TransactionMode` | `Auto` (default): the text is wrapped in an in-text transaction when any statement declares a write. `None`: autocommit — for bookkeeping whose composer tolerates a partial re-run (lease renewal, sweeps, the job poll). `Explicit`: a `SqlTransaction` opened and committed from C# — the escape hatch for a decision that must be taken in C# before commit, costing two more round trips, never retried by the executor (§6.5) and never used by the platform's own paths. |
 | `WrittenTables` | The union of every statement's declared writes: `Save`, `Update`, `Delete` derive theirs from metadata (children included); `Sql` declares through `SqlOptions.Writes`. Spec 0013's epilogue resolves tag bumps from it; the fixture tier audits it against change tracking. |
-| `CallerAuthority` | The authority of the current appender (spec 0015 §13.3): the tables, children included, of the stack whose participant holds the batch — the pipeline hands each participant a view of the one batch carrying its own stack's tables, the host's for the host's hooks and effects, the target's for an enlisted group's; empty for a job or provisioning handler's own statements, an `[ApiRoute]` service and a batch outside any frame. This interface's members are the **caller channel**: a `Save`, `Update`, `Delete` or `Sql` whose declared writes include a table that spec 0015's `IStackRegistry.OwnerOf` maps to a stack outside the set is refused at append with `InvalidOperationException` naming the table, its owner and the enlistment remedy; a table no stack owns always passes. The platform's own composers — the emitter, the access guards, the blob effect and the job, notification and progress statements — append through an **internal channel** of `Tellma.Core`'s batch implementation that the check does not cover. |
+| `CallerAuthority` | The authority of the current appender (spec 0015 §13.3): the tables, children included, of the stack whose participant holds the batch — the pipeline hands each participant a view of the one batch carrying its own stack's tables, the host's for the host's hooks and effects, the target's for an enlisted group's; empty for a job or provisioning handler's own statements, an `[ApiRoute]` service and a batch outside any frame. This interface's members are the **caller channel**: a `Save`, `Update`, `Delete` or `Sql` whose declared writes include a table that spec 0015's `IStackRegistry.OwnerOf` maps to a stack outside the set is refused at append with `InvalidOperationException` naming the table, its owner and the enlistment remedy; a table no stack owns always passes. The platform's own composers — the emitter, the access guards, the blob effect and the job, notification, progress and outbox statements — append through an **internal channel** of `Tellma.Core`'s batch implementation that the check does not cover. |
 | `Query` | Compiles the entity query for `TEntity` (every mapped leaf is a root; `TEntity` may be a base, resolved to its leaf through `IEntityMetadataProvider.Get`), appends it with its child and related queries, and materialises entities plus a `RelatedEntities` dictionary after execution (§11.5). |
 | `Rows` | Appends one compiled `QuerySpec`; `Skip`/`Take` are parameter slots; returns a `RowPage`: the columnar `QueryRowSet` with the capped count and the ancestor rows its options ask for (§3.3, §11.3). |
 | `Count` | `SELECT COUNT(*) FROM (<body with Select = "Id", OrderBy = "Id", Take = cap + 1>) AS q`; a result of `cap + 1` means "more than `cap`". |
@@ -1471,17 +1472,17 @@ or `ServerOwned` — `IsActive` of an `IActivatable` is the server-owned column 
 activate/deactivate actions write, and this statement is the only path that writes it — and a
 `WriteOnce` assignment is a compose-time `ArgumentException`. Rows whose values are already the
 assigned ones are skipped, so a repeated activate writes no history row and moves no stamp.
-`Stamp = false` omits the two stamp columns and is permitted only for platform bookkeeping on tables
-without audit columns. The receipt's `UpdatedIds` are the `OUTPUT` rows; a requested id absent from
-them was missing, invisible or already in the target state, which the pipeline distinguishes from
-the keys table when it needs to. `AllOrNothing = true` (spec 0015's built-in
-`activate`/`deactivate`) applies the delete-by-ids rule of §9.2 ahead of the `UPDATE`: the ids of
-`@tb5_t0` with no row readable under `ReadFilter` are selected as a result set and
-`THROW 50404, N'Entity.NotFound', 1` follows when any exist — a hidden id counts as missing; then
-`THROW 50403, N'RowSecurity', 1` follows when the count of `@tb5_keys` differs from the count of
-`@tb5_t0` — every id must be readable and pass `Filter`, and the `UPDATE` then covers every id
-not already in the target state. Tree tables append §10.3's recount over `@tb5_keys` after the
-`UPDATE`.
+`Stamp = false` omits the two stamp columns and is permitted only for platform bookkeeping: on a
+table without audit columns, or on an audited row as one of §2.1's documented exceptions. The
+receipt's `UpdatedIds` are the `OUTPUT` rows; a requested id absent from them was missing, invisible
+or already in the target state, which the pipeline distinguishes from the keys table when it needs
+to. `AllOrNothing = true` (spec 0015's built-in `activate`/`deactivate`) applies the delete-by-ids
+rule of §9.2 ahead of the `UPDATE`: the ids of `@tb5_t0` with no row readable under `ReadFilter` are
+selected as a result set and `THROW 50404, N'Entity.NotFound', 1` follows when any exist — a hidden
+id counts as missing; then `THROW 50403, N'RowSecurity', 1` follows when the count of `@tb5_keys`
+differs from the count of `@tb5_t0` — every id must be readable and pass `Filter`, and the `UPDATE`
+then covers every id not already in the target state. Tree tables append §10.3's recount over
+`@tb5_keys` after the `UPDATE`.
 
 ### 9.2 Delete
 

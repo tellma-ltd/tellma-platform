@@ -1571,7 +1571,8 @@ after `RegisterAsync`. The platform ships `NotConfiguredProvisioningTrigger` (th
 reference distribution ships a Development-only local process starter that runs its own Migrator
 project with `provision --tenant <tenantId>`; a Container Apps Job starter is infrastructure work
 outside this spec. Sandbox cloning (`CREATE DATABASE … AS COPY OF` on Azure, backup-restore
-on-prem) is a later command; the row shape supports it.
+on-prem) is a later command; the row shape supports it. When it ships, the clone cancels the copy's
+unsettled `core.OutgoingEmails` rows and their jobs (spec 0022 §7.2).
 
 ### 6.4 Role and grants, recomputed after every run
 
