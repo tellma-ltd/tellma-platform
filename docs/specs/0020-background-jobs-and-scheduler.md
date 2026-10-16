@@ -22,23 +22,24 @@ year of queued work.
 It builds on the frozen base: spec 0001's table types carry the standalone row lists the statements
 bind; spec 0003's session rules govern nothing here directly but fix the identity model (`sub`,
 the system principal) the run-as rules rest on; spec 0007's email outbox is the first consumer this
-machinery was reserved for — its `IEmailOutbox` and `EmailEnqueueRequest` shape (spec 0007 §13)
-needs no change and its "signal after commit" is the post-commit nudge defined here; spec 0008's
-`QuerySpec` and `KeySetRestriction` amendment are how an entity-backed handler receives its rows.
-The batch abstraction of spec 0012 executes every statement in this document; spec 0014's connect
-prologue runs at the head of every job's completion batch; spec 0015's pipeline exposes the enqueue
-call to services at the transactional side-effects step; spec 0019 ships the export and import
-handlers; spec 0017 ships the blob sweep and reconcile handlers; spec 0021 ships the notifications
-and hub events the worker raises.
+machinery was reserved for — spec 0022 ships it, amending the `IEmailOutbox` and
+`EmailEnqueueRequest` shape spec 0007 §13 reserved, and its "signal after commit" is the post-commit
+nudge defined here; spec 0008's `QuerySpec` and `KeySetRestriction` amendment are how an
+entity-backed handler receives its rows. The batch abstraction of spec 0012 executes every statement
+in this document; spec 0014's connect prologue runs at the head of every job's completion batch;
+spec 0015's pipeline exposes the enqueue call to services at the transactional side-effects step;
+spec 0019 ships the export and import handlers; spec 0017 ships the blob sweep and reconcile
+handlers; spec 0021 ships the notifications and hub events the worker raises.
 
 The design departs from an entity-column shape deliberately: no business table carries lease or
 progress columns. A business row that is processed in the background references its job through a
 single nullable foreign key, and the machinery never writes a business table. Cron expressions live
 in one table, `core.Schedules`, never on a business entity.
 
-Tenantless (catalog-scoped) jobs, a cross-instance nudge, push delivery, and the email outbox's own
-handler are left to later specs; the scope boundary with spec 0021 is two interfaces (`INotifier`,
-`IClientEventPublisher`) that this spec consumes and spec 0021 implements.
+Tenantless (catalog-scoped) jobs, a cross-instance nudge and push delivery are left to later specs,
+and the email outbox's own handler to spec 0022; the scope boundary with spec 0021 is two interfaces
+(`INotifier`, `IClientEventPublisher`) that this spec consumes and spec 0021 implements, plus the
+`core.notification-delivery` rows its notify statement inserts (§4.1, §14.7).
 
 ## Goals / Non-goals
 
@@ -72,7 +73,7 @@ handler are left to later specs; the scope boundary with spec 0021 is two interf
 - **The export and import handlers and the `Export`/`Import` entities** — spec 0019; this spec
   states the contract they meet.
 - **The blob sweep and reconcile handlers** — spec 0017.
-- **The email outbox handler** — the outbox spec; the alignment rules are recorded in §14.
+- **The email outbox handler** — spec 0022; the alignment rules are recorded in §14.6.
 - **Tenantless (catalog-scoped) jobs and schedules** — a later spec; the catalog session sweep is
   a hosted timer in spec 0011, not a job.
 - **A cross-instance nudge** (Redis or Azure SignalR as a server bus) — deferred; pickup on other
@@ -169,12 +170,12 @@ on-premises) and never under `SNAPSHOT` isolation (error 650): the executor runs
 
 Non-temporal; `LOCK_ESCALATION = DISABLE`; no triggers; `[TableType]` over the entity's columns
 minus the two model-only columns, `StateJson` and `LeaseToken` (§2.3; the tick's insert binds the
-derived UDTT); sequence `core.sq_Jobs`; written only by the statements of this spec and never
-through `IDataBatch.Save`.
+derived UDTT); sequence `core.sq_Jobs`; written only by the statements of this spec and the delivery
+enqueue of spec 0021 §3.3 (§4.1), never through `IDataBatch.Save`.
 
 | Column | Type | Null | Constraints | Notes |
 |---|---|---|---|---|
-| `Id` | `int` | no | PK clustered; `CK_Jobs_Id CHECK ([Id] > 0)` | assigned inside the enqueue and tick statements from `core.sq_Jobs` |
+| `Id` | `int` | no | PK clustered; `CK_Jobs_Id CHECK ([Id] > 0)` | assigned from `core.sq_Jobs` inside the statement that inserts the row (§4.1) |
 | `HandlerKey` | `nvarchar(64)` | no | | §3.7 grammar |
 | `Status` | `varchar(9)` | no | | `JobStatus` as text |
 | `DueAt` | `datetimeoffset(3)` | no | | earliest claim time; moved by retry backoff and `retry`/`resume` |
@@ -311,7 +312,7 @@ Registered by `CoreFeature` in `Tellma.Core.Abstractions.TableTypes`, physical
 
 | Type | Columns | Use |
 |---|---|---|
-| `JobRequestList` | `Ordinal int PK`, `HandlerKey nvarchar(64)`, `DueAt datetimeoffset(3) NULL`, `ArgumentsJson nvarchar(max) NULL`, `TraceParent nvarchar(55) NULL`, `RunAsUserId int`, `RequestedById int NULL` | enqueue (§4.2) |
+| `JobRequestList` | `Ordinal int PK`, `HandlerKey nvarchar(64)`, `DueAt datetimeoffset(3) NULL`, `ArgumentsJson nvarchar(max) NULL`, `TraceParent nvarchar(55) NULL`, `RunAsUserId int`, `RequestedById int NULL`, `OwnerId int NULL` | enqueue (§4.2) |
 | `JobOutcomeList` | `Id int PK`, `Status varchar(9)`, `Released bit`, `RetryAfterSeconds int NULL`, `ErrorCode nvarchar(64) NULL`, `ErrorArgumentsJson nvarchar(4000) NULL`, `ErrorTraceId varchar(32) NULL`, `StateJson nvarchar(max) NULL` | complete (§5.4) |
 | `JobProgressList` | `Id int PK`, `ProgressPercent tinyint NULL`, `ProgressKey nvarchar(64) NULL`, `ProgressArgumentsJson nvarchar(4000) NULL`, `StateJson nvarchar(max) NULL` | renew, append (§5.2, §5.3) |
 | `JobLeaseList` | `Id uniqueidentifier PK`, `LeaseSeconds int` | renew |
@@ -328,7 +329,8 @@ The existing `IdList` carries job ids for the admin actions and schedule ids for
 // Tellma.Core.Abstractions.Jobs
 public sealed class JobHandlerAttribute(
     string Key, int BatchSize = 1, int LeaseSeconds = 300, int MaxAttempts = 5, int MaxConcurrency = 1,
-    int RetryBaseSeconds = 30, int RetryMaxSeconds = 3600, bool Schedulable = false)
+    int RetryBaseSeconds = 30, int RetryMaxSeconds = 3600, bool Schedulable = false,
+    bool InboxOnlyFailureNotices = false)
     : Attribute;                                        // on type
 ```
 
@@ -341,6 +343,7 @@ public sealed class JobHandlerAttribute(
 | `MaxConcurrency` | ≥ 1 | Batches of this key in flight per tenant per instance. |
 | `RetryBaseSeconds`, `RetryMaxSeconds` | ≥ 1; max ≥ base | Full-jitter exponential backoff bounds (§5.5). |
 | `Schedulable` | | Whether a user-created schedule may name this key (§7.8); built-ins are exempt. |
+| `InboxOnlyFailureNotices` | | Whether this handler's `core.job.failed` notices (§10) carry spec 0021's `InboxOnly = true`, reaching the inbox and no other channel; a handler on a delivery path sets it, so that a notice of its failure never re-enters that path (§14.6, §14.7). |
 
 Values outside the range fail the composition gate with a `CompositionProblem` naming the handler.
 
@@ -470,8 +473,9 @@ correct when either every step is idempotent or it checkpoints through `StateJso
 `Flush`, or `Append` inside its own transaction) and resumes from the checkpoint. Statements a
 handler appends to `JobBatch.Batch` and the writes it enlists with the job frame (§8) are inside
 the completion transaction and therefore atomic with the outcome; side effects outside the database
-(an email sent, a file written) must be recorded in that transaction (the outbox row marked sent,
-the export's `FileId`) so a re-run can detect them.
+(an email sent, a file written) must be recorded where a re-run can detect them: in that transaction
+(the export's `FileId`) or in a round trip of their own before it (the outbox's settled verdict,
+§14.6).
 
 ### 3.7 Registration and the key grammar
 
@@ -518,23 +522,28 @@ public interface IJobQueue
 | `JobRequest.DueAt` | Null = now (the statement binds `SYSUTCDATETIME()`); a future instant is normalized to offset zero and stored as `datetimeoffset(3)`. |
 | `JobRequest.RequestedById` | The user notified on failure and hold and the owner of "My jobs"; null = nobody (failures go to administrators; a hold is reported by `core.scheduler.gap`). |
 | `JobRequest.RunAsUserId` | Null = `RequestContext.UserId` in a user scope, `WellKnownIds.SystemUserId` in a system scope; required (else `InvalidOperationException`) in a scope with neither. |
-| `JobRequest.Entity` | The owning `IJobEntity` row, already in the same batch's save or already in the table; the statement sets its `JobId` column in the same transaction and `Enqueue` sets the in-memory member when the batch's outcome is read. |
-| `IJobQueue.Enqueue` | Appends the statement of §4.2 to `batch`, declares `Writes = { core.Jobs } ∪ { each owner table }`, registers the post-commit nudge (§4.4), and returns a handle whose value is the ids in request order after execution. Synchronous: ids are assigned inside the statement, never from the allocator's buffer. |
+| `JobRequest.Entity` | The owning `IJobEntity` row, already in the same batch's save or already in the table; its `Id` travels as the request's `OwnerId`, the statement sets its `JobId` column in the same transaction, and `Enqueue` sets the in-memory member when the batch's outcome is read. |
+| `IJobQueue.Enqueue` | Appends the statement of §4.2 to `batch`, declares `core.Jobs` in `Writes`, plus the owner table when a request names an `Entity`, registers the post-commit nudge (§4.4), and returns a handle whose value is the ids in request order after execution. Synchronous: ids are assigned inside the statement, never from the allocator's buffer. |
 | `IJobQueue.EnqueueAsync` | For callers holding no batch: creates a `Persist` batch in the current scope, enqueues, executes, returns the ids. |
+
+Rows of `core.Jobs` are inserted by four fixed-text statements and nothing else, each taking its ids
+from `core.sq_Jobs` inside itself: the enqueue statement (§4.2), run-now (§7.8), tick step 2 (§7.6)
+and spec 0021 §3.3's notification delivery enqueue.
 
 Validation at enqueue, all programmer errors: the key is registered on this instance
 (`InvalidOperationException` naming the key); `Entity` is an `IJobEntity` whose `Id > 0` (a row with
 a temporary id is enqueued through the pipeline's `ContributeAsync`, after ids are assigned);
-`Entity.JobId` is null or refers to a terminal job (an active job on a row is a duplicate request).
-The pipeline of spec 0015 exposes `PersistContext.Batch` to `ContributeAsync`, which is where a
-service hands off work: spec 0019's `ImportService` enqueues `core.import` through it with the
-`Import` row as `Entity`.
+`Entity.JobId` is null or refers to a terminal job (an active job on a row is a duplicate request);
+the requests of one call that name an `Entity` name rows of one entity type, so the statement
+updates one owner table (callers enqueue each type in its own call). The pipeline of spec 0015
+exposes `PersistContext.Batch` to `ContributeAsync`, which is where a service hands off work: spec
+0019's `ImportService` enqueues `core.import` through it with the `Import` row as `Entity`.
 
 ### 4.2 The enqueue statement
 
 ```sql
 -- ENQUEUE (IJobQueue.Enqueue; @tb{b}_t0 : JobRequestList; ids reserved here, never from the allocator's buffer;
--- declares writes core.Jobs plus each owner table named by JobRequest.Entity)
+-- declares writes core.Jobs plus the owner table when a request names an Entity)
 DECLARE @tb{b}_first sql_variant, @tb{b}_n int = (SELECT COUNT(*) FROM @tb{b}_t0);
 DECLARE @tb{b}_jobIds TABLE ([Ordinal] int NOT NULL PRIMARY KEY, [JobId] int NOT NULL);
 IF @tb{b}_n > 0 EXEC sys.sp_sequence_get_range @sequence_name = N'core.sq_Jobs', @range_size = @tb{b}_n, @range_first_value = @tb{b}_first OUTPUT;
@@ -542,16 +551,20 @@ INSERT INTO @tb{b}_jobIds ([Ordinal], [JobId]) SELECT [r].[Ordinal], CAST(@tb{b}
 INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [Attempts], [ArgumentsJson], [TraceParent], [RunAsUserId], [RequestedById], [CreatedAt])
 SELECT [i].[JobId], [r].[HandlerKey], 'Pending', COALESCE([r].[DueAt], SYSUTCDATETIME()), 0, [r].[ArgumentsJson], [r].[TraceParent], [r].[RunAsUserId], [r].[RequestedById], SYSUTCDATETIME()
 FROM @tb{b}_t0 AS [r] INNER JOIN @tb{b}_jobIds AS [i] ON [i].[Ordinal] = [r].[Ordinal];
--- per JobRequest.Entity (owner table T, owner id @tb{b}_p{k}, ordinal o): the owner's JobId column, inside the same transaction
-UPDATE [core].[Imports] SET [JobId] = [i].[JobId] FROM @tb{b}_jobIds AS [i] WHERE [i].[Ordinal] = o AND [core].[Imports].[Id] = @tb{b}_p{k};
+-- when any request names an Entity: every owner's JobId column in one statement, inside the same transaction
+UPDATE [o] SET [JobId] = [i].[JobId]
+FROM [core].[Imports] AS [o]
+INNER JOIN @tb{b}_t0 AS [r] ON [r].[OwnerId] = [o].[Id]
+INNER JOIN @tb{b}_jobIds AS [i] ON [i].[Ordinal] = [r].[Ordinal];
 SELECT [Ordinal], [JobId] FROM @tb{b}_jobIds ORDER BY [Ordinal];   -- result set: the BatchResult<IReadOnlyList<int>> value
 ```
 
-The `UPDATE` line is emitted once per request that names an `Entity` (the `[core].[Imports]` line
-is the shape): it takes the owner's table from spec 0012's `EntityMetadata` and names its `Id` and
-`JobId` columns literally under spec 0012 §3.2's column-name rule. The owner's `ModifiedAt` is not
-touched: `JobId` is bookkeeping. The `sp_sequence_get_range` call is the reason the executor's
-analyzer whitelists `EXEC sys.sp_sequence_get_range` in platform statements.
+The `UPDATE` is emitted once, when any request names an `Entity` (`[core].[Imports]` is the shape):
+it takes the owner's table from spec 0012's `EntityMetadata`, names its `Id` and `JobId` columns
+literally under spec 0012 §3.2's column-name rule, and reaches every owner through the request's
+`OwnerId`. The statement binds the one `JobRequestList` however many jobs it enqueues. The owner's
+`ModifiedAt` is not touched: `JobId` is bookkeeping. The `sp_sequence_get_range` call is the reason
+the executor's analyzer whitelists `EXEC sys.sp_sequence_get_range` in platform statements.
 
 ### 4.3 The trace parent
 
@@ -1371,16 +1384,17 @@ Notification types this spec registers through spec 0011's `FeatureContribution.
 
 | Key | `Mutable` | Target | Raised | Recipients | Arguments |
 |---|---|---|---|---|---|
-| `core.job.failed` | false | `core.Job` | a completion ends `Failed` | `RequestedById`, else administrators | `{ handlerKey, errorCode }` |
+| `core.job.failed` | false | `core.Job` | a completion ends `Failed`; with `InboxOnly = true` when the handler declares `InboxOnlyFailureNotices` (§3.1) | `RequestedById`, else administrators | `{ handlerKey, errorCode }` |
 | `core.job.held` | false | none | the gap hold, once per requester; `DedupKey = 'core.job.held'` | each distinct `RequestedById` among the held rows | `{ count }` |
 | `core.schedule.paused` | true | `core.Schedule` | §7.7 | `Exhausted` or `HandlerRetired`: the owner when a person, else administrators; `OwnerInactive`: administrators | `{ scheduleId, name, reason }` |
 | `core.scheduler.gap` | false | none | §6.10; `DedupKey = 'core.scheduler.gap'` | administrators | `{ previousTickAt, now, heldCount }` |
 
 Notifications ride the completion or tick batch as `NotificationRequest`s of spec 0021 §3.1 through
-`INotifier.Notify(batch, requests)`; the gap notices (`core.scheduler.gap`, `core.job.held`) and
-nothing else use their own `Persist` batches under the system user after the poll (§6.10).
-`core.job.failed` names the error by its code; the job pages render it with its arguments (§11.3).
-Administrators come from `IAdministratorDirectory.GetAdministratorIdsAsync()` (spec 0014).
+`INotifier.Notify(batch, requests)`, and a request may append `core.notification-delivery` job rows
+to that batch (spec 0021 §3.3); the gap notices (`core.scheduler.gap`, `core.job.held`) and nothing
+else use their own `Persist` batches under the system user after the poll (§6.10). `core.job.failed`
+names the error by its code; the job pages render it with its arguments (§11.3). Administrators come
+from `IAdministratorDirectory.GetAdministratorIdsAsync()` (spec 0014).
 
 The hub event `job.changed { jobId }` is registered through `FeatureContribution.ClientEvent` and
 published through spec 0021's `IClientEventPublisher.Publish(batch, ClientEvent(Name, UserIds,
@@ -1660,14 +1674,28 @@ user; repaired rows count on spec 0012's `tellma.data.tree.repairs` and a non-ze
 `TreeVerify.Repaired` at Warning. The weekly pass is the backstop for the per-save affected-set
 recount.
 
-### 14.6 The email outbox (the outbox spec)
+### 14.6 The email outbox (spec 0022)
 
-Alignment rules this spec fixes: the outbox row implements `IJobEntity`; its handler is
-`IEntityJobHandler<EmailOutboxMessage>` with `BatchSize = 100`, `LeaseSeconds = 120`,
-`MaxConcurrency = 1`; rows are enqueued with `RunAsUserId = WellKnownIds.SystemUserId` and
-`RequestedById` = the enqueuing user; `EmailEnqueueRequest.SendAfter` maps to `JobRequest.DueAt`;
-per-message `EmailSendResult`s map to per-item outcomes; the "signal after commit" is the nudge of
-§4.4. Spec 0007 §13's reserved shape needs no change.
+Alignment rules this spec fixes: the outbox row, `OutgoingEmail`, implements `IJobEntity`; its
+handler is `IEntityJobHandler<OutgoingEmail>` with `BatchSize = 25`, `LeaseSeconds = 120`,
+`MaxConcurrency = 1`, `MaxAttempts = 12`, `RetryBaseSeconds = 60`, `RetryMaxSeconds = 7200` and
+`InboxOnlyFailureNotices = true`; rows are enqueued with `RunAsUserId = WellKnownIds.SystemUserId`
+and `RequestedById = null`, so `core.job.failed` reaches administrators, inbox only (§10);
+`EmailEnqueueRequest.SendAfter` maps to `JobRequest.DueAt`; the handler settles each email's verdict
+on its row before the completion, so a rejected or failed email is a succeeded item and only a
+transient send failure with attempts left retries the item (spec 0022 §5); the "signal after commit"
+is the nudge of §4.4.
+
+### 14.7 Notification delivery (spec 0021)
+
+`core.notification-delivery` is an arguments-only `IJobHandler` that spec 0021 §4.5 ships, with
+`[JobHandler]` (key `core.notification-delivery`, `BatchSize = 4`, `MaxAttempts = 12`,
+`InboxOnlyFailureNotices = true`). Its rows never pass through `Enqueue`: spec 0021 §3.3's notify
+statement inserts them into the batch that raises the notification (§4.1), one per slice of a
+request's recipients, so `ArgumentsJson` stays well within §2.1's 64 KB. They run as
+`WellKnownIds.SystemUserId` with `RequestedById = null`, so `core.job.failed` reaches
+administrators, inbox only (§10). The handler hands each channel its recipients on the job frame
+(§8): every channel's writes, the outbox rows of §14.6 among them, commit with the completion.
 
 ## 15. Composition and startup checks
 
@@ -1731,9 +1759,10 @@ handler of §5.4 (`Jobs.AttemptsExhausted` for a row past its last attempt, `Job
 re-claimed row with `CancelRequestedAt` set, `Jobs.EntityMissing`, `Jobs.UserInactive`); the gap
 hold with per-requester counts, the heartbeat throttle and the stamp last; the retired-key cancel (a
 running row only once its lease lapses) and the `HandlerRetired` pause; enqueue riding a persist
-batch with `Entity` (the owner's `JobId` set in the same transaction, ids in request order, the
-post-commit nudge observed); the job actions' preconditions and each statement's repeat (no row
-matched, save a `Running` row's cancel flag, §11.1); retention paging and `SET NULL`.
+batch with `Entity` (every owner's `JobId` set in the same transaction by the one `UPDATE`, for
+3,000 owners as for one; ids in request order; the post-commit nudge observed; a call naming two
+entity types refused); the job actions' preconditions and each statement's repeat (no row matched,
+save a `Running` row's cancel flag, §11.1); retention paging and `SET NULL`.
 
 On the same fixture, the scheduler: tick step 1 leasing — a seeded built-in row with a null
 `NextDueAt` leased and initialised by the first tick without firing, a deactivated row with a null
@@ -1748,7 +1777,8 @@ deadlock and a connection killed after the command was sent — re-runs the poll
 row leased under the same tokens with `Attempts = 1`, reports the gap once with the held counts, and
 leaves no row leased and untracked. An end-to-end test runs a fixture handler through enqueue,
 claim, progress, completion and `job.changed` with in-memory `INotifier` and `IClientEventPublisher`
-fakes.
+fakes, and a second, declaring `InboxOnlyFailureNotices`, whose final failure raises
+`core.job.failed` with `InboxOnly = true`.
 
 ## 17. Definition of done
 
@@ -1784,8 +1814,8 @@ The load-bearing decisions, where not already evident above:
    renewal, contaminate the concurrency stamp and cannot be pruned (§2).
 2. **Two handler shapes, one registry** — arguments-only and entity-backed handlers differ only in
    what the claim loads; the worker, statements and options are shared (§3.2).
-3. **Batch-shaped handlers with per-item outcomes** — the outbox needs 97 successes and 3 retries
-   from one claim; a single-item handler pays nothing through `Single` (§3.3, §3.4).
+3. **Batch-shaped handlers with per-item outcomes** — the outbox needs 22 successes and 3 retries
+   from one claim of 25; a single-item handler pays nothing through `Single` (§3.3, §3.4).
 4. **Renewed sliding lease with a Guid fencing token** — estimates are wrong exactly when it
    matters; renewal at one fifth makes one missed renewal harmless (§5.2).
 5. **`Attempts` counts claims; graceful releases un-count** — the only poison detector that

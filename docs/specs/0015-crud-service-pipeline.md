@@ -1330,7 +1330,8 @@ Server names the first violated constraint only.
   activate/deactivate, every action, background jobs that change business columns. Bookkeeping
   never touches the entity row (tags, `LastActiveAt`, `InboxSeenAt` live on `core.UserStamps`; lease
   columns on `core.Jobs`; the tree recompute writes `Node` and the counts and never `ModifiedAt`).
-  The one documented exception is the prologue's `Invited → Joined` flip on `core.Users`.
+  The two documented exceptions (spec 0012 §2.1) are the prologue's `Invited → Joined` flip on
+  `core.Users` and the outbox's pre-mark, settle and delivery update on `core.OutgoingEmails`.
 - **On the wire** the client echoes the `ModifiedAt` it loaded; the pipeline reads it as the
   expected stamp before overwriting it. The string round-trips verbatim with seven fractional
   digits (the SPA keeps the raw string and parses a copy for display).
@@ -1844,8 +1845,9 @@ host's scheduler, the target's statements are one more **group** in the host's p
 declared position, and the target's post-commit runs after the host's commit. Two declarations gate
 a pair: the target's entity carries `Enlist` in its `[Stack]` operations, and the writer implements
 `IEnlists<TTarget>`, the receiver constraint of `EnlistSaveAsync` and `EnlistDelete`, so an
-undeclared pair is a compile error. The realizer reads every pair from the types the contribution
-items already register into `IStackRegistry.Enlistments`; nothing is declared a second time. A
+undeclared pair is a compile error. The realizer reads every pair into `IStackRegistry.Enlistments`
+from the types the contribution items already register, and the `EmailOutbox → OutgoingEmail` pair
+from `EmailOutbox`'s DI registration (spec 0022 §9.3); nothing is declared a second time. A
 **frame** is an `IWriteHost` the platform opens around the work: the pipeline around a save, a
 delete or an action (`Kind = Pipeline`), `IApiActionInvoker` around an `[ApiAction]` method (§11.3),
 spec 0020's worker around a handler's `ExecuteAsync`, spec 0011's step runner around a provisioning
@@ -1866,8 +1868,9 @@ of the last validation round; an open frame stays open until its `PersistAsync`.
 `ContributeAsync` and `AfterCommitAsync` are refused (the rounds are over). In an open frame — an
 `[ApiAction]`, job or provisioning host — any time before its `PersistAsync`. The receiver must be a
 participant of the frame — the host's service, one of its components, the type the frame was opened
-for, or a participant of a group inside it. Each refusal is `InvalidOperationException`: an
-authoring bug, never a user outcome.
+for, or a participant of a group inside it — or `EmailOutbox` (spec 0022 §3.1), admitted in every
+frame so any participant can enqueue mail through it. Each refusal is `InvalidOperationException`:
+an authoring bug, never a user outcome.
 
 **What the call does.** `EnlistSaveAsync` checks the pair is declared and the receiver a
 participant, then runs the target's pre-persist stages over `rows` as a task on the host's
@@ -1998,6 +2001,8 @@ The consumers:
 | `import/start` (spec 0019 §12.2) | `ExcelOperations<TEntity> : IEnlists<Import>` enlists one `Import` row in the invoker's frame and awaits `PersistAsync` on the injected `IOpenWriteHost`; `ImportService.ContributeAsync` enqueues every new row whose `JobId` is null | 2 (the staged-upload attach loads the blob row) |
 | The export handler's row (spec 0019 §12.3) | `ExportJobHandler : IEnlists<Export>`: one enlisted insert at the end of every run with `FileId` set, `JobId = Job.Id` named in `EnlistSaveOptions.ServerOwned`; the blob effect confirms inside the completion transaction | 1, atomic with completion |
 | The import handler's completion (spec 0019 §12.4, §12.6) | `ImportJobHandler : IEnlists<Import>`: the chunks are front-door `SaveAsync` on the target stack (the handler is a host, not a participant) carrying the checkpoint through `SaveOptions.OnPersist`; the completion row is an enlisted update on the completion batch | 1 per completion |
+| `core.notification-delivery` (spec 0021 §4.5) | `EmailOutbox : IEnlists<OutgoingEmail>`, called by spec 0022 §4's email channel from `DeliverAsync` with the job's `IOpenWriteHost`, enlists one `OutgoingEmail` row per recipient; the handler awaits `PersistAsync` once after every channel | 1 per invocation, the recipient read; no attachments, so no validation round; the rows commit with the completion |
+| `users/invite` (spec 0018 §3.3) | `EmailOutbox : IEnlists<OutgoingEmail>`, called by the `invite` action with `context.Host`, enlists one welcome-email `OutgoingEmail` row per added user (spec 0022 §3) | 2: the load and the persist; the welcome emails add none, having no attachments |
 | A document's `post` into a ledger transaction stack (the `post` action of §11.2) | the transaction stack declares `Enlist`; the document service implements `IEnlists<>` of it; `post` builds the transaction rows and enlists them with a `MapPath` onto the document lines; `unpost` enlists a delete (`BeforeHost` by default) | post 2, or 3 when the target declares validator loads (the recipe above); unpost 2, or 3 with a delete validator |
 | `users/me/save` (spec 0018 §3.5) | `UserService<TUser> : IEnlists<TUser>`: the caller's own row, loaded by the method, enlisted in the invoker's frame with `Concurrency = Check` | 3: the load, the validation round, the persist |
 

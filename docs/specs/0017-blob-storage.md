@@ -197,8 +197,10 @@ The blob feature is part of `CoreFeature` (spec 0011's `ITellmaFeature`): it con
 handlers, the two built-in schedules (§7.4), the provisioning step (§6.4) and the startup check
 (§9). The kinds shipped by Core are declared by attributes on Core entities: `user-image`
 (`User.ImageId`, spec 0014; `Avatar`, `AnyMember`), `user-signature` (`User.SignatureId`, spec
-0014; `Signature`, `AnyMember`), `export-file` (`Export.FileId`, spec 0019) and `import-file`
-(`Import.FileId`, spec 0019), the last two `Attachment` with `OwnerRead`.
+0014; `Signature`, `AnyMember`), `export-file` (`Export.FileId`, spec 0019), `import-file`
+(`Import.FileId`, spec 0019) and `email-attachment` (`OutgoingEmailAttachment.FileId`, spec 0022
+§2.1), the last three `Attachment` with `OwnerRead`. `CoreFeature`'s `BlobKind` transform turns off
+`email-attachment`'s thumbnail (spec 0022 §9.3).
 
 *Illustration* (a distribution that composes the store and processor itself instead of the Azure
 bundle, running in Development, where `RootPath` takes its default of §6.2):
@@ -492,6 +494,12 @@ SELECT @tb{b}_id AS [Id], @tb{b}_exp AS [ExpiresAt];   -- result set: the descri
   limit is not built. The `50422` assertion is translated by `BlobService` into
   `BlobRejectedException(Blob.StagingQuotaExceeded)` (spec 0012 surfaces every `50422` as
   `BatchAssertionFailedException` with the message as the code).
+- **A `System` scope is exempt.** In a `System` scope (`RequestContext.Kind = System`, the acting
+  user being the system user) `BlobService` emits the statement without the quota check (the
+  `@tb{b}_count` declaration, its `SELECT` and the `IF … THROW`) and binds neither `@tb{b}_p11` nor
+  `@tb{b}_p12`. The system user is server code, not a person who can flood the upload endpoint, and
+  anything it leaves staged expires into the sweep. A job or action running as a person stays under
+  that person's quota.
 - **TTL.** `@tb{b}_p10` is the kind's `StagingTtl` or `BlobOptions.StagingTtl` (24 h).
 
 ### 3.5 Limits
@@ -728,10 +736,12 @@ WHERE [Id] = @tb{b}_p0 AND [Kind] = @tb{b}_p1
    `image/`; `ETag` is `"{id}"` for the primary and `"{id}-{variant}"` for a variant.
 
 Missing, hidden and wrong-kind are indistinguishable (404). `StorageKey` and `Sha256` are outside
-the Queryex schema, which is why the blob row is read by raw SQL rather than through the navigation.
-Authorisation is "if you can read the owner you can read its blobs", evaluated on every cache miss,
-fail-closed; for a child kind it holds through the parent chain, since the child row is readable
-through its parent's grants, and through its own when it is a securable root (spec 0014 §5.5).
+the Queryex schema, which is why the blob row is read by raw SQL rather than through the navigation;
+the outbox's dispatch load (spec 0022 §5 step 2) is the one reader of `StorageKey` outside this
+spec, by raw SQL for the same reason. Authorisation is "if you can read the owner you can read its
+blobs", evaluated on every cache miss, fail-closed; for a child kind it holds through the parent
+chain, since the child row is readable through its parent's grants, and through its own when it is a
+securable root (spec 0014 §5.5).
 
 ### 5.2 Read access
 
@@ -743,7 +753,8 @@ through its parent's grants, and through its own when it is a securable root (sp
 `user-image` and `user-signature` are `AnyMember`: avatars render on documents everywhere, and a
 signature is layered as a transparent PNG over the approval stamp of any document the member can
 read. `export-file` and `import-file` are `OwnerRead` (the `Exports`/`Imports` rows are self-scoped
-by spec 0019).
+by spec 0019); `email-attachment` is `OwnerRead` through its parent `core.OutgoingEmail`, which only
+administrators read by default (spec 0022 §8).
 
 ### 5.3 The endpoint
 
@@ -1109,7 +1120,7 @@ abrupt process exit is attributable to its last such line. Messages name no spec
 | Project | Tier | Pins |
 |---|---|---|
 | `test/core/Tellma.Core.Tests/Blobs/` | unit, PR | `BlobName` grammar (valid/invalid kinds, variants, names; traversal strings rejected); content-type determination (§3.3) over fixture byte prefixes including a `PK` OOXML, an `MZ` executable, HTML with leading whitespace, an SVG behind an XML prolog, text with a NUL byte; file-name sanitisation; `BlobKindRegistry` construction (`OwnerResource`, `OwnerEntity` and `OwnerPath` for a root, a child and a grandchild kind) and every §9 problem over synthetic models; the abstract `BlobStoreConformanceTests` run against `FileSystemBlobStore` in a temporary directory (create-only conflict, missing read is `null`, delete of missing is success, list by prefix, purge of `.part` files, `EnsureTenantAsync` idempotence, traversal rejected, a write into a missing tenant directory created and retried, a read stream seekable and of the object's length); `BlobService.StageAsync` over a fake store and an in-memory batch (each rejection code, quota mapping, row-before-bytes on a failing store, a `null` thumbnail staged with no `thumb` variant); `ResolveAsync` combination rules (§5.1 step 4, an unlisted variant `null`) over canned result sets; ETag and header computation of the endpoint (`inline` per served content type, `attachment` otherwise and on `download=true`, `frame-ancestors 'self'`) |
-| `test/core/Tellma.Core.IntegrationTests/Blobs/` | `Category=Integration`, PR (LocalDB or the `Testcontainers.MsSql` 4.14.0 container) | the stage statement (id from the sequence, quota `50422`); the capture and effect statements over the fixture entity `fixture.BlobOwners (Id, Name, FileId [BlobReference("fixture-file")], PhotoId [BlobReference("fixture-photo", Photo)])` and its child `fixture.BlobOwnerFiles (Id, BlobOwnerId [ParentKey], FileId [BlobReference("fixture-child-file")])`, added to spec 0012's shared fixture project `test/shared/Tellma.Testing.Entities`, whose database carries the full `core.Blobs` and `core.sq_Blobs` (spec 0012 §13.2): attach on insert, replace on update, `null` release, delete by ids/by query/with descendants release, an override save releasing the row's actual old value, attach on a new child row, replace on a child row, a child row removed from the collection releasing, a delete of the root releasing the children's blobs, the same id on two rows refused by `UX_BlobOwners_FileId`, an expired row → `Blob.NotAttachable`, a foreign uploader → `Blob.NotAttachable`; the sweep claim with a `TimeProvider` fake (claims only past-`ExpiresAt` rows, re-claims after `SweepReclaimAfter`, deletes rows only in `Deleting`); **the concurrency test** — a transaction confirms a staged row and holds its lock while the claim runs on a second connection under RCSI; the claim must block and then skip the row; the reconcile statement releases an orphan and leaves a young orphan and a referenced blob alone; the `ResolveAsync` round trip through a filtered `Read` grant (visible owner served, hidden owner 404, staged-to-uploader served, staged-to-other 404) and, for `fixture-child-file`, through the parent's filtered `Read` grant (visible parent served, hidden parent 404) |
+| `test/core/Tellma.Core.IntegrationTests/Blobs/` | `Category=Integration`, PR (LocalDB or the `Testcontainers.MsSql` 4.14.0 container) | the stage statement (id from the sequence, quota `50422`, a `System` scope staging past the quota); the capture and effect statements over the fixture entity `fixture.BlobOwners (Id, Name, FileId [BlobReference("fixture-file")], PhotoId [BlobReference("fixture-photo", Photo)])` and its child `fixture.BlobOwnerFiles (Id, BlobOwnerId [ParentKey], FileId [BlobReference("fixture-child-file")])`, added to spec 0012's shared fixture project `test/shared/Tellma.Testing.Entities`, whose database carries the full `core.Blobs` and `core.sq_Blobs` (spec 0012 §13.2): attach on insert, replace on update, `null` release, delete by ids/by query/with descendants release, an override save releasing the row's actual old value, attach on a new child row, replace on a child row, a child row removed from the collection releasing, a delete of the root releasing the children's blobs, the same id on two rows refused by `UX_BlobOwners_FileId`, an expired row → `Blob.NotAttachable`, a foreign uploader → `Blob.NotAttachable`; the sweep claim with a `TimeProvider` fake (claims only past-`ExpiresAt` rows, re-claims after `SweepReclaimAfter`, deletes rows only in `Deleting`); **the concurrency test** — a transaction confirms a staged row and holds its lock while the claim runs on a second connection under RCSI; the claim must block and then skip the row; the reconcile statement releases an orphan and leaves a young orphan and a referenced blob alone; the `ResolveAsync` round trip through a filtered `Read` grant (visible owner served, hidden owner 404, staged-to-uploader served, staged-to-other 404) and, for `fixture-child-file`, through the parent's filtered `Read` grant (visible parent served, hidden parent 404) |
 | `test/core/Tellma.Core.Imaging.Tests/` | unit, PR | `SkiaImageProcessor` over fixtures: each accepted format, `Contain` and `CoverSquare` dimensions, thumbnail sizes, `EncodedOrigin` applied and metadata absent from the output, a header declaring 60 megapixels refused before decode, a JPEG/HTML polyglot re-encoded to bytes with no `<` in the first 8 KiB, an animated GIF reduced to one frame, output content type per `ImageFormat`, the `Signature` preset preserving alpha, PDF page 1 rendered at the thumbnail size, an encrypted PDF and an OOXML file yielding no thumbnail |
 | `test/connector/azure-blobs/Tellma.Connector.AzureBlobs.Adapter.IntegrationTests/` | `Category=Integration`; every PR on the Linux runner (Testcontainers), skipped on a Windows runner without Docker (spec 0011 §10) | the same `BlobStoreConformanceTests` against Azurite (`Testcontainers.Azurite` 4.14.0); container naming and `EnsureTenantAsync`; create-only conflict as `BlobAlreadyExistsException` |
 | `distributions/acme` end-to-end (spec 0011's host tests) | `Category=Integration`, PR | upload → save `User.ImageId` → `GET` 200 with `immutable` → `GET` with `If-None-Match` 304 → `GET` with a satisfiable `Range` 206 and an unsatisfiable one 416 → save `null` → `GET` 404; a non-member upload 404 `tenant-not-found`; an upload without `Tellma-Client` 403 `csrf-rejected`; an oversize body 413 before the body is read; a `ReadOnly` tenant: upload 403, download 200 |

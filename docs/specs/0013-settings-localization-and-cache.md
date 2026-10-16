@@ -91,7 +91,7 @@ so a block is never pasted into code. SQL statements are the exact shape to emit
 
 | Project | What this spec adds | Dependency edges |
 |---|---|---|
-| `Tellma.Core.Abstractions` | Namespaces `Tellma.Core.Abstractions.Caching` (tags, snapshot, registry, cache contracts, `CacheTelemetryNames`), `.Settings` (`SettingKey<T>`, `TenantSettings`, `TenantSettingsForClient`, `TenantSettingsDetails`, `SettingKeyDescriptor`, `SettingValueType`, `TenantSettingsPatch`, `MultilingualShape`, the entities `Settings` and `SettingEntry`), `.Localization` (`LanguageInfo`, `ILanguageCatalog`, `ILabelProvider`, `LocalizationContext`, `ILocalizationNegotiator`, `CoreStrings`, `IStringPackProvider`, `StringPack`, `LocalizationTelemetryNames`), `.Calendars` (`ICalendarSystem`, `ICalendarRegistry`, `CalendarCodes`, `DateStyle`); `VersionTagList` in `.TableTypes` | `Tellma.Core.Queryex` only (existing edge); BCL `System.Text.Json`, `System.Globalization` |
+| `Tellma.Core.Abstractions` | Namespaces `Tellma.Core.Abstractions.Caching` (tags, snapshot, registry, cache contracts, `CacheTelemetryNames`), `.Settings` (`SettingKey<T>`, `TenantSettings`, `TenantSettingsForClient`, `TenantSettingsDetails`, `SettingKeyDescriptor`, `SettingValueType`, `TenantSettingsPatch`, `MultilingualShape`, the entities `Settings` and `SettingEntry`), `.Localization` (`LanguageInfo`, `ILanguageCatalog`, `ILabelProvider`, `LocalizationContext`, `ILocalizationNegotiator`, `LocalizationScope`, `CoreStrings`, `IStringPackProvider`, `StringPack`, `LocalizationTelemetryNames`), `.Calendars` (`ICalendarSystem`, `ICalendarRegistry`, `CalendarCodes`, `DateStyle`); `VersionTagList` in `.TableTypes` | `Tellma.Core.Queryex` only (existing edge); BCL `System.Text.Json`, `System.Globalization` |
 | `Tellma.Core` | Folders `Caching/` (`VersionedCache`, `VersionTagRegistry`, `VersionTagSnapshots`, `UserVersionTagSnapshots`, the prologue and epilogue contributors, `CacheableEntityStore`, `CacheableEntities`), `Settings/` (`TenantSettingsStore`, `TenantSettingsCache`, `SettingKeyRegistry`, `SettingsService`, the `core.settings` provisioning step), `Localization/` (`LanguageCatalog`, `LocalizationNegotiator`, `LabelProvider`, `IcuStringLocalizerFactory`, `StringPackComposer`), `Calendars/` (`GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`), `Resources/Strings.resx` and satellites | adds `MessageFormat` 8.0.0, `Microsoft.Extensions.Caching.Memory`, `Microsoft.Extensions.Localization`, `Microsoft.AspNetCore.DataProtection.Abstractions` (`IDataProtectionProvider`, registered by spec 0011's web host; optional elsewhere, §5.3) |
 | `Tellma.Core.Migrator` | Runs the `core.VersionTags` seed and wholesale bump (§2.8) on every `migrate` | unchanged |
 | `test/core/Tellma.Core.Tests`, `test/core/Tellma.Core.IntegrationTests` | The suites of §12 | unchanged |
@@ -298,8 +298,9 @@ deployment knows the names it needs.
 
 Tables that never bump anything and carry no tag attribute: `core.Jobs`, `core.UserStamps`,
 `core.VersionTags`, `core.Blobs`, `core.UserPreferences`, `core.NotificationPreferences`,
-`core.ScheduleStates`, `core.JobWorkerState`, `core.Notifications` (the two preference tables bump
-user-level columns through fixed rules, never a tenant-level name).
+`core.ScheduleStates`, `core.JobWorkerState`, `core.Notifications`, `core.OutgoingEmails`,
+`core.OutgoingEmailAttachments` (the two preference tables bump user-level columns through fixed
+rules, never a tenant-level name).
 
 ### 2.4 Declarations the platform and its packs carry
 
@@ -1391,12 +1392,39 @@ renders through ICU MessageFormat (plural, select, selectordinal, nesting). Valu
 skip the parser. One shared `MessageFormatter` (`useCache: true`, culture passed per call): the
 pattern cache is lock-free and patterns come from resources only, so it is bounded by the resource
 count. **Calendar-aware dates**: the formatter is constructed with a `CustomValueFormatter` whose
-`TryFormatDate`/`TryFormatTime` delegate to the current request's `ICalendarSystem` and display
-zone (`DateOnly`, `DateTime` as tenant-local, `DateTimeOffset` converted) and whose
-`TryFormatNumber` keeps the built-in behaviour, so `{d, date, short|medium|long|full}` works in
-every calendar — `medium` and `long`, which the library itself rejects, are supplied by the hook.
-A malformed pattern renders the raw value and logs `MessageFormatMalformed(baseName, key)` once
-per key; it never fails the request.
+`TryFormatDate`/`TryFormatTime` delegate to the `ICalendarSystem` and display zone of
+`LocalizationScope.Current` (below), else of the current request (`DateOnly`, `DateTime` as
+tenant-local, `DateTimeOffset` converted) and whose `TryFormatNumber` keeps the built-in behaviour,
+so `{d, date, short|medium|long|full}` works in every calendar — `medium` and `long`, which the
+library itself rejects, are supplied by the hook. A malformed pattern renders the raw value and
+logs `MessageFormatMalformed(baseName, key)` once per key; it never fails the request.
+
+```csharp
+// Tellma.Core.Abstractions.Localization
+public static class LocalizationScope
+{
+    // Until the result is disposed, ICU formatting (dates and times in the context's calendar and
+    // zone) and resource lookup (the context's language) on this async flow use `context` instead
+    // of the request's.
+    public static IDisposable Enter(LocalizationContext context);
+    public static LocalizationContext? Current { get; }
+}
+```
+
+Every localizer likewise looks up and formats a resource in the scope's `Culture` when
+`LocalizationScope.Current` is set, else in `CurrentUICulture`, so the parent chain of §10.3 starts
+from the scope's culture. The scope is async-local: it flows into awaited calls but not into a
+concurrent flow, and disposing it restores the scope it replaced, so scopes nest. Code that renders
+text for someone other than the caller enters a scope with that person's `LocalizationContext`,
+negotiated from their stored preferences and the tenant's settings (§9.2): spec 0021 §2.4's
+renderer for each recipient of a notification delivery job, and spec 0018 §3.3's welcome email
+for the invitee.
+
+A localizer takes a resource's named arguments from the `arguments` of `IStringLocalizer`'s indexer,
+which holds at most one object: an `IReadOnlyDictionary<string, object?>`, the platform's
+message-argument shape, or any other object whose public properties name the arguments, such as an
+anonymous type. An empty array formats with no arguments. Arguments are never positional (§10.1), so
+a second object is a programming error that throws `ArgumentException`.
 
 ### 10.3 Two fallback chains
 
@@ -1534,7 +1562,11 @@ suite.
   through `HijriCalendar`; `TryParse` inverts `Format(…, Short)`.
 - **ICU**: plural categories for `ar` and `am`; gender select; malformed pattern → raw value;
   `{d, date, medium}` in every calendar; both fallback chains; `CoreStrings` addressing from a
-  test assembly.
+  test assembly; named arguments from a dictionary and from an anonymous type, and a second argument
+  object refused with `ArgumentException`.
+- **Localization scope**: inside `LocalizationScope.Enter` a localizer resolves and formats in the
+  scope's culture and `{d, date, medium}` renders in its calendar and display zone; disposal
+  restores the outer scope, then the request's context; a concurrent flow never sees the scope.
 - **String pack**: one pack per offered language, keys verbatim, the neutral set for `en`; a key
   declared by two assemblies refused; `ServerStrings` entries absent; the endpoint and its headers
   are spec 0016's to pin.
