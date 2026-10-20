@@ -404,12 +404,11 @@ WHERE o.[Subject] IS NOT NULL AND u.[Subject] <> o.[Subject];
    - `ModifiedAt` is stamped: an admin's stale details page gets a concurrency error on its next
      save, which is the right signal; the statement ignores the stamp it finds (an invite outcome
      never conflicts semantically with a rename).
-   - For every result with a `Status` (`Invited`, `Reinvited` or `Active`) whose loaded row holds
-     no `Subject` or the returned one, the action calls `context.Notify` with
-     `NotificationRequest("core.user.added", [id], { tenantName, actorName },
-     TargetResource = null, ActorUserId = caller, DedupKey = "user.added")` (the descriptor is
-     spec 0021's; `actorName` is the caller's `Name`; an invited user reads the notice on their
-     first sign-in).
+   - For every result with a `Status` (`Invited`, `Reinvited` or `Active`) whose loaded row holds no
+     `Subject` or the returned one, the action calls `context.Notify` with a `NotificationRequest`
+     of type `core.user.added` to `[id]`, with arguments `{ tenantName, actorName }`, no target,
+     `ActorUserId = caller` and `DedupKey = "core.user.added"` (the descriptor is spec 0021's;
+     `actorName` is the caller's `Name`; an invited user reads the notice on their first sign-in).
    - For the same users the action enqueues the welcome email, the one message a user keeps to find
      the distribution again, through one `IEmailOutbox.EnqueueAsync(context.Host, …)` call (spec
      0022 §3), so its rows commit with the write-back. Each user gets one `EmailEnqueueRequest`:

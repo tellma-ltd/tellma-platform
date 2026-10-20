@@ -68,8 +68,8 @@ and the email outbox's own handler to spec 0022; the scope boundary with spec 00
 
 **Non-goals (explicitly out of scope)**
 
-- **Notifications, the inbox, the hub** — spec 0021; this spec raises notifications and the
-  `job.changed` event through its contracts only.
+- **Notifications, the inbox, the hub** — spec 0021; this spec raises and withdraws notifications
+  and publishes `job.changed` through its contracts only.
 - **The export and import handlers and the `Export`/`Import` entities** — spec 0019; this spec
   states the contract they meet.
 - **The blob sweep and reconcile handlers** — spec 0017.
@@ -211,9 +211,12 @@ Indexes, all filtered:
 | `IX_Jobs_RequestedBy` | `(RequestedById, CreatedAt DESC)` | | `RequestedById IS NOT NULL` |
 | `IX_Jobs_Retention` | `(Status, CompletedAt)` | | `Status IN ('Succeeded', 'Failed', 'Cancelled')` |
 | `IX_Jobs_Held` | `(RequestedById)` | | `Status = 'Held'` |
+| `IX_Jobs_RequestedActive` | `(RequestedById, CreatedAt DESC, Id DESC)` | `(ScheduledFor)` | `Status IN ('Pending', 'Running', 'Held') AND RequestedById IS NOT NULL` |
 
 - Every claim repeats the filter literals of `IX_Jobs_Available` verbatim so the optimizer can
   prove the predicate a subset of the filter; the plan test of §16 pins the seek.
+- `IX_Jobs_RequestedActive` serves spec 0021 §5.3's running-jobs read, which repeats its filter
+  literals.
 - **The error group.** `ErrorCode`, `ErrorArgumentsJson` and `ErrorTraceId` are one group: a
   statement that writes `ErrorCode` writes the other two with it, and a statement that keeps the
   code keeps them. Set-based statements that write a code — the gap hold (§6.10), the `cancel`
@@ -904,10 +907,10 @@ WHERE [j].[Status] IN ('Pending', 'Held', 'Running')
 
 The worker keeps the latest orphan sample per tenant (dropped when the poller retires, §6.2), and
 the observable gauge `tellma.jobs.orphaned` reports their sum (§13); each instance reports its own
-registry's view, so a rolling deploy shows a transient value on one instance, and dashboards read
-it per instance, never summed across instances. Rows of an unregistered key that no feature
-retires are never cancelled automatically; the Background jobs page shows them (§11.3). A retired
-key's rows end `Cancelled` with `Jobs.HandlerRetired` and raise no notification; a running row of
+registry's view, so a rolling deploy shows a transient value on one instance, and dashboards read it
+per instance, never summed across instances. Rows of an unregistered key that no feature retires are
+never cancelled automatically; the Background jobs page shows them (§11.3). A retired key's rows end
+`Cancelled` with `Jobs.HandlerRetired`, raise no notification and withdraw none; a running row of
 the key is cancelled once its lease lapses.
 
 ### 6.10 Heartbeat and the gap hold
@@ -944,16 +947,17 @@ WHERE [Id] = 1 AND ([LastTickAt] IS NULL OR [LastTickAt] < DATEADD(second, -60, 
   convention, `LastTickAt datetimeoffset(3) NULL`, `LastTickOwner nvarchar(128) NULL`; seeded
   `(1, NULL, NULL)` by `HasData`, so a new tenant's first tick sees no gap.
 - `@tb{b}_p0` of the gap check is `JobsOptions.GapThreshold` in minutes (default 360); `@tb{b}_p0`
-  of the stamp is the poll's lease owner, the string of §5.1's `@tb{b}_p4`. When `PreviousTickAt`
-  is older than the threshold the worker logs `SchedulerGapDetected` at `Warning`, counts
+  of the stamp is the poll's lease owner, the string of §5.1's `@tb{b}_p4`. When `PreviousTickAt` is
+  older than the threshold the worker logs `SchedulerGapDetected` at `Warning`, counts
   `tellma.schedules.gap_detected`, and, in `Persist` batches under the system user after the poll
   (as many as spec 0012's parameter cap requires), raises `core.scheduler.gap` to administrators
   with `DedupKey = 'core.scheduler.gap'` and `heldCount` = the sum of the block's per-requester
   counts, and one `core.job.held` to each non-null `RequestedById` of those counts with its `count`
-  and `DedupKey = 'core.job.held'`; rows with no requester are reported by the gap notice alone.
-  The counts cover every `Held` row, not only this statement's, so a re-run (§6.8) or a second
-  instance that found the rows already held still reports them; both notices rely on spec 0021's
-  default `OnDuplicate = Suppress`, so a repeat while the first is unread adds nothing.
+  and `DedupKey = 'core.job.held'`; rows with no requester are reported by the gap notice alone. The
+  counts cover every `Held` row, not only this statement's, so a re-run (§6.8) or a second instance
+  that found the rows already held still reports them. Both notices rely on spec 0021's default
+  `OnDuplicate = Suppress`, so a repeat while the first is unread adds nothing; the `resume` and
+  `cancel` actions withdraw them as the held rows end (§11.1).
 - Held rows are work that was already more than `GapThreshold` overdue when the worker came back:
   the thousands of rows a restored backup brings, or work queued before a long outage. They wait
   for an administrator's `resume` or a `cancel` (a member may cancel their own held rows; only an
@@ -1191,14 +1195,15 @@ second update:
 
 | Cause | `PausedReason` | Notification |
 |---|---|---|
-| the run-as user is inactive at tick time | `OwnerInactive` | `core.schedule.paused` to administrators (`IAdministratorDirectory.GetAdministratorIdsAsync()`), target `core.Schedule`, arguments `{ scheduleId, name, reason }` |
+| the run-as user is inactive at tick time | `OwnerInactive` | `core.schedule.paused` to administrators (`IAdministratorDirectory.GetAdministratorIdsAsync()`), target `core.Schedule`, arguments `{ scheduleId, name, reason }`, `DedupKey = 'core.schedule.paused:<scheduleId>'` |
 | `GetNextOccurrence` returns null at tick time: the tick's terminal branch, unreachable for an expression that passed `Schedules.CronNeverOccurs` (§7.8) and the `jobs.schedules` check (§15) | `Exhausted` | the same, to the owner when it is a person, else administrators |
 | the key is retired (§3.7) | `HandlerRetired` | as `Exhausted` |
 
-Reactivation through `activate` clears `PausedReason` and recomputes `NextDueAt` from now; it is
-refused while the cause stands (§7.8), and a paused period is never caught up. Built-ins never
-pause: the system user is never inactive, and the gates refuse a shipped expression with no next
-occurrence (`jobs.schedules`, §15) and a built-in naming a retired key (the realizer, §3.7).
+Reactivation through `activate` clears `PausedReason`, withdraws the notice and recomputes
+`NextDueAt` from now (§7.8); it is refused while the cause stands, and a paused period is never
+caught up. Built-ins never pause: the system user is never inactive, and the gates refuse a shipped
+expression with no next occurrence (`jobs.schedules`, §15) and a built-in naming a retired key (the
+realizer, §3.7).
 
 ### 7.8 `ScheduleService`
 
@@ -1242,7 +1247,9 @@ application clock enters — the next tick corrects it against the database cloc
 `ScheduleNextList` TVP, an upsert of `core.ScheduleStates` (`INSERT` for new ids,
 `UPDATE … SET NextDueAt` otherwise; `NextDueAt = NULL` for deactivated rows) and, on activation, an
 `UPDATE [core].[Schedules] SET [PausedReason] = NULL` for the affected ids; declares
-`Writes = { core.ScheduleStates, core.Schedules }`.
+`Writes = { core.ScheduleStates, core.Schedules }`. On activation it also calls
+`context.Withdraw(new WithdrawRequest($"core.schedule.paused:{id}"))` for each target whose
+`PausedReason` was set.
 
 `TakeOver`: an `[EntityAction("take-over", Action = "Save")]` over ids; validation refuses
 built-ins; the action is an `IDataBatch.Update<Schedule>` with `Stamp = true` that sets
@@ -1271,8 +1278,9 @@ FROM [core].[Schedules] AS [s] WHERE [s].[Id] = @tb{b}_p0;
 SELECT [JobId] FROM @tb{b}_jobIds;   -- result set: the job id
 ```
 
-Delete (`ValidateDeleteAsync`) refuses built-ins; the emitter's delete cascades `ScheduleStates`
-and sets `Jobs.ScheduleId` to null through the FK.
+Delete (`ValidateDeleteAsync`) refuses built-ins; the emitter's delete cascades `ScheduleStates` and
+sets `Jobs.ScheduleId` to null through the FK; `AfterCommitAsync` on the delete outcome withdraws
+`core.schedule.paused:<id>` for every deleted id through spec 0021's `INotifier.WithdrawAsync`.
 
 ### 7.9 Built-in schedules
 
@@ -1379,29 +1387,31 @@ a built-in's `CronExpression` and `TimeZoneId` and its names, nothing else (§7.
 ## 10. Notifications and hub events raised by the machinery
 
 Notification types this spec registers through spec 0011's `FeatureContribution.NotificationType`
-(spec 0021's `NotificationTypeDescriptor(Key, Category, Mutable, TargetResource)`), all with
-`Category = "jobs"`:
+(spec 0021's `NotificationTypeDescriptor`), all with `Category = "jobs"`:
 
-| Key | `Mutable` | Target | Raised | Recipients | Arguments |
-|---|---|---|---|---|---|
-| `core.job.failed` | false | `core.Job` | a completion ends `Failed`; with `InboxOnly = true` when the handler declares `InboxOnlyFailureNotices` (§3.1) | `RequestedById`, else administrators | `{ handlerKey, errorCode }` |
-| `core.job.held` | false | none | the gap hold, once per requester; `DedupKey = 'core.job.held'` | each distinct `RequestedById` among the held rows | `{ count }` |
-| `core.schedule.paused` | true | `core.Schedule` | §7.7 | `Exhausted` or `HandlerRetired`: the owner when a person, else administrators; `OwnerInactive`: administrators | `{ scheduleId, name, reason }` |
-| `core.scheduler.gap` | false | none | §6.10; `DedupKey = 'core.scheduler.gap'` | administrators | `{ previousTickAt, now, heldCount }` |
+| Key | `Mutable` | `Severity` | `Toast` | Target | Raised | Withdrawn | Recipients | Arguments |
+|---|---|---|---|---|---|---|---|---|
+| `core.job.failed` | false | `Error` | true | `core.Job` | a completion ends `Failed`; with `InboxOnly = true` when the handler declares `InboxOnlyFailureNotices` (§3.1) | never | `RequestedById`, else administrators | `{ handlerKey, errorCode }` |
+| `core.job.held` | false | `Warning` | true | none | the gap hold, once per requester; `DedupKey = 'core.job.held'` | by a `resume` or `cancel` of the requester's last held row (§11.1) | each distinct `RequestedById` among the held rows | `{ count }` |
+| `core.schedule.paused` | true | `Warning` | true | `core.Schedule` | §7.7; `DedupKey = 'core.schedule.paused:<scheduleId>'` | by `activate` and delete (§7.8) | `Exhausted` or `HandlerRetired`: the owner when a person, else administrators; `OwnerInactive`: administrators | `{ scheduleId, name, reason }` |
+| `core.scheduler.gap` | false | `Warning` | true | none | §6.10; `DedupKey = 'core.scheduler.gap'` | by the `resume` or `cancel` that ends the last held row (§11.1) | administrators | `{ previousTickAt, now, heldCount }` |
 
 Notifications ride the completion or tick batch as `NotificationRequest`s of spec 0021 §3.1 through
 `INotifier.Notify(batch, requests)`, and a request may append `core.notification-delivery` job rows
 to that batch (spec 0021 §3.3); the gap notices (`core.scheduler.gap`, `core.job.held`) and nothing
-else use their own `Persist` batches under the system user after the poll (§6.10). `core.job.failed`
-names the error by its code; the job pages render it with its arguments (§11.3). Administrators come
-from `IAdministratorDirectory.GetAdministratorIdsAsync()` (spec 0014).
+else use their own `Persist` batches under the system user after the poll (§6.10). Withdrawals ride
+the job and schedule actions' persist batch through `context.Withdraw` (spec 0021 §3.1; §7.8,
+§11.1); a schedule delete withdraws after its commit (§7.8). `core.job.failed` names the error by
+its code; the job pages render it with its arguments (§11.3). Administrators come from
+`IAdministratorDirectory.GetAdministratorIdsAsync()` (spec 0014).
 
 The hub event `job.changed { jobId }` is registered through `FeatureContribution.ClientEvent` and
-published through spec 0021's `IClientEventPublisher.Publish(batch, ClientEvent(Name, UserIds,
-Payload))` on the completion batch and `PublishAsync` after claims and progress-carrying renewals,
-only when the row's `RequestedById` is set and only to that user. `INotifier` is always present;
-`IClientEventPublisher` resolves to spec 0021's `NullClientEventPublisher` (registered with
-`TryAdd`) on a host without the hub, so the worker runs unchanged on a dedicated worker host.
+published only when the row's `RequestedById` is set, and only to that user: through spec 0021's
+`IClientEventPublisher.Publish(batch, ClientEvent(Name, UserIds, Payload))` on the completion batch
+and on the job actions' batch (§11.1), and through `PublishAsync` after claims and progress-carrying
+renewals. `INotifier` is always present; `IClientEventPublisher` resolves to spec 0021's
+`NullClientEventPublisher` (registered with `TryAdd`) on a host without the hub, so the worker runs
+unchanged on a dedicated worker host.
 
 ## 11. The administrative surface
 
@@ -1458,14 +1468,25 @@ FROM [core].[Jobs] AS [j] INNER JOIN @tb{b}_t0 AS [i] ON [i].[Id] = [j].[Id]
 WHERE [j].[Status] = 'Held';
 ```
 
-Each action runs through the pipeline's general action path (spec 0015 §11.2): RT1 loads the
-targets under the action's own grant filter and evaluates the precondition, RT2 appends the
-statement over the loaded ids to the `Persist` batch; no post-check. `retry` and `resume` nudge the
-local poller after commit. Each statement repeats its precondition in its `WHERE`, so its batch
-declares `Idempotent = true` (§1.4): a repeat matches no rows, save a `Running` row's cancel flag,
-which it sets again. None of the three declares spec 0016 §2.2's `Idempotent` (retry-safe): a
-client's retry after a commit would fail the precondition. `cancel` is `Destructive = true`; the
-three keep the default `Mutation = true`.
+Each action runs through the pipeline's general action path (spec 0015 §11.2): RT1 loads the targets
+under the action's own grant filter and evaluates the precondition, RT2 appends the statement over
+the loaded ids to the `Persist` batch; no post-check. `retry` and `resume` nudge the local poller
+after commit.
+
+`resume` and `cancel` withdraw spec 0021's `core.job.held` and `core.scheduler.gap` when they end
+held rows. RT1 declares one more load, without a grant filter: the distinct `RequestedById` values,
+null included, of the `Held` rows outside the targets (a seek on `IX_Jobs_Held`). When some targets
+are `Held`, the method calls `context.Withdraw` on `core.job.held` for each of their requesters
+absent from that list, and on `core.scheduler.gap` for every recipient when the list is empty; a
+`cancel` with no `Held` target withdraws nothing. The decision is best effort across the two round
+trips (Decisions record 22); the Background jobs page shows what is held (§11.3). The three actions
+publish `job.changed { jobId }` on the batch for each target with a `RequestedById` (§10).
+
+Each statement repeats its precondition in its `WHERE`, so its batch declares `Idempotent = true`
+(§1.4): a repeat matches no rows, save a `Running` row's cancel flag, which it sets again. None of
+the three declares spec 0016 §2.2's `Idempotent` (retry-safe): a client's retry after a commit would
+fail the precondition. `cancel` is `Destructive = true`; the three keep the default
+`Mutation = true`.
 
 ### 11.2 Securables
 
@@ -1762,7 +1783,10 @@ running row only once its lease lapses) and the `HandlerRetired` pause; enqueue 
 batch with `Entity` (every owner's `JobId` set in the same transaction by the one `UPDATE`, for
 3,000 owners as for one; ids in request order; the post-commit nudge observed; a call naming two
 entity types refused); the job actions' preconditions and each statement's repeat (no row matched,
-save a `Running` row's cancel flag, §11.1); retention paging and `SET NULL`.
+save a `Running` row's cancel flag, §11.1); with the in-memory fakes, `resume` and `cancel`
+withdrawing `core.job.held` for a requester with no held row left and `core.scheduler.gap` when none
+remains, a `cancel` of no held row withdrawing nothing, and the three actions publishing
+`job.changed` to each target's requester; retention paging and `SET NULL`.
 
 On the same fixture, the scheduler: tick step 1 leasing — a seeded built-in row with a null
 `NextDueAt` leased and initialised by the first tick without firing, a deactivated row with a null
@@ -1770,15 +1794,16 @@ On the same fixture, the scheduler: tick step 1 leasing — a seeded built-in ro
 skips only, the pause's single write, the tick-lease fence, `sp_sequence_get_range` id assignment
 and the `ScheduleStates` advance; the schedule validator codes, `Schedules.CronNeverOccurs` and
 `Schedules.OwnerInactive` among them (`activate` with an inactive owner refused, `take-over` then
-`activate` succeeding); `run-now` (`Schedules.RunInProgress`; the inserted row's `ScheduleId` set,
-`ScheduledFor` null, the run-as user per kind, `RequestedById` the caller). Re-running the poll
-(§6.8): a failure injected after the claims, tick step 1 and the hold committed — in both classes, a
-deadlock and a connection killed after the command was sent — re-runs the poll, which returns every
-row leased under the same tokens with `Attempts = 1`, reports the gap once with the held counts, and
-leaves no row leased and untracked. An end-to-end test runs a fixture handler through enqueue,
-claim, progress, completion and `job.changed` with in-memory `INotifier` and `IClientEventPublisher`
-fakes, and a second, declaring `InboxOnlyFailureNotices`, whose final failure raises
-`core.job.failed` with `InboxOnly = true`.
+`activate` succeeding and withdrawing the paused notice, a delete withdrawing it after commit);
+`run-now` (`Schedules.RunInProgress`; the inserted row's `ScheduleId` set, `ScheduledFor` null, the
+run-as user per kind, `RequestedById` the caller). Re-running the poll (§6.8): a failure injected
+after the claims, tick step 1 and the hold committed — in both classes, a deadlock and a connection
+killed after the command was sent — re-runs the poll, which returns every row leased under the same
+tokens with `Attempts = 1`, reports the gap once with the held counts, and leaves no row leased and
+untracked. An end-to-end test runs a fixture handler through enqueue, claim, progress, completion
+and `job.changed` with in-memory `INotifier` and `IClientEventPublisher` fakes, and a second,
+declaring `InboxOnlyFailureNotices`, whose final failure raises `core.job.failed` with
+`InboxOnly = true`.
 
 ## 17. Definition of done
 
@@ -1863,6 +1888,12 @@ The load-bearing decisions, where not already evident above:
 21. **Retired keys are declared; their rows are cancelled, their schedules paused** — a breaking
     change is a new key (§3.7), so keys retire routinely and their rows must not wait forever (§3.7,
     §6.9, §7.7).
+22. **The machinery's notices keep `Suppress` and are withdrawn by the actions that end their cause,
+    judged from RT1's load** — each is raised once per occurrence, never re-evaluated, so spec 0021
+    §3.1's `Ongoing` adds nothing; a predicate inside spec 0021's withdrawal would have to know this
+    spec's tables. Two concurrent actions over disjoint held rows can each see the other's rows and
+    withdraw nothing; the notices then age out under spec 0021 §7, and the Background jobs page
+    shows the truth either way (§6.10, §7.7, §11.1).
 
 ## Review flags
 
@@ -1926,5 +1957,7 @@ The load-bearing decisions, where not already evident above:
 20. **Constraint, invariant and distribution-guard failures fail the job at once** (§3.4, §5.6).
     Alternative: retry them with backoff like every other error. Flips if transient data races
     make such failures recoverable often enough to matter.
-21. **Retired rows end `Cancelled`, not `Failed`** (§6.9). Alternative: `Failed` with
-    `core.job.failed` to each requester. Flips if requesters miss the silent cancel.
+21. **Retired rows end `Cancelled`, not `Failed`, and withdraw no notice** (§6.9). Alternatives:
+    `Failed` with `core.job.failed` to each requester; an `OUTPUT` of the cancelled requesters
+    feeding a withdrawal after the poll. Flips if requesters miss the silent cancel or stale held
+    notices annoy them.

@@ -372,8 +372,8 @@ Each job runs as the system user with `RequestedById = null` (Decisions record 7
 6. **Notify.** If any row settled `Rejected` or `Failed`, one `NotifyOnSuccess` on the first such
    item raises `core.email.failed` (§9.3) to `IAdministratorDirectory.GetAdministratorIdsAsync()`,
    with arguments `{ count: n }`, target `core.OutgoingEmail` / that row's id, `InboxOnly = true`,
-   `DedupKey = "email.failed"` and `OnDuplicate = Replace`. Administrators see one unread notice
-   however many claims fail, with the latest count and row, and never an email.
+   `DedupKey = "core.email.failed"` and `OnDuplicate = Replace`. Administrators see one unread
+   notice however many claims fail, with the latest count and row, and never an email.
 
 The settle runs before the completion, so a known verdict survives a lost or re-done completion; the
 completion carries only job outcomes and the notices. Per batch, the load, pre-mark, settle and
@@ -532,9 +532,10 @@ Log events, all Warning: `OutboxSendInterrupted(rowId)`, `OutboxDeliveryEventUnm
 - the scoped `IEmailOutbox` and `IEmailDeliveryEventHandler` registrations;
 - `JobHandler<OutgoingEmailHandler>()` and `JobHandler<OutgoingEmailRetentionHandler>()`, with the
   built-in schedule of §7.3;
-- `NotificationType(new("core.email.failed", "jobs", false, "core.OutgoingEmail"))`, arguments
-  `{ count }`, with the resources `Notification_core_email_failed` and
-  `NotificationType_core_email_failed` in Core's `Strings` (spec 0021 §2.3, §2.4, §4.3);
+- `NotificationType(new("core.email.failed", "jobs", false, "core.OutgoingEmail", …))` with
+  `Severity = Error` and `Toast = true`, arguments `{ count }`, and the resources
+  `Notification_core_email_failed` and `NotificationType_core_email_failed` in Core's `Strings`
+  (spec 0021 §2.3, §2.4, §4.3);
 - the `Email_<Code>` resources in Core's `Strings` for the codes of §3.1, §5 and §7.1
   (`Email_InvalidMessage` … `Email_NotDeletable`), rendered as spec 0013 §10.1 renders a code;
 - `BlobKind("email-attachment", p => p with { Thumbnail = null })` (spec 0017 §1.3), since an email

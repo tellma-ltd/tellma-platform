@@ -9,39 +9,42 @@ code or its dependencies evolve.
 
 ## Context
 
-Every product built on the platform tells its users things: a document was assigned to you, the
-export you asked for is ready, the import you ran failed on row 3,412, a schedule you own was paused
+Every product built on the platform tells its users things: your document was approved, the export
+you asked for is ready, the import you ran failed on row 3,412, a schedule you own was paused
 because its owner was deactivated. This spec ships the machinery that carries those messages to the
 person: the `core.Notifications` table and its `Notification` entity, the per-type registry that
 says which notifications exist and which can be muted, the channel registry (`inbox` and `email` in
 every distribution; a module or distribution adds its own), the `core.NotificationPreferences` rows
 that hold each user's choices per channel, `INotifier` (the writer every service, handler and
 platform feature calls), the delivery job that carries a notification to every channel other than
-the inbox, and the inbox that a user sees: two counters on the bell icon, a dropdown of the latest
-items, a full notifications page, and the mark-as-read verbs.
+the inbox, and the inbox that a user sees: a badge on the bell icon, a dropdown of the latest items
+and of the user's running jobs, a full notifications page, and the read and clear verbs. Work
+assigned to a user and an operator's announcements are not notifications; a later spec owns both.
 
-It also ships the real-time channel that keeps those counters honest without polling: `TellmaHub`,
-one SignalR hub at `/{tenantId}/hub`, connected under the session cookie exactly as spec 0003 §7.4
-requires, carrying thin events (`inbox.changed`, `job.changed`, `cache.changed`, `session.ended`)
-to per-(tenant, user) groups assigned by the server. Publishers never see SignalR: they call
+It also ships the real-time channel that keeps that badge honest without polling: `TellmaHub`, one
+SignalR hub at `/{tenantId}/hub`, connected under the session cookie exactly as spec 0003 §7.4
+requires, carrying thin events (`inbox.changed`, `job.changed`, `cache.changed`, `session.ended`) to
+per-(tenant, user) groups assigned by the server. Publishers never see SignalR: they call
 `IClientEventPublisher`, which rides the same post-commit hook the notifier uses, so an event is
 never observed for a transaction that did not commit.
 
 The design rests on the frozen specs and the sibling specs written with it. Spec 0012's `IDataBatch`
 is the only way any statement here reaches SQL Server: a notification insert is a fixed-text
-statement appended to the caller's persist batch, so notifying a hundred assignees costs zero
+statement appended to the caller's persist batch, so notifying a hundred recipients costs zero
 additional round trips, and its ids are taken inside the statement rather than from the allocator's
 buffer; the same statement enqueues the job that delivers to the other channels when some recipient
 enabled one. Spec 0014 owns the user, the connect prologue whose `@tm_UserId` every inbox statement
 reads, and the `core.UserStamps` sibling row whose `InboxSeenAt` column this spec adds and whose
 `PreferencesTag` this spec's preference save bumps. Spec 0013 owns the ICU localizer that renders
 notification text and the localization scope that sets the language, calendar and zone it renders
-in. Spec 0015 exposes `PersistContext.Notify` and `ActionContext.Notify` so a distribution author
-raises a notification with one line inside a save or an action, and defines the job frame a channel
-writes through. Spec 0020 is the largest consumer: its completion and tick batches raise the job and
-schedule notifications through the same `INotifier`, its worker runs the delivery handler, and its
-`core.notification-retention` schedule runs the retention handler this spec ships. Spec 0011 defines
-the listeners the hub implements and the route group the hub is mapped on; spec 0016 maps it.
+in. Spec 0015 exposes `Notify` and `Withdraw` on `PersistContext` and `ActionContext` so a
+distribution author raises or withdraws a notification with one line inside a save or an action, and
+defines the job frame a channel writes through. Spec 0020 is the largest consumer: its completion
+and tick batches raise the job and schedule notifications through the same `INotifier`, its job and
+schedule actions withdraw them, its `core.Jobs` rows feed the summary's running jobs, its worker
+runs the delivery handler, and its `core.notification-retention` schedule runs the retention handler
+this spec ships. Spec 0011 defines the listeners the hub implements and the route group the hub is
+mapped on; spec 0016 maps it.
 
 Deliberately left to later specs: the `email` channel's delivery (spec 0022, behind the channel seam
 of §4.4; the channel's test send is spec 0018's), push channels and their device subscriptions, a
@@ -53,19 +56,22 @@ cross-instance nudge over the hub, a rendered `Title` column, and the reserved M
 **Goals**
 
 - Ship `core.Notifications`, the `Notification` entity, the notification type registry with its
-  descriptors and the nine Core types, and `INotificationRenderer` (ICU rendering in a given
-  localization context).
+  descriptors and the nine Core types, the catalogue served once per distribution version, and
+  `INotificationRenderer` (ICU rendering in a given localization context).
 - Ship `INotifier.Notify(batch, requests)` riding the caller's batch with inactive-recipient, mute
-  and duplicate predicates inside the statement (a duplicate suppressed or replaced in place), ids
-  reserved inside the statement, the conditional enqueue of a delivery job per slice of recipients,
-  and the `inbox.changed` event published after commit; `NotifyAsync` for callers with no batch.
+  and duplicate predicates inside the statement (a duplicate suppressed or replaced in place; for a
+  condition, a read row counts too), ids reserved inside the statement, the conditional enqueue of a
+  delivery job per slice of recipients, and the `inbox.changed` event published after commit;
+  `INotifier.Withdraw(batch, requests)` deleting a condition's rows by key; `NotifyAsync` and
+  `WithdrawAsync` for callers with no batch.
 - Ship the channel registry with `inbox` and `email`, the channel seam a sender implements
   (`DeliverAsync` and its test send, `TestNotificationResult`), the `core.notification-delivery`
   handler that calls it, `core.NotificationPreferences`, its self-service `get`/`save` operations,
   the `Notifications.CannotMute` rule and the `PreferencesTag` bump.
-- Ship the inbox: `InboxSeenAt`, `inbox/summary` with capped counts and the latest ten,
-  `inbox/seen`, `inbox/read`, `inbox/read-all`, and the notifications page as the standard query
-  over `core.Notification` under the self-scope criterion.
+- Ship the inbox: `InboxSeenAt`, `inbox/summary` with capped counts, the highest unseen severity,
+  the latest ten and the caller's running jobs, `inbox/seen`, `inbox/read`, `inbox/read-all`,
+  `inbox/clear`, `inbox/clear-read`, and the notifications page as the standard query over
+  `core.Notification` under the self-scope criterion.
 - Ship `TellmaHub`, its groups, the client event catalogue, `IClientEventPublisher` and its
   SignalR implementation, the session and tenant-state listeners, and the three hosting modes
   (in-process, Redis backplane, Azure SignalR Service).
@@ -85,6 +91,8 @@ cross-instance nudge over the hub, a rendered `Title` column, and the reserved M
   action's frame; this spec ships only the inbox type `core.user.added`.
 - **Export and import notifications' content** — spec 0019 raises them; this spec registers the
   descriptors' shape and the catalogue row.
+- **Assigned work and operator announcements** — a later spec; neither is a row of
+  `core.Notifications`.
 - **The session store, back-channel logout and the BFF** — spec 0011; the hub only listens.
 - **MCP tools over notifications** — `tellma_notifications` stays reserved (spec 0016); the
   generic `tellma_query` over `core.Notification` already answers under the self-scope.
@@ -97,9 +105,9 @@ cross-instance nudge over the hub, a rendered `Title` column, and the reserved M
 | Piece | Location | Notes |
 |---|---|---|
 | Contracts | `src/core/Tellma.Core.Abstractions/`, namespaces `Tellma.Core.Abstractions.Notifications` and `Tellma.Core.Abstractions.Realtime` | The contract types of §2–§6 — the entity, interfaces, records, descriptors and options sketched under `Tellma.Core.Abstractions.*` — and §9.1, §10.1; the runtime and web-host types of those sections are in the two rows below. BCL plus `Tellma.Core.Queryex` only. `NotificationRowList`, `NotificationSliceList` and `NotificationPreferenceList` live in `Tellma.Core.Abstractions.TableTypes`. |
-| Runtime | `src/core/Tellma.Core/`, namespace `Tellma.Core.Notifications` | `Notifier`, `NotificationStatements`, `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationRenderer`, `InboxService`, `NotificationPreferencesService`, `NotificationAccessCriteria`, `NotificationDeliveryHandler`, `NotificationDeliveryArguments`, `NotificationRetentionHandler`, `NullClientEventPublisher`, the realizers of `NotificationTypeContributionItem`, `NotificationChannelContributionItem` and `ClientEventContributionItem`. No SignalR reference. |
+| Runtime | `src/core/Tellma.Core/`, namespace `Tellma.Core.Notifications` | `Notifier`, `NotificationStatements`, `NotificationTypeRegistry`, `NotificationChannelRegistry`, `NotificationCatalogueProvider`, `ClientEventRegistry`, `NotificationRenderer`, `InboxService`, `NotificationPreferencesService`, `NotificationAccessCriteria`, `NotificationDeliveryHandler`, `NotificationDeliveryArguments`, `NotificationRetentionHandler`, `NullClientEventPublisher`, the realizers of `NotificationTypeContributionItem`, `NotificationChannelContributionItem` and `ClientEventContributionItem`. No SignalR reference. |
 | Web host | `src/core/Tellma.Core.AspNetCore/`, namespace `Tellma.Core.AspNetCore.Realtime` | `TellmaHub`, `TellmaUserIdProvider`, `HubConnectionTracker`, `SignalRClientEventPublisher`, `TellmaRealtimeOptions`, `RealtimeApplicationName`, `AddTellmaRealtime`. SignalR from the shared framework `Microsoft.AspNetCore.App`; no Azure or Redis package. |
-| Composition | `Tellma.Core.Composition` | `CoreFeature` contributes the `Notification` stack, the two `[ApiRoute]` services, the criteria provider, the Core notification types this spec owns, the two baseline channels, the client events `inbox.changed` and `session.ended`, the delivery and retention handlers, and the retention handler's built-in schedule. |
+| Composition | `Tellma.Core.Composition` | `CoreFeature` contributes the `Notification` stack, the two `[ApiRoute]` services, the catalogue provider, the criteria provider, the Core notification types this spec owns, the two baseline channels, the client events `inbox.changed` and `session.ended`, the delivery and retention handlers, and the retention handler's built-in schedule. |
 | Reference distribution | `distributions/acme/src/Tellma.Distro.Acme.Web/` (`Program.cs`, spec 0011 §1.2) | Composes realtime from the `composeWeb` delegate of `AddTellma` (spec 0011 §5) through `UseAzureWebDefaults()` (`Tellma.Defaults.Azure.AspNetCore`), which carries the `Microsoft.Azure.SignalR` 1.33.1 pin and selects the mode (spec 0011 §1.3). `Microsoft.AspNetCore.SignalR.StackExchangeRedis` 10.0.11 is pinned by an on-premises host, not by this distribution. |
 | Tests | `test/core/Tellma.Core.Tests/Notifications/`, `test/core/Tellma.Core.IntegrationTests/Notifications/`, `test/core/Tellma.Core.AspNetCore.Tests/Realtime/`, `test/core/Tellma.Core.AspNetCore.IntegrationTests/Realtime/` | §12. |
 
@@ -109,9 +117,9 @@ Dependency edges: `Tellma.Core.Abstractions` → `Tellma.Core.Queryex`; `Tellma.
 `NullClientEventPublisher` with `TryAdd` semantics so a host without the web package (a dedicated
 worker, the migrator, the offline test suites) composes and runs; `Tellma.Core.AspNetCore` replaces
 it with the SignalR publisher. Spec 0020's runtime also lives in `Tellma.Core`: the delivery enqueue
-writes its `core.Jobs` table and wakes its local poller (§3.3, §3.4), and its worker runs the
-delivery and retention handlers, which are ordinary `IJobHandler`s, and the built-in schedule, an
-ordinary contribution.
+writes its `core.Jobs` table and wakes its local poller (§3.3, §3.4), the summary reads it (§5.3),
+and its worker runs the delivery and retention handlers, which are ordinary `IJobHandler`s, and the
+built-in schedule, an ordinary contribution.
 
 Contract blocks are C# sketches: names and shapes are normative; `using` directives, XML
 documentation, cancellation-token parameters, method bodies and accessibility details are omitted,
@@ -129,9 +137,16 @@ statement's batch ordinal.
 - A **slice** is up to `DeliverySliceSize` of a request's recipients in `Ordinal` order; a
   **delivery job** (`core.notification-delivery`) carries one slice to every channel other than the
   inbox (§4.5).
-- The **inbox** is one user's view of their rows: two counters, the latest items, the page.
+- The **inbox** is one user's view of their rows: a badge, the latest items, their running jobs, the
+  page.
 - **Unseen** rows were created after the user last opened the inbox; **unread** rows carry no
   `ReadAt`.
+- A **severity** is `Info`, `Success`, `Warning` or `Error`, in that order; a type declares one and
+  a request may override it.
+- A **condition** is a notification that stands while something holds and is deleted by a
+  **withdrawal** when it clears; under `Ongoing` it has at most one row per recipient, read or not.
+- A **channel-only** type (`Inbox = false`) writes no row; its requests run the delivery enqueue
+  alone.
 - A **client event** is a thin, named message pushed through the hub; it carries ids, never
   tenant content.
 
@@ -145,7 +160,7 @@ statement's batch ordinal.
 3. **Predicates, not logic, in SQL.** Inactive recipients, muted types and duplicates are
    handled by predicates on the insert and the replace; no procedure, trigger or function exists.
 4. **Counters are counted, never maintained.** Unseen and unread are `TOP`-capped counts over
-   indexes; nothing increments a column.
+   indexes and the badge's severity a `MAX` over the same capped rows; nothing increments a column.
 5. **Bookkeeping never touches audit columns.** `core.Notifications` has no `ModifiedAt`;
    `InboxSeenAt` lives on `core.UserStamps`; neither table bumps a tenant version tag.
 6. **The hub is server→client only and carries no content.** Groups are computed from the
@@ -160,36 +175,41 @@ prologue's `@tm_UserId` (spec 0014's prologue rides every caller batch).
 
 | Statement | `Purpose` | `TransactionMode` | `Idempotent` | `Writes` | Scope |
 |---|---|---|---|---|---|
-| notify (`INotifier.Notify`) | the caller's (`Persist`) | the caller's (`Auto`) | `false` | `core.Notifications`, plus `core.Jobs` with the delivery enqueue (§3.3) | the caller's |
-| notify (`NotifyAsync`) | `Persist` | `Auto` | `false` | `core.Notifications`, plus `core.Jobs` with the delivery enqueue | the current scope |
+| notify (`INotifier.Notify`) | the caller's (`Persist`) | the caller's (`Auto`) | `false` | `core.Notifications`, plus `core.Jobs` with the delivery enqueue; `core.Jobs` alone for a channel-only type (§3.3) | the caller's |
+| notify (`NotifyAsync`) | `Persist` | `Auto` | `false` | `core.Notifications`, plus `core.Jobs` with the delivery enqueue; `core.Jobs` alone for a channel-only type | the current scope |
+| withdraw (`INotifier.Withdraw`) | the caller's (`Persist`) | the caller's (`Auto`) | `true` | `core.Notifications` | the caller's |
+| withdraw (`WithdrawAsync`) | `Persist` | `Auto` | `true` | `core.Notifications` | the current scope |
 | delivery read (§4.5) | `Read` | `Auto` | `true` | none | the delivery job's (system user) |
 | inbox summary, preferences get | `Read` | `Auto` | `true` | none | the caller's |
 | inbox seen | `Persist` | `Auto` | `true` | `core.UserStamps` | the caller's |
-| inbox read, read-all | `Persist` | `Auto` | `true` | `core.Notifications` | the caller's |
+| inbox read, read-all, clear, clear-read | `Persist` | `Auto` | `true` | `core.Notifications` | the caller's |
 | preferences save | `Persist` | `Auto` | `false` | `core.NotificationPreferences`, `SqlOptions.ForCaller` | the caller's |
 | retention page | `Maintenance` | `None` | `true` | `core.Notifications` | system tenant scope |
 
 `core.Notifications`, `core.NotificationPreferences` and `core.UserStamps` carry no tenant-level
-version-tag attribute and never bump a tenant tag; `core.NotificationPreferences` is covered by
-spec 0013's fixed user-level rule (`UserVersionTagRule(core.NotificationPreferences, Preferences,
-"UserId")`), so the preferences save names the caller through `SqlOptions.ForCaller` and the
-executor's epilogue bumps that user's `PreferencesTag`. The `Read` batches of the inbox and the
-delivery handler declare no dependencies and are served regardless of tag state (`inbox/summary` is
-a polling endpoint and carries spec 0014's `NoActivityStampMetadata`, per spec 0016).
+version-tag attribute and never bump a tenant tag. Spec 0013's fixed user-level rule
+`UserVersionTagRule(core.NotificationPreferences, Preferences, "UserId")` covers
+`core.NotificationPreferences`, so the preferences save names the caller through
+`SqlOptions.ForCaller` and the executor's epilogue bumps that user's `PreferencesTag`. The `Read`
+batches of the inbox and the delivery handler declare no dependencies and are served regardless of
+tag state (`inbox/summary` is a polling endpoint and carries spec 0014's `NoActivityStampMetadata`,
+per spec 0016).
 
 ## 2. Notifications
 
 ### 2.1 `core.Notifications`
 
-Non-temporal; written only by `INotifier` (the insert and the replace of §3.3), the inbox verbs
-(`ReadAt`) and the retention deletes of §7; `[TableType]` (every column; used by the fixture tier
-only); sequence `core.sq_Notifications`.
+Non-temporal; `LOCK_ESCALATION = DISABLE` (the read-all and clear-read verbs touch one user's rows
+in one statement); written only by `INotifier` (the insert, the replace and the withdrawal of §3.3),
+the inbox verbs (`ReadAt`, the clear deletes) and the retention deletes of §7; `[TableType]` (every
+column; used by the fixture tier only); sequence `core.sq_Notifications`.
 
 | Column | Type | Null | Constraints | Notes |
 |---|---|---|---|---|
 | `Id` | `int` | no | `PK_Notifications` clustered; `CK_Notifications_Id CHECK ([Id] > 0)`; `core.sq_Notifications` | reserved inside the insert |
 | `UserId` | `int` | no | `FK_Notifications_UserId → core.Users(Id)` NO ACTION | the recipient |
 | `Type` | `nvarchar(64)` | no | | registered type key |
+| `Severity` | `varchar(8)` | no | | `NotificationSeverity` as text (spec 0012's enum convention); the request's override, else the descriptor's |
 | `ArgumentsJson` | `nvarchar(4000)` | yes | | ICU arguments; the client's click data |
 | `TargetResource` | `varchar(128)` | yes | | securable resource id (`core.Export`, `acme.Document`) |
 | `TargetId` | `bigint` | yes | | the target row's id |
@@ -198,14 +218,15 @@ only); sequence `core.sq_Notifications`.
 | `CreatedAt` | `datetimeoffset(3)` | no | | `SYSUTCDATETIME()` in the insert |
 | `ReadAt` | `datetimeoffset(3)` | yes | | null while unread |
 
-Indexes: `IX_Notifications_User (UserId, CreatedAt DESC) INCLUDE (ReadAt, Type)` —
-the summary's unseen count and the latest-ten page; `IX_Notifications_Unread (UserId) WHERE ReadAt
-IS NULL` — the unread count and the read verbs; `IX_Notifications_Dedup (UserId, DedupKey) WHERE
-DedupKey IS NOT NULL AND ReadAt IS NULL` — non-unique, the seek of the duplicate predicate and
-of the replace;
-`IX_Notifications_Retention (ReadAt, CreatedAt)` — the retention pages. No `ON DELETE CASCADE`: a
-user is never deleted after `State = New` (spec 0014); deleting a `New` user with rows is a 547
-mapped to `Fk.InUse` by the pipeline, which is the correct answer.
+Indexes: `IX_Notifications_User (UserId, CreatedAt DESC, Id DESC) INCLUDE (ReadAt, Type, Severity)`
+— the summary's unseen count and severity, the latest-ten page and the clear-read verb;
+`IX_Notifications_Unread (UserId) WHERE ReadAt IS NULL` — the unread count and the read verbs;
+`IX_Notifications_Dedup (DedupKey, UserId) INCLUDE (ReadAt) WHERE DedupKey IS NOT NULL` —
+non-unique, the seek of the duplicate predicate, of the replace and of the withdrawal, `ReadAt` a
+residual under `Suppress` and `Replace`; `IX_Notifications_Retention (ReadAt, CreatedAt)` — the
+retention pages. No `ON DELETE CASCADE`: a user is never deleted after `State = New` (spec 0014);
+deleting a `New` user with rows is a 547 mapped to `Fk.InUse` by the pipeline, which is the correct
+answer.
 
 ### 2.2 The `Notification` entity and its stack
 
@@ -215,6 +236,7 @@ public sealed class Notification : Entity<int>   // [Table("Notifications", Sche
 {
     public int UserId { get; set; }                     // server-owned; FK -> core.Users
     public string Type { get; set; }                    // server-owned
+    public NotificationSeverity Severity { get; set; }  // server-owned
     public string? ArgumentsJson { get; set; }          // server-owned; [JsonColumn] is not applied (nvarchar(4000), not max)
     public string? TargetResource { get; set; }         // server-owned
     public long? TargetId { get; set; }                 // server-owned
@@ -228,31 +250,35 @@ public sealed class Notification : Entity<int>   // [Table("Notifications", Sche
 `Notification` is a system-written entity (spec 0012): it derives from `Entity<int>`, carries
 `CreatedAt` explicitly, has no audit set and no concurrency token, and is never written through
 `Save`. Its stack is `[Stack(Operations = Query | Details)]`: `query`, `get`, `get-by-ids` and
-nothing else — no save, delete, actions or Excel operations. `[DefaultSelect("Id, Type,
-ArgumentsJson, TargetResource, TargetId, ActorUserId, CreatedAt, ReadAt")]`; `UserId` and `DedupKey`
-are selectable but not in the default projection. The resource segment is `notifications`; the
-entity name — the Queryex name and the securable resource alike — is `core.Notification` (spec
-0014's `CoreResources.Notification`). Navigations from the two FKs: `User` and `ActorUser` (derived
-from `ActorUserId`). Neither navigation is in a `[RelatedSelect]` of its own — `User` and
-`ActorUser` project through spec 0012's default related projection (`Id`, the `Name` group, the
-avatar column), so the notifications page shows the actor's name and image and nothing else about
-them.
+nothing else — no save, delete, actions or Excel operations; `[DefaultSelect]` of every column but
+`UserId` and `DedupKey`, which stay selectable. The resource segment is `notifications`; the entity
+name — the Queryex name and the securable resource alike — is `core.Notification` (spec 0014's
+`CoreResources.Notification`). Navigations from the two FKs: `User` and `ActorUser` (derived from
+`ActorUserId`). Neither navigation is in a `[RelatedSelect]` of its own — `User` and `ActorUser`
+project through spec 0012's default related projection (`Id`, the `Name` group, the avatar column),
+so the notifications page shows the actor's name and image and nothing else about them.
 
-**The self-scope.** `NotificationAccessCriteria : IAccessCriteriaProvider` (`Resource =
-"core.Notification"`) returns one criterion for every user: `AccessCriterion("Read",
-FilterTree.Leaf("UserId = me()"), "self")`. Spec 0014's composition rule makes a criterion alone a
-`Filtered` decision, so every member reads exactly their own rows with no role grant; the pipeline
-conjoins the filter into every query and details read of the stack. A stored role grant on
-`core.Notification × Read` is accepted by the securables registry (the pair exists) and widens the
-scope by spec 0014's `Or` composition — that is the audit path for an administrator who must see
-what a user was told, and no such grant is seeded (review flag 9).
+**The self-scope.** `NotificationAccessCriteria : IAccessCriteriaProvider`
+(`Resource = "core.Notification"`) returns one criterion for every user:
+`AccessCriterion("Read", FilterTree.Leaf("UserId = me()"), "self")`. Spec 0014's composition rule
+makes a criterion alone a `Filtered` decision, so every member reads exactly their own rows with no
+role grant; the pipeline conjoins the filter into every query and details read of the stack. A
+stored role grant on `core.Notification × Read` is accepted by the securables registry (the pair
+exists) and widens the scope by spec 0014's `Or` composition — that is the audit path for an
+administrator who must see what a user was told and has not cleared, and no such grant is seeded
+(review flag 9).
 
 ### 2.3 The type registry
 
 ```csharp
 // Tellma.Core.Abstractions.Notifications
+public enum NotificationSeverity { Info, Success, Warning, Error }   // ascending; the row's Severity (§2.1)
+
 public sealed record NotificationTypeDescriptor(
-    string Key, string Category, bool Mutable, string? TargetResource);
+    string Key, string Category, bool Mutable, string? TargetResource,
+    NotificationSeverity Severity = NotificationSeverity.Info,       // the rows' default; a request may override it (§3.1)
+    bool Toast = false,                                               // a row arriving in an open app pops a toast (§5.4)
+    bool Inbox = true);                                               // false: channel-only; no row is written (§3.3)
 
 public interface INotificationTypeRegistry              // singleton; built at composition; validated by the startup check of §11
 {
@@ -264,31 +290,35 @@ public interface INotificationTypeRegistry              // singleton; built at c
 
 | Member | Meaning |
 |---|---|
-| `Key` | The row's `Type`. Grammar `^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$`, at most 64 characters — the handler-key grammar of spec 0020, cited, not redefined. `core.` is reserved for the platform; modules use their slug (`gl.`), distributions their deployment slug (`acme.document.assigned`). Keys are persisted and stable for the life of a distribution; a changed meaning is a new key. |
+| `Key` | The row's `Type`. Grammar `^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$`, at most 64 characters — the handler-key grammar of spec 0020, cited, not redefined. `core.` is reserved for the platform; modules use their slug (`gl.`), distributions their deployment slug (`acme.document.approved`). Keys are persisted and stable for the life of a distribution; a changed meaning is a new key. |
 | `Category` | Lowercase identifier `^[a-z][a-z0-9-]*$`, at most 32 characters; groups the preferences page. Core categories: `jobs`, `files`, `users`. |
 | `Mutable` | `true`: the user may disable the `inbox` channel for the type. `false`: the inbox channel cannot be disabled (`Notifications.CannotMute` on save; the insert ignores preferences). Every other channel is always the user's choice. |
 | `TargetResource` | When set, every request of the type must carry this `TargetResource` and a `TargetId`, and the client maps the resource to a route. When null, requests carry neither. |
+| `Severity` | The default severity of the type's rows, overridable per request (§3.1); drives the row's icon and the badge colour (§5.4). |
+| `Toast` | `true`: a row of the type that arrives while the app is open pops a toast (§5.4). |
+| `Inbox` | `false`: a channel-only type — no row, so no inbox, no duplicate rules and no toast; a request runs the delivery enqueue alone (§3.3) and the preferences page shows no `inbox` switch (§5.4). Requires `Mutable = false` and `Toast = false`. |
 
 Types are registered through spec 0011's `FeatureContribution.NotificationType(descriptor)`
 (`NotificationTypeContributionItem`), realised by `Tellma.Core` into the registry. The Core
 catalogue, with the spec whose code raises each type and therefore declares its descriptor:
 
-| Key | Category | `Mutable` | Target | Raised by | Arguments |
-|---|---|---|---|---|---|
-| `core.email.failed` | `jobs` | false | `core.OutgoingEmail` | spec 0022's outbox handler | `{ count }` |
-| `core.export.ready` | `files` | false | `core.Export` | spec 0019's export handler | `{ fileName, rowCount }` |
-| `core.import.completed` | `files` | false | `core.Import` | spec 0019's import handler | `{ fileName, rowCount, errorCount }` |
-| `core.import.failed` | `files` | false | `core.Import` | spec 0019's import handler | `{ fileName, errorCode }` |
-| `core.job.failed` | `jobs` | false | `core.Job` | spec 0020 | `{ handlerKey, errorCode }` |
-| `core.job.held` | `jobs` | false | none | spec 0020 (`DedupKey = 'core.job.held'`) | `{ count }` |
-| `core.schedule.paused` | `jobs` | true | `core.Schedule` | spec 0020 | `{ scheduleId, name, reason }` |
-| `core.scheduler.gap` | `jobs` | false | none | spec 0020 (`DedupKey = 'core.scheduler.gap'`) | `{ previousTickAt, now, heldCount }` |
-| `core.user.added` | `users` | true | none | spec 0018's `UserService.Invite` | `{ tenantName, actorName }` |
+| Key | Category | `Mutable` | `Severity` | `Toast` | Target | Raised by | Arguments |
+|---|---|---|---|---|---|---|---|
+| `core.email.failed` | `jobs` | false | `Error` | true | `core.OutgoingEmail` | spec 0022's outbox handler (`DedupKey = 'core.email.failed'`) | `{ count }` |
+| `core.export.ready` | `files` | false | `Success` | true | `core.Export` | spec 0019's export handler | `{ fileName, rowCount }` |
+| `core.import.completed` | `files` | false | `Success` | true | `core.Import` | spec 0019's import handler | `{ fileName, rowCount, errorCount }` |
+| `core.import.failed` | `files` | false | `Error` | true | `core.Import` | spec 0019's import handler | `{ fileName, errorCode }` |
+| `core.job.failed` | `jobs` | false | `Error` | true | `core.Job` | spec 0020 | `{ handlerKey, errorCode }` |
+| `core.job.held` | `jobs` | false | `Warning` | true | none | spec 0020 (`DedupKey = 'core.job.held'`) | `{ count }` |
+| `core.schedule.paused` | `jobs` | true | `Warning` | true | `core.Schedule` | spec 0020 (`DedupKey = 'core.schedule.paused:<scheduleId>'`) | `{ scheduleId, name, reason }` |
+| `core.scheduler.gap` | `jobs` | false | `Warning` | true | none | spec 0020 (`DedupKey = 'core.scheduler.gap'`) | `{ previousTickAt, now, heldCount }` |
+| `core.user.added` | `users` | true | `Info` | false | none | spec 0018's `UserService.Invite` (`DedupKey = 'core.user.added'`) | `{ tenantName, actorName }` |
 
 Each descriptor is declared once, by the feature code that raises it (spec 0020's registration for
 its four; spec 0019's for its three; spec 0022's for `core.email.failed`; this spec's `CoreFeature`
-contribution for `core.user.added`); the registry rejects a duplicate key at startup. A distribution
-declares its own types the same way, in its feature's `Contribute`.
+contribution for `core.user.added`); the registry rejects a duplicate key at startup. A type's
+duplicate policy and the trigger that withdraws it are the raiser's (spec 0020 §10, spec 0022 §5,
+spec 0018 §3.3). A distribution declares its own types the same way, in its feature's `Contribute`.
 
 ### 2.4 Rendering
 
@@ -312,11 +342,33 @@ resource resolves in that context's culture and dates render in its calendar and
 whichever request or job is running. A missing resource renders the key itself and counts on spec
 0013's `tellma.localization.missing`; malformed `argumentsJson` renders with no arguments and logs
 `NotificationArgumentsInvalid` (warning, once per type and arguments text in a scope). The summary
-endpoint never calls the renderer: `InboxSummary.Latest` carries the raw rows and the SPA renders
-them from spec 0013's string pack. The server-side renderer serves MCP, which passes a row's columns
-and the reader's context, and the channels of §4.4, which pass each recipient's. The notifications
-page shows the rendered text as a client-side column; sorting and filtering on rendered text is not
-offered (review flag 1).
+endpoint never calls the renderer: `InboxSummary.Latest` and `Running` carry raw rows and the SPA
+renders them from spec 0013's string pack, a job's progress as spec 0020 §3.3 renders it. The
+server-side renderer serves MCP, which passes a row's columns and the reader's context, and the
+channels of §4.4, which pass each recipient's. The notifications page shows the rendered text as a
+client-side column; sorting and filtering on rendered text is not offered (review flag 1).
+
+### 2.5 The catalogue
+
+```csharp
+// Tellma.Core.Abstractions.Notifications
+public sealed record NotificationCatalogue(
+    string Version,                                     // DeploymentVersions.DistributionVersion (spec 0011)
+    IReadOnlyList<NotificationTypeDescriptor> Types,
+    IReadOnlyList<NotificationChannelDescriptor> Channels);
+
+public interface INotificationCatalogueProvider         // singleton; composed at startup from the two registries (§2.3, §4.1)
+{
+    NotificationCatalogue Catalogue { get; }
+}
+```
+
+Types and channels are composed per distribution, never per tenant, so the SPA fetches them once per
+deployment from `GET /api/notification-catalogue?v=<version>`. The endpoint is tenantless and
+anonymous, and spec 0016 §9.4 maps it beside the string pack. It returns the catalogue serialised
+with the platform JSON options (spec 0016 §3.1) under the string pack's caching contract (spec 0013
+§10.4), immutable when `v` equals `Catalogue.Version`. The SPA reads `Severity`, `Toast`, `Category`
+and `Inbox` from it (§5.4); the preferences endpoint returns deviations only (§4.3).
 
 ## 3. `INotifier`
 
@@ -324,17 +376,22 @@ offered (review flag 1).
 
 ```csharp
 // Tellma.Core.Abstractions.Notifications
-public enum DuplicatePolicy { Suppress, Replace }
+public enum DuplicatePolicy { Suppress, Replace, Ongoing }
 
 public sealed record NotificationRequest(
     string Type, IReadOnlyList<int> RecipientIds, object? Arguments, string? TargetResource,
     long? TargetId, int? ActorUserId, string? DedupKey, DuplicatePolicy OnDuplicate = DuplicatePolicy.Suppress,
-    bool InboxOnly = false);                            // true: the inbox row only; no delivery job
+    bool InboxOnly = false,                             // true: the inbox row only; no delivery job
+    NotificationSeverity? Severity = null);             // null: the descriptor's
+
+public sealed record WithdrawRequest(string DedupKey, IReadOnlyList<int>? RecipientIds = null);   // null: every recipient
 
 public interface INotifier                              // scoped
 {
     void Notify(IDataBatch batch, IReadOnlyList<NotificationRequest> requests);
     Task NotifyAsync(IReadOnlyList<NotificationRequest> requests);
+    void Withdraw(IDataBatch batch, IReadOnlyList<WithdrawRequest> requests);
+    Task WithdrawAsync(IReadOnlyList<WithdrawRequest> requests);
 }
 
 public sealed class NotificationsOptions                // Tellma:Notifications; validated at startup
@@ -357,20 +414,26 @@ public sealed class NotificationsOptions                // Tellma:Notifications;
 | `Arguments` | Serialised with the platform JSON options (spec 0016) into `ArgumentsJson`; `null` stores `NULL`. At most `MaxArgumentsChars` after serialisation. |
 | `TargetResource`, `TargetId` | Required together when the descriptor declares a target, and must equal the descriptor's resource; forbidden when it declares none. |
 | `ActorUserId` | Defaults to `RequestContext.UserId`; `null` in a `System` scope. Must be an existing user id at insert time (the FK). |
-| `DedupKey` | At most 128 characters. An unread row of the recipient with the same `DedupKey` is a **duplicate**; `OnDuplicate` decides its fate; a read row is never a duplicate. |
-| `OnDuplicate` | `Suppress` (default): the recipient receives nothing while a duplicate exists. `Replace`: the duplicate becomes this request's row — type, arguments, target, actor and a fresh `CreatedAt`, same id, still unread — so it resurfaces unseen and on top, and the recipient receives `inbox.changed`; recipients without a duplicate receive a new row. Requires a `DedupKey`. |
+| `DedupKey` | At most 128 characters. A row of the recipient with the same `DedupKey` is a **duplicate** — unread rows only under `Suppress` and `Replace`, read rows too under `Ongoing`; `OnDuplicate` decides its fate. Keys are matched without regard to `Type`. Activity about a record keys by `<resource>:<id>` (`acme.Document:42`); everything else keys by its type key, with an anchor where it needs one (`core.schedule.paused:42`, `core.job.held`). |
+| `OnDuplicate` | `Suppress` (default): the recipient receives nothing while a duplicate exists. `Replace`: the duplicate becomes this request's row — type, severity, arguments, target, actor and a fresh `CreatedAt`, same id, still unread — so it resurfaces unseen and on top, and the recipient receives `inbox.changed`; recipients without a duplicate receive a new row. `Ongoing`: as `Suppress`, but a read row counts as a duplicate too, so a condition re-raised while it holds writes nothing; the raiser withdraws it when it clears, and withdraws and re-raises it in one batch when its facts change. A row the recipient cleared (§5.2) returns at the next raise while the condition holds. `Replace` and `Ongoing` require a `DedupKey`. |
 | `InboxOnly` | `true`: the request writes inbox rows only and enqueues no delivery job (§3.3), so no other channel delivers it. A notice about a failing delivery path is raised this way (spec 0020's `InboxOnlyFailureNotices`, spec 0022's `core.email.failed`), so it never re-enters that path. |
-| `Notify` | Appends one statement of §3.3 per request to `batch` — the inbox insert (and replace), then the conditional delivery enqueue — registers one post-commit callback for the whole call (§3.4), returns synchronously. Never awaits, never allocates an id from the allocator's buffer. |
+| `Severity` | `null`: the descriptor's `Severity`. Set: this request's rows take it, so one type can raise `Warning` at 90% and `Error` at 100%. |
+| `Notify` | Appends one statement of §3.3 per request to `batch` — the inbox insert (and replace), then the conditional delivery enqueue, or the enqueue alone for a channel-only type — registers the batch's post-commit callback (§3.4), returns synchronously. Never awaits, never allocates an id from the allocator's buffer. |
 | `NotifyAsync` | Creates a `Persist` batch on spec 0012's `ITenantDatabase` of the current scope, calls `Notify`, executes it. For callers with no batch in flight (a hosted service, a post-commit effect). |
+| `WithdrawRequest.DedupKey` | Required; at most 128 characters. Every row with the key is deleted, read or not, whatever its type. |
+| `WithdrawRequest.RecipientIds` | `null`: every recipient's rows. Else the user ids whose rows are deleted; duplicates collapse; the empty list appends nothing; at most `MaxRecipientsPerRequest`. |
+| `Withdraw` | Appends one statement of §3.3 per request to `batch`, shares the post-commit callback of §3.4, returns synchronously. A key with no rows deletes nothing. |
+| `WithdrawAsync` | As `NotifyAsync`, for `Withdraw`. |
 
 Every rule in the table is checked in C# before any statement is appended and fails the call with
 `InvalidOperationException` — a request is composed by platform or distribution code, never by a
 client, so a violation is a programming error (a 500 with a trace id), not a validation error. A
-type that is not registered on this instance fails the same way: a distribution never raises a type
-it did not declare. A call carries any number of requests, and several calls on one batch are the
-same as one call with their union; the only bound is spec 0012's parameter cap per batch — eight
-parameters per request (seven scalars and the recipients TVP), ten when it carries the delivery
-enqueue (§3.3).
+type that is not registered on this instance fails the same way — a distribution never raises a type
+it did not declare — and so do `InboxOnly` and a `DedupKey` on a request of a channel-only type
+(§2.3), which has no row for either. A call carries any number of requests, and several calls on one
+batch are the same as one call with their union; the only bound is spec 0012's parameter cap per
+batch — nine parameters per request (eight scalars and the recipients TVP), eleven with the delivery
+enqueue, four for a channel-only type (§3.3); a withdrawal takes one, two with named recipients.
 
 ### 3.2 The standalone table types
 
@@ -386,43 +449,48 @@ distinct recipient, `Ordinal` from 0 in the recipients' first-seen order. Bound 
 `NotificationDeliveryArguments` (§4.5), serialised with the platform JSON options. Bound through
 `IDataBatch.Tvp<NotificationSliceList>(rows)`.
 
-### 3.3 The insert, the replace and the delivery enqueue
+### 3.3 The insert, the replace, the withdrawal and the delivery enqueue
 
 Per request, ordinal `{b}`, with `SqlOptions(Writes = [core.Notifications], ResultSets = 1)`:
-`@tb{b}_t0 : NotificationRowList`; scalars `@tb{b}_p0 nvarchar(64)` type, `@tb{b}_p1 nvarchar(4000)`
-arguments, `@tb{b}_p2 varchar(128)` target resource, `@tb{b}_p3 bigint` target id, `@tb{b}_p4 int`
-actor, `@tb{b}_p5 nvarchar(128)` dedup key, `@tb{b}_p6 bit` the descriptor's `Mutable`. Under
-`Replace` the replace below runs ahead of the insert and adds a result set. Unless the request is
-`InboxOnly` or no channel has a sender, the delivery enqueue follows the insert: it binds
-`@tb{b}_t1 : NotificationSliceList` and `@tb{b}_p7 nvarchar(55)` the trace parent, adds `core.Jobs`
-to `Writes` and adds a result set:
+`@tb{b}_t0 : NotificationRowList`; scalars `@tb{b}_p0 nvarchar(64)` type, `@tb{b}_p1 varchar(8)` the
+resolved severity (§3.1), `@tb{b}_p2 nvarchar(4000)` arguments, `@tb{b}_p3 varchar(128)` target
+resource, `@tb{b}_p4 bigint` target id, `@tb{b}_p5 int` actor, `@tb{b}_p6 nvarchar(128)` dedup key,
+`@tb{b}_p7 bit` the descriptor's `Mutable`. Under `Replace` the replace below runs ahead of the
+insert and adds a result set; under `Ongoing` the insert's duplicate predicate omits its
+`[n].[ReadAt] IS NULL` term. Unless the request is `InboxOnly` or no channel has a sender, the
+delivery enqueue follows the insert: it binds `@tb{b}_t1 : NotificationSliceList` and
+`@tb{b}_p8 nvarchar(55)` the trace parent, adds `core.Jobs` to `Writes` and adds a result set. For a
+channel-only type (§2.3) the replace and the insert are omitted, and the request is the delivery
+enqueue alone, or nothing when no channel has a sender. That enqueue binds the recipients, the
+slices, the type and the trace parent, named by spec 0012 §5.4 from the text it contains, with
+`Writes = [core.Jobs]` and `ResultSets = 1`.
 
 ```sql
 -- Replace only, ahead of the insert:
-UPDATE [n] SET [Type] = @tb{b}_p0, [ArgumentsJson] = @tb{b}_p1, [TargetResource] = @tb{b}_p2, [TargetId] = @tb{b}_p3,
-               [ActorUserId] = @tb{b}_p4, [CreatedAt] = SYSUTCDATETIME()
+UPDATE [n] SET [Type] = @tb{b}_p0, [Severity] = @tb{b}_p1, [ArgumentsJson] = @tb{b}_p2, [TargetResource] = @tb{b}_p3,
+               [TargetId] = @tb{b}_p4, [ActorUserId] = @tb{b}_p5, [CreatedAt] = SYSUTCDATETIME()
 OUTPUT [inserted].[UserId]
 FROM [core].[Notifications] AS [n] JOIN @tb{b}_t0 AS [r] ON [r].[UserId] = [n].[UserId]
-WHERE [n].[DedupKey] = @tb{b}_p5 AND [n].[ReadAt] IS NULL
+WHERE [n].[DedupKey] = @tb{b}_p6 AND [n].[ReadAt] IS NULL
   AND EXISTS (SELECT 1 FROM [core].[Users] AS [u] WHERE [u].[Id] = [r].[UserId] AND [u].[IsActive] = 1)
-  AND (@tb{b}_p6 = 0 OR NOT EXISTS (SELECT 1 FROM [core].[NotificationPreferences] AS [p]
+  AND (@tb{b}_p7 = 0 OR NOT EXISTS (SELECT 1 FROM [core].[NotificationPreferences] AS [p]
                                     WHERE [p].[UserId] = [r].[UserId] AND [p].[Type] = @tb{b}_p0 AND [p].[Channel] = 'inbox' AND [p].[Enabled] = 0));
 
--- Every request:
+-- Every request of a type with Inbox = true:
 DECLARE @tb{b}_n int = (SELECT COUNT(*) FROM @tb{b}_t0);
 DECLARE @tb{b}_first sql_variant;
 EXEC sys.sp_sequence_get_range @sequence_name = N'core.sq_Notifications', @range_size = @tb{b}_n, @range_first_value = @tb{b}_first OUTPUT;
-INSERT INTO [core].[Notifications] ([Id], [UserId], [Type], [ArgumentsJson], [TargetResource], [TargetId], [ActorUserId], [DedupKey], [CreatedAt])
+INSERT INTO [core].[Notifications] ([Id], [UserId], [Type], [Severity], [ArgumentsJson], [TargetResource], [TargetId], [ActorUserId], [DedupKey], [CreatedAt])
 OUTPUT [inserted].[UserId]
-SELECT CAST(@tb{b}_first AS int) + [r].[Ordinal], [r].[UserId], @tb{b}_p0, @tb{b}_p1, @tb{b}_p2, @tb{b}_p3, @tb{b}_p4, @tb{b}_p5, SYSUTCDATETIME()
+SELECT CAST(@tb{b}_first AS int) + [r].[Ordinal], [r].[UserId], @tb{b}_p0, @tb{b}_p1, @tb{b}_p2, @tb{b}_p3, @tb{b}_p4, @tb{b}_p5, @tb{b}_p6, SYSUTCDATETIME()
 FROM @tb{b}_t0 AS [r]
 WHERE EXISTS (SELECT 1 FROM [core].[Users] AS [u] WHERE [u].[Id] = [r].[UserId] AND [u].[IsActive] = 1)
-  AND (@tb{b}_p6 = 0 OR NOT EXISTS (SELECT 1 FROM [core].[NotificationPreferences] AS [p]
+  AND (@tb{b}_p7 = 0 OR NOT EXISTS (SELECT 1 FROM [core].[NotificationPreferences] AS [p]
                                     WHERE [p].[UserId] = [r].[UserId] AND [p].[Type] = @tb{b}_p0 AND [p].[Channel] = 'inbox' AND [p].[Enabled] = 0))
-  AND (@tb{b}_p5 IS NULL OR NOT EXISTS (SELECT 1 FROM [core].[Notifications] AS [n]
-                                        WHERE [n].[UserId] = [r].[UserId] AND [n].[DedupKey] = @tb{b}_p5 AND [n].[ReadAt] IS NULL));
+  AND (@tb{b}_p6 IS NULL OR NOT EXISTS (SELECT 1 FROM [core].[Notifications] AS [n]
+                                        WHERE [n].[UserId] = [r].[UserId] AND [n].[DedupKey] = @tb{b}_p6 AND [n].[ReadAt] IS NULL));
 
--- Delivery enqueue, after the insert unless InboxOnly or no channel has a sender (the condition shown: email, DefaultEnabled = false):
+-- Delivery enqueue, after the insert, or alone for a channel-only type, unless InboxOnly or no channel has a sender (the condition shown: email, DefaultEnabled = false):
 DECLARE @tb{b}_qualified TABLE ([SliceOrdinal] int NOT NULL PRIMARY KEY);
 INSERT INTO @tb{b}_qualified ([SliceOrdinal])
 SELECT [s].[SliceOrdinal] FROM @tb{b}_t1 AS [s]
@@ -437,25 +505,37 @@ IF @tb{b}_jobN > 0 EXEC sys.sp_sequence_get_range @sequence_name = N'core.sq_Job
 INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [Attempts], [ArgumentsJson], [TraceParent], [RunAsUserId], [RequestedById], [CreatedAt])
 OUTPUT [inserted].[Id]
 SELECT CAST(@tb{b}_jobFirst AS int) + ROW_NUMBER() OVER (ORDER BY [s].[SliceOrdinal]) - 1, N'core.notification-delivery', 'Pending',
-       SYSUTCDATETIME(), 0, [s].[ArgumentsJson], @tb{b}_p7, 1, NULL, SYSUTCDATETIME()   -- 1 = WellKnownIds.SystemUserId
+       SYSUTCDATETIME(), 0, [s].[ArgumentsJson], @tb{b}_p8, 1, NULL, SYSUTCDATETIME()   -- 1 = WellKnownIds.SystemUserId
 FROM @tb{b}_t1 AS [s] INNER JOIN @tb{b}_qualified AS [q] ON [q].[SliceOrdinal] = [s].[SliceOrdinal];
 ```
 
-Rules: ids are reserved inside the statement, never through the allocator (an id filtered out by
-a predicate is simply unused — sequences are not gap-free and nothing reads them as a count); the
-range is taken even when every recipient is filtered, because `@tb{b}_n > 0` is guaranteed by the
-C# side; `@tb{b}_p6 = 0` short-circuits the preferences seek for non-mutable types; the duplicate
+```sql
+-- Withdraw, per request (Writes = [core.Notifications], ResultSets = 1; @tb{b}_p0 nvarchar(128) the key):
+DELETE [n] OUTPUT [deleted].[UserId], [deleted].[Type]
+FROM [core].[Notifications] AS [n] WHERE [n].[DedupKey] = @tb{b}_p0;
+
+-- Withdraw for named recipients (also @tb{b}_t0 : IdList):
+DELETE [n] OUTPUT [deleted].[UserId], [deleted].[Type]
+FROM [core].[Notifications] AS [n] WHERE [n].[DedupKey] = @tb{b}_p0 AND [n].[UserId] IN (SELECT [Id] FROM @tb{b}_t0);
+```
+
+Rules: ids are reserved inside the statement, never through the allocator (an id filtered out by a
+predicate is simply unused — sequences are not gap-free and nothing reads them as a count); the
+range is taken even when every recipient is filtered, because `@tb{b}_n > 0` is guaranteed by the C#
+side; `@tb{b}_p7 = 0` short-circuits the preferences seek for non-mutable types; the duplicate
 predicate is best effort — two concurrent batches can both pass it and both insert, which is
-accepted because a unique filtered index would fail a business save over a notification race
-(review flag 2); under `Replace` the update runs first and the insert's duplicate predicate then
-skips every row it refreshed, so a recipient gets a refreshed row or a new one, never both, and a
-replace is exactly as best-effort as the predicate it rides; an unknown recipient id inserts
-nothing (the `EXISTS` on `core.Users`), and a recipient deactivated between validation and persist
-inserts nothing, so a save never fails for a notification reason. The `OUTPUT` result sets — the
-user ids inserted and, under `Replace`, the ids refreshed — are read by the notifier after
-execution and feed §3.4 and the `tellma.notifications.created` and `tellma.notifications.replaced`
-counters; the difference between `@tb{b}_n` and the rows returned feeds
-`tellma.notifications.suppressed`.
+accepted because a unique filtered index would fail a business save over a notification race (review
+flag 2); under `Ongoing` the same race can leave two rows for one condition, and one withdrawal
+removes both; under `Replace` the update runs first and the insert's duplicate predicate then skips
+every row it refreshed, so a recipient gets a refreshed row or a new one, never both, and a replace
+is exactly as best-effort as the predicate it rides; an unknown recipient id inserts nothing (the
+`EXISTS` on `core.Users`), and a recipient deactivated between validation and persist inserts
+nothing, so a save never fails for a notification reason. The withdrawal deletes read and unread
+rows alike and is idempotent. The `OUTPUT` result sets — the user ids inserted, under `Replace` the
+ids refreshed, and for a withdrawal the user ids and types deleted — are read by the notifier after
+execution and feed §3.4 and the `tellma.notifications.created`, `tellma.notifications.replaced` and
+`tellma.notifications.withdrawn` counters; the difference between `@tb{b}_n` and the rows returned
+feeds `tellma.notifications.suppressed`.
 
 The delivery enqueue inserts one `core.notification-delivery` job (§4.5) for each slice that holds
 an active recipient with some channel enabled for the type, by the user's preference row or else the
@@ -467,14 +547,15 @@ the channels that the `notification-channels` check (§11) pairs with a sender: 
 joined by `OR`, with the channel's key and `DefaultEnabled` inlined as literals (the key grammar of
 §4.1 admits no quote). It leaves out the inbox's mute and duplicate rules (§4.4). The job ids come
 from `core.sq_Jobs` inside the statement, as spec 0020 §7.6's tick step 2 takes them, and the range
-is taken only when a slice qualifies. `@tb{b}_p7` is the enqueuing activity's `traceparent`, copied
+is taken only when a slice qualifies. `@tb{b}_p8` is the enqueuing activity's `traceparent`, copied
 as spec 0020 §4.3 copies it. The ids the `OUTPUT` returns feed §3.4's nudge and
-`tellma.notifications.delivery_enqueued`.
+`tellma.notifications.delivery_enqueued`. A channel-only request feeds only `delivery_enqueued`.
 
 ### 3.4 After commit
 
-`Notify` registers one `IDataBatch.OnCommitted` callback per call. After the round trip commits, the
-callback unions the inserted and refreshed user ids of every request in the call and publishes one
+The first `Notify` or `Withdraw` call on a batch registers one `IDataBatch.OnCommitted` callback for
+the whole batch. After the round trip commits, the callback unions the inserted, refreshed and
+withdrawn user ids of every request on the batch and publishes one
 `ClientEvent("inbox.changed", userIds, null)` through `IClientEventPublisher.PublishAsync` (§6.4),
 one event per user however many requests targeted them. When any request's delivery enqueue returned
 a job id, the callback also wakes the local `TenantPoller` of the batch's tenant, as spec 0020
@@ -485,23 +566,25 @@ poll claims the jobs.
 
 ### 3.5 Raising a notification from the pipeline
 
-Spec 0015 exposes `PersistContext.Notify(request)` and `ActionContext.Notify(request)`, each
-calling `INotifier.Notify` on the persist batch, so a service hook raises a notification in the
-same transaction as the write it describes and the event fires only when that write commits.
+Spec 0015 exposes `Notify(request)` and `Withdraw(request)` on `PersistContext` and `ActionContext`,
+each calling `INotifier` on the persist batch, so a service hook raises or withdraws a notification
+in the same transaction as the write it describes and the event fires only when that write commits.
 
-*Illustration* — a distribution's `ContributeAsync` hook after assigning a document:
+*Illustration* — a distribution's `ContributeAsync` hook after approving a document:
 
 ```csharp
-context.Notify(new NotificationRequest("acme.document.assigned", [assigneeId], new { number = doc.Number, comment },
-    "acme.Document", doc.Id, context.Context.UserId, DedupKey: $"acme.document.assigned:{doc.Id}",
+context.Notify(new NotificationRequest("acme.document.approved", [doc.CreatedById], new { number = doc.Number, comment },
+    "acme.Document", doc.Id, context.Context.UserId, DedupKey: $"acme.Document:{doc.Id}",
     OnDuplicate: DuplicatePolicy.Replace));
 ```
 
-Reassigning the document, or editing the assignment's comment, while the first notice is unread
-refreshes that notice in place for the same assignee — the latest comment, back on top; once it was
-read, a fresh notice is inserted. Spec 0020's handlers call `JobItem.NotifyOnSuccess(request)` and
-the worker calls `INotifier.Notify` on the completion batch; both paths end in §3.3, and every
-channel other than the inbox receives the notification through the delivery job of §4.5.
+A later event on the same document while this notice is unread — a comment after the approval —
+refreshes it in place for the same recipient: the latest event, back on top; once it was read, the
+next event inserts a fresh notice. Spec 0020's job and schedule actions withdraw their notices
+through `context.Withdraw` (spec 0020 §10). Spec 0020's handlers call
+`JobItem.NotifyOnSuccess(request)` and the worker calls `INotifier.Notify` on the completion batch;
+both paths end in §3.3, and every channel other than the inbox receives the notification through the
+delivery job of §4.5.
 
 ## 4. Channels and preferences
 
@@ -560,22 +643,17 @@ public sealed class NotificationPreference              // row shape; not an ent
     public bool Enabled { get; set; }
 }
 
-public sealed record NotificationPreferencesResult(
-    IReadOnlyList<NotificationTypeDescriptor> Types,
-    IReadOnlyList<NotificationChannelDescriptor> Channels,
-    IReadOnlyList<NotificationPreference> Preferences);   // Preferences = stored deviations only
-
 // Tellma.Core.Notifications (runtime)
 public sealed class NotificationPreferencesService      // [ApiRoute("notification-preferences")]
 {
-    public Task<NotificationPreferencesResult> GetAsync();
-    public Task<NotificationPreferencesResult> SaveAsync(IReadOnlyList<NotificationPreference> preferences);
+    public Task<IReadOnlyList<NotificationPreference>> GetAsync();
+    public Task<IReadOnlyList<NotificationPreference>> SaveAsync(IReadOnlyList<NotificationPreference> preferences);
 }
 ```
 
 | Member | Annotation and rule |
 |---|---|
-| `Get` | `[ApiAction("get", MemberOnly = true, Idempotent = true, Mutation = false)]`. One `Read` batch: `SELECT [Type], [Channel], [Enabled] FROM [core].[NotificationPreferences] WHERE [UserId] = @tm_UserId;`. `Types` lists every registered type descriptor and `Channels` every channel descriptor; the SPA renders their labels, `NotificationType_<Key>` and `NotificationChannel_<Key>` with `.` → `_`, from spec 0013's string pack. |
+| `Get` | `[ApiAction("get", MemberOnly = true, Idempotent = true, Mutation = false)]`. One `Read` batch: `SELECT [Type], [Channel], [Enabled] FROM [core].[NotificationPreferences] WHERE [UserId] = @tm_UserId;`. Returns the stored deviations; the types and channels come from the catalogue (§2.5), their labels `NotificationType_<Key>` and `NotificationChannel_<Key>` (`.` → `_`) from spec 0013's string pack. |
 | `Save` | `[ApiAction("save", MemberOnly = true)]`. The list is the caller's complete set: rows absent from it revert to defaults. Validation (422, path `[i].type` / `[i].channel` / `[i].enabled`): `Notifications.UnknownType` when `Type` is not registered; `Notifications.UnknownChannel` when `Channel` is not; `Notifications.DuplicatePreference` when a `(Type, Channel)` pair repeats; `Notifications.CannotMute` when `Enabled = false` for `inbox` on a non-mutable type. Rows equal to the channel's default are dropped before binding; the rest bind as `@tb{b}_t0 : NotificationPreferenceList` and run the statement below in one `Persist` batch with `SqlOptions.ForCaller([core.NotificationPreferences])`, so the epilogue bumps the caller's `PreferencesTag`. Returns the same shape as `Get` from the rows just written. |
 
 ```sql
@@ -589,12 +667,11 @@ SELECT @tm_UserId, I.[Type], I.[Channel], I.[Enabled] FROM @tb{b}_t0 AS I
 WHERE NOT EXISTS (SELECT 1 FROM [core].[NotificationPreferences] AS P WHERE P.[UserId] = @tm_UserId AND P.[Type] = I.[Type] AND P.[Channel] = I.[Channel]);
 ```
 
-The `PreferencesTag` bump is what makes spec 0014's cached `UserProfile` and the SPA's
-`preferences` wire tag move, so a second tab learns of the change on its next request. Rows for a
-type or channel whose descriptor was removed by a deployment stay in the table, are invisible to
-`Get` (unknown keys are filtered out of `Preferences`), and are deleted by the next `Save` (absent
-from the list); nothing acts on them, because no request carries a removed type and no sender exists
-for a removed channel.
+The `PreferencesTag` bump is what makes spec 0014's cached `UserProfile` and the SPA's `preferences`
+wire tag move, so a second tab learns of the change on its next request. Rows for a type or channel
+whose descriptor was removed by a deployment stay in the table, are invisible to `Get` (unknown keys
+are filtered out of its result), and are deleted by the next `Save` (absent from the list); nothing
+acts on them, because no request carries a removed type and no sender exists for a removed channel.
 
 ### 4.4 The channel seam
 
@@ -647,8 +724,8 @@ one send; a transport failure is `DependencyUnavailableException`.
 public sealed class NotificationDeliveryHandler : IJobHandler;
 
 public sealed record NotificationDeliveryArguments(     // the job's ArgumentsJson; one slice of one request
-    string Type, string? ArgumentsJson, string? TargetResource, long? TargetId, int? ActorUserId,
-    IReadOnlyList<int> RecipientIds);
+    string Type, NotificationSeverity Severity, string? ArgumentsJson, string? TargetResource, long? TargetId,
+    int? ActorUserId, IReadOnlyList<int> RecipientIds);
 ```
 
 Each delivery job carries one slice of one request (§3.3) and runs as the system user with no
@@ -665,7 +742,8 @@ slices (`BatchSize`):
    headers, as spec 0013 §9.3 does for a background scope's run-as user.
 3. **Deliver.** Calls `DeliverAsync` for each channel with a non-empty list, on the job frame's
    `IOpenWriteHost` (spec 0020 §8). The request is rebuilt from the arguments: `RecipientIds` is the
-   slice's, `Arguments` the stored JSON as a `JsonElement` (null when none), and `DedupKey` null.
+   slice's, `Severity` the resolved one, `Arguments` the stored JSON as a `JsonElement` (null when
+   none), and `DedupKey` null.
 4. **Persist.** Calls `PersistAsync` on the frame once, after every item is delivered, so every
    channel's enlisted rows commit with the completion (spec 0020 §5.6) and a slice re-run before
    that commit finds nothing written.
@@ -700,7 +778,13 @@ Spec 0014's `core.UserStamps` carries `InboxSeenAt datetimeoffset(3) NULL`, writ
 
 ```csharp
 // Tellma.Core.Abstractions.Notifications
-public sealed record InboxSummary(int Unseen, int Unread, IReadOnlyList<Notification> Latest);   // counts capped at SummaryCountCap; Latest = SummaryLatestCount rows, newest first
+public sealed record InboxSummary(
+    int Unseen, NotificationSeverity? MaxUnseenSeverity, int Unread,
+    IReadOnlyList<Notification> Latest, IReadOnlyList<InboxRunningJob> Running);   // counts capped at SummaryCountCap; MaxUnseenSeverity over the same capped unseen rows, null when none; Latest and Running at most SummaryLatestCount rows each, newest first
+
+public sealed record InboxRunningJob(                   // the caller's own spec 0020 job: not terminal, not a cron occurrence
+    int Id, string HandlerKey, JobStatus Status, byte? ProgressPercent, string? ProgressKey, string? ProgressArgumentsJson,
+    DateTimeOffset? CancelRequestedAt, DateTimeOffset? StartedAt, DateTimeOffset CreatedAt);
 
 // Tellma.Core.Notifications (runtime)
 public sealed class InboxService                        // [ApiRoute("inbox")]; every action member-only
@@ -709,33 +793,45 @@ public sealed class InboxService                        // [ApiRoute("inbox")]; 
     public Task<AffectedResult> SeenAsync();
     public Task<AffectedResult> ReadAsync(IdsRequest request);
     public Task<AffectedResult> ReadAllAsync();
+    public Task<AffectedResult> ClearAsync(IdsRequest request);
+    public Task<AffectedResult> ClearReadAsync();
 }
 ```
 
 | Member | Annotation | Batch |
 |---|---|---|
-| `Summary` | `[ApiAction("summary", MemberOnly = true, Idempotent = true, Mutation = false)]`; `NoActivityStampMetadata` (spec 0014; applied by spec 0016's projection) | one `Read` batch through spec 0014's `IGuardedBatchRunner.Run(Read, …)`: the summary statement; `Latest` rows materialised by name |
+| `Summary` | `[ApiAction("summary", MemberOnly = true, Idempotent = true, Mutation = false)]`; `NoActivityStampMetadata` (spec 0014; applied by spec 0016's projection) | one `Read` batch through spec 0014's `IGuardedBatchRunner.Run(Read, …)`: the summary statement; `Latest` and `Running` rows materialised by name |
 | `Seen` | `[ApiAction("seen", MemberOnly = true, Idempotent = true)]` | one `Persist` batch: the seen statement; `Count` = 1 |
 | `Read` | `[ApiAction("read", MemberOnly = true, Idempotent = true)]`; `IdsRequest` (spec 0016 §3.3) | one `Persist` batch: the read statement with `@tb{b}_t0 : IdList`; `Count` = rows newly marked |
 | `ReadAll` | `[ApiAction("read-all", MemberOnly = true, Idempotent = true)]` | one `Persist` batch: the read-all statement; `Count` = rows newly marked |
+| `Clear` | `[ApiAction("clear", MemberOnly = true, Idempotent = true, Destructive = true)]`; `IdsRequest` | one `Persist` batch: the clear statement with `@tb{b}_t0 : IdList`; `Count` = rows deleted |
+| `ClearRead` | `[ApiAction("clear-read", MemberOnly = true, Idempotent = true, Destructive = true)]` | one `Persist` batch: the clear-read statement; `Count` = rows deleted |
 
-Each of `Seen`, `Read` and `ReadAll` publishes `ClientEvent("inbox.changed", [callerId], null)`
-through `IClientEventPublisher.Publish(batch, …)` so the user's other tabs and devices refresh.
-Ids in `Read` that belong to another user or are already read are ignored — the predicate is the
-authorization; no 404 or 403 is raised for an id outside the caller's rows.
+Each of `Seen`, `Read`, `ReadAll`, `Clear` and `ClearRead` publishes
+`ClientEvent("inbox.changed", [callerId], null)` through `IClientEventPublisher.Publish(batch, …)`
+so the user's other tabs and devices refresh. Ids in `Read` or `Clear` that belong to another user,
+and ids in `Read` that are already read, are ignored — the predicate is the authorization; no 404 or
+403 is raised for an id outside the caller's rows.
 
 ### 5.3 Statements
 
 ```sql
--- inbox/summary (Read; @tb{b}_p0 = SummaryCountCap, @tb{b}_p1 = SummaryLatestCount; ResultSets = 2)
+-- inbox/summary (Read; @tb{b}_p0 = SummaryCountCap, @tb{b}_p1 = SummaryLatestCount; ResultSets = 3)
 DECLARE @tb{b}_seenAt datetimeoffset(3) = (SELECT [InboxSeenAt] FROM [core].[UserStamps] WHERE [UserId] = @tm_UserId);
-SELECT
+SELECT [a].[Unseen], [a].[MaxUnseenSeverity],
   (SELECT COUNT(*) FROM (SELECT TOP (@tb{b}_p0) 1 AS [x] FROM [core].[Notifications]
-                         WHERE [UserId] = @tm_UserId AND [CreatedAt] > COALESCE(@tb{b}_seenAt, '0001-01-01')) AS [a]) AS [Unseen],
-  (SELECT COUNT(*) FROM (SELECT TOP (@tb{b}_p0) 1 AS [x] FROM [core].[Notifications]
-                         WHERE [UserId] = @tm_UserId AND [ReadAt] IS NULL) AS [b]) AS [Unread];
-SELECT TOP (@tb{b}_p1) [Id], [UserId], [Type], [ArgumentsJson], [TargetResource], [TargetId], [ActorUserId], [DedupKey], [CreatedAt], [ReadAt]
+                         WHERE [UserId] = @tm_UserId AND [ReadAt] IS NULL) AS [b]) AS [Unread]
+FROM (SELECT COUNT(*) AS [Unseen],
+             MAX(CASE [Severity] WHEN 'Error' THEN 3 WHEN 'Warning' THEN 2 WHEN 'Success' THEN 1 ELSE 0 END) AS [MaxUnseenSeverity]
+      FROM (SELECT TOP (@tb{b}_p0) [Severity] FROM [core].[Notifications]
+            WHERE [UserId] = @tm_UserId AND [CreatedAt] > COALESCE(@tb{b}_seenAt, '0001-01-01')
+            ORDER BY [CreatedAt] DESC, [Id] DESC) AS [u]) AS [a];
+SELECT TOP (@tb{b}_p1) [Id], [UserId], [Type], [Severity], [ArgumentsJson], [TargetResource], [TargetId], [ActorUserId], [DedupKey], [CreatedAt], [ReadAt]
 FROM [core].[Notifications] WHERE [UserId] = @tm_UserId ORDER BY [CreatedAt] DESC, [Id] DESC;
+SELECT TOP (@tb{b}_p1) [Id], [HandlerKey], [Status], [ProgressPercent], [ProgressKey], [ProgressArgumentsJson], [CancelRequestedAt], [StartedAt], [CreatedAt]
+FROM [core].[Jobs]
+WHERE [RequestedById] = @tm_UserId AND [RequestedById] IS NOT NULL AND [Status] IN ('Pending', 'Running', 'Held') AND [ScheduledFor] IS NULL
+ORDER BY [CreatedAt] DESC, [Id] DESC;
 
 -- inbox/seen (Persist; Writes = core.UserStamps)
 UPDATE [core].[UserStamps] SET [InboxSeenAt] = SYSUTCDATETIME() WHERE [UserId] = @tm_UserId;
@@ -748,40 +844,58 @@ SELECT @@ROWCOUNT AS [Count];
 -- inbox/read-all (Persist; Writes = core.Notifications; ResultSets = 1)
 UPDATE [core].[Notifications] SET [ReadAt] = SYSUTCDATETIME() WHERE [UserId] = @tm_UserId AND [ReadAt] IS NULL;
 SELECT @@ROWCOUNT AS [Count];
+
+-- inbox/clear (Persist; Writes = core.Notifications; @tb{b}_t0 : IdList; ResultSets = 1)
+DELETE FROM [core].[Notifications] WHERE [UserId] = @tm_UserId AND [Id] IN (SELECT [Id] FROM @tb{b}_t0);
+SELECT @@ROWCOUNT AS [Count];
+
+-- inbox/clear-read (Persist; Writes = core.Notifications; ResultSets = 1)
+DELETE FROM [core].[Notifications] WHERE [UserId] = @tm_UserId AND [ReadAt] IS NOT NULL;
+SELECT @@ROWCOUNT AS [Count];
 ```
 
-Both counts are `O(SummaryCountCap)` seeks on the two user indexes; the badge shows `99+` past the
-cap and never a maintained number. `Latest` returns the raw rows; the client renders them (§2.4).
-The seen statement writes the sibling row with no `Stamp` semantics — `core.UserStamps` is
-bookkeeping, outside every version tag and every audit column.
+The counts and the maximum are `O(SummaryCountCap)` seeks on the two user indexes and the running
+jobs are one seek on spec 0020's `IX_Jobs_RequestedActive`; the badge shows `99+` past the cap and
+never a maintained number. `MaxUnseenSeverity` is the `CASE` rank mapped back to
+`NotificationSeverity`, null when nothing is unseen. `Latest` and `Running` return raw rows; the
+client renders them (§2.4). `clear-read` deletes a user's read rows in one statement; the
+read-retention window (§7) bounds them. The seen statement writes the sibling row with no `Stamp`
+semantics — `core.UserStamps` is bookkeeping, outside every version tag and every audit column.
 
 ### 5.4 The client protocol
 
-The SPA calls `inbox/summary` at load, on every `inbox.changed` event, and on hub reconnect; it
-calls `inbox/seen` when the bell opens (the red badge resets), `inbox/read` with one id when an
-item is clicked (then navigates to the route it maps from `TargetResource` and `TargetId`, or
-nowhere for a target-less type), and `inbox/read-all` from the dropdown's button. "View all
-notifications" opens the standard search page over `core.Notification` (`query` with the default
-select, ordered `CreatedAt desc`), which offers the standard filtering and column selection over
-the raw columns plus the client-rendered text column. The preferences page is `Get`/`Save` of
-§4.3: types by registered channel, grouped by `Category`, the `inbox` switch locked on for
-non-mutable types.
+The SPA calls `inbox/summary` at load, on every `inbox.changed` and `job.changed` event, and on hub
+reconnect. The badge shows `Unseen`, in the attention colour while `MaxUnseenSeverity` is `Warning`
+or `Error`. The dropdown lists `Running` under an "In progress" heading (§2.4), then `Latest`. A
+toast pops for each `Latest` row whose type has `Toast` and whose `CreatedAt` is later than the
+newest `CreatedAt` in the previous summary's `Latest`. When that list was empty every such row
+qualifies, and the first summary after load pops none. A replaced row carries a fresh `CreatedAt`,
+so it pops again; a row that surfaces because newer rows were cleared or withdrawn does not. The SPA
+calls `inbox/seen` when the bell opens, `inbox/read` with one id when an item is clicked (then
+navigates to the route it maps from `TargetResource` and `TargetId`, or nowhere for a target-less
+type), `inbox/clear` with one id from an item's menu, and `inbox/read-all` and `inbox/clear-read`
+from the dropdown's buttons. "View all notifications" opens the standard search page over
+`core.Notification` (`query` with the default select, ordered `CreatedAt desc`), which offers the
+standard filtering and column selection over the raw columns plus the client-rendered text column.
+The preferences page is `Get`/`Save` of §4.3 over the catalogue (§2.5): types by registered channel,
+grouped by `Category`, the `inbox` switch locked on for non-mutable types and absent for
+channel-only ones.
 
 ## 6. The hub
 
 ### 6.1 `TellmaHub` and the connect
 
 `TellmaHub` (`Tellma.Core.AspNetCore.Realtime`) is one SignalR hub class mapped by spec 0016's
-`MapTellma` at `/{tenantId:int:min(1)}/hub` on spec 0011's `Hub` route group: session-cookie
-scheme (`TellmaPolicies.Web`), `MemberEndpointMetadata`, `TenantEndpointMetadata(Hub, IsMutation =
-false)`, the `Origin`/`Sec-Fetch-Site` check with cross-origin negotiate refused outright, and no
+`MapTellma` at `/{tenantId:int:min(1)}/hub` on spec 0011's `Hub` route group: session-cookie scheme
+(`TellmaPolicies.Web`), `MemberEndpointMetadata`, `TenantEndpointMetadata(Hub, IsMutation = false)`,
+the `Origin`/`Sec-Fetch-Site` check with cross-origin negotiate refused outright, and no
 `Tellma-Client` header (a browser cannot decorate the WebSocket handshake). The negotiate and the
-connect request pass spec 0011's tenant middleware and `ITenantAccessGuard.EnsureAccessAsync`
-like any read: the initializers run, spec 0014's connect step resolves the subject to a user id
-(the cold path pays its prologue-only round trip), non-members and deactivated users are refused
-with `TenantNotFoundException` (404), and a `ReadOnly` tenant accepts the connection because the
-hub is not a mutation. `Suspended`, `Provisioning` and `Retired` tenants refuse it with the
-verdicts of spec 0011.
+connect request pass spec 0011's tenant middleware and `ITenantAccessGuard.EnsureAccessAsync` like
+any read: the initializers run, spec 0014's connect step resolves the subject to a user id (the cold
+path pays its prologue-only round trip), non-members and deactivated users are refused with
+`TenantNotFoundException` (404), and a `ReadOnly` tenant accepts the connection because the hub is
+not a mutation. `Suspended`, `Provisioning` and `Retired` tenants refuse it with the verdicts of
+spec 0011.
 
 `OnConnectedAsync` reads `IRequestContextAccessor.Current` (`Tenant.Id`, `UserId`, `Subject`,
 `SessionHandle`, the handle of the session's `catalog.Sessions` row of spec 0011 §7.4), adds
@@ -835,7 +949,7 @@ the name grammar is the type-key grammar of §2.3; publishing an unregistered na
 | Event | Payload | Publisher | Recipients |
 |---|---|---|---|
 | `inbox.changed` | none | `INotifier` (§3.4), the inbox verbs (§5.2) | the affected users |
-| `job.changed` | `{ jobId }` | spec 0020 (claim, progress-carrying renewal, completion) | the job's `RequestedById` |
+| `job.changed` | `{ jobId }` | spec 0020 (claim, progress-carrying renewal, completion, the job actions) | the job's `RequestedById` |
 | `cache.changed` | `{ tag }` | spec 0013's epilogue contributor, `Publish(batch, …)` per `settings` or `entity:<Name>` bump | every connected user of the tenant |
 | `session.ended` | `{ reason }` | the hub's listeners (§6.5) | the closing connections |
 
@@ -988,12 +1102,14 @@ preferences or types: a row of a removed type ages out like any other.
 them and the realised gate audits them like every endpoint (spec 0016). No `Save`, `Delete`,
 `Activate` or Excel securable exists for notifications; none is sensitive.
 
-Endpoints (spec 0016's projection, all POST under `/{tenantId}/api/web/`): `notifications/query`,
-`notifications/get`, `notifications/get-by-ids`; `inbox/summary`, `inbox/seen`, `inbox/read`,
-`inbox/read-all`; `notification-preferences/get`, `notification-preferences/save`; and the hub at
-`/{tenantId}/hub`. Pages: the bell (summary dropdown), Notifications (standard search over
-`core.Notification`), Notification preferences. MCP: `tellma_query`/`tellma_get` over
-`core.Notification` work under the self-scope; `tellma_notifications` remains reserved.
+Endpoints: spec 0016's projection maps `notifications/query`, `notifications/get`,
+`notifications/get-by-ids`; `inbox/summary`, `inbox/seen`, `inbox/read`, `inbox/read-all`,
+`inbox/clear`, `inbox/clear-read`; `notification-preferences/get` and
+`notification-preferences/save` as POST under `/{tenantId}/api/web/`; beside them sit the hub at
+`/{tenantId}/hub` and the tenantless `GET /api/notification-catalogue` (§2.5). Pages: the bell
+(summary dropdown), Notifications (standard search over `core.Notification`), Notification
+preferences. MCP: `tellma_query`/`tellma_get` over `core.Notification` work under the self-scope;
+`tellma_notifications` remains reserved.
 
 ## 9. Configuration
 
@@ -1035,10 +1151,12 @@ public static class NotificationsTelemetryNames         // constants
     public const string Created = "tellma.notifications.created";
     public const string Suppressed = "tellma.notifications.suppressed";
     public const string Replaced = "tellma.notifications.replaced";
+    public const string Withdrawn = "tellma.notifications.withdrawn";
     public const string DeliveryEnqueued = "tellma.notifications.delivery_enqueued";
     public const string Retained = "tellma.notifications.retained";
     public const string Summaries = "tellma.notifications.inbox.summaries";
     public const string MarkedRead = "tellma.notifications.inbox.read";
+    public const string Cleared = "tellma.notifications.inbox.cleared";
     public const string PreferencesSaved = "tellma.notifications.preferences.saved";
     public const string TypeTag = "type";
     public const string BandTag = "band";
@@ -1061,12 +1179,14 @@ public static class RealtimeTelemetryNames              // constants; Events is 
 | Instrument | Kind, unit | Tags | Answers |
 |---|---|---|---|
 | `tellma.notifications.created` | counter, `{notification}` | `type` | fan-out volume per type |
-| `tellma.notifications.suppressed` | counter, `{notification}` | `type` | recipients filtered by inactivity, mute or a suppressed duplicate |
+| `tellma.notifications.suppressed` | counter, `{notification}` | `type` | recipients filtered by inactivity, mute or a duplicate under `Suppress` or `Ongoing` |
 | `tellma.notifications.replaced` | counter, `{notification}` | `type` | unread duplicates refreshed in place |
+| `tellma.notifications.withdrawn` | counter, `{notification}` | `type` | rows deleted by a withdrawal |
 | `tellma.notifications.delivery_enqueued` | counter, `{job}` | `type` | delivery jobs inserted, one per qualifying slice (§3.3) |
 | `tellma.notifications.retained` | counter, `{notification}` | `band ∈ read \| unread` | rows deleted by retention |
 | `tellma.notifications.inbox.summaries` | counter, `{request}` | — | polling pressure |
 | `tellma.notifications.inbox.read` | counter, `{notification}` | `verb ∈ read \| read-all` | rows marked read |
+| `tellma.notifications.inbox.cleared` | counter, `{notification}` | `verb ∈ clear \| clear-read` | rows the user deleted |
 | `tellma.notifications.preferences.saved` | counter, `{request}` | — | preference churn |
 | `tellma.realtime.events` (spec 0016) | counter, `{event}` | `event` | push volume |
 | `tellma.realtime.connections` | up-down counter, `{connection}` | `mode ∈ in-process \| redis \| azure` | open connections on this instance |
@@ -1081,11 +1201,11 @@ delivery on Azure.
 ### 10.2 Log events
 
 Structured events, tenant and user ids in the log scope: `NotificationsInserted` (debug; type,
-requested, inserted, delivery jobs), `InboxEventFailed` (warning), `ClientEventFailed` (warning;
-event name; a delivery failure, §6.4), `NotificationArgumentsInvalid` (warning; type),
-`HubConnected`/`HubDisconnected` (debug), `HubConnectionRefused` (information; reason),
-`HubConnectionsClosed` (information; group, count, reason), `RealtimeHostingWarning` (warning; the
-backplane check of §6.6).
+requested, inserted, delivery jobs), `NotificationsWithdrawn` (debug; key, deleted),
+`InboxEventFailed` (warning), `ClientEventFailed` (warning; event name; a delivery failure, §6.4),
+`NotificationArgumentsInvalid` (warning; type), `HubConnected`/`HubDisconnected` (debug),
+`HubConnectionRefused` (information; reason), `HubConnectionsClosed` (information; group, count,
+reason), `RealtimeHostingWarning` (warning; the backplane check of §6.6).
 
 ## 11. Composition and startup checks
 
@@ -1095,6 +1215,7 @@ no service subclass exists), `ApiService<InboxService>()`,
 `Scoped<INotificationRenderer, NotificationRenderer>()`,
 `Singleton<INotificationTypeRegistry, NotificationTypeRegistry>()`,
 `Singleton<INotificationChannelRegistry, NotificationChannelRegistry>()`,
+`Singleton<INotificationCatalogueProvider, NotificationCatalogueProvider>()`,
 `Singleton<IClientEventRegistry, ClientEventRegistry>()`,
 `Singleton<IAccessCriteriaProvider, NotificationAccessCriteria>()`,
 `NotificationType(core.user.added)`, `NotificationChannel(inbox)`, `NotificationChannel(email)`,
@@ -1104,19 +1225,20 @@ no service subclass exists), `ApiService<InboxService>()`,
 types on the model. `IClientEventPublisher` is registered with `TryAdd` as the null publisher.
 
 `IStartupCheck`s reporting into spec 0011's realised gate: `notification-types` (every key and
-category matches its grammar; keys unique; every non-null `TargetResource` is a registered
-securable resource or stack resource, so the client can route it); `notification-channels`
-(grammar; keys unique; `inbox` and `email` registered; every `INotificationChannel` names a
-registered channel other than `inbox`, at most one per channel); `client-events` (grammar,
-unique); `notification-options` (§9.1 bounds); `realtime-hosting` (§6.6, `Tellma.Core.AspNetCore`
-only). A failed check names the feature that contributed the offending item.
+category matches its grammar; keys unique; every non-null `TargetResource` is a registered securable
+resource or stack resource, so the client can route it; a channel-only type satisfies §2.3's `Inbox`
+rule); `notification-channels` (grammar; keys unique; `inbox` and `email` registered; every
+`INotificationChannel` names a registered channel other than `inbox`, at most one per channel);
+`client-events` (grammar, unique); `notification-options` (§9.1 bounds); `realtime-hosting` (§6.6,
+`Tellma.Core.AspNetCore` only). A failed check names the feature that contributed the offending
+item.
 
 ## 12. Testing
 
 | Suite | Location | Traits | Pins |
 |---|---|---|---|
-| Notifications unit | `test/core/Tellma.Core.Tests/Notifications/` | none | request validation (§3.1 table, every `InvalidOperationException` path), recipient dedup and `Ordinal` assignment, slicing (`FirstOrdinal`, `LastOrdinal` and one `ArgumentsJson` per `DeliverySliceSize` recipients), the delivery condition built from the channels with a sender and omitted for `InboxOnly` or when none has one, the renderer (ICU arguments by JSON kind, the resource in the given context's culture and dates in its display zone and calendar, missing resource → key, malformed JSON → no arguments), the delivery handler's resolution with fake channels (a preference row over `DefaultEnabled`, channels in registration order, each recipient's negotiated `LocalizationContext`, one `PersistAsync`, nothing persisted when a channel throws), `NotificationsOptions` bounds, the registries' grammar and duplicate rejection, the null publisher, the `OnCommitted` coalescing of §3.4 and §6.4 with a fake batch |
-| Notifications fixture | `test/core/Tellma.Core.IntegrationTests/Notifications/` | `Category=Integration` (LocalDB, RCSI on and off) | the insert: ids contiguous from one range, inactive recipient skipped, muted mutable type skipped, non-mutable type ignores a disabled `inbox` row, a duplicate suppressed against an unread row and not against a read one, `Replace` refreshing the unread duplicate in place (same id; type, arguments, target, actor and `CreatedAt` from the request; both result sets read) and inserting for the rest, unknown recipient skipped, `OUTPUT` matches inserted rows; the delivery enqueue with a fake channel registered: no job when no active recipient enabled a channel, one `core.notification-delivery` row per qualifying slice (system run-as user, no requester, the slice's arguments, the trace parent) and none for the others, a job for every slice with an active recipient under a `DefaultEnabled = true` channel, no job and no `core.sq_Jobs` range for `InboxOnly` or when nothing qualifies, the job ids returned and the poller nudged after commit; the delivery job end to end through spec 0020's worker: one `Read` round trip per invocation, an inactive and a non-opted-in recipient skipped, the fake channel's enlisted rows committed with the completion, and a final failure raising `core.job.failed` to administrators inbox only; the summary caps at `SummaryCountCap` and orders `Latest`; `seen`/`read`/`read-all` counts and the `inbox.changed` publish; preferences `save` synchronises, drops default rows, bumps `PreferencesTag` and refuses `CannotMute`/`UnknownType`/`UnknownChannel`/`DuplicatePreference`; an `email` deviation stored and never read by the inbox insert; the self-scope filter on `query` and `get` (another user's id is 404); retention bands and paging; spec 0013's change-tracking write audit sees exactly the declared tables |
+| Notifications unit | `test/core/Tellma.Core.Tests/Notifications/` | none | request validation (§3.1 table, every `InvalidOperationException` path: `WithdrawRequest`, `Ongoing` without a key, `InboxOnly` or a key on a channel-only type among them), recipient dedup and `Ordinal` assignment, a channel-only request composing the delivery enqueue alone, slicing (`FirstOrdinal`, `LastOrdinal` and one `ArgumentsJson` per `DeliverySliceSize` recipients), the delivery condition built from the channels with a sender and omitted for `InboxOnly` or when none has one, the renderer (ICU arguments by JSON kind, the resource in the given context's culture and dates in its display zone and calendar, missing resource → key, malformed JSON → no arguments), the delivery handler's resolution with fake channels (a preference row over `DefaultEnabled`, channels in registration order, each recipient's negotiated `LocalizationContext`, one `PersistAsync`, nothing persisted when a channel throws), `NotificationsOptions` bounds, the registries' grammar and duplicate rejection, the catalogue composed from them with the distribution version, the null publisher, the `OnCommitted` coalescing of §3.4 and §6.4 with a fake batch, one callback per batch across `Notify` and `Withdraw` calls |
+| Notifications fixture | `test/core/Tellma.Core.IntegrationTests/Notifications/` | `Category=Integration` (LocalDB, RCSI on and off) | the insert: ids contiguous from one range, inactive recipient skipped, muted mutable type skipped, non-mutable type ignores a disabled `inbox` row, the severity from the descriptor and from the request's override, a duplicate suppressed against an unread row and not against a read one, `Ongoing` suppressed against a read row too, `Replace` refreshing the unread duplicate in place (same id; type, severity, arguments, target, actor and `CreatedAt` from the request; both result sets read) and inserting for the rest, a withdrawal for everyone and for named recipients deleting read and unread rows and publishing `inbox.changed` to exactly the withdrawn users, a withdrawal of an absent key deleting nothing, unknown recipient skipped, `OUTPUT` matches inserted rows; the delivery enqueue with a fake channel registered: no job when no active recipient enabled a channel, one `core.notification-delivery` row per qualifying slice (system run-as user, no requester, the slice's arguments, the trace parent) and none for the others, a job for every slice with an active recipient under a `DefaultEnabled = true` channel, no job and no `core.sq_Jobs` range for `InboxOnly` or when nothing qualifies, the job ids returned and the poller nudged after commit; the delivery job end to end through spec 0020's worker: one `Read` round trip per invocation, an inactive and a non-opted-in recipient skipped, the fake channel's enlisted rows committed with the completion, and a final failure raising `core.job.failed` to administrators inbox only; the summary caps at `SummaryCountCap`, orders `Latest`, takes `MaxUnseenSeverity` over the capped newest unseen rows and null when none, and lists in `Running` the caller's own `Pending`, `Running` and `Held` rows with `ScheduledFor` null only, capped and newest first; `seen`/`read`/`read-all`/`clear`/`clear-read` counts (another user's id ignored) and the `inbox.changed` publish; preferences `save` synchronises, drops default rows, bumps `PreferencesTag` and refuses `CannotMute`/`UnknownType`/`UnknownChannel`/`DuplicatePreference`; an `email` deviation stored and never read by the inbox insert; the self-scope filter on `query` and `get` (another user's id is 404); retention bands and paging; spec 0013's change-tracking write audit sees exactly the declared tables |
 | Realtime unit | `test/core/Tellma.Core.AspNetCore.Tests/Realtime/` | none | `TestServer` with the in-process mode: connect succeeds for a member and is refused for a non-member and a deactivated user; groups assigned from the context; an event to a user reaches that user's connections only and never a second tenant's; empty `UserIds` reaches the tenant group; payload cap; unregistered name refused; the tracker aborts by session handle, by `(tenant, subject)` and by tenant group and sends `session.ended` first; `ReadOnly` connects, `Suspended` refuses; client invocations refused; instruments asserted |
 | Realtime live | `test/core/Tellma.Core.AspNetCore.IntegrationTests/Realtime/` | `Category=Integration`, `Live=true` | against a real Azure SignalR instance (`Azure:SignalR:ConnectionString` from the CI secret store): connect through the service, group delivery, `session.ended` delivery, token expiry closing the connection within `AccessTokenLifetime`; two hosts with different application names on the one instance never deliver to each other's `t{tenantId}` group |
 
@@ -1132,11 +1254,11 @@ inactive user, and a `fixture.Documents` row to target; the hub tests host `Core
   (`Tellma.Defaults.Azure.AspNetCore`) with its `Microsoft.Azure.SignalR` pin — each project with a
   README, XML docs on every member, building and testing on Windows and Linux under
   warnings-as-errors, wired into `Tellma.slnx`.
-- **Behavior**: §2 table, entity, stack, self-scope, registry and renderer; §3 `INotifier`, the
-  insert, the replace and the delivery enqueue; §4 channels, preferences and the delivery handler;
-  §5 the inbox; §6 the hub, groups, events, publisher, listeners and hosting modes; §7 retention; §8
-  securables and endpoints; §11 composition and checks — implemented and pinned by the suites of
-  §12, green in CI.
+- **Behavior**: §2 table, entity, stack, self-scope, registry, catalogue and renderer; §3
+  `INotifier`, the insert, the replace, the withdrawal and the delivery enqueue; §4 channels,
+  preferences and the delivery handler; §5 the inbox; §6 the hub, groups, events, publisher,
+  listeners and hosting modes; §7 retention; §8 securables and endpoints; §11 composition and checks
+  — implemented and pinned by the suites of §12, green in CI.
 - **Observability**: every instrument of §10.1 emitted and asserted; the log events of §10.2
   asserted in the unit suites; the alert queries present under `infra/monitoring/`.
 - **CI**: unit and fixture suites on PR; the live realtime suite nightly with the Azure SignalR
@@ -1169,8 +1291,9 @@ The load-bearing decisions, where not already evident above:
    durable path; the notice cannot be silenced by accident (§2.3).
 6. **Preferences store deviations only** — the insert's seek usually finds nothing; defaults live
    in code (§4.3).
-7. **Capped counts and one `InboxSeenAt`** — maintained counters drift; the sibling row absorbs
-   the churn (§5.1, §5.3).
+7. **Capped counts, a capped maximum and one `InboxSeenAt`** — maintained counters drift; the
+   badge's severity is read from the same capped rows; the sibling row absorbs the churn (§5.1,
+   §5.3).
 8. **The self-scope is a criterion, not a seeded grant** — every member reads their own rows with
    no role; a stored grant can widen for audit (§2.2).
 9. **`Notification` is `Query | Details` only** — nothing is written through `Save`; the verbs
@@ -1189,8 +1312,10 @@ The load-bearing decisions, where not already evident above:
     code that raises it** — one registration per key, no cross-spec ordering (§2.3).
 15. **Retention runs as a spec 0020 handler on the database clock** — read 90 days, unread 365,
     paged and idempotent (§7).
-16. **A duplicate is suppressed or replaced in place** — `OnDuplicate = Replace` refreshes the
-    unread row, so the notice carries the latest facts without a second row (§3.3).
+16. **A duplicate is suppressed or replaced in place, and a condition keeps one row** — `Replace`
+    refreshes the unread row so the notice carries the latest facts without a second row; `Ongoing`
+    keeps one row per condition, read or not; `Withdraw` deletes it for everyone when the condition
+    clears (§3.1, §3.3).
 17. **Channels are registered, not columns** — `inbox` and `email` are every distribution's
     baseline; a module or distribution adds its own behind `INotificationChannel`; the preference
     table holds one row per `(user, type, channel)` deviation (§4).
@@ -1200,6 +1325,24 @@ The load-bearing decisions, where not already evident above:
     for a notification reason (principles 1 and 3, Decision 3); recipients, preferences and
     addresses are read when the job runs, and a channel's writes commit with its completion (§3.3,
     §4.5).
+19. **Assigned work and announcements are not notifications** — a stored row about either duplicates
+    its source and goes stale when the source moves on; a later spec owns both (Context).
+20. **Severity is the type's, overridable per request, and the badge shows one number** — unseen,
+    coloured by the highest unseen severity; unread stays per row (§2.3, §5.3, §5.4).
+21. **Channel-only types skip the insert** — `Inbox = false` keeps the type registry and the channel
+    preferences for a message that must never be a bell row (§2.3, §3.3).
+22. **The user clears their own rows** — the bell is not an audit record; the document's history and
+    the job row are (§5.2).
+23. **The catalogue is served once per distribution version** — types and channels change only with
+    a deployment; preferences carry deviations alone (§2.5, §4.3).
+24. **Running jobs ride the summary** — one more result set over spec 0020's index; no job counter
+    and no shell button of its own (§5.3).
+25. **`Ongoing` is for re-evaluated conditions** — a type raised once per occurrence keeps
+    `Suppress` and is withdrawn when its cause ends; under `Ongoing` a missed withdrawal would
+    silence the next occurrence for the retention window (§3.1).
+26. **A key names a record or a type** — keys match without regard to `Type`, so activity keys by
+    `<resource>:<id>` and everything else by its type key, and a withdrawal never removes another
+    raiser's row (§3.1).
 
 ## Review flags
 
@@ -1207,10 +1350,10 @@ The load-bearing decisions, where not already evident above:
    culture. Alternative: a `Title` column rendered in the tenant's primary language at creation,
    which makes the notifications page sortable and searchable on text. Flips if users demand text
    search over notifications or the string pack proves too heavy.
-2. **Best-effort dedup, and `Replace` rides on it** (§3.3): a non-unique filtered index and a
+2. **Best-effort dedup, and `Replace` and `Ongoing` ride on it** (§3.3): a non-unique index and a
    predicate. Alternative: a unique filtered index on `(UserId, DedupKey) WHERE ReadAt IS NULL`,
-   which fails the business save when two batches race. Flips if duplicate notices are observed at
-   a rate that annoys users.
+   which fails the business save when two batches race and cannot cover `Ongoing`, whose read rows
+   count. Flips if duplicate notices are observed at a rate that annoys users.
 3. **No push channel yet** (§4.1): the spec that ships a transport registers it. Alternative:
    register `push` now with no sender, so the preference is collected early. Flips if the push
    spec is scheduled before the next release.
@@ -1238,13 +1381,14 @@ The load-bearing decisions, where not already evident above:
    exists, so spec 0014's composition honours a role grant. Alternative: a registry flag that marks
    a securable criteria-only and rejects stored grants on it. Flips if an audit requirement says
    nobody, administrators included, may read another user's notifications.
-10. **`notification-preferences/get` added beside `save`** (§4.3): the page needs the registered
-    types and channels and the stored deviations. Alternative: fold the types into `settings/client`
-    and return only deviations from `save`. Flips if the client would rather cache types under the
-    settings tag.
+10. **The catalogue is a tenantless, anonymous, immutable GET** (§2.5): one fetch per distribution
+    version, like the string pack, which already names every type and channel. Alternative: return
+    the descriptors from `notification-preferences/get`, or fold them into `settings/client` under
+    the `settings` tag. Flips if a deployment ever registers types per tenant.
 11. **`MaxRecipientsPerRequest = 10,000` as a programming-error limit** (§3.1): a violation is a
-    500, never a 422. Alternative: split automatically inside `Notify`. Flips if a legitimate
-    broadcast (every user of a large tenant) is needed before a "tenant broadcast" type exists.
+    500, never a 422; a withdrawal's named recipients share the limit. Alternative: split
+    automatically inside `Notify`. Flips if a legitimate fan-out to every user of a large tenant is
+    needed.
 12. **`Notification` stack is `Query | Details` with no Excel operations** (§2.2). Alternative:
     include `Export` so a user can export their notifications. Flips on the first request for it.
 13. **The composing host (directly or through `UseAzureWebDefaults()`) selects the hosting mode by
@@ -1257,6 +1401,16 @@ The load-bearing decisions, where not already evident above:
     share an access key.
 15. **Channels have no dedup** (§4.4): the inbox's duplicate rules govern inbox rows only, so a user
     who enabled `email` for a `Suppress` type (`core.job.held`, `core.scheduler.gap`) is emailed on
-    every raise. Alternative: evaluate the delivery condition over the recipients whose inbox row
-    was inserted or refreshed, which also ties every channel to the inbox mute. Flips if repeated
-    notice emails annoy users.
+    every raise, and would be on every evaluation of an `Ongoing` condition that still holds.
+    Alternative: evaluate the delivery condition over the recipients whose inbox row was inserted or
+    refreshed, which also ties every channel to the inbox mute and cannot serve a channel-only type.
+    Flips if repeated notice emails annoy users, or before the first `Ongoing` type ships with a
+    channel.
+16. **`Severity` stored as text and ranked by a `CASE`** (§2.1, §5.3): spec 0012's enum convention,
+    so the notifications page filters `Severity = 'Error'`. Alternative: `tinyint`, which `MAX`
+    ranks natively. Flips only if the `CASE` over at most `SummaryCountCap` rows shows up in
+    profiles.
+17. **`Running` rides the summary, capped at `SummaryLatestCount`, refreshed on `job.changed`**
+    (§5.3, §5.4): one summary per claim, progress-carrying renewal and completion of a running job.
+    Alternative: a `jobs/running` read of its own with its own cap and event. Flips if
+    `inbox.summaries` rises with running jobs, or a user needs more than ten in progress.

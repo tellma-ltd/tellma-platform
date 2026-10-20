@@ -211,6 +211,7 @@ per instance; no limiter shares state across instances.
 | `/{tenantId:int:min(1)}/api/v{version:apiVersion}/…` | reserved | `Api` / `Tellma.Api` | The versioned public surface (§2.5, §12.2); nothing is mapped |
 | `/.well-known/oauth-protected-resource/{tenantId:int:min(1)}/mcp` | GET | tenantless (spec 0011 §5.1), anonymous | RFC 9728 protected-resource metadata (§11.2) |
 | `/api/distribution-info` | GET | `Tenantless`, anonymous | spec 0011 |
+| `/api/notification-catalogue` | GET | `Tenantless`, anonymous | spec 0021's type and channel catalogue; immutable caching when `v` matches the deployment |
 | `/api/strings/{language}` | GET | `Tenantless`, anonymous | spec 0013's string pack; immutable caching when `v` matches the deployment |
 | `/api/webhooks/{key}` | POST | `Tenantless`, anonymous | spec 0007, unchanged |
 | `/bff/login`, `/bff/logout`, `/bff/user` | per spec 0011 | tenantless (spec 0011 §5.1) | The BFF |
@@ -307,10 +308,10 @@ JSON body (an action with no body accepts an empty object or no body): `users/in
 `preferences/delete` are `[EntityAction]`s of §2.3, the rest `[ApiAction]`s, all under its stack
 segment), `access/check` (spec 0018), `settings/client`, `settings/entity-tags`, `settings/details`,
 `settings/save`, `settings/refresh-caches` (spec 0013), `inbox/summary`, `inbox/seen`, `inbox/read`,
-`inbox/read-all`, `notification-preferences/get`, `notification-preferences/save` (spec 0021),
-`jobs/retry`, `jobs/cancel`, `jobs/resume`, `schedules/take-over`, `schedules/run-now` (spec 0020;
-entity-service actions). `settings/client` is member-only, not anonymous: the client settings
-document is tenant content.
+`inbox/read-all`, `inbox/clear`, `inbox/clear-read`, `notification-preferences/get`,
+`notification-preferences/save` (spec 0021), `jobs/retry`, `jobs/cancel`, `jobs/resume`,
+`schedules/take-over`, `schedules/run-now` (spec 0020; entity-service actions). `settings/client` is
+member-only, not anonymous: the client settings document is tenant content.
 
 ### 2.5 The versioned public surface
 
@@ -1254,7 +1255,7 @@ All partitions are per instance (`System.Threading.RateLimiting`; `UseRateLimite
 |---|---|---|
 | `tellma-user` | `{tenantId}:{sub}` | `RequestsPerMinutePerUser` 600, sliding window of 6 segments, queue 0 |
 | `tellma-tenant` | `{tenantId}` | `ConcurrentRequestsPerTenant` 64 concurrent, queue 0 — a burst on one tenant must not exhaust the instance for others, and because the SQL pool is per connection string this also bounds pool waits |
-| `tellma-anonymous` | client IP | `AnonymousRequestsPerMinutePerIp` 60, fixed window (PRM documents, distribution-info, strings, health, OpenAPI, BFF login) |
+| `tellma-anonymous` | client IP | `AnonymousRequestsPerMinutePerIp` 60, fixed window (PRM documents, distribution-info, strings, the notification catalogue, health, OpenAPI, BFF login) |
 | `tellma-export` / `tellma-import` | `{tenantId}:{sub}` | `ConcurrentExportsPerUser` 2 / `ConcurrentImportsPerUser` 1 concurrent |
 | `tellma-blobs` | `{tenantId}` | `ConcurrentBlobReadsPerTenant` 32 concurrent, queue `BlobReadQueuePerTenant` 256 oldest-first — the blob `GET` alone (spec 0017 §5.3); a cold-cache tile grid over HTTP/2 opens up to a hundred streams at once, and a queued request waits instead of failing, because a browser never retries an `<img>` |
 | `tellma-mcp` | `{tenantId}:{sub}` | `ToolCallsPerMinutePerUser` 120, sliding window |
@@ -1287,8 +1288,8 @@ Output caching: one minute on `/api/distribution-info` (its `max-age`, spec 0011
 on the protected-resource metadata documents and `/openapi/web.json`; never under `/{tenantId}` —
 output caching cannot serve authenticated responses, and entity freshness is spec 0013's
 tag-validated cache. Response cache headers on tenant JSON are `Cache-Control: no-store`;
-`/api/strings/{language}` carries the immutable-or-`no-store` header spec 0013 §10.4 defines. The
-blob GET's `ETag`/immutable caching is spec 0017's.
+`/api/strings/{language}` and `/api/notification-catalogue` carry the immutable-or-`no-store` header
+spec 0013 §10.4 defines. The blob GET's `ETag`/immutable caching is spec 0017's.
 
 ## 9. Host integration
 
@@ -1330,11 +1331,12 @@ polling endpoint exists beyond the standard operations.
 
 `/health/live` and `/health/ready` are spec 0011 §5.9's probes with the checks stated there:
 liveness does no I/O (an outage must not make the orchestrator kill healthy instances), and
-readiness fails until the instance can resolve tenants and validate cookies and confirmation
-tokens. Both carry `TenantlessEndpointMetadata` and the `tellma-anonymous` policy, as does
-`/api/strings/{language}`, which `MapTellma` maps over spec 0013's `IStringPackProvider` (404 for
-`null`; headers per §8.5). Spec 0011 owns `/api/distribution-info` and the BFF; spec 0007 owns
-`/api/webhooks/{key}`; the projector maps none of those but audits all of them (§4.6).
+readiness fails until the instance can resolve tenants and validate cookies and confirmation tokens.
+Both carry `TenantlessEndpointMetadata` and the `tellma-anonymous` policy, as do the two documents
+`MapTellma` maps with the headers of §8.5: `/api/strings/{language}` over spec 0013's
+`IStringPackProvider` (404 for `null`) and `/api/notification-catalogue` over spec 0021's
+`INotificationCatalogueProvider`. Spec 0011 owns `/api/distribution-info` and the BFF; spec 0007
+owns `/api/webhooks/{key}`; the projector maps none of those but audits all of them (§4.6).
 
 ### 9.5 Drain
 
@@ -1592,10 +1594,10 @@ details page would.
   elicitation path (form mode) uses the same protector for its `requestState` and never exposes a
   `confirm: true` flag — an agent offered one sets it.
 - **Never exposed:** `delete-by-query`, `settings/details`, `settings/save`,
-  `settings/refresh-caches`, `notification-preferences/save`, actions marked `Mcp = Hidden`,
-  operations on sensitive securables, and the write tools on a stack marked `Mcp = ReadOnly`
-  (`tellma_save`, `tellma_delete` and a `tellma_action` whose descriptor has `Mutation = true`, spec
-  0015 §2.3, answer `isError` with "this entity is read-only for agents").
+  `settings/refresh-caches`, `notification-preferences/save`, `inbox/clear`, `inbox/clear-read`,
+  actions marked `Mcp = Hidden`, operations on sensitive securables, and the write tools on a stack
+  marked `Mcp = ReadOnly` (`tellma_save`, `tellma_delete` and a `tellma_action` whose descriptor has
+  `Mutation = true`, spec 0015 §2.3, answer `isError` with "this entity is read-only for agents").
 - **Sensitive securables stay in the web app.** A tool call whose securable is sensitive
   (`IsSensitive`, spec 0014 §4.3) — `tellma_save` on `(E, Save)`, `tellma_delete` on `(E, Delete)`,
   `tellma_action` on the action's securable (`(E, Action)` of an `EntityActionDescriptor`, the
@@ -1684,7 +1686,7 @@ version.
 | Project | Tier | Pins |
 |---|---|---|
 | `test/core/Tellma.Core.AspNetCore.Tests/` | unit (`WebApplicationFactory`, fake authentication) | JSON options and the scalar table (§3.1–§3.2); the `RowPage`, `QueryRowSet` and `RelatedEntities` converters (§3.5–§3.6); request-record rules (the entities-per-save lowering, cardinality); the contract fingerprints (§3.10); the projection table (§2.3) and binding (§4.2) for both descriptor kinds, an `[EntityAction]` with its own result on `IdsRequest` and `IdsRequest<TArguments>` and a `SingleTarget` one on `IdRequest` and `IdRequest<TArguments>` included; the startup audit (§4.6) under `WebApplicationFactory`; header parsing and precedence (§6.1); the exception mapping and problem body (§7.1–§7.5); rate-policy partition keys and the closed tag sets (§8.2, §10.1) |
-| `test/core/Tellma.Core.AspNetCore.IntegrationTests/` | `Category=Integration` | The full `Web`, `Blobs` and `Hub` chains against the reference distribution (`acme`) in an in-process test server over a provisioned tenant database: every projected `Center`, `User` and `Role` operation end to end (§2.3–§2.4, §3.6–§3.9); the contract check (§3.10); the tenant-state verdicts and step-up (§5.5); navigation traversal (§5.6); `Tellma-Version-Tags` and the response headers (§6.2); limits, timeouts, compression and caching (§8); health probes and drain (§9.4–§9.5); the instruments and log events (§10.1); the round-trip budget per operation; the strings endpoint (§9.4): the pack of an offered language with the immutable header only for the matching `v`, 404 for an unknown language |
+| `test/core/Tellma.Core.AspNetCore.IntegrationTests/` | `Category=Integration` | The full `Web`, `Blobs` and `Hub` chains against the reference distribution (`acme`) in an in-process test server over a provisioned tenant database: every projected `Center`, `User` and `Role` operation end to end (§2.3–§2.4, §3.6–§3.9); the contract check (§3.10); the tenant-state verdicts and step-up (§5.5); navigation traversal (§5.6); `Tellma-Version-Tags` and the response headers (§6.2); limits, timeouts, compression and caching (§8); health probes and drain (§9.4–§9.5); the instruments and log events (§10.1); the round-trip budget per operation; the strings endpoint (§9.4): the pack of an offered language with the immutable header only for the matching `v`, 404 for an unknown language; the notification catalogue (§9.4) with the immutable header only for the matching `v` |
 | `test/core/Tellma.Core.Mcp.Tests/` | unit, host-free | Argument validation and `entity` matching (§11.5); the describe catalogue and its `search` filter (§11.5); the table and objects renderings, row-by-row truncation and child-collection windows (§11.5, §11.7); the confirmation token's binding, expiry and single use (§11.6); `ReadOnly`/`Hidden` gating and the sensitive-securable refusal (§11.6); tool-list determinism and the `tellma_` prefix rule (§11.8–§11.9) |
 | `test/core/Tellma.Core.Mcp.IntegrationTests/` | `Category=Integration`; `Live=true` for the identity-server cases | The SDK client against the in-process host with tokens from a test issuer: bearer and challenge (§11.2), the request filter (§11.4), the eight tools end to end (§11.5), write safety (§11.6), the problem `code` on `isError` results (§11.7), the resource `tellma://queryex/syntax`. `Live=true`: JWKS discovery, issuer validation and the 401 challenge against a running platform identity server |
 

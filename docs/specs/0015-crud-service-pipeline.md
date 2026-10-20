@@ -25,13 +25,13 @@ access evaluator of spec 0014, of the version tags of spec 0013, of the request 
 composition of spec 0011, and of the wire records of spec 0016. It is itself consumed by spec 0016
 (endpoint and MCP projection from the stack descriptor), spec 0014 (securable registration from the
 same descriptor), spec 0017 (the blob-reference validator and effect), spec 0018 (the Core and GL
-services), spec 0019 (the Excel codec saves and hydrates through it and streams rows through the
-row source defined here), spec 0020 (`Schedule` is an ordinary activatable stack; job rows ride the
-persist batch) and spec 0021 (notifications ride the persist batch through `PersistContext.Notify`).
-It builds on the frozen engine of spec 0008: every user- or permission-authored expression compiles
-through `QueryexEngine.CompileQuery` (spec 0008 §2), row-level security composes as a `FilterTree`
-(spec 0008 §2.3), and several compiled queries and model-emitted statements concatenate into one
-command through `BatchOrdinal` (spec 0008 §13.1).
+services), spec 0019 (the Excel codec saves and hydrates through it and streams rows through the row
+source defined here), spec 0020 (`Schedule` is an ordinary activatable stack; job rows ride the
+persist batch) and spec 0021 (notifications ride the persist batch through `PersistContext.Notify`
+and `Withdraw`). It builds on the frozen engine of spec 0008: every user- or permission-authored
+expression compiles through `QueryexEngine.CompileQuery` (spec 0008 §2), row-level security composes
+as a `FilterTree` (spec 0008 §2.3), and several compiled queries and model-emitted statements
+concatenate into one command through `BatchOrdinal` (spec 0008 §13.1).
 
 Three properties govern the design. The transaction is the persist round trip's text and nothing
 else: nothing holds a lock across client code, and every invariant that must hold at write time —
@@ -628,7 +628,7 @@ public sealed record ActionOptions(bool ReturnEntities = false, DetailsRequest? 
 | `SaveOptions.ReturnEntities` | The read-back rides the persist transaction (§6.9); `false` skips it and the result carries ids only. The default flips to `false` when `Source = Import` unless set explicitly. |
 | `SaveOptions.Concurrency` | Spec 0012's `ConcurrencyMode`. `Check`: a default `ModifiedAt` on an update is `Concurrency.StampRequired`; `Override`: the comparison is skipped, never the existence check (§8). |
 | `SaveOptions.Source` | Recorded on `tellma.crud.*` as `crud.source` and visible to hooks through `SaveContext.Options`; it never weakens a rule — a rule that differs by source is a rule that will be bypassed — and it admits nothing: an operation a stack omits is refused whatever the source (§2.2), and a platform-written stack is written by enlistment (§13.3). The web projection sets `Web`, MCP `Agent`, spec 0019 `Import`, provisioning steps and handlers `System`; an enlisted write records the host's source unless the `Source` of its `EnlistSaveOptions` or `EnlistDeleteOptions` names another (§13.3). |
-| `SaveOptions.OnPersist` | Invoked once with the persist batch after the effects and before the access guards' invariants (§6.7), under the caller's authority (§13.3): it may write unowned tables and append through the platform composers — `IJobProgress.Append`, `IJobQueue.Enqueue`, `INotifier.Notify` — and a statement writing a stack-owned table is refused at append. Everything it appends commits or rolls back with the save; a validation failure never reaches it. Never set from the wire; its consumer is an open-frame host's checkpoint (spec 0019's chunked import). |
+| `SaveOptions.OnPersist` | Invoked once with the persist batch after the effects and before the access guards' invariants (§6.7), under the caller's authority (§13.3): it may write unowned tables and append through the platform composers — `IJobProgress.Append`, `IJobQueue.Enqueue`, `INotifier.Notify` and `INotifier.Withdraw` — and a statement writing a stack-owned table is refused at append. Everything it appends commits or rolls back with the save; a validation failure never reaches it. Never set from the wire; its consumer is an open-frame host's checkpoint (spec 0019's chunked import). |
 | `ActionOptions` | Whether an action without its own result returns the affected rows in details shape and with which echo and extras; an action with its own result (§3.1) runs no read-back and ignores them. |
 
 ### 4.2 Wire records this spec consumes
@@ -1039,7 +1039,8 @@ re-check — spec 0012, 0014 and 0013 text the executor places) and the fixed su
 2. **The service hook.** `ContributeAsync` on the service, receiving the
    `SavePersistContext<TEntity>` (§13.1): raw `Sql` with declared writes (a distribution guard is
    `THROW 50600–50699`, mapped to `ValidationException` with the message as the code), notifications
-   through `Notify`, job rows through spec 0020's `IJobQueue.Enqueue(batch, …)`.
+   and withdrawals through `Notify` and `Withdraw`, job rows through spec 0020's
+   `IJobQueue.Enqueue(batch, …)`.
 3. **The effects.** Every `IPersistEffect<T>` in registration order with the same context; spec
    0017's `BlobReferenceEffect<T>` (the blob release/confirm statements), registered by
    `CoreFeature`, precedes every pack's effect.
@@ -1141,6 +1142,7 @@ public abstract class ActionContext<TEntity>
     // one UpdateSpec<TEntity>.ByIds over the target ids under the grant's filter
     public void Update(IReadOnlyDictionary<string, object?> assignments);
     public void Notify(NotificationRequest request);
+    public void Withdraw(WithdrawRequest request);
     public IWriteHost Host { get; set; }                    // the pipeline frame; the method enlists through it (§13.3)
 }
 
@@ -1528,16 +1530,17 @@ await; a row missing from the result is `NotFoundException` with the missing ids
 is the pre-check, as for save). Then `ValidateActionAsync(name, context)` and the method run as
 validator and mutator over `ActionContext`: `Errors` collects; `Save(entities)` marks rows for the
 emitter, `Update(assignments)` composes one `UpdateSpec<TEntity>.ByIds` over the target ids under
-the grant's filter, `Batch` takes statements with declared writes, `Notify` appends notifications,
-`Host` takes enlisted writes into other stacks (§13.3); further rounds as declared. Any error →
-`ValidationException`. **RT2** (`Persist`): the emitter for the rows marked by `Save` under
-`ConcurrencyMode.Override` (an action is a command over rows it just loaded, never an edit of a
-loaded copy; a row deleted in between still conflicts as missing), the update specs, the method's
-statements, the `ContributeAsync` participants over an `ActionPersistContext` (§13.1), the enlisted
-groups at their declared positions, the post-check over the marked and updated ids when `PostCheck`,
-the read-back when `options.ReturnEntities` and the action has no result of its own, the bumps. An
-action without a result answers `EntitiesResult` with the target ids in request order; an action
-with one answers the value its method returned, once RT2 committed. Common cost: two round trips.
+the grant's filter, `Batch` takes statements with declared writes, `Notify` and `Withdraw` append
+notifications and withdrawals, `Host` takes enlisted writes into other stacks (§13.3); further
+rounds as declared. Any error → `ValidationException`. **RT2** (`Persist`): the emitter for the rows
+marked by `Save` under `ConcurrencyMode.Override` (an action is a command over rows it just loaded,
+never an edit of a loaded copy; a row deleted in between still conflicts as missing), the update
+specs, the method's statements, the `ContributeAsync` participants over an `ActionPersistContext`
+(§13.1), the enlisted groups at their declared positions, the post-check over the marked and updated
+ids when `PostCheck`, the read-back when `options.ReturnEntities` and the action has no result of
+its own, the bumps. An action without a result answers `EntitiesResult` with the target ids in
+request order; an action with one answers the value its method returned, once RT2 committed. Common
+cost: two round trips.
 
 **Reading its own writes.** `ActionContext.Persisted` completes after RT2 commits and faults with
 the exception that ended the operation: the persist's, or the `ValidationException` raised when
@@ -1673,6 +1676,7 @@ public abstract class PersistContext<TEntity>
     public IReadOnlyList<ColumnCapture> Captures { get; set; }   // the emitter's captures of this persist; empty on an action persist
     public EnlistmentDescriptor? Enlistment { get; set; }   // non-null on the context of an enlisted group
     public void Notify(NotificationRequest request);        // INotifier.Notify on Batch
+    public void Withdraw(WithdrawRequest request);          // INotifier.Withdraw on Batch
 }
 
 public sealed class SavePersistContext<TEntity> : PersistContext<TEntity>
@@ -1737,17 +1741,18 @@ a delete alike — looks the capture's identifier up by `(Table, Column)` in `Ca
 second contract. It may only append to `Batch`: raw `Sql` with declared `Writes` (and
 `SqlOptions.UserIds` when the written table carries a user-level tag rule), `Tvp`, `DeclareIdTable`,
 `Query`/`Rows` readers whose results are read in `AfterCommitAsync` through `BatchResult.Value`,
-`Notify` (spec 0021's `INotifier.Notify(batch, …)`: ids assigned inside the statement, the
-`inbox.changed` event registered through `OnCommitted`), spec 0020's `IJobQueue.Enqueue(batch, …)`
-for durable work, spec 0017's confirm/release. It performs no I/O of its own; the context exposes no
-connection. Everything appended commits or rolls back with the operation; a distribution guard is
-`THROW` in the band `50600–50699`, which the executor maps to `BatchAssertionFailedException` and
-the pipeline to `ValidationException` with the message as the code at `ValidationPath.Root`. Tag
-bumps are never hand-written: the executor derives them from every statement's declared writes plus
-explicit `BumpVersionTag` calls (spec 0013). Anything that must eventually happen — an email, an
-e-invoice filing — is a job row appended here and executed by spec 0020's worker; the pipeline has
-no pre-commit non-transactional phase. A front-door caller's own statements reach a save's persist
-batch through `SaveOptions.OnPersist` (§4.1, §6.7), never through an effect or ambient state.
+`Notify` and `Withdraw` (spec 0021's `INotifier.Notify(batch, …)` and `Withdraw(batch, …)`: ids
+assigned inside the statement, the `inbox.changed` event registered through `OnCommitted`), spec
+0020's `IJobQueue.Enqueue(batch, …)` for durable work, spec 0017's confirm/release. It performs no
+I/O of its own; the context exposes no connection. Everything appended commits or rolls back with
+the operation; a distribution guard is `THROW` in the band `50600–50699`, which the executor maps to
+`BatchAssertionFailedException` and the pipeline to `ValidationException` with the message as the
+code at `ValidationPath.Root`. Tag bumps are never hand-written: the executor derives them from
+every statement's declared writes plus explicit `BumpVersionTag` calls (spec 0013). Anything that
+must eventually happen — an email, an e-invoice filing — is a job row appended here and executed by
+spec 0020's worker; the pipeline has no pre-commit non-transactional phase. A front-door caller's
+own statements reach a save's persist batch through `SaveOptions.OnPersist` (§4.1, §6.7), never
+through an effect or ambient state.
 
 ### 13.2 Post-commit
 
