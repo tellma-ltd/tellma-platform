@@ -281,6 +281,17 @@ The details page main form layout is designed per entity, not auto-generated. Th
 A distro also implements the details layout for its own entities.
 This may seem like a departure from the "low-code for standard stuff" principle, but details layouts are one area where no "standard" exists, every entity page is different, and auto-generated UI is rarely acceptable. The boilerplate building blocks of interactivity and state management should still live in the platform and be reusable by every details page, such that distros have a high degree of flexibility in designing their entity details layout, but have access to plenty of reusable primitives that keep the amount of code moderate if they are not departing from the platform's layout design language.
 
+### Edit Mode
+In Edit mode (after clicking Edit or Create), the fields and grids become editable.
+When clicking save, a full page spinner appears and navigation is prevented until the server completes the call and returns the answer.
+- A successful call simply reloads the entity after the save and switches back to view mode
+- A failed 422 call that returned validation errors per field shows all the errors (capped) in a modal, and then adds the errors of every field to that field on the page with a red border.
+- A failed 400 call shows the error message(s) in a dismissable modal
+- A failed 5xx call shows the generic error message with the trace Id and a copy button for that trace Id. Any server call can return 5xx so this modal and mechanism are shared across the platform.
+
+### Clone
+Clone action sends the user to edit mode (create) with the data populated with a copy of the current entity, with the Ids and all the server owned properties stripped away, some entity types may customize the cloning logic by resetting some fields.
+
 ### State
 The scrollbar position of the details page, the selected tab within the details card, and the scroll position of every extras panel should all survive navigating away and navigating back within the SPA. If I click a link to another entity anywhere in the details page, and then click return, I am back exactly where I was.
 The data in the edit form fields should survive a browser tab refresh, but not opening the same url in a new tab.
