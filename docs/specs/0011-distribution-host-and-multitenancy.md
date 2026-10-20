@@ -1147,7 +1147,8 @@ public sealed record AcceptsBinaryMetadata(long MaxBytes);
   `TenantMiddleware`. Custom middleware goes between `UseTellma()` and `MapTellma()`.
 - **`MapTellma()`** maps `/api/distribution-info`, `/health/live`, `/health/ready`, `/bff/*`,
   `/api/admin/*` (when enabled, §5.9), `/api/webhooks/{key}` (when `Tellma.Core.Webhooks` is
-  composed), the in-proc identity endpoints,
+  composed), `/api/strings/{language}` (spec 0013 §10.4), `/api/notification-catalogue` (spec 0021
+  §2.5), the in-proc identity endpoints,
   `/.well-known/oauth-protected-resource/{tenantId:int:min(1)}/mcp`, the tenant route groups of §5.2
   filled by feature contributions (spec 0016's projected endpoints including settings, inbox, job
   and schedule endpoints, spec 0021's `/{tenantId}/hub`, spec 0017's `/{tenantId}/blobs/{kind}` and
@@ -1182,9 +1183,9 @@ The application's fallback authorization policy is `RequireAuthenticatedUser` un
 `Tellma.Session` scheme, so an endpoint with no authorization metadata denies anonymous callers.
 `AllowAnonymous` is permitted only on an endpoint carrying `TenantlessEndpointMetadata`: the
 information document, the health probes, the BFF login and back-channel receiver, the
-protected-resource metadata document, the strings pack (spec 0013 §10.4), the webhook receivers,
-the Development OpenAPI document (spec 0016 §12.1), the SPA fallback and the identity engine's own
-endpoints.
+protected-resource metadata document, the strings pack (spec 0013 §10.4), the notification catalogue
+(spec 0021 §2.5), the webhook receivers, the Development OpenAPI document (spec 0016 §12.1), the SPA
+fallback and the identity engine's own endpoints.
 
 ### 5.3 The endpoint audit
 
