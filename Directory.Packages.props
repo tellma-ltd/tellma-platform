@@ -47,7 +47,11 @@
     <!-- Transitive via EF Core Design. 10.0.7 (what it resolves to) carries several high
          severity advisories that fail the audit, which takes the migrations tooling down
          with it; pinned forward to the patched line. -->
-    <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.10" />
+    <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.13" />
+    <!-- Transitive via SqlClient (9.0.4), MailKit (10.0.0) and Cryptography.Xml. Every
+         release through 10.0.12 carries denial-of-service advisories that fail the audit;
+         pinned forward to the patched line. -->
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
