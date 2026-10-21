@@ -8,7 +8,8 @@
  * (primitive → semantic → component) emitted to CSS custom properties.
  *
  * The TS contract is canonical; the brand CSS
- * (tellma-brand/design-system/tokens) was the starting import. Values are
+ * (the Tellma Design System's tokens, https://claude.ai/artifact/UE2N6v8hntWxU9k8dLcQDo)
+ * was the starting import. Values are
  * either literal CSS values or typed `Ref`s to other tokens (resolved to
  * `var(--…)` references by the emitter — see `refToVarName`). Ramp shapes
  * follow the brand reality (ink has 700/800/900 only; grey carries a 25

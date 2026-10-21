@@ -6,7 +6,8 @@
 import type { TmSchemeColors, TmTokens } from '../contract/tokens';
 
 /**
- * The default preset, reproducing `tellma-brand/design-system`: same
+ * The default preset, reproducing the Tellma Design System artifact
+ * (https://claude.ai/artifact/UE2N6v8hntWxU9k8dLcQDo): same
  * hexes, same `--field-*` / focus-ring / spacing / type tokens; the dark
  * scheme restates the brand's inverted neutrals as semantic-role values
  * (primitives never change meaning). One deliberate departure: the focus
