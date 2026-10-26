@@ -14,21 +14,21 @@ distribution author writes against (base shapes, capability interfaces, annotati
 description of every entity (`EntityMetadata`), the batch abstraction through which every read and
 every write reaches a tenant database (`IDataBatch`), the emitters behind it (`SaveEmitter`, the
 update and delete statements, the tree statements), the id allocator, the Queryex host integration
-(the EF-model schema adapter, the materializer, the engine amendments spec 0008 deferred), the
-telemetry that makes the round-trip budget observable, and the analyzers that keep hand-written
-SQL and hard-coded ordinals out of the code.
+(the EF-model schema adapter, the materializer), the telemetry that makes the round-trip budget
+observable, and the analyzers that keep hand-written SQL and hard-coded ordinals out of the code.
 
-It builds on three frozen specs. Spec 0001 provides table types: a class opts in with
-`[TableType]`, its UDTT is a row image addressed only through the model, and every bulk list
-(`IdList`, `BigIdList`, `GuidList`, `StringList`) is a plain `[TableType]` class; this spec binds
-those types at runtime by metadata, never by ordinal. Spec 0008 provides the query engine:
-`QueryexEngine.CompileQuery` over a `QueryexSchema`, parameter slots the host binds, and the
-`BatchOrdinal` that lets several compiled queries share one command; this spec builds the schema
-from the EF model, binds the slots, and documents seven additive engine amendments (§11.2): the
-key-set restriction, `level()` and the prologue/body split that spec 0008 §Non-goals left to its
-first executing host, paging slots, tenant-zone context values, versioned leaves and
-`FilterTree.Via`. Spec 0003 fixes the identity model this spec's audit columns point at through
-`core.Users`.
+It builds on three frozen specs:
+
+- **Spec 0001 — table types.** A class opts in with `[TableType]`; its UDTT is a row image
+  addressed only through the model; every bulk list (`IdList`, `BigIdList`, `GuidList`,
+  `StringList`) is a plain `[TableType]` class. This spec binds those types at runtime by metadata,
+  never by ordinal.
+- **Spec 0008 — the query engine.** `QueryexEngine.CompileQuery` over a `QueryexSchema`, parameter
+  slots the host binds, and the `BatchOrdinal` that lets several compiled queries share one
+  command. This spec builds the schema from the EF model, binds the slots, and binds the context
+  slots to the tenant (§5.1). It relies on the engine amendments of spec 0010 Part F (§11.2).
+- **Spec 0003 — identity.** It fixes the identity model this spec's audit columns point at through
+  `core.Users`.
 
 The design has one shape: **one round trip is one command**. A request's reads, its validation
 context, its id reservation, its connect prologue, its persist statements, its tag bumps and its
@@ -67,10 +67,13 @@ job and notification tables whose rows are inserted by fixed-text statements (sp
   re-path, cycle fence, scoped recount).
 - Ship `IIdAllocator`: exact-deficit reservation riding the batch, a warm buffer with a
   low-water refill, temporary-id rewriting, self-healing by consuming the gap.
-- Ship the Queryex host integration: `IQueryexSchemaProvider` keyed by `MultilingualShape`,
-  `KeySetRestriction`, `level()`, `CompiledQuery.Prologue/Body`, `Skip`/`Take` as parameter
-  slots, `FilterTree.Via`, the `QueryRowSet` reader, the entity materializer with related
-  entities, children and ancestors in one round trip.
+- Ship the Queryex host integration over spec 0010 Part F's engine amendments:
+  `IQueryexSchemaProvider` keyed by `MultilingualShape` (tree level navigations and the `'uq'`
+  calendar map included), the binding of key-set restrictions, prologues and paging slots, the
+  `QueryRowSet` reader, the entity materializer with related entities, children and ancestors in
+  one round trip.
+- Ship the display-name rule: `[DisplayNameSource]`, `EntityMetadata.DisplayName` and
+  `IDisplayNames`, the one server renderer of a row's display name (§2.5, §3.1).
 - Ship the DB-call budget: `DataAccessScope`, the `tellma.data.*` instruments, and the six
   analyzers `TELLMA0001`–`TELLMA0006`.
 - Pin the semantics with a unit suite (golden SQL) and a fixture-schema integration suite on
@@ -94,6 +97,8 @@ job and notification tables whose rows are inserted by fixed-text statements (sp
 - **Excel export and import** — spec 0019 (this spec supplies natural keys and metadata facets).
 - **Job and notification statements, leases, schedules, the inbox** — specs 0020 and 0021
   (this spec supplies `IJobEntity`, `Sql`, `Tvp`, `OnCommitted` and `KeySetRestriction`).
+- **The Queryex engine amendments** — spec 0010 Part F (this spec composes them, §11.2).
+- **Client rendering of display names** — spec 0029 §5 (this spec owns the server rule, §2.5).
 - **Composite natural keys, `SqlBulkCopy` imports, `Guid` keys, EF parent→child navigations,
   tenantless (catalog-scoped) batches** — deferred; each has a named seat below.
 
@@ -287,6 +292,8 @@ public sealed class SearchableAttribute(SearchKind Kind = SearchKind.Contains) :
 public sealed class PreserveWhitespaceAttribute : Attribute;            // on string property: opts out of trim-and-null normalisation
 public sealed class JsonColumnAttribute : Attribute;                    // on string property: nvarchar(max), opaque text
 public sealed class MultilingualAttribute : Attribute;                  // on the primary property of a P/P2/P3 group; twins found by name
+// on type; inherited: the property a row's display name renders, and an optional prefix (§2.5)
+public sealed class DisplayNameSourceAttribute(string property) : Attribute { public string? Prefix { get; init; } }
 public sealed class CacheableAttribute(int MaxRows = 0) : Attribute;   // on type; inherited; 0 = spec 0013's EntityMaxRowsDefault
 public sealed class BumpsVersionTagAttribute(string name) : Attribute;  // on type; repeatable; inherited
 // on type; repeatable; inherited
@@ -314,12 +321,14 @@ The data layer's own reading of each annotation:
 | `[Searchable]`, `[PreserveWhitespace]`, `[ExcludeFromExcel]` | metadata facets only | search disjunction and trim normalisation: spec 0015; Excel shape: spec 0019 |
 | `[JsonColumn]` | `nvarchar(max)`, bound as text, absent from the Queryex schema (§11.1) | serialisation by the owning service |
 | `[Multilingual]` | the group (§2.6); `Name2`/`Name3` gating in the schema by `MultilingualShape` (§11.1) | labels and negotiation: spec 0013 |
+| `[DisplayNameSource]` | `EntityMetadata.DisplayName` (§3.1); the display-name columns, the related projection's minimum (§2.5) | client rendering: spec 0029 §5 |
 | `[Cacheable]`, `[BumpsVersionTag]`, `[BumpsUserVersionTag]` | metadata flags `IsCacheable`; the tables' tag names reach the epilogue through spec 0013's `IVersionTagRegistry` (§5.3, §5.5 step 7) | spec 0013 |
 | `[BlobReference]` | FK and filtered unique index (§1.3, §4.2); `EntityMetadata.BlobReferences`; the capture tables the emitter fills and the handles list (§8.5) | staging, confirm and release: spec 0017 |
 
 `[Stack]`, `[ApiResource]`, `[DefaultSelect]`, `[RelatedSelect]`, `[DetailsExpand]`,
 `[EntityAction]`, `[ApiAction]` and `[ApiRoute]` are declared by specs 0015 and 0016; this spec
-reads `[RelatedSelect]` only through the projection the pipeline hands the materializer (§11.5).
+reads `[RelatedSelect]` through the projection the pipeline hands the materializer (§11.5), and
+its startup gate checks that the declaration keeps the display-name columns (§3.2).
 
 ### 2.3 Child collections
 
@@ -362,15 +371,34 @@ reach implementing properties.
 
 ### 2.5 The related projection
 
-When an entity carries no `[RelatedSelect]`, the projection through which it travels as a related
-entity is fixed and narrow: `Id`, the `[Multilingual]` `Name` group, `Code` when the entity has
-one, and every `[BlobReference]` column whose preset is `Avatar`. A declaration replaces the
-default rather than extending it. Core's `User` and `Role` carry no declaration and are projected
-by the default (`Id, Name, Name2, Name3, ImageId` and `Id, Name, Name2, Name3, Code`), so
-`CreatedBy.Email`, `CreatedBy.Subject` and the contact columns travel through a navigation only
-for a caller whose `Read` on `User` is unfiltered. The materializer records each related set's
-projection (§11.5); the traversal rule (spec 0015 §5.2) confines a path to it unless the caller's
-`Read` on the target is unfiltered.
+The related projection is the set of columns an entity carries when it travels as a related entity,
+the target of a navigation. It always includes the entity's display-name columns (below).
+
+- **Default.** Without a `[RelatedSelect]` the projection is fixed and narrow: `Id`, the
+  display-name columns, `Code` when the entity has one, and every `[BlobReference]` column whose
+  preset is `Avatar`.
+- **Declared.** A `[RelatedSelect]` replaces the default but must contain `Id`, the display-name
+  columns and `Code`; startup rejects one that drops them (§3.2).
+- **Core's `User` and `Role`** carry no declaration and are projected by the default (`Id, Name,
+  Name2, Name3, ImageId` and `Id, Name, Name2, Name3, Code`). So `CreatedBy.Email`,
+  `CreatedBy.Subject` and the contact columns travel through a navigation only for a caller whose
+  `Read` on `User` is unfiltered.
+- **Traversal.** The materializer records each related set's projection (§11.5). The traversal
+  rule (spec 0015 §5.2) confines a path to it unless the caller's `Read` on the target is
+  unfiltered.
+
+**Display names.** A display name renders any row of an entity as one string: a navigation cell,
+an Excel key column, a report member, a notification's actor.
+
+- **Source.** `[DisplayNameSource(property, Prefix = …)]` names the property; without it the
+  source is the `[Multilingual]` group `Name`, else the first natural key (§2.7), else `Id`.
+- **Columns.** The display-name columns are the source scalar, or every twin of the source's
+  group that the tenant's shape admits, plus the prefix.
+- **Rendering.** `IDisplayNames` (§3.1) renders a row on the server by spec 0029 §5.2's rule;
+  the client renders the same rule from the same columns.
+
+**Example —** `[DisplayNameSource(nameof(Name), Prefix = nameof(Code))]` on an account renders
+the row `{ Id: 7, Code: "1101", Name: "Cash" }` as `1101 - Cash`.
 
 ### 2.6 Multilingual groups, enums, JSON columns
 
@@ -396,17 +424,21 @@ used.
 `[NaturalKey(Order)]` declares a single-column natural key on any scalar property whose CLR type has
 a standalone list type in §4.4 (`string`, `int`, `long`, `Guid`, `DateOnly`), backed by a
 single-column unique index (composite keys are reserved behind `Order`). The key serves row identity
-by value, so its CLR type decides only which list type a key restriction binds through (§11.2) and
-the cell type of spec 0019's key columns. Without a declaration the key is inferred over string
-properties backed by a single-column unique index in the EF model — uniqueness is read from the
-model, never assumed — in this order: the `[Multilingual]` `Name` group, `Code`, required unique
-strings in declaration order, nullable unique strings. `EntityMetadata.NaturalKeys` is the ordered
-list (declared keys by `Order`, then inferred); `NaturalKey` is its first; none → the surrogate id
-is the export row key, flagged `Surrogate` in spec 0019's manifest and refused across tenants. On a
-child the uniqueness backing is `(ParentKey, Property)`. The realised startup gate fails when a
-declared key lacks a unique index or sits on a scalar whose CLR type has no standalone list type in
-§4.4, and warns for an entity referenced by a foreign key that has no key at all. Core declarations:
-`User.Email`, `Role.Code`, `Center.Code`.
+by value, so its CLR type decides only which list type a key restriction binds through (spec 0010
+§F.1) and the cell type of spec 0019's key columns.
+
+- **Inference.** Without a declaration the key is inferred over string properties backed by a
+  single-column unique index in the EF model; uniqueness is read from the model, never assumed.
+  The order is: the `[Multilingual]` `Name` group, `Code`, required unique strings in declaration
+  order, nullable unique strings.
+- **Order and absence.** `EntityMetadata.NaturalKeys` is the ordered list (declared keys by
+  `Order`, then inferred); `NaturalKey` is its first. With none, the surrogate id is the export row
+  key, flagged `Surrogate` in spec 0019's manifest and refused across tenants.
+- **Children.** On a child the uniqueness backing is `(ParentKey, Property)`.
+- **Startup gate.** The realised gate fails when a declared key lacks a unique index or sits on a
+  scalar whose CLR type has no standalone list type in §4.4. It warns for an entity referenced by a
+  foreign key that has no key at all.
+- **Core declarations:** `User.Email`, `Role.Code`, `Center.Code`.
 
 ### 2.8 A distribution's entity
 
@@ -449,6 +481,7 @@ public sealed class EntityMetadata
     public bool IsCacheable { get; }
     public TreeMetadata? Tree { get; }
     public IReadOnlyList<BlobReferenceMetadata> BlobReferences { get; }
+    public DisplayNameMetadata DisplayName { get; }     // the display-name rule (§2.5)
     public string SchemaFingerprint { get; }            // hex SHA-256 of the editable shape
     public void ResetServerOwned(object entity);        // overwrites server-owned members from a fresh instance
     public void ResetDerived(object entity);            // overwrites derived members from a fresh instance
@@ -481,11 +514,22 @@ public sealed record TreeMetadata(
 
 public sealed record BlobReferenceMetadata(PropertyMetadata Property, string Kind, BlobKindPolicy Policy);
 
+public sealed record DisplayNameMetadata(
+    PropertyMetadata Source, MultilingualGroup? Group, PropertyMetadata? Prefix);   // Group: set when Source anchors a group
+
 public interface IEntityMetadataProvider                // singleton; built once at startup
 {
     EntityMetadata Get(Type entityType);
     IReadOnlyList<EntityMetadata> All { get; }
     string StorageFingerprint { get; }                  // hex SHA-256 of the relational model (§4.3); bound as @tm_schema
+}
+
+public interface IDisplayNames                          // singleton; the server renderer of display names
+{
+    // Id, then the display-name columns admitted by the shape; each prefixed by the navigation path when given
+    IReadOnlyList<string> Columns(string entity, MultilingualShape shape, string? navigationPath = null);
+    // values: one per Columns entry, in that order; contentSlot: 1, 2 or 3
+    string Render(string entity, IReadOnlyList<object?> values, int contentSlot, CultureInfo culture, ICalendarSystem calendar);
 }
 ```
 
@@ -495,11 +539,13 @@ public interface IEntityMetadataProvider                // singleton; built once
 | `TableTypePhysicalName` | From `model.GetTableTypes()` (spec 0001): `<schema>.<Table>List_<hash8>`; the executor binds TVPs by this name only. |
 | `Properties` | Every mapped scalar CLR property in declaration order (bases first). Shadow columns (`Node`, period columns) are not properties; `Tree.NodeColumn` names the node. |
 | `References` | Every many-to-one foreign key on the entity, named by the CLR navigation when one exists, else by the FK column minus its `Id` suffix (`ParentId` → `Parent`, `CreatedById` → `CreatedBy`); the Queryex navigation names (§11.1). |
+| `DisplayName` | The leaf's display-name rule, with the source resolved per §2.5. `Group` is the source's `[Multilingual]` group when it anchors one; `Prefix` is the declared prefix. |
 | `SchemaFingerprint` | SHA-256 over the ordered tuples `(Name, Column, store type, IsNullable, Ownership)` of every `Editable`/`WriteOnce` property and, recursively, of every child collection's; hex, lower-case. Spec 0019 writes it into the manifest to detect a shape drift between export and import. |
 | `ResetServerOwned` | Restores every `ServerOwned` property to its value on a freshly constructed instance; the pipeline calls it on new rows before the emitter reads them. |
 | `ResetDerived` | Restores every `Derived` property to its fresh-instance value; the pipeline calls it on every row, new and existing, before the preprocess hook, so a hook that sets nothing persists the default and never the client's value. |
 | `Get` | Accepts the leaf or any base in its chain (`Get(typeof(User))` returns `MyUser`'s metadata when the distribution registered one); two leaves sharing a base is a startup error. |
 | `StorageFingerprint` | The relational model's fingerprint of §4.3, bound as `@tm_schema` on every batch; identical in the web host and the migrator. |
+| `IDisplayNames` | The one server renderer of display names, used by the Excel codec (spec 0019), reports (spec 0033), MCP tools and notifications. `Columns` is the select a caller adds to read display names. `Render` applies spec 0029 §5.2's rule to those values, without the client's bidi isolates. |
 
 `BlobKindPolicy` is spec 0017's record (`MaxSize`, `AllowedContentTypes`, `Image`, `Thumbnail`,
 `StagingTtl`, `ReadAccess`), resolved by the metadata builder from the attribute's preset and
@@ -530,6 +576,9 @@ start on any error). Rules:
 - **Temporal.** `[Temporal]` is not on a TPT root or leaf; a temporal child belongs to a temporal
   root.
 - **Multilingual.** Twins exist, are nullable, share length and unicode.
+- **Display names.** A `[DisplayNameSource]` property names a `[Multilingual]` group anchor or a
+  string, integer or date scalar of the leaf; its `Prefix` names a string or integer scalar of the
+  leaf. A `[RelatedSelect]` contains `Id`, the display-name columns and `Code` (§2.5).
 - **Uniqueness.** A declared `[NaturalKey]` or `[Unique]` sits on a mapped scalar that is neither a
   `[JsonColumn]` nor binary and is backed by a unique index; a referenced
   entity without any natural key is a warning.
@@ -776,6 +825,7 @@ public interface IDataBatch
     BatchResult<EntityQueryResult<TEntity>> Query<TEntity>(EntityQuery<TEntity> query);
     BatchResult<RowPage> Rows(QuerySpec spec, QueryArguments? arguments, RowQueryOptions? options);
     BatchResult<int> Count(QuerySpec spec, QueryArguments? arguments, int cap = 10000);
+    BatchResult<QueryRowSet> EvaluateConstant(IReadOnlyList<ConstantItem> items, int languageVersion);   // spec 0010 §F.11's constant statement; one row
     SaveHandle Save<TEntity>(
         IReadOnlyList<TEntity> rows, ConcurrencyMode concurrency = ConcurrencyMode.Check);
     BatchResult<UpdateReceipt> Update<TEntity>(UpdateSpec<TEntity> spec);
@@ -888,10 +938,11 @@ public sealed record RawResult(IReadOnlyList<QueryRowSet> ResultSets);
 | `Purpose` | Set at creation. `Read` and `Validate` batches run untransacted; `Persist` batches carry the transaction frame of §5.5; `Maintenance` batches (jobs, sweeps, the migrator) carry the schema guard and spec 0013's prelude alone — no connect prologue and no `@tm_Guard` wrapper — and use the longer command timeout (§6.1). Contributors consult it. |
 | `TransactionMode` | `Auto` (default): the text is wrapped in an in-text transaction when any statement declares a write. `None`: autocommit — for bookkeeping whose composer tolerates a partial re-run (lease renewal, sweeps, the job poll). `Explicit`: a `SqlTransaction` opened and committed from C# — the escape hatch for a decision that must be taken in C# before commit, costing two more round trips, never retried by the executor (§6.5) and never used by the platform's own paths. |
 | `WrittenTables` | The union of every statement's declared writes: `Save`, `Update`, `Delete` derive theirs from metadata (children included); `Sql` declares through `SqlOptions.Writes`. Spec 0013's epilogue resolves tag bumps from it; the fixture tier audits it against change tracking. |
-| `CallerAuthority` | The authority of the current appender (spec 0015 §13.3): the tables, children included, of the stack whose participant holds the batch — the pipeline hands each participant a view of the one batch carrying its own stack's tables, the host's for the host's hooks and effects, the target's for an enlisted group's; empty for a job or provisioning handler's own statements, an `[ApiRoute]` service and a batch outside any frame. This interface's members are the **caller channel**: a `Save`, `Update`, `Delete` or `Sql` whose declared writes include a table that spec 0015's `IStackRegistry.OwnerOf` maps to a stack outside the set is refused at append with `InvalidOperationException` naming the table, its owner and the enlistment remedy; a table no stack owns always passes. The platform's own composers — the emitter, the access guards, the blob effect and the job, notification, progress and outbox statements — append through an **internal channel** of `Tellma.Core`'s batch implementation that the check does not cover. |
+| `CallerAuthority` | The authority of the current appender (spec 0015 §13.3): the stack-owned tables a caller statement may write. The caller and internal channels below the table use it. |
 | `Query` | Compiles the entity query for `TEntity` (every mapped leaf is a root; `TEntity` may be a base, resolved to its leaf through `IEntityMetadataProvider.Get`), appends it with its child and related queries, and materialises entities plus a `RelatedEntities` dictionary after execution (§11.5). |
 | `Rows` | Appends one compiled `QuerySpec`; `Skip`/`Take` are parameter slots; returns a `RowPage`: the columnar `QueryRowSet` with the capped count and the ancestor rows its options ask for (§3.3, §11.3). |
 | `Count` | `SELECT COUNT(*) FROM (<body with Select = "Id", OrderBy = "Id", Take = cap + 1>) AS q`; a result of `cap + 1` means "more than `cap`". |
+| `EvaluateConstant` | Appends one constant statement over `items` and returns its one row: the values of path-free expressions such as a report's parameter defaults (§11.3). |
 | `Save` | Appends the emitter's statements for the root type and its supplied children (§8) and returns a `SaveHandle`: the receipt, read after execution, and the batch-local names the emitter declared — `SavedIds` (`@tb{b}_saved`), `NewIds` (`@tb{b}_new`), `TouchedIds` (`@tb{b}_touched`) and every blob capture of §8.5 in `Captures` — for the statements composed after it; `Override` disables the stamp comparison, never the existence check. |
 | `Update` | One stamped `UPDATE` over the captured keys — `Ids` conjoined with `Filter`, or the query capped and count-verified exactly like delete-by-query (§9.1); assigned properties are editable or server-owned, never write-once; tree tables append the recount. |
 | `Delete` | §9.2: children first, explicit statements, never cascades. Returns a `DeleteHandle`: the receipt, read after execution, `DeletedIds` (`@tb{b}_keys`) and every blob capture of §8.5 in `Captures`. |
@@ -905,6 +956,24 @@ public sealed record RawResult(IReadOnlyList<QueryRowSet> ResultSets);
 | `BumpVersionTag` | Adds a tenant-level tag name to the epilogue's bump set for this batch only — the way a service bumps a tag no written table declares. |
 | `OnCommitted` | Runs after the round trip's commit, outside the transaction, in registration order; failures are logged (`DataBatch.OnCommittedFailed`, error level, with the operation name), never thrown. |
 | `ExecuteAsync` | Runs contributors, assembles the text, executes with retry, reads every result set, replaces the tenant tag snapshot (spec 0013's `IVersionTagSnapshots.Replace`) and, after a batch that carried a connect prologue, the caller's user snapshot (`IUserVersionTagSnapshots.Replace`; both in `BatchOutcome`, spec 0013 §2.5), fires `OnCommitted`. A batch executes once; a second call throws. |
+
+**Write authority.** `CallerAuthority` limits which stack-owned tables a caller's statements may
+write.
+
+- **Whose tables.** `CallerAuthority` holds the tables, children included, of the stack whose
+  participant holds the batch. The pipeline hands each participant a view of the one batch carrying
+  its own stack's tables: the host's for the host's hooks and effects, the target's for an enlisted
+  group's. It is empty for a job or provisioning handler's own statements, an `[ApiRoute]` service
+  and a batch outside any frame.
+- **The caller channel.** This interface's members are the caller channel. A `Save`, `Update`,
+  `Delete` or `Sql` whose declared writes include a table that spec 0015's
+  `IStackRegistry.OwnerOf` maps to a stack outside the set is refused at append. The
+  `InvalidOperationException` names the table, its owner and the enlistment remedy. A table no
+  stack owns always passes.
+- **The internal channel.** The platform's own composers append through an internal channel of
+  `Tellma.Core`'s batch implementation that the check does not cover: the emitter, the access
+  guards, the blob effect, the assignment statements (spec 0028) and the job, notification,
+  progress and outbox statements.
 
 ### 5.3 Contributors and stages
 
@@ -940,8 +1009,8 @@ lists ride TVPs.
 
 **Key capture.** Any `Query`/`Rows` statement may capture its root keys: the batch compiles a
 keys-only twin of the spec (`Select = "Id"`, same filter, ordering and paging) into
-`INSERT INTO @tb{b}_keys ([Id]) <body>` using `CompiledQuery.Body` (§11.2), then compiles the
-display query restricted by `KeySetRestriction("Id", "@tb{b}_keys")` with the ordering kept and
+`INSERT INTO @tb{b}_keys ([Id]) <body>` using `CompiledQuery.Body` (spec 0010 §F.3), then compiles
+the display query restricted by `KeySetRestriction("Id", "@tb{b}_keys")` with the ordering kept and
 paging dropped. Later statements name `@tb{b}_keys` as a restriction source: child collections
 (`ParentKey IN`), ancestors, the row-level-security post-check, delete-by-query, update-by-query.
 The keys-only twin carries the statement's restrictions, so a statement restricted by another
@@ -1012,13 +1081,24 @@ validation round adds one (spec 0015's `MaxValidationRounds`, 3, counts round 1,
 
 One round trip is one `SqlCommand` (`CommandType.Text`) on a connection from spec 0011's scoped
 `ITenantConnectionProvider.OpenAsync()` (the factory's `OpenAsync(tenantId)` in job scopes and the
-migrator): one `SqlParameter` per scalar, typed from the slot's store type (spec 0008's
-`QueryexParameterSlot` for engine slots, the CLR value's mapping for `Sql` holes);
-`SqlDbType.Structured` with the physical UDTT name per TVP, bound as a streaming
-`IEnumerable<SqlDataRecord>` (§6.2) that is re-enumerated on retry; the concatenated text; the
-cancellation token of the scope. Result sets are walked with `NextResult()` and handed to the
-statements in ordinal order; every statement declares its result-set count, and a mismatch at the
-end is an `InvalidOperationException` (a platform defect). `CommandTimeout` is
+migrator). The command carries:
+
+- one `SqlParameter` per scalar, typed from the slot's store type (spec 0008's
+  `QueryexParameterSlot` for engine slots, the CLR value's mapping for `Sql` holes);
+- one `SqlDbType.Structured` parameter per TVP with the physical UDTT name, bound as a streaming
+  `IEnumerable<SqlDataRecord>` (§6.2) that is re-enumerated on retry;
+- the concatenated text.
+
+The command runs under the scope's cancellation token:
+
+- **Reads and validation are cancelled.** On a request the token is `HttpContext.RequestAborted`
+  for `Read` and `Validate` batches, the cold prologue-only round trip and retry delays.
+- **A sent persist completes.** A `Persist` round trip, once sent, runs with
+  `CancellationToken.None` to completion.
+
+Result sets are walked with `NextResult()` and handed to the statements in ordinal order; every
+statement declares its result-set count, and a mismatch at the end is an
+`InvalidOperationException` (a platform defect). `CommandTimeout` is
 `DataOptions.CommandTimeout` (30 s) for `Read`/`Validate`/`Persist` and
 `DataOptions.MaintenanceCommandTimeout` (600 s) for `Maintenance`.
 
@@ -1097,7 +1177,7 @@ public static class TellmaSqlErrors                     // THROW numbers, severi
 | `50409` | the concurrency guard (§8.1), delete-by-ids with stamps (§9.2) | JSON `{"count","conflicts","missing"}`; the conflict rows are the result set preceding the `THROW` | `ConcurrencyConflictException(Conflicts)` over that result set; all-missing → `NotFoundException` (404), otherwise `ConcurrencyException` (409) |
 | `50412` | the version-tag guard (§5.5) | `StaleVersionTag` | `BatchAssertionFailedException(50412, …)`; spec 0014's runner re-connects cold and recomposes once, then raises `StaleContextException` |
 | `50413` | delete-by-query and update-by-query above `Cap` (§9.1, §9.2) | `Delete.CapExceeded`, `Update.CapExceeded` | `BatchAssertionFailedException(50413, …)` → `LimitExceededException` |
-| `50422` | invariants: `Tree.Cycle` (§10.2), `Access.*` (spec 0014), `Blob.NotAttachable` and `Blob.StagingQuotaExceeded` (spec 0017), `Job.LeaseLost`, `Schedule.TickLeaseLost` (spec 0020), `VersionTag.Missing` (spec 0013) | the validation code | `TreeCycleException` when the code is `Tree.Cycle`; otherwise `BatchAssertionFailedException(50422, code)` → `ValidationException` with the code, except `Blob.StagingQuotaExceeded`, which spec 0017's `BlobService` translates to `BlobRejectedException` |
+| `50422` | invariants: `Tree.Cycle` (§10.2), `Access.*` (spec 0014), `Assignments.AssigneeInvalid` (spec 0028), `Blob.NotAttachable` and `Blob.StagingQuotaExceeded` (spec 0017), `Job.LeaseLost`, `Schedule.TickLeaseLost` (spec 0020), `VersionTag.Missing` (spec 0013) | the validation code | `TreeCycleException` when the code is `Tree.Cycle`; otherwise `BatchAssertionFailedException(50422, code)` → `ValidationException` with the code, except `Blob.StagingQuotaExceeded`, which spec 0017's `BlobService` translates to `BlobRejectedException` |
 | `50428` | delete-by-query and update-by-query count verification (§9.1, §9.2) | `Delete.CountMismatch`, `Update.CountMismatch` | `BatchAssertionFailedException(50428, …)` → `CountMismatchException` |
 | `50501` | the schema guard (§4.3) | `SchemaBehind` | `BatchAssertionFailedException(50501, "SchemaBehind")` → spec 0011's `TenantUnavailableException` (`tenant-schema-behind`, 503, `Retry-After: 30`) |
 | `50503` | spec 0014's application-lock timeout (`Access.LockTimeout`) | the code | a reported transient failure: retried (§6.5), then `DataAccessRetryExhaustedException` → `DependencyUnavailableException` |
@@ -1548,7 +1628,7 @@ inserted with the provisional node `/0/<Id>/` — the `INSERT` of §8.1 step 2 a
 expression `hierarchyid::Parse('/0/' + CAST(s.[Id] AS varchar(20)) + '/')` — which is unique and
 disjoint from every real path (no real row has id 0), so `NOT NULL` and `UX_<Table>_Node` hold
 until the re-path runs in the same transaction. `[Tree(MaxDepth = 32)]` caps recursion. There is
-no `Level` column (Queryex `level(Node)` emits `GetLevel()`, §11.2) and no `IsLeaf`
+no `Level` column (Queryex `level(Node)` emits `GetLevel()`, spec 0010 §F.2) and no `IsLeaf`
 (`SubtreeCount = 1`). `hierarchyid` never crosses the TVP boundary and never appears in
 `Tellma.Core.Abstractions`; a `hierarchyid` result column is read through the EF `HierarchyId`
 reader and returned as its path string (§11.3).
@@ -1662,11 +1742,12 @@ public interface IQueryexSchemaProvider                 // singleton; at most th
 ```
 
 `QueryexSchemaProvider` builds one `QueryexSchema` per `MultilingualShape` value (`Primary |
-PrimaryAndSecondary | All`, spec 0013) through spec 0008's `QueryexSchemaBuilder`, lazily, cached
-for the process; the engine's caches are keyed on schema identity, so per-shape schemas are the
-smallest key that neither leaks `Name3` to a monolingual tenant nor rebuilds per request.
-`Fingerprint` is the hex SHA-256 of every entity's `(Name, Source, Key, properties, navigations)`
-in model order, and is part of `EntityMetadata`'s startup validation output.
+PrimaryAndSecondary | All`, spec 0013) through spec 0008's `QueryexSchemaBuilder`, lazily, and
+caches it for the process. The engine's caches are keyed on schema identity, so per-shape schemas
+are the smallest key that neither leaks `Name3` to a monolingual tenant nor rebuilds per request.
+`Fingerprint` is the hex SHA-256 of every entity's `(Name, Source, Key, properties, navigations,
+tree levels)` in model order and of the calendar maps; it is part of `EntityMetadata`'s startup
+validation output.
 
 Schema rules:
 
@@ -1689,11 +1770,15 @@ Schema rules:
   a left join so an owner without a sibling row yields nulls (a pack's extension table, spec 0011
   §2.4). No collections.
 - **Tree node.** The shadow `Node` of every tree entity, declared `HierarchyId` and registered as
-  `TreeNode`, so `descendantOf`/`ancestorOf` and `level(Node)` bind.
+  `TreeNode`, so `descendantOf`/`ancestorOf` and `level(Node)` bind. The entity also declares
+  `TreeLevels([Tree].MaxDepth)` (spec 0010 §F.9): navigations `Level1` … `LevelN` to the entity
+  itself, the ancestor at each depth.
+- **Calendar maps.** `CalendarMap("uq", "[core].[CalendarMonths]")` (spec 0013 §8.2, spec 0010
+  §F.13), so the calendar functions accept `'uq'`.
 - **Read-only roots.** `core.UserStamp` (over `core.UserStamps`, navigation `User`) and
   `core.Blob` are declared by their owning specs' entity classes and reachable as documented there.
 
-Row-level-security composition and child-entity rebasing (`FilterTree.Via`, §11.2 item 7) are
+Row-level-security composition and child-entity rebasing (`FilterTree.Via`, spec 0010 §F.7) are
 `FilterTree` constructions at request time (spec 0014), never schema variants; a
 `map<EntityDescriptor, EntityMetadata>` built beside each schema lets the materializer map
 descriptors back to CLR types without an engine change. A cold instance reads the tenant's shape
@@ -1701,81 +1786,45 @@ from the settings load that rides the connect prologue (spec 0013) before its fi
 
 ### 11.2 Engine amendments
 
-Spec 0008 is frozen; these additive changes are documented here and `QueryexLanguage.Version`
-stays 1:
+Spec 0008 is frozen. The engine changes this spec relies on are spec 0010 Part F's:
 
-```csharp
-// Tellma.Core.Queryex — amendments
-public sealed record KeySetRestriction(string Path, string TableSource);   // "<column> IN (SELECT [Id] FROM <TableSource>)"
+- key-set restrictions (§F.1), `level()` (§F.2) and the prologue/body split (§F.3);
+- paging slots (§F.4) and versioned leaves (§F.6);
+- `FilterTree.Via` (§F.7) and tree level navigations (§F.9);
+- constant statements (§F.11) and the `'uq'` calendar map (§F.13).
 
-public sealed record QuerySpec
-{
-    public IReadOnlyList<KeySetRestriction> Restrictions { get; init; } = [];   // part of the cache key by shape, never by values
-}
+Binding the context slots to the tenant is this spec's own (§5.1, §11.3). Where the amendments
+are used:
 
-public sealed record CompiledQuery                      // Sql = Prologue + Body
-{
-    public string Prologue { get; init; }
-    public string Body { get; init; }
-}
+- **Restrictions.** Get-by-ids, get-by-parent-ids, child loading, ancestors, deletes, updates,
+  validation context, natural-key translation and the job join load restrict by key sets (§2.7,
+  §5.4, §11.3, §11.4).
+- **The body.** Capped counts, key capture, assertions and delete-by-query embed the compiled body
+  (§5.2, §5.4).
+- **Unbuilt.** A language-level list parameter (`x in (@ids)`) and `descendantOf` over a TVP:
+  restrictions on `Id` and `ParentId` cover every consumer.
 
-public abstract class FilterTree
-{
-    public static FilterTree Leaf(string text, int languageVersion);   // the one-argument form binds under the options' version
-    public static FilterTree Via(string navigation, FilterTree inner);  // inner's root is the navigation's target
-    public sealed class LeafNode : FilterTree { public int? LanguageVersion { get; } }
-    public sealed class ViaNode : FilterTree { public string Navigation { get; } public FilterTree Inner { get; } }
-}
-```
-
-1. **Key-set restriction.** The engine binds `Path` in Filter mode (a bare path; joins as needed),
-   validates `TableSource` as a plain `@`-identifier outside the `@qx` namespace, and emits `AND
-   <column> IN (SELECT [Id] FROM <TableSource>)` conjoined after the filter tree (an empty filter
-   yields the restriction alone). The host binds an `IdList`, `BigIdList`, `GuidList`, `StringList`
-   or `DateList` TVP by the path's key type, or names a `@tb{b}_` table with an `[Id]` column.
-   Restrictions participate in the compilation cache key and in structural deduplication (§5.4).
-   Consumers: get-by-ids, get-by-parent-ids, child loading, ancestors, deletes, updates,
-   validation context, natural-key translation (the list type of the key's CLR type on the
-   natural-key path), the job
-   join load (`KeySetRestriction("JobId", "@tb{b}_claimed")`).
-2. **`level(node: HierarchyId) -> Numeric`**, `NotNull` when its argument is, emitted as
-   `.GetLevel()`. An additive registry entry.
-3. **Prologue/body split.** `CompiledQuery.Prologue` holds the hoisted `DECLARE`s (may be empty)
-   and `Body` the `SELECT`. A host embeds `Body` as a derived table (`SELECT COUNT(*) FROM
-   (<body>) AS q`, legal with `ORDER BY … OFFSET … FETCH`) or after `INSERT INTO @t ([Id])`; the
-   prologue is emitted earlier in the same batch. Consumers: capped counts, key capture,
-   assertions, delete-by-query.
-4. **`Skip`/`Take` as parameter slots** (`Origin = Declared`, names `@qx{b}_skip`/`@qx{b}_take`),
-   so a page change reuses the plan.
-5. **`today()` and the `TimeZone` slot bind the tenant zone** through `QueryexContextValues`
-   (§5.1); `now()` binds `Now`; `me()` binds `UserId`.
-6. **Versioned leaves.** Each leaf binds under its own language version, the one-argument form under
-   `QueryCompilationOptions.LanguageVersion`; an unsupported version is refused at construction, as
-   the options records refuse theirs; the L3 key's rendering of the tree carries each leaf's version
-   beside its text. Consumers: spec 0014's evaluator, whose leaves carry each stored row's
-   `FilterLanguageVersion`. Every clause a host authors — a user's filter, `SearchFilter`, an
-   `IAccessCriteriaProvider` criterion, a stack's declared filters — compiles under
-   `QueryexLanguage.Version`; only stored text carries an older stamp, per leaf.
-7. **`Via(navigation, inner)`.** `navigation` is a dotted path of to-one navigations from the
-   current root (`Invoice`, `Line.Invoice`); `inner` binds with the path's target as its root:
-   every path in `inner` resolves from the target, the joins ride the path, context functions bind
-   as usual, and a to-one path cannot fan out, so the node is a root rebase, never a rewrite of
-   filter text. A segment that is not a to-one navigation is a compile-time diagnostic.
-   Diagnostics inside `inner` carry `Filter.Via[<navigation>]` locations; the L3 key renders the
-   node around `inner`'s rendering; nesting is allowed. Consumers: spec 0014's evaluator (a child
-   securable's owner grants, spec 0014 §5.5) and spec 0017's download resolution (spec 0017 §5.1).
-
-A language-level list parameter (`x in (@ids)`) and `descendantOf` over a TVP remain unbuilt:
-restrictions on `Id`/`ParentId` cover every consumer.
-
-### 11.3 Rows and Count
+### 11.3 Rows, Count and constant statements
 
 `Rows(spec, arguments, options)` compiles the spec with `BatchOrdinal = b` and `LanguageVersion`
-per §11.2 item 6, binds `Literal` slots from the compiled query, `Today`/`Now`/`UserId`/`TimeZone`
-slots from `QueryexContextValues`, and `Declared` slots from `QueryArguments` (a declared parameter
-bound against several store types fills every slot of that name from one value; a missing argument
-is a compose-time `ArgumentException`, a composer bug — spec 0015's pipeline binds every declared
-parameter, `null` when the request carries none).
+per spec 0010 §F.6, then binds its slots:
+
+- **`Literal` slots** from the compiled query. The paging slots `@qx{b}_skip` and `@qx{b}_take`
+  are `Literal` slots like any other (spec 0010 §F.4).
+- **`Today`, `Now`, `UserId` and `TimeZone` slots** from `QueryexContextValues` (§5.1).
+- **`Declared` slots** from `QueryArguments`. A declared parameter bound against several store
+  types fills every slot of that name from one value. A missing argument is a compose-time
+  `ArgumentException`, a composer bug: spec 0015's pipeline binds every declared parameter, `null`
+  when the request carries none.
+
+Every clause a host authors (a user's filter, `SearchFilter`, an `IAccessCriteriaProvider`
+criterion, a stack's declared filters) compiles under `QueryexLanguage.Version`; only stored text
+carries an older stamp, per leaf.
+
+`EvaluateConstant(items, languageVersion)` compiles spec 0010 §F.11's statement under that version
+with `BatchOrdinal = b`. It binds the `Today`, `Now`, `UserId` and `TimeZone` slots from the same
+`QueryexContextValues` as `Rows`, so a default and the query that uses it see one `today()`. The
+result is one row with one column per item.
 
 SQL Server sends a result set's column metadata before its first row, even for an empty result, so
 the buffers and `Columns` never depend on the data. After `ExecuteReader` and before the first
@@ -1817,10 +1866,14 @@ be visible; null conjoins nothing), ordering kept, no paging; the rows land in
 ### 11.4 Entity queries
 
 `Query<TEntity>(EntityQuery)` restricts `Select` to bare paths (a computed item is a compose-time
-`ArgumentException`; user text is validated by spec 0015 before it reaches the batch). The host runs
-spec 0008's `DiscoverQuery` on the select text (cached by the engine) to learn the paths, then
-appends the root `Id` and, for every navigation prefix used, its key path (`Customer.Id`) and the FK
-on its owner (`CustomerId`), compiles, and binds as `Rows` does. `Children` adds one `Query` per
+`ArgumentException`; user text is validated by spec 0015 before it reaches the batch). A `Select`
+path through a level navigation (spec 0010 §F.9) is also a compose-time `ArgumentException`,
+because no foreign key links a materialized row to its ancestor; `Filter` and `OrderBy` may use
+one.
+
+The host runs spec 0008's `DiscoverQuery` on the select text (cached by the engine) to learn the
+paths, then appends the root `Id` and, for every navigation prefix used, its key path
+(`Customer.Id`) and the FK on its owner (`CustomerId`), compiles, and binds as `Rows` does. `Children` adds one `Query` per
 named collection over the child, restricted by `KeySetRestriction("<ParentKey>", <source>)` where
 the source is the root's ids TVP when the root is restricted by ids and the captured `@tb{b}_keys`
 otherwise; grandchildren recurse through dotted names. `IncludeAncestors` and `AncestorsFilter`
@@ -1934,7 +1987,7 @@ by name.
 
 | Suite | Location | Tier | What it pins |
 |---|---|---|---|
-| Unit | `test/core/Tellma.Core.Tests/Data/` | PR | golden SQL per emitter statement kind against the fixture metadata (§8, §9, §10, §11.3); `SaveReceipt` reading from canned result sets; the `SaveHandle` and `DeleteHandle` listing one `ColumnCapture` per `[BlobReference]` column of every written table; `FilterTree.Via` binding (a one-segment and a two-segment path, a nested node, a to-many segment refused at compile time, a diagnostic inside `inner` located at `Filter.Via[<navigation>]`, distinct L3 keys for one inner filter under two navigations); allocator deficit and buffer arithmetic, temporary-id rewriting, hold/return; metadata construction and every §3.2 rule as a failing model; `SchemaFingerprint` stability; natural-key inference order; enum sizing (nullable enums included); retry classification for every number of §6.4; the commit-probe verdicts; `QueryRowSet.Builder` buffers for every (Queryex type, field type) pair of §11.3, `Scale` per numeric field type, and the `InvalidOperationException` for any other pair; materializer routing (root, related, children, grandchildren, missing column); the persist frame assembly order of §5.5; parameter-count and result-set-count guards |
+| Unit | `test/core/Tellma.Core.Tests/Data/` | PR | golden SQL per emitter statement kind against the fixture metadata (§8, §9, §10, §11.3); `SaveReceipt` reading from canned result sets; the `SaveHandle` and `DeleteHandle` listing one `ColumnCapture` per `[BlobReference]` column of every written table; `IDisplayNames` against spec 0029 §5.2's shared golden file (`display-name-golden.json`); a `Select` through `Level{j}` refused at compose time; allocator deficit and buffer arithmetic, temporary-id rewriting, hold/return; metadata construction and every §3.2 rule as a failing model; `SchemaFingerprint` stability; natural-key inference order; enum sizing (nullable enums included); retry classification for every number of §6.4; the commit-probe verdicts; `QueryRowSet.Builder` buffers for every (Queryex type, field type) pair of §11.3, `Scale` per numeric field type, and the `InvalidOperationException` for any other pair; materializer routing (root, related, children, grandchildren, missing column); the persist frame assembly order of §5.5; parameter-count and result-set-count guards |
 | Integration | `test/core/Tellma.Core.IntegrationTests/Data/` | `Category=Integration`, PR on Windows (LocalDB) and Linux (Testcontainers) | everything in §13.3 |
 | Analyzers | `test/core/Tellma.Core.Analyzers.Tests/` | PR | each `TELLMA000n` condition and its negative |
 
@@ -2029,7 +2082,8 @@ Each is a named test; the list is the behavioural contract of this spec:
   children and grandchildren stitch by parent key; related entities dedupe across rows and carry the
   projection; `Properties<Enum>()` matches nullable enums; the three schemas differ only in
   `Name2`/`Name3`; a `FilterTree.Via` filter on `fixture.WidgetPartNotes` through
-  `WidgetPart.Widget` returns exactly the notes of the matching widgets.
+  `WidgetPart.Widget` returns exactly the notes of the matching widgets; `EvaluateConstant` beside a
+  `Rows` in one batch returns one row whose `today()` equals the query's.
 - **Isolation.** Two fixture databases sharing ids never share a buffer or a schema cache.
 
 ## 14. Definition of done
@@ -2045,9 +2099,9 @@ Each is a named test; the list is the behavioural contract of this spec:
   rules of §3; the column vocabulary and the N−1 rule of §4; the batch, contributors, key
   capture, deduplication and persist frame of §5; the command, binder, error taxonomy, retry and
   probe of §6; the allocator of §7; the emitter of §8; the update and delete statements of §9;
-  the tree statements, validator and verify job of §10; the schema provider, the seven engine
-  amendments (`FilterTree.Via` among them), row-set reader, entity queries and materializer of
-  §11 — implemented and pinned by the suites of §13, green in CI on both platforms.
+  the tree statements, validator and verify job of §10; the schema provider (tree levels and the
+  calendar map included), row-set reader, entity queries and materializer of §11 over spec 0010
+  Part F's engine — implemented and pinned by the suites of §13, green in CI on both platforms.
 - **Observability**: every instrument of §12.1 emitted under the `Tellma.Core` meter and asserted
   by the integration tier; `DataAccessScope` stamped on the current `Activity`; the span attributes
   of §6.1; log events `DataBatch.SlowRoundTrip`, `DataBatch.OnCommittedFailed`,
@@ -2067,9 +2121,9 @@ Each is a named test; the list is the behavioural contract of this spec:
   per-tenant identity on traces and logs only); and the spec-pointers row (ID allocation and the
   EF-to-Queryex adapter land here). Public XML docs and error messages reference no `docs/` paths,
   per repo rule.
-- **Not in scope of done**: the pipeline that composes batches (spec 0015), the contributors this
-  executor runs (specs 0013 and 0014), the tables whose rows the fixed-text statements insert
-  (specs 0020 and 0021), the blob effect that reads the capture tables (spec 0017), the Excel
+- **Not in scope of done**: the Queryex engine amendments (spec 0010 Part F), the pipeline that
+  composes batches (spec 0015), the contributors this executor runs (specs 0013 and 0014), the
+  tables whose rows the fixed-text statements insert (specs 0020 and 0021), the blob effect that reads the capture tables (spec 0017), the Excel
   codec that reads natural keys (spec 0019), and `SqlBulkCopy`, composite natural keys and `Guid`
   keys.
 
@@ -2140,7 +2194,7 @@ The load-bearing decisions, where not already evident above:
 24. **Schemas per `MultilingualShape`, at most three per process** — the engine caches by schema
     identity; per tenant would defeat every cache, one schema would leak `Name3` (§11.1).
 25. **Additive engine amendments, language version unchanged** — a list parameter would need a
-    version bump; restrictions on paths cover every consumer (§11.2).
+    version bump; restrictions on paths cover every consumer (spec 0010 Part F).
 26. **`today()` binds the tenant zone** — a client must not be able to move a security predicate
     (§5.1).
 27. **`SqlOptions.UserIds` names the users a raw statement's bumps affect, gated at startup** —
@@ -2163,6 +2217,10 @@ The load-bearing decisions, where not already evident above:
     and a persist-time error is attributed to the group whose statement raised it (§5.2, §6.4).
 34. **Literal names in fixed-text statements rest on the §3.2 gate** — renames inside the platform
     are caught by the integration suites, which execute every statement (§3.2).
+35. **The display-name rule is entity metadata with one server renderer** — Excel, reports, MCP,
+    notifications and the client name a row the same way, and every related projection carries
+    the columns the rule reads. The attribute is `[DisplayNameSource]` because
+    `System.ComponentModel` owns `[DisplayName]` (§2.5, §3.1).
 
 ## Review flags
 
@@ -2229,9 +2287,9 @@ The load-bearing decisions, where not already evident above:
 18. **System-written rows take ids inside their statements** (§7.3; S27) — versus an async chain
     through the allocator's buffer. Flips if in-statement `sp_sequence_get_range` shows up in
     persist duration.
-19. **A default related projection of `Id` + `Name` group + `Code` + avatar columns** (§2.5; S34)
-    — versus requiring a `[RelatedSelect]` declaration on every navigable entity. Flips if the
-    default proves too narrow for most details pages and every entity declares one anyway.
+19. **A default related projection of `Id` + the display-name columns + `Code` + avatar columns**
+    (§2.5; S34) — versus requiring a `[RelatedSelect]` declaration on every navigable entity. Flips
+    if the default proves too narrow for most details pages and every entity declares one anyway.
 20. **`SqlOptions.UserIds` as the way raw statements name the users whose tags they bump**
     (§5.2; S37) — versus deriving nothing from raw SQL and bumping every user. Flips if raw
     statements against user-tagged tables turn out to be rare enough that a wholesale bump is

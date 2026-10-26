@@ -41,7 +41,17 @@ Deliberately left to later specs: everything a tenant database contains (spec 00
 endpoint projection and the MCP tools (spec 0016), self-serve provisioning beyond a trigger seam,
 sandbox cloning, and the manifest generator, Builder tool and bypass analyzer of the full
 feature-composition design. The identity-server amendments the MCP surface needs come first, in
-spec 0010.
+spec 0010 Part A.
+
+Other specs that carry parts of this design:
+
+- spec 0024 §6 — the SPA hosting rules `MapTellma` implements (§5.1);
+- spec 0024 §8.1 and §9.3 — the client side of the profile cookie and the launch redirect that
+  reads the membership list (§3.8, §5.5);
+- spec 0024 §3.2 — the client metadata `emit-client-assets` writes (§6.1) and `TellmaRoutes`, the
+  reserved words the endpoint audit reads (§5.3);
+- spec 0026 §6 and §12.7 — the client telemetry relay and the admin support-request routes
+  `MapTellma` maps (§5.1, §5.9).
 
 ## Goals / Non-goals
 
@@ -87,10 +97,11 @@ spec 0010.
   snapshot the worker composes.
 - **Self-serve provisioning, sandbox cloning, the manifest source generator, the Builder tool,
   the bypass analyzer, `Recommends`/`Excludes`/slots** — later releases.
-- **Identity-server changes** — the `Distribution` seed kind, per-tenant resources, client ID
-  metadata documents and the control-plane origin grant are spec 0010's, prerequisites of the MCP
-  surface, of sandbox invites and of any caller of the admin surface, not of this spec's
+- **Identity-server changes** — spec 0010 Part A's (listed in §5.9). They are prerequisites of the
+  MCP surface, of sandbox invites and of any caller of the admin surface, not of this spec's
   definition of done.
+- **The client** — the SPA's boot, launch redirect, session handling and caches (specs 0024 and
+  0025); this spec serves the SPA and the endpoints it calls.
 
 ## 1. Placement and architecture
 
@@ -103,7 +114,7 @@ so a block is never pasted into code. SQL statements are the exact shape to emit
 | Package | Location | References | Owns from this spec |
 |---|---|---|---|
 | `Tellma.Core.Abstractions` | `src/core/Tellma.Core.Abstractions/` (existing) | `Tellma.Core.Queryex` only | namespaces `.Tenancy` (§3, §4) and `.Composition` (§2): every enum, record and contract a module or distribution names; the three exceptions of §4.6; `TenancyTelemetryNames` and `HostTelemetryNames` |
-| `Tellma.Core` | `src/core/Tellma.Core/` (existing, grows) | `Tellma.Core.Abstractions`, `Tellma.Core.EntityFrameworkCore`, `Microsoft.EntityFrameworkCore.SqlServer`, `Microsoft.EntityFrameworkCore.SqlServer.HierarchyId`, `Microsoft.Data.SqlClient`, `Microsoft.Extensions.*`, `Microsoft.AspNetCore.DataProtection.Abstractions`, `Cronos`, `DocumentFormat.OpenXml`, `MessageFormat` | `Tellma.Core.Composition` (the composition pipeline, `TellmaBuilder`, realizers, `TellmaStartupGate`, `CoreFeature`), `Tellma.Core.Tenancy` (`CatalogDbContext`, registry, catalog, connection factories, holder, guard, scope factory, `TenantSandboxContext`), `Tellma.Core.Data.TellmaDbContext` registration |
+| `Tellma.Core` | `src/core/Tellma.Core/` (existing, grows) | `Tellma.Core.Abstractions`, `Tellma.Core.EntityFrameworkCore`, `Microsoft.EntityFrameworkCore.SqlServer`, `Microsoft.EntityFrameworkCore.SqlServer.HierarchyId`, `Microsoft.Data.SqlClient`, `Microsoft.Extensions.*`, `Microsoft.AspNetCore.DataProtection.Abstractions`, `Cronos`, `DocumentFormat.OpenXml`, `MessageFormat` | `Tellma.Core.Composition` (the composition pipeline, `TellmaBuilder`, realizers, `TellmaStartupGate`, `CoreFeature`, `TellmaLinks`), `Tellma.Core.Tenancy` (`CatalogDbContext`, registry, catalog, connection factories, holder, guard, scope factory, `TenantSandboxContext`), `Tellma.Core.Data.TellmaDbContext` registration |
 | `Tellma.Core.AspNetCore` | `src/core/Tellma.Core.AspNetCore/` (new) | `Tellma.Core`, `FrameworkReference Microsoft.AspNetCore.App`, `Microsoft.AspNetCore.Authentication.OpenIdConnect`, `Microsoft.AspNetCore.Authentication.JwtBearer`, `Azure.Extensions.AspNetCore.DataProtection.Blobs`, `Azure.Extensions.AspNetCore.DataProtection.Keys`, `Serilog.AspNetCore`, `OpenTelemetry.*` | `AddTellma(WebApplicationBuilder)`, `UseTellma`, `MapTellma`, the BFF and session store, CSRF, tenant middleware and access filter, the endpoint audit, route groups, `/api/distribution-info`, health, the admin surface, `SessionSweepService`, `MembershipReconcileService`, Data Protection and forwarded headers |
 | `Tellma.Core.Migrator` | `src/core/Tellma.Core.Migrator/` (new) | `Tellma.Core`, `Tellma.Core.EntityFrameworkCore.Design`, `Microsoft.EntityFrameworkCore.Design` | `TellmaMigrator`, the platform-owned catalog migrations (`catalog.__EFMigrationsHistory`), `TellmaDesignTimeDbContextFactory<TContext>`, the commands of §6.1 |
 | `Tellma.Defaults.Azure` | `src/defaults/Tellma.Defaults.Azure/` (new) | `Tellma.Core.Email`, `Tellma.Core.Webhooks`, `Tellma.Core.Imaging`, `Tellma.Connector.AcsEmail.Adapter`, `Tellma.Connector.SendGrid.Adapter`, `Tellma.Connector.AzureBlobs.Adapter` | `UseAzureDefaults(TellmaBuilder)`: email, webhooks, Azure blobs and imaging in one call (§1.3) |
@@ -144,7 +155,7 @@ distributions/acme/
 │   ├── Tellma.Distro.Acme.Web/
 │   │   ├── Program.cs                          # three platform calls (§1.3)
 │   │   ├── Endpoints/                          # custom endpoints mapped onto the returned groups
-│   │   ├── Properties/launchSettings.json      # tracked; fixed ports; the SPA proxy on in Development
+│   │   ├── Properties/launchSettings.json      # tracked; fallback ports; the SPA proxy on in Development
 │   │   ├── appsettings.json / appsettings.Development.json
 │   │   ├── wwwroot/                            # the published SPA (build output; untracked)
 │   │   └── Tellma.Distro.Acme.Web.csproj       # SpaRoot, SpaProxyServerUrl, SpaProxyLaunchCommand
@@ -153,12 +164,11 @@ distributions/acme/
 │   │   ├── Entities/                           # sealed leaves and distribution-only entities
 │   │   ├── Services/                           # custom services, validators, effects
 │   │   └── Tellma.Distro.Acme.csproj           # class library; referenced by the Web and Migrator projects
-│   ├── Tellma.Distro.Acme.Client/
-│   │   ├── src/                                # the Angular application; arrives with the UI phase
-│   │   ├── proxy.conf.js                       # forwards every non-SPA prefix to the Web project
-│   │   ├── aspnetcore-https.js                 # exports the ASP.NET Core development certificate
-│   │   ├── angular.json / package.json / tsconfig*.json
-│   │   └── Tellma.Distro.Acme.Client.esproj    # Microsoft.VisualStudio.JavaScript.Sdk
+│   ├── Tellma.Distro.Acme.Client/              # the Angular application (spec 0024 §2.1)
+│   │   ├── src/, public/                       # the distribution's client code, manifest, icons and brand files
+│   │   ├── generated/                          # written by emit-client-assets (§6.1); gitignored
+│   │   ├── angular.json / package.json / tsconfig.json / eslint.config.mjs
+│   │   └── Tellma.Distro.Acme.Client.esproj    # Microsoft.VisualStudio.JavaScript.Sdk; → the Migrator, ReferenceOutputAssembly=false
 │   └── Tellma.Distro.Acme.Migrator/
 │       ├── Program.cs                          # one line (§1.3)
 │       ├── AcmeDesignTimeFactory.cs            # derives TellmaDesignTimeDbContextFactory<TellmaDbContext>
@@ -188,19 +198,27 @@ distributions/acme/
 - **Migrator project references.** `Tellma.Distro.Acme` and `Tellma.Core.Migrator` only, so a
   migrator build carries no ASP.NET package, never builds the Client esproj and needs no Node.
 - **Client project.** The recommended ASP.NET Core + Angular shape: a JavaScript-SDK esproj beside
-  the Web project, scaffolded by hand from a current Angular CLI workspace (vitest, pnpm) with the
-  Visual Studio template as a guide only, because the template's recipe is out of date. In
-  Development, `dotnet run` on the Web project starts the SPA proxy, which launches `pnpm start` and
-  redirects the browser to the Angular dev server, so the browser's origin is the dev server's:
-  `Tellma:PublicOrigin` in `appsettings.Development.json` is `https://localhost:4200`, and
-  `proxy.conf.js` forwards `/bff`, `/api`, `/id`, `/signin-oidc`, `/signout-callback-oidc`,
-  `/health`, `/openapi`, `/.well-known` and `/{tenantId}/api`, `/{tenantId}/hub` (websockets on),
-  `/{tenantId}/blobs` and `/{tenantId}/mcp` to the Web project's port; every route it does not
-  forward is an SPA deep link. `aspnetcore-https.js` exports the development certificate for the
-  dev server on first start. The `__Host-` session cookie works unchanged behind the proxy because
-  both origins are `https` on `localhost`. Outside Development the SPA proxy is inert:
-  `dotnet publish` builds the client and copies `dist/<app>/browser` into `wwwroot`, which
-  `MapTellma` serves with the fallback of §5.1.
+  the Web project. `tellma-client init` scaffolds it, and it is a member of the repository-root
+  pnpm workspace (spec 0024 §2.1).
+  - **Build.** The esproj references the Migrator with `ReferenceOutputAssembly=false`, so MSBuild
+    builds the Migrator first. The esproj's build then runs `tellma-client build
+    --no-dotnet-build`, which emits the client metadata through the Migrator (§6.1) and builds the
+    app. `dotnet publish` of the Web project builds the client this way and copies
+    `dist/<app>/browser` into `wwwroot`, which `MapTellma` serves (§5.1).
+  - **Development.** `dotnet run` on the Web project starts the SPA proxy. The proxy launches
+    `pnpm start` (`tellma-client serve`, spec 0024 §2.6) and redirects the browser to the Angular
+    dev server, so the browser's origin is the dev server's. `tellma-client serve` exports the
+    development certificate on first start. Outside Development the SPA proxy is inert.
+  - **Proxied routes.** The dev server forwards the server's reserved words (`TellmaRoutes`, spec
+    0024 §9.1) to the Web project, with websockets on for the hub. Every other route is an SPA deep
+    link. The `__Host-` session cookie works unchanged behind the proxy, because both origins are
+    `https` on `localhost`.
+  - **Ports.** Each worktree may set its ports in the gitignored `.dev-ports.local` at the
+    repository root. The dev server listens on `<SLUG>_CLIENT` (`ACME_CLIENT`) from that file, else
+    4200; the Web project listens on `<SLUG>_WEB`, else 7052. In Development `AddTellma` reads the
+    same file: the web host listens on the web port, `Tellma:PublicOrigin` is
+    `https://localhost:<client port>`, and the SPA proxy targets the client port. The tracked
+    `appsettings.Development.json` and `launchSettings.json` carry the fallback ports.
 - **Folders.** `Entities/`, `Services/`, `Endpoints/` name what a distribution adds. There is no
   `Data/` folder (a distribution owns no data-access code) and no per-feature folder tree. "Data,
   service, web" remain prose names for the layers.
@@ -315,6 +333,9 @@ public sealed record StackCompanionContributionItem(
     Type EntityType, Type CompanionType) : FeatureContributionItem;
 public sealed record ShapeRequirementContributionItem(
     Type EntityType, Type ShapeType) : FeatureContributionItem;                    // §2.4
+public sealed record ReportSeedContributionItem(ReportSeed Seed) : FeatureContributionItem;
+public sealed record WidgetTypeContributionItem(
+    string Key, Type? SettingsType) : FeatureContributionItem;                     // SettingsType null: no settings
 
 public enum ComponentKind { Validator, PersistEffect, DetailsContributor }
 
@@ -347,6 +368,9 @@ public sealed class FeatureContribution
     public FeatureContribution ClientEvent(string name);
     public FeatureContribution BlobKind(string kind, Func<BlobKindPolicy, BlobKindPolicy> configure);
     public FeatureContribution RequiresShape<TEntity, TShape>();                    // §2.4; TShape is an interface
+    public FeatureContribution ReportSeed(ReportSeed seed);
+    public FeatureContribution WidgetType(string key);                               // a widget type without settings
+    public FeatureContribution WidgetType<TSettings>(string key) where TSettings : class;   // a widget type whose settings bind to TSettings
 }
 
 public interface IStartupCheck
@@ -380,6 +404,8 @@ public sealed class TellmaCompositionException(
 | `NotificationType`, `NotificationChannel`, `ClientEvent` | Realised by spec 0021. |
 | `BlobKind` | Realised by spec 0017: transforms the policy the kind's `[BlobReference]` preset produced (spec 0017 §1.3). |
 | `RequiresShape` | Realised by the `core.entity-shapes` check (§2.3, §2.4). |
+| `ReportSeed` | Realised by spec 0033 into the `core.report-seeds` provisioning step (§6.2); `ReportSeed` is spec 0033 §13's record. |
+| `WidgetType` | Realised by spec 0035 into `IWidgetTypeRegistry` (spec 0035 §4.1). |
 | `IStartupCheck` | Registered as a service by any package; the realised gate runs every check and aggregates the problems. |
 | `CompositionProblem.Fix` | The remedy, phrased as the code or configuration to add; every built-in check supplies one. |
 
@@ -471,9 +497,9 @@ public static class TellmaMcpBuilderExtensions
    then the platform registers `CatalogDbContext`, `ITenantRegistry`, `ITenantCatalog`,
    `ITenantConnectionFactory`, `ITenantConnectionProvider`, `ITenantDbContextFactory`,
    `IRequestContextHolder`/`IRequestContextAccessor`, `ITenantAccessGuard`, `ITenantScopeFactory`,
-   `TenantSandboxContext : ISandboxContext`, `ITenantMembershipDirectory`, `TellmaDbContext`, the
-   options of §8 with `ValidateOnStart`, the `IStartupCheck`s below, and `TellmaStartupGate` as the
-   **first** hosted service.
+   `TenantSandboxContext : ISandboxContext`, `ITenantMembershipDirectory`, `ITellmaLinks` (§5.10),
+   `TellmaDbContext`, the options of §8 with `ValidateOnStart`, the `IStartupCheck`s below, and
+   `TellmaStartupGate` as the **first** hosted service.
 5. **Realised gate.** `TellmaStartupGate` (`IHostedLifecycleService.StartingAsync`) runs every
    registered `IStartupCheck` inside one service scope and throws one `TellmaCompositionException`
    carrying every problem before the host serves traffic.
@@ -543,7 +569,7 @@ id:
 | MCP | `/{tenantId:int:min(1)}/mcp` | bearer; `Tellma.Mcp` |
 | SignalR hub | `/{tenantId:int:min(1)}/hub` | session cookie; `Tellma.Web` |
 | Blobs | `/{tenantId:int:min(1)}/blobs/{kind}` (POST), `/{tenantId:int:min(1)}/blobs/{kind}/{id}` (GET) | session cookie; `Tellma.Web` |
-| SPA deep links | `/{tenantId:int:min(1)}/{**path}` | anonymous; serves the app shell |
+| SPA deep links | `/{tenantId:int:min(1)}/{**path}` | anonymous; `index.html` for navigations only (spec 0024 §6) |
 
 Every tenantless route begins with a non-numeric segment (`/bff`, `/api`, `/signin-oidc`,
 `/signout-callback-oidc`, `/health`, `/id`, `/.well-known`), so the integer constraint alone keeps
@@ -561,10 +587,10 @@ schema with its own migration history. The catalog holds no connection string an
 tenant row carries `Server`, `Database` and a `CredentialProfile` name.
 
 A distribution hosts one tenant or many by what its operators register, never by a policy
-setting: the registry, the migrator fan-out, the session store and the membership directory are
-identical for a catalog with one live tenant and for one with two hundred, and nothing refuses a
-second live registration. The company picker's single-tenant shortcut (§5.5) reads the membership
-list, not a policy.
+setting. The registry, the migrator fan-out, the session store and the membership directory are
+identical for a catalog with one live tenant and for one with two hundred. Nothing refuses a second
+live registration. The SPA's launch redirect (spec 0024 §9.3) reads the membership list through
+`/bff/user`, not a policy.
 
 ### 3.3 Tenant states and verdicts
 
@@ -582,15 +608,20 @@ public sealed record TenantDisplayNames(                          // the setting
     string Name, string? Name2, string? Name3, IReadOnlyList<string> Languages);
 ```
 
-`Category` is immutable after registration; a sandbox is its own row, optionally naming the live
-tenant it derives from (`LiveTenantId`: the picker's grouping key and the default source of a future
-clone) — a standalone sandbox, for demonstrations and training, names none. `Name`, `Name2`, `Name3`
-and `Languages` mirror the tenant settings' name group and content-language codes (§3.7), so the
-company picker localises without opening a tenant database; `Name2`/`Name3` are null when the
-tenant has no second or third language, each paired with its code in `Languages`, which holds the
-distribution's default language alone until the first settings save.
-`TenantDescriptor` never exposes the database location. Verdicts, returned only after authentication
-succeeded (`401` first) and after membership was verified (`404 tenant-not-found` for a non-member):
+`Category` is immutable after registration. A sandbox is its own row. It may name the live tenant
+it derives from in `LiveTenantId`, which is the tenant picker's grouping key and the default source
+of a future clone; a standalone sandbox, for demonstrations and training, names none.
+
+- **Display names.** `Name`, `Name2`, `Name3` and `Languages` mirror the tenant settings' name
+  group and content-language codes (§3.7), so the tenant picker localises without opening a tenant
+  database.
+- **Pairing.** `Name2` and `Name3` are null when the tenant has no second or third language. Each
+  name is paired with its code in `Languages`, which holds the distribution's default language
+  alone until the first settings save.
+- **No location.** `TenantDescriptor` never exposes the database location.
+
+The verdicts below apply only after authentication succeeded (`401` first) and membership was
+verified (`404 tenant-not-found` for a non-member):
 
 | State | Read request | Mutating request | Background scope (`ITenantScopeFactory`) |
 |---|---|---|---|
@@ -810,22 +841,26 @@ public interface ITenantMembershipDirectory
 }
 ```
 
-`catalog.TenantMemberships` is a navigation hint, never an authorization source. Writers: spec
-0018 §3.6's `UserService` effects after an invite, activation or deactivation commits (a second
-transaction against the catalog; a failure is logged and metered, never surfaced); the migrator's
-provisioning (the bootstrap administrator's hint); and `MembershipReconcileService`, a hosted timer
-in `Tellma.Core.AspNetCore` (`Tellma:Tenancy:MembershipReconcileInterval`, default 24 h; first run
-five minutes after the first snapshot) that takes `sp_getapplock('tellma:membership-reconcile')` on
-the catalog with a zero timeout, so exactly one instance runs, and rebuilds the hint for every
-`Active` tenant from `core.Users (Subject, IsActive)` through `TenantMembershipList` with the
-statements of §7.5 — one tenant query and one catalog transaction per tenant, a failed tenant
-logged and the run continued. The timer repairs any post-commit write that failed, without a
-deployment. Readers: `GET /bff/user` (the company picker), the sign-in redirect that skips the
-picker for a single live membership (§5.5), and the admin `GET /api/admin/v1/tenants/{id}/members`
-(§5.9). The directory answers in one catalog query and never opens a tenant database; every entry
-into a tenant is re-verified by the connect initializer, so a stale hint can at most show a tenant
-that answers `404` or hide one reachable by URL until the next deployment. The connect step never
-writes the hint.
+`catalog.TenantMemberships` is a navigation hint, never an authorization source. Three writers keep
+it current; two endpoints read it.
+
+- **Post-commit writes.** Spec 0018 §3.6's `UserService` effects write the hint after an invite,
+  activation or deactivation commits. This is a second transaction against the catalog; a failure
+  is logged and metered, never surfaced.
+- **Provisioning.** The migrator writes the bootstrap administrator's hint.
+- **Reconciliation.** `MembershipReconcileService` is a hosted timer in `Tellma.Core.AspNetCore`
+  (`Tellma:Tenancy:MembershipReconcileInterval`, default 24 h; first run five minutes after the
+  first snapshot). It takes `sp_getapplock('tellma:membership-reconcile')` on the catalog with a
+  zero timeout, so exactly one instance runs. It rebuilds the hint for every `Active` tenant from
+  `core.Users (Subject, IsActive)` through `TenantMembershipList` with the statements of §7.5: one
+  tenant query and one catalog transaction per tenant, a failed tenant logged and the run
+  continued. The timer repairs any failed post-commit write without a deployment.
+- **Readers.** `GET /bff/user` (§5.5), which the tenant picker and the SPA's launch redirect read
+  (spec 0024 §9.3), and the admin `GET /api/admin/v1/tenants/{id}/members` (§5.9). The directory
+  answers in one catalog query and never opens a tenant database.
+- **A stale hint is harmless.** The connect initializer re-verifies every entry into a tenant, so a
+  stale hint can at most show a tenant that answers `404`, or hide one reachable by URL, until the
+  next deployment. The connect step never writes the hint.
 
 ### 3.9 The sandbox context
 
@@ -1025,13 +1060,18 @@ public interface ISessionTerminationListener
 }
 ```
 
-Both are implemented by spec 0021's `TellmaHub` connection tracker (close a suspended tenant's
-connections; close a revoked user's connections for that tenant; end sessions), and
-`ITenantStateListener` also by spec 0020's worker (pause polling for a non-`Active` tenant). The
-registry calls the first; the session store (§5.5) calls `SessionsTerminatedAsync` on back-channel
-logout and revocation with the handles (§7.4) of the deleted rows — a session key reaches no
-listener and no log; spec 0018's `UserService` calls `TenantAccessRevokedAsync` after a
-deactivation commits. Listener failures are logged, never thrown into the caller.
+Spec 0021's `TellmaHub` connection tracker implements both: it closes a suspended tenant's
+connections, closes a revoked user's connections for that tenant, and ends sessions. Spec 0020's
+worker also implements `ITenantStateListener`, to pause polling for a non-`Active` tenant.
+
+- **`OnStateChangedAsync`** is called by the registry.
+- **`SessionsTerminatedAsync`** is called by the session store (§5.5) on back-channel logout and
+  revocation, with the handles (§7.4) of the deleted rows. `POST /bff/logout` calls it with the
+  caller's own handle before that row is deleted. A session key reaches no listener and no log.
+- **`TenantAccessRevokedAsync`** is called by spec 0018's `UserService` after a deactivation
+  commits.
+
+Listener failures are logged, never thrown into the caller.
 
 ### 4.6 Exceptions
 
@@ -1137,25 +1177,41 @@ public sealed record AcceptsBinaryMetadata(long MaxBytes);
   gated on `APPLICATIONINSIGHTS_CONNECTION_STRING`), and — when `Tellma:Identity:Mode = InProc` —
   `AddTellmaIdentity` (§5.7). `TellmaMigrator.RunAsync(args, slug, compose)` never sees
   `composeWeb`, so both hosts build their EF models from `compose` alone (§1.3).
-- **`UseTellma()`** installs the pipeline in this fixed order and nothing else: forwarded headers
-  (guarded as §5.8 states), Serilog request logging, the exception handler producing RFC 9457
-  problem details (the mapping is spec 0016's), HSTS and HTTPS redirection outside Development,
-  response compression (spec 0016 §8.4), `UseRouting`, `UseTellmaIdentity` (in-proc only),
-  `UseAuthentication`, `UseAuthorization`, the rate limiter (spec 0016 §8.2; after authentication
-  so the partition key is the principal), request timeouts (spec 0016 §8.3), output caching
-  (spec 0016 §8.5), `TellmaCsrfMiddleware`, `TellmaContractMiddleware` (spec 0016 §3.10),
-  `TenantMiddleware`. Custom middleware goes between `UseTellma()` and `MapTellma()`.
-- **`MapTellma()`** maps `/api/distribution-info`, `/health/live`, `/health/ready`, `/bff/*`,
-  `/api/admin/*` (when enabled, §5.9), `/api/webhooks/{key}` (when `Tellma.Core.Webhooks` is
-  composed), `/api/strings/{language}` (spec 0013 §10.4), `/api/notification-catalogue` (spec 0021
-  §2.5), the in-proc identity endpoints,
-  `/.well-known/oauth-protected-resource/{tenantId:int:min(1)}/mcp`, the tenant route groups of §5.2
-  filled by feature contributions (spec 0016's projected endpoints including settings, inbox, job
-  and schedule endpoints, spec 0021's `/{tenantId}/hub`, spec 0017's `/{tenantId}/blobs/{kind}` and
-  `/{tenantId}/blobs/{kind}/{id}`, spec 0016's `/{tenantId}/mcp`), static assets and the SPA
-  fallback (`MapFallbackToFile("index.html")` when `wwwroot/index.html` exists, excluding every
-  reserved prefix); then runs the endpoint audit (§5.3). It returns `TellmaEndpoints` so a
-  distribution maps custom endpoints onto `Web` and inherits every filter.
+- **`UseTellma()`** installs this pipeline in this fixed order and nothing else. Custom middleware
+  goes between `UseTellma()` and `MapTellma()`.
+  1. The header stamp: `Tellma-Trace-Id` and `Tellma-Build` on every response, so early refusals
+     (CSRF 403, 412, 429, tenant 404) carry them (spec 0016 §6.2).
+  2. Forwarded headers, guarded as §5.8 states.
+  3. Serilog request logging.
+  4. The exception handler producing RFC 9457 problem details (the mapping is spec 0016's).
+  5. HSTS and HTTPS redirection, outside Development.
+  6. Response compression (spec 0016 §8.4).
+  7. `UseRouting`.
+  8. `UseTellmaIdentity` (in-proc only).
+  9. `UseAuthentication`, then `UseAuthorization`.
+  10. The rate limiter (spec 0016 §8.2), after authentication so the partition key is the
+      principal.
+  11. Request timeouts (spec 0016 §8.3).
+  12. Output caching (spec 0016 §8.5).
+  13. `TellmaCsrfMiddleware`.
+  14. `TellmaContractMiddleware` (spec 0016 §3.10).
+  15. `TenantMiddleware`.
+- **`MapTellma()`** maps the endpoints below, then runs the endpoint audit (§5.3). It returns
+  `TellmaEndpoints` so a distribution maps custom endpoints onto `Web` and inherits every filter.
+  - **Tenantless platform routes:** `/api/distribution-info`, `/health/live`, `/health/ready`,
+    `/bff/*`, `/api/admin/*` (when enabled, §5.9), `/api/webhooks/{key}` (when
+    `Tellma.Core.Webhooks` is composed), the in-proc identity endpoints and
+    `/.well-known/oauth-protected-resource/{tenantId:int:min(1)}/mcp`.
+  - **The client telemetry relay** `POST /api/client-telemetry`, mapped as spec 0026 §6.1 defines
+    it.
+  - **The tenant route groups** of §5.2, filled by feature contributions: spec 0016's projected
+    endpoints (settings, inbox, job and schedule endpoints among them), spec 0021's
+    `/{tenantId}/hub`, spec 0017's `/{tenantId}/blobs/{kind}` and `/{tenantId}/blobs/{kind}/{id}`,
+    spec 0016's `/{tenantId}/mcp`.
+  - **The SPA**, under spec 0024 §6's rules. Static assets are endpoint-routed and stamped
+    `TenantlessEndpointMetadata("spa-assets")`; cache headers follow the hashed name, and the
+    metadata chunks require the session cookie. Navigations fall back to `index.html`, which
+    carries its security headers and CSP.
 
 | Member | Meaning |
 |---|---|
@@ -1183,8 +1239,8 @@ The application's fallback authorization policy is `RequireAuthenticatedUser` un
 `Tellma.Session` scheme, so an endpoint with no authorization metadata denies anonymous callers.
 `AllowAnonymous` is permitted only on an endpoint carrying `TenantlessEndpointMetadata`: the
 information document, the health probes, the BFF login and back-channel receiver, the
-protected-resource metadata document, the strings pack (spec 0013 §10.4), the notification catalogue
-(spec 0021 §2.5), the webhook receivers, the Development OpenAPI document (spec 0016 §12.1), the SPA
+protected-resource metadata document, the webhook receivers, the Development OpenAPI document (spec
+0016 §12.1), the SPA's static assets other than the metadata chunks (spec 0024 §6), the SPA
 fallback and the identity engine's own endpoints.
 
 ### 5.3 The endpoint audit
@@ -1203,8 +1259,12 @@ and again by the realised gate) fails startup, naming route and method, when:
   platform stamps the routes it maps, the webhook receivers among them, assembly membership marks
   the in-proc identity engine's endpoints, and `AsTenantlessEndpoint` marks a distribution's;
 - a distribution endpoint sits under a reserved prefix (`/bff`, `/api/admin`,
-  `/api/distribution-info`, `/health`, `/id`, `/openapi`, `/.well-known`, `/signin-oidc`,
-  `/signout-callback-oidc`).
+  `/api/distribution-info`, `/api/client-telemetry`, `/health`, `/id`, `/openapi`, `/.well-known`,
+  `/signin-oidc`, `/signout-callback-oidc`), or its first segment is an SPA route word
+  (`TellmaRoutes.SpaFirstSegments`: `tenants`, `signed-out`; spec 0024 §3.2);
+- a stack's `ResourceSegment`, or the second segment of a hand-mapped tenant route, is a word of
+  `TellmaRoutes.SpaTenantSegments` (`settings`, `me`, `list`). These words name the SPA's core
+  pages at `/{tenantId}/{word}`, so an entity with that segment could not be routed.
 
 The same walk checks the securable rules of spec 0014 §4.5 and the projection rules of spec 0016
 §4.6.
@@ -1238,6 +1298,10 @@ post-login redirect chain and deep links; the required header is the equivalent 
 
 ### 5.5 Authentication: schemes, the session store, refresh, back-channel logout, BFF endpoints
 
+The SPA authenticates through the distribution's own BFF: a cookie session stored in the catalog,
+kept alive by token refresh and ended by back-channel logout. Bearer tokens authenticate the MCP,
+public API and control-plane surfaces, each under its own policy.
+
 ```csharp
 // Tellma.Core.AspNetCore
 public interface ICatalogSessionStore : ITicketStore        // rows in catalog.Sessions; per-instance cache; revocation
@@ -1258,6 +1322,8 @@ public interface IAuthenticationPolicyProvider              // login-time constr
 }
 
 public sealed record LoginPolicy(string? AcrValues, TimeSpan? MaxAge, IReadOnlyList<string>? AllowedMethods);
+
+public sealed record LogoutResult(string RedirectUrl);     // POST /bff/logout: the end-session URL ("global") or "/signed-out" ("local")
 ```
 
 - **Cookie scheme `Tellma.Session`.** Cookie `__Host-tellma.session` (`tellma.session` under plain
@@ -1281,22 +1347,26 @@ public sealed record LoginPolicy(string? AcrValues, TimeSpan? MaxAge, IReadOnlyL
   and allowed methods inside PAR; a downgrade fails closed), `SaveTokens = true`,
   `MapInboundClaims = false`, `GetClaimsFromUserInfoEndpoint = false`, scopes
   `openid profile email offline_access tellma_api`, `CallbackPath = /signin-oidc`,
-  `SignedOutCallbackPath = /signout-callback-oidc`. Principal claims kept: `sub`, `sid`, `name`,
-  `email`, `locale`, `acr`, `amr`, `auth_time`, `tellma_acr_auth_time`. `OnTokenValidated` rejects
-  a principal without `sub` or `sid`.
-- **Refresh-anchored liveness** (`TellmaSessionEvents.ValidatePrincipal`). When the stored access
-  token expires within `Tellma:Session:RefreshSkew` (default 60 s) the event re-reads the session
-  row bypassing the cache; if `TokensVersion` already moved (another instance refreshed) it adopts
-  the newer ticket; otherwise it redeems the refresh token at the authority and writes the new
-  ticket with the compare-and-set of §7.5; a lost CAS re-reads and adopts. Success →
-  `ReplacePrincipal` (the refreshed id token's `acr`, evidence time and `locale` replace the
-  principal's) + `ShouldRenew`. `invalid_grant` or any 4xx → `RejectPrincipal`, the row is deleted,
-  the SPA receives `401` and re-enters the challenge, so authority-side sign-out-everywhere, policy
-  tightening and user disablement take effect within one access-token lifetime even when
-  back-channel delivery failed. A 5xx or network failure keeps the session for up to
-  `Tellma:Session:MaxAuthorityOutage` (default 1 h), after which the session is rejected. Concurrent
-  requests on one session refresh once (in-process single flight per key; the authority's 30 s
-  reuse leeway covers the cross-instance race the CAS does not).
+  `SignedOutCallbackPath = /signout-callback-oidc`, `SignedOutRedirectUri = /signed-out`.
+  Principal claims kept: `sub`, `sid`, `name`, `email`, `locale`, `acr`, `amr`, `auth_time`,
+  `tellma_acr_auth_time`. `OnTokenValidated` rejects a principal without `sub` or `sid`.
+- **Refresh-anchored liveness** (`TellmaSessionEvents.ValidatePrincipal`). The event refreshes when
+  the stored access token expires within `Tellma:Session:RefreshSkew` (default 60 s).
+  - **Refresh.** The event re-reads the session row, bypassing the cache. If `TokensVersion`
+    already moved (another instance refreshed), it adopts the newer ticket. Otherwise it redeems
+    the refresh token at the authority and writes the new ticket with the compare-and-set of §7.5;
+    a lost CAS re-reads and adopts.
+  - **One refresh per session.** Concurrent requests on one session refresh once: an in-process
+    single flight per key, and the authority's 30 s reuse leeway covers the cross-instance race the
+    CAS does not.
+  - **Success** → `ReplacePrincipal` + `ShouldRenew`. The refreshed id token's `acr`, evidence
+    time, `name` and `locale` replace the principal's.
+  - **`invalid_grant` or any 4xx** → `RejectPrincipal`. The row is deleted, and the SPA receives
+    `401` and re-enters the challenge. So authority-side sign-out-everywhere, policy tightening and
+    user disablement take effect within one access-token lifetime, even when back-channel delivery
+    failed.
+  - **A 5xx or network failure** keeps the session for up to `Tellma:Session:MaxAuthorityOutage`
+    (default 1 h); after that the session is rejected.
 - **Back-channel logout receiver** `POST /bff/backchannel-logout` (anonymous by design,
   `application/x-www-form-urlencoded`, parameter `logout_token`; the URI provisioning registers as
   `tellma:backchannel_logout_uri`). Validation with the OIDC handler's own configuration manager:
@@ -1308,27 +1378,45 @@ public sealed record LoginPolicy(string? AcrValues, TimeSpan? MaxAge, IReadOnlyL
   and `200`. Any validation failure answers `400` with no body. A replayed token deletes nothing
   and answers `200`; `jti` is not tracked. The handler's `RemoteSignOutPath` is front-channel only
   and stays unused.
-- **BFF endpoints** (tenantless, cookie scheme): `GET /bff/login?returnUrl=&acr_values=&max_age=`
-  (local-only `returnUrl`; challenges the OIDC scheme, forwarding `acr_values`/`max_age` and the
-  `tellma_allowed_methods` supplied by `IAuthenticationPolicyProvider.GetLoginPolicyAsync(null)` —
-  initial sign-in requests no tier because the user has no tenant yet). After the callback the BFF
-  redirects to `returnUrl` when one was given; otherwise, when exactly one membership of §3.8 is
-  `Live`, `Active` and `isActive`, straight into `/{tenantId}/`, skipping the picker; else to `/`,
-  the picker. `POST /bff/logout` (`{ "scope": "local" | "global" }`, default `global`: local
-  sign-out then RP-initiated end-session with `id_token_hint`; clears `tellma.profile`); `GET
-  /bff/user` → `{ sub, name, email, locale, acr, tenants: [{ id, name, name2, name3, languages,
-  category, state, liveTenantId, isActive }] }` from §3.8 — each entry is §3.3's `TenantDescriptor`
-  plus `isActive` — with `401` when unauthenticated. On that callback redirect the BFF also writes,
-  once, the readable profile cookie `tellma.profile`: `{ v, name, locale }` — the ID token's `name`
-  and `locale` claims as of sign-in, so the tenantless shell (the picker) renders without a request;
-  `v` versions the shape. It is `Path=/`, not `HttpOnly`, carries no token and nothing
-  tenant-scoped, has the session cookie's absolute lifetime, is never rewritten, and is cleared by
-  `/bff/logout`. Its presence is the SPA's synchronous signed-in signal: without it the SPA goes to
-  `/bff/login` before spending a request. Everything a tenant shell needs — company name,
-  preferences, landing page, calendar — is tenant data the BFF never reads: the SPA takes it from
-  `me` (spec 0014) and `settings/client` (spec 0013), caches both per tenant in local storage, and
-  validates the cache by version tags on its first request (spec 0016); a returning visit reopens
-  the last-used tenant from that cache and falls back to the picker on `403` or `404`.
+- **BFF endpoints** (tenantless, cookie scheme):
+  - **`GET /bff/login?returnUrl=&acr_values=&max_age=&ui_locales=`** accepts a local-only
+    `returnUrl` and challenges the OIDC scheme. It forwards `acr_values`, `max_age`, `ui_locales`
+    (the sign-in page's language, spec 0010 §A.10) and the `tellma_allowed_methods` supplied by
+    `IAuthenticationPolicyProvider.GetLoginPolicyAsync(null)`. Initial sign-in requests no tier,
+    because the user has no tenant yet. After the callback the BFF redirects to `returnUrl ?? "/"`,
+    and the SPA's launch redirect decides where `/` lands (spec 0024 §9.3).
+  - **`POST /bff/logout`** (`{ "scope": "local" | "global" }`, default `global`) answers
+    `200 LogoutResult` and never redirects: the SPA calls it with `fetch`, which cannot follow the
+    end-session redirect. In order, it:
+    1. calls `SessionsTerminatedAsync(subject, [own handle])` (§4.5);
+    2. signs out locally: the session row is deleted and both cookies are cleared;
+    3. sends `Clear-Site-Data: "cache"`.
+
+    For `local`, `RedirectUrl` is `/signed-out`. For `global`, it is the RP-initiated end-session
+    URL with `id_token_hint` and `post_logout_redirect_uri` = `/signout-callback-oidc`; the
+    `OnRedirectToIdentityProviderForSignOut` event captures the URL the OIDC handler builds instead
+    of redirecting to it.
+  - **`GET /bff/user`** → `{ sub, name, email, locale, acr, tenants: [{ id, name, name2, name3,
+    languages, category, state, liveTenantId, isActive }] }` from §3.8 — each entry is §3.3's
+    `TenantDescriptor` plus `isActive` — with `401` when unauthenticated.
+- **The profile cookie** `tellma.profile` is the SPA's synchronous signed-in signal (spec 0024
+  §8.1): without it the SPA goes to `/bff/login` before spending a request.
+  - **Value:** `base64url`, without padding, of the UTF-8 JSON `{ v: 2, sub, sh, name, email,
+    locale }`. `v` versions the shape; `sh` is the session's handle (§7.4); `name`, `email` and
+    `locale` are the ID token's claims (`locale` null when absent). It carries no token and nothing
+    tenant-scoped.
+  - **Attributes:** `Path=/`, `Secure`, `SameSite=Lax`, not `HttpOnly`.
+  - **`sh` is a name, never a credential:** no endpoint accepts it in place of the session cookie.
+  - **Lifetime:** written on the callback redirect and re-issued whenever the session cookie is (a
+    sliding renewal, or a refresh that replaced `name` or `locale`). `Expires` is the session's
+    idle expiry, capped by its absolute expiry. `/bff/logout` clears it.
+  - **Background requests renew neither cookie.** These are a request carrying
+    `Tellma-Activity: background` (spec 0016 §6.1), any request on the `Hub` route group (negotiate
+    and connect), and `POST /api/client-telemetry`. `OnCheckSlidingExpiration` sets
+    `ShouldRenew = false` for them, so the cookie's life and the server's idle life move together.
+- **Tenant data stays out of the BFF.** Everything a tenant shell needs — tenant name,
+  preferences, landing page, calendar — is tenant data the BFF never reads. Client caching is spec
+  0025's; a `404 tenant-not-found` sends the SPA to the tenant picker (spec 0024 §11).
 - **Bearer scheme `Tellma.Bearer`** (`JwtBearer`): `Authority = Tellma:Identity:Authority` (the
   issuer the OIDC scheme uses), the JWKS cached by the handler's configuration manager (no
   per-request identity call), issuer validated, `MapInboundClaims = false` (so `sub` stays `sub`),
@@ -1340,11 +1428,11 @@ public sealed record LoginPolicy(string? AcrValues, TimeSpan? MaxAge, IReadOnlyL
   `Tellma.Bearer` + scope `tellma_api` + audience = `Tellma:PublicOrigin`; `Tellma.Mcp` =
   `Tellma.Bearer` + `tellma_api` + the tenant's MCP audience; `Tellma.ControlPlane` =
   `Tellma.Bearer` + scope `tellma_control_plane` + audience = `Tellma:PublicOrigin` (the grant is
-  spec 0010 §6). A policy names its scheme explicitly: a cookie never authenticates a bearer
+  spec 0010 §A.5). A policy names its scheme explicitly: a cookie never authenticates a bearer
   surface and a bearer never authenticates the web surface.
 - **`PrincipalKind`** at binding: cookie → `User`; bearer with `auth_time` → `User` (a person
   through Claude Code, Codex, the CLI); bearer without it → `ServiceAccount` (`Subject` = the client
-  id). A token carrying `tellma_kind` (spec 0010 §7) binds from the claim; the `auth_time`
+  id). A token carrying `tellma_kind` (spec 0010 §A.6) binds from the claim; the `auth_time`
   inference covers a token without it.
 - **Step-up.** `Tellma:Session:StepUp { Acr, MaxAge }` is the bar spec 0016's projection stamps as
   `RequireAssuranceMetadata` on every endpoint whose securable is `IsSensitive`;
@@ -1391,17 +1479,22 @@ The in-proc distribution owns its BFF client (`<slug>`) and service client (`<sl
 stable secrets from `Tellma:Identity:ClientSecret` and `Tellma:Identity:ServiceClientSecret`
 (`host.identity` fails outside Development when either is absent), because a standalone deployment
 may run several instances and a per-boot generated secret would invalidate the other instances'.
-The engine's `Distribution` seed kind (spec 0010) carries `Origin`, `BackchannelLogoutUri`,
+The engine's `Distribution` seed kind (spec 0010 §A.1) carries `Origin`, `BackchannelLogoutUri`,
 `ClientSecret` and `ServiceClientSecret`; `AddTellma` writes that seed entry from configuration and
-`PublicOrigin`. In Development, when `ClientSecret` is absent, `AddTellma`
-generates one per boot.
+`PublicOrigin`. In Development, when `ClientSecret` is absent, `AddTellma` generates one per boot.
 
-Development defaults scaffolded in `appsettings.Development.json`: in-proc mode, the development
-administrator (`admin@localhost`, subject `00000000-0000-0000-0000-000000000001`), development
-signing keys, the email log sink, and `Tellma:Seed:Tenants` (tenant 1 "Acme" Live, tenant 2 "Acme
-Sandbox" Sandbox of 1). The migrator's `migrate` provisions both, and in each the bootstrap step
-creates the tenant administrator on the development subject, so the first sign-in is the email-code
-path with the code in the console.
+Development defaults scaffolded in `appsettings.Development.json`:
+
+- in-proc mode;
+- the development administrator (`admin@localhost`, subject
+  `00000000-0000-0000-0000-000000000001`);
+- development signing keys and the email log sink;
+- `Tellma:Seed:Tenants`: tenant 1 "Acme" (Live, languages `en` and `ar`, calendars `gc` and `uq`)
+  and tenant 2 "Acme Sandbox" (Sandbox of 1).
+
+The migrator's `migrate` provisions both tenants, and in each the bootstrap step creates the tenant
+administrator on the development subject. So the first sign-in is the email-code path, with the
+code in the console.
 
 ### 5.8 Host baseline: Data Protection, forwarded headers, TLS, hosting
 
@@ -1426,14 +1519,33 @@ path with the code in the console.
 
 ### 5.9 Information, health and admin surfaces
 
-```csharp
-// Tellma.Core.AspNetCore
-public sealed record DistributionInfo(
-    string Slug, string DisplayName, string DeploymentId, string PlatformVersion, string DistributionVersion,
-    IdentityInfo Identity, IReadOnlyDictionary<string, string?> Surfaces, string Login,
-    IReadOnlyList<int> AdminVersions);
+Every distribution serves an anonymous information document and two health probes, and, when
+enabled, a versioned admin surface for the control plane. All three are tenantless.
 
-public sealed record IdentityInfo(string Authority, string Mode);
+```csharp
+// Tellma.Core.AspNetCore — the GET /api/distribution-info document, camelCase on the wire
+public sealed record DistributionInfo(
+    string Slug,
+    string DisplayName,                                 // Tellma:DisplayName
+    string DeploymentId,
+    string PlatformVersion, string DistributionVersion, // DeploymentVersions (§2.2): informational versions carrying the commit
+    IdentityInfo Identity,
+    IReadOnlyDictionary<string, string?> Surfaces,      // { "web": "/{tenantId}/api/web", "mcp": "/{tenantId}/mcp" | null, "api": null }
+    string Login,                                       // "/bff/login"
+    IReadOnlyList<int> AdminVersions,                   // the admin versions this instance maps: [1], or [] when the admin surface is off
+    DistributionLinks Links,                            // Tellma:Links (§8); the About dialog's links (spec 0027 §12.2)
+    SupportInfo Support,
+    ClientTelemetryInfo Telemetry,
+    SessionInfo Session);
+
+public sealed record IdentityInfo(
+    string Authority,
+    string Mode,                                        // "Standalone" | "InProc"
+    string AccountUrl);                                 // {Authority}/account?client_id={slug}: My account (spec 0010 §A.9)
+public sealed record DistributionLinks(string? Terms, string? Privacy);    // absolute https URLs, or null
+public sealed record SupportInfo(bool Enabled, bool ProviderAccess);       // Tellma:Support:Enabled; ProviderAccess: the admin surface is mapped (spec 0026 §12.1)
+public sealed record ClientTelemetryInfo(bool Enabled, double SampleRate); // Tellma:ClientTelemetry (spec 0026 §3.5)
+public sealed record SessionInfo(int IdleDays);                            // Tellma:Session:IdleLifetime in whole days, rounded down
 
 public interface ITenantProvisioningTrigger                 // Tellma.Core.Tenancy
 {
@@ -1441,31 +1553,30 @@ public interface ITenantProvisioningTrigger                 // Tellma.Core.Tenan
 }
 ```
 
-- **`GET /api/distribution-info`** (anonymous, `Cache-Control: public, max-age=60`): the
-  `DistributionInfo` document — `slug`, `displayName` (`Tellma:DisplayName`), `deploymentId`,
-  `platformVersion`, `distributionVersion` (`DeploymentVersions`, §2.2: informational versions that
-  carry the source commit),
-  `identity: { authority, mode: "Standalone" | "InProc" }`,
-  `surfaces: { "web": "/{tenantId}/api/web", "mcp": "/{tenantId}/mcp" | null, "api": null }`,
-  `login: "/bff/login"`, `adminVersions` (the admin versions this instance maps: `[1]`, or `[]`
-  when the admin surface is off). No tenant list, no secrets, no instance identity.
+- **`GET /api/distribution-info`** (anonymous, `Cache-Control: public, max-age=60`) answers the
+  `DistributionInfo` document. No tenant list, no secrets, no instance identity. `links`,
+  `support`, `telemetry` and `session` are runtime configuration, so changing one needs no client
+  rebuild; `session.idleDays` is the client's idle window for its warm cache (spec 0025 §2.4).
 - **`GET /health/live`** (process up; no I/O) and **`GET /health/ready`** (registry snapshot loaded
   and within `MaxStaleness`; Data Protection keys loadable; the authority's discovery document
   cached), both anonymous, both tenantless.
-- **Admin surface** (`Tellma.ControlPlane`, tenantless, JSON; mapped only when
-  `Tellma:Admin:Enabled` is true, which defaults to true under `Tellma:Identity:Mode = Standalone`
-  and to false under `InProc`, whose engine seeds no control-plane client — an on-premises operator
-  uses the migrator commands of §6.1 instead; `/api/admin` stays a reserved prefix either way),
-  every route under a version segment `/api/admin/v{n}`, of which this release maps `v1`:
-  `GET /api/admin/v1/info` (the information document plus tenant counts by state);
-  `GET /api/admin/v1/tenants` (descriptors, no locations); `POST /api/admin/v1/tenants/{id}/state`
-  with `{ "state": "Active" | "ReadOnly" | "Suspended" | "Retired", "reason": "…" }` → the
-  descriptor plus `{ "effectiveWithinSeconds": 15 }`, `409` for an illegal transition;
-  `POST /api/admin/v1/tenants` with `TenantRegistration` → registers a `Provisioning` row under a
-  sequence-allocated id (the caller never chooses one: `RegisterAsync` without `requestedId`, §3.7)
-  and calls `ITenantProvisioningTrigger.StartAsync`, `501` while only
-  `NotConfiguredProvisioningTrigger` is registered; `GET /api/admin/v1/tenants/{id}/members` (the
-  hint table). The policy's audience and its grant are §5.5's.
+- **Admin surface** (`Tellma.ControlPlane`, tenantless, JSON). The policy's audience and its grant
+  are §5.5's.
+  - **When mapped.** Only when `Tellma:Admin:Enabled` is true. It defaults to true under
+    `Tellma:Identity:Mode = Standalone` and to false under `InProc`, whose engine seeds no
+    control-plane client; an on-premises operator uses the migrator commands of §6.1 instead.
+    `/api/admin` stays a reserved prefix either way.
+  - **Routes.** Every route sits under a version segment `/api/admin/v{n}`. This release maps `v1`:
+
+| `v1` route | Does |
+|---|---|
+| `GET /api/admin/v1/info` | The information document plus tenant counts by state. |
+| `GET /api/admin/v1/tenants` | Descriptors, no locations. |
+| `POST /api/admin/v1/tenants/{id}/state` | Body `{ "state": "Active" \| "ReadOnly" \| "Suspended" \| "Retired", "reason": "…" }` → the descriptor plus `{ "effectiveWithinSeconds": 15 }`; `409` for an illegal transition. |
+| `POST /api/admin/v1/tenants` | Body `TenantRegistration` → registers a `Provisioning` row and calls `ITenantProvisioningTrigger.StartAsync`; `501` while only `NotConfiguredProvisioningTrigger` is registered. The id is sequence-allocated: `RegisterAsync` without `requestedId` (§3.7). |
+| `GET /api/admin/v1/tenants/{id}/members` | The hint table (§3.8). |
+| under `/api/admin/v1/tenants/{id}/support-requests` | The support-request reads (spec 0026 §12.7); each detail or file read is logged as `SupportRequestRead`. |
+
 - **Admin versions.** The control plane calls every distribution, and each distribution adopts
   platform releases on its own schedule, so the admin contract carries its own version, independent
   of the public API's. A new endpoint, response member or optional request member stays within a
@@ -1475,11 +1586,41 @@ public interface ITenantProvisioningTrigger                 // Tellma.Core.Tenan
   calls it. Instances of one distribution differ during a rolling deployment, so a caller retries a
   `404` on the newer version once on the older one.
 
-The identity-server changes this spec and its siblings depend on — the `Distribution` seed client
-kind, per-tenant resources under a granted origin, client ID metadata documents, the interim native
-clients, the control-plane audience, the optional `tellma_kind` claim, the invite API's
-`existingOnly` flag and the versioned management routes — are specified by spec 0010, which ships
-before this spec and the rest of the family (specs 0011–0021).
+Spec 0010 Part A (§A.1–§A.10) specifies the identity-server changes this spec and its siblings
+depend on, and ships before them:
+
+- the `Distribution` seed client kind and per-tenant resources under a granted origin;
+- client ID metadata documents and the interim native clients;
+- the control-plane audience and the optional `tellma_kind` claim;
+- the invite API's `existingOnly` flag and the versioned management routes;
+- the account entry URL and the sign-in language.
+
+### 5.10 Server-built links
+
+Server code that puts a link into an email, an invitation or a notification builds it through
+`ITellmaLinks`, so every such link follows the SPA's route grammar (spec 0024 §9.1).
+
+```csharp
+// Tellma.Core.Abstractions.Composition — implemented in Tellma.Core; registered by AddTellma (§2.3)
+public interface ITellmaLinks
+{
+    string Tenant(int tenantId);                               // {PublicOrigin}/{tenantId}
+    string Target(int tenantId, string? resource, long? id);   // the record's details page, else Tenant(tenantId)
+}
+```
+
+- **`Target`** answers `{PublicOrigin}/{tenantId}/{segment}/{id}` when `resource` names a stack in
+  `IStackRegistry` (spec 0015 §2.2) whose operations include `Details`; `segment` is that stack's
+  `ResourceSegment`. For a null resource or id, or any other resource, it answers
+  `Tenant(tenantId)`.
+- **Configuration:** `Tellma:PublicOrigin` only. The migrator composes it too, since `provision`
+  sends the administrator's invitation (§6.1).
+- **Callers:** spec 0018 §3.3's invitation and welcome links use `Tenant`; spec 0022 §4's
+  notification email uses `Target`.
+
+**Example —** `Target(42, "acme.SalesInvoice", 17)` answers
+`https://acme.app.tellma.com/42/sales-invoices/17`; `Target(42, null, null)` answers
+`https://acme.app.tellma.com/42`.
 
 ## 6. Provisioning and the migrator
 
@@ -1490,7 +1631,7 @@ before this spec and the rest of the family (specs 0011–0021).
 public static class TellmaMigrator
 {
     public static Task<int> RunAsync(
-        IReadOnlyList<string> args, string slug, Action<TellmaBuilder> compose);   // exit 0 converged, 1 usage, 2 partial failure
+        IReadOnlyList<string> args, string slug, Action<TellmaBuilder> compose);   // exit 0 converged, 1 usage, 2 partial failure, 3 composition problems (emit-client-assets)
 }
 
 public abstract class TellmaDesignTimeDbContextFactory<TContext> : IDesignTimeDbContextFactory<TContext>
@@ -1499,14 +1640,23 @@ public abstract class TellmaDesignTimeDbContextFactory<TContext> : IDesignTimeDb
 }
 ```
 
-`RunAsync` builds a generic host with the same composition and runs one command:
+`RunAsync` builds a generic host with the same composition and runs one command. The exception is
+`emit-client-assets`, which runs before any host is built:
 
 | Command | Does |
 |---|---|
+| `emit-client-assets <dir>` | Writes spec 0024 §3.2's client metadata files into `<dir>` without touching a database (details below the table). |
 | `migrate [--catalog-only] [--tenant <id>]* [--all-tenants] [--parallelism N]` | Migrates the catalog under `sp_getapplock('tellma:migrate:catalog')` (`idsvr` too in in-proc mode); registers (the entry's `Id` as `RegisterAsync`'s `requestedId`, §3.7) and provisions every `Tellma:Seed:Tenants` entry not yet in the catalog; then for every `Active`, `ReadOnly` or `Provisioning` tenant (the default and `--all-tenants`) or the named ones: the tenant lock of §7.5, `Migrate()`, the schema fingerprint row of spec 0012 §4.3, the `tellma_app` grants (§6.4), the version-tag seed of spec 0013, provisioning steps whose recorded `Version` is behind, spec 0014's `IPermissionDriftScanner.ScanAsync` with its items printed. Bounded parallelism (default 4), continues past failures, per-tenant report. |
 | `provision [--tenant <id>] [--name …] [--category Live\|Sandbox] [--live-tenant <id>] [--server …] [--database …] [--admin-email …] [--admin-subject …]` | With `--name` and `--category`, inserts the row as `Provisioning` (`--tenant` is then `RegisterAsync`'s `requestedId`, §3.7, else the sequence allocates one); with `--tenant` alone, resumes the `Provisioning` row of that id (the admin surface's). `CREATE DATABASE` (Azure: `(EDITION = …, SERVICE_OBJECTIVE = ELASTIC_POOL(name = …))` from `Tellma:Provisioning:CreateDatabaseTemplate`; on-prem: plain); `ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON` and `SET QUERY_STORE = ON (OPERATION_MODE = READ_WRITE, QUERY_CAPTURE_MODE = AUTO, MAX_STORAGE_SIZE_MB = 1024, CLEANUP_POLICY = (STALE_QUERY_THRESHOLD_DAYS = 30))` on the fresh database; the application principal and `tellma_app`; migrations and the schema fingerprint row; the version-tag seed; every step in `Order`; the administrator's membership hint; the administrator's invite (spec 0018 §6.1; `--admin-subject` is Development-only, §6.2); then `SetStateAsync(Active, actor: "migrator")`. Idempotent: rerunning converges. |
 | `set-state --tenant <id> --state … [--reason …]` | `ITenantCatalog.SetStateAsync` with actor `migrator`. |
 | `status` | Lists tenants with state, the recorded schema fingerprints (`dbo.__TellmaSchema`, spec 0012 §4.3) against the running model's, and pending migrations; runs `TellmaComposition.Validate` and prints its problems. |
+
+`emit-client-assets` in detail:
+
+- **No infrastructure.** It realises the composition through the gates of §2.3 with no database,
+  no configuration beyond `appsettings.json`, no hosted service and no connection.
+- **Exit codes.** 0 written, 1 usage, 3 composition problems (printed as `migrate` prints them).
+- **Callers.** `tellma-client build` and `serve` run it (§1.2).
 
 The migrator is the single DDL-privileged executable; `MigrationsAssembly` is the distribution's
 Migrator project. The design-time factory `AcmeDesignTimeFactory :
@@ -1526,7 +1676,7 @@ public sealed record TenantProvisioningContext(
 public interface ITenantProvisioningStep                    // registered through FeatureContribution.ProvisioningStep<T>()
 {
     string Name { get; }                                    // key in dbo.__TellmaProvisioning: platform "core.<step>", packs "<module>.<step>", distributions "<slug>.<step>"
-    int Order { get; }                                      // platform 0–99, packs 100–199, distributions 200+
+    int Order { get; }                                      // platform 0–99 and 900+, packs 100–199, distributions 200–899
     int Version { get; }                                    // the step re-runs when it exceeds the recorded version
     Task RunAsync(TenantProvisioningContext context);
 }
@@ -1553,16 +1703,24 @@ the fixed development subject when `Tellma:Seed:AdminEmail` supplies the email; 
 refuses a subject outside Development (spec 0014 §11), and a deployed administrator obtains one
 through the invite of spec 0018 §6.1.
 
-Platform steps: `10 core.bootstrap-administrator` (calls spec 0014's
-`ITenantBootstrapper.BootstrapAdministrator(TenantBootstrapRequest(Email = AdminEmail, Name =
-AdminEmail's local part, PreferredLanguage = the distribution default, Subject = AdminSubject))`; a
-deployed administrator is then invited by the provisioning flow); `15 core.settings` (spec 0013
-completes the settings placeholder row); `20 core.blob-container` (spec 0017 pre-creates the
-tenant's container). Spec 0018 adds `100 gl.sample-centers`. There is no version-tag step: the
-migrator seeds `core.VersionTags` from the registry on every `migrate`. `HasData` is used only for
-the reserved id band (system user, Administrator role, permission and membership, the `UserStamps`
-row, the `core.Settings` placeholder row, built-in schedules and their states, `JobWorkerState`).
-Tenant-specific external integrations are steps a distribution ships.
+Platform steps:
+
+| Order | Step | Does |
+|---|---|---|
+| 10 | `core.bootstrap-administrator` | Calls spec 0014's `ITenantBootstrapper.BootstrapAdministrator(TenantBootstrapRequest(Email = AdminEmail, Name = AdminEmail's local part, PreferredLanguage = the distribution default, Subject = AdminSubject))`. A deployed administrator is then invited by the provisioning flow. |
+| 15 | `core.settings` | Spec 0013 completes the settings placeholder row. |
+| 20 | `core.blob-container` | Spec 0017 pre-creates the tenant's container. |
+| 900 | `core.report-seeds` | Spec 0033 §13 upserts the seeded report definitions. |
+
+- **The 900 band.** Orders 900 and above are for platform steps that must run after every pack and
+  distribution step.
+- **Pack and distribution steps.** Spec 0018 adds `100 gl.sample-centers`. Tenant-specific external
+  integrations are steps a distribution ships.
+- **No version-tag step.** The migrator seeds `core.VersionTags` from the registry on every
+  `migrate`.
+- **`HasData`** is used only for the reserved id band: system user, Administrator role, permission
+  and membership, the `UserStamps` row, the `core.Settings` placeholder row, built-in schedules and
+  their states, `JobWorkerState`.
 
 ### 6.3 The provisioning trigger
 
@@ -1604,15 +1762,19 @@ data-access code. Spec 0012 owns everything the context exposes beyond this regi
 
 ### 6.6 Local development
 
-From a fresh clone: `pnpm install` in the Client project, then `dotnet run --project
-distributions/acme/src/Tellma.Distro.Acme.Migrator -- migrate` (creates `Tellma.dev.acme.catalog`,
-provisions tenants 1 and 2 from `Tellma:Seed:Tenants` with the development administrator), then
-`dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Web`, which starts the Angular dev
-server through the SPA proxy (§1.2) and opens `https://localhost:4200/`; sign in as
-`admin@localhost` with the code from the console. A missing catalog at web startup prints that exact
-`migrate` command instead of a stack trace. Development database names are `Tellma.dev.<slug>.*`;
-`launchSettings.json` is tracked with fixed ports (`7052` for the Web project, `4200` for the dev
-server) until the `dotnet tellma` CLI exists.
+From a fresh clone:
+
+1. `pnpm install` at the repository root (one workspace).
+2. `dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Migrator -- migrate` creates
+   `Tellma.dev.acme.catalog` and provisions tenants 1 and 2 from `Tellma:Seed:Tenants` with the
+   development administrator.
+3. `dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Web` starts the Angular dev
+   server through the SPA proxy and opens it: `https://localhost:4200/` unless `.dev-ports.local`
+   names another port (§1.2).
+4. Sign in as `admin@localhost` with the code from the console.
+
+A missing catalog at web startup prints that exact `migrate` command instead of a stack trace.
+Development database names are `Tellma.dev.<slug>.*`.
 
 ## 7. The catalog schema
 
@@ -1779,6 +1941,7 @@ The `Tellma` section; keys are additive-only within a family major. Every option
 {
   "Tellma": {
     "DisplayName": "Acme",
+    "Copyright": null,
     "PublicOrigin": "https://acme.app.tellma.com",
     "Catalog": { "ConnectionString": "…;Database=tellma-acme-catalog;Authentication=Active Directory Managed Identity;Encrypt=True;Max Pool Size=10", "RefreshInterval": "00:00:15", "MaxStaleness": "00:05:00" },
     "Sql": {
@@ -1795,6 +1958,9 @@ The `Tellma` section; keys are additive-only within a family major. Every option
     "ForwardedHeaders": { "Enabled": false, "KnownNetworks": [], "KnownProxies": [] },
     "Provisioning": { "CreateDatabaseTemplate": null },
     "Admin": { "Enabled": null },
+    "Support": { "Enabled": false, "RetentionDays": 30, "MaxRequestsPerUserPerDay": 20 },
+    "ClientTelemetry": { "Enabled": true, "SampleRate": 1.0 },
+    "Links": { "Terms": null, "Privacy": null },
     "Seed": { "Tenants": [], "AdminEmail": null },
     "ScratchPath": null
   }
@@ -1804,16 +1970,27 @@ The `Tellma` section; keys are additive-only within a family major. Every option
 | Key | Meaning |
 |---|---|
 | `DisplayName`, `PublicOrigin` | The information document and every derived URI (§5.8). |
+| `Copyright` | The About dialog's copyright line (spec 0027 §11.1). `emit-client-assets` copies it into the client metadata's `distribution.copyright` (spec 0024 §3.1); null omits the line. |
 | `Catalog:*` | §3.2, §3.4. |
 | `Sql:Profiles`, `MaxPoolSizePerTenant`, `MaxWarmTenants`, `AllowSqlPassword` | §3.5. `DatabasePrefix` names provisioned databases (`<prefix>.<Id>`) and the Development catalog; `ApplicationPrincipal` is the web identity created at provisioning (§6.4). |
 | `Tenancy:MembershipReconcileInterval` | §3.8. |
 | `Identity:Mode` (`Standalone \| InProc`), `Authority`, `ClientSecret`, `ServiceClientSecret` | §5.5, §5.7; spec 0018's `IdentityServerClientOptions` binds the same section, with `ClientId = <slug>-svc` set by the platform. |
-| `Session:*` | §5.5; `StepUp` is the assurance bar the projection stamps. |
+| `Session:*` | §5.5; `StepUp` is the assurance bar the projection stamps; `IdleLifetime` is also the client's idle window (`DistributionInfo.session`, §5.9). |
 | `DataProtection:*`, `ForwardedHeaders:*` | §5.8. |
 | `Provisioning:CreateDatabaseTemplate` | §6.1; `{database}` is substituted. |
 | `Admin:Enabled` | §5.9; `null` selects the identity-mode default. |
-| `Seed:Tenants` (`Id`, `Name`, `Category`, `LiveTenantId`), `Seed:AdminEmail` | §5.7, §6.1; `Id` is `RegisterAsync`'s `requestedId` (§3.7). Development only by convention, not enforced. |
+| `Support:*` | Support requests (spec 0026 §12.3); `Enabled` is published as `DistributionInfo.support` (§5.9). |
+| `ClientTelemetry:*` | The client telemetry relay (spec 0026 §6.1); published as `DistributionInfo.telemetry` (§5.9). |
+| `Links:Terms`, `Links:Privacy` | `DistributionInfo.links` (§5.9); an absolute `https` URL or empty, and startup refuses anything else outside Development. |
+| `Seed:Tenants`, `Seed:AdminEmail` | §5.7, §6.1; a seed entry's members are below. Development only by convention, not enforced. |
 | `ScratchPath` | The temporary directory specs 0017 and 0019 use; default the operating system's. |
+
+A `Seed:Tenants` entry has `Id`, `Name`, `Category`, `LiveTenantId`, and optional `Languages` (such
+as `["en", "ar"]`) and `Calendars` (such as `["gc", "uq"]`).
+
+- **`Id`** is `RegisterAsync`'s `requestedId` (§3.7).
+- **`Languages` and `Calendars`** are written into the tenant's settings by its first provisioning
+  (spec 0013 §5.7).
 
 `Serilog`, `Azure:SignalR:ConnectionString` and `APPLICATIONINSIGHTS_CONNECTION_STRING` sit outside
 the `Tellma` section.
@@ -1870,22 +2047,45 @@ public static class HostTelemetryNames
 | `tellma.auth.csrf_rejections` | counter | `rule` ∈ `sec_fetch_site \| origin \| header \| content_type` |
 | `tellma.auth.stepup_challenges` | counter | — |
 
-No tenant or user tag on any instrument. Every tenant request runs inside a logger scope with
-`TenantId`, `TenantCategory`, `Subject` (never email) and `UserId`, to which spec 0016's telemetry
-filter adds `Client`, `Resource` and `Operation`; background scopes add `JobId` and
-`OriginTraceParent` (§4.1), the one place the enqueuing trace is joined to a job's log lines.
-The request activity carries `tellma.tenant.id` and `tellma.deployment.id` (per-tenant identity is
-allowed on traces and logs, never on metrics); SQL spans carry `tellma.db.role`. Every log event
-carries `TraceId` and `SpanId` from the current activity, and `PlatformVersion` and
-`DistributionVersion` as enricher properties from `DeploymentVersions` (§2.2); the OpenTelemetry
-resource sets `service.version` to the distribution version and `tellma.platform.version` to the
-platform version, so any log line joins its trace and names the exact commits. Log events: the
-registry's reload (`Information`, count of changed descriptors), a failed refresh (`Warning` under
-`MaxStaleness`, `Error` beyond it), a state transition (`Information`, from, to, actor), a
-membership-hint write failure (`Warning`), a reconciliation run (`Information`, tenants and rows
-changed; `Warning` per failed tenant), a rejected back-channel token (`Warning`, reason), a
-refresh rejection (`Information`, reason), a CSRF rejection (`Warning`, rule, route). Alert queries
-under `infra/monitoring/` are checked in and cross-checked by the existing instrument-name test.
+No tenant or user tag on any instrument: per-tenant identity is allowed on traces and logs, never on
+metrics.
+
+- **Logger scope.** Every tenant request runs inside a logger scope with `TenantId`,
+  `TenantCategory`, `Subject` (never email) and `UserId`. Spec 0016's telemetry filter adds
+  `Client`, `Resource` and `Operation`. Background scopes add `JobId` and `OriginTraceParent`
+  (§4.1), the one place the enqueuing trace is joined to a job's log lines.
+- **Trace tags.** The request activity carries `tellma.tenant.id` and `tellma.deployment.id`; SQL
+  spans carry `tellma.db.role`.
+- **Logs name their trace and build.** Every log event carries `TraceId` and `SpanId` from the
+  current activity, and `PlatformVersion` and `DistributionVersion` as enricher properties from
+  `DeploymentVersions` (§2.2). The OpenTelemetry resource sets `service.version` to the
+  distribution version and `tellma.platform.version` to the platform version. So any log line joins
+  its trace and names the exact commits.
+- **Alerts.** Alert queries under `infra/monitoring/`, the client alerts of spec 0026 §6.4 among
+  them, are checked in. The existing instrument-name test cross-checks them.
+
+| Log event | Level | Properties |
+|---|---|---|
+| The registry's reload | `Information` | count of changed descriptors |
+| A failed refresh | `Warning` under `MaxStaleness`, `Error` beyond it | — |
+| A state transition | `Information` | from, to, actor |
+| A membership-hint write failure | `Warning` | — |
+| A reconciliation run | `Information`; `Warning` per failed tenant | tenants and rows changed |
+| A rejected back-channel token | `Warning` | reason |
+| A refresh rejection | `Information` | reason |
+| A CSRF rejection | `Warning` | rule, route |
+
+Trace context from the browser:
+
+- **Adopted trace id.** Web, BFF and tenantless requests adopt the trace id of an inbound
+  `traceparent`, which the SPA sends on every call (spec 0024 §10.2), so a cancelled or failed call
+  still has a reference. Whether the request is recorded is the server sampler's decision over that
+  trace id, never the inbound `sampled` flag.
+- **Dropped context.** Inbound `tracestate` and `baggage` from browsers are dropped.
+- **Scopes in logs.** Logs export with `IncludeScopes`, so the logger scope's members reach every
+  sink.
+- **The relay is untraced.** `POST /api/client-telemetry` is excluded from request tracing; its
+  instruments and records are spec 0026 §6.4's.
 
 ## 10. Testing
 
@@ -1900,11 +2100,34 @@ empty, on every pull request until the UI specs ship.
 
 | Suite | Tier | Pins |
 |---|---|---|
-| `test/core/Tellma.Core.Tests` | unit | The graph gate (aggregation of every problem, cycles, unknown item types, `Fix` text, duplicate names, double options binding); topological override of a pack service by a dependent feature; registry snapshot semantics with `FakeTimeProvider` (unchanged version → no reload; changed → reload; `!=` on an older GUID; single flight; listener calls only for changed descriptors; staleness bound → `catalog-unavailable`); connection composition (profile precedence, `Application Name`, refusal of `;`/`=`, never logged) and every profile rule; the state-transition table including the illegal ones; `RequestContext` immutability, `Tenantless`, `RequireTenant`, snapshot round trip; the holder is set exactly by the two writers; `TenantSandboxContext` throws unbound; `taxonomy.json` consistency; `TellmaComposition.Validate` host-free. |
+| `test/core/Tellma.Core.Tests` | unit | The graph gate (aggregation of every problem, cycles, unknown item types, `Fix` text, duplicate names, double options binding); topological override of a pack service by a dependent feature; registry snapshot semantics with `FakeTimeProvider` (unchanged version → no reload; changed → reload; `!=` on an older GUID; single flight; listener calls only for changed descriptors; staleness bound → `catalog-unavailable`); connection composition (profile precedence, `Application Name`, refusal of `;`/`=`, never logged) and every profile rule; the state-transition table including the illegal ones; `RequestContext` immutability, `Tenantless`, `RequireTenant`, snapshot round trip; the holder is set exactly by the two writers; `TenantSandboxContext` throws unbound; `taxonomy.json` consistency; `TellmaComposition.Validate` host-free; `ITellmaLinks` for a stack with `Details`, a stack without it, an unknown resource and a null target. |
 | `test/core/Tellma.Core.IntegrationTests` | `Category=Integration` | Catalog migrations apply from empty and are idempotent; registration and state transitions bump `CatalogState.Version`; concurrent transitions (one wins, the other raises `TenantStateException` with `Code = Tenant.IllegalTransition`); membership list and TVP reconciliation (upsert plus per-tenant delete); `tellma_app` role and grants recomputed from the model and covering every schema and sequence; session store CRUD (the handle computed at creation, carried by the retrieved ticket and output by the termination deletes); refresh CAS with two concurrent refreshers (exactly one redeems); sweep deletes only rows expired for a day; `ITenantScopeFactory` against each state, with and without `allowNonActive` (`Provisioning` and `ReadOnly` open only with it and only for `Kind = System`), starting no activity of its own. |
-| `test/core/Tellma.Core.AspNetCore.Tests` | unit (`WebApplicationFactory`, fake authentication) | The tenant verdict matrix (unknown, retired, provisioning, suspended, read-only, active × read, write × anonymous, member, non-member); the CSRF matrix (each rule, each exemption, `AcceptsBinaryMetadata`, `415`); scheme isolation (a cookie on a bearer route fails, a bearer on the web route fails); every endpoint-audit violation named by route and method; back-channel token vectors (bad `iss`, bad `aud`, wrong `typ`, missing `events`, `nonce` present, expired, `sub`-only, replay → `200` no-op) and the listener receiving handles, never keys; `SessionHandle` bound on the cookie scheme and null on the bearer schemes; the step-up challenge shape; `/bff/user` shape and `401`; the information document shape and headers; the admin routes mapped under `v1` only, matching `adminVersions`; health before and after the first snapshot; the PRM document shape; `PrincipalKind` derivation; `SessionSweepService` and `MembershipReconcileService` fire on their intervals, the latter only on the lock holder. |
-| `distributions/acme/test/Tellma.Distro.Acme.Web.Tests` | unit | Composition parity (the web host and the migrator build byte-identical models); the audit passes for every mapped endpoint; one-way dependency (no `src/` project references `distributions/`); no secrets in tracked configuration; `Program.cs` contains exactly the three platform calls. |
+| `test/core/Tellma.Core.AspNetCore.Tests` | unit (`WebApplicationFactory`, fake authentication) | The host's routing, security, sessions and surfaces; the list below the table. |
+| `distributions/acme/test/Tellma.Distro.Acme.Web.Tests` | unit | Composition parity (the web host and the migrator build byte-identical models); `emit-client-assets` exits 0 with no database reachable; the audit passes for every mapped endpoint; one-way dependency (no `src/` project references `distributions/`); no secrets in tracked configuration; `Program.cs` contains exactly the three platform calls. |
 | `distributions/acme/test/Tellma.Distro.Acme.IntegrationTests` | `Category=Integration` | `migrate` then `provision` against the tier's SQL Server from an empty server; the seed tenants exist and are `Active`; `dbo.__TellmaProvisioning` records the platform steps with their versions and a bumped step re-runs; full sign-in through the in-proc engine (reusing the identity suite's OIDC flow client); the first tenant request binds `UserId`; a suspension takes effect on the next request and within one refresh on a second host; back-channel logout end to end; a refresh rejection ends the session; readiness before and after catalog availability; `ReadOnly` read succeeds and mutation is `403` against a database set `READ_ONLY`. |
+
+`Tellma.Core.AspNetCore.Tests` pins:
+
+- **Routing and hosting.** The tenant verdict matrix (unknown, retired, provisioning, suspended,
+  read-only, active × read, write × anonymous, member, non-member); every endpoint-audit violation
+  named by route and method, the SPA route words among them; spec 0024 §6's hosting rules (cache
+  headers by hashed name, the navigation-only fallback, `route-not-found`, the metadata chunks
+  behind the cookie).
+- **Security.** The CSRF matrix (each rule, each exemption, `AcceptsBinaryMetadata`, `415`); scheme
+  isolation (a cookie on a bearer route fails, a bearer on the web route fails); `SessionHandle`
+  bound on the cookie scheme and null on the bearer schemes; the step-up challenge shape;
+  `PrincipalKind` derivation.
+- **Sessions.** Back-channel token vectors (bad `iss`, bad `aud`, wrong `typ`, missing `events`,
+  `nonce` present, expired, `sub`-only, replay → `200` no-op) and the listener receiving handles,
+  never keys; `/bff/user` shape and `401`; `/bff/login`'s redirect to `returnUrl ?? "/"` and its
+  `ui_locales` forwarding; `/bff/logout`'s `LogoutResult` per scope, `Clear-Site-Data` and the
+  listener call before the delete; the profile cookie's v2 value, its re-issue with the session
+  cookie, and no renewal for a background request, a `Hub` request or the telemetry relay.
+- **Surfaces and timers.** Inbound `traceparent` adoption that ignores the `sampled` flag; the
+  information document shape (every member of §5.9) and headers; the admin routes mapped under `v1`
+  only, matching `adminVersions`; health before and after the first snapshot; the PRM document
+  shape; `SessionSweepService` and `MembershipReconcileService` fire on their intervals, the latter
+  only on the lock holder.
 
 Fixture: the catalog database is created per test class from the platform migrations; tenant
 databases in the distribution suite come from `provision`. Test names describe behaviour and never
@@ -1929,10 +2152,10 @@ cite a document.
   route grammar, catalog, states, registry, connection resolution, `tellma_app`, secrets policy,
   membership directory and sandbox context of §3 (`Tellma.Core.Tests`,
   `Tellma.Core.IntegrationTests`); the request context, guard and scope factory of §4; the host
-  pipeline, route groups, audit, CSRF, session subsystem, MCP topology, in-proc mode, baseline and
-  surfaces of §5 (`Tellma.Core.AspNetCore.Tests`, the distribution's integration suite); the
-  migrator commands, steps, trigger and local-development story of §6; the schema and statements of
-  §7; every option of §8 validated at startup.
+  pipeline, route groups, audit, CSRF, session subsystem, MCP topology, in-proc mode, baseline,
+  surfaces and server-built links of §5 (`Tellma.Core.AspNetCore.Tests`, `Tellma.Core.Tests`, the
+  distribution's integration suite); the migrator commands, steps, trigger and local-development
+  story of §6; the schema and statements of §7; every option of §8 validated at startup.
 - **Observability**: every instrument of §9 registered under its meter, asserted by the instrument
   name test; the log events of §9 asserted in the unit suites; `infra/monitoring/` alert queries
   cross-checked.
@@ -1965,10 +2188,9 @@ cite a document.
   (`Tellma.dev.<slug>.*` databases; tracked `launchSettings.json`); the reserved-slug list (`acme`;
   `taxonomy.json` gains `reservedSlugs` and `distributions`). Public XML docs and error messages
   reference no `docs/` paths, per repo rule.
-- **Not in scope of done**: the identity-server amendments (spec 0010); the MCP tools; self-serve
-  provisioning beyond `NotConfiguredProvisioningTrigger` and the Development starter; sandbox
-  cloning; every consumer surface the sibling specs ship against these
-  contracts.
+- **Not in scope of done**: the identity-server amendments (spec 0010 Part A); the MCP tools;
+  self-serve provisioning beyond `NotConfiguredProvisioningTrigger` and the Development starter;
+  sandbox cloning; every consumer surface the sibling specs ship against these contracts.
 
 ## Decisions record
 
@@ -2055,6 +2277,13 @@ The load-bearing decisions, where not already evident above:
 28. **The admin surface carries its own URL version, advertised in the information document** —
     one control plane calls distributions on different platform releases, so a breaking change
     ships beside the old shape and the old one retires once nothing calls it (§5.9).
+29. **The BFF never picks a tenant** — after sign-in it redirects to `returnUrl ?? "/"`, and the
+    SPA's launch redirect, which already holds the membership list, decides the landing (§5.5).
+30. **The client's idle window is the session's idle lifetime**, published as `session.idleDays`
+    — the warm cache and the server session expire together, with no second setting to drift
+    (§5.9).
+31. **One link builder, `ITellmaLinks`** — every server-written link follows the SPA's route
+    grammar from one place (§5.10).
 
 ## Review flags
 
@@ -2077,7 +2306,7 @@ The load-bearing decisions, where not already evident above:
    (subject, tenant) — faster repair, at the cost of a catalog write on the hot path. Flips if a
    day of staleness after a failed post-commit write proves too long.
 6. **MCP audience** (§5.6): the fixed `<origin>/{int}/mcp` pattern on the identity server (spec
-   0010 §3; the accepted `resource` copied into `aud`), versus per-tenant resource registration
+   0010 §A.2; the accepted `resource` copied into `aud`), versus per-tenant resource registration
    (identity state per tenant) or a permanent distribution-wide audience with membership as the
    only isolation. Flips with spec 0010's review.
 7. **`Provisioning` verdict** (§3.3): `404 tenant-not-found` (a tenant being set up is
@@ -2099,7 +2328,7 @@ The load-bearing decisions, where not already evident above:
     referencing the Web project (one project fewer). Flips if keeping entities and endpoints in
     separate projects proves a burden for distribution authors.
 12. **Admin surface now** (§5.9): the minimal surface ships now because bearer authentication exists
-    for MCP and spec 0010 §6 grants its audience first, versus deferring it until a control plane
+    for MCP and spec 0010 §A.5 grants its audience first, versus deferring it until a control plane
     exists. Flips if no control-plane caller arrives before the surface needs maintenance.
 13. **CSRF header name** (§5.4): `Tellma-Client` (RFC 6648-clean; doubles as the build tag), versus
     `X-Requested-With: XMLHttpRequest` (set by default in some client libraries). Flips if a

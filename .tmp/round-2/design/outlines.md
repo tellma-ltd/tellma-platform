@@ -1,0 +1,747 @@
+# Spec outlines (binding for cross-references)
+
+Extracted from each design note's section 3 (the future spec's sections and subsections).
+Authors keep these numbers so cross-references between the new specs stay valid. Cite a section
+by its number only ("spec 0030 §4.2"); titles may be reworded.
+
+**Outline changes ruled in `reviews/rulings.md` Part 2 (already applied below):**
+
+- 0023: §7 drops `accordion`.
+- 0028: Testing is §12 and Definition of done §13.
+- 0030: §18 (accessibility summary) is removed; Testing is §18, Definition of done §19.
+- 0031: §6.8 (deferred extras) and §17 are removed; Testing is §17, Definition of done §18.
+- 0032: the old §12 (source seam) and §14 are removed; §12 is "Server and metadata changes", Testing §13, Definition of done §14.
+- 0034: §14 is removed; Testing is §14, Definition of done §15.
+- 0035: §15.5 is removed; Testing is §17, Definition of done §18.
+- Every other spec: Testing and Definition of done follow its last design section, in that order.
+
+## 0023
+- §1 Placement
+- §2 Shared rules
+- §3 Foundations: `icon`, `kbd`, `copy`
+- §4 Status and identity: `badge`, `avatar`, `chips`, `progress`, `skeleton`, `relative-time`
+- §5 Feedback surfaces: `toast`, `banner`, `empty-state`, `busy-overlay`, `confirm`, `error-dialog`
+- §6 Form controls: `radio`, `segmented`, `switch`, `search-field`, `date-range`
+- §7 Layout: `card`, `page-header`, `description-list`, `splitter`
+- §8 Collections: `pager`, `tree`, `reorder-list`, `drag-drop`, `tiles`
+- §9 Tokens
+- §10 Strings
+- §11 Budgets, harnesses, docs and stories
+- §13 Definition of done
+
+## 0024
+- §1 Placement
+- §2 What a distribution writes
+  - §2.1 File tree and scaffold
+  - §2.2 The distribution API
+  - §2.3 The merge rule
+  - §2.4 `tmPage`
+  - §2.5 Escape hatches owned here
+  - §2.6 `tellma-client` commands
+- §3 Client metadata
+  - §3.1 The container
+  - §3.2 The emit command (C#)
+  - §3.3 Loading
+  - §3.4 Contracts
+  - §3.5 Drift rules
+  - §3.6 The config spec
+- §4 Boot
+  - §4.1 `index.html`
+  - §4.2 `tm-boot.js`
+  - §4.3 The startup sequence
+  - §4.4 `TmApp` and the route host
+- §5 PWA, service worker and updates
+  - §5.1 The manifest
+  - §5.2 The installability gate
+  - §5.3 The generated worker config
+  - §5.4 Registration
+  - §5.5 `TmUpdates`
+  - §5.6 An outdated client (412 and route-not-found)
+- §6 SPA hosting rules (implemented by 0011 `MapTellma`)
+- §7 Localization and theme
+  - §7.1 `TmLocalization`
+  - §7.2 A language switch
+  - §7.3 Strings
+  - §7.4 Calendars
+  - §7.5 Server text
+  - §7.6 Theme and branding
+- §8 Session
+  - §8.1 `TmSession` and the profile cookie
+  - §8.2 The guard
+  - §8.3 Sign-in and step-up
+  - §8.4 Sign-out (every tab)
+  - §8.5 Signed out elsewhere
+  - §8.6 Expiry path
+  - §8.7 Changed-user path
+  - §8.8 Re-check triggers
+- §9 Routes and URLs
+  - §9.1 Grammar rules
+  - §9.2 Route assembly
+  - §9.3 The launch redirect (`/`)
+  - §9.4 `TmUrls`
+  - §9.5 The `TmSearchQuery` codec
+  - §9.6 Server-built links
+- §10 The HTTP layer
+  - §10.1 `TmApi`
+  - §10.2 Headers
+  - §10.3 One call, step by step
+  - §10.4 Lossless JSON
+  - §10.5 Cancellation by type and retries
+  - §10.6 Status to kind
+- §11 Error presentation
+- §12 Budgets and gates
+- §13 Testing and §14 Definition of done
+
+## 0025
+- §1 Placement and vocabulary
+- §2 The client store
+  - §2.1 Contract
+  - §2.2 Layout (frozen: `tm-boot.js` deletes by it)
+  - §2.3 Documents
+  - §2.4 When a stored document counts as absent
+  - §2.5 The write guard
+  - §2.6 Sweeps
+  - §2.7 Persistence, quota and fallback
+- §3 Launch documents and `TmLaunchCache`
+  - §3.1 Contract
+  - §3.2 Cold and warm entry
+  - §3.3 Cacheable entity lists
+- §4 Version tags on the client
+  - §4.1 The tags
+  - §4.2 What a tab holds
+  - §4.3 Response headers
+  - §4.4 `cache.changed` over the hub
+- §5 `client/sync` and `TmCacheRefresher`
+  - §5.1 Server contract
+  - §5.2 Wire example
+  - §5.3 `TmCacheRefresher`
+- §6 The tab bus
+  - §6.1 Contract and channels
+  - §6.2 Message catalogue
+- §7 Leader election
+  - §7.1 Contract
+  - §7.2 Lifecycle in one tab
+  - §7.3 Probing and stealing
+  - §7.4 The visibility lock
+- §8 `TmHub` and the realtime connection
+  - §8.1 Loading
+  - §8.2 The connection
+  - §8.3 Reconnect policy
+  - §8.4 Event relay
+  - §8.5 Terminal signals
+  - §8.6 Leader documents
+  - §8.7 Degraded mode: polling
+- §9 Preferences
+  - §9.1 Contract
+  - §9.2 Encoding
+  - §9.3 Applying and broadcasting
+  - §9.4 Flush policy
+  - §9.5 Adopting the result, and eviction
+- §10 Page state
+- §11 Drafts
+- §12 Tree expansion memory
+- §13 Recently visited pages
+- §14 Testing
+- §15 Definition of done
+
+## 0026
+- §1 Placement
+- §2 What a distribution writes
+- §3 Telemetry API and pipeline
+  - §3.1 The envelope
+  - §3.2 Names and properties
+  - §3.3 Queue and flush
+  - §3.4 When nothing is sent
+  - §3.5 Sampling
+  - §3.6 Development
+- §4 Error logging
+  - §4.1 Sources
+  - §4.2 Deduplication
+  - §4.3 Redaction of messages and stacks
+- §5 Platform measurements
+  - §5.1 Page visits (`tm.page.visit`, sampled)
+  - §5.2 The hard load (`tm.vitals.load`, sampled)
+  - §5.3 Request outcomes
+  - §5.4 Usage
+- §6 The relay: `POST /api/client-telemetry`
+  - §6.1 Contract
+  - §6.2 Validation and limits
+  - §6.3 What the server adds
+  - §6.4 Emission
+- §7 UI version identity
+- §8 Request log and trace ids
+  - §8.1 `TmRequestLog`
+  - §8.2 Slow requests (Supportability Q1)
+  - §8.3 Copy diagnostics
+  - §8.4 The Diagnostics panel (`tm-diagnostics`)
+- §9 Page context and page actions — the assistant seam
+  - §9.1 Contracts
+  - §9.2 The registry
+  - §9.3 What each page kind publishes
+  - §9.4 Page actions
+  - §9.5 The dispatcher (`TmPageActions.invoke`)
+  - §9.6 Snapshots
+  - §9.7 AG-UI mapping (future; nothing ships now)
+  - §9.8 Help seams (reserved)
+- §10 The state dump
+  - §10.1 Contents
+  - §10.2 Page data
+  - §10.3 Size cap
+  - §10.4 Building and downloading
+- §11 The screenshot (Supportability Q2)
+  - §11.1 Capture
+  - §11.2 Support matrix and the fallback
+- §12 Support requests (Supportability Q3)
+  - §12.1 Opt-in and `TmSupport`
+  - §12.2 The support dialog
+  - §12.3 Server contract
+  - §12.4 Blob kind `support-bundle` (0017 §1.3 edit)
+  - §12.5 The Support requests page (`/{t}/support-requests`)
+  - §12.6 Access
+  - §12.7 The admin surface for Tellma support (0011 §5.9 edit)
+  - §12.8 Retention
+- §13 Testing and §14 Definition of done
+
+## 0027
+- §1 Placement and vocabulary
+- §2 What a distribution writes
+- §3 The navigation registry
+  - §3.1 Contract
+  - §3.2 Where entries come from
+  - §3.3 Labels and synonyms
+- §4 The shortcut registry
+  - §4.1 Contract
+  - §4.2 Dispatch
+  - §4.3 Reserved keys and conflict rules
+- §5 The shell frame: layout, landmarks, focus, print
+  - §5.1 Layout constants
+  - §5.2 Landmarks and skip link
+  - §5.3 Focus rules
+  - §5.4 Print and reduced motion
+- §6 The tenantless shell, the tenant picker and the signed-out page
+  - §6.1 The tenantless app bar
+  - §6.2 The tenant picker (`/tenants`)
+  - §6.3 The signed-out page (`/signed-out`)
+- §7 The tenant shell and its app bar
+  - §7.1 Composition by breakpoint
+  - §7.2 Slots
+  - §7.3 Back and forward in installed mode
+  - §7.4 The session button and the tenant markers
+  - §7.5 Shell states
+- §8 The pinned bar and the pins model
+  - §8.1 Anatomy
+  - §8.2 The pins model
+  - §8.3 Resolving a pin
+  - §8.4 `TmPins`
+  - §8.5 Pinning the current page
+  - §8.6 Keyboard and ARIA
+  - §8.7 Overflow
+  - §8.8 Folders
+  - §8.9 Drag to reorder
+  - §8.10 The Manage pins dialog
+  - §8.11 Hiding the bar
+  - §8.12 Revoked and unavailable pins
+- §9 The launcher and global search
+  - §9.1 Surfaces
+  - §9.2 State and transitions
+  - §9.3 Browse state
+  - §9.4 Typed state: matching and ranking
+  - §9.5 Keyboard and ARIA
+  - §9.6 The provider seam
+  - §9.7 Caching
+  - §9.8 Loading
+- §10 The session menu
+  - §10.1 Rows
+  - §10.2 The tenant card
+  - §10.3 Sign out
+  - §10.4 Keyboard, ARIA, responsive
+- §11 The About and Shortcuts dialogs
+  - §11.1 About
+  - §11.2 Shortcuts
+- §12 Server additions
+  - §12.1 `users/me/locale`
+  - §12.2 `DistributionInfo.links`
+- §13 Testing and §14 Definition of done
+
+## 0028
+- §1 Placement and vocabulary
+- §2 `core.Assignments` and the `Assignment` entity
+  - §2.1 The table
+  - §2.2 The entity and its stack
+  - §2.3 States and transitions
+- §3 Writing assignments
+  - §3.1 Contracts
+  - §3.2 The assign statement
+  - §3.3 The close statement (complete, withdraw)
+  - §3.4 `[Assignable]`: the capability, the delete effect, the trail extra
+  - §3.5 What a distribution writes
+  - §3.6 Assignment email (the hatch)
+- §4 Reading assignments: the stack, the summary, seen, events, retention
+  - §4.1 `AssignmentService` and its routes
+  - §4.2 `AssignmentsSeenAt`
+  - §4.3 The summary
+  - §4.4 The trail extra
+  - §4.5 The `assignments.changed` event
+  - §4.6 Securables and MCP
+  - §4.7 Retention
+  - §4.8 Composition, telemetry, logs
+- §5 The client attention model
+  - §5.1 Leader documents
+  - §5.2 `TmAttention`
+  - §5.3 Opening a panel
+  - §5.4 States that limit the verbs
+- §6 The bell
+  - §6.1 The button
+  - §6.2 The panel
+  - §6.3 Keyboard and ARIA (bell and tray panels)
+  - §6.4 Responsive and RTL
+  - §6.5 Read on visit
+- §7 The tray
+  - §7.1 The button
+  - §7.2 The panel
+  - §7.3 `tm-assignment-list`
+  - §7.4 The home lists (0035's page)
+- §8 The toast policy
+  - §8.1 What toasts
+  - §8.2 The arrival engine (`TmArrivals`)
+  - §8.3 Keys, withdrawals and limits
+- §9 Banners: `TmBanners`
+  - §9.1 Contract
+  - §9.2 Precedence and the pager
+  - §9.3 The input-idle gate
+  - §9.4 `tm-banner-host`
+  - §9.5 The platform's banners
+  - §9.6 A distribution's banner (the hatch)
+- §10 The four pages
+  - §10.1 Shared rules
+  - §10.2 Notifications (`/{t}/notifications`)
+  - §10.3 Notification settings (`/{t}/me/notifications`)
+  - §10.4 Assignments (`/{t}/assignments?tab=to-me|by-me|all`)
+  - §10.5 Jobs (`/{t}/jobs`, `?mine=1`) and the job details page (`/{t}/jobs/{id}`)
+- §11 Rendering server text on the client
+  - §11.1 `TmAttentionText`
+  - §11.2 Job labels (0020 edit)
+  - §11.3 Assignment captions
+- §12 Testing
+- §13 Definition of done
+
+## 0029
+- §1 Placement and vocabulary
+- §2 The entity section of the client metadata
+  - §2.1 Producer
+  - §2.2 Shapes
+  - §2.3 What is deliberately absent
+  - §2.4 Label keys
+- §3 The `tmEntity` declaration
+- §4 `TmEntities` and descriptors
+  - §4.1 Contract
+  - §4.2 Shape gating and labels
+  - §4.3 Path resolution
+- §5 Display names
+  - §5.1 The rule (server; written into 0012)
+  - §5.2 Rendering (normative for both sides)
+  - §5.3 `TmDisplayNames`
+- §6 Navigation expansion and select plans
+  - §6.1 Column keys
+  - §6.2 Contract
+  - §6.3 Example — the Centers grid, `en` + `ar`, user in Arabic
+  - §6.4 Dropped keys
+- §7 Client permissions
+- §8 The client Queryex
+  - §8.1 Lexer
+  - §8.2 Builder and printer
+- §9 `queryex/discover`
+- §10 The expression editor
+  - §10.1 Contract
+  - §10.2 Checking
+  - §10.3 Rendering and layout
+  - §10.4 Drop and insert
+  - §10.5 Keyboard and ARIA
+- §11 The path tree picker
+  - §11.1 Contract
+  - §11.2 Nodes
+  - §11.3 Search, drag and activation
+  - §11.4 Slash labels
+- §12 Typed values
+  - §12.1 Contract
+  - §12.2 The table
+- §13 Filter controls
+  - §13.1 Contract
+  - §13.2 Kinds, operators and leaves
+  - §13.3 The control
+- §14 The generic entity picker binding
+  - §14.1 Contract
+  - §14.2 Search
+  - §14.3 Labels
+  - §14.4 Advanced search, Create and Edit
+  - §14.5 Grid cells
+- §15 Typed entity codegen
+- §16 Client blob-kind policies
+- §17 Testing and §18 Definition of done
+
+## 0030
+- §1 Placement and vocabulary
+- §2 What a distribution writes
+  - §2.1 `columns` and `orderBy`
+  - §2.2 The cell hatch: `{ path, display }`
+  - §2.3 `tile`
+  - §2.4 `filters`: custom filters (URL `x.{key}`)
+  - §2.5 The `search` hatch: a results region that is not a list
+- §3 Page anatomy and layout
+  - §3.1 Rows 1 and 2
+  - §3.2 Responsive behaviour (A§9 thresholds)
+  - §3.3 Row 3: the results region
+  - §3.4 Grid or tiles
+- §4 Query state: meaning, precedence, URL, history
+  - §4.1 Fields
+  - §4.2 Precedence when the page opens
+  - §4.3 The canonical URL
+  - §4.4 Changes and history
+- §5 Loading results
+  - §5.1 The request
+  - §5.2 Lifecycle
+  - §5.3 States of the results region
+  - §5.4 Language and permission changes
+- §6 The search field and the keyboard model
+  - §6.1 The field
+  - §6.2 Type-to-search
+  - §6.3 Highlight and Enter
+  - §6.4 The keyboard model
+- §7 Grid view: rows, links, ordering
+  - §7.1 The binding
+  - §7.2 Opening rows and links (Search Q1)
+  - §7.3 Ordering
+- §8 Tiles view
+- §9 Column filters
+  - §9.1 The header affordance
+  - §9.2 Values
+- §10 The advanced filter popup
+  - §10.1 Layout
+  - §10.2 Behaviour
+- §11 The column editor
+  - §11.1 Layout (`choose-columns.png`)
+  - §11.2 Semantics
+  - §11.3 Expression columns
+  - §11.4 Defaults and the preference
+- §12 Selection and bulk actions
+  - §12.1 Selection
+  - §12.2 The selection bar
+  - §12.3 Running an action
+- §13 Create, export, import, refresh
+  - §13.1 Create
+  - §13.2 Export (Trees Q1)
+  - §13.3 Import
+  - §13.4 Refresh
+- §14 Paging
+- §15 Page state and return
+  - §15.1 What the host remembers
+  - §15.2 Returning
+  - §15.3 What 0031 reads
+- §16 Trees
+  - §16.1 Tree or list
+  - §16.2 Browse tree: roots first, one call
+  - §16.3 Expanding, collapsing, remembering
+  - §16.4 Search tree: matches inside their ancestors
+  - §16.5 Ordering a tree
+- §17 The picker page
+- §18 Testing
+- §19 Definition of done
+
+## 0031
+- §1 Placement and vocabulary
+- §2 What a distribution writes
+- §3 The host and its lifecycle
+  - §3.1 Routes and instances
+  - §3.2 States
+  - §3.3 Loading
+  - §3.4 View → edit, instantly
+  - §3.5 Read failures
+  - §3.6 Create and clone
+  - §3.7 The `page` hatch
+- §4 `TmDetailsContext`
+  - §4.1 Contract
+  - §4.2 The form
+- §5 Page anatomy and the layout language
+  - §5.1 Row 1: crumb, title, badges
+  - §5.2 Row 2: the toolbar
+  - §5.3 Row 3: the body band
+- §6 `TmDetailsKit`
+  - §6.1 `tm-details-card`
+  - §6.2 `tm-field`
+  - §6.3 Images and files (0017 staging)
+  - §6.4 Child grids: `tm-child-grid`
+  - §6.5 Child files: `tm-child-files`
+  - §6.6 Tabs: `tm-details-tabs`
+  - §6.7 The aside: `tm-details-aside`
+  - §6.9 `tm-details-audit`
+- §7 Validation
+  - §7.1 The platform schema
+  - §7.2 The distribution's schema
+- §8 The save flow
+  - §8.1 Steps
+  - §8.2 The body
+  - §8.3 Success (200)
+  - §8.4 The error summary (422 and client errors)
+  - §8.5 Mapping server errors to fields
+  - §8.6 Other outcomes
+  - §8.7 The navigation lock
+- §9 Concurrency and deletion dialogs
+  - §9.1 The concurrency dialog (409 `concurrency-conflict`)
+  - §9.2 The deletion dialog (404 on save, or every conflict `isMissing`)
+- §10 Actions: the Actions menu, delete, activate, custom actions
+  - §10.1 The page actions
+  - §10.2 Delete
+  - §10.3 Activate and deactivate
+  - §10.4 Custom entity actions and their dialogs
+- §11 Drafts, the leave guard, and refresh versus leaving
+  - §11.1 What a draft holds
+  - §11.2 When edit mode returns
+  - §11.3 The leave guard (in-app)
+  - §11.4 Refresh versus leaving (Details Q3)
+- §12 Paging through search results
+  - §12.1 The source
+  - §12.2 Stepping
+- §13 State restoration
+- §14 The child-row deep link (Non-aggregate Q1)
+  - §14.1 Flow
+  - §14.2 Who builds the link
+  - §14.3 Hatch pages
+- §15 The picker pages (Create… and Edit…)
+- §16 Page context, the form context and page actions (the assistant seam)
+- §17 Testing
+- §18 Definition of done
+
+## 0032
+- §1 Placement and vocabulary
+- §2 What a distribution writes
+- §3 The core feature's declarations
+- §4 Users
+  - §4.1 The layout and field groups
+  - §4.2 Language, calendar and time-zone fields
+  - §4.3 Inviting users
+  - §4.4 Service accounts and credentials
+  - §4.5 The Sign-in aside (`TmUserSignIn`)
+  - §4.6 The Access tab (`TmUserAccess`)
+  - §4.7 Image, signature, activation
+- §5 Roles
+  - §5.1 The layout
+  - §5.2 Securables on the client
+  - §5.3 The permissions editor (`TmRolePermissions`)
+  - §5.4 Members (`TmRoleMembers`)
+  - §5.5 Drift
+- §6 Centers (`@tellma/module-gl`)
+- §7 Settings
+  - §7.1 Route, tabs and permissions
+  - §7.2 The page and its source
+  - §7.3 Keys, categories and groups in the metadata
+  - §7.4 Rendering a key: `tm-setting-field`
+  - §7.5 The layout, the General tab and the `settingsTabs` hatch
+  - §7.6 Saving
+  - §7.7 Effects on the warm cache and other tabs
+- §8 My profile (`/{t}/me`)
+- §9 Schedules
+- §10 Outgoing emails
+  - §10.1 The layout (`TmOutgoingEmailDetails`, 24 lines of kit markup)
+  - §10.2 The body viewer (`TmEmailBody`)
+- §11 Exports and Imports
+- §12 Server and metadata changes
+  - §12.1 Settings (0013)
+  - §12.2 Users and roles (0018, 0016, 0014)
+  - §12.3 Jobs and schedules (0020)
+  - §12.4 The securables section (0014 §10, E5)
+- §13 Testing
+- §14 Definition of done
+
+## 0033
+- §1 Placement and vocabulary
+- §2 The report definition entity
+  - §2.1 Classes and columns
+  - §2.2 Securables, operations and routes
+- §3 The definition document
+  - §3.1 Shape
+  - §3.2 Display overrides
+  - §3.3 Drill-through columns
+  - §3.4 Validation
+  - §3.5 Examples (Acme; illustrative columns)
+- §4 Parameters
+  - §4.1 Shape
+  - §4.2 Inference and types
+  - §4.3 Defaults
+  - §4.4 Arguments and omission
+  - §4.5 Parameter validation (save)
+- §5 Sharing and visibility
+  - §5.1 The shareable contract (reused by 0035)
+  - §5.2 Who may do what
+  - §5.3 The access criteria
+  - §5.4 The sharing actions
+  - §5.5 Browsing: Mine, Shared with me, All
+  - §5.6 Lifecycle and delete (Visibility Q6)
+  - §5.7 Dashboards reuse the model (0035)
+- §6 The audience resolver
+  - §6.1 Contract
+  - §6.2 Resolution
+- §7 The `core.report.shared` notification
+- §8 Execution
+  - §8.1 Contract
+  - §8.2 Authorization
+  - §8.3 The run, step by step
+  - §8.4 Terms to select items
+  - §8.5 Pivot: levels, grouping sets, having
+  - §8.6 Tree dimensions
+  - §8.7 Calendars
+  - §8.8 Limits (`ReportOptions`, `Tellma:Reports`)
+  - §8.9 Cancellation and background refresh
+  - §8.10 Caching
+- §9 Results
+  - §9.1 The envelope
+  - §9.2 Tables (list, summary, chart)
+  - §9.3 The cube (pivot)
+  - §9.4 Drill-through
+- §10 Child-entity query routes
+- §11 Coded reports
+- §12 Excel export
+  - §12.1 Routes
+  - §12.2 Flat layouts (list, summary, chart)
+  - §12.3 The pivot layout ("compact form", fully expanded)
+  - §12.4 The writer (0019 edit E11)
+- §13 Seeded (standard) definitions
+- §14 Configuration and telemetry
+- §15 Testing and §16 Definition of done
+
+## 0034
+- §1 Placement and vocabulary
+- §2 What a distribution writes
+  - §2.1 A report in a details card
+  - §2.2 `tmCodedReport`
+  - §2.3 The platform's declaration
+- §3 The report host
+  - §3.1 Contract
+  - §3.2 Opening a report page
+  - §3.3 Output states
+  - §3.4 Refresh modes
+  - §3.5 From result to renderer
+  - §3.6 Modes
+  - §3.7 Page state
+- §4 Parameters and the parameter bar
+  - §4.1 Controls by type
+  - §4.2 Layout
+  - §4.3 Commit and run
+  - §4.4 The URL: `p.{Key}`
+  - §4.5 Precedence and remembered values
+- §5 List and Summary renderers
+  - §5.1 Binding
+  - §5.2 List
+  - §5.3 Summary
+  - §5.4 Not in v1
+- §6 `tm-pivot` and the Pivot renderer
+  - §6.1 Contract
+  - §6.2 Layout
+  - §6.3 Styles
+  - §6.4 Keyboard and ARIA
+  - §6.5 The Pivot renderer
+  - §6.6 Member order
+- §7 `tm-chart` and the Chart renderer
+  - §7.1 Contract
+  - §7.2 Types and dimensions
+  - §7.3 The engine
+  - §7.4 Text and formatting
+  - §7.5 Tooltip, legend, Trusted Types
+  - §7.6 RTL
+  - §7.7 Palette and tokens
+  - §7.8 Accessibility
+  - §7.9 The Chart renderer
+- §8 Drill-through
+  - §8.1 From coordinate to filter
+  - §8.2 The drill event
+  - §8.3 The drill-through list page
+  - §8.4 Chips without URL text
+- §9 Export to Excel
+- §10 The report page and its dialogs
+  - §10.1 Header
+  - §10.2 Toolbar and Actions
+  - §10.3 Delete and transfer
+  - §10.4 The share dialog
+- §11 The reports page
+- §12 The report studio
+  - §12.1 Routes, loading, drafts
+  - §12.2 Layout
+  - §12.3 Sections
+  - §12.4 Parameters: live inference
+  - §12.5 Drops and "Add to…"
+  - §12.6 Kind switching
+  - §12.7 Validation feedback
+  - §12.8 The preview
+  - §12.9 Save, Discard, Share
+- §13 Page context and page actions
+- §14 Testing
+- §15 Definition of done
+
+## 0035
+- §1 Placement and vocabulary
+  - §1.1 Packages and entry points
+  - §1.2 Vocabulary
+- §2 What a distribution writes
+  - §2.1 The common case: nothing
+  - §2.2 A widget type of its own
+  - §2.3 A different home page
+- §3 The dashboard tables
+  - §3.1 Classes and columns
+  - §3.2 Routes and securables
+  - §3.3 Limits
+- §4 Widget types
+  - §4.1 Server registry
+  - §4.2 Core types
+  - §4.3 Client declaration
+- §5 Validation (save)
+  - §5.1 The dashboard
+  - §5.2 Each widget
+  - §5.3 Report widget bindings
+- §6 Reading a dashboard
+  - §6.1 The `view` extra
+  - §6.2 Visibility
+  - §6.3 `IDashboardReadThrough` (0033's interface, implemented here)
+- §7 Sharing, notification, seeds
+  - §7.1 Audience
+  - §7.2 `core.dashboard.shared`
+  - §7.3 Seeded (standard) dashboards
+- §8 The grid
+  - §8.1 Model and geometry
+  - §8.2 Two layouts
+  - §8.3 Reading order is the DOM order
+  - §8.4 The tile
+  - §8.5 The "Updated" line
+  - §8.6 Tile states
+- §9 Widgets
+  - §9.1 The report widget
+  - §9.2 Built-in widgets
+  - §9.3 A widget type's body
+- §10 Dashboard parameters (Dashboards Q1)
+  - §10.1 Declaration
+  - §10.2 Binding
+  - §10.3 The bar, the URL and remembered values
+- §11 Refresh
+  - §11.1 The scheduler
+  - §11.2 Silent runs and the session
+  - §11.3 Forced refresh and a tile's Refresh
+  - §11.4 Returning to a dashboard
+- §12 The dashboard page
+  - §12.1 The declaration
+  - §12.2 Header and toolbar
+  - §12.3 Body and states
+- §13 Edit mode
+  - §13.1 Entering and leaving
+  - §13.2 The canvas
+  - §13.3 Moving and resizing
+  - §13.4 Adding, configuring, removing
+  - §13.5 Dashboard settings
+  - §13.6 Save, errors, create, Save as
+- §14 The dashboards page
+- §15 The home page
+  - §15.1 Route and host
+  - §15.2 Greeting and date
+  - §15.3 The default widgets
+  - §15.4 States
+  - §15.6 The seam for per-role and per-user home pages
+- §16 Page contexts, actions and telemetry
+- §17 Testing
+- §18 Definition of done

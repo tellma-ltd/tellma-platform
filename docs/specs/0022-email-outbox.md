@@ -17,15 +17,15 @@ Each email is a row of `core.OutgoingEmails`, written in the transaction of the 
 it, so both commit or roll back together. A producer hands the outbox a rendered message (§3); spec
 0021's `email` notification channel is one (§4). One spec 0020 job per row sends the email as the
 system user and records the result in the row's `State`, and a spec 0007 webhook later fills its
-delivery columns. An administrator browses the rows, reads their envelopes, bodies and attachments,
-and can retry, cancel or delete them.
+delivery columns. An administrator browses the rows on spec 0032's Outgoing emails pages, reads
+their envelopes, bodies and attachments, and can retry, cancel or delete them.
 
 ## Goals / Non-goals
 
 **Goals**
 
 - The `OutgoingEmail` entity over `core.OutgoingEmails` and `core.OutgoingEmailAttachments`, with
-  its `Query | Details | Delete | Enlist` stack and admin page (§2, §8).
+  its `Query | Details | Delete | Enlist` stack and admin surface (§2, §8).
 - One way in, `IEmailOutbox.EnqueueAsync` (§3), which spec 0021's `email` channel also uses (§4).
 - The sending job (§5), delivery events (§6), the `retry`, `cancel` and `delete` verbs and retention
   (§7), and options, telemetry and composition (§9).
@@ -38,6 +38,7 @@ and can retry, cancel or delete them.
   an idempotency key, so a retried `TransientFailure` can duplicate a message (§1.3 principle 2).
 - **Unsubscribe headers, stream classification, suppression refusal and UI** (spec 0007 §11) — every
   consumer is transactional, and `Dropped` events already surface suppression.
+- **The Outgoing emails pages** — spec 0032 §10, over this spec's stack and verbs.
 - **A per-document email tab** — a client follow-up over the indexed regarding columns (§2.1).
 - **Per-recipient delivery rows** — one recipient is the dominant case; `DeliveryRecipient` names
   the address an event concerned.
@@ -114,7 +115,8 @@ public enum EmailDeliveryStatus { Deferred = 1, Delivered, Dropped, Failed, Boun
 // Indexes: IX_OutgoingEmails_State (State, CreatedAt);
 //   IX_OutgoingEmails_Regarding (RegardingEntity, RegardingId) WHERE RegardingEntity IS NOT NULL;
 //   IX_OutgoingEmails_Recipient (RecipientUserId, CreatedAt DESC) WHERE RecipientUserId IS NOT NULL.
-// [Stack(Operations = Query | Details | Delete | Enlist)], [ApiResource(Mcp = ReadOnly)].
+// [Stack(Operations = Query | Details | Delete | Enlist, DefaultOrderBy = "CreatedAt desc")],
+// [ApiResource(Mcp = ReadOnly)], [DisplayNameSource(nameof(Subject))] (spec 0012 §2.2).
 // [DefaultSelect]: every member except TextBody, HtmlBody, Cc, Bcc, ProviderMessageId and
 // LastProviderEventId.
 // Audit columns (spec 0012 §4.2): CreatedById is the acting user (a job's run-as user).
@@ -306,19 +308,27 @@ Other callers:
 `EmailNotificationChannel.DeliverAsync` (spec 0021 §4.4) runs in spec 0021 §4.5's delivery job, with
 the recipients that job resolved for `email` from current addresses and preferences. The channel:
 
-1. Groups them by `LocalizationContext`, and per group, inside `LocalizationScope.Enter(context)`
-   (spec 0013 §10.2), renders the text once with `INotificationRenderer.Render` (spec 0021 §2.4),
-   then the subject and bodies from Core's `ServerStrings` keys `Email_Notification_Subject`,
-   `Email_Notification_Text` and `Email_Notification_Html`, given `tenantName`, `text` and `link`
-   (`<Tellma:PublicOrigin>/<tenantId>`, Review flags 1).
+1. Groups them by `LocalizationContext`. Per group, inside `LocalizationScope.Enter(context)`
+   (spec 0013 §10.2), it renders the text once with `INotificationRenderer.Render` (spec 0021
+   §2.4). It then renders the subject and bodies from Core's `ServerStrings` keys
+   `Email_Notification_Subject`, `Email_Notification_Text` and `Email_Notification_Html`, given:
+   - `tenantName`;
+   - `text`, the rendered notification text;
+   - `link`, which is `ITellmaLinks.Target(tenantId, TargetResource, TargetId)` (spec 0011
+     §5.10): the target's details page, else the tenant root.
 2. Makes one `EnqueueAsync(host, …)` call with one request per recipient that has an address: `To`
    the single address `ContactEmail ?? Email`, `Audience = Internal`, `RecipientUserId`,
    `RegardingEntity` and `RegardingId` the request's target, and `Source = "notification"`.
 
-Sara (`PreferredLanguage = ar`, no `ContactEmail`) opted into `core.export.ready`. Her email goes to
-`sara@acme.example` with the text of `Notification_core_export_ready` in Arabic, dates in her
-calendar and zone, the subject `Email_Notification_Subject` with `tenantName` "Acme", and the link
-`https://app.example/42`.
+**Example —** Sara (`PreferredLanguage = ar`, no `ContactEmail`) turned email on for Acme's
+channel-only type `acme.invoice.assigned` (spec 0028 §3.6). Sales invoice 17 of tenant 42 is
+assigned to her. Her email:
+
+- goes to `sara@acme.example`;
+- carries the text of `Notification_acme_invoice_assigned` in Arabic, with dates in her calendar
+  and zone;
+- has the subject `Email_Notification_Subject` with `tenantName` "Acme";
+- links to `https://acme.app.tellma.com/42/sales-invoices/17`.
 
 The inbox's dedup and mutability rules do not apply (spec 0021 §2.3, §4.4): a user who opted in is
 emailed every time. A notification email has no attachments.
@@ -481,11 +491,7 @@ for the sweep.
   addressed to them; that would be a second inbox.
 - **Endpoints** (spec 0016): `outgoing-emails/query`, `get`, `get-by-ids`, `delete`,
   `delete-by-query`, `retry`, `cancel`. Attachments download through spec 0017's blob endpoint.
-- **Page "Outgoing emails"**: the standard search, default order `CreatedAt DESC`, with filters on
-  state, delivery status, `To contains`, created by, regarding entity and id, and date range. The
-  details view shows the envelope, state and delivery columns with their timestamps, error code and
-  detail, `AttemptCount`, the job link, the attachments, and the HTML body in a sandboxed `iframe`
-  with a text toggle. Actions: the three verbs.
+- **Pages**: spec 0032 §10 owns the Outgoing emails pages.
 - **MCP**: read-only (`Mcp = ReadOnly`); `tellma_query` answers "was the invoice to X delivered".
 
 ## 9. Options, telemetry, composition
@@ -554,7 +560,8 @@ Startup check `outbox.sender`: `JobsOptions.Enabled` needs an `IEmailSender` (in
 - §6's tenant-state policy with a fake registry: `Retired` drops, `Suspended` applies, `ReadOnly`
   throws after the others.
 - §4 with a fake `IEmailOutbox`: one request per recipient, to `ContactEmail ?? Email`, rendered in
-  that recipient's language, calendar and zone; a recipient with no address is skipped.
+  that recipient's language, calendar and zone, linking to `ITellmaLinks.Target`; a recipient with
+  no address is skipped.
 
 **Integration** (`test/core/Tellma.Core.IntegrationTests/Outbox/`, LocalDB):
 
@@ -625,7 +632,9 @@ by spec 0018 §9's integration suite.
     days, so the row is the only durable record (§7.3).
 12. **Addresses as RFC 5322 text** — readable in a grid, filterable with `contains` (§2.1).
 13. **`Mcp = ReadOnly`** keeps the verbs with people; **ACS's caps are the defaults** (§8, §9.1).
+14. **Notification emails link to their target** — `ITellmaLinks.Target` builds the SPA's details
+    route, so the email opens the record, or the tenant when the type has none (§4).
 
 ## Review flags
 
-1. **Notification emails link to the tenant root** (§4): no deep-link contract exists.
+None.

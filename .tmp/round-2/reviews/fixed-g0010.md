@@ -1,0 +1,29 @@
+# Fix log — spec 0010 (`docs/specs/0010-amendments-to-implemented-specs.md`)
+
+- K-F / K-reports-11 (with K-foundation-14, K-shell-entity-14) — Context: Part F bullet names spec 0014 and 0029 §9 as consumers; "Other specs" gains four Part F lines (0012 §11.1–§11.2; 0012 §11.4 + 0015 §5.2; 0013 §8.2; 0029 §9, 0033, 0035 §6.3). Used 0012 §11.4 for the level-path refusal, which is where 0012 states it.
+- K-F / K-reports-11 — Goals: added the Part F bullet (K-reports-11 wording, the most complete of the three variants).
+- K-F / K-reports-11 — Non-goals: added the Part F bullet (list parameters and TVP `descendantOf`, running totals, a new language version), each with its owner or reason.
+- K-foundation-16 — Context: 0024 pointers now §7.1, §7.3, §7.6, §10.5.
+- K-foundation-16 — §B.3: Requested by now spec 0024 §7.1–§7.3.
+- K-foundation-16 — §D.6: Requested by now spec 0024 §10.5.
+- K3 / K-foundation-9 / K-shell-entity-12 / F-27 — §B.6: Target is 0002 §5 only; Requested by spec 0023 §2; Why says 46 px and cites §C.10; "Menu rows" bullet removed; Tests drop the 44 px menu row.
+- K3 / K-foundation-9 — Part B DoD: Touch bullet is "§B.6 shipped." (Part B now adds no token, so the token-CSS refresh clause went too); WCAG line reads "46 px touch fields (§B.6 e2e)".
+- K3 / K-foundation-9 / F-27 — §C.10: "Touch rows" bullet now owns the rule (`--menu-item-height-touch`, 44 px, `(width < 576px)` query, context menu follows) and cites §B.6 for form controls.
+- K3 / K-foundation-9 — Part C Testing: Playwright `menu-rich` pins 44 px rows at 390 px; Part C DoD Tokens adds `--menu-item-height-touch`; Part C WCAG line adds 44 px menu rows below `sm`. Skipped adding "spec 0027 §10.4" to §C.10's Requested by: "spec 0027 … §10" already covers it.
+- K-shell-entity-21 — §C.10: `TmMenuItem` gains `lang?: string`; the session-menu example sets `lang: l.code`; Part C Testing unit row pins a row's `lang`.
+- K-shell-entity-34 — §E.1: both "spec 0029 §14.3" → "spec 0029 §14.2".
+- K21 / K-foundation-10 — §E.2 Composition: removable `tm-chip`s focused through `TmChip.focus()` (spec 0023 §4.3).
+- K21 / K-foundation-10 / F-27 — §E.2 keyboard: Backspace/Delete on a chip focuses the next chip, else the previous, else the input (spec 0023 §2.1).
+- K21 / K-foundation-10 — §E.2 ARIA: `tmUi.entityPicker.removeChip` removed; the chip's remove button carries its own name (cited 0023 §4.3, where `tm-chip`'s remove name is declared). The harness method `removeChip(label)` stays (a harness member, not the string).
+- K48 / K-reports-1 / F-10 — §F.0 codes table: QX3104 condition now "a table-calendar operand that is not a row-grain path sits in an aggregation's argument or a grouping key". Followed K-reports-1 over F-10 where they differ (F-10 refused every aggregated operand; K48's "only" admits one outside aggregation arguments and grouping keys).
+- K48 / K-reports-1 — §F.11 Diagnostics: QX3104 dropped; a `'uq'` call emits §F.13's scalar form. Tests add a `'uq'` item.
+- K48 / K-reports-1 — §F.13 Operands: row-grain path operands take the lateral lookup; any other operand takes the scalar form in SELECT/WHERE/HAVING; QX3104 only inside an aggregation's argument or a grouping key (errors 130, 144).
+- K48 / K-reports-1 — §F.13 Emission: lateral lookup scoped to row-grain operands; new "Scalar form" bullet (placed after "Lookup results", not straight after the code block, so "Lookup results" stays read as the lateral form). Added one sentence that the operand enters the subquery once (a parameter or column as is, else a value binding inside it), so 0008 §12.3's no-repeat rule holds.
+- K48 / K-reports-1 — §F.13 Tests: scalar-form goldens (path-free and aggregated, SELECT/WHERE/HAVING, constant statement); QX3104 inside an aggregation argument and a grouping key.
+- K48 / K-reports-1 — Part F Testing: corpus row names "`'uq'` lateral and scalar lookups".
+- K48 / K-reports-1 — Part F Decision 13 replaced (two forms; QX3104 only where SQL Server refuses a subquery).
+- K48 / K-reports-1 — Part F Review flag 4 replaced (two emission forms; alternative lateral-only).
+- K50 / F-1 (item 3) — §F.11 Slots: cites the host member `IDataBatch.EvaluateConstant` (spec 0012 §5.2) as the binder of the context slots. Named per K50 ("name it to match §F.11") and K-reports-2, not F-1's `IDataBatch.Constant`. K-reports-2 said §F.11 needed no change; K50 asks for the cite when the name appears, so it is cited.
+- K-reports-33 — Part F Review flag 6: flip condition adds "or report users expect totals to drop with filtered leaves".
+- K1 — verified resolved (§D.7, §D.8; Part D flags 4, 5); no change.
+- Addendum 1 — verified resolved (§F.0–§F.15 numbering); no change.

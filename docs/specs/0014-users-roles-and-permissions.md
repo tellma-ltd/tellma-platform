@@ -56,8 +56,8 @@ entity, which is a securable root through its `Owner` (§5.5).
 - Ship the six tables, their entity classes and their seeds, in the shape every module and
   distribution references (`CreatedById` on every top-level entity is an FK to `core.Users`).
 - Ship the securables registry: descriptors, the builder, contributors, aliasing, the deployment
-  fingerprint, and the startup audit that fails composition when an endpoint or a securable is
-  unregistered.
+  fingerprint, the securables section of the client metadata, and the startup audit that fails
+  composition when an endpoint or a securable is unregistered.
 - Ship permission evaluation as a pure function over a cached, resolved set, with the composition
   contract every consumer relies on: union of memberships and public roles, write implies read,
   `Or` of filters, bespoke criteria, fail-closed drift, `Denied` for a caller with no user.
@@ -80,8 +80,9 @@ entity, which is a securable root through its `Owner` (§5.5).
 
 - `UserService`, `RoleService`, `AccessService`, the `me` endpoints, the invite write-back, the
   `issue-credentials` action and the "you were added" notice — spec 0018.
-- The batch executor, the save emitter, id allocation, the Queryex schema adapter and the engine
-  amendments (`KeySetRestriction`, `level()`, `Via`) — spec 0012.
+- The batch executor, the save emitter, id allocation and the Queryex schema adapter — spec 0012.
+  The engine amendments (`KeySetRestriction`, `level()`, `Via`) — spec 0010 Part F, composed by
+  spec 0012.
 - `core.VersionTags`, the tag prelude and epilogue statements, `VersionedCache` and the
   `settings`/`entities` cache kinds — spec 0013.
 - The pipeline's use of the decision (pre-check, post-check, `AncestorsFilter`, navigation
@@ -91,6 +92,8 @@ entity, which is a securable root through its `Owner` (§5.5).
   the hub close on deactivation — spec 0021. Excel import of users and roles — spec 0019.
 - SQL Server row-level security policies, `SESSION_CONTEXT`-based authorisation, and any logic in
   the database beyond the runtime-emitted statements of this spec (§5.4).
+- The client's use of this design: the preference flush and key registry (spec 0025 §9), the pins
+  model (spec 0027 §8.2), and the role editor with the securables' labels (spec 0032 §5, §12.4).
 
 ## 1. Placement and architecture
 
@@ -117,16 +120,22 @@ so a block is never pasted into code. SQL statements are the exact shape to emit
 
 ### 1.2 Composition
 
-`CoreFeature` (spec 0011) contributes this spec's content: `contribution.Entity<User,
-UserService<User>>()` and `contribution.Entity<Role, RoleService<Role>>()` — the one registration of
-the two stacks; spec 0018 supplies the services and adds no `Entity` line for `User` or `Role` — the
-two validator components `contribution.Validator<User, UserAccessRules<User>>()` and
-`contribution.Validator<Role, RoleAccessRules<Role>>()` (a component registered for a base runs for
-the distribution's leaf), `contribution.Securables(...)` for the non-entity securables of §4.3, the
-model configuration of the six tables, and the singleton `ISecurableRegistry`, scoped
-`IAccessEvaluator`, `IUserConnector`, `IGuardedBatchRunner`, `IAccessGuards`, and the
-`IRequestContextInitializer` of §7.8 at `Order` 100. The registry is frozen in the realise phase of
-`AddTellma`; every check of §4.5 reports into the realised gate.
+`CoreFeature` (spec 0011) contributes this spec's content:
+
+- **The two stacks.** `contribution.Entity<User, UserService<User>>()` and
+  `contribution.Entity<Role, RoleService<Role>>()`, the one registration of the two stacks. Spec
+  0018 supplies the services and adds no `Entity` line for `User` or `Role`.
+- **The two validator components.** `contribution.Validator<User, UserAccessRules<User>>()` and
+  `contribution.Validator<Role, RoleAccessRules<Role>>()`; a component registered for a base runs
+  for the distribution's leaf.
+- **Non-entity securables.** `contribution.Securables(...)` for those of §4.3.
+- **The model** configuration of the six tables.
+- **Services.** The singleton `ISecurableRegistry`, scoped `IAccessEvaluator`, `IUserConnector`,
+  `IGuardedBatchRunner`, `IAccessGuards`, the `IRequestContextInitializer` of §7.8 at `Order` 100,
+  and the `SecurablesClientAssetContributor` of §10.
+
+The registry is frozen in the realise phase of `AddTellma`; every check of §4.5 reports into the
+realised gate.
 
 ### 1.3 Dependencies on sibling specs, by contract name
 
@@ -134,7 +143,8 @@ model configuration of the six tables, and the singleton `ISecurableRegistry`, s
 |---|---|---|
 | `IDataBatch`, `IDataBatchContributor`, `BatchResult<T>`, `SqlOptions`, `TableName`, `TellmaSqlErrors` | spec 0012 | the prologue contributor, the guards, raw statements, error numbers |
 | `TopLevelEntity`, `ChildEntity`, `IActivatable`, `[Temporal]`, `[ServerOwned]`, `[Derived]`, `[WriteOnce]`, `[NaturalKey]`, `[Unique]`, `[Searchable]`, `[Multilingual]`, `[ParentKey]`, `[MaxChildren]` | spec 0012 | the entity shapes |
-| `ITenantDatabase` (`Schema`), `KeySetRestriction` | spec 0012 | filter validation (§3.7, §9) and the post-check |
+| `ITenantDatabase` (`Schema`) | spec 0012 | filter validation (§3.7, §9) |
+| `KeySetRestriction`, `FilterTree.Leaf(text, stamp)`, `FilterTree.Via` | spec 0010 §F.1, §F.6, §F.7 | the post-check (§5.3), versioned leaves (§5.2), owner rebasing (§5.5) |
 | `VersionTag`, `VersionTagNames`, `UserVersionTagNames`, `[BumpsVersionTag]`, `[BumpsUserVersionTag]`, `VersionedCache<TKey, TValue>`, `TellmaCacheOptions`, `core.VersionTags`, the `50412` guard and the bump statements | spec 0013 | tags, caches, the persist re-check |
 | `IStackRegistry`, `StackDescriptor`, `EntityActionDescriptor`, `ApiActionDescriptor`, `[Stack]`, `StackOperations`, `[EntityAction]`, `[ApiAction]`, `[ApiRoute]`, `IEntityValidator<T>`, `SaveContext`, `DeleteContext`, `ActionContext`, `IPersistEffect<T>`, `SavePersistContext<TEntity>`, `ValidationErrors` | spec 0015 | securable registration from stacks; the validators; the companion `UserStamps` insert (§8.2) |
 | `RequestContext`, `IRequestContextAccessor`, `IRequestContextInitializer`, `RequestContextInputs`, `TenantState`, `PrincipalKind`, `ITenantProvisioningStep`, `TenantProvisioningContext` | spec 0011 | the connect initializer, ReadOnly premises, the bootstrap step |
@@ -154,8 +164,8 @@ model configuration of the six tables, and the singleton `ISecurableRegistry`, s
   never touches a top-level entity row. The two documented exceptions (spec 0012 §2.1) are the
   prologue's `Invited → Joined` flip (§7.3) and the outbox's pre-mark, settle and delivery update
   (`OutboxStatements`, spec 0022 §5, §6).
-- **Fingerprint** — the deployment-derived hash of the securables registry (§4.4). It changes only
-  on deploy and travels in `me`; it is never stored in a tenant database.
+- **Fingerprint** — the deployment-derived hash of the securables registry (§4.1). It changes only
+  on deploy and is never stored in a tenant database.
 - **Format version** — a `const int` per cached shape (`UserAccess.FormatVersion = 1`), bumped by
   hand when the shape changes; a mismatch is a cache miss, and the SPA's copy, which outlives
   deploys, is guarded the same way.
@@ -170,8 +180,10 @@ model configuration of the six tables, and the singleton `ISecurableRegistry`, s
 - **Action** — a PascalCase identifier ≤ 32 characters. Platform set: `Read` (query, details, export
   in any format), `Save` (create and update, import included), `Delete` (by ids, by query, with
   descendants), `Activate` (both directions), `Invite`, `Preferences` (another user's bag, spec
-  0018), `Credentials` (a service account's client, spec 0018), `Retry`, `Cancel`, `Resume`;
-  capability- and service-declared additions follow.
+  0018), `Credentials` (a service account's client, spec 0018), `Retry`, `Cancel`, `Resume`,
+  `Share`, `Publish`, `Transfer`; capability- and service-declared additions follow. The last three
+  govern report definitions and dashboards (spec 0033 §5.2); the `permissions` extra on
+  `reports/get` and `dashboards/get` answers them per row.
 - **Wildcard** — `*` is the only wildcard, valid in either position of a stored permission; the
   registry refuses `*` as a real name. There are no prefix wildcards (`gl.*`).
 - **Display form** in logs, diagnostics and the role editor: `resource:action`. Route segments are
@@ -213,6 +225,9 @@ public static class AccessActions
     public const string Retry = "Retry";
     public const string Cancel = "Cancel";
     public const string Resume = "Resume";
+    public const string Share = "Share";
+    public const string Publish = "Publish";
+    public const string Transfer = "Transfer";
     public const string Wildcard = "*";
 }
 
@@ -228,6 +243,10 @@ public static class CoreResources
     public const string OutgoingEmail = "core.OutgoingEmail";
     public const string Export = "core.Export";
     public const string Import = "core.Import";
+    public const string Assignment = "core.Assignment";              // spec 0028 §2.2
+    public const string ReportDefinition = "core.ReportDefinition";  // spec 0033 §2.2
+    public const string Dashboard = "core.Dashboard";                // spec 0035 §3.2
+    public const string SupportRequest = "core.SupportRequest";      // Read, Delete; spec 0026 §12.6
     public const string Wildcard = "*";
 }
 ```
@@ -379,8 +398,8 @@ it per kind.
 
 ### 3.3 `core.UserStamps` — the non-temporal sibling
 
-The columns that churn (activity, tags, inbox tracking) live beside the temporal row, not on it, so
-that an activity stamp or a cache bump never writes a history row.
+The columns that churn (activity, tags, inbox and assignments tracking) live beside the temporal
+row, not on it, so that an activity stamp or a cache bump never writes a history row.
 
 | Column | Type | Null | Constraints | Notes |
 |---|---|---|---|---|
@@ -389,12 +408,13 @@ that an activity stamp or a cache bump never writes a history row.
 | `PermissionsTag` | `uniqueidentifier` | no | `DF_UserStamps_PermissionsTag NEWID()` | bumped by writes to the user's `RoleMemberships` |
 | `PreferencesTag` | `uniqueidentifier` | no | `DF_UserStamps_PreferencesTag NEWID()` | bumped by writes to the user's own `Users` row, `UserPreferences`, `NotificationPreferences` |
 | `InboxSeenAt` | `datetimeoffset(3)` | yes | | set by spec 0021's `inbox/seen` |
+| `AssignmentsSeenAt` | `datetimeoffset(3)` | yes | | set by spec 0028's `assignments/seen` (spec 0028 §4.2) |
 
 Not temporal; no UDTT; not an entity; exposed to Queryex read-only as `core.UserStamp` (navigation
 `User`) so a report can show `LastActiveAt`. The row is inserted by the companion statement of
 §8.2 in the same batch that inserts the user and by `HasData` for the system user; nothing else
 inserts it, and the prologue's inner join (§7.3) treats a user without one as unknown. `HasData`:
-`(1, NULL, 00000000-0000-0000-0000-000000000001, 00000000-0000-0000-0000-000000000002, NULL)`.
+`(1, NULL, 00000000-0000-0000-0000-000000000001, 00000000-0000-0000-0000-000000000002, NULL, NULL)`.
 
 ### 3.4 `core.UserPreferences` — the opaque bag
 
@@ -407,16 +427,21 @@ inserts it, and the prologue's inner join (§7.3) treats a user without one as u
 Not temporal; **not an entity**: no surrogate id, no sequence, no child synchronisation, no audit;
 absent from the Queryex schema and from Excel. At most `MaxPreferenceKeys` keys per user. The server
 never interprets a value and caches nothing from the bag; the SPA caches the bag and the profile
-under `PreferencesTag`. Pinned quick-access screens are the key `nav.pinned`; an
-administrator-managed default for less technical users is a tenant setting (spec 0013) the client
-merges when the key is absent. The bag is written through this statement over the standalone table
-type `UserPreferenceList (Key varchar(128) PK, Value nvarchar(max))`: by spec 0018's
-`me/preferences/set` and `me/preferences/delete` for the caller, executed with
-`SqlOptions.ForCaller(writes = { core.UserPreferences })` so the epilogue bumps the caller's
-`PreferencesTag`; and by spec 0018's `preferences/set` and `preferences/delete` for a user the
-caller's `core.User × Preferences` grant reaches (§4.2, §5.3), the target's id bound as
-`@tb{b}_p0` in place of `@tm_UserId` and, as a one-row `IdList` TVP, named in `SqlOptions.UserIds`
-so the epilogue bumps the target's:
+under `PreferencesTag`.
+
+- **Pinned pages** are the key `nav.pinned`, whose shape and client are spec 0027 §8.2's. A user
+  without the key starts with no pins, and an administrator may write it through `preferences/set`
+  (spec 0018 §3.5).
+- **The caller's own bag** is written by spec 0018's `me/preferences/set` and
+  `me/preferences/delete`, executed with `SqlOptions.ForCaller(writes = { core.UserPreferences })`
+  so the epilogue bumps the caller's `PreferencesTag`.
+- **Another user's bag** is written by spec 0018's `preferences/set` and `preferences/delete`, for
+  a user the caller's `core.User × Preferences` grant reaches (§4.2, §5.3). The target's id is
+  bound as `@tb{b}_p0` in place of `@tm_UserId` and, as a one-row `IdList` TVP, named in
+  `SqlOptions.UserIds`, so the epilogue bumps the target's tag.
+
+Every writer uses this statement over the standalone table type `UserPreferenceList (Key
+varchar(128) PK, Value nvarchar(max))`:
 
 ```sql
 -- @tm_UserId: the connected user (preferences/set and preferences/delete bind the target as @tb{b}_p0 instead); @tb{b}_t0 : UserPreferenceList
@@ -434,19 +459,27 @@ The full three-statement form is the "replace all" shape; the key cap is asserte
 statement after the `INSERT` (`THROW 50422, N'Users.TooManyPreferenceKeys'`, `MaxPreferenceKeys`
 bound as a parameter) and the value size per item in C# (`Users.PreferenceValueTooLarge`).
 
-Keys fall into two classes the client, never the server, tells apart. **Curated** keys —
-`nav.pinned` — change by an explicit act of the user, or of an administrator holding
-`core.User × Preferences`, and are written at once. **Write-behind** keys — the pages last visited,
-the columns last chosen on a search page, a report's last parameters, the user a document type was
-last forwarded to, each under its own key — change as a side effect of use:
-the SPA applies them locally at once and flushes coalesced per-key writes, on a timer and on page
-hide, and an administrator gains nothing by writing them, since the user's next flush overwrites
-them. Either way the writer stays warm: its own write returns the new `PreferencesTag` in the
-response header (spec 0016), which the SPA adopts while keeping its bag, so only a write from
-another device or an administrator makes a device refetch `me`, which carries the bag (spec
-0016), once, and a refetch overlays the device's unflushed keys onto the fetched bag. The server
-enforces the key grammar, the two caps and spec 0018's per-request checks for every writer and
-interprets nothing; no key is reserved from an administrator.
+Keys fall into two classes the client, never the server, tells apart:
+
+- **Curated keys.** `nav.pinned` changes by an explicit act of the user, or of an administrator
+  holding `core.User × Preferences`, and is written at once.
+- **Write-behind keys.** The pages last visited, the columns last chosen on a search page, a
+  report's last parameters, the user a document type was last forwarded to, each under its own
+  key, change as a side effect of use. The SPA applies them locally at once and flushes them in the
+  background; the flush policy and the platform's key registry are spec 0025 §9. An administrator
+  gains nothing by writing them, since the user's next flush overwrites them.
+
+Either way, a write reaches browsers like this:
+
+- **The writer stays warm.** A write's result carries the full bag and the new `PreferencesTag`
+  (spec 0018 §3.5). The writing tab adopts it as its bag while still showing the keys it has not
+  flushed.
+- **Other writers.** Another device's or an administrator's write reaches a browser as
+  `cache.changed { preferences }` or a newer header tag, and costs that browser one `client/sync`
+  (spec 0025 §5).
+
+The server enforces the key grammar, the two caps and spec 0018's per-request checks for every
+writer and interprets nothing; no key is reserved from an administrator.
 
 ### 3.5 `Role` and `core.Roles`
 
@@ -678,7 +711,7 @@ public sealed record NoActivityStampMetadata();
 | `MarkSensitive` | Adds a pair to the step-up set (§4.3). |
 | `MarkNotSensitive` | Removes a pair from the step-up set, Core's defaults included; marking the same pair both ways is a composition problem. |
 | `Find` | The evaluator's and the validators' resolution; `null` for an unknown pair. |
-| `Fingerprint` | SHA-256 over the sorted `Resource\|Action\|FilterRoot\|IsSensitive` lines; changes only on deploy; travels in `me` so the role editor caches the securables list under it. Never stored in a tenant database. |
+| `Fingerprint` | SHA-256 over the sorted `Resource\|Action\|FilterRoot\|IsSensitive` lines; changes only on deploy and is never stored in a tenant database. The list itself reaches the client through the client metadata's securables section (§10). |
 | `SecurableEndpointMetadata` | Stamped on every projected stack endpoint and on hand-mapped endpoints through spec 0011's `RequireSecurable(resource, action)`; metadata for the startup audit, OpenAPI and step-up — enforcement is spec 0015's pipeline and `IApiActionInvoker`. |
 | `MemberEndpointMetadata` | Any connected active member; no securable. Stamped by `[ApiAction(MemberOnly = true)]` and `AllowMember`; metadata for the startup audit, OpenAPI and step-up — enforcement is spec 0015's pipeline and `IApiActionInvoker`. |
 | `NoActivityStampMetadata` | Polling endpoints; the prologue binds `@tm_StampActivity = 0`. |
@@ -721,9 +754,14 @@ below the bar, and spec 0015's pipeline raises `StepUpRequiredException` through
 
 ### 4.4 The registry as data source and oracle
 
-The registry is the role editor's data source (the SPA labels its resource and action keys from
-spec 0013's string pack), the validators' oracle (§3.7), and the drift oracle
-(§9). `Alias` entries resolve on `Find` only; `All` lists registered names.
+The registry serves three readers:
+
+- **The role editor's data source**, through the securables section of the client metadata, with
+  emitted label keys (§10, spec 0032 §12.4).
+- **The validators' oracle** (§3.7).
+- **The drift oracle** (§9).
+
+`Alias` entries resolve on `Find` only; `All` lists registered names.
 
 ### 4.5 Startup validation
 
@@ -866,7 +904,7 @@ state. For a securable `(R, A)`:
    never grants a non-filterable action.
 4. Any unfiltered candidate → `Unrestricted`; `Grants` lists every candidate.
 5. Otherwise leaves = the distinct `(Filter, FilterLanguageVersion)` pairs of the candidates, sorted
-   ordinally by text then by stamp, each as `FilterTree.Leaf(text, stamp)` (spec 0012 §11.2), plus
+   ordinally by text then by stamp, each as `FilterTree.Leaf(text, stamp)` (spec 0010 §F.6), plus
    the `Filter` tree of every bespoke criterion whose `Action` equals `A` or `*`. Empty → `Denied`
    (`Grants` empty; `Problems` = the excluded rows that would have matched). Otherwise `Filtered`
    with `Filter = FilterTree.Or(leaves)`; `Grants` = the filtered candidates and one
@@ -918,9 +956,12 @@ Stated here because this spec owns the semantics; spec 0015 implements them:
   a traversal, and the same knowing bypass of the row filter: a document's customer name is
   visible to whoever can see the document.
 - FK references in a save are validated under the target's `Read` filter (spec 0015).
-- Users, jobs, exports, imports and notifications are self-scoped by a bespoke criterion that
-  their owning spec's `IAccessCriteriaProvider` supplies (spec 0018 §3.2, spec 0020 §11.2,
-  spec 0019 §12.1, spec 0021 §2.2), so a caller with no stored grant sees their own rows.
+- Some entities are self-scoped by a bespoke criterion that their owning spec's
+  `IAccessCriteriaProvider` supplies, so a caller with no stored grant sees their own rows: users
+  (spec 0018 §3.2), jobs (spec 0020 §11.2), exports and imports (spec 0019 §12.1), notifications
+  (spec 0021 §2.2), assignments (spec 0028 §2.2) and support requests (spec 0026 §12.3). Report
+  definitions and dashboards take their bespoke criteria from spec 0033 §5.3's sharing rules
+  instead.
 - An enlisted group (spec 0015 §13.3) carries no decision of its own: the host operation's decision
   — its securable, the job's run-as scope or the step's system scope — authorises every group in the
   frame, and no pre-check or post-check runs over enlisted rows.
@@ -942,7 +983,7 @@ A child entity exposed as a query root (a read-only reporting stack over `RoleMe
 invoice lines) is a securable in its own right. Its securable declares its owner,
 `Owner = (OwnerResource, OwnerNavigation)` — `core.RoleMembership` → (`core.User`, `User`) — and a
 caller's permissions for `(C, A)` are their own grants on `(C, A)` **plus** their grants on
-`(OwnerResource, A)`, rebased through `FilterTree.Via(navigation, inner)` (spec 0012 §11.2), under
+`(OwnerResource, A)`, rebased through `FilterTree.Via(navigation, inner)` (spec 0010 §F.7), under
 which every path in `inner` resolves from the navigation's target. The evaluator decides
 `(OwnerResource, A)` first, recursively, since the owner may itself be a child with an owner (an
 owner pair the registry does not hold is `Denied`), and passes that decision to `Decide`, which
@@ -1030,7 +1071,7 @@ granted a permission a moment ago is admitted within one window, never after `Pe
 public sealed record UserProfile(
     string Name, string? Name2, string? Name3, string? Email, string? ContactEmail, string? ContactMobile,
     int? ImageId, int? SignatureId, string? PreferredLanguage, string? PreferredCalendar,
-    string? PreferredTimeZone, Gender? Gender);
+    string? PreferredTimeZone, Gender? Gender, DateTimeOffset ModifiedAt);   // ModifiedAt: the row's stamp, for me/save
 
 public sealed record ConnectedUser(
     int UserId, UserKind Kind, UserState State, UserProfile Profile, Guid PreferencesTag, UserAccess Access,
@@ -1099,7 +1140,7 @@ engine and `@tb` for per-statement platform names. Distribution SQL uses none of
 |---|---|---|
 | `@tm_Subject` | `varchar(255)` | `ForSubject.Subject`: the caller's `sub`; a service account's client id when `Kind = Service` |
 | `@tm_UserId` | `int` | `ForUser.UserId`, in that variant only: bound as a parameter instead of declared; the resolve reads `WHERE U.[Id] = @tm_UserId` |
-| `@tm_StampActivity` | `bit` | `ForSubject.StampActivity`: 0 under `NoActivityStampMetadata`, within the throttle memo and on `ReadOnly` tenants; 0 in the `ForUser`/`ForSystem` variants |
+| `@tm_StampActivity` | `bit` | `ForSubject.StampActivity`: 0 under `NoActivityStampMetadata`, for a background request (§7.8), within the throttle memo and on `ReadOnly` tenants; 0 in the `ForUser`/`ForSystem` variants |
 | `@tm_AllowFlip` | `bit` | `ForSubject.AllowStateFlip`: 0 on `ReadOnly` tenants; 0 in the `ForUser`/`ForSystem` variants |
 | `@tm_ExpectedUserId` | `int` | `ForSubject.ExpectedUserId`: the cached user id, `NULL` on the cold path; `ForUser.UserId` in that variant |
 | `@tm_ExpectedPermissionsTag` | `uniqueidentifier` | `Expected.PermissionsTag`: the cached set's tenant tag; `NULL` when not cached |
@@ -1170,7 +1211,7 @@ IF (@tm_PermissionsStale = 1 OR @tm_ReloadPermissions = 1) AND @tm_UserId IS NOT
 
 -- Result set 3: the caller's profile. Present iff ProfileStale = 1.
 IF @tm_ProfileStale = 1 AND @tm_UserId IS NOT NULL AND @tm_IsActive = 1
-    SELECT [Name], [Name2], [Name3], [Email], [ContactEmail], [ContactMobile], [ImageId], [SignatureId], [PreferredLanguage], [PreferredCalendar], [PreferredTimeZone], [Gender]
+    SELECT [Name], [Name2], [Name3], [Email], [ContactEmail], [ContactMobile], [ImageId], [SignatureId], [PreferredLanguage], [PreferredCalendar], [PreferredTimeZone], [Gender], [ModifiedAt]
     FROM [core].[Users] WHERE [Id] = @tm_UserId;
 
 -- Settings load: the two statements of spec 0013 §5.7, absorbed from its Order-60 contributor and placed here under IF @tm_SettingsStale = 1 OR @tm_LoadSettings = 1; the contributor reads their sets from this result.
@@ -1245,7 +1286,7 @@ lock only, so no update lock ever serialises a tenant's saves on it.
 | Role save | 2 | (1) prologue; the roles' before images with their permissions (the stamp rule, §3.7), the roles' members; the caller's set is in memory — (2) persist; bump; guards |
 | "Can I, and why" for the caller | 0 | in memory |
 | "Can I, and why" for another user | 2 | (1) prologue; the target row under the caller's `core.User × Read` decision — (2) that user's rows through a `ConnectPremises.ForUser`, once per scope (§5.1) |
-| `me` at application start | 1 | prologue; the caller's preference bag |
+| `me` | 1 | prologue; the caller's preference bag |
 
 "+1" applies on the cold or stale path: exactly one extra round trip, once per user per instance or
 after eviction; "+2" when the persist re-check fires (§7.6: the cold re-connect and the recomposed
@@ -1293,9 +1334,15 @@ tenant endpoint filter and in job scopes): for `PrincipalKind.User` and `Service
 0011's scope factory builds from a `RequestContextSnapshot` carries the user id; §7.1), and returns
 the context with `UserId` bound and the member witness recorded; for `System` it calls
 `ConnectAsSystem()`; for `Anonymous` on a tenant endpoint it throws `TenantNotFoundException`. On a
-request it composes a `ConnectPremises.ForSubject` (`Cold` or `For`, §7.1) from the tenant state
-(`ReadOnly` → both flags `false`), the endpoint's `NoActivityStampMetadata`, and the throttle memo;
-a job scope's `ForUser` premises stamp nothing and flip nothing (§7.2). Spec 0013's negotiation
+request it composes a `ConnectPremises.ForSubject` (`Cold` or `For`, §7.1) from:
+
+- **The tenant state.** `ReadOnly` sets both flags `false`.
+- **The endpoint.** `NoActivityStampMetadata` sets `StampActivity = false`.
+- **The request.** A `Tellma-Activity: background` header on a read or an idempotent action (spec
+  0016 §6.1) sets `StampActivity = false`: a polling tab is not a user at work.
+- **The throttle memo** of §7.1.
+
+A job scope's `ForUser` premises stamp nothing and flip nothing (§7.2). Spec 0013's negotiation
 initializer at `Order` 200 then reads `User.PreferredLanguage/PreferredCalendar/PreferredTimeZone`
 from the connected profile.
 
@@ -1331,8 +1378,8 @@ emitter's `@tb{b}_new` (spec 0015 §13.1). An action or a delete inserts no user
 no statement. `@tm_tag` is the batch's bump Guid:
 
 ```sql
-INSERT [core].[UserStamps] ([UserId], [LastActiveAt], [PermissionsTag], [PreferencesTag], [InboxSeenAt])
-SELECT N.[Id], NULL, @tm_tag, @tm_tag, NULL
+INSERT [core].[UserStamps] ([UserId], [LastActiveAt], [PermissionsTag], [PreferencesTag], [InboxSeenAt], [AssignmentsSeenAt])
+SELECT N.[Id], NULL, @tm_tag, @tm_tag, NULL, NULL
 FROM @tb{b}_new AS N
 WHERE NOT EXISTS (SELECT 1 FROM [core].[UserStamps] AS S WHERE S.[UserId] = N.[Id]);
 ```
@@ -1459,13 +1506,18 @@ A permission row **drifts** — grants nothing, fail closed — when:
 | `Validate` reports any diagnostic against the tenant's current schema — a renamed column, a removed navigation, a language-gated `Name3` on a bilingual tenant | `FilterInvalid` (with the diagnostics) |
 
 A drifted row never affects the user's other rows: an administrator whose one broken permission
-removed all their access could not fix it. It is listed in `UserAccess.Problems`; surfaced in the
-"why" answer (§10); returned by the role details read as a per-permission diagnostic (code and
-location per spec 0008 §14) through spec 0018's `RoleService`, which the role editor renders as a
-banner; logged once per `(permission id, code)` per tag cycle (`AccessEvents.PermissionDrift`,
-Warning); counted on `tellma.access.permissions.unresolved{problem}`; and listed by the post-deploy
-drift report. `*/*` grants never drift. A rename ships an `Alias` for one release and a data
-migration that rewrites the strings; there is no shim and no tenant-wide block. A securable removed
+removed all their access could not fix it. A drifted row is reported in three places:
+
+- **Evaluation.** It is listed in `UserAccess.Problems` and surfaced in the "why" answer (§10).
+- **The role editor.** The Role stack's details extra `problems` (spec 0018 §4) returns it as a
+  per-permission diagnostic (code and location per spec 0008 §14); the role editor renders it as a
+  banner and row markers.
+- **Operations.** It is logged once per `(permission id, code)` per tag cycle
+  (`AccessEvents.PermissionDrift`, Warning), counted on
+  `tellma.access.permissions.unresolved{problem}`, and listed by the post-deploy drift report.
+
+`*/*` grants never drift. A rename ships an `Alias` for one release and a data migration that
+rewrites the strings; there is no shim and no tenant-wide block. A securable removed
 by a new deployment while an N−1 instance still runs is accepted by the old instance and drifted by
 the new one; the union during the rollout window is bounded by the old version's semantics.
 
@@ -1486,16 +1538,24 @@ notices. The scan is read-only and takes no lock.
 
 ## 10. "Can I, and why"
 
+This section fixes what a caller can learn about access: their own decisions through `me`, any
+decision with its reasons through `access/check`, and the deployment's securables through the
+client metadata.
+
 - **`me`** — spec 0018's `UserService.Me` (member-only, idempotent, POST) returns spec 0016 §3.4's
-  `MeResult`: the connected profile (`UserProfileView`), the caller's `PreferencesTag` as a wire
-  tag, the caller's preference bag (§3.4), `AccessSummary(Tag, FormatVersion, IsSystem, Securables:
-  list<SecurableSummary(Resource, Action, HasFilter)>, Problems)` computed from `EvaluateAllAsync()`
-  (one entry per registered securable the caller is allowed), the four wire tags (`settings`,
-  `permissions`, `preferences`, `entities`) exactly as `Tellma-Version-Tags` carries them, and the
-  registry `Fingerprint`. The SPA's first call after sign-in and its refresh call whenever a
-  response's `Tellma-Version-Tags` header (spec 0016) carries a tag the SPA does not hold (§3.4
-  for the `preferences` tag after its own write). One round trip, which is also the cold
-  prologue's.
+  `MeResult`:
+  - the connected profile (`UserProfileView`);
+  - the caller's `PreferencesTag` as a wire tag and the caller's preference bag (§3.4);
+  - `AccessSummary(Tag, FormatVersion, IsSystem, Securables: list<SecurableSummary(Resource,
+    Action, HasFilter)>, Problems)`, computed from `EvaluateAllAsync()` (one entry per registered
+    securable the caller is allowed), whose `Tag` is spec 0013 §2.7's composite `permissions` wire
+    tag;
+  - the four wire tags (`settings`, `permissions`, `preferences`, `entities`) exactly as
+    `Tellma-Version-Tags` carries them.
+
+  The SPA receives the same `MeResult` from spec 0025's `client/sync` (spec 0025 §5.1) whenever
+  its held `preferences` or `permissions` tag differs; `users/me` serves other callers (the MCP
+  server's `tellma_whoami`). One round trip, which is also the cold prologue's.
 - **`access/check`** — spec 0018's `AccessService.Check` (route `access/check`, member-only,
   idempotent) takes spec 0016's `AccessCheckRequest(UserId?, Securables: list<SecurableRef>)` and
   returns one `AccessDecision` per securable: outcome, the composed filter rendered for display,
@@ -1505,6 +1565,21 @@ notices. The scan is read-only and takes no lock.
   × `Read` on that user's row (filtered) and `core.Role` × `Read` (effective grants are role-editor
   information), costs two round trips (the visibility read, then the one `ForUser` load every
   `EvaluateFor` of the request shares; §5.1, §7.5), and never records a witness for the target.
+- **The securables section of the client metadata** — `SecurablesClientAssetContributor`, spec
+  0024 §3.2's `IClientAssetContributor` registered by `CoreFeature` (§1.2), writes one
+  `ClientSecurable` per entry of `ISecurableRegistry.All` as the `securables` section of the Core
+  chunk. The list changes only on deploy, so it caches with the build while `me` carries only the
+  caller's decisions.
+
+```csharp
+// Tellma.Core.Abstractions.Access — one per registered securable; the SPA's TmSecurableMetadata mirrors it in camelCase
+public sealed record ClientSecurable(
+    string Resource, string Action, string? FilterRoot, bool IsSensitive, string Feature,
+    SecurableOwner? Owner,                                   // a child securable's owner (§5.5)
+    string ResourceLabelKey, string? ResourceLabelFallback,  // keys and fallbacks resolved at emit (spec 0032 §12.4)
+    string ActionLabelKey, string? ActionLabelFallback);
+```
+
 - **`IAdministratorDirectory`** — the recipients of administrative notices:
 
 ```csharp
@@ -1516,9 +1591,8 @@ public interface IAdministratorDirectory
 ```
 
 - **MCP** — spec 0016's `tellma_whoami` carries the `me` payload compacted to the user (id, name,
-  email, locale), the tenant, the securables fingerprint, the version tags, and entities with
-  their operations and actions outside the step-up set (§4.3) and which of them are filtered;
-  `tellma_check_access` is reserved.
+  email, locale), the tenant, the version tags, and entities with their operations and actions
+  outside the step-up set (§4.3) and which of them are filtered; `tellma_check_access` is reserved.
 
 ## 11. Bootstrap
 
@@ -1656,6 +1730,8 @@ through the platform JSON options. Both escalation rules and every validator cod
 stamp, below `Minimum`), engine diagnostics → `Permissions.FilterInvalid`, wildcard root resolution.
 The resource and action grammar. Registry freezing, duplicates, aliases, `MarkNotSensitive` removing
 a Core default, a pair marked both ways refused, `Fingerprint` stability across registration order.
+The securables section against a golden: one `ClientSecurable` per registered securable, owners
+and label keys included.
 The startup audit over an in-memory `EndpointDataSource` (an endpoint naming an unregistered
 securable, a child-entity `FilterRoot` without `Owner`; the endpoint-shape rules are spec 0011's).
 The prologue reader against scripted result sets: every presence combination of sets 2–3 and the
@@ -1671,7 +1747,8 @@ stale settings served on a read and refused on a validate with the rows in the s
 stale profile, unknown subject, deactivated, `ConnectPremises.ForUser` and `ForSystem`, the join
 flip exactly once under two concurrent first requests, and a service account resolved by its client
 id. `State` derived from its evidence for every kind and `Kind` write-once. The throttled stamp
-writes once per minute under 1,000 requests and `core.UsersHistory` gains zero rows from traffic.
+writes once per minute under 1,000 requests and `core.UsersHistory` gains zero rows from traffic;
+a read carrying `Tellma-Activity: background` stamps nothing.
 Tag bumps for every declared write path (role save → `permissions`; membership save → that user's
 `PermissionsTag` only; user save → that user's `PreferencesTag`; the bag statement →
 `PreferencesTag`) and none for `core.Users`-only writes on `permissions`. The companion `UserStamps`
@@ -1700,7 +1777,8 @@ filter names.
   composition contract of §5.2 pinned by the `Decide` suite; the caches and the deny re-check of §6;
   the prologue, re-checks, runner, round-trip table and failure modes of §7 pinned end to end;
   the guards and validators of §8 including both escalation rules; the drift policy of §9 with the
-  scanner; the `me`/`access/check` semantics of §10 (endpoints by spec 0018); the bootstrap of §11.
+  scanner; the `me`/`access/check` semantics and the securables section of §10 (endpoints by spec
+  0018); the bootstrap of §11.
 - **Observability**: every instrument of §13 emitted and asserted through `MetricCollector<T>`;
   every `AccessEvents` id asserted with a capturing logger.
 - **CI**: unit and integration suites green on every PR on both platforms.
@@ -1710,8 +1788,9 @@ filter names.
   securables with a Core default set that step-up reads). Public XML docs and error messages
   reference no `docs/` paths, per repo rule.
 - **Not in scope of done**: `UserService`, `RoleService`, `AccessService` and every endpoint (spec
-  0018); the executor, emitter and engine amendments (spec 0012); `core.VersionTags` and the
-  epilogue (spec 0013); the pipeline's use of the decision (spec 0015); status mapping (spec 0016).
+  0018); the executor and emitter (spec 0012); the engine amendments (spec 0010 Part F);
+  `core.VersionTags` and the epilogue (spec 0013); the pipeline's use of the decision (spec 0015);
+  status mapping (spec 0016).
 
 ## Decisions record
 
@@ -1779,6 +1858,10 @@ The load-bearing decisions, where not already evident above:
 26. **Access grants and connect premises are record hierarchies** — each case carries only the
     members it has: a role grant its permission, role and filter stamp, a bespoke grant its reason,
     a subject connect its two flags, a system connect its settings tag alone (§5.1, §7.1).
+27. **The securables list travels in the client metadata, not in `me`** — it changes only on
+    deploy, so it caches with the build and `me` carries only the caller's decisions (§10).
+28. **A background request stamps no activity** — a polling tab must not make an idle user look
+    active (§7.8).
 
 ## Review flags
 

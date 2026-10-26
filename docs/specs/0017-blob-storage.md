@@ -192,15 +192,25 @@ public static class AzureBlobsComposition
 | `AddFileSystemBlobStore` / `AddAzureBlobStore` | Register the one `IBlobStore` singleton; both or neither is a composition problem. `AddAzureBlobStore` never constructs a credential: production passes a `ManagedIdentityCredential`, local development a connection string for Azurite. |
 | `FeatureContribution.BlobKind(kind, configure)` | The feature-level form of `BlobsBuilder.Kind` (spec 0011's `BlobKindContributionItem`); a pack transforms the policy of a kind its entity declares. |
 
-The blob feature is part of `CoreFeature` (spec 0011's `ITellmaFeature`): it contributes the
+The blob feature is part of `CoreFeature` (spec 0011's `ITellmaFeature`). It contributes the
 `Blob` model configuration, the two validators/effects per `[BlobReference]` column, the two job
 handlers, the two built-in schedules (§7.4), the provisioning step (§6.4) and the startup check
-(§9). The kinds shipped by Core are declared by attributes on Core entities: `user-image`
-(`User.ImageId`, spec 0014; `Avatar`, `AnyMember`), `user-signature` (`User.SignatureId`, spec
-0014; `Signature`, `AnyMember`), `export-file` (`Export.FileId`, spec 0019), `import-file`
-(`Import.FileId`, spec 0019) and `email-attachment` (`OutgoingEmailAttachment.FileId`, spec 0022
-§2.1), the last three `Attachment` with `OwnerRead`. `CoreFeature`'s `BlobKind` transform turns off
-`email-attachment`'s thumbnail (spec 0022 §9.3).
+(§9).
+
+Core declares the kinds it ships by attributes on Core entities:
+
+| Kind | Property | Preset | Read access |
+|---|---|---|---|
+| `user-image` | `User.ImageId` (spec 0014) | `Avatar` | `AnyMember` |
+| `user-signature` | `User.SignatureId` (spec 0014) | `Signature` | `AnyMember` |
+| `export-file` | `Export.FileId` (spec 0019) | `Attachment` | `OwnerRead` |
+| `import-file` | `Import.FileId` (spec 0019) | `Attachment` | `OwnerRead` |
+| `email-attachment` | `OutgoingEmailAttachment.FileId` (spec 0022 §2.1) | `Attachment` | `OwnerRead` |
+| `support-bundle` | `SupportRequest.BundleId` (spec 0026 §12.4) | `Attachment` | `OwnerRead` |
+
+Two kinds are narrowed after the preset. `CoreFeature`'s `BlobKind` transform turns off
+`email-attachment`'s thumbnail (spec 0022 §9.3), and spec 0026 §12.4 narrows `support-bundle`'s
+policy.
 
 *Illustration* (a distribution that composes the store and processor itself instead of the Azure
 bundle, running in Development, where `RootPath` takes its default of §6.2):
@@ -306,15 +316,26 @@ public enum BlobReadAccess { OwnerRead, AnyMember }
 | `Preset` | The `BlobKindPolicy` preset the kind starts from; `MaxSizeBytes` above 0 narrows `MaxSize` (0 keeps the preset's; an attribute argument cannot be a nullable value type) and `ReadAccess` sets the download policy without host code; `BlobsBuilder.Kind` transforms the policy. |
 | `ReadAccess` | `OwnerRead`: the caller must pass the owner resource's `Read` grant with its row-level filter (default). `AnyMember`: any active member of the tenant. |
 
-The attribute is the single declaration of the capability. From it the platform derives: the
-column shape (`int NULL`, `FK_<Table>_<Column> → core.Blobs(Id)` NO ACTION, `UX_<Table>_<Column>`
-filtered `WHERE <Column> IS NOT NULL` (one owner row per blob), per spec 0012's standard column
-sets), the Queryex navigation, `EntityMetadata.BlobReferences` (spec 0012's
-`BlobReferenceMetadata(Property, Kind, Policy)`), the kind registration, the attach validator and
-the confirm/release effect (§4), the download authorisation (§5), and the Excel exclusion (spec
-0019). The property's ownership is `Editable`: the client writes it, the validator enforces the
-attach rule. No permission action is added — uploading needs membership, attaching needs the
-owner's `Save` grant, downloading needs the owner's `Read` grant.
+The attribute is the single declaration of the capability. From it the platform derives:
+
+- **The column shape**, per spec 0012's standard column sets: `int NULL`,
+  `FK_<Table>_<Column> → core.Blobs(Id)` NO ACTION, and `UX_<Table>_<Column>` filtered
+  `WHERE <Column> IS NOT NULL` (one owner row per blob).
+- **The Queryex navigation.**
+- **The server metadata:** `EntityMetadata.BlobReferences` (spec 0012's
+  `BlobReferenceMetadata(Property, Kind, Policy)`).
+- **The kind registration.**
+- **The attach validator and the confirm/release effect** (§4).
+- **The download authorisation** (§5).
+- **The Excel exclusion** (spec 0019).
+- **The client policy** on the property, in the client metadata's entity section (spec 0029 §16:
+  `accept`, `maxSize`, `image`, `thumbnail`, `readAccess`). The SPA uses it to pre-check a file's
+  size and type before uploading. It requests `thumb` only when the row's `Variants` lists it. The
+  server stays the authority (§3.3).
+
+The property's ownership is `Editable`: the client writes it, and the validator enforces the
+attach rule. No permission action is added. Uploading needs membership, attaching needs the
+owner's `Save` grant, and downloading needs the owner's `Read` grant.
 
 ### 2.4 Kind policies
 
@@ -750,11 +771,17 @@ securable root (spec 0014 §5.5).
 | `OwnerRead` | the column predicate conjoined with the caller's `Read` filter on the owner resource | a caller who can read the owner row |
 | `AnyMember` | the column predicate only | any connected active member |
 
-`user-image` and `user-signature` are `AnyMember`: avatars render on documents everywhere, and a
-signature is layered as a transparent PNG over the approval stamp of any document the member can
-read. `export-file` and `import-file` are `OwnerRead` (the `Exports`/`Imports` rows are self-scoped
-by spec 0019); `email-attachment` is `OwnerRead` through its parent `core.OutgoingEmail`, which only
-administrators read by default (spec 0022 §8).
+The read access of the Core kinds (§1.3), and why:
+
+- **`user-image` and `user-signature`: `AnyMember`.** Avatars render on documents everywhere, and
+  a signature is layered as a transparent PNG over the approval stamp of any document the member
+  can read.
+- **`export-file` and `import-file`: `OwnerRead`.** The `Exports`/`Imports` rows are self-scoped
+  by spec 0019.
+- **`email-attachment`: `OwnerRead`** through its parent `core.OutgoingEmail`, which only
+  administrators read by default (spec 0022 §8).
+- **`support-bundle`: `OwnerRead`** through `core.SupportRequest`. Its submitter and holders of
+  `core.SupportRequest × Read` read it (spec 0026 §12.6).
 
 ### 5.3 The endpoint
 
@@ -994,15 +1021,21 @@ the cookie policy; `MapTellma` calls it. Each carries `MemberEndpointMetadata` t
 
 | Endpoint | Metadata | Request | Response |
 |---|---|---|---|
-| `POST /{tenantId}/blobs/{kind}?fileName=` | `AllowMember`, `WithMutation(true)`, `AcceptsBinary(BlobOptions.MaxUploadSize)`; `Tellma-Client` required (the CSRF control of spec 0011) | raw body; `Content-Type` = the declared type; `Content-Length` required (411 `Blob.LengthRequired` otherwise); `fileName` ≤ 255 characters | `201 Created`, body `BlobDescriptor`, `Location: /{tenantId}/blobs/{kind}/{id}` |
+| `POST /{tenantId}/blobs/{kind}?fileName=` | `AllowMember`, `WithMutation(true)`, `AcceptsBinary(BlobOptions.MaxUploadSize)`; `Tellma-Client` required (below) | raw body; `Content-Type` = the declared type; `Content-Length` required (411 `Blob.LengthRequired` otherwise); `fileName` ≤ 255 characters | `201 Created`, body `BlobDescriptor`, `Location: /{tenantId}/blobs/{kind}/{id}` |
 | `GET /{tenantId}/blobs/{kind}/{id}?variant=&download=` | `AllowMember`, `WithMutation(false)`, rate policy `tellma-blobs` (spec 0016 §8.2); exempt from `Tellma-Client` | `If-None-Match`, `Range` and `If-Range` honoured | `200` stream, `206` range, `304` or `416`; headers per §5.3 |
 
-The upload is deliberately single-file — the one named exception to the platform's bulk-shaped
-API: bytes are bandwidth-bound, parallel single-file requests use the pipe better than one
-multipart body, and errors and retries are per file. The store contract stays batch-shaped. The
-endpoint is not an `[ApiAction]`: it is hand-mapped, appears in no stack descriptor, and MCP
-reaches it later through the reserved `tellma_upload` tool. The tenant-state verdicts of spec 0011
-apply: an upload on a `ReadOnly` tenant is 403 `tenant-read-only`; a download succeeds.
+- **Single-file upload.** The upload is deliberately single-file, the one named exception to the
+  platform's bulk-shaped API. Bytes are bandwidth-bound, parallel single-file requests use the pipe
+  better than one multipart body, and errors and retries are per file. The store contract stays
+  batch-shaped.
+- **Not an `[ApiAction]`.** The endpoint is hand-mapped and appears in no stack descriptor. MCP
+  reaches it later through the reserved `tellma_upload` tool.
+- **`Tellma-Client` on upload.** The upload requires the CSRF header of spec 0011 §5.4. The binary
+  metadata waives only the JSON content-type rule, so a request without the header is 403
+  `csrf-rejected`. The SPA uploads through spec 0024 §10.1's `TmApi.upload`, which sends
+  `Tellma-Client` like every other write.
+- **Tenant state.** The tenant-state verdicts of spec 0011 apply: an upload on a `ReadOnly` tenant
+  is 403 `tenant-read-only`, and a download succeeds.
 
 ### 8.2 Errors
 
