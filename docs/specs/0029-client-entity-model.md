@@ -23,12 +23,12 @@ Other specs that carry parts of this design:
 
 - spec 0012 §2.5, §3.1, §3.2 — `[DisplayNameSource]`, the related projection's minimum, `IDisplayNames`.
 - spec 0013 §7.6, §10.1 — label chains, key-resolving twins; action, Queryex and display-name keys.
-- spec 0014 §10 — the securables section of the Core chunk.
+- spec 0014 §10, spec 0032 §12.4 — the securables section of the Core chunk and its label chains.
 - spec 0015 §2.2, §5.2, §7.3, §11.2 — descriptor `DisplayName`, traversal, `Query.PathNotReachable`, `[EntityRef]`.
 - spec 0016 §2.4, §3.4, §3.5 — the `queryex/discover` route, `QueryDiagnostic` and `AccessSummary`, the row set.
 - spec 0017 §2.3, spec 0019 §4.1 — blob kind policies; export columns through `IDisplayNames`.
-- spec 0024 §3.2, §4.4, Appendix A — the emit's contributors, the route host's `load()`, config problem codes.
-- spec 0010 §E.1, §E.3, §F.9, §F.15 — two-line picker rows, page `context`, level navigations, `ComparedWith`.
+- spec 0024 §3.2, §4.4, §10.1, §10.4, Appendix A — the emit's contributors, the route host's `load()`, `TmId`, `TmDecimal` and plain JSON, config problem codes.
+- spec 0010 §D.4, §E.1, §E.3, §F.13, §F.14 — the zone label, two-line picker rows, page `context`, `ComparedWith`, discovery's `Measures`.
 - spec 0031 §10.4 — `TmEntityActions` and the generated action dialog, shipped in `/entity`.
 
 ## Goals / Non-goals
@@ -91,8 +91,6 @@ documentation comments, bodies and cancellation tokens are omitted.
 - *Select plan* — the query terms a list of column keys expands to (§6).
 - *Restricted entity* — one whose `Read` the user holds with a filter, or not at all: not
   `can(E, 'Read')`, or `filtered(E, 'Read')` (§7).
-- *Level navigation* — `Level{j}` on a tree entity: the ancestor at depth `j` (spec 0010 §F.9). Its
-  navigation descriptor has `level` set (§4.3).
 - *Slash label* — a path's segment labels joined with " / " (§11.4).
 - *Value descriptor* — the type facts that choose a value's format and control (§12.1).
 - *Hatch* — an escape hatch that replaces generated UI with hand-written code (spec 0024 §2.5).
@@ -135,7 +133,8 @@ internal sealed class EntityClientAssetContributor : IClientAssetContributor
 ```ts
 type TmEntityOperation = 'query' | 'details' | 'save' | 'delete' | 'import' | 'export';
 type TmDataType = 'string' | 'integer' | 'decimal' | 'float' | 'bool' | 'date' | 'datetime' | 'instant' | 'time' | 'guid' | 'enum' | 'json' | 'binary';
-// date: DateOnly; datetime: DateTime (wall clock); instant: DateTimeOffset; float, time, json, binary are never queryable
+// integer: int, short, byte or long; date: DateOnly; datetime: DateTime (wall clock); instant: DateTimeOffset;
+// float, time, json, binary are never queryable
 
 interface TmEntitySummary {                          // Core chunk, eager
   readonly name: string; readonly segment: string | null; // name: 'gl.Center'; segment: 'centers', a child's query segment, null for read-only roots
@@ -145,14 +144,13 @@ interface TmEntitySummary {                          // Core chunk, eager
   readonly kind: 'stack' | 'child' | 'readonly'; readonly icon?: string; // icon: from the merged declaration (§3), never emitted
 }
 interface TmEntityMetadata extends TmEntitySummary { // Entities chunk
-  readonly key: { readonly property: string; readonly type: 'int' | 'long' };
+  readonly key: { readonly property: string; readonly type: 'int' | 'long' }; // ids: a number for 'int', a TmDecimal for 'long'
   readonly owner?: { readonly entity: string; readonly navigation: string; readonly collection: string }; // set on child entities
   readonly properties: readonly TmPropertyMetadata[]; readonly navigations: readonly TmNavigationMetadata[];
   readonly children: readonly TmChildMetadata[]; readonly actions: readonly TmActionMetadata[];
   readonly relatedSelect: readonly string[];         // the related projection (spec 0012 §2.5)
   readonly defaultOrderBy: string;                   // StackDescriptor.DefaultOrderBy ?? 'Id desc'
   readonly searchable: readonly string[]; readonly naturalKeys: readonly string[]; // searchable: spec 0015 §5.2.1
-  readonly treeLevels: number;                       // Level1 … Level{n}; 0 when not a tree
   readonly extras: readonly string[];                // details extra names; all eager (spec 0015 §5.3)
   readonly limits: { readonly maxTake: number; readonly countCap: number; readonly maxSkipWindow: number;
     readonly maxSearchLength: number; readonly maxIds: number; readonly maxExtras: number };
@@ -160,6 +158,7 @@ interface TmEntityMetadata extends TmEntitySummary { // Entities chunk
 interface TmPropertyMetadata {
   readonly name: string; readonly json: string;      // name: 'CreditLimit' (Queryex, labels, declarations); json: 'creditLimit' (wire)
   readonly type: TmDataType; readonly queryable: boolean; readonly nullable: boolean; readonly unique?: true;
+  readonly long?: true;                              // an integer that is a C# long: its values are TmDecimal (§12.2)
   readonly labelKey: string; readonly labelFallback?: string; readonly excel: boolean; // excel: false under [ExcludeFromExcel]
   readonly ownership: 'editable' | 'write-once' | 'server-owned' | 'derived' | 'database-owned'; // §12.2
   readonly maxLength?: number; readonly precision?: number; readonly scale?: number; readonly enum?: TmEnumMetadata;
@@ -326,11 +325,11 @@ interface TmEntityDescriptor extends Omit<TmEntityMetadata, 'properties' | 'navi
   readonly actions: readonly TmEntityActionDescriptor[]; readonly declaration: TmEntityDeclaration; // declaration: { name } when none
   readonly slots: 1 | 2 | 3;                                    // the tenant's shape
   property(name: string): TmPropertyDescriptor | undefined;     // by Queryex name, ordinal-ignore-case
-  navigation(name: string): TmNavigationDescriptor | undefined; // level navigations included (§4.3)
+  navigation(name: string): TmNavigationDescriptor | undefined;
   child(name: string): TmChildDescriptor | undefined;
 }
 interface TmPropertyDescriptor extends TmPropertyMetadata { readonly label: Signal<string>; readonly contentDir?: 'ltr' | 'rtl' }
-interface TmNavigationDescriptor extends TmNavigationMetadata { readonly label: Signal<string>; readonly level?: number } // level: j for Level{j} (§4.3)
+interface TmNavigationDescriptor extends TmNavigationMetadata { readonly label: Signal<string> }
 interface TmChildDescriptor extends TmChildMetadata { readonly label: Signal<string> }
 interface TmEntityActionDescriptor extends TmActionMetadata { readonly label: Signal<string>; readonly declaration?: TmEntityActionDeclaration<string> }
 interface TmEnumDescriptor extends TmEnumMetadata { label(value: string): Signal<string> }
@@ -376,10 +375,6 @@ interface TmPathResolution {
 
 - **Segments.** Every segment but the last names a navigation. The last names a scalar, a group
   anchor, a twin or a navigation (spec 0008 §6.1). Names match ordinal-ignore-case.
-- **Level navigations.** When `treeLevels ≥ j`, `Level{j}` resolves by name (spec 0010 §F.9) to a
-  nullable navigation to the entity itself. It is never listed in `navigations`. Its descriptor
-  has `kind: 'reference'`, `target` the entity itself, `foreignKey` `Level{j}.Id`, `level` `j`,
-  and the label "Level {j}" (Core key `Entity_Level`).
 - **Blobs.** A navigation to `core.Blob` backed by a `[BlobReference]` ends as `image` when its
   policy re-encodes images (`policy.image` is set), else as `file`.
 - **Unknown keys** return `null` (§6.4).
@@ -421,10 +416,14 @@ client and the server both render it by §5.2.
 | `Name` group | `{ id: 6, name: 'Jeddah', name2: null }` | 2 | Jeddah |
 | `Name` + prefix `Code` | `{ id: 7, code: '1101', name: 'Cash' }` | 1 | 1101 - Cash |
 | `SerialNumber` | `{ id: 9, serialNumber: 42 }` | 1, `ar-SA` | ٤٢ |
+| `SerialNumber` | `{ id: 9, serialNumber: 42 }` | 1, `ar-SA-u-nu-latn` | 42 |
 | `Name` group | `{ id: 3 }` | 1 | #3 |
 
 - **Shared golden.** `display-name-golden.json` in `@tellma/core` holds `{ rule, shape, row, slot,
   locale, calendar, expected }` rows and §6.2's expansion rows; the TS and C# tests read one file.
+- **Native digits are client-only.** Server text always uses Latin digits (spec 0013 §9.2). A row
+  whose locale formats native digits, such as the `ar-SA` row above, carries `clientOnly: true`,
+  and the C# test skips it.
 
 ### 5.3 `TmDisplayNames`
 
@@ -432,15 +431,20 @@ client and the server both render it by §5.2.
 declare class TmDisplayNames {                                  // @tellma/core primary
   of(entity: string, row: TmJson): Signal<string>;              // a wire row; memoized per row object (WeakMap)
   select(entity: string, navigation?: string): readonly string[]; // Id + the display-name columns, shape-aware
-  label(entity: string, id: number): Signal<string | null>;     // a known row's display name; null while unknown
+  label(entity: string, id: TmId): Signal<string | null>;       // a known row's display name; null while unknown
   remember(entity: string, rows: readonly TmJson[] | TmQueryRowSet): void; // wire rows, or a row set's root columns
   rememberRelated(related: Readonly<Record<string, readonly TmJson[]>>): void; // EntitiesResult.related
-  resolve(entity: string, ids: readonly number[]): void;        // fetch unknown ids in the background
+  resolve(entity: string, ids: readonly TmId[]): void;          // fetch unknown ids in the background
 }
 ```
 
 - **Rows are wire objects.** `of` reads the rule's `json` members in the active slot. On an `en` +
   `ar` tenant, `select('gl.Center', 'Parent')` is `['Parent.Id', 'Parent.Name', 'Parent.Name2']`.
+- **Ids by key type.** `label`, `remember` and `resolve` key rows by the entity's `key.type`
+  (§2.2): a number for `int`, a `TmDecimal` for `long`. An id in the other form is coerced first.
+  Lookups in `entitySet().byId` (spec 0025 §3.1) use the same coercion. For example, an
+  assignment's `targetId` is a `long` and arrives as `"1284"` (spec 0028 §5.1). It still finds the
+  invoice remembered under `1284`.
 - **The cache** lives in memory only, per tab and tenant, with up to 5,000 rows per entity (least
   recently used evicted). Details reads and saves, search results, picks and the bell's related
   rows feed it. A change of the held `permissions` or `settings` tag clears it (spec 0025 §10).
@@ -475,8 +479,8 @@ and groups expand to every admitted slot, so a language switch needs no request.
 ### 6.2 Contract
 
 ```ts
-declare function tmSelectPlan(root: TmEntityDescriptor, keys: readonly TmColumnInput<string>[],
-  options?: { aggregate?: boolean }): TmSelectPlan;             // @tellma/core/entity
+declare function tmSelectPlan(root: TmEntityDescriptor,
+  keys: readonly TmColumnInput<string>[]): TmSelectPlan;        // @tellma/core/entity
 interface TmSelectPlan {
   readonly select: string;                                      // comma list, for QueryRequest.Select
   readonly columns: readonly TmColumnPlan[];                    // in key order; dropped keys absent
@@ -491,17 +495,14 @@ interface TmColumnPlan {
   orderBy(direction: 'asc' | 'desc'): string | null;            // reads the active slot; null: not orderable
   value(row: TmPlanRow): unknown;                               // navigation: the id; text: the shown slot; blobs: the blob id
 }
-interface TmPlanRow { readonly id: number; get(path: string): unknown }  // any selected term by path, lossless
-interface TmQueryRowSet {                                       // spec 0016 §3.5's row set, parsed losslessly
+interface TmPlanRow { readonly id: TmId; get(path: string): unknown }    // any selected term by path, as the wire sent it
+interface TmQueryRowSet {                                       // spec 0016 §3.5's row set; decimal and long cells are TmDecimal
   readonly columns: readonly { readonly name: string; readonly type: string; readonly scale?: number;
     readonly nullable: boolean; readonly path?: readonly string[]; readonly groupingKey: boolean }[];
   readonly rows: readonly (readonly TmJson[])[];
 }
 ```
 
-- **Aggregate mode** serves report previews (spec 0034). It expands navigations the same way, each
-  term a grouping key that depends on the id. Only it keeps a key through a level navigation:
-  entity queries refuse those in `Select` (spec 0015 §5.2), so other plans drop them as `unknown`.
 - **The server counterpart** is `IDisplayNames.Columns(entity, shape, navigationPath)` (spec 0012
   §3.1). It returns the same terms for reports, Excel (spec 0019 §4.1) and MCP. The golden's
   expansion rows pin both sides.
@@ -539,6 +540,7 @@ declare class TmPermissions {                                   // @tellma/core 
   allows(entity: string, operation: TmEntityOperation | 'activate' | `action:${string}`): Signal<boolean>;
   sensitive(resource: string, action: string): boolean;         // a deployment fact: step-up ahead
   reachable(root: string, key: string): Signal<boolean>;        // the traversal rule; needs TmEntities.load()
+  label(resource: string, action?: string): Signal<string>;     // 'Sales invoices: Create and edit'; no action: 'Sales invoices'
 }
 ```
 
@@ -559,10 +561,16 @@ declare class TmPermissions {                                   // @tellma/core 
 | `action:<name>` | the action's `action`; always true when member-only |
 
 - **`sensitive`** reads the securables section (spec 0014 §10): step-up dialogs and Save warn ahead.
+- **`label`** names a resource and action pair in the words the Access tab uses (spec 0032 §4.6).
+  The `forbidden` messages read it (spec 0024 §11).
+  - It takes the resource's and the action's labels from the securables section. Spec 0032 §12.4
+    gives their label chains.
+  - It joins them with the string `tm.entity.permission`, "{resource}: {action}".
+  - A pair the section does not list shows its raw names.
 - **`reachable(root, key)`** mirrors spec 0015 §5.2 step 4:
   - the root's `Read` must be allowed;
-  - when a navigation's target is restricted, every column read through it, a level navigation
-    included, must be in the target's `relatedSelect`;
+  - when a navigation's target is restricted, every column read through it must be in the
+    target's `relatedSelect`;
   - a navigation segment reads its foreign key;
   - "restricted" is as §1's vocabulary defines it; `core.Blob` always counts as restricted.
 - **From a child root**, a path through the owner navigation is checked as if the owner were the
@@ -607,7 +615,7 @@ type TmQx = { readonly kind: 'path'; readonly segments: readonly string[] }
   | { readonly kind: 'raw'; readonly text: string };           // prints "(text)"
 type TmQxBinaryOp = 'or' | 'and' | '=' | '!=' | '<' | '<=' | '>' | '>=' | '+' | '-' | '||' | '*' | '/' | '%';
 declare const tmQx: {
-  path(path: string): TmQx; str(value: string): TmQx; num(value: number | string | TmDecimal): TmQx;
+  path(path: string): TmQx; str(value: string): TmQx; num(value: number | string): TmQx; // a TmDecimal is a string
   bool(value: boolean): TmQx; null(): TmQx; param(name: string): TmQx; call(name: string, ...args: TmQx[]): TmQx;
   literal(type: TmDataType, value: unknown): TmQx;             // dates 'yyyy-MM-dd', instants ISO with offset, enums as strings
   raw(text: string): TmQx;                                     // server-supplied text only, never user keystrokes
@@ -625,8 +633,9 @@ declare function tmQxInsert(text: string, caret: number, insertion: string): { r
   inside a comparison.
 - **Identifiers** that are keywords or break the grammar print bracketed: `[Order]`. An identifier
   containing `]` throws.
-- **Literals.** Strings double each `'`. Numbers print as decimal text without an exponent; a
-  `number` beyond 15 significant digits is refused, so pass a string or a `TmDecimal`.
+- **Literals.** Strings double each `'`. Numbers print as decimal text without an exponent. A
+  `number` beyond 15 significant digits is refused, so pass its text instead, such as a
+  `TmDecimal`. Text that is not a decimal number throws.
 - **`raw`** parenthesizes server-supplied text, such as a report's drill filter (spec 0033 §9.4).
 - **`tmQxInsert`** never splits a token and returns the inserted range. An insertion inside a token
   moves to the token's end; a space is added where it would touch an identifier, a digit or `)`.
@@ -660,38 +669,44 @@ public sealed class QueryexService
 public sealed record QueryexDiscoverRequest(
     string Root,                                       // entity name: 'gl.Center', 'acme.SalesInvoiceLine'
     string? Select = null, IReadOnlyList<string>? Filters = null, string? Having = null, string? OrderBy = null,
+    string? Measures = null,                           // a pivot's or summary's measures (spec 0010 §F.14); needs Aggregate
     bool Aggregate = false, IReadOnlyList<QueryexParameterInput>? Parameters = null, // confirmed types; others are inferred
     QueryexProfile Profile = QueryexProfile.Query);
 public sealed record QueryexParameterInput(string Name, QueryexType Type);
 public enum QueryexProfile { Query, Permission }      // Permission: one filter, no parameters, validated as role save validates it (step 3)
 public sealed record QueryexDiscoverResult(
-    IReadOnlyList<QueryDiagnostic> Diagnostics,       // spec 0016 §3.4; Clause: select | filters[i] | having | orderBy
+    IReadOnlyList<QueryDiagnostic> Diagnostics,       // spec 0016 §3.4; Clause: select | filters[i] | having | orderBy | measures
     IReadOnlyList<QueryexParameterInfo> Parameters, IReadOnlyList<QueryexPathInfo> Paths, bool UsesAggregation);
 public sealed record QueryexParameterInfo(
     string Name, IReadOnlyList<QueryexSite> Sites,
     QueryexType? Type, IReadOnlyList<QueryexType> Conflicts,  // Type: confirmed, else inferred; null: unconstrained or conflicting
-    IReadOnlyList<string>? ComparedWith,              // the path the parameter meets (spec 0010 §F.15)
+    IReadOnlyList<string>? ComparedWith,              // the path the parameter meets (spec 0010 §F.13)
     string? Entity);                                  // ComparedWith's target when it ends at a key or foreign key
 public sealed record QueryexPathInfo(IReadOnlyList<string> Segments, QueryexSite Site, string Entity, bool Reachable);
 public sealed record QueryexSite(string Clause, string? Location, int Start, int Length);
 ```
 
-1. **Authorize.** Member only; a root outside the `All` schema is `404 not-found`. The call runs
-   through the guarded runner (spec 0015 §5.1) with no statement appended, so it makes no round
-   trip when warm.
-2. **Discover.** `DiscoverQuery` over all clauses together (spec 0008 §2.4), in `CompileQuery`'s modes.
+1. **Authorize.** Member only; a root outside the `All` schema is `404 not-found`, and `Measures`
+   without `Aggregate` is `400 bad-request`. The call runs through the guarded runner (spec 0015
+   §5.1) with no statement appended, so it makes no round trip when warm.
+2. **Discover.** `DiscoverQuery` over all clauses together (spec 0008 §2.4), `Measures` included
+   (spec 0010 §F.14), in `CompileQuery`'s modes.
 3. **Compile.** `CompileQuery` runs under `PipelineLimits` (spec 0015 §5.2); its SQL is discarded.
    - The query is `QuerySpec { Root, Select = Select ?? "Id", Aggregate, Filter = And(Leaf(f) for
-     each Filters), Having, OrderBy }`.
+     each Filters), Having, OrderBy, Measures }`. Measure diagnostics, including QX4010 and QX4011,
+     sit at `Measures[<i>]` in clause `measures`.
    - The parameter declarations are the confirmed types plus the inferred ones.
    - The `Permission` profile validates its filter as role save does (spec 0014 §3.7 step 6).
    - QX3007 is dropped, and an unconstrained parameter's `Type` is null.
 4. **Traverse.** Spec 0015 §5.2's traversal rule runs over every path. Each refusal becomes a
    `Query.PathNotReachable { entity, path }` diagnostic at the path's span (spec 0015 §7.3).
-5. **Answer** `200` with every diagnostic, never `400`. Syntax errors do not stop discovery.
+5. **Answer** `200` with every diagnostic. No diagnostic turns the answer into a `400`, and syntax
+   errors do not stop discovery.
 
-- **Wire class.** A retried read (spec 0016 §2.2), cancellable per keystroke. It is fingerprinted
-  like every projected endpoint, uses rate policy `tellma-user`, and stamps activity.
+- **Wire class.** A retried read (spec 0016 §2.2), cancellable per keystroke. `Idempotent = true`
+  puts the route in the Contracts chunk's `idempotent` list, so `TmApi.read` accepts it (spec 0024
+  §10.1). It is fingerprinted like every projected endpoint, uses rate policy `tellma-user`, and
+  stamps activity.
 - **Messages.** Diagnostics carry codes and arguments. The client renders the `Queryex_<code>` and
   `Query_*` keys (spec 0013 §10.1) through `TmServerText.message` (spec 0024 §7.5).
 
@@ -716,7 +731,8 @@ share a `TmQueryexDraft`, so inference sees every clause.
 ### 10.1 Contract
 
 ```ts
-type TmQxClause = 'select' | 'filter' | 'having' | 'orderBy' | 'constant'; // constant: lexical only, no root, never sent
+type TmQxClause = 'select' | 'filter' | 'having' | 'orderBy' | 'measures' | 'constant';
+// measures: sent only with aggregate (§9); constant: lexical only, no root, never sent
 interface TmQueryexDraft {
   readonly root: Signal<string>; text(clause: TmQxClause): WritableSignal<string>;
   readonly status: Signal<'idle' | 'checking' | 'checked' | 'offline' | 'failed'>; retry(): void;
@@ -736,7 +752,7 @@ declare class TmExpressionEditor {
   readonly draft: InputSignal<TmQueryexDraft | undefined>; readonly root: InputSignal<string | undefined>; // no draft: a private one over root
   readonly rows: InputSignal<number>; readonly showParameters: InputSignal<boolean>; // rows: fixed height, default 3; showParameters: the chip row, default off
   readonly ariaLabel: InputSignal<string | undefined>; readonly placeholder: InputSignal<string | undefined>;
-  readonly submit: OutputEmitterRef<void>;                          // Ctrl/Cmd+Enter
+  readonly submit: OutputEmitterRef<void>;                          // Mod+Enter
   insertAtCaret(text: string): void; focus(): void;                 // insertAtCaret: the non-drag path (§11.3)
 }
 ```
@@ -751,7 +767,8 @@ declare class TmExpressionEditor {
 
 - **When.** The draft calls `queryex/discover` 250 ms after the last change to any clause; each
   change restarts the wait. It sends every non-empty clause except `constant`, with `filter` as
-  `filters[0]`.
+  `filters[0]` and `measures` as `measures`. The `measures` clause holds the studio's pivot and
+  summary measures (spec 0034 §12.7).
 - **Abort.** Each change aborts the call in flight (`TmApi.read` with the draft's signal).
 - **Stale answers.** An answer applies only to clauses whose text still equals what was sent. An
   edited clause drops its server diagnostics at once and shows "Checking…".
@@ -787,8 +804,8 @@ declare class TmExpressionEditor {
 ### 10.5 Keyboard and ARIA
 
 - **Keys.** Editing keys are native. Tab and Shift+Tab leave the editor: no tab insertion, no
-  trap. F8 and Shift+F8 select the next and previous problem's span. Ctrl/Cmd+Enter emits
-  `submit`.
+  trap. F8 and Shift+F8 select the next and previous problem's span. `Mod+Enter` emits `submit`,
+  matched by `tmKeysMatch` (spec 0023 §3.2).
 - **ARIA.** The editor is labelled by `ariaLabel` or the enclosing `tm-form-field`, and described
   by the status line. It is `aria-invalid` while any diagnostic exists. A polite region announces
   checks, never keys.
@@ -827,7 +844,7 @@ interface TmPathNode {
   - image and file navigations, as leaves in `columns` mode and as branches into `core.Blob` in
     `fields` mode.
 - **Hidden:** foreign-key scalars (their navigation stands for them), non-queryable properties,
-  twins beyond the shape, level navigations, and every unreachable path (§7).
+  twins beyond the shape, and every unreachable path (§7).
 - **Order.** By label (`Intl.Collator`), with `Id` and the four audit fields last.
 - **Icons** (spec 0023): numbers `hash`, text `type`, enums `list`, booleans `toggle-left`, dates
   `calendar`, navigations `link-2`, images `image`, files `paperclip`, groups `languages`.
@@ -860,11 +877,13 @@ same way on every surface.
 ```ts
 interface TmValueDescriptor {                               // property metadata is one; so is a setting key's
   readonly type: TmDataType; readonly nullable: boolean; readonly enum?: TmEnumMetadata; readonly maxLength?: number; readonly scale?: number;
+  readonly long?: true;                                     // an integer that is a C# long: its values are TmDecimal
   readonly target?: string; readonly array?: true;          // target: the value is an id of this entity, 'core.User'; array: with enum or target only
 }
 declare class TmFormats {                                   // @tellma/core/entity
-  text(value: unknown, of: TmValueDescriptor, style?: 'grid' | 'details'): string;
-  cell(column: TmColumnPlan, row: TmPlanRow): string;       // navigation and group cells included
+  text(value: unknown, of: TmValueDescriptor, style?: 'grid' | 'details'): string; // instants: zone label mode 'auto'
+  cell(column: TmColumnPlan, row: TmPlanRow): string;       // navigation and group cells included; instants: mode 'column'
+  zoneSuffix(of: TmValueDescriptor | TmColumnPlan): Signal<string>; // ' (GMT+3)' for an instant while TmL10n.zoneMismatch(); else ''
 }
 @Component({ selector: 'tm-value' })                        // view mode: links, badges, avatars, thumbnails
 declare class TmValue { readonly property: InputSignal<TmValueDescriptor | TmPathResolution>; readonly value: InputSignal<unknown> }
@@ -882,6 +901,10 @@ declare function tmGridColumnFor(column: TmColumnPlan, options?: { editable?: bo
 
 - **Direct descriptors.** Setting keys (spec 0032 §7.4) and action fields (§2.2) pass one directly.
 - **`TmFormats`** reads `TmL10n`, `TM_TIME_ZONE` and the active slot, re-rendering on every switch.
+- **Zone labels.** An instant carries spec 0010 §D.4's offset label when the display zone's offset
+  differs from the device's. A grid uses the `'column'` mode:
+  - the header shows the label once, through `zoneSuffix`: "Created at (GMT+3)" (spec 0030 §7.1);
+  - the cells stay bare, except a cell whose offset differs from the header's across a DST change.
 - **`tm-value-editor`** puts the control in the caller's `tm-form-field`, bound with `[formField]`.
   `tm-field`, the parameter bar, `tm-setting-field` and the generated action dialog compose it.
 - **Uploads.** An image or file editor checks the file (§16) and uploads it through `TmApi.upload`
@@ -898,9 +921,9 @@ declare function tmGridColumnFor(column: TmColumnPlan, options?: { editable?: bo
 | `decimal` | `minDecimals` = `maxDecimals` = `scale` | `tmNumber`, `maxDecimals` = `scale` | number |
 | `bool` | "Yes" / "No"; a check glyph in grids | `tm-checkbox` | checkbox display |
 | `date` | `dateStyle` `medium` / `numeric`, active calendar | `tm-date-picker` | date |
-| `instant`, `datetime` | date-time in the display zone (spec 0010 §D.4); a `datetime` in `UTC`, unconverted | read-only | read-only |
+| `instant`, `datetime` | date-time in the display zone (spec 0010 §D.4), with the zone label of §12.1; a `datetime` in `UTC`, unconverted and never labelled | read-only | read-only |
 | `enum` | the value's label | `tm-select` in declaration order; an array: `tm-multi-select` | enum |
-| `target` | the display name, a link when `allows(target, 'details')`; with an avatar column, `tm-avatar` and name | `tm-entity-field` (§14); an array: `tm-entity-multi-field` | entity editor via the binding |
+| `target` | the display name, a link when `allows(target, 'details')`; with an avatar column, `tm-avatar` and the name, the avatar's `colorKey` being the record key `{entity}:{id}`, such as `core.User:17` | `tm-entity-field` (§14); an array: `tm-entity-multi-field` | entity editor via the binding |
 | image | `tm-image` thumbnail (§16) | `tm-image` in edit mode, uploading on pick | thumbnail, read-only |
 | file | the file name as a download link | `button[tmFilePicker]` and the file chip | file name, read-only |
 | other (`guid`, `time`) | as is, mono | `input[tmInput]` | text |
@@ -910,8 +933,10 @@ declare function tmGridColumnFor(column: TmColumnPlan, options?: { editable?: bo
 - **No control.** `float`, `json` and `binary` have none; layouts use spec 0031 §6.2's hatch.
 - **Ownership.** `server-owned`, `database-owned` and `derived` are read-only. `write-once` is
   editable in create mode only.
-- **Numbers** keep the physical right alignment in RTL (spec 0004). `TmDecimal` formats from its
-  text, never through a lossy `number`.
+- **Numbers** keep the physical right alignment in RTL (spec 0004).
+- **Decimals and longs.** A `decimal` value, or an `integer` marked `long`, is a `TmDecimal`.
+  `TmFormats` formats its text exactly with `Intl.NumberFormat.prototype.format`, never through a
+  `number`. The `tmNumber` control converts at the binding (spec 0024 §10.4).
 
 ## 13. Filter controls
 
@@ -981,24 +1006,24 @@ cell and filter uses it.
 
 ```ts
 interface TmEntityPickerBinding {                           // spreads into tm-entity-picker inputs and grid entity columns
-  readonly search: TmEntitySearchFn<TmJson>; readonly itemId: (item: TmJson) => number;
+  readonly search: TmEntitySearchFn<TmJson>; readonly itemId: (item: TmJson) => TmId;
   readonly itemLabel: (item: TmJson) => string; readonly itemDescription?: (item: TmJson) => string | null;
-  readonly displayWith: (id: number) => string | null; readonly createLabel?: string; readonly editLabel?: string;
+  readonly displayWith: (id: TmId) => string | null; readonly createLabel?: string; readonly editLabel?: string;
   readonly advancedSearch?: TmEntityPickerPage; readonly create?: TmEntityPickerPage; readonly edit?: TmEntityPickerPage;
 }
 declare class TmEntityPickers {                             // @tellma/core/entity
   binding(entity: string, options?: { filter?: Signal<string | null>; create?: boolean; multiple?: boolean }): TmEntityPickerBinding;
 }
-@Component({ selector: 'tm-entity-field' })                // FormValueControl<number | null>; provides TM_FORM_FIELD_CONTROL
+@Component({ selector: 'tm-entity-field' })                // FormValueControl<TmId | null>; provides TM_FORM_FIELD_CONTROL
 declare class TmEntityField {
   readonly entity: InputSignal<string>; readonly filter: InputSignal<string | null>; // filter: beside the declaration's
-  readonly create: InputSignal<boolean>; readonly value: ModelSignal<number | null>; // create: default true
-  readonly picked: OutputEmitterRef<TmEntityPicked<TmJson, number>>; // field-state and aria inputs: forwarded to the picker
+  readonly create: InputSignal<boolean>; readonly value: ModelSignal<TmId | null>; // create: default true
+  readonly picked: OutputEmitterRef<TmEntityPicked<TmJson, TmId>>; // field-state and aria inputs: forwarded to the picker
 }
-@Component({ selector: 'tm-entity-multi-field' })          // FormValueControl<readonly number[]> over tm-entity-multi-picker
+@Component({ selector: 'tm-entity-multi-field' })          // FormValueControl<readonly TmId[]> over tm-entity-multi-picker
 declare class TmEntityMultiField {
   readonly entity: InputSignal<string>; readonly filter: InputSignal<string | null>;
-  readonly value: ModelSignal<readonly number[]>; readonly maxItems: InputSignal<number | undefined>;
+  readonly value: ModelSignal<readonly TmId[]>; readonly maxItems: InputSignal<number | undefined>;
 }
 ```
 
@@ -1072,7 +1097,7 @@ registered by name. Declarations therefore type-check with no type argument.
 // generated/tellma-entities.d.ts — emitted; never edited
 export type GlCenterType = 'Abstract' | 'Service' | 'Sale' | 'Operation';
 export interface GlCenter { id: number; code: string; name: string; name2?: string | null; centerType: GlCenterType; parentId?: number | null; /* … */ }
-export interface AcmeCustomer { id: number; code: string; creditLimit: number | TmDecimal; contacts?: AcmeCustomerContact[] | null; /* … */ }
+export interface AcmeCustomer { id: number; code: string; creditLimit: TmDecimal; contacts?: AcmeCustomerContact[] | null; /* … */ }
 declare module '@tellma/core' {
   interface TmEntityTypes { 'gl.Center': GlCenter; 'acme.Customer': AcmeCustomer; /* … */ }
   interface TmEntityShapes {
@@ -1085,8 +1110,9 @@ type TmEntityType<N extends string> = N extends keyof TmEntityTypes ? TmEntityTy
 
 - **Names and members.** Interfaces are named `<Schema><Entity>`, such as `GlCenter`. Members use
   wire camelCase; twins and nullable members are optional.
-- **Types.** `decimal` is `number | TmDecimal`; dates and instants are `string`; enums are literal
-  unions; children are arrays.
+- **Types.** `decimal` and `long` members are `TmDecimal`, including a `long` key. `int` keys and
+  other integers are `number`. Dates and instants are `string`, enums are literal unions, and
+  children are arrays.
 - **Uses.** `TmEntityShapes` types `TmPath<N>`. `TmEntityType<N>` types the declaration's rows and
   `injectTmDetails<AcmeCustomer>()` (spec 0031 §4.1). Packs compile without the file; the build
   check (§3) still checks their paths in every distribution build.
@@ -1118,11 +1144,11 @@ Nine suites pin the design, and every one runs on PR.
 | Suite | Tier | Pins |
 |---|---|---|
 | emit (C#) | unit | §2 over Acme's composition; determinism; every label chain, `newLabelKey` and action fields included; fallbacks; twins; blob policies; `json` names equal the wire's; a TS type test over the emitted fixture (C# and TS shapes agree) |
-| `display-name-golden.json` | unit, TS and C# | §5.2's rows (fallback, prefix, scalar formats, `ar-SA` digits, client isolates) and §6.2's expansion rows per shape |
-| descriptors, permissions | unit | shape gating; twin labels for one to three languages; `contentDir`; `resolve` for every end kind, level navigations, unknown paths; `allows` per operation; `isSystem`; §7's `reachable` vectors, child roots, `core.Blob` |
-| plans, filters | unit | §6.1 per kind; `Id` first; order terms per slot; dropped keys; §13.2 row by row; instant days in `UTC`, `Asia/Riyadh`, `Asia/Beirut` (DST); invalid values; descriptions |
-| Queryex lexer, printer | unit | spec 0008 §4's vectors; the engine-generated lexer corpus; `queryex-print-golden.json` with its C# `Discover` check; `tmQxInsert` boundaries; `raw` |
-| `queryex/discover` (C#) | integration, SQL Server | each step of §9; the same diagnostics as `query`; `Query.PathNotReachable` under a filtered grant; an unconstrained parameter; the `Permission` profile matching role save; no round trip when warm |
+| `display-name-golden.json` | unit, TS and C# | §5.2's rows (fallback, prefix, scalar formats, `ar-SA` native digits on the client only, `ar-SA-u-nu-latn` on both, client isolates) and §6.2's expansion rows per shape |
+| descriptors, permissions | unit | shape gating; twin labels for one to three languages; `contentDir`; `resolve` for every end kind and unknown paths; `allows` per operation; `isSystem`; §7's `reachable` vectors, child roots, `core.Blob`; `label` for an entity, a settings category, another resource and an unlisted pair; `TmDisplayNames.label` given a `TmDecimal` id for an `int` key, and a number for a `long` key |
+| plans, filters, formats | unit | §6.1 per kind; `Id` first; order terms per slot; dropped keys; §13.2 row by row; instant days in `UTC`, `Asia/Riyadh`, `Asia/Beirut` (DST); invalid values; descriptions; `TmDecimal` text at 28 digits and `long` values formatted exactly; §12.1's zone labels (`text`, `zoneSuffix`, `'column'` cells across Asia/Beirut's DST change) |
+| Queryex lexer, printer | unit | spec 0008 §4's vectors; the engine-generated lexer corpus; `queryex-print-golden.json` with its C# `Discover` check; `tmQxInsert` boundaries; `raw`; `num` refusing a 16-digit `number` and non-decimal text |
+| `queryex/discover` (C#) | integration, SQL Server | each step of §9; the same diagnostics as `query`; `Query.PathNotReachable` under a filtered grant; an unconstrained parameter; the `Permission` profile matching role save; `measures` with QX4010 and QX4011 at their `Measures[<i>]` sites, and `400` without `aggregate`; no round trip when warm |
 | components | harness | editor, path picker, column filter and entity field over `TmFakeDiscover` and the fake API: stale answers, F8, insert, search caps, cacheable search and its server fallback, the unsearchable field, form-field forwarding, pending uploads |
 | typed codegen | unit | the emitted `.d.ts` compiles; `columns: ['Cod']` fails (expect-error); depth-4 paths pass by prefix |
 | e2e on Acme | Playwright | drag a field into a filter at the caret, then undo (Chromium, Firefox, WebKit); keyboard-only insert; no unreachable path for a restricted role; a URL with an unreachable column loads without `403`; picker advanced search and create round trips; a language switch with no request; the §18 geometry specs; every flow in `ar` |
@@ -1183,6 +1209,9 @@ Nine suites pin the design, and every one runs on PR.
     in `picker`. Rejected: a component per entity, or a picker configured per call site; both drift (§14).
 12. **Typing comes from the entity-name literal** — an explicit `tmEntity<AcmeCustomer>(…)` type
     argument disables inference of the name, and TypeScript has no partial inference (§3, §15).
+13. **A permission is named by the securables' own labels** — a `forbidden` message and the Access
+    tab then use the same words, and a user can quote what to grant; raw pairs mean nothing to
+    users (§7).
 
 ## Review flags
 

@@ -28,7 +28,9 @@ Its declarations become launcher entries, and a synonym is one resx line per lan
 - spec 0029 §3, spec 0034 §2.2 — the launcher members of `tmEntity` and `tmCodedReport`.
 - spec 0024 §2.6, §9.2 — the shell routes, loaded through `import()` and preloaded by the build.
 - spec 0024 §7.2 — the language switch.
-- spec 0024 §9.4 — `TmUrls.describe` and its `pinnable` flag.
+- spec 0024 §9.3 — automatic entries, which decide whether the picker shows its notice.
+- spec 0024 §9.4 — `TmUrls.describe` and its `pinnable` flag; `TmUrls.forTenant` for links into
+  another tenant.
 - spec 0024 Appendix A — the codes `unknown-section`, `app-bar-overflow` and `app-bar-reserved-id`.
 - spec 0025 §13 and Appendix A — recents, and the keys `nav.pinned` and `nav.pinnedBarVisible`.
 - spec 0010 §C.10, §C.12 — the menu entry kinds and the grid's key map `TM_GRID_KEYS`.
@@ -113,6 +115,8 @@ documentation comments, bodies and cancellation tokens are omitted.
 - **In the click's frame** — painted in the same frame as the click or key that caused it, with no
   animation and no wait.
 - **`Mod`** — Ctrl on Windows and Linux, ⌘ on Apple (spec 0023 §3.2).
+- **`{displayName}`** — the localized display name in copy: `TmLocalization.displayName` (spec
+  0024 §3.1, §7.1). No copy here names the platform.
 - **Breakpoints** `xs` to `xxl` — spec 0010 §B.1's widths; §7.1 lists them.
 
 ## 2. What a distribution writes
@@ -128,9 +132,9 @@ export const acmeFeature = tmFeature({
   key: 'acme',
   sections: [{ id: 'sales', labelKey: 'Acme_Nav_Sales', icon: 'users', order: 20 }],
   entities: [customers, salesInvoices],                 // each declares section: 'sales' (spec 0029 §3)
-  pages: [tmPage('bank-reconciliation', { component: () => import('./bank/bank-page'),
-    titleKey: 'Acme_BankReconciliation', section: 'financials' })], // a section tmGlFeature() declares
-  reports: [agingReport],                               // declares section: 'sales' (spec 0034 §2.2)
+  pages: [tmPage('credit-review', { component: () => import('./credit/credit-review-page'),
+    titleKey: 'Acme_CreditReview', section: 'financials' })], // a section tmGlFeature() declares
+  reports: [creditExposureReport],                      // declares section: 'sales' (spec 0034 §2.2)
 });
 ```
 
@@ -267,7 +271,7 @@ keys, such as the grid, editors and menus, handle them locally and win.
 
 ```ts
 interface TmShortcut {
-  readonly id: string;                       // 'tm.launcher.open', 'details.save', 'acme.bank-reconciliation.match-next'
+  readonly id: string;                       // 'tm.launcher.open', 'details.save', 'acme.credit-review.approve-next'
   readonly keys: TmKeys;                     // spec 0023 §3.2's grammar: 'Mod+K', 'Alt+Shift+P', 'F2'
   readonly labelKey: string;                 // the Shortcuts dialog row
   readonly scope: 'global' | 'page';         // the dialog's General or This page section (§11.2)
@@ -287,8 +291,8 @@ declare const TM_BROWSER_KEYS: readonly TmKeys[];                // both listed 
 `shortcut`, which spec 0026 §9.4 registers while that page's context is on top.
 
 ```ts
-inject(TmShortcuts).register({ id: 'acme.bank-reconciliation.match-next', keys: 'Mod+Shift+M',
-  labelKey: 'Acme_BankReconciliation_MatchNext', scope: 'page', run: () => this.matchNext() });
+inject(TmShortcuts).register({ id: 'acme.credit-review.approve-next', keys: 'Mod+Shift+M',
+  labelKey: 'Acme_CreditReview_ApproveNext', scope: 'page', run: () => this.approveNext() });
 ```
 
 ### 4.2 Dispatch
@@ -301,8 +305,12 @@ inject(TmShortcuts).register({ id: 'acme.bank-reconciliation.match-next', keys: 
 3. **Match** with `tmKeysMatch` (spec 0023 §3.2). It compares physical keys on Arabic layouts and
    under Option.
 4. **Editable targets** are `input`, `textarea`, `select`, `[contenteditable]` and a grid whose cell
-   editor is open. In one of them, a shortcut runs only with `inFields`. It never runs when
-   `event.key` is a printable character other than its own letter, such as `∏` from Option+Shift+P.
+   editor is open. In one of them, a shortcut runs only with `inFields`, and these rules apply:
+   - **Option-typed characters.** On an Apple platform, when Option held without ⌘ or Ctrl types a
+     character other than the binding's own key, such as `∏` from Option+Shift+P, the shortcut
+     never runs.
+   - **Other non-Latin keys.** Every other non-Latin `event.key` runs the shortcut, such as `ن`
+     from `Mod+K` and `ظ` from `Mod+/` on an Arabic layout (step 3).
 5. **Modals.** While a `TmModal` is open, only `overModals` shortcuts run, plus the page shortcuts
    of the dialog's own context (spec 0026 registers those only while on top).
 6. **Run.** Unless `run` returns `false`, the registry calls `preventDefault()` and
@@ -416,9 +424,9 @@ memberships, with names in every tenant language. The signed-out page renders wi
 
 | Item, inline start to end | Content | Below `md` |
 |---|---|---|
-| Wordmark | `brand/wordmark-on-dark.svg`, 14 px tall, `alt` = the display name; a link to `/` | the 18 px mark, `mark-on-dark.svg` |
+| Wordmark | `brand/wordmark-on-dark.svg`, 14 px tall, `alt` = `{displayName}`; a link to `/` | the 18 px mark, `mark-on-dark.svg` |
 | Language | a menu button with the active language's native name ("English", "العربية"); radio items of `TmLocalization.languages()`; absent with one language | the `globe` icon; the name joins its accessible name |
-| Account | the user's name over the email (12 px) from `TmSession.profile()`; a menu with My account (§10.1 row 3) and Sign out | the 24 px `tm-avatar` with initials |
+| Account | the user's name over the email (12 px) from `TmSession.profile()`; a menu with My account (§10.1 row 3) and Sign out | the 24 px `tm-avatar` with initials, without a `colorKey`: no user record exists outside a tenant |
 
 - **The same ink bar** as the tenant shell (40 px, `--ink-900`), with a spacer after the wordmark.
   Spec 0028's banners show below it.
@@ -430,7 +438,7 @@ memberships, with names in every tenant language. The signed-out page renders wi
 - **Data.** The picker reads `TmLaunchCache.tenants` (spec 0025 §3.1), which holds `/bff/user`'s
   memberships (spec 0011 §5.5). `revalidateUser()` refreshes it on entry.
 - **No redirect.** The picker never redirects; only `/` does (spec 0024 §9.3).
-- **Heading** `h1` "Choose a tenant" (`[tmPageTitle]`); `document.title` "Tenants · {display name}".
+- **Heading** `h1` "Choose a tenant" (`[tmPageTitle]`); `document.title` "Tenants · {displayName}".
 
 A row is one `li` of a `ul`, with these parts:
 
@@ -442,8 +450,8 @@ A row is one `li` of a `ul`, with these parts:
 - **Badges** (`tm-badge`), with their tone: Last used (neutral; `boot.lastTenantId`, spec 0025
   §2.1), Sandbox (accent), Read-only (warning), Suspended (error), Being set up (neutral; for
   `Provisioning`) and Deactivated (neutral; `isActive` is false).
-- **Connect:** `<a tmButton href="/{id}">`, a real link named "Connect to {name}". Hover and focus
-  call `TmUrls.preload('/{id}')`.
+- **Connect:** `<a tmButton [href]="urls.forTenant(id).home()">` (spec 0024 §9.4), a real link
+  named "Connect to {name}". Hover and focus call `TmUrls.preload` with the same href.
 - **Connect, unavailable:** a disabled button described by its reason: "Suspended. Contact your
   administrator.", "This tenant is being set up." or "Your access to this tenant was removed."
 
@@ -473,16 +481,22 @@ The picker's states:
 
 - **The not-found notice** reads "You can no longer open {name}." when tenant 17 is in the list.
   Otherwise it reads "You can no longer open tenant 17." Dismissing it drops both parameters.
+- **Only for a tenant the user chose.** A followed link, a pin or a typed URL that meets
+  `404 tenant-not-found` lands here with the notice. An automatic entry, where the platform chose
+  the tenant (spec 0024 §9.3), lands here without it. The badges explain a removed membership.
 
 ### 6.3 The signed-out page (`/signed-out`)
 
-- **Content.** `h1` "You signed out", then "You're signed out of {display name} on this device.",
+- **Content.** `h1` "You signed out", then "You're signed out of {displayName} on this device.",
   then a primary "Sign in" button. It calls `TmSession.signIn({ returnUrl: '/' })` (spec 0024 §8.3).
+  The return to `/` lets the platform pick the landing: a user with one live tenant lands in it,
+  through the BFF (spec 0024 §9.3).
 - **With a valid profile cookie,** the page says "You're signed in as {name}." and offers
   "Continue" to `/`.
 - **No metadata, no request** (spec 0024 §6). The page uses the bundle's strings, in the boot
-  record's language, direction and theme. The display name comes from `index.html`'s `<title>`.
-  That is why the page has no language menu.
+  record's language, direction and theme. That is why the page has no language menu.
+- **Its `{displayName}`** is the boot language's display name, which `tm-boot.js` set as
+  `document.title` (spec 0024 §4.2).
 
 ## 7. The tenant shell and its app bar
 
@@ -509,7 +523,7 @@ Items run from inline start to end. Icon buttons are 30 × 30 px. Gaps are 8 px,
 
 - **The grouped control** joins Menu and search in one bordered box: 30 px, radius 6, fill
   `rgba(255,255,255,.07)`, hairline `.12`. Focus inside lifts the fill to `.10` and rings the group.
-- **Wordmark and mark** are spec 0024 §7.6's brand files, in a link named "{display name} home".
+- **Wordmark and mark** are spec 0024 §7.6's brand files, in a link named "{displayName} home".
   The wordmark never mirrors.
 - **Media queries** use spec 0010 §B.1's values.
 - **The session button** is at most 260 px. Names truncate with an ellipsis, the tenant name last,
@@ -565,7 +579,8 @@ appBar: [{ id: 'acme-approvals', icon: 'stamp', labelKey: 'Acme_Approvals',
 - **The session button** is a `button[tmMenuTriggerFor]` (spec 0010 §C.10). It shows a 24 px
   `tm-avatar` and the names §7.1 lists for the breakpoint.
 - **The avatar** is `TmUrls.blob('user-image', me.user.imageId, { variant: 'thumb' })`, else the
-  initials.
+  initials. Its `colorKey` is the record key `core.User:{me.user.id}` (spec 0023 §4.2), so the
+  user's initials take the same tone here as in every list of the tenant.
 - **The button's accessible name** is "Account: {user name}, {tenant name}", plus ", sandbox" or
   ", read-only".
 - **The user name** is `me.user`'s name in the active content slot (spec 0024 §7.1), else `name`.
@@ -577,7 +592,7 @@ Markers come from `TmLaunchCache.docs.tenant` (spec 0025 §3.1):
 
 | Marker | Shows when | Chip (≥ `md`) | Its popover (280 px) |
 |---|---|---|---|
-| Sandbox | `category` is `Sandbox` | `flask-conical` + "Sandbox", accent tint | "You're in a sandbox. Changes here don't affect live data." and "Open {live name}" to `/{liveTenantId}` when that tenant is in the user's list |
+| Sandbox | `category` is `Sandbox` | `flask-conical` + "Sandbox", accent tint | "You're in a sandbox. Changes here don't affect live data." and "Open {live name}", a link to `TmUrls.forTenant(liveTenantId).home()`, when that tenant is in the user's list |
 | Read-only | `state` is `ReadOnly` | `eye` + "Read-only", warning tint | "{tenant} is read-only. You can view data but not change it. Contact your administrator." |
 
 - **Each marker** is a `button` with `aria-haspopup="dialog"`. From `md` up it is a 20 px pill;
@@ -593,8 +608,9 @@ Markers come from `TmLaunchCache.docs.tenant` (spec 0025 §3.1):
 | Warm (spec 0025 §3.2) | complete, from the documents | the pins | the route host |
 | Cold, sync pending | names from the cookie, the tenant name as a skeleton, badges reserved, no markers | three 64 px skeleton chips | the route host's skeleton until the sync answers, then the page (spec 0024 §4.4) |
 | Cold, sync failed `offline` or `unavailable` | as pending | empty | `tm-error-state` "Couldn't open {tenant name, or 'tenant 17'}" with Retry, which reruns the sync |
+| Cold, sync failed `client-outdated` | as pending | empty | `tm-error-state` with spec 0024 §11's `client-outdated` view (spec 0025 §3.2): Reload for code `client-outdated`; Try again, which reruns the sync, for code `server-outdated` |
 | `tenant-unavailable` | as warm | as warm | spec 0024 §11's tenant-state page, through `TmShellMain` |
-| `tenant-not-found` | — | — | spec 0024 §11 navigates to the picker with its notice |
+| `tenant-not-found` | — | — | spec 0024 §11 navigates to the picker: silently on an automatic entry, else with its notice (§6.2) |
 
 ```ts
 declare class TmShellMain {                     // primary; the tenant shell renders it in `main`
@@ -656,7 +672,7 @@ declare const tmPinnedBarVisibleKey: TmPreferenceKey<boolean>; // 'nav.pinnedBar
   { "id": "k3j7q2m9", "url": "sales-invoices", "title": "Sales invoices" },
   { "id": "x1ba7hd2", "url": "customers?f.CustomerType=in:Corporate", "title": "Customers", "label": "Corporate customers" },
   { "id": "p0d9wqlm", "folder": "Month end", "items": [
-    { "id": "z8rt5nb3", "url": "reports/acme-aging?p.AsOf=2026-09-30", "title": "Aging" },
+    { "id": "z8rt5nb3", "url": "reports/acme-credit-exposure?p.AsOf=2026-09-30", "title": "Credit exposure" },
     { "id": "vj4e2fhd", "url": "reports/42", "title": "Monthly sales by region" } ] } ] }
 ```
 
@@ -982,7 +998,8 @@ declare const TM_LAUNCHER_PROVIDERS: InjectionToken<readonly TmLauncherProvider[
 ```
 
 - **Timing.** Pages recompute on every input event (`TmSearch.value`). Providers run on the
-  debounced `search` output (spec 0023 §6.2), and each run is aborted when superseded.
+  `search` output (spec 0023 §6.2): at once on the first key after a pause, then 50 ms after the
+  last key of a burst. Each run is aborted when superseded.
 - **Placement.** Buckets append below Pages, in `order`, as answers arrive, so the active row never
   moves. A search that returns nothing or fails renders no bucket.
 - **No provider ships here.** Later specs register providers (Review flag 7).
@@ -1029,8 +1046,11 @@ holds who and where the user is, the culture and view switches, help about the a
 - **Names.** Languages show their native names (spec 0024 §7.1). Calendars show
   `tm.calendar.<code>` ("Gregorian", "Umm al-Qura", "Ethiopian") or a distribution calendar's
   `labelKey` (spec 0024 §7.4).
+- **The header avatar** is the session button's, with the same `colorKey` (§7.4).
 - **In place.** Choosing a language or calendar closes the menu and re-renders the page. The only
   request is the `users/me/locale` write (§12.1).
+- **No format rows.** Region and digits are edited on My profile (spec 0024 §7.7, spec 0032 §4.2):
+  they are set once, not switched like the language.
 - **The theme** is a device setting (spec 0024 §7.6). Choosing one keeps the menu open.
 
 ### 10.2 The tenant card
@@ -1043,7 +1063,16 @@ holds who and where the user is, the culture and view switches, help about the a
 
 ### 10.3 Sign out
 
-`TmSession.signOut()` runs spec 0024 §8.4: confirmation, broadcast, overlay, failure toast, redirect.
+`TmSession.signOut()` runs spec 0024 §8.4:
+
+1. the overlay, at once (`immediate`);
+2. a wait for running saves;
+3. a confirmation, only when something is still at risk;
+4. the broadcast;
+5. a failure toast;
+6. the redirect.
+
+The menu closes on activation, so the overlay is the click's feedback.
 
 ### 10.4 Keyboard, ARIA, responsive
 
@@ -1063,22 +1092,24 @@ local data, so they work offline.
 Two tabs (`tm-tab-group`, spec 0005): About and Diagnostics. The About tab, top to bottom:
 
 1. **Wordmark**, 20 px: `brand/wordmark-on-light.svg`, or `-on-dark` in the dark theme.
-2. **Description:** the server key `Distribution_About` when `TmServerText.has` it (spec 0024
-   §7.5). Otherwise Core's new server key `Tellma_About`, which reads "{display name} is built on
-   Tellma, an open platform for enterprise resource planning."
+2. **Description:** the distribution's own server key `Distribution_About` when `TmServerText.has`
+   it (spec 0024 §7.5). Without it, the dialog shows no description. The distribution owns its
+   credit line, and the platform adds none.
 3. **Versions**, a `dl[tmDescriptionList]` (spec 0023 §7.1) of LTR-isolated mono values:
 
 | Term | Value |
 |---|---|
-| {display name} | `TmAppVersion.label` ("1.4.0 (3f9c2ab)", spec 0026 §7), with a `tm-copy-button` copying `ui` |
+| {displayName} | `TmAppVersion.label` ("1.4.0 (3f9c2ab)", spec 0026 §7), with a `tm-copy-button` copying `ui` |
 | Server | `TmAppVersion.server()`, else the cached `distributionVersion` (spec 0011 §5.9), else "—" |
-| Tellma platform | `TmAppVersion.platform` |
+| Platform | `TmAppVersion.platform` |
 | each feature but `core` | its `TmAppVersion.features[].version`, the term being its key (`gl`, `acme`) |
 
-4. **Server differs:** when `TmAppVersion.serverDiffers()`, an info `tm-alert` "The server runs
-   {server}. Reload to update." with Reload (`TmUpdates.reload()`, spec 0024 §5.5).
-5. **Copyright** (`distribution.copyright`, spec 0024 §3.1), then the links "Terms of service" and
-   "Privacy" (§12.2), which open in new tabs. Each is omitted when absent, and nothing is awaited.
+4. **Server newer:** when `TmAppVersion.serverNewer()`, an info `tm-alert` "The server runs
+   {server}. Reload to update." with Reload. Reload is spec 0024 §11's: `TmUpdates.update()`, with
+   its busy, failed and "Reload anyway" states.
+5. **Copyright:** `Distribution_Copyright` in the active language, else `distribution.copyright`
+   (spec 0024 §3.1). Then the links "Terms of service" and "Privacy" (§12.2), which open in new
+   tabs. Each is omitted when absent, and nothing is awaited.
 
 The Diagnostics tab hosts spec 0026 §8.4's `tm-diagnostics`, imported on first selection.
 
@@ -1102,9 +1133,10 @@ The shell uses one server action and one distribution-info member, both defined 
 ### 12.1 `users/me/locale`
 
 The session menu's language and calendar rows (§10.1 rows 4 and 5) call spec 0024 §7.2's switch.
-The switch writes `users/me/locale` (spec 0018 §3.5) and adopts the result (spec 0025 §5.3). If a
-My profile form was open before the switch, saving it shows the concurrency dialog (spec 0032 §8)
-instead of restoring the old language.
+The switch writes `users/me/locale` (spec 0018 §3.5) and adopts the result (spec 0025 §5.3). The
+time-zone prompt and the automatic time-zone update write the same action with `{ timeZone }`
+(spec 0024 §7.8). If a My profile form was open before any of these writes, saving it shows the
+concurrency dialog (spec 0032 §8) instead of restoring the old value.
 
 ### 12.2 `DistributionInfo.links`
 
@@ -1121,15 +1153,17 @@ Every automated suite runs on each PR; the manual checks run once per release.
   tatweel, digits); the "ال" variant; both classes and the order rule; synonyms split on `,` and
   `،`; create rows; the 50-row cap; a 300-entry benchmark (index ≤ 5 ms, query ≤ 2 ms).
 - **`TmShortcuts`** (unit): §4.2's steps (bubble phase, `defaultPrevented`, composition, repeat,
-  editable targets, Option-typed characters, modals); every refusal of §4.3; labels.
+  editable targets, Option-typed characters, modals); `Mod+K` and `Mod+/` in a field on an Arabic
+  layout run; every refusal of §4.3; labels.
 - **`TmPins`** (unit): validation and caps; the capture minus `page`; the current-pin rule; §8.3's
   states; each mutation's document; the fallback.
 - **Harnesses** (harness):
   - `TmTenantShellHarness`: each §7.5 state;
   - `TmLauncherHarness`: §9.2's table, §9.5's keys, bucket placement;
   - `TmPinnedBarHarness`: roving focus, §8.7's counts, folders, revoked pins;
-  - `TmSessionMenuHarness`: the rows per condition;
-  - `TmTenantPickerHarness`: order, names, badges, search threshold, notice, empty, error.
+  - `TmSessionMenuHarness`: the rows per condition; the avatar's `colorKey`;
+  - `TmTenantPickerHarness`: order, names, badges, search threshold, empty, error; Connect's
+    `forTenant` href; the notice after a chosen entry, and none after an automatic one.
 - **Playwright** (e2e, on the Acme host, in `en` and `ar`):
   - launch: a cold launch to the picker with tenants 1 and 2, then Connect; a warm shell with every
     request held; the signed-out page;
@@ -1138,6 +1172,8 @@ Every automated suite runs on each PR; the manual checks run once per release.
   - pins: pinning a filtered search into a folder, then a reload; a revoked pin after a role change;
     pinning from the launcher band with the bar hidden; a keyboard reorder in Manage pins;
   - menu and dialogs: a language switch (one `me/locale` write, no `client/sync`); About offline;
+    About with a newer server (the alert, Reload with the update download blocked, then Reload
+    anyway) and with an older one (no alert); About without `Distribution_About` (no description);
   - installed mode: back and forward (Chromium `--app`).
 - **Responsive** (e2e): the app bar, pinned bar, launcher and session menu at 390, 576, 768, 992,
   1200 and 1440 px, §7.1 cell by cell.
@@ -1183,9 +1219,9 @@ Every automated suite runs on each PR; the manual checks run once per release.
 | `tm.shortcut.used`; `tm.shortcut.conflict` | `id`, a code constant | yes; no |
 
 - **The reference distribution.** Acme adds the `sales` section (customers, sales invoices, the
-  aging report), §2's synonyms, and the `bank-reconciliation` page under `financials`. Its tenant 2,
-  a sandbox of tenant 1, shows the marker and the picker's grouping. `tmTestShellSlot()` covers
-  slots.
+  credit-exposure report), §2's synonyms, and the `credit-review` page under `financials`. Its
+  tenant 2, a sandbox of tenant 1, shows the marker and the picker's grouping.
+  `tmTestShellSlot()` covers slots.
 
 ## Decisions record
 
@@ -1229,6 +1265,9 @@ Every automated suite runs on each PR; the manual checks run once per release.
     adjacent `help` and `assistant` slots (a later merge is a one-slot change), the aside, `helpKey`,
     `Alt+Shift+H`, `Alt+Shift+I`, the provider seam. Rejected: a help button without content (dead
     pixels); merging into the assistant slot now (prejudges the merge) — (§5.1, §7.2, §9.6).
+19. **The shell's copy says `{displayName}`, and About's description is the distribution's own
+    `Distribution_About`, or nothing** — a white-label distribution owns its brand. Rejected: a
+    platform fallback credit in every About dialog — (§1, §11.1).
 
 ## Review flags
 

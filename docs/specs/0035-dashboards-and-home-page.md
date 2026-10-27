@@ -25,7 +25,8 @@ Other specs that carry parts of this design:
 - spec 0011 §2.1 — `FeatureContribution.WidgetType` and `WidgetTypeContributionItem`.
 - spec 0013 §10.1 — the `Dashboard.*` codes, `Notification_core_dashboard_shared`, `Core_Dashboard_Synonyms`.
 - spec 0014 §2, §5.3 — the resource `core.Dashboard`; dashboards among the sharing criteria.
-- spec 0015 §5.3 — computed extras, the form of the `view` extra.
+- spec 0015 §2.3, §5.3 — the actions' `Long` and `Idempotent` flags; computed extras, the form of
+  the `view` extra.
 - spec 0016 §2.4, §4.3, §8.2, §8.3 — the dashboards routes; `tellma-reports` and `tellma-long` on `dashboards/audience`.
 - spec 0018 §7 — the three dashboard tables in Acme's initial migration.
 - spec 0021 §2.3 — the `core.dashboard.shared` catalogue row.
@@ -161,7 +162,7 @@ declaration has, and with `widget-not-registered` for the reverse (spec 0024 App
 // acme.feature.ts
 export const acmeFeature = tmFeature({ key: 'acme', home: () => import('./home/acme-home') /* , … */ });
 
-// home/acme-home.ts: the greeting, the default widgets, and the aging report below them
+// home/acme-home.ts: the greeting, the default widgets, and the credit exposure report below them
 @Component({
   selector: 'acme-home',
   imports: [TmHomeGreeting, TmDashboardGrid],
@@ -169,7 +170,8 @@ export const acmeFeature = tmFeature({ key: 'acme', home: () => import('./home/a
 })
 export default class AcmeHome {
   protected readonly widgets: readonly TmDashboardWidgetModel[] = [...TM_HOME_WIDGETS,
-    { key: 'aging', type: 'core.report', report: { key: 'acme-aging' }, x: 0, y: 18, w: 12, h: 9 }];
+    { key: 'credit-exposure', type: 'core.report', report: { key: 'acme-credit-exposure' },
+      x: 0, y: 18, w: 12, h: 9 }];
 }
 ```
 
@@ -213,7 +215,7 @@ public class DashboardWidget : ChildEntity
     [ParentKey] public int DashboardId { get; set; }
     public string Type { get; set; }                                      // a registered widget type (§4)
     public int? ReportDefinitionId { get; set; }                          // core.report: a stored definition, or
-    public string? ReportKey { get; set; }                                // a coded report's key ('acme-aging')
+    public string? ReportKey { get; set; }                                // a coded report's key ('acme-credit-exposure')
     [Multilingual] public string? Title { get; set; }                     // + Title2, Title3; null: the report's or type's
     [Multilingual] public string? Description { get; set; }               // + Description2, Description3; ≤ 1,024
     public int X { get; set; } public int Y { get; set; }                 // first column (0-based, from inline-start), first row
@@ -265,7 +267,7 @@ Every route is under `/{t}/api/web/dashboards/`. Retry classes are spec 0016 §2
 | `save`; `delete`, `delete-by-query` | standard | `Save`; `Delete` | never |
 | `activate`, `deactivate` | built-in actions | `Activate` | never |
 | `share`, `publish`, `transfer` | `[EntityAction]`s over `IShareCommands<Dashboard>` | `Share`, `Publish`, `Transfer` | never |
-| `audience` | `[ApiAction]`, `Mutation = false`, `Idempotent`; `tellma-long`, `tellma-reports` (spec 0016 §8.2, §8.3) | `Share` | yes |
+| `audience` | `[ApiAction]`, `Mutation = false`, `Idempotent = true`, `Long = true`; `tellma-long`, `tellma-reports` (spec 0016 §8.2, §8.3) | `Share` | yes |
 
 - **The four actions** (`share`, `publish`, `transfer`, `audience`) copy the declarations that
   spec 0033 §5.4 and §6.1 put on `ReportDefinitionService`, over `ActionContext<Dashboard, int>`.
@@ -465,7 +467,7 @@ This spec implements spec 0033 §5.7's interface.
 
 - **`AllowsAsync(dashboardId, reportDefinitionId)`** is true when the caller reads the dashboard and
   one of its widgets shows the definition. It runs one `Query<Dashboard>` under the caller's `Read`
-  decision, with `Top 1`, memoized per request, and this filter (spec 0010 §F.14):
+  decision, with `Top 1`, memoized per request, and this filter (spec 0010 §F.12):
   `And(Leaf("Id = @d"), Exists("core.DashboardWidget", "Dashboard", Leaf("ReportDefinitionId = @r")))`.
 - **`DashboardsUsing(reportDefinitionIds)`** seeks `IX_DashboardWidgets_ReportDefinitionId`
   without the caller's filter. It returns at most 20 `(Id, Title)` pairs, with titles in the
@@ -616,8 +618,15 @@ run's `executedAt`, when the server computed the numbers (spec 0033 §9.1), form
 §3.6's absolute rule.
 
 - **Before the first result,** a skeleton bar of the text's final width holds its place.
+- **When the first run fails** (`status: 'error'` with no `executedAt`, §9.3), the skeleton bar
+  goes and the line stays empty. The body shows the failure (§8.6).
 - **After a silent run fails** over held data, spec 0034 §3.4's stale marker follows the time until
   the next success.
+- **Omitted totals.** When the body reports `totalsOmitted` (§9.3), a short note follows the time:
+  "Updated 10:42 · Totals not shown".
+  - The report widget reports it from its summary result's `table.totalsOmitted` (spec 0034 §5.3).
+  - The line's tooltip adds spec 0034 §5.3's footer sentence after the description.
+  - The header keeps its height. The description ellipsizes to make room.
 
 ### 8.6 Tile states
 
@@ -651,6 +660,10 @@ built-in lists. A distribution's own type reads everything it needs from one con
 - **No definition read.** Widget mode never reads `reports/get` (spec 0034 §3.1). The title and
   parameters come from the `view` extra, so a 12-widget dashboard costs one `get` and twelve runs.
 - **Drill-through** navigates in view mode (spec 0034 §8). Edit mode makes the body `inert`.
+- **Totals are the report's.**
+  - *Pivot.* A pivot tile's subtotals and totals cover only the cells it shows (spec 0033 §8.6).
+  - *Summary.* A summary tile shows its totals row only when its first page holds every row (spec
+    0034 §5.3). Otherwise the status line notes it (§8.5), and the tile shows no notice strip.
 - **Menu commands.** Open report goes to `/{t}/reports/{id}` or `/{t}/reports/{key}`, with the
   bound arguments as `p.*` (`tmReportArgsToUrl`, spec 0034 §4.4). Export to Excel calls
   `host.export()` (spec 0034 §9).
@@ -685,7 +698,8 @@ interface TmWidgetContext {
     readonly generation: number; readonly clear: boolean; readonly background: boolean }>;
   report(state: {                                     // the body's run state, for the status line and the scheduler
     readonly status: 'loading' | 'ready' | 'error';
-    readonly executedAt?: string | null; readonly error?: TmApiError | null }): void;
+    readonly executedAt?: string | null; readonly error?: TmApiError | null;
+    readonly totalsOmitted?: boolean }): void;        // a summary whose totals row was omitted (§8.5)
 }
 declare function injectTmWidget(): TmWidgetContext;
 ```
@@ -752,14 +766,14 @@ declare function tmBindWidgetArguments(
 
 | Widget | Report parameters | Bindings | Sent |
 |---|---|---|---|
-| Aging (coded `acme-aging`) | `AsOf` (required, defaulted in C#), `Customer` | none | `{}`: `Customer` is unset; the C# applies `AsOf` |
+| Credit exposure (coded `acme-credit-exposure`) | `AsOf` (required, defaulted in C#), `Customer` | none | `{}`: `Customer` is unset; the C# applies `AsOf` |
 | Sales by center | `Year` (required, default `year(today())`) | none: same key | `{ "Year": 2026 }` |
 | Last year by center | `Year` | `"Year": { "value": 2025 }` | `{ "Year": 2025 }` |
 | Sales by customer | `From` (required, defaulted), `To` | none | `{}`: `From` takes its default, `To` is omitted |
 
-With `?p.Year=2026&p.Customer=1012`, Aging gets `{ "Customer": 1012 }`. With no `Year` from the URL
-or the remembered values (§10.3), Sales by center waits for Year, and Last year by center still
-runs.
+With `?p.Year=2026&p.Customer=1012`, Credit exposure gets `{ "Customer": 1012 }`. With no `Year`
+from the URL or the remembered values (§10.3), Sales by center waits for Year, and Last year by
+center still runs.
 
 ### 10.3 The bar, the URL and remembered values
 
@@ -996,7 +1010,8 @@ cannot move the tile announces "Can't move further."
 declaration. It is the launcher's Dashboards entry under Analysis (spec 0027 §3.2).
 
 - **Rows** are the dashboards the caller may read (spec 0033 §5.3). Columns: Title (the link),
-  Owner (avatar and name), Refresh, Modified.
+  Owner (avatar and name), Refresh, Modified. The Owner avatar's `colorKey` is the record key
+  (spec 0029 §12.2).
 - **New dashboard** shows for every member, since every member's `Save` is filtered.
 - **Bulk actions** derive from the entity actions: Activate, Deactivate, Delete, Change owner. Share
   and publish stay on the dashboard page.
@@ -1129,11 +1144,11 @@ Widget runs also emit spec 0034's `tm.report.run` with `mode: widget`. The serve
 |---|---|---|
 | Validator (C#) | unit, PR | every Appendix A code at its path; §5.3's table row by row; bounds and overlap; strict settings; the kept-definition rule |
 | Dashboards (C#, real SQL) | integration, PR | the list below |
-| Web (C#) | integration, PR | routes and retry classes; `reports/run` with `DashboardId` end to end; a background run stamps no activity; `core.dashboard.shared` raised and withdrawn |
+| Web (C#) | integration, PR | routes and retry classes, with `dashboards/audience` in the Contracts chunk's `long` and `idempotent` lists; `reports/run` with `DashboardId` end to end; a background run stamps no activity; `core.dashboard.shared` raised and withdrawn |
 | Layout (vitest) | unit, PR | `tmPackDashboard` vectors (compaction with hidden tiles, bands, narrow rows); `tmMoveWidget` and `tmResizeWidget` (clamp, cascading push, compaction); arrow mapping in LTR and RTL |
 | Bindings and greeting (vitest) | unit, PR | `tmBindWidgetArguments` over §10.2's table, fixed `null`, waiting; `tmFirstName`; time-of-day greetings and the date line across zones and calendars with a fake `TM_NOW` |
 | Scheduler (vitest, fake clock) | unit, PR | completion-based due times; tile overrides; the visibility, online and edit conditions and the catch-up; forced and tile refresh; the page-state return |
-| Harnesses (`@tellma/core-testing`) | PR | grid, page and home: every state of §8.6, §9.2, §12.3 and §15.4; editor operations and dialogs; a fixture widget type; a `home` hatch through `TmHomeHost` |
+| Harnesses (`@tellma/core-testing`) | PR | grid, page and home: every state of §8.6, §9.2, §12.3 and §15.4; §8.5's status line, with its omitted-totals note and the empty line after a failed first run; editor operations and dialogs; a fixture widget type; a `home` hatch through `TmHomeHost` |
 | Playwright on Acme | e2e, PR | §18's journeys at 390, 768, 992 and 1440 px in `en` and `ar`; `Tellma-Activity: background` on scheduled runs only (request interception) |
 | axe, budgets | PR | home, dashboard view, edit mode, gallery and dialogs, in light and dark, LTR and RTL; §1.1's budgets; the home route's transfer excludes `/details`, `/entity`, `/reports` and `core-ui/chart` |
 
@@ -1164,7 +1179,7 @@ The **Dashboards** suite pins:
 
 - **Page-context registry and telemetry** are §16's.
 - **Acme** adds no dashboard code (§2.1). Its e2e suite creates "Sales overview" with §10.2's
-  parameters, Sales by center, the coded aging report and My assignments. It then covers:
+  parameters, Sales by center, the coded credit exposure report and My assignments. It then covers:
   - home, warm and cold, and an assignment arriving;
   - `p.Customer`, a silent refresh under Playwright's clock, and Refresh;
   - pointer and keyboard edits, a binding, save and a `409`;

@@ -25,7 +25,8 @@ Other specs that carry parts of this design:
   `arguments`.
 - spec 0016 §3.3, §7.3 — what the page sends in `SaveRequest`; the error-path grammar it splits.
 - spec 0018 §1.4 — Acme's `Attachments`, `related-documents`, `close` and `set-credit-limit`.
-- spec 0023 §5.4, §7.2, §8.1 — live overlay labels, reserved header widths, the capped item pager.
+- spec 0023 §5.4, §7.2, §8.1 — live overlay labels and the `immediate` start, reserved header
+  widths, the capped item pager.
 - spec 0024 §9.2, §11 — `canceledNavigationResolution: 'computed'` and the page route's
   `canDeactivate`; the shared states and dialogs.
 - spec 0025 §10, §11 — the page-state entries and drafts this page fills.
@@ -172,7 +173,7 @@ The URL picks the record and the mode on entry. A source does the reads and writ
 interface TmDetailsSource<T> {
   readonly kind: 'details' | 'settings';             // page-context kind and action-id prefix (spec 0026 §9.3)
   readonly entity: string;                            // the descriptor the kit resolves paths against
-  readonly id: Signal<number | null>;                 // null: create mode; a change re-keys the record
+  readonly id: Signal<TmId | null>;                   // null: create mode; a change re-keys the record
   readonly titleKey?: string;                         // a fixed title; absent: the record's display name
   readonly draftKey: Signal<string | null>;           // a TmDrafts.key(…) value; null keeps no draft
   read(signal: AbortSignal): Promise<TmDetailsRecord<T>>;
@@ -195,7 +196,7 @@ interface TmValidationProblem {                       // a 422 errors[] item (sp
   readonly path: string;                              // in the write's path grammar
   readonly code: string; readonly arguments?: TmJsonObject;
 }
-declare function tmEntitySource<T>(descriptor: TmEntityDescriptor, id: Signal<number | null>): TmDetailsSource<T>;
+declare function tmEntitySource<T>(descriptor: TmEntityDescriptor, id: Signal<TmId | null>): TmDetailsSource<T>;
 @Component({ selector: 'tm-details-page' })          // the host over a given source and layout
 declare class TmDetailsPage {
   readonly source: InputSignal<TmDetailsSource<unknown>>;
@@ -276,7 +277,7 @@ A failed read replaces the body with an error state; the header stays usable.
   §2.4).
 - **Clone** (`details.clone`) pushes `TmUrls.create(entity, { clone: id })`. The new instance takes
   the source record from its snapshot (§13), else reads it. It then strips the copy in this order:
-  1. a structured copy, `TmDecimal` values kept;
+  1. a structured copy (`structuredClone`);
   2. remove the key and every `server-owned`, `database-owned` and `derived` property by descriptor,
      which drops `modifiedAt`, the audit columns and `isActive`;
   3. set every blob reference to `null`: a blob has one owner (spec 0017 §4.1);
@@ -313,7 +314,7 @@ declare function injectTmDetails<T = TmJsonObject>(): TmDetailsContext<T>;   // 
 
 interface TmDetailsContext<T> {
   readonly descriptor: TmEntityDescriptor; readonly source: TmDetailsSource<T>;
-  readonly id: Signal<number | null>;                          // null in create mode
+  readonly id: Signal<TmId | null>;                            // null in create mode
   readonly mode: Signal<'view' | 'edit' | 'create'>;
   readonly status: Signal<'loading' | 'ready' | 'error'>;      // the read's state (§3.2)
   readonly error: Signal<TmApiError | null>;                   // the read's failure
@@ -326,7 +327,7 @@ interface TmDetailsContext<T> {
   readonly can: { readonly edit: Signal<boolean>; readonly create: Signal<boolean>;
                   readonly delete: Signal<boolean>; readonly activate: Signal<boolean> };
   readonly actions: Signal<readonly TmPageAction[]>;           // §10.1's actions, for a hatch's own toolbar
-  readonly childTarget: Signal<{ readonly collection: string; readonly id: number } | null>; // §14
+  readonly childTarget: Signal<{ readonly collection: string; readonly id: TmId } | null>; // §14
   edit(): void; cancel(): Promise<boolean>;                    // cancel → false: the user kept editing
   save(): Promise<boolean>;                                    // true: saved, back in view mode
   refresh(): void;                                             // view: re-read; edit: related and extras only
@@ -334,7 +335,7 @@ interface TmDetailsContext<T> {
   registerField(path: string, field: TmDetailsFieldRef, destroyRef?: DestroyRef): void;
   registerCollection(name: string, collection: TmDetailsCollectionRef, destroyRef?: DestroyRef): void;
 }
-interface TmRelated { get(entity: string, id: number | null | undefined): TmJsonObject | undefined }
+interface TmRelated { get(entity: string, id: TmId | null | undefined): TmJsonObject | undefined }
 interface TmDetailsFieldRef {                                  // path: PascalCase, relative to the record ('Name2')
   readonly labelKey: string; readonly label: Signal<string>; readonly editable: Signal<boolean>;
   focus(): void;                                               // opens its tab, expands its card, focuses the control
@@ -342,11 +343,12 @@ interface TmDetailsFieldRef {                                  // path: PascalCa
 interface TmDetailsCollectionRef {                             // name: the child collection ('Lines')
   readonly ready: Signal<boolean>;                             // the deferred grid rendered its rows
   readonly visible: Signal<TmVisibleData>;                     // columns and rows as displayed (spec 0026 §9.1)
-  reveal(rowId: number, options?: { flash?: boolean; column?: string }): boolean; // scrolls; focuses with column
+  reveal(rowId: TmId, options?: { flash?: boolean; column?: string }): boolean; // scrolls; focuses with column
 }
 ```
 
-- **`T`** comes from the generated `TmEntityTypes` (spec 0029 §15).
+- **`T`** comes from the generated `TmEntityTypes` (spec 0029 §15). Ids are `TmId` (spec 0024
+  §10.1): a `number` for an `int` key, a `TmDecimal` for a `bigint` one.
 - **`update`** writes through `model`, marks the record dirty and feeds the draft. Calling it in
   view mode is a development error.
 - **`refresh` in edit mode** keeps the working copy and the base stamp, so a conflict still surfaces
@@ -387,7 +389,8 @@ Row 1 is spec 0023 §7.2's `tm-page-header`.
 - **Crumb.** `[tmPageBack]` shows the plural label ("Customers"). It links to the search snapshot's
   canonical URL when the page was opened from the list (§12), else to `TmUrls.search(entity)`.
 - **Title.** `h1[tmPageTitle]` shows the display name, ellipsized; in create mode, the new-record
-  label. It is the route's focus target and, with the distribution's name, the document title.
+  label. It is the route's focus target. Followed by the distribution's `{displayName}`, it is also
+  the document title (spec 0024 §4.4).
 - **Badges** sit in `[tmPageTitleExtra]`, each in a fixed box, in this order:
   - "Active" or "Inactive" with an icon, on activatable entities;
   - "Unsaved changes" (warning, dot and text) while dirty;
@@ -496,7 +499,7 @@ the rendering:
 |---|---|---|
 | `value` (a scalar or a twin) | `tm-value` (spec 0029 §12): formatted, "—" for null | `tm-value-editor` in a `tm-form-field`, bound to the node |
 | `text` (a group anchor, `Name`) | one cell per admitted slot, labelled "Name (E)", "Name (ع)", each in its content direction | one control per slot, `dir` from its slot |
-| `navigation` (`Currency`) | the display name, a link when `allows(target, 'details')`; with an avatar column, `tm-avatar` and the name | `tm-entity-field` (spec 0029 §14) on the foreign key (`currencyId`), with `filter` and `create` |
+| `navigation` (`Currency`) | the display name, a link when `allows(target, 'details')`; with an avatar column, `tm-avatar` and the name; the avatar's `colorKey` is the record key (spec 0029 §12.2) | `tm-entity-field` (spec 0029 §14) on the foreign key (`currencyId`), with `filter` and `create` |
 | `image` (`Image`) | `tm-image`, 72 × 72, the `thumb` variant when listed | `tm-image` in edit mode: pick, crop, upload, replace, remove (§6.3) |
 | `file` (`File`) | the file name as a download link, and its size | `button[tmFilePicker]` and the file chip with remove (§6.3) |
 | a path through navigations (`Customer.Code`) | the related projection's value (`TmRelated`) | read-only |
@@ -568,7 +571,8 @@ declare class TmChildGrid {
 - **Height** is set when the record loads and at each mode change, and is fixed in between. It fits
   the rows plus the placeholder (at least 4 rows, at most `maxRows`), plus the header. Beyond that,
   the grid scrolls inside.
-- **Totals** sum exactly, by decimal arithmetic on the values' text, and stay live in edit mode.
+- **Totals** sum the `TmDecimal` values exactly with `TmDecimals.add` (spec 0024 §10.1), and stay
+  live in edit mode.
 - **Loading.** The grid renders inside `@defer (on viewport; prefetch on idle)`. A placeholder of
   the same geometry stands in, also while the record loads. The grid registers once its rows render.
 - **Links.** View-mode navigation cells are links; Enter follows one (spec 0004's readonly Enter).
@@ -647,8 +651,8 @@ error.
 ### 6.8 `tm-details-audit`
 
 `<tm-details-audit />`, one line in the layout, renders the collapsed "Audit info" card. It shows
-Created by (a link), Created at, Modified by and Modified at, with instants in the display zone. It
-renders nothing on entities without audit columns.
+Created by (a link), Created at, Modified by and Modified at, with instants in the display zone and
+spec 0029 §12.2's zone label. It renders nothing on entities without audit columns.
 
 ## 7. Validation
 
@@ -712,8 +716,10 @@ sequenceDiagram
 4. **Payload.** `action` applies `declaration.beforeSave?.(model())` and builds the body (§8.2). It
    flushes the draft, marked with `savingAt` (§11.1).
 5. **Write.** The host runs `TmBusyOverlay.run(source.write(…), { label })`, with the label now
-   "Saving…". Meanwhile `busy` holds the navigation lock (§8.7). A write is never aborted. A 422's
-   errors are recorded on their fields (§8.5).
+   "Saving…". The Save button's `running` spinner is the click's feedback. The page turns inert at
+   once, and the scrim follows only after 200 ms (spec 0023 §5.4). Meanwhile `busy` holds the
+   navigation lock (§8.7). A write is never aborted. A 422's errors are recorded on their fields
+   (§8.5).
 
 ### 8.2 The body
 
@@ -723,14 +729,15 @@ sequenceDiagram
 POST /17/api/web/sales-invoices/save
 { "entities": [ { "id": 1284, "serialNumber": 1284, "postingDate": "2026-10-20", "customerId": 77,
                   "isClosed": false, "modifiedAt": "2026-10-19T08:14:02.1234567+00:00",
-                  "lines": [ { "id": 5501, "centerId": 12, "description": "Steel pipes", "amount": 1032 },
-                             { "id": -1, "centerId": 14, "description": "Delivery", "amount": 800 } ],
+                  "lines": [ { "id": 5501, "centerId": 12, "description": "Steel pipes", "amount": "1032.0000" },
+                             { "id": -1, "centerId": 14, "description": "Delivery", "amount": "800" } ],
                   "attachments": [ { "id": 801, "fileId": 9921 }, { "id": -2, "fileId": 10433 } ] } ],
   "returnEntities": true, "include": ["related-documents"], "concurrency": "Check" }
 ```
 
 - **The working copy as is.** Server-owned members travel back and the server ignores them (spec
-  0016 §3.1). `TmDecimal` values write their exact text.
+  0016 §3.1). Decimals are strings: a read value goes back as read, and a typed one as its
+  editor's text (`"800"`).
 - **The stamp.** `modifiedAt` is the base's raw string. Create mode sends no `id` and no
   `modifiedAt`.
 - **Children** are the full arrays the read returned, as edited. New rows carry negative ids, which
@@ -850,9 +857,9 @@ who saved:
   `modifiedById` and `modifiedAt`. `modifiedAt` is parsed only for `tm-relative-time`. A settings
   conflict carries no author.
 - **Reload** re-reads under the overlay and adopts the record. It resets the form, returns to view
-  mode and clears the draft.
-- **Overwrite** resends the same body with `"concurrency": "Override"`. Its outcomes follow §8, and a
-  404 opens the deletion dialog (§9.2).
+  mode and clears the draft. The overlay shows at once, since the dialog has closed (§10.1).
+- **Overwrite** resends the same body with `"concurrency": "Override"`, under the same immediate
+  overlay. Its outcomes follow §8, and a 404 opens the deletion dialog (§9.2).
 - **Dismiss** keeps edit mode; the next Save sends `Check` again.
 - **Every origin** sees this dialog: an assistant-invoked save leaves the choice to the human.
 
@@ -889,6 +896,13 @@ views of them. This section lists them and decides delete, activation and entity
 - **Shortcuts** are spec 0027 §4.3's admitted page keys, so a grid that handles `F2` wins. `Mod+S`
   acts in edit and create modes only, and prevents the browser's save dialog.
 - **`visible(entity, { userId })`** (spec 0029 §3) hides an action, built-in `activate` included.
+- **The overlay's start** (spec 0023 §5.4) depends on whether the trigger is still on screen
+  during the write:
+  - *On screen.* The trigger shows its busy state in the click's frame, and the scrim follows
+    after 200 ms. A toolbar button shows `running`; the action button of a dialog that stays open
+    shows `pending`.
+  - *Closed.* The command passes `immediate: true`. This covers a menu item, a confirmation and
+    the conflict dialog.
 
 ### 10.2 Delete
 
@@ -896,7 +910,7 @@ views of them. This section lists them and decides delete, activation and entity
    deleted. This can't be undone.", with Cancel and Delete (danger); for descendants, "Delete {name}
    and everything under it?".
 2. **Write.** `TmApi.write('{segment}/delete' | 'delete-with-descendants', { ids: [id] })` under the
-   overlay "Deleting…".
+   overlay "Deleting…". The overlay shows at once, since the confirmation has closed (§10.1).
 3. **Success.** The host calls `markStale`, forgets the snapshot and replaces the URL with the
    crumb's target. The toast "{Entity} deleted." shows, since the page is gone (spec 0028 §8.1).
 4. **Failure.** A 404 shows the not-found state. Anything else, `Fk.InUse` included, goes to
@@ -904,9 +918,10 @@ views of them. This section lists them and decides delete, activation and entity
 
 ### 10.3 Activate and deactivate
 
-Activate and deactivate run at once, with no confirmation, under the overlay:
+Activate and deactivate run with no confirmation, under the overlay:
 `TmApi.write('{segment}/activate' | 'deactivate', { ids: [id], returnEntities: true, include })`.
-The result replaces the server copy, then the host calls `markStale`.
+The overlay shows at once, since their menu has closed (§10.1). The result replaces the server
+copy, then the host calls `markStale`.
 
 ### 10.4 Entity actions and their dialogs
 
@@ -917,20 +932,27 @@ actions alike. An action with arguments opens a dialog generated from their sche
 ```ts
 // @tellma/core/entity — shared by /details and /search
 declare class TmEntityActions {
-  run(entity: string, action: string, ids: readonly number[],
+  run(entity: string, action: string, ids: readonly TmId[],
       options?: { arguments?: TmJsonObject; include?: readonly string[] }): Promise<TmEntityActionOutcome>;
-  dialog(entity: string, action: string, ids: readonly number[],
+  dialog(entity: string, action: string, ids: readonly TmId[],
       options?: { arguments?: TmJsonObject; include?: readonly string[] }): Promise<TmEntityActionOutcome | null>; // null: dismissed
 }
 type TmEntityActionOutcome =
-  | { readonly kind: 'entities'; readonly result: TmEntitiesResult }  // spec 0016 §3.6's envelope: ids, entities, related, extras
+  | { readonly kind: 'entities'; readonly result: TmEntitiesResult }  // spec 0016 §3.6's envelope
   | { readonly kind: 'own'; readonly result: TmJson }                 // the action's own result
   | { readonly kind: 'job'; readonly jobId: number }                  // a 202 JobAccepted
   | { readonly kind: 'none' };
+interface TmEntitiesResult<T = TmJsonObject> {                       // spec 0016 §3.4; null members are omitted
+  readonly ids: readonly TmId[];                                      // in the stack's key type (spec 0016 §3.2)
+  readonly entities: readonly T[];
+  readonly related?: Readonly<Record<string, readonly TmJsonObject[]>>; // related rows by entity
+  readonly extras?: Readonly<Record<string, TmJson>>;                 // extras by name
+  readonly rows?: TmQueryRowSet;                                      // the row echo (spec 0029 §6.2)
+}
 interface TmActionDialogContext<A> {                                  // what a declared dialog injects
-  readonly entity: string; readonly action: TmEntityActionDescriptor; readonly ids: readonly number[];
+  readonly entity: string; readonly action: TmEntityActionDescriptor; readonly ids: readonly TmId[];
   readonly initial: Partial<A>;                                       // arguments the invoker supplied, else {}
-  run(args: A, options?: { form?: FieldTree<A>; keepOpen?: boolean; ids?: readonly number[] }):
+  run(args: A, options?: { form?: FieldTree<A>; keepOpen?: boolean; ids?: readonly TmId[] }):
     Promise<TmEntityActionOutcome | null>;                            // null: errors shown
   close(outcome?: TmEntityActionOutcome | null): void;
 }
@@ -955,9 +977,10 @@ declare function injectTmActionDialog<A = TmJsonObject>(): TmActionDialogContext
     `required` per the field, and a picker when `value.target` is set.
   - The footer holds Cancel and the action's label (primary, or danger when destructive).
 - **A declared dialog** builds its own form from `initial`.
-- **`run`** executes under the busy overlay. A 422 whose paths start with `arguments` maps onto
-  `form` by §8.5's walk; other errors list in a `tm-alert` atop the dialog. `keepOpen` keeps the
-  dialog to show the outcome; `ids` retries a subset (spec 0032's invitations).
+- **`run`** executes under the busy overlay. The dialog stays open while it runs, so its action
+  button shows `pending` (spec 0005 §3) in the click's frame (§10.1). A 422 whose paths start with
+  `arguments` maps onto `form` by §8.5's walk; other errors list in a `tm-alert` atop the dialog.
+  `keepOpen` keeps the dialog to show the outcome; `ids` retries a subset (spec 0032's invitations).
 - **Without arguments,** an action runs at once, unless it declares a `dialog`. A destructive one
   runs after the dispatcher's confirmation. The assistant origin opens the dialog filled from its
   arguments.
@@ -972,7 +995,7 @@ field, and entering 250,000 on customer 77 posts:
 
 ```json
 POST customers/set-credit-limit
-{ "ids": [77], "returnEntities": true, "include": [], "arguments": { "creditLimit": 250000 } }
+{ "ids": [77], "returnEntities": true, "include": [], "arguments": { "creditLimit": "250000" } }
 ```
 
 ## 11. Drafts, the leave guard, and refresh versus leaving
@@ -986,9 +1009,9 @@ first. This section decides what a draft holds, when it restores, and when the g
 // @tellma/core (types only); stored by TmDrafts under the source's draftKey (spec 0025 §11)
 interface TmDetailsDraft {
   readonly v: 1; readonly mode: 'edit' | 'create';
-  readonly model: TmJson;                             // the working copy, lossless
+  readonly model: TmJson;                             // the working copy, plain JSON (spec 0024 §10.4)
   readonly baseModifiedAt: string | null;             // the stamp the save will send; null in create mode
-  readonly clonedFrom?: number;                       // a create from ?clone=
+  readonly clonedFrom?: TmId;                         // a create from ?clone=
   readonly savingAt?: number;                         // set just before a write, cleared by its answer
   readonly uploads?: readonly TmBlobDescriptor[];     // staged blobs the model references, for previews
   readonly tabs?: Readonly<Record<string, string>>;   // tabs id → selected tab id
@@ -1194,7 +1217,8 @@ Every suite runs on PR.
 
 - **Unit (vitest):** the path splitter and `FieldTree` walk (children, unknown segments, the root,
   `arguments`); the clone strip; create defaults; dirty by reference; §11.2's table; paging
-  arithmetic and edge reads; snapshot rules; §10.4's body selection; exact totals.
+  arithmetic and edge reads; snapshot rules; §10.4's body selection; exact totals with
+  `TmDecimals`.
 - **Harness** (`TmDetailsPageHarness`, fake `TmApi`, fake clock):
   - load; Edit; Cancel with and without changes; Save 200, where create replaces the URL;
   - 422 with field, child-row, unrendered and root errors, and "Fixed" items;
@@ -1202,6 +1226,8 @@ Every suite runs on PR.
     the step-up draft;
   - delete; activate; entity actions with the generated and a declared dialog, argument errors,
     `keepOpen` and a 202;
+  - the overlay's start (§10.1): Save and a dialog's action button busy in the click's frame with
+    the scrim after 200 ms; immediate after a menu item, a confirmation and the conflict dialog;
   - paging within and across pages with `supersedes`, and within `ids` with `request: null`;
   - leave guard Discard and Stay; a source page with `validate` problems and the step-up notice; a
     hatch with `edit: 'page'`; picker create and edit.
@@ -1223,7 +1249,7 @@ Every suite runs on PR.
 | Rule | How this design meets it | Pinning test |
 |---|---|---|
 | Instant warm launch | the header, toolbar, pager and the layout's labels render from descriptors, access, the display-name cache and the search snapshot; only the record's read waits (§3.3) | spec 0024's `warm-launch.spec` on `/17/customers/5` and `/17/sales-invoices/1284` with every request held: title row, toolbar, labels and skeletons within 1 s |
-| Instant feedback | Edit, Cancel, New and paging within a page change the screen in the click's frame; Save shows the overlay at once; buttons render `running` (§3.4, §5.2) | `details-feedback.spec` (a rAF probe after Edit, Cancel, New, next); harness: Edit sends nothing |
+| Instant feedback | Edit, Cancel, New and paging within a page change the screen in the click's frame; Save spins in the click's frame and the page turns inert at once; commands whose trigger has closed show the overlay at once (§3.4, §5.2, §8.1, §10.1) | `details-feedback.spec` (a rAF probe after Edit, Cancel, New, next); harness: Edit sends nothing |
 | Non-blocking | reads abort on leave and are superseded by paging; writes block only while in flight (§3.3, §8.7) | `paging-aborts.spec`: three fast nexts, two aborted reads, one applied |
 | Stable layout | equal field geometry in both modes; Save in Edit's box; a fixed trailing group; fixed child-grid heights; fixed badge and counter boxes; the overlaying strip; summary items that never leave (§5, §6, §8.4) | `details-geometry.spec`: boxes of the header controls, every field and the grid identical across load, Edit, typing, adding a row, a failed Save, fixing fields and Cancel |
 | RTL | logical properties; the aside at the inline end; mirrored chevrons; isolated "52 / 293"; slot fields in their content direction | every §17 e2e in `ar`; `details-rtl.spec` |
@@ -1279,6 +1305,10 @@ Every suite runs on PR.
 13. **Every extra is eager** — no extra in sight is heavy; lazy ones need a new operation (§6).
 14. **Actions are page actions, run by one runner with a generated dialog in `/entity`** — every
     origin shares one path, and arguments need no client code (§10).
+15. **A visible trigger carries the click's feedback; a closed one asks for the immediate overlay**
+    — a fast save never blinks the page, and a command from a menu or a closed dialog still answers
+    in its frame. Rejected: the scrim at once for every write, which blinks on every fast save
+    (§10.1).
 
 ## Review flags
 

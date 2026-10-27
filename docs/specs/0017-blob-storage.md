@@ -423,7 +423,7 @@ public sealed record BlobDownload(
 |---|---|
 | `StageAsync` | §3.2–§3.5: validates, processes, one database round trip, create-only store writes; returns the descriptor whose `Id` a record save attaches. Requires `RequestContext.UserId`; a job scope stages under its run-as user. |
 | `ResolveAsync` | §5.1: one database round trip through the owner row and the caller's grant; `null` means 404. |
-| `BlobDescriptor.ExpiresAt` | The staging deadline; `null` once committed. Serialised camel-cased like every wire record of spec 0016. |
+| `BlobDescriptor.ExpiresAt` | The staging deadline; `null` once committed. The descriptor serialises camel-cased like every wire record of spec 0016. Its `size` is a `long`, so it travels as a JSON string (spec 0016 §3.2). |
 | `BlobDownload.State` | `Staged` or `Committed` — the endpoint chooses the cache policy from it (§5.3). |
 
 ### 3.2 The stage flow

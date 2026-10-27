@@ -24,7 +24,8 @@ ECharts. Everything else lives in two lazy `@tellma/core` entry points built on 
 
 Other specs that carry parts of this design:
 
-- spec 0033 §8.1, §9, §12.1 — `reports/run`, the result envelope and the export routes.
+- spec 0033 §8.1, §8.11, §9, §12.1 — `reports/run`, measure errors, the result envelope and the
+  export routes.
 - spec 0035 §9.1, §11 — the report widget and its refresh.
 - spec 0030 §2.5, §17 — `searchRead`, the `search` hatch and list mode.
 - spec 0031 §3.1, §3.7, §8, §11 — `tm-details-page`, the `page` and `create` hatches with
@@ -34,8 +35,9 @@ Other specs that carry parts of this design:
 - spec 0025 §10, Appendix A — page state and the `report.<id|key>.params` key.
 - spec 0026 §9.3; spec 0027 §3.2; spec 0028 §8.1 — the context rows; launcher entries; the report
   toasts.
-- spec 0023 §4.3–§4.4, §7.3, §8.3–§8.4; spec 0010 §C.1, §C.6, §C.7, §D.7 — the generic components,
-  and the grid and format amendments, that this spec composes.
+- spec 0023 §4.3–§4.4, §7.3, §8.3–§8.4 — the generic components that this spec composes.
+- spec 0010 §B.8, §C.1, §C.6, §C.7, §D.7 — the `categorical` tones and `sequential` steps, and
+  the grid and format amendments, that this spec composes.
 
 ## Goals / Non-goals
 
@@ -112,9 +114,9 @@ in a details card is one element.
 ### 2.1 A report in a details card
 
 ```html
-<!-- customers/customer-details.ts: the customer's aging, bound to the record -->
-<tm-details-card titleKey="Acme_Customer_Aging" flush>
-  <tm-report-host [report]="{ key: 'acme-aging' }" [parameters]="{ Customer: details.entity()?.id ?? null }" />
+<!-- customers/customer-details.ts: the customer's credit exposure, bound to the record -->
+<tm-details-card titleKey="Acme_Customer_CreditExposure" flush>
+  <tm-report-host [report]="{ key: 'acme-credit-exposure' }" [parameters]="{ Customer: details.entity()?.id ?? null }" />
 </tm-details-card>
 ```
 
@@ -146,22 +148,25 @@ type TmReportParameterType = 'Numeric' | 'String' | 'Bool' | 'Date' | 'DateTime'
 type TmReportArgs = Readonly<Record<string, TmJson>>;     // spec 0033 §4.4's encoding; null = omitted
 ```
 
-**Example —** Acme's aging report, the whole client side:
+**Example —** Acme's credit exposure report, the whole client side:
 
 ```ts
-// app/reports/aging.report.ts
-export const agingReport = tmCodedReport('acme-aging', {
-  titleKey: 'Acme_Report_Aging', section: 'sales',
-  securable: ['acme.AgingReport', 'Read'], kind: 'Summary',
+// app/reports/credit-exposure.report.ts
+export const creditExposureReport = tmCodedReport('acme-credit-exposure', {
+  titleKey: 'Acme_Report_CreditExposure', section: 'sales',
+  securable: ['acme.CreditExposureReport', 'Read'], kind: 'Summary',
   parameters: { AsOf: { type: 'Date', required: true }, Customer: { entity: 'acme.Customer' } },
-  route: 'acme-reports/aging',                            // C# applies AsOf ?? today and echoes it as Default
+  route: 'acme-reports/credit-exposure',                  // C# applies AsOf ?? today and echoes it as Default
 });
 ```
 
-- **The call.** The host calls `TmApi.read(route, args, { signal, long: true })` with the keys in
-  camelCase, such as `{ "asOf": "2026-10-20", "customer": 1012 }`. The C# body record's properties
-  match those keys (spec 0033 §11). When a required value is missing and the method cannot supply
-  it, the server answers `422 Report.ArgumentRequired`.
+- **The call.** The host calls `TmApi.read(route, args, { signal })` with the keys in camelCase,
+  such as `{ "asOf": "2026-10-20", "customer": 1012 }`. The C# body record's properties match
+  those keys (spec 0033 §11). When a required value is missing and the method cannot supply it,
+  the server answers `422 Report.ArgumentRequired`.
+- **Long by declaration.** The route's action declares `Long = true` (spec 0033 §11), so the
+  Contracts chunk lists it and `TmApi` gives it the long watchdog (spec 0024 §3.4). A `run` hatch
+  that calls a hand-mapped endpoint (spec 0016 §4.5) passes `long: true` itself.
 - **Sources.** A declaration sets exactly one of `route`, `run` or `component`. The one allowed pair
   is `component` with `route`: the host fetches, and the component renders the host's result. Any
   other combination fails the build with `coded-report-source`.
@@ -219,6 +224,7 @@ declare class TmReportHost {
   readonly parameters: InputSignal<TmReportArgs | undefined>;           // bound arguments
   readonly showParameters: InputSignal<boolean | undefined>;            // default: true in page and assistant mode
   readonly declarations: InputSignal<readonly TmReportParameter[] | undefined>; // the bar's fields, when the page holds them
+  readonly document: InputSignal<TmReportDocument | undefined>;         // the stored document, when the page holds it: labels a calculation error (§3.3)
   readonly held: InputSignal<TmReportResult | undefined>;               // shown first; no run until run() or an argument change
   readonly refresh: InputSignal<'spinner' | 'silent'>;                  // how a pending run looks (§3.4)
   readonly dashboardId: InputSignal<number | undefined>;                // sent with each run (spec 0033 §8.2)
@@ -243,9 +249,11 @@ declare function injectTmReportHost(): TmReportHost;
   arguments, `args` and `generation`. A new key aborts the run in flight. Leaving aborts it through
   `DestroyRef`, all the way down to SQL (spec 0033 §8.9).
 - **Transport.** `{ id }` and `{ draft }` call `TmApi.read('reports/run', { id | draft, arguments,
-  dashboardId, skip, take: 200, includeCount: true }, { signal, long: true })`. Only List and
-  Summary send the paging members. `{ key }` calls the declaration's `route` or `run`. Every run is
-  a retried, cancellable long read (spec 0024 §10.5).
+  dashboardId, skip, take, includeCount: true }, { signal })`. `{ key }` calls the declaration's
+  `route` or `run`.
+- **Paging.** Only List and Summary send the paging members. `take` is the kind's page size (§5.1).
+- **Long reads.** Every run is a retried, cancellable long read (spec 0024 §10.5). The Contracts
+  chunk marks `reports/run` long and idempotent (spec 0024 §3.4).
 - **Arguments sent** are `args` merged with the bound arguments; a bound value wins. The bar shows
   the effective arguments, so a defaulted parameter shows its default value.
 - **No definition read**, with one exception. A host that shows the bar for `{ id }` and has no
@@ -262,9 +270,9 @@ declare function injectTmReportHost(): TmReportHost;
 3. For a coded report, the declaration is local, so the run starts at once.
 4. The result renders, the page registers its context (§13) and records `tm.report.run`.
 
-**Example —** `/17/reports/42` has no `p.*`, so `reports/get` and `reports/run { id: 42,
-arguments: {}, take: 200, includeCount: true }` leave together. The result echoes
-`From = 2026-01-01` (`Default`) and `To` (`Omitted`), and the bar shows both.
+**Example —** `/17/reports/42` is a summary, and its URL has no `p.*`. So `reports/get` and this
+run leave together: `reports/run { id: 42, arguments: {}, take: 1000, includeCount: true }`. The
+result echoes `From = 2026-01-01` (`Default`) and `To` (`Omitted`), and the bar shows both.
 
 ### 3.3 Output states
 
@@ -275,23 +283,40 @@ The table lists the report's own states; any other read failure renders spec 002
 | State | When | Shows | Action |
 |---|---|---|---|
 | first load | no held result | the kind's skeleton (below) | Cancel after 2 s ("Still running…") |
-| reloading | a held result and a foreground run | the held output at 0.6 opacity, `inert`, `aria-busy`; a `tm-progress-bar` on its top edge after 150 ms | Cancel after 2 s |
+| reloading | a held result and a foreground run | the held output at 0.6 opacity, `inert`, `aria-busy`; a `tm-progress-bar` on its top edge (below) | Cancel after 2 s |
 | waiting | a required parameter without value or default, or `422 Report.ArgumentRequired` | `sliders-horizontal`, "Fill in the required parameters" with their labels | Fill in: focuses the first empty field |
 | invalid argument | `422 Report.ArgumentInvalid` | the waiting state, and the field's error popover | — |
 | no data | an empty table, cube or series | `inbox`, "No data for these parameters" | — |
 | too much data | `413` with `Report.TooManyRows`, `Report.TooManyPoints`, `Report.TooManyCells` or `limit-exceeded` | `circle-alert`, "This report returns too much data to show", "Add a filter or narrow the parameters." | Export, when available (§9) |
 | needs fixing | `400 query-invalid` | `wrench`, "This report no longer runs", "A field it uses has changed." | Edit, with `permissions.save` |
+| calculation error | `422 Report.MeasureFailed` (spec 0033 §8.11) | `circle-alert`, "A measure couldn't be calculated", and the reason (below) | Edit, with `permissions.save` |
 | cancelled | Cancel with no held result | `circle-pause`, "The report was stopped" | Run again |
 
 - **Skeletons.** List and Summary show `tm-skeleton shape="table"` with 12 rows. Pivot and Chart
   show a `block` frame. While the kind is unknown, the skeleton is `table`.
+- **The reloading bar** follows the search page's rule (spec 0030 §3.3):
+  - it shows in the frame that starts the run;
+  - it holds while the held output is stale, so a run that supersedes another never blinks it off;
+  - once shown, it stays at least 250 ms (spec 0023 §4.4).
+
+  `aria-busy` follows the run itself.
+- **The calculation error's reason** comes from the error's arguments:
+  - *`divide-by-zero`* reads "{measure} divides by zero at {cell}. Guard it with if(…)."
+  - *`overflow`* reads "{measure} is too large at {cell}."
+  - *`{cell}`* joins the `row` captions, then the `column` captions, with " × ". Captions render
+    as the server sends them (spec 0033 §8.11). An empty list reads "Total", and a null caption
+    reads "(None)". For example: "Riyadh × 3", "Total × 3", or "Total" for a summary's totals row.
+  - *Without `row`,* SQL raised the error, and "at {cell}" reads "in some rows".
+  - *`{measure}`* is the label (§3.5) of the term at `pointer`. The host reads it from the draft,
+    the stored document or the held result. The stored document is the `document` input, or the
+    definition the host read itself (§3.1). With none at hand, or with an empty pointer, it reads
+    "A calculation".
 - **Waiting in `widget` mode** reads "This widget needs a value for {label}." and offers no Fill in.
 - **States** are `tm-empty-state` with `live="polite"`. A cancel over a held result is silent.
   `forbidden` and `not-found` clear the held result in every mode, so revoked data never lingers.
 - **The notice strip** is one 32 px row that overlays the output's top edge, like spec 0031 §5.3's
   status strip, so it takes no layout space. It holds one closable info `tm-alert`: a refused drill
-  (§8.2), "Preview is out of date" (§12.8), or truncated levels, such as "Center shows 4 of 6
-  levels. Deeper values are included in their level-4 parents."
+  (§8.2) or "Preview is out of date" (§12.8).
 
 ### 3.4 Refresh modes
 
@@ -326,6 +351,8 @@ The table lists the report's own states; any other read failure renders spec 002
   - text in the active slot; `enum` through `TmEntities.enum(name)`;
   - `display` and `format` through `TmL10n`: spec 0005 §2.2's `formatNumber` and `formatDate`, and
     spec 0010 §D.4 for instants;
+  - a `decimal` or `long` value from the exact string it arrives as (spec 0033 §9), never through
+    `number` (spec 0024 §10.4);
   - `month`, `quarter` and `year` per spec 0010 §D.7, in `format.calendar`, else the viewer's
     calendar;
   - numbers LTR-isolated and aligned to the physical right.
@@ -347,7 +374,8 @@ The `mode` input fits the host to its placement. The table lists what each mode 
 
 - **"Updated {time}"** is an absolute time in a `<time>` element. For a run today in the display
   zone it is `TmL10n.formatTime(executedAt)`. Otherwise it is `formatDateTime(executedAt, {
-  dateStyle: 'medium' })` (spec 0010 §D.4).
+  dateStyle: 'medium' })` (spec 0010 §D.4). Both add the zone label when the display zone's
+  offset differs from the device's: "Updated 10:42 GMT+3".
 - **A future search-page pivot view** is this host in `card` mode, fed a `{ draft }` built from the
   search page's query. Nothing else is reserved for it.
 
@@ -432,6 +460,13 @@ declare function tmReportArgsToUrl(args: TmReportArgs, parameters: readonly TmRe
 
 - **Text.** A value is written in its platform scalar encoding (spec 0016 §3.2) without JSON
   quotes, then encoded per spec 0024 §9.5. §4.1's table shows the text for each type.
+- **Numbers.** The codec and the bar hold a `Numeric` value as a `number`, as editors do (spec 0024
+  §10.4).
+  - `p.Year=2026` reads as `2026`. A stored report's `decimal` and a coded report's `int` both
+    accept it.
+  - Text past 15 significant digits reads as a `TmDecimal`, which a `decimal` takes exactly.
+  - Echoed values arrive as `TmDecimal` strings (spec 0033 §4.4). A field shows one through
+    `TmDecimals.toNumber`.
 - **Keys** match ignoring case. The writer uses the declaration's spelling and order.
 - **What is written:**
 
@@ -476,8 +511,14 @@ a summary row drills through to its rows.
 - **Columns.** One grid column per `ReportColumn`; each cell reads `table.columnOrdinals[i]` and
   formats through `tmReportFormat`. Widths never depend on data: text and navigations `flex 1.6`
   (at least 160 px), numbers 120 px, dates 110 px, booleans 72 px, images 56 px.
+- **Instant columns.** A column that displays instants appends `TmFormats.zoneSuffix` (spec 0029
+  §12.1) to its header, as spec 0030 §7.1 does: "Posted at (GMT+3)". Its cells format in
+  `'column'` mode (spec 0010 §D.4).
+- **Pages.** A list pages at 200 rows and a summary at 1,000, so every summary with `top` fits on
+  one page and can show its totals (§5.3). `tm-grid` windows its rows, so the larger page costs
+  nothing on screen.
 - **Footer.** It reads "{first}–{last} of {count} rows · Updated {time}", with `{count}+` when the
-  count is capped. Past 200 rows it adds a `tm-pager` in range mode. Each page is a run with a new
+  count is capped. Past one page it adds a `tm-pager` in range mode. Each page is a run with a new
   `skip`, and paging pushes no history.
 
 ### 5.2 List
@@ -492,9 +533,18 @@ a summary row drills through to its rows.
 ### 5.3 Summary
 
 - **Activation** drills through the row's coordinate (§8.1). Key cells are never links.
-- **Totals.** With `totals: true`, `table.totals` is the last row of every page. It takes the
-  `rowClass` `tm-grid-row--emphasis` (spec 0010 §C.6) and shows "Total" in the first key column. It
-  is not counted, and it drills with no member condition.
+- **Totals.** With `totals: true`, `table.totals` is the last row when the page holds the whole
+  result (spec 0033 §8.4).
+  - *Cells* read through the same `columnOrdinals` as the rows. The key cells are null (spec 0033
+    §9.2).
+  - *Look.* It takes the `rowClass` `tm-grid-row--emphasis` (spec 0010 §C.6) and shows "Total" in
+    the first key column. It is not counted.
+  - *Drill.* It drills with no member condition. Under `top` it has no drill (spec 0033 §9.4).
+- **Omitted totals.** When `table.totalsOmitted` is true, the footer adds "Totals show when all
+  rows fit on one page. Export includes them."
+  - `widget` mode has no footer. The tile's status line carries a short note instead (spec 0035
+    §8.5).
+  - A `widget`-mode host without a status line shows no message; the report page explains.
 
 ### 5.4 Not in v1
 
@@ -545,8 +595,8 @@ interface TmPivotCell { readonly row: number; readonly column: number; readonly 
 ### 6.2 Layout
 
 - **Rows (compact form).** One row-header column indents members 16 px per depth. Parents carry a
-  13 px twisty, mirrored in RTL. A parent's row carries its subtotal, and its children follow it.
-  The `total` member renders last and never collapses.
+  13 px twisty, a `tm-icon` with `mirrorInRtl` (spec 0023 §3.1). A parent's row carries its
+  subtotal, and its children follow it. The `total` member renders last and never collapses.
 - **Columns.** An expanded member's group holds its children, then its subtotal column "{label}
   total". The `total` member comes last, as "Total". Each group holds one data column per measure.
   Header rows are one per column level, plus a row of measure names for two or more measures.
@@ -585,6 +635,7 @@ interface TmPivotCell { readonly row: number; readonly column: number; readonly 
 | a column header | Alt+ArrowDown, Alt+ArrowUp | expand, collapse the column |
 | any cell | Mod+C | copy its text |
 
+- **Keys** match through `kbd` (spec 0023 §3.2), so Mod is Cmd on macOS and Ctrl elsewhere.
 - **One tab stop.** The pivot is a `treegrid` with a roving tabindex, carrying `aria-readonly`,
   `aria-rowcount` and `aria-colcount`.
 - **Headers and rows.** `columnheader` cells carry `aria-colindex`, `aria-colspan` and
@@ -600,6 +651,9 @@ interface TmPivotCell { readonly row: number; readonly column: number; readonly 
   level only.
 - **Cells** sit in one `Map` keyed by `row × stride + column`. `text` formats `values[measure]` with
   that measure's column.
+- **Totals are the server's.** Every subtotal and total arrives in the cube. Its measures are
+  computed over the leaf rows that passed `having` (spec 0033 §8.6), so totals match the cells
+  shown. The renderer never computes one.
 - **Initial expansion.** Members with children start expanded when their dimension's `expand` is
   true (`ReportColumn.Expand`, default true). Page state keeps the sets (§3.7).
 
@@ -715,25 +769,22 @@ declare function tmValidateChartSpec(spec: unknown): readonly { readonly pointer
 ### 7.7 Palette and tokens
 
 The `chart` token group joins the default preset the way spec 0023 §9's groups do. It sits beside
-the `pivot` group, which holds §6.3's fills. A distribution re-brands both in `@layer tm.theme`.
-Series tokens keep a fixed order.
+the `pivot` group, which holds §6.3's fills. Its series and its ramp read the semantic
+`categorical` and `sequential` groups (spec 0010 §B.8), which switch with the scheme.
 
-| Token | Light | Dark |
-|---|---|---|
-| `series1` | `#118AA6` teal | `#2AA5C2` |
-| `series2` | `#EB6834` orange | `#D95926` |
-| `series3` | `#6250D6` violet | `#9085E9` |
-| `series4` | `#C98500` amber | `#C98500` |
-| `series5` | `#D55181` magenta | `#D55181` |
-| `series6` | `#008300` green | `#008300` |
-| `series7` | `#2A78D6` blue | `#3987E5` |
-| `series8` | `#E34948` red | `#E66767` |
-| `sequential1`–`sequential7` | teal-100 → teal-800 | teal-900 → teal-200 |
-| `divergingNegative`, `divergingPositive` | `series2`, `series1` | the same |
-| `grid`, `axis`, `label` | `--divider`, `--text-secondary`, `--text-body` | the same |
+| Token | Value |
+|---|---|
+| `series1`–`series8` | `categorical.1.mark` … `categorical.8.mark`: teal, orange, violet, amber, magenta, green, blue, red |
+| `sequential1`–`sequential7` | `sequential.1` … `sequential.7`, step 1 the faintest |
+| `divergingNegative`, `divergingPositive` | `series2`, `series1` |
+| `grid`, `axis`, `label` | `--divider`, `--text-secondary`, `--text-body` |
 
-- **Validated.** A token unit test, run for any preset, checks the colours against `surface.card` in
-  both schemes: chroma ≥ 0.1, adjacent colour-blind ΔE ≥ 8, normal-vision ΔE ≥ 15, contrast ≥ 3:1.
+- **Re-branding.** A distribution re-brands the series and the ramp in the `categorical` and
+  `sequential` groups. It re-brands the rest of the `chart` and `pivot` groups in
+  `@layer tm.theme`. Series and ramp tokens keep a fixed order.
+- **Validated.** A token unit test, run for any preset, checks the series colours in this order
+  against `surface.card` in both schemes: chroma ≥ 0.1, adjacent colour-blind ΔE ≥ 8,
+  normal-vision ΔE ≥ 15, contrast ≥ 3:1.
 - **Palettes.** `categorical` (the default) gives series their slots in member order, so a colour
   follows its member; past eight series, slots repeat with a new decal per cycle. `sequential`
   spreads the ramp over the series. `diverging` colours one series' marks by sign.
@@ -756,7 +807,8 @@ Series tokens keep a fixed order.
 
 - **The spec** takes `type` and `options` from `result.chart`, dimensions from the dimension
   columns, and rows from the ordinals. Members keep their first-appearance order; labels go through
-  `tmReportFormat`.
+  `tmReportFormat`. A plot needs numbers, so measure values convert with `TmDecimals.toNumber`
+  (spec 0024 §10.1), exact to 15 significant digits.
 - **Drill.** `pointActivate` and an activated table row drill through their members (§8.1); a
   `card` drills on click with no member condition.
 - **A chart type the facade does not draw** (only a coded report can return one) renders as the
@@ -780,7 +832,11 @@ its own record instead (§5.2). The host builds the list's URL from the result a
 4. **The URL** is `/{t}/list/{drill.segment}?filter=…&cols={drill.columns}`. The source report
    travels in navigation state (§8.2).
 
-A result without `drill` offers no drill affordance.
+A result without `drill` offers no drill affordance. When there is one:
+
+- **A leaf cell or a summary row** opens a list that holds exactly its rows.
+- **A subtotal or a total** opens a list that may also hold rows that `having` hid. That list can
+  add up to more than the number clicked (spec 0033 §9.4).
 
 **Example —** Acme's `acme.sales-by-center` pivot runs with `Year` defaulted to 2026. Activating the
 cell Riyadh × Q3 gives the filter `(year(Invoice.PostingDate) = 2026) and descendantOf(Center.Id,
@@ -848,7 +904,8 @@ Export asks the server for spec 0033 §12's workbook of the shown result. Lists 
 flat, a pivot fully expanded, and a chart as its data.
 
 1. The host calls `TmApi.download('reports/export', { id | draft | route, arguments, dashboardId },
-   { signal, long: true, onProgress })` with the shown result's effective arguments.
+   { signal, onProgress })` with the shown result's effective arguments. The Contracts chunk marks
+   the route long (spec 0024 §3.4).
 2. A sticky "Exporting…" toast shows progress and Cancel (spec 0028 §8.1); leaving also aborts. The
    file saves through an object URL and an `<a download>`, under the server's file name.
 3. On `413 Excel.Export.RowLimitExceeded`, the host makes one `TmApi.write('reports/export/start',
@@ -874,8 +931,10 @@ the same anatomy on its own `tm-page-header`.
 - **Description.** A one-line description follows, with its full text in a tooltip.
 - **Row 2** is the toolbar (§10.2).
 - **Body:** the parameter bar (§4.2), the output with its notice strip (§3.3), and the footer
-  (§5.1). The hatch reads the record through `injectTmDetails()` and passes its parameters to the
-  host as `declarations`.
+  (§5.1).
+- **The host's inputs.** The hatch reads the record through `injectTmDetails()` and parses its
+  `definitionJson`. It passes the document's parameters to the host as `declarations`, and the
+  document itself as `document`.
 
 ### 10.2 Toolbar and Actions
 
@@ -923,6 +982,8 @@ screen below `sm`. On open it reads two things in parallel: `{segment}/get { id,
   - *Warnings* come from the audience's per-grant counts and never block. For example: "Omar can't
     read Sales invoice lines and will see an empty report." or "2 of 9 members of Sales can't read
     Sales invoice lines."
+  - *Avatars*, here and in the next tab, pass the record key `core.User:{id}` as `colorKey` (spec
+    0023 §4.2).
 - **"Who can see this" tab.** It shows the audience total. When the server lists members, which it
   does only to a caller who may read roles, a searchable list follows: avatar, name, highest access
   and reasons, such as "Shared by Farah on 12 Oct", "Member of Sales (can edit)", "Everyone",
@@ -950,7 +1011,8 @@ Everything else is the search host's.
   page's grid.
 - **Columns:** Title (the kind's icon `list`, `sigma`, `grid-3x3` or `chart-column`, a link, and the
   "Standard" or "Built-in" badge), Kind, Root (plural label), Owner (avatar and name) and Modified
-  (`tm-relative-time`). A coded or standard report shows "—" where it has no root or owner.
+  (`tm-relative-time`). The Owner avatar's `colorKey` is the record key (spec 0029 §12.2). A coded
+  or standard report shows "—" where it has no root or owner.
 - **Coded reports lead page 1** of All and Shared with me: those whose `securable` passes, by title.
   The search text filters them by title and description (`tmSearchNormalize`, spec 0027); any other
   filter hides them.
@@ -1026,8 +1088,8 @@ and `definitionJson`.
   "0 decimals".
 - **The item editor.** Activating an item expands its editor in place, one at a time. It holds
   Expression, Label per slot, and Display and Format (spec 0033 §3.2's options, with
-  `format.calendar` for month, quarter and year). Dimensions add Order, Auto-expand, Tree, Levels
-  (1–10, default `min(maxDepth, 6)`) and Attributes.
+  `format.calendar` for month, quarter and year). Dimensions add Order, Auto-expand, Tree and
+  Attributes. A tree always shows its full depth (spec 0033 §8.6).
 - **Order by** items are `{ term }` or `{ expr }`, Ascending or Descending. **Top** is a
   `tmNumber`, hinted with spec 0033 §3.4 rule 8's range.
 
@@ -1076,9 +1138,15 @@ only the active type's block (spec 0033 §3.4 rule 2).
    mirrored from spec 0033: §3.4's rule 3 counts and rules 7–10, and §4.5's keys and limit of 20
    parameters.
 2. **After 250 ms,** one shared `TmQueryexDraft` checks the expressions. It is built over the root,
-   with `aggregate` for every kind but List, and with the confirmed parameter types. It holds Filter
-   and Having, the order expressions as `orderBy`, and every term joined by ", " as `select`. The
-   studio maps each span back to its term by the offsets it joined at. The open item's editor
+   with `aggregate` for every kind but List, and with the confirmed parameter types. It holds:
+   - Filter and Having;
+   - the order expressions, as `orderBy`;
+   - the pivot's measures, and a summary's measures when "Show totals row" is on, joined by ", "
+     as `measures` (spec 0029 §10.2), so a measure that C# cannot roll up shows QX4010 (spec 0010
+     §F.14, §F.15);
+   - every other term, joined by ", ", as `select`.
+
+   The studio maps each span back to its term by the offsets it joined at. The open item's editor
    checks on its own draft, and path terms resolve locally.
 3. **After 600 ms,** if no problem is left and Auto-preview is on, the preview runs
    `reports/run { draft }`. The server validates the whole document (spec 0033 §8.3). A `422` maps
@@ -1093,8 +1161,8 @@ only the active type's block (spec 0033 §3.4 rule 2).
 ### 12.8 The preview
 
 - **Query changes** re-run the preview as §12.7's step 3 describes, aborting the previous run. They
-  are edits to terms, filter, having, order, top, kind, totals, tree, levels, attributes and
-  parameter types.
+  are edits to terms, filter, having, order, top, kind, totals, tree, attributes and parameter
+  types.
 - **Presentation changes** re-render the held result through `overlay`, with no request. They are
   edits to labels, display, format, expansion, chart options, and a chart type with the same
   dimension count.
@@ -1157,21 +1225,34 @@ Every suite runs on PR.
 - **`tm-chart` unit:** spec validation; the adapter's input per type and option, engine-free;
   palette slots, decals and normalized shares; isolates and Arabic-Indic ticks; the table view and
   its row activation; no HTML tooltip or legend configured.
-- **Host harness** (fake `TmApi`, fake clock): `get` and `run` together without `p.*`, and in
-  sequence with them; `422` → waiting; one run per commit, the superseded ones aborted; §3.4's
-  table, `held`, `stale` and the `forbidden` clear; page-state restore, the `modifiedAt` discard
-  and the 5-minute run; `card` and `widget` write no URL or preference; `widget` reads no
-  definition.
-- **Codecs and rules:** `p.{Key}` vectors per type; §4.5's precedence and the remembered-value
-  filter; drill filters against `drill-golden.json` (one vector per row of spec 0033 §9.4's table,
-  shared with its C# tests); the 8,000-character refusal.
+- **Host harness** (fake `TmApi`, fake clock):
+  - `get` and `run` together without `p.*`, and in sequence with them; `422` → waiting;
+  - one run per commit, the superseded ones aborted;
+  - `take` 200 for a list and 1,000 for a summary, and no `long` option on runs and exports;
+  - the reloading bar from the commit's frame, held across a superseding run and at least 250 ms
+    on screen;
+  - §3.4's table, `held`, `stale` and the `forbidden` clear;
+  - the calculation error from a pivot cell, an outer subtotal, a summary's totals row and an SQL
+    row (empty pointer, no cell), and on a stored report's first run labelled from `document`;
+  - page-state restore, the `modifiedAt` discard and the 5-minute run;
+  - `card` and `widget` write no URL or preference; `widget` reads no definition.
+- **Renderers:**
+  - a summary's totals row on a single page, the `totalsOmitted` footer and no notice strip for it
+    in `widget` mode, no Total drill under `top`;
+  - an instant column's header suffix and `'column'` cells under a device zone that differs;
+  - decimal strings formatted exactly beyond 15 digits.
+- **Codecs and rules:** `p.{Key}` vectors per type, including a `Numeric` value past 15 digits
+  read as a `TmDecimal`; §4.5's precedence and the remembered-value filter; drill filters against
+  `drill-golden.json` (one vector per row of spec 0033 §9.4's table, shared with its C# tests); the
+  8,000-character refusal.
 - **Studio harness:** §12.5's targets and "Add to…"; §12.6's kept blocks; §12.7's span and pointer
-  mapping; overlay edits send nothing; create and edit through the host; a save's `422` mapped by
-  `pointer`; edit mode re-entered after Save and Cancel; restore under the studio key.
+  mapping, with pivot measures and a totalled summary's measures sent as `measures` and QX4010
+  mapped to its term; overlay edits send nothing; create and edit through the host; a save's `422`
+  mapped by `pointer`; edit mode re-entered after Save and Cancel; restore under the studio key.
 - **Share harness:** staged sharing as one `share` and one `publish`; a failing second call;
   warnings; a capped audience; members hidden from a caller without role read.
 - **Conformance and tokens:** the wire mirrors against spec 0033's JSON Schema; the
-  `TM_CHART_SPEC_SCHEMA` golden; §7.7's checks in both schemes.
+  `TM_CHART_SPEC_SCHEMA` golden; §7.7's checks over the `categorical` marks in both schemes.
 - **E2e on Acme** (Chromium; Firefox and WebKit `@cross-engine`): §15's Acme journeys; warm launch
   with requests held; every page under the production CSP, with a `securitypolicyviolation`
   listener; RTL at 390, 768, 992 and 1440 px; the geometry specs.
@@ -1191,8 +1272,8 @@ Every suite runs on PR.
 
 | Rule | How the design meets it | Pinning test |
 |---|---|---|
-| Instant warm launch | report routes draw header and skeleton from cached chunks and descriptors; only `get` and `run` wait; the chart engine loads beside the data; the studio chunk comes from the `on-demand` group, cached after first use | spec 0024's `warm-launch.spec` on `/17/reports/42`, `/17/reports/acme-aging` and `/17/reports` with every API request held: chrome and skeleton within 1 s, no shift to the loaded page |
-| Instant feedback | a commit dims the output in the same frame; pivot toggles and the table view are local; presentation edits send nothing; a drop shows its item at once | `report-feedback.spec` (a frame probe after a commit, a toggle and a drop); `studio-overlay.spec` (no request for label and option edits) |
+| Instant warm launch | report routes draw header and skeleton from cached chunks and descriptors; only `get` and `run` wait; the chart engine loads beside the data; the studio chunk comes from the `on-demand` group, cached after first use | spec 0024's `warm-launch.spec` on `/17/reports/42`, `/17/reports/acme-credit-exposure` and `/17/reports` with every API request held: chrome and skeleton within 1 s, no shift to the loaded page |
+| Instant feedback | a commit dims the output and starts the progress bar in the same frame; pivot toggles and the table view are local; presentation edits send nothing; a drop shows its item at once | `report-feedback.spec` (a frame probe after a commit, a toggle and a drop); `studio-overlay.spec` (no request for label and option edits) |
 | Non-blocking | one `resource()` per host; superseded and abandoned runs aborted down to SQL; Cancel after 2 s; the bar never disabled; preview runs aborted per edit; writes never aborted | `run-supersede.spec` (three commits: one applied, two aborted); spec 0033 §15's `runs` suite ("an abort reaches SQL") for the server half |
 | Stable layout | a fixed bar row; states inside the output box; the notice strip as an overlay; a dimmed held output; a fixed card height; data-independent widths; stable gutters; a fixed chart frame | `report-geometry.spec` (header, bar and output boxes equal across first load, reload, error, no data and a language switch); `pivot-geometry.spec` (expand, collapse) |
 | RTL | logical properties in tables, pivot and studio; numbers physically right; expressions as LTR isolates; the plot unmirrored (§7.6) | every e2e in `ar` at four widths; `pivot-rtl.spec`; `chart-rtl.spec` (legend side and order, isolates, Arabic-Indic ticks) |
@@ -1215,11 +1296,11 @@ Every suite runs on PR.
 | `tm.studio.kind-switched` | event | `from` and `to` |
 | `tm.studio.draft-restored` | event | none |
 
-- **Acme** adds `agingReport` (§2.2) and its Customer details card (§2.1). Its stored report is the
-  seed `acme.sales-by-center` (spec 0033 §13). The e2e journeys: open each report; change
-  parameters; drill a pivot cell and check the drilled rows sum to it; build and save a summary
-  over Sales invoice lines, drill a row and open a line on its invoice (`?child=`); go back; export
-  each kind; share with a user; build a pivot by drag and by keyboard and save it.
+- **Acme** adds `creditExposureReport` (§2.2) and its Customer details card (§2.1). Its stored
+  report is the seed `acme.sales-by-center` (spec 0033 §13). The e2e journeys: open each report;
+  change parameters; drill a pivot leaf cell and check the drilled rows sum to it; build and save
+  a summary over Sales invoice lines, drill a row and open a line on its invoice (`?child=`); go
+  back; export each kind; share with a user; build a pivot by drag and by keyboard and save it.
 
 ## Decisions record
 
@@ -1239,7 +1320,9 @@ Every suite runs on PR.
     and no hit-testing of our own. Rejected: per-point keys and a hidden table, both too fragile —
     (§7.5, §7.8).
 12. **The plot never mirrors in RTL; its text does** — as Excel and AG Charts do — (§7.6).
-13. **Eight validated series tokens led by teal, with decals** — one accent cannot do it — (§7.7).
+13. **The series read the eight validated `categorical` tones, led by teal, with decals; the ramp
+    reads the seven `sequential` steps** — one accent cannot do it; semantic groups switch with the
+    scheme, and avatars use the same `categorical` tones — (§7.7).
 14. **Drill-through always opens the drill-through list**, child entities included, with "Open in
     {plural}" to the search page. Rejected: the search page itself (child entities have none, and
     editable filters would change the drill's meaning); a per-root choice (two behaviours) — (§8).
@@ -1249,6 +1332,11 @@ Every suite runs on PR.
     in create mode and on its own edit page** — one save path, drafts and conflicts; edit mode never
     enters the report's URL — (§2.3, §12.1).
 18. **Share changes are staged into one `share` and one `publish`** — no partial states — (§10.4).
+19. **A summary pages at 1,000 rows and shows its totals row only when one page holds the whole
+    result** — the total then covers exactly the rows shown, and every summary with `top` fits —
+    (§5.1, §5.3).
+20. **A calculation error names the measure and the cell** — the author learns where to guard the
+    measure with `if`, without reading logs — (§3.3).
 
 ## Review flags
 
@@ -1277,3 +1365,5 @@ Every suite runs on PR.
 12. **Delete confirms without the report's reach** (§10.3). Alternative: read the audience first and
     add "It's shared with 3 people and 2 roles", which needs a confirmation hook in spec 0031 §10.2.
     Flips if users delete shared reports by mistake.
+13. **Summaries page at 1,000 rows** (§5.1). Alternative: keep 200 and show the totals row less
+    often. Flips if 1,000-row pages measure slow on phones.

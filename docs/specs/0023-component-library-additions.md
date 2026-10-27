@@ -27,13 +27,17 @@ B–D. A change to an entry point that already exists is an amendment in spec 00
 
 **Other specs that carry parts of this design**
 
-- **Spec 0010 Part B:** §B.1 breakpoints; §B.3 the live root `Directionality`; §B.6 `ɵtmControlSize`.
+- **Spec 0010 Part B:** §B.1 breakpoints; §B.3 the live root `Directionality`; §B.6 `ɵtmControlSize`;
+  §B.8 the semantic `categorical` token group that avatar tones read.
 - **Spec 0010 Part C:** the grid's activation payload (§C.1), driver interface (§C.2) and tree
-  loading (§C.9), all reused by `tm-tiles`; §C.10 menu entries with registry icons and `TmKeys`.
+  loading (§C.9), all reused by `tm-tiles`; §C.10 menu entries with icon names or data and
+  `TmKeys`; §C.12 the grid's key map matched through `kbd`.
 - **Spec 0010 Part D:** §D.1 `overlay` and its Escape stack; §D.2 `TmModalConfig.role`; §D.4 the
-  relative-time format and `TM_TIME_ZONE`; §D.9 `placeholderOnError`; §D.10 `tmButton` sizing
-  `tm-icon`.
+  relative-time format, the zone label and `TM_TIME_ZONE`; §D.9 `placeholderOnError`; §D.10
+  `tmButton` sizing `tm-icon`.
 - **Spec 0010 Part E:** §E.2 the multi-picker's chip row, built from `tm-chip`.
+- **Spec 0010 §B.7, §C.13, §D.11, §E.5:** the existing entry points' glyphs drawn through `tm-icon`
+  (§3.1).
 - **Spec 0024:** §2.2 feature `icons`, `TM_NOW`, `TM_TIME_ZONE` and `provideTellmaToasts`; §11 the
   error dialog's triggers and strings.
 - **Spec 0027:** §5.1 the toast offset; Appendix A the toast shortcut.
@@ -88,10 +92,10 @@ KB is the gzip budget ceiling.
 | Entry point | Exports | Depends on (`@tellma/core-ui/…`) | `@tmGroup` | KB | Harnesses |
 |---|---|---|---|---|---|
 | `icon` | `TmIcon` (`tm-icon`), `TmIconRegistry`, `provideTellmaIcons`, `TmIconNode`, `TmIconSource` | — | media | 2 | — |
-| `kbd` | `TmKbd` (`tm-kbd`), `TmKeys`, `tmFormatKeys`, `tmKeysMatch`, `tmAriaKeyShortcuts`, `tmIsApplePlatform` | — | indicator | 1 | — |
-| `copy` | `TmCopyButton` (`tm-copy-button`), `TmReference` (`tm-reference`) | `button`, `icon`, `tooltip` | control | 1 | `TmCopyButtonHarness`, `TmReferenceHarness` |
+| `kbd` | `TmKbd` (`tm-kbd`), `TmKeys`, `tmFormatKeys`, `tmKeysText`, `tmKeysMatch`, `tmAriaKeyShortcuts`, `tmIsApplePlatform` | — | indicator | 1 | — |
+| `copy` | `TmCopyButton` (`tm-copy-button`), `TmReference` (`tm-reference`) | `button`, `icon`, `kbd`, `tooltip` | control | 1 | `TmCopyButtonHarness`, `TmReferenceHarness` |
 | `badge` | `TmBadge` (`tm-badge`), `TmCounter` (`tm-counter`), `TmBadgeTone` | `icon` | indicator | 1 | `TmCounterHarness` |
-| `avatar` | `TmAvatar` (`tm-avatar`), `TmAvatarSize`, `tmInitials` | `image`, `icon` | media | 2 | `TmAvatarHarness` |
+| `avatar` | `TmAvatar` (`tm-avatar`), `TmAvatarSize`, `tmInitials`, `tmAvatarTone` | `image`, `icon` | media | 2 | `TmAvatarHarness` |
 | `chip` | `TmChip` (`tm-chip`), `TmChipSet` (`tm-chip-set`) | `icon`, `badge`, `tooltip` | indicator | 2 | `TmChipHarness`, `TmChipSetHarness` |
 | `progress` | `TmProgressBar` (`tm-progress-bar`), `TmProgressRing` (`tm-progress-ring`) | — | indicator | 1 | `TmProgressBarHarness` |
 | `skeleton` | `TmSkeleton` (`tm-skeleton`) | — | indicator | 1 | — |
@@ -101,7 +105,7 @@ KB is the gzip budget ceiling.
 | `empty-state` | `TmEmptyState` (`tm-empty-state`) | `icon` | indicator | 1 | `TmEmptyStateHarness` |
 | `busy-overlay` | `TmBusyOverlay` | `spinner` | overlay | 1 | `TmBusyOverlayHarness` |
 | `confirm` | `TmConfirm`, `TmConfirmOptions`, `TmConfirmChoice` | `modal`, `button`, `icon` | overlay | 2 | `TmConfirmHarness` |
-| `error-dialog` | `TmErrorDialog`, `TmErrorDialogOptions`, `TmErrorDialogAction` | `modal`, `button`, `copy` | overlay | 2 | `TmErrorDialogHarness` |
+| `error-dialog` | `TmErrorDialog`, `TmErrorDialogOptions`, `TmErrorDialogAction` | `modal`, `button`, `copy`, `icon` | overlay | 2 | `TmErrorDialogHarness` |
 | `radio` | `TmRadioGroup` (`tm-radio-group`), `TmRadio` (`tm-radio`) | — | form-control | 2 | `TmRadioGroupHarness`, `TmRadioHarness` |
 | `segmented` | `TmSegmented` (`tm-segmented`), `TmSegment` (`tm-segment`) | `icon`, `tooltip` | form-control | 2 | `TmSegmentedHarness` |
 | `switch` | `TmSwitch` (`tm-switch`) | — | form-control | 1 | `TmSwitchHarness` |
@@ -216,8 +220,9 @@ written and matched, and how a value is copied.
 
 ### 3.1 `icon`
 
-`tm-icon` draws a Lucide icon by registry name. The library itself registers nothing globally.
-`@tellma/core` registers the platform's names (spec 0024 §2.2), and a distribution adds its own.
+`tm-icon` draws a Lucide icon by registry name, or from icon data passed directly. The library
+itself registers nothing globally. `@tellma/core` registers the platform's names (spec 0024 §2.2),
+and a distribution adds its own.
 
 ```ts
 type TmIconNode = readonly (readonly [tag: string, attrs: Readonly<Record<string, string | number>>])[]; // Lucide's IconNode: SVG children
@@ -236,8 +241,12 @@ declare class TmIcon {                                // tm-icon
 ```
 
 - **Rendering.** An `inline-flex` square host of `var(--icon-size)` holds one `<svg viewBox="0 0 24
-  24" fill="none" stroke="currentColor">`, with round caps and joins and `--icon-stroke-width`. It
-  is built with `createElementNS`, never `innerHTML`, so icons need no Trusted Types policy.
+  24" fill="none" stroke="currentColor">`, with round caps and joins. It is built with
+  `createElementNS`, never `innerHTML`, so icons need no Trusted Types policy.
+- **Stroke.** `--icon-stroke-width` is 1.75 by default. A host may set its own, as the image edit
+  pane's check does at 2.25 (spec 0010 §D.11).
+- **First frame.** `tm-icon` draws in the change-detection pass that creates it, so a control
+  never paints a frame without its glyph.
 - **Guards.** `register` throws on an attribute name starting with `on`, `href` or `xlink:href`. An
   unknown name renders an empty box of the same size and logs one dev-mode error.
 - **Mirroring.** `mirrorInRtl` flips the glyph (`scale(-1, 1)`) under an RTL computed direction.
@@ -245,6 +254,12 @@ declare class TmIcon {                                // tm-icon
   `log-in`, `log-out`, `undo`, `redo`, `panel-left-open`, `-close`; never the magnifier, check or x.
 - **Containers set the size.** `tmButton` and `tm-menu` point `--icon-size` at their icon-size
   tokens (spec 0010 §D.10, §C.10), so `<button tmButton><tm-icon name="plus" />New</button>` fits.
+- **The library's own glyphs** use `<tm-icon [svg]>` with data imported from `lucide`. A
+  directional glyph passes the object form with `mirrorInRtl`. Spec 0010 §B.7, §C.13, §D.11 and
+  §E.5 move the existing entry points onto this rule. Two exceptions keep their own drawing:
+  - `tm-spinner`'s animated arc;
+  - the grid's per-cell check and dash masks, which a grid paints thousands of times (spec 0010
+    §C.13).
 
 **Example —** Acme's feature (spec 0024 §2.2) adds its icon in one line, `icons: { 'hand-coins':
 HandCoins }`, with `HandCoins` imported from `lucide`. Its entries then write `icon: 'hand-coins'`.
@@ -252,29 +267,54 @@ HandCoins }`, with `HandCoins` imported from `lucide`. Its entries then write `i
 ### 3.2 `kbd`
 
 `kbd` owns the grammar for writing a key combination, its matching and its rendering. The shortcut
-registry (spec 0027 §4), the menu's hints and the grid's key map (spec 0010 §C.10, §C.12) use it.
+registry (spec 0027 §4), the menu's hints, and the grid's key map, find bar and hints (spec 0010
+§C.10, §C.12) use it.
 
 ```ts
 // Modifiers (Mod | Ctrl | Alt | Shift | Meta), then one KeyboardEvent.key, joined by '+'.
-// 'Plus', 'Minus' and 'Space' stand for '+', '-' and ' '. Examples: 'Mod+K', 'Shift+?', 'F2', 'Mod+Plus'.
+// 'Plus', 'Minus' and 'Space' stand for '+', '-' and ' '. Examples: 'Mod+K', '?', 'F2', 'Mod+Plus'.
 type TmKeys = string;
 declare function tmIsApplePlatform(): boolean;                                   // userAgentData.platform, else navigator.platform
-declare function tmFormatKeys(keys: TmKeys, apple?: boolean): readonly string[]; // ['Ctrl', 'K'] or ['⌘', 'K']
+declare function tmFormatKeys(keys: TmKeys, apple?: boolean): readonly string[]; // ['Ctrl', 'K'] or ['⌘', 'K']: one per <kbd>
+declare function tmKeysText(keys: TmKeys, apple?: boolean): string;              // 'Ctrl+V' or '⌘V': one string, for sentences
 declare function tmKeysMatch(event: KeyboardEvent, keys: TmKeys): boolean;       // Mod is Meta on Apple, Ctrl elsewhere
 declare function tmAriaKeyShortcuts(keys: TmKeys): string;                       // 'Control+K' or 'Meta+K'
 declare class TmKbd { readonly keys: InputSignal<TmKeys> }                       // tm-kbd
 ```
 
-- **Modifiers match exactly.** A printable symbol implies `Shift`: `'?'` matches Shift+/ (US layout).
-- **Keys compare `event.key`, case-insensitively,** with one exception. A letter or digit matches
-  by `event.code` (`KeyD`, `Digit1`) in two cases:
-  - `event.key` is one non-ASCII character, as on an Arabic layout;
-  - Alt is held on an Apple platform, where Option changes `event.key`.
+- **Modifiers match exactly, except Shift beside a symbol.** A printable symbol (`?`, `+`, `/`)
+  never compares Shift, because layouts differ on whether it needs one. `'?'` matches Shift+/ on
+  a US layout. `'Mod+Alt+Plus'` matches both `+` from the numpad and Shift+= from the main keys.
+- **Keys compare `event.key`, case-insensitively,** except in three cases, which match by
+  `event.code` instead:
+  - a letter or digit binding, when `event.key` is not an ASCII letter or digit: "ي" from D, or
+    "]" from Shift+D, on an Arabic layout;
+  - a US punctuation binding, when `event.key` is one non-ASCII character: "ظ" from the Slash key
+    on an Arabic layout;
+  - either kind while Alt is held on an Apple platform, where Option changes `event.key`.
+- **Punctuation codes** read as the US layout's keys: `Slash` `/`, `Period` `.`, `Comma` `,`,
+  `Semicolon` `;`, `Quote` `'`, `BracketLeft` `[`, `BracketRight` `]`, `Backslash` `\`,
+  `Backquote` `` ` ``, `Minus` `-`, `Equal` `=`. With Shift held, each reads as its US shifted
+  symbol: `Slash` is `?`, `Equal` is `+`.
+- **AltGr types.** The `event.code` fallback never applies while `getModifierState('AltGraph')` is
+  true. Windows reports AltGr as Ctrl+Alt, so on a Polish layout AltGr+A types "ą" and must not
+  match `'Mod+Alt+A'`.
+- **One platform check.** `tmIsApplePlatform` is the library's only reader of `navigator.platform`
+  and `userAgentData`. The ESLint rule `tm/no-platform-sniffing` refuses both outside `kbd` (spec
+  0010 §C.12).
 - **Rendering.** One `<kbd>` per key: 18 px caps, `dir="ltr"`, Latin key names in every language.
-  Apple uses ⌃ ⌥ ⇧ ⌘, in that order.
+  Apple uses ⌃ ⌥ ⇧ ⌘, in that order. `tmKeysText` joins the same names with `+`, or with nothing
+  on Apple.
 
-**Example —** `tmFormatKeys('Mod+Shift+K')` is `['Ctrl', 'Shift', 'K']` on Windows, `['⇧', '⌘', 'K']`
-on a Mac. On an Arabic layout, `Mod+Alt+Shift+D` matches `key` `'ي'` with `code` `'KeyD'`.
+**Example —** `tmFormatKeys('Mod+Shift+K')` is `['Ctrl', 'Shift', 'K']` on Windows and
+`['⇧', '⌘', 'K']` on a Mac. `tmKeysText('Mod+V')` is "Ctrl+V" or "⌘V". On an Arabic layout,
+these bindings match by `event.code`:
+
+| Binding | `event.key` | `event.code` |
+|---|---|---|
+| `Mod+D` | `'ي'` | `'KeyD'` |
+| `Mod+Shift+D` | `']'` | `'KeyD'` |
+| `Mod+/` | `'ظ'` | `'Slash'` |
 
 ### 3.3 `copy`
 
@@ -300,7 +340,8 @@ declare class TmReference {                           // tm-reference
 - **Success.** The icon becomes a check and the label (visible, or the tooltip) reads "Copied" for
   2 s, announced politely. The button reserves the wider label, so nothing moves.
 - **Failure** (no secure context, permission denied). The text is selected in a hidden read-only
-  input, and the tooltip says "Press Ctrl+C to copy".
+  input, and the tooltip says "Press Ctrl+C to copy", or "Press ⌘C to copy" on a Mac
+  (`tmKeysText('Mod+C')`).
 - **The reference chip** shows the label "Reference", the value in a sunken mono chip, then an
   icon-only "Copy reference" button. The chip is `dir="ltr"` and ellipsized when narrow; the button
   copies the full value. "Reference 4bf92f3577b3…" copies all 32 characters.
@@ -337,7 +378,8 @@ declare class TmCounter {                             // tm-counter: app-bar bad
 
 ### 4.2 `avatar`
 
-`tm-avatar` shows a person as a round photo, or as their initials when there is no photo.
+`tm-avatar` shows a person as a round photo, or as their initials on a tinted circle when there is
+no photo. A stable key picks the tint, so two people with the same initials usually differ.
 
 ```ts
 type TmAvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl'; // 20, 24, 28, 40, 72 px
@@ -345,10 +387,12 @@ declare class TmAvatar {                              // tm-avatar
   readonly name: InputSignal<string>;                 // the initials' source and the accessible name
   readonly src: InputSignal<string | null>;           // a tm-image URL (TmUrls.blob, spec 0024 §9.4); null: initials
   readonly etag: InputSignal<string | null>;          // passed to tm-image with src
+  readonly colorKey: InputSignal<string | null>;      // an opaque stable key that picks the tone; null: the accent tone
   readonly size: InputSignal<TmAvatarSize>;           // default 'sm'
   readonly decorative: InputSignal<boolean>;          // true when the name is printed beside it: aria-hidden
 }
 declare function tmInitials(name: string, locale: string): string;
+declare function tmAvatarTone(key: string): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; // the key's hash picks one of 8 tones
 ```
 
 - **Initials.** `tmInitials` splits graphemes with `Intl.Segmenter`:
@@ -358,7 +402,24 @@ declare function tmInitials(name: string, locale: string): string;
   - an empty name shows the `user` glyph.
 - **Image.** A `tm-image shape="circle"` with `placeholderOnError` (spec 0010 §D.9). The initials
   show while it loads, when `src` is null, and when it fails.
-- **One tone in both themes:** `--avatar-bg`, the accent teal, with ink initials at 6.1:1 contrast.
+- **Tones.** The circle's colours depend on `colorKey`:
+  - with a key, it takes tone `tmAvatarTone(colorKey)` of the semantic `categorical` group (spec
+    0010 §B.8): the tone's `tint` fills it, and the same hue's `onTint` draws the initials, at
+    least 4.5:1 in both schemes;
+  - without one, it takes `--avatar-bg`, the accent teal, with ink initials at 6.1:1.
+- **The hash** is 32-bit FNV-1a over the key's UTF-16 code units. Fixed test vectors pin it, so a
+  tone never changes between releases.
+  1. Start with `h` at 2166136261.
+  2. For each unit, `h = (h XOR unit) × 16777619 mod 2³²`.
+  3. The tone is `h mod 8 + 1`.
+- **Which key.** The platform passes the record key `{entity}:{id}` (spec 0029 §12.2), never an
+  email or a `sub`. The user id is per tenant, so one person may have another tone in another
+  tenant.
+- **Forced colours.** The tint disappears. The circle keeps a 1 px transparent border, which the
+  system colours paint, and the initials take the system text colour.
+
+**Example —** `tmAvatarTone('core.User:17')` is 4 and `tmAvatarTone('core.User:18')` is 3, so two
+"FN" avatars in a members list get different tints.
 
 ### 4.3 `chip`
 
@@ -400,6 +461,7 @@ declare class TmProgressBar {                         // tm-progress-bar: role="
   readonly label: InputSignal<string | undefined>;    // the accessible name
   readonly labelledBy: InputSignal<string | undefined>; // or the id of an element that names it
   readonly tone: InputSignal<'accent' | 'success' | 'warning' | 'error'>; // default 'accent'
+  readonly active: InputSignal<boolean>;              // default true; false: renders nothing once the hold below ends
 }
 declare class TmProgressRing {                        // tm-progress-ring: the job ring around an icon button (spec 0028 §6.1)
   readonly value: InputSignal<number | null>;         // null: a spinning arc
@@ -414,6 +476,11 @@ declare class TmSkeleton {                            // tm-skeleton: aria-hidde
 }
 ```
 
+- **The hold.** Once shown, a bar stays visible for at least `--progress-min-visible` (250 ms), so a
+  fast answer never flashes it. Consumers overlay the bar, so it takes no layout space (spec 0030
+  §3.3). The hold never delays content:
+  - rows render the moment they arrive;
+  - the consumer's `aria-busy` follows the real state.
 - **The skeleton rule.** A skeleton has the final geometry of what replaces it and is static. The
   page framework sets `aria-busy="true"` and one polite "Loading" status (spec 0030 §5.3, 0031 §3.3).
 - **The `table` shape** is a header bar, then `lines` rows of `columns` bars at the grid's row
@@ -434,7 +501,10 @@ declare class TmRelativeTime {                        // tm-relative-time: <time
 - **Text** is `TmL10n.formatRelativeTime(value, { now, style })` (spec 0010 §D.4), in the display
   zone `TM_TIME_ZONE` and with that section's thresholds. Two minutes ago reads "2 min ago"
   (`short`) or "2 minutes ago" (`long`).
-- **Tooltip:** `TmL10n.formatDateTime(value, { dateStyle: 'medium' })`, "20 Oct 2026, 10:40".
+- **Tooltip:** `TmL10n.formatDateTime(value, { dateStyle: 'medium' })`, "20 Oct 2026, 10:40". Its
+  default `'auto'` zone label (spec 0010 §D.4) appends the offset when the display zone's offset
+  differs from the device's: "20 Oct 2026, 10:40 GMT+3". The relative text itself is never
+  labelled.
 - **One shared ticker** drives every instance, aligned to minute boundaries. It stops while the
   document is hidden and catches up when it becomes `visible` again.
 - **Not for "Updated 10:42".** An absolute time of day is `TmL10n.formatTime` (spec 0034 §3.6).
@@ -543,24 +613,38 @@ at most 42 characters wide) and the actions. A `tm-reference` may sit in the det
 ### 5.4 `busy-overlay`
 
 `TmBusyOverlay` blocks the page while a write runs that the user must wait for, such as a save
-(spec 0031 §8) or sign-out (spec 0024 §8.4).
+(spec 0031 §8) or sign-out (spec 0024 §8.4). Feedback starts in the click's frame: the caller's
+busy trigger and the progress cursor. The dark scrim follows only after a long wait, or at once
+when no trigger is visible.
 
 ```ts
 declare class TmBusyOverlay {                         // root service
   readonly active: Signal<boolean>;
-  run<T>(work: Promise<T>, options?: { label?: string | Signal<string> }): Promise<T>; // nested runs share one overlay
+  run<T>(work: Promise<T>, options?: {               // nested runs share one overlay
+    label?: string | Signal<string>;
+    immediate?: boolean;                              // true: scrim, spinner and label at once
+  }): Promise<T>;
 }
 ```
 
 A call such as `await busy.run(save(), { label: t('Saving…') })` goes through three steps:
 
 1. **At once, in the same task,** `run` makes every child of `<body>` except the overlay host
-   `inert`. It shows the host as a transparent blocker and remembers the focused element. The host
-   is a `popover="manual"`, re-shown so it sits on top of the top layer.
+   `inert`. It shows the host as a transparent blocker with `cursor: progress` and remembers the
+   focused element. The host is a `popover="manual"`, re-shown so it sits on top of the top layer.
 2. **After `--busy-overlay-delay` (200 ms),** a scrim and a spinner with the label appear. The label
    is a polite `role="status"`, default "Please wait". It is read live as it changes ("Finishing
    uploads…" → "Saving…"). With nested runs, the latest run's label shows.
 3. **When the last run settles,** `inert` is removed and focus returns to the remembered element.
+
+- **Callers with no visible trigger** pass `immediate: true`, which shows step 2 at once. They are:
+  - sign-out, in every tab (spec 0024 §8.4);
+  - a command whose trigger has closed, such as a confirmation, the conflict dialog or a menu item
+    (spec 0031 §10.1).
+- **Every other caller** must show its trigger busy in the click's frame. Examples are the Save
+  button's spinner, and the `pending` action button of a dialog that stays open while its work runs
+  (spec 0031 §10.4). A save that ends within 200 ms then shows only that spinner, and the page
+  never blinks.
 
 Escape does nothing while the overlay is up. Locking the router and the Back button is the details
 host's job (spec 0031 §8.7).
@@ -694,8 +778,8 @@ for custom chrome, such as the launcher (spec 0027 §9).
 ```ts
 declare class TmSearch {                              // input[tmSearch]
   readonly value: ModelSignal<string>;                // on every input event, at once
-  readonly search: OutputEmitterRef<string>;          // the debounced query
-  readonly debounce: InputSignal<number>;             // ms, default 50, sliding
+  readonly search: OutputEmitterRef<string>;          // the query, on the leading and trailing edges below
+  readonly debounce: InputSignal<number>;             // the coalescing window in ms, default 50; 0 fires on every input
   readonly escapeClears: InputSignal<boolean>;        // default true
   flush(): void;                                      // emits now when the text differs from the last emitted
 }
@@ -708,20 +792,29 @@ declare class TmSearchField {                         // tm-search-field: tm-for
 }
 ```
 
-- **When `search` emits:**
-  - `debounce` ms after the last input;
+- **When `search` emits** (on both edges, as the picker of spec 0006 §4.2 does):
+  - at once on the first input after a pause of `debounce` ms or more (the leading edge);
+  - once more `debounce` ms after the last input of the burst that follows (the trailing edge);
   - while a key is held (`KeyboardEvent.repeat`), only after its `keyup`;
   - at once on Enter and on clear;
   - during IME composition, only after `compositionend`;
   - never with the value it last emitted.
 - **`value` updates per keystroke** for instant feedback. The request and its cancellation are the
   consumer's.
+- **Loading feedback** is the consumer's too, under one rule: a `tm-progress-bar` turns `active`
+  when `search` emits, and stays active while the shown result is not for the last emitted text.
+  As a result, the bar stays on through continuous typing and never blinks between keys. Its hold
+  (§4.4) absorbs fast answers. Spec 0030 §3.3 and spec 0034 §3.3 follow this rule.
 - **Clear button.** Its slot is always reserved. The button shows while the text is non-empty; it
   clears the text, emits and refocuses the input.
 - **The input** is `type="search"` (native cancel hidden), `dir="auto"`, `enterkeyhint="search"`.
 
 **Example —** the customers search box: `<tm-search-field [(value)]="q" (search)="query.set($event)"
-[ariaLabel]="t('Search customers')" />`.
+[ariaLabel]="t('Search customers')" />`. Farah types "jed", 30 ms per key:
+
+1. "j" emits at 0 ms, and the bar shows.
+2. "e" and "d" fall in the window, so "jed" emits at 110 ms.
+3. The bar holds until the "jed" rows paint, and at least until 250 ms.
 
 ### 6.3 `date-range`
 
@@ -1078,18 +1171,21 @@ const layout: TmTileLayout<AcmeCustomerRow> = {
 ## 9. Tokens
 
 Each component adds one component token group to `presets/tellma-default.ts`, the only home of its
-values. Colours reference existing semantic roles, so dark mode and theme deltas need nothing new.
+values. Colours reference semantic roles, so dark mode and theme deltas need nothing new.
 
 - **Groups,** each emitting `--<group>-*`: `icon`, `kbd`, `badge`, `counter`, `avatar`, `chip`,
   `progress`, `skeleton`, `toast`, `banner`, `emptyState`, `busyOverlay`, `radio`, `segmented`,
   `switch`, `card`, `pageHeader`, `descriptionList`, `splitter`, `pager`, `tree`, `reorderList`,
   `dropTarget`, `tiles`.
 - **Values** snap to the 4 px grid. The sizes stated in §3–§8 are the values the preset holds.
-- **No new semantic tokens.** The two colour exceptions, `busyOverlay.scrim` and
-  `dropTarget.overBg`, are translucent literals, the same in both schemes.
+- **The `categorical` semantic group** (spec 0010 §B.8) holds eight tones, each with a value per
+  scheme. Avatars read its `tint` and `onTint` (§4.2). Charts read its `mark` (spec 0034 §7.7).
+- **Two colour literals,** `busyOverlay.scrim` and `dropTarget.overBg`, are translucent and the
+  same in both schemes.
 - **Naming.** Names are written as they emit: `paddingXSm` emits `--…-padding-xsm`.
-- **What a consumer may set:** `--icon-size` (containers), `--counter-halo` (the counter's host),
-  `--toast-offset-block-start` (the shell) and `--busy-overlay-delay`.
+- **What a consumer may set:** `--icon-size` (containers), `--icon-stroke-width` (a host that needs
+  a heavier glyph, §3.1), `--counter-halo` (the counter's host), `--toast-offset-block-start` (the
+  shell) and `--busy-overlay-delay`.
 - **What a consumer may read:** the `--chip-*` group, which the launcher's chip-shaped options use
   (spec 0027 §9). Every other component token is internal.
 - **Checks.** `tokens:check` and the axe contrast battery cover the groups in both schemes.
@@ -1120,7 +1216,7 @@ is unvocalized.
 | Tiles | `tiles.empty` "No items to display" · `tiles.select` "Select {label}" · `tiles.selected` "{count} of {total} selected" · `tiles.loadFailed` "Couldn't load {label}" |
 
 - **Digits** in parameters are formatted by the ICU transpiler for the formatting locale (`ar-SA`
-  gives Arabic-Indic), so no template carries digits of its own.
+  gives Arabic-Indic, `ar-SA-u-nu-latn` Latin), so no template carries digits of its own.
 - **No plural forms.** Every count sits in a position or ratio phrase ("{count} of {total}"), which
   reads correctly for every Arabic plural category.
 
@@ -1145,11 +1241,11 @@ Seven suites pin this spec, and every one runs on every pull request.
 
 | Suite | Pins |
 |---|---|
-| Unit (vitest, browser mode) | `tmInitials` across scripts; `tmFormatKeys`, `tmKeysMatch` (`event.code` on an Arabic layout, Option on Apple) and `tmAriaKeyShortcuts` on both platforms; refused icon attributes; the splitter clamp; the tiles lattice (columns per width, line windows, moves on a short last line); search timing with fake timers (debounce, held key, Enter, IME, equal values); the toast queue (max visible, replace by key, pause and resume, sticky error); chip collapse; pager width reservation; page-header width release on resize |
-| Harness (TestBed) | each §1 harness: Signal Forms binding for radio, segmented, switch and date range (order error, bound coupling); tree lazy load, selection modes, `activate`; reorder grab, move, drop, cancel, `moved`; tiles selection, external `activeRowId` moves, tree-mode batched `loadChildren`; `ask` per dismissal path; the error dialog's item cap and in-place replacement; busy-overlay nesting and live label |
-| Playwright on the showcase | §2.1's table in LTR and RTL; a live English → Arabic switch; a native drag of a tree node into a textarea (inserted at the drop point) and into a reorder list in Chromium, Firefox and WebKit (`@cross-engine`); reorder announcements; toast timers pausing on hover and focus, `focus()` and Escape; the busy overlay blocking keys and pointer, then restoring focus; tiles at 10,000 rows with no long task over 50 ms while scrolling; §13's bounding-box specs; the copy fallback with clipboard permission denied |
-| axe | every story state in light and dark, LTR and RTL, toasts and dialogs open, trees collapsed and expanded |
-| Forced colors, reduced motion | `emulateMedia`: selected tile, active segment, switch on, counter tone and drop target visible under `forced-colors: active`; sweep, ring and knob static under `reduce` |
+| Unit (vitest, browser mode) | `tmInitials` across scripts; `tmAvatarTone`'s fixed vectors; `tmFormatKeys`, `tmKeysText`, `tmKeysMatch` and `tmAriaKeyShortcuts` on both platforms, with `tmKeysMatch` vectors for an Arabic layout (`Mod+D`, `Mod+Shift+D` with `key` `']'`, `Mod+/`), Option on Apple, Polish AltGr+A not matching `Mod+Alt+A`, and `Mod+Alt+Plus` from the numpad and the main keys; refused icon attributes; `tm-icon` drawn after the first change detection; the splitter clamp; the tiles lattice (columns per width, line windows, moves on a short last line); search timing with fake timers (leading and trailing edges, held key, Enter, IME, equal values); the progress bar's 250 ms hold; the toast queue (max visible, replace by key, pause and resume, sticky error); chip collapse; pager width reservation; page-header width release on resize |
+| Harness (TestBed) | each §1 harness: Signal Forms binding for radio, segmented, switch and date range (order error, bound coupling); tree lazy load, selection modes, `activate`; reorder grab, move, drop, cancel, `moved`; tiles selection, external `activeRowId` moves, tree-mode batched `loadChildren`; `ask` per dismissal path; the error dialog's item cap and in-place replacement; busy-overlay nesting, live label and `immediate` |
+| Playwright on the showcase | §2.1's table in LTR and RTL; a live English → Arabic switch; a native drag of a tree node into a textarea (inserted at the drop point) and into a reorder list in Chromium, Firefox and WebKit (`@cross-engine`); reorder announcements; toast timers pausing on hover and focus, `focus()` and Escape; the busy overlay blocking keys and pointer with `cursor: progress` and the trigger busy in the click's frame, the scrim at 200 ms, or at once with `immediate`, then restoring focus; tiles at 10,000 rows with no long task over 50 ms while scrolling; §13's bounding-box specs; the copy fallback with clipboard permission denied |
+| axe | every story state in light and dark, LTR and RTL, toasts and dialogs open, trees collapsed and expanded, avatars in every tone |
+| Forced colors, reduced motion | `emulateMedia`: selected tile, active segment, switch on, counter tone, drop target and a tinted avatar's circle visible under `forced-colors: active`; sweep, ring and knob static under `reduce` |
 | Touch (Pixel 7 project) | a tile tap activates, a checkbox tap selects; splitter drag; segmented and switch targets at least 24 px; resolved sizes at 390 px |
 | Gates | `size:check`, `api:check`, `docs:build`, `tokens:check`, the English–Arabic parity gate |
 
@@ -1159,12 +1255,16 @@ Seven suites pin this spec, and every one runs on every pull request.
   `components.json`, `llms.txt`, MCP entries, stories, and every §10 key in English and Arabic.
 - **Instant warm launch.** Nothing awaits network or storage; the eager set is 14 KB (§11); skeletons
   give final geometry. Pinned by `size:check` and spec 0024's warm-launch e2e (every request held).
-- **Instant feedback.** Models update in the event's handler; nothing animates; the busy overlay
-  blocks in the click's task. Pinned by a keydown-to-paint probe per story and the overlay spec.
+- **Instant feedback.** Models update in the event's handler, and nothing animates. The busy
+  overlay blocks in the click's task, with a progress cursor beside the caller's busy trigger
+  (§5.4). The search field fires on the first key, so a consumer's progress bar shows in that frame
+  (§6.2). Pinned by a keydown-to-paint probe per story, the overlay spec and the search-field timing
+  spec.
 - **Non-blocking.** The search field never awaits; the pager writes `page` mid-load; tree and tiles
   loads never block keys. Pinned by the search-field timing spec and the pager double-click spec.
 - **Stable layout** (§2.2). Pinned by bounding-box specs: counter 9 → 10, pager 1 → 6 of 120, first
-  keystroke, toast, chip added, copy success, lazy spinner, tiles data, hidden header action.
+  keystroke, toast, chip added, copy success, lazy spinner, tiles data, hidden header action, and a
+  glyph present in its control's first frame.
 - **RTL.** Pinned by every story spec in both directions and a live English → Arabic switch spec
   for radio, segmented, splitter, tree and tiles.
 - **WCAG AA.** §2.1's patterns, 24 px targets, non-drag paths, paused timers, persistent live
@@ -1177,12 +1277,14 @@ Seven suites pin this spec, and every one runs on every pull request.
 
 ## Decisions record
 
-1. **One domain-free entry point per component family, no new semantic tokens** — per-route budgets
-   stay precise; the brand roles cover every surface (§1, §9).
+1. **One domain-free entry point per component family; one new semantic token group,
+   `categorical`** — per-route budgets stay precise; the brand roles cover every surface except
+   per-item tones, which avatars and charts share (§1, §9).
 2. **Lucide data in a runtime registry, drawn with `createElementNS`, sized by `--icon-size`** — no
    Trusted Types policy, no size per call site; a sprite downloads the whole set (§3.1).
-3. **`kbd` owns the grammar and matches letters and digits physically when needed** — one grammar
-   for registry, menus and grid; `event.key` alone fails on Arabic layouts (§3.2).
+3. **`kbd` owns the grammar and matches letters, digits and US punctuation physically when needed,
+   never under AltGr** — one grammar and one platform check for registry, menus and grid;
+   `event.key` alone fails on Arabic layouts, and AltGr types characters (§3.2).
 4. **Chips are `tm-chip` and `tm-chip-set` only** — `tm-multi-select` renders joined text and the
    multi-picker composes `tm-chip` in its own scrolling row (spec 0010 §B.4, §E.2); a free-entry
    chip input has no consumer (§4.3).
@@ -1192,8 +1294,10 @@ Seven suites pin this spec, and every one runs on every pull request.
 7. **Toasts: a top-layer host, two persistent live regions, no focus, no animation** — above modals
    and reliably announced; a `status` role per toast double-announces (§5.1).
 8. **The banner bar is not a live region** — the host announces at queue time, once and early (§5.2).
-9. **The busy overlay inerts at once and shows its scrim after 200 ms** — input blocked from the
-   first frame, no flash on fast saves; a pointer-only blocker lets keys through (§5.4).
+9. **The busy overlay inerts at once, with a progress cursor beside the caller's busy trigger, and
+   shows its scrim after 200 ms unless `immediate`** — feedback and blocked input from the first
+   frame, and no full-page blink on a fast save; a caller with no visible trigger gets the scrim at
+   once; a pointer-only blocker lets keys through (§5.4).
 10. **Confirm and error dialogs are alert-dialog `TmModal` contents behind promise services** — one
     modal stack; a second error replaces the open dialog's content (§5.5, §5.6).
 11. **Native radios with an own arrow handler; a native checkbox switch** — native form semantics,
@@ -1212,6 +1316,15 @@ Seven suites pin this spec, and every one runs on every pull request.
     survives virtualization, and grid and tiles swap behind one handler (§8.5).
 18. **Motion only in the switch knob and progress; toasts at the top inline-end, newest first,
     three visible, paused on hover or focus, errors sticky** — instant feedback (§2.2, §5.1).
+19. **Every library glyph draws through `tm-icon`, at stroke 1.75 by default, in the pass that
+    creates it** — one stroke, one size token and one RTL rule instead of hand copies;
+    `tm-spinner` and the grid's per-cell masks keep their own drawing (§3.1).
+20. **Avatar tones hash a record key into eight `categorical` tints** — people with the same
+    initials become distinguishable; a record key is stable, private and on every row, unlike an
+    email or a `sub`; a person's tone may differ per tenant (§4.2).
+21. **The search field fires on the leading edge and again 50 ms after a burst; the progress bar
+    follows a stale result and holds 250 ms** — the first key searches at once, as the picker does,
+    and the bar neither waits nor blinks between keys (§4.4, §6.2).
 
 ## Review flags
 
@@ -1219,8 +1332,9 @@ Seven suites pin this spec, and every one runs on every pull request.
    touch drag on Samsung Internet or Firefox for Android, which lack native drag.
 2. **`lucide`, the v0 vanilla package, as icon data** (§1). Alternative: pin `@lucide/icons` v1.
    Flip: v1 shipping stable before implementation starts.
-3. **The busy overlay's scrim after 200 ms** (§5.4). Alternative: scrim and spinner at once. Flip: a
-   preference for an immediate visual over no flash on fast saves.
+3. **The busy overlay's scrim after 200 ms when the caller shows a busy trigger** (§5.4).
+   Alternative: a faint veil with the spinner and label at once, and the full scrim at 200 ms.
+   Flip: users missing a button's spinner as the only signal of a short wait.
 4. **Toasts at the top inline-end, under the shell bars** (§5.1). Alternative: bottom inline-end, as
    Material and Sonner. Flip: users missing toasts, or toasts covering page toolbars.
 5. **Tiles as a layout grid with one tab stop** (§8.5). Alternative: a list of links. Flip:
@@ -1233,7 +1347,7 @@ Seven suites pin this spec, and every one runs on every pull request.
    ("١–٢٠ من ٥٥"). Flip: Saudi users finding the LTR fraction unnatural.
 9. **The description list as a `dl` directive** (§7.1). Alternative: a component with an `items`
    input. Flip: distribution code misusing raw `dl` markup.
-10. **Avatars in one accent tone** (§4.2). Alternative: a deterministic colour per name. Flip: users
-    needing to tell people apart at a glance.
-11. **Tiles take the grid's member names** (§8.5). Alternative: item names (`itemId`, `activeId`,
+10. **Tiles take the grid's member names** (§8.5). Alternative: item names (`itemId`, `activeId`,
     `scrollToItem`). Flip: a preference for local naming over one swap contract with the grid.
+11. **The search field's leading edge** (§6.2). Alternative: trailing only, which saves one
+    cancelled read per burst of keys. Flip: server load from the extra reads.

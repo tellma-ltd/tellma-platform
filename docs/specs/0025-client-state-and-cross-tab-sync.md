@@ -35,7 +35,8 @@ Other specs that carry parts of this design:
 - **spec 0018** — §3.5: the preference actions, key grammar, `PreferencesResult`, `MeLocaleResult`.
 - **spec 0021** — §5.4, §6.1, §6.3, §9.2: the leader's inbox protocol, a hub that stamps no
   activity, `cache.changed { tag, value? }` and `session.ended`, and the 150 s client timeout.
-- **spec 0024** — §4.2, §8.4–§8.7, §11: the boot script's delete and the paths that run the sweeps.
+- **spec 0024** — §4.2, §8.4–§8.7, §11: the boot script's delete and the paths that run the
+  sweeps; §7.8: `TmDeviceZone`, the only writer of the device partition.
 - **spec 0026** — §10.1: the dump section.
 - **spec 0028** — §5.1: the two leader documents.
 
@@ -129,7 +130,7 @@ deletes.
 
 ```ts
 type TmPartition =
-  | { kind: 'device' }                                        // no user data; survives sign-out; empty in this release
+  | { kind: 'device' }                                        // survives sign-out and expiry; holds only 'zone' (§2.3)
   | { kind: 'user'; sub: string }                             // tenant list, distribution info
   | { kind: 'tenant'; sub: string; tenantId: number }         // launch documents, cacheable lists
   | { kind: 'session'; sub: string; sessionHandle: string };  // tree expansion; dies with the session
@@ -160,7 +161,7 @@ declare class TmClientStore {
 declare class TmStoreRefusedError extends Error { readonly reason: 'other-user' | 'cookie' | 'session' } // §2.5
 interface TmBootRecord {                                      // localStorage 'tm.boot', about 1 KB
   v: 1; theme: 'system' | 'light' | 'dark'; lang: string; dir: 'ltr' | 'rtl'; // device fields
-  sub: string | null; lastTenantId: number | null;            // user fields, cleared when the session ends
+  sub: string | null; lastTenantId: number | null;            // user fields: cleared at sign-out, and by tm-boot.js after an expiry (§2.2)
 }
 ```
 
@@ -170,7 +171,8 @@ interface TmBootRecord {                                      // localStorage 't
   and its write. Adoptions use it (§5.3).
 - **Boot-record writers.** Through `boot.patch`: `TmLocalization` writes `lang` and `dir` (spec 0024
   §7.2), the theme glue writes `theme` (§7.6), the tenant route writes `lastTenantId` (§9.2), and
-  `TmSession` writes `sub` (§8.1). `tm-boot.js` is the only other reader and writer.
+  `TmSession` writes `sub` (§8.1). Sign-out's clean-up nulls both user fields (§2.6). `tm-boot.js`
+  is the only other reader and writer.
 - **`changes`** lets a theme chosen in one tab follow in the other tabs.
 
 ### 2.2 Layout (frozen: `tm-boot.js` deletes by it)
@@ -194,7 +196,9 @@ interface TmBootRecord {                                      // localStorage 't
 - **Closing.** Connections close on `versionchange` and reopen on next access, so `clearAll`'s
   database delete (spec 0010 §D.5) never waits long.
 - **`tm-boot.js` deletes by this layout** (spec 0024 §4.2 step 3c), so a change to the layout is a
-  change to the boot script.
+  change to the boot script. It deletes only the expired user's key range. It copies the boot
+  record's `sub` and `lastTenantId` before nulling them, so the sign-in that follows returns to the
+  last tenant.
 
 ### 2.3 Documents
 
@@ -209,7 +213,11 @@ interface TmBootRecord {                                      // localStorage 't
 | `inbox`, `assignments` | tenant | null | the leader; a tab that opens a panel (spec 0028 §5.3) | §8.6 |
 | `entity:<Name>` | tenant | the `entity:<Name>` wire tag | `TmLaunchCache`, from `{segment}/all` | lazily when stale (§3.3) |
 | `tree:<page>` | session | null | `TmTreeExpansion` | §12 |
+| `zone` | device | null | `TmDeviceZone`, by `patch` (spec 0024 §7.8) | never: it is local state |
 
+- **`zone`** is `TmZoneDoc` (spec 0024 §7.8). For each user (`sub`) of this device, it holds the
+  automatic time-zone option and the device zone last handled in each tenant. It keeps at most 20
+  users, dropping the oldest write. No sweep touches it (§2.6), so the option outlives sign-out.
 - **Stale-while-revalidate.** The stored `tenants` and `distribution` serve at once while a
   background fetch replaces them. `tenants` refreshes on entering a tenantless route, at the launch
   redirect (spec 0024 §9.3), and once per launch at idle. `distribution` refreshes once per launch
@@ -229,7 +237,7 @@ cold path runs for it.
 - **Idle.** Every document of a tenant is absent when its `sync` document is missing, or when
   `sync.at` is older than the idle window. A `tenants` or `distribution` document is absent when
   its `savedAt` is older than the window. The window comes from the stored `distribution`'s
-  `session.idleDays`, else 7.
+  `session.idleDays`, else 7. The device partition has no idle rule: `zone` bounds itself (§2.3).
 - **No rewrites to stay current.** A confirming sync moves `sync.at`, so no document is re-written
   just to stay fresh.
 
@@ -251,7 +259,8 @@ leader document it read itself (spec 0028 §5.3).
 ### 2.6 Sweeps
 
 A sweep is a key-range delete inside `tm-app`. It posts `store.changed` with the deleted key prefix
-and no names, so every tab empties those mirror entries.
+and no names, so every tab empties those mirror entries. Every rule deletes user partitions only,
+so the device partition survives every sweep.
 
 | Rule | Deletes | Run by |
 |---|---|---|
@@ -260,12 +269,15 @@ and no names, so every tab empties those mirror entries.
 | `{ sessionOtherThan: sh }` | the profile user's session partitions except `s<sh>` | the store, at idle after first render |
 | `{ tenant: t }` | `u:<sub>/t<t>` | `TmErrorPresenter` on `tenant-not-found` (spec 0024 §11) |
 
-**The session clean-up**, run by spec 0024 §8.4, §8.5 and §8.6, is three calls in order:
+**The session clean-up**, run by spec 0024 §8.4, §8.5 and §8.6, makes these calls in order:
 
 1. `sweep('session-ended')`.
 2. `TmClientCache.clearAll({ keep })` (spec 0010 §D.5). It keeps `tm-app` and `tm.boot`. On the
    expiry path it also keeps every `tm.draft:*` key, so drafts survive expiry (§11).
-3. `boot.patch({ sub: null, lastTenantId: null })`.
+3. On sign-out only (spec 0024 §8.4, §8.5): `boot.patch({ sub: null, lastTenantId: null })`. The
+   expiry path (spec 0024 §8.6) keeps both fields. So when the user closes the tab and later
+   launches at `/`, the launch reaches `tm-boot.js` step 3c (spec 0024 §4.2) and returns to the
+   last tenant.
 
 **The store's boot step** (an initializer of spec 0024 §4.3) opens `tm-app` and compares
 `boot.sub` (B) with the profile's `sub` (P):
@@ -273,9 +285,9 @@ and no names, so every tab empties those mirror entries.
 1. **Backstops.** Both cases are cold paths:
    - B is null → `sweep('session-ended')`. This backs up `tm-boot.js`'s time-boxed delete.
    - B ≠ P → `sweep('other-users')`. `tm-boot.js` has already reset the boot record.
-2. **One `readAll`** of P's user partition and, on a tenant path, P's tenant partition. This one
-   transaction is the warm path's only store access. `TmSession` then patches `sub` (spec 0024
-   §8.1).
+2. **One `readAll`** of the device partition, P's user partition and, on a tenant path, P's
+   tenant partition. This one transaction is the warm path's only store access. `TmSession` then
+   patches `sub` (spec 0024 §8.1).
 
 ### 2.7 Persistence, quota and fallback
 
@@ -309,7 +321,7 @@ interface TmTenantFacts {                                     // client/sync's T
 }
 interface TmCachedEntitySet<T = TmJson> {
   readonly items: readonly T[];
-  readonly byId: ReadonlyMap<number, T>;
+  readonly byId: ReadonlyMap<TmId, T>;                        // TmId: a number, or a bigint key's string (spec 0024 §10.1)
   readonly stale: boolean;                                    // a newer list is due; items still serve (§3.3)
 }
 declare class TmLaunchCache {
@@ -332,7 +344,7 @@ declare class TmLaunchCache {
 
 ### 3.2 Cold and warm entry
 
-Entering tenant `t` takes one of four paths:
+Entering tenant `t` takes one of five paths:
 
 - **Warm.** The chrome renders from the stored documents, and no sync is awaited. Two things
   revalidate them later: the leader's sync on election (§7.2) and the header on the page data's
@@ -343,8 +355,13 @@ Entering tenant `t` takes one of four paths:
   geometry.
 - **Cold, and the sync fails `offline` or `unavailable`.** The tenant shell shows its error state
   with Retry (spec 0027 §7.5), which reruns the sync.
-- **Cold, and the sync fails `tenant-not-found` or `tenant-unavailable`.** Spec 0024 §11 applies:
-  the picker with a notice, or the tenant-state page.
+- **Cold, and the sync fails `client-outdated`.** The tenant shell shows spec 0024 §11's view of
+  the code in `tm-error-state` (spec 0027 §7.5):
+  - code `client-outdated` offers Reload, with its busy, failed and "Reload anyway" states;
+  - code `server-outdated` offers Try again, which reruns the sync.
+- **Cold, and the sync fails `tenant-not-found` or `tenant-unavailable`.** Spec 0024 §11 applies.
+  `tenant-not-found` goes to the picker, with its notice unless the platform chose the tenant
+  (spec 0024 §9.3). `tenant-unavailable` shows the tenant-state page.
 
 **Example —** Farah opens `/17/centers` on Monday after using tenant 17 on Friday:
 
@@ -511,7 +528,7 @@ interface TmAdoptedDocs {
   readonly settings?: { readonly data: TenantSettingsForClient; readonly tag: string }; // a settings save's client document (spec 0013 §6.3)
   readonly me?: MeResult;                                     // me/save (spec 0018 §3.5)
   readonly preferences?: PreferencesResult;                   // users/me/preferences/set or delete (§9.5)
-  readonly locale?: MeLocaleResult;                           // users/me/locale (spec 0024 §7.2)
+  readonly locale?: MeLocaleResult;                           // users/me/locale (spec 0024 §7.2, §7.8)
 }
 declare class TmCacheRefresher {
   observe(tenantId: number, tags: Readonly<Record<string, string>>): void;  // response headers and valued events
@@ -559,7 +576,7 @@ under the sync lock, one `patch` transaction writes the result and posts `store.
 | `settings` | the whole `settings` document |
 | `me` | the whole `me` document |
 | `preferences` | `me.preferences`, `me.preferencesTag`, `me.tags.preferences` |
-| `locale` | `me.user.preferredLanguage`, `.preferredCalendar` and `.modifiedAt`; `me.preferencesTag`; `me.tags.preferences` |
+| `locale` | `me.user.preferredLanguage`, `.preferredCalendar`, `.preferredTimeZone` and `.modifiedAt`; `me.preferencesTag`; `me.tags.preferences` |
 
 - **One lock for every write.** Every write of `settings`, `me`, `tenant` or `sync` runs under the
   sync lock, so none interleaves with a sync.
@@ -610,7 +627,7 @@ type TmBusMessage =
   | { type: 'hub.status'; tenantId: number; status: TmHubState; since: number; leaderVisible: boolean } // on a change, a visibility change, a probe (§7)
   | { type: 'leader.probe'; tenantId: number }                                    // from a follower (§7.4); the leader answers, and polls when degraded (§8.7)
   | { type: 'prefs.changed'; tenantId: number; values: Readonly<Record<string, string | null>> } // TmPreferences.set (§9.3); null = reset
-  | { type: 'drafts.query'; replyTo: string }                                     // sign-out's confirmation (spec 0024 §8.4)
+  | { type: 'drafts.query'; replyTo: string }                                     // sign-out's wait and confirmation (spec 0024 §8.4)
   | { type: 'drafts.reply'; replyTo: string; dirty: number; busy: boolean }      // dirty = TmDrafts.dirtyCount; busy = TmApi.writesInFlight > 0
   | { type: 'session.signing-out' | 'session.signed-out' | 'session.expired' | 'session.started' | 'session.changed'; sub: string }; // device channel (spec 0024 §8)
 ```
@@ -865,15 +882,15 @@ declare class TmPreferences {                                 // the routed tena
 }
 ```
 
-**Example —** Acme's bank-reconciliation page remembers the account it last reconciled:
+**Example —** Acme's credit-review page remembers the user's last "% of limit" filter:
 
 ```ts
-const lastAccount = tmPreferenceKey<number | null>('acme.bankReconciliation.account', 'write-behind', null);
+const thresholdKey = tmPreferenceKey<number>('acme.creditReview.threshold', 'write-behind', 90);
 
 // inside the page component
 private readonly prefs = inject(TmPreferences);
-readonly account = this.prefs.get(lastAccount);              // Signal<number | null>
-pick(id: number) { this.prefs.set(lastAccount, id); }
+readonly threshold = this.prefs.get(thresholdKey);           // Signal<number>
+setThreshold(percent: number) { this.prefs.set(thresholdKey, percent); }
 ```
 
 - **Key grammar** is spec 0018 §3.5's. In development, `tmPreferenceKey` checks it. It also checks
@@ -956,8 +973,13 @@ The two kinds differ only in when they flush:
    `cache.changed { preferences }`, so no tab syncs. In a race, another tab's refresh may reach the
    lock before the adoption's write, which costs one sync.
 
-**Locale is not a preference.** `users/me/locale` (spec 0024 §7.2) sets `PreferredLanguage` and
-`PreferredCalendar`. Its caller passes the `MeLocaleResult` to `adopt(t, { locale })`.
+**Locale is not a preference.** `users/me/locale` sets `PreferredLanguage`, `PreferredCalendar` and
+`PreferredTimeZone`.
+
+- **Writers.** The language and calendar switches (spec 0024 §7.2), the time-zone prompt and the
+  automatic time-zone update (spec 0024 §7.8).
+- **Adoption.** Each caller passes the `MeLocaleResult` to `adopt(t, { locale })`.
+- **Region and digits** are profile fields. They are saved through `me/save` and adopted as `me`.
 
 ## 10. Page state
 
@@ -1011,7 +1033,7 @@ returns the user to edit mode with nothing lost, while a new tab starts clean.
 
 ```ts
 declare class TmDrafts {
-  key(tenantId: number, entity: string, id: number | 'new'): string; // 'tm.draft:<sub>:17:gl.Center:5'
+  key(tenantId: number, entity: string, id: TmId | 'new'): string; // 'tm.draft:<sub>:17:gl.Center:5'
   save(key: string, value: TmJson): void;                     // debounced and flushed (below)
   load(key: string): TmJson | undefined;                      // undefined for another user's key
   clear(key: string): void;
@@ -1020,8 +1042,8 @@ declare class TmDrafts {
 }
 ```
 
-- **Stored value:** `{ v: 1, at, data }`, written and read with spec 0024 §10.4's lossless JSON, so
-  `TmDecimal` values round-trip.
+- **Stored value:** `{ v: 1, at, data }`, written with `JSON.stringify` and read with `JSON.parse`.
+  Decimals and longs are already strings (spec 0024 §10.4), so every value round-trips exactly.
 - **One user's drafts.** The key embeds the `sub`, and `load` refuses another user's key.
 - **Written continuously.** Spec 0031 calls `save` on every model change. The write is debounced
   300 ms, and flushed synchronously on `pagehide` and `visibilitychange: hidden`.
@@ -1032,7 +1054,7 @@ declare class TmDrafts {
   new tab does not. "Duplicate tab" copies it, and spec 0031's concurrency check covers both saves.
 - **Quota.** A `QuotaExceededError` (about 5 MB per tab) deletes this tab's oldest other drafts and
   retries once. If that fails, the draft lives in memory only, with `tm.drafts.quota-exceeded`.
-- **Session storage holds only drafts and `tm.login`,** the sign-in loop guard (spec 0024 §4.2).
+- **Session storage holds only drafts and `tm.login`,** the sign-in mark (spec 0024 §4.2).
 
 ## 12. Tree expansion memory
 
@@ -1041,13 +1063,13 @@ tab, so the next visit fetches them expanded in one call (spec 0030 §16.2).
 
 ```ts
 declare class TmTreeExpansion {
-  expanded(page: string): Signal<ReadonlySet<number>>;        // page = the search page's canonical path: '/17/centers'
-  toggle(page: string, id: number, open: boolean): void;
-  replace(page: string, ids: Iterable<number>): void;         // one write: a collapse that drops descendants, or pruning unknown ids
+  expanded(page: string): Signal<ReadonlySet<TmId>>;          // page = the search page's canonical path: '/17/centers'
+  toggle(page: string, id: TmId, open: boolean): void;
+  replace(page: string, ids: Iterable<TmId>): void;           // one write: a collapse that drops descendants, or pruning unknown ids
 }
 ```
 
-- **Storage.** The session partition, document `tree:<page>`, value `{ ids: number[] }` in
+- **Storage.** The session partition, document `tree:<page>`, value `{ ids: TmId[] }` in
   expansion order, oldest first. Writes debounce 250 ms. A new sign-in starts collapsed.
 - **Bound.** 500 ids per page: a 501st drops the oldest.
 - **Loading.** Spec 0030 sends at most `limits.maxIds` of the newest ids, and reads the signal once
@@ -1097,14 +1119,14 @@ deployment.
 | Suite | Tier | Pins |
 |---|---|---|
 | Store layout golden | unit, PR | §2.2's database, store, key paths and ranges, as vectors shared with `tm-boot.js` (spec 0024 §4.2) |
-| Store | unit in browser mode, real IndexedDB, PR | each guard row; each sweep leaves exactly the right keys; the format and idle rules; the quota drop; memory mode; the `versionchange` close |
+| Store | unit in browser mode, real IndexedDB, PR | each guard row; each sweep leaves exactly the right keys; the expiry path's clean-up keeps the boot record's `sub` and `lastTenantId`, and sign-out's clears them; the device partition's `zone` survives every sweep and the boot script's expiry delete, holds at most 20 users, and is in the mirror after the boot step's `readAll`; the format and idle rules; the quota drop; memory mode; the `versionchange` close |
 | Refresher | unit, fake clock and API, PR | an own write's header never syncs; lock serialization across two instances; the re-check skips; the 2 s throttle; foreground errors presented; each adoption member's patch |
 | `client/sync` (C#) | integration, real SQL, PR | each `Held` combination and the members it returns; one round trip warm; the composite tag; a cold call; unknown names ignored; `Realtime` |
 | Bus | unit, PR | the channel per type; unknown `v` and `type` ignored; close and reopen around the back-forward cache |
 | Leader | unit, two instances, real Web Locks, PR | grant and every release reason; the steal rules (hung, hidden and disconnected, never a visible leader, never `disabled`); the holder re-check; the degraded follower's 60 s probe |
 | `TmHub` | unit, fake connection, PR | §8.3's schedule and jitter bounds; nudges; terminal verdicts stop the loop; relay and drop rules; the `TmHubHttpClient` check |
 | Preferences | unit, PR | the read order; a same-frame `set`; flush timings; the `pagehide` bodies and cap; adoption; a received value drops the dirty one; the overlay's end; the key-cap drop and restore |
-| Page state, drafts, tree, recents | unit, PR | page state: LRU of 20, tag-move invalidation, `markStale` on search and details entries; drafts: debounce, `pagehide` flush, quota, `sub` refusal, `TmDecimal` round trip; tree: the cap and `replace`; recents: kinds, dwell, de-duplication, cap and title source |
+| Page state, drafts, tree, recents | unit, PR | page state: LRU of 20, tag-move invalidation, `markStale` on search and details entries; drafts: debounce, `pagehide` flush, quota, `sub` refusal; tree: the cap and `replace`; recents: kinds, dwell, de-duplication, cap and title source |
 | Multi-tab (Playwright, Acme host) | e2e, PR | the scenarios below |
 | Multi-tab on WebKit (`@cross-engine`) | e2e, PR | a hidden leader that stops answering is replaced through the hung-leader rule when a follower becomes visible |
 | Hidden-leader soak | nightly | a hidden leader keeps one connection for 15 min under Chromium's intensive throttling, with no leadership change |
@@ -1169,7 +1191,7 @@ deployment.
 | `tm.prefs.invalid` | event | `family` |
 
 - **Acme** adds no code of this spec. The cacheable `acme.Currency` (spec 0018 §1.4), the key
-  `acme.bankReconciliation.account` (§9.1) and its two tenants exercise it.
+  `acme.creditReview.threshold` (§9.1) and its two tenants exercise it.
 
 ## Decisions record
 
@@ -1205,6 +1227,9 @@ deployment.
     followers re-render from `store.changed`. Considered: every tab refreshing (N calls), content
     in events (against spec 0021's thin events), headers only (idle tabs stay stale) — (§4.4, §5.3).
 13. **No IndexedDB means memory mode** — every launch is cold, and nothing breaks — (§2.7).
+14. **The device partition holds one document, `zone`, that outlives sign-out and expiry** — the
+    automatic time-zone option is per user and per device, and a user partition would forget it at
+    every sign-out — (§2.3; spec 0024 §7.8).
 
 ## Review flags
 
@@ -1268,4 +1293,5 @@ deployment.
   owner lists it.
 - **`<entity>`** is the entity name verbatim (`search.acme.Customer.view`), legal under spec 0018
   §3.5's grammar.
-- **Not preferences:** the theme (the boot record), language and calendar (§9.5).
+- **Not preferences:** the theme (the boot record); language, calendar, time zone, region and digits
+  (§9.5); the automatic time-zone option (the device partition's `zone`, §2.3).

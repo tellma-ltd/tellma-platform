@@ -27,7 +27,9 @@ Other specs that carry parts of this design:
 - spec 0010 §D.2, §D.3 — drawers, popover sizes.
 - spec 0024 §9.5 — the URL codec.
 - spec 0025 §10, §12, Appendix A — page state, tree expansion memory, the `search.*` preference keys.
-- spec 0029 §3, §6, §13 — the declaration members' shapes, select plans, filter controls.
+- spec 0023 §4.4, §6.2 — the progress bar's hold; the search field's leading and trailing edges.
+- spec 0029 §3, §6, §12.1, §13 — the declaration members' shapes, select plans, the zone suffix,
+  filter controls.
 - spec 0018 §6.3 — Acme's development data: about 60 customers, a 40-node center tree.
 
 ## Goals / Non-goals
@@ -160,7 +162,7 @@ declare abstract class TmSearchCell<V = unknown> {
 ```ts
 @Component({ selector: 'acme-credit-cell', imports: [TmProgressBar],
   template: `<tm-progress-bar [value]="percent()" [label]="text()" />` })
-export default class CreditCell extends TmSearchCell<number> { /* percent, text: computed from value() */ }
+export default class CreditCell extends TmSearchCell<TmDecimal> { /* percent, text: computed from value() through TmDecimals */ }
 ```
 
 - **Rules.** A cell is static: no focusable content but a link, one line at the fixed row height,
@@ -256,13 +258,13 @@ interface TmSearchContext {
   readonly totalIsLowerBound: Signal<boolean>;               // a capped count, "10,000+" (§14)
   readonly status: Signal<'loading' | 'ready' | 'error'>;
   readonly error: Signal<TmApiError | null>;
-  readonly selection: Signal<ReadonlySet<number>>;           // selected row ids (§12.1)
-  readonly highlight: WritableSignal<number | null>;         // the highlighted row's id
-  select(ids: Iterable<number>, mode: 'add' | 'remove' | 'replace'): void;
+  readonly selection: Signal<ReadonlySet<TmId>>;             // selected row ids (§12.1); TmId: spec 0024 §10.1
+  readonly highlight: WritableSignal<TmId | null>;           // the highlighted row's id
+  select(ids: Iterable<TmId>, mode: 'add' | 'remove' | 'replace'): void;
   update(patch: Partial<TmSearchQuery>): void;               // a query change under §4.4's rules
   refresh(): void;                                           // a re-read (§13.4)
-  open(id: number, options?: { newTab?: boolean }): void;    // opens the row's target (§7.2)
-  url(id: number): string | null;                            // the target's URL; null when there is none
+  open(id: TmId, options?: { newTab?: boolean }): void;      // opens the row's target (§7.2)
+  url(id: TmId): string | null;                              // the target's URL; null when there is none
 }
 ```
 
@@ -318,7 +320,7 @@ interface TmSearchPageActionDeclaration {
   readonly selection?: boolean;
   // Runs in the host's injection context and refreshes what it changes.
   // ids: the selection when selection is true, else [].
-  run(search: TmSearchContext, ids: readonly number[]): Promise<void>;
+  run(search: TmSearchContext, ids: readonly TmId[]): Promise<void>;
 }
 ```
 
@@ -361,8 +363,12 @@ Row 3 shows the rows, as a grid or as tiles, or a state in their place.
   scrollbar gutter (spec 0010 §C.7). Its scroller is the page's only scrollbar.
 - **Tiles** (`tm-tiles`) fill the region and scroll inside (§8). **States** (§5.3) replace the rows
   inside the region; rows 1 and 2 never move.
-- **Loading.** An indeterminate `tm-progress-bar` overlays the region's top edge 150 ms after a
-  read starts, so a fast answer never flashes it; `aria-busy` is set at once.
+- **Loading.** An indeterminate `tm-progress-bar` overlays the region's top edge.
+  - It turns `active` when a read starts. For text, a read starts when the field fires `search`
+    (§6.1).
+  - It stays active while the result is stale (§6.3), so it never blinks between keys.
+  - Spec 0023 §4.4's 250 ms hold keeps a fast answer from flashing it.
+  - `aria-busy` is set while a read runs.
 
 ### 3.4 Grid or tiles
 
@@ -547,7 +553,7 @@ holds the page's own states; any other read failure renders spec 0024 §11's err
 | State | When | Shows | Actions |
 |---|---|---|---|
 | first load | no rows held | skeleton rows at row geometry (12 grid rows, or skeleton tiles); headers, checkboxes and filter buttons already drawn | — |
-| reloading | rows held, a read running | the held rows and the progress bar (§3.3) | all stay live |
+| reloading | rows held, the result stale (§6.3) | the held rows and the progress bar (§3.3) | all stay live |
 | no data | 0 rows; no text, no column, advanced or custom filter, inactive rows excluded | `inbox`, "Nothing here yet", "Add one to get started." | New, when allowed |
 | no matches | 0 rows otherwise | `search-x`, "No matches", "Clear the filters or widen the search." | Clear filters when any applies, else Clear search |
 | invalid filter | `query-invalid` on the advanced filter | `circle-alert`, "This filter expression is not valid", the first diagnostic's message with its token in a mono chip | Edit filter (§10.2) |
@@ -583,15 +589,17 @@ page lands in the field.
 
 ### 6.1 The field
 
-- **Parts.** An `input[tmInput]` with two directives: `tmSearch` (spec 0023 §6.2), a 50 ms sliding
-  debounce, and `[tmGridDriver]` (spec 0010 §C.2), which steers the highlight (§6.3).
+- **Parts.** An `input[tmInput]` with two directives: `tmSearch` (spec 0023 §6.2) and
+  `[tmGridDriver]` (spec 0010 §C.2), which steers the highlight (§6.3). `tmSearch` fires at once on
+  the first key after a pause, then again 50 ms after the last key of a burst.
 - **Form field.** The input sits in a `tm-form-field` that draws the magnifier and the reserved clear
   slot as `tm-search-field` does (spec 0023 §6.2's custom-chrome case).
 - **Attributes.** `aria-label` "Search"; `aria-describedby` the title and a hidden hint, "Arrow keys
   move through the results. Enter opens one."; `maxlength` `limits.maxSearchLength`; `dir="auto"`.
 - **Clear and Escape.** The clear button clears, emits and keeps focus. Escape clears when the
   field has text, else it propagates.
-- **Instant echo.** Typed characters show in the keystroke's frame.
+- **Instant echo.** Typed characters show in the keystroke's frame. The first key after a pause
+  also shows the progress bar in that frame (§3.3).
 
 ### 6.2 Type-to-search
 
@@ -630,9 +638,10 @@ the result for the text in the field, never on an older one.
 - **Disarming.** Another key in the field, a pointer press, focus leaving the field or a navigation
   disarms the pending open. An empty result disarms it and announces "No matches".
 
-**Example —** Farah types "jed" in Centers and presses Enter at once:
+**Example —** Farah types "jed" in Centers, 30 ms per key, and presses Enter at once:
 
-1. The rows on screen answer "je", and the debounce still holds "jed", so the result is stale.
+1. "j" fired the search at once, and "jed" still waits in the 50 ms window. The rows on screen
+   answer older text, so the result is stale.
 2. Enter flushes the search, which starts the read for "jed", and arms a pending open.
 3. The result for "jed" lands, and its first row opens.
 
@@ -686,7 +695,10 @@ The host binds the grid once, for every entity:
   state store, and a new query starts at the top (spec 0004 §12).
 - **Columns** take type, alignment, width and format from `tmGridColumnFor(column)` (spec 0029
   §12.1), except a declared `width` (§2.1).
-- **Headers.** `header(col)` is the slash label (spec 0029 §11.4), or a user's expression (§11.3).
+- **Headers.** `header(col)` is the slash label (spec 0029 §11.4), or a user's expression (§11.3),
+  followed by `TmFormats.zoneSuffix(col)` (spec 0029 §12.1). For example, while the display zone's
+  offset differs from the device's, an instant column reads "Created at (GMT+3)". Its cells stay
+  bare.
 - **Static cells.** Only links and `display` hatches use a cell template; every other cell is
   static, since templates cost more (spec 0004 §7).
 
@@ -782,7 +794,7 @@ filters and every applied column filter. Its edits are staged and apply together
 - **Sections, in order:**
   1. **Filter expression.** `<tm-expression-editor clause="filter" [root]="entity" [rows]="3">`
      (spec 0029 §10), labelled "Filter expression", placeholder "CreditLimit > 100000".
-     Ctrl+Enter or Cmd+Enter applies. Absent in list mode (§17).
+     Mod+Enter applies, matched through `kbd` (spec 0029 §10.5). Absent in list mode (§17).
   2. **Active only.** A `tm-switch` on activatable entities, on by default; off is `inactive=1`.
   3. **Custom filters.** A switch or a radio group per declaration (§2.4), in declaration order.
   4. **Applied.** A `tm-chip-set` with one removable chip per column filter.
@@ -955,7 +967,7 @@ headers as shown.
 - **Columns.** The grid export sends the displayed column model, never the select: one
   `ExportColumn` per shown column (spec 0019 §2.1).
   - `expression` is the column key.
-  - `header` is its header as displayed, in the UI language.
+  - `header` is its header as displayed, in the UI language, without §7.1's zone suffix.
   - Image columns are left out.
 - **Source.** The grid's query (`filters`, `search`, `orderBy`, `includeInactive`, with no paging),
   or `ids` for the selection.
@@ -973,8 +985,10 @@ POST /17/api/web/centers/export
 The server writes four columns: `Name` in the request language's slot, falling back to slot 1, and
 `Parent` as the parent's display name (spec 0019 §4.1). `Id` appears only when shown.
 
-- **Synchronous first.** Every export runs `TmApi.download(route, body, { signal, long: true,
-  onProgress })`. It saves through an object URL and `<a download>` with the server's file name.
+- **Synchronous first.** Every export runs `TmApi.download(route, body, { signal, onProgress })`.
+  It saves through an object URL and `<a download>` with the server's file name.
+- **Time limit.** The Contracts chunk lists `export` and `export-for-import` as long, so `TmApi`
+  allows them 6 minutes (spec 0024 §3.4).
 - **Progress and Cancel.** A sticky "Exporting…" toast with progress and Cancel shows meanwhile
   (spec 0028 §8.1). Cancel and leaving the page abort the export.
 - **The background on 413.** On `413 Excel.Export.RowLimitExceeded`, the host retries the same body
@@ -1041,7 +1055,7 @@ Lists page on the server, with a counted query and a pager in the trailing group
 the one change that pushes history (§4.4); a click while a page loads supersedes its read.
 
 - **Control.** A `tm-pager mode="range"` (spec 0023 §8.1) with previous and next. Its status reads
-  "1–50 / 55", in isolated LTR with `ar-SA` digits.
+  "1–50 / 55", in isolated LTR, in the locale's digits (spec 0024 §7.7).
 - **Page sizes** are 20, 50, 100 and 200, within `limits.maxTake`. The default is 50.
 - **Count.** A capped count shows "1–50 / 10,000+" (`totalIsLowerBound`). Next stays enabled until
   a short page arrives or `page × size` reaches `limits.maxSkipWindow`.
@@ -1073,10 +1087,10 @@ interface TmSearchSnapshot {
   // What that request returned; capped: total is a lower bound (§14).
   readonly result: { readonly set: TmQueryRowSet; readonly ancestors?: TmQueryRowSet;
                      readonly total: number | null; readonly capped: boolean } | null;
-  readonly ids: readonly number[];                   // the shown rows, in display order
-  readonly selection: readonly number[];
-  readonly highlight: number | null;                 // the row last opened, else the highlighted row
-  readonly expanded?: readonly number[];             // tree view
+  readonly ids: readonly TmId[];                     // the shown rows, in display order
+  readonly selection: readonly TmId[];
+  readonly highlight: TmId | null;                   // the row last opened, else the highlighted row
+  readonly expanded?: readonly TmId[];               // tree view
   readonly scroll?: number;                          // tiles only (the grid's store keeps its own)
 }
 ```
@@ -1201,10 +1215,15 @@ Six suites pin the design, and all of them run on every PR.
 
 - **Unit** (vitest): §4.2's vectors, `supersedes` included; the canonical URL (`cols` with
   expression columns, `view` by width, drops); history per change (§4.4); leaf order and diagnostic
-  mapping; the type-to-search predicate over key, modifier and target vectors; stale results and
-  the pending open; tree pruning, and collapse through `replace`; page-size arithmetic.
+  mapping; the type-to-search predicate over key, modifier and target vectors; stale results, the
+  bar's `active` rule and the pending open; headers with and without the zone suffix, and export
+  headers without it; tree pruning, and collapse through `replace`; page-size arithmetic.
 - **Harness** (`TmSearchPageHarness`, a fake `TmApi`, a fake clock):
-  - five keys → one settled read, four aborted; Enter before arrival opens the first row;
+  - five keys 30 ms apart → two reads: the first key's read starts at once and is aborted, and the
+    burst's read settles;
+  - the progress bar shows on the first key, stays on through the burst, and holds at least 250 ms
+    after a fast answer;
+  - Enter before arrival opens the first row;
   - selection across pages; bulk success, 404 and 422;
   - export bodies (columns, filters, ids) and the 413 fallback; import steps with a plan, a 422 and
     a 202;
@@ -1235,10 +1254,11 @@ Six suites pin the design, and all of them run on every PR.
     with no request. Only rows wait, behind skeleton rows (§5.3). *Test:* spec 0024's
     `warm-launch.spec` on `/17/customers` and `/17/centers` with every request held: chrome, headers
     and skeleton rows within 1 s, and no shift to the loaded page.
-  - **Instant feedback.** Typing is native. Enter, sort, filter, view toggle and paging change the
+  - **Instant feedback.** Typing is native, and the first key after a pause searches and shows the
+    progress bar in its frame (§3.3, §6.1). Enter, sort, filter, view toggle and paging change the
     screen in the click's frame. Hover preloads the target, and column removals re-render with no
-    request. *Tests:* `search-feedback.spec` (a frame probe after each gesture); `view-toggle.spec`
-    (zero requests).
+    request. *Tests:* `search-feedback.spec` (a frame probe after each gesture and the first key);
+    `view-toggle.spec` (zero requests).
   - **Non-blocking.** One `resource()` per query; superseded reads aborted to the server; nothing
     disabled while loading; exports cancellable; writes never aborted. *Tests:* harness
     `typing-aborts.spec`; spec 0024 §12's staging abort smoke.
@@ -1326,6 +1346,10 @@ Six suites pin the design, and all of them run on every PR.
     by its text** — no lost work, no crafted text in cells, labels stay keys (§4.3, §11).
 13. **Filters apply on Apply; selection survives queries and clears after a write; tree deletes
     offer Delete with descendants** — one rule, no unseen selection, no surprise cascade (§10, §12).
+14. **The first key after a pause searches at once, and the progress bar follows a stale result,
+    not a running read** — feedback in the key's frame, with no blink between keys while each read
+    is aborted and replaced. Rejected: a bar that waits 150 ms after a read starts, which leaves
+    about 200 ms without feedback after the last key (§3.3, §6.1).
 
 ## Review flags
 

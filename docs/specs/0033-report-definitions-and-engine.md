@@ -26,17 +26,17 @@ nothing. Dashboards (spec 0035) reuse the sharing model whole.
 
 Other specs that carry parts of this design:
 
-- spec 0010 §F.8–§F.15 — grouping sets, level navigations, omitted parameters, constant statements, `BindParameters`, `'uq'`, `Exists`, `ComparedWith`.
+- spec 0010 §F.8–§F.15 — omitted parameters, constant statements, `BindParameters`, `'uq'`, `Exists`, `ComparedWith`, measure partials and their evaluation in C#.
 - spec 0011 §2.1, §6.2 — `FeatureContribution.ReportSeed` and the `core.report-seeds` step.
-- spec 0012 §5.2, §11.1, §11.4 — `IDataBatch.EvaluateConstant`; `TreeLevels` and the `'uq'` calendar map in the schema; level paths refused in entity selects.
+- spec 0012 §3.3, §5.2, §6.4, §11.1 — `QueryColumn.Precision`; `IDataBatch.EvaluateConstant`; `ArithmeticFailureException`; the `'uq'` calendar map.
 - spec 0013 §8.2, §10.1 — `core.CalendarMonths`; the Core string keys of reports.
 - spec 0014 §2, §5.3 — `core.ReportDefinition`, `Share`, `Publish`, `Transfer`; sharing among the bespoke criteria.
-- spec 0015 §2.2, §2.3, §2.7, §5.2, §5.3 — child query surfaces, narrowed reserved segments, child securables, the traversal rule, computed extras.
-- spec 0016 §2.1–§2.4, §4.1, §8.2, §8.3, §11.5 — routes and retry classes, `Queryable`, `tellma-reports`, `tellma-long`, `tellma_query`.
+- spec 0015 §2.2, §2.3, §2.7, §5.2, §5.3, §14.1 — child query surfaces, narrowed reserved segments and the `Long` flag, child securables, the traversal rule, computed extras, the `forbidden` reasons.
+- spec 0016 §2.1–§2.4, §3.2, §3.10, §4.1, §8.2, §8.3, §11.5 — routes and retry classes, decimals as JSON strings, the contracts chunk's long routes, `Queryable`, `tellma-reports`, `tellma-long`, `tellma_query`.
 - spec 0018 §1.4 — Acme's coded report, its seed and the role `Sales`.
 - spec 0019 §2.1, §4.4, §12.2, §12.3 — `ExportKind.Report`, the table writer, the export job's report case and label.
 - spec 0021 §2.3 — the `core.report.shared` catalogue row.
-- spec 0029 §6.1, §8.2, §9 — column keys, `tmQx.raw`, `queryex/discover`.
+- spec 0029 §6.1, §8.2, §9 — column keys, `tmQx.raw`, `queryex/discover` with its `measures` clause.
 - spec 0030 §2.5, §17 — `searchRead` for the reports page; the drill-through list.
 - spec 0035 §3.1, §6.3 — the widget foreign key; the `IDashboardReadThrough` implementation.
 
@@ -45,8 +45,9 @@ Other specs that carry parts of this design:
 **Goals**
 
 - One versioned document per definition, checked at save against the tenant's schema (§3, §4).
-- Four kinds, each compiled to one Queryex statement (§8). Pivot subtotals and tree rollups come
-  from one `GROUPING SETS` statement with no fan-out.
+- Four kinds, each compiled to one Queryex statement; a pivot adds one member statement per tree
+  dimension (§8). A pivot groups at leaf grain in SQL, and the cube builder rolls up trees,
+  subtotals and totals in C# with the engine's measure evaluator.
 - Parameters with defaults; an omitted optional parameter imposes no restriction (§4).
 - Sharing with users, roles and everyone; an audience that says who sees a definition and why (§5, §6).
 - Self-describing results that renderers and the Excel writer read with no other input (§9).
@@ -60,6 +61,10 @@ Other specs that carry parts of this design:
 - Stored definitions in the launcher — spec 0027 lists one Reports entry.
 - Running totals, scheduled delivery, favourites and MCP report tools — later. `ReportTerm.running`
   is reserved (§3.1), and `run` with a draft is the assistant's entry point today (§8.1).
+- Distinct counts, medians and percentiles — Queryex has none, and none of them rolls up from
+  partials. Spec 0010 §F.14 refuses any aggregate it cannot decompose.
+- A tree cut at one depth as a flat dimension, such as sales by region in a chart — later. A pivot
+  opens a tree collapsed with `expand: false`.
 
 ## 1. Placement and vocabulary
 
@@ -100,7 +105,12 @@ The document's C# records are the only code that reads or writes the document.
 - *Aggregate kinds* — summary, pivot and chart. A *grouping key* is an expression they group by.
 - *Member* — of a tenant or a role: a user (§5, §6). Of a dimension: one of its values on an axis,
   such as one customer or one quarter (§8.5, §9.3).
-- *Level* — one grouping position: one for a flat dimension, one per tree depth for a tree.
+- *Level* — one depth of an axis's member tree. A flat dimension has one; a tree has one per depth
+  that holds facts.
+- *Leaf row* — one row of a pivot's leaf statement: the facts of one combination of every
+  dimension's finest key (§8.5).
+- *Partial* — a `sum`, `count`, `min` or `max` column that a measure is computed from (spec 0010
+  §F.14).
 - *Phantom child* — the row of a tree member that holds the facts on the member itself (§8.6).
 - *Fan-out* — a join that repeats a fact row once per match, inflating sums and counts.
 - *Content slot* — slot 1, 2 or 3 of a multilingual value: `Title`, `Title2`, `Title3` (spec 0013 §7.5).
@@ -192,9 +202,13 @@ public enum ShareAccess { View, Edit }
 ### 2.2 Securables, operations and routes
 
 Every route is under `/{t}/api/web/reports/` and requires one securable on `core.ReportDefinition`.
-Retry classes are spec 0016 §2.2's. `run`, `export` and `audience` take the long timeout and the
-`tellma-reports` policy (spec 0016 §8.2, §8.3). No pair is sensitive by default; a distribution may
-mark `Publish` or `Transfer` with `MarkSensitive`.
+
+- **Retry classes** are spec 0016 §2.2's.
+- **Long routes.** `run`, `export` and `audience` declare `Long = true`. They take the
+  `tellma-long` timeout, and the contracts chunk lists them as long (spec 0015 §2.3, spec 0016
+  §8.3). They also take the `tellma-reports` policy (spec 0016 §8.2).
+- **Sensitive pairs.** No pair is sensitive by default. A distribution may mark `Publish` or
+  `Transfer` with `MarkSensitive`.
 
 | Route | Kind | Securable (`core.ReportDefinition` ×) |
 |---|---|---|
@@ -202,8 +216,8 @@ mark `Publish` or `Transfer` with `MarkSensitive`.
 | `save`; `delete`, `delete-by-query` | standard | `Save`; `Delete` |
 | `activate`, `deactivate` | built-in actions | `Activate` |
 | `share`, `publish`, `transfer` | `[EntityAction]` (§5.4) | `Share`, `Publish`, `Transfer` |
-| `browse`, `run`, `export` | `[ApiAction]`, `Mutation = false`, `Idempotent` (§5.5, §8, §12); `export` streams `.xlsx` | `Read` |
-| `audience` | `[ApiAction]`, `Mutation = false`, `Idempotent` (§6) | `Share` |
+| `browse`, `run`, `export` | `[ApiAction]`, `Mutation = false`, `Idempotent`; `run` and `export` also `Long` (§5.5, §8, §12); `export` streams `.xlsx` | `Read` |
+| `audience` | `[ApiAction]`, `Mutation = false`, `Idempotent`, `Long` (§6) | `Share` |
 | `export/start` | `[ApiAction]`, `Mutation = true`; `202 JobAccepted` (§12) | `Read` |
 
 ## 3. The definition document
@@ -242,13 +256,12 @@ type ReportOrder = { term: number; desc?: boolean }   // term: a 0-based index i
 interface ReportList { columns: ReportTerm[]; orderBy?: ReportOrder[]; top?: number }
 interface ReportSummary {
   columns: ReportTerm[]; orderBy?: ReportOrder[]; having?: string; top?: number;
-  totals?: boolean;                          // adds a grand total row (§8.4)
+  totals?: boolean;                          // a totals row when the whole result fits on one page (§8.4)
 }
 interface ReportDimension extends ReportTerm {
   order?: 'asc' | 'desc';                    // member order; default asc
   expand?: boolean;                          // pivot: expanded when opened; default true
-  tree?: boolean;                            // on a navigation to a tree entity; default true there
-  levels?: number;                           // tree levels shown, 1–10; default min(MaxDepth, 6)
+  tree?: boolean;                            // on a navigation to a tree entity; default true there; full depth
   attributes?: ReportTerm[];                 // pivot with one row dimension: columns before the measures
 }
 interface ReportPivot {
@@ -329,6 +342,9 @@ round trip: the schema and metadata are in memory, and the engine compiles witho
    - list terms are row level (QX4002);
    - summary terms are grouping keys or measures (QX4007), and at least one is a measure;
    - dimensions are grouping keys, and measures aggregate;
+   - pivot measures, and summary measures when `totals` is true, compile as `Measures` (spec 0010
+     §F.14). A construct that C# cannot evaluate over rolled-up values is QX4010. A measure that
+     reads a path outside an aggregation, or has no aggregation at all, is QX4011;
    - attributes are grouping keys whose paths start with their dimension's path
      (`ReportDefinition.AttributeNotOfDimension`), allowed only when the pivot has exactly one row
      dimension (`ReportDefinition.AttributesNeedOneRow`).
@@ -347,7 +363,6 @@ round trip: the schema and metadata are in memory, and the engine compiles witho
     (`ReportDefinition.UnknownPath`).
 12. **The rest.**
     - Parameters follow §4.5.
-    - Grouping stays within §8.8's limits (`ReportDefinition.TooManyLevels`).
     - Unknown JSON members are refused (`ReportDefinition.UnknownMember`).
     - A higher format version is refused (`ReportDefinition.FormatUnsupported`).
     - A document over 256 KB is refused (`ReportDefinition.TooLarge`).
@@ -380,7 +395,7 @@ Save infers and adds `"type": "Date"` to `From`, because the filter compares it 
                     "default": "year(today())", "type": "Numeric" } ],
   "filter": "year(Invoice.PostingDate) = @Year",
   "pivot": {
-    "rows": [ { "path": "Center", "levels": 4, "expand": false, "attributes": [ { "path": "Center.Code" } ] } ],
+    "rows": [ { "path": "Center", "expand": false, "attributes": [ { "path": "Center.Code" } ] } ],
     "columns": [ { "expr": "quarter(Invoice.PostingDate)", "labelKey": "Acme_Report_Quarter" } ],
     "measures": [ { "expr": "sum(Amount)", "labelKey": "Acme_Report_Sales", "format": { "decimals": 0 } },
                   { "expr": "count()", "labelKey": "Acme_Report_Lines" } ],
@@ -424,7 +439,7 @@ and normalizes the document:
 4. A stated `type` must equal the inferred one, unless inference is unconstrained
    (`ReportDefinition.ParameterTypeIncompatible`). Queryex never coerces parameters (spec 0008
    §7.3).
-5. `entity` is set from `ComparedWith` (spec 0010 §F.15) when the compared path ends at a key or a
+5. `entity` is set from `ComparedWith` (spec 0010 §F.13) when the compared path ends at a key or a
    foreign key: `CustomerId = @Customer` gives `acme.Customer`. Otherwise it is removed.
 
 At run time, every referenced parameter is declared with its stored `type`, as nullable. The
@@ -443,7 +458,7 @@ before the report itself.
   never does (§4.4). On a dashboard, a required parameter needs a default, a non-null fixed-value
   binding or a required dashboard parameter (spec 0035 §5.3).
 - **Evaluation.** Before the report statements, the run executes one constant statement that holds
-  every applied default, through `IDataBatch.EvaluateConstant` (spec 0012 §5.2, spec 0010 §F.11).
+  every applied default, through `IDataBatch.EvaluateConstant` (spec 0012 §5.2, spec 0010 §F.9).
   It binds the results as ordinary arguments and echoes them with source `Default` (§9.1).
 - **One clock, one user.** `today()` and `me()` bind from the same request context in both
   statements, so a default and the query agree.
@@ -460,10 +475,11 @@ before the report itself.
 | nothing, no default | omitted | `422 Report.ArgumentRequired` |
 
 - **Values** use the platform scalar encoding of the declared type (spec 0016 §3.2): for example
-  `"2026-10-01"` for a `Date` and a JSON number for a `Numeric`.
+  `"2026-10-01"` for a `Date`, and `"5000"` for a `Numeric`, which travels as a `decimal`. A
+  `Numeric` argument may also arrive as a JSON number. Either way, its echo is the string (§9).
 - **Bad values and keys.** A value that does not convert is `422 Report.ArgumentInvalid`, with the
   arguments `key` and `type`. A key that no parameter declares is ignored.
-- **Omitted means no restriction.** The run compiles with `OmittedParameters` (spec 0010 §F.10).
+- **Omitted means no restriction.** The run compiles with `OmittedParameters` (spec 0010 §F.8).
   In a filter, a `having` or a measure's condition, every atom (one comparison, such as
   `CustomerId = @Customer`) that mentions an omitted parameter folds to no restriction:
   `sum(Amount, CustomerId = @Customer)` becomes `sum(Amount)`.
@@ -574,7 +590,7 @@ Grantee = Or( Leaf("UserId = me()"),
 - **In words.** A user reads a definition they own, a public one, or one with a share that names
   them or an active role that is public or that they belong to. They save one they own, or one
   where such a share has `Edit` access.
-- **`Exists`** is spec 0010 §F.14's semi-join, so nothing fans out. `Share` is the share entity
+- **`Exists`** is spec 0010 §F.12's semi-join, so nothing fans out. `Share` is the share entity
   (`core.ReportDefinitionShare`), and `Parent` is its `[ParentKey]` navigation (`ReportDefinition`).
 - **Reason.** Every criterion carries the reason `share`, so `access/check` (spec 0014 §10) answers
   "via sharing".
@@ -692,7 +708,7 @@ cannot read the root entity, so the share dialog can warn that they will see an 
 ### 6.1 Contract
 
 ```csharp
-[ApiAction("audience", Action = "Share", Mutation = false, Idempotent = true)]
+[ApiAction("audience", Action = "Share", Mutation = false, Idempotent = true, Long = true)]
 public Task<ShareAudience> AudienceAsync(IdRequest request);
 
 public interface IAudienceResolver { Task<ShareAudience> ResolveAsync(string resource, int id, string? root); } // root null: no counts
@@ -761,13 +777,13 @@ catalogue row; this section states what the sharing action sends.
 ## 8. Execution
 
 `run` executes a stored definition or a draft under the viewer's permissions. Each kind runs one
-Queryex statement, or two for a summary with totals. When defaults apply, one constant statement
-runs first (§4.3).
+Queryex statement; a pivot adds one member statement per tree dimension. When defaults apply, one
+constant statement runs first (§4.3).
 
 ### 8.1 Contract
 
 ```csharp
-[ApiAction("run", Action = "Read", Mutation = false, Idempotent = true)]
+[ApiAction("run", Action = "Read", Mutation = false, Idempotent = true, Long = true)]
 public Task<ReportResult> RunAsync(ReportRunRequest request);
 
 public sealed record ReportRunRequest(
@@ -781,6 +797,9 @@ public sealed record ReportDraft(string Root, ReportKind Kind, JsonElement Docum
 public interface IReportEngine                              // run, export (§12) and IReportResults (§11) use it
 {
     Task<ReportResult> RunAsync(ReportSource source, IReadOnlyDictionary<string, JsonElement>? arguments, ReportPage? page);
+    // export (§12.1): every page of MaxTake rows in order; the first carries Count capped at countCap;
+    // a summary with totals: only the last page's Table.Totals is set, over every page
+    IAsyncEnumerable<ReportResult> PagesAsync(ReportSource source, IReadOnlyDictionary<string, JsonElement>? arguments, int countCap);
 }
 public abstract record ReportSource
 {
@@ -793,10 +812,11 @@ public sealed record ReportPage(int Skip, int Take, bool IncludeCount);
 **Example —** the first open of §3.5's summary (id 42): `From` takes its default, `To` is omitted.
 
 ```json
-→ POST /17/api/web/reports/run   { "id": 42, "arguments": {}, "take": 200, "includeCount": true }
+→ POST /17/api/web/reports/run   { "id": 42, "arguments": {}, "take": 1000, "includeCount": true }
 ← { "id": 42, "kind": "Summary", "root": "acme.SalesInvoiceLine", "title": "Sales by customer",
     "arguments": [ { "key": "From", "value": "2026-01-01", "source": "Default" }, { "key": "To", "value": null, "source": "Omitted" } ],
-    "columns": [ … ], "table": { "rows": { … }, "totals": { … }, "count": 37, "countCapped": false }, "drill": { … }, … }
+    "columns": [ … ], "table": { "rows": { … }, "totals": { … }, "totalsOmitted": false, "count": 37, "countCapped": false },
+    "drill": { … }, … }
 ```
 
 ### 8.2 Authorization
@@ -809,16 +829,17 @@ A run first checks that the caller may see the definition, then that they may re
 | `Id` + `DashboardId` | as above; when the row is invisible, `IDashboardReadThrough.AllowsAsync(dashboardId, id)` loads it without its own filter | 404 |
 | `Draft` | any member: every member's `Read` passes through §5.3's criteria | — |
 
-Every source then passes two data checks. Each refuses with 403 `forbidden`, naming the entity.
+Every source then passes two data checks. Each refuses with 403 `forbidden`, which names the
+permission and the reason (spec 0015 §14.1).
 
-- **The root.** `RequireAsync(Root, "Read")`. A child root composes its owner's decision (spec 0014
-  §5.5).
-- **Every path.** Spec 0015 §5.2's traversal rule checks every path of every clause.
+- **The root.** `RequireAsync(Root, "Read")`, refused with the reason `no-grant`. A child root
+  composes its owner's decision (spec 0014 §5.5).
+- **Every path.** Spec 0015 §5.2's traversal rule checks every path of every clause. A refusal
+  carries the reason `restricted-path` and the `path`.
 
 The root decision's filter is joined by `and` into every statement, so a definition never widens
-access. Every row, group, subtotal and chart point counts only rows the viewer may read, and
-`me()` is always the viewer. A summary's grand total therefore equals the sum of the list rows the
-same viewer sees.
+access. Every row, group, subtotal, total and chart point counts only rows the viewer may read,
+and `me()` is always the viewer.
 
 ### 8.3 The run, step by step
 
@@ -838,8 +859,9 @@ same viewer sees.
    `400 query-invalid`, where each diagnostic's `clause` is its document pointer, such as
    `/pivot/rows/0`. The run logs `ReportEvents.DefinitionInvalidAtRun`.
 6. **Execute** one Read batch through `IGuardedBatchRunner` (spec 0014 §7.1) with `IDataBatch.Rows`
-   (spec 0012 §11.3). The batch holds the main statement, with `CountCap` when `IncludeCount`, and
-   a summary's totals statement. Then **shape** the result (§9).
+   (spec 0012 §11.3). The batch holds the kind's statement, with `CountCap` when `IncludeCount`,
+   and a pivot's member statements. Then **shape** the result (§9). A pivot goes through the cube
+   builder (§8.6), and C# computes a summary's totals row (§8.4).
 
 **Round trips.** A draft without defaults takes one Read round trip. Loading a stored definition
 adds one, applied defaults add one, and a dashboard read-through adds what `AllowsAsync` spends
@@ -854,14 +876,13 @@ A navigation expands through `IDisplayNames.Columns(entity, shape, navigationPat
 | Term | List: select items | Aggregate kinds: grouping key | Aggregate kinds: label items |
 |---|---|---|---|
 | value path `Amount`, `Invoice.PostingDate` | the path | the path | — |
-| text path `Name` (a group anchor) | `Name`, `Name2` (admitted slots) | every admitted slot, one key group | — |
+| text path `Name` (a group anchor) | `Name`, `Name2` (admitted slots) | every admitted slot | — |
 | navigation `Invoice.Customer` | its `Id` and display-name columns | `Invoice.Customer.Id` | `max(Invoice.Customer.Name)`, `max(Invoice.Customer.Name2)` |
 | image `Image`, file `File` | `ImageId`, `Image.Variants`; `FileId`, `File.FileName` | refused (§3.4 rule 4) | — |
 | `expr` | the expression | the expression: a key, or a measure as written | — |
 
 - **Labels as `max(...)`.** A navigation groups by its key alone. Its display columns depend on
-  that key, so reading them as aggregates keeps one grouping expression per level, within SQL
-  Server's limit (§8.8).
+  that key, so reading them as aggregates keeps one grouping key per dimension.
 - **Identity columns (list).** A list selects the root `Id` first, so a row can open its record
   (§9.2). A child root adds its owner's key through the owner navigation, such as `Invoice.Id`. A
   grandchild root adds its parent's key and its top-level owner's key.
@@ -873,85 +894,148 @@ A navigation expands through `IDisplayNames.Columns(entity, shape, navigationPat
 - **Top and paging.** A page is `Skip`/`Take` within `top`: the take is `min(Take, top − Skip)`,
   and `count` is capped at `top`. **Example —** with `top: 50`, `Skip` 40 and `Take` 20, the page
   holds rows 41–50.
-- **Totals.** `totals: true` adds a statement with the measures alone: no grouping keys, no
-  `having`, no `top`. The total therefore covers every filtered row.
+- **Totals.** A summary with `totals: true` shows a totals row only when the page holds the whole
+  result:
+  1. the request's `Skip` is 0; and
+  2. the statement returned every row. When `top` is absent or larger than the page, the compiler
+     asks for `take + 1` rows. An extra row proves there are more and is dropped. When `top` is
+     no larger than the page, no probe is needed.
+
+  How the row is computed:
+
+  - **Partials.** When `Skip` is 0, the statement also carries the measures as `Measures` (spec
+    0010 §F.14). So does every page of an export, whatever its `Skip` (§12.2).
+  - **Evaluation.** When every row came back, C# evaluates each measure over the combined partials
+    of the returned rows, after `having` and `top`.
+  - **Omission.** Otherwise `Totals` is null and `TotalsOmitted` is true (§9.2). An export's pages
+    leave `TotalsOmitted` false, and the last page carries the totals (§8.1).
+  - **`top` always fits.** The renderer pages summaries at 1,000 rows (spec 0034 §5.1), the
+    largest `top` (§3.4 rule 8), so every summary with `top` fits.
+
+  **Example —** §3.5's top 50 customers total those 50 rows. Its `sum(Amount)` and `count()` are
+  already select items, so their partials add no column.
 - **Chart.** One aggregate statement: grouping keys, label items and the measure. It is ordered by
   the measure when `orderBy: 'measure'`, else by the first dimension. Without `top`, it takes
   `MaxChartPoints + 1` rows; if the extra row arrives, the run fails with
   `413 Report.TooManyPoints`.
 
-### 8.5 Pivot: levels, grouping sets, having
+### 8.5 Pivot: the leaf statement
 
-A pivot is one aggregate statement with grouping sets (spec 0010 §F.8). It returns every leaf
-cell, every subtotal at every level of both axes, and the grand totals the definition asks for.
+A pivot reads its facts at leaf grain: one row per combination of the finest key of every
+dimension. SQL returns keys, labels and the measures' partials, never a subtotal. One member
+statement per tree dimension runs in the same batch.
 
-1. **Levels.** Each row dimension contributes one level, or `levels` levels for a tree (§8.6), in
-   document order: R1 … Rp. Column dimensions do the same: C1 … Cq.
-2. **Key groups.** One per level:
-   - `[Center.Id]` for a flat navigation;
-   - `[quarter(Invoice.PostingDate)]` for a value or an expression;
-   - `[Name, Name2]` for a text term;
-   - `[Center.Level{j}.Id]` for tree level j.
-3. **Other items.** The label items and attributes of each level as `max(...)`, the measures, and
-   one truncation probe per tree dimension (§8.6).
-4. **Grouping sets.** One set R1…Ri ∪ C1…Cj per pair (i, j), listed finest first. i runs from 0
-   to p (from 1 when `rowTotals` is false), and j from 0 to q (from 1 when `columnTotals` is
-   false). An axis with no dimensions contributes only 0.
-5. **Having** filters only the finest set's rows (spec 0010 §F.8), so a collapsed member never
-   shows an empty total.
-6. **Cap.** The statement takes `MaxPivotRows + 1` rows, ordered by the first grouping key. If the
-   extra row arrives, the run fails with `413 Report.TooManyRows`.
+1. **Keys.** One grouping key per dimension, row dimensions first, in document order:
+   - `Center.Id` for a navigation. A tree dimension groups by the fact's own node, never by its
+     ancestors. `tree: false` groups the same way and renders flat;
+   - `quarter(Invoice.PostingDate)` for a value or an expression;
+   - every admitted slot for a text term (§8.4).
+2. **Labels.** A flat navigation's label items and attributes read as `max(...)` (§8.4). A tree
+   dimension's labels and attributes come from its member statement (step 5).
+3. **Measures.** The document's measures go to `QuerySpec.Measures` (spec 0010 §F.14), never to
+   `Select`. The engine appends their partial columns, with each shared partial once.
+4. **Having** is a plain SQL `HAVING` on the leaf rows. A failing leaf row never leaves SQL.
+5. **Member statements.** One per tree dimension, over the tree entity. It selects `Id`,
+   `ParentId`, the display columns, and the attribute paths made relative to the tree
+   (`Center.Code` → `Code`). It has no row filter, and reads only the columns that the traversal
+   rule admitted through the dimension's paths (§8.2). Trees are master data, so it holds
+   thousands of rows at most. Only the leaf rows' nodes and their ancestors reach the result.
+6. **Cap.** The leaf statement is ordered by the first key and takes `MaxPivotRows + 1` rows. If
+   the extra row arrives, the run fails with `413 Report.TooManyRows`.
 
-The cube builder (§9.3) tells the sets apart by the level indicator (spec 0010 §F.8).
-
-**Example —** §3.5's pivot with `levels: 2`, as the compiler hands it to the engine:
+**Example —** §3.5's pivot, as the compiler hands it to the engine:
 
 ```text
-Select       = Center.Level1.Id, Center.Level2.Id, quarter(Invoice.PostingDate), sum(Amount), count(),
-               max(Center.Level1.Name), max(Center.Level1.Name2), max(Center.Level1.Code), max(Center.Level2.Name),
-               max(Center.Level2.Name2), max(Center.Level2.Code), max(level(Center.Node))
-KeyGroups    = [[0], [1], [2]]                                  -- R1, R2, C1
-GroupingSets = [[0, 1, 2], [0, 1], [0, 2], [0], [2], []]        -- (i, j) = (2,1) (2,0) (1,1) (1,0) (0,1) (0,0); [] is the grand total
-Filter       = year(Invoice.PostingDate) = @Year  and  <the root decision's filter>
+Select    = Center.Id, quarter(Invoice.PostingDate)          -- one key per dimension: R1, C1
+Measures  = sum(Amount), count()
+Aggregate = true, OrderBy = Center.Id, Take = MaxPivotRows + 1
+Filter    = year(Invoice.PostingDate) = @Year  and  <the root decision's filter>
+
+Members of Center: Root = gl.Center, Select = Id, ParentId, Name, Name2, Code
 ```
 
-### 8.6 Tree dimensions
+### 8.6 The rollup
 
-A navigation to a tree entity with `tree: true` renders as the tree of the members that have facts.
-Each parent aggregates its subtree, and a phantom child holds the parent's own facts.
+The cube builder rolls the leaf rows up in C#: it builds the member trees, folds the partials into
+every subtotal and total, and evaluates each cell's measures. Totals are visual: they cover only
+the leaf rows that survived `having`.
 
-- **Level navigations** (spec 0010 §F.9). `LevelJ` of a row is its ancestor at depth J, where a
-  root has depth 1. It is the row itself when the row is at depth J, and null when the row is
-  shallower. Each join seeks the unique `Node` index, so nothing fans out and every grouping set
-  stays exact.
-- **Decoding.** Take a grouping set that includes a tree dimension's levels L1 … Lj, and a result
-  row whose levels are non-null up to Lm. The table says what the row is:
+1. **Trees.** The builder reads each tree's parent map from its member statement. It marks every
+   node with a leaf row on itself and every node with a leaf row below it.
+2. **Chains.** Each leaf row gets one chain per axis: its deepest member, each ancestor, then the
+   axis `Total`.
+   - The deepest member is the node itself, or the node's phantom child when the node also has
+     leaf rows below it.
+   - A null key maps to "(None)".
+   - With several dimensions on an axis, the chain climbs the inner dimension, then the outer
+     ones (§9.3).
+3. **Leaf cells.** Each leaf row loads its partials into one cell of a `PartialTable` (spec 0010
+   §F.15): the cell of its deepest row member and deepest column member. A flat member's labels
+   and attributes are equal on all its leaf rows, so the builder keeps the first.
+4. **Fold.** Cells fold into their parents bottom-up, first along the row chains, then along the
+   column chains. Every combine is associative and commutative, so the cost is one fold per cell
+   and partial, whatever the depth.
+   - `sum` and `count` add.
+   - `min` and `max` keep the least or the greatest value. Text compares ignoring case, and
+     hierarchy paths in tree order (spec 0010 §F.15).
+   - Nulls are skipped.
+5. **Evaluate.** Each cell evaluates every measure over its combined partials with the run's
+   `MeasureEvaluator`, at SQL Server's types (spec 0010 §F.15). Leaf cells do too: SQL never
+   computes a pivot measure.
+6. **Emit.** Members are sorted (§9.3) and numbered after sorting, and cells are emitted in
+   (row id, column id) order. The output is byte-identical whatever order SQL returned the rows in.
 
-| m | The row is |
-|---|---|
-| j | the member at level j: its subtree's aggregate |
-| j − 1 ≥ 1 | the phantom child of the level-m member: the facts on that member itself |
-| j − 1 = 0 | the "(None)" member: facts with no value |
-| below j − 1 | redundant (the same facts, one set up); dropped |
+`rowTotals` and `columnTotals` decide only whether an axis's `Total` is built and emitted.
 
-- **Leaves.** A member whose only child is its phantom is a leaf, and the phantom is dropped.
-- **No ancestor query.** Level navigations reach every ancestor, so no separate query fetches
-  ancestors.
-- **`tree: false`** groups by the navigation itself (`Center.Id`), as one level.
-- **Truncation.** Each tree dimension carries a probe such as `max(level(Center.Node))` (§8.5).
-  When `levels` is below the entity's `MaxDepth`, a probe value above `levels` means deeper facts
-  sit in the phantom of their ancestor at level `levels`. The cube reports this in `Truncated`
-  (§9.3).
+**`having` and visual totals.**
 
-**Example —** with `levels: 2`, Head office (10) holds 2,000 of its own; its children Riyadh (11)
-and Jeddah (12) hold 30,000 and 20,000:
+- **The finest cell is one leaf row**, where a tree's key is the fact's own node. `having` runs on
+  it in SQL (§8.5), and a failing row counts nowhere.
+- **Every other number is its measure over the surviving rows in its scope.** `sum` and `count`
+  add what shows below. `avg` divides the total sum by the total count; it never averages
+  averages. A ratio divides the rolled-up sums.
+- **Members.** A member exists only when a surviving leaf row sits under it. An ancestor whose
+  whole subtree failed disappears, so a collapsed member never shows an empty total.
+- **The phantom child** exists only when the node's own row survived and something below it
+  survived too. When the node's own row failed, its subtotal covers its surviving children alone.
+- **Totals reconcile.** Row totals, column totals and the grand total come from one set of
+  surviving rows. With column dimensions, a cell can drop inside a row: under
+  `sum(Amount) > 1000`, a customer's weak quarter is blank, and the row total adds the others.
 
-| Set | Row (L1, L2) | m, j | Becomes |
+**While building.**
+
+- **Caps.** `MaxPivotRowMembers`, `MaxPivotColumnMembers`, `MaxPivotCells` and
+  `MaxPivotCellPartials` are checked as members and cells appear, so an oversized pivot fails fast
+  with 413 (§8.8).
+- **Cancellation.** The builder observes the request's cancellation token every 4,096 rows or
+  cells, in reading, folding and evaluation alike.
+- **Errors.** A measure that divides by zero or overflows in any cell fails the run (§8.11).
+
+**Example —** rows by `Center` alone, with three measures: `sum(Amount)`, the corporate share
+`sum(Amount, Invoice.Customer.CustomerType = 'Corporate') / sum(Amount)`, and `avg(Amount)`. They
+need three partials: `sum(Amount)` serves all three measures, the share adds the conditional sum,
+and `avg` adds `count(Amount)`. Head office (10) has facts of its own. Its children Riyadh (11)
+and Jeddah (12) have the rest.
+
+| Leaf row | `sum(Amount)` | `sum(Amount, …'Corporate')` | `count(Amount)` |
 |---|---|---|---|
-| (L1, L2) | (10, null) | 1, 2 | Head office (own) 2,000 — the phantom child |
-| (L1, L2) | (10, 11), (10, 12) | 2, 2 | Riyadh 30,000; Jeddah 20,000 |
-| (L1) | (10) | 1, 1 | Head office 52,000 |
-| () | () | — | Total 52,000 |
+| 10 | 2,000.0000 | 500.0000 | 1 |
+| 11 | 30,000.0000 | 9,000.0000 | 4 |
+| 12 | 20,000.0000 | 4,000.0000 | 2 |
+
+The sums are `decimal(38,4)` and the count `bigint`. Both divisions land on `decimal(38,6)`,
+truncated as SQL Server truncates:
+
+| Row | Sales | Corporate share | Average line |
+|---|---|---|---|
+| Head office | 52,000.0000 | 13,500 / 52,000 = 0.259615 | 52,000 / 7 = 7,428.571428 |
+| — Head office (direct) | 2,000.0000 | 0.250000 | 2,000.000000 |
+| — Riyadh | 30,000.0000 | 0.300000 | 7,500.000000 |
+| — Jeddah | 20,000.0000 | 0.200000 | 10,000.000000 |
+
+Averaging the children's shares would give 0.25, and averaging their averages would give 6,500.
+With `having: "sum(Amount) >= 5000"`, leaf row 10 fails in SQL. Head office then has no phantom
+child, and both Head office and the total show 50,000.
 
 ### 8.7 Calendars
 
@@ -961,7 +1045,7 @@ never how a definition groups.
 - **Labels follow the grouping.** `format.calendar` keeps a label in the grouping's calendar
   (§3.2).
 - **Umm Al-Qura.** `'uq'` works in every calendar function through spec 0013 §8.2's month map. A
-  date outside the map gives null. Its operand rules, QX3104 included, are spec 0010 §F.13's.
+  date outside the map gives null. Its operand rules are spec 0010 §F.11's.
 
 ### 8.8 Limits
 
@@ -972,10 +1056,10 @@ the others are fixed, or owned by the spec cited.
 |---|---|---|
 | list and summary page | `DefaultTake` 200, at most `MaxTake` 10,000 | 413 `limit-exceeded` |
 | chart points | `MaxChartPoints` 10,000 | 413 `Report.TooManyPoints` |
-| pivot statement rows | `MaxPivotRows` 250,000 | 413 `Report.TooManyRows` |
+| pivot leaf rows | `MaxPivotRows` 250,000 | 413 `Report.TooManyRows` |
 | pivot row members, column members, cells | `MaxPivotRowMembers` 20,000, `MaxPivotColumnMembers` 2,000, `MaxPivotCells` 500,000 | 413 `Report.TooManyCells` |
-| grouping expressions | 32 (SQL Server, QX5008) | save: `ReportDefinition.TooManyLevels` |
-| key groups of a pivot | 31 (the `int` level indicator) | save: `ReportDefinition.TooManyLevels` |
+| pivot cell partials | `MaxPivotCellPartials` 5,000,000: cells × partials, the cell cap with 10 partials | 413 `Report.TooManyCells` |
+| summary totals | the first page, when it holds every row (§8.4) | the totals row is omitted |
 | `ReportLimits` (a `QueryexLimits` profile) | `MaxListItems` 512, `MaxJoins` 64, `MaxParameters` 1,024, `MaxTypedNodes` 8,192; the rest `Default` | diagnostics |
 | command timeout | `CommandTimeout` 120 s | as any timeout (spec 0016 §7.1) |
 | concurrent runs per user | 8, queue 16 (spec 0016 §8.2) | 429 |
@@ -992,9 +1076,52 @@ A run is a read: the client may retry it and may cancel it.
 
 ### 8.10 Caching
 
-The compiler caches plans per definition version, in an LRU cache of `PlanCacheSize` entries.
-Drafts are planned on every call. The Queryex engine's own caches key on text and options (spec
-0008 §16, spec 0010 §F.0).
+The compiler caches plans per definition version, in an LRU cache of `PlanCacheSize` entries. A
+plan holds its compiled measures (`CompiledMeasures`, spec 0010 §F.15). Drafts are planned on every
+call. The Queryex engine's own caches key on text and options (spec 0008 §16, spec 0010 §F.0).
+
+Each run prepares its own `MeasureEvaluator` from a `MeasureContext` (spec 0010 §F.15) holding:
+
+- the reader's precision and scale of each partial column (spec 0012 §3.3);
+- the run's effective arguments, supplied and defaulted, with an omitted one absent (§4.4);
+- the `Today`, `Now` and `UserId` values that its batch bound to the context slots (spec 0012
+  §5.1, §11.3).
+
+The evaluator and the statement therefore see one `today()`, one `me()` and one argument set
+(§4.3).
+
+### 8.11 Measure errors
+
+A measure that divides by zero or overflows fails the whole run, as a SQL statement fails when one
+group divides by zero. The run answers `422 Report.MeasureFailed` and logs
+`ReportEvents.MeasureFailed`.
+
+- **From C#.** The evaluator throws `QueryexEvaluationException` (QX6001 division by zero, QX6002
+  overflow; spec 0010 §F.15) on a pivot cell or a summary's totals row.
+- **From SQL.** Any report statement can raise SQL error 8134 or 8115. Examples are a summary ratio
+  whose denominator sums to zero in one group, and a row-level division in the filter. The data
+  layer throws `ArithmeticFailureException(Reason)` (spec 0012 §6.4), and the report engine maps it
+  to this 422. Other callers answer it with a 500.
+- **Arguments.**
+  - `reason`: `divide-by-zero` or `overflow`;
+  - `pointer`: the failing measure's document pointer, such as `/pivot/measures/1`. An error that
+    SQL raised has the empty pointer `""` (the whole document), because SQL names neither the
+    term nor the group;
+  - `row` and `column`, only when C# evaluated the cell. Each lists one caption per dimension of
+    that axis, outermost first, and stops at the cell's own member: first the member the cell
+    sits under on each outer dimension, then the cell's member. A subtotal on an outer dimension
+    therefore lists fewer captions than the axis has dimensions, and the axis total lists none. A
+    summary's totals row gives `row: []` and no `column`.
+- **Captions.** A navigation or text member's caption is its display text in the request's content
+  slot. A phantom's caption is its node's. A value or expression member's caption is its value as
+  text in spec 0016 §3.2's encoding (`"3"`, `"2026-03-01"`). `null` stands only for (None).
+- **Several failures.** The answer names the first failing cell in member order (§9.3), so it is
+  deterministic.
+
+**Example —** if Jeddah's lines sum to zero, §8.6's corporate share fails with `pointer`
+`/pivot/measures/1`, `reason` `divide-by-zero`, `row` `["Jeddah"]` and `column` `[]`. With rows
+by `Center`, then `Customer`, and columns by `quarter(Invoice.PostingDate)`, a failure in Jeddah's
+subtotal for the third quarter gives `row` `["Jeddah"]` and `column` `["3"]`.
 
 ## 9. Results
 
@@ -1002,6 +1129,10 @@ Every run — stored, draft or coded — answers one self-describing `ReportResu
 arguments, labelled columns, and a table or a cube. The renderers (spec 0034) and the Excel writer
 (§12) read nothing else. Labels stay content in every slot, not rendered text, so a language
 switch relabels without a new request.
+
+`decimal` and `long` values travel as JSON strings at full scale, never as JSON numbers (spec 0016
+§3.2). This holds in row sets, the totals row, cube cells and argument echoes alike. A pivot
+measure keeps every digit the evaluator computed, up to 38.
 
 ### 9.1 The envelope
 
@@ -1025,7 +1156,7 @@ public sealed record ReportChartLayout(string Type, ReportChartOptions? Options)
 public sealed record ReportColumn(
     ReportColumnRole Role,                               // Column, Dimension, Attribute, Measure
     ReportColumnKind Kind,                               // Value, Text, Navigation, Image, File, Expression
-    QueryexType Type, int? Scale,
+    QueryexType Type, int? Scale,                        // Scale: a Numeric term's; a pivot measure's from MeasureEvaluator.ResultTypes
     string? Label, string? Label2, string? Label3, string? LabelKey, // as stored; all null: derive from Path
     string? Path,                                        // the column key, for derived labels and drill conditions
     string? Entity,                                      // a navigation's target: 'acme.Customer'
@@ -1037,10 +1168,11 @@ public sealed record ReportColumn(
 
 ```csharp
 public sealed record ReportTable(
-    QueryRowSet Rows,                                    // spec 0016 §3.5's row set
+    QueryRowSet Rows,                                    // spec 0016 §3.5's row set; the terms' columns only
     IReadOnlyList<IReadOnlyList<int>> ColumnOrdinals,    // parallel to ReportResult.Columns: the row-set columns each holds
     ReportRowIdentity? Identity,                         // List: how a row opens its record
-    QueryRowSet? Totals,                                 // Summary with totals: one row, measures only
+    QueryRowSet? Totals,                                 // Summary with totals, when the page holds every row (§8.4): one row over Rows' columns
+    bool TotalsOmitted,                                  // totals asked for, but the result is paged
     int? Count, bool CountCapped);                       // IncludeCount
 public sealed record ReportRowIdentity(
     int IdOrdinal, string Entity,                        // the root's id column and entity
@@ -1064,21 +1196,25 @@ public sealed record ReportRowIdentity(
   - over a grandchild root, the intermediate child:
     `/{t}/{ownerSegment}/{ownerId}?child={Collection}:{childId}`, where `OwnerEntity` is the
     top-level owner.
+- **Partial columns.** A summary's partial columns (§8.4) never reach `Rows`. The engine
+  drops them after the totals row is computed, and `ColumnOrdinals` index what remains.
+- **The totals row** has the same columns as `Rows`, so `ColumnOrdinals` index it too. Its measure
+  cells hold the totals, and every other cell is null. The renderer and the Excel writer write
+  "Total" in the first key column.
 - **Chart data** is the dimension columns, then the measure. The renderer splits series by the
   second dimension; that is layout, not aggregation.
 
 ### 9.3 The cube (pivot)
 
-The cube builder decodes the grouping-set rows in C# into members and sparse cells, so the client
+The cube builder turns the leaf rows into members and sparse cells in C# (§8.6), so the client
 renders and never aggregates.
 
 ```csharp
 public sealed record ReportCube(
     IReadOnlyList<CubeLevel> RowLevels, IReadOnlyList<CubeLevel> ColumnLevels,
     IReadOnlyList<CubeMember> RowMembers, IReadOnlyList<CubeMember> ColumnMembers,
-    IReadOnlyList<CubeCell> Cells,                       // sparse: absent means no facts
-    IReadOnlyList<CubeTruncation> Truncated);
-public sealed record CubeLevel(int Dimension, int Level); // Level: 1… in a tree dimension, 0 in a flat one
+    IReadOnlyList<CubeCell> Cells);                      // sparse: absent means no surviving facts
+public sealed record CubeLevel(int Dimension, int Level); // the levels present in the data; Level: 1… in a tree dimension, 0 in a flat one
 public sealed record CubeMember(
     int Id, int? Parent, int Depth,                      // Depth 0: the axis total; 1: the first level
     CubeMemberKind Kind, int Dimension, int Level,
@@ -1087,13 +1223,15 @@ public sealed record CubeMember(
     IReadOnlyList<JsonElement?>? Attributes);            // parallel to the dimension's attributes
 public enum CubeMemberKind { Member, Phantom, None, Total }
 public sealed record CubeCell(int Row, int Column, IReadOnlyList<JsonElement?> Values); // wire: [row, column, v0, v1, …]
-public sealed record CubeTruncation(int Dimension, int Levels, int Depth); // Levels: shown; Depth: the probe, the deepest level with facts
 ```
 
-- **One tree per axis.** `Parent` links a member to the member one level up. The first level of
-  the next dimension hangs under the last level of the previous one.
-- **Which members exist.** One member per non-redundant row of every set (§8.6). The axis also has
-  the `Total` member (id 0, depth 0) when it has totals or no dimension.
+- **One tree per axis.** `Parent` links a member to the member one level up. The next dimension's
+  members hang under each deepest member of the previous one: a node with no children, or a
+  phantom child.
+- **Which members exist.** §8.6 decides, over the surviving leaf rows. The axis also has the
+  `Total` member (id 0, depth 0) when it has totals or no dimension.
+- **Values.** Each cell holds its measures, evaluated over the cell's combined partials (§8.6), in
+  measure order.
 - **Totals.** A cell on a `Total` member is that axis's subtotal, or the grand total.
 - **Order.** Members follow their dimension's `order`: values by value, and navigations and text
   by display text in the request's content slot and culture. "(None)" comes last, and a phantom
@@ -1113,7 +1251,7 @@ public sealed record ReportDrill(
     IReadOnlyList<string> Columns);                      // drillColumns; empty: the root's default columns (§3.3)
 ```
 
-The server binds `Filter` and `Terms` with `BindParameters` (spec 0010 §F.12), so they hold values
+The server binds `Filter` and `Terms` with `BindParameters` (spec 0010 §F.10), so they hold values
 instead of parameters. The client joins `(Filter)` by `and` to one condition per clicked
 coordinate, written through spec 0029 §8.2's `tmQx` (`raw` for the bound text):
 
@@ -1127,7 +1265,11 @@ coordinate, written through spec 0029 §8.2's `tmQx` (`raw` for the bound text):
 | expression member | `(<Terms[i]>) = <literal>`, such as `(quarter(Invoice.PostingDate)) = 3` |
 | `Total` | none |
 
-Measure conditions and `having` are not applied to the drilled list.
+- **Measure conditions and `having`** are not applied to the drilled list. A leaf cell's drill
+  lists exactly its rows. A subtotal, a total or a summary's totals row may also list rows that
+  `having` hid, so its list can add up to more than the number clicked (flag 5).
+- **Under `top`,** a summary's totals row has no drill: whole groups are missing, so the list
+  would not add up to the total.
 
 **Example —** §8.1's run binds `Filter = "Invoice.PostingDate >= cast('2026-01-01', 'date') and
 true"`, where the omitted `To` folded to `true`. A click on Olive Inc. (1012) then opens this URL,
@@ -1164,15 +1306,17 @@ that returns `ReportResult` under its own securable, with no row in `core.Report
 client half is spec 0034 §2.2's `tmCodedReport`.
 
 ```csharp
-// Tellma.Distro.Acme — the whole server side of Acme's aging report (spec 0018 §1.4)
+// Tellma.Distro.Acme — the whole server side of Acme's credit exposure report (spec 0018 §1.4):
+// per customer, the credit limit, open invoices posted on or before AsOf, the headroom and an over-limit flag
 [ApiRoute("acme-reports")]
 public sealed class AcmeReports(IGuardedBatchRunner runner, IReportResults results)
 {
-    [ApiAction("aging", Resource = "acme.AgingReport", Action = "Read", Mutation = false, Idempotent = true)]
-    public Task<ReportResult> AgingAsync(AgingArguments arguments);
+    [ApiAction("credit-exposure", Resource = "acme.CreditExposureReport", Action = "Read", Mutation = false,
+        Idempotent = true, Long = true)]
+    public Task<ReportResult> CreditExposureAsync(CreditExposureArguments arguments);
 }
-public sealed record AgingArguments(DateOnly? AsOf, int? Customer);    // members named after the parameter keys
-// composition: contribution.ApiService<AcmeReports>() registers acme.AgingReport × Read (spec 0014 §4.2)
+public sealed record CreditExposureArguments(DateOnly? AsOf, int? Customer); // members named after the parameter keys
+// composition: contribution.ApiService<AcmeReports>() registers acme.CreditExposureReport × Read (spec 0014 §4.2)
 
 public interface IReportResults
 {
@@ -1188,9 +1332,10 @@ public sealed record ReportColumnSpec(string? LabelKey, ReportColumnRole Role, R
     string? Entity = null, ReportDisplay? Display = null, ReportFormat? Format = null);
 ```
 
-- **The contract.** A coded report action has `Mutation = false`, `Idempotent = true`, one body
-  record of scalars named after the parameter keys, and the result `ReportResult`. That is enough
-  for the platform to run, cancel, retry and export it. **Example —** Acme's aging body is
+- **The contract.** A coded report action has `Mutation = false`, `Idempotent = true`,
+  `Long = true`, one body record of scalars named after the parameter keys, and the result
+  `ReportResult`. That is enough for the platform to run, cancel, retry and export it, with the
+  long timeout a stored report gets (§2.2). **Example —** Acme's credit exposure body is
   `{ "asOf": "2026-10-20", "customer": 1012 }`.
 - **The allow-list.** The startup check `core.coded-reports` lists every such action. That list is
   the export allow-list (§12.1).
@@ -1208,14 +1353,14 @@ report exactly as `run` would, under the same permissions and arguments.
 ### 12.1 Routes
 
 ```csharp
-[ApiAction("export", Action = "Read", Mutation = false, Idempotent = true)]      // an .xlsx stream
+[ApiAction("export", Action = "Read", Mutation = false, Idempotent = true, Long = true)] // an .xlsx stream
 public Task<ExportOutcome> ExportAsync(ReportExportRequest request);
-[ApiAction("export/start", Action = "Read", Mutation = true, Idempotent = false)] // 202 JobAccepted
+[ApiAction("export/start", Action = "Read", Mutation = true, Idempotent = false)]          // 202 JobAccepted
 public Task<JobAccepted> StartExportAsync(ReportExportRequest request);
 
 public sealed record ReportExportRequest(
     int? Id, ReportDraft? Draft,                         // a stored definition or a draft, or
-    string? Route,                                       // a coded report's route ('acme-reports/aging'); exactly one of the three
+    string? Route,                                       // a coded report's route ('acme-reports/credit-exposure'); exactly one of the three
     IReadOnlyDictionary<string, JsonElement>? Arguments, int? DashboardId = null);
 ```
 
@@ -1227,7 +1372,11 @@ public sealed record ReportExportRequest(
   answers `413 Excel.Export.RowLimitExceeded`, naming `export/start`.
 - **Background export.** `export/start` enqueues `core.export` with `ReportExportJobArguments` and
   the label `Core_Job_ExportReport { title }` (spec 0019 §12.2). The handler re-runs the report as
-  the run-as user (spec 0019 §12.3). A list exports up to `MaxExportRows`, in pages of `MaxTake`.
+  the run-as user (spec 0019 §12.3).
+- **Pages.** Both routes read a stored definition or a draft through `IReportEngine.PagesAsync`
+  (§8.1). A list or a summary exports up to `MaxExportRows`, or `MaxSynchronousExportRows` through
+  `export`, in pages of `MaxTake`. The first page's `Count` refuses a larger export before any row
+  is written. A pivot or a chart is one page.
 
 ### 12.2 Flat layouts (list, summary, chart)
 
@@ -1239,8 +1388,12 @@ A list, a summary and a chart export as one flat table.
   slot, and an image or a file its file name.
 - **Formats** follow the type and `display` (spec 0019 §3.2). For example, `percent` becomes an
   Excel percent, and `month` becomes `mmm yyyy` in the column's calendar.
-- **Totals and charts.** A summary with totals ends with a bold "Total" row. A chart exports its
-  dimension columns, then the measure; the chart image is not exported.
+- **Totals.** A summary with `totals: true` always ends with a bold "Total" row over every
+  exported row, however many pages it took. The engine adds each page's partials as it reads, and
+  the last page carries the totals (§8.1). A text or hierarchy `min` or `max` total is exact when
+  the data did not change between pages.
+- **Charts.** A chart exports its dimension columns, then the measure; the chart image is not
+  exported.
 
 ### 12.3 The pivot layout
 
@@ -1303,7 +1456,8 @@ emits the signals below.
 | `tellma.reports.audience.members` | — |
 
 - **Logs.** `ReportEvents.DefinitionInvalidAtRun` (warning; the id and codes, never the text),
-  `ReportEvents.LimitExceeded` (information) and `ReportEvents.SeedRoleMissing` (warning).
+  `ReportEvents.LimitExceeded` (information), `ReportEvents.MeasureFailed` (information; the id,
+  `pointer` and `reason`, never the text or the cell) and `ReportEvents.SeedRoleMissing` (warning).
 - **Activity.** `report run`, tagged `report.id` or `report.route`, and `report.kind`.
 
 ## 15. Testing
@@ -1312,24 +1466,40 @@ Unit suites pin the document, the compiler and the cube; integration suites run 
 run on PR except the performance suite, which runs nightly.
 
 - **Document, validator, corpus** (unit). Each §3.4 and §4.5 rule; normalization; checked-in
-  documents with their expected diagnostics (`pointer`, code, span).
-- **Compiler and SQL goldens** (unit). §8.4 per term kind and shape; key groups and grouping sets
-  for flat, tree and mixed axes; identity columns; ordering per slot; one golden per kind and per
-  Part F item used (spec 0010).
-- **Cube builder** (unit). §8.6's decoding: phantom, (None), leaves, redundancy, truncation; member
-  order; caps; byte-identical output for one input.
-- **Runs** (integration). §4.4's table; defaults share the query's `today()`; `'uq'` grouping; a
-  summary total equals the viewer's list rows; traversal 403; round-trip counts; an abort reaches SQL.
+  documents with their expected diagnostics (`pointer`, code, span); QX4010 and QX4011 on a pivot
+  measure and on a summary measure with totals, and neither without totals.
+- **Compiler and SQL goldens** (unit). §8.4 per term kind and shape; a pivot's leaf, member
+  and partial columns for flat, tree and mixed axes; a summary's partial columns and its
+  `take + 1` probe; identity columns; ordering per slot; one golden per kind and per Part F item
+  used (spec 0010).
+- **Cube builder** (unit). Chains; the phantom on and off; (None); two trees on one axis; each
+  combine rule; §8.6's composite measures; text ties; null partials; `having` per §8.6 (members,
+  phantoms and totals over survivors); every cap, `MaxPivotCellPartials` included; member order;
+  byte-identical output for shuffled rows.
+- **Runs** (integration):
+  - §4.4's table; defaults share the query's `today()`; `'uq'` grouping;
+  - every cell of a two-tree pivot equals a brute-force `descendantOf` query per measure;
+  - §8.4's totals rule at its boundary: exactly `take` rows, `take + 1`, `top` equal to and below
+    `take`, and `Skip` above 0;
+  - a summary total equals its rows, read through `ColumnOrdinals` with null key cells;
+  - `422 Report.MeasureFailed` from a summary row (SQL 8134) and from a pivot cell (QX6001), with
+    the same `reason`. The pivot's 422 carries its `pointer`, `row` and `column`, with cases for an
+    outer subtotal's shorter `row` and a value member's caption;
+  - a measure over `today()` and an argument, evaluated with the statement's values;
+  - traversal 403 with `restricted-path`; round-trip counts; an abort reaches SQL.
 - **Sharing and audience** (integration). Every criterion and reason kind; `Edit` saves and `View`
   does not; standard rows; one SQL text for two users; the `permissions` extra; root counts; hidden
   `Members`; the cap.
 - **Child routes, coded report, seeds** (integration). `Via` rebasing, the owner path,
-  grandchildren; Acme's aging runs and exports under its securable; seed insert, rewrite and
-  missing role.
+  grandchildren; Acme's credit exposure runs and exports under its securable; seed insert, rewrite
+  and missing role.
 - **Export** (integration). Each kind's workbook (headers, styles, indent, panes, RTL view,
-  formats); the 413; the background job and `core.export.ready`.
+  formats); the 413; the background job and `core.export.ready`; a summary's export Total equals
+  the screen's whenever both exist, and a multi-page export totals every page.
 - **Performance** (nightly). A pivot over 1M lines, with a 6-level tree and two column dimensions,
-  runs under 2 s on the CI SQL tier.
+  runs under 2 s on the CI SQL tier. A pivot at the caps keeps the managed heap under 512 MB:
+  250,000 leaf rows, a 6-deep tree × 3 column dimensions, and cells × partials at
+  `MaxPivotCellPartials`.
 
 ## 16. Definition of done
 
@@ -1341,9 +1511,11 @@ Every section (§2–§14) ships with its securables, routes and codes, and pass
   - non-blocking: every read is cancellable (§8.9);
   - stable layout: cube shape and member order are deterministic (§9.3);
   - RTL: exports set a right-to-left sheet view in an RTL culture.
-- **Acme** (spec 0018 §1.4) adds `acme-reports/aging`, the seed and reports over a child root. Its
-  end-to-end test shares a definition (the grantee's bell shows it), publishes one, reads the
-  audience, runs and exports each kind, and drills through.
+- **Acme** (spec 0018 §1.4) adds `acme-reports/credit-exposure`, the seed and reports over a child
+  root. Its end-to-end test shares a definition (the grantee's bell shows it), publishes one, reads
+  the audience, runs and exports each kind, and drills through.
+- **Numbers.** Every pivot cell and summary total equals SQL Server's own value and scale for the
+  same rows (§8.6, §15's runs), and spec 0010 §F.15's differential suite passes.
 
 ## Decisions record
 
@@ -1356,10 +1528,11 @@ Every section (§2–§14) ships with its securables, routes and codes, and pass
 4. **One versioned document with exactly one kind block** — it is always read whole; `Root` and
    `Kind` stay columns for lists. Child tables for terms were rejected (§3.1).
 5. **Terms are column keys or expressions; navigation labels read as `max(...)`** — a report expands
-   like the search page and keeps one grouping expression per level (§3.1, §8.4).
-6. **Pivots need eight additive engine items (spec 0010 §F.8–§F.15); trees use level navigations**
-   — a query per level pair re-scans facts, a closure join counts each fact once per ancestor, and
-   client aggregation is forbidden (§8.5, §8.6).
+   like the search page and keeps one grouping key per dimension (§3.1, §8.4).
+6. **Pivots group at leaf grain in SQL and roll up in C#** — on the hard shapes at 10M facts it is
+   4–21× faster than grouping sets (0.8–2.1 s), with a steady ~100 MB memory grant. Trees show
+   full depth, and no level syntax enters the language. Grouping sets over level navigations were
+   the alternative (§8.5, §8.6).
 7. **An omitted optional parameter imposes no restriction** — atoms fold by polarity. Binding null
    returns no rows, and `@p is null or …` burdens every author (§4.4).
 8. **Defaults run as a constant statement before the query** — one engine entry point. Per-use
@@ -1376,19 +1549,31 @@ Every section (§2–§14) ships with its securables, routes and codes, and pass
     change `query`'s meaning; default columns alone miss the measure's source column (§3.3, §9.4).
 14. **Running totals wait** — `running` is reserved and a window-function amendment is additive.
     Client accumulation is wrong across pages (§3.1).
+15. **Pivot totals are visual** — `having` filters leaf rows in SQL, and every subtotal and total
+    is recomputed over the survivors. Totals therefore add up to the cells shown. The alternative
+    was SQL's semantics, where subtotals include every filtered row (§8.6).
+16. **Summary totals come from C# over the returned rows, only when the page holds the whole
+    result** — the total then matches the rows shown, after `having` and `top`. The alternative,
+    a SQL totals statement over the surviving groups, needs a derived-table emission (§8.4).
+17. **Arithmetic failures answer `422 Report.MeasureFailed`, from C# and SQL alike** — a summary and
+    a pivot fail the same way, and the author guards the measure with `if`. A 500 for SQL's errors
+    was the alternative (§8.11).
 
 ## Review flags
 
 1. **`Title` is required** (§2.1). Alternative: optional, shown as "#id". Flips if users want
    throwaway untitled reports more than readable pins and notifications.
-2. **Default tree depth 6, at most 10** (§3.1). Alternative: always `MaxDepth`. Flips if real charts
-   of accounts run deeper and the truncation notice shows often.
-3. **An omitted parameter inside `or` lifts the disjunction** (§4.4, spec 0010 §F.10). Alternative:
+2. **Summary totals only when the page holds every row** (§8.4). Alternative: totals on long
+   summaries from a SQL statement over the surviving groups, which needs a derived-table emission.
+   Flips if users want totals on summaries longer than a page.
+3. **An omitted parameter inside `or` lifts the disjunction** (§4.4, spec 0010 §F.8). Alternative:
    drop the atom from its connective. Flips on author confusion in practice.
 4. **A stored run with defaults costs three round trips** (§8.3). Alternative: parameter
    expressions and an in-batch definition check, one round trip warm. Flips if dashboards measure slow.
-5. **Drill ignores measure conditions and `having`** (§9.4). Alternative: carry a measure's
-   condition into its column's drill. Flips if drilled rows disagree with conditional measures.
+5. **Drill ignores measure conditions and `having`** (§9.4). The drill of a subtotal, a total or a
+   summary's totals row may list rows whose leaf cells `having` hid: `having` is group-level and
+   cannot become a row filter. Alternative: carry a measure's condition into its column's drill.
+   Flips if drilled rows disagree with conditional measures or with visible totals.
 6. **Shares stamp `ModifiedAt`** (§5.4). Alternative: leave the row unstamped, so an open studio
    gets no 409 after a share. Flips if such conflicts show up.
 7. **Root readability counts stored role grants only** (§6.2). Alternative: evaluate each member's
@@ -1399,3 +1584,13 @@ Every section (§2–§14) ships with its securables, routes and codes, and pass
    search page does. Flips if master-data reports surprise users.
 10. **No export of a drill-through list over a child entity** (§10). Alternative: `export` on child
     query surfaces. Flips when users ask to export drilled invoice lines.
+11. **Every pivot cell comes from C#, leaf cells included** (§8.6): one code path, so a parent with
+    one child shows exactly the child's number. Alternative: leaf cells from SQL beside the
+    partials. Flips if spec 0010 §F.15's differential suite finds a class the evaluator cannot
+    match.
+12. **Exports always total** (§12.2). The screen totals a summary only when one page holds every
+    row. An export reads every row anyway, so it always totals. Alternative: the screen's rule for
+    exports too. Flips if an export should total only when the screen does.
+13. **Only the report engine maps SQL's arithmetic errors to a 422** (§8.11). The CRUD pipeline
+    answers `ArithmeticFailureException` with a 500. Alternative: the CRUD pipeline maps it to a
+    422 as well. Flips if list and details reads meet divide-by-zero in user expressions.

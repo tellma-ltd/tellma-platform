@@ -814,3 +814,639 @@ be implemented and merged on its own.
 Three staged files are not part of these changes: `docs/specs/0002-component-library-foundation.md`
 and two token files under `client/projects/core/tellma-core-ui-tokens/`. Someone else staged them
 during the session, and they were left untouched. Specs 0001–0009 were not edited.
+
+---
+
+# Review round 1 (26 October 2026)
+
+This part lists every change review round 1 made to specs 0010–0021 and `ARCHITECTURE.md` since
+commit 063e313; spec 0022 is unchanged. Where it conflicts with the earlier part, this part wins.
+Bullets keep the earlier format, **§ — what changed (reason) — needed by 00NN**. The reason is a
+review decision (decision N), a ruling on an editor's question (R-N) or a finding of the final
+check (FB-01, FC-05).
+
+## Summary
+
+- **Leaf-grain reports and the C# measure evaluator.** Pivots group at leaf grain in SQL and roll
+  up in C#. Part F loses grouping sets and tree level navigations and gains measure partials
+  (§F.14) and their evaluator (§F.15). `TreeLevels`, `Level{j}` paths and their refusals are gone,
+  `QueryColumn` gains `Precision`, and SQL's divide-by-zero and overflow errors become a typed
+  exception. (0010, 0012, 0013, 0015, 0016, 0019, ARCHITECTURE.md; for 0033, 0034.)
+- **Part F renumbered; `'uq'` in three forms.** Old §F.10–§F.15 are now §F.8–§F.13, and every
+  citation follows. A path-free `'uq'` call becomes a hoisted variable, so QX3104 goes. (0010,
+  0012, 0013; for 0033.)
+- **Decimals and longs as strings.** `decimal` and `long` travel as JSON strings, full scale and
+  never in exponent form; inbound takes a string or a number. Ids follow their entity's key type.
+  This reverses 0016 Decision 5. (0013, 0015, 0016, 0017, 0021; for 0024, 0029.)
+- **`Long`, `Idempotent` and the Contracts chunk.** Actions declare `Long` beside `Idempotent`.
+  `IContractFingerprints` becomes `IRouteContracts` and publishes the long and idempotent routes,
+  which drive the server's timeout and the client's watchdog and retries. (0015, 0016, 0019; for
+  0024, 0033, 0035.)
+- **Forbidden reasons.** A 403 names the refused pair and one of three reasons, `no-grant`,
+  `outside-filter` or `restricted-path` with the path, and never roles, filters or other users.
+  (0013, 0014, 0015, 0016, 0018, 0019; for 0024.)
+- **Regional formats and time zones.** Users and tenants choose a region and a digit style apart
+  from the language; the catalogue lists each language's regions; negotiation gains a region step;
+  server text always uses Latin digits. `me/locale` takes a time zone for the device-zone prompt,
+  and 0010 §D.4 adds offset labels. (0010, 0011, 0013, 0014, 0016, 0018, 0020, 0021,
+  ARCHITECTURE.md; for 0024, 0029, 0032.)
+- **Launch landing and the session cookie.** After a sign-in to `/`, the BFF lands a
+  single-tenant user on their tenant, by the SPA's rule and one shared vector file. The session
+  cookie is persistent, so the warm launch survives a browser restart. (0011; for 0024, 0025.)
+- **White labelling.** Optional resx keys `Distribution_DisplayName`, `Distribution_ShortName`,
+  `Distribution_Copyright` and `Distribution_About` override the configured values per language,
+  and server copy says `{displayName}`, never "Tellma". (0011, 0013, 0016; for 0024, 0027.)
+- **Credit-control examples.** Acme's aging report becomes `acme-reports/credit-exposure`, with
+  the matching securable, preference key, escape-hatch route and MCP tool. (0016, 0018; for
+  0033.)
+- **Icons, keys, avatars and tokens in 0010 Parts B–E.** Every library glyph draws through
+  `tm-icon` (§B.7, §C.13, §D.11, §E.5), the grid matches shortcuts through `kbd` on every keyboard
+  layout (§C.12), and new `categorical` and `sequential` token groups (§B.8) serve avatars and
+  charts. (0010; for 0023, 0034.)
+- **The client toolchain and the service worker.** The `dotnet new tellma-distribution` template
+  scaffolds a distribution (a later spec); `tellma-client` drops `init` and `check`; the client
+  never hides server entities; the platform stays on Angular's worker, and Web Push will wrap it.
+  (0011, 0021, ARCHITECTURE.md; for 0024.)
+- **Version order on 412.** The SPA orders `Tellma-Build` against its own version by SemVer
+  precedence and asks the service worker only about two builds of one version. (0016,
+  ARCHITECTURE.md; for 0024.)
+
+The readability passes also rewrote some sections with the same meaning. Each file section lists
+them last.
+
+| File | Gist | Lines + / − |
+|---|---|---|
+| `0010-amendments-to-implemented-specs.md` | Glyphs, keys and colour groups (§B.7, §B.8, §C.12, §C.13, §D.11, §E.5), zone labels, Part F at leaf grain with §F.14–§F.15 | +954 / −392 |
+| `0011-distribution-host-and-multitenancy.md` | Post-sign-in landing, persistent session cookie, regioned languages, template non-goal, brand fallbacks | +74 / −36 |
+| `0012-data-access-layer.md` | `QueryColumn.Precision`, `ArithmeticFailureException`, tree levels removed | +38 / −32 |
+| `0013-settings-localization-and-cache.md` | Regions and digits in the catalogue, settings and negotiation; brand and `forbidden` keys | +211 / −95 |
+| `0014-users-roles-and-permissions.md` | `PreferredRegion` and `PreferredDigits`, the three 403 reasons | +60 / −32 |
+| `0015-crud-service-pipeline.md` | `Long` on actions, `ForbiddenReason`, the level refusal removed | +82 / −54 |
+| `0016-crud-web-api.md` | Decimals and longs as strings, `IRouteContracts` and the route facts, 403 reasons, region, 412 ordering | +192 / −107 |
+| `0017-blob-storage.md` | `size` as a JSON string | +1 / −1 |
+| `0018-core-and-gl-reference-stacks.md` | Region and digits on `me/save`, time zone on `me/locale`, credit-exposure report | +53 / −32 |
+| `0019-excel-codec.md` | `Long = true` on the Excel operations, the 403 reason, report pages and totals | +27 / −21 |
+| `0020-background-jobs-and-scheduler.md` | The job scope reads the region | +7 / −7 |
+| `0021-notifications-inbox-and-hub.md` | `TargetId` as a string, the recipient's region, the push wrapper | +7 / −5 |
+| `ARCHITECTURE.md` | Regional formats, distribution template, client commands, PWA, leaf-grain pivots, 412 ordering | +10 / −10 |
+
+## 0010 — Amendments to Implemented Specs
+
+**Front matter**
+
+- Context, "Other specs" — The spec 0023 bullet names `tm-icon`, `kbd` and `tm-chip` and what
+  each part builds on them (decisions 6, 7) — needed by 0023 §3.
+- Context — New bullets: 0023 §4.2 and 0034 §7.7 read §B.8's colour groups (decision 8, R-24);
+  0024 §7.8 and 0029 §12.1 choose where §D.4's zone label shows (decision 19). The 0024 bullet
+  adds `TM_DEVICE_TIME_ZONE`.
+- Context — The Part F host bullet drops `TreeLevels`; the bullet on refusing level paths (0012
+  §11.4, 0015 §5.2) is deleted; a new bullet cites 0012 §3.3 and §11.3 for
+  `QueryColumn.Precision`; the consumers bullet names `queryex/discover` "with its `measures`
+  clause" (decision 1) — needed by 0029 §9.
+- Goals — Part B adds glyphs and the categorical and sequential colour groups; Part C a key map
+  that works on every keyboard layout, and glyphs; Part D the offset label and glyphs; Part E
+  glyphs (decisions 6, 7, 8, 19).
+- Goals, Part F — Grouping sets and level navigations give way to "measure partials with their C#
+  evaluation" (decision 1).
+- Non-goals — Two new bullets: matching named keys (arrows, Enter, Escape, Tab) through `kbd`
+  (decision 7); non-decomposable aggregates such as distinct count, median and percentile, which
+  §F.14 refuses until they are designed (decision 1).
+
+**Parts B–E: rules shared**
+
+- Order — Spec 0023 §3.1–§3.2 (`icon`, `kbd`) come first, then Part B, then Part D. Part C needs
+  only 0023 §3, and Part E also needs 0023 §4 (decisions 6, 7).
+- New rule "Glyphs draw through `tm-icon`" — Every built-in glyph follows 0023 §3.1's rule and
+  its two exceptions (the grid's masks stay). Each glyph keeps its box and stroke, pinned by a
+  geometry e2e per part in LTR and RTL (decision 6) — needed by 0023 §3.1.
+- New rule "Keys through `kbd`" — Shortcuts match with `tmKeysMatch`, hints use `tmFormatKeys` or
+  `tmKeysText`, the platform comes from `tmIsApplePlatform`, and named keys keep direct checks.
+  The ESLint rule `tm/no-platform-sniffing` refuses `navigator.platform` and
+  `navigator.userAgentData` outside `kbd/`; Part C ships it (decision 7, R-4) — needed by 0023
+  §3.2.
+
+**Part B — foundation**
+
+- Intro — Part B also changes the foundation's glyphs and the token contract; its consumers add
+  the avatars and charts.
+- §B.4 — A multi-select row's checkbox draws its `check` through `tm-icon`, not the grid's mask
+  (decision 6, R-2).
+- New §B.7 — Foundation glyphs through `tm-icon`: `checkbox` (`check`, `minus`), `select` (the
+  caret, the option check, the multi-select row's check) and `form-field` (`circle-alert`). Sizes
+  hold through `--icon-size`, and the grid's masks draw the same paths (decision 6) — needed by
+  0023 §3.1.
+- New §B.8 — The `categorical` and `sequential` colour groups in `TmSchemeColors`: eight
+  `TmCategoricalTone { mark, tint, onTint }` slots with light and dark values, and a seven-step
+  ramp over the teal primitives. Both emit in each scheme block, the slot order is fixed, and a
+  unit test holds `onTint` on `tint` at 4.5:1 (decision 8, R-24) — needed by 0023 §4.2 (avatar
+  tones), 0034 §7.7 (chart series and ramp).
+- Testing, Definition of done — The contrast test, the emitted names, §B.7's geometry and
+  `tokens:check` over both groups; new Glyphs and Tokens items; `./checkbox` and `./form-field`
+  re-measured.
+- Decisions 10–12 (every glyph through `tm-icon`; categorical colours as a scheme group; the
+  sequential ramp as a scheme group) and Review flag 7 (eight slots) are added.
+
+**Part C — grid and menu**
+
+- Intro — Part C also moves the grid's keys onto `kbd` and its glyphs onto `tm-icon`.
+- §C.3 — The sort arrows are a decorative `tm-icon`, not inline SVG (decision 6).
+- §C.10 — `TmMenuIcon` adds `TmIconSource`, rendered with `[svg]` for the grid's context menu.
+  The paste hint "Press {shortcut} to paste" fills from `tmKeysText('Mod+V')` (decisions 6, 7) —
+  needed by 0023 §3.
+- §C.12 — Retitled "The key map, published and matched through `kbd`". One binding table drives
+  the matcher and `TM_GRID_KEYS`. `Mod+A`, `Mod+Z`, `Mod+Y`, `Mod+D`, `Mod+F` and the row keys
+  match through `tmKeysMatch`, with `Mod+Alt+=` kept as a second binding; the pointer's Mod and
+  the find bar go through `kbd`; an Arabic-layout example and tests (decision 7, R-3) — needed by
+  0023 §3.2 (shortcuts that work on an Arabic layout).
+- New §C.13 — Grid and menu glyphs through `tm-icon`: a table of the context-menu, find-bar,
+  status-bar, tree-expander, sort and menu-row glyphs and their RTL rule. `ɵTmGridIcons` goes, the
+  expander swaps chevrons instead of rotating, and the per-cell check and dash masks stay
+  (decision 6) — needed by 0023 §3.1.
+- Testing, Definition of done — Key matching with an Arabic `key` and a Latin `code`, an Arabic
+  e2e for Mod+Z, D, A and F, glyph geometry, the scroll probe on an expanded tree and the lint
+  vectors; new Keys and Glyphs items.
+- Decisions 15–17 (shortcuts through `kbd`, named keys direct; one binding table; the masks stay)
+  and Review flag 8 (one `tm-icon` per visible tree row and option row) are added.
+
+**Part D — basics**
+
+- Intro — Part D also changes the components' glyphs.
+- §D.4 — Retitled "Date-time, time of day, relative time and zone labels". New `zoneLabel`
+  options, `tmFormatZoneOffset`, `tmFormatZoneName`, `TM_DEVICE_TIME_ZONE` and `TmZoneLabelMode`
+  (`auto`, `column`, `none`); `TmL10n` gains `deviceTimeZone`, `zoneMismatch` and `zoneLabel()`.
+  Offsets are compared at the instant shown, never abbreviated, and never added to relative times
+  or dates. A `zoneLabel` golden array is added (decision 19) — needed by 0024 §7.8, 0029 §12.1.
+- New §D.11 — Basics glyphs through `tm-icon` for `alert`, `date-picker`, `file-preview`,
+  `files`, `image`, `modal` and `private`. The date popup's chevrons use `mirrorInRtl`, and the
+  image edit pane's check keeps its 2.25 stroke (decision 6) — needed by 0023 §3.1.
+- Testing, Definition of done — The label modes, `zoneMismatch`, the label golden rows and
+  §D.11's geometry; the `./l10n` ceiling goes from 9 to 10 KB.
+- Decision 12 (zone labels are GMT offsets, compared at the instant shown) is added.
+
+**Part E — entity picker**
+
+- Intro, new §E.5 — The picker's `circle-alert`, `search` and `check` draw through `tm-icon`;
+  Testing and Definition of done add their geometry e2e (decision 6) — needed by 0023 §3.1.
+
+**Part F — Queryex**
+
+- Intro — The eight report items are optional parameters, defaults, drill-through, Hijri
+  grouping, sharing, parameter pickers, and pivot and summary rollups (decision 1).
+- §F.8, §F.9 — "Grouping sets and the level indicator" and "Tree level navigations" are deleted,
+  with `KeyGroups`, `GroupingSets`, `GROUPING_ID`, QX5008, `TreeLevels` and `Level{j}` (decision
+  1) — needed by 0033 §8.6 (rollups in C#).
+- Numbering — Old §F.10–§F.15 are now §F.8–§F.13, and every citation in the file follows
+  (decision 5).
+- §F.0 — The vocabulary swaps key group, grouping set, level indicator and level navigation for
+  partial, combine and rank column. Compatibility drops `Level2` and adds the `Measures` clause;
+  L3 keys on the `Measures` text (decision 1).
+- §F.0, diagnostic codes — QX3104 and QX5008 go. QX4010 ("cannot be computed over rolled-up
+  values") and QX4011 ("a measure must aggregate") are added, QX6001 and QX6002 are evaluation
+  codes rather than diagnostics, and `Measures[<i>]` is a new location (decisions 1, 2).
+- §F.0, interpreter and fixture — The reference interpreter evaluates measures directly over a
+  group's rows. `LedgerFixture` drops `TreeLevels(4)` and gains numeric columns near their
+  bounds, tying text rows and `hierarchyid` paths that sort differently as text (decision 1).
+- §F.2, §F.7, §F.12 — 0033 §8.6 no longer requests `level()`; `Via` and `Exists` bind foreign-key
+  navigations only (decision 1).
+- §F.9 — A `'uq'` call in a constant statement takes §F.11's scalar form (decision 2).
+- §F.11 — Three emission forms, chosen by all the call's operands: row grain takes the lateral
+  seek, path-free a hoisted prologue variable (0008 §12.4), aggregated the scalar form in place.
+  No position refuses a `'uq'` call, so QX3104 goes. A hoisted example is added, and the hoisted
+  goldens also run on SQL Server (decision 2, R-5) — needed by 0033 §8.7.
+- New §F.14 — `QuerySpec.Measures` and partial columns: `QueryDiscoverySpec.Measures`,
+  `CompiledQuery.Measures` and `MeasurePartial`. `avg` splits into `sum` and `count`, the
+  aggregate list is closed, and text and hierarchy `min`/`max` get a `DENSE_RANK` column. `Guid`
+  is not Ordered, so it has no `min`/`max`. The example's cap is `MaxPivotRows + 1` (decision 1,
+  R-6) — needed by 0033 §8.4, §8.5, 0029 §9.
+- New §F.15 — Measure evaluation in C#: `CompiledMeasures`, `MeasureContext`, `MeasureEvaluator`,
+  `PartialTable`, `MeasureValue` and `QueryexEvaluationException`. It defines the supported subset
+  (QX4010 and QX4011 outside it), `SqlDecimal` at each node's SQL type with SQL Server's scale and
+  rounding, nulls and laziness, and errors that fail the run, which 0033 §8.11 answers as
+  `422 Report.MeasureFailed`. A three-identity differential suite pins it (decisions 1, 3, 4) —
+  needed by 0033 §8.4, §8.6, §8.11.
+- Testing — The grouping-set and level cases go. Hoisted `'uq'` goldens, partial and rank
+  columns, evaluator vectors, the measure identities and rank exactness under seven collations
+  are added, plus a one-off `'uq'` join-shape benchmark before §F.11 is built (decisions 1, 2).
+- Definition of done — The inspection tool shows measures with their partial and rank columns; a
+  new Benchmark item; Docs name the measure evaluator; 0012's `QueryColumn.Precision` and 0033's
+  cube builder are out of scope (decisions 1, 2).
+- Decisions — Old 6–9 (level navigations, counted levels, grouping sets, finest-set `Having`) are
+  deleted and 10–14 become 6–10. Decision 9 (`'uq'`) states three forms with the measured cost.
+  New 11–13: measures decompose into partials evaluated in C#; `SqlDecimal` at each node's type;
+  text and hierarchy partials combine by an SQL rank (decisions 1, 2, 3).
+- Review flags — Old 5 and 6 are deleted. Flag 4 becomes path-free `'uq'` calls as hoisted
+  variables, flipping if the benchmark finds them more than 1.5× slower than a bound parameter.
+  Old 7 keeps only the name `EvaluateConstant` and becomes 5, and old 8 becomes 6. New 7–9: the
+  evaluator's subset; exact text `min`/`max` by rank rather than decision 1's approximate
+  comparer; evaluation errors fail the run (decisions 1, 2, 3).
+- Rewritten for readability, same meaning: Goals (Parts C and D), Context (the spec 0023 bullet),
+  "Order", §F.0 (Compatibility, the QX2009 bullet).
+
+## 0011 — Distribution host and multi-tenancy
+
+**Launch landing**
+
+- §3.2, §3.8 — The membership list has three readers: `/bff/user`, the BFF's post-sign-in landing
+  and the admin members route (decision 16) — needed by 0024 §9.3.
+- §5.5 — `/bff/login` redirects to `returnUrl ?? "/"`, or to the user's one live tenant when that
+  target is `/` (decision 16) — needed by 0024 §9.3.
+- §5.5 — New "The post-sign-in landing": in `OnTicketReceived`, only for a target of exactly `/`
+  or none, one `ListAsync(sub)` and then `TenantLanding.SingleLiveTenant` (new, in
+  `Tellma.Core.Abstractions.Tenancy`). A directory error keeps `/` and logs `BffLandingFailed`.
+  The SPA's `tmSingleLiveTenant` applies the same rule, and both test one
+  `launch-landing-vectors.json` (decision 16) — needed by 0024 §9.3 (a single-tenant user sees no
+  tenantless skeleton and no shell swap).
+- §9, §10 — A `BffLandingFailed` Warning row; tests of the rule over every vector row and of the
+  landing cases (decision 16).
+- Decision 29 — Rewritten: the BFF picks a tenant only for a sign-in to `/`, by the SPA's rule
+  (decision 16).
+
+**Session cookie**
+
+- §5.5 — The session cookie is persistent: `/bff/login` challenges with `IsPersistent = true`,
+  the cookie's `Expires` is the session row's `ExpiresAt`, and every renewal re-issues it. The
+  profile cookie takes the session cookie's `Expires` (FB-01) — needed by 0024 §8.1, 0025 (the
+  7-day warm launch survives a browser restart).
+- §10 — The Sessions tests add the persistent cookie and its `Expires` at sign-in and after a
+  renewal (FB-01).
+
+**Regional formats**
+
+- Context — A new "Other specs" bullet: 0013 §7.3 and §9.2 own the regioned codes `Languages`
+  takes and the culture's region (decision 24).
+- §1.3 — The illustration declares `Languages(["en-GB", "ar-SA"])`: a code may carry the region
+  its users get by default (decision 24) — needed by 0024 §7.7.
+- §2.2 — `AddLanguage(LanguageInfo info, LanguageFormats formats)`; the member table names the
+  default region and the added languages' formats (decision 24, R-8).
+- §4.1 — `Culture` is language and region (`ar-SA`), and `CultureInfo` is its Gregorian clone
+  with `-u-nu-latn`, so server text always uses Latin digits; the region follows 0013 §9.2
+  (decision 24).
+
+**Distribution template and white labelling**
+
+- Non-goals, §1.2 — New non-goal "The distribution template": `dotnet new tellma-distribution`
+  scaffolds the server and client projects together and belongs to a later distribution-tooling
+  spec. It, not `tellma-client init`, scaffolds the Client project (decision 11) — needed by 0024
+  §2.1.
+- §5.9 — `DistributionInfo.DisplayName` holds one value, because the document is anonymous and
+  has no language (decision 25).
+- §8 — `DisplayName` and `PublicOrigin` get rows of their own. `DisplayName` and `Copyright` are
+  the fallbacks for the optional resx keys `Distribution_DisplayName` and `Distribution_Copyright`
+  (decision 25) — needed by 0024 §3.1, 0027 §11.1.
+- Rewritten for readability, same meaning: §5.5 (the cookie scheme), §10 (Sessions).
+
+## 0012 — Data access layer
+
+- Goals, §11.1, §11.2, §11.4 — `TreeLevels`, the `Level1` … `LevelN` navigations, the
+  fingerprint's tree levels and the entity `Select` refusal of a level path are deleted (decision
+  1) — needed by 0033 §8.6 (trees roll up in C#).
+- §3.3, §11.3 — `QueryColumn` gains `int? Precision`, a `decimal` result's precision, read from
+  `DbColumn.NumericPrecision`. 0010 §F.15's evaluator reads it with `Scale`, and 0016's converter
+  never writes it (decision 1) — needed by 0010 §F.15, 0033 §8.6.
+- §6.4 — SQL errors 8134 (divide by zero) and 8115 (overflow) become the new internal
+  `ArithmeticFailureException(Reason)`, final, with reason `divide-by-zero` or `overflow` and a
+  `StatementOrdinal`. The report engine answers it as `422 Report.MeasureFailed`; every other
+  caller still gets a 500 (decision 1) — needed by 0033 §8.11.
+- §5.2, §11.1, §11.2, §11.3 — Part F citations follow the new numbers: constant statements §F.9,
+  `'uq'` §F.11 (decision 5).
+- §13.1, §13.3, §14 — The tests drop the level refusal and add the 8134 and 8115 mapping, a
+  division by zero and an overflow in a `Rows` statement, and `Precision` per `decimal` column;
+  the DoD drops tree levels (decision 1).
+- Decision 36 (SQL's divide-by-zero and overflow errors are a typed exception with a reason) is
+  added (decision 1).
+- Rewritten for readability, same meaning: §11.1 (`Fingerprint`), §11.3 (the reader), §14.
+
+## 0013 — Settings, localization and cache
+
+**Regional formats**
+
+- Goals, Non-goals — The catalogue carries each language's regions and native digits, and the
+  tenant gets a default region and digits, so "a per-tenant default culture" leaves the deferred
+  list (decision 24) — needed by 0024 §7.7.
+- §1.1, §7.1 — New `DigitStyle` (`Latin`, `Native`) and `LanguageFormats` (language, default
+  region, offered regions, native digits). `ILanguageCatalog` gains `Formats(language)` and
+  `IsRegionOffered(region)`, and `IsOffered` takes a bare code (decision 24) — needed by 0024
+  §7.7.
+- §1.2 — Each `languages` entry carries the default region, the offered regions and the native
+  digits, with Acme's Arabic entry as an example. The builder surface is `Languages(codes)` and
+  `AddLanguage(info, formats)` (decision 24, R-8) — needed by 0024 §3.1, §7.7, 0032 §12.1.
+- §1.3, §7.3 — A declared code may carry its language's default region
+  (`Languages(["en-GB", "ar-SA"])`), which must be one of the language's regions. Only the
+  language is offered and stored. `AddLanguage(info, formats)` gives an added language its
+  formats, so `Formats` covers every offered language (decision 24, R-8).
+- §5.1, §5.2, §5.6, §5.7 — `core.Settings` gains `Region varchar(2)` and `Digits varchar(8)`,
+  read by the cold load and carried by `TenantSettings` and `TenantSettingsForClient` (decision
+  24, R-7) — needed by 0024 §7.7, 0032 §12.1.
+- §6.1, §6.3, §6.5 — `TenantSettingsPatch` gains `Region` and `Digits`. The save trims and
+  upper-cases the region and checks it with `IsRegionOffered`; new code
+  `Settings.RegionNotOffered` (decision 24) — needed by 0032 §12.1.
+- §7.2 — Each entry's formats are fixed in code: every .NET 10 `<language>-R` pair (243), the
+  `zh` aliases, native digits for `ar`, `ur` and `hi`, and a default region per language.
+  Chromium lacks the `om`, `ti` and `so` pairs, and `en-SA` exists nowhere (decision 24) — needed
+  by 0024 §7.7.
+- §9.2 — The Culture row becomes Language, and a new Region row resolves header →
+  `PreferredRegion` → tenant `Region` → the language's default, skipping a region not offered with
+  the language. The culture is `<language>-<region>`, cloned with `-u-nu-latn` so server text uses
+  Latin digits; the SPA's `-u-nu-*` extension is ignored. A regioned `PreferredLanguage` no longer
+  picks formats. Acme example (decision 24) — needed by 0024 §7.7.
+- §9.3 — The initializer passes `PreferredRegion` and the tenant's `Region`: four preferences
+  (decision 24).
+- §11 — The regions, like the language list and the calendars, are code (decision 24).
+- §12, §13 — Catalogue invariants on Ubuntu and Windows, the Latin-digit clone, the region steps,
+  each language's formats in the client metadata and the `Region`/`Digits` round trip. The DoD's
+  Docs item names regional formats as Core's (decision 24, R-8).
+- Decision 30 (region is its own axis) and Review flag 24 (offered regions are every .NET pair)
+  are added. Flag 7 becomes "Server text always uses Latin digits" (decision 24).
+
+**Other decisions**
+
+- §5.3 — A `long` or `decimal` setting value uses 0016 §3.2's string encoding, and a number is
+  accepted on input (decision 18) — needed by 0024 §10.4.
+- §6.1 — `details` with no grant raises `ForbiddenException` with `NoGrant`, naming
+  `core.Settings.General` × `Read` (decision 21).
+- §10.1 — New "The distribution's brand": `Distribution_DisplayName` and `Distribution_Copyright`
+  override 0011 §8 per language, `Distribution_ShortName` is the installed app's short name, and
+  `Distribution_About` is the About dialog's description. The resource audit accepts the four keys
+  (decision 25) — needed by 0024 §3.1, §5.1, 0027 §11.1.
+- §10.1 — New "The `forbidden` problem": `Problem_forbidden_Detail` is an ICU `select` on
+  `reason`, worded as the SPA's messages, with the permission's labels and an example (decision
+  21) — needed by 0024 §11.
+- §10.1 — `Entity_Level` is deleted (decision 1).
+- Non-goals, §8.2 — The `'uq'` citations move from §F.13 to §F.11 (decision 5).
+- Rewritten for readability, same meaning: §1.2 (the builder surface), §5.1, §7.3, §9.2, §9.3
+  (numbered steps), §12 (Integration, Settings).
+
+## 0014 — Users, roles and permissions
+
+**Regional formats**
+
+- §1.3 — A new dependency row: `ILanguageCatalog` and `DigitStyle` (0013 §7.1) (decision 24).
+- §3.1 — `User` gains `PreferredRegion varchar(2)` and `PreferredDigits varchar(8)`, and
+  `PreferredLanguage` holds a bare code. The region is checked by `IsRegionOffered` after trimming
+  and upper-casing, the digits by their enum (decision 24, R-7) — needed by 0024 §7.7, 0032 §12.2.
+- §3.8, §7.1, §7.3, §7.8 — `PreferredDigits` is a string-typed enum; `UserProfile` and the
+  prologue's profile result set carry both members; negotiation reads `PreferredRegion` (decision
+  24).
+- Review flag 17 covers the typed region and digits columns (decision 24).
+
+**Forbidden reasons**
+
+- §5.3 — A new table of the three 403 reasons: `NoGrant` (`no-grant`), `OutsideFilter`
+  (`outside-filter`) and `RestrictedPath` (`restricted-path`) with `Path`. The error never names
+  roles, filters or other users, and each refusal below names its reason (decision 21) — needed
+  by 0024 §11.
+- §5.1, §14, Appendix A — `RequireAsync` on `Denied` raises `NoGrant` and the `RowSecurity`
+  post-check `OutsideFilter`; a unit test pins the first (decision 21).
+- Decision 29 (a 403 names the refused pair and one of three reasons) is added (decision 21).
+- Rewritten for readability, same meaning: §3.1 (Preferences), §3.8, §5.3, §7.8.
+
+## 0015 — CRUD service pipeline
+
+**`Long` and `Idempotent`**
+
+- §2.2 — `ActionDescriptor`, `EntityActionDescriptor` and `ApiActionDescriptor` gain `bool Long`
+  after `Idempotent`, taken from the attribute (decision 20) — needed by 0024 §3.4.
+- §2.3 — `[EntityAction]` and `[ApiAction]` gain `Long = false`. `Long` marks an operation that
+  runs under 0016's long timeout, and the client learns `Idempotent` and `Long` from the Contracts
+  chunk (decision 20) — needed by 0024 §3.4.
+- §18.1 — The descriptor tests cover each action's `Long` and `Idempotent`; Decision 35 (`Long`
+  and `Idempotent` declared once on the action) is added (decision 20).
+
+**Forbidden reasons**
+
+- §14.1 — `ForbiddenException` gains `ForbiddenReason Reason` and `string? Path`, with
+  `enum ForbiddenReason { NoGrant, OutsideFilter, RestrictedPath }` sent in kebab case. A new
+  paragraph names the raise site of each reason and the `Arguments` (decision 21) — needed by
+  0024 §11.
+- §5.2 step 4 — The traversal refusal is `RestrictedPath` with the path (decision 21).
+- §6.6, §9.1–§9.3, §10.1, §14.2 — The save pre-check, the delete and action pre-check and the
+  post-check raise `OutsideFilter`; "no grant" raises `NoGrant` (decision 21).
+- §18.1, §18.2 — The tests pin every raise site's reason, `OutsideFilter` on the row-security
+  403s and `NoGrant` without a grant; Decision 36 (a 403 carries its reason, set at the raise
+  site) is added (decision 21).
+
+**Other decisions**
+
+- §5.2 step 4, §7.3 — The `Level{j}` select refusal and `ValidationCodes.QueryLevelNotSelectable`
+  are deleted; only a `Geography` select item is refused (decision 1).
+- §14.1 — `ConcurrencyConflict.ModifiedById` is `int?` and `LimitExceededException` takes `int`
+  counts, so both stay JSON numbers (decision 18) — consistency with 0016 §7.4 and 0031 §9.
+- Rewritten for readability, same meaning: §2.2 and §2.3 (the sketches, the projection-metadata
+  row), §5.2 step 4 (select-item types), §14.1.
+
+## 0016 — CRUD web API
+
+**`Long`, `Idempotent` and the Contracts chunk**
+
+- §2.2 — The retry contract is published per route in the Contracts chunk. The retried class is
+  every action declared `Idempotent = true`, which moves `activate` and `deactivate` out of "never
+  retried" (decision 20, R-10) — needed by 0024 §3.4, §10.5.
+- §2.4 — `reports/audience`, `run` and `export` are long, and `dashboards/audience` is idempotent
+  and long (decision 20) — needed by 0033 §2.2, 0035 §3.2.
+- §1.1, §3.10, §14 — `IContractFingerprints` is renamed `IRouteContracts` and gains the sets
+  `Long` and `Idempotent` (decision 20, R-12) — needed by 0024 §3.4.
+- §3.10 — New "The route facts": a route is long when its action declares `Long = true`, and
+  idempotent when it is a standard read or its action declares `Idempotent = true`.
+  `contracts.json` lists both; the contributor writes the chunk's `fingerprints`, `long` and
+  `idempotent` sections, tested against the endpoints; a JSON example (decision 20) — needed by
+  0024 §3.4.
+- §4.1 — The restated descriptors gain `Long`, and `EntityActionDescriptor` gains the
+  `SingleTarget` it lacked against 0015 §2.2 (decision 20).
+- §4.3, §8.3 — `tellma-long` covers every action declared `Long = true`: 0019's four Excel
+  operations, 0033's report routes and 0035's `dashboards/audience`, plus the blob upload
+  (decision 20) — needed by 0033, 0035.
+- §4.5 — A hand-mapped endpoint is in neither Contracts list, takes `tellma-long` itself, and its
+  caller passes `long` (decision 20, R-28) — needed by 0024 §3.4.
+- Decision 3 adds that the server publishes each route's retry class and long flag (decision 20).
+
+**`decimal` and `long` as strings**
+
+- Context, Goals, Non-goals, §14 — "Lossless numbers" and "the SPA's lossless parser" become
+  `decimal` and `long` as JSON strings and the SPA's JSON handling (decision 18) — needed by 0024
+  §10.4.
+- §3.1 — `NumberHandling = Strict` refuses a quoted `int` or `double`; `decimal` and `long` have
+  converters of their own (decision 18).
+- §3.2 — `long` and `decimal` are JSON strings, every digit and full scale with no exponent, and
+  inbound takes a string or a number; a string that is not a plain decimal is 400. The paragraph
+  "Lossless numbers are a client obligation" is replaced, with an `acme.Customer` example
+  (decision 18) — needed by 0024 §10.4, 0029.
+- §3.2 — A new Schemas bullet: OpenAPI, MCP `inputSchema` and the client metadata's argument
+  schemas describe a `decimal` as a string or number with `format: decimal`, and a `long` as a
+  string or integer with `format: int64` (decision 18) — needed by 0029 §2.2.
+- §3.2 — Wire ids travel in their entity's key type: `EntitiesResult<T>.Ids` and
+  `ConcurrencyConflict.Id` follow the stack's `KeyType`, a number for `int` and a string for
+  `long` (decision 18, R-11) — needed by 0024 §10.1, 0029.
+- §3.5, §3.7 — `long[]` and `decimal[]` cells are strings, and the `QueryColumn` sketch gains
+  `Precision`, which the converter never writes (decisions 18, 1).
+- §13.3 Wire — Decimals and longs round-trip as strings and read back from either form; a quoted
+  `int`, `NaN` and an exponent-form decimal string are 400; `int` ids are numbers and `long` ids
+  strings; the schemas are asserted (decision 18).
+- Decision 5 — Rewritten: `decimal` and `long` travel as JSON strings, as RFC 7493 recommends;
+  JSON numbers with a lossless parser were the alternative. Review flag 2 is restated the other
+  way round and flips if generic tools need numeric columns (decision 18).
+
+**Forbidden reasons**
+
+- §7.1 — The `forbidden` problem carries `arguments.reason` and, for `restricted-path`,
+  `arguments.path` (decision 21) — needed by 0024 §11.
+- §7.2 — A `forbidden` problem's `detail` renders `resource` and `action` as the permission's
+  labels, while `arguments` keep the raw pair (decision 21) — needed by 0024 §11, 0032 §12.4.
+- §3.8, §5.6 — A readable id outside the grant is 403 `outside-filter`; a non-projected column is
+  403 naming `E` and `Read`, with `restricted-path` and the path (decision 21).
+- §13.3 Security — `no-grant`, `outside-filter` and `restricted-path` assertions, and no role,
+  filter or user in the body (decision 21).
+
+**Regional formats**
+
+- §3.4 — `UserProfileView` gains `PreferredRegion` and `PreferredDigits` (decision 24) — needed
+  by 0032 §12.2.
+- §6.1 — `Accept-Language` carries the SPA's locale (`ar-SA-u-nu-latn`): language and region pick
+  the culture, and `nu` is ignored. Precedence adds a region chain, and the language falls back to
+  the distribution default instead of `en` (decision 24, FC-05) — needed by 0024 §7.7.
+- §13.3 Context — `ar-SA-u-nu-latn` negotiates `ar-SA`, and the region fallback is asserted
+  (decision 24).
+
+**Other decisions**
+
+- §3.10 — On a 412 the SPA orders `Tellma-Build` against its own version by SemVer precedence,
+  ignoring `+<sha>`: a newer server means the client is outdated, an older one that the server
+  is, and the same version with another sha asks the service worker (decision 22) — needed by
+  0024 §5.6.
+- §11.1, §11.6 — The MCP `title` is `"<Tenant name> (<display name>)"`, and the sensitive-operation
+  refusal says "this operation requires the {displayName} web app" in the message language
+  (decision 25) — needed by 0024 §3.1.
+- §4.5, §11.9 — The examples become `reports/credit-exposure/stream` and `CreditExposureTools`
+  (decision 23) — needed by 0033 §11.
+- Rewritten for readability, same meaning: §3.8 (the delete refusals as bullets), §8.3, §11.1,
+  §13.3 (Wire, Security, Context), Decisions 3 and 5.
+
+## 0017 — Blob storage
+
+- §3.1 — A `BlobDescriptor`'s `size` is a `long`, so it travels as a JSON string (decision 18) —
+  needed by 0024 §10.4.
+
+## 0018 — Core and GL reference stacks
+
+**Regional formats and the time zone**
+
+- §1.2, §1.3 — The composition declares `Languages(["en-GB", "ar-SA"])`, and the spec 0013 row
+  adds `ILanguageCatalog` (`IsOffered`, `IsRegionOffered`) and `DigitStyle` (decision 24).
+- §3.1, §3.5 — `MeSaveRequest` gains `PreferredRegion` and `PreferredDigits`, so `SaveMe` copies
+  thirteen members (decision 24) — needed by 0032 §12.2.
+- §3.2 — `PreferredLanguage` is trimmed and lower-cased as a bare code, so `ar-SA` fails the
+  language rule, and `PreferredRegion` is trimmed and upper-cased. New rules:
+  `Users.RegionNotOffered`, and the digits' enum binding (decision 24) — needed by 0032 §12.2.
+- §3.1, §3.2, §3.5 — `MeLocaleRequest` gains `TimeZone` and `MeLocaleResult` gains
+  `PreferredTimeZone`. `me/locale` checks the zone at `timeZone`, and the device time-zone prompt
+  and its automatic update call it (decision 19) — needed by 0024 §7.8.
+- §9 — The `me/locale` tests add a time zone, all three members, a regioned language and an
+  unknown zone; a new Regional formats bullet; the admin `save` of one's own row is 403
+  `no-grant` (decisions 19, 21, 24).
+- Decision 14 — `me/locale` also serves the time-zone prompt (decision 19).
+
+**Credit control**
+
+- §1.4 — The coded report is `acme-reports/credit-exposure` under `acme.CreditExposureReport` ×
+  `Read`: per customer, the credit limit, the open invoices posted on or before `AsOf`, the
+  headroom and an over-limit flag (decision 23) — needed by 0033 §11.
+- §3.5, §9 — The preference-key example is `report.acme-credit-exposure.params` (decision 23).
+- Rewritten for readability, same meaning: §3.1 (the sketch's comments), §3.2 (the `me/locale`
+  row), §3.5 (`SetMyLocale`).
+
+## 0019 — Excel codec
+
+- §1.2, §2.1, §2.2 — `export`, `export-for-import`, `inspect-import` and `import` declare
+  `Long = true`, so one flag drives `tellma-long` and the Contracts chunk; §1.2 cites the §2.1
+  sketch for each method's attributes (decision 20) — needed by 0024 §3.4.
+- §12.3 step 2 — A denied export fails with a `forbidden` job error whose arguments add `reason`,
+  and `path` for `restricted-path` (decision 21).
+- §12.3 step 3 — A report list or summary streams through `IReportEngine.PagesAsync` in pages of
+  `MaxTake` rows, and a summary with totals writes its Total row last, from the last page
+  (decision 4, R-22) — needed by 0033 §12.1, §12.2.
+- Rewritten for readability, same meaning: §1.2 (the stacks' methods as bullets), §2.2 (timeouts
+  and limits as bullets).
+
+## 0020 — Background jobs and scheduler
+
+- §8 — The job scope's negotiation also reads the run-as user's `PreferredRegion` (decision 24) —
+  consistency with 0013 §9.3.
+
+## 0021 — Notifications, inbox and hub
+
+- §2.2 — `Notification.TargetId` is a JSON string on the wire (decision 18) — needed by 0028 (a
+  notification's target).
+- §4.5 — The delivery handler's user `SELECT` adds `PreferredRegion`, so a notification email
+  formats in the recipient's region (decision 24).
+- Review flag 3 — The push spec also owns the service-worker wrapper script that imports
+  `ngsw-worker.js` and adds the push handlers (decision 14) — needed by 0024 §5.4.
+
+## ARCHITECTURE.md
+
+- The five dimensions, Per-dimension contents (Locale) — `ArAe` leaves the examples. Regional
+  formats (region and digits, from CLDR) are Core's on client and server, never a Locale pack's
+  (decision 24) — needed by 0024 §7.7, 0013 §13.
+- Accessibility & i18n — The locale joins the UI language with a region and a digit style, each
+  the user's or else the tenant's (`ar-SA-u-nu-latn`), and the server formats with the same region
+  (decision 24) — needed by 0024 §7.7.
+- Distribution repo layout, Tenant & Distribution Onboarding — The
+  `dotnet new tellma-distribution` template scaffolds the Client project with the server
+  projects, not `tellma-client init`; a later distribution-tooling spec owns it (decision 11) —
+  needed by 0024 §2.1.
+- App framework — `@tellma/core-tools` lists the commands `emit`, `serve` and `build`, whose first
+  and last steps check the sources and the output; `init` and `check` are gone (decisions 11, 12)
+  — needed by 0024 §2.6.
+- App framework, One merge rule — The server decides which entities, widget types and coded
+  reports exist; the client follows the metadata and never hides them (decision 13) — needed by
+  0024 §2.3.
+- App framework, PWA — Angular's worker receives security fixes only. The platform stays on it,
+  with a fork into `@tellma/core-tools` as the fallback, and Web Push will wrap it in a script
+  that imports `ngsw-worker.js` (decision 14) — needed by 0024 §5.4.
+- Reports — three tiers — A pivot groups at leaf grain in SQL, and the cube builder rolls up
+  trees, subtotals and totals in C# with the engine's measure evaluator, replacing grouping sets
+  and level navigations (decision 1) — needed by 0033 §8.6, 0010 Part F.
+- Observability — On `412` the client orders the two versions by SemVer precedence, ignoring the
+  commit; two builds of one version ask the service worker (decision 22) — needed by 0024 §5.6.
+
+---
+
+# Review round 1, follow-up (27 October 2026)
+
+Two more decisions from the review of round 1. Where this part conflicts with the parts above, this
+part wins.
+
+## Summary
+
+- **Tenant collation.** Every tenant database is created with `Latin1_General_100_CI_AS`, because
+  the server default `SQL_Latin1_General_CP1_CI_AS` defines no order on Amharic text. (0011, 0012,
+  ARCHITECTURE.md.)
+- **No SQL rank for text `min`/`max`.** Rolled-up text `min` and `max` compare with a
+  case-insensitive .NET comparer, and hierarchy paths by their integer levels. The `DENSE_RANK`
+  columns and their tests go. (0010; for 0033.)
+
+## 0010 — Amendments to implemented specs
+
+- §F.0 — The glossary drops "rank column".
+- §F.14 — `MeasurePartial` loses `RankOrdinal`; the "Rank columns" bullet goes; the rank golden and
+  the rank-exactness suite over seven collations go.
+- §F.15 — `PartialTable.Add` loses its `ranks` argument and storage keeps no ranks. `min` and `max`
+  compare text with `StringComparer.InvariantCultureIgnoreCase` (ties keep the ordinally smaller
+  value) and hierarchy paths level by level as integers. The QX4010 reason for text comparisons
+  says the comparer only approximates the collation. The differential identities include text
+  `min` and `max` only over plain text, matched ignoring case.
+- Testing, Definition of done — Partial columns only, no rank columns or rank exactness.
+- Decisions — 13 becomes the comparer and the path order, with the SQL rank as the alternative.
+- Review flags — Old 8 (exact text by rank) is deleted, and old 9 becomes 8.
+
+## 0011 — Distribution host and multi-tenancy
+
+- §6.1 — `provision` creates the database with `COLLATE Latin1_General_100_CI_AS` and fails when
+  the database already exists with another collation.
+- Decisions — New 32: the tenant collation, set at creation and never altered.
+
+## 0012 — Data access layer
+
+- §13.2 — The fixture database is created with the tenant collation, as provisioning does.
+
+## ARCHITECTURE.md
+
+- Migrations & seeding — Provisioning creates the database with `Latin1_General_100_CI_AS`.

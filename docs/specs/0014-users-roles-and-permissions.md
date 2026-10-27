@@ -146,6 +146,7 @@ realised gate.
 | `ITenantDatabase` (`Schema`) | spec 0012 | filter validation (§3.7, §9) |
 | `KeySetRestriction`, `FilterTree.Leaf(text, stamp)`, `FilterTree.Via` | spec 0010 §F.1, §F.6, §F.7 | the post-check (§5.3), versioned leaves (§5.2), owner rebasing (§5.5) |
 | `VersionTag`, `VersionTagNames`, `UserVersionTagNames`, `[BumpsVersionTag]`, `[BumpsUserVersionTag]`, `VersionedCache<TKey, TValue>`, `TellmaCacheOptions`, `core.VersionTags`, the `50412` guard and the bump statements | spec 0013 | tags, caches, the persist re-check |
+| `ILanguageCatalog`, `DigitStyle` | spec 0013 §7.1 | the language and format preferences (§3.1) |
 | `IStackRegistry`, `StackDescriptor`, `EntityActionDescriptor`, `ApiActionDescriptor`, `[Stack]`, `StackOperations`, `[EntityAction]`, `[ApiAction]`, `[ApiRoute]`, `IEntityValidator<T>`, `SaveContext`, `DeleteContext`, `ActionContext`, `IPersistEffect<T>`, `SavePersistContext<TEntity>`, `ValidationErrors` | spec 0015 | securable registration from stacks; the validators; the companion `UserStamps` insert (§8.2) |
 | `RequestContext`, `IRequestContextAccessor`, `IRequestContextInitializer`, `RequestContextInputs`, `TenantState`, `PrincipalKind`, `ITenantProvisioningStep`, `TenantProvisioningContext` | spec 0011 | the connect initializer, ReadOnly premises, the bootstrap step |
 | `FeatureContribution.Securables(...)`, `SecurablesContributionItem` | spec 0011 | non-entity securables |
@@ -282,9 +283,11 @@ public class User : TopLevelEntity, IActivatable
     public string? Name3 { get; set; }
     [BlobReference("user-image", BlobPreset.Avatar, ReadAccess = BlobReadAccess.AnyMember)] public int? ImageId { get; set; }
     [BlobReference("user-signature", BlobPreset.Signature, MaxSizeBytes = 1_048_576, ReadAccess = BlobReadAccess.AnyMember)] public int? SignatureId { get; set; }   // a transparent PNG of the stylus capture; AnyMember
-    public string? PreferredLanguage { get; set; }                // BCP 47; null = tenant primary
+    public string? PreferredLanguage { get; set; }                // a bare language code ("ar"); null = tenant primary
     public string? PreferredCalendar { get; set; }                // gc | uq | et; null = tenant primary
     public string? PreferredTimeZone { get; set; }                // IANA; null = tenant zone
+    public string? PreferredRegion { get; set; }                  // ISO 3166-1 alpha-2, upper case ("AE"); null = the tenant's Region
+    public DigitStyle? PreferredDigits { get; set; }              // Latin | Native; null = the tenant's Digits
     public Gender? Gender { get; set; }                           // the invitation's grammar; the SPA's gender-inflected strings (spec 0016 §3.4)
     public string? ContactEmail { get; set; }                     // null = Email
     public string? ContactMobile { get; set; }                    // E.164
@@ -313,6 +316,8 @@ public class User : TopLevelEntity, IActivatable
 | `PreferredLanguage` | `varchar(35)` | yes | | |
 | `PreferredCalendar` | `varchar(16)` | yes | | |
 | `PreferredTimeZone` | `varchar(64)` | yes | | |
+| `PreferredRegion` | `varchar(2)` | yes | | upper case |
+| `PreferredDigits` | `varchar(8)` | yes | | `Latin` or `Native` |
 | `Gender` | `varchar(8)` | yes | | |
 | `ContactEmail` | `nvarchar(255)` | yes | | |
 | `ContactMobile` | `varchar(32)` | yes | | E.164 |
@@ -349,14 +354,21 @@ Rules on the columns:
   identity server (spec 0003) and editing it desynchronises the two systems. Uniqueness is validated
   in the save's first round trip by spec 0015's key loads (`Unique` at `Email`) and guaranteed by
   `UX_Users_Email`; `UX_Users_Subject` likewise maps to `Unique` at `Subject`.
-- **Preferences** are validated by spec 0018's `UserService`: `PreferredLanguage` against the
-  distribution's offered languages (`ILanguageCatalog.IsOffered`; a user's culture is not bound
-  to the tenant's content languages, spec 0013 §7.3), `PreferredCalendar` against the calendar
-  registry's codes (`ICalendarRegistry.Codes`; a code outside the tenant's pair is ignored by
-  negotiation, spec 0013 §8.2) and `PreferredTimeZone` against the IANA zone list; `null` means
-  the tenant default. They are typed columns on the row, not bag keys, because background work
-  addresses a user in their language without a request in flight, and because they are filterable
-  and exportable.
+- **Preferences** are validated by spec 0018's `UserService`; `null` means the tenant default:
+  - `PreferredLanguage` against the distribution's offered languages (`ILanguageCatalog.IsOffered`,
+    a bare code). A user's culture is not bound to the tenant's content languages
+    (spec 0013 §7.3).
+  - `PreferredCalendar` against the calendar registry's codes (`ICalendarRegistry.Codes`).
+    Negotiation ignores a code outside the tenant's pair (spec 0013 §8.2).
+  - `PreferredTimeZone` against the IANA zone list.
+  - `PreferredRegion` against `ILanguageCatalog.IsRegionOffered`, after trimming and
+    upper-casing.
+  - `PreferredDigits` by its enum.
+
+  Region and digits pick the user's formats, apart from the language (spec 0013 §7.2, spec 0024
+  §7.7). The preferences are typed columns on the row, not bag keys, for two reasons: background
+  work addresses a user in their language and formats without a request in flight, and the
+  columns are filterable and exportable.
 - **`IsActive`** is server-owned: every user is created active, and the column changes only
   through the `activate`/`deactivate` actions under the `Activate` securable.
 - **`ImageId`** is an `int?` FK to `core.Blobs`; the attach rule, the staged upload and the bytes
@@ -635,8 +647,8 @@ registry, never by this spec.
 Queryex entity names: `core.User` (`[core].[Users]`), `core.Role`, `core.RoleMembership`,
 `core.Permission`, and the read-only `core.UserStamp`; navigations `CreatedBy`/`ModifiedBy →
 core.User`, `Image → core.Blob`, `core.RoleMembership.User`/`.Role`, `core.Permission.Role`,
-`core.UserStamp.User`. `Kind`, `State`, `InviteStatus`, `Gender` are string-typed enum properties.
-`UserPreferences` is not exposed.
+`core.UserStamp.User`. `Kind`, `State`, `InviteStatus`, `Gender` and `PreferredDigits` are
+string-typed enum properties. `UserPreferences` is not exposed.
 
 ### 3.9 Deletion and deactivation
 
@@ -866,7 +878,7 @@ public sealed record UserAccess                                 // the cached se
 public interface IAccessEvaluator                               // scoped
 {
     Task<AccessDecision> EvaluateAsync(string resource, string action);   // ambient caller; records a witness
-    Task<AccessDecision> RequireAsync(string resource, string action);    // ForbiddenException when Denied; StepUpRequiredException when the pair is sensitive and the session is below spec 0011's bar
+    Task<AccessDecision> RequireAsync(string resource, string action);    // ForbiddenException (NoGrant) when Denied; StepUpRequiredException when the pair is sensitive and the session is below spec 0011's bar
     Task<IReadOnlyList<AccessDecision>> EvaluateAsync(IReadOnlyList<SecurableRef> securables);   // several at once, one set
     Task<AccessDecision> EvaluateForAsync(int userId, string resource, string action);   // "can they, and why"; no witness
     Task<IReadOnlyList<AccessDecision>> EvaluateAllAsync();                         // one per registered securable
@@ -886,7 +898,7 @@ public interface IAccessEvaluator                               // scoped
 | `UserAccess.Tag` / `UserTag` | The tenant `permissions` tag and the caller's `PermissionsTag` the set was built under; the entry is valid only while both match. |
 | `UserAccess.ValidatedAt` | The last prologue that confirmed both tags; bounds the deny re-check. |
 | `Evaluate` | Loads or reuses the caller's set (§6), resolves the securable, collects the bespoke criteria of every `IAccessCriteriaProvider` registered for the resource (`GetCriteriaAsync(userId)`, awaited once per evaluation), calls `Decide`, records the witness, counts `tellma.access.decisions{outcome}`. A `Denied` decision from a set whose `ValidatedAt` is older than `FastDenyWindow` is re-verified by one prologue-only round trip and decided again on the refreshed set (§6.4). A caller context with no user is `Denied` for everything. |
-| `Require` | `Evaluate`, then `ForbiddenException` on `Denied` and `StepUpRequiredException` when the pair is sensitive (§4.3) and the session's assurance is below spec 0011's bar. The call spec 0015's pipeline makes for every operation and `IApiActionInvoker` for every `[ApiAction]` (spec 0015 §9.1), so the refusal reaches every caller, request or not. |
+| `Require` | `Evaluate`, then `ForbiddenException` with reason `NoGrant` (§5.3) on `Denied` and `StepUpRequiredException` when the pair is sensitive (§4.3) and the session's assurance is below spec 0011's bar. The call spec 0015's pipeline makes for every operation and `IApiActionInvoker` for every `[ApiAction]` (spec 0015 §9.1), so the refusal reaches every caller, request or not. |
 | `EvaluateFor` | The "can they, and why" path for another user: loads that user's rows through a `ConnectPremises.ForUser` whose nullable expected tags are `null` (§7.5) once per scope — the load is memoised, so every `EvaluateFor` of one scope shares it — without touching the caller's set or the cache. |
 | `Invalidate` | Drops the cached set; called by the connector when a prologue reports a deactivated user. |
 
@@ -923,7 +935,17 @@ assigned to me" needs) and never absorb or remove anything.
 
 ### 5.3 What the pipeline does with a decision
 
-Stated here because this spec owns the semantics; spec 0015 implements them:
+Stated here because this spec owns the semantics; spec 0015 implements them. Every 403 below is
+spec 0015's `ForbiddenException`. It names the refused pair and one of three reasons, and the
+client shows it with the permission's labels (spec 0024 §11):
+
+| `Reason` (wire) | When |
+|---|---|
+| `NoGrant` (`no-grant`) | the caller holds no grant on the pair |
+| `OutsideFilter` (`outside-filter`) | a grant exists, but its filter does not cover the record |
+| `RestrictedPath` (`restricted-path`), with `Path` | a column read through a navigation lies outside the target's `[RelatedSelect]` projection; the pair is the target's `Read` |
+
+The error never names roles, filters or other users; `access/check` (§10) answers those.
 
 - `decision.Filter` is conjoined into every read, update and delete as
   `FilterTree.And([userFilter, decision.Filter])`; the access filter alone is passed as
@@ -931,24 +953,25 @@ Stated here because this spec owns the semantics; spec 0015 implements them:
 - A navigation path into an entity `E` other than the query's root may touch every column of `E`
   only when the caller's `Read` decision on `E` is `Unrestricted`; a filtered grant, like no grant,
   limits the path to `E`'s `[RelatedSelect]` projection in select, filter, order and having alike,
-  and a column outside it is `ForbiddenException` (403) naming `E` (spec 0015 §5.2 step 4). A
-  traversal therefore never reveals more than a direct query of `E` would, apart from the declared
-  display projection. The joined rows are not filtered by `E`'s row-level security; only projection
-  columns are reachable through a filtered or absent grant, so nothing hidden leaks.
-- Collection operations on `Denied` throw `ForbiddenException` (403, so the SPA can hide the page);
-  a by-id read whose row is outside the filter is `NotFoundException` (404 — the same response as a
+  and a column outside it is a 403 `RestrictedPath` naming `E` and the path (spec 0015 §5.2
+  step 4). A traversal therefore never reveals more than a direct query of `E` would, apart from
+  the declared display projection. The joined rows are not filtered by `E`'s row-level security;
+  only projection columns are reachable through a filtered or absent grant, so nothing hidden
+  leaks.
+- Collection operations on `Denied` are a 403 `NoGrant` (so the SPA can hide the page); a by-id
+  read whose row is outside the filter is `NotFoundException` (404 — the same response as a
   non-existent row).
 - Saves run the **two-stage pre-check** in the validation round trip: the existing rows' before
   images are loaded under the caller's `Read` filter (an id absent → `NotFoundException`, 404) and
-  the same ids are counted under the `Save` grant — a short count → `ForbiddenException` (403: the
+  the same ids are counted under the `Save` grant — a short count is a 403 `OutsideFilter` (the
   caller already knows the id, and 403 stops a probing loop of save attempts). Both are compared in
   C#. Deletes and the built-in actions run the same two stages as statements inside the persist
   batch — the caller's `Read` filter first (404, hidden equals missing), then the action's grant
-  (`Delete`, `Activate`; 403); spec 0015 §9.2 owns the statements.
+  (`Delete`, `Activate`; 403 `OutsideFilter`); spec 0015 §9.2 owns the statements.
 - The **post-check** runs inside the persist transaction over every saved root id: spec 0015
   appends a `50403` count assertion — the compiled count of the decision's filter restricted to
   `KeySetRestriction("Id", "@tb{b}_saved")` against the count of `@tb{b}_saved` — and a mismatch
-  is `THROW 50403, N'RowSecurity'` → `ForbiddenException`. The post-check is authoritative for
+  is `THROW 50403, N'RowSecurity'` → a 403 `OutsideFilter`. The post-check is authoritative for
   the rows as saved; if permissions changed between the two round trips the persist guard fails
   first (§7.4) and the recomposed persist evaluates the new filter.
 - Details pages load related entities and extras under the root's `Read` without further
@@ -1071,7 +1094,8 @@ granted a permission a moment ago is admitted within one window, never after `Pe
 public sealed record UserProfile(
     string Name, string? Name2, string? Name3, string? Email, string? ContactEmail, string? ContactMobile,
     int? ImageId, int? SignatureId, string? PreferredLanguage, string? PreferredCalendar,
-    string? PreferredTimeZone, Gender? Gender, DateTimeOffset ModifiedAt);   // ModifiedAt: the row's stamp, for me/save
+    string? PreferredTimeZone, string? PreferredRegion, DigitStyle? PreferredDigits, Gender? Gender,
+    DateTimeOffset ModifiedAt);                                       // ModifiedAt: the row's stamp, for me/save
 
 public sealed record ConnectedUser(
     int UserId, UserKind Kind, UserState State, UserProfile Profile, Guid PreferencesTag, UserAccess Access,
@@ -1211,7 +1235,7 @@ IF (@tm_PermissionsStale = 1 OR @tm_ReloadPermissions = 1) AND @tm_UserId IS NOT
 
 -- Result set 3: the caller's profile. Present iff ProfileStale = 1.
 IF @tm_ProfileStale = 1 AND @tm_UserId IS NOT NULL AND @tm_IsActive = 1
-    SELECT [Name], [Name2], [Name3], [Email], [ContactEmail], [ContactMobile], [ImageId], [SignatureId], [PreferredLanguage], [PreferredCalendar], [PreferredTimeZone], [Gender], [ModifiedAt]
+    SELECT [Name], [Name2], [Name3], [Email], [ContactEmail], [ContactMobile], [ImageId], [SignatureId], [PreferredLanguage], [PreferredCalendar], [PreferredTimeZone], [PreferredRegion], [PreferredDigits], [Gender], [ModifiedAt]
     FROM [core].[Users] WHERE [Id] = @tm_UserId;
 
 -- Settings load: the two statements of spec 0013 §5.7, absorbed from its Order-60 contributor and placed here under IF @tm_SettingsStale = 1 OR @tm_LoadSettings = 1; the contributor reads their sets from this result.
@@ -1343,8 +1367,8 @@ request it composes a `ConnectPremises.ForSubject` (`Cold` or `For`, §7.1) from
 - **The throttle memo** of §7.1.
 
 A job scope's `ForUser` premises stamp nothing and flip nothing (§7.2). Spec 0013's negotiation
-initializer at `Order` 200 then reads `User.PreferredLanguage/PreferredCalendar/PreferredTimeZone`
-from the connected profile.
+initializer at `Order` 200 then reads the connected profile's `PreferredLanguage`,
+`PreferredCalendar`, `PreferredTimeZone` and `PreferredRegion`.
 
 ## 8. Write paths, tag bumps, and the security guards
 
@@ -1736,8 +1760,9 @@ The startup audit over an in-memory `EndpointDataSource` (an endpoint naming an 
 securable, a child-entity `FilterRoot` without `Owner`; the endpoint-shape rules are spec 0011's).
 The prologue reader against scripted result sets: every presence combination of sets 2–3 and the
 body. `FormatVersion` mismatch → miss with `reason=format`. `Evaluate`'s deny re-check inside and
-outside `FastDenyWindow`. The drift table of §9 row by row. The owner composition of §5.5: direct
-grants only, owner grants only, both (`Or` of the direct leaves and the `Via` node), neither
+outside `FastDenyWindow`; `RequireAsync` on `Denied` raises `ForbiddenException` with the pair and
+`NoGrant`. The drift table of §9 row by row. The owner composition of §5.5: direct grants only,
+owner grants only, both (`Or` of the direct leaves and the `Via` node), neither
 (`Denied`), either side `Unrestricted`, and an owner that is itself a child.
 
 **Integration (every PR; LocalDB or Testcontainers; fixture tenant database with change tracking).**
@@ -1862,6 +1887,9 @@ The load-bearing decisions, where not already evident above:
     deploy, so it caches with the build and `me` carries only the caller's decisions (§10).
 28. **A background request stamps no activity** — a polling tab must not make an idle user look
     active (§7.8).
+29. **A 403 names the refused pair and one of three reasons, never roles, filters or other users**
+    — the user can ask for the right grant, and the message is true for each cause. It reveals
+    nothing beyond the securables list every member already holds (§5.3).
 
 ## Review flags
 
@@ -1904,8 +1932,8 @@ The load-bearing decisions, where not already evident above:
 16. **`core.UserPreferences` composite-keyed, written by the user and by an administrator holding
     `Preferences` through one statement** (§3.4) versus a child entity edited through the user
     save. Flips if a bag key ever needs per-key audit.
-17. **Typed `PreferredLanguage/Calendar/TimeZone` on the temporal row** (§3.1) versus bag keys.
-    Flips if the columns churn history measurably.
+17. **Typed `PreferredLanguage/Calendar/TimeZone/Region/Digits` on the temporal row** (§3.1) versus
+    bag keys. Flips if the columns churn history measurably.
 18. **`ModifiedAt` kept beside `ValidFrom` on temporal rows** (§2) versus `ValidFrom` as the stamp.
     Flips only with a uniform non-temporal alternative.
 19. **Inbox tracking as `InboxSeenAt` plus capped counts** (§3.3) versus materialised counters.
@@ -1981,7 +2009,7 @@ The load-bearing decisions, where not already evident above:
 | `Access.PublicRoleHasMembers` | guard L2, `THROW 50422` | a public role has a membership |
 | `Access.AdministratorRoleDamaged` | guard L3, `THROW 50422` | role 1 inactive, public, or without its `*/*` |
 | `Access.LockTimeout` | `THROW 50503` | the application lock was not acquired within `SecurityLockTimeout`; transient |
-| `RowSecurity` | spec 0015's post-check, `THROW 50403` | a saved row lies outside the decision's filter; `ForbiddenException` |
+| `RowSecurity` | spec 0015's post-check, `THROW 50403` | a saved row lies outside the decision's filter; `ForbiddenException` (`OutsideFilter`) |
 | `CallerInvalid` | persist re-check, `THROW 50401` | the caller was deactivated since the prologue; `TenantNotFoundException` |
 | `StaleVersionTag` | spec 0013's guard, `THROW 50412` | a tag changed since the prologue; one recompose, then `StaleContextException` |
 

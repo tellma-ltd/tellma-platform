@@ -48,6 +48,8 @@ Other specs that carry parts of this design:
 - spec 0024 §6 — the SPA hosting rules `MapTellma` implements (§5.1);
 - spec 0024 §8.1 and §9.3 — the client side of the profile cookie and the launch redirect that
   reads the membership list (§3.8, §5.5);
+- spec 0013 §7.3 and §9.2 — the regioned language codes `Languages` takes and the culture's
+  region (§1.3, §4.1);
 - spec 0024 §3.2 — the client metadata `emit-client-assets` writes (§6.1) and `TellmaRoutes`, the
   reserved words the endpoint audit reads (§5.3);
 - spec 0026 §6 and §12.7 — the client telemetry relay and the admin support-request routes
@@ -102,6 +104,9 @@ Other specs that carry parts of this design:
   definition of done.
 - **The client** — the SPA's boot, launch redirect, session handling and caches (specs 0024 and
   0025); this spec serves the SPA and the endpoints it calls.
+- **The distribution template** — `dotnet new tellma-distribution` scaffolds a distribution's
+  server and client projects together. A later distribution-tooling spec owns it; this spec fixes
+  the shape it scaffolds (§1.2).
 
 ## 1. Placement and architecture
 
@@ -198,8 +203,8 @@ distributions/acme/
 - **Migrator project references.** `Tellma.Distro.Acme` and `Tellma.Core.Migrator` only, so a
   migrator build carries no ASP.NET package, never builds the Client esproj and needs no Node.
 - **Client project.** The recommended ASP.NET Core + Angular shape: a JavaScript-SDK esproj beside
-  the Web project. `tellma-client init` scaffolds it, and it is a member of the repository-root
-  pnpm workspace (spec 0024 §2.1).
+  the Web project. The distribution template (a non-goal here) scaffolds it with the rest of the
+  distribution, and it is a member of the repository-root pnpm workspace (spec 0024 §2.1).
   - **Build.** The esproj references the Migrator with `ReferenceOutputAssembly=false`, so MSBuild
     builds the Migrator first. The esproj's build then runs `tellma-client build
     --no-dotnet-build`, which emits the client metadata through the Migrator (§6.1) and builds the
@@ -249,8 +254,11 @@ return await TellmaMigrator.RunAsync(args, AcmeComposition.Slug, AcmeComposition
 Illustration — the shared composition method:
 
 ```csharp
-public static void Compose(TellmaBuilder tellma) => tellma.UseAzureDefaults().AddFeature<GlFeature>().Languages(["en", "ar"]);
+public static void Compose(TellmaBuilder tellma) => tellma.UseAzureDefaults().AddFeature<GlFeature>().Languages(["en-GB", "ar-SA"]);
 ```
+
+Each language code may carry the region its users get by default (`ar-SA`); spec 0013 §7.3 owns
+the rule.
 
 `UseAzureDefaults()` (`Tellma.Defaults.Azure`) is the Azure deployment's common composition, four
 explicit calls in one: `AddTellmaEmail()` with the ACS and SendGrid transports registered and the
@@ -437,7 +445,7 @@ public sealed class TellmaBuilder
     public TellmaBuilder AddFeature(ITellmaFeature feature);
     public TellmaBuilder UseEntity<TDefault, TLeaf>() where TLeaf : TDefault;
     public TellmaBuilder Languages(IReadOnlyList<string> codes);
-    public TellmaBuilder AddLanguage(LanguageInfo info);
+    public TellmaBuilder AddLanguage(LanguageInfo info, LanguageFormats formats);
     public TellmaBuilder Blobs(Action<BlobsBuilder> configure);
 }
 
@@ -471,7 +479,7 @@ public static class TellmaMcpBuilderExtensions
 |---|---|
 | `AddFeature<T>()` / `AddFeature(feature)` | Explicit selection; no assembly scanning. Adding the same type twice with different instances is a problem; the same instance twice is a no-op. |
 | `UseEntity<TDefault, TLeaf>` | Leaf substitution; the stack, service and securables follow the leaf (spec 0015). |
-| `Languages`, `AddLanguage` | The distribution's offered language subset and catalogue additions (spec 0013). |
+| `Languages`, `AddLanguage` | The distribution's offered languages, each with an optional default region (`"ar-SA"`), and catalogue additions with their `LanguageFormats` (spec 0013 §7.3). |
 | `AddMcp` | Extension shipped by `Tellma.Core.Mcp`; a feature requiring the stack feature (spec 0016). |
 | `Blobs` | Kinds and the image processor (spec 0017). |
 | `IContributionRealizer<TItem>` | One per item type Core understands; `Tellma.Core` ships every realizer of §2.1; the realizer for an item is found by the item's runtime type, base types excluded. |
@@ -589,8 +597,8 @@ tenant row carries `Server`, `Database` and a `CredentialProfile` name.
 A distribution hosts one tenant or many by what its operators register, never by a policy
 setting. The registry, the migrator fan-out, the session store and the membership directory are
 identical for a catalog with one live tenant and for one with two hundred. Nothing refuses a second
-live registration. The SPA's launch redirect (spec 0024 §9.3) reads the membership list through
-`/bff/user`, not a policy.
+live registration. The BFF's post-sign-in landing (§5.5) and the SPA's launch redirect (spec 0024
+§9.3) read the membership list (§3.8), not a policy.
 
 ### 3.3 Tenant states and verdicts
 
@@ -842,7 +850,7 @@ public interface ITenantMembershipDirectory
 ```
 
 `catalog.TenantMemberships` is a navigation hint, never an authorization source. Three writers keep
-it current; two endpoints read it.
+it current; three readers use it.
 
 - **Post-commit writes.** Spec 0018 §3.6's `UserService` effects write the hint after an invite,
   activation or deactivation commits. This is a second transaction against the catalog; a failure
@@ -856,8 +864,9 @@ it current; two endpoints read it.
   tenant query and one catalog transaction per tenant, a failed tenant logged and the run
   continued. The timer repairs any failed post-commit write without a deployment.
 - **Readers.** `GET /bff/user` (§5.5), which the tenant picker and the SPA's launch redirect read
-  (spec 0024 §9.3), and the admin `GET /api/admin/v1/tenants/{id}/members` (§5.9). The directory
-  answers in one catalog query and never opens a tenant database.
+  (spec 0024 §9.3); the BFF's post-sign-in landing (§5.5); and the admin
+  `GET /api/admin/v1/tenants/{id}/members` (§5.9). The directory answers in one catalog query and
+  never opens a tenant database.
 - **A stale hint is harmless.** The connect initializer re-verifies every entry into a tenant, so a
   stale hint can at most show a tenant that answers `404`, or hide one reachable by URL, until the
   next deployment. The connect step never writes the hint.
@@ -895,8 +904,8 @@ public sealed record RequestContext                         // immutable; one pe
     public AuthenticationAssurance? Assurance { get; init; }
     public int? UserId { get; init; }                       // late-bound by the connect initializer
     public string Language { get; init; } = "en";           // messages; BCP 47, no extensions
-    public string Culture { get; init; } = "en";            // formatting; BCP 47, no extensions
-    public CultureInfo CultureInfo { get; init; }           // Gregorian-forced clone of Culture
+    public string Culture { get; init; } = "en";            // formatting; language and region ("ar-SA"), no extensions
+    public CultureInfo CultureInfo { get; init; }           // Gregorian-forced clone of Culture + "-u-nu-latn": always Latin digits
     public string Calendar { get; init; } = "gc";           // gc | uq | et
     public ICalendarSystem CalendarSystem { get; init; }
     public int ContentLanguageIndex { get; init; } = 1;     // 1..3; the tenant content language matching Culture, else 1
@@ -939,7 +948,7 @@ public sealed record RequestContextInputs(
 | `SessionId`, `SessionHandle` | `SessionId` is the authority's `sid`. `SessionHandle` is the handle of the `catalog.Sessions` row (§7.4), read by the tenant middleware from the cookie ticket's properties (§5.5); null on bearer surfaces and in background scopes. It is the value that addresses one BFF session across tenants (spec 0021 §6.2); the session key itself never leaves the session store. |
 | `OriginTraceParent` | Log-correlation data: the scope factory copies the snapshot's `TraceParent` into it and the logger scope of §9 carries it. Nothing starts, parents or links an activity from it — the activity a scope runs under belongs to the caller (§4.4; spec 0020 §9). |
 | `UserId` | Set by spec 0014's connect initializer at `Order` 100; `null` before it and for `Anonymous`. A `System` snapshot binds `WellKnownIds.SystemUserId`. |
-| `Language`, `Culture`, `CultureInfo`, `Calendar`, `CalendarSystem`, `ContentLanguageIndex`, `TimeZone`, `TenantTimeZone`, `Today`, `TenantSettings` | Set by spec 0013's negotiation initializer at `Order` 200 with the precedence request header → the user's stored preference → the tenant's settings → platform defaults (`en`, `gc`, `UTC`); where set, the message inputs of `RequestContextInputs` come first (below). Culture names are stripped of `-u-` extensions before negotiation; the calendar is never encoded in the culture name. |
+| `Language`, `Culture`, `CultureInfo`, `Calendar`, `CalendarSystem`, `ContentLanguageIndex`, `TimeZone`, `TenantTimeZone`, `Today`, `TenantSettings` | Set by spec 0013's negotiation initializer at `Order` 200 with the precedence request header → the user's stored preference → the tenant's settings → platform defaults (`en`, `gc`, `UTC`); where set, the message inputs of `RequestContextInputs` come first (below). The culture's region follows spec 0013 §9.2. Culture names are stripped of `-u-` extensions before negotiation; the calendar is never encoded in the culture name. |
 | `TimeZone` versus `TenantTimeZone` | The display zone formats instants in messages and exports; the tenant zone computes `Today` and binds spec 0008's `today()` and `TimeZone` slots. No client header asserts today: a client cannot move a tenant's business date. |
 | `Client` | From the `Tellma-Client` header's name part, one of `TellmaApiOptions.ClientNames` (§5.4); the MCP request filter sets `mcp`. |
 | `Tenantless` | `Tenant = null`, `Kind = Anonymous`, platform defaults; the holder's value on tenantless surfaces. |
@@ -1330,17 +1339,20 @@ public sealed record LogoutResult(string RedirectUrl);     // POST /bff/logout: 
   HTTP in Development), `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`; sliding
   `Tellma:Session:IdleLifetime` (default 7 days, equal to the authority's refresh-token idle
   window); absolute `Tellma:Session:AbsoluteLifetime` (default 90 days); `SessionStore =
-  CatalogSessionStore`; `EventsType = TellmaSessionEvents`. The cookie carries only a 256-bit random
-  session key (43-character base64url); the ticket — principal, `sid`, tokens — is
-  `TicketSerializer` output protected by an `IDataProtector` (purpose
-  `Tellma.Core.AspNetCore.Session`) in `catalog.Sessions`. At creation the store computes the row's
-  `Handle` (§7.4) and stamps it into the ticket's properties, so every `RetrieveAsync` returns it
-  with the ticket and the tenant middleware binds it as `RequestContext.SessionHandle` (§4.3); the
-  key stays inside the cookie and the store. `RetrieveAsync` consults a per-instance bounded
-  `MemoryCache` (`Tellma:Session:CacheTtl`, default 60 s, 50,000 entries) and falls back to one
-  primary-key read (§7.5); `RenewAsync` writes through; `RemoveAsync` deletes and evicts. The TTL
-  is the maximum time a revoked session keeps working on an instance other than the one that
-  revoked it. `IApiEndpointMetadata` makes API endpoints answer `401`/`403` instead of redirecting.
+  CatalogSessionStore`; `EventsType = TellmaSessionEvents`. The cookie is persistent, so it survives
+  a browser restart: `/bff/login` challenges with `AuthenticationProperties.IsPersistent = true`,
+  and the cookie's `Expires` is the row's `ExpiresAt` (§7.4). Every renewal re-issues it with the
+  new `Expires`. The cookie carries only a 256-bit random session key (43-character base64url);
+  the ticket — principal, `sid`, tokens — is `TicketSerializer` output protected by an
+  `IDataProtector` (purpose `Tellma.Core.AspNetCore.Session`) in `catalog.Sessions`. At creation
+  the store computes the row's `Handle` (§7.4) and stamps it into the ticket's properties, so every
+  `RetrieveAsync` returns it with the ticket and the tenant middleware binds it as
+  `RequestContext.SessionHandle` (§4.3); the key stays inside the cookie and the store.
+  `RetrieveAsync` consults a per-instance bounded `MemoryCache` (`Tellma:Session:CacheTtl`, default
+  60 s, 50,000 entries) and falls back to one primary-key read (§7.5); `RenewAsync` writes through;
+  `RemoveAsync` deletes and evicts. The TTL is the maximum time a revoked session keeps working on
+  an instance other than the one that revoked it. `IApiEndpointMetadata` makes API endpoints answer
+  `401`/`403` instead of redirecting.
 - **OIDC scheme `Tellma.OpenIdConnect`.** `Authority = Tellma:Identity:Authority` (the host's own
   origin + `/id` in in-proc mode), `ClientId = slug`, `ClientSecret` from configuration,
   `ResponseType = code`, PKCE, `PushedAuthorizationBehavior = Require` (spec 0003 carries assurance
@@ -1384,7 +1396,7 @@ public sealed record LogoutResult(string RedirectUrl);     // POST /bff/logout: 
     (the sign-in page's language, spec 0010 §A.10) and the `tellma_allowed_methods` supplied by
     `IAuthenticationPolicyProvider.GetLoginPolicyAsync(null)`. Initial sign-in requests no tier,
     because the user has no tenant yet. After the callback the BFF redirects to `returnUrl ?? "/"`,
-    and the SPA's launch redirect decides where `/` lands (spec 0024 §9.3).
+    or to the user's one live tenant when that target is `/` (the post-sign-in landing, below).
   - **`POST /bff/logout`** (`{ "scope": "local" | "global" }`, default `global`) answers
     `200 LogoutResult` and never redirects: the SPA calls it with `fetch`, which cannot follow the
     end-session redirect. In order, it:
@@ -1399,6 +1411,26 @@ public sealed record LogoutResult(string RedirectUrl);     // POST /bff/logout: 
   - **`GET /bff/user`** → `{ sub, name, email, locale, acr, tenants: [{ id, name, name2, name3,
     languages, category, state, liveTenantId, isActive }] }` from §3.8 — each entry is §3.3's
     `TenantDescriptor` plus `isActive` — with `401` when unauthenticated.
+- **The post-sign-in landing.** A sign-in that returns to `/` lands on the user's one live tenant.
+  - **When.** In `OnTicketReceived`, only when the target (`TicketReceivedContext.ReturnUri`) is
+    exactly `/` or absent. Deep links, `/tenants` and step-up returns pass through, so the tenant
+    picker never redirects.
+  - **What.** The BFF runs one `ITenantMembershipDirectory.ListAsync(sub)` query (§3.8), then
+    `TenantLanding.SingleLiveTenant`. A hit sets `ReturnUri = "/{id}"`.
+  - **Failure.** A directory error keeps `/` and logs `BffLandingFailed` (Warning); the SPA's launch
+    redirect then decides (spec 0024 §9.3).
+  - **One rule, two places.** The SPA applies the same rule to an in-app `/` (`tmSingleLiveTenant`,
+    spec 0024 §9.3). Both test suites read one vector file, `launch-landing-vectors.json` in
+    `@tellma/core` (`src/launch/`), which `Tellma.Core.Tests` links.
+
+```csharp
+// Tellma.Core.Abstractions.Tenancy
+public static class TenantLanding
+{
+    public static int? SingleLiveTenant(IReadOnlyList<TenantMembership> memberships);   // the one Live, Active, IsActive membership; sandboxes never count; else null
+}
+```
+
 - **The profile cookie** `tellma.profile` is the SPA's synchronous signed-in signal (spec 0024
   §8.1): without it the SPA goes to `/bff/login` before spending a request.
   - **Value:** `base64url`, without padding, of the UTF-8 JSON `{ v: 2, sub, sh, name, email,
@@ -1408,8 +1440,8 @@ public sealed record LogoutResult(string RedirectUrl);     // POST /bff/logout: 
   - **Attributes:** `Path=/`, `Secure`, `SameSite=Lax`, not `HttpOnly`.
   - **`sh` is a name, never a credential:** no endpoint accepts it in place of the session cookie.
   - **Lifetime:** written on the callback redirect and re-issued whenever the session cookie is (a
-    sliding renewal, or a refresh that replaced `name` or `locale`). `Expires` is the session's
-    idle expiry, capped by its absolute expiry. `/bff/logout` clears it.
+    sliding renewal, or a refresh that replaced `name` or `locale`), with the session cookie's
+    `Expires`. `/bff/logout` clears it.
   - **Background requests renew neither cookie.** These are a request carrying
     `Tellma-Activity: background` (spec 0016 §6.1), any request on the `Hub` route group (negotiate
     and connect), and `POST /api/client-telemetry`. `OnCheckSlidingExpiration` sets
@@ -1526,7 +1558,7 @@ enabled, a versioned admin surface for the control plane. All three are tenantle
 // Tellma.Core.AspNetCore — the GET /api/distribution-info document, camelCase on the wire
 public sealed record DistributionInfo(
     string Slug,
-    string DisplayName,                                 // Tellma:DisplayName
+    string DisplayName,                                 // Tellma:DisplayName; one value: the document is anonymous and has no language
     string DeploymentId,
     string PlatformVersion, string DistributionVersion, // DeploymentVersions (§2.2): informational versions carrying the commit
     IdentityInfo Identity,
@@ -1647,7 +1679,7 @@ public abstract class TellmaDesignTimeDbContextFactory<TContext> : IDesignTimeDb
 |---|---|
 | `emit-client-assets <dir>` | Writes spec 0024 §3.2's client metadata files into `<dir>` without touching a database (details below the table). |
 | `migrate [--catalog-only] [--tenant <id>]* [--all-tenants] [--parallelism N]` | Migrates the catalog under `sp_getapplock('tellma:migrate:catalog')` (`idsvr` too in in-proc mode); registers (the entry's `Id` as `RegisterAsync`'s `requestedId`, §3.7) and provisions every `Tellma:Seed:Tenants` entry not yet in the catalog; then for every `Active`, `ReadOnly` or `Provisioning` tenant (the default and `--all-tenants`) or the named ones: the tenant lock of §7.5, `Migrate()`, the schema fingerprint row of spec 0012 §4.3, the `tellma_app` grants (§6.4), the version-tag seed of spec 0013, provisioning steps whose recorded `Version` is behind, spec 0014's `IPermissionDriftScanner.ScanAsync` with its items printed. Bounded parallelism (default 4), continues past failures, per-tenant report. |
-| `provision [--tenant <id>] [--name …] [--category Live\|Sandbox] [--live-tenant <id>] [--server …] [--database …] [--admin-email …] [--admin-subject …]` | With `--name` and `--category`, inserts the row as `Provisioning` (`--tenant` is then `RegisterAsync`'s `requestedId`, §3.7, else the sequence allocates one); with `--tenant` alone, resumes the `Provisioning` row of that id (the admin surface's). `CREATE DATABASE` (Azure: `(EDITION = …, SERVICE_OBJECTIVE = ELASTIC_POOL(name = …))` from `Tellma:Provisioning:CreateDatabaseTemplate`; on-prem: plain); `ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON` and `SET QUERY_STORE = ON (OPERATION_MODE = READ_WRITE, QUERY_CAPTURE_MODE = AUTO, MAX_STORAGE_SIZE_MB = 1024, CLEANUP_POLICY = (STALE_QUERY_THRESHOLD_DAYS = 30))` on the fresh database; the application principal and `tellma_app`; migrations and the schema fingerprint row; the version-tag seed; every step in `Order`; the administrator's membership hint; the administrator's invite (spec 0018 §6.1; `--admin-subject` is Development-only, §6.2); then `SetStateAsync(Active, actor: "migrator")`. Idempotent: rerunning converges. |
+| `provision [--tenant <id>] [--name …] [--category Live\|Sandbox] [--live-tenant <id>] [--server …] [--database …] [--admin-email …] [--admin-subject …]` | With `--name` and `--category`, inserts the row as `Provisioning` (`--tenant` is then `RegisterAsync`'s `requestedId`, §3.7, else the sequence allocates one); with `--tenant` alone, resumes the `Provisioning` row of that id (the admin surface's). `CREATE DATABASE … COLLATE Latin1_General_100_CI_AS` (Azure: followed by `(EDITION = …, SERVICE_OBJECTIVE = ELASTIC_POOL(name = …))` from `Tellma:Provisioning:CreateDatabaseTemplate`; on-prem: nothing more), failing when the database already exists with another collation; `ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON` and `SET QUERY_STORE = ON (OPERATION_MODE = READ_WRITE, QUERY_CAPTURE_MODE = AUTO, MAX_STORAGE_SIZE_MB = 1024, CLEANUP_POLICY = (STALE_QUERY_THRESHOLD_DAYS = 30))` on the fresh database; the application principal and `tellma_app`; migrations and the schema fingerprint row; the version-tag seed; every step in `Order`; the administrator's membership hint; the administrator's invite (spec 0018 §6.1; `--admin-subject` is Development-only, §6.2); then `SetStateAsync(Active, actor: "migrator")`. Idempotent: rerunning converges. |
 | `set-state --tenant <id> --state … [--reason …]` | `ITenantCatalog.SetStateAsync` with actor `migrator`. |
 | `status` | Lists tenants with state, the recorded schema fingerprints (`dbo.__TellmaSchema`, spec 0012 §4.3) against the running model's, and pending migrations; runs `TellmaComposition.Validate` and prints its problems. |
 
@@ -1969,8 +2001,9 @@ The `Tellma` section; keys are additive-only within a family major. Every option
 
 | Key | Meaning |
 |---|---|
-| `DisplayName`, `PublicOrigin` | The information document and every derived URI (§5.8). |
-| `Copyright` | The About dialog's copyright line (spec 0027 §11.1). `emit-client-assets` copies it into the client metadata's `distribution.copyright` (spec 0024 §3.1); null omits the line. |
+| `DisplayName` | The distribution's name in the information document (§5.9). `emit-client-assets` copies it into the client metadata's `distribution.displayName`. That value is the fallback for the optional resx key `Distribution_DisplayName` in the distribution's `Strings`, which carries the name users see in each language (spec 0024 §3.1). |
+| `Copyright` | The About dialog's copyright line (spec 0027 §11.1). `emit-client-assets` copies it into the client metadata's `distribution.copyright`, the fallback for the optional resx key `Distribution_Copyright` (spec 0024 §3.1); null with no key omits the line. |
+| `PublicOrigin` | Every derived URI (§5.8). |
 | `Catalog:*` | §3.2, §3.4. |
 | `Sql:Profiles`, `MaxPoolSizePerTenant`, `MaxWarmTenants`, `AllowSqlPassword` | §3.5. `DatabasePrefix` names provisioned databases (`<prefix>.<Id>`) and the Development catalog; `ApplicationPrincipal` is the web identity created at provisioning (§6.4). |
 | `Tenancy:MembershipReconcileInterval` | §3.8. |
@@ -2074,6 +2107,7 @@ metrics.
 | A rejected back-channel token | `Warning` | reason |
 | A refresh rejection | `Information` | reason |
 | A CSRF rejection | `Warning` | rule, route |
+| A failed post-sign-in landing, `BffLandingFailed` (§5.5) | `Warning` | — |
 
 Trace context from the browser:
 
@@ -2100,7 +2134,7 @@ empty, on every pull request until the UI specs ship.
 
 | Suite | Tier | Pins |
 |---|---|---|
-| `test/core/Tellma.Core.Tests` | unit | The graph gate (aggregation of every problem, cycles, unknown item types, `Fix` text, duplicate names, double options binding); topological override of a pack service by a dependent feature; registry snapshot semantics with `FakeTimeProvider` (unchanged version → no reload; changed → reload; `!=` on an older GUID; single flight; listener calls only for changed descriptors; staleness bound → `catalog-unavailable`); connection composition (profile precedence, `Application Name`, refusal of `;`/`=`, never logged) and every profile rule; the state-transition table including the illegal ones; `RequestContext` immutability, `Tenantless`, `RequireTenant`, snapshot round trip; the holder is set exactly by the two writers; `TenantSandboxContext` throws unbound; `taxonomy.json` consistency; `TellmaComposition.Validate` host-free; `ITellmaLinks` for a stack with `Details`, a stack without it, an unknown resource and a null target. |
+| `test/core/Tellma.Core.Tests` | unit | The graph gate (aggregation of every problem, cycles, unknown item types, `Fix` text, duplicate names, double options binding); topological override of a pack service by a dependent feature; registry snapshot semantics with `FakeTimeProvider` (unchanged version → no reload; changed → reload; `!=` on an older GUID; single flight; listener calls only for changed descriptors; staleness bound → `catalog-unavailable`); connection composition (profile precedence, `Application Name`, refusal of `;`/`=`, never logged) and every profile rule; the state-transition table including the illegal ones; `RequestContext` immutability, `Tenantless`, `RequireTenant`, snapshot round trip; the holder is set exactly by the two writers; `TenantSandboxContext` throws unbound; `taxonomy.json` consistency; `TellmaComposition.Validate` host-free; `ITellmaLinks` for a stack with `Details`, a stack without it, an unknown resource and a null target; `TenantLanding.SingleLiveTenant` over every row of `launch-landing-vectors.json`. |
 | `test/core/Tellma.Core.IntegrationTests` | `Category=Integration` | Catalog migrations apply from empty and are idempotent; registration and state transitions bump `CatalogState.Version`; concurrent transitions (one wins, the other raises `TenantStateException` with `Code = Tenant.IllegalTransition`); membership list and TVP reconciliation (upsert plus per-tenant delete); `tellma_app` role and grants recomputed from the model and covering every schema and sequence; session store CRUD (the handle computed at creation, carried by the retrieved ticket and output by the termination deletes); refresh CAS with two concurrent refreshers (exactly one redeems); sweep deletes only rows expired for a day; `ITenantScopeFactory` against each state, with and without `allowNonActive` (`Provisioning` and `ReadOnly` open only with it and only for `Kind = System`), starting no activity of its own. |
 | `test/core/Tellma.Core.AspNetCore.Tests` | unit (`WebApplicationFactory`, fake authentication) | The host's routing, security, sessions and surfaces; the list below the table. |
 | `distributions/acme/test/Tellma.Distro.Acme.Web.Tests` | unit | Composition parity (the web host and the migrator build byte-identical models); `emit-client-assets` exits 0 with no database reachable; the audit passes for every mapped endpoint; one-way dependency (no `src/` project references `distributions/`); no secrets in tracked configuration; `Program.cs` contains exactly the three platform calls. |
@@ -2120,9 +2154,12 @@ empty, on every pull request until the UI specs ship.
 - **Sessions.** Back-channel token vectors (bad `iss`, bad `aud`, wrong `typ`, missing `events`,
   `nonce` present, expired, `sub`-only, replay → `200` no-op) and the listener receiving handles,
   never keys; `/bff/user` shape and `401`; `/bff/login`'s redirect to `returnUrl ?? "/"` and its
-  `ui_locales` forwarding; `/bff/logout`'s `LogoutResult` per scope, `Clear-Site-Data` and the
-  listener call before the delete; the profile cookie's v2 value, its re-issue with the session
-  cookie, and no renewal for a background request, a `Hub` request or the telemetry relay.
+  `ui_locales` forwarding; the session cookie written persistent, its `Expires` equal to the row's
+  `ExpiresAt` at sign-in and after a renewal; the post-sign-in landing (one live membership →
+  `/1`; two, or a sandbox only → `/`; `/tenants` and deep links untouched; a directory failure
+  keeps `/`); `/bff/logout`'s `LogoutResult` per scope, `Clear-Site-Data` and the listener call
+  before the delete; the profile cookie's v2 value, its re-issue with the session cookie, and no
+  renewal for a background request, a `Hub` request or the telemetry relay.
 - **Surfaces and timers.** Inbound `traceparent` adoption that ignores the `sampled` flag; the
   information document shape (every member of §5.9) and headers; the admin routes mapped under `v1`
   only, matching `adminVersions`; health before and after the first snapshot; the PRM document
@@ -2277,13 +2314,17 @@ The load-bearing decisions, where not already evident above:
 28. **The admin surface carries its own URL version, advertised in the information document** —
     one control plane calls distributions on different platform releases, so a breaking change
     ships beside the old shape and the old one retires once nothing calls it (§5.9).
-29. **The BFF never picks a tenant** — after sign-in it redirects to `returnUrl ?? "/"`, and the
-    SPA's launch redirect, which already holds the membership list, decides the landing (§5.5).
+29. **The BFF picks a tenant only for a sign-in to `/`, by the SPA's rule** — a single-tenant user
+    sees the tenant shell first, with no tenantless skeleton and no shell swap. Deep links and the
+    picker are never redirected, and one vector file keeps the BFF and the SPA in step (§5.5).
 30. **The client's idle window is the session's idle lifetime**, published as `session.idleDays`
     — the warm cache and the server session expire together, with no second setting to drift
     (§5.9).
 31. **One link builder, `ITellmaLinks`** — every server-written link follows the SPA's route
     grammar from one place (§5.10).
+32. **Every tenant database is created with `Latin1_General_100_CI_AS`** — the server default
+    `SQL_Latin1_General_CP1_CI_AS` defines no order on Amharic text. Columns keep the collation
+    they were created with, so the collation is set by `CREATE DATABASE` and never altered (§6.1).
 
 ## Review flags
 

@@ -25,8 +25,9 @@ lists the members these pages read. This spec adds the client view of setting ke
 
 Other specs that carry parts of this design:
 
-- spec 0024 §2.2, §9.2, Appendix A — the `settingsTabs` feature member; the `settings` and `me`
-  routes; the `unknown-setting-category` check.
+- spec 0024 §2.2, §7.7, §7.8, §9.2, Appendix A — the `settingsTabs` feature member; the regional
+  formats and the device time zone that the locale fields edit; the `settings` and `me` routes; the
+  `unknown-setting-category` check.
 - spec 0027 §3.2 — the Administration section and the order of its entries.
 - spec 0029 §3, §12.1 — `actions[].visible`, the column `filter`; `TmValueDescriptor`.
 - spec 0030 §13.3 — `TmImportResultView`.
@@ -111,7 +112,8 @@ each costs in lines.
 | Users with extra columns (`MyUser : User`) | an override and a layout reusing `TmUserFields`, `TmUserTabs`, `TmUserSignIn` | 4 + 7 |
 | Its own settings | `SettingKey<T>` fields in a C# holder (spec 0013 §5.3) and resx labels | 0 client |
 | A settings tab with its own editor | `settingsTabs: [{ category, component }]` and a component (§7.5) | 1 + ~14 |
-| Hide a stock entry or tab | `hide: ['entry:core.Schedule']`, `hide: ['settingsTab:invoicing']` | 1 |
+| Hide a stock launcher entry; the page stays reachable (spec 0024 §2.3) | `hide: ['entry:core.Schedule']` | 1 |
+| Drop an earlier feature's settings-tab editor; the category's generic tab returns (spec 0024 §2.3) | `hide: ['settingsTab:invoicing']` | 1 |
 
 **Example —** a distribution whose `MyUser` adds `EmployeeNumber` overrides `details` only:
 
@@ -248,15 +250,19 @@ export class TmUserFields { protected readonly d = injectTmDetails<TmEntityType<
 - **Memberships.** The Role picker offers active roles that are not public: public roles take no
   members (spec 0014 §3.5). A hint under the grid says "Public roles apply to everyone and don't
   need members." Lockout and escalation errors land on the row (spec 0031 §8.5).
-- **`tm-user-locale-fields`** renders §4.2's three fields for `PreferredLanguage`,
-  `PreferredCalendar` and `PreferredTimeZone`, each nullable ("Tenant default"). My profile reuses
-  it.
+- **`tm-user-locale-fields`** renders §4.2's five fields for `PreferredLanguage`,
+  `PreferredCalendar`, `PreferredTimeZone`, `PreferredRegion` and `PreferredDigits`, each nullable.
+  It has two inputs, which only My profile sets (§8):
+  - `scope` (default `offered`) passes to the region and digits fields. My profile sets
+    `language`, so users pick among the formats of the language they read. The user page keeps
+    `offered`, since an administrator's language says nothing about the user's.
+  - `autoTimeZone` adds `tm-auto-time-zone` (§8) on its own row under the Time zone field.
 - **Step-up.** Saving a user is sensitive (`core.User × Save`, spec 0014 §4.3). Spec 0031 §8.6
   keeps the draft across the identity confirmation.
 
-### 4.2 Language, calendar and time-zone fields
+### 4.2 Language, calendar, time-zone, region and digits fields
 
-Three platform field components render a code as a name in view mode and offer only valid codes in
+Five platform field components render a code as a name in view mode and offer only valid codes in
 edit mode. The server stays the authority.
 
 ```ts
@@ -266,6 +272,10 @@ declare class TmLanguageField { readonly path: InputSignal<string>; readonly sco
 declare class TmCalendarField { readonly path: InputSignal<string>; readonly scope: InputSignal<'tenant' | 'registered'> }
 @Component({ selector: 'tm-time-zone-field', hostDirectives: [TmFieldGroup] })
 declare class TmTimeZoneField { readonly path: InputSignal<string> }
+@Component({ selector: 'tm-region-field', hostDirectives: [TmFieldGroup] })
+declare class TmRegionField { readonly path: InputSignal<string>; readonly scope: InputSignal<'language' | 'offered'> }
+@Component({ selector: 'tm-digits-field', hostDirectives: [TmFieldGroup] })
+declare class TmDigitsField { readonly path: InputSignal<string>; readonly scope: InputSignal<'language' | 'offered'> }
 ```
 
 Each wraps `tm-field` with `tmFieldView` and `tmFieldEdit` templates (spec 0031 §6.2):
@@ -275,12 +285,18 @@ Each wraps `tm-field` with `tmFieldView` and `tmFieldEdit` templates (spec 0031 
 | language | "العربية (ar)" | `tenant`: the tenant's content languages; `offered`: the metadata's `languages` |
 | calendar | "Umm al-Qura" (`tm.calendar.<code>`) | `tenant`: the tenant's calendars; `registered`: the metadata's `calendars` |
 | time zone | "Asia/Riyadh (GMT+03:00)" | searchable; `Intl.supportedValuesOf('timeZone')` grouped by region, each with its `longOffset` |
+| region | "Saudi Arabia (SA)" and its sample | searchable; `language`: the regions offered with the active language; `offered`: every region offered with any offered language (spec 0024 §7.7). Named by `Intl.DisplayNames`, sorted by `Intl.Collator`, each with its sample |
+| digits | "Arabic-Indic (١٢٣)" | "Latin (123)" and the native system, each named by `tm.digits.<system>`. The native system is the active language's. If it has none, under `offered` it is the first offered language's that has one (`arab` in Acme). Hidden when no language in scope has native digits |
 
-- **Nullable** fields list "Tenant default ({effective value})" first. A stored value outside the
-  options stays as an option, so it is never lost.
+- **Nullable** fields list "Tenant default ({effective value})" first. On the Settings page,
+  Region and Digits label that option differently (§7.5). A stored value outside the options stays
+  as an option, so it is never lost.
+- **The sample** formats `1234.5` and today's date with the locale the option would give, in the
+  user's language: "١٬٢٣٤٫٥ · ١٩/٠٦/٢٠٢٦" for `SA`. It needs no request.
 - **Direction.** Codes and zone ids render in LTR isolates inside RTL text.
 - **Validation** is the server's (`Users.LanguageNotOffered`, `Users.CalendarUnknown`,
-  `Users.TimeZoneUnknown`, `Settings.*`). A zone the server cannot map comes back as a field error.
+  `Users.TimeZoneUnknown`, `Users.RegionNotOffered`, `Settings.*`). A zone the server cannot map
+  comes back as a field error. An unknown digits value fails spec 0016's enum binding.
 
 ### 4.3 Inviting users
 
@@ -371,16 +387,26 @@ The tab answers "what can this user do, and why". It checks every securable thro
 - **Requests.** The tab sends every non-wildcard securable of the metadata (§12.4), in registry
   order. It sends chunks of 200, the endpoint's cap, with two in flight, under the host's signal.
   Acme's ~150 securables take one call.
-- **Rows.** Rows group by resource label, one row per action. Each shows an icon and "Allowed"
-  (`Unrestricted`), "Allowed for some records" (`Filtered`) or "Not allowed" (`Denied`).
+- **Rows.** Rows group by resource label, one row per action. Each row:
+  - is named by `TmPermissions.label(resource, action)` (spec 0029 §7), the "{resource}: {action}"
+    words a `forbidden` message shows (spec 0024 §11);
+  - has the raw pair, in mono, as its description;
+  - shows an icon and "Allowed" (`Unrestricted`), "Allowed for some records" (`Filtered`) or "Not
+    allowed" (`Denied`).
 - **Reasons.** Enter expands a row's reasons:
   - role grants, with a link to the role and the filter in mono LTR;
   - bespoke criteria (`Access_Reason_<reason>`), such as "Their own records" for `self`;
   - "System user";
   - drifted permissions, marked "Not in effect" (§5.5).
-- **Toolbar.** A search over the labels, a `tm-segmented` All / Allowed / Not allowed, and Refresh
-  sit above the rows.
+- **Toolbar.** A search, a `tm-segmented` All / Allowed / Not allowed, and Refresh sit above the
+  rows. The search matches labels and raw names alike, so either line a user reads out from an
+  error finds its row.
 - **Language switch.** The rows re-render with no request.
+
+**Example —** Omar's save fails with "It needs “Sales invoices: Create and edit”." and the raw pair
+`acme.SalesInvoice · Save`. Farah opens Omar's Access tab and types "sales invoices: create", or
+pastes the raw pair. Either way one row remains, "Sales invoices: Create and edit", and it shows
+"Not allowed".
 
 ### 4.7 Image, signature, activation
 
@@ -439,8 +465,8 @@ The metadata's `securables` section (§12.4) is fixed per deployment. The editor
 therefore render at once, even offline.
 
 - **Resources** are grouped by feature in `tm-select` option groups (spec 0010 §B.4), labelled
-  "Centers", "Settings: General" or "Aging report", with the resource name as the description.
-  "All resources" (`*`) comes first.
+  "Centers", "Settings: General" or "Credit exposure report", with the resource name as the
+  description. "All resources" (`*`) comes first.
 - **Actions** of the row's resource follow registry order ("Read", "Create and edit", "Activate and
   deactivate", "Invite"), plus "All actions" (`*`). Resource `*` offers every action name.
 - **Filter root** is the pair's `filterRoot`. For action `*`, it is the root that the resource's
@@ -500,7 +526,8 @@ panel checks it as the user types.
 The tab renders the eager `members` extra (spec 0018 §4.3) through `*tmDetailsExtra`, so it needs
 no request of its own.
 
-- **Columns:** avatar and name (a link to the user), Email, State (a badge), Active, Notes.
+- **Columns:** avatar and name (a link to the user), Email, State (a badge), Active, Notes. The
+  avatar's `colorKey` is the record key `core.User:{id}` (spec 0023 §4.2).
 - **Limits.** The server sends at most 500 members, ordered by name. A 500-row list adds "Showing
   the first 500 members." Over 20 rows, a search field filters the rows on the client.
 - **Read-only.** "Add a role to a user from the user's page." links to `/{t}/users`.
@@ -703,6 +730,10 @@ declare class TmSettingField {
 | `Json` | formatted JSON, mono, LTR, collapsed beyond 6 lines | a mono `textarea`, 6 rows |
 | visibility `Secret` | "Set" or "Not set" (from `setKeys`) | see **Secrets** below |
 
+- **Large numbers.** `Int64` and `Decimal` values are `TmDecimal` strings (spec 0029 §12.1).
+  - An `Int64` key's descriptor is `integer` with `long: true`.
+  - A `Decimal` key's descriptor is `decimal`.
+  - An `Int64` array's lines parse through `TmDecimals.parse`.
 - **Secrets.** When "Not set", the editor is an empty password input. When "Set", it offers
   Replace and Clear. Replace reveals an empty input with `autocomplete="new-password"`; Clear
   writes `null`.
@@ -733,12 +764,15 @@ export class TmSettingsLayout { protected readonly s = injectTmSettings(); }
 
 - **`tm-settings-category`** renders one `tm-details-card` per group, the untitled one first, and
   a `tm-setting-field` per key.
-- **`tm-settings-general`** renders four cards, then the `general` keys by group:
+- **`tm-settings-general`** renders five cards, then the `general` keys by group:
   - *Organization*: `tm-field path="Name"`, one field per content language;
   - *Languages*: `tm-language-field scope="offered"` for Primary, Secondary and Tertiary; the last
     two are nullable ("None");
   - *Calendars*: `tm-calendar-field scope="registered"` for Primary and Secondary;
-  - *Time zone*.
+  - *Time zone*;
+  - *Formats*: `tm-region-field scope="offered"` for Region ("Language default") and
+    `tm-digits-field scope="offered"` for Digits ("Region default"), the tenant defaults of spec
+    0024 §7.7.
 - **Language confirmation.** A language change asks for confirmation as soon as the user makes it:
   - another language for a filled position: "Change the second language from Arabic to French?" /
     "Names already entered in the second language stay as they are and will be shown as French.";
@@ -834,7 +868,7 @@ tabs and other browsers catch up.
 1. **This tab** passes the result to `TmCacheRefresher.adopt(t, { settings: { data: client,
    tag } })` (spec 0025 §5.3). The `tag` comes from the response's header, so that header never
    triggers a sync. The app bar's tenant name, the session menu's calendars and the `Client` keys
-   re-render.
+   re-render. A Region or Digits change re-formats every value in place (spec 0024 §7.7).
 2. **Other tabs** of the browser re-render from `store.changed`; other browsers follow
    `cache.changed { tag: 'settings', value }` (spec 0025 §4.4).
 3. **A language change** also bumps `permissions` (spec 0013 §6.1): one `client/sync` brings the
@@ -848,7 +882,7 @@ tabs and other browsers catch up.
 6. **Refresh caches** is a menu action, `settings.refresh-caches`, enabled with
    `can('core.Settings.General', 'Save')`:
    - it confirms "Refresh caches?" / "Every user's next request reloads settings, permissions and
-     lists. Use this after changing data outside Tellma.";
+     lists. Use this after changing data outside {displayName}.";
    - it calls `settings/refresh-caches`, which is sensitive (spec 0013 §6.4);
    - it toasts "Caches refreshed."
 
@@ -865,7 +899,7 @@ declare function tmMeSource(): TmDetailsSource<UserProfileView>;
     <tm-field path="Image" /> <tm-field path="Name" /> <tm-field path="Email" readonly hintKey="tm.admin.me.emailHint" />
     <tm-field path="ContactEmail" /> <tm-field path="ContactMobile" /> <tm-field path="Gender" />
   </tm-details-card>
-  <tm-details-card titleKey="tm.admin.me.regional"><tm-user-locale-fields /></tm-details-card>
+  <tm-details-card titleKey="tm.admin.me.regional"><tm-user-locale-fields scope="language" autoTimeZone /></tm-details-card>
   <tm-details-card titleKey="tm.admin.me.signature"><tm-signature-field path="Signature" /></tm-details-card>
   <tm-details-card titleKey="tm.admin.me.more">
     <a tmButton variant="link" [routerLink]="urls.page('me/notifications')">{{ t('tm.admin.me.notifications') }}</a>
@@ -890,7 +924,7 @@ The source's members, as in §7.2:
 | `errorSegments` | `preferredLanguage` → `['preferredLanguage']`: `users/me/save` paths carry no row index |
 | `changes` | the stored `me` document |
 
-- **Save.** The source sends the eleven self-editable members, `modifiedAt` from the base and
+- **Save.** The source sends the thirteen self-editable members, `modifiedAt` from the base and
   `concurrency` to `users/me/save`. It adopts the returned `MeResult` with `adopt(t, { me })` (spec
   0025 §5.3).
 - **Route.** `/{t}/me` (spec 0024 §9.2) loads `TmMePage`: `tm-details-page` over `tmMeSource()`
@@ -901,8 +935,16 @@ The source's members, as in §7.2:
 - **Email** is read-only, with the hint "Your sign-in email. Change it in My account." The account
   link is spec 0027 §10.1's row 3 URL.
 - **Language and calendar** offer the tenant's sets. A saved language re-renders the app through
-  the adopted `me` (spec 0024 §7.1).
-- **Conflicts.** A session-menu switch (`users/me/locale`, spec 0027 §12.1) moves `ModifiedAt`. In
+  the adopted `me` (spec 0024 §7.1). A saved region or digits value re-formats the app in place
+  (spec 0024 §7.7).
+- **Automatic time zone.** `tm-auto-time-zone` is a `tm-checkbox`:
+  - its label is "Change my time zone automatically when this device's time zone changes", and its
+    hint "Saved on this device only.";
+  - it reads `TmDeviceZone.auto` and writes `setAuto(on, 'profile')` (spec 0024 §7.8);
+  - it applies at once in view and edit mode, and stays out of Save, the draft and the dirty state;
+  - the Users page never shows it.
+- **Conflicts.** Three writers call `users/me/locale` and move `ModifiedAt`: a session-menu switch
+  (spec 0027 §12.1), the time-zone prompt and the automatic time-zone update (spec 0024 §7.8). In
   view mode the page re-renders from the adopted `me`. In edit mode Save meets spec 0031 §9.1's
   self-case dialog, and Overwrite resends with `Override` (spec 0018 §3.5).
 
@@ -1069,6 +1111,8 @@ It owns one thing itself: the label chains of the `securables` section (§12.4).
 | `settingKeys` and `settingCategories` in the Core chunk, written by `SettingsClientAssetContributor` | spec 0013 §1.2, §5.3 |
 | `TenantSettingsDetails` with `EntryStamps` and no key descriptors | spec 0013 §6.1, §6.2 |
 | `TenantSettingsPatch` with per-entry stamps and `Concurrency`; `SettingsSaveResult(Details, Client)` | spec 0013 §6.1, §6.3 |
+| `Region` and `Digits` on `TenantSettings`, `TenantSettingsForClient` and `TenantSettingsPatch`; `Settings.RegionNotOffered` | spec 0013 §5.6, §6.1, §6.5 |
+| each `languages` entry's `region`, `regions` and `nativeDigits`, which the region and digits fields list | spec 0013 §1.2, §7.2 |
 | the startup gate "a nullable key defaults to `null`", which makes §7.6's reset rule sound | spec 0013 §5.3 |
 | `SettingCategory_`, `SettingGroup_`, `Setting_<key>_Description`, `Securable_`, `Access_Problem_`, `Access_Reason_` keys | spec 0013 §10.1 |
 
@@ -1077,6 +1121,9 @@ It owns one thing itself: the label chains of the `securables` section (§12.4).
 - **`UserProfileView.ModifiedAt`** (spec 0016 §3.4), filled by the connect prologue's profile set
   (spec 0014 §7.1). `MeResult` carries no securables fingerprint.
 - **`MeSaveRequest.Concurrency`.** `Override` skips the stamp comparison (spec 0018 §3.1, §3.5).
+- **Regional members.** `PreferredRegion` and `PreferredDigits` on `User` (spec 0014 §3.1) and
+  `UserProfileView` (spec 0016 §3.4); `MeSaveRequest`'s thirteen members and
+  `Users.RegionNotOffered` (spec 0018 §3.1, §3.2).
 - **The `activity` extra** on the users stack (spec 0018 §3.1).
 - **The `members` and `problems` extras** on the roles stack (spec 0018 §4.3). `members` is
   filtered by the caller's `core.User × Read` and capped at 500. `problems` follows spec 0014 §9's
@@ -1107,11 +1154,12 @@ resource declares wins. Spec 0029 §2.4 resolves entity labels the same way.
 |---|---|
 | an entity resource | its plural key (`Gl_Center_Plural`) |
 | `core.Settings.General`, `core.Settings.<c>` | `SettingCategory_general`, `SettingCategory_<c>`; the editor shows "Settings: {category}" |
-| any other resource | `Securable_<resource with '.' → '_'>` (`Securable_acme_AgingReport`), else the humanized last segment |
+| any other resource | `Securable_<resource with '.' → '_'>` (`Securable_acme_CreditExposureReport`), else the humanized last segment |
 | an action | `<Schema>_<Entity>_Action_<Name>`, then Core's `Action_<Name>` (spec 0013 §10.1), else the humanized name; `*` is "All actions" |
 
-Acme's section has about 150 items, under 3 KB gzip. `TmPermissions.sensitive` (spec 0029 §7) and
-the permissions editor (§5.2) read it.
+Acme's section has about 150 items, under 3 KB gzip. It has four readers:
+`TmPermissions.sensitive` and `TmPermissions.label` (spec 0029 §7), the permissions editor (§5.2)
+and the Access tab (§4.6).
 
 ## 13. Testing
 
@@ -1122,10 +1170,15 @@ Five suites pin this design, and all of them run on PR.
   `*`; every `visible`; the email document prefix and `cid:` rewriting.
 - **Harness (fake `TmApi`).**
   - Settings: tabs from access; read-only categories; §7.6's body; 409 → Overwrite → `Override`;
-    language confirmation; adoption; a view-mode re-read on a moved document.
+    language confirmation; the Formats card's defaults; adoption; a view-mode re-read on a moved
+    document.
   - Roles: grid ↔ panel; live diagnostics; drift markers; members states and the cap line.
   - Users: invite outcomes (all sent, mixed, 422, 502 with retry); credentials shown once and the
-    close guard; access chunks of 200.
+    close guard; access chunks of 200; access labels equal to `TmPermissions.label`, and a search
+    by label or raw pair.
+  - Locale fields: `tm-region-field` options per scope, with samples; `tm-digits-field` hidden
+    without native digits, and its native option's system under each scope; `tm-auto-time-zone`
+    applies at once and stays out of Save, the draft and the dirty state.
 - **e2e on Acme** (Playwright; Chromium; Firefox and WebKit `@cross-engine`).
   - Settings: two administrators edit different `invoicing` keys (both save) and the same key
     (conflict, Overwrite); add a language, then its name field appears; replace and clear the
@@ -1133,7 +1186,8 @@ Five suites pin this design, and all of them run on PR.
   - Users: create, invite, Check delivery; credentials and Copy; a restricted role (no Access tab).
   - Roles: a filtered permission checked and saved; drift.
   - Centers: the tree and Acme's override.
-  - My profile: warm with requests held, a save, a session-menu switch while editing.
+  - My profile: warm with requests held, a save, a region change re-formatting the page, a
+    session-menu switch while editing.
   - Schedules: run-now, built-in locks and the hidden Delete.
   - Outgoing emails: an email with HTML, a `cid:` image and a blocked remote image.
   - Imports: an import's page refreshing on `job.changed`.
@@ -1151,8 +1205,8 @@ Five suites pin this design, and all of them run on PR.
     from the stored `me` (§8). *Test:* spec 0024's `warm-launch.spec` on `/17/settings/invoicing`,
     `/17/me` (values too) and `/17/roles/4`, with every request held: chrome within 1 s.
   - **Instant feedback.** Edit, tab switches and the permissions panel change in the click's
-    frame. Securables and zones are local (§5.2, §4.2). *Test:* `admin-feedback.spec`, a rAF probe
-    after Edit, a tab click and a grid row change.
+    frame. Securables, zones, regions and their samples are local (§5.2, §4.2). *Test:*
+    `admin-feedback.spec`, a rAF probe after Edit, a tab click and a grid row change.
   - **Non-blocking.** `settings/details`, `invitation-status`, `access/check`, `queryex/discover`
     and `cid:` fetches abort on leave or supersession; writes never abort. *Test:* a harness case
     where leaving the Access tab aborts its chunks.
@@ -1216,9 +1270,10 @@ Five suites pin this design, and all of them run on PR.
    client (§7.4).
 10. **Setting fields reuse spec 0029's typed controls through a value descriptor** — one display
     and one control per type on every surface (§7.4).
-11. **Language, calendar and time-zone fields are platform components; zones come from
-    `Intl.supportedValuesOf`** — the server validates, and an emitted list would follow the build
-    machine's ICU, not the host's (§4.2).
+11. **Language, calendar, time-zone, region and digits fields are platform components; zones come
+    from `Intl.supportedValuesOf`, regions from the metadata's offered list** — the server
+    validates. An emitted zone list would follow the build machine's ICU, not the host's; the
+    offered regions are a frozen list both ends share (§4.2).
 12. **Permissions edit in a grid with one filter panel, checked live by `queryex/discover`** —
     filters in grid cells would be unreadable; drift comes with the read (§5.3, §5.5).
 13. **Role members are a read-only, row-filtered, capped extra** — no hidden user leaks and no
@@ -1228,6 +1283,8 @@ Five suites pin this design, and all of them run on PR.
     (§4.3–§4.5).
 15. **Email HTML renders from a `blob:` URL in a sandboxed frame with its own CSP** — no scripts, no
     remote loads, `cid:` images inline; `srcdoc` would be a Trusted Types sink (§10.2).
+16. **The Access tab names each pair with `TmPermissions.label` and also matches raw names** — the
+    words a `forbidden` message shows the user find the administrator's row at once (§4.6).
 
 ## Review flags
 
@@ -1253,10 +1310,14 @@ Five suites pin this design, and all of them run on PR.
     users ask to sign on screen.
 11. **No administrator Notifications tab on the user page**: notification settings stay
     self-service (spec 0028). Flips if administrators must change others' settings.
-12. **My profile meets the conflict dialog after a same-tab locale switch while editing** (§8).
-    Alternative: rebase when only locale fields moved. Flips on user reports.
+12. **My profile meets the conflict dialog after a same-tab locale switch or time-zone update while
+    editing** (§8). Alternative: rebase when only locale fields moved. Flips on user reports.
 13. **Remote email images are always blocked** (§10.2). Alternative: a "Show remote images" switch.
     Flips if administrators must see emails exactly as sent.
 14. **No entity filter on Exports and Imports**; the `Resource` column's text filter stands in
     (§11). Alternative: a data-driven filter, which waits for spec 0030's component hatch (its
     review flag 14). Flips on that hatch.
+15. **Region lists differ by page** (§4.1, §4.2): My profile lists the regions of the language the
+    user reads; the user page and the Formats card list every offered region. Alternative: one
+    list everywhere. Flips if users miss a region they need, or administrators pick one that no
+    language of the tenant uses.

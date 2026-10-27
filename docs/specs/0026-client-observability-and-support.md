@@ -105,19 +105,19 @@ lines:
 
 ```ts
 // 1. An event of its own; the scope is the feature key
-inject(TmTelemetry).event('acme.aging.run', { kind: 'summary', rows: 120 });
+inject(TmTelemetry).event('acme.credit-exposure.run', { kind: 'summary', rows: 120 });
 
 // 2. A page action: a toolbar button, a shortcut and, later, an assistant tool
 inject(TmPageActions).register({
-  id: 'acme.bank-reconciliation.auto-match', labelKey: 'Acme_BankRec_AutoMatch', icon: 'wand',
+  id: 'acme.credit-review.suggest-limits', labelKey: 'Acme_CreditReview_SuggestLimits', icon: 'wand',
   group: 'primary', shortcut: 'Mod+Shift+A',
-  invoke: async () => { await this.autoMatch(); return { outcome: 'done' }; },
+  invoke: async () => { await this.suggestLimits(); return { outcome: 'done' }; },
 });                                              // unregisters with the caller's DestroyRef
 
 // 3. A tmPage with richer context than the route host's default (a title and an empty state)
 inject(TmPageContexts).register({
-  kind: 'custom', routeTemplate: '/:t/bank-reconciliation', title: this.title, status: this.status,
-  state: computed(() => ({ accountId: this.accountId(), unmatched: this.unmatched() })),
+  kind: 'custom', routeTemplate: '/:t/credit-review', title: this.title, status: this.status,
+  state: computed(() => ({ threshold: this.threshold(), overLimit: this.overLimit() })),
   errors: signal([]), actions: signal([]),
 });                                              // replaces the route host's custom context (§9.2)
 ```
@@ -158,8 +158,9 @@ interface TmTelemetryItem { readonly kind: 'event' | 'timing' | 'error'; readonl
 ### 3.2 Names and properties
 
 - **Names** have the shape `<scope>.<area>.<event>[.<more>]`, such as `tm.api.slow` or
-  `acme.aging.run`. They match `^[a-z][a-z0-9]*(\.[a-z0-9][a-z0-9-]*){2,5}$` and are at most 64
-  characters. Scope `tm` is the platform's; any other scope is a composed feature key (`acme`, `gl`).
+  `acme.credit-exposure.run`. They match `^[a-z][a-z0-9]*(\.[a-z0-9][a-z0-9-]*){2,5}$` and are at
+  most 64 characters. Scope `tm` is the platform's; any other scope is a composed feature key
+  (`acme`, `gl`).
 - **Owners.** Each spec lists its own events. Appendix A.2 maps each `tm.<area>` to its owning
   spec, and a new area is added there.
 - **Properties.** An item carries at most 16, the reserved ones included. Keys match
@@ -171,7 +172,8 @@ interface TmTelemetryItem { readonly kind: 'event' | 'timing' | 'error'; readonl
   a bad name drops the item and a bad value drops the property. Each drop is counted into the next
   `tm.telemetry.dropped`. So a value with a space or a non-Latin letter never leaves the tab.
 - **Never in telemetry:** URLs, query strings, search or filter text, field values, display names,
-  e-mail addresses, problem `message`s and user ids. The server adds the session's `sub` (§6.3).
+  e-mail addresses, problem `message`s, user ids, and time-zone ids or offsets, which reveal where
+  the user is. The server adds the session's `sub` (§6.3).
 
 ### 3.3 Queue and flush
 
@@ -193,7 +195,8 @@ interface TmTelemetryItem { readonly kind: 'event' | 'timing' | 'error'; readonl
 
 - **Offline** (`TmApi.online()` false): the queue holds within its cap and flushes when online.
 - **No active session** (`TmSession.state` not `active`): the queue holds. Sign-out calls `flush()`
-  before `/bff/logout` (spec 0024 §8.4). The changed-user path (spec 0024 §8.7) drops the queue.
+  before `state` turns `signing-out` and before `/bff/logout` (spec 0024 §8.4). The changed-user
+  path (spec 0024 §8.7) drops the queue.
 - **Disabled** (`DistributionInfo.telemetry.enabled` false): nothing is queued, but the `recent`
   ring still fills.
 - **Cold launch.** Before the `distribution` document is known (spec 0025 §3.1), items queue under
@@ -448,16 +451,28 @@ declare class TmAppVersion {                       // primary
   readonly platform: string;                       // metadata.distribution.platformVersion
   readonly features: readonly { readonly key: string; readonly version: string }[]; // metadata.features
   readonly server: Signal<string | null>;          // the last Tellma-Build seen (§8.1)
-  readonly serverDiffers: Signal<boolean>;         // server() is set and differs from ui
+  readonly serverNewer: Signal<boolean>;           // server() is set and compare(server()) is 1
+  compare(build: string): -1 | 0 | 1 | null;       // build against ui: 1 newer, -1 older, 0 the same build, null unordered
 }
 ```
 
 - **Format:** `X.Y.Z[-pre]+<sha>` from `Directory.Build.props` and SourceLink
   (`IncludeSourceRevisionInInformationalVersion`). So `git show <sha>` finds any report's commit.
+- **Order.** `compare` uses SemVer 2.0 precedence, which ignores the `+<sha>` build metadata.
+  Two builds of the same `X.Y.Z[-pre]` with different commits are unordered (`null`), and an
+  identical string is `0`. Spec 0024 §5.6 uses it to judge a `412`.
+
+  | `ui` | `build` | `compare(build)` |
+  |---|---|---|
+  | `1.4.0+3f9c2ab…` | `1.5.0+77e01d4…` | `1` |
+  | `1.4.0+3f9c2ab…` | `1.4.0-rc.2+77e01d4…` | `-1` |
+  | `1.4.0+3f9c2ab…` | `1.4.0+77e01d4…` | `null` |
+  | `1.4.0+3f9c2ab…` | `1.4.0+3f9c2ab…` | `0` |
+
 - **Where it shows:**
   - the session menu shows `display` (spec 0027 §10.1);
-  - the About dialog (spec 0027 §11.1) shows `label` for the UI, platform and features, the
-    server's version when it differs, and a Copy button for `ui`.
+  - the About dialog (spec 0027 §11.1) shows `label` for the UI, the raw versions of the server,
+    platform and features, a Reload alert when `serverNewer()`, and a Copy button for `ui`.
 - **Where it travels:** the `Tellma-Client: web/<ui>` header (spec 0024 §10.2), the batch's
   `version`, the dump's `versions.ui` and `SupportRequest.UiVersion`.
 
@@ -526,9 +541,9 @@ Page /:t/centers/:id (details) · status ready · 1 error on screen
   start time. Leader and hub status come from `TmLeader` (spec 0025 §7.1).
 - **Triggers:** the global shortcut `Mod+Alt+Shift+D` (`tm.support.copy-diagnostics`, spec 0027
   Appendix A), the Diagnostics panel, and the 5xx dialog (spec 0024 §11).
-- **Physical key.** The shortcut matches `event.code` `KeyD`, so it works on non-Latin layouts
-  where `event.key` is `ي` (spec 0023 §3.2). In an editable field, it is ignored when `event.key`
-  is a printable character other than `d` or `D`.
+- **Matching.** The shortcut goes through spec 0027 §4's registry, which matches it with
+  `tmKeysMatch` (spec 0023 §3.2), so it works on an Arabic layout. It runs in editable fields and
+  over modals, under spec 0027 §4.2's rules.
 - **Clipboard:** `writeText` runs synchronously in the key or click handler, because Safari and
   Firefox require transient activation. Success and failure each toast once (spec 0028 §8.1).
 
@@ -573,7 +588,7 @@ interface TmPageContext {
 }
 interface TmVisibleData {
   readonly columns: readonly { readonly path: string; readonly label: string }[]; // ≤ 50, as displayed
-  readonly rows: readonly { readonly id: number | null; readonly cells: Readonly<Record<string, TmJson>> }[]; // ≤ 200
+  readonly rows: readonly { readonly id: TmId | null; readonly cells: Readonly<Record<string, TmJson>> }[]; // ≤ 200; TmId: spec 0024 §10.1
   readonly total: number | null; readonly truncated: boolean; // total: the count when known; truncated: more rows shown than carried
 }
 interface TmContextError {
@@ -589,9 +604,15 @@ interface TmFormField { readonly path: string; readonly labelKey: string; readon
   readonly value: TmJson; readonly errors: readonly string[]; readonly editable: boolean }
 ```
 
-- **Cells** hold what the cell shows, in lossless JSON (spec 0024 §10.4). A navigation is its
-  display name, with the id under `<path>.Id`. A date is `yyyy-MM-dd`. An enum is its code.
-  For example, a Centers row: `{ "id": 5, "cells": { "Name": "Jeddah", "Parent": "West", "Parent.Id": 2 } }`.
+- **Cells** hold what the cell shows, as plain JSON (spec 0024 §10.4):
+  - a decimal is its string;
+  - a navigation is its display name, with the id under `<path>.Id`;
+  - a date is `yyyy-MM-dd`;
+  - an instant is ISO 8601 in the display zone's offset (`2026-10-20T10:42:00+03:00`);
+  - an enum is its code.
+
+  **Example —** a Centers row:
+  `{ "id": 5, "cells": { "Name": "Jeddah", "Parent": "West", "Parent.Id": 2 } }`.
 - **Paths** are PascalCase with indexes. Column and field labels come from the entity descriptors
   (spec 0029 §4).
 - **`status`** tells "still loading" apart from "empty".
@@ -632,7 +653,7 @@ The table gives each kind's minimum `state`; the owning spec completes the conte
 |---|---|---|---|---|
 | `home` | `{ hatch: boolean }` | the assignment lists' rows | — | spec 0035 §16 |
 | `search` | `{ query: TmSearchQuery, view, list, selectedIds, selectedCount }` | grid or tile rows | — | spec 0030 §19 |
-| `details` | `{ id: number \| null, mode: 'view' \| 'edit' \| 'create', dirty: boolean, tab?, child? }` | the open child grid's rows | edit, create | spec 0031 §16 |
+| `details` | `{ id: TmId \| null, mode: 'view' \| 'edit' \| 'create', dirty: boolean, tab?, child? }` | the open child grid's rows | edit, create | spec 0031 §16 |
 | `report` | `{ report: number \| string, parameters, reportKind }` | rendered rows | — | spec 0034 §13 |
 | `studio` | `{ report: number \| null, root: string, reportKind }` | preview rows | — | spec 0034 §13 |
 | `dashboard` | `{ dashboard: number \| null, mode, parameters, widgets: [{ key, type, title, status, executedAt }] }` | — | — | spec 0035 §16 |
@@ -646,7 +667,7 @@ The table gives each kind's minimum `state`; the owning spec completes the conte
   - framework actions use the prefixes `search`, `details`, `report`, `studio`, `dashboard`,
     `settings`, `support`, `attention`, `notifications`, `admin` and `home`;
   - entity actions are `<schema>.<entity-kebab>.<action>` (`gl.center.activate`);
-  - distribution actions are `<feature>.<area>.<verb>` (`acme.bank-reconciliation.auto-match`).
+  - distribution actions are `<feature>.<area>.<verb>` (`acme.credit-review.suggest-limits`).
 
 ### 9.4 Page actions
 
@@ -729,8 +750,10 @@ interface TmPageContextSnapshot {
 A later `@tellma/core/assistant` adapter maps the registry onto AG-UI. In AG-UI, the client's
 facts reach the agent in `RunAgentInput` when a run starts.
 
-- **Context:** snapshots of `current` and `overlays`, with tenant, language, calendar and UI
-  version, as `RunAgentInput.context` `{ description: 'tellma.page', value }`.
+- **Context:** a `RunAgentInput.context` entry, `{ description: 'tellma.page', value }`. Its
+  value holds snapshots of `current` and `overlays`, plus the tenant, language, locale, calendar,
+  display time zone, device time zone and UI version. The zones let the agent read and write
+  instants in the user's time.
 - **Tools:** the top context's enabled actions, each named by its id with `.` replaced by `__`,
   and described by its label, description and `params`. A call runs as
   `invoke(id, args, 'assistant')`. One more tool, `tellma__propose_values`, is added.
@@ -763,8 +786,9 @@ interface TmSupportDump {
     server: string | null; worker: string | null };                                  // worker: TmUpdates.version
   readonly distribution: { slug: string; displayName: string };
   readonly session: { sub: string | null; tenantId: number | null; tabId: string; state: string; online: boolean };
-  readonly locale: { language: string; locale: string; dir: 'ltr' | 'rtl'; calendar: string; timeZone: string;
-    theme: string; effectiveTheme: 'light' | 'dark' };
+  readonly locale: { language: string; region: string; digits: 'Latin' | 'Native' | null; locale: string;
+    dir: 'ltr' | 'rtl'; calendar: string; timeZone: string; deviceTimeZone: string; zoneAuto: boolean;
+    theme: string; effectiveTheme: 'light' | 'dark' };                              // spec 0024 §7.1, §7.7, §7.8
   readonly environment: { userAgent: string; languages: readonly string[]; viewport: { width: number; height: number; dpr: number };
     standalone: boolean; reducedMotion: boolean; cookies: boolean; storage: { usage: number; quota: number; persisted: boolean } | null };
   readonly page: { url: string; routeTemplate: string; historyLength: number };       // url per §10.2
@@ -884,7 +908,7 @@ declare const TM_DISPLAY_MEDIA: InjectionToken<(options: DisplayMediaStreamOptio
 
 ## 12. Support requests
 
-When the distribution opts in, the user can send the dump and screenshot from inside Tellma. The
+When the distribution opts in, the user can send the dump and screenshot from inside the app. The
 dialog uploads one bundle as a tenant blob, and one `submit` writes a `core.SupportRequests` row.
 The sender and administrators see the request on a stock page. The provider's support team reads
 it over the admin surface.
@@ -923,7 +947,7 @@ The dialog has six states. Its notices are spec 0005's `tm-alert` (spec 0005 §1
 | Compose (`canSend`) | The compose form (below) |
 | Download only | No message and no Send: "Download the diagnostic file and screenshot, then send them to your support contact.", with the reason when one applies ("You're offline.", "This tenant is read-only.") |
 | Sending | The fields lock; Send shows busy and the upload's progress |
-| Sent | "Your request number is 1042. Quote it when you talk to support.", a `tm-reference` "Request" copying "Acme support request 1042, tenant 17"; Close |
+| Sent | "Your request number is 1042. Quote it when you talk to support.", a `tm-reference` "Request" copying "{displayName} support request 1042, tenant 17"; Close |
 | Failed | An inline error with the problem's text and its trace id chip; Try again, Download instead |
 | Unavailable | The `/support` import failed: "This isn't available offline. Press {keys} to copy diagnostics." `tm-kbd` renders the keys, which still work from the primary; Close |
 
@@ -937,7 +961,8 @@ The dialog has six states. Its notices are spec 0005's `tm-alert` (spec 0005 §1
   administrators and the {displayName} support team will see what you send, including any
   screenshot." Without, it reads "Your administrators will see what you send, including any
   screenshot." Both continue "Don't send it if the page shows information you're not allowed to
-  share."
+  share." `{displayName}` is the localized display name, `TmLocalization.displayName` (spec 0024
+  §3.1).
 - **Fields.** The message holds at most 2,000 characters, with `dir="auto"` and a counter from
   1,800. View shows the dump as read-only LTR monospace JSON.
 - **Keyboard and ARIA.** `role="dialog"` is labelled by the title, and focus starts in the message.
@@ -1092,7 +1117,7 @@ Every suite runs on each PR, except the manual capture check, which runs per rel
 |---|---|---|
 | `TmTelemetry` | unit, PR | the envelope; the guard (development throw, production drop and count); flush triggers on a fake clock; 16 KB and 100-item batches; one batch on `pagehide`; the 200 cap and its overflow order; offline and session holds; sampling at rates 0 and 1 |
 | Redaction, `TmErrorHandler` | unit, PR | §4.3's table plus e-mail, URL, Arabic and digit vectors; stack reduction; each source and filter; fingerprint stability; once per fingerprint per 10 minutes; the 30-item ceiling |
-| Measurements, `TmRequestLog` | unit in browser mode, PR | visit boundaries on navigation and `pagehide`; the `chromeMs` and `ms` stamps; absent metrics stay absent; summaries per window; slow at 3 s while pending; the ring of 100; `diagnosticsText` goldens in `en`, `ar` and tenantless |
+| Measurements, `TmRequestLog`, `TmAppVersion` | unit in browser mode, PR | visit boundaries on navigation and `pagehide`; the `chromeMs` and `ms` stamps; absent metrics stay absent; summaries per window; slow at 3 s while pending; the ring of 100; `diagnosticsText` goldens in `en`, `ar` and tenantless; `compare` vectors (newer, older, pre-release, another commit, the same build) and `serverNewer` |
 | Registry and dispatcher | unit and harness, PR | scope resolution (page, overlay, root); replacement with actions carried over; merged order; dispatcher steps 1–6 for each origin; shortcuts live only while `top`; snapshots with and without page data, masks included |
 | Dump | unit, PR | §10.1's contents; a section over its cap and a throwing reader; the truncation rule; nothing of the "never" list with seeded storage and cookies; `page.url` per §10.2 |
 | Capture, support dialog | harness, PR | `TM_DISPLAY_MEDIA` fakes (granted, declined, no frame in 3 s, oversize); the dialog hidden during capture; the file fallback; every state of §12.2; a retry of only the failed step; the warning per `providerAccess`; the other-windows note |
@@ -1119,8 +1144,8 @@ Every suite runs on each PR, except the manual capture check, which runs per rel
 - **Page context:** the frameworks' contexts on the Support requests pages (§12.5). The support
   dialog registers none, because its snapshot is taken before it opens.
 - **Telemetry:** Appendix A.1.
-- **What Acme adds:** support on in development (spec 0018 §6.2); the bank reconciliation `tmPage`
-  with its own context and one `primary` action with a shortcut (§2); and `acme.aging.run`.
+- **What Acme adds:** support on in development (spec 0018 §6.2); the credit-review `tmPage` with
+  its own context and one `primary` action with a shortcut (§2); and `acme.credit-exposure.run`.
 
 ## Decisions record
 
@@ -1140,8 +1165,10 @@ Every suite runs on each PR, except the manual capture check, which runs per rel
 5. **Where support data goes: always downloadable; when enabled, one bundle blob and one
    `core.SupportRequests` row** — considered the distribution's blob storage alone (devops only)
    and a control-plane upload (credentials in every distribution, no tenant-admin view) — (§12).
-6. **The UI version: `X.Y.Z+<sha>`, equal to `Tellma-Build`** — considered a separate SPA build id
-   (two numbers for one build) and a bare hash (unreadable) — (§7).
+6. **The UI version: `X.Y.Z+<sha>`, equal to `Tellma-Build`, ordered by SemVer precedence** — one
+   number per build, and the client tells a newer server from an older one without asking the
+   worker. Considered a separate SPA build id (two numbers for one build) and a bare hash
+   (unreadable, unordered) — (§7).
 7. **Request-linked client records are logged under the request's trace id** — one `operation_Id`
    search finds both sides — (§6.4).
 8. **Page data stays out unless ticked, and the URL is then a bare path** — administrators and the
@@ -1200,7 +1227,7 @@ Every item also carries `route` and `pageKind` (§3.1); sampled items carry `sam
 | Owner | Areas |
 |---|---|
 | this spec | `tm.error`, `tm.page`, `tm.vitals`, `tm.api.requests`, `tm.api.slow`, `tm.action`, `tm.telemetry`, `tm.support` |
-| spec 0024 | `tm.launch`, `tm.boot`, `tm.config`, `tm.sw`, `tm.api` (other names), `tm.session`, `tm.l10n` |
+| spec 0024 | `tm.launch`, `tm.boot`, `tm.config`, `tm.sw`, `tm.api` (other names), `tm.urls`, `tm.session`, `tm.l10n` |
 | spec 0025 | `tm.store`, `tm.sync`, `tm.realtime`, `tm.prefs`, `tm.drafts` |
 | spec 0027 | `tm.shell`, `tm.launcher`, `tm.shortcut` |
 | spec 0028 | `tm.attention` |

@@ -221,19 +221,22 @@ public sealed record StackDescriptor(
     StackLimits Limits, McpExposure Mcp, int ContractRevision);
 
 public abstract record ActionDescriptor(
-    string Name, string? Description, bool Mutation, bool Idempotent, bool Destructive, McpExposure Mcp,
-    int ContractRevision, Type ResultType);
+    string Name, string? Description, bool Mutation, bool Idempotent, bool Long, bool Destructive,
+    McpExposure Mcp, int ContractRevision, Type ResultType);
 
 public sealed record EntityActionDescriptor(
-    string Name, string? Description, bool Mutation, bool Idempotent, bool Destructive, McpExposure Mcp,
-    int ContractRevision, Type ResultType, string Action, bool SupportsFilter, bool LoadChildren,
-    bool PostCheck, bool SingleTarget, bool IsBuiltIn, Type? ArgumentsType)
-    : ActionDescriptor(Name, Description, Mutation, Idempotent, Destructive, Mcp, ContractRevision, ResultType);
+    string Name, string? Description, bool Mutation, bool Idempotent, bool Long, bool Destructive,
+    McpExposure Mcp, int ContractRevision, Type ResultType, string Action, bool SupportsFilter,
+    bool LoadChildren, bool PostCheck, bool SingleTarget, bool IsBuiltIn, Type? ArgumentsType)
+    : ActionDescriptor(Name, Description, Mutation, Idempotent, Long, Destructive, Mcp,
+        ContractRevision, ResultType);
 
 public sealed record ApiActionDescriptor(
-    string Name, string? Description, bool Mutation, bool Idempotent, bool Destructive, McpExposure Mcp,
-    int ContractRevision, Type ResultType, SecurableRef? Securable, Type? RequestType, Type HandlerType)
-    : ActionDescriptor(Name, Description, Mutation, Idempotent, Destructive, Mcp, ContractRevision, ResultType);
+    string Name, string? Description, bool Mutation, bool Idempotent, bool Long, bool Destructive,
+    McpExposure Mcp, int ContractRevision, Type ResultType, SecurableRef? Securable, Type? RequestType,
+    Type HandlerType)
+    : ActionDescriptor(Name, Description, Mutation, Idempotent, Long, Destructive, Mcp,
+        ContractRevision, ResultType);
 
 public sealed record ChildCollectionDescriptor(string Property, Type ChildType, string ParentKeyProperty, int MaxCount);
 
@@ -291,7 +294,7 @@ public sealed record ApiServiceContributionItem(Type ServiceType) : FeatureContr
 | `Operations` | `[Stack(Operations)]` on the entity, overridden by `StackContributionItem.Operations`; default `All`. An absent operation is not projected, registers no securable, and its service member throws `InvalidOperationException` (an authoring bug, never a user outcome). `Enlist` is outside `All`: a stack accepts enlisted writes (§13.3) only by naming it. |
 | `Capabilities` | Closed vocabulary: `activatable`, `tree`, `temporal`, `multilingual`, `cacheable`, `blobs`, `job-entity`, `searchable`, `excel`, `assignable` (§12). |
 | `Actions` | Every action of the stack, each as its kind: an `EntityActionDescriptor` per built-in action (`activate`, `deactivate`) and per `[EntityAction]` method, an `ApiActionDescriptor` per `[ApiAction]` method. Order: the built-in actions, the service's `[EntityAction]` and `[ApiAction]` methods in declaration order, then the `[ApiAction]` methods of each stack companion (§11.3; spec 0019's `ExcelOperations<T>`) in registration order. |
-| `ActionDescriptor` | The members both kinds share. `Name` is the action's whole route under the stack or route segment (§2.3); `Description`, `Mutation`, `Idempotent`, `Destructive`, `Mcp` and `ContractRevision` come from the attribute (§2.3), or from the capability for a built-in action (§11.1). `ResultType` is what the caller receives: for an `EntityActionDescriptor`, `EntitiesResult<TEntity>` when the method returns no value, else the method's `TResult` (§3.1, §11.2); for an `ApiActionDescriptor`, the method's result type. |
+| `ActionDescriptor` | The members both kinds share. `Name` is the action's whole route under the stack or route segment (§2.3); `Description`, `Mutation`, `Idempotent`, `Long`, `Destructive`, `Mcp` and `ContractRevision` come from the attribute (§2.3), or from the capability for a built-in action (§11.1). `ResultType` is what the caller receives: for an `EntityActionDescriptor`, `EntitiesResult<TEntity>` when the method returns no value, else the method's `TResult` (§3.1, §11.2); for an `ApiActionDescriptor`, the method's result type. |
 | `EntityActionDescriptor` | `Action`, `SupportsFilter`, `LoadChildren`, `PostCheck` and `SingleTarget` as `[EntityAction]` declares them (§2.3), or as the capability declares a built-in action, which carries `IsBuiltIn` (§11.1); `ArgumentsType` is the method's `TArguments`, null when it takes none. The handler is the stack's `ServiceType`, the one class an `[EntityAction]` is declared on. |
 | `ApiActionDescriptor` | `Securable` is the spec 0014 §4.1 `SecurableRef(Resource, Action)` the invoker evaluates (§11.3) — the stack's `Resource` for an action of the entity service or a stack companion, the attribute's `Resource` for an `[ApiRoute]` action — and null exactly for a member-only action (`MemberOnly = true`); `RequestType` is the body type, null when the method takes none; `HandlerType` is the type declaring the method — the service, the companion closed over the leaf, or the `[ApiRoute]` service — which `IApiActionInvoker` (§11.3) resolves from DI per request. |
 | `Properties`, `Children` | From spec 0012's `EntityMetadata` for the leaf: every mapped property with its `PropertyOwnership`, and every `[NotMapped]` child collection with the `MaxCount` its `[MaxChildren]` declares. |
@@ -334,14 +337,14 @@ public sealed class StackAttribute(
 public sealed class EntityActionAttribute(
     string Name, string? Action = null, bool SupportsFilter = true, bool LoadChildren = false,
     bool PostCheck = false, bool SingleTarget = false, bool Mutation = true,
-    bool Idempotent = false, bool Destructive = false, McpExposure Mcp = McpExposure.Full,
-    string? Description = null, int ContractRevision = 0)
+    bool Idempotent = false, bool Long = false, bool Destructive = false,
+    McpExposure Mcp = McpExposure.Full, string? Description = null, int ContractRevision = 0)
     : Attribute;
 
 // on a public method taking one body (or none) on an entity service, a stack companion or an [ApiRoute] service
 public sealed class ApiActionAttribute(
     string Name, string? Action = null, string? Resource = null, bool MemberOnly = false,
-    bool Mutation = true, bool Idempotent = false, bool Destructive = false,
+    bool Mutation = true, bool Idempotent = false, bool Long = false, bool Destructive = false,
     McpExposure Mcp = McpExposure.Full, string? Description = null, int ContractRevision = 0)
     : Attribute;
 
@@ -357,7 +360,7 @@ public sealed class ApiRouteAttribute(string Route) : Attribute;
 | `[EntityAction].PostCheck` | Re-run the grant's filter over the target rows after the write (§9.3); off by default because an action commonly moves a row out of the filter that permitted it. |
 | `[EntityAction].SingleTarget` | The action targets exactly one row: spec 0016 maps its body as `IdRequest` or `IdRequest<TArguments>` (spec 0016 §3.3) and its MCP action takes one `id` (spec 0016 §11.5); the pipeline runs §11.2 over a one-element list; the method must return its own result (§3.1), so the answer is the method's `TResult` and never a read-back. |
 | `[EntityAction].Mutation`, `[ApiAction].Mutation` | `ActionDescriptor.Mutation`: whether the operation writes tenant data; the tenant-state verdict (spec 0011 §3.3) and the MCP read-only gate (spec 0016 §11.6) read it and nothing else. A read-shaped action declares `Mutation = false`. Standard operations are classified once: `query`, `get`, `get-by-ids`, `get-by-parent-ids`, `all`, `export`, `export-for-import` and `inspect-import` are not mutations; `save`, `delete`, `delete-by-query`, `delete-with-descendants`, `activate`, `deactivate`, `import`, `export/start`, `export-for-import/start` and `import/start` (each of the last three enqueues a job) are. |
-| `[EntityAction]` and `[ApiAction]` `Idempotent`, `Destructive`, `Mcp`, `Description`, `ContractRevision` | Projection metadata read by spec 0016: `Idempotent` is retry safety (spec 0016 §2.2) and says nothing about writing — a mutation may be retry-safe; `Destructive` is confirmation, `Mcp` tool exposure, `Description` tool text; `ContractRevision` (default 0) is bumped by hand when the action's meaning changes with no change of shape, and enters its endpoint's contract fingerprint (spec 0016 §3.10). |
+| `[EntityAction]` and `[ApiAction]` `Idempotent`, `Long`, `Destructive`, `Mcp`, `Description`, `ContractRevision` | Projection metadata read by spec 0016. `Idempotent` is retry safety (spec 0016 §2.2) and says nothing about writing: a mutation may be retry-safe. `Long` marks a long-running operation, which spec 0016 runs under its long request timeout (spec 0016 §8.3). The client learns both from the Contracts chunk's `idempotent` and `long` lists (spec 0016 §3.10). `Destructive` is confirmation, `Mcp` tool exposure, `Description` tool text. `ContractRevision` (default 0) is bumped by hand when the action's meaning changes with no change of shape; it enters its endpoint's contract fingerprint (spec 0016 §3.10). |
 | `[ApiAction].Action` | The securable action the operation requires on the entity service's resource (`users/invitation-status` names `Read`, spec 0018); `MemberOnly = true` means any connected active member and no securable. On an `[ApiRoute]` service `Resource` is required beside `Action` unless `MemberOnly`. |
 | `[Stack].Operations` | `Read` for lookups; `Query \| Details \| Delete \| Enlist` for platform-written stacks such as spec 0019's `Export`, whose rows arrive only by enlistment (§13.3); `All` otherwise, plus `Enlist` on any stack an enlisted write targets (§13.3). |
 | `[Stack]` ceilings | §2.5. |
@@ -868,7 +871,8 @@ attribute round trips per operation. Reads run on `BatchPurpose.Read`; validatio
      throws for user input, and neither does the pipeline.
 4. **Applies the navigation-traversal and select-type rules.** After discovery,
    `IQueryTraversalRule` (below) checks every navigation path the request's clauses traverse. The
-   first refusal is `ForbiddenException("forbidden", E, "Read")`.
+   first refusal is `ForbiddenException("forbidden", E, "Read", ForbiddenReason.RestrictedPath,
+   <the path>)` (§14.1).
    - **Full columns or the projection.** A path into an entity `E` other than the root may touch
      every column of `E` only when the caller's `Read` decision on `E` is unrestricted (no
      row-level filter). A filtered grant, like no grant, limits the path to `E`'s `RelatedSelect`
@@ -882,14 +886,13 @@ attribute round trips per operation. Reads run on `BatchPurpose.Read`; validatio
      child grant, a path through `OwnerNavigation` is checked as if the owner were the root. Every
      row already belongs to an owner row the caller may read (spec 0014 §5.5), so
      `Invoice.PostingDate` passes under a filtered `Read` on invoices.
-   - **Select-item types.** Two kinds of select item are refused; filters, orderings and having may
-     use either. Each refusal is `InvalidQueryException` carrying one `QueryexDiagnostic` with
-     `Location = "Select[i]"` (the item's zero-based ordinal) and a `Span` covering the whole item:
-     - an item whose Queryex type is `Geography` → `ValidationCodes.QueryGeographyNotSelectable`,
-       `Arguments = [("item", <the item text>)]`, until a spec defines a JSON encoding for
-       geography values;
-     - an item whose path runs through a level navigation `Level{j}` (spec 0010 §F.9) →
-       `ValidationCodes.QueryLevelNotSelectable`, `Arguments = [("path", <the path>)]`.
+   - **Select-item types.** A select item whose Queryex type is `Geography` is refused, until a
+     spec defines a JSON encoding for geography values. Filters, orderings and having may use the
+     same expression. The refusal is `InvalidQueryException` carrying one `QueryexDiagnostic`:
+     - `Location = "Select[i]"`, the item's zero-based ordinal, and a `Span` covering the whole
+       item;
+     - the code `ValidationCodes.QueryGeographyNotSelectable`, with
+       `Arguments = [("item", <the item text>)]`.
 5. **Appends the statements.** `IDataBatch.Rows(spec, arguments, RowQueryOptions { CountCap =
    IncludeCount ? CountCap : null, IncludeAncestors = request.IncludeAncestors, AncestorsFilter =
    the access filter (null when Unrestricted), CaptureKeys = request.IncludeAncestors })`.
@@ -1174,8 +1177,8 @@ In order, after RT1 and before any validator continuation resumes:
 
 1. **Existence and the pre-check.** An update id absent from the before images is
    `NotFoundException(Resource, missing ids)` — hidden and missing alike (404); a `Save`-grant
-   count below the loaded count is `ForbiddenException("forbidden", Resource, "Save")` with no ids
-   named (403) (§9.2).
+   count below the loaded count is `ForbiddenException("forbidden", Resource, "Save",
+   ForbiddenReason.OutsideFilter)` with no ids named (403) (§9.2).
 2. **Early concurrency detection.** Under `Concurrency = Check`, an update whose payload
    `ModifiedAt` is default is `Concurrency.StampRequired` at `[i].ModifiedAt`; one whose stamp
    already differs from the before image's is `ConcurrencyException` now, with the conflict rows
@@ -1461,7 +1464,6 @@ public static class ValidationCodes
     public const string ConcurrencyStampRequired = "Concurrency.StampRequired";
     public const string ImportLanguageNotConfigured = "Import.LanguageNotConfigured";
     public const string QueryGeographyNotSelectable = "Query.GeographyNotSelectable";   // a query diagnostic (§5.2)
-    public const string QueryLevelNotSelectable = "Query.LevelNotSelectable";           // a query diagnostic (§5.2); argument path
     public const string QueryPathNotReachable = "Query.PathNotReachable";               // queryex/discover's form of a traversal refusal (spec 0029 §9); arguments entity, path
 }
 
@@ -1564,7 +1566,7 @@ evaluator disjoins the stored grants with every criterion the `IAccessCriteriaPr
 for the resource supply (spec 0014 §5.1); the service never composes the final filter.
 
 - **No grant.** No grant and no criterion on `(Resource, Action)` →
-  `ForbiddenException("forbidden", Resource, Action)`.
+  `ForbiddenException("forbidden", Resource, Action, ForbiddenReason.NoGrant)`.
 - **Step-up.** A sensitive pair (spec 0014 §4.3) on a session below the configured assurance →
   spec 0011's `StepUpRequiredException`. It is raised before the first batch for every caller: a
   request the web guard's `RequireAssuranceMetadata` check (spec 0011 §4.3) admitted, an MCP tool,
@@ -1585,16 +1587,16 @@ Every id-addressed write restricts its targets by the grant's filter before it w
 - **Save.** RT1 loads the before images of every existing id under the caller's **`Read`** filter
   and counts the same ids under the **`Save`** grant's filter, in the same batch, compared in C#: an
   id absent from the before images is `NotFoundException` (404, indistinguishable from
-  non-existence); a `Save` count below the loaded count is `ForbiddenException` (403, no ids
-  named). Inserts have no pre-check; the post-check covers them.
+  non-existence); a `Save` count below the loaded count is `ForbiddenException` (403, reason
+  `OutsideFilter`, no ids named). Inserts have no pre-check; the post-check covers them.
 - **Delete and actions.** The check is two statements inside the batch (§10, §11.1), all-or-nothing:
   the target ids are counted under the caller's `Read` filter — `ReadFilter` on spec 0012's
   `DeleteSpec.ByIds`, `DeleteSpec.WithDescendants` and `UpdateSpec.ByIds` — and the ids absent or
   hidden alike are selected as a result set before `THROW 50404, N'Entity.NotFound'`, so the
   `NotFoundException` names them and hidden equals missing; then the readable ids are counted under
   the action's grant (`Filter`) and a short count is `THROW 50403, N'RowSecurity'` →
-  `ForbiddenException` (403, no ids named). The general action path (§11.2) pre-checks through its
-  RT1 load under the grant's filter, as save does.
+  `ForbiddenException` (403, reason `OutsideFilter`, no ids named). The general action path
+  (§11.2) pre-checks through its RT1 load under the grant's filter, as save does.
 - **Enlisted writes.** Neither stage: the target's before images load unfiltered and no grant is
   counted; the frame's authority covers every group (§13.3).
 
@@ -1611,9 +1613,10 @@ IF @tm_visible <> (SELECT COUNT(*) FROM @tb{b}_saved) THROW 50403, N'RowSecurity
 `@tb{b}_saved` holds every root id of the payload — inserted, edited, and parents of synchronised
 children — so a caller cannot insert or edit a row out of the grant that permitted the save. A
 grant with no filter compiles to no post-check. The executor raises `RowSecurityException`; the
-pipeline translates it to `ForbiddenException("forbidden", Resource, Action)` — the transaction is
-already rolled back. Actions default to no post-check because an action commonly moves a row out of
-the filter that permitted it (`post` on `State = 'Draft'`).
+pipeline translates it to `ForbiddenException("forbidden", Resource, Action,
+ForbiddenReason.OutsideFilter)` — the transaction is already rolled back. Actions default to no
+post-check because an action commonly moves a row out of the filter that permitted it (`post` on
+`State = 'Draft'`).
 
 ### 9.4 Related entities and references
 
@@ -1645,14 +1648,14 @@ references for spec 0017's release effect, and appends the tree recount on tree 
 step 4, and the tag bumps. With a hook, RT1 first loads the target rows under the `Delete` grant
 (`Query<TEntity>` restricted by the ids; a short result is `NotFoundException` with the missing
 ids), runs `ValidateDeleteAsync` and the components with their rounds, then the persist.
-Translation: `50404` → `NotFoundException(Resource, missing ids)`; `50403` → `ForbiddenException`;
-`50409` → `ConcurrencyException`; 547 → `ValidationException` with `Fk.InUse` at `Ids[i]`, its
-`entity` the referencing entity name and its `property` the referencing property — no C# pre-check
-for references, the constraint is the guarantee. A silent partial delete would hide a concurrent
-change from the user who selected the rows a second ago; every id must exist and be visible or
-nothing is deleted. An enlisted delete is a group of the host's persist batch, composing
-`DeleteSpec.ByIds(ids, ReadFilter: null, Filter: null)` with no expected stamps, its hook round
-riding the host's rounds (§13.3).
+Translation: `50404` → `NotFoundException(Resource, missing ids)`; `50403` → `ForbiddenException`
+(`OutsideFilter`); `50409` → `ConcurrencyException`; 547 → `ValidationException` with `Fk.InUse`
+at `Ids[i]`, its `entity` the referencing entity name and its `property` the referencing property
+— no C# pre-check for references, the constraint is the guarantee. A silent partial delete would
+hide a concurrent change from the user who selected the rows a second ago; every id must exist and
+be visible or nothing is deleted. An enlisted delete is a group of the host's persist batch,
+composing `DeleteSpec.ByIds(ids, ReadFilter: null, Filter: null)` with no expected stamps, its hook
+round riding the host's rounds (§13.3).
 
 ### 10.2 Delete by query
 
@@ -2279,15 +2282,18 @@ public sealed class ValidationException(IReadOnlyList<ValidationError> Errors)
     : TellmaException;                                  // 422 validation
 public sealed class NotFoundException(string Resource, IReadOnlyList<string> Ids)
     : TellmaException;                                  // 404 not-found
-public sealed class ForbiddenException(string Code, string Resource, string? Action)
-    : TellmaException;                                  // 403 forbidden
+public sealed class ForbiddenException(
+    string Code, string Resource, string? Action, ForbiddenReason Reason, string? Path = null)
+    : TellmaException;                                  // 403 forbidden; Path: RestrictedPath only
+// kebab-case on the wire (spec 0016 §7.1)
+public enum ForbiddenReason { NoGrant, OutsideFilter, RestrictedPath }
 public sealed class ConcurrencyException(string Code, IReadOnlyList<ConcurrencyConflict> Conflicts)
     : TellmaException;                                  // 409 concurrency-conflict
 public sealed record ConcurrencyConflict(
-    long Id, string? ModifiedAt, long? ModifiedById, string? ModifiedByName, bool IsMissing);
+    long Id, string? ModifiedAt, int? ModifiedById, string? ModifiedByName, bool IsMissing);
 public sealed class CountMismatchException(int Expected, int Actual)
     : TellmaException;                                  // 409 count-mismatch
-public sealed class LimitExceededException(string Limit, long Actual, long Maximum)
+public sealed class LimitExceededException(string Limit, int Actual, int Maximum)
     : TellmaException;                                  // 413 limit-exceeded
 public sealed class InvalidQueryException(IReadOnlyList<QueryexDiagnostic> Diagnostics)
     : TellmaException;                                  // 400 query-invalid
@@ -2300,6 +2306,20 @@ public sealed class DependencyUnavailableException(string Dependency, TimeSpan? 
 public sealed class PartialFailureException(string Code, object Results, IReadOnlyList<string> Failed)
     : TellmaException;                                  // 502 partial-failure
 ```
+
+`ForbiddenException` names the refused pair and why. The raise site sets the reason, because only
+it knows the cause:
+
+- **`NoGrant`** — no grant and no criterion on the pair (§9.1).
+- **`OutsideFilter`** — the caller holds the pair, but its row-level filter excludes a target row.
+  The save pre-check (§6.6), the delete and action pre-check (§9.2) and the post-check (§9.3) raise
+  it.
+- **`RestrictedPath`** — a query reads a column of a related entity `E` beyond `E`'s
+  `RelatedSelect` projection (§5.2 step 4). The pair is `(E, Read)`, and `Path` is the path read.
+
+`Arguments` carries `resource`, `action`, `reason` and, for `RestrictedPath`, `path`. The error
+never names roles, filters or other users; `access/check` answers those for an administrator
+(spec 0014 §10).
 
 The remaining members of the closed set spec 0016 maps by type are defined by their owners and
 derive from the same base: `StaleContextException` (spec 0013, 503), `TenantNotFoundException`,
@@ -2331,7 +2351,7 @@ translates a completion batch's failure by the rows below (spec 0020 §5.6); not
 | Raised by the executor | Trigger | The pipeline raises |
 |---|---|---|
 | `ConcurrencyConflictException(Conflicts)` | `THROW 50409` after the conflict result set | `NotFoundException` when every row is missing; else `ConcurrencyException("concurrency-conflict", conflicts)` built from the rows |
-| `RowSecurityException` | `THROW 50403` | `ForbiddenException("forbidden", Resource, Action)` |
+| `RowSecurityException` | `THROW 50403` | `ForbiddenException("forbidden", Resource, Action, ForbiddenReason.OutsideFilter)` |
 | `BatchAssertionFailedException(50404, "Entity.NotFound")` | delete/action pre-check | `NotFoundException(Resource, ids from the preceding result set)` |
 | `BatchAssertionFailedException(50413, …)` | delete-by-query cap | `LimitExceededException("MaxDeleteByQueryRows", actual, cap)` |
 | `BatchAssertionFailedException(50428, …)` | delete-by-query count | `CountMismatchException(expected, actual)` |
@@ -2522,11 +2542,12 @@ the statements appended and replays canned result sets. Pins:
 - **Query composition:** `Search` lowering per `SearchKind` and per language shape; the final
   filter composition `And(user, activatable, search, access)` with empty conjuncts dropped, one leaf
   per `Filters` entry and its `filters[i]` diagnostic; the default orderings of §5.2 and §5.4.
-- **Traversal:** the navigation-traversal rule, the owner path from a child root and the
-  level-path refusal.
+- **Traversal:** the navigation-traversal rule, its refusal carrying `RestrictedPath` and the
+  path, and the owner path from a child root.
 - **Arguments:** argument discovery, conversion and `BadRequestException`; an argument failure at
   `Arguments.<Property>`.
-- **Limits and translation:** every ceiling; every translation row of §14.2.
+- **Limits and translation:** every ceiling; every translation row of §14.2; the
+  `ForbiddenReason` of every raise site of §14.1.
 - **Actions:** the two `ExecuteActionAsync` overloads (the method's own `TResult` answered with no
   read-back, the overload that does not match the action's `ResultType` refused); a `SingleTarget`
   action called with other than one id refused; `Persisted` (§11.2) — RT2 sent while the method is
@@ -2540,8 +2561,9 @@ the statements appended and replays canned result sets. Pins:
 - **`SaveOptions.OnPersist`:** invoked once at its §6.7 position, never on a validation failure, and
   a stack-owned write from it refused at append.
 - **Descriptors and startup checks:** descriptor derivation for every fixture entity and its child
-  query surfaces; every startup check of §2.6, each with a failing fixture, `core.enlistments`
-  included, a self-pair passing it, and an `export` action on a stack without `Export` passing.
+  query surfaces, each action's `Long` and `Idempotent` included; every startup check of §2.6,
+  each with a failing fixture, `core.enlistments` included, a self-pair passing it, and an
+  `export` action on a stack without `Export` passing.
 - **The API golden** of §17.
 
 ### 18.2 Integration suite — `test/core/Tellma.Core.IntegrationTests` (`Crud/`)
@@ -2585,8 +2607,8 @@ runs them.
 - **Row-level security:** hidden-equals-missing on `get`, `get-by-ids`, `save`, `delete`,
   `delete-with-descendants`, `activate` and `deactivate`. The two-stage pre-check on save and, as
   statements inside the persist batch, on delete, delete-with-descendants and the built-in actions:
-  hidden id → 404, a readable id outside the action's grant → 403, insert outside the filter → 403,
-  edit leaving the filter → 403.
+  hidden id → 404; a readable id outside the action's grant, an insert outside the filter and an
+  edit leaving the filter → 403 `OutsideFilter`; no grant at all → 403 `NoGrant`.
 - **Concurrency:** stamp conflict, override, missing-row conflict under both modes,
   `StampRequired`, `ModifiedByName` resolved, delete with stamps, actions stamp.
 - **Ownership:** write-once rejection and server-owned values ignored. `IsActive` created active,
@@ -2792,6 +2814,12 @@ The load-bearing decisions, where not already evident above:
 34. **An extra SQL cannot express is computed in C# after the details batch** — per-row
     permissions, drift and dashboard views need C# over loaded rows, and a route of their own would
     cost a round trip (§5.3).
+35. **`Long` and `Idempotent` are declared once on the action** — one flag drives the server's
+    timeout policy and the client's watchdog and retries, so no call site repeats a fact it could
+    forget (§2.3).
+36. **A 403 carries its reason, set at the raise site** — the client's message must be true for
+    each of the three causes, and guessing the cause from cached access is unsafe; roles, filters
+    and other users stay out of the error (§14.1).
 
 ## Review flags
 

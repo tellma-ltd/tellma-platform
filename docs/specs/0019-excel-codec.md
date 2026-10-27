@@ -142,14 +142,13 @@ contribution items, realised by `Tellma.Core`:
 
 - For every stack whose `Operations` include `Export` or `Import`: `ExcelOperations<TEntity>` as a
   stack companion (spec 0015's `StackCompanionContributionItem`), attached through
-  `contribution.EntityCompanion<TEntity, ExcelOperations<TEntity>>()`; the realizer closes it over
-  the leaf and projects its `[ApiAction]`s under the stack's segment and resource — `export`
-  (`Action = "Read"`, `Mutation = false`, `Idempotent = true`) and `export/start`
-  (`Action = "Read"`, `Mutation = true`, `Idempotent = false`) on stacks with `Export`, and
-  `export-for-import` and `export-for-import/start` (declared as those two), `inspect-import`
-  (`Action = "Save"`, `Mutation = false`, `Idempotent = true`), `import` (`Action = "Save"`) and
-  `import/start` (`Action = "Save"`, `Mutation = true`, `Idempotent = false`) on stacks with
-  `Import`.
+  `contribution.EntityCompanion<TEntity, ExcelOperations<TEntity>>()`. The realizer closes it over
+  the leaf and projects its `[ApiAction]`s under the stack's segment and resource:
+  - `export` and `export/start` on stacks with `Export`;
+  - `export-for-import`, `export-for-import/start`, `inspect-import`, `import` and `import/start`
+    on stacks with `Import`.
+
+  The §2.1 sketch gives each method's `Action`, `Mutation`, `Idempotent` and `Long`.
 - `contribution.Entity<Export, ExportService>()` and `contribution.Entity<Import, ImportService>()`
   with `[Stack(Operations = Query | Details | Delete | Enlist)]` on both entities (§12.1).
 - `contribution.Singleton<IAccessCriteriaProvider, ExportAccessCriteria>()` and
@@ -335,17 +334,17 @@ public sealed class ImportException(
 // stack companion (spec 0015), closed over the leaf
 public sealed class ExcelOperations<TEntity> where TEntity : class
 {
-    // [ApiAction] "export", Action = "Read", Mutation = false, Idempotent = true
+    // [ApiAction] "export", Action = "Read", Mutation = false, Idempotent = true, Long = true
     public Task<ExportOutcome> ExportAsync(ExportRequest request);
     // [ApiAction] "export/start", Action = "Read", Mutation = true, Idempotent = false
     public Task<JobAccepted> StartExportAsync(ExportRequest request);
-    // [ApiAction] "export-for-import", Action = "Read", Mutation = false, Idempotent = true
+    // [ApiAction] "export-for-import", Action = "Read", Mutation = false, Idempotent = true, Long = true
     public Task<ExportOutcome> ExportForImportAsync(ExportForImportRequest request);
     // [ApiAction] "export-for-import/start", Action = "Read", Mutation = true, Idempotent = false
     public Task<JobAccepted> StartExportForImportAsync(ExportForImportRequest request);
-    // [ApiAction] "inspect-import", Action = "Save", Mutation = false, Idempotent = true
+    // [ApiAction] "inspect-import", Action = "Save", Mutation = false, Idempotent = true, Long = true
     public Task<ImportPlan> InspectImportAsync(InspectImportRequest request);
-    // [ApiAction] "import", Action = "Save"
+    // [ApiAction] "import", Action = "Save", Long = true
     public Task<ImportOutcome> ImportAsync(ImportRequest request);
     // [ApiAction] "import/start", Action = "Save", Mutation = true, Idempotent = false
     public Task<JobAccepted> StartImportAsync(StartImportRequest request);
@@ -395,10 +394,15 @@ exactly one `ExportSource` case:
 Spec 0015's realizer projects the companion's seven methods as `[ApiAction]`s on every eligible
 stack (§1.2); spec 0016 projects them to `POST /{tenantId}/api/web/{resource-segment}/{method}`,
 where `{method}` is `export`, `export/start`, `export-for-import`, `export-for-import/start`,
-`inspect-import`, `import` or `import/start`. The synchronous exports, `inspect-import` and
-`import` run under the long request timeout and the per-user export/import concurrency limits of
-`TellmaApiOptions`; the two export `/start` methods only enqueue a job, `import/start` only inserts
-the `Import` row and enqueues its job (§12.2), and the three run under the ordinary web timeout.
+`inspect-import`, `import` or `import/start`. Timeouts and limits:
+
+- **The synchronous exports, `inspect-import` and `import`** declare `Long = true`, so they run
+  under the long request timeout (spec 0016 §8.3). They also run under the per-user export/import
+  concurrency limits of `TellmaApiOptions`.
+- **The three `/start` methods** run under the ordinary web timeout. The two export `/start`
+  methods only enqueue a job; `import/start` only inserts the `Import` row and enqueues its job
+  (§12.2).
+
 Each method exists when its operation is declared — `export` and `export/start` under `Export`, the
 other five under `Import` — and the securable of each (`Read` for the four export methods, `Save`
 for the three import methods) is evaluated by spec 0015's `IApiActionInvoker` before the method
@@ -1489,17 +1493,19 @@ spec 0020's worker opens around `ExecuteAsync` (spec 0015 §13.3):
 1. Read the item's `ExportJobArguments` (`Arguments<ExportJobArguments>()`, JSON-polymorphic on
    `kind`).
 2. Re-evaluate `IAccessEvaluator.RequireAsync(Resource, "Read")`. A denial completes the item
-   `Fail(JobError("forbidden", { resource, action }))`, the code and arguments of the denial. The
-   report case skips this step: the engine authorizes the run in step 3 (spec 0033 §8.2), and its
-   refusal fails the item the same way.
+   `Fail(JobError("forbidden", { resource, action, reason, path }))`: the code and arguments of
+   the denial (spec 0015 §14.1), with `path` present only for `restricted-path`. The report case
+   skips this step: the engine authorizes the run in step 3 (spec 0033 §8.2), and its refusal
+   fails the item the same way.
 3. Build the `ExcelContext` from the arguments' `ExcelJobCulture` (culture, calendar, zone,
    language) and the job scope's `RequestContext.Now`, then dispatch on the case:
    - **Display and editable cases.** Plan the case's `Request` in its shape (`PlanDisplay` or
      `PlanEditable`). Stream the root query through `Pages` with `CountCap = MaxExportRows`; a
      first-page `Count` of `cap + 1` fails the item before any row is written.
    - **Report case.** Run the report through spec 0033's `IReportEngine` and write its layout
-     through `WriteTableAsync` (§4.4). A list streams in engine pages of `MaxTake` rows (spec 0033
-     §12.1).
+     through `WriteTableAsync` (§4.4). A list or a summary streams through
+     `IReportEngine.PagesAsync` in pages of `MaxTake` rows (spec 0033 §12.1). A summary with
+     totals writes its Total row last, from the last page (spec 0033 §12.2).
 
    After each page, call `Progress.Report` with:
    - `percent = min(99, 100 × rows / total)`, where `total` is the first page's count (by query,

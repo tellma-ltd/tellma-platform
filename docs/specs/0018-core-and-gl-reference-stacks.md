@@ -147,7 +147,7 @@ by both hosts as spec 0011 §1.3 shows):
 ```csharp
 public static void Compose(TellmaBuilder tellma) => tellma.UseAzureDefaults()
     .AddFeature<GlFeature>().AddFeature<AcmeFeature>()            // AcmeFeature: §1.4
-    .UseEntity<Center, MyCenter>().Languages(["en", "ar"]);
+    .UseEntity<Center, MyCenter>().Languages(["en-GB", "ar-SA"]); // default regions: spec 0013 §7.3
 ```
 
 ### 1.3 Seams consumed
@@ -167,7 +167,7 @@ public static void Compose(TellmaBuilder tellma) => tellma.UseAzureDefaults()
 | `[BlobReference]` on `User.ImageId` and `User.SignatureId`, kinds `user-image` and `user-signature` | spec 0017 | §3.5 |
 | `INotifier.Notify`, `NotificationRequest`, `NotificationTypeDescriptor`, type `core.user.added` | spec 0021 | §1.4, §3.3 |
 | `INotificationChannel`, `INotificationChannelRegistry`, `TestNotificationResult`, code `Notifications.UnknownChannel` | spec 0021 | §3.1, §3.5 |
-| `TenantSettings`, `SettingKey<T>`, `ILanguageCatalog`, `ICalendarRegistry`, `IStringLocalizer`, `LocalizationContext`, `ILocalizationNegotiator`, `LocalizationScope` | spec 0013 | §1.4, §3.2, §3.3, §3.5 |
+| `TenantSettings`, `SettingKey<T>`, `ILanguageCatalog` (`IsOffered`, `IsRegionOffered`), `DigitStyle`, `ICalendarRegistry`, `IStringLocalizer`, `LocalizationContext`, `ILocalizationNegotiator`, `LocalizationScope` | spec 0013 | §1.4, §3.1, §3.2, §3.3, §3.5 |
 | `ITenantProvisioningStep`, `TenantProvisioningContext`, `dbo.__TellmaProvisioning`, migrator commands | spec 0011 | §5.6, §6 |
 | `RequestContext`, `ITenantMembershipDirectory.RecordAsync`, `ISessionTerminationListener.TenantAccessRevokedAsync`, `Tellma:PublicOrigin` | spec 0011 | §2.1, §3.3, §3.6 |
 | `ITellmaLinks.Tenant` | spec 0011 §5.10 | §3.3 |
@@ -234,10 +234,11 @@ Its actions, extras, reports, data and settings:
   (category `sales`, spec 0028 §3.6). `assign` raises it for the assignee.
 - **`related-documents`.** `RelatedDocumentsContributor` answers the details extra of that name: the
   same customer's other invoices (`Id`, `SerialNumber`, `PostingDate`), latest first, at most 10.
-- **Reports.** `AcmeReports` is spec 0033 §11's coded report `acme-reports/aging` under the
-  securable `acme.AgingReport × Read`. The seed `acme.sales-by-center` (spec 0033 §13) is a pivot
-  over `acme.SalesInvoiceLine` by the `Center` tree, published with `View` access to the role
-  `Sales`.
+- **Reports.** `AcmeReports` is spec 0033 §11's coded report `acme-reports/credit-exposure` under
+  the securable `acme.CreditExposureReport × Read`. It shows, per customer, the credit limit, the
+  open invoices posted on or before `AsOf`, the headroom and an over-limit flag. The seed
+  `acme.sales-by-center` (spec 0033 §13) is a pivot over `acme.SalesInvoiceLine` by the `Center`
+  tree, published with `View` access to the role `Sales`.
 - **Development data.** `AcmeSampleCenters` and `AcmeSampleDataStep`, which also writes demo
   invoices and assignments (§6.3).
 - **Settings.** `AcmeSettings` declares the keys below (spec 0013 §5.3). `Strings.resx` and
@@ -373,15 +374,20 @@ public sealed record UserPreferencesRequest(int UserId);
 public sealed record UserPreferencesArguments(IReadOnlyList<KeyValueItem> Items);
 public sealed record UserPreferenceKeysArguments(IReadOnlyList<string> Keys);
 
+// the thirteen self-editable members, the expected stamp, and Override after the user chose Overwrite
 public sealed record MeSaveRequest(
     string Name, string? Name2, string? Name3, int? ImageId, int? SignatureId,
-    string? PreferredLanguage, string? PreferredCalendar, string? PreferredTimeZone, Gender? Gender,
+    string? PreferredLanguage, string? PreferredCalendar, string? PreferredTimeZone,
+    string? PreferredRegion, DigitStyle? PreferredDigits, Gender? Gender,
     string? ContactEmail, string? ContactMobile, DateTimeOffset ModifiedAt,
-    ConcurrencyMode Concurrency = ConcurrencyMode.Check);   // the self-editable members, the expected stamp, and Override after the user chose Overwrite
+    ConcurrencyMode Concurrency = ConcurrencyMode.Check);
 
-public sealed record MeLocaleRequest(string? Language, string? Calendar);   // null member = unchanged; at least one is set
+// null member = unchanged; at least one is set
+public sealed record MeLocaleRequest(string? Language, string? Calendar, string? TimeZone);
+// the stored values, the row's stamp, the caller's tag
 public sealed record MeLocaleResult(
-    string? PreferredLanguage, string? PreferredCalendar, DateTimeOffset ModifiedAt, string PreferencesTag);   // the stored values, the row's stamp, the caller's tag
+    string? PreferredLanguage, string? PreferredCalendar, string? PreferredTimeZone,
+    DateTimeOffset ModifiedAt, string PreferencesTag);
 
 public sealed record InvitationStatus(
     int Id, UserState State, InviteStatus? InviteStatus, string? LastInviteError,
@@ -450,8 +456,9 @@ SELECT s.[UserId], s.[LastActiveAt] FROM [core].[UserStamps] AS s JOIN {IdsSourc
   `me/save` (§3.5).
 - **`PreprocessAsync`.** `Email`, `ContactEmail`: trim, lower-case the domain and the local part
   (the identity server compares case-insensitively), `null` when empty. `Name`, `Name2`, `Name3`,
-  `ContactMobile`: trim. `PreferredLanguage`: canonical BCP 47 casing, extensions stripped.
-  `PreferredCalendar`: lower-case.
+  `ContactMobile`: trim. `PreferredLanguage`: trim and lower-case; it holds a bare language code,
+  so a regioned `ar-SA` fails the language rule below. `PreferredCalendar`: lower-case.
+  `PreferredRegion`: trim and upper-case.
 - **`ValidateAsync`** (before spec 0014's `UserAccessRules<TUser>`, which owns escalation,
   self-lockout, the email lock, the `Kind`/`Email` pair and the delete policy):
 
@@ -460,12 +467,15 @@ SELECT s.[UserId], s.[LastActiveAt] FROM [core].[UserStamps] AS s JOIN {IdsSourc
 | `PreferredLanguage` is `null` or `ILanguageCatalog.IsOffered` | `Users.LanguageNotOffered` (`PreferredLanguage`) |
 | `PreferredCalendar` is `null` or in `ICalendarRegistry.Codes` | `Users.CalendarUnknown` (`PreferredCalendar`) |
 | `PreferredTimeZone` is `null` or resolvable by `TimeZoneInfo.TryFindSystemTimeZoneById` | `Users.TimeZoneUnknown` (`PreferredTimeZone`) |
+| `PreferredRegion` is `null` or `ILanguageCatalog.IsRegionOffered` | `Users.RegionNotOffered` (`PreferredRegion`) |
+| `PreferredDigits` | no code: an unknown value fails spec 0016's enum binding |
 | `ContactEmail` is `null` or a valid address (`MailAddress` parse, one `@`) | `Users.ContactEmailInvalid` (`ContactEmail`) |
 | `ContactMobile` is `null` or E.164 (`^\+[1-9][0-9]{6,14}$`) | `Users.MobileInvalid` (`ContactMobile`) |
-| A `me/locale` request sets `Language`, `Calendar` or both | `Users.LocaleEmpty` (`language`) |
+| A `me/locale` request sets at least one of `Language`, `Calendar` and `TimeZone` | `Users.LocaleEmpty` (`language`) |
 
-`me/locale` (§3.5) applies three of these rows in memory: the `PreferredLanguage` row, the
-`PreferredCalendar` row and the last row. It reports them at the paths `language` and `calendar`.
+`me/locale` (§3.5) applies four of these rows in memory: the `PreferredLanguage`,
+`PreferredCalendar` and `PreferredTimeZone` rows and the last row. It reports them at the paths
+`language`, `calendar` and `timeZone`.
 
 - **`ValidateActionAsync("invite")`** per target: `Kind = Individual` else `Users.NotIndividual`;
   `IsActive = 1` else `Users.Inactive`; `State ≠ Joined` else `Users.AlreadyJoined`. Rows the
@@ -601,8 +611,8 @@ then one `GetInvitationDeliveryAsync` call for the subjects of rows with `State 
      (`SELECT [Key], [Value] FROM [core].[UserPreferences] WHERE [UserId] = @tm_UserId`). A
      `request.ModifiedAt` that differs from the row's stamp is `ConcurrencyException` (409) with
      nothing written, unless `request.Concurrency = Override`, which skips the comparison.
-  2. **Enlist and validate.** The method copies the request's eleven self-editable members onto the
-     loaded row and leaves `RoleMemberships` null. It enlists the row with the invoker's frame:
+  2. **Enlist and validate.** The method copies the request's thirteen self-editable members onto
+     the loaded row and leaves `RoleMemberships` null. It enlists the row with the invoker's frame:
      `EnlistSaveAsync` into the injected `IOpenWriteHost`, with `EnlistSaveOptions.Concurrency`
      equal to `request.Concurrency` (`Check` on the loaded stamp, or `Override`). A `MapPath` drops
      the row index, so `Users.LanguageNotOffered` lands at `preferredLanguage` and
@@ -616,8 +626,9 @@ then one `GetInvitationDeliveryAsync` call for the subjects of rows with `State 
   `EvaluateAllAsync` over the cached set, and the tenant tags and the caller's `PreferencesTag`
   from `EnlistmentOutcome` (spec 0015 §13.3). The self-editable set is `MeSaveRequest`'s member
   list.
-- **`SetMyLocale(MeLocaleRequest)`.** The session menu's language and calendar switches (spec 0027
-  §10.1) call it instead of `me/save`. One round trip:
+- **`SetMyLocale(MeLocaleRequest)`.** Two callers use it instead of `me/save`: the session menu's
+  language and calendar switches (spec 0027 §10.1), and the device time-zone prompt with its
+  automatic update (spec 0024 §7.8). One round trip:
   1. **Validation in memory** (§3.2), 422 on failure. A calendar outside the tenant's pair is
      accepted; negotiation ignores it (spec 0013 §8.2).
   2. **One `IGuardedBatchRunner.Run(BatchPurpose.Persist, …)`** carrying, in order:
@@ -625,8 +636,8 @@ then one `GetInvitationDeliveryAsync` call for the subjects of rows with `State 
      - spec 0012 §9.1's `Update<TUser>` by the caller's id, assigning only the members that are
        set, stamped;
      - `ContributeInvariants`;
-     - `SELECT [PreferredLanguage], [PreferredCalendar], [ModifiedAt] FROM [core].[Users] WHERE
-       [Id] = @tm_UserId`.
+     - `SELECT [PreferredLanguage], [PreferredCalendar], [PreferredTimeZone], [ModifiedAt] FROM
+       [core].[Users] WHERE [Id] = @tm_UserId`.
   3. **Tags.** The entity's rule bumps the caller's `PreferencesTag` in the epilogue (spec 0014
      §8.1). A value equal to the stored one skips the row, so no history row is written and neither
      the stamp nor the tag moves.
@@ -637,7 +648,7 @@ then one `GetInvitationDeliveryAsync` call for the subjects of rows with `State 
     is at most 128 characters (`Users.PreferenceKeyInvalid`, path `items[i].key`). A value is at
     most spec 0014's `MaxPreferenceValueBytes` of UTF-8 (`Users.PreferenceValueTooLarge`).
     Duplicate keys in one request are `Users.PreferenceKeyDuplicate`. **Example —**
-    `report.acme-aging.params` passes; `Report.aging` and `report.-aging` fail.
+    `report.acme-credit-exposure.params` passes; `Report.exposure` and `report.-exposure` fail.
   - **The statement.** One `IGuardedBatchRunner.Run(BatchPurpose.Persist, …)` executes spec 0014's
     `core.UserPreferences` statement — the `UPDATE` + `INSERT` halves for `set`, the `DELETE` half
     for `delete` — with `@tb{b}_t0 : UserPreferenceList` and
@@ -1206,8 +1217,8 @@ Four test projects pin this spec.
   - `SaveMe`: the request mapped onto the loaded row, `RoleMemberships` left null, a stamp
     mismatch as 409 with no enlistment, `Override` skipping the comparison and enlisting with
     `Override`;
-  - preference key grammar (hyphenated and numeric segments such as `report.acme-aging.params`
-    accepted) and limits;
+  - preference key grammar (hyphenated and numeric segments such as
+    `report.acme-credit-exposure.params` accepted) and limits;
   - test-notification: `inbox` refused, an unknown key refused, a channel without a sender
     `NotConfigured`, the email send.
 - **`RoleService`:** `problems` per drift condition against a scripted registry and schema.
@@ -1240,12 +1251,22 @@ Testcontainers unless noted:
   bumped), rotation deleting the old client after commit, deactivation deleting the client, `Kind`
   write-once, a `Service` row refused by `invite` and an `Individual` row by `issue-credentials`.
 - **Self-service:** `me/save` by a member holding no `Save` grant changes the request's members
-  only and bumps `PreferencesTag`; the admin `save` of their own row by the same member is 403; a
-  stale `ModifiedAt` on `me/save` is 409; a member holding no role grant reads their own row and no
-  other (`UserAccessCriteria`); `SignatureId` saved through `me/save` and the user save.
-- **`me/locale`:** a language only, a calendar only, both, neither (422 `Users.LocaleEmpty`), a
-  language not offered (422), an unchanged value (no history row, tag unchanged), a read-only
-  tenant (403), and the tag bump visible in `Tellma-Version-Tags`.
+  only and bumps `PreferencesTag`; the admin `save` of their own row by the same member is 403
+  `no-grant`; a stale `ModifiedAt` on `me/save` is 409; a member holding no role grant reads their
+  own row and no other (`UserAccessCriteria`); `SignatureId` saved through `me/save` and the user
+  save.
+- **`me/locale`:**
+  - a language only, a calendar only, a time zone only, and all three;
+  - none: 422 `Users.LocaleEmpty`;
+  - a language not offered, and a regioned language such as `ar-SA`: 422
+    `Users.LanguageNotOffered`;
+  - an unknown zone: 422 `Users.TimeZoneUnknown` at `timeZone`;
+  - an unchanged value: no history row, tag unchanged;
+  - a read-only tenant: 403;
+  - the tag bump visible in `Tellma-Version-Tags`.
+- **Regional formats:** `me/save` stores `PreferredRegion` upper-cased and stores
+  `PreferredDigits`. A region that no offered language carries is refused with
+  `Users.RegionNotOffered` at `preferredRegion`.
 - **Preferences:** the preferences statement (set, delete, the `MaxPreferenceKeys` cap, tag bump,
   second user unaffected); `preferences/get`, `set` and `delete` for another user under the
   `Preferences` filter, `set` and `delete` answering the target's bag and bumping the target's
@@ -1360,8 +1381,8 @@ The load-bearing decisions, where not already evident above:
 13. **Service accounts are rows the save creates and an action credentials** — one stack, one
     prologue, one permission model; the secret crosses once and the old client dies after the new
     one is recorded (§3.8).
-14. **`me/locale` is its own action** — the session menu's switches cost one round trip and hold
-    no stamp, where `me/save` costs three (§3.5).
+14. **`me/locale` is its own action** — the session menu's switches and the time-zone prompt cost
+    one round trip and hold no stamp, where `me/save` costs three (§3.5).
 15. **Drift is a details extra of the roles stack, not a route** — the role page already reads the
     role and its permissions, so the extra computes drift from them in memory (§4.3).
 16. **`members` is filtered by the caller's user grant and capped** — a filtered grant on users

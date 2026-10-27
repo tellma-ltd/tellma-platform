@@ -68,10 +68,9 @@ job and notification tables whose rows are inserted by fixed-text statements (sp
 - Ship `IIdAllocator`: exact-deficit reservation riding the batch, a warm buffer with a
   low-water refill, temporary-id rewriting, self-healing by consuming the gap.
 - Ship the Queryex host integration over spec 0010 Part F's engine amendments:
-  `IQueryexSchemaProvider` keyed by `MultilingualShape` (tree level navigations and the `'uq'`
-  calendar map included), the binding of key-set restrictions, prologues and paging slots, the
-  `QueryRowSet` reader, the entity materializer with related entities, children and ancestors in
-  one round trip.
+  `IQueryexSchemaProvider` keyed by `MultilingualShape` (the `'uq'` calendar map included), the
+  binding of key-set restrictions, prologues and paging slots, the `QueryRowSet` reader, the
+  entity materializer with related entities, children and ancestors in one round trip.
 - Ship the display-name rule: `[DisplayNameSource]`, `EntityMetadata.DisplayName` and
   `IDisplayNames`, the one server renderer of a row's display name (§2.5, §3.1).
 - Ship the DB-call budget: `DataAccessScope`, the `tellma.data.*` instruments, and the six
@@ -602,7 +601,8 @@ references `.Api`; spec 0016 owns their JSON converters:
 ```csharp
 // Tellma.Core.Abstractions.Data
 public sealed record QueryColumn(
-    string Name, QueryexType Type, int? Scale, bool Nullable, IReadOnlyList<string>? Path, bool GroupingKey);
+    string Name, QueryexType Type, int? Scale, int? Precision, bool Nullable, IReadOnlyList<string>? Path,
+    bool GroupingKey);
 
 public sealed class QueryRowSet
 {
@@ -630,7 +630,9 @@ public sealed record RelatedEntitySet(
 (spec 0008 §7.1). `Scale` is set on `Numeric` columns only: `0` for an integer result (`int`,
 `bigint`, `smallint`, `tinyint`), the decimal's scale for a `decimal` result, `null` for a floating
 result (`float`, `real`); it is `null` on every other type, and the reader takes it from the result
-set's own metadata (§11.3).
+set's own metadata (§11.3). `Precision` is the decimal's precision for a `decimal` result and
+`null` on every other column. Spec 0010 §F.15's measure evaluator reads it together with `Scale`;
+spec 0016's converter does not write it.
 
 `QueryRowSet` is the columnar buffer alone. `RowPage` is what `IDataBatch.Rows` returns (§5.2):
 the page's rows, the capped count when `RowQueryOptions.CountCap` was given, and the ancestor rows
@@ -825,7 +827,7 @@ public interface IDataBatch
     BatchResult<EntityQueryResult<TEntity>> Query<TEntity>(EntityQuery<TEntity> query);
     BatchResult<RowPage> Rows(QuerySpec spec, QueryArguments? arguments, RowQueryOptions? options);
     BatchResult<int> Count(QuerySpec spec, QueryArguments? arguments, int cap = 10000);
-    BatchResult<QueryRowSet> EvaluateConstant(IReadOnlyList<ConstantItem> items, int languageVersion);   // spec 0010 §F.11's constant statement; one row
+    BatchResult<QueryRowSet> EvaluateConstant(IReadOnlyList<ConstantItem> items, int languageVersion);   // spec 0010 §F.9's constant statement; one row
     SaveHandle Save<TEntity>(
         IReadOnlyList<TEntity> rows, ConcurrencyMode concurrency = ConcurrencyMode.Check);
     BatchResult<UpdateReceipt> Update<TEntity>(UpdateSpec<TEntity> spec);
@@ -1195,6 +1197,7 @@ executor rejects an unknown `50xxx` as an `InvalidOperationException`.
 | 2601 / 2627 on any other index | `UniqueConstraintViolationException(IndexName)`; the pipeline maps the index to the property through `EntityMetadata.UniqueIndexes`, never through the message text |
 | 547 | `ForeignKeyViolationException(ConstraintName)`; the pipeline maps `FK_<Table>_<Column>` to `Fk.NotFound` on save and `Fk.InUse` on delete |
 | 530 | `TreeDepthExceededException(EntityType)` → `ValidationException(Tree.TooDeep)` |
+| 8134 (divide by zero), 8115 (arithmetic overflow) | `ArithmeticFailureException(Reason)`, `Reason` = `divide-by-zero` or `overflow`; final. The report engine answers it as `422 Report.MeasureFailed` (spec 0033 §8.11); every other caller surfaces it as 500 |
 | 1205, 1222, 4060, 10928, 10929, 40197, 40501, 40613, 49918–49920, `THROW 50503` | reported transient (§6.5) |
 | 233, 64, −2, 10053, 10054, any failure after the command was sent with no server response | ambiguous (§6.5) |
 | every other number | final; surfaces as `SqlException` wrapped in `DataAccessException` (internal base) → 500 |
@@ -1205,9 +1208,10 @@ spec 0015's pipeline): `DataAccessException` (base),
 `TreeCycleException(EntityType)`, `TreeDepthExceededException(EntityType)`, `RowSecurityException`,
 `ConcurrencyConflictException(Conflicts)` — one `ConflictRow(Id, IsMissing, ModifiedAt,
 ModifiedById, Name, Name2, Name3)` per row of the guard's result set —
-`BatchAssertionFailedException(Number, Code)`, `DataAccessRetryExhaustedException(Inner, Attempts)`,
-`DataAccessAmbiguousException(Inner, Verdict)`. Every exception one statement raises — the seven
-from `UniqueConstraintViolationException` to `BatchAssertionFailedException` — carries
+`BatchAssertionFailedException(Number, Code)`, `ArithmeticFailureException(Reason)`,
+`DataAccessRetryExhaustedException(Inner, Attempts)`, `DataAccessAmbiguousException(Inner,
+Verdict)`. Every exception one statement raises — the eight from
+`UniqueConstraintViolationException` to `ArithmeticFailureException` — carries
 `StatementOrdinal`, the batch ordinal (§5.4) of that statement, which the executor resolves from
 `SqlException.LineNumber` against the line offsets it records per statement at assembly; spec 0015
 §13.3 attributes a persist-time error to the enlisted group whose statements hold the ordinal.
@@ -1745,9 +1749,9 @@ public interface IQueryexSchemaProvider                 // singleton; at most th
 PrimaryAndSecondary | All`, spec 0013) through spec 0008's `QueryexSchemaBuilder`, lazily, and
 caches it for the process. The engine's caches are keyed on schema identity, so per-shape schemas
 are the smallest key that neither leaks `Name3` to a monolingual tenant nor rebuilds per request.
-`Fingerprint` is the hex SHA-256 of every entity's `(Name, Source, Key, properties, navigations,
-tree levels)` in model order and of the calendar maps; it is part of `EntityMetadata`'s startup
-validation output.
+`Fingerprint` is the hex SHA-256 of every entity's `(Name, Source, Key, properties, navigations)`
+in model order and of the calendar maps. It is part of `EntityMetadata`'s startup validation
+output.
 
 Schema rules:
 
@@ -1770,11 +1774,9 @@ Schema rules:
   a left join so an owner without a sibling row yields nulls (a pack's extension table, spec 0011
   §2.4). No collections.
 - **Tree node.** The shadow `Node` of every tree entity, declared `HierarchyId` and registered as
-  `TreeNode`, so `descendantOf`/`ancestorOf` and `level(Node)` bind. The entity also declares
-  `TreeLevels([Tree].MaxDepth)` (spec 0010 §F.9): navigations `Level1` … `LevelN` to the entity
-  itself, the ancestor at each depth.
+  `TreeNode`, so `descendantOf`/`ancestorOf` and `level(Node)` bind.
 - **Calendar maps.** `CalendarMap("uq", "[core].[CalendarMonths]")` (spec 0013 §8.2, spec 0010
-  §F.13), so the calendar functions accept `'uq'`.
+  §F.11), so the calendar functions accept `'uq'`.
 - **Read-only roots.** `core.UserStamp` (over `core.UserStamps`, navigation `User`) and
   `core.Blob` are declared by their owning specs' entity classes and reachable as documented there.
 
@@ -1790,8 +1792,8 @@ Spec 0008 is frozen. The engine changes this spec relies on are spec 0010 Part F
 
 - key-set restrictions (§F.1), `level()` (§F.2) and the prologue/body split (§F.3);
 - paging slots (§F.4) and versioned leaves (§F.6);
-- `FilterTree.Via` (§F.7) and tree level navigations (§F.9);
-- constant statements (§F.11) and the `'uq'` calendar map (§F.13).
+- `FilterTree.Via` (§F.7);
+- constant statements (§F.9) and the `'uq'` calendar map (§F.11).
 
 Binding the context slots to the tenant is this spec's own (§5.1, §11.3). Where the amendments
 are used:
@@ -1821,7 +1823,7 @@ Every clause a host authors (a user's filter, `SearchFilter`, an `IAccessCriteri
 criterion, a stack's declared filters) compiles under `QueryexLanguage.Version`; only stored text
 carries an older stamp, per leaf.
 
-`EvaluateConstant(items, languageVersion)` compiles spec 0010 §F.11's statement under that version
+`EvaluateConstant(items, languageVersion)` compiles spec 0010 §F.9's statement under that version
 with `BatchOrdinal = b`. It binds the `Today`, `Now`, `UserId` and `TimeZone` slots from the same
 `QueryexContextValues` as `Rows`, so a default and the query that uses it see one `today()`. The
 result is one row with one column per item.
@@ -1829,9 +1831,10 @@ result is one row with one column per item.
 SQL Server sends a result set's column metadata before its first row, even for an empty result, so
 the buffers and `Columns` never depend on the data. After `ExecuteReader` and before the first
 `Read`, the reader creates the `QueryRowSet.Builder` from the compiled `Columns` and the open
-reader's metadata. Each `Numeric` column's `Scale` (§3.3) comes from the reader's field type, and
-for a `decimal` from `DbColumn.NumericScale` in the reader's column schema, so a computed decimal
-(`Sum(Amount)`) reports the scale SQL Server computed. Each column's buffer is chosen by the pair
+reader's metadata. Each `Numeric` column's `Scale` (§3.3) comes from the reader's field type. For
+a `decimal`, `Scale` and `Precision` come from `DbColumn.NumericScale` and
+`DbColumn.NumericPrecision` in the reader's column schema, so a computed decimal (`Sum(Amount)`)
+reports the precision and scale SQL Server computed. Each column's buffer is chosen by the pair
 (Queryex type, the logical target; the reader's `GetFieldType(i)`, the physical source):
 
 | Queryex type | Field type | Buffer | Read |
@@ -1866,10 +1869,7 @@ be visible; null conjoins nothing), ordering kept, no paging; the rows land in
 ### 11.4 Entity queries
 
 `Query<TEntity>(EntityQuery)` restricts `Select` to bare paths (a computed item is a compose-time
-`ArgumentException`; user text is validated by spec 0015 before it reaches the batch). A `Select`
-path through a level navigation (spec 0010 §F.9) is also a compose-time `ArgumentException`,
-because no foreign key links a materialized row to its ancestor; `Filter` and `OrderBy` may use
-one.
+`ArgumentException`; user text is validated by spec 0015 before it reaches the batch).
 
 The host runs spec 0008's `DiscoverQuery` on the select text (cached by the engine) to learn the
 paths, then appends the root `Id` and, for every navigation prefix used, its key path
@@ -1987,7 +1987,7 @@ by name.
 
 | Suite | Location | Tier | What it pins |
 |---|---|---|---|
-| Unit | `test/core/Tellma.Core.Tests/Data/` | PR | golden SQL per emitter statement kind against the fixture metadata (§8, §9, §10, §11.3); `SaveReceipt` reading from canned result sets; the `SaveHandle` and `DeleteHandle` listing one `ColumnCapture` per `[BlobReference]` column of every written table; `IDisplayNames` against spec 0029 §5.2's shared golden file (`display-name-golden.json`); a `Select` through `Level{j}` refused at compose time; allocator deficit and buffer arithmetic, temporary-id rewriting, hold/return; metadata construction and every §3.2 rule as a failing model; `SchemaFingerprint` stability; natural-key inference order; enum sizing (nullable enums included); retry classification for every number of §6.4; the commit-probe verdicts; `QueryRowSet.Builder` buffers for every (Queryex type, field type) pair of §11.3, `Scale` per numeric field type, and the `InvalidOperationException` for any other pair; materializer routing (root, related, children, grandchildren, missing column); the persist frame assembly order of §5.5; parameter-count and result-set-count guards |
+| Unit | `test/core/Tellma.Core.Tests/Data/` | PR | golden SQL per emitter statement kind against the fixture metadata (§8, §9, §10, §11.3); `SaveReceipt` reading from canned result sets; the `SaveHandle` and `DeleteHandle` listing one `ColumnCapture` per `[BlobReference]` column of every written table; `IDisplayNames` against spec 0029 §5.2's shared golden file (`display-name-golden.json`); allocator deficit and buffer arithmetic, temporary-id rewriting, hold/return; metadata construction and every §3.2 rule as a failing model; `SchemaFingerprint` stability; natural-key inference order; enum sizing (nullable enums included); retry classification for every number of §6.4, with 8134 and 8115 mapped to `ArithmeticFailureException` and their reasons; the commit-probe verdicts; `QueryRowSet.Builder` buffers for every (Queryex type, field type) pair of §11.3, `Scale` per numeric field type and `Precision` per `decimal` column, and the `InvalidOperationException` for any other pair; materializer routing (root, related, children, grandchildren, missing column); the persist frame assembly order of §5.5; parameter-count and result-set-count guards |
 | Integration | `test/core/Tellma.Core.IntegrationTests/Data/` | `Category=Integration`, PR on Windows (LocalDB) and Linux (Testcontainers) | everything in §13.3 |
 | Analyzers | `test/core/Tellma.Core.Analyzers.Tests/` | PR | each `TELLMA000n` condition and its negative |
 
@@ -2007,8 +2007,8 @@ schema guard, the connect prologue, the persist frame's tag guard (§5.5 step 4)
 resolve to the production tables. The migrations also create a minimal stand-in
 `core.Jobs (Id int PK)` so the job FK resolves to its production name, and `core.Blobs` with
 `core.sq_Blobs` in full (spec 0017 §2.1) so the `[BlobReference]` FKs resolve and spec 0017 §11's
-suite runs against the fixture database. The database is created with `READ_COMMITTED_SNAPSHOT ON`,
-as spec 0011's provisioning does, and change tracking is enabled on every fixture table so the
+suite runs against the fixture database. The database is created with the tenant collation and
+`READ_COMMITTED_SNAPSHOT ON`, as spec 0011's provisioning does (§6.1), and change tracking is enabled on every fixture table so the
 executor in test mode compares `CHANGETABLE(CHANGES …)` with `WrittenTables` after every batch.
 
 | Table | Shape | Columns beyond the capability sets |
@@ -2075,7 +2075,10 @@ Each is a named test; the list is the behavioural contract of this spec:
   refused; `OUTPUT inserted.[Id]` from an `UPDATE` on a system-versioned table works; `INSERT INTO
   @t … SELECT … OFFSET/FETCH` and a derived table with `OFFSET/FETCH` compile; the change-tracking
   audit matches `WrittenTables` for every statement kind; a `THROW` from the statement at ordinal 3
-  and a 547 from the one at ordinal 4 surface with `StatementOrdinal` 3 and 4.
+  and a 547 from the one at ordinal 4 surface with `StatementOrdinal` 3 and 4; a division by zero
+  and a `decimal(38,0)` overflow in a `Rows` statement surface as `ArithmeticFailureException`
+  with reasons `divide-by-zero` and `overflow`; a computed `decimal` column reports SQL Server's
+  precision and scale.
 - **Queries.** A grid page with count and ancestors is one round trip; `cap + 1` is returned above
   the cap; `Skip`/`Take` reuse one plan (two pages, one `sys.dm_exec_query_stats` entry);
   `KeySetRestriction` over `IdList`, `BigIdList`, `StringList`, `DateList` and a `@tb{b}_` table;
@@ -2099,9 +2102,9 @@ Each is a named test; the list is the behavioural contract of this spec:
   rules of §3; the column vocabulary and the N−1 rule of §4; the batch, contributors, key
   capture, deduplication and persist frame of §5; the command, binder, error taxonomy, retry and
   probe of §6; the allocator of §7; the emitter of §8; the update and delete statements of §9;
-  the tree statements, validator and verify job of §10; the schema provider (tree levels and the
-  calendar map included), row-set reader, entity queries and materializer of §11 over spec 0010
-  Part F's engine — implemented and pinned by the suites of §13, green in CI on both platforms.
+  the tree statements, validator and verify job of §10; the schema provider (the calendar map
+  included), row-set reader, entity queries and materializer of §11 over spec 0010 Part F's
+  engine — implemented and pinned by the suites of §13, green in CI on both platforms.
 - **Observability**: every instrument of §12.1 emitted under the `Tellma.Core` meter and asserted
   by the integration tier; `DataAccessScope` stamped on the current `Activity`; the span attributes
   of §6.1; log events `DataBatch.SlowRoundTrip`, `DataBatch.OnCommittedFailed`,
@@ -2221,6 +2224,9 @@ The load-bearing decisions, where not already evident above:
     notifications and the client name a row the same way, and every related projection carries
     the columns the rule reads. The attribute is `[DisplayNameSource]` because
     `System.ComponentModel` owns `[DisplayName]` (§2.5, §3.1).
+36. **SQL's divide-by-zero and overflow errors are a typed exception with a reason** — the report
+    engine answers a failing measure with a 422 that says why, while every other caller keeps its
+    500. The alternative was mapping both to `DataAccessException` (§6.4).
 
 ## Review flags
 

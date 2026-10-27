@@ -30,7 +30,7 @@ Other specs that carry parts of this design:
 - spec 0019 §12.2 — job labels set at enqueue; `fileId` on `core.export.ready`.
 - spec 0020 §2.1, §2.3, §5.2, §5.3, §7.9 — job labels, live progress, the retention schedule (id 8).
 - spec 0021 §2.3–§2.5, §5.2–§5.4, §6.3 — types and categories, the inbox summary with actors and job labels, the client protocol, `assignments.changed`.
-- spec 0024 §2.2, §5.5, §9.2, §10.5 — the toast host's configuration, the update source, the `me/notifications` and open routes, `TmApi.online`.
+- spec 0024 §2.2, §5.5, §7.8, §9.2, §10.5 — the toast host's configuration, the update source, the time-zone prompt and toast, the `me/notifications` and open routes, `TmApi.online`.
 - spec 0025 §2.3, §8.6, Appendix A — the two leader documents and the `notifications.toasts` key.
 - spec 0026 §9.3, §10.1 — the `settings` page kind; the attention dump section.
 - spec 0027 §3.2, §5.1, §7.2, Appendix A — launcher entries, the banner row, the slot order, the two shortcuts.
@@ -79,7 +79,7 @@ documentation comments, bodies and cancellation tokens are omitted.
 
 | Client entry point | Members | Budget (gzip, own weight) |
 |---|---|---|
-| `@tellma/core` (primary) | `TmBanners` and its types (§9.1); the offline and update banner sources (§9.5); `TM_ATTENTION_DOCUMENTS`, the two `TM_LEADER_DOCUMENTS` entries (§5.1); `TM_TOAST_FEEDBACK_MS`, `TM_TOAST_ARRIVAL_MS` (§8.1); the core feature's page declarations (§10) | 2.5 KB |
+| `@tellma/core` (primary) | `TmBanners` and its types (§9.1); `TmInputIdle` (§9.3); the offline and update banner sources (§9.5); `TM_ATTENTION_DOCUMENTS`, the two `TM_LEADER_DOCUMENTS` entries (§5.1); `TM_TOAST_FEEDBACK_MS`, `TM_TOAST_ARRIVAL_MS` (§8.1); the core feature's page declarations (§10) | 2.5 KB |
 | `@tellma/core/attention` (eager, modulepreloaded) | `TmBellButton`, `TmTrayButton`, `TmBannerHost`, `TmAttention`, `TmArrivals`, `TmAttentionText`, `TmAssignmentList`; the `@defer`red panels `TmBellPanel` and `TmTrayPanel` | 6 KB; the two panels 9 KB |
 | `@tellma/core/attention-pages` (lazy) | `TmNotificationSettingsPage`, `TmNotificationOpenPage`, `TmNotificationTextCell`, `TmAssignmentTargetCell`, `TmJobLabelCell`, `TmJobProgressCell`, `TmJobDetails` | 10 KB, `/search` and `/details` excluded |
 | `@tellma/core-testing` | `TmBellPanelHarness`, `TmTrayPanelHarness`, `TmBannerHostHarness`, `TmNotificationSettingsHarness`, `tmFakeInboxSummary()`, `tmFakeAssignmentsSummary()` | — |
@@ -106,7 +106,8 @@ documentation comments, bodies and cancellation tokens are omitted.
   opens until a refreshed copy arrives (§5.3).
 - *Banner* — one entry of `TmBanners`.
 - *The row* — the shell's 32 px banner row (spec 0027 §5.1).
-- *Idle gate* — the 2 s without input that a change of the row's height waits for (§9.3).
+- *Idle gate* — the 2 s without input that a change of the row's height waits for (§9.3). Spec
+  0024 §7.8's time-zone prompt waits for it too.
 
 ## 2. `core.Assignments` and the `Assignment` entity
 
@@ -466,7 +467,7 @@ INSERT INTO @tb{b}_users SELECT DISTINCT [UserId] FROM @tb{b}_rows WHERE [UserId
 
 ```json
 { "open": 4, "new": 1, "openByMe": 2, "seenAt": "2026-10-20T07:58:01.120+00:00", "latestByMe": [ … ],
-  "latest": [ { "id": 1874, "resource": "acme.SalesInvoice", "targetId": 23, "state": "Open", "assigneeId": 42, "assignedById": 7,
+  "latest": [ { "id": 1874, "resource": "acme.SalesInvoice", "targetId": "23", "state": "Open", "assigneeId": 42, "assignedById": 7,
                 "assignedAt": "2026-10-20T08:12:44.501+00:00", "isReturn": false, "comment": "For your kind approval", "captionJson": "{\"code\":\"23\"}" } ],
   "related": { "core.User": [ { "id": 7, "name": "Sara Ahmed", "name2": "سارة أحمد", "imageId": 812 } ] } }
 ```
@@ -538,7 +539,8 @@ document once itself (§5.3).
 
 `provideTellma` adds the two documents to spec 0025 §8.6's registry, whose rule says when they
 refresh. A warm launch renders the badges from them before any call. On the client, `assignments`
-is §4.3's record in camelCase, its rows typed `TmEntityType<'core.Assignment'>` (spec 0029 §15).
+is §4.3's record in camelCase, its rows typed `TmEntityType<'core.Assignment'>` (spec 0029 §15). A
+row's `targetId` is a `long`, so it is a `TmDecimal` string (spec 0024 §10.4).
 
 ```ts
 // @tellma/core (primary)
@@ -710,8 +712,8 @@ footer link "See all notifications" (`TmUrls.search('core.Notification')`).
   `sm`), titled "Notifications" (spec 0010 §D.2). Below `sm`, rows are 44 px tall, as spec 0010
   §C.10's menu rows are.
 - **RTL.** The panel aligns to the button's inline-end edge, which is the left edge in Arabic.
-  Pointing icons mirror. Codes and numbers inside text sit in `<bdi>`. Badge digits are
-  Arabic-Indic in `ar-SA`.
+  Pointing icons mirror. Codes and numbers inside text sit in `<bdi>`. Badge digits follow the
+  locale (spec 0024 §7.7): Arabic-Indic in `ar-SA`, Latin in `ar-SA-u-nu-latn`.
 
 ## 7. The tray
 
@@ -810,6 +812,7 @@ or an inline state. `TmToasts` (spec 0023) obeys this policy.
 | Diagnostics copied, or not | "Diagnostics copied." / "Couldn't copy. Open About, then Diagnostics, to see the details." | — | spec 0026 §8.3 |
 | Caches refreshed | "Caches refreshed." | — | spec 0032 §7.7 |
 | Sign-out failed | "Couldn't sign out. Check your connection and try again." | — | spec 0024 §8.4 |
+| The time zone changed automatically with the device's | "Times now show in {zone} ({offset})." | Change: opens My profile | spec 0024 §7.8 |
 | An attention verb failed (sticky) | "Couldn't update your notifications. Try again." | Try again | §5.2 |
 | A test message was sent | "Test message sent." | — | §10.3 |
 
@@ -820,7 +823,8 @@ or an inline state. `TmToasts` (spec 0023) obeys this policy.
 - **The overflow pill.** Spec 0024 §2.2 calls `provideTellmaToasts({ maxVisible: 3, overflow })`
   with this spec's action. The pill reads "{n} more · Open notifications" and navigates to
   `TmUrls.search('core.Notification')`. It cannot open the bell, because the primary cannot reach
-  `/attention`.
+  `/attention`. Outside a tenant, where `TmUrls.tenantId()` is null (spec 0024 §9.4), it reads
+  "{n} more" and has no action.
 - **The per-user switch** `notifications.toasts` (spec 0025 Appendix A; fallback `true`) turns
   arrival toasts off. Outcomes and failures still toast.
 
@@ -909,6 +913,16 @@ declare class TmBanners {
   in an open row is immediate.
 - **When the gate opens.** After 2 s without `keydown`, `pointerdown`, `pointermove`, `wheel` or
   `touchstart` on the window, observed by passive capture listeners.
+- **One clock, exported.** `TmInputIdle` runs those listeners once per tab. `TmBanners` and spec
+  0024 §7.8's time-zone prompt both wait on it, so nothing new opens under the user's hands.
+
+  ```ts
+  // @tellma/core (primary)
+  declare class TmInputIdle {               // root service
+    readonly idle: Signal<boolean>;         // true while 2 s have passed without input
+    whenIdle(): Promise<void>;              // resolves at once while idle, else when the gate next opens
+  }
+  ```
 - **Applied at once:** the user's own dismiss, and any change while the page is hidden, so the user
   returns to a settled layout.
 - **An emptied row.** When the last entry closes while the row waits for the gate, the row stays
@@ -1062,7 +1076,7 @@ export const tmAssignments = tmEntity('core.Assignment', {
   tabs: [{ key: 'to-me', labelKey: 'tm.attention.tab.toMe', queryex: "AssigneeId = me() and State = 'Open'" },
          { key: 'by-me', labelKey: 'tm.attention.tab.byMe', queryex: "AssignedById = me() and AssigneeId != me() and State = 'Open'" },
          { key: 'all', labelKey: 'tm.attention.tab.all' }],
-  rowLink: (row) => inject(TmUrls).target(row.get('Resource') as string, row.get('TargetId') as number),
+  rowLink: (row) => inject(TmUrls).target(row.get('Resource') as string, row.get('TargetId') as TmDecimal),
 });
 ```
 
@@ -1136,14 +1150,15 @@ declare class TmAttentionText {
 
 ### 11.3 Assignment captions
 
-- **Stored form.** `AssignmentCaption` in the platform JSON options, every member optional:
-  `{ "code": "INV-0023", "amount": 12400.00, "currency": "SAR", "detail": { "customer": "Al Faris Group" } }`.
+- **Stored form.** `AssignmentCaption` in the platform JSON options, every member optional. The
+  amount is a `decimal`, so it is stored as a string (spec 0016 §3.2):
+  `{ "code": "INV-0023", "amount": "12400.00", "currency": "SAR", "detail": { "customer": "Al Faris Group" } }`.
 - **Title.** `tm.attention.assignment.title`, "{entity} {code}". `{entity}` is the singular label
   (spec 0029 §4.1). `{code}` is the code in `<bdi>`, else `#{targetId}`.
 - **Detail.** `Assignment_<Resource>_Detail`, with `.` replaced by `_`, formatted with `detail` as
   its ICU arguments. Without the key, there is no detail.
-- **Amount.** `Intl.NumberFormat(locale, { style: 'currency', currency, currencyDisplay: 'code' })`,
-  for example "SAR 12,400.00".
+- **Amount.** `Intl.NumberFormat(locale, { style: 'currency', currency, currencyDisplay: 'code' })`
+  formats the string exactly, for example "SAR 12,400.00".
 - **One language.** A name inside `detail` is the text the module passed when it assigned.
 
 **Example —** with `Assignment_acme_SalesInvoice_Detail` reading "{customer}", an English reader
@@ -1166,9 +1181,10 @@ Every suite runs on PR; none is nightly. Each bullet names the suite, its tier a
     every summary statement seeks.
 - **Assignments web (C#)** — integration. Routes and retry classes; `summary` stamps no activity;
   `assignments.changed` reaches exactly the parties (a fake publisher); MCP is read-only.
-- **`TmBanners`** — unit. Precedence, the pager, dismiss per tab and per version. The gate with a
-  fake clock: entry and exit wait; swaps, a hidden page and the user's dismiss apply at once; the
-  empty row. The queue-time announcement.
+- **`TmBanners`, `TmInputIdle`** — unit. Precedence, the pager, dismiss per tab and per version.
+  The gate with a fake clock: entry and exit wait; swaps, a hidden page and the user's dismiss
+  apply at once; the empty row; `whenIdle` resolves only after 2 s without input. The queue-time
+  announcement.
 - **`TmAttention`, `TmArrivals`, `TmAttentionText`** — unit. The badge table; overlays and their
   release. The baseline, both arrival rules, the replaced row, the focused-tab rule,
   `notifications.toasts` off, grouping and keys. Title and detail keys, the label order, the
@@ -1201,7 +1217,7 @@ This spec is done when both halves ship as below and each UI rule has a pinning 
 | Instant feedback | panels open in the click's frame from prefetched chunks; badges clear in the same frame; read, clear and cancel apply through overlays; switches apply before saving | `attention-feedback.spec` (a frame probe after click and shortcut); unit: overlays apply synchronously |
 | Non-blocking | panel reads abort on close; summaries are background reads; no verb blocks navigation | unit: closing aborts the read; `attention-hang.spec`: a hung `inbox/summary` delays neither opening nor navigating |
 | Stable layout | fixed counter boxes; hidden controls keep their boxes; the idle gate; the pinned "{n} new"; no push reloads a page | `attention-layout.spec`: boxes unchanged across 9 → 10, a job ring, and a banner queued while typing in a grid editor; zero layout shift |
-| RTL | logical properties, inline-end alignment, mirrored arrows, `<bdi>` codes, `ar-SA` digits | every attention e2e runs in `ar`; harness snapshots in both directions |
+| RTL | logical properties, inline-end alignment, mirrored arrows, `<bdi>` codes, the locale's digits | every attention e2e runs in `ar`; harness snapshots in both directions |
 | WCAG AA | dialog panels with roving lists, named badges, an assertive level-1 announcement at queue time, toasts that never take focus, switches named "{type}, {channel}" | §12's axe battery; `attention-keyboard.spec`: shortcuts, roving rows, Delete, Escape |
 
 - **Page-context registry.**

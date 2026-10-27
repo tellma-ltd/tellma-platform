@@ -32,16 +32,23 @@ Specs 0001, 0007 and 0009 need no amendment.
   `ui_locales`, the in-proc seed entry, `IdentityInfo.AccountUrl`.
 - spec 0016 §11.9 — the MCP surface's use of §A.2–§A.4 and §A.6.
 - spec 0018 §2, §3.3 — the identity client on the `v1` routes; `ExistingOnly` on sandbox tenants.
-- spec 0023 §3, §4 — `tm-icon`, `TmKeys` and `tm-chip`, which §C.10, §C.12 and §E.2 build on.
+- spec 0023 §3, §4 — `tm-icon`, `kbd` and `tm-chip`:
+  - every part's glyphs draw through `tm-icon` (§B.7, §C.13, §D.11, §E.5);
+  - the grid matches keys through `kbd` (§C.10, §C.12);
+  - §E.2 builds on `tm-chip`.
+- spec 0023 §4.2, spec 0034 §7.7 — the avatar tones, chart series and chart ramp that read
+  §B.8's `categorical` and `sequential` groups.
 - spec 0024 §7.1, §7.3, §7.6, §10.5 — `@tellma/core` fills the Part B and Part D seams: the
-  translations loader, the theme seed, `TM_TIME_ZONE` and `TM_BLOB_FETCHER`.
+  translations loader, the theme seed, `TM_TIME_ZONE`, `TM_DEVICE_TIME_ZONE` and
+  `TM_BLOB_FETCHER`.
+- spec 0024 §7.8, spec 0029 §12.1 — which surfaces show §D.4's zone label.
 - spec 0025 §2.6 — the session sweep that calls `clearAll({ keep })` (§D.5).
-- spec 0012 §11.1–§11.2 — the host of Part F: the schema's `TreeLevels` and `CalendarMap`, and
-  the amendments the data access layer relies on.
-- spec 0012 §11.4, spec 0015 §5.2 — the refusal of level paths in an entity `Select` (§F.9).
-- spec 0013 §8.2 — the `uq` month table that §F.13 reads.
-- spec 0029 §9, spec 0033, spec 0035 §6.3 — the consumers of Part F: `queryex/discover`, the report
-  engine and the dashboard read-through.
+- spec 0012 §11.1–§11.2 — the host of Part F: the schema's `CalendarMap`, and the amendments the
+  data access layer relies on.
+- spec 0012 §3.3, §11.3 — `QueryColumn.Precision`, which fills §F.15's `MeasureContext`.
+- spec 0013 §8.2 — the `uq` month table that §F.11 reads.
+- spec 0029 §9, spec 0033, spec 0035 §6.3 — the consumers of Part F: `queryex/discover` with its
+  `measures` clause, the report engine and the dashboard read-through.
 
 ## Goals / Non-goals
 
@@ -53,20 +60,27 @@ Specs 0001, 0007 and 0009 need no amendment.
   `tellma_kind` claim, `existingOnly` invites, versioned management routes, an account entry URL
   that honours `return_url`, and the sign-in language from the authorization request.
 - **Part B.** Breakpoints, the System theme, a translations seam with live direction, a
-  closed-list multi-select with option groups, the prefix lint's scope, and touch sizes on phones.
-- **Part C.** The grid features a list page needs — row activation, an external active row, sort
-  state, header actions, select-all across pages, row classes, a stable gutter, scroll-to-row,
-  remembered tree expansion, a published key map — and a richer, data-driven menu.
-- **Part D.** A public overlay entry point; the drawer, alert-dialog roles and live direction on
-  modals; fixed popover sizes; date-time, time, relative, month, quarter, year and weekday formats;
-  a full client-cache sweep; cancellable blob fetches; image and button support for the new avatar
-  and icon components.
-- **Part E.** Two-line picker options, a multi-entity picker, a page context for picker pages, and
-  two-line options in grid cells.
+  closed-list multi-select with option groups, the prefix lint's scope, touch sizes on phones,
+  glyphs through `tm-icon`, and categorical and sequential colour groups for avatars and charts.
+- **Part C.** The grid features a list page needs, a richer data-driven menu, and glyphs through
+  `tm-icon`. The grid features are row activation, an external active row, sort state, header
+  actions, select-all across pages, row classes, a stable gutter, scroll-to-row, remembered tree
+  expansion, and a published key map that works on every keyboard layout.
+- **Part D.**
+  - a public overlay entry point;
+  - the drawer, alert-dialog roles and live direction on modals;
+  - fixed popover sizes;
+  - date-time, time, relative, month, quarter, year and weekday formats, with an offset label when
+    the display zone differs from the device's;
+  - a full client-cache sweep and cancellable blob fetches;
+  - image and button support for the new avatar and icon components;
+  - glyphs through `tm-icon`.
+- **Part E.** Two-line picker options, a multi-entity picker, a page context for picker pages,
+  two-line options in grid cells, and glyphs through `tm-icon`.
 - **Part F.** The Queryex changes the data access layer, the permission evaluator and the report
-  engine need: the seven amendments moved from spec 0012 (§F.1–§F.7), grouping sets, level
-  navigations, omitted parameters, constant statements, parameter binding, `'uq'` through a month
-  table, `Exists` and `ComparedWith` (§F.8–§F.15).
+  engine need: the seven amendments moved from spec 0012 (§F.1–§F.7), omitted parameters, constant
+  statements, parameter binding, `'uq'` through a month table, `Exists`, `ComparedWith`, and
+  measure partials with their C# evaluation (§F.8–§F.15).
 
 **Non-goals (explicitly out of scope)**
 
@@ -87,11 +101,15 @@ Specs 0001, 0007 and 0009 need no amendment.
   - splitting the grid's readonly and editable code (Part C flag 6);
   - grid footer rows and a row-selectable predicate (Part C decision 9);
   - a second submenu level, and a time-of-day type without an instant;
-  - tab prerendering (Part D decision 11).
+  - tab prerendering (Part D decision 11);
+  - matching named keys (arrows, Enter, Escape, Tab) through `kbd`: they are the same on every
+    layout (§C.12).
 - **Part F:**
   - a language-level list parameter, and `descendantOf` over a table-valued parameter: key-set
     restrictions cover every consumer (spec 0012 §11.2);
   - window functions for running totals (spec 0033 reserves `running`);
+  - non-decomposable aggregates (distinct count, median, percentile): Queryex has none, and the
+    decomposition refuses any future one until it is designed (§F.14);
   - a new `QueryexLanguage.Version`: every item is additive (§F.0).
 
 ## How to read an amendment
@@ -652,9 +670,26 @@ Parts B–E change `@tellma/core-ui` (`client/projects/core/tellma-core-ui/`) an
 testing and Arabic locale packages. File paths in these parts are relative to that folder unless
 stated.
 
-- **Order.** Part B first, then Part D. Part C follows spec 0023 §3 (`tm-icon`, `TmKeys`), because
-  its menu renders registry icons and key labels. Part E follows spec 0023 §4 (`tm-chip`). Spec
-  0023 itself builds on §B.1's breakpoints and §D.1's overlay entry point.
+- **Order.** Spec 0023 §3.1 and §3.2 (`icon`, `kbd`) come first, then Part B, then Part D.
+  - **Why `icon` and `kbd` first.** Every part draws its glyphs through `tm-icon`, and Part C
+    matches keys through `kbd`. Neither entry point depends on this spec.
+  - **Parts C and E.** Part C needs only spec 0023 §3. Part E also needs spec 0023 §4 (`tm-chip`).
+  - **The rest of spec 0023** builds on §B.1's breakpoints and §D.1's overlay entry point.
+- **Glyphs draw through `tm-icon`.** Every built-in glyph follows spec 0023 §3.1's rule for the
+  library's own glyphs. The rule's two exceptions hold here too, and one of them is the grid's
+  masks, which stay (§C.13).
+  - **Nothing moves.** Each glyph keeps its box and its stroke. A geometry e2e per part pins them,
+    in LTR and RTL.
+  - **The lists.** §B.7, §C.13, §D.11 and §E.5 list each entry point's glyphs.
+- **Keys through `kbd`.** Library code uses spec 0023 §3.2's helpers:
+  - **Shortcuts** on letters, digits and symbols match with `tmKeysMatch`.
+  - **Key hints** are written with `tmFormatKeys` or `tmKeysText`.
+  - **The platform** comes from `tmIsApplePlatform`.
+  - **Named keys** (arrows, Home, End, Enter, Escape, Tab, F-keys) keep direct `event.key` checks:
+    they are the same on every layout.
+  - **The ESLint rule `tm/no-platform-sniffing`** refuses `navigator.platform` and
+    `navigator.userAgentData` outside `kbd/`, in `projects/core/**` and `projects/module/**`.
+    `lint:test` holds its vectors. Part C ships it with the grid's migration (§C.12).
 - **Every changed entry point ships whole.** In the same change it updates:
   - its API golden (`client/api/*.api.md`);
   - its `*.examples.ts` and its `components.json` entry;
@@ -685,10 +720,11 @@ Each part's Testing names what it pins in these suites, all run on every pull re
 
 ## Part B — Component library foundation (spec 0002)
 
-Part B changes the library's foundation: the primary entry point, the select and the lint rules.
-Its consumers are the app foundation (spec 0024: theme, strings, direction), the shell (spec 0027),
-the filter controls (spec 0029 §13), the search page (spec 0030) and every responsive layout,
-spec 0023's components included.
+Part B changes the library's foundation: the primary entry point, the select, the lint rules, the
+foundation's glyphs and the token contract. Its consumers are the app foundation (spec 0024: theme,
+strings, direction), the shell (spec 0027), the filter controls (spec 0029 §13), the search page
+(spec 0030), the avatars and charts (specs 0023, 0034) and every responsive layout, spec 0023's
+components included.
 
 ### §B.1 Breakpoints
 
@@ -903,8 +939,8 @@ declare class TmMultiSelect<T> {
 **`tm-multi-select`:**
 
 - **Panel.** The same combobox and listbox wiring as `tm-select`, with `ngListbox [multi]="true"`
-  and `aria-multiselectable="true"`. Each row shows a checkbox glyph: the `tm-checkbox` box, drawn
-  with the grid's mask, so it costs no component.
+  and `aria-multiselectable="true"`. Each row shows a checkbox: the `tm-checkbox` box with its
+  `check` glyph (§B.7).
 - **Toggle, stay open.** Click, Space and Enter toggle the active option and keep the panel open.
   Escape, Tab and an outside press close it. Home, End and typeahead work on the open panel.
 - **Trigger.** One line at a fixed height. It shows the selected labels joined with
@@ -974,15 +1010,101 @@ in page content reach a 46 px touch height on phones. Menu rows follow §C.10.
 **Tests:** unit — the resolved size at 390 and 768 px, with and without an explicit `size`; e2e at
 390 px — a field is 46 px tall. **Budget:** primary +0.1 KB.
 
+### §B.7 Foundation glyphs through `tm-icon`
+
+**Target:** 0002 §3.5 (built-in glyphs as static inline SVGs). **Requested by:** spec 0023 §3.1.
+**Why:** one drawing path gives every glyph the same stroke, size token and RTL rule.
+
+The foundation's inline SVGs become `tm-icon` instances, under the shared glyph rule (Parts B–E:
+rules shared).
+
+| Entry point | Glyphs |
+|---|---|
+| `checkbox` | `check`; `minus` for the indeterminate state |
+| `select` | the trigger caret `chevron-down`; the option `check` of `tm-select`; the row checkbox's `check` in `tm-multi-select` (§B.4) |
+| `form-field` | `circle-alert` beside an error |
+
+- **Sizes stay.** Each host points `--icon-size` at the glyph size token it uses today, so no box
+  changes.
+- **The checkbox and the grid agree.** The grid's check and dash masks (§C.13) draw the same paths
+  at the same stroke, so a checkbox cell looks exactly like a `tm-checkbox`.
+- **No RTL change.** None of these glyphs is directional.
+
+**Compatibility:** no public API changes; the three entry points import `@tellma/core-ui/icon`,
+which `size:check` keeps outside their self-weight. **Tests:** e2e geometry — each glyph's box and
+stroke in LTR and RTL; a `tm-checkbox` and a grid checkbox cell compared pixel for pixel.
+**Budget:** re-measured; `./form-field` sits closest to its 5 KB ceiling.
+
+### §B.8 The `categorical` and `sequential` colour groups
+
+**Target:** 0002 §4 (`TmSchemeColors` and the emitter). **Requested by:** spec 0023 §4.2 (avatar
+tones), spec 0034 §7.7 (chart series and ramp). **Why:** eight hues that tell things apart and a
+seven-step ramp for magnitude, each with its own values in light and dark.
+
+The emitter writes component tokens once, in `:root`. Only `TmSchemeColors` switches under
+`[data-theme=dark]`. So two new groups in the scheme shape hold the hues and the ramp:
+
+- **`categorical`.** Each slot has a solid mark and a tinted pair for text.
+- **`sequential`.** Each step is one colour, step 1 the faintest.
+
+```ts
+// @tellma/core-ui-tokens, contract/tokens.ts
+interface TmCategoricalTone {
+  readonly mark: TmTokenValue;     // a solid hue for chart marks; never carries text
+  readonly tint: TmTokenValue;     // a pale background of the hue
+  readonly onTint: TmTokenValue;   // text on tint, at least 4.5:1
+}
+interface TmSchemeColors {         // existing members unchanged
+  readonly categorical: Readonly<Record<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8, TmCategoricalTone>>; // new
+  readonly sequential: Readonly<Record<1 | 2 | 3 | 4 | 5 | 6 | 7, TmTokenValue>>; // new; 1 faintest
+}
+```
+
+- **Emission.** In both scheme blocks, `categorical.3.onTint` emits `--categorical-3-on-tint` and
+  `sequential.4` emits `--sequential-4`. `tmRefToVarName` gains both cases.
+- **Fixed order.** A slot keeps its place, so a chart series and an avatar keep their colours
+  across releases. A distribution re-brands a slot's values in `@layer tm.theme`, never the order.
+- **Default `categorical` values:**
+
+  | Slot | Hue | Light `mark` · `tint` · `onTint` | Dark `mark` · `tint` · `onTint` |
+  |---|---|---|---|
+  | 1 | teal | `#118AA6` · `#D3E9EE` · `#084B5D` | `#2AA5C2` · `#144554` · `#AED6DF` |
+  | 2 | orange | `#EB6834` · `#FBE3DA` · `#6A3B2A` | `#D95926` · `#5A3A2F` · `#F0CCBD` |
+  | 3 | violet | `#6250D6` · `#E2DFF7` · `#2C3173` | `#9085E9` · `#2E3363` · `#C7C5EE` |
+  | 4 | amber | `#C98500` · `#F4E8D0` · `#5A4813` | `#C98500` · `#4F441F` · `#E6D5AE` |
+  | 5 | magenta | `#D55181` · `#F7DFE8` · `#60314D` | `#D55181` · `#533348` · `#E9C5D4` |
+  | 6 | green | `#008300` · `#D0E8D0` · `#004813` | `#008300` · `#0F431F` · `#A9D4AE` |
+  | 7 | blue | `#2A78D6` · `#D8E6F7` · `#134373` | `#3987E5` · `#1C4063` · `#B6D1EE` |
+  | 8 | red | `#E34948` · `#F9DDDD` · `#662E33` | `#E66767` · `#583136` · `#EDC3C3` |
+
+- **Default `sequential` values** reference the teal ramp, so a distribution that re-brands teal
+  re-brands the steps too. Each scheme runs from near its surface colour to its strongest teal:
+
+  | Step | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+  |---|---|---|---|---|---|---|---|
+  | Light | `{teal.100}` | `{teal.200}` | `{teal.300}` | `{teal.400}` | `{teal.600}` | `{teal.700}` | `{teal.800}` |
+  | Dark | `{teal.900}` | `{teal.800}` | `{teal.700}` | `{teal.600}` | `{teal.400}` | `{teal.300}` | `{teal.200}` |
+
+- **Who reads them.** A keyed `tm-avatar` paints `tint` with `onTint` initials (spec 0023 §4.2).
+  Chart series 1–8 use `mark`, and the chart's `sequential` palette uses the seven steps (spec
+  0034 §7.7). Every other surface keeps the brand's roles.
+- **Contrast.** A tokens unit test checks `onTint` on `tint` at 4.5:1 or more, in both schemes and
+  for any preset. The 9–11 px initials of small avatars need that ratio. Spec 0034 §7.7's chart
+  test checks `mark`.
+
+**Compatibility:** additive. Presets extend the default by typed merge (0002 §4), so they inherit
+the eight slots and the seven steps. **Tests:** unit — the contrast test; both scheme blocks emit
+the 31 names; the schema and missing-ref gates. **Budget:** none in the library's entry points.
+
 ### Part B — Testing
 
 | Suite | Pins |
 |---|---|
-| Unit | `TmBreakpoints`; `TmTheme`; the loader merge and the live `Directionality`; `tm-multi-select` value order, toggle and unmatched values; group navigation; `ɵtmControlSize` |
+| Unit | `TmBreakpoints`; `TmTheme`; the loader merge and the live `Directionality`; `tm-multi-select` value order, toggle and unmatched values; group navigation; `ɵtmControlSize`; the `categorical` contrast test; the names both colour groups emit |
 | `lint:test` | `tm/allowed-breakpoints` vectors and their parity with `TM_BREAKPOINTS`; the `tm/prefix-exports` cases |
-| Playwright | the theme toggle; the live direction flip with a modal open; both selects with groups; touch geometry at 390 px |
+| Playwright | the theme toggle; the live direction flip with a modal open; both selects with groups; touch geometry at 390 px; §B.7's glyph geometry, the checkbox against a grid cell |
 | axe | select groups and multi-select states in both themes and directions |
-| Gates | the primary and `./select` goldens; the ceilings below |
+| Gates | the primary and `./select` goldens; `tokens:check` over the `categorical` and `sequential` groups; the ceilings below |
 
 ### Part B — Definition of done
 
@@ -994,16 +1116,19 @@ in page content reach a 46 px touch height on phones. Menu rows follow §C.10.
 - **Selects:** `tm-multi-select`, `tm-option-group` and their harnesses shipped (§B.4).
 - **Lint:** the prefix rule's new scope (§B.5).
 - **Touch:** §B.6 shipped.
+- **Glyphs:** `checkbox`, `select` and `form-field` draw through `tm-icon` (§B.7).
+- **Tokens:** the `categorical` and `sequential` groups in the contract, the emitter and the
+  default preset (§B.8); the identity server's token CSS refreshed.
 - **UI rules:**
   - **Instant feedback** — `TmTheme.set` writes in the click's task (unit).
   - **Non-blocking** — nothing in Part B waits on the network.
   - **Stable layout** — the multi-select trigger keeps one height (e2e geometry); sizes change only
-    across 576 px (§B.6 unit).
+    across 576 px (§B.6 unit); glyph boxes hold (§B.7 e2e).
   - **RTL** — the live switch (§B.3 e2e).
   - **WCAG AA** — axe over the new select states in both themes and directions; 46 px touch fields
-    (§B.6 e2e).
+    (§B.6 e2e); `onTint` on `tint` at 4.5:1 or more (§B.8 unit).
 - **Budgets:** primary `.` 5 → **7** (Part D's primary additions included); `./select` 8 → **9**;
-  notes recorded.
+  `./checkbox` and `./form-field` re-measured after §B.7; notes recorded.
 
 ### Part B — Decisions record
 
@@ -1026,6 +1151,16 @@ in page content reach a 46 px touch height on phones. Menu rows follow §C.10.
    line of text keeps the trigger at the field height with no overflow logic (§B.4).
 9. **Below `sm` the default size is `lg`; explicit sizes win; grids keep their density** — one rule
    for page content, no per-page code; touch grids are 0004 §8.6's (§B.6).
+10. **Every built-in glyph draws through `tm-icon` with `lucide` data, apart from `tm-spinner` and
+    the grid's masks (Part C decision 17)** — one stroke, one size token and one live RTL rule for
+    every glyph; static inline SVGs per component were the alternative (§B.7, §C.13, §D.11,
+    §E.5).
+11. **Categorical colours are a semantic scheme group, read by avatars and charts** — component
+    tokens emit once, so per-scheme hues need the scheme shape; separate `avatar` and `chart`
+    groups would hold the same hues twice (§B.8).
+12. **The chart's magnitude ramp is a `sequential` scheme group** — the light ramp runs pale to
+    dark and the dark ramp the reverse, and a component token is emitted once, so it cannot hold
+    both; one ramp for both schemes was the alternative (§B.8).
 
 ### Part B — Review flags
 
@@ -1042,13 +1177,16 @@ in page content reach a 46 px touch height on phones. Menu rows follow §C.10.
    `TmFormFieldDefaults`, `null` turning the rule off. Flips if a distribution wants dense forms on
    phones.
 6. **Grids excluded from the touch rule** (§B.6). Flips if phone users edit line-entry grids.
+7. **Eight categorical slots** (§B.8). Alternative: more slots, like Fluent UI's thirty avatar
+   colours. Flips if member lists show same-coloured neighbours too often.
 
 ## Part C — Data grid and menu (spec 0004)
 
 Part C gives the grid what list and line-entry pages need, and gives the menu the entry kinds the
-shell and page toolbars need. Its consumers are the search page (spec 0030), the details page
-(spec 0031), the shell (spec 0027), the report renderers (spec 0034) and spec 0023's tiles, which
-reuse the activation and driver types.
+shell and page toolbars need. It also moves the grid's keys onto `kbd` and its glyphs onto
+`tm-icon`. Its consumers are the search page (spec 0030), the details page (spec 0031), the shell
+(spec 0027), the report renderers (spec 0034) and spec 0023's tiles, which reuse the activation
+and driver types.
 
 - **Where grid members land.** Every grid input below is on `ɵTmGridBase`
   (`grid/internal/grid-base.ts`), so `tm-grid` and `tm-tree-grid` share it. Tree-only members are
@@ -1192,8 +1330,8 @@ readonly sortable = input(false, { transform: booleanAttribute }); // requires `
   A drag across headers still selects columns, and Shift+click and Mod+click keep their selection
   meaning. Non-sortable headers keep press-to-select.
 - **Indicator.** Sortable headers reserve a 14 px slot after the label for `arrow-up` or
-  `arrow-down` (inline SVG, `aria-hidden`). The slot is always present, so sorting never shifts the
-  label. Hover previews the next direction faintly.
+  `arrow-down` (a decorative `tm-icon`, §C.13). The slot is always present, so sorting never shifts
+  the label. Hover previews the next direction faintly.
 - **ARIA.** The sorted column's `role="columnheader"` carries `aria-sort="ascending"` or
   `"descending"`; other headers carry none. A change announces `tmUi.grid.announce.sorted` ("Sorted
   by {column}, {direction, select, asc {ascending} other {descending}}") or `sortCleared`.
@@ -1403,7 +1541,7 @@ The menu stays data-driven; new entry kinds join the `TmMenuEntry` union.
 
 ```ts
 // @tellma/core-ui/menu
-type TmMenuIcon = TemplateRef<void> | string;   // string: a TmIconRegistry name, rendered by tm-icon (spec 0023 §3)
+type TmMenuIcon = TemplateRef<void> | string | TmIconSource; // string: a TmIconRegistry name; TmIconSource: direct data (spec 0023 §3.1)
 
 interface TmMenuItem {                  // id, label, labelKey, disabled and action() unchanged
   readonly icon?: TmMenuIcon;           // old: TemplateRef<void>
@@ -1477,11 +1615,16 @@ readonly items = computed<readonly TmMenuEntry[]>(() => [
     the link.
   - Ctrl, ⌘, Shift and middle-click stay native.
   - The panel's `contextmenu` suppression skips links, so "Copy link address" works.
-- **Icons.** A string `icon` renders `tm-icon` from the registry; a template renders as today. The
-  icon slot sets `--icon-size: var(--menu-icon-size)`.
+- **Icons.** The icon slot sets `--icon-size: var(--menu-icon-size)`. Each `TmMenuIcon` form
+  renders its own way:
+  - a string renders `tm-icon` from the registry;
+  - a `TmIconSource` renders `tm-icon` with `[svg]`, as library code does (the grid's context
+    menu, §C.13);
+  - a template renders as today.
 - **Shortcuts** are display only, `aria-hidden`, rendered through `tmFormatKeys` for the platform:
   `Mod+C` shows Ctrl and C on Windows and Linux, ⌘ and C on Apple. The grid's own context menu
-  passes `Mod+X`-style keys instead of its pre-formatted strings.
+  passes `Mod+X`-style keys instead of its pre-formatted strings. Its paste hint, "Press
+  {shortcut} to paste", fills `{shortcut}` with `tmKeysText('Mod+V')`: "Ctrl+V" or "⌘V".
 - **Header slot.** `ng-template[tmMenuHeader]` renders above the list, outside `role="menu"`. The
   menu's `aria-describedby` references it, so it is read on open. It holds no interactive content
   (dev warning).
@@ -1512,27 +1655,79 @@ The search route's budget (spec 0024 §12) carries the grid and its engine at ab
 the editable-only machinery on demand would cut that; it is not part of this amendment (Part C
 flag 6).
 
-### §C.12 The published key map
+### §C.12 The key map, published and matched through `kbd`
 
-**Target:** 0004 §8.2, §13 (the keyboard reference). **Requested by:** spec 0027 §4.3, §11.2.
-**Why:** the shortcut registry refuses grid keys and the Shortcuts dialog lists them, without
-restating 0004.
+**Target:** 0004 §8.2, §8.3, §8.7, §13 (the keyboard reference). **Requested by:** spec 0027
+§4.3, §11.2; spec 0023 §3.2. **Why:** the shortcut registry refuses grid keys and the Shortcuts
+dialog lists them, without restating 0004. Mod+Z, Mod+D, Mod+A and Mod+F must also work on an
+Arabic layout, where `event.key` is an Arabic letter.
 
 ```ts
 // @tellma/core-ui/grid
-declare const TM_GRID_KEYS: readonly { readonly keys: TmKeys; readonly labelKey: string }[]; // TmKeys imported as a type
+declare const TM_GRID_KEYS: readonly { readonly keys: TmKeys; readonly labelKey: string }[]; // kbd imported at runtime
 ```
 
 - **Contents.** One entry per key combination of the grid's navigation state, the tree additions
   and Part C's own keys (F2 in §C.1, Alt+ArrowDown on a header in §C.4), with label keys under
   `tmUi.grid.keys.*`. Entries that share a `labelKey` render as one help row.
-- **Derived, never restated.** The list is built from the keymap's own binding table; a unit test
-  asserts that every binding has an entry.
+- **One table.** The keymap's binding table lists each combination with its intent and label key.
+  `TM_GRID_KEYS` is that table without the intents, and a unit test asserts that every binding has
+  an entry.
+- **Matched through `kbd`.** Bindings on a letter, digit or symbol match with `tmKeysMatch`, so
+  they work on every layout. Named keys keep the keymap's direct checks (Parts B–E: rules shared).
+  - **Letters:** `Mod+A`, `Mod+Z`, `Mod+Y`, `Mod+D` and `Mod+F`.
+  - **Rows:** `Mod+Alt+Plus` and `Mod+Alt+Minus`. `Mod+Alt+=` is a second binding with
+    `Mod+Alt+Plus`'s intent and label.
+  - **Cost.** Parsed keys are cached, so a keydown stays cheap.
+- **The platform through `kbd`.** The find bar's `Mod+F` matches with `tmKeysMatch`. The pointer's
+  Mod (§C.1's new tab, Mod+drag) reads `tmIsApplePlatform`. The context menu's hints use
+  `tmFormatKeys` and `tmKeysText` (§C.10). The grid keeps no platform check of its own, which
+  `tm/no-platform-sniffing` enforces.
 - **Consumers.** The shortcut registry refuses a registration equal to an entry that carries a
   modifier (spec 0027 §4.3); the Shortcuts dialog renders the list (spec 0027 §11.2).
 
 **Example —** `{ keys: 'Mod+D', labelKey: 'tmUi.grid.keys.fillDown' }` renders as "Fill down" with
-Ctrl D on Windows and ⌘ D on Apple.
+Ctrl D on Windows and ⌘ D on Apple. On an Arabic layout, Ctrl+D sends `key` `'ي'` with `code`
+`'KeyD'`, and fill down runs.
+
+**Compatibility:** no public API change. **Tests:** unit — each binding matched by a synthetic
+event, an Arabic `key` with a Latin `code` included; `TM_GRID_KEYS` covering every binding. e2e —
+the grid's Mod+Z, Mod+D, Mod+A and Mod+F on an Arabic layout. `lint:test` —
+`tm/no-platform-sniffing` vectors. **Budget:** `kbd` stays outside `./grid`'s self-weight.
+
+### §C.13 Grid and menu glyphs through `tm-icon`
+
+**Target:** 0004 §8.5 (the context menu), §8.7 (find), §10 (the error tally), §13.2 (the tree
+expander), §15 (RTL). **Requested by:** spec 0023 §3.1. **Why:** one drawing path, and one live
+RTL rule for the grid's directional glyphs.
+
+The grid's and the menu's inline SVGs become `tm-icon` instances, under the shared glyph rule
+(Parts B–E: rules shared).
+
+| Where | Glyphs | Mirrors in RTL |
+|---|---|---|
+| Context menu | `scissors`, `copy`, `copy-plus`, `clipboard-paste`, `plus`, `corner-down-right`, `trash-2` | no |
+| Find bar | `chevron-up`, `chevron-down`, `x` | no |
+| Status bar | `chevron-left`, `circle-alert`, `chevron-right` | the chevrons |
+| Tree expander | `chevron-right` when collapsed, `chevron-down` when expanded | the collapsed chevron |
+| Sort indicator (§C.3) | `arrow-up`, `arrow-down` | never |
+| Menu rows (§C.10) | `check` (checkable items), `external-link` (`target: '_blank'`), `chevron-right` (submenu parents) | the submenu chevron |
+
+- **The context menu passes data.** Its entries carry `TmIconSource` icons (§C.10), so the
+  internal `ɵTmGridIcons` component and its templates go.
+- **Live direction.** Mirroring reads the computed direction (spec 0023 §3.1). The expander swaps
+  glyphs instead of rotating one. This replaces its `:host-context([dir='rtl'])` rotation, which
+  reads the `dir` attribute rather than the live direction.
+- **The masks stay.** Checkbox cells and the select-all header draw `check` and `minus` as CSS
+  masks (`--tm-grid-check-mask`, `--tm-grid-dash-mask`). A grid paints thousands of them, and a
+  mask costs no component. They keep `tm-checkbox`'s paths and stroke (§B.7).
+- **Per-row cost.** The expander is one `tm-icon` per visible tree row. The grid's scroll probe
+  (no long task over 50 ms) runs on an expanded tree.
+
+**Compatibility:** no public API change beyond §C.10's icon type; `./grid` imports
+`@tellma/core-ui/icon` at runtime. **Tests:** e2e geometry — every glyph's box and stroke in LTR
+and RTL; the expander and status-bar chevrons after a live direction flip; the scroll probe on an
+expanded tree. **Budget:** within §C.11's ceilings, re-measured.
 
 ### Part C — Testing
 
@@ -1542,12 +1737,18 @@ Ctrl D on Windows and ⌘ D on Apple.
   - Grid state: the sort cycle and `aria-sort`; select-all across pages; `rowClass`;
     `scrollToRow` with `column` and flash; `expandedIds` precedence, batching and sibling order.
   - The menu kinds and a row's `lang`; `TM_GRID_KEYS` covering every binding.
+  - Keys: each binding matched through `tmKeysMatch`, an Arabic `key` with a Latin `code`
+    included (§C.12).
 - **Playwright.**
   - The `grid-search-page` story: driver input, activation, sort, header actions with popovers,
     cross-page selection over a paged source, no row headers.
   - `menu-rich`, with 44 px rows at 390 px; a tree expansion restore; the gutter test with
     scrollbars shown.
+  - The grid's Mod+Z, Mod+D, Mod+A and Mod+F on an Arabic layout, with a synthetic `key`/`code`
+    pair (§C.12).
+  - Glyph geometry, a live direction flip and the scroll probe on an expanded tree (§C.13).
   - Every new path in `dir=rtl`.
+- **`lint:test`.** The `tm/no-platform-sniffing` vectors.
 - **axe.** The new stories in both themes and directions.
 - **Gates.** The `./grid`, `./tree-grid` and `./menu` goldens; the §C.11 ceilings.
 
@@ -1558,7 +1759,11 @@ Ctrl D on Windows and ⌘ D on Apple.
   `getActiveRowIndex()`, `sortBy(key)`, `getSort()`, `openHeaderAction(key)` and
   `isRowFlashing(i)`; `TmTreeGridHarness` gains `getExpandedIds()`.
 - **Menu:** §C.10, with `TmMenuHarness.openSubmenu(label)`, `getGroups()`, `isChecked(label)`,
-  `getLinkHref(label)` and a new `TmMenuTriggerHarness`; the grid's context menu on `TmKeys`.
+  `getLinkHref(label)` and a new `TmMenuTriggerHarness`; the grid's context menu on `TmKeys` and
+  `TmIconSource`.
+- **Keys:** §C.12's one binding table, matched through `kbd`; no platform check outside `kbd`,
+  enforced by `tm/no-platform-sniffing` in the library's lint config.
+- **Glyphs:** §C.13 on both grids and the menu; `ɵTmGridIcons` removed.
 - **Showcase:** the stories `grid-search-page`, `menu-rich` and a `tree-grid` expansion-restore
   variant.
 - **Tokens:** `--grid-active-row-bg`, `--grid-flash-bg`, `--grid-flash-duration` and
@@ -1566,11 +1771,13 @@ Ctrl D on Windows and ⌘ D on Apple.
 - **UI rules:**
   - **Instant feedback** — the active-row class lands in the press's frame (e2e).
   - **Non-blocking** — sort and header actions never wait on data; the consumer fetches.
-  - **Stable layout** — the gutter e2e (§C.7); the sort and header-action slot geometry e2e.
-  - **RTL** — every new e2e runs in `dir=rtl`: driver arrows, submenu side, header navigation.
+  - **Stable layout** — the gutter e2e (§C.7); the sort and header-action slot geometry e2e; glyph
+    boxes hold (§C.13 e2e).
+  - **RTL** — every new e2e runs in `dir=rtl`: driver arrows, submenu side, header navigation;
+    the expander and status-bar chevrons mirror after a live flip (§C.13 e2e).
   - **WCAG AA** — axe on the new stories in both themes and directions; keyboard-only e2e for
     activation, sort, filter open, cross-page selection and submenus; 44 px menu rows below `sm`
-    (e2e).
+    (e2e); the editing shortcuts on an Arabic layout (§C.12 e2e).
 - **Budgets:** the §C.11 ceilings, with notes recorded.
 
 ### Part C — Decisions record
@@ -1606,6 +1813,13 @@ Ctrl D on Windows and ⌘ D on Apple.
     (§C.12).
 14. **Ceilings re-baselined to the measured surface** — 0004's 24 KB was never met, and a ceiling
     that is not real guards nothing (§C.11).
+15. **The grid matches letter, digit and symbol shortcuts through `kbd`; named keys keep direct
+    checks** — `event.key` alone fails on an Arabic layout, and named keys are the same on every
+    layout; migrating every handler would churn tested code for no user gain (§C.12).
+16. **One binding table drives the matcher and `TM_GRID_KEYS`** — the published list cannot drift
+    from what the grid handles (§C.12).
+17. **The grid's per-cell check and dash stay CSS masks** — a grid paints thousands of them; a
+    `tm-icon` per cell was the alternative (§C.13).
 
 ### Part C — Review flags
 
@@ -1627,14 +1841,17 @@ Ctrl D on Windows and ⌘ D on Apple.
    touch handles) through `import()` on the first `field` bind or paste, about 8–10 KB off the
    search route. Flips if spec 0024's search-route budget is exceeded.
 7. **Submenus one level deep** (§C.10). Flips with a consumer that needs a second level.
+8. **One `tm-icon` per visible tree row and option row** (§C.13, §B.7, §E.5). Alternative: CSS
+   masks, as the checkbox cells use. Flips if the scroll probe or a long option list shows a long
+   task.
 
 ## Part D — Basics (spec 0005)
 
 Part D changes the basic components and the shared infrastructure of spec 0005: the overlay
-helpers, the modal and popover, the l10n formats, the client cache, the image and the button. Its
-consumers are spec 0023 (overlay, alert dialogs, avatars, icons, relative time), the shell and
-attention surfaces (specs 0027, 0028), the page frameworks (specs 0030, 0031, 0035), the report
-renderers (specs 0033, 0034) and the app foundation (specs 0024, 0025).
+helpers, the modal and popover, the l10n formats, the client cache, the image, the button and the
+components' glyphs. Its consumers are spec 0023 (overlay, alert dialogs, avatars, icons, relative
+time), the shell and attention surfaces (specs 0027, 0028), the page frameworks (specs 0030, 0031,
+0035), the report renderers (specs 0033, 0034) and the app foundation (specs 0024, 0025).
 
 ### §D.1 The public overlay entry point
 
@@ -1741,13 +1958,15 @@ readonly panelClass = input<string | undefined>(undefined); // the hatch, as on 
 classes and clamping; e2e — the geometry stays fixed while content loads. **Budget:** `./popover`
 3.09 → ≈ 3.2 KB.
 
-### §D.4 Date-time, time of day and relative time
+### §D.4 Date-time, time of day, relative time and zone labels
 
 **Target:** 0005 §2.2 (the closed format set). **Requested by:** spec 0023 §4
-(`tm-relative-time`), spec 0028 §6.2, spec 0035 §8.5; spec 0024 §7.1 fills the zone. **Why:**
-"2 min ago" and "Updated 10:42" format instants in the display zone.
+(`tm-relative-time`), spec 0024 §7.8, spec 0028 §6.2, spec 0029 §12.1–§12.2, spec 0035
+§8.5; spec 0024 §7.1 fills both zones. **Why:** "2 min ago" and "Updated 10:42" format instants
+in the display zone, and an absolute time names its offset when the device sits in another one.
 
-The closed format set gains three formats over **instants**, each with golden rows.
+The closed format set gains three formats over **instants**, each with golden rows. The absolute
+ones can carry an offset label.
 
 ```ts
 // @tellma/core-ui/l10n — pure, DOM-free, DI-free
@@ -1757,8 +1976,9 @@ interface TmDateTimeFormatOptions {
   readonly calendar?: TmCalendar;        // default Gregorian
   readonly dateStyle?: TmDateStyle;      // default 'numeric'
   readonly timeStyle?: TmTimeStyle;      // default 'short'; §D.8 adds 'none'
+  readonly zoneLabel?: boolean;          // true: appends the zone's 'shortOffset' name ("GMT+3")
 }
-interface TmTimeFormatOptions { readonly timeZone: string; readonly timeStyle?: TmTimeStyle }
+interface TmTimeFormatOptions { readonly timeZone: string; readonly timeStyle?: TmTimeStyle; readonly zoneLabel?: boolean }
 interface TmRelativeTimeFormatOptions {
   readonly now: number;                  // epoch ms: the caller's clock
   readonly timeZone: string;             // decides calendar days
@@ -1768,13 +1988,20 @@ interface TmRelativeTimeFormatOptions {
 declare function tmFormatDateTime(instant: string | null | undefined, locale: string, options: TmDateTimeFormatOptions): string;
 declare function tmFormatTime(instant: string | null | undefined, locale: string, options: TmTimeFormatOptions): string;
 declare function tmFormatRelativeTime(instant: string | null | undefined, locale: string, options: TmRelativeTimeFormatOptions): string;
+declare function tmFormatZoneOffset(instant: string | number, locale: string, timeZone: string): string; // "GMT+3", "GMT+5:30", "غرينتش+٣"
+declare function tmFormatZoneName(timeZone: string, locale: string, at: number): string;                 // 'longGeneric': "United Kingdom Time"
 
 // @tellma/core-ui (primary)
-declare const TM_TIME_ZONE: InjectionToken<Signal<string>>; // default: the browser's resolved zone; @tellma/core provides the display zone
+declare const TM_TIME_ZONE: InjectionToken<Signal<string>>;        // default: the browser's resolved zone; @tellma/core provides the display zone
+declare const TM_DEVICE_TIME_ZONE: InjectionToken<Signal<string>>; // default: the browser's zone, read once; @tellma/core provides a live one
+type TmZoneLabelMode = 'auto' | 'column' | 'none';
 // TmL10n gains (each reads locale, calendar and timeZone first):
 readonly timeZone: Signal<string>;
-formatDateTime(instant: string | null | undefined, options?: { dateStyle?: TmDateStyle; timeStyle?: TmTimeStyle }): string;
-formatTime(instant: string | null | undefined, options?: { timeStyle?: TmTimeStyle }): string;
+readonly deviceTimeZone: Signal<string>;
+readonly zoneMismatch: Signal<boolean>;      // the two offsets differ now; recomputed when a zone changes and on visibilitychange
+zoneLabel(instant?: string | null): string;  // the display zone's offset at instant (default now) when it differs from the device's; else ''
+formatDateTime(instant: string | null | undefined, options?: { dateStyle?: TmDateStyle; timeStyle?: TmTimeStyle; zoneLabel?: TmZoneLabelMode }): string; // zoneLabel default 'auto'
+formatTime(instant: string | null | undefined, options?: { timeStyle?: TmTimeStyle; zoneLabel?: TmZoneLabelMode }): string;
 formatRelativeTime(instant: string | null | undefined, options: { now: number; style?: 'long' | 'short' | 'narrow' }): string;
 ```
 
@@ -1800,20 +2027,43 @@ formatRelativeTime(instant: string | null | undefined, options: { now: number; s
 - **The ticking clock is the caller's.** Spec 0023's `tm-relative-time` owns its timer and passes
   `now`.
 - **No time-of-day type.** A time without an instant (a `TimeOnly`) has no consumer and stays out.
-- **The golden.** `l10n/format-golden.json` gains three arrays, which the server twin also reads:
-  - `dateTime` and `time`, with rows `{ locale, timeZone, calendar, dateStyle, timeStyle, instant,
-    expected }`;
-  - `relative`, with rows `{ locale, timeZone, now, instant, style, expected }`.
+- **Zone labels.** An absolute date-time or time shows the display zone's offset when that offset
+  differs from the device zone's. Spec 0024 §7.8 decides which surfaces show it.
+  - **Compared at the instant shown,** never by zone id, so `Asia/Kuwait` and `Asia/Riyadh` (both
+    +3) never label.
+  - **Offsets, never abbreviations.** "IST" and "CST" are ambiguous. "GMT+5:30" is not, and it
+    localizes ("غرينتش+٣").
+  - **Never labelled:** relative time, dates, and `timeStyle: 'none'` (§D.8).
+- **The modes** of the facade's `zoneLabel` option:
+  - **`'auto'`** (the default) labels when `zoneLabel(instant)` is not empty.
+  - **`'column'`** is for the cells of a column whose header shows `zoneLabel()` while
+    `zoneMismatch()` is true (spec 0029 §12.1).
+    - **Under a labelled header,** a cell labels when its instant's display offset differs from the
+      header's, as across a DST change.
+    - **Under a bare header,** a cell labels when `'auto'` would.
+  - **`'none'`** never labels.
+- **The golden.** `l10n/format-golden.json` gains four arrays:
+  - **`dateTime` and `time`,** with rows `{ locale, timeZone, calendar, dateStyle, timeStyle,
+    zoneLabel?, instant, expected }`. Rows with `zoneLabel: true` cover `en-GB`, `ar-SA` and
+    `ar-SA-u-nu-latn` in `Asia/Riyadh`, and `Asia/Kolkata` (+5:30).
+  - **`relative`,** with rows `{ locale, timeZone, now, instant, style, expected }`.
+  - **`zoneLabel`,** with rows `{ locale, timeZone, deviceTimeZone, instant, mode, header,
+    expected }`. Its rows cover equal offsets with different ids, `Asia/Beirut` across its DST
+    change, and `UTC`.
 
-  They cover the date rows' locales and the zones `UTC`, `Asia/Riyadh`, `Africa/Addis_Ababa` and
-  `Asia/Beirut`. Beirut has DST, for the day-boundary rows.
+  The arrays cover the date rows' locales and the zones `UTC`, `Asia/Riyadh`, `Africa/Addis_Ababa` and
+  `Asia/Beirut`. Beirut has DST, for the day-boundary rows. The server twin reads them and skips
+  the label rows, since server text never labels.
 
-**Example —** for `2026-10-20T07:42:00Z` in `Asia/Riyadh`: `l10n.formatTime(at)` gives "10:42" in
-en-GB and "١٠:٤٢ ص" in ar-SA; `l10n.formatDateTime(at)` gives "20/10/2026, 10:42" in en-GB.
+**Example —** for `2026-10-20T07:42:00Z` in `Asia/Riyadh`, with the device in the same zone:
+`l10n.formatTime(at)` gives "10:42" in en-GB and "١٠:٤٢ ص" in ar-SA; `l10n.formatDateTime(at)`
+gives "20/10/2026, 10:42" in en-GB. With the device in `Europe/London`, `l10n.formatDateTime(at)`
+gives "20/10/2026, 10:42 GMT+3", and `l10n.zoneLabel(at)` gives "GMT+3".
 
-**Compatibility:** additive. **Tests:** the three golden arrays; unit — every threshold boundary,
-truncation, a DST day boundary, malformed input. **Budget:** `./l10n` 7.65 → ≈ 8.9 KB with §D.7 and
-§D.8; the primary token and facade within Part B's primary ceiling.
+**Compatibility:** additive. **Tests:** the four golden arrays; unit — every threshold boundary,
+truncation, a DST day boundary, malformed input; the three label modes, and `zoneMismatch` after a
+zone change. **Budget:** `./l10n` 7.65 → ≈ 9.3 KB with §D.7 and §D.8; the primary tokens and
+facade within Part B's primary ceiling.
 
 ### §D.5 `TmClientCache.clearAll` sweeps every store
 
@@ -1974,13 +2224,43 @@ name="plus" /></button>` sizes and hides like a projected `svg`.
 **Compatibility:** CSS only; `svg` children are unchanged. **Tests:** e2e geometry — a `tm-icon`
 child at each button size; the pending state hides it.
 
+### §D.11 Basics glyphs through `tm-icon`
+
+**Target:** 0005 §6.2, §6.4 (the date picker), §7.4–§7.5 (the image), §8.1, §8.4 (files), §10
+(the modal), §13 (the alert), §15 (RTL). **Requested by:** spec 0023 §3.1. **Why:** one drawing
+path, and one live RTL rule for the date popup.
+
+The basics' inline SVGs become `tm-icon` instances, under the shared glyph rule (Parts B–E: rules
+shared).
+
+| Entry point | Glyphs | Mirrors in RTL |
+|---|---|---|
+| `alert` | the four tone glyphs: `info`, `circle-check-big`, `triangle-alert`, `circle-x` | no |
+| `date-picker` | `circle-alert` (error), `calendar` (trigger); in the popup, `chevron-left` and `chevron-right` | the popup chevrons |
+| `file-preview` | `circle-x` (error), `file-text` (no preview) | no |
+| `files` | `upload` (the dropzone) | no |
+| `image` | `image-off` (error), `image` (empty), `camera`, `crop`, `trash-2`, and the edit pane's `check` | no |
+| `modal` | `x` (close) | no |
+| `private` | `circle-alert` (the error popover) | no |
+
+- **The popup's flip.** The date popup's chevrons pass `mirrorInRtl`, which replaces their
+  `transform: scaleX(-1)` rule.
+- **The edit pane's check** keeps its heavier 2.25 stroke: its host sets `--icon-stroke-width`.
+- **Docs examples.** The `button` and `input` examples show `<tm-icon [svg]>` children, which
+  §D.10 sizes, in place of inline SVG.
+
+**Compatibility:** no public API changes; each entry point imports `@tellma/core-ui/icon`.
+**Tests:** e2e geometry — every glyph's box and stroke in LTR and RTL; the popup chevrons after a
+live direction flip. **Budget:** re-measured; `./alert` and `./image` sit closest to their
+ceilings.
+
 ### Part D — Testing
 
 | Suite | Pins |
 |---|---|
-| Unit | the overlay suites under the new entry point; modal placement classes, roles and live direction; popover sizes and clamping; the formatters' thresholds and malformed input; `clearAll` per area; blob abort reference counting; `placeholderOnError` |
-| Format golden | `dateTime`, `time` and `relative`; the `month`, `quarter`, `year` and `weekday` styles over three calendars |
-| Playwright | the drawer at 390, 768 and 1440 px in LTR and RTL, with a live flip; fixed popover geometry while content loads; aborted image requests counted on navigation; `tm-icon` in buttons |
+| Unit | the overlay suites under the new entry point; modal placement classes, roles and live direction; popover sizes and clamping; the formatters' thresholds and malformed input; the zone-label modes and `zoneMismatch`; `clearAll` per area; blob abort reference counting; `placeholderOnError` |
+| Format golden | `dateTime` and `time` with their zone-label rows, `relative` and `zoneLabel`; the `month`, `quarter`, `year` and `weekday` styles over three calendars |
+| Playwright | the drawer at 390, 768 and 1440 px in LTR and RTL, with a live flip; fixed popover geometry while content loads; aborted image requests counted on navigation; `tm-icon` in buttons; §D.11's glyph geometry and the popup chevrons after a live flip |
 | axe | the drawer, an alert dialog and the popover sizes, in both themes and directions |
 | Gates | the new `./overlay` golden; the `./l10n`, `./modal`, `./popover` and `./image` goldens; the ceilings below |
 
@@ -1991,24 +2271,28 @@ child at each button size; the pending state hides it.
 - **Modal and popover:** §D.2 and §D.3 shipped, with `TmModalHarness.getPlacement()` and
   `TmPopoverHarness.getSize()`; the drawer and popover tokens in the preset; the identity server's
   token CSS refreshed.
-- **Formats:** §D.4, §D.7 and §D.8 shipped, with `TM_TIME_ZONE`, the facade methods, the
-  `tmUi.l10n.quarter` string and its Arabic twin; the golden diff reviewed through `golden:approve`.
+- **Formats:** §D.4, §D.7 and §D.8 shipped, with `TM_TIME_ZONE`, `TM_DEVICE_TIME_ZONE`, the facade
+  methods and their label modes, the `tmUi.l10n.quarter` string and its Arabic twin; the golden
+  diff reviewed through `golden:approve`.
 - **Cache, blobs, image and button:** §D.5, §D.6, §D.9 and §D.10 shipped.
+- **Glyphs:** §D.11's entry points draw through `tm-icon`.
 - **Showcase:** the stories `modal` (drawer variants, an alert dialog), `popover` (sizes) and
-  `i18n` (date-time, time, and relative with a fake clock, per zone; month, quarter, year and
-  weekday per calendar).
+  `i18n` (date-time, time, and relative with a fake clock, per zone; zone labels with a device zone
+  that differs; month, quarter, year and weekday per calendar).
 - **UI rules:**
   - **Instant feedback** — the drawer renders in the click's frame (e2e: no animation; the panel is
     present one frame after the click).
   - **Non-blocking** — image requests abort on navigation (§D.6 unit, and an e2e counting aborted
     requests).
   - **Stable layout** — fixed popover sizes and the drawer never resize while content loads
-    (geometry e2e).
-  - **RTL** — the drawer's edge and the live flip (§D.2 e2e); the Arabic golden rows.
+    (geometry e2e); glyph boxes hold (§D.11 e2e).
+  - **RTL** — the drawer's edge and the live flip (§D.2 e2e); the date popup's chevrons after a
+    flip (§D.11 e2e); the Arabic golden rows.
   - **WCAG AA** — axe on the drawer, the alert dialog and the popover sizes in both themes and
     directions.
-- **Budgets:** `./overlay` **2** (new); `./private` 4 → **2**; `./l10n` 8 → **9**; `./modal` 6,
-  `./popover` 4, `./image` 10 and `./button` 2 unchanged; notes recorded.
+- **Budgets:** `./overlay` **2** (new); `./private` 4 → **2**; `./l10n` 8 → **10**; `./modal` 6,
+  `./popover` 4, `./image` 10 and `./button` 2 unchanged; §D.11's entry points re-measured; notes
+  recorded.
 
 ### Part D — Decisions record
 
@@ -2035,6 +2319,9 @@ child at each button size; the pending state hides it.
     separate zoned-parts helper; the formatters already resolve the zone (§D.8).
 11. **No `prerender` on `tm-tab-group`** — every details extra is eager, so no unvisited panel
     holds heavy content; 0005 §9's `preserveContent` keeps visited panels.
+12. **Zone labels are GMT offsets, never abbreviations, compared at the instant shown** — "IST" is
+    ambiguous, and two zone ids can share an offset; comparing zone ids was the alternative
+    (§D.4).
 
 ### Part D — Review flags
 
@@ -2053,8 +2340,8 @@ child at each button size; the pending state hides it.
 ## Part E — Entity picker (spec 0006)
 
 Part E extends the entity picker for the client entity model's generic binding (spec 0029 §14)
-and its navigation filters (spec 0029 §13). Every member is additive: `tm-entity-picker` without
-the new inputs renders as today.
+and its navigation filters (spec 0029 §13). It also draws the picker's glyphs through `tm-icon`
+(§E.5). Every member is additive: `tm-entity-picker` without the new inputs renders as today.
 
 ### §E.1 Two-line options
 
@@ -2239,12 +2526,30 @@ readonly itemDescription = input<((item: never) => string | null) | undefined>(u
 **Compatibility:** unbound, cells render as today. **Tests:** unit — the cell editor passes the
 function to its picker; e2e — two-line rows in a cell's dropdown at the fixed height.
 
+### §E.5 Picker glyphs through `tm-icon`
+
+**Target:** 0006 §3 (anatomy), §4.1 (the option rows), §9 (RTL). **Requested by:** spec 0023
+§3.1. **Why:** the picker draws its glyphs as every other library component does.
+
+The picker's inline SVGs become `tm-icon` instances, under the shared glyph rule (Parts B–E: rules
+shared).
+
+| Glyph | Where | Mirrors in RTL |
+|---|---|---|
+| `circle-alert` | beside the field's error | no |
+| `search` | the magnifier at the inline end | no |
+| `check` | a chosen option, in the single picker, the multi-picker's rows (§E.2) and a cell's dropdown (§E.4) | no |
+
+**Compatibility:** no public API changes; `./entity-picker` imports `@tellma/core-ui/icon`.
+**Tests:** e2e geometry — the three glyphs in a field and in a cell's dropdown, in LTR and RTL.
+**Budget:** within Part E's ceiling, re-measured.
+
 ### Part E — Testing
 
 | Suite | Pins |
 |---|---|
 | Unit | two-line rows at the fixed height; the single picker's suite in emit mode; multi-picker toggle, `maxItems` and multi-pick pages; the page context; the grid column's `itemDescription` |
-| Playwright | add, toggle-remove, chip removal and Backspace, keyboard-only, in LTR and RTL; the field's height with 0, 1 and 30 chips; two-line rows in a field and in a cell |
+| Playwright | add, toggle-remove, chip removal and Backspace, keyboard-only, in LTR and RTL; the field's height with 0, 1 and 30 chips; two-line rows in a field and in a cell; §E.5's glyph geometry |
 | axe | chips and an open panel, in both themes and directions |
 | Gates | the `./entity-picker` and `./grid` goldens; the ceiling below |
 
@@ -2254,13 +2559,15 @@ function to its picker; e2e — two-line rows in a cell's dropdown at the fixed 
   height (§E.1, §E.4); the new token in the preset; the identity server's token CSS refreshed.
 - **Multi-picker:** `tm-entity-multi-picker` on spec 0023's `tm-chip` (§E.2), and its harness.
 - **Page context:** §E.3 shipped.
+- **Glyphs:** §E.5's three glyphs draw through `tm-icon`.
 - **Showcase:** the `entity-picker` story gains two-line rows, a multi-picker, and an advanced
   search returning several picks.
 - **UI rules:**
   - **Instant feedback** — a pick shows its chip in the same frame (e2e).
   - **Non-blocking** — every keystroke still aborts the previous search (the single picker's suite,
     emit mode included).
-  - **Stable layout** — the field's height is identical with 0, 1 and 30 chips (geometry e2e).
+  - **Stable layout** — the field's height is identical with 0, 1 and 30 chips (geometry e2e);
+    glyph boxes hold (§E.5 e2e).
   - **RTL** — chip navigation keys mirror (e2e).
   - **WCAG AA** — axe with chips and an open panel in both themes and directions; keyboard-only
     e2e for add, toggle-remove, chip removal and Backspace.
@@ -2289,9 +2596,9 @@ function to its picker; e2e — two-line rows in a cell's dropdown at the fixed 
 
 Part F amends spec 0008, the Queryex compiler in `src/core/Tellma.Core.Queryex`. The data access
 layer (spec 0012) and the permission evaluator (spec 0014) need seven changes to compose queries
-and access filters (§F.1–§F.7). The report engine (spec 0033) needs eight more for pivots, tree
-rollups, optional parameters, defaults, drill-through, Hijri grouping and sharing (§F.8–§F.15).
-Every item is additive (§F.0).
+and access filters (§F.1–§F.7). The report engine (spec 0033) needs eight more for optional
+parameters, defaults, drill-through, Hijri grouping, sharing, parameter pickers, and pivot and
+summary rollups (§F.8–§F.15). Every item is additive (§F.0).
 
 ### §F.0 Shared rules
 
@@ -2329,25 +2636,23 @@ item then states only its own change.
   `Bool` call, a `Via` or an `Exists` node.
 - **Row grain** — evaluated once per row: `WHERE`, grouping keys, aggregate arguments, ungrouped
   items. Its opposite is once per group: `HAVING`, a grouped item outside an aggregate.
-- **Key group** — grouping keys that roll up together.
-- **Grouping set** — the key groups that one level of rows groups by.
-- **Level indicator** — the appended `GROUPING_ID` column that tells the levels apart.
-- **Level navigation** — `Level{j}` on a tree entity: a row's ancestor at depth `j`.
 - **Table calendar** — a calendar code whose arithmetic reads a host month table (`'uq'`).
+- **Partial** — a `sum`, `count`, `min` or `max` column that a measure is computed from (§F.14).
+- **Combine** — merging two partials of one kind: adding sums and counts, keeping the least or
+  greatest `min` or `max`.
 
 **Compatibility**
 
 - **Additive.** With every new member at its default, the engine emits byte-identical SQL, slots
   and columns, except the paging slot names of §F.4. The existing goldens with paging are rewritten
   once with `TELLMA_UPDATE_GOLDENS=1` (0008 §18.2). Every other golden and corpus entry stands.
-- **Version 1.** `QueryexLanguage.Version` and `Minimum` stay 1. Each new form was a diagnostic
-  before and binds only under a host opt-in, so the change is additive under 0008 §17:
+- **Version 1.** `QueryexLanguage.Version` and `Minimum` stay 1. No valid text changes meaning.
+  Each new form binds only under a host opt-in, so the change is additive under 0008 §17:
   - `level()` is a new function;
-  - `Level2` resolves only on a schema that declares levels;
-  - `'uq'` resolves only under a month map.
-- **Records keep their constructors.** New members on `QueryexColumn`, `ParameterUse` and
-  `CompiledQuery` are `init` properties, never positional parameters. `NavigationDescriptor
-  .ForeignKey` stays non-null.
+  - `'uq'` resolves only under a month map;
+  - `Measures` is a new clause, and with it empty the engine emits today's SQL.
+- **Records keep their constructors.** New members on `ParameterUse` and `CompiledQuery` are
+  `init` properties, never positional parameters.
 - **Two new `FilterTree` node types**, `ViaNode` and `ExistsNode`, are sealed nested types like
   the existing four. A host that pattern-matches trees adds two cases.
 
@@ -2356,35 +2661,40 @@ it changes. The input is held as text or structure, never hashed.
 
 - **L2** gains a leaf's own language version, and the omitted names a text refers to.
 - **L3** gains the leaf's version too. It also gains restrictions, the presence of paging (never
-  its values), `Via` and `Exists` nodes, key groups, grouping sets and the omitted set.
+  its values), `Via` and `Exists` nodes, the omitted set and the `Measures` text.
 - **A constant statement** keys on its items, types and options.
-- **Level navigations and calendar maps** add nothing: they live in the schema, whose identity
-  already keys every layer.
+- **Calendar maps** add nothing: they live in the schema, whose identity already keys every layer.
 
 **Diagnostic codes.** Appendix A gains three codes:
 
 | Code | Condition | Arguments | Where |
 |---|---|---|---|
-| QX3104 | A table-calendar operand that is not a row-grain path sits in an aggregation's argument or a grouping key | `function` | §F.13 |
-| QX4009 | Paths are not permitted in this position | `name` (the first path) | §F.11 |
-| QX5008 | Too many grouping keys for grouping sets | `limit` (32 keys, 31 key groups) | §F.8 |
+| QX4009 | Paths are not permitted in this position | `name` (the first path) | §F.9 |
+| QX4010 | This cannot be computed over rolled-up values | `construct`: the operator or function name, or `text comparison` | §F.15 |
+| QX4011 | A measure must aggregate: a path outside an aggregation, or no aggregation at all | — | §F.14 |
 
 - **QX2009 widens** from "A predicate is a single expression; list not permitted" to "A single
-  expression is required here; list not permitted". It now also covers a constant item (§F.11).
+  expression is required here; list not permitted". It also covers a constant item (§F.9).
+- **Evaluation codes.** QX6001 (division by zero) and QX6002 (arithmetic overflow) are the `Code`
+  of `QueryexEvaluationException` (§F.15). They are never diagnostics.
 - **New locations.** `…Via[<navigation>]` and `…Exists[<entity>]` inside a filter tree, nesting as
   the tree does: `Filter.Or[2].Exists[core.ReportDefinitionShare].Or[0]`. `Constant[<i>]` names a
-  constant item.
+  constant item, and `Measures[<i>]` a measure.
 
 **Reference interpreter and corpus**
 
 - **The reference interpreter** (0008 §18.3) implements every item from this part's text,
-  independently of the emitter: restrictions, `level`, `Via`, grouping sets with the indicator,
-  level navigations, omitted folding, constants, `'uq'` (through .NET `UmAlQuraCalendar`) and
-  `Exists`. The differential suite runs every new corpus entry on SQL Server and on the
-  interpreter.
-- **`LedgerFixture` grows:** `TreeLevels(4)` on its hierarchical entity, with rows at depths 1–4; a
-  child table with a parent navigation, for `Exists`; and a `uq` month map seeded from
-  `UmAlQuraCalendar` by spec 0013 §8.2's rule.
+  independently of the emitter: restrictions, `level`, `Via`, omitted folding, constants, `'uq'`
+  (through .NET `UmAlQuraCalendar`), `Exists` and measures. It evaluates each measure directly
+  over a group's rows, never through partials, and orders text by its own weights. The
+  differential suite runs every new corpus entry on SQL Server and on the interpreter.
+- **`LedgerFixture` grows:**
+  - a child table with a parent navigation, for `Exists`;
+  - a `uq` month map seeded from `UmAlQuraCalendar` by spec 0013 §8.2's rule;
+  - nullable numeric columns of every width, `tinyint` to `decimal(38,10)`, with values near each
+    type's bounds and zero denominators;
+  - text rows that tie under the fixture's case-insensitive collation;
+  - `hierarchyid` nodes whose paths sort differently as text, such as `/1/2/` and `/1/10/`.
 - **Every new code is reachable** by a corpus entry that asserts code, span, location and
   arguments (0008 §18.1).
 
@@ -2414,7 +2724,7 @@ public sealed record QuerySpec
   `<column> IN (SELECT [Id] FROM <TableSource>)`. With no filter, the restrictions alone form the
   clause.
 - **Nullity.** A top-level conjunct is never negated, so a row whose key is absent never matches.
-- **Scope.** The root statement only, never inside `Exists` (§F.14). In an aggregate query it
+- **Scope.** The root statement only, never inside `Exists` (§F.12). In an aggregate query it
   filters rows, like `Filter`. A restriction's joins count toward `MaxJoins`.
 - **Caller errors:** a path that does not resolve, ends at a navigation or ends at a type that is
   not Equatable; a malformed table source, or one in the `@qx` namespace.
@@ -2432,8 +2742,8 @@ differential (the interpreter filters by an in-memory set).
 
 ### §F.2 `level(node)`
 
-**Target:** 0008 §10.1 (the registry), §10.10. **Requested by:** spec 0012 §10.1; spec 0033 §8.6.
-**Why:** the depth of a tree node, with no stored `Level` column.
+**Target:** 0008 §10.1 (the registry), §10.10. **Requested by:** spec 0012 §10.1. **Why:** the
+depth of a tree node, with no stored `Level` column.
 
 ```text
 level(node: HierarchyId) -> Numeric      emits {0}.GetLevel(); nullity Propagate(0); store type smallint
@@ -2553,9 +2863,9 @@ public abstract class FilterTree
 
 - **Meaning.** True for a row whose navigation path reaches a row on which `inner` is true. False
   when the path reaches no row.
-- **Binding.** Each segment resolves to a navigation of the current root: a foreign-key
-  navigation, or a level navigation (§F.9). `inner` binds with the path's target as its current
-  root. Context functions and parameters bind as anywhere else.
+- **Binding.** Each segment resolves to a foreign-key navigation of the current root. `inner`
+  binds with the path's target as its current root. Context functions and parameters bind as
+  anywhere else.
 - **Shared joins.** `inner`'s paths join through the navigation path in the shared trie, so
   `Via("Invoice", …)` and a select of `Invoice.PostingDate` use one join.
 - **Emission.** The node emits `inner`'s predicate. When the path's last join is `LEFT`, a
@@ -2580,163 +2890,7 @@ WHERE ([P1].[Id] IS NOT NULL AND [P1].[CenterType] = @qx0_p0)
 where the positive form is false, over lines with no center. Also a join shared with a select path,
 nested `Via`, the caller errors and discovery prefixes.
 
-### §F.8 Grouping sets and the level indicator
-
-**Target:** 0008 §2.1, §8.3, §11.3, §13.4. **Requested by:** spec 0033 §8.5. **Why:** one aggregate
-statement returns every leaf cell, every subtotal and the grand totals of a pivot. An appended
-indicator tells a subtotal from a "(None)" member, since both carry null keys.
-
-```csharp
-public sealed record QuerySpec
-{
-    public IReadOnlyList<IReadOnlyList<int>>? KeyGroups { get; init; }    // new; a partition of the grouping keys by select ordinal; null: one group per key
-    public IReadOnlyList<IReadOnlyList<int>>? GroupingSets { get; init; } // new; each set lists KeyGroups indexes; [] is the grand total; null: a plain GROUP BY
-}
-
-public sealed record QueryexColumn
-{
-    public bool IsGroupingLevel { get; init; }                            // new; true only on the appended indicator column
-}
-```
-
-- **Emission.** `GROUP BY GROUPING SETS ((…), …, ())`.
-  - The sets come in caller order, and each set's keys in select order.
-  - Keys are written exactly as in the select list, value bindings included.
-  - After the `n` select items, the engine appends `GROUPING_ID(<first key of group 0>, …, <first
-    key of group g−1>) AS [c{n}]`. One key per group suffices, because a group rolls up whole.
-- **The indicator.** Bit `g − 1 − i` is 1 when group `i` is rolled up in the row. So 0 means every
-  group is present, and `2^g − 1` is the grand total. Its column is `Ordinal = n`, `Text = ""`,
-  `QxNumeric`, `NotNull`, `Path = null`, `IsGroupingKey = false`, `IsGroupingLevel = true`.
-- **Nullity.** A key whose group some set omits is `Nullable`. For 0008 §8.3, the query counts as
-  having grouping keys only when no set is empty. So once `()` is present, `sum`, `avg`, `min` and
-  `max` are `Nullable`; `count` stays `NotNull`.
-- **`Having`** applies only to the rows in which every group is present: `HAVING GROUPING_ID(…) <>
-  0 OR (<having>)`. Subtotals and totals include every row the `WHERE` admitted. A visible
-  subtotal can therefore exceed the sum of its visible children.
-- **Ordering and paging.** QX4005 and QX4006 are unchanged. The paging tiebreakers are the keys in
-  select order, then the indicator, so the order is total across sets.
-- **QX5008** applies when `GroupingSets` is set and the query passes a limit:
-  - more than 32 keys, SQL Server's limit on grouping expressions; or
-  - more than 31 key groups, the most an `int` indicator holds.
-
-  It is reported at the span of the first key past the limit, location `Select[i]`. Key groups are
-  validated only within these limits.
-- **Caller errors:**
-  - `GroupingSets` without `Aggregate`, or on a query that derives no key;
-  - `KeyGroups` without `GroupingSets`, or not a partition of exactly the derived keys' ordinals;
-  - an index out of range, or repeated in one set;
-  - two equal sets, since SQL Server does not merge duplicates; a group in no set;
-  - more than 4,096 sets (SQL Server's limit);
-  - a `Having` when no set holds every group.
-
-**Example —** `Select = "Center.Id, quarter(Invoice.PostingDate), sum(Amount)"`, `GroupingSets =
-[[0, 1], [0], []]`, `OrderBy = "Center.Id"`, `Take = 1001`:
-
-```sql
-SELECT [P1].[Id] AS [c0], DATEPART(QUARTER, [P2].[PostingDate]) AS [c1], SUM([T].[Amount]) AS [c2],
-       GROUPING_ID([P1].[Id], DATEPART(QUARTER, [P2].[PostingDate])) AS [c3]
-FROM [acme].[SalesInvoiceLines] AS [T]
-LEFT JOIN [gl].[Centers] AS [P1] ON [P1].[Id] = [T].[CenterId]
-INNER JOIN [acme].[SalesInvoices] AS [P2] ON [P2].[Id] = [T].[InvoiceId]
-GROUP BY GROUPING SETS (([P1].[Id], DATEPART(QUARTER, [P2].[PostingDate])), ([P1].[Id]), ())
-ORDER BY [c0] ASC, [c1] ASC, [c3] ASC OFFSET 0 ROWS FETCH NEXT @qx0_take ROWS ONLY;
-```
-
-`[c3]` is 0 on leaf cells, 1 on a center's subtotal and 3 on the grand total. The subtotal of the
-lines with no center reads `(NULL, NULL, …, 1)` and the grand total `(NULL, NULL, …, 3)`: the keys
-alike, the indicator not.
-
-**Compatibility:** with `GroupingSets` null, a plain `GROUP BY` as today. **Tests:** goldens for
-one key per group, a text term's two keys in one group, and `Having`. Differential over
-`LedgerFixture` with null keys in the data: the interpreter runs each set as its own `GROUP BY` and
-unions them with the indicator. Also `sum` in `()` over an empty filter; on SQL Server, 31 groups
-run while 33 keys or 32 groups are QX5008; every caller error.
-
-### §F.9 Tree level navigations
-
-**Target:** 0008 §3, §6.1, §6.2, §10.10, §12.2. **Requested by:** spec 0012 §11.1 (declares them);
-spec 0033 §8.6; spec 0029 §4.3 (the client path model). **Why:** a tree dimension groups by
-`Level1.Id`, `Level2.Id`, and so on. A grouping set over those levels then yields every subtree's
-total exactly once.
-
-```csharp
-public sealed class QueryexSchemaBuilder
-{
-    public sealed class EntityBuilder
-    {
-        public EntityBuilder TreeLevels(int maxDepth); // new; 1–32; requires TreeNode
-    }
-}
-
-public sealed class EntityDescriptor
-{
-    public int TreeLevels { get; }                     // new; 0 when none are declared
-}
-```
-
-- **Meaning.** `Level{j}` of a row is its ancestor at depth `j`, where depth is the node's
-  `GetLevel()`. A row at depth `j` is its own `Level{j}`; a shallower row has none. Under spec
-  0012 §10.1 a top-level row has depth 1, so `Level1` is the root of its tree.
-- **Resolution.** A path segment resolves in this order: a property, then a foreign-key
-  navigation, then `Level{j}` for `1 ≤ j ≤ TreeLevels`. `Level` matches ignoring case, and `j` is
-  decimal without leading zeros.
-  - The target is the entity itself.
-  - Level navigations are not listed in `Navigations`, since they have no foreign key.
-  - `PathUse.Segments` and `QueryexColumn.Path` carry `Level2` like any segment.
-- **Join.** Always `LEFT`, so a path through one is always `Nullable`. The condition reads the
-  node of the parent join `[Pp]`, which is `[T]` when the tree entity is the root:
-
-  ```sql
-  ON [Pn].[<node>] = CASE WHEN [Pp].[<node>].GetLevel() >= j
-                     THEN [Pp].[<node>].GetAncestor([Pp].[<node>].GetLevel() - j) END
-  ```
-
-  The `CASE` is required because `GetAncestor` raises on a negative argument. The join seeks the
-  unique node index, so nothing fans out.
-- **`j` in SQL** is an engine-authored integer token, like Bool realisation's 0 and 1 (0008
-  §13.1): the validated index of the resolved navigation, never expression text.
-- **Usable wherever a navigation is:** every clause, a `Via` path (§F.7), and the key path of
-  `descendantOf`, as in `descendantOf(Center.Level1.Id, 10)`. Pruning and `MaxJoins` treat it as
-  any join. It cannot correlate an `Exists` (§F.14).
-- **Hosts.** An entity query cannot materialize a level path, because no foreign key links the row
-  to it. Spec 0012 §11.4 and spec 0015 §5.2 refuse one in `Select`; filters and orderings may use
-  it.
-- **Caller errors at `Build()`:**
-  - `TreeLevels` without a `TreeNode`, or a `TreeNode` property that is not `IsUnique`;
-  - `maxDepth` outside 1–32;
-  - a property or navigation of the entity named `Level<n>` for `n ≤ maxDepth`.
-
-**Example —** `Select = "Center.Level1.Id, Center.Level2.Id, sum(Amount)"`, `GroupingSets = [[0,
-1], [0], []]`:
-
-```sql
-SELECT [P2].[Id] AS [c0], [P3].[Id] AS [c1], SUM([T].[Amount]) AS [c2], GROUPING_ID([P2].[Id], [P3].[Id]) AS [c3]
-FROM [acme].[SalesInvoiceLines] AS [T]
-LEFT JOIN [gl].[Centers] AS [P1] ON [P1].[Id] = [T].[CenterId]
-LEFT JOIN [gl].[Centers] AS [P2] ON [P2].[Node] = CASE WHEN [P1].[Node].GetLevel() >= 1
-     THEN [P1].[Node].GetAncestor([P1].[Node].GetLevel() - 1) END
-LEFT JOIN [gl].[Centers] AS [P3] ON [P3].[Node] = CASE WHEN [P1].[Node].GetLevel() >= 2
-     THEN [P1].[Node].GetAncestor([P1].[Node].GetLevel() - 2) END
-GROUP BY GROUPING SETS (([P2].[Id], [P3].[Id]), ([P2].[Id]), ());
-```
-
-Head office (10) holds 2,000 of its own. Its children Riyadh (11) and Jeddah (12) hold 30,000 and
-20,000. The query returns:
-
-| Indicator `[c3]` | Rows, as (`[c0]`, `[c1]`) → `[c2]` |
-|---|---|
-| 0 | `(10, NULL)` → 2,000; `(10, 11)` → 30,000; `(10, 12)` → 20,000 |
-| 1 | `(10, NULL)` → 52,000 |
-| 3 | `(NULL, NULL)` → 52,000, the grand total |
-
-Spec 0033 §8.6 decodes these rows into a tree.
-
-**Compatibility:** a schema that declares no levels resolves as today, and `Level2` stays QX3001.
-**Tests:** goldens from a child root and from the tree entity as root; differential over the
-depth-4 fixture (every `Level{j}` of rows at every depth, absent ones included); the example above
-as an integration test; `descendantOf` through a level path; the build errors.
-
-### §F.10 Omitted parameters
+### §F.8 Omitted parameters
 
 **Target:** 0008 §6.3, §8.4, §9.2. **Requested by:** spec 0033 §4.4. **Why:** an optional report
 parameter left blank imposes no restriction. Without this, `PostingDate >= @From` is false for
@@ -2791,7 +2945,7 @@ folding inside `Having` and inside a select measure's condition; the typed absen
 select item; the caller error. Differential: the interpreter applies this section's rule with its
 own code.
 
-### §F.11 Constant statements — `EvaluateConstant`
+### §F.9 Constant statements — `EvaluateConstant`
 
 **Target:** 0008 §1.4. **Requested by:** spec 0033 §4.3, §8.3. **Why:** a host learns the values of
 path-free expressions, such as the defaults a report run applies, from one statement. The engine
@@ -2820,10 +2974,11 @@ public sealed record ConstantCompilationOptions                    // new
   (0008 §7.3); any other mismatch is QX3200.
 - **Diagnostics.** A path is QX4009; an aggregation QX4002; a parameter QX3007, since a constant
   statement declares none; a list QX2009. Each carries the location `Constant[<i>]` and a span
-  into the item's text. A `'uq'` call emits §F.13's scalar form.
+  into the item's text.
 - **Emission.** `SELECT <e0> AS [c0], <e1> AS [c1], …` with no `FROM`: always one row. An operand
   that a guard would repeat uses 0008 §12.3's single-emission form, because there is no row source
-  for a value binding. Nothing hoists, so `Prologue` is empty.
+  for a value binding. Nothing hoists, so `Prologue` is empty and a `'uq'` call takes §F.11's
+  scalar form.
 - **Columns** carry each item's text, type and nullity, with `Path` null and no keys.
 - **Slots** follow 0008 §13.1 under `BatchOrdinal`. The host runs the statement through
   `IDataBatch.EvaluateConstant` (spec 0012 §5.2). That member binds the context slots from the same
@@ -2843,7 +2998,7 @@ SELECT DATEADD(MONTH, DATEDIFF(MONTH, CONVERT(date, '00010101'), @qx1_p0), CONVE
 `HasUser = false` makes `me()` absent; a `'uq'` item (`startOfMonth(today(), 'uq')`); each
 diagnostic with its location; the coercion of a string literal to `Date`.
 
-### §F.12 Parameter binding — `BindParameters`
+### §F.10 Parameter binding — `BindParameters`
 
 **Target:** 0008 §1.4, §2.4, §12.1. **Requested by:** spec 0033 §9.4. **Why:** the drill-through
 list runs a plain query whose filter must be self-contained text. The engine prints a text with
@@ -2857,17 +3012,17 @@ public sealed class QueryexEngine
 
 public sealed record ParameterBindingOptions                                       // new
 {
-    public required QueryexMode Mode { get; init; }                               // where §F.10 folds: the skeleton in predicate modes; aggregation conditions in every mode
+    public required QueryexMode Mode { get; init; }                               // where §F.8 folds: the skeleton in predicate modes; aggregation conditions in every mode
     public required int LanguageVersion { get; init; }
     public IReadOnlyList<QueryexParameterDeclaration> Parameters { get; init; } = [];
     public IReadOnlyDictionary<string, object?> Values { get; init; }             // by name, ignoring case; the declared type's CLR value; default empty
-    public IReadOnlyCollection<string> Omitted { get; init; } = [];               // folded by §F.10's rule
+    public IReadOnlyCollection<string> Omitted { get; init; } = [];               // folded by §F.8's rule
     public QueryexLimits Limits { get; init; } = QueryexLimits.Default;
 }
 ```
 
 - **The result** is canonical text from 0008 §12.1's printer. Parsing it gives the source's parse
-  with two changes: each valued parameter is replaced by a literal, and §F.10's folding is applied
+  with two changes: each valued parameter is replaced by a literal, and §F.8's folding is applied
   for the omitted ones. A parameter in neither map stays as written.
 - **Syntactic only.** No schema is needed. Lexical and syntax errors return their diagnostics.
 - **Literals.** The printer parenthesizes as precedence requires.
@@ -2890,15 +3045,15 @@ public sealed record ParameterBindingOptions                                    
 **Example —** `Invoice.PostingDate >= @From and Invoice.PostingDate <= @To`, mode `Filter`, `From =
 2026-01-01`, `To` omitted → `Invoice.PostingDate >= cast('2026-01-01', 'date') and true`.
 
-**Compatibility:** a new entry point. **Tests:** a vector per literal type and per §F.10 table row;
+**Compatibility:** a new entry point. **Tests:** a vector per literal type and per §F.8 table row;
 a property test that binding then compiling equals compiling with the arguments (differential on
 the fixture); the printer round trip `parse(print(t)) = t`.
 
-### §F.13 `'uq'` through a host month table
+### §F.11 `'uq'` through a host month table
 
-**Target:** 0008 §3, §10.4, §12.3, §13.4. **Requested by:** spec 0033 §8.7; spec 0012 §11.1 (maps
-it); spec 0013 §8.2 (owns the table). **Why:** Acme reports by Umm al-Qura month. 0008 §10.4
-reserved `'uq'` for a host-provided month table named through the schema.
+**Target:** 0008 §3, §10.4, §12.3, §12.4, §13.4. **Requested by:** spec 0033 §8.7; spec 0012
+§11.1 (maps it); spec 0013 §8.2 (owns the table). **Why:** Acme reports by Umm al-Qura month.
+0008 §10.4 reserved `'uq'` for a host-provided month table named through the schema.
 
 ```csharp
 public sealed class QueryexSchemaBuilder
@@ -2927,18 +3082,30 @@ public sealed class QueryexSchemaBuilder
   - a date outside the map, or a result beyond it, is absent.
 - **Nullity.** Every `'uq'` result is `Nullable`, through a registry rule: "`Nullable` when the
   calendar argument selects a table calendar, else the signature's rule".
-- **Two emission forms,** chosen by the date operand:
-  - **A row-grain operand** reads a path and contains no aggregation. It takes the lateral lookup
-    below, in every clause.
-  - **Any other operand** is path-free (`startOfMonth(today(), 'uq')`) or aggregated
-    (`month(max(PostingDate), 'uq')`). It takes the scalar form below, which SQL Server allows in
-    `SELECT`, `WHERE` and `HAVING`.
-  - **QX3104.** Inside an aggregation's argument or a grouping key, such an operand is QX3104:
-    SQL Server refuses a subquery there (errors 130 and 144).
-- **Lateral lookup.** Each distinct row-grain operand gets one lookup per statement, by structural
-  equality (0008 §11.3). The operand is made atomic first, so the seek stays sargable: a `Date`
-  column as is; anything else through a value binding (0008 §12.3), a `DateTime` as `CAST(<d> AS
-  date)`. The lookup is a one-row backward seek on (`Calendar`, `StartDate`):
+- **Three emission forms.** The call's operands choose the form. The operands are its dates and,
+  for `addYears` and `addMonths`, `n`.
+
+  | Form | The call's operands | Emission | Example |
+  |---|---|---|---|
+  | Row grain | An operand reads a path, and none contains an aggregation | the lateral lookup below, in every clause | `month(Invoice.PostingDate, 'uq')` |
+  | Path-free | No operand reads a path or contains an aggregation | a hoisted variable (below), read in every clause | `startOfMonth(today(), 'uq')`, `month(@AsOf, 'uq')` |
+  | Aggregated | An operand contains an aggregation | the scalar form below, in place | `month(max(PostingDate), 'uq')` |
+
+- **Hoisted variable.** A path-free call is row-invariant, so it is hoisted into the prologue
+  (0008 §12.4), like the hierarchy node lookups: `DECLARE @qx{b}_v{n} <type> = (<scalar form>);`.
+  Each distinct call gets one variable per statement, by structural equality (0008 §11.3). Every
+  use reads the variable.
+- **Where an aggregated call sits.** It can only sit in a grouped statement's `SELECT`, `HAVING`
+  or `ORDER BY`, where SQL Server allows a subquery: aggregations never nest (QX4003), and a
+  grouping key holds none.
+- **No position refuses a `'uq'` call.** SQL Server refuses a subquery in `GROUP BY` (error 144)
+  and inside an aggregate (error 130), never a variable or a derived-table column. The lateral and
+  hoisted forms cover every row-grain position.
+- **Lateral lookup.** Each distinct date operand of a row-grain call gets one lookup per
+  statement, by structural equality (0008 §11.3). The operand is made atomic first, so the seek
+  stays sargable: a `Date` column as is; anything else through a value binding (0008 §12.3), a
+  `DateTime` as `CAST(<d> AS date)`. The lookup is a one-row backward seek on (`Calendar`,
+  `StartDate`):
 
   ```sql
   OUTER APPLY (SELECT TOP (1) [M].[Year], [M].[Month], [M].[StartDate], [M].[EndDate] FROM <source> AS [M]
@@ -2946,12 +3113,15 @@ public sealed class QueryexSchemaBuilder
                ORDER BY [M].[StartDate] DESC) AS [C{n}]
   ```
 
-- **Lookup results** read `[C{n}].[Month]` and the like. A derived-table column is legal in `GROUP
-  BY` and `GROUPING_ID`, where a subquery is not (SQL Server error 144).
-- **Scalar form.** Any other operand emits the same `SELECT TOP (1) [M].[<column>] … ORDER BY
-  [M].[StartDate] DESC` as a parenthesized subquery in place, one per use. The operand enters it
-  once (0008 §12.3): a parameter or a column as is, anything else through a value binding inside
-  the subquery. A second lookup nests one more subquery.
+- **Lateral results** read `[C{n}].[Month]` and the like.
+- **Scalar form.** The same `SELECT TOP (1) [M].[<column>] … ORDER BY [M].[StartDate] DESC` as a
+  parenthesized subquery. It has three uses:
+  - in place for an aggregated call, one per use;
+  - in a constant statement (§F.9);
+  - as a hoisted variable's initializer.
+
+  The operand enters it once (0008 §12.3): a parameter or a column as is, anything else through a
+  value binding inside the subquery. A second lookup nests one more subquery.
 - **Second lookups.** A function that needs another month's row adds an equality lookup on
   (`Calendar`, `Year`, `Month`):
   - the year's first month, for `startOfYear` and `week`;
@@ -2959,7 +3129,7 @@ public sealed class QueryexSchemaBuilder
     `diffMonths`.
 - **Order and scope.** Lateral sources, bindings and lookups alike, emit in creation order, which
   respects their dependencies. The calendar code reaches SQL as a literal slot. An `Exists`
-  subquery (§F.14) carries its own lookups.
+  subquery (§F.12) carries its own lookups.
 
 **Example —** `Select = "month(Invoice.PostingDate, 'uq'), sum(Amount)"`, aggregate:
 
@@ -2973,18 +3143,37 @@ OUTER APPLY (SELECT TOP (1) [M].[Year], [M].[Month], [M].[StartDate], [M].[EndDa
 GROUP BY [C1].[Month];
 ```
 
+**Example —** a hoisted call, sales of the current Hijri month per center: `Select = "Center.Id,
+sum(Amount, Invoice.PostingDate >= startOfMonth(today(), 'uq'))"`, aggregate:
+
+```sql
+DECLARE @qx0_v0 date = (SELECT TOP (1) [M].[StartDate] FROM [core].[CalendarMonths] AS [M]
+                        WHERE [M].[Calendar] = @qx0_p1 AND [M].[StartDate] <= @qx0_p0 AND @qx0_p0 < [M].[EndDate]
+                        ORDER BY [M].[StartDate] DESC);
+
+SELECT [P1].[Id] AS [c0], SUM(CASE WHEN @qx0_v0 IS NOT NULL AND [P2].[PostingDate] >= @qx0_v0 THEN [T].[Amount] END) AS [c1]
+FROM [acme].[SalesInvoiceLines] AS [T]
+LEFT JOIN [gl].[Centers] AS [P1] ON [P1].[Id] = [T].[CenterId]
+INNER JOIN [acme].[SalesInvoices] AS [P2] ON [P2].[Id] = [T].[InvoiceId]
+GROUP BY [P1].[Id];
+```
+
+`@qx0_p0` is the `Today` slot and `@qx0_p1` the calendar code.
+
 **Compatibility:** a schema without the map keeps QX3101 for `'uq'`. **Tests:**
 
 - differential for each function over every day from 1900-04-30 to 2077-11-16 and beyond both
   ends, against `UmAlQuraCalendar` in the interpreter;
-- lateral goldens for a `Date` operand, a `DateTime` operand and a second lookup, and for a
-  grouping key and a `GROUPING_ID` over a `'uq'` key;
-- scalar-form goldens for a path-free and an aggregated operand in `SELECT`, `WHERE` and `HAVING`,
-  and in a constant statement;
-- QX3104 for such an operand inside an aggregation's argument and in a grouping key; QX3101 on a
-  schema without the map.
+- lateral goldens for a `Date` operand, a `DateTime` operand, a second lookup, a grouping key over
+  a `'uq'` key, and a call that mixes a row-grain and a path-free operand;
+- hoisted goldens for a path-free call in `WHERE`, `HAVING`, an aggregation's condition and a
+  grouping key, each also run on SQL Server to show that no position needs a diagnostic; a call
+  used twice declares one variable;
+- scalar-form goldens for an aggregated operand in `SELECT` and `HAVING`, and for a constant
+  statement;
+- QX3101 on a schema without the map.
 
-### §F.14 `FilterTree.Exists`
+### §F.12 `FilterTree.Exists`
 
 **Target:** 0008 §2.3, §2.4, §3 ("Collections"). **Requested by:** spec 0033 §5.3; spec 0035
 §6.3. **Why:** sharing and the dashboard read-through need "some row of a child entity points at
@@ -3025,9 +3214,9 @@ public abstract class FilterTree
 - **Nesting.** `Exists` and `Via` nest in either order.
 - **Discovery.** `DiscoverQuery` binds `inner` for diagnostics and parameters but reports no
   `PathUse` from it: its paths are not root-relative.
-- **Caller errors:** an unknown entity; a navigation that is missing, is a level navigation, or
-  targets an entity other than the current root; an `Exists` in a `Having` tree. Diagnostics
-  inside carry `…Exists[<entity>]` locations.
+- **Caller errors:** an unknown entity; a navigation that is missing or targets an entity other
+  than the current root; an `Exists` in a `Having` tree. Diagnostics inside carry
+  `…Exists[<entity>]` locations.
 
 **Example —** from `core.ReportDefinition`, `Exists("core.ReportDefinitionShare",
 "ReportDefinition", Leaf("UserId = me()"))`:
@@ -3044,7 +3233,7 @@ nested, inside `Via`, `Via` inside, under `Or` and `Not`); differential over the
 table; one SQL text for two users; alias uniqueness across nested subqueries; the caller errors;
 `MaxJoins` counting.
 
-### §F.15 `ParameterUse.ComparedWith`
+### §F.13 `ParameterUse.ComparedWith`
 
 **Target:** 0008 §2.4. **Requested by:** spec 0029 §9; spec 0033 §4.2. **Why:** the report studio
 offers an entity picker for `@Customer` when it knows the path the parameter meets.
@@ -3073,6 +3262,348 @@ Invoice.PostingDate >= @From` gives `Customer` → `["Invoice", "CustomerId"]` a
 **Compatibility:** null without a schema, like the inferred type. **Tests:** discovery corpus rows
 per operator and operand order; conflicting paths; `Via` prefixes; silence inside `Exists`.
 
+### §F.14 `QuerySpec.Measures` and partial columns
+
+**Target:** 0008 §2.1, §2.4, §11.3, §13.4. **Requested by:** spec 0033 §8.4, §8.5; spec 0029 §9.
+**Why:** a pivot rolls up, and a summary totals, in C#. That needs each measure's aggregate parts
+as columns, and its outer expression in a form C# can run (§F.15).
+
+```csharp
+public sealed record QuerySpec
+{
+    public string? Measures { get; init; }      // new; comma-separated measures on the Group axis; requires Aggregate
+}
+
+public sealed record QueryDiscoverySpec
+{
+    public string? Measures { get; init; }      // new; checked as CompileQuery checks it, QX4010 and QX4011 included
+}
+
+public sealed record CompiledQuery
+{
+    public CompiledMeasures? Measures { get; init; }   // new; null when QuerySpec.Measures is empty (§F.15)
+}
+
+public sealed record MeasurePartial(
+    int Ordinal,                    // the result column: a reused select item, or an appended one
+    MeasurePartialKind Kind,
+    QueryexType Type);              // the aggregate's type; Numeric for sum and count
+
+public enum MeasurePartialKind { Sum, Count, Min, Max }
+```
+
+- **Binding.** Each item binds in Aggregate mode, like a select measure, at location
+  `Measures[<i>]`.
+  - An item that reads a path outside an aggregation, or has no aggregation, is QX4011. It
+    replaces QX4007 here, so the two never fire on one node.
+  - Outside its aggregations, an item may use only §F.15's subset; anything else is QX4010 at the
+    node's span.
+  - Measures never become grouping keys: the keys still come from the select list alone (0008
+    §11.3).
+- **Partials.** Each aggregate call is a leaf of its measure: its arguments are never decomposed,
+  so `sum(Amount - Cost)` is one partial.
+  - `count`, `sum`, `min` and `max` are each one partial. `avg(x[, c])` splits into `sum(x[, c])`
+    and `count(x[, c])`.
+  - The list is closed: any other aggregate is QX4010, so a non-decomposable one is refused until
+    it is designed.
+  - `min` and `max` take any Ordered type (0008 §7.1). `Guid` is not Ordered, so no `Guid`
+    partial exists.
+  - Structurally equal partials (0008 §11.3) are one partial, in first-use order across the items.
+  - A partial structurally equal to a select item reuses that column.
+- **Columns.** The appended partials follow the select items.
+- **Other clauses are unchanged.** `Having`, `OrderBy` and paging run in SQL over the statement's
+  rows, as without `Measures`. Omitted parameters (§F.8) fold inside a partial's condition as in
+  any aggregation.
+- **Discovery.** `DiscoverQuery` binds `Measures` as `CompileQuery` does and reports its
+  parameters, paths and diagnostics at `Measures[<i>]` sites.
+- **Caches.** Each item caches in L2 like a select item; L3 keys on the `Measures` text (§F.0).
+  `CompiledQuery.Measures` is cached with the plan.
+- **Caller error:** `Measures` without `Aggregate`, in `QuerySpec` and `QueryDiscoverySpec` alike.
+
+**Example —** a pivot's leaf statement over `acme.SalesInvoiceLine` by `Center`. For this example
+the line also has `Cost` and `Discount`, both `decimal(19,4)`. The spec is:
+
+- `Select = "Center.Id"`;
+- `Measures = "sum(Amount), sum(Amount - Cost) / sum(Amount), avg(Discount)"`;
+- `OrderBy = "Center.Id"` and `Take = MaxPivotRows + 1` (spec 0033 §8.5).
+
+```sql
+SELECT [P1].[Id] AS [c0], SUM([T].[Amount]) AS [c1], SUM([T].[Amount] - [T].[Cost]) AS [c2],
+       SUM([T].[Discount]) AS [c3], COUNT_BIG([T].[Discount]) AS [c4]
+FROM [acme].[SalesInvoiceLines] AS [T]
+LEFT JOIN [gl].[Centers] AS [P1] ON [P1].[Id] = [T].[CenterId]
+GROUP BY [P1].[Id]
+ORDER BY [c0] ASC OFFSET 0 ROWS FETCH NEXT @qx0_take ROWS ONLY;
+```
+
+The three measures need four partials: `sum(Amount)` serves two of them and is one column. With
+`Select = "Center.Id, sum(Amount)"`, `sum(Amount)` reuses `[c1]` and three partial columns are
+appended.
+
+**Compatibility:** with `Measures` empty, the engine emits today's bytes, and
+`CompiledQuery.Measures` is null. **Tests:**
+
+- corpus: QX4011, not QX4007, for a stray path, and QX4011 for a measure with no aggregation;
+  QX4010 for each refused row of §F.15's table, with span and `construct`; identity `cast`s
+  accepted; discovery sites; the caller error;
+- goldens: the `avg` split, deduplication, select-item reuse, conditional partials and folding
+  inside a partial's condition.
+
+### §F.15 Measure evaluation in C#
+
+**Target:** 0008 §1.4, §9. **Requested by:** spec 0033 §8.4, §8.6, §8.11. **Why:** a subtotal of
+`sum(a) / sum(b)` is the outer expression over rolled-up partials, never a sum of the children's
+ratios. One owner keeps both sides in step: the emitter writes SQL Server's arithmetic, and the
+evaluator reproduces it.
+
+```csharp
+public sealed class CompiledMeasures                          // immutable and thread-safe; cached with the plan
+{
+    public IReadOnlyList<MeasurePartial> Partials { get; }   // deduplicated across all measures (§F.14)
+    public IReadOnlyList<CompiledMeasure> Items { get; }     // parallel to the Measures items
+    public MeasureEvaluator Prepare(MeasureContext context);  // once per run: fixes every partial's and node's SQL type
+}
+
+public sealed record CompiledMeasure(string Text, QueryexType Type, QueryexNullity Nullity);
+
+public sealed record MeasureContext(
+    IReadOnlyList<QueryexNumericType?> DecimalTypes,          // parallel to Partials: the reader's precision and scale for a decimal partial; null otherwise
+    IReadOnlyDictionary<string, object?> Arguments,           // declared parameters by name, ignoring case; an omitted one is absent
+    DateOnly Today, DateTimeOffset Now, object? UserId);      // the values the statement's context slots were bound with
+
+public readonly record struct QueryexNumericType(byte Precision, byte Scale);
+
+public sealed class MeasureEvaluator                          // one run's prepared measures; immutable once prepared
+{
+    public IReadOnlyList<QueryexNumericType?> ResultTypes { get; } // parallel to Items: a Numeric measure's SQL type
+    public PartialTable CreateTable(int capacity);            // capacity: the expected cell count
+    public MeasureValue Evaluate(PartialTable table, int cell, int measure);
+}
+
+public sealed class PartialTable                              // columnar: one typed array per partial, one slot per cell; not thread-safe
+{
+    public int AddCell();                                     // an empty cell: sums and min/max null, counts 0
+    public void Add(int cell, int partial, Array buffer, int row); // one row's non-null value from a reader buffer
+    public void Merge(int target, int source);                // the combine, partial by partial
+}
+
+public readonly struct MeasureValue                           // typed: no boxing
+{
+    public QueryexType Type { get; }
+    public bool IsNull { get; }
+    public SqlDecimal Number { get; }                         // Numeric, at the measure's ResultType
+    public bool Boolean { get; }
+    public DateOnly Date { get; }
+    public DateTime DateTime { get; }
+    public DateTimeOffset DateTimeOffset { get; }
+    public string? Text { get; }                              // String, and a HierarchyId's path
+}
+
+public sealed class QueryexEvaluationException : Exception
+{
+    public string Code { get; }                               // QX6001 division by zero; QX6002 arithmetic overflow
+}
+```
+
+**The subset.** Outside its aggregations, a `Measures` item may use only what the evaluator can
+compute exactly. A measure written as a select item is evaluated by SQL and keeps the whole
+language.
+
+| Construct | Status |
+|---|---|
+| number, `null`, `true` and `false` literals; parameters; `today()`, `now()`, `me()` | supported |
+| a string literal | supported as a value (`if(c, 'High', 'Low')`), or as a date when it coerces (0008 §7.3) |
+| unary `-`; `+`, `-`, `*`, `/` | supported, at SQL Server's types (below) |
+| `=`, `!=`, `<`, `<=`, `>`, `>=` and `in` over Numeric, Bool, Date, DateTime, DateTimeOffset | supported |
+| `is null`, `is not null`; `and`, `or`, `not`; `if`, `coalesce` | supported, any type |
+| `abs`, `round`, `floor`, `ceiling` | supported |
+| `cast` to its operand's own type; `cast(null, …)` | supported: the identity (0008 §10.8) |
+| `year`, `quarter`, `month`, `day` over `Date` in calendar `'gc'`; `diffDays`, `diffHours`, `diffMinutes`, `diffSeconds` over `Date` | supported |
+| `%` | QX4010: no reporting use, and a type rule of its own |
+| `\|\|` | QX4010: building text belongs in dimensions and attributes |
+| comparisons and `in` over String, Guid or HierarchyId | QX4010 (`text comparison`): text equality depends on the collation, which C# only approximates |
+| any other `cast` | QX4010: text rendering and parsing rules |
+| every other date function; `'uq'`; `local`; date functions over `DateTime` or `DateTimeOffset` | QX4010: they need the tenant zone, the month table or SQL Server's boundary counting |
+| text functions | QX4010: collation-dependent |
+
+`descendantOf`, `ancestorOf` and `level` need a path, so outside an aggregation they are QX4011.
+
+**Example —** `diffDays(min(PostingDate), max(PostingDate))` over a `Date` column is supported.
+`diffHours(min(PostedAt), max(PostedAt))` over a `DateTimeOffset` column is QX4010 on `diffHours`;
+the author shows `min(PostedAt)` and `max(PostedAt)` as two measures instead.
+
+**Types.** Every number is a `SqlDecimal` at the SQL type SQL Server gives that node, so each
+operation lands on SQL Server's type and digits. `Prepare` fixes the types once per run:
+
+| Node | SQL type |
+|---|---|
+| `sum` partial | `decimal(38, s)`, the argument's scale; an integer argument widens to `decimal(38, 0)` (0008 §10.2) |
+| `count` partial | `bigint` |
+| `min` or `max` partial | a whole argument's own type (`tinyint` … `bigint`); a decimal's precision and scale from `DecimalTypes` |
+| `avg` | `sum ÷ count`, which lands on `decimal(38, max(s, 6))`, SQL's `AVG` type |
+| number literal | `decimal(digits, written scale)`, as the engine binds it (0008 §13.1) |
+| numeric parameter | `new SqlDecimal(value)`, which equals SqlClient's inference |
+| `me()` | the `UserId` slot's store type |
+| `year`, `quarter`, `month`, `day` | `int`, as the emitter types them |
+| `diffDays`, `diffHours`, `diffMinutes` | `decimal(26, 6)`, as the emitter types them |
+| `diffSeconds` | `bigint`, as the emitter types it |
+| whole `+`, `-`, `*` whole; unary `-`; `abs` | the wider whole type, overflowing at that width (negating the minimum included) |
+| whole `/` whole | the dividend widens to `decimal(19, 0)`, as the emitter does (0008 §9.1); integer division never happens |
+| whole with decimal | the whole side becomes `decimal(3, 0)`, `(5, 0)`, `(10, 0)` or `(19, 0)` by width |
+| decimal with decimal | `SqlDecimal`'s operators |
+| `if`, `coalesce` | two whole types: the wider. Otherwise the union: scale `max(s)`, integer digits `max(p − s)`; past 38 digits the scale shrinks, with no floor |
+| `abs`, `round` | the argument's type |
+| `floor`, `ceiling` | `decimal(p, 0)`, or the same whole type |
+
+- **Whole partials are typed from the plan.** Precision alone cannot tell `int` from
+  `decimal(10,0)`, and SQL Server treats them differently: `int` 50,000 × 50,000 overflows, while
+  `decimal(10,0)` gives `decimal(21,0)`. A decimal partial's precision and scale come from the
+  reader (spec 0012 §3.3's `QueryColumn.Precision` and `Scale`), since SQL Server derives a
+  computed argument's facets.
+- **Scale collapse.** Where `+`, `-`, `if` or `coalesce` combine a `decimal(38, s)` operand with one
+  of larger scale, 38 digits leave no room. SQL Server keeps scale s, and the evaluator does the
+  same:
+  - `sum(Qty) + sum(Amount)` is whole when `Qty` is an integer;
+  - `(38,2) + (38,4)` keeps 2 decimals;
+  - to keep the decimals, scale the coarser operand first: `sum(Qty) * 1.0000 + sum(Amount)` is
+    `decimal(38, 4)`.
+- **Rounding.** `SqlDecimal` matches SQL Server on each rule:
+  - division truncates: `decimal(38,4)` 2 / 3 is 0.666666;
+  - multiplication rounds;
+  - `round` rounds half away from zero;
+  - an `if` that narrows a scale rounds.
+- **The sign defect.** `SqlDecimal` drops the sign of a negative product that rounds to one unit of
+  the last place (−0.0015 × 0.0005 gives +0.000001). The evaluator multiplies magnitudes and
+  applies the sign itself.
+- **38 digits.** Evaluation runs at 38 digits, as SQL does. Inputs arrive as `System.Decimal`
+  through spec 0012's `QueryRowSet`: a value too large for it fails in the reader for every query,
+  and every value that arrives is exact.
+
+**Example —** `if(c, sum(a) / sum(b), sum(a))` with `decimal(38,4)` partials: the branches are
+`decimal(38,6)` and `decimal(38,4)`, so the union keeps 34 integer digits and 4 decimals. SQL
+rounds the ratio to 4 places, and so does the evaluator.
+
+**Accumulation** (`Add` and `Merge`):
+
+- **Storage.** One typed array per partial, one slot per cell: `Int128` mantissas for sums, `long`
+  counts, the column's own type for `min` and `max`. Nothing boxes.
+- **Inputs** take the partial's SQL type on arrival. The reader delivers `System.Decimal` at the
+  value's own scale (`1.5000m` is `(5,4)`, `0m` is `(1,0)`), so `Add` rescales it to the
+  partial's (p, s) first. `buffer` is one of the reader's typed column arrays (spec 0012 §3.3).
+  The engine references no data library.
+- **Sums** add exactly at the partial's scale, as a checked 128-bit mantissa. A sum past 38 digits
+  is QX6002, where SQL Server raises 8115.
+- **Counts** add as a checked `long`, like `COUNT_BIG`.
+- **`min` and `max`** compare numbers by value at any scale, dates by value, `DateTimeOffset` by
+  instant and then offset, and `Bool` with false first.
+  - **Text** compares with `StringComparer.InvariantCultureIgnoreCase`. On ordinary business text
+    it agrees with the tenant collation (spec 0011 §6.1). It can differ on awkward pairs, such as
+    hyphens, apostrophes and symbols. Values it calls equal ('Sales' and 'SALES') keep the
+    ordinally smaller, so the output never depends on row order.
+  - **Hierarchy paths** compare level by level, each level as an integer, with an ancestor before
+    its descendants: `/1/` < `/1/2/` < `/1/10/` < `/2/`. This is SQL Server's `hierarchyid` order
+    for the id paths that every tree stores (spec 0012 §10.1).
+- **A bare measure** such as `sum(Amount)` is its partial and skips `SqlDecimal`.
+
+**Nulls.** 0008 §9 applies unchanged.
+
+- **Partials.** A `sum`, `min` or `max` partial is null when no contributing row has a value. A
+  `count` is never null. `avg` is null when its count is 0.
+- **Operators.** Arithmetic propagates null. Comparisons are total (0008 §9.2): `null = null` is
+  true, and an ordering against null is false. `and`, `or` and `not` stay two-valued.
+- **Laziness.** `if` and `coalesce` run only the chosen branch, as SQL's `CASE` does after
+  aggregation. `and` and `or` stop at the first operand that decides, left to right (0008 §9.5,
+  §9.6). A guard therefore works in either form, so C# never fails on a group whose SQL row
+  succeeded:
+  - `if(sum(b) = 0, null, sum(a) / sum(b))`;
+  - `if(sum(b) != 0 and sum(a) / sum(b) > 1, 'High', 'Low')`.
+
+**Errors.**
+
+- **Codes.** `Evaluate` throws `QueryexEvaluationException` with QX6001 for a division by zero and
+  QX6002 for an overflow: a result past 38 digits, a whole result past its type, or a sum past 38
+  digits. These are the cases where SQL Server raises 8134 or 8115 (0008 §9.1).
+- **The run fails,** as a SQL statement fails when one group divides by zero. The caller reports
+  it: spec 0033 §8.11 answers `422 Report.MeasureFailed`.
+- **One edge differs.** An overflow inside a pivot measure (`max(Qty) * max(Qty)` past the `int`
+  range) fails only in C#, since SQL never evaluates that measure.
+- **Session settings.** SQL Server raises 8134 and 8115 only under its default `ANSI_WARNINGS` and
+  `ARITHABORT`. Keeping them is already a host obligation (0008 §13.6).
+
+**Lifetimes.**
+
+- **`CompiledMeasures`** is cached with the plan.
+- **A `MeasureEvaluator`** serves one run, because the decimal types come from that run's reader.
+  One plan can meet two decimal types, such as a computed `sum(Amount * Rate)` whose scale
+  differs by tenant.
+- **A `PartialTable`** serves one cube, one totals row or one export.
+- **No IR leaks.** The engine lowers each measure to an internal tree. Callers see
+  `CompiledMeasure` and the opaque `MeasureEvaluator`, never the nodes.
+
+**Example —** the rollup of §F.14's leaf rows. Head office (10) has facts of its own; its children
+Riyadh (11) and Jeddah (12) have the rest.
+
+| Leaf row | `c1` sum(Amount) | `c2` sum(Amount − Cost) | `c3` sum(Discount) | `c4` count(Discount) |
+|---|---|---|---|---|
+| 10 | 2,000.0000 | 500.0000 | 0.0500 | 1 |
+| 11 | 30,000.0000 | 9,000.0000 | 0.3000 | 4 |
+| 12 | 20,000.0000 | 4,000.0000 | 0.1000 | 2 |
+
+The caller loads each leaf row into its own cell, merges the three into Head office's cell, and
+evaluates every cell. The sums are `decimal(38,4)` and the count `bigint`; both divisions give
+`decimal(38,6)`, truncated as SQL does:
+
+| Cell | Sales | Margin | Average discount |
+|---|---|---|---|
+| Head office | 52,000.0000 | 13,500 / 52,000 = 0.259615 | 0.4500 / 7 = 0.064285 |
+| — Head office (direct) | 2,000.0000 | 0.250000 | 0.050000 |
+| — Riyadh | 30,000.0000 | 0.300000 | 0.075000 |
+| — Jeddah | 20,000.0000 | 0.200000 | 0.050000 |
+
+Averaging the margins would give 0.25, and averaging the averages 0.058333. Head office's cell
+equals SQL's own answer with no `GROUP BY`, because SQL's `AVG` truncates exactly as the evaluator
+does.
+
+**Compatibility:** new types only; nothing existing changes. **Tests,** unit:
+
+- **Types,** with value and (p, s), for every row of the types table and each rounding rule:
+  - whole families: `int` 5 + 3 is `int`, `decimal(10,0)` 5 + 3 is `(11,0)`; `int` 50,000 ×
+    50,000 and `tinyint` 200 + 100 are QX6002, `decimal(10,0)` 50,000 × 50,000 is `(21,0)`; `if`
+    over `int` and `bigint` is `bigint`; negating and `abs` of `int`'s minimum are QX6002;
+  - scale collapse: `(38,4)` 1.1234 + `(38,0)` 1 is 2 `(38,0)`; `(38,0)` 1 + `(38,10)` 0.5 is 2;
+    `if` and `coalesce` over `(38,0)` and `(38,4)` are `(38,0)`; `(38,2)` + `(38,4)` is `(38,2)`;
+    `(38,6)` − `(38,4)` is `(38,4)`; `sum(Qty) * 1.0000 + sum(Amount)` is `(38,4)`;
+  - literal scales: `(38,4)` × 0.5 is `(38,5)`, × 1.25 is `(38,6)`; with `(38,4)` a = 1 and b = 3,
+    `(a / b) * 100` is 33.333300 and `100 * a / b` is 33.333333;
+  - dates: `diffDays` and `diffSeconds` across a leap day and a year end; `year` … `day` of `Date`
+    partials.
+- **The sign defect's scope:** negative products that round to one unit, with a decimal and with a
+  `(3,0)` multiplier; control vectors for rounding, `ConvertToPrecScale`, division and `Ceiling`,
+  which keep the sign.
+- **Reader-shaped inputs:** `1.5000m` and `0m` loaded into `(38,4)` partials give `(38,6)` on
+  division, not the `(15,10)` of their own types.
+- **Laziness:** a guarded ratio over a zero denominator is null, and unguarded it is QX6001;
+  `sum(b) != 0 and sum(a) / sum(b) > 1` is false, not QX6001.
+- **Accumulation:** `Add` and `Merge` per kind and type; text compared ignoring case, with ties
+  keeping the ordinally smallest value; the path order above; the 38-digit sum boundary and two near-maximum partials are QX6002; shuffled rows give
+  identical results.
+- **Preparation per run:** one `CompiledMeasures` prepared with two decimal types for one partial
+  gives two `ResultTypes`.
+
+**Tests,** differential on SQL Server: hand-written measures plus 500 generated ones (seeded,
+depth ≤ 4, the subset's constructs only). Each case compiles one statement whose `Select` holds
+the measure (SQL's value) and whose `Measures` holds it too (the partials). Three identities hold
+exactly, in value and scale:
+
+1. **Leaf.** Per group, evaluating the row's partials equals SQL's value in the same row.
+2. **Rollup.** Combining the fine groups by a coarser key, then evaluating, equals SQL's value
+   grouped by that key.
+3. **Grand total.** Combining every row equals SQL's value with no `GROUP BY`.
+
+A zero denominator raises SQL error 8134 and QX6001 alike. Text `min` and `max` take part only over
+plain text (letters, digits and spaces) and match ignoring case, because the comparer only
+approximates the collation.
+
 ### Part F — Testing
 
 Each amendment's **Tests** line lists its cases. All three suites run on every pull request on
@@ -3080,20 +3611,25 @@ Windows and Linux; none is nightly.
 
 - **`Tellma.Core.Queryex.Tests`: corpus, goldens, cache probes (unit).**
   - Every new code and caller error.
-  - One golden per new emitted shape: restrictions, `level`, paging names, `Via` guards, grouping
-    sets, level joins, folded atoms, constant statements, `'uq'` lateral and scalar lookups,
-    `Exists`.
-  - L3 hits across pages; L3 splits on leaf stamps, omitted sets and grouping.
-- **`Tellma.Core.Queryex.Tests`: property tests (unit).**
-  - Determinism and no duplication with every new member; grouping keys repeat only in `GROUP BY`
-    and `GROUPING_ID`.
+  - One golden per new emitted shape: restrictions, `level`, paging names, `Via` guards, folded
+    atoms, constant statements, `'uq'` lateral, hoisted and scalar lookups, `Exists`, partial
+    columns.
+  - L3 hits across pages; L3 splits on leaf stamps, omitted sets and measures.
+- **`Tellma.Core.Queryex.Tests`: property tests and evaluator vectors (unit).**
+  - Determinism and no duplication with every new member; grouping keys repeat only in `GROUP BY`.
   - `Sql == Prologue + Body + ";\n"` (§F.3); bind-then-compile equals compile-with-arguments
-    (§F.12); the printer round trip.
+    (§F.10); the printer round trip.
+  - The evaluator's type, rounding, null, accumulation and error vectors (§F.15).
 - **`Tellma.Core.Queryex.IntegrationTests`: differential on SQL Server (integration).**
   - Every new corpus entry against the interpreter.
-  - Absent rows under `Not(Via)` and `Not(Exists)`; null keys under grouping sets; levels at every
-    depth; `'uq'` over its whole range and beyond; the grouping limits.
-  - `Body` as a derived table; §F.9's example.
+  - Absent rows under `Not(Via)` and `Not(Exists)`; `'uq'` over its whole range and beyond; a
+    hoisted `'uq'` call in every position (§F.11).
+  - `Body` as a derived table.
+  - The three measure identities over hand-written and generated measures (§F.15).
+- **Once, before §F.11 is built: the `'uq'` join-shape benchmark.** Lines reach `PostingDate`
+  through the invoice header, with a covering and a non-covering header date index. It compares
+  the hoisted variable, a bound parameter and the scalar form at 10M rows. It is a measurement for
+  flag 4, not a suite (0008 §18).
 
 ### Part F — Definition of done
 
@@ -3105,14 +3641,16 @@ Windows and Linux; none is nightly.
   interpreter (§F.0).
 - **Compatibility:** every pre-existing corpus entry passes unchanged; every pre-existing golden is
   byte-identical except the paging names of §F.4; `QueryexLanguage.Version` is 1.
-- **Tool:** `eng/queryex-inspection` accepts restrictions, grouping sets, omitted parameters and
-  constant items, and shows the indicator column.
-- **Docs:** the architecture document names grouping sets, level navigations, the `'uq'` month
-  table and `Exists` where it describes Queryex. Public XML docs and error messages reference no
-  `docs/` paths.
-- **Not in scope of done:** what hosts do with the amendments: spec 0012 declaring `TreeLevels`
-  and `CalendarMap` and binding the paging slots; spec 0013's month table; spec 0014's `Via`;
-  spec 0033's compiler and `Exists` criteria.
+- **Tool:** `eng/queryex-inspection` accepts restrictions, measures, omitted parameters and
+  constant items, and shows partial columns.
+- **Benchmark:** the `'uq'` join-shape benchmark (Part F — Testing) ran before §F.11 was built,
+  and its result is recorded against flag 4.
+- **Docs:** the architecture document names the `'uq'` month table, `Exists` and the measure
+  evaluator where it describes Queryex. Public XML docs and error messages reference no `docs/`
+  paths.
+- **Not in scope of done:** what hosts do with the amendments: spec 0012 declaring `CalendarMap`,
+  binding the paging slots and reporting `QueryColumn.Precision`; spec 0013's month table; spec
+  0014's `Via`; spec 0033's compiler, cube builder and `Exists` criteria.
 
 ### Part F — Decisions record
 
@@ -3122,58 +3660,63 @@ Windows and Linux; none is nightly.
    and each new form binds only under a host opt-in. A version 2 with dual compilation was the
    alternative (§F.0).
 3. **Host-built structure fails as caller errors, user text as diagnostics** — `Via` and `Exists`
-   names, restriction paths, key groups and option names are never user input (§F.1, §F.7, §F.8,
-   §F.14).
+   names, restriction paths and option names are never user input (§F.1, §F.7, §F.12).
 4. **Paging slots are `Literal` slots with fixed names, re-stamped per call** — hosts already bind
    `Literal` slots from `Value`, and a `Declared` slot could collide with a user parameter `@take`
    (§F.4).
 5. **Context slots need no engine change** — 0008 already emits them; binding them to the tenant is
    the host's (§F.5).
-6. **Tree rollups use level navigations** — to-one joins keep every grouping set exact. A join over
-   the node closure counts each fact once per ancestor (102,000 instead of 52,000 in §F.9's
-   example), and a query per level re-scans the facts (§F.9).
-7. **Level navigations are counted (`TreeLevels`), not listed in `Navigations`** — they have no
-   foreign key, and `ForeignKey` stays non-null (§F.9).
-8. **Grouping sets over select ordinals, with one `GROUPING_ID` indicator; `KeyGroups` optional**
-   — one compact `int` column, and text slots roll up together. `ROLLUP` and `CUBE` cannot express
-   a pivot's sets; a `GROUPING()` column per key costs a column per level (§F.8).
-9. **`Having` filters the finest set only** — a collapsed member never shows a hole; SQL's
-   semantics would drop subtotal rows (§F.8).
-10. **Omitted parameters fold syntactically, by polarity, after bare list elements drop** — one
-    folder serves §F.10 and §F.12, and `in (@A, @B)` keeps `@A`. Folding the bound tree, and
-    whole-atom folding only, were the alternatives (§F.10).
-11. **Constant statements are a second entry point emitting one `FROM`-less `SELECT`** — the
-    statement is complete, so not a fragment API; `CompileQuery` over a dummy root would return one
-    row per root row (§F.11).
-12. **`BindParameters` is syntactic** — only the engine has the lexer and the printer; host string
-    replacement breaks on `@` inside strings (§F.12).
-13. **`'uq'` reads a host month table by one `TOP (1)` seek, lateral for a row-grain operand and
-    scalar for any other** — the lateral form keeps `GROUP BY` and `GROUPING_ID` legal and the seek
-    sargable. The scalar form runs a default such as `startOfMonth(today(), 'uq')` with no prologue
-    variable. QX3104 applies only where SQL Server refuses a subquery (§F.13).
-14. **`Exists` is a host-built semi-join; the language gains no collection syntax** — sharing needs
-    "some child row" without fan-out, and a host-filled key set cannot sit under `Or` (§F.14).
+6. **Omitted parameters fold syntactically, by polarity, after bare list elements drop** — one
+   folder serves §F.8 and §F.10, and `in (@A, @B)` keeps `@A`. Folding the bound tree, and
+   whole-atom folding only, were the alternatives (§F.8).
+7. **Constant statements are a second entry point emitting one `FROM`-less `SELECT`** — the
+   statement is complete, so not a fragment API; `CompileQuery` over a dummy root would return one
+   row per root row (§F.9).
+8. **`BindParameters` is syntactic** — only the engine has the lexer and the printer; host string
+   replacement breaks on `@` inside strings (§F.10).
+9. **`'uq'` reads a host month table by one `TOP (1)` seek, in three forms: lateral for a row-grain
+   call, a hoisted variable for a path-free one, scalar for an aggregated one** — the lateral and
+   hoisted forms are legal in `GROUP BY` and inside aggregates, so no position refuses a `'uq'`
+   call. The seek stays sargable. At 10M rows the hoisted variable stays within 1.6× of the
+   Gregorian baseline, where the scalar form reached 5× (§F.11).
+10. **`Exists` is a host-built semi-join; the language gains no collection syntax** — sharing needs
+    "some child row" without fan-out, and a host-filled key set cannot sit under `Or` (§F.12).
+11. **Measures decompose into `sum`, `count`, `min` and `max` partials, evaluated in C# by the
+    engine** — a pivot groups at leaf grain and rolls up in C# (spec 0033 §8.6), so a subtotal
+    needs the outer expression over rolled-up partials. One owner keeps both arithmetics in step.
+    The closed list refuses a non-decomposable aggregate by default. Grouping sets with tree level
+    navigations were the alternative (§F.14, §F.15).
+12. **The evaluator runs `SqlDecimal` at each node's SQL type** — it reproduces SQL Server's value
+    and scale, digit for digit. `System.Decimal` with six-digit agreement was the alternative
+    (§F.15).
+13. **Text partials combine with a case-insensitive .NET comparer, and hierarchy paths by their
+    integer levels** — no extra SQL and no engine machinery. The comparer differs from the
+    collation only on awkward pairs, which business uses of `min` and `max` over text almost never
+    meet. An SQL `DENSE_RANK` column per partial was the alternative: exact, at the cost of a sort
+    per partial (§F.15).
 
 ### Part F — Review flags
 
 1. **`Literal` paging slots** (§F.4). Alternative: `Declared` slots the host binds by name. Flips if
    a host must rebind pages without the engine re-stamping the query.
-2. **Caller errors for host-built structure** (§F.1, §F.7, §F.8, §F.14). Alternative: diagnostics.
+2. **Caller errors for host-built structure** (§F.1, §F.7, §F.12). Alternative: diagnostics.
    Flips if a host ever builds `Via`, `Exists` or restrictions from user text.
-3. **Folding before binding, with bare list elements dropped** (§F.10). A drift error inside a
+3. **Folding before binding, with bare list elements dropped** (§F.8). A drift error inside a
    folded atom goes unreported at run time. Alternatives: bind, then fold; fold whole atoms only.
    Flips if optional atoms break silently in stored definitions, or when list parameters ship.
-4. **Two emission forms for `'uq'`** (§F.13): the lateral seek for row-grain path operands, a
-   scalar subquery for the rest, refused inside aggregation arguments and grouping keys.
-   Alternative: the lateral form only, refusing every other operand. Flips if the scalar form's
-   plans measure poorly over large fact tables.
-5. **Counted level navigations** (§F.9). Alternative: list them in `Navigations` with a nullable
-   `ForeignKey`. Flips if hosts need one uniform navigation list.
-6. **`Having` on the finest set as an engine rule** (§F.8). Alternatives: SQL's semantics, or an
-   option. Flips when a second consumer wants SQL's semantics, or report users expect totals to
-   drop with filtered leaves.
-7. **Optional `KeyGroups`; the name `EvaluateConstant`** (§F.8, §F.11). Alternatives: required
-   groups; `CompileConstants`, since the engine never executes. Flips on preference.
-8. **A month table sought by (`Calendar`, `StartDate`)** (§F.13). Alternative: a per-day table with
+4. **Path-free `'uq'` calls as hoisted variables** (§F.11). A variable's cardinality estimate is
+   blind (0008 §12.4), and `OPTION (RECOMPILE)` would compile every run. Alternative: the scalar
+   subquery, which SQL Server refuses inside aggregation arguments and grouping keys, so those
+   positions would need a diagnostic. Flips if the join-shape benchmark (Part F — Testing) finds
+   the variable more than 1.5× slower than a bound parameter.
+5. **The name `EvaluateConstant`** (§F.9). Alternative: `CompileConstants`, since the engine never
+   executes. Flips on preference.
+6. **A month table sought by (`Calendar`, `StartDate`)** (§F.11). Alternative: a per-day table with
    equality seeks. Flips on measured lookup cost over large fact tables.
+7. **The evaluator's subset** (§F.15). Alternative: more date functions over aggregates
+   (`startOfMonth`, `addDays`, distances over `DateTime` and `DateTimeOffset`). Flips when a real
+   report needs one; each is an additive evaluator node.
+8. **Evaluation errors fail the run** (§F.15), as 0008 §9.1 makes division by zero an error.
+   Alternative: a null cell with a warning. Flips if users prefer blanks to guarding measures with
+   `if`.
 

@@ -1425,13 +1425,13 @@ a built-in's `CronExpression` and `TimeZoneId` and its names, nothing else (§7.
   `IUserConnector.ConnectAsUser(RunAsUserId)` (`ConnectPremises.ForUser`: tags and `IsActive`, no
   activity stamp, no state flip) or `ConnectAsSystem()` for the system user — and then spec 0013's
   negotiation initializer, which resolves the locale fields from the run-as user's
-  `PreferredLanguage`, `PreferredCalendar` and `PreferredTimeZone`, else the tenant defaults (spec
-  0013 §9.3), so a handler invocation pays one connect. A run-as user who is inactive fails the
-  connect with `TenantNotFoundException` (spec 0014 §7.6): the handler is not invoked, and every
-  item of the partition is `Failed` with `Jobs.UserInactive` by a completion without a handler
-  (§5.4), which raises `core.job.failed` for each (§10). A run-as user deactivated during the run
-  takes the same path when the completion's re-check fails (§5.6). The schedule pauses at the next
-  tick (§7.7).
+  `PreferredLanguage`, `PreferredCalendar`, `PreferredTimeZone` and `PreferredRegion`, else the
+  tenant defaults (spec 0013 §9.3), so a handler invocation pays one connect. A run-as user who is
+  inactive fails the connect with `TenantNotFoundException` (spec 0014 §7.6): the handler is not
+  invoked, and every item of the partition is `Failed` with `Jobs.UserInactive` by a completion
+  without a handler (§5.4), which raises `core.job.failed` for each (§10). A run-as user deactivated
+  during the run takes the same path when the completion's re-check fails (§5.6). The schedule
+  pauses at the next tick (§7.7).
 - **The job frame.** Around each `ExecuteAsync` the worker opens the frame of spec 0015 §13.3 —
   `Kind = Job`, `Operation = "job:<key>"` — bound to the partition's completion batch and
   registered in the job scope as the scoped `IOpenWriteHost`. A handler that writes rows a stack

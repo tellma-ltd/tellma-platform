@@ -250,7 +250,7 @@ public sealed class Notification : Entity<int>   // [Table("Notifications", Sche
     public NotificationSeverity Severity { get; set; }  // server-owned
     public string? ArgumentsJson { get; set; }          // server-owned; [JsonColumn] is not applied (nvarchar(4000), not max)
     public string? TargetResource { get; set; }         // server-owned
-    public long? TargetId { get; set; }                 // server-owned
+    public long? TargetId { get; set; }                 // server-owned; a JSON string on the wire (spec 0016 §3.2)
     public int? ActorUserId { get; set; }               // server-owned; FK -> core.Users
     public string? DedupKey { get; set; }               // server-owned
     public DateTimeOffset CreatedAt { get; set; }       // datetimeoffset(3); server-owned
@@ -785,7 +785,7 @@ slices (`BatchSize`):
 ```sql
 -- per item, ordinal {b}: @tb{b}_t0 : IdList the slice's RecipientIds, @tb{b}_p0 nvarchar(64) the type; ResultSets = 2
 SELECT [u].[Id], [u].[Name], [u].[Email], [u].[ContactEmail], [u].[ContactMobile],
-       [u].[PreferredLanguage], [u].[PreferredCalendar], [u].[PreferredTimeZone]
+       [u].[PreferredLanguage], [u].[PreferredCalendar], [u].[PreferredTimeZone], [u].[PreferredRegion]
 FROM [core].[Users] AS [u] INNER JOIN @tb{b}_t0 AS [r] ON [r].[Id] = [u].[Id]
 WHERE [u].[IsActive] = 1;
 SELECT [p].[UserId], [p].[Channel], [p].[Enabled]
@@ -1428,9 +1428,11 @@ The load-bearing decisions, where not already evident above:
    predicate. Alternative: a unique filtered index on `(UserId, DedupKey) WHERE ReadAt IS NULL`,
    which fails the business save when two batches race and cannot cover `Ongoing`, whose read rows
    count. Flips if duplicate notices are observed at a rate that annoys users.
-3. **No push channel yet** (§4.1): the spec that ships a transport registers it. Alternative:
-   register `push` now with no sender, so the preference is collected early. Flips if the push
-   spec is scheduled before the next release.
+3. **No push channel yet** (§4.1): the spec that ships a transport registers it. That spec also
+   owns the service-worker wrapper script that imports Angular's `ngsw-worker.js` and adds the
+   `push` and `notificationclick` handlers (spec 0024 §5.4). Alternative: register `push` now with
+   no sender, so the preference is collected early. Flips if the push spec is scheduled before the
+   next release.
 4. **Per-(tenant, user) groups on one hub** (§6.2): four groups per connection. Alternative: a hub
    per tenant with `Clients.User`. Flips only if Azure SignalR pricing or limits per hub change the
    arithmetic.
