@@ -1450,3 +1450,89 @@ part wins.
 ## ARCHITECTURE.md
 
 - Migrations & seeding — Provisioning creates the database with `Latin1_General_100_CI_AS`.
+
+# Review round 1, follow-up 2 (27 October 2026)
+
+Two more decisions from the review of round 1. Where this part conflicts with the parts above, this
+part wins.
+
+## Summary
+
+- **One collation for every database.** The catalog, every tenant database, the identity database
+  and the development and test databases that stand in for them all use `Latin1_General_100_CI_AS`,
+  set by `CREATE DATABASE` and never altered. Spec 0011 §6.7 owns the rule; spec 0010 §A.11
+  amends the identity server. On Azure SQL Database the statement adds `WITH CATALOG_COLLATION =
+  DATABASE_DEFAULT`, without which the table-type sweep fails with Msg 468. The migrator creates
+  databases itself, never through EF's implicit creation, and refuses one in another collation.
+  (0010, 0011, 0012, 0018, 0019, ARCHITECTURE.md.)
+- **Page state survives a permissions move.** A `permissions` move marks the tenant's page state
+  stale instead of forgetting it; a `settings` move still forgets it. Only the new specs change
+  (0025, 0029–0032, 0034, 0035), so nothing below logs it.
+
+## 0010 — Amendments to implemented specs
+
+- Context, Goals, How to read an amendment — Part A now runs to §A.11, which covers the identity
+  database's collation.
+- Part A order — New item 8: §A.11 ships before any identity database is deployed.
+- Part A placement — The engine carries §A.11's code; `Tellma.Identity.Migrations` gains no
+  migration because the model sets no collation.
+- §A.11 (new) — The identity database uses spec 0011 §6.7's collation, set by whatever creates it:
+  infrastructure (Bicep properties), or the seeder when `Seed.ApplyMigrations` is on (it creates a
+  missing database in `master` with §6.7's statement and sets read-committed snapshot). In-proc,
+  the engine never creates its store. The seeder refuses an existing database in another
+  collation.
+- Part A Testing — Fixtures create their databases with §6.7's statement; a unit pin on the
+  statement; integration pins on creation, refusal and the in-proc case.
+- Part A Definition of done — The architecture document's identity section covers the collation.
+- Part A Decisions — New 12: whoever creates the identity database sets its collation, never a
+  migration.
+- Part A Review flags — New 9: refusing an identity database in another collation, with a Warning
+  as the alternative.
+- §F.15 — The text comparer agrees with the platform collation (spec 0011 §6.7).
+- Part F Testing — The Queryex integration database is created as spec 0011 §6.7 states; its
+  fixture columns keep their declared collation.
+
+## 0011 — Distribution host and multi-tenancy
+
+- Context — Cites spec 0010 §A.11.
+- §3.2 — The catalog description is four bullets; the catalog is created as §6.7 states.
+- §3.8 — `TenantMembershipRecord.Subject` declares `Latin1_General_100_BIN2`, as the table does.
+- §5.7 — In-proc mode passes `Mode = InProc`; the engine never creates the catalog, and a missing
+  catalog prints the `migrate` command.
+- §5.9 — Part A runs to §A.11 and lists the identity database's collation.
+- §6.1 — `migrate` creates a missing catalog and sets read-committed snapshot in a fresh one;
+  `provision` creates the database as §6.7 states.
+- §6.7 (new) — Database creation and collation: who creates, the `master` connection and rights,
+  the SQL Server and Azure statements, Bicep properties, the existing-database check, fresh
+  databases, sandbox copies, and development and test servers.
+- §8 — `Provisioning:CreateDatabaseTemplate` holds only the Azure options appended after `COLLATE`,
+  for catalog and tenant databases alike.
+- §10 — A unit pin on the statement; integration pins on the created collation and the refusal;
+  the catalog fixture is created as §6.7 states.
+- §11 — Definition of done covers database creation and one collation for every database.
+- Decisions — 32 widens from tenant databases to every database, with the Azure catalog
+  collation.
+
+## 0012 — Data access layer
+
+- §4.4 — A string column of a standalone type or table variable declares the collation of any
+  explicitly collated column it is compared with; `TenantMembershipList.Subject` and
+  `UserInvitationOutcomeList.Subject` declare `Latin1_General_100_BIN2`.
+- §13.2 — The fixture database is created as spec 0011 §6.7 states.
+
+## 0018 — Core and GL reference stacks
+
+- §3.1 — `UserInvitationOutcome.Subject` declares `Latin1_General_100_BIN2`, as `core.Users.Subject`
+  does.
+
+## 0019 — Excel codec
+
+- §10.3 — The collation hint names width-insensitivity, not accent-insensitivity, which the
+  platform collation does not have.
+
+## ARCHITECTURE.md
+
+- Migrations & seeding — New paragraph "One collation for every database".
+- Identity — The amendments list ends with the identity database's collation.
+- Hosting on Azure — New "Databases" bullet: the migrator creates catalogs and tenant databases;
+  Bicep-declared databases set the collation properties.

@@ -578,8 +578,8 @@ Both changes update the open page in place, without a navigation.
   change with the slot, so the host re-reads.
 - **Permissions or settings tag moved.** Descriptors rebuild (spec 0029 §4.1), and the plan
   re-resolves through `TmPermissions.reachable`. Newly unreachable columns drop (`source:
-  'preference'` or `'url'`), toolbar gates re-render, and the host re-reads. At the same moment,
-  spec 0025 §10 forgets the tenant's page state.
+  'preference'` or `'url'`), toolbar gates re-render, and the host re-reads. The tenant's other
+  page-state entries follow spec 0025 §10.
 
 ## 6. The search field and the keyboard model
 
@@ -1072,7 +1072,12 @@ hands the same snapshot to the details page for paging.
 ### 15.1 What the host remembers
 
 `TmPageState.remember(tmPageStateKey('/17/customers'), snapshot)` (spec 0025 §10) runs when the host
-is destroyed and before it opens a row.
+is destroyed and before it opens a row. After a failed read, the snapshot matches what the results
+region shows (§5.3):
+
+- **`forbidden` or `not-found`.** The host calls `forget` instead of `remember`, so the next return
+  is a first load.
+- **Any other failure.** `result` holds the rows still shown, or is null when none are.
 
 ```ts
 // @tellma/core primary (types only); written here, read and written by spec 0031 §12
@@ -1084,7 +1089,7 @@ interface TmSearchSnapshot {
   readonly supersedes?: string;                      // a canonical query this snapshot replaces (§4.2 step 1)
   // The last rows request; null with searchRead and for a browse tree (§16.2).
   readonly request: { readonly route: string; readonly body: TmJsonObject } | null;
-  // What that request returned; capped: total is a lower bound (§14).
+  // What that request returned (null: §15.1); capped: total is a lower bound (§14).
   readonly result: { readonly set: TmQueryRowSet; readonly ancestors?: TmQueryRowSet;
                      readonly total: number | null; readonly capped: boolean } | null;
   readonly ids: readonly TmId[];                     // the shown rows, in display order
@@ -1102,10 +1107,9 @@ source. The rest depends on whether the snapshot answers the resolved query.
 
 1. §4.2 resolves the query. When the snapshot's `canonical` equals it, its rows render at once with
    no request. The grid restores scroll and the active cell from its store (same `contentKey`), and
-   tiles scroll to `scroll`.
-2. When `TmPageState.isStale(key)` holds (a save, delete, import or action on the entity, spec 0025
-   §10), the held rows still render at once, and a read refreshes them. Scroll and highlight keep
-   their rows.
+   tiles scroll to `scroll`. With `result: null`, the host reads the restored query as a first load.
+2. When `TmPageState.isStale(key)` holds (spec 0025 §10), the held rows still render at once, and a
+   read refreshes them. Scroll and highlight keep their rows.
 3. When the canonical query differs, nothing else restores. An evicted entry is a first load.
 
 ### 15.3 What spec 0031 reads
@@ -1228,7 +1232,8 @@ Six suites pin the design, and all of them run on every PR.
   - export bodies (columns, filters, ids) and the 413 fallback; import steps with a plan, a 422 and
     a 202;
   - the column editor writes the preference and the URL, and a removal sends nothing;
-  - a page-state restore sends nothing, and a stale one re-reads;
+  - a page-state restore sends nothing, a stale one re-reads, and a `403` on that read forgets the
+    entry;
   - tabs and `searchRead`; picker mode closes with picks; list mode's fixed leaf.
 - **e2e on Acme** (Playwright; Chromium, `@cross-engine` on Firefox and WebKit):
   - warm launch with requests held; the geometry spec;

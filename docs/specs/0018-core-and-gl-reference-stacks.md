@@ -402,7 +402,7 @@ public sealed record UserPreferencesResult(IReadOnlyDictionary<string, string> P
 public sealed class UserInvitationOutcome                    // standalone; the invite write-back row
 {
     public int UserId { get; set; }                          // key
-    public string? Subject { get; set; }                     // varchar(255)
+    public string? Subject { get; set; }                     // varchar(255) COLLATE Latin1_General_100_BIN2, as core.Users.Subject
     public string? InviteStatus { get; set; }                // varchar(9)
     public string? LastInviteError { get; set; }             // nvarchar(1024)
 }

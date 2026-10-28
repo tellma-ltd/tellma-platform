@@ -871,15 +871,16 @@ tabs and other browsers catch up.
    re-render. A Region or Digits change re-formats every value in place (spec 0024 §7.7).
 2. **Other tabs** of the browser re-render from `store.changed`; other browsers follow
    `cache.changed { tag: 'settings', value }` (spec 0025 §4.4).
-3. **A language change** also bumps `permissions` (spec 0013 §6.1): one `client/sync` brings the
-   new `me`, descriptors follow the new shape (spec 0029 §4.2) and spec 0025 §10 forgets the
-   tenant's page state.
-4. **A Settings page in view mode** in any tab re-reads `details` when the stored document moves
+3. **Page state.** Every tab forgets the tenant's page state once it holds the new `settings` tag
+   (spec 0025 §10).
+4. **A language change** also bumps `permissions` (spec 0013 §6.1): one `client/sync` brings the
+   new `me`, and descriptors follow the new shape (spec 0029 §4.2).
+5. **A Settings page in view mode** in any tab re-reads `details` when the stored document moves
    (the source's `changes`). In edit mode it does not re-read; its save's stamps catch any
    conflict.
-5. **The tenant picker** may show the old name until the catalog mirror runs (spec 0013 §6.3,
+6. **The tenant picker** may show the old name until the catalog mirror runs (spec 0013 §6.3,
    step 6).
-6. **Refresh caches** is a menu action, `settings.refresh-caches`, enabled with
+7. **Refresh caches** is a menu action, `settings.refresh-caches`, enabled with
    `can('core.Settings.General', 'Save')`:
    - it confirms "Refresh caches?" / "Every user's next request reloads settings, permissions and
      lists. Use this after changing data outside {displayName}.";

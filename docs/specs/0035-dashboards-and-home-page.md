@@ -458,6 +458,9 @@ public sealed record WidgetReportSummary(                                // stor
   type's `requires`.
 - **View mode** lays out only the visible tiles, before the first render (§8.2), so nothing
   reflows.
+- **A re-read applies its `view`.** When a forced refresh (§11.3) or a stale return (§11.4)
+  re-reads the dashboard, the grid lays out the new visible set (§8.2). A tile that turned hidden
+  leaves the grid. Its held result is dropped, as for a removed key.
 - **Edit mode** shows every tile, a hidden one as "You can't see this data" (§8.6). An editor
   therefore never removes by accident a tile they cannot see.
 
@@ -849,6 +852,9 @@ refreshes every minute and the others every 5, silently. Farah switches tabs at 
   `held` input and restores the scroll. Tiles whose due time has passed then run silently; a tile
   without an interval runs when its result is older than 5 minutes. Entries for removed keys are
   dropped.
+- **A stale entry** (`isStale`, spec 0025 §10) renders the same way, then silently runs every tile
+  that has a held result, whatever its due time. The details host's own snapshot is stale too, so
+  the dashboard re-reads (spec 0031 §13) and the grid applies the new `view` (§6.2).
 
 ## 12. The dashboard page
 
@@ -1147,7 +1153,7 @@ Widget runs also emit spec 0034's `tm.report.run` with `mode: widget`. The serve
 | Web (C#) | integration, PR | routes and retry classes, with `dashboards/audience` in the Contracts chunk's `long` and `idempotent` lists; `reports/run` with `DashboardId` end to end; a background run stamps no activity; `core.dashboard.shared` raised and withdrawn |
 | Layout (vitest) | unit, PR | `tmPackDashboard` vectors (compaction with hidden tiles, bands, narrow rows); `tmMoveWidget` and `tmResizeWidget` (clamp, cascading push, compaction); arrow mapping in LTR and RTL |
 | Bindings and greeting (vitest) | unit, PR | `tmBindWidgetArguments` over §10.2's table, fixed `null`, waiting; `tmFirstName`; time-of-day greetings and the date line across zones and calendars with a fake `TM_NOW` |
-| Scheduler (vitest, fake clock) | unit, PR | completion-based due times; tile overrides; the visibility, online and edit conditions and the catch-up; forced and tile refresh; the page-state return |
+| Scheduler (vitest, fake clock) | unit, PR | completion-based due times; tile overrides; the visibility, online and edit conditions and the catch-up; forced and tile refresh; the page-state return; an `isStale` entry running every tile with a held result while the built-in lists stay untouched |
 | Harnesses (`@tellma/core-testing`) | PR | grid, page and home: every state of §8.6, §9.2, §12.3 and §15.4; §8.5's status line, with its omitted-totals note and the empty line after a failed first run; editor operations and dialogs; a fixture widget type; a `home` hatch through `TmHomeHost` |
 | Playwright on Acme | e2e, PR | §18's journeys at 390, 768, 992 and 1440 px in `en` and `ar`; `Tellma-Activity: background` on scheduled runs only (request interception) |
 | axe, budgets | PR | home, dashboard view, edit mode, gallery and dialogs, in light and dark, LTR and RTL; §1.1's budgets; the home route's transfer excludes `/details`, `/entity`, `/reports` and `core-ui/chart` |

@@ -993,7 +993,7 @@ declare class TmPageState {
   remember<T>(key: TmPageStateKey, state: T): void;           // replaces; most recently used; clears isStale
   recall<T>(key: TmPageStateKey): T | undefined;
   isStale(key: TmPageStateKey): boolean;                      // the rows must be refetched; the rest restores
-  markStale(scope: { tenantId: number; entity?: string }): void; // after a save, delete, import or action
+  markStale(scope: { tenantId: number; entity?: string }): void; // after a write or a permissions move
   forget(key: TmPageStateKey): void;
 }
 ```
@@ -1004,13 +1004,18 @@ declare class TmPageState {
   `/17/reports/42/run`. `markStale` maps the key without that segment.
 - **Bound.** 20 entries, least recently used evicted. Values are immutable and held by reference. A
   host remembers at most its rendered window, never a whole table.
-- **Permissions or settings moved.** When tenant `t`'s held `permissions` or `settings` tag
-  changes, every entry of `t` is forgotten. Its rows may hold data the user can no longer see, or a
-  shape the tenant's languages no longer admit. Spec 0029 §5.3 clears display names on this rule.
 - **Writes mark entries stale.** A host that saves, deletes, imports or runs an action calls
   `markStale` (specs 0030, 0031). With `entity`, it marks the entries that `TmUrls.describe` maps to
   that entity: its search and details pages. Without `entity`, it marks every entry of the tenant.
-- **A stale entry** restores query, scroll and selection, and refetches its rows.
+- **A permissions move marks entries stale.** When tenant `t`'s held `permissions` tag changes,
+  `TmPageState` calls `markStale({ tenantId: t })`, so every entry of `t` refetches on return.
+- **A settings move forgets entries.** When `t`'s held `settings` tag changes, `TmPageState`
+  forgets every entry of `t`.
+- **Display names** follow the same split (spec 0029 §5.3).
+- **A stale entry** renders its held state at once, then refetches its data.
+- **A refused refetch** (`forbidden` or `not-found`) leaves none of the refused data in the entry,
+  so no later return renders it.
+- **Hosts.** Each host in the table below defines the two rules above for its own state.
 - **A language switch** changes nothing.
 
 | Host | Remembers (the host decides) |
@@ -1126,7 +1131,7 @@ deployment.
 | Leader | unit, two instances, real Web Locks, PR | grant and every release reason; the steal rules (hung, hidden and disconnected, never a visible leader, never `disabled`); the holder re-check; the degraded follower's 60 s probe |
 | `TmHub` | unit, fake connection, PR | §8.3's schedule and jitter bounds; nudges; terminal verdicts stop the loop; relay and drop rules; the `TmHubHttpClient` check |
 | Preferences | unit, PR | the read order; a same-frame `set`; flush timings; the `pagehide` bodies and cap; adoption; a received value drops the dirty one; the overlay's end; the key-cap drop and restore |
-| Page state, drafts, tree, recents | unit, PR | page state: LRU of 20, tag-move invalidation, `markStale` on search and details entries; drafts: debounce, `pagehide` flush, quota, `sub` refusal; tree: the cap and `replace`; recents: kinds, dwell, de-duplication, cap and title source |
+| Page state, drafts, tree, recents | unit, PR | page state: LRU of 20, `markStale` on search and details entries, a permissions move marking every entry of the tenant stale, a settings move forgetting them; drafts: debounce, `pagehide` flush, quota, `sub` refusal; tree: the cap and `replace`; recents: kinds, dwell, de-duplication, cap and title source |
 | Multi-tab (Playwright, Acme host) | e2e, PR | the scenarios below |
 | Multi-tab on WebKit (`@cross-engine`) | e2e, PR | a hidden leader that stops answering is replaced through the hung-leader rule when a follower becomes visible |
 | Hidden-leader soak | nightly | a hidden leader keeps one connection for 15 min under Chromium's intensive throttling, with no leadership change |
@@ -1230,6 +1235,9 @@ deployment.
 14. **The device partition holds one document, `zone`, that outlives sign-out and expiry** — the
     automatic time-zone option is per user and per device, and a user partition would forget it at
     every sign-out — (§2.3; spec 0024 §7.8).
+15. **A permissions move marks the tenant's page state stale; a settings move forgets it** — the
+    held rows were read while the user had access, and the refetch corrects them; a settings change
+    can change the rows' shape — (§10).
 
 ## Review flags
 
@@ -1255,21 +1263,18 @@ deployment.
 7. **Own-write detection by ordering** (§5.3). `TmApi` calls `observe` one task after the body.
    Alternative: per-tab sets of recently replaced tags. Flips if a consumer must await something
    between its write and `adopt`.
-8. **Page state drops a tenant's entries when its permissions or settings tag moves** (§10).
-   Alternative: keep them and let the refetch correct them. Flips if the drops feel like lost
-   scroll positions after routine role edits.
-9. **Recents hold pages, ten per tenant; tree expansion lasts one sign-in session, 500 ids per
+8. **Recents hold pages, ten per tenant; tree expansion lasts one sign-in session, 500 ids per
    page** (§12, §13). Alternatives: include records; keep expansion across sessions. Flips if
    users ask for recent records, or expect trees to stay open after signing in again.
-10. **`settings/entity-tags` stays for API callers; the SPA never calls it** (spec 0013 §6.2).
-    Alternative: remove it. Flips if no API caller needs it.
-11. **At the 1,024-key cap a preference write is dropped** (§9.4). Alternative: evict the oldest
+9. **`settings/entity-tags` stays for API callers; the SPA never calls it** (spec 0013 §6.2).
+   Alternative: remove it. Flips if no API caller needs it.
+10. **At the 1,024-key cap a preference write is dropped** (§9.4). Alternative: evict the oldest
     write-behind keys, with a timestamp on every value. Flips if `key-cap` telemetry shows real
     users reaching the cap.
-12. **Degraded polling every 60 s while someone looks; sync throttle 2 s; jitter 0–3 s and 0–10 s**
+11. **Degraded polling every 60 s while someone looks; sync throttle 2 s; jitter 0–3 s and 0–10 s**
     (§4.4, §5.3, §8.7). Alternatives: 30 s, or polling hidden tabs too. Flips on the server cost of
     fleets without realtime, or on measured burst load after tenant-wide changes.
-13. **Theme is device-level; session expiry deletes stored data** (§2.1, §2.6; shared with spec
+12. **Theme is device-level; session expiry deletes stored data** (§2.1, §2.6; shared with spec
     0024). Alternatives: a synced theme key; keeping the launch documents across expiry. Flips if
     users expect their theme on every device, or find the relaunch after a week slow.
 

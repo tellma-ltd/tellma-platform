@@ -777,6 +777,11 @@ Entity UDTTs are derived per spec 0001 (`<schema>.<Table>List_<hash8>`). `DateLi
 `IdStampList` are defined here; the others are defined by the specs that name them and registered
 on `TellmaDbContext` through `FeatureContribution.Model<T>()`.
 
+A string column of a standalone type or a table variable declares the collation of any explicitly
+collated column a statement compares it with. Otherwise it takes the database collation (spec 0011
+§6.7), and the comparison fails to compile with Msg 468. `TenantMembershipList.Subject` and
+`UserInvitationOutcomeList.Subject` declare `Latin1_General_100_BIN2` for this reason.
+
 ## 5. The tenant database and the batch
 
 ### 5.1 The database handle
@@ -2007,9 +2012,10 @@ schema guard, the connect prologue, the persist frame's tag guard (§5.5 step 4)
 resolve to the production tables. The migrations also create a minimal stand-in
 `core.Jobs (Id int PK)` so the job FK resolves to its production name, and `core.Blobs` with
 `core.sq_Blobs` in full (spec 0017 §2.1) so the `[BlobReference]` FKs resolve and spec 0017 §11's
-suite runs against the fixture database. The database is created with the tenant collation and
-`READ_COMMITTED_SNAPSHOT ON`, as spec 0011's provisioning does (§6.1), and change tracking is enabled on every fixture table so the
-executor in test mode compares `CHANGETABLE(CHANGES …)` with `WrittenTables` after every batch.
+suite runs against the fixture database. The database is created as spec 0011 §6.7 states, with
+`READ_COMMITTED_SNAPSHOT ON` as provisioning sets it (spec 0011 §6.1). Change tracking is enabled
+on every fixture table, so the executor in test mode compares `CHANGETABLE(CHANGES …)` with
+`WrittenTables` after every batch.
 
 | Table | Shape | Columns beyond the capability sets |
 |---|---|---|

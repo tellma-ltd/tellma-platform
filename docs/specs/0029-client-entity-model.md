@@ -447,7 +447,10 @@ declare class TmDisplayNames {                                  // @tellma/core 
   invoice remembered under `1284`.
 - **The cache** lives in memory only, per tab and tenant, with up to 5,000 rows per entity (least
   recently used evicted). Details reads and saves, search results, picks and the bell's related
-  rows feed it. A change of the held `permissions` or `settings` tag clears it (spec 0025 §10).
+  rows feed it.
+- **Tag moves.** A move of the held `settings` tag clears the cache, since the tenant's languages
+  decide what each name slot holds. A move of the held `permissions` tag keeps it: its names were
+  read while the user had access.
 - **Cacheable entities** answer `label` from `TmLaunchCache.entitySet()` (spec 0025 §3.3), which
   loads lazily on first use. Until the list is present, the cache answers.
 - **`resolve`** batches unknown ids per entity until the next frame. It then reads `{segment}/query`
@@ -1145,7 +1148,7 @@ Nine suites pin the design, and every one runs on PR.
 |---|---|---|
 | emit (C#) | unit | §2 over Acme's composition; determinism; every label chain, `newLabelKey` and action fields included; fallbacks; twins; blob policies; `json` names equal the wire's; a TS type test over the emitted fixture (C# and TS shapes agree) |
 | `display-name-golden.json` | unit, TS and C# | §5.2's rows (fallback, prefix, scalar formats, `ar-SA` native digits on the client only, `ar-SA-u-nu-latn` on both, client isolates) and §6.2's expansion rows per shape |
-| descriptors, permissions | unit | shape gating; twin labels for one to three languages; `contentDir`; `resolve` for every end kind and unknown paths; `allows` per operation; `isSystem`; §7's `reachable` vectors, child roots, `core.Blob`; `label` for an entity, a settings category, another resource and an unlisted pair; `TmDisplayNames.label` given a `TmDecimal` id for an `int` key, and a number for a `long` key |
+| descriptors, permissions | unit | shape gating; twin labels for one to three languages; `contentDir`; `resolve` for every end kind and unknown paths; `allows` per operation; `isSystem`; §7's `reachable` vectors, child roots, `core.Blob`; `label` for an entity, a settings category, another resource and an unlisted pair; `TmDisplayNames.label` given a `TmDecimal` id for an `int` key, and a number for a `long` key; the `TmDisplayNames` cache cleared by a `settings` move and kept by a `permissions` move |
 | plans, filters, formats | unit | §6.1 per kind; `Id` first; order terms per slot; dropped keys; §13.2 row by row; instant days in `UTC`, `Asia/Riyadh`, `Asia/Beirut` (DST); invalid values; descriptions; `TmDecimal` text at 28 digits and `long` values formatted exactly; §12.1's zone labels (`text`, `zoneSuffix`, `'column'` cells across Asia/Beirut's DST change) |
 | Queryex lexer, printer | unit | spec 0008 §4's vectors; the engine-generated lexer corpus; `queryex-print-golden.json` with its C# `Discover` check; `tmQxInsert` boundaries; `raw`; `num` refusing a 16-digit `number` and non-decimal text |
 | `queryex/discover` (C#) | integration, SQL Server | each step of §9; the same diagnostics as `query`; `Query.PathNotReachable` under a filtered grant; an unconstrained parameter; the `Permission` profile matching role save; `measures` with QX4010 and QX4011 at their `Measures[<i>]` sites, and `400` without `aggregate`; no round trip when warm |

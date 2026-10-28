@@ -28,8 +28,8 @@ Specs 0001, 0007 and 0009 need no amendment.
 
 **Other specs that carry parts of this design**
 
-- spec 0011 §5.5, §5.7, §5.9 — the distribution side of Part A: `/bff/login` forwards
-  `ui_locales`, the in-proc seed entry, `IdentityInfo.AccountUrl`.
+- spec 0011 §5.5, §5.7, §5.9, §6.7 — the distribution side of Part A: `/bff/login` forwards
+  `ui_locales`, the in-proc seed entry, `IdentityInfo.AccountUrl`, the database collation.
 - spec 0016 §11.9 — the MCP surface's use of §A.2–§A.4 and §A.6.
 - spec 0018 §2, §3.3 — the identity client on the `v1` routes; `ExistingOnly` on sandbox tenants.
 - spec 0023 §3, §4 — `tm-icon`, `kbd` and `tm-chip`:
@@ -58,7 +58,8 @@ Specs 0001, 0007 and 0009 need no amendment.
   they need from the identity server. That is a `Distribution` seed kind, per-tenant MCP
   resources, client ID metadata documents, interim native clients, control-plane audiences, the
   `tellma_kind` claim, `existingOnly` invites, versioned management routes, an account entry URL
-  that honours `return_url`, and the sign-in language from the authorization request.
+  that honours `return_url`, the sign-in language from the authorization request, and the
+  identity database on the platform collation.
 - **Part B.** Breakpoints, the System theme, a translations seam with live direction, a
   closed-list multi-select with option groups, the prefix lint's scope, touch sizes on phones,
   glyphs through `tm-icon`, and categorical and sequential colour groups for avatars and charts.
@@ -115,7 +116,7 @@ Specs 0001, 0007 and 0009 need no amendment.
 ## How to read an amendment
 
 Every amendment has a letter-dotted number: the part's letter, then its place in the part (§A.1 …
-§A.10, §B.1 …). Two citation forms appear:
+§A.11, §B.1 …). Two citation forms appear:
 
 - **"0004 §8.2"** names a section of a frozen spec.
 - **"spec 0030 §6.2"** names a section of a designed spec.
@@ -171,6 +172,8 @@ The order of the sections is the implementation order:
    first distribution caller.
 7. **§A.9, §A.10** — the account entry URL and the sign-in language ship before the client's
    session menu (spec 0027 §10.1) and sign-in (spec 0024 §8.3).
+8. **§A.11** — the database collation ships before any identity database is deployed, since a
+   deployed database keeps the collation it was created with.
 
 **Terms used in Part A**
 
@@ -186,8 +189,8 @@ The order of the sections is the implementation order:
 
 | Project | Location | Change |
 |---|---|---|
-| `Tellma.Identity` (the engine) | `src/apps/Tellma.Identity/` | the code of §A.1–§A.3 and §A.5–§A.10 |
-| `Tellma.Identity.Migrations` | `src/apps/Tellma.Identity.Migrations/` | none: no table changes; metadata documents are cached in memory |
+| `Tellma.Identity` (the engine) | `src/apps/Tellma.Identity/` | the code of §A.1–§A.3 and §A.5–§A.11 |
+| `Tellma.Identity.Migrations` | `src/apps/Tellma.Identity.Migrations/` | none: no table changes; metadata documents are cached in memory; the model sets no collation (§A.11) |
 | `Tellma.Identity.Web` | `src/apps/Tellma.Identity.Web/` | configuration only (§A.3, §A.4, §A.5) |
 | Tests | `test/apps/Tellma.Identity.Tests`, `.IntegrationTests`, `.E2E` | Part A — Testing |
 
@@ -544,6 +547,41 @@ the page itself is honoured.
 The authorization endpoint answers `302 /Identity/Account/Login?returnUrl=…&ui_locales=ar`, and the
 page renders right-to-left in Arabic.
 
+### §A.11 The identity database's collation
+
+**Target:** 0003 §2.2 (the Store row), §12, §16. **Requested by:** spec 0011 §6.7. **Why:** every
+platform database shares one collation, and the server default defines no order on Amharic text,
+such as users' names in the shared directory.
+
+The identity database uses the platform collation as spec 0011 §6.7 states it: its `CREATE
+DATABASE` statement, or its two Bicep properties. Whichever path creates the database sets the
+collation. The engine's model stays as it is.
+
+- **Standalone, created by infrastructure.** Infrastructure that creates the database uses spec
+  0011 §6.7's statement. Bicep sets the two collation properties. This is the path for a database
+  that needs a service tier or an elastic pool.
+- **Standalone, created by the engine.** With `Seed.ApplyMigrations` on, the seeder does this
+  before `MigrateAsync`:
+  1. It connects to the server's `master`, with the engine's connection string and `Initial
+     Catalog = master`.
+  2. It checks that its database exists. It creates a missing one with spec 0011 §6.7's
+     statement, without edition options, so EF's implicit creation never runs.
+  3. It sets `READ_COMMITTED_SNAPSHOT ON` on a database it created. This is a no-op on Azure SQL
+     Database.
+- **In-proc** (`TellmaIdentityOptions.Mode = InProc`, set by spec 0011 §5.7). The store is the
+  catalog database, which the distribution's migrator creates (spec 0011 §6.7). The engine never
+  creates it: a missing database fails seeding, so the host does not start.
+- **An existing database.** Whenever the seeder migrates, it first reads the database's
+  collations as spec 0011 §6.7 states. Any other value fails seeding, naming the database, the
+  value expected and the value found.
+- **No model collation.** `TellmaIdentityDbContext` sets no database collation, so
+  `Tellma.Identity.Migrations` gains no migration (spec 0011 Decision 32).
+
+**Compatibility:** a host with `Seed.ApplyMigrations` off sees no change. An identity database
+already created in the server default fails seeding once the seeder migrates it. A developer drops
+it. A standalone engine then re-creates and re-seeds it on the next start (0003 §10.4). For an
+in-proc store, the migrator's `migrate` re-creates it (spec 0011 §6.6).
+
 ### Part A — Testing
 
 | Suite | Tier | When it runs |
@@ -552,7 +590,8 @@ page renders right-to-left in Arabic.
 | `test/apps/Tellma.Identity.IntegrationTests` | `Category=Integration` | every pull request, Windows and Linux |
 | `test/apps/Tellma.Identity.E2E` | `Category=E2E` | its existing Linux job, every non-draft pull request |
 
-No `Live=true` suite exists, so the nightly tier runs nothing for Part A.
+No `Live=true` suite exists, so the nightly tier runs nothing for Part A. The integration and E2E
+fixtures create their databases with spec 0011 §6.7's SQL Server statement.
 
 **The unit suite pins:**
 
@@ -571,6 +610,7 @@ No `Live=true` suite exists, so the nightly tier runs nothing for Part A.
 - **The account entry (§A.9).** The section mapping, unknown → `profile`. The back-link resolver:
   same origin, another port, userinfo, `javascript:`, a relative URL, an unknown client, a
   third-party client.
+- **The creation statement (§A.11)** on SQL Server and on Azure SQL Database.
 
 **The integration suite pins:**
 
@@ -589,6 +629,12 @@ No `Live=true` suite exists, so the nightly tier runs nothing for Part A.
   an off-origin `return_url`.
 - **Sign-in language.** The sign-in redirect carries `ui_locales` from a query request and from a
   pushed request.
+- **Database collation (§A.11).**
+  - A standalone engine with `Seed.ApplyMigrations` creates a missing database,
+    `DATABASEPROPERTYEX(DB_NAME(), 'Collation')` reads `Latin1_General_100_CI_AS`, and
+    `is_read_committed_snapshot_on` reads 1.
+  - A database created in another collation fails seeding, and the error names both collations.
+  - An in-proc engine facing a missing database fails seeding and creates nothing.
 
 **The E2E suite pins:** `ui_locales=ar` through a pushed authorization request renders the
 sign-in page in Arabic with `dir=rtl`, and the email-code step keeps it. The account entry's back
@@ -598,7 +644,7 @@ link returns the browser to `return_url`.
 
 - **Projects:** `src/apps/Tellma.Identity` grown, its README updated, XML docs on every member,
   building and testing on Windows and Linux under warnings-as-errors; no new project.
-- **Behaviour:** §A.1–§A.3 and §A.5–§A.10 implemented and pinned by Part A's suites, the discovery
+- **Behaviour:** §A.1–§A.3 and §A.5–§A.11 implemented and pinned by Part A's suites, the discovery
   changes of §A.3 included. §A.4 is seed configuration in `Tellma.Identity.Web` (the placement
   table) and is not pinned by a suite.
 - **Observability:**
@@ -611,8 +657,8 @@ link returns the browser to `return_url`.
   suite green in its job.
 - **Docs:** the architecture document's identity section updated for metadata-document support,
   per-tenant resources by path pattern, the `Distribution` seed kind, the control-plane grants, the
-  versioned management routes and the account entry URL. Public XML docs and error messages
-  reference no `docs/` paths.
+  versioned management routes, the account entry URL and the identity database's collation.
+  Public XML docs and error messages reference no `docs/` paths.
 - **Not in scope of done:** retiring the interim clients of §A.4 (a later configuration change
   plus an operator deletion); distribution self-registration; the tenant side of every item (specs
   0011, 0016, 0018, 0024, 0027).
@@ -643,6 +689,9 @@ link returns the browser to `return_url`.
     (§A.9).
 11. **`ui_locales` travels on the sign-in URL** — the existing culture provider applies it; no new
     state or cookie (§A.10).
+12. **Whoever creates the identity database sets its collation, never a migration; the engine
+    creates its own database rather than letting EF do it** — Azure SQL Database cannot change a
+    collation, and EF's implicit creation writes no `COLLATE` for a model without one (§A.11).
 
 ### Part A — Review flags
 
@@ -663,6 +712,9 @@ link returns the browser to `return_url`.
    platform-wide claim-naming review.
 8. **A closed `section` list with `profile` as the fallback** (§A.9). Alternative: accept any
    Manage path. Flips if a distribution needs to deep-link a page outside the five.
+9. **Refusing an identity database in another collation** (§A.11). Alternative: a Warning that
+   keeps serving. Flips if a deployed identity database already holds users in the server
+   default, since moving it needs a new database and a copy of its data.
 
 ## Parts B–E: rules shared by the library amendments
 
@@ -3497,7 +3549,7 @@ rounds the ratio to 4 places, and so does the evaluator.
 - **`min` and `max`** compare numbers by value at any scale, dates by value, `DateTimeOffset` by
   instant and then offset, and `Bool` with false first.
   - **Text** compares with `StringComparer.InvariantCultureIgnoreCase`. On ordinary business text
-    it agrees with the tenant collation (spec 0011 §6.1). It can differ on awkward pairs, such as
+    it agrees with the platform collation (spec 0011 §6.7). It can differ on awkward pairs, such as
     hyphens, apostrophes and symbols. Values it calls equal ('Sales' and 'SALES') keep the
     ordinally smaller, so the output never depends on row order.
   - **Hierarchy paths** compare level by level, each level as an integer, with an ancestor before
@@ -3621,6 +3673,8 @@ Windows and Linux; none is nightly.
     (§F.10); the printer round trip.
   - The evaluator's type, rounding, null, accumulation and error vectors (§F.15).
 - **`Tellma.Core.Queryex.IntegrationTests`: differential on SQL Server (integration).**
+  - Its database is created as spec 0011 §6.7 states. The fixture's text columns keep the
+    collation they declare (0008 §18.3).
   - Every new corpus entry against the interpreter.
   - Absent rows under `Not(Via)` and `Not(Exists)`; `'uq'` over its whole range and beyond; a
     hoisted `'uq'` call in every position (§F.11).

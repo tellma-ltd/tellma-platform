@@ -387,7 +387,8 @@ modifiedAt }` as page state when it is destroyed (spec 0025 §10). Results never
 - **Keys.** The report page saves under `tmPageStateKey('/{t}/reports/{id}/run')`, apart from the
   details host's own snapshot (spec 0031 §13). The coded page saves under its path.
 - **Return.** Coming back renders the saved result as held, with no request. A changed
-  `modifiedAt` discards the state. State older than 5 minutes renders and also runs, as reloading.
+  `modifiedAt` discards the state. State that is older than 5 minutes or marked stale (`isStale`,
+  spec 0025 §10) renders and also runs, as reloading.
 
 ## 4. Parameters and the parameter bar
 
@@ -1234,7 +1235,8 @@ Every suite runs on PR.
   - §3.4's table, `held`, `stale` and the `forbidden` clear;
   - the calculation error from a pivot cell, an outer subtotal, a summary's totals row and an SQL
     row (empty pointer, no cell), and on a stored report's first run labelled from `document`;
-  - page-state restore, the `modifiedAt` discard and the 5-minute run;
+  - page-state restore, the `modifiedAt` discard, and the run after 5 minutes or on an `isStale`
+    entry;
   - `card` and `widget` write no URL or preference; `widget` reads no definition.
 - **Renderers:**
   - a summary's totals row on a single page, the `totalsOmitted` footer and no notice strip for it

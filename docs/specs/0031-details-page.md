@@ -1100,9 +1100,9 @@ boundaries. Returning to the list shows the page the user ended on.
   1. the current record stays on screen and the action shows `running`; another press is refused;
   2. the host reads `snapshot.request.route` with `{ ...request.body, skip, take: size,
      includeCount: true }` under its signal, so the list's own select, filters and order apply;
-  3. an empty answer disables the arrow. Otherwise the host remembers a new search snapshot under
-     the same key: `query.page ± 1`, the new `canonical`, `result` and `ids`, `highlight` set to the
-     target, and `supersedes` set to the old `canonical` (spec 0030 §4.2);
+  3. an empty answer or a failed read disables the arrow. Otherwise the host remembers a new search
+     snapshot under the same key: `query.page ± 1`, the new `canonical`, `result` and `ids`,
+     `highlight` set to the target, and `supersedes` set to the old `canonical` (spec 0030 §4.2);
   4. it navigates to the new page's first id (next) or last id (previous), as within the page.
 - **Without a request.** With `request: null` (spec 0030 §15.1), paging stays within `ids`. The
   arrow at either end is disabled.
@@ -1139,6 +1139,8 @@ interface TmDetailsSnapshot {
   and cards apply before the first render, and scroll after it. Child grids restore their own scroll.
 - **Stale** (`isStale(key)`, spec 0025 §10): the held record renders at once, and a read refreshes
   it.
+- **Refused.** A read that fails with `forbidden` or `not-found` forgets the snapshot (spec 0025
+  §10), so the next return loads the record as §3.3 does.
 - **A draft wins** for the working copy (§11.2). The read still runs, for the stamp check.
 
 ## 14. The child-row deep link
@@ -1298,8 +1300,8 @@ Every suite runs on PR.
    reload), `localStorage` drafts (they leak into new tabs) (§11).
 10. **Paging replaces the history entry and crosses pages with the list's own request** — Back
     returns to the list, which `supersedes` brings to the page reached (§12).
-11. **Returning restores the remembered record with no request** — unless a write marked it stale
-    (§13).
+11. **Returning restores the remembered record with no request** — unless spec 0025 §10 marked it
+    stale (§13).
 12. **The deep link opts in by naming each tab's collection** — rejected: a per-entity drill
     callback (code in every distribution), the parent only (no flash), rendering every tab (§14).
 13. **Every extra is eager** — no extra in sight is heavy; lazy ones need a new operation (§6).

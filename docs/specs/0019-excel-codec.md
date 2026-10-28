@@ -1214,10 +1214,10 @@ normalisation with `StringComparer.OrdinalIgnoreCase` (numeric and `Guid` keys c
 Exactly one row ⇒ resolved; zero ⇒ `Excel.Import.ReferenceNotFound` at (row, column) — which is
 also what a row hidden by the caller's read filter yields; more than one ⇒
 `Excel.Import.ReferenceAmbiguous` with argument `count`. A database row the codec cannot attribute
-to any sheet value (a collation equivalence beyond case: accent- or width-insensitivity) is
-`ReferenceNotFound` with argument `collation = true` so the message can hint at it. A natural-key
-row key is a lookup like any other; its resolved ids feed hydration (§9.3); an `Id` row key feeds
-hydration directly.
+to any sheet value (a collation equivalence beyond case, such as full-width and half-width forms)
+is `ReferenceNotFound` with argument `collation = true` so the message can hint at it. A
+natural-key row key is a lookup like any other; its resolved ids feed hydration (§9.3); an `Id` row
+key feeds hydration directly.
 
 ### 10.4 The session
 
