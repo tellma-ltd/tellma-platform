@@ -1,0 +1,4 @@
+<Project>
+  <!-- Stops MSBuild from importing the repository's Directory.Build.props: these probes are
+       throwaway research code, not platform projects. -->
+</Project>

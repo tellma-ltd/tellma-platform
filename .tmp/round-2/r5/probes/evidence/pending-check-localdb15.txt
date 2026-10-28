@@ -1,0 +1,5 @@
+# CollProbe pending-check, PROBE_STAGE=2
+=== pending-check on missing database CollProbeP_f55600
+  HasPendingModelChanges: True
+  -> InvalidOperationException: An error was generated for warning 'Microsoft.EntityFrameworkCore.Migrations.PendingModelChangesWarning': The model for context 'ProbeContext' has pending changes. Add a new migration before updating the database. See https://aka.ms/efcore-docs-pending-changes. This exception can be suppressed or logged by passing event ID 'RelationalEventId.PendingModelChangesWarning' to the 'ConfigureWarnings' method in 'DbContext.OnConfiguring' or 'AddDbContext'.
+  database exists afterwards: False

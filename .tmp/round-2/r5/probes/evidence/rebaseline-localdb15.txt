@@ -1,0 +1,7 @@
+# Rebaseline, PROBE_STAGE=1
+  GetMigrations: [20261028163001_Initial]
+  GetAppliedMigrations: [20261028162334_Initial, 20261028162401_PlatformCollation]
+  GetPendingMigrations: [20261028163001_Initial]
+  HasPendingModelChanges: False
+  Migrate() -> SqlException 2714: There is already an object named 'Items' in the database.
+  GetAppliedMigrations after: [20261028162334_Initial, 20261028162401_PlatformCollation]

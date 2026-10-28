@@ -1,0 +1,7 @@
+# SnapshotEdit, PROBE_STAGE=1
+  GetMigrations: [20261028162334_Initial]
+  HasPendingModelChanges: False
+  Migrate() -> succeeded
+    log: info: 10/28/2026 09:41:38.437 RelationalEventId.CommandExecuted[20101] (Microsoft.EntityFrameworkCore.Database.Command) | CREATE DATABASE [CollProbeSnap_r5] | COLLATE Latin1_General_100_CI_AS;
+    log: info: 10/28/2026 09:41:38.866 RelationalEventId.CommandExecuted[20101] (Microsoft.EntityFrameworkCore.Database.Command) | IF SERVERPROPERTY('EngineEdition') <> 5 | BEGIN | ALTER DATABASE [CollProbeSnap_r5] SET READ_COMMITTED_SNAPSHOT ON; | END;
+  [CollProbeSnap_r5] collation=Latin1_General_100_CI_AS

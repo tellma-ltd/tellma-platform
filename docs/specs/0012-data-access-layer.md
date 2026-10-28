@@ -22,7 +22,7 @@ It builds on three frozen specs:
 - **Spec 0001 — table types.** A class opts in with `[TableType]`; its UDTT is a row image
   addressed only through the model; every bulk list (`IdList`, `BigIdList`, `GuidList`,
   `StringList`) is a plain `[TableType]` class. This spec binds those types at runtime by metadata,
-  never by ordinal.
+  never by ordinal. A standalone class gives a column a collation through spec 0010 Part G (§4.4).
 - **Spec 0008 — the query engine.** `QueryexEngine.CompileQuery` over a `QueryexSchema`, parameter
   slots the host binds, and the `BatchOrdinal` that lets several compiled queries share one
   command. This spec builds the schema from the EF model, binds the slots, and binds the context
@@ -96,7 +96,8 @@ job and notification tables whose rows are inserted by fixed-text statements (sp
 - **Excel export and import** — spec 0019 (this spec supplies natural keys and metadata facets).
 - **Job and notification statements, leases, schedules, the inbox** — specs 0020 and 0021
   (this spec supplies `IJobEntity`, `Sql`, `Tvp`, `OnCommitted` and `KeySetRestriction`).
-- **The Queryex engine amendments** — spec 0010 Part F (this spec composes them, §11.2).
+- **The Queryex and table-type amendments** — spec 0010 Parts F and G (this spec composes them,
+  §4.4, §11.2).
 - **Client rendering of display names** — spec 0029 §5 (this spec owns the server rule, §2.5).
 - **Composite natural keys, `SqlBulkCopy` imports, `Guid` keys, EF parent→child navigations,
   tenantless (catalog-scoped) batches** — deferred; each has a named seat below.
@@ -145,10 +146,12 @@ build against them unchanged.
 the leaf types composition registered (`FeatureContribution.Entity<T>()`, `Model<T>()` and
 `TellmaBuilder.UseEntity<TDefault, TLeaf>()` of spec 0011): every default leaf a pack ships is
 replaced in the model by the distribution's leaf when one is registered, and the model contains
-exactly one mapped type per table. The context is used for model building and for migrations
-(through spec 0011's migrator) and is never resolved by distribution or pack code: there is no
-LINQ surface, tables are read and written only through `IDataBatch`, and `TELLMA0002` refuses any
-EF query or `SaveChanges` over it outside the platform and the migrator.
+exactly one mapped type per table. The model sets the database collation with
+`modelBuilder.UseCollation(DatabaseCollations.Platform)` (spec 0011 §6.7). The context is used for
+model building and for migrations (through spec 0011's migrator) and is never resolved by
+distribution or pack code: there is no LINQ surface, tables are read and written only through
+`IDataBatch`, and `TELLMA0002` refuses any EF query or `SaveChanges` over it outside the platform
+and the migrator.
 
 `UseTellmaSqlServer(options, connectionString)` is the one place provider options are applied so
 that every host and the migrator build one model: `UseSqlServer(...)`, `UseHierarchyId()`,
@@ -166,7 +169,8 @@ connections share one pool key. The compatibility level is pinned so that
 | `EnumStringLengthConvention` | non-unicode, `MaxLength = max(8, longest member name)` unless `[MaxLength]`/`[Unicode]` or fluent facets are present; no `CHECK` |
 | `JsonColumnConvention` | `[JsonColumn]` → `HasColumnType("nvarchar(max)")` |
 | `AuditConvention` | `TopLevelEntity<TKey>`: the four audit FKs to `core.Users` (`NO ACTION`), `datetimeoffset(7)` |
-| `TableTypeConvention` | `[TableType]` on a type → `HasTableType(name?, schema?)`; `[ExcludeFromTableType]` on a property → the column's exclusion (spec 0001's fluent configuration, so the attributes live in `Tellma.Core.Abstractions` without an EF edge, §2.2); inherited by a leaf |
+| `CollationConvention` | `[Collation(name)]` on a property → the column's collation: on an entity, EF's `UseCollation(name)`, which the row image copies (spec 0001 §2); on a standalone class, a `TableTypeBuilder.UseCollation(column, name)` call in the build action that `TableTypeConvention` passes to `HasTableType` (spec 0010 §G.1); inherited by a leaf |
+| `TableTypeConvention` | `[TableType]` on a type → `HasTableType(name?, schema?)` with a build action carrying the class's `[Collation]` columns; `[ExcludeFromTableType]` on a property → the column's exclusion (spec 0001's fluent configuration, so the attributes live in `Tellma.Core.Abstractions` without an EF edge, §2.2); inherited by a leaf |
 | `TemporalConvention` | `[Temporal]` → system-versioning with history `<schema>.<Table>History`, period columns as shadow properties excluded from the table type; children of a temporal root follow it unless `[Temporal(false)]`; a TPT root or leaf is a startup error |
 | `ChildConvention` | `[ParentKey]` → FK `FK_<Table>_<Parent>Id` (`NO ACTION`) + `IX_<Table>_<Parent>Id (…) INCLUDE (Id)` |
 | `TreeConvention` | `TreeEntity<TKey>`: self FK on `ParentId` without a CLR navigation, `IX_<Table>_ParentId`, the shadow `Node hierarchyid NOT NULL` with `UX_<Table>_Node`, `ExcludeFromTableType()` on `Node`, defaults `SubtreeCount`/`ActiveSubtreeCount` = 1, `[Tree(MaxDepth)]` recorded |
@@ -279,6 +283,7 @@ paired per entity.
 public sealed class TemporalAttribute(bool enabled = true) : Attribute;   // on type; inherited; children follow the parent unless [Temporal(false)]
 public sealed class TableTypeAttribute : Attribute;                     // on type; inherited; optional Name and Schema (spec 0001); TableTypeConvention (§1.3) maps it onto the model
 public sealed class ExcludeFromTableTypeAttribute : Attribute;          // on property; inherited: the column is absent from the row image's UDTT
+public sealed class CollationAttribute(string name) : Attribute;        // on a string property: the column's collation; CollationConvention (§1.3) maps it
 public sealed class TreeAttribute(int MaxDepth = 32) : Attribute;       // on type; inherited
 public sealed class ParentKeyAttribute : Attribute;                     // on property: the child's owning foreign key
 public sealed class MaxChildrenAttribute(int Count) : Attribute;        // on a [NotMapped] child collection: rows per parent; default 10,000
@@ -311,6 +316,7 @@ The data layer's own reading of each annotation:
 |---|---|---|
 | `[Temporal]` | system-versioning per §4.2; skip-unchanged rows in the emitter (§8.2) | — |
 | `[TableType]`, `[ExcludeFromTableType]` | `TableTypeConvention` (§1.3) maps them onto spec 0001's table-type configuration; the row image `TableTypeBinder` binds by column name | the UDTT's naming, versioning and migration: spec 0001 |
+| `[Collation]` | `CollationConvention` (§1.3) sets the column's collation | a standalone column's collation: spec 0010 §G.1; an entity-derived UDTT copies its column's: spec 0001 |
 | `[Tree]` | `MAXRECURSION` cap of the tree statements (§10.2); metadata `Tree.MaxDepth` | — |
 | `[ParentKey]` | child collections (§2.3); the synchronise statements (§8.3) | — |
 | `[MaxChildren]` | metadata `Children[].MaxCount` (§2.3, §3.1) | the ceiling's enforcement, in save step 1: spec 0015 |
@@ -644,7 +650,8 @@ when `RowQueryOptions.IncludeAncestors` was set (§11.3); spec 0016 §3.5 serial
 
 Tables are plural (`core.Users`, `gl.Centers`); the CLR type and the Queryex entity are singular.
 Schemas are lower-case (`core`, `gl`, `catalog`, `idsvr`, `fixture`); `dbo` holds only
-`__TellmaProvisioning`, `__TellmaSchema` (§4.3) and the standalone table types. Sequences on
+`__EFMigrationsHistory`, `__TellmaProvisioning`, `__TellmaSchema` (§4.3) and the standalone table
+types. Sequences on
 tenant-model tables are `<schema>.sq_<Table>` (`gl.sq_Centers`), `AS int` (or `bigint`) `START WITH
 1000 INCREMENT BY 1 NO CYCLE`; the band 1–999 is reserved for `HasData` rows (the catalog's
 `sq_Tenants` starts at 1, spec 0011 §7.1). History tables are `<schema>.<Table>History`.
@@ -779,8 +786,9 @@ on `TellmaDbContext` through `FeatureContribution.Model<T>()`.
 
 A string column of a standalone type or a table variable declares the collation of any explicitly
 collated column a statement compares it with. Otherwise it takes the database collation (spec 0011
-§6.7), and the comparison fails to compile with Msg 468. `TenantMembershipList.Subject` and
-`UserInvitationOutcomeList.Subject` declare `Latin1_General_100_BIN2` for this reason.
+§6.7), and the comparison fails to compile with Msg 468. A standalone class declares it with
+`[Collation]` (§2.2, spec 0010 §G.1). `TenantMembershipList.Subject` and
+`UserInvitationOutcomeList.Subject` declare `Latin1_General_100_BIN2` this way.
 
 ## 5. The tenant database and the batch
 
@@ -1396,7 +1404,8 @@ UPDATE c SET c.[RoleId] = s.[RoleId], c.[Notes] = s.[Notes]
 OUTPUT inserted.[UserId], 0, 'U' INTO @tb3_touched ([Id], [Collection], [Op])
 FROM [core].[RoleMemberships] AS c JOIN @tb3_t4 AS s ON s.[Id] = c.[Id]
 WHERE c.[UserId] IN (SELECT [Id] FROM @tb3_t2)
-  AND EXISTS (SELECT s.[RoleId], s.[Notes] EXCEPT SELECT c.[RoleId], c.[Notes]);
+  AND EXISTS (SELECT s.[RoleId], s.[Notes] COLLATE Latin1_General_100_BIN2
+              EXCEPT SELECT c.[RoleId], c.[Notes] COLLATE Latin1_General_100_BIN2);
 INSERT INTO [core].[RoleMemberships] ([Id], [UserId], [RoleId], [Notes])
 OUTPUT inserted.[UserId], 0, 'I' INTO @tb3_touched ([Id], [Collection], [Op])
 SELECT s.[Id], s.[UserId], s.[RoleId], s.[Notes] FROM @tb3_t3 AS s;
@@ -1406,7 +1415,10 @@ UPDATE t SET t.[Name] = s.[Name], t.[Name2] = s.[Name2], t.[Name3] = s.[Name3],
     t.[ModifiedAt] = @tb3_now, t.[ModifiedById] = @tb3_p1
 OUTPUT inserted.[Id]                                                          -- result set: stamped ids
 FROM [core].[Users] AS t JOIN @tb3_t1 AS s ON s.[Id] = t.[Id]
-WHERE EXISTS (SELECT s.[Name], s.[Name2], s.[Name3] EXCEPT SELECT t.[Name], t.[Name2], t.[Name3])
+WHERE EXISTS (SELECT s.[Name] COLLATE Latin1_General_100_BIN2, s.[Name2] COLLATE Latin1_General_100_BIN2,
+                     s.[Name3] COLLATE Latin1_General_100_BIN2
+              EXCEPT SELECT t.[Name] COLLATE Latin1_General_100_BIN2, t.[Name2] COLLATE Latin1_General_100_BIN2,
+                     t.[Name3] COLLATE Latin1_General_100_BIN2)
    OR t.[Id] IN (SELECT [Id] FROM @tb3_touched);
 
 SELECT @tb3_now AS [Stamp],
@@ -1441,6 +1453,12 @@ columns, stamped roots receive `ModifiedAt`/`ModifiedById`.
   temporal table gets no history row for a no-op; a `[Temporal]` child's unchanged rows are
   skipped likewise. A child change marks its parent touched; a touched or changed root is stamped.
   The root's `ModifiedAt` moves exactly when the aggregate changed.
+- **The comparison is binary for text.** Inside the `EXCEPT`, every `char`, `varchar`, `nchar` and
+  `nvarchar` column carries `COLLATE Latin1_General_100_BIN2` on both sides, so an edit that changes
+  only case, accents or character width is a change. Only the comparison is binary: the columns
+  keep their own collation for storage, indexes, uniqueness and queries. Trailing spaces still
+  compare equal, as in every SQL Server comparison, so an edit that only adds or removes them is
+  skipped.
 - **The stamp is server time**, `SYSUTCDATETIME()` once per batch: instances skew, one database
   clock per tenant does not.
 - **Children are scoped to their parents.** A child row whose parent is not in the parents TVP is
@@ -1992,7 +2010,7 @@ by name.
 
 | Suite | Location | Tier | What it pins |
 |---|---|---|---|
-| Unit | `test/core/Tellma.Core.Tests/Data/` | PR | golden SQL per emitter statement kind against the fixture metadata (§8, §9, §10, §11.3); `SaveReceipt` reading from canned result sets; the `SaveHandle` and `DeleteHandle` listing one `ColumnCapture` per `[BlobReference]` column of every written table; `IDisplayNames` against spec 0029 §5.2's shared golden file (`display-name-golden.json`); allocator deficit and buffer arithmetic, temporary-id rewriting, hold/return; metadata construction and every §3.2 rule as a failing model; `SchemaFingerprint` stability; natural-key inference order; enum sizing (nullable enums included); retry classification for every number of §6.4, with 8134 and 8115 mapped to `ArithmeticFailureException` and their reasons; the commit-probe verdicts; `QueryRowSet.Builder` buffers for every (Queryex type, field type) pair of §11.3, `Scale` per numeric field type and `Precision` per `decimal` column, and the `InvalidOperationException` for any other pair; materializer routing (root, related, children, grandchildren, missing column); the persist frame assembly order of §5.5; parameter-count and result-set-count guards |
+| Unit | `test/core/Tellma.Core.Tests/Data/` | PR | golden SQL per emitter statement kind against the fixture metadata (§8, §9, §10, §11.3); `SaveReceipt` reading from canned result sets; the `SaveHandle` and `DeleteHandle` listing one `ColumnCapture` per `[BlobReference]` column of every written table; `IDisplayNames` against spec 0029 §5.2's shared golden file (`display-name-golden.json`); allocator deficit and buffer arithmetic, temporary-id rewriting, hold/return; metadata construction and every §3.2 rule as a failing model; `CollationConvention`: `[Collation]` on an entity property sets the column's collation and its row image's, and on a standalone class property the UDTT column's; `SchemaFingerprint` stability; natural-key inference order; enum sizing (nullable enums included); retry classification for every number of §6.4, with 8134 and 8115 mapped to `ArithmeticFailureException` and their reasons; the commit-probe verdicts; `QueryRowSet.Builder` buffers for every (Queryex type, field type) pair of §11.3, `Scale` per numeric field type and `Precision` per `decimal` column, and the `InvalidOperationException` for any other pair; materializer routing (root, related, children, grandchildren, missing column); the persist frame assembly order of §5.5; parameter-count and result-set-count guards |
 | Integration | `test/core/Tellma.Core.IntegrationTests/Data/` | `Category=Integration`, PR on Windows (LocalDB) and Linux (Testcontainers) | everything in §13.3 |
 | Analyzers | `test/core/Tellma.Core.Analyzers.Tests/` | PR | each `TELLMA000n` condition and its negative |
 
@@ -2012,8 +2030,9 @@ schema guard, the connect prologue, the persist frame's tag guard (§5.5 step 4)
 resolve to the production tables. The migrations also create a minimal stand-in
 `core.Jobs (Id int PK)` so the job FK resolves to its production name, and `core.Blobs` with
 `core.sq_Blobs` in full (spec 0017 §2.1) so the `[BlobReference]` FKs resolve and spec 0017 §11's
-suite runs against the fixture database. The database is created as spec 0011 §6.7 states, with
-`READ_COMMITTED_SNAPSHOT ON` as provisioning sets it (spec 0011 §6.1). Change tracking is enabled
+suite runs against the fixture database. Its model sets the platform collation, as
+`TellmaDbContext`'s does (§1.3). So `Migrate()` creates the database in that collation, with
+read-committed snapshot on as provisioning has it (spec 0011 §6.7). Change tracking is enabled
 on every fixture table, so the executor in test mode compares `CHANGETABLE(CHANGES …)` with
 `WrittenTables` after every batch.
 
@@ -2046,7 +2065,8 @@ Each is a named test; the list is the behavioural contract of this spec:
   refused with `50501` on a read, a validate and a persist batch alike; present as the older of
   two rows it is served; the migrator keeps exactly two rows across three migrations and writes
   none when the history is ahead of it.
-- **Emitter.** Skip-unchanged writes no history row; a parent whose only change is a child is
+- **Emitter.** Skip-unchanged writes no history row; a case-only edit of `fixture.Widgets.Name`
+  (`widget` → `Widget`) is written, stamped and leaves a history row; a parent whose only change is a child is
   stamped; a child of an unsupplied parent is untouched; `[]` deletes all children of the
   supplied parents; a grandchild change stamps the root; deleted-under-you is `NotFoundException`;
   a stale stamp is `ConcurrencyException` with `IsMissing` false; `Override` writes and never
@@ -2130,11 +2150,11 @@ Each is a named test; the list is the behavioural contract of this spec:
   per-tenant identity on traces and logs only); and the spec-pointers row (ID allocation and the
   EF-to-Queryex adapter land here). Public XML docs and error messages reference no `docs/` paths,
   per repo rule.
-- **Not in scope of done**: the Queryex engine amendments (spec 0010 Part F), the pipeline that
-  composes batches (spec 0015), the contributors this executor runs (specs 0013 and 0014), the
-  tables whose rows the fixed-text statements insert (specs 0020 and 0021), the blob effect that reads the capture tables (spec 0017), the Excel
-  codec that reads natural keys (spec 0019), and `SqlBulkCopy`, composite natural keys and `Guid`
-  keys.
+- **Not in scope of done**: the Queryex and table-type amendments (spec 0010 Parts F and G), the
+  pipeline that composes batches (spec 0015), the contributors this executor runs (specs 0013 and
+  0014), the tables whose rows the fixed-text statements insert (specs 0020 and 0021), the blob
+  effect that reads the capture tables (spec 0017), the Excel codec that reads natural keys (spec
+  0019), and `SqlBulkCopy`, composite natural keys and `Guid` keys.
 
 ## Decisions record
 
@@ -2189,8 +2209,9 @@ The load-bearing decisions, where not already evident above:
     a C# fact, so a deleted row is a conflict, never a resurrection (§8.1).
 19. **U locks in the concurrency guard held to `COMMIT`** — the stamp comparison is sound under
     both isolation defaults without a second count; deadlocks are retried (§8.2).
-20. **Skip unchanged rows through `EXCEPT`** — temporal history stays honest under merge imports
-    (§8.2).
+20. **Skip unchanged rows through `EXCEPT`, comparing text in a binary collation** — temporal
+    history stays honest under merge imports, and the case-insensitive platform collation would
+    otherwise drop a case-only correction while reporting success (§8.2).
 21. **Conflict rows in a result set before the `THROW`, ids capped in its JSON message** — the
     executor reads the set before the exception surfaces, so every conflict reaches the pipeline
     in the persist round trip; `ROLLBACK; RETURN` after a result-set walk is the alternative

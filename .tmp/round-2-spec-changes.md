@@ -1536,3 +1536,164 @@ part wins.
 - Identity — The amendments list ends with the identity database's collation.
 - Hosting on Azure — New "Databases" bullet: the migrator creates catalogs and tenant databases;
   Bicep-declared databases set the collation properties.
+
+# Review round 1, follow-up 3 (28 October 2026)
+
+Ahmad's answers to follow-up 2's open questions, plus his note that the identity migrations may be
+deleted and regenerated. Where this part conflicts with the parts above, this part wins.
+
+## Summary
+
+- **The migrator creates every catalog,** SaaS included. No Bicep declares a platform database.
+- **An operator creates and migrates the shared identity database by hand,** once for the fleet,
+  with spec 0011 §6.7's statement. Tooling for this comes later and will reuse the migrator's
+  approach.
+- **No escape hatch** for a database in another collation; none is deployed.
+- **New Part G of spec 0010 amends spec 0001.** `TableTypeBuilder.UseCollation(column, collation)`
+  lets a class-derived standalone table type collate a string column. Spec 0012's `[Collation]`
+  annotation maps onto it, and both `Subject` sketches use it.
+- **The configuration key is renamed** to `Tellma:Sql:CreateDatabaseOptions`; the `Provisioning`
+  section is gone.
+- **Every model calls `UseCollation(DatabaseCollations.Platform)`:** the catalog, the tenant model
+  and the identity engine. The constant lives in `Tellma.Core.Abstractions.Hosting`. EF's own
+  creation (`dotnet ef database update`, `Migrate()`) then writes the right collation. The identity
+  migrations are re-baselined as one `Initial`, so no migration alters a collation, and a
+  "collation pin" test enforces it for all three chains.
+- **`migrate` owns `idsvr`.** In-proc, the migrator applies the identity engine's migrations; the
+  web process never migrates. The engine runs a store check at every start: it refuses another
+  collation, and outside development and tests a missing or behind store, naming the command.
+
+## 0010 — Amendments to implemented specs
+
+- Context — Part G listed; "Specs 0007 and 0009 need no amendment"; the "Other specs" list gives
+  spec 0011's sections one bullet each and names Part G's users.
+- Goals / Non-goals — Part A's goal adds "migrated outside the web process once deployed"; Part G
+  added; one Non-goal line defers tools that create the shared identity database and on-prem
+  tooling. The Budget label now says Parts B–E.
+- Part A — The order item 8 is reworded, there is a new term "Store check", and the placement rows
+  change: `Tellma.Identity.Migrations` is regenerated, and `Tellma.Core.Abstractions` gains
+  `DatabaseCollations`.
+- §A.11 — Rewritten as "The identity database's collation and migrations":
+  - the model carries the collation;
+  - the migrations are re-baselined, keeping the hand-written token index, with later migrations
+    under the N−1 rule;
+  - the store check, which compares the history with a new constant
+    `TellmaIdentityConstants.LatestMigration`, as the catalog's does, so only hosts that migrate
+    reference `Tellma.Identity.Migrations`;
+  - EF creates development databases;
+  - the operator's four steps for the shared database;
+  - in-proc stores are migrated by the migrator through the new `TellmaIdentityStore.MigrateAsync`;
+  - a new `Seed.MigrateCommand` option.
+
+  Compatibility: a developer drops and re-creates their identity database. The `master`-connection
+  creation path and the Bicep path are gone.
+- Part A Testing — Fixtures let EF create databases. A unit pin: the collation pin over the
+  identity migrations, and `TellmaIdentityConstants.LatestMigration` equals the last one.
+  Integration pins: the store check with migrations on and off, and
+  `TellmaIdentityStore.MigrateAsync`.
+- Part A Definition of done, Decisions — DoD and Decision 12 are revised, and there is a new
+  Decision 13 (store check, no DDL rights in the web process, refusal without a fallback). Review
+  flag 9 is deleted.
+- Part G (new) — §G.1 adds `UseCollation` with these rules:
+  - the last call wins;
+  - an unknown column throws;
+  - only character columns may have a collation, and `json` with one is refused;
+  - names are not validated;
+  - versioning follows spec 0001 §3.
+
+  Part G also has its own Testing, Definition of done, four Decisions and three Review flags.
+
+## 0011 — Distribution host and multi-tenancy
+
+- §1.1 — `Hosting.DatabaseCollations` in Abstractions, `CatalogMigrations` in `Tellma.Core`, and
+  `CatalogDesignTimeFactory` in `Tellma.Core.Migrator`.
+- §1.2, §1.3 — For in-proc mode, the Migrator references `Tellma.Identity.Migrations`, so it
+  carries ASP.NET Core through the engine (Review flag 23). The Web project never does; a
+  `Tellma.Distro.Acme.Web.Tests` pin enforces it.
+  `RunAsync` takes `TellmaIdentityStore.MigrateAsync`.
+- §3.2, §3.4 — `migrate` migrates `idsvr`, and the startup check compares against
+  `CatalogMigrations.Latest`.
+- §3.5, §3.6, §6.4 — The catalog gets the `tellma_app` role and the web principal, which the
+  migrator creates before the first catalog migration. In-proc, the role may also read
+  `dbo.__EFMigrationsHistory`.
+- §3.8 — `[Collation("Latin1_General_100_BIN2")]` on `TenantMembershipRecord.Subject`.
+- §5.7 — In-proc options gain `MigrationsAssembly`, `Seed.ApplyMigrations = false` and
+  `Seed.MigrateCommand`. The startup order is registry load, then store check, then seeding. An
+  unreachable catalog stops the host (Review flag 24).
+- §6.1:
+  - `migrateIdentityStore` parameter;
+  - the `migrate` row: catalog role, `idsvr` migrations and grants;
+  - `provision` checks an existing database;
+  - `status` lists the catalog's and each tenant's pending migrations (not `idsvr`'s: the migrator
+    gets only the identity store's migrate entry);
+  - design-time factories and connections (`TELLMA_TENANT_MIGRATIONS_SQL` / `TellmaTenantDesign`,
+    `TELLMA_CATALOG_MIGRATIONS_SQL` / `TellmaCatalogDesign`).
+- §6.6 — `migrate` creates `idsvr` in development; a behind `idsvr` names the same command.
+- §6.7:
+  - the `DatabaseCollations` sketch;
+  - the migrator creates every catalog;
+  - "Every model carries it" and "No migration alters it";
+  - the Infrastructure bullet is removed;
+  - the key is renamed;
+  - "fresh" means no history table of the database's own model;
+  - EF may create development and test databases whose model sets the collation.
+- §7, §7.3 — The catalog model sets the collation and installs spec 0012's two conventions for its
+  table type.
+- §8 — `Sql:CreateDatabaseOptions` replaces `Provisioning:CreateDatabaseTemplate`.
+- §10 — Unit rows: the collation pin over the catalog and Acme's tenant migrations,
+  `CatalogMigrations.Latest`, `migrate` exiting 1 in-proc without the identity entry, and Acme's
+  Web project reaching no `Tellma.Identity.Migrations`.
+  Integration rows: the catalog role before the first migration, `migrate` applying `idsvr`, and a
+  behind `idsvr` failing web startup. A new "collation pin" paragraph. The catalog fixture is
+  created by `Migrate()`.
+- §11, Decisions 20, 26 and 32 — revised for `migrate` owning `idsvr` and every model carrying the
+  collation.
+- Review flags — New 23 (the migrator references the identity migrations, or runs an idempotent
+  script instead) and new 24 (an in-proc host with an unreachable catalog does not start).
+
+## 0012 — Data access layer
+
+- Context, Goals, §14 — Cite spec 0010 Part G.
+- §1.3 — `TellmaDbContext` calls `UseCollation(DatabaseCollations.Platform)`. A new
+  `CollationConvention` row, and `TableTypeConvention` passes a build action carrying `[Collation]`
+  columns.
+- §2.2 — `CollationAttribute(string name)` and its mapping row.
+- §4.1 — `dbo` also holds `__EFMigrationsHistory`.
+- §4.4 — Standalone classes declare a column's collation with `[Collation]`.
+- §8.1, §8.2, Decision 20 — The skip-unchanged `EXCEPT` compares every text column with `COLLATE
+  Latin1_General_100_BIN2` on both sides, so a case-, accent- or width-only edit is written and
+  stamped; storage, indexes and queries keep the platform collation. Trailing-space-only edits stay
+  skipped (Ahmad: not worth handling).
+- §13.1, §13.2 — A unit pin on `CollationConvention`. The fixture model sets the platform
+  collation, so `Migrate()` creates the database.
+- §13.3 — A case-only edit of `fixture.Widgets.Name` is written, stamped and leaves a history row.
+
+## 0018 — Core and GL reference stacks
+
+- §3.1 — `[Collation("Latin1_General_100_BIN2")]` on `UserInvitationOutcome.Subject`.
+- §7 — "Not in a migration" names the database collation.
+
+## 0024 — Client app foundation
+
+- Decision 2 — "the Migrator never references the Web project" replaces "composes without
+  ASP.NET".
+
+## ARCHITECTURE.md
+
+- Platform repo layout — Adds a `Tellma.Identity.Migrations` row.
+- Dependency rule 8 and the distribution layout — The Migrator references
+  `Tellma.Identity.Migrations` for in-proc mode; the Web project never does, and the web publish
+  carries no migrations (its startup checks compare history with `Latest` constants).
+- UDTT generation — A class-derived column's collation, through spec 0010 Part G.
+- Migrations & seeding:
+  - `migrate` converges `idsvr`;
+  - the web publish never applies a migration;
+  - "One collation for every database" drops Bicep and the "No EF collation" bullet, adds "Every
+    EF model carries it" and "The identity database", and the migrator creates every catalog;
+  - the N−1 rule binds the identity engine's migrations too.
+- Identity — The in-proc paragraph says `migrate` migrates `idsvr`, and the amendments sentence
+  names the store check.
+- Onboarding — The distribution script makes the migrator job's identity a `dbmanager` member.
+- Hosting — "Databases": no Bicep declares a platform database, and an operator handles the shared
+  identity database.
+- Open Questions — The `tellma_app` answer covers the catalog.

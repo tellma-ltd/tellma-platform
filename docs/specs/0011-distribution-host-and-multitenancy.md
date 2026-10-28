@@ -54,7 +54,9 @@ Other specs that carry parts of this design:
   reserved words the endpoint audit reads (§5.3);
 - spec 0026 §6 and §12.7 — the client telemetry relay and the admin support-request routes
   `MapTellma` maps (§5.1, §5.9);
-- spec 0010 §A.11 — the identity database's collation, which follows §6.7.
+- spec 0010 §A.11 — the identity database's collation and migrations, and the store check an
+  in-proc host runs (§5.7, §6.7);
+- spec 0010 §G.1 — the builder call behind `TenantMembershipList.Subject`'s collation (§7.3).
 
 ## Goals / Non-goals
 
@@ -119,10 +121,10 @@ so a block is never pasted into code. SQL statements are the exact shape to emit
 
 | Package | Location | References | Owns from this spec |
 |---|---|---|---|
-| `Tellma.Core.Abstractions` | `src/core/Tellma.Core.Abstractions/` (existing) | `Tellma.Core.Queryex` only | namespaces `.Tenancy` (§3, §4) and `.Composition` (§2): every enum, record and contract a module or distribution names; the three exceptions of §4.6; `TenancyTelemetryNames` and `HostTelemetryNames` |
-| `Tellma.Core` | `src/core/Tellma.Core/` (existing, grows) | `Tellma.Core.Abstractions`, `Tellma.Core.EntityFrameworkCore`, `Microsoft.EntityFrameworkCore.SqlServer`, `Microsoft.EntityFrameworkCore.SqlServer.HierarchyId`, `Microsoft.Data.SqlClient`, `Microsoft.Extensions.*`, `Microsoft.AspNetCore.DataProtection.Abstractions`, `Cronos`, `DocumentFormat.OpenXml`, `MessageFormat` | `Tellma.Core.Composition` (the composition pipeline, `TellmaBuilder`, realizers, `TellmaStartupGate`, `CoreFeature`, `TellmaLinks`), `Tellma.Core.Tenancy` (`CatalogDbContext`, registry, catalog, connection factories, holder, guard, scope factory, `TenantSandboxContext`), `Tellma.Core.Data.TellmaDbContext` registration |
+| `Tellma.Core.Abstractions` | `src/core/Tellma.Core.Abstractions/` (existing) | `Tellma.Core.Queryex` only | namespaces `.Tenancy` (§3, §4) and `.Composition` (§2): every enum, record and contract a module or distribution names; the three exceptions of §4.6; `TenancyTelemetryNames` and `HostTelemetryNames`; `Hosting.DatabaseCollations` (§6.7) |
+| `Tellma.Core` | `src/core/Tellma.Core/` (existing, grows) | `Tellma.Core.Abstractions`, `Tellma.Core.EntityFrameworkCore`, `Microsoft.EntityFrameworkCore.SqlServer`, `Microsoft.EntityFrameworkCore.SqlServer.HierarchyId`, `Microsoft.Data.SqlClient`, `Microsoft.Extensions.*`, `Microsoft.AspNetCore.DataProtection.Abstractions`, `Cronos`, `DocumentFormat.OpenXml`, `MessageFormat` | `Tellma.Core.Composition` (the composition pipeline, `TellmaBuilder`, realizers, `TellmaStartupGate`, `CoreFeature`, `TellmaLinks`), `Tellma.Core.Tenancy` (`CatalogDbContext`, `CatalogMigrations`, registry, catalog, connection factories, holder, guard, scope factory, `TenantSandboxContext`), `Tellma.Core.Data.TellmaDbContext` registration |
 | `Tellma.Core.AspNetCore` | `src/core/Tellma.Core.AspNetCore/` (new) | `Tellma.Core`, `FrameworkReference Microsoft.AspNetCore.App`, `Microsoft.AspNetCore.Authentication.OpenIdConnect`, `Microsoft.AspNetCore.Authentication.JwtBearer`, `Azure.Extensions.AspNetCore.DataProtection.Blobs`, `Azure.Extensions.AspNetCore.DataProtection.Keys`, `Serilog.AspNetCore`, `OpenTelemetry.*` | `AddTellma(WebApplicationBuilder)`, `UseTellma`, `MapTellma`, the BFF and session store, CSRF, tenant middleware and access filter, the endpoint audit, route groups, `/api/distribution-info`, health, the admin surface, `SessionSweepService`, `MembershipReconcileService`, Data Protection and forwarded headers |
-| `Tellma.Core.Migrator` | `src/core/Tellma.Core.Migrator/` (new) | `Tellma.Core`, `Tellma.Core.EntityFrameworkCore.Design`, `Microsoft.EntityFrameworkCore.Design` | `TellmaMigrator`, the platform-owned catalog migrations (`catalog.__EFMigrationsHistory`), `TellmaDesignTimeDbContextFactory<TContext>`, the commands of §6.1 |
+| `Tellma.Core.Migrator` | `src/core/Tellma.Core.Migrator/` (new) | `Tellma.Core`, `Tellma.Core.EntityFrameworkCore.Design`, `Microsoft.EntityFrameworkCore.Design` | `TellmaMigrator`, the platform-owned catalog migrations (`catalog.__EFMigrationsHistory`) and their `CatalogDesignTimeFactory`, `TellmaDesignTimeDbContextFactory<TContext>`, the commands of §6.1 |
 | `Tellma.Defaults.Azure` | `src/defaults/Tellma.Defaults.Azure/` (new) | `Tellma.Core.Email`, `Tellma.Core.Webhooks`, `Tellma.Core.Imaging`, `Tellma.Connector.AcsEmail.Adapter`, `Tellma.Connector.SendGrid.Adapter`, `Tellma.Connector.AzureBlobs.Adapter` | `UseAzureDefaults(TellmaBuilder)`: email, webhooks, Azure blobs and imaging in one call (§1.3) |
 | `Tellma.Defaults.Azure.AspNetCore` | `src/defaults/Tellma.Defaults.Azure.AspNetCore/` (new) | `Tellma.Core.AspNetCore`, `Microsoft.Azure.SignalR` | `UseAzureWebDefaults(TellmaBuilder)`: the Azure SignalR backplane, web host only (§1.3) |
 
@@ -179,7 +181,7 @@ distributions/acme/
 │       ├── Program.cs                          # one line (§1.3)
 │       ├── AcmeDesignTimeFactory.cs            # derives TellmaDesignTimeDbContextFactory<TellmaDbContext>
 │       ├── Migrations/                         # tenant-model migrations and snapshot, generated by dotnet ef
-│       └── Tellma.Distro.Acme.Migrator.csproj  # → Tellma.Distro.Acme, Tellma.Core.Migrator
+│       └── Tellma.Distro.Acme.Migrator.csproj  # → Tellma.Distro.Acme, Tellma.Core.Migrator, Tellma.Identity.Migrations
 └── test/
     ├── Tellma.Distro.Acme.Web.Tests/
     ├── Tellma.Distro.Acme.IntegrationTests/
@@ -198,11 +200,15 @@ distributions/acme/
   ASP.NET package, directly or transitively, and never `Tellma.Core.Mcp`, a `*.Design` package or
   the Client esproj.
 - **Web project references.** `Tellma.Distro.Acme`, `Tellma.Core.AspNetCore`,
-  `Tellma.Defaults.Azure.AspNetCore`, `Tellma.Identity` (in-proc mode), the Client esproj with
-  `ReferenceOutputAssembly=false`, and `Microsoft.AspNetCore.SpaProxy`; it gains `Tellma.Core.Mcp`
-  with spec 0016. It never references a `*.Design` package.
-- **Migrator project references.** `Tellma.Distro.Acme` and `Tellma.Core.Migrator` only, so a
-  migrator build carries no ASP.NET package, never builds the Client esproj and needs no Node.
+  `Tellma.Defaults.Azure.AspNetCore`, the Client esproj with `ReferenceOutputAssembly=false`, and
+  `Microsoft.AspNetCore.SpaProxy`; it gains `Tellma.Core.Mcp` with spec 0016. For in-proc mode it
+  also references `Tellma.Identity`. It never references `Tellma.Identity.Migrations` or a
+  `*.Design` package: the engine's store check reads a constant, not the migrations (spec 0010
+  §A.11).
+- **Migrator project references.** `Tellma.Distro.Acme` and `Tellma.Core.Migrator`. Because Acme
+  can select in-proc identity mode (§5.7), it also references `Tellma.Identity.Migrations`, whose
+  migrations `migrate` applies. A migrator build never builds the Client esproj and needs no Node.
+  ASP.NET Core's shared framework reaches it only through the identity engine.
 - **Client project.** The recommended ASP.NET Core + Angular shape: a JavaScript-SDK esproj beside
   the Web project. The distribution template (a non-goal here) scaffolds it with the rest of the
   distribution, and it is a member of the repository-root pnpm workspace (spec 0024 §2.1).
@@ -249,7 +255,7 @@ app.Run();
 Illustration — `Program.cs` of the Migrator project:
 
 ```csharp
-return await TellmaMigrator.RunAsync(args, AcmeComposition.Slug, AcmeComposition.Compose);
+return await TellmaMigrator.RunAsync(args, AcmeComposition.Slug, AcmeComposition.Compose, TellmaIdentityStore.MigrateAsync);
 ```
 
 Illustration — the shared composition method:
@@ -268,12 +274,12 @@ requires of every host), `AddTellmaWebhooks()`, `AddAzureBlobStore()` bound from
 `Tellma:Blobs:Azure` with the host's `TokenCredential`, and `AddTellmaSkia()`.
 `UseAzureWebDefaults()` (`Tellma.Defaults.Azure.AspNetCore`), called from the web host's
 `composeWeb` delegate (§5.1), selects the Azure SignalR backplane when
-`Azure:SignalR:ConnectionString` is present (spec 0021 §6.6), so neither the composition library nor
-the migrator carries an ASP.NET package. A distribution that wants a different sender, store,
-processor or backplane composes those calls itself instead of the bundles. On-premises deployments
-compose a different set (SMTP, the file-system store, a Redis backplane) and receive their own pair
-of bundles with the first on-premises distribution. The web host and the migrator build
-byte-identical EF models from the same method; a test pins the parity.
+`Azure:SignalR:ConnectionString` is present (spec 0021 §6.6), so the composition library carries no
+ASP.NET package. A distribution that wants a different sender, store, processor or backplane
+composes those calls itself instead of the bundles. On-premises deployments compose a different set
+(SMTP, the file-system store, a Redis backplane) and receive their own pair of bundles with the
+first on-premises distribution. The web host and the migrator build byte-identical EF models from
+the same method; a test pins the parity.
 
 ### 1.4 Design principles
 
@@ -595,7 +601,8 @@ Every distribution has exactly one catalog database:
 - **Connection.** `Tellma:Catalog:ConnectionString` (`Max Pool Size=10`).
 - **Lifecycle.** Created as §6.7 states, then migrated by the migrator before any tenant database.
 - **Contents.** Schema `catalog` (§7) and, in in-proc identity mode, the identity engine's `idsvr`
-  schema with its own migration history.
+  schema. `migrate` migrates `idsvr` (§6.1), whose migration history is the catalog's
+  `dbo.__EFMigrationsHistory`.
 
 The catalog holds no connection string and no secret: a tenant row carries `Server`, `Database`
 and a `CredentialProfile` name.
@@ -695,12 +702,14 @@ public interface ITenantRegistry                            // singleton; snapsh
   received it and within one interval fleet-wide; a catalog outage never becomes a permanently
   ignored suspension.
 - **Startup.** The first load is attempted with a 10-second bound. On success the catalog's
-  migration history is compared with the platform's latest catalog migration: a behind or missing
-  catalog fails startup with a message naming the exact migrator command (in Development, a missing
-  catalog database prints `dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Migrator
-  -- migrate`); the web host never migrates. On a reachability failure the host starts,
-  `/health/ready` reports not-ready, and the loop keeps retrying — a transient outage during a slot
-  swap must not crash-loop every instance.
+  migration history is compared with the platform's latest catalog migration. `Tellma.Core`
+  publishes that migration's id as the constant `CatalogMigrations.Latest` (`Tellma.Core.Tenancy`).
+  A test keeps it equal to the last migration in `Tellma.Core.Migrator` (§10). A behind or
+  missing catalog fails startup with a message naming the exact migrator command (in Development, a
+  missing catalog database prints `dotnet run --project
+  distributions/acme/src/Tellma.Distro.Acme.Migrator -- migrate`); the web host never migrates. On
+  a reachability failure the host starts, `/health/ready` reports not-ready, and the loop keeps
+  retrying — a transient outage during a slot swap must not crash-loop every instance.
 
 ### 3.5 Connection resolution, credential profiles and pools
 
@@ -764,14 +773,18 @@ public interface ITenantDbContextFactory
   receives a string; a batch is bound to one tenant for its lifetime and never issues `USE` or
   `ChangeDatabase`. Every SQL span carries `tellma.db.role = tenant | catalog`.
 
-**The application role.** Every tenant database has a database role `tellma_app`, created by the
-migrator on first migration and re-granted idempotently after every `migrate` from the model:
-`SELECT, INSERT, UPDATE, DELETE` on every schema the tenant model maps, `UPDATE` on every
-`sq_<Table>` sequence (`sp_sequence_get_range` needs it), and `EXECUTE ON TYPE` for every table type
-through spec 0001's configured grant principals (`AddTellma` sets `tellma_app` as the default
-principal set). The web application's principal — the managed identity's contained user in SaaS,
-the login's user on-prem — is a member of `tellma_app`; the migrator's principal owns the database.
-The role name is a platform constant, so migrations never carry an environment-specific principal.
+**The application role.** Every tenant database and the catalog have a database role `tellma_app`.
+The migrator creates it before the first migration and re-grants it idempotently from the model
+after every `migrate`:
+
+- `SELECT, INSERT, UPDATE, DELETE` on every schema the database's model maps;
+- `UPDATE` on every `sq_<Table>` sequence (`sp_sequence_get_range` needs it);
+- `EXECUTE ON TYPE` for every table type, through spec 0001's configured grant principals
+  (`AddTellma` sets `tellma_app` as the default principal set).
+
+The web application's principal — the managed identity's contained user in SaaS, the login's user
+on-prem — is a member of `tellma_app`; the migrator's principal owns the database. The role name
+is a platform constant, so migrations never carry an environment-specific principal.
 
 ### 3.6 Secrets policy
 
@@ -782,8 +795,9 @@ Binding on every host:
   0013's `Secret` keys, ciphertext only), in `appsettings*.json` checked into a repository (a test
   in the reference distribution scans tracked configuration for `Password=`, `Pwd=` and
   `ClientSecret` values), in logs (the factory redacts before logging) or in telemetry tags.
-- **SaaS tenant databases have no passwords.** Provisioning runs
-  `CREATE USER [<web app identity>] FROM EXTERNAL PROVIDER` and adds it to `tellma_app`.
+- **SaaS tenant databases and the catalog have no passwords.** The migrator runs
+  `CREATE USER [<web app identity>] FROM EXTERNAL PROVIDER` in each fresh one and adds it to
+  `tellma_app` (§6.4).
 - **Secret configuration values** (`Tellma:Identity:ClientSecret`,
   `Tellma:Identity:ServiceClientSecret`, an on-prem SQL password, `Azure:SignalR:ConnectionString`)
   arrive through configuration providers: App Service Key Vault references or
@@ -844,7 +858,8 @@ public sealed record TenantMembership(TenantDescriptor Tenant, bool IsActive, Da
 public sealed class TenantMembershipRecord                  // [TableType] standalone -> [catalog].[TenantMembershipList]
 {
     public int TenantId { get; set; }
-    public string Subject { get; set; }                     // varchar(255) COLLATE Latin1_General_100_BIN2 (§7.3)
+    [Collation("Latin1_General_100_BIN2")]
+    public string Subject { get; set; }                     // varchar(255), as catalog.TenantMemberships.Subject (§7.3)
     public bool IsActive { get; set; }
 }
 
@@ -1510,15 +1525,28 @@ server stays `dotnet tellma mcp`.
 
 - `Mode = InProc`;
 - `PathBase = /id` and `Issuer = {PublicOrigin}/id`;
-- the identity store pointed at the catalog connection, in schema `idsvr`.
+- the identity store pointed at the catalog connection; the engine's model keeps its tables in
+  schema `idsvr`;
+- `Seed.ApplyMigrations = false`, and `Seed.MigrateCommand` set to the `migrate` command that
+  §3.4's message names.
 
 The OIDC handler's authority is then `{PublicOrigin}/id`; `UseTellma` places `UseTellmaIdentity()`
 after routing; `MapTellma` maps its endpoints and marks them tenantless.
 
-The identity engine's own migrations migrate `idsvr`. It is the one schema the web process may
-migrate, because the engine already owns that path. The engine never creates the catalog in this
-mode (spec 0010 §A.11). §3.4's catalog check runs before the engine's seeding, so a missing catalog
-prints the `migrate` command (§6.6).
+The migrator's `migrate` applies the engine's migrations to `idsvr` (§6.1). The web process never
+migrates. At startup:
+
+1. **The registry's first load** (§3.4) runs before the engine's seeding, so a missing catalog
+   prints the `migrate` command (§6.6). `AddTellma` registers the registry's hosted service before
+   it calls `AddTellmaIdentity`, and hosted services start in registration order.
+2. **The engine's store check** runs next (spec 0010 §A.11). An `idsvr` history without
+   `TellmaIdentityConstants.LatestMigration`, or no history at all, fails startup with an error
+   naming that command.
+3. **Seeding** runs last. With `idsvr` current, it writes rows only: the scopes, the
+   `Distribution` seed entry and the administrators of spec 0003 §10.4.
+
+An unreachable catalog fails the store check too, so an in-proc host stops where §3.4 starts a host
+not-ready.
 
 The in-proc distribution owns its BFF client (`<slug>`) and service client (`<slug>-svc`) with
 stable secrets from `Tellma:Identity:ClientSecret` and `Tellma:Identity:ServiceClientSecret`
@@ -1639,7 +1667,7 @@ depend on, and ships before them:
 - the control-plane audience and the optional `tellma_kind` claim;
 - the invite API's `existingOnly` flag and the versioned management routes;
 - the account entry URL and the sign-in language;
-- the identity database's collation (§6.7).
+- the identity database's collation and migrations (§5.7, §6.7).
 
 ### 5.10 Server-built links
 
@@ -1677,7 +1705,8 @@ public interface ITellmaLinks
 public static class TellmaMigrator
 {
     public static Task<int> RunAsync(
-        IReadOnlyList<string> args, string slug, Action<TellmaBuilder> compose);   // exit 0 converged, 1 usage, 2 partial failure, 3 composition problems (emit-client-assets)
+        IReadOnlyList<string> args, string slug, Action<TellmaBuilder> compose,
+        Func<string, Task>? migrateIdentityStore = null);   // exit 0 converged, 1 usage, 2 partial failure, 3 composition problems (emit-client-assets)
 }
 
 public abstract class TellmaDesignTimeDbContextFactory<TContext> : IDesignTimeDbContextFactory<TContext>
@@ -1692,10 +1721,10 @@ public abstract class TellmaDesignTimeDbContextFactory<TContext> : IDesignTimeDb
 | Command | Does |
 |---|---|
 | `emit-client-assets <dir>` | Writes spec 0024 §3.2's client metadata files into `<dir>` without touching a database (details below the table). |
-| `migrate [--catalog-only] [--tenant <id>]* [--all-tenants] [--parallelism N]` | Creates a missing catalog and turns on read-committed snapshot in a fresh one (§6.7), then migrates it under `sp_getapplock('tellma:migrate:catalog')` (`idsvr` too in in-proc mode); registers (the entry's `Id` as `RegisterAsync`'s `requestedId`, §3.7) and provisions every `Tellma:Seed:Tenants` entry not yet in the catalog; then for every `Active`, `ReadOnly` or `Provisioning` tenant (the default and `--all-tenants`) or the named ones: the tenant lock of §7.5, `Migrate()`, the schema fingerprint row of spec 0012 §4.3, the `tellma_app` grants (§6.4), the version-tag seed of spec 0013, provisioning steps whose recorded `Version` is behind, spec 0014's `IPermissionDriftScanner.ScanAsync` with its items printed. Bounded parallelism (default 4), continues past failures, per-tenant report. |
-| `provision [--tenant <id>] [--name …] [--category Live\|Sandbox] [--live-tenant <id>] [--server …] [--database …] [--admin-email …] [--admin-subject …]` | With `--name` and `--category`, inserts the row as `Provisioning` (`--tenant` is then `RegisterAsync`'s `requestedId`, §3.7, else the sequence allocates one); with `--tenant` alone, resumes the `Provisioning` row of that id (the admin surface's). Creates the database (§6.7); `ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON` and `SET QUERY_STORE = ON (OPERATION_MODE = READ_WRITE, QUERY_CAPTURE_MODE = AUTO, MAX_STORAGE_SIZE_MB = 1024, CLEANUP_POLICY = (STALE_QUERY_THRESHOLD_DAYS = 30))` on a fresh database (§6.7); the application principal and `tellma_app`; migrations and the schema fingerprint row; the version-tag seed; every step in `Order`; the administrator's membership hint; the administrator's invite (spec 0018 §6.1; `--admin-subject` is Development-only, §6.2); then `SetStateAsync(Active, actor: "migrator")`. Idempotent: rerunning converges. |
+| `migrate [--catalog-only] [--tenant <id>]* [--all-tenants] [--parallelism N]` | Creates a missing catalog and turns on read-committed snapshot in a fresh one (§6.7). Then it takes `sp_getapplock('tellma:migrate:catalog')`. Under that lock it creates the catalog's `tellma_app` role, and the web application's principal in a fresh catalog (§6.4). It migrates the catalog, and `idsvr` in in-proc mode through `migrateIdentityStore` (§5.7). It recomputes `tellma_app`'s grants over schema `catalog`, and over `idsvr` in in-proc mode (§6.4). It registers (the entry's `Id` as `RegisterAsync`'s `requestedId`, §3.7) and provisions every `Tellma:Seed:Tenants` entry not yet in the catalog; then for every `Active`, `ReadOnly` or `Provisioning` tenant (the default and `--all-tenants`) or the named ones: the tenant lock of §7.5, `Migrate()`, the schema fingerprint row of spec 0012 §4.3, the `tellma_app` grants (§6.4), the version-tag seed of spec 0013, provisioning steps whose recorded `Version` is behind, spec 0014's `IPermissionDriftScanner.ScanAsync` with its items printed. Bounded parallelism (default 4), continues past failures, per-tenant report. |
+| `provision [--tenant <id>] [--name …] [--category Live\|Sandbox] [--live-tenant <id>] [--server …] [--database …] [--admin-email …] [--admin-subject …]` | With `--name` and `--category`, inserts the row as `Provisioning` (`--tenant` is then `RegisterAsync`'s `requestedId`, §3.7, else the sequence allocates one); with `--tenant` alone, resumes the `Provisioning` row of that id (the admin surface's). Creates the database when it is missing, and checks an existing one (§6.7); `ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON` and `SET QUERY_STORE = ON (OPERATION_MODE = READ_WRITE, QUERY_CAPTURE_MODE = AUTO, MAX_STORAGE_SIZE_MB = 1024, CLEANUP_POLICY = (STALE_QUERY_THRESHOLD_DAYS = 30))` on a fresh database (§6.7); the application principal and `tellma_app`; migrations and the schema fingerprint row; the version-tag seed; every step in `Order`; the administrator's membership hint; the administrator's invite (spec 0018 §6.1; `--admin-subject` is Development-only, §6.2); then `SetStateAsync(Active, actor: "migrator")`. Idempotent: rerunning converges. |
 | `set-state --tenant <id> --state … [--reason …]` | `ITenantCatalog.SetStateAsync` with actor `migrator`. |
-| `status` | Lists tenants with state, the recorded schema fingerprints (`dbo.__TellmaSchema`, spec 0012 §4.3) against the running model's, and pending migrations; runs `TellmaComposition.Validate` and prints its problems. |
+| `status` | Lists tenants with state, the recorded schema fingerprints (`dbo.__TellmaSchema`, spec 0012 §4.3) against the running model's, and pending migrations (the catalog's and each tenant's); runs `TellmaComposition.Validate` and prints its problems. |
 
 `emit-client-assets` in detail:
 
@@ -1704,13 +1733,28 @@ public abstract class TellmaDesignTimeDbContextFactory<TContext> : IDesignTimeDb
 - **Exit codes.** 0 written, 1 usage, 3 composition problems (printed as `migrate` prints them).
 - **Callers.** `tellma-client build` and `serve` run it (§1.2).
 
-The migrator is the single DDL-privileged executable; `MigrationsAssembly` is the distribution's
-Migrator project. The design-time factory `AcmeDesignTimeFactory :
-TellmaDesignTimeDbContextFactory<TellmaDbContext>` overrides `Compose` so `dotnet ef` builds the
-context from the same composition without host discovery. The migrator holds
-`Tellma:Identity:ServiceClientSecret` so `provision` can invite a deployed tenant's administrator
-through the `invite` action of spec 0018's `UserService` (`ExecuteActionAsync`, spec 0018 §6.1)
-inside the system scope after the steps complete.
+The migrator is the single DDL-privileged executable. The tenant model's `MigrationsAssembly` is
+the distribution's Migrator project.
+
+- **The identity store.** `migrateIdentityStore` receives the catalog connection string. In in-proc
+  mode (`Tellma:Identity:Mode = InProc`), `migrate` without it exits 1, naming
+  `Tellma.Identity.Migrations`.
+- **Design-time factories.** `AcmeDesignTimeFactory :
+  TellmaDesignTimeDbContextFactory<TellmaDbContext>` overrides `Compose`, so `dotnet ef` builds the
+  tenant context from the same composition without host discovery. `Tellma.Core.Migrator` carries
+  the catalog's own factory, `CatalogDesignTimeFactory`, so `dotnet ef` targets that project for
+  the catalog migrations.
+- **Design-time connections.** Each factory takes its connection string from `--connection`, else
+  from an environment variable, else from a LocalDB database:
+  - the tenant factory: `TELLMA_TENANT_MIGRATIONS_SQL`, else `TellmaTenantDesign`;
+  - the catalog factory: `TELLMA_CATALOG_MIGRATIONS_SQL`, else `TellmaCatalogDesign`.
+
+  A database that `dotnet ef database update` creates serves migration authoring only. It has no
+  `tellma_app`, no fingerprint row and no catalog row, so no host can serve it.
+- **Service-client credentials.** The migrator holds `Tellma:Identity:ServiceClientSecret` so
+  `provision` can invite a deployed tenant's administrator through the `invite` action of spec
+  0018's `UserService` (`ExecuteActionAsync`, spec 0018 §6.1) inside the system scope after the
+  steps complete.
 
 ### 6.2 Provisioning steps
 
@@ -1786,9 +1830,11 @@ IF DATABASE_PRINCIPAL_ID('tellma_app') IS NULL CREATE ROLE [tellma_app];
 GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::[<S>] TO [tellma_app];         -- every mapped schema
 GRANT UPDATE ON OBJECT::[<S>].[sq_<Table>] TO [tellma_app];                     -- every sequence
 -- EXECUTE ON TYPE is emitted by the table-type migrations (spec 0001)
--- provisioning only, SaaS:
+-- the catalog: schemas [catalog] and, in-proc, [idsvr]; its one table type grants tellma_app too
+GRANT SELECT ON OBJECT::[dbo].[__EFMigrationsHistory] TO [tellma_app];          -- the catalog, in-proc: the engine's store check reads it
+-- fresh database only, SaaS:
 CREATE USER [<web app identity>] FROM EXTERNAL PROVIDER;  ALTER ROLE [tellma_app] ADD MEMBER [<web app identity>];
--- provisioning only, on-prem:
+-- fresh database only, on-prem:
 CREATE USER [tellma_app_user] FOR LOGIN [tellma_app];  ALTER ROLE [tellma_app] ADD MEMBER [tellma_app_user];
 -- provisioning only, fresh database (a no-op on Azure SQL, where it is the default):
 ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON;
@@ -1812,27 +1858,44 @@ From a fresh clone:
 
 1. `pnpm install` at the repository root (one workspace).
 2. `dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Migrator -- migrate` creates
-   `Tellma.dev.acme.catalog` and provisions tenants 1 and 2 from `Tellma:Seed:Tenants` with the
-   development administrator.
+   `Tellma.dev.acme.catalog` with its `idsvr` schema and provisions tenants 1 and 2 from
+   `Tellma:Seed:Tenants` with the development administrator.
 3. `dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Web` starts the Angular dev
    server through the SPA proxy and opens it: `https://localhost:4200/` unless `.dev-ports.local`
    names another port (§1.2).
 4. Sign in as `admin@localhost` with the code from the console.
 
-A missing catalog at web startup prints that exact `migrate` command instead of a stack trace.
-Development database names are `Tellma.dev.<slug>.*`.
+A missing catalog at web startup prints that exact `migrate` command instead of a stack trace. A
+missing or behind `idsvr` fails startup with an error naming the same command (§5.7). Development
+database names are `Tellma.dev.<slug>.*`.
 
 ### 6.7 Database creation and collation
 
-Every database the platform creates uses one collation, `Latin1_General_100_CI_AS`, called the
-platform collation. This covers the catalog, every tenant database, and the development and test
-databases that stand in for them. `CREATE DATABASE` sets the collation, and nothing ever alters it.
-The identity server's database follows the same rule (spec 0010 §A.11).
+Every platform database uses one collation, `Latin1_General_100_CI_AS`, called the platform
+collation. This covers the catalog, every tenant database, the identity database (spec 0010
+§A.11), and the development and test databases that stand in for them. `CREATE DATABASE` sets the
+collation, and nothing ever alters it.
 
-- **Who creates.** The migrator creates every tenant database (`provision`, §6.1) and a missing
-  catalog (`migrate`, before it takes the catalog lock). The web host never creates a database
-  (§3.4). Nothing relies on EF's implicit creation in `Migrate()`, and no model calls
-  `UseCollation` (Decision 32).
+```csharp
+// Tellma.Core.Abstractions.Hosting
+public static class DatabaseCollations
+{
+    public const string Platform = "Latin1_General_100_CI_AS";   // every platform model and the migrator read it
+}
+```
+
+- **Who creates.** The migrator creates every distribution's catalog, SaaS and on-prem alike:
+  `migrate` creates a missing catalog before it takes the catalog lock. `provision` creates every
+  tenant database (§6.1). No infrastructure template declares a platform database, and the web host
+  never creates one (§3.4).
+- **Every model carries it.** The catalog model (§7), the tenant model (spec 0012 §1.3) and the
+  identity engine's model (spec 0010 §A.11) call `UseCollation(DatabaseCollations.Platform)`.
+  When EF creates a missing database (`Migrate()`, `EnsureCreated()` or `dotnet ef database
+  update`), it writes the same `COLLATE` and turns read-committed snapshot on. EF never writes
+  Azure's options or `CATALOG_COLLATION`, so the migrator runs its own statement on every engine.
+- **No migration alters it.** A model's first migration carries no collation operation, and no
+  model ever changes its collation. A later change would scaffold `ALTER DATABASE … COLLATE`,
+  which Azure SQL Database refuses. The collation pin enforces this (§10).
 - **Where it runs.** The migrator runs the statement in the target server's `master`, as its own
   batch. It connects with the connection string it uses for that database (§3.5), with `Initial
   Catalog = master`. There it reads `SERVERPROPERTY('EngineEdition')`. Its principal holds the
@@ -1840,11 +1903,9 @@ The identity server's database follows the same rule (spec 0010 §A.11).
   - on SQL Server, `CREATE ANY DATABASE`;
   - on Azure SQL Database, the server administrator or a member of `master`'s `dbmanager` role.
 - **The statement.** On SQL Server and LocalDB it is `CREATE DATABASE [<name>] COLLATE
-  Latin1_General_100_CI_AS;`. On Azure SQL Database (`EngineEdition = 5`) the migrator appends the
-  options of `Tellma:Provisioning:CreateDatabaseTemplate`, when set, and then `WITH
-  CATALOG_COLLATION = DATABASE_DEFAULT`.
-- **Infrastructure.** Bicep that declares a platform database (`Microsoft.Sql/servers/databases`)
-  sets `collation: 'Latin1_General_100_CI_AS'` and `catalogCollation: 'DATABASE_DEFAULT'`.
+  Latin1_General_100_CI_AS;`. On Azure SQL Database (`EngineEdition = 5`) the migrator appends
+  `Tellma:Sql:CreateDatabaseOptions`, when set, and then `WITH CATALOG_COLLATION =
+  DATABASE_DEFAULT`.
 - **An existing database.** Before it migrates a database, the migrator reads:
   - `DATABASEPROPERTYEX(DB_NAME(), 'Collation')`, which must be `Latin1_General_100_CI_AS`;
   - on Azure SQL Database, the database's `catalog_collation_type_desc` in `sys.databases`, which
@@ -1853,20 +1914,23 @@ The identity server's database follows the same rule (spec 0010 §A.11).
   Any other value fails that database's command, naming the database, the value expected and the
   value found. A database that a concurrent run created after the existence check counts as
   existing and gets the same check.
-- **A fresh database.** A database with no `__EFMigrationsHistory` table is fresh, whoever created
-  it. Before it migrates a fresh catalog, the migrator runs `ALTER DATABASE CURRENT SET
+- **A fresh database.** A database with no history table of its own model is fresh, whoever
+  created it: `catalog.__EFMigrationsHistory` for the catalog, `dbo.__EFMigrationsHistory` for a
+  tenant database. The in-proc `idsvr` history in the catalog's `dbo` (§3.2) does not count. Before
+  it migrates a fresh catalog, the migrator runs `ALTER DATABASE CURRENT SET
   READ_COMMITTED_SNAPSHOT ON` (a no-op on Azure SQL Database, §6.4). `provision` runs §6.4's
   fresh-database statements on a fresh tenant database.
 - **Copies.** A sandbox clone (§6.3) carries no collation clause, because `CREATE DATABASE … AS
   COPY OF` accepts none. The existing-database check runs on every clone before its first
   migration, whether copied on Azure or restored on-prem.
-- **Development and tests.** Every fixture that creates a database uses the SQL Server statement.
-  Test servers keep their own default collation: LocalDB cannot change it, and no suite sets
-  `MSSQL_COLLATION` on the container. So a test database's collation differs from `tempdb`'s, as a
-  production database's can.
+- **Development and tests.** EF may create a development or test database when that database's
+  model sets the platform collation. Every platform model does, and so does spec 0012's fixture
+  model. Any other fixture runs the SQL Server statement itself. Test servers keep their own default
+  collation: LocalDB cannot change it, and no suite sets `MSSQL_COLLATION` on the container. So a
+  test database's collation differs from `tempdb`'s, as a production database's can.
 
-**Example —** Acme's SaaS catalog, with the template `(SERVICE_OBJECTIVE = ELASTIC_POOL(name =
-pool1))`:
+**Example —** Acme's SaaS catalog, with `Tellma:Sql:CreateDatabaseOptions` set to
+`(SERVICE_OBJECTIVE = ELASTIC_POOL(name = pool1))`:
 
 ```sql
 CREATE DATABASE [tellma-acme-catalog] COLLATE Latin1_General_100_CI_AS
@@ -1878,10 +1942,10 @@ CREATE DATABASE [tellma-acme-catalog] COLLATE Latin1_General_100_CI_AS
 
 All tables live in the catalog database, schema `catalog`, created by the platform-owned migrations
 in `Tellma.Core.Migrator` (history table `catalog.__EFMigrationsHistory`) through `CatalogDbContext`
-(`Tellma.Core.Tenancy`). No IDENTITY; `datetimeoffset(3)`; enum columns `nvarchar(16)` with CHECK
-constraints (the catalog keeps its own conventions, its sequence start included — §7.1; tenant
-tables follow spec 0012's); explicit constraint names; no temporal tables; no tenant-data version
-tags.
+(`Tellma.Core.Tenancy`). Its model sets the platform collation (§6.7). No IDENTITY;
+`datetimeoffset(3)`; enum columns `nvarchar(16)` with CHECK constraints (the catalog keeps its own
+conventions, its sequence start included — §7.1; tenant tables follow spec 0012's); explicit
+constraint names; no temporal tables; no tenant-data version tags.
 
 ### 7.1 `catalog.Tenants`
 
@@ -1927,8 +1991,9 @@ migration.
 
 Index `IX_TenantMemberships_TenantId (TenantId)`. Table type `[catalog].[TenantMembershipList]
 (TenantId int, Subject varchar(255) COLLATE Latin1_General_100_BIN2, IsActive bit)` is the
-standalone `[TableType]` class `TenantMembershipRecord` registered on `CatalogDbContext` (the
-physical name carries spec 0001's content hash).
+standalone `[TableType]` class `TenantMembershipRecord` registered on `CatalogDbContext`; its
+physical name carries spec 0001's content hash. The catalog model installs spec 0012's
+`TableTypeConvention` and `CollationConvention` for this class (spec 0012 §1.3).
 
 ### 7.4 `catalog.Sessions`
 
@@ -2044,7 +2109,8 @@ The `Tellma` section; keys are additive-only within a family major. Every option
     "Catalog": { "ConnectionString": "…;Database=tellma-acme-catalog;Authentication=Active Directory Managed Identity;Encrypt=True;Max Pool Size=10", "RefreshInterval": "00:00:15", "MaxStaleness": "00:05:00" },
     "Sql": {
       "Profiles": { "default": "Authentication=Active Directory Managed Identity;Encrypt=True;Max Pool Size=20;Min Pool Size=0" },
-      "MaxPoolSizePerTenant": 20, "MaxWarmTenants": 10, "AllowSqlPassword": false, "DatabasePrefix": "tellma-acme", "ApplicationPrincipal": "tellma-acme"
+      "MaxPoolSizePerTenant": 20, "MaxWarmTenants": 10, "AllowSqlPassword": false, "DatabasePrefix": "tellma-acme", "ApplicationPrincipal": "tellma-acme",
+      "CreateDatabaseOptions": null
     },
     "Tenancy": { "MembershipReconcileInterval": "1.00:00:00" },
     "Identity": { "Mode": "Standalone", "Authority": "https://identity.tellma.com", "ClientSecret": null, "ServiceClientSecret": null },
@@ -2054,7 +2120,6 @@ The `Tellma` section; keys are additive-only within a family major. Every option
     },
     "DataProtection": { "BlobUri": null, "KeyId": null, "KeyRingPath": null },
     "ForwardedHeaders": { "Enabled": false, "KnownNetworks": [], "KnownProxies": [] },
-    "Provisioning": { "CreateDatabaseTemplate": null },
     "Admin": { "Enabled": null },
     "Support": { "Enabled": false, "RetentionDays": 30, "MaxRequestsPerUserPerDay": 20 },
     "ClientTelemetry": { "Enabled": true, "SampleRate": 1.0 },
@@ -2072,11 +2137,11 @@ The `Tellma` section; keys are additive-only within a family major. Every option
 | `PublicOrigin` | Every derived URI (§5.8). |
 | `Catalog:*` | §3.2, §3.4. |
 | `Sql:Profiles`, `MaxPoolSizePerTenant`, `MaxWarmTenants`, `AllowSqlPassword` | §3.5. `DatabasePrefix` names provisioned databases (`<prefix>.<Id>`) and the Development catalog; `ApplicationPrincipal` is the web identity created at provisioning (§6.4). |
+| `Sql:CreateDatabaseOptions` | §6.7; the options the migrator appends after `COLLATE` when it creates a catalog or tenant database on Azure SQL Database; null on-prem. |
 | `Tenancy:MembershipReconcileInterval` | §3.8. |
-| `Identity:Mode` (`Standalone \| InProc`), `Authority`, `ClientSecret`, `ServiceClientSecret` | §5.5, §5.7; spec 0018's `IdentityServerClientOptions` binds the same section, with `ClientId = <slug>-svc` set by the platform. |
+| `Identity:Mode` (`Standalone \| InProc`), `Authority`, `ClientSecret`, `ServiceClientSecret` | §5.5, §5.7, §6.1; spec 0018's `IdentityServerClientOptions` binds the same section, with `ClientId = <slug>-svc` set by the platform. |
 | `Session:*` | §5.5; `StepUp` is the assurance bar the projection stamps; `IdleLifetime` is also the client's idle window (`DistributionInfo.session`, §5.9). |
 | `DataProtection:*`, `ForwardedHeaders:*` | §5.8. |
-| `Provisioning:CreateDatabaseTemplate` | §6.7; the options the migrator appends after `COLLATE` when it creates a catalog or tenant database on Azure SQL Database; null on-prem. |
 | `Admin:Enabled` | §5.9; `null` selects the identity-mode default. |
 | `Support:*` | Support requests (spec 0026 §12.3); `Enabled` is published as `DistributionInfo.support` (§5.9). |
 | `ClientTelemetry:*` | The client telemetry relay (spec 0026 §6.1); published as `DistributionInfo.telemetry` (§5.9). |
@@ -2200,11 +2265,11 @@ empty, on every pull request until the UI specs ship.
 
 | Suite | Tier | Pins |
 |---|---|---|
-| `test/core/Tellma.Core.Tests` | unit | The graph gate (aggregation of every problem, cycles, unknown item types, `Fix` text, duplicate names, double options binding); topological override of a pack service by a dependent feature; registry snapshot semantics with `FakeTimeProvider` (unchanged version → no reload; changed → reload; `!=` on an older GUID; single flight; listener calls only for changed descriptors; staleness bound → `catalog-unavailable`); connection composition (profile precedence, `Application Name`, refusal of `;`/`=`, never logged) and every profile rule; the database-creation statement on SQL Server and on Azure SQL Database, with and without a template (§6.7); the state-transition table including the illegal ones; `RequestContext` immutability, `Tenantless`, `RequireTenant`, snapshot round trip; the holder is set exactly by the two writers; `TenantSandboxContext` throws unbound; `taxonomy.json` consistency; `TellmaComposition.Validate` host-free; `ITellmaLinks` for a stack with `Details`, a stack without it, an unknown resource and a null target; `TenantLanding.SingleLiveTenant` over every row of `launch-landing-vectors.json`. |
-| `test/core/Tellma.Core.IntegrationTests` | `Category=Integration` | `migrate` creates a missing catalog in `Latin1_General_100_CI_AS` with `is_read_committed_snapshot_on = 1` and refuses an existing one created with another collation (§6.7); catalog migrations apply from empty and are idempotent; registration and state transitions bump `CatalogState.Version`; concurrent transitions (one wins, the other raises `TenantStateException` with `Code = Tenant.IllegalTransition`); membership list and TVP reconciliation (upsert plus per-tenant delete); `tellma_app` role and grants recomputed from the model and covering every schema and sequence; session store CRUD (the handle computed at creation, carried by the retrieved ticket and output by the termination deletes); refresh CAS with two concurrent refreshers (exactly one redeems); sweep deletes only rows expired for a day; `ITenantScopeFactory` against each state, with and without `allowNonActive` (`Provisioning` and `ReadOnly` open only with it and only for `Kind = System`), starting no activity of its own. |
+| `test/core/Tellma.Core.Tests` | unit | The graph gate (aggregation of every problem, cycles, unknown item types, `Fix` text, duplicate names, double options binding); topological override of a pack service by a dependent feature; registry snapshot semantics with `FakeTimeProvider` (unchanged version → no reload; changed → reload; `!=` on an older GUID; single flight; listener calls only for changed descriptors; staleness bound → `catalog-unavailable`); connection composition (profile precedence, `Application Name`, refusal of `;`/`=`, never logged) and every profile rule; the database-creation statement on SQL Server and on Azure SQL Database, with and without `CreateDatabaseOptions` (§6.7); the collation pin over the catalog migrations; `CatalogMigrations.Latest` equals the last migration in `Tellma.Core.Migrator` (§3.4); `migrate` under `Tellma:Identity:Mode = InProc` without `migrateIdentityStore` exits 1 naming `Tellma.Identity.Migrations`; the state-transition table including the illegal ones; `RequestContext` immutability, `Tenantless`, `RequireTenant`, snapshot round trip; the holder is set exactly by the two writers; `TenantSandboxContext` throws unbound; `taxonomy.json` consistency; `TellmaComposition.Validate` host-free; `ITellmaLinks` for a stack with `Details`, a stack without it, an unknown resource and a null target; `TenantLanding.SingleLiveTenant` over every row of `launch-landing-vectors.json`. |
+| `test/core/Tellma.Core.IntegrationTests` | `Category=Integration` | `migrate` creates a missing catalog in `Latin1_General_100_CI_AS` with `is_read_committed_snapshot_on = 1` and refuses an existing one created with another collation (§6.7); catalog migrations apply from empty and are idempotent; registration and state transitions bump `CatalogState.Version`; concurrent transitions (one wins, the other raises `TenantStateException` with `Code = Tenant.IllegalTransition`); membership list and TVP reconciliation (upsert plus per-tenant delete); `tellma_app` role and grants recomputed from the model and covering every schema and sequence, in the catalog as in a tenant database; the catalog's role exists before its first migration creates `TenantMembershipList`; session store CRUD (the handle computed at creation, carried by the retrieved ticket and output by the termination deletes); refresh CAS with two concurrent refreshers (exactly one redeems); sweep deletes only rows expired for a day; `ITenantScopeFactory` against each state, with and without `allowNonActive` (`Provisioning` and `ReadOnly` open only with it and only for `Kind = System`), starting no activity of its own. |
 | `test/core/Tellma.Core.AspNetCore.Tests` | unit (`WebApplicationFactory`, fake authentication) | The host's routing, security, sessions and surfaces; the list below the table. |
-| `distributions/acme/test/Tellma.Distro.Acme.Web.Tests` | unit | Composition parity (the web host and the migrator build byte-identical models); `emit-client-assets` exits 0 with no database reachable; the audit passes for every mapped endpoint; one-way dependency (no `src/` project references `distributions/`); no secrets in tracked configuration; `Program.cs` contains exactly the three platform calls. |
-| `distributions/acme/test/Tellma.Distro.Acme.IntegrationTests` | `Category=Integration` | `migrate` then `provision` against the tier's SQL Server from an empty server; the seed tenants exist and are `Active`; the catalog and every tenant database report `Latin1_General_100_CI_AS`; `provision` naming an existing database in another collation fails without migrating it; `dbo.__TellmaProvisioning` records the platform steps with their versions and a bumped step re-runs; full sign-in through the in-proc engine (reusing the identity suite's OIDC flow client); the first tenant request binds `UserId`; a suspension takes effect on the next request and within one refresh on a second host; back-channel logout end to end; a refresh rejection ends the session; readiness before and after catalog availability; `ReadOnly` read succeeds and mutation is `403` against a database set `READ_ONLY`. |
+| `distributions/acme/test/Tellma.Distro.Acme.Web.Tests` | unit | Composition parity (the web host and the migrator build byte-identical models); `emit-client-assets` exits 0 with no database reachable; the audit passes for every mapped endpoint; one-way dependency (no `src/` project references `distributions/`); the Web project's references reach no `Tellma.Identity.Migrations`; no secrets in tracked configuration; `Program.cs` contains exactly the three platform calls; the collation pin over Acme's tenant migrations. |
+| `distributions/acme/test/Tellma.Distro.Acme.IntegrationTests` | `Category=Integration` | `migrate` then `provision` against the tier's SQL Server from an empty server; the seed tenants exist and are `Active`; the catalog and every tenant database report `Latin1_General_100_CI_AS`; `provision` naming an existing database in another collation fails without migrating it; `dbo.__TellmaProvisioning` records the platform steps with their versions and a bumped step re-runs; full sign-in through the in-proc engine (reusing the identity suite's OIDC flow client); `migrate` applies the identity engine's migrations to `idsvr`, and a second run applies none; a web host whose `idsvr` lacks the engine's last migration fails startup naming the `migrate` command; the first tenant request binds `UserId`; a suspension takes effect on the next request and within one refresh on a second host; back-channel logout end to end; a refresh rejection ends the session; readiness before and after catalog availability (standalone identity mode); `ReadOnly` read succeeds and mutation is `403` against a database set `READ_ONLY`. |
 
 `Tellma.Core.AspNetCore.Tests` pins:
 
@@ -2232,9 +2297,22 @@ empty, on every pull request until the UI specs ship.
   shape; `SessionSweepService` and `MembershipReconcileService` fire on their intervals, the latter
   only on the lock holder.
 
-Fixture: the catalog database is created per test class as §6.7 states, then migrated by the
-platform migrations. Tenant databases in the distribution suite come from `provision`. Test names
-describe behaviour and never cite a document.
+**The collation pin.** A test that needs no database runs over one migrations assembly and its
+model. It asserts:
+
+- the design-time model (`IDesignTimeModel`) answers `GetCollation()` with
+  `DatabaseCollations.Platform`;
+- `HasPendingModelChanges()` is false;
+- no migration's `UpOperations` or `DownOperations` holds an `AlterDatabaseOperation` whose
+  `Collation` differs from its `OldDatabase.Collation`. An initial migration's
+  `AlterDatabaseOperation` that carries only annotations passes.
+
+It runs over the catalog migrations and Acme's tenant migrations (the rows above), and over the
+identity engine's (spec 0010 Part A — Testing).
+
+Fixture: the catalog database is created per test class by `Migrate()` over the platform
+migrations, in the platform collation (§6.7). Tenant databases in the distribution suite come from
+`provision`. Test names describe behaviour and never cite a document.
 
 ## 11. Definition of done
 
@@ -2286,16 +2364,17 @@ describe behaviour and never cite a document.
   BCL-only feature contract, `Requires` only, data-only items, explicit `AddFeature<T>()`, two
   gates, the endpoint audit); identity (the reference distribution references `Tellma.Identity`
   and selects in-proc by configuration; the in-proc store is the catalog database's `idsvr`
-  schema; the distribution owns its BFF); hosting on Azure (`Always On`,
+  schema, which `migrate` migrates; the distribution owns its BFF); hosting on Azure (`Always On`,
   `WEBSITES_CONTAINER_STOP_TIME_LIMIT = 30`); observability (meters `Tellma.Core` and
   `Tellma.Core.AspNetCore`; per-tenant identity on traces and logs only); the open question on
   the ad-hoc SQL permission set (answered by `tellma_app`); rollout and phasing
   (`Tellma.dev.<slug>.*` databases; tracked `launchSettings.json`); the reserved-slug list (`acme`;
   `taxonomy.json` gains `reservedSlugs` and `distributions`). Public XML docs and error messages
   reference no `docs/` paths, per repo rule.
-- **Not in scope of done**: the identity-server amendments (spec 0010 Part A); the MCP tools;
-  self-serve provisioning beyond `NotConfiguredProvisioningTrigger` and the Development starter;
-  sandbox cloning; every consumer surface the sibling specs ship against these contracts.
+- **Not in scope of done**: the identity-server and table-type amendments (spec 0010 Parts A and
+  G); the MCP tools; self-serve provisioning beyond `NotConfiguredProvisioningTrigger` and the
+  Development starter; sandbox cloning; every consumer surface the sibling specs ship against
+  these contracts.
 
 ## Decisions record
 
@@ -2358,9 +2437,10 @@ The load-bearing decisions, where not already evident above:
 19. **One MCP endpoint per tenant with a per-tenant audience** — RFC 8707 gives per-tenant audiences
     for free, and one endpoint per distribution would put tenant selection inside every tool call
     (§5.6).
-20. **In-proc identity stores in the catalog database's `idsvr` schema with stable configured
-    secrets** — the only distribution-wide database, and multi-instance standalone deployments
-    cannot survive per-boot secrets (§5.7).
+20. **In-proc identity stores in the catalog database's `idsvr` schema, migrated by `migrate`, with
+    stable configured secrets** — the catalog is the only distribution-wide database. The web
+    process never migrates, so DDL rights never reach the web identity. Multi-instance standalone
+    deployments cannot survive per-boot secrets (§1.2, §5.7, §6.1).
 21. **Provisioning is a migrator command with a versioned step seam; the web application only
     records intent and calls a trigger** — DDL rights never reach the web identity, and seeds
     re-run by version rather than by force (§6.1, §6.2).
@@ -2375,8 +2455,8 @@ The load-bearing decisions, where not already evident above:
     distribution shape and is deployable as the smoke deployment (§1.2).
 26. **`UseAzureDefaults()` and `UseAzureWebDefaults()` bundle the Azure deployment's common
     composition** — one call in `compose` composes email, webhooks, blobs and imaging; one call in
-    `composeWeb` composes the SignalR backplane, so the composition library and the migrator carry
-    no ASP.NET package (§1.3).
+    `composeWeb` composes the SignalR backplane, so the composition library carries no ASP.NET
+    package (§1.3).
 27. **A pack extends another feature's entity through a required shape or a sibling table, never
     by touching the class** — the leaf stays the one place columns are added (§2.4).
 28. **The admin surface carries its own URL version, advertised in the information document** —
@@ -2390,15 +2470,13 @@ The load-bearing decisions, where not already evident above:
     (§5.9).
 31. **One link builder, `ITellmaLinks`** — every server-written link follows the SPA's route
     grammar from one place (§5.10).
-32. **Every database the platform creates uses `Latin1_General_100_CI_AS`, set by `CREATE
-    DATABASE` and never altered** — the server default `SQL_Latin1_General_CP1_CI_AS` defines no
-    order on Amharic text, and one collation makes the catalog, the identity store, every tenant
-    and every test compare text alike. Azure SQL Database cannot change a collation, and on SQL
-    Server existing columns keep theirs. A model collation (`UseCollation`) would reach only EF's
-    own `CREATE DATABASE`, which writes no Azure options. A later change to it would emit `ALTER
-    DATABASE … COLLATE`. On Azure SQL Database, `WITH CATALOG_COLLATION = DATABASE_DEFAULT` gives
-    `sys.*` names the data's collation; without it, spec 0001's table-type sweep fails with Msg
-    468 (§6.7).
+32. **Every platform database uses `Latin1_General_100_CI_AS`, set at creation, never altered and
+    carried by every model; the migrator creates every catalog and tenant database** — the server
+    default `SQL_Latin1_General_CP1_CI_AS` defines no order on Amharic text, and one collation
+    makes every database and every test compare text alike. Azure SQL Database cannot change a
+    collation. EF's own creation writes neither Azure's options nor `CATALOG_COLLATION`, so the
+    migrator keeps its own statement. Without `CATALOG_COLLATION`, spec 0001's table-type sweep
+    fails with Msg 468 (§6.7).
 
 ## Review flags
 
@@ -2473,3 +2551,13 @@ The load-bearing decisions, where not already evident above:
 22. **Warm profiles by configuration with a warning threshold** (§3.5) versus `Min Pool Size = 0`
     everywhere. Flips if warm profiles are ever assigned broadly enough to threaten the pool
     invariant, in which case the warning becomes a failure.
+23. **The migrator references the identity engine's migrations** (§1.2, §6.1) in a distribution
+    that runs in-proc, which brings ASP.NET Core's shared framework into the migrator. Alternative:
+    `Tellma.Core.Migrator` carries an idempotent script of the identity chain, built from
+    `Tellma.Identity.Migrations`, and runs it. That keeps ASP.NET out of the migrator at the cost
+    of a build step and a parity test. Flips if the migrator's image size or its coupling to the
+    engine's packages matters.
+24. **An in-proc host with an unreachable catalog does not start** (§3.4, §5.7). The engine's
+    store check and seeding run in a hosted service and throw, so the host stops instead of
+    starting not-ready. Alternative: the store check waits until the catalog is reachable. Flips
+    when on-premises in-proc delivery is designed.

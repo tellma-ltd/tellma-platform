@@ -1,0 +1,12 @@
+BEGIN
+DECLARE @db_name nvarchar(max) = QUOTENAME(DB_NAME());
+EXEC(N'ALTER DATABASE ' + @db_name + ' COLLATE Latin1_General_100_CI_AS;');
+END
+
+GO
+
+INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+VALUES (N'20261028162401_PlatformCollation', N'10.0.9');
+GO
+
+

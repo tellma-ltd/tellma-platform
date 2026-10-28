@@ -1,0 +1,209 @@
+Using project 'C:\Users\ahmad\workspace\tellma\tellma-platform\.tmp\round-2\r5\probes\CollProbe\CollProbe.csproj'.
+Using startup project 'C:\Users\ahmad\workspace\tellma\tellma-platform\.tmp\round-2\r5\probes\CollProbe\CollProbe.csproj'.
+dotnet msbuild /getProperty:ProjectName /getProperty:AssemblyName /getProperty:DesignAssembly /getProperty:Language /getProperty:OutputPath /getProperty:PlatformTarget /getProperty:ProjectAssetsFile /getProperty:ProjectDir /getProperty:RootNamespace /getProperty:RuntimeFrameworkVersion /getProperty:TargetFileName /getProperty:TargetFrameworkMoniker /getProperty:Nullable /getProperty:TargetFramework /getProperty:TargetPlatformIdentifier /getProperty:Platform /t:ResolvePackageAssets /getItem:RuntimeCopyLocalItems C:\Users\ahmad\workspace\tellma\tellma-platform\.tmp\round-2\r5\probes\CollProbe\CollProbe.csproj
+dotnet msbuild /getProperty:ProjectName /getProperty:AssemblyName /getProperty:DesignAssembly /getProperty:Language /getProperty:OutputPath /getProperty:PlatformTarget /getProperty:ProjectAssetsFile /getProperty:ProjectDir /getProperty:RootNamespace /getProperty:RuntimeFrameworkVersion /getProperty:TargetFileName /getProperty:TargetFrameworkMoniker /getProperty:Nullable /getProperty:TargetFramework /getProperty:TargetPlatformIdentifier /getProperty:Platform /t:ResolvePackageAssets /getItem:RuntimeCopyLocalItems C:\Users\ahmad\workspace\tellma\tellma-platform\.tmp\round-2\r5\probes\CollProbe\CollProbe.csproj
+dotnet exec --depsfile C:\Users\ahmad\workspace\tellma\tellma-platform\.tmp\round-2\r5\probes\CollProbe\bin\Debug\net10.0\CollProbe.deps.json --additionalprobingpath C:\Users\ahmad\.nuget\packages --additionalprobingpath "C:\Program Files (x86)\Microsoft Visual Studio\Shared\NuGetPackages" --runtimeconfig C:\Users\ahmad\workspace\tellma\tellma-platform\.tmp\round-2\r5\probes\CollProbe\bin\Debug\net10.0\CollProbe.runtimeconfig.json C:\Users\ahmad\.nuget\packages\dotnet-ef\10.0.9\tools\net8.0\any\tools\net8.0\any\ef.dll database update --connection "Server=(localdb)\MSSQLLocalDB;Database=CollProbeMissing_r5;Integrated Security=true;TrustServerCertificate=true" --assembly C:\Users\ahmad\workspace\tellma\tellma-platform\.tmp\round-2\r5\probes\CollProbe\bin\Debug\net10.0\CollProbe.dll --project C:\Users\ahmad\workspace\tellma\tellma-platform\.tmp\round-2\r5\probes\CollProbe\CollProbe.csproj --startup-assembly C:\Users\ahmad\workspace\tellma\tellma-platform\.tmp\round-2\r5\probes\CollProbe\bin\Debug\net10.0\CollProbe.dll --startup-project C:\Users\ahmad\workspace\tellma\tellma-platform\.tmp\round-2\r5\probes\CollProbe\CollProbe.csproj --project-dir C:\Users\ahmad\workspace\tellma\tellma-platform\.tmp\round-2\r5\probes\CollProbe\ --root-namespace CollProbe --language C# --framework net10.0 --design-assembly C:\Users\ahmad\.nuget\packages\microsoft.entityframeworkcore.design\10.0.9\lib\net10.0\Microsoft.EntityFrameworkCore.Design.dll --nullable --working-dir C:\Users\ahmad\workspace\tellma\tellma-platform --verbose
+Using assembly 'CollProbe'.
+Using startup assembly 'CollProbe'.
+Using application base 'C:\Users\ahmad\workspace\tellma\tellma-platform\.tmp\round-2\r5\probes\CollProbe\bin\Debug\net10.0'.
+Using working directory 'C:\Users\ahmad\workspace\tellma\tellma-platform\.tmp\round-2\r5\probes\CollProbe'.
+Using root namespace 'CollProbe'.
+Using project directory 'C:\Users\ahmad\workspace\tellma\tellma-platform\.tmp\round-2\r5\probes\CollProbe\'.
+Remaining arguments: .
+Finding DbContext classes...
+Using environment 'Development'.
+Finding IDesignTimeDbContextFactory implementations...
+Found IDesignTimeDbContextFactory implementation 'ProbeDesignTimeFactory'.
+Found DbContext 'ProbeContext'.
+Finding DbContext classes in the project...
+Using DbContext factory 'ProbeDesignTimeFactory'.
+Using context 'ProbeContext'.
+Finding design-time services referenced by assembly 'CollProbe'...
+Finding design-time services referenced by assembly 'CollProbe'...
+No referenced design-time services were found.
+Finding design-time services for provider 'Microsoft.EntityFrameworkCore.SqlServer'...
+Using design-time services from provider 'Microsoft.EntityFrameworkCore.SqlServer'.
+Finding IDesignTimeServices implementations in assembly 'CollProbe'...
+No design-time services were found.
+Creating DbConnection.
+Created DbConnection. (76ms).
+Migrating using database 'CollProbeMissing_r5' on server '(localdb)\MSSQLLocalDB'.
+Opening connection to database 'CollProbeMissing_r5' on server '(localdb)\MSSQLLocalDB'.
+An error occurred using the connection to database 'CollProbeMissing_r5' on server '(localdb)\MSSQLLocalDB'.
+Creating DbConnection.
+Created DbConnection. (1ms).
+Opening connection to database 'master' on server '(localdb)\MSSQLLocalDB'.
+Opened connection to database 'master' on server '(localdb)\MSSQLLocalDB'.
+Creating DbCommand for 'ExecuteNonQuery'.
+Created DbCommand for 'ExecuteNonQuery' (12ms).
+Initialized DbCommand for 'ExecuteNonQuery' (29ms).
+Executing DbCommand [Parameters=[], CommandType='Text', CommandTimeout='60']
+CREATE DATABASE [CollProbeMissing_r5]
+COLLATE Latin1_General_100_CI_AS;
+Executed DbCommand (532ms) [Parameters=[], CommandType='Text', CommandTimeout='60']
+CREATE DATABASE [CollProbeMissing_r5]
+COLLATE Latin1_General_100_CI_AS;
+Creating DbCommand for 'ExecuteNonQuery'.
+Created DbCommand for 'ExecuteNonQuery' (0ms).
+Initialized DbCommand for 'ExecuteNonQuery' (0ms).
+Executing DbCommand [Parameters=[], CommandType='Text', CommandTimeout='60']
+IF SERVERPROPERTY('EngineEdition') <> 5
+BEGIN
+    ALTER DATABASE [CollProbeMissing_r5] SET READ_COMMITTED_SNAPSHOT ON;
+END;
+Executed DbCommand (136ms) [Parameters=[], CommandType='Text', CommandTimeout='60']
+IF SERVERPROPERTY('EngineEdition') <> 5
+BEGIN
+    ALTER DATABASE [CollProbeMissing_r5] SET READ_COMMITTED_SNAPSHOT ON;
+END;
+Closing connection to database 'master' on server '(localdb)\MSSQLLocalDB'.
+Closed connection to database 'master' on server '(localdb)\MSSQLLocalDB' (24ms).
+Disposing connection to database 'master' on server '(localdb)\MSSQLLocalDB'.
+Disposed connection to database '' on server '' (3ms).
+Opening connection to database 'CollProbeMissing_r5' on server '(localdb)\MSSQLLocalDB'.
+Opened connection to database 'CollProbeMissing_r5' on server '(localdb)\MSSQLLocalDB'.
+Creating DbCommand for 'ExecuteNonQuery'.
+Created DbCommand for 'ExecuteNonQuery' (0ms).
+Initialized DbCommand for 'ExecuteNonQuery' (0ms).
+Executing DbCommand [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT 1
+Executed DbCommand (28ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT 1
+Closing connection to database 'CollProbeMissing_r5' on server '(localdb)\MSSQLLocalDB'.
+Closed connection to database 'CollProbeMissing_r5' on server '(localdb)\MSSQLLocalDB' (0ms).
+Opening connection to database 'CollProbeMissing_r5' on server '(localdb)\MSSQLLocalDB'.
+Opened connection to database 'CollProbeMissing_r5' on server '(localdb)\MSSQLLocalDB'.
+Acquiring an exclusive lock for migration application. See https://aka.ms/efcore-docs-migrations-lock for more information if this takes too long.
+Creating DbCommand for 'ExecuteScalar'.
+Created DbCommand for 'ExecuteScalar' (0ms).
+Initialized DbCommand for 'ExecuteScalar' (0ms).
+Executing DbCommand [Parameters=[], CommandType='Text', CommandTimeout='30']
+DECLARE @result int;
+EXEC @result = sp_getapplock @Resource = '__EFMigrationsLock', @LockOwner = 'Session', @LockMode = 'Exclusive';
+SELECT @result
+Executed DbCommand (60ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+DECLARE @result int;
+EXEC @result = sp_getapplock @Resource = '__EFMigrationsLock', @LockOwner = 'Session', @LockMode = 'Exclusive';
+SELECT @result
+Beginning transaction with isolation level 'Unspecified'.
+Began transaction with isolation level 'ReadCommitted'.
+Creating DbCommand for 'ExecuteNonQuery'.
+Created DbCommand for 'ExecuteNonQuery' (0ms).
+Initialized DbCommand for 'ExecuteNonQuery' (3ms).
+Executing DbCommand [Parameters=[], CommandType='Text', CommandTimeout='30']
+IF OBJECT_ID(N'[__EFMigrationsHistory]') IS NULL
+BEGIN
+    CREATE TABLE [__EFMigrationsHistory] (
+        [MigrationId] nvarchar(150) NOT NULL,
+        [ProductVersion] nvarchar(32) NOT NULL,
+        CONSTRAINT [PK___EFMigrationsHistory] PRIMARY KEY ([MigrationId])
+    );
+END;
+Executed DbCommand (15ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+IF OBJECT_ID(N'[__EFMigrationsHistory]') IS NULL
+BEGIN
+    CREATE TABLE [__EFMigrationsHistory] (
+        [MigrationId] nvarchar(150) NOT NULL,
+        [ProductVersion] nvarchar(32) NOT NULL,
+        CONSTRAINT [PK___EFMigrationsHistory] PRIMARY KEY ([MigrationId])
+    );
+END;
+Committing transaction.
+Committed transaction.
+Disposing transaction.
+Beginning transaction with isolation level 'Unspecified'.
+Began transaction with isolation level 'ReadCommitted'.
+Creating DbCommand for 'ExecuteNonQuery'.
+Created DbCommand for 'ExecuteNonQuery' (0ms).
+Initialized DbCommand for 'ExecuteNonQuery' (0ms).
+Executing DbCommand [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT 1
+Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT 1
+Creating DbCommand for 'ExecuteScalar'.
+Created DbCommand for 'ExecuteScalar' (0ms).
+Initialized DbCommand for 'ExecuteScalar' (0ms).
+Executing DbCommand [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT OBJECT_ID(N'[__EFMigrationsHistory]');
+Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT OBJECT_ID(N'[__EFMigrationsHistory]');
+Creating DbCommand for 'ExecuteReader'.
+Created DbCommand for 'ExecuteReader' (0ms).
+Initialized DbCommand for 'ExecuteReader' (0ms).
+Executing DbCommand [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT [MigrationId], [ProductVersion]
+FROM [__EFMigrationsHistory]
+ORDER BY [MigrationId];
+Executed DbCommand (4ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT [MigrationId], [ProductVersion]
+FROM [__EFMigrationsHistory]
+ORDER BY [MigrationId];
+Closing data reader to 'CollProbeMissing_r5' on server '(localdb)\MSSQLLocalDB'.
+A data reader for 'CollProbeMissing_r5' on server '(localdb)\MSSQLLocalDB' is being disposed after spending 6ms reading results.
+Applying migration '20261028162334_Initial'.
+Creating DbCommand for 'ExecuteNonQuery'.
+Created DbCommand for 'ExecuteNonQuery' (0ms).
+Initialized DbCommand for 'ExecuteNonQuery' (0ms).
+Executing DbCommand [Parameters=[], CommandType='Text', CommandTimeout='30']
+IF SCHEMA_ID(N'idsvr') IS NULL EXEC(N'CREATE SCHEMA [idsvr];');
+Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+IF SCHEMA_ID(N'idsvr') IS NULL EXEC(N'CREATE SCHEMA [idsvr];');
+Creating DbCommand for 'ExecuteNonQuery'.
+Created DbCommand for 'ExecuteNonQuery' (0ms).
+Initialized DbCommand for 'ExecuteNonQuery' (0ms).
+Executing DbCommand [Parameters=[], CommandType='Text', CommandTimeout='30']
+CREATE TABLE [idsvr].[Items] (
+    [Id] int NOT NULL IDENTITY,
+    [Name] nvarchar(max) NOT NULL,
+    CONSTRAINT [PK_Items] PRIMARY KEY ([Id])
+);
+Executed DbCommand (5ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+CREATE TABLE [idsvr].[Items] (
+    [Id] int NOT NULL IDENTITY,
+    [Name] nvarchar(max) NOT NULL,
+    CONSTRAINT [PK_Items] PRIMARY KEY ([Id])
+);
+Creating DbCommand for 'ExecuteNonQuery'.
+Created DbCommand for 'ExecuteNonQuery' (0ms).
+Initialized DbCommand for 'ExecuteNonQuery' (0ms).
+Executing DbCommand [Parameters=[], CommandType='Text', CommandTimeout='30']
+INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+VALUES (N'20261028162334_Initial', N'10.0.9');
+Executed DbCommand (3ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+VALUES (N'20261028162334_Initial', N'10.0.9');
+Committing transaction.
+Committed transaction.
+Disposing transaction.
+Applying migration '20261028162401_PlatformCollation'.
+Beginning transaction with isolation level 'Unspecified'.
+Began transaction with isolation level 'ReadCommitted'.
+Creating DbCommand for 'ExecuteNonQuery'.
+Created DbCommand for 'ExecuteNonQuery' (0ms).
+Initialized DbCommand for 'ExecuteNonQuery' (0ms).
+Executing DbCommand [Parameters=[], CommandType='Text', CommandTimeout='30']
+INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+VALUES (N'20261028162401_PlatformCollation', N'10.0.9');
+Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+VALUES (N'20261028162401_PlatformCollation', N'10.0.9');
+Committing transaction.
+Committed transaction.
+Disposing transaction.
+Creating DbCommand for 'ExecuteScalar'.
+Created DbCommand for 'ExecuteScalar' (0ms).
+Initialized DbCommand for 'ExecuteScalar' (0ms).
+Executing DbCommand [Parameters=[], CommandType='Text', CommandTimeout='30']
+DECLARE @result int;
+EXEC @result = sp_releaseapplock @Resource = '__EFMigrationsLock', @LockOwner = 'Session';
+SELECT @result
+Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+DECLARE @result int;
+EXEC @result = sp_releaseapplock @Resource = '__EFMigrationsLock', @LockOwner = 'Session';
+SELECT @result
+Closing connection to database 'CollProbeMissing_r5' on server '(localdb)\MSSQLLocalDB'.
+Closed connection to database 'CollProbeMissing_r5' on server '(localdb)\MSSQLLocalDB' (1ms).
+'ProbeContext' disposed.
+Disposing connection to database 'CollProbeMissing_r5' on server '(localdb)\MSSQLLocalDB'.
+Disposed connection to database '' on server '' (0ms).
+Done.

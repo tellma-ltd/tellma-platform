@@ -1,0 +1,24 @@
+﻿using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace CollProbe.Migrations
+{
+    /// <inheritdoc />
+    public partial class PlatformCollation : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.AlterDatabase(
+                collation: "Latin1_General_100_CI_AS");
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.AlterDatabase(
+                oldCollation: "Latin1_General_100_CI_AS");
+        }
+    }
+}

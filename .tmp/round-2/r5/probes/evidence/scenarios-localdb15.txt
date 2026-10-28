@@ -1,0 +1,33 @@
+# CollProbe scenarios, PROBE_STAGE=1
+=== (localdb15) a. Migrate() on a missing database CollProbeA_0acef9
+  CanConnect: False
+  GetAppliedMigrations: []
+  GetPendingMigrations: [20261028162334_Initial, 20261028162401_PlatformCollation]
+  HasPendingModelChanges: False
+  -> succeeded
+    log: info: 10/28/2026 09:26:25.762 RelationalEventId.CommandExecuted[20101] (Microsoft.EntityFrameworkCore.Database.Command) | CREATE DATABASE [CollProbeA_0acef9] | COLLATE Latin1_General_100_CI_AS;
+    log: info: 10/28/2026 09:26:26.332 RelationalEventId.CommandExecuted[20101] (Microsoft.EntityFrameworkCore.Database.Command) | IF SERVERPROPERTY('EngineEdition') <> 5 | BEGIN | ALTER DATABASE [CollProbeA_0acef9] SET READ_COMMITTED_SNAPSHOT ON; | END;
+    log: info: 10/28/2026 09:26:27.660 RelationalEventId.MigrationApplying[20402] (Microsoft.EntityFrameworkCore.Migrations) | Applying migration '20261028162334_Initial'.
+    log: info: 10/28/2026 09:26:27.729 RelationalEventId.MigrationApplying[20402] (Microsoft.EntityFrameworkCore.Migrations) | Applying migration '20261028162401_PlatformCollation'.
+  GetPendingMigrations after: []
+  [CollProbeA_0acef9] collation=Latin1_General_100_CI_AS rcsi=True history=dbo.__EFMigrationsHistory Items.Name=Latin1_General_100_CI_AS
+  [CollProbeA_0acef9] dbo.__EFMigrationsHistory rows: 20261028162334_Initial, 20261028162401_PlatformCollation
+=== (localdb15) a'. Migrate() on an existing empty database created COLLATE Latin1_General_100_CI_AS
+  -> succeeded
+    log: info: 10/28/2026 09:26:29.256 RelationalEventId.MigrationApplying[20402] (Microsoft.EntityFrameworkCore.Migrations) | Applying migration '20261028162334_Initial'.
+    log: info: 10/28/2026 09:26:29.275 RelationalEventId.MigrationApplying[20402] (Microsoft.EntityFrameworkCore.Migrations) | Applying migration '20261028162401_PlatformCollation'.
+  [CollProbeA2_0acef9] collation=Latin1_General_100_CI_AS rcsi=False history=dbo.__EFMigrationsHistory Items.Name=Latin1_General_100_CI_AS
+  [CollProbeA2_0acef9] dbo.__EFMigrationsHistory rows: 20261028162334_Initial, 20261028162401_PlatformCollation
+=== (localdb15) b1. Migrate() on an existing empty database in the server default
+  -> succeeded
+    log: info: 10/28/2026 09:26:30.624 RelationalEventId.MigrationApplying[20402] (Microsoft.EntityFrameworkCore.Migrations) | Applying migration '20261028162334_Initial'.
+    log: info: 10/28/2026 09:26:30.711 RelationalEventId.MigrationApplying[20402] (Microsoft.EntityFrameworkCore.Migrations) | Applying migration '20261028162401_PlatformCollation'.
+  [CollProbeB1_0acef9] collation=SQL_Latin1_General_CP1_CI_AS rcsi=False history=dbo.__EFMigrationsHistory Items.Name=SQL_Latin1_General_CP1_CI_AS
+  [CollProbeB1_0acef9] dbo.__EFMigrationsHistory rows: 20261028162334_Initial, 20261028162401_PlatformCollation
+=== (localdb15) b2. server-default database with the first migration applied, then Migrate()
+  -> succeeded
+  after Migrate("20261028162334_Initial"): pending [20261028162401_PlatformCollation]
+  -> succeeded
+    log: info: 10/28/2026 09:26:33.089 RelationalEventId.MigrationApplying[20402] (Microsoft.EntityFrameworkCore.Migrations) | Applying migration '20261028162401_PlatformCollation'.
+  [CollProbeB2_0acef9] collation=SQL_Latin1_General_CP1_CI_AS rcsi=False history=dbo.__EFMigrationsHistory Items.Name=SQL_Latin1_General_CP1_CI_AS
+  [CollProbeB2_0acef9] dbo.__EFMigrationsHistory rows: 20261028162334_Initial, 20261028162401_PlatformCollation

@@ -2022,7 +2022,7 @@ The Playwright flows on the Acme host:
 | # | Decision | Why | § |
 |---|---|---|---|
 | 1 | **Routes are derived from declarations** | a route file per distribution drifts; runtime registration by features has order bugs | §9.2 |
-| 2 | **Deployment facts are hashed JSON chunks the client fetches, emitted through the Migrator** | fast to parse, outside the JS budgets, never waiting on a route; the Migrator composes without ASP.NET, so the esproj references it without a cycle | §3 |
+| 2 | **Deployment facts are hashed JSON chunks the client fetches, emitted through the Migrator** | fast to parse, outside the JS budgets, never waiting on a route; the Migrator never references the Web project, so the esproj references it without a cycle | §3 |
 | 3 | **One config check: a Node step in the build, a startup check in development** | declarations are plain data; a headless browser in `dotnet publish` and an AST scan were the alternatives | §3.6 |
 | 4 | **Kind-qualified keys for `hide` and `overrides`; `hide` covers client-only kinds** | names, paths, keys and ids can collide, and patching sections and entries keeps the ids pins store; hiding an entity, widget type or coded report on the client alone is not access control, and the API, MCP and the assistant would still offer it | §2.3 |
 | 5 | **A generated `tm-boot.js` that rewrites a warm `/`, with one boot page and a sign-in mark that guards the loop and records who chose the target** | it needs the offered languages before Angular, the CSP forbids inline script, and the first route is the real page | §4.2 |

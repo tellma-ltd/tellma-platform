@@ -1,0 +1,7 @@
+# CollProbe ops, PROBE_STAGE=1
+  20261028162334_Initial: Up [EnsureSchemaOperation, CreateTableOperation] Down [DropTableOperation]
+    target model collation: <null>
+  20261028162401_PlatformCollation: Up [] Down []
+    target model collation: Latin1_General_100_CI_AS
+  snapshot collation: Latin1_General_100_CI_AS
+  HasPendingModelChanges(): False

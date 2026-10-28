@@ -402,7 +402,8 @@ public sealed record UserPreferencesResult(IReadOnlyDictionary<string, string> P
 public sealed class UserInvitationOutcome                    // standalone; the invite write-back row
 {
     public int UserId { get; set; }                          // key
-    public string? Subject { get; set; }                     // varchar(255) COLLATE Latin1_General_100_BIN2, as core.Users.Subject
+    [Collation("Latin1_General_100_BIN2")]
+    public string? Subject { get; set; }                     // varchar(255), as core.Users.Subject
     public string? InviteStatus { get; set; }                // varchar(9)
     public string? LastInviteError { get; set; }             // nvarchar(1024)
 }
@@ -1127,10 +1128,10 @@ reference distribution's initial tenant migration and the rules every later one 
      (spec 0013 §8.2); spec 0020's built-in schedules and states; `JobWorkerState`.
 
   No `IDENTITY`, no `rowversion`, no trigger, no `MERGE`.
-- **Not in a migration.** RCSI (`provision` sets it), the `tellma_app` role and grants (recomputed
-  by the migrator after every run), `core.VersionTags` seeding (the migrator's registry seed), the
-  first administrator, the report seeds, the sample centers and Acme's development data
-  (provisioning steps).
+- **Not in a migration.** The database collation and RCSI (`provision` sets both, spec 0011 §6.7),
+  the `tellma_app` role and grants (recomputed by the migrator after every run), `core.VersionTags`
+  seeding (the migrator's registry seed), the first administrator, the report seeds, the sample
+  centers and Acme's development data (provisioning steps).
 - **Later migrations** follow spec 0012's N−1 rule: a new column is nullable or defaulted; a column
   is dropped only when no application version that can still be running writes it; a rename is
   add, copy, then drop across three releases (spec 0012 §4.3); every UDTT change is a new physical

@@ -23,13 +23,25 @@ record and Review flags, so it is implemented and merged on its own:
 - **Part F — Queryex (spec 0008).** It is needed by the data access layer (spec 0012), the
   permission evaluator (spec 0014), the report engine (spec 0033) and the client's
   `queryex/discover` (spec 0029 §9).
+- **Part G — table types (spec 0001).** It is needed by the catalog's membership directory (spec
+  0011 §3.8) and the users stack's invite write-back (spec 0018 §3.1), through spec 0012's
+  `[Collation]` annotation.
 
-Specs 0001, 0007 and 0009 need no amendment.
+Specs 0007 and 0009 need no amendment.
 
 **Other specs that carry parts of this design**
 
-- spec 0011 §5.5, §5.7, §5.9, §6.7 — the distribution side of Part A: `/bff/login` forwards
-  `ui_locales`, the in-proc seed entry, `IdentityInfo.AccountUrl`, the database collation.
+- spec 0011 — the distribution side of Part A:
+  - §1.2 — the Migrator project references `Tellma.Identity.Migrations`, and the Web project
+    does not;
+  - §5.5 — `/bff/login` forwards `ui_locales`;
+  - §5.7 — the in-proc seed entry and its store options;
+  - §5.9 — `IdentityInfo.AccountUrl`;
+  - §6.1 — `migrate` applies the in-proc store's migrations;
+  - §6.4 — `SELECT` on the catalog's `dbo.__EFMigrationsHistory`, which the in-proc store check
+    reads;
+  - §6.7 — the database collation;
+  - §10 — the collation pin.
 - spec 0016 §11.9 — the MCP surface's use of §A.2–§A.4 and §A.6.
 - spec 0018 §2, §3.3 — the identity client on the `v1` routes; `ExistingOnly` on sandbox tenants.
 - spec 0023 §3, §4 — `tm-icon`, `kbd` and `tm-chip`:
@@ -49,6 +61,8 @@ Specs 0001, 0007 and 0009 need no amendment.
 - spec 0013 §8.2 — the `uq` month table that §F.11 reads.
 - spec 0029 §9, spec 0033, spec 0035 §6.3 — the consumers of Part F: `queryex/discover` with its
   `measures` clause, the report engine and the dashboard read-through.
+- spec 0012 §1.3, §2.2, §4.4, spec 0011 §3.8, spec 0018 §3.1 — the users of Part G: the
+  `[Collation]` annotation and its convention, and the two `Subject` columns that declare it.
 
 ## Goals / Non-goals
 
@@ -59,7 +73,7 @@ Specs 0001, 0007 and 0009 need no amendment.
   resources, client ID metadata documents, interim native clients, control-plane audiences, the
   `tellma_kind` claim, `existingOnly` invites, versioned management routes, an account entry URL
   that honours `return_url`, the sign-in language from the authorization request, and the
-  identity database on the platform collation.
+  identity database on the platform collation, migrated outside the web process once deployed.
 - **Part B.** Breakpoints, the System theme, a translations seam with live direction, a
   closed-list multi-select with option groups, the prefix lint's scope, touch sizes on phones,
   glyphs through `tm-icon`, and categorical and sequential colour groups for avatars and charts.
@@ -82,6 +96,8 @@ Specs 0001, 0007 and 0009 need no amendment.
   engine need: the seven amendments moved from spec 0012 (§F.1–§F.7), omitted parameters, constant
   statements, parameter binding, `'uq'` through a month table, `Exists`, `ComparedWith`, and
   measure partials with their C# evaluation (§F.8–§F.15).
+- **Part G.** A collation on a string column of a class-derived standalone table type, so a
+  table-valued parameter can meet a binary-collated column (§G.1).
 
 **Non-goals (explicitly out of scope)**
 
@@ -97,7 +113,9 @@ Specs 0001, 0007 and 0009 need no amendment.
   - the MCP tools, request filters and rate limits (spec 0016 §11);
   - metadata documents for clients with a shared secret: only `none` and `private_key_jwt` are
     accepted;
-  - the Manage pages' content, and every deferral of spec 0003 §17.
+  - the Manage pages' content, and every deferral of spec 0003 §17;
+  - tools that create and migrate the shared identity database, and on-prem deployment tooling: a
+    later release, reusing the migrator's approach (§A.11).
 - **Parts B–E:**
   - splitting the grid's readonly and editable code (Part C flag 6);
   - grid footer rows and a row-selectable predicate (Part C decision 9);
@@ -132,7 +150,7 @@ Then it states the change, in this order:
 
 - **The delta** — a sketch. A changed member's comment shows its old shape (`// old: …`).
 - **The rules** — behaviour, then accessibility and RTL where relevant.
-- **Closing labels** — **Compatibility**, **Tests** and, in the library parts, **Budget**.
+- **Closing labels** — **Compatibility**, **Tests** and, in Parts B–E, **Budget**.
 
 Contract blocks are TypeScript and C# sketches: names and shapes are normative; imports,
 documentation comments, bodies and cancellation tokens are omitted. A member prefixed `ɵ` is
@@ -172,8 +190,8 @@ The order of the sections is the implementation order:
    first distribution caller.
 7. **§A.9, §A.10** — the account entry URL and the sign-in language ship before the client's
    session menu (spec 0027 §10.1) and sign-in (spec 0024 §8.3).
-8. **§A.11** — the database collation ships before any identity database is deployed, since a
-   deployed database keeps the collation it was created with.
+8. **§A.11** — the identity database's collation and migrations ship before any identity database
+   is deployed: a deployed database keeps the collation it was created with.
 
 **Terms used in Part A**
 
@@ -184,15 +202,18 @@ The order of the sections is the implementation order:
 - **Distribution-origin list** — the public origin of every distribution, kept by onboarding. The
   interim native clients (§A.4) and the control-plane client (§A.5) hold it as `Resources`, and
   document clients are checked against it (§A.3).
+- **Store check** — the seeder's first step at every start: it checks the store's collation, then
+  its migrations (§A.11).
 
 **Placement**
 
 | Project | Location | Change |
 |---|---|---|
 | `Tellma.Identity` (the engine) | `src/apps/Tellma.Identity/` | the code of §A.1–§A.3 and §A.5–§A.11 |
-| `Tellma.Identity.Migrations` | `src/apps/Tellma.Identity.Migrations/` | none: no table changes; metadata documents are cached in memory; the model sets no collation (§A.11) |
-| `Tellma.Identity.Web` | `src/apps/Tellma.Identity.Web/` | configuration only (§A.3, §A.4, §A.5) |
-| Tests | `test/apps/Tellma.Identity.Tests`, `.IntegrationTests`, `.E2E` | Part A — Testing |
+| `Tellma.Identity.Migrations` | `src/apps/Tellma.Identity.Migrations/` | §A.11: the migrations regenerated as one `Initial`, scaffolded from the model with the platform collation, and `TellmaIdentityStore`. No table changes: metadata documents are cached in memory |
+| `Tellma.Identity.Web` | `src/apps/Tellma.Identity.Web/` | configuration only (§A.3, §A.4, §A.5, §A.11) |
+| `Tellma.Core.Abstractions` | `src/core/Tellma.Core.Abstractions/` | `DatabaseCollations`, as spec 0011 §6.7 declares it (§A.11) |
+| Tests | `test/apps/Tellma.Identity.Tests`, `.IntegrationTests`, `.E2E` | Part A — Testing; the unit suite gains a reference to `Tellma.Identity.Migrations` |
 
 No new package is referenced. The metadata-document fetch uses the engine's existing
 `IHttpClientFactory` registration, with a named client `Tellma.Identity.ClientMetadata`.
@@ -547,40 +568,92 @@ the page itself is honoured.
 The authorization endpoint answers `302 /Identity/Account/Login?returnUrl=…&ui_locales=ar`, and the
 page renders right-to-left in Arabic.
 
-### §A.11 The identity database's collation
+### §A.11 The identity database's collation and migrations
 
-**Target:** 0003 §2.2 (the Store row), §12, §16. **Requested by:** spec 0011 §6.7. **Why:** every
-platform database shares one collation, and the server default defines no order on Amharic text,
-such as users' names in the shared directory.
+**Target:** 0003 §2.1 (the `Tellma.Identity.Migrations` row), §2.2 (the Store row), §12, §16.
+**Requested by:** spec 0011 §5.7, §6.1, §6.7. **Why:** every platform database shares one
+collation, and the server default defines no order on Amharic text, such as users' names in the
+shared directory. A deployed web process never migrates.
 
-The identity database uses the platform collation as spec 0011 §6.7 states it: its `CREATE
-DATABASE` statement, or its two Bicep properties. Whichever path creates the database sets the
-collation. The engine's model stays as it is.
+The identity database uses the platform collation of spec 0011 §6.7. The engine's model carries
+it, and no migration ever changes it. The engine checks its store at every start. Outside
+development and tests, the migrator or an operator migrates it.
 
-- **Standalone, created by infrastructure.** Infrastructure that creates the database uses spec
-  0011 §6.7's statement. Bicep sets the two collation properties. This is the path for a database
-  that needs a service tier or an elastic pool.
-- **Standalone, created by the engine.** With `Seed.ApplyMigrations` on, the seeder does this
-  before `MigrateAsync`:
-  1. It connects to the server's `master`, with the engine's connection string and `Initial
-     Catalog = master`.
-  2. It checks that its database exists. It creates a missing one with spec 0011 §6.7's
-     statement, without edition options, so EF's implicit creation never runs.
-  3. It sets `READ_COMMITTED_SNAPSHOT ON` on a database it created. This is a no-op on Azure SQL
-     Database.
+```csharp
+// Tellma.Identity.TellmaIdentityConstants — new member
+public const string LatestMigration;   // the id of the last migration in Tellma.Identity.Migrations
+
+// Tellma.Identity.Migrations — new
+public static class TellmaIdentityStore
+{
+    public static Task MigrateAsync(string connectionString);   // applies the engine's migrations (spec 0011 §6.1)
+}
+
+// Tellma.Identity.Options.TellmaIdentitySeedOptions — new member
+public string? MigrateCommand { get; set; }                    // the remedy a failed store check names
+```
+
+- **The model.** `TellmaIdentityDbContext` calls
+  `modelBuilder.UseCollation(DatabaseCollations.Platform)` (spec 0011 §6.7).
+- **The migrations.** `Tellma.Identity.Migrations` is re-baselined: its migrations and snapshot
+  are deleted, and one `Initial` migration is scaffolded from that model.
+  - An initial migration carries no collation operation, so no identity migration alters the
+    database's collation.
+  - `Initial` keeps the hand-written `IX_OpenIddictTokens_CreationDate` index.
+  - Every later migration follows the N−1 rule of spec 0012 §4.3. It lands before the engine
+    deploys, so the previous engine release runs on it during a rollout.
+- **The store check.** At every start, before it seeds, the seeder checks its store:
+  1. It reads an existing database's collations as spec 0011 §6.7 states. A value other than the
+     platform collation fails seeding, naming the database, the value expected and the value
+     found.
+  2. With `Seed.ApplyMigrations` on, it runs EF's `MigrateAsync`, then step 3's check.
+  3. It reads `dbo.__EFMigrationsHistory`. A history without the row
+     `TellmaIdentityConstants.LatestMigration` fails seeding, naming the schema, that migration
+     and `Seed.MigrateCommand` when set. A missing database or history table fails the same way.
+     Later rows do not fail the check, so the previous engine release runs on a newer store (the
+     N−1 rule).
+
+  A failed check stops the host, as any failed seeding does. An engine host needs
+  `Tellma.Identity.Migrations` only to turn `Seed.ApplyMigrations` on: step 3 reads the constant,
+  never the migrations.
+- **Development and tests.** Only development and test hosts turn `Seed.ApplyMigrations` on
+  (Decision 13). On such a host, EF's `MigrateAsync` creates a missing database: the model's
+  collation makes EF write `COLLATE Latin1_General_100_CI_AS`, and EF turns read-committed
+  snapshot on.
+- **Standalone, deployed.** An operator sets up the shared identity database by hand, once for
+  the whole fleet:
+  1. Run spec 0011 §6.7's statement in `master`. On Azure SQL Database, use its Azure form, with
+     the service tier or pool options the database needs.
+  2. On SQL Server, run `ALTER DATABASE … SET READ_COMMITTED_SNAPSHOT ON`, as the migrator does
+     in a fresh catalog (spec 0011 §6.7).
+  3. Apply the engine's migrations with `dotnet ef database update` against
+     `Tellma.Identity.Migrations`, or with the script that `dotnet ef migrations script
+     --idempotent` writes.
+  4. Create a database user for the engine's principal, with `SELECT`, `INSERT`, `UPDATE` and
+     `DELETE` on schema `idsvr` and `SELECT` on `dbo.__EFMigrationsHistory`.
+
+  Each engine release that adds a migration repeats step 3 before the engine deploys. Otherwise
+  the store check stops the engine, and its error names step 3's command: `Tellma.Identity.Web`
+  sets `Seed.MigrateCommand` to it.
 - **In-proc** (`TellmaIdentityOptions.Mode = InProc`, set by spec 0011 §5.7). The store is the
-  catalog database, which the distribution's migrator creates (spec 0011 §6.7). The engine never
-  creates it: a missing database fails seeding, so the host does not start.
-- **An existing database.** Whenever the seeder migrates, it first reads the database's
-  collations as spec 0011 §6.7 states. Any other value fails seeding, naming the database, the
-  value expected and the value found.
-- **No model collation.** `TellmaIdentityDbContext` sets no database collation, so
-  `Tellma.Identity.Migrations` gains no migration (spec 0011 Decision 32).
+  catalog database. The distribution's migrator creates it and applies the engine's migrations
+  through `TellmaIdentityStore.MigrateAsync` (spec 0011 §6.1). The distribution's host runs the
+  engine with `Seed.ApplyMigrations` off, so the engine never creates or migrates the catalog.
+- **The migrator's entry.** `TellmaIdentityStore.MigrateAsync` builds the context as the
+  design-time factory does: `IdentityOptions` from `TellmaIdentityModelDefaults`, and the engine's
+  migrations assembly. It then applies the migrations to the database the connection string
+  names.
 
-**Compatibility:** a host with `Seed.ApplyMigrations` off sees no change. An identity database
-already created in the server default fails seeding once the seeder migrates it. A developer drops
-it. A standalone engine then re-creates and re-seeds it on the next start (0003 §10.4). For an
-in-proc store, the migrator's `migrate` re-creates it (spec 0011 §6.6).
+**Example —** the operator's step 3, from a checkout after `dotnet tool restore`:
+
+```
+dotnet ef database update --project src/apps/Tellma.Identity.Migrations --startup-project src/apps/Tellma.Identity.Migrations --connection "<connection string>"
+```
+
+**Compatibility:** the only identity database that exists is a developer's standalone one. Its
+migration history does not match the re-baselined `Initial`, and it uses the server's default
+collation, so the store check refuses it. The developer drops it, and the next start with
+`Seed.ApplyMigrations` on re-creates and re-seeds it (0003 §10.4).
 
 ### Part A — Testing
 
@@ -591,7 +664,8 @@ in-proc store, the migrator's `migrate` re-creates it (spec 0011 §6.6).
 | `test/apps/Tellma.Identity.E2E` | `Category=E2E` | its existing Linux job, every non-draft pull request |
 
 No `Live=true` suite exists, so the nightly tier runs nothing for Part A. The integration and E2E
-fixtures create their databases with spec 0011 §6.7's SQL Server statement.
+fixtures let EF create their databases through the engine's model, as spec 0011 §6.7 allows for
+test databases.
 
 **The unit suite pins:**
 
@@ -610,7 +684,9 @@ fixtures create their databases with spec 0011 §6.7's SQL Server statement.
 - **The account entry (§A.9).** The section mapping, unknown → `profile`. The back-link resolver:
   same origin, another port, userinfo, `javascript:`, a relative URL, an unknown client, a
   third-party client.
-- **The creation statement (§A.11)** on SQL Server and on Azure SQL Database.
+- **The store's migrations (§A.11).** Spec 0011 §10's collation pin, run over
+  `Tellma.Identity.Migrations`. `TellmaIdentityConstants.LatestMigration` equals the id of the
+  last migration in that assembly.
 
 **The integration suite pins:**
 
@@ -629,12 +705,20 @@ fixtures create their databases with spec 0011 §6.7's SQL Server statement.
   an off-origin `return_url`.
 - **Sign-in language.** The sign-in redirect carries `ui_locales` from a query request and from a
   pushed request.
-- **Database collation (§A.11).**
-  - A standalone engine with `Seed.ApplyMigrations` creates a missing database,
+- **The store (§A.11).**
+  - A standalone engine with `Seed.ApplyMigrations` on creates a missing database;
     `DATABASEPROPERTYEX(DB_NAME(), 'Collation')` reads `Latin1_General_100_CI_AS`, and
     `is_read_committed_snapshot_on` reads 1.
-  - A database created in another collation fails seeding, and the error names both collations.
-  - An in-proc engine facing a missing database fails seeding and creates nothing.
+  - A database created in another collation fails the store check with `Seed.ApplyMigrations` on
+    and off, and the error names both collations.
+  - With `Seed.ApplyMigrations` off, three stores each fail the store check, create nothing and
+    name `Seed.MigrateCommand`: a missing database, an empty one created in the platform
+    collation, and one without the `TellmaIdentityConstants.LatestMigration` row. A store with an
+    extra row after that one passes.
+  - An engine with `Seed.ApplyMigrations` on whose context names no migrations assembly fails the
+    store check.
+  - `TellmaIdentityStore.MigrateAsync` brings an empty database in the platform collation to the
+    engine's last migration, and the store check then passes.
 
 **The E2E suite pins:** `ui_locales=ar` through a pushed authorization request renders the
 sign-in page in Arabic with `dir=rtl`, and the email-code step keeps it. The account entry's back
@@ -642,8 +726,10 @@ link returns the browser to `return_url`.
 
 ### Part A — Definition of done
 
-- **Projects:** `src/apps/Tellma.Identity` grown, its README updated, XML docs on every member,
-  building and testing on Windows and Linux under warnings-as-errors; no new project.
+- **Projects:** `src/apps/Tellma.Identity` grown and `src/apps/Tellma.Identity.Migrations`
+  regenerated. Each has its README updated and XML docs on every member, and builds and tests on
+  Windows and Linux under warnings-as-errors. `DatabaseCollations` is added to
+  `src/core/Tellma.Core.Abstractions`, whose README lists it. No new project.
 - **Behaviour:** §A.1–§A.3 and §A.5–§A.11 implemented and pinned by Part A's suites, the discovery
   changes of §A.3 included. §A.4 is seed configuration in `Tellma.Identity.Web` (the placement
   table) and is not pinned by a suite.
@@ -657,11 +743,12 @@ link returns the browser to `return_url`.
   suite green in its job.
 - **Docs:** the architecture document's identity section updated for metadata-document support,
   per-tenant resources by path pattern, the `Distribution` seed kind, the control-plane grants, the
-  versioned management routes, the account entry URL and the identity database's collation.
-  Public XML docs and error messages reference no `docs/` paths.
+  versioned management routes, the account entry URL, and the identity database's collation and
+  who creates and migrates it. Public XML docs and error messages reference no `docs/` paths.
 - **Not in scope of done:** retiring the interim clients of §A.4 (a later configuration change
   plus an operator deletion); distribution self-registration; the tenant side of every item (specs
-  0011, 0016, 0018, 0024, 0027).
+  0011, 0016, 0018, 0024, 0027); creating and migrating the shared identity database, an
+  operator's step (§A.11).
 
 ### Part A — Decisions record
 
@@ -689,9 +776,16 @@ link returns the browser to `return_url`.
     (§A.9).
 11. **`ui_locales` travels on the sign-in URL** — the existing culture provider applies it; no new
     state or cookie (§A.10).
-12. **Whoever creates the identity database sets its collation, never a migration; the engine
-    creates its own database rather than letting EF do it** — Azure SQL Database cannot change a
-    collation, and EF's implicit creation writes no `COLLATE` for a model without one (§A.11).
+12. **The engine's model carries the platform collation, and its migrations are re-baselined so
+    that none alters a database** — EF then creates a database in the platform collation, and no
+    migration attempts the collation change that Azure SQL Database refuses. No identity database
+    is deployed, so the migration chain can restart (§A.11).
+13. **The engine checks its store at every start and migrates it only in development and tests;
+    the migrator or an operator migrates every other store** — the web process holds no DDL
+    rights, and a missing or behind store fails with the command that fixes it. The check reads a
+    constant naming the last migration, as the catalog's does (spec 0011 §3.4), so a host that
+    never migrates carries no migrations. A store in another collation is refused outright: no
+    deployed database needs a fallback (§A.11).
 
 ### Part A — Review flags
 
@@ -712,9 +806,6 @@ link returns the browser to `return_url`.
    platform-wide claim-naming review.
 8. **A closed `section` list with `profile` as the fallback** (§A.9). Alternative: accept any
    Manage path. Flips if a distribution needs to deep-link a page outside the five.
-9. **Refusing an identity database in another collation** (§A.11). Alternative: a Warning that
-   keeps serving. Flips if a deployed identity database already holds users in the server
-   default, since moving it needs a new database and a copy of its data.
 
 ## Parts B–E: rules shared by the library amendments
 
@@ -3773,4 +3864,131 @@ Windows and Linux; none is nightly.
 8. **Evaluation errors fail the run** (§F.15), as 0008 §9.1 makes division by zero an error.
    Alternative: a null cell with a warning. Flips if users prefer blanks to guarding measures with
    `if`.
+
+## Part G — Table types (spec 0001)
+
+Part G amends spec 0001, the table-types library in `src/core/Tellma.Core.EntityFrameworkCore`.
+It lets a class-derived standalone table type give a string column a collation (§G.1). Every rule
+of spec 0001 that Part G does not name stands. Table-derived types need no change: they already
+take each column's collation from the table (0001 §2).
+
+**Placement**
+
+| Project | Location | Change |
+|---|---|---|
+| `Tellma.Core.EntityFrameworkCore` | `src/core/Tellma.Core.EntityFrameworkCore/` | §G.1: `TableTypeBuilder.UseCollation` and the character-column check |
+| Tests | `test/core/Tellma.Core.EntityFrameworkCore.Tests`, `.Design.Tests`, `.IntegrationTests`, and the migrations host `test/core/assets/Tellma.Core.EntityFrameworkCore.MigrationsHost` | Part G — Testing |
+
+No new project or package reference. Part G waits on no other part. It ships before spec 0012,
+whose `[Collation]` annotation maps onto it (spec 0012 §1.3).
+
+### §G.1 Column collations on class-derived standalone types
+
+**Target:** 0001 §5 (standalone table types) and its Testing plan. **Requested by:** spec 0012
+§1.3, §2.2 and §4.4; spec 0011 §3.8; spec 0018 §3.1. **Why:** a type's string column compared
+with an explicitly collated column must carry that collation, or the statement fails to compile
+with Msg 468. Spec 0001 sets one only through an ad-hoc `Column(…, collation)`, and `Column(…)`
+cannot add a column the class already has.
+
+```csharp
+// Tellma.Core.EntityFrameworkCore.TableTypes.TableTypeBuilder — new member
+public virtual TableTypeBuilder UseCollation(string column, string collation);
+```
+
+**Example —** the registration that spec 0012's conventions make for the catalog's membership
+type, whose `Subject` meets a `Latin1_General_100_BIN2` column. The class carries spec 0012's
+`[TableType]`, not the library's, so the call names the type:
+
+```csharp
+modelBuilder.HasTableType<TenantMembershipRecord>(
+    name: "TenantMembershipList",
+    schema: "catalog",
+    buildAction: type => type.UseCollation("Subject", "Latin1_General_100_BIN2"));
+```
+
+- **What it sets.** The named column's collation, whether the class or `Column(…)` added the
+  column. The last call wins, over an earlier call and over `Column(…, collation)`.
+- **When it applies.** The builder applies it when it builds, so the call's order against
+  `Column(…)` does not matter.
+- **An unknown column.** A name no column has fails registration with an
+  `InvalidOperationException` naming the type and the column. Names match case-insensitively, as
+  the duplicate-column and key checks do.
+- **Character columns only.** A standalone column with a collation, set by `UseCollation` or by
+  `Column(…, collation)`, must resolve to `char`, `varchar`, `nchar` or `nvarchar`. Any other
+  store type, `json` included, fails model finalization, naming the type, the column and the store
+  type. Without the check, SQL Server fails the migration with Msg 447, and the library silently
+  replaces a `json` column's collation with the wire form's.
+- **Names are not validated.** SQL Server refuses an unknown name at `CREATE TYPE` with Msg 448.
+  Write the canonical spelling: the name is part of the canonical JSON, so a change of case
+  creates a new version.
+- **Versioning.** Adding, changing or removing a column's collation changes the definition. The
+  differ creates a new physical version beside the old one, and the sweep retires the old (0001
+  §3).
+
+**Compatibility:** additive. A column without a collation serializes as before, so no existing
+definition changes its hash. The snapshot and operation generators already write a column's
+collation. The character-column check moves a failure from `CREATE TYPE` to model finalization.
+It also refuses a `json` column with a collation, which today builds with the wire form's
+collation.
+
+**Tests:**
+
+- unit:
+  - a class-derived column with `UseCollation` gets the collation in the definition, and keeps
+    its store type;
+  - a column added by `Column(…)`, with `UseCollation` before or after it;
+  - the last call wins;
+  - an unknown column throws;
+  - `int`, `datetimeoffset` and `json` columns with a collation fail finalization;
+  - adding a collation emits a create and the cleanup, and no drop;
+  - a type without one keeps its canonical JSON;
+- design — the snapshot round-trip model gains a collated class-derived column;
+- integration — a class-derived type with a `Latin1_General_100_BIN2` column is created,
+  `sys.columns.collation_name` reads that collation, and a variable of the type joins a `BIN2`
+  table column without Msg 468.
+
+### Part G — Testing
+
+| Suite | Tier | Pins |
+|---|---|---|
+| `Tellma.Core.EntityFrameworkCore.Tests` | unit | §G.1's builder, finalization and differ cases |
+| `Tellma.Core.EntityFrameworkCore.Design.Tests` | unit | the snapshot round trip with a collated column |
+| `Tellma.Core.EntityFrameworkCore.IntegrationTests` | `Category=Integration` | the collated type on SQL Server; the migrations host gains the type, so its migrations are re-scaffolded and its type counts updated; the fixture creates each database with spec 0011 §6.7's SQL Server statement |
+
+All three run on every pull request on Windows and Linux; none is nightly.
+
+### Part G — Definition of done
+
+- **Library:** §G.1 in `src/core/Tellma.Core.EntityFrameworkCore`, with XML docs on the new
+  member and the README's standalone paragraph updated. Warnings-as-errors green on Windows and
+  Linux; no new project or package reference.
+- **Behaviour:** pinned by Part G's suites.
+- **Compatibility:** no existing definition's hash changes. Every existing test passes unchanged,
+  except where Part G — Testing adds the collated type: the snapshot round-trip model, the
+  migrations host's migrations and the integration suite's type counts.
+- **Docs:** the architecture document names the column collation of a class-derived type where it
+  describes standalone table types. Public XML docs and error messages reference no `docs/` paths.
+- **Not in scope of done:** spec 0012's `[Collation]` annotation and its convention; the two
+  `Subject` columns (specs 0011 and 0018).
+
+### Part G — Decisions record
+
+1. **A builder call, not a library attribute** — the platform's standalone classes live in EF-free
+   `Tellma.Core.Abstractions`, where a library attribute cannot go. Spec 0012 maps its own
+   annotation onto this call, as it maps `[TableType]`, and EF itself sets collations only
+   through the fluent API (§G.1).
+2. **Table-derived types are unchanged** — they already copy each column's collation (0001 §2).
+3. **Collation names are not validated** — EF validates none, and SQL Server refuses an unknown
+   name at `CREATE TYPE` (§G.1).
+4. **A collation on a non-character column fails model finalization** — the error comes at build
+   time and names the column, instead of coming from `CREATE TYPE` (§G.1).
+
+### Part G — Review flags
+
+1. **No library attribute** (§G.1). Alternative: a collation attribute in the library beside the
+   builder call. Flips if a class outside `Tellma.Core.Abstractions` needs a collation.
+2. **Refusing `json` with a collation** (§G.1). Alternative: keep replacing it silently with the
+   wire form's. Flips if a model must state the wire collation.
+3. **Case-sensitive names in the hash** (§G.1). Alternative: normalise the spelling before
+   hashing. Flips if a spelling change ever churns a version.
 
