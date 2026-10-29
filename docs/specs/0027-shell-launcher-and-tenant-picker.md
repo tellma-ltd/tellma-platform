@@ -632,8 +632,8 @@ click away. The shell owns the pin control, so no page writes pinning code.
 ### 8.1 Anatomy
 
 ```text
-≥ md:  [Sales invoices] [Customers]̲ [Trial balance] │ [Month end ▾] [··· More]              [📌]
-< md:  (Customers) (Sales invoices) (···)                                                 [📌]
+≥ md:  [Sales invoices] [Customers]̲ [Trial balance] │ [Month end ▾] [··· More]          [📌] [⚙]
+< md:  (Customers) (Sales invoices) (···)                                             [📌] [⚙]
 ```
 
 - **Row.** 32 px, `--ink-800`, `padding-inline` 8, a hairline top border.
@@ -643,8 +643,10 @@ click away. The shell owns the pin control, so no page writes pinning code.
   `aria-current="page"`.
 - **Folder chip:** its name and `chevron-down`, a menu button (§8.8), after a 1 × 16 px separator.
 - **More** (`ellipsis` + "More") shows past §8.7's count.
-- **Pin control** at the inline end: a 24 px `pin`, filled on a pinned page. It is named "Pin this
-  page" or "Edit pin", with `aria-keyshortcuts` `Alt+Shift+P`.
+- **Pin control** near the inline end: a 24 px `pin`, filled on a pinned page. It is named "Pin
+  this page" or "Edit pin", with `aria-keyshortcuts` `Alt+Shift+P`.
+- **Manage pins** at the inline end: a 24 px `settings-2` icon button named "Manage pins", which
+  opens the dialog (§8.10). It shows in every state of the bar, the empty one included.
 - **Below `md`:** 24 px pills, the current one teal-tinted and first.
 - **Empty:** "Nothing pinned yet. Use the pin button to pin this page."; below `sm`, "Nothing pinned
   yet."
@@ -768,7 +770,8 @@ declare class TmPins {                                     // @tellma/core/shell
 ### 8.6 Keyboard and ARIA
 
 - **One tab stop.** The bar is a `ul role="list"` of links in `nav aria-label="Pinned pages"`, with a
-  roving `tabindex`. Tab enters on the current pin, else the first, and leaves to the pin control.
+  roving `tabindex`. Tab enters on the current pin, else the first, and leaves to the pin control,
+  then to Manage pins.
 - **Moving.** Left and Right (direction-mapped, spec 0010 §B.3), Home and End.
 - **Opening.** Enter follows a link, and Ctrl, ⌘ or middle-click open tabs natively. Enter, Space
   and Down open a folder chip's menu.
@@ -786,15 +789,15 @@ never depends on label widths, hover, focus or the current page, so nothing refl
 
 - **Items** are top-level pins and folders, in stored order. Chips of the full 120 px still fit each
   band's count.
-- **More** lists the hidden items, then "Manage pins…". Pins are link items, folders are submenus
+- **More** lists the hidden items. Pins are link items, folders are submenus
   (spec 0010 §C.10), and revoked pins are locked, disabled rows.
 - **The current pin in More.** The More chip takes the current-page styling, and the pin's item
   gets `aria-current="page"`.
 
 ### 8.8 Folders
 
-- **A folder chip** opens a `tm-menu` of its pins, with a lock on revoked ones, then "Manage
-  pins…". An empty folder shows "No pages in this folder".
+- **A folder chip** opens a `tm-menu` of its pins, with a lock on revoked ones. An empty folder
+  shows "No pages in this folder".
 - **One level.** Every control that moves a pin offers one level only.
 - **Creating** a folder: "New folder…" in the popover, or New folder in the dialog.
 - **Names** are trimmed, 1–40 characters, and unique per user ignoring case. A duplicate shows "A
@@ -811,6 +814,8 @@ never depends on label widths, hover, focus or the current page, so nothing refl
 ### 8.10 The Manage pins dialog
 
 - **Frame.** A `TmModal` of size `md`, full screen below `sm`, titled "Manage pins", deferred.
+- **Opened** by the bar's Manage pins button (§8.1), or by "Manage pins…" in the launcher's Pinned
+  band while the bar is hidden (§9.3). Focus returns to the opener.
 - **Body.** A `tm-reorder-list` of the top-level items (spec 0023 §8.4) with its grab, move and drop
   keys. A folder row expands to its own `tm-reorder-list` that `accepts` `tm.pin`.
 - **Each row:** an icon (the entry's, else the route kind's), the label (`dir="auto"`), Rename (an
@@ -1160,7 +1165,8 @@ Every automated suite runs on each PR; the manual checks run once per release.
 - **Harnesses** (harness):
   - `TmTenantShellHarness`: each §7.5 state;
   - `TmLauncherHarness`: §9.2's table, §9.5's keys, bucket placement;
-  - `TmPinnedBarHarness`: roving focus, §8.7's counts, folders, revoked pins;
+  - `TmPinnedBarHarness`: roving focus, §8.7's counts, folders, revoked pins, the Manage pins
+    button in every bar state;
   - `TmSessionMenuHarness`: the rows per condition; the avatar's `colorKey`;
   - `TmTenantPickerHarness`: order, names, badges, search threshold, empty, error; Connect's
     `forTenant` href; the notice after a chosen entry, and none after an automatic one.
@@ -1180,7 +1186,9 @@ Every automated suite runs on each PR; the manual checks run once per release.
 - **axe** (e2e): light and dark, LTR and RTL, with the launcher, the session menu, a marker popover,
   the pin popover and each dialog open.
 - **Manual** (per release): back and forward in an iOS home-screen app; `Mod+K` beating the
-  browser's binding in Chrome, Edge, Firefox and Safari.
+  browser's binding in Chrome, Edge, Firefox and Safari; every Appendix A key in Chrome and Edge on
+  Windows, with Arabic and English input languages installed (the page wins `P` and `I`; the input
+  language never switches), and on ChromeOS.
 
 ## 14. Definition of done
 
@@ -1249,8 +1257,9 @@ Every automated suite runs on each PR; the manual checks run once per release.
 11. **Overflow by count per breakpoint; one tab stop for the bar** — no measuring and no reflow; ten
     pins are not ten tab stops — (§8.6, §8.7).
 12. **Disjoint key families, a modifier on every key but `F2`, `Mod+/` for Shortcuts, bubble-phase
-    dispatch** — no page takes a shell key; WCAG 2.1.4; a focused grid wins. `Alt+Shift` collides
-    only with Firefox access keys, which Tellma never sets — (§4.2, §4.3).
+    dispatch** — no page takes a shell key; WCAG 2.1.4; a focused grid wins. `Alt+Shift` letters skip
+    system and browser accessibility keys; the two browser keys taken reach the page first —
+    (§4.2, §4.3, Appendix A).
 13. **Slot order: distribution slots, bell, tray, `help`, `assistant`, markers, session button** —
     the reserved slots sit between fixed boxes, after the attention icons, so they arrive without
     moving those — (§7.2).
@@ -1281,8 +1290,9 @@ Every automated suite runs on each PR; the manual checks run once per release.
    while the row has room.
 5. **`Mod+/`, not `?`** (§4.3). Alternative: `?` with a single-key switch. Flips if users bring a
    strong `?` habit from other products.
-6. **The `Alt+Shift` family** (§4.3). Alternative: per-key review. Flips if a market's input-method
-   switcher uses `Alt+Shift+<letter>`.
+6. **`P` and `I` taken from Chrome** (Appendix A). Alternative: free letters for the pin and the
+   assistant too, with weaker mnemonics. Flips if users miss Chrome's keys, or if the Windows
+   `Alt+Shift` input-language hotkey fires on `Alt+Shift+<letter>`.
 7. **No Actions bucket** (§9.6). Alternative: a ~1 KB provider over the top page's actions (origin
    `launcher`, spec 0026 §9.4). Flips if page commands are wanted in search now.
 8. **Two levels** (§3.1). Alternative: an optional `group` on entries. Flips past ~30 entries.
@@ -1315,12 +1325,27 @@ Every automated suite runs on each PR; the manual checks run once per release.
 | `tm.launcher.open` | `Mod+K` (⌘K) | opens the launcher, selecting its text (§9.2); on `/tenants`, focuses the search | yes | no | this spec |
 | `tm.shortcuts.open` | `Mod+/` (⌘/) | opens the Shortcuts dialog | yes | no | this spec |
 | `tm.pins.toggle` | `Alt+Shift+P` (⌥⇧P) | pins or unpins the current page (§8.5) | no | no | this spec |
-| `tm.toasts.focus` | `Alt+Shift+T` (⌥⇧T) | `TmToasts.focus()` (spec 0023 §5.1) | yes | yes | this spec |
-| `tm.attention.notifications` | `Alt+Shift+N` | toggles the bell panel | yes | no | spec 0028 §6.1 |
-| `tm.attention.assignments` | `Alt+Shift+A` | toggles the tray | yes | no | spec 0028 §7.1 |
+| `tm.toasts.focus` | `Alt+Shift+J` (⌥⇧J) | `TmToasts.focus()` (spec 0023 §5.1) | yes | yes | this spec |
+| `tm.attention.notifications` | `Alt+Shift+U` | toggles the bell panel | yes | no | spec 0028 §6.1 |
+| `tm.attention.assignments` | `Alt+Shift+Q` | toggles the tray | yes | no | spec 0028 §7.1 |
 | `tm.help.open` | `Alt+Shift+H` | reserved: the help drawer | — | — | a later spec |
 | `tm.assistant.open` | `Alt+Shift+I` | reserved: the assistant | — | — | a later spec |
 | `tm.support.copy-diagnostics` | `Mod+Alt+Shift+D` | copies diagnostics (spec 0026 §8.3) | yes | yes | spec 0026 |
+
+**Letters the platform family avoids.** No `tm.` id takes these `Alt+Shift` letters, from
+Chromium's and ChromeOS's shortcut tables as of October 2026:
+
+| Kind | Letters | Why avoided |
+|---|---|---|
+| ChromeOS system shortcuts | `S` (status area), `M` (Files), `N` (notifications), `L` (shelf) | the system handles them before the page |
+| Chrome accessibility keys (Windows, Linux, ChromeOS) | `T` (focus the toolbar), `A` (focus an inactive dialog), `B` (focus the bookmarks bar), `R` (reading mode) | keyboard users rely on them |
+| Chrome keys (Windows, Linux) | `N` (split view), `C`, `W`, `X`, `Z` (tab groups) | free letters remain |
+
+- **Two taken on purpose.** `P` takes Chrome's "new tab group" and `I` takes the Chrome and Edge
+  feedback form. Neither is a system or accessibility key, and Chrome delivers both to the page
+  first, so the page's `preventDefault()` wins.
+- **Firefox** uses `Alt+Shift` only for `accesskey` attributes, which Tellma never sets.
+- **macOS.** Chrome binds no Option+Shift key, and Option-typed characters follow §4.2 step 4.
 
 `TM_BROWSER_KEYS`, combinations a page cannot take from the browser: `Mod+T`, `Mod+W`, `Mod+N`,
 `Mod+Shift+N`, `Mod+Shift+T`, `Mod+Shift+W`, `Mod+Tab`, `Mod+L`, `Mod+R`, `Mod+Q`, `Mod+H`, `Mod+M`,

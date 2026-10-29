@@ -641,7 +641,7 @@ Its badge counts what arrived since the user last opened it.
   jobs run, a `tm-progress-ring value=null` is added, static under `prefers-reduced-motion` (spec
   0023 §2.2).
 - **ARIA and shortcut.** `aria-haspopup="dialog"`, `aria-expanded`, `aria-controls` and
-  `aria-keyshortcuts="Alt+Shift+N"`. The shortcut `tm.attention.notifications` (spec 0027
+  `aria-keyshortcuts="Alt+Shift+U"`. The shortcut `tm.attention.notifications` (spec 0027
   Appendix A) calls `toggle('bell', 'shortcut')`.
 
 ### 6.2 The panel
@@ -723,7 +723,7 @@ open assignments and turns accent while some are new.
 ### 7.1 The button
 
 `tm-tray-button` has the bell's box and anatomy (§6.1) with the `inbox` icon, the tray badge (§5.2)
-and no ring. The shortcut `tm.attention.assignments` (`Alt+Shift+A`, spec 0027 Appendix A) calls
+and no ring. The shortcut `tm.attention.assignments` (`Alt+Shift+Q`, spec 0027 Appendix A) calls
 `toggle('tray', 'shortcut')`.
 
 ### 7.2 The panel
