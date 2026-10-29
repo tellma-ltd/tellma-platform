@@ -240,7 +240,7 @@ section owns the shape; each member's meaning belongs to the spec its sketch com
 declare function tmEntity<const N extends string>(name: N, declaration?: TmEntityDeclarationInput<N>): TmEntityDeclaration;
 
 interface TmEntityDeclarationInput<N extends string> {
-  section?: string; order?: number; icon?: string; synonymsKey?: string; // launcher (spec 0027 §3.2): shown when allows(name, 'query')
+  section?: string; order?: number; icon?: string; synonymsKey?: string; visibleWhen?: (context: TmNavContext) => boolean; // launcher (spec 0027 §3.1, §3.2): shown when allows(name, 'query') and visibleWhen passes
   columns?: readonly TmColumnInput<N>[];             // search page (spec 0030 §2): the one column default; keys per §6.1
   orderBy?: TmOrderInput<N>;                         // else the metadata's defaultOrderBy
   tile?: TmTileDeclaration<N>; filters?: readonly TmCustomFilterDeclaration[]; // filters: URL x.{key}

@@ -1714,3 +1714,33 @@ Trail: `.tmp/round-2/r6/` (decisions.md, applied-0026.md with its Fix pass, appl
   `DumpInvalid`, `DumpTooLarge`; admin routes list, `/dump`, `/screenshot`; truncation steps 3–4.
 - **0011:** admin support reads open scopes `allowNonActive`; §5.9 row; §9 alerts.
 - **0016, 0017:** `support-screenshot` kind. **0021:** `support` category and the catalogue row.
+
+# Spec 0026 follow-up and spec 0027 feedback (29 October 2026)
+
+Trail: `.tmp/round-2/r7/` (decisions.md, applied-A.md with its Fix pass, applied-B.md).
+
+- **0026:** page-data notice when the size cap drops rows (step 1) or page data (step 3; the box
+  then shows unticked and disabled); the dialog holds one dump, rebuilt on box change, used by
+  View, Download, Download instead and Send; `includesPageData` copied from the dump; Support
+  requests entry `visibleWhen: ({ distribution }) => distribution.support.enabled`.
+- **0012:** `EntityQuery.AllProperties`; §11.4 appends root and child `[JsonColumn]` columns as
+  plain projections on `[T]` with string `QueryColumn`s; §11.5 sets them by name; tests and the
+  `fixture.WidgetParts.Settings` column.
+- **0015:** §5.3 details and §11.2 action target loads set `AllProperties`. **0020:** cites 0012 §11.4.
+- **0027:** `visibleWhen` and `TmNavContext` (§3.1), hidden pins resolve `unavailable` ("This page
+  isn't available."), recents skip them; measured pinned-bar overflow (§8.7) with a hidden
+  measuring row, `afterRenderEffect`, chips hidden until fonts load; Decision 11 and flag 4.
+- **0024, 0029, 0034:** `visibleWhen` on the declaration sketches.
+
+# r7 answers (29 October 2026)
+
+Trail: `.tmp/round-2/r8/`.
+
+- **0010 Part F §F.16:** `QuerySpec.UndeclaredColumns` — unquoted root columns the schema omits,
+  emitted as `[T].[<name>]` after the compiled items with `QxString`/`Nullable`/no-path columns;
+  row grain only; additive. Goals bullet, §F.0, Testing, DoD, Decision 14, flag 9.
+- **0012 §11.2, §11.4, §11.5:** `AllProperties` passes the `[JsonColumn]` names as
+  `UndeclaredColumns` (root and child); no compiled-text editing.
+- **0024 §7.6, ARCHITECTURE.md:** the metric-adjusted fallback claim removed.
+- **0025 §13, 0027 §3.1/§8.3/§9.3:** `TmNavigation.resolve(href)`; `TmRecents.pages` skips
+  `no-access` and `unavailable` pages on read, `nav.recent` kept.

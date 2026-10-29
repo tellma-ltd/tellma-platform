@@ -55,8 +55,8 @@ Specs 0007 and 0009 need no amendment.
   `TM_BLOB_FETCHER`.
 - spec 0024 §7.8, spec 0029 §12.1 — which surfaces show §D.4's zone label.
 - spec 0025 §2.6 — the session sweep that calls `clearAll({ keep })` (§D.5).
-- spec 0012 §11.1–§11.2 — the host of Part F: the schema's `CalendarMap`, and the amendments the
-  data access layer relies on.
+- spec 0012 §11.1–§11.2, §11.4 — the host of Part F: the schema's `CalendarMap`, the amendments
+  the data access layer relies on, and the `[JsonColumn]` columns it passes to §F.16.
 - spec 0012 §3.3, §11.3 — `QueryColumn.Precision`, which fills §F.15's `MeasureContext`.
 - spec 0013 §8.2 — the `uq` month table that §F.11 reads.
 - spec 0029 §9, spec 0033, spec 0035 §6.3 — the consumers of Part F: `queryex/discover` with its
@@ -94,8 +94,8 @@ Specs 0007 and 0009 need no amendment.
   two-line options in grid cells, and glyphs through `tm-icon`.
 - **Part F.** The Queryex changes the data access layer, the permission evaluator and the report
   engine need: the seven amendments moved from spec 0012 (§F.1–§F.7), omitted parameters, constant
-  statements, parameter binding, `'uq'` through a month table, `Exists`, `ComparedWith`, and
-  measure partials with their C# evaluation (§F.8–§F.15).
+  statements, parameter binding, `'uq'` through a month table, `Exists`, `ComparedWith`, measure
+  partials with their C# evaluation (§F.8–§F.15), and undeclared root columns (§F.16).
 - **Part G.** A collation on a string column of a class-derived standalone table type, so a
   table-valued parameter can meet a binary-collated column (§G.1).
 
@@ -2741,7 +2741,8 @@ Part F amends spec 0008, the Queryex compiler in `src/core/Tellma.Core.Queryex`.
 layer (spec 0012) and the permission evaluator (spec 0014) need seven changes to compose queries
 and access filters (§F.1–§F.7). The report engine (spec 0033) needs eight more for optional
 parameters, defaults, drill-through, Hijri grouping, sharing, parameter pickers, and pivot and
-summary rollups (§F.8–§F.15). Every item is additive (§F.0).
+summary rollups (§F.8–§F.15). The data access layer needs one last change to read the columns its
+schema omits (§F.16). Every item is additive (§F.0).
 
 ### §F.0 Shared rules
 
@@ -2758,7 +2759,8 @@ item then states only its own change.
   `test/core/Tellma.Core.Queryex.IntegrationTests` and the shared harness
   `test/shared/Tellma.Queryex.Testing`. The inspection tool `eng/queryex-inspection` mirrors the
   new inputs.
-- **Order.** §F.1–§F.4, §F.6 and §F.7 ship first: specs 0012 and 0014 cannot ship without them.
+- **Order.** §F.1–§F.4, §F.6, §F.7 and §F.16 ship first: specs 0012 and 0014 cannot ship without
+  them.
   §F.5 needs no code. §F.8–§F.15 ship before spec 0033. Part F waits on no other part.
 - **SQL blocks** show the emitted statement with its layout shortened. The emitter writes one
   clause per line, and the golden snapshots (0008 §18.2) fix the exact bytes.
@@ -2804,7 +2806,8 @@ it changes. The input is held as text or structure, never hashed.
 
 - **L2** gains a leaf's own language version, and the omitted names a text refers to.
 - **L3** gains the leaf's version too. It also gains restrictions, the presence of paging (never
-  its values), `Via` and `Exists` nodes, the omitted set and the `Measures` text.
+  its values), `Via` and `Exists` nodes, the omitted set, the `Measures` text and the undeclared
+  columns in order.
 - **A constant statement** keys on its items, types and options.
 - **Calendar maps** add nothing: they live in the schema, whose identity already keys every layer.
 
@@ -2828,16 +2831,17 @@ it changes. The input is held as text or structure, never hashed.
 
 - **The reference interpreter** (0008 §18.3) implements every item from this part's text,
   independently of the emitter: restrictions, `level`, `Via`, omitted folding, constants, `'uq'`
-  (through .NET `UmAlQuraCalendar`), `Exists` and measures. It evaluates each measure directly
-  over a group's rows, never through partials, and orders text by its own weights. The
-  differential suite runs every new corpus entry on SQL Server and on the interpreter.
+  (through .NET `UmAlQuraCalendar`), `Exists`, measures and undeclared columns. It evaluates each
+  measure directly over a group's rows, never through partials, and orders text by its own
+  weights. The differential suite runs every new corpus entry on SQL Server and on the interpreter.
 - **`LedgerFixture` grows:**
   - a child table with a parent navigation, for `Exists`;
   - a `uq` month map seeded from `UmAlQuraCalendar` by spec 0013 §8.2's rule;
   - nullable numeric columns of every width, `tinyint` to `decimal(38,10)`, with values near each
     type's bounds and zero denominators;
   - text rows that tie under the fixture's case-insensitive collation;
-  - `hierarchyid` nodes whose paths sort differently as text, such as `/1/2/` and `/1/10/`.
+  - `hierarchyid` nodes whose paths sort differently as text, such as `/1/2/` and `/1/10/`;
+  - an `nvarchar(max)` column its schema does not declare, for §F.16.
 - **Every new code is reachable** by a corpus entry that asserts code, span, location and
   arguments (0008 §18.1).
 
@@ -3747,6 +3751,55 @@ A zero denominator raises SQL error 8134 and QX6001 alike. Text `min` and `max` 
 plain text (letters, digits and spaces) and match ignoring case, because the comparer only
 approximates the collation.
 
+### §F.16 `QuerySpec.UndeclaredColumns`
+
+**Target:** 0008 §2.1 (`QuerySpec`, `QueryexColumn`), §3 (the injection boundary), §13.4.
+**Requested by:** spec 0012 §11.4, §11.5. **Why:** a host reads the root columns its schema omits
+by design (opaque JSON text) in the statement that reads the rest of the row, without editing
+compiled SQL.
+
+```csharp
+public sealed record QuerySpec
+{
+    public IReadOnlyList<string> UndeclaredColumns { get; init; } = []; // new; physical columns of Root's Source, read after Select
+}
+```
+
+- **Each name** is an unquoted physical column of the root's `Source`, like
+  `PropertyDescriptor.Column` (0008 §3), matching `[A-Za-z_][A-Za-z0-9_]*`. The engine does not
+  look it up: the schema omits the column on purpose, so its existence and its character type are
+  the host's obligation. It is the fourth host-authored text to reach SQL (0008 §3), after
+  `TableSource` (§F.1).
+- **Emission.** Each name is one more select item after the compiled ones, in list order, on the
+  root alias (0008 §12.2): `[T].[<name>]`. `Body` carries them (§F.3).
+- **Columns.** Each gains a `QueryexColumn` after the compiled ones: `Text` the name, `Type`
+  `QxString`, `Nullity` `Nullable`, `Path` null, `IsGroupingKey` false.
+- **Nothing reads them.** No clause can name an undeclared column, so the joins, slots, ordering
+  and paging tiebreakers are those of the same spec without the list.
+- **Row grain only.** An undeclared column is neither a grouping key nor a measure (0008 §11.3),
+  so the list requires `Aggregate` unset. `Measures` requires `Aggregate` (§F.14), so it never
+  meets the list.
+- **Discovery.** `QueryDiscoverySpec` gains nothing: the list holds no text, and the host knows
+  the names from its model.
+- **Caller errors:** a name not of that form, or a duplicate ignoring case; a non-empty list with
+  `Aggregate`.
+
+**Example —** a details read of a line. For this example the line also has `ExtrasJson`, an
+`nvarchar(max)` column the schema does not declare. With `Select = "Id, Amount,
+Invoice.PostingDate"` and `UndeclaredColumns = ["ExtrasJson"]`:
+
+```sql
+SELECT [T].[Id] AS [c0], [T].[Amount] AS [c1], [P1].[PostingDate] AS [c2], [T].[ExtrasJson] AS [c3]
+FROM [acme].[SalesInvoiceLines] AS [T]
+INNER JOIN [acme].[SalesInvoices] AS [P1] ON [P1].[Id] = [T].[InvoiceId];
+```
+
+`Columns[3]` is `(3, "ExtrasJson", QxString, Nullable, null, false)`.
+
+**Compatibility:** an empty list emits today's SQL and columns. **Tests:** goldens with zero, one
+and two columns, beside a join and with paging; `Columns` for each; the caller-error vectors;
+differential (the interpreter reads the fixture's undeclared column directly).
+
 ### Part F — Testing
 
 Each amendment's **Tests** line lists its cases. All three suites run on every pull request on
@@ -3756,8 +3809,8 @@ Windows and Linux; none is nightly.
   - Every new code and caller error.
   - One golden per new emitted shape: restrictions, `level`, paging names, `Via` guards, folded
     atoms, constant statements, `'uq'` lateral, hoisted and scalar lookups, `Exists`, partial
-    columns.
-  - L3 hits across pages; L3 splits on leaf stamps, omitted sets and measures.
+    columns, undeclared columns.
+  - L3 hits across pages; L3 splits on leaf stamps, omitted sets, measures and undeclared columns.
 - **`Tellma.Core.Queryex.Tests`: property tests and evaluator vectors (unit).**
   - Determinism and no duplication with every new member; grouping keys repeat only in `GROUP BY`.
   - `Sql == Prologue + Body + ";\n"` (§F.3); bind-then-compile equals compile-with-arguments
@@ -3778,7 +3831,7 @@ Windows and Linux; none is nightly.
 
 ### Part F — Definition of done
 
-- **Engine:** §F.1–§F.4 and §F.6–§F.15 in `src/core/Tellma.Core.Queryex`, with XML docs on every
+- **Engine:** §F.1–§F.4 and §F.6–§F.16 in `src/core/Tellma.Core.Queryex`, with XML docs on every
   new member and the project README's list of amendments updated. Warnings-as-errors green on
   Windows and Linux; no new project or package reference.
 - **Surface:** 0008 §20's public surface plus exactly the members this part's sketches add.
@@ -3786,21 +3839,22 @@ Windows and Linux; none is nightly.
   interpreter (§F.0).
 - **Compatibility:** every pre-existing corpus entry passes unchanged; every pre-existing golden is
   byte-identical except the paging names of §F.4; `QueryexLanguage.Version` is 1.
-- **Tool:** `eng/queryex-inspection` accepts restrictions, measures, omitted parameters and
-  constant items, and shows partial columns.
+- **Tool:** `eng/queryex-inspection` accepts restrictions, measures, omitted parameters, constant
+  items and undeclared columns, and shows partial columns.
 - **Benchmark:** the `'uq'` join-shape benchmark (Part F — Testing) ran before §F.11 was built,
   and its result is recorded against flag 4.
 - **Docs:** the architecture document names the `'uq'` month table, `Exists` and the measure
   evaluator where it describes Queryex. Public XML docs and error messages reference no `docs/`
   paths.
 - **Not in scope of done:** what hosts do with the amendments: spec 0012 declaring `CalendarMap`,
-  binding the paging slots and reporting `QueryColumn.Precision`; spec 0013's month table; spec
-  0014's `Via`; spec 0033's compiler, cube builder and `Exists` criteria.
+  binding the paging slots, passing its `[JsonColumn]` columns and reporting
+  `QueryColumn.Precision`; spec 0013's month table; spec 0014's `Via`; spec 0033's compiler, cube
+  builder and `Exists` criteria.
 
 ### Part F — Decisions record
 
-1. **One home for engine amendments: the data access layer's seven items live here, and spec 0012
-   §11.2 points here** — a frozen spec changes only through this spec (§F.1–§F.7).
+1. **One home for engine amendments: the data access layer's items live here, and spec 0012
+   §11.2 points here** — a frozen spec changes only through this spec (§F.1–§F.7, §F.16).
 2. **Every item is additive; `QueryexLanguage.Version` stays 1** — no valid text changes meaning,
    and each new form binds only under a host opt-in. A version 2 with dual compilation was the
    alternative (§F.0).
@@ -3839,6 +3893,9 @@ Windows and Linux; none is nightly.
     collation only on awkward pairs, which business uses of `min` and `max` over text almost never
     meet. An SQL `DENSE_RANK` column per partial was the alternative: exact, at the cost of a sort
     per partial (§F.15).
+14. **Columns the schema omits ride `CompileQuery` as names** — the engine owns the
+    statement's layout and its column list, so no host parses or splices compiled text. Splicing
+    the projections into `Body` before its `FROM` line was the alternative (§F.16).
 
 ### Part F — Review flags
 
@@ -3864,6 +3921,8 @@ Windows and Linux; none is nightly.
 8. **Evaluation errors fail the run** (§F.15), as 0008 §9.1 makes division by zero an error.
    Alternative: a null cell with a warning. Flips if users prefer blanks to guarding measures with
    `if`.
+9. **Undeclared columns are text only** (§F.16). Alternative: a name with a `QueryexType` per
+   column. Flips when a host needs to read an undeclared column that is not text.
 
 ## Part G — Table types (spec 0001)
 

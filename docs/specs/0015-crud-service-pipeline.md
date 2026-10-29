@@ -976,12 +976,13 @@ in statement order:
    `IdsSource`. The activatable conjunct is **not** applied: a details read by id shows inactive
    rows.
 2. **The entity rows, children and related.** `Query<TEntity>(EntityQuery { Select = every mapped
-   property, Restrictions = [KeySetRestriction("Id", IdsSource)], Children = every child
-   collection (dotted for grandchildren), … })`; spec 0012's materializer fills the entities,
-   their collections, and `RelatedEntities` for every navigation in `DetailsExpand` (depth ≤
-   `MaxExpandDepth`, each related entity restricted to its own `RelatedSelect` projection, no
-   row-level filter — a caller who may read a row may read what it points at; a partially visible
-   document does not exist). Ten thousand lines pointing at one center carry one center.
+   property, AllProperties = true, Restrictions = [KeySetRestriction("Id", IdsSource)], Children =
+   every child collection (dotted for grandchildren), … })`, so `[JsonColumn]` properties load too
+   (spec 0012 §11.4); spec 0012's materializer fills the entities, their collections, and
+   `RelatedEntities` for every navigation in `DetailsExpand` (depth ≤ `MaxExpandDepth`, each
+   related entity restricted to its own `RelatedSelect` projection, no row-level filter — a caller
+   who may read a row may read what it points at; a partially visible document does not exist).
+   Ten thousand lines pointing at one center carry one center.
 3. **Extras.** For every name in `request.Include`, each producer whose `Extras` contains the name
    adds the extra: the service's `ContributeDetails(plan)` and each `IDetailsContributor<T>`. A
    name no `Extras` declares is `BadRequestException`. An extra takes one of two forms:
@@ -1724,11 +1725,12 @@ own result (§3.1). The common cost is two round trips.
      under spec 0016's options, and a shape failure is `BadRequestException`. Either way its
      `ValidationAttribute`s are walked, each failure at `Arguments.<Property>` (spec 0016 renders
      `arguments.creditLimit`).
-2. **RT1 (`Validate`).** It loads the target rows through `Query<TEntity>`, restricted by the ids
-   under the grant's filter (`SupportsFilter`), with every child collection when the descriptor's
-   `LoadChildren`. It also carries every load `ValidateActionAsync` and the method declare before
-   their first await. A row missing from the result is `NotFoundException` with the missing ids:
-   the filtered load is the pre-check, as for save.
+2. **RT1 (`Validate`).** It loads the target rows through `Query<TEntity>` with every mapped
+   property and `AllProperties` (spec 0012 §11.4), restricted by the ids under the grant's filter
+   (`SupportsFilter`), with every child collection when the descriptor's `LoadChildren`. It also
+   carries every load `ValidateActionAsync` and the method declare before their first await. A row
+   missing from the result is `NotFoundException` with the missing ids: the filtered load is the
+   pre-check, as for save.
 3. **Validate and compose.** `ValidateActionAsync(name, context)` and the method run as validator
    and mutator over `ActionContext`:
    - `Errors` collects;

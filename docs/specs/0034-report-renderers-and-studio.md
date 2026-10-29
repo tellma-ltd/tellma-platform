@@ -133,7 +133,7 @@ declare function tmCodedReport(key: string, report: TmCodedReportDefinition): Tm
 interface TmCodedReportDefinition {
   readonly titleKey: string; readonly descriptionKey?: string;
   readonly securable: TmSecurableRef;                     // gates the route, the launcher entry and the reports page row
-  readonly section?: string; readonly order?: number; readonly icon?: string; readonly synonymsKey?: string; // the launcher entry (spec 0027 §3.2)
+  readonly section?: string; readonly order?: number; readonly icon?: string; readonly synonymsKey?: string; readonly visibleWhen?: (context: TmNavContext) => boolean; // the launcher entry (spec 0027 §3.1, §3.2)
   readonly kind: TmReportKind;                            // picks the skeleton before the first result
   readonly parameters?: Readonly<Record<string, TmCodedParameter>>; // bar order = declaration order
   readonly route?: string;                                // the common case: the [ApiAction] route; runs and exports

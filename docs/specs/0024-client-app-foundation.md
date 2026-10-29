@@ -295,7 +295,7 @@ a title, a page context and the permission gate.
 ```ts
 declare function tmPage(path: string, page: {
   component: TmLazyComponent; titleKey: string;
-  section?: string; order?: number; icon?: string; synonymsKey?: string; // launcher members (0027 §3.1)
+  section?: string; order?: number; icon?: string; synonymsKey?: string; visibleWhen?: (context: TmNavContext) => boolean; // launcher members (0027 §3.1)
   securable?: TmSecurableRef;                                             // the permission gate
 }): TmPageDeclaration;
 ```
@@ -1037,8 +1037,7 @@ every message on screen without a request.
   and a same-named file in `public/brand/` replaces one. 0027 renders them. `build` fails with
   `brand-file-invalid` on a file without a `viewBox`, or with `<script>` or an event-handler
   attribute.
-- **Fonts.** `build` preloads them (§2.6); metric-adjusted fallbacks keep the swap shift-free (spec
-  0002).
+- **Fonts.** `build` preloads them (§2.6).
 
 ### 7.7 Regional formats
 

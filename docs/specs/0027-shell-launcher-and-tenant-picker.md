@@ -70,7 +70,7 @@ documentation comments, bodies and cancellation tokens are omitted.
 
 | Entry point | Area | Members |
 |---|---|---|
-| `@tellma/core` (primary) | Navigation (§3) | `TmNavigation`, `TmNavSection`, `TmNavEntry`, `TmNavItem`, `TmNavSectionView` |
+| `@tellma/core` (primary) | Navigation (§3) | `TmNavigation`, `TmNavSection`, `TmNavEntry`, `TmNavContext`, `TmNavItem`, `TmNavSectionView` |
 | | Shortcuts (§4) | `TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS` |
 | | Shell seams (§5.1, §7.2, §7.5) | `TmShellSlot`, `TmShellMain`, `TM_SHELL_LAYOUT` |
 | | Launcher seam (§9.4, §9.6) | `TM_LAUNCHER_PROVIDERS`, `TmLauncherProvider`, `TmLauncherItem`, `TmLauncherSearchContext`, `tmSearchNormalize` |
@@ -152,6 +152,7 @@ Anything beyond that takes one of these:
 | A launcher link that is not an entity, page or report | `entries: [{ id, section, labelKey, url: (t) => …, requires? }]` | §3.1 |
 | Relabel or reorder a platform section or entry | `overrides: [tmOverride('section:administration', { labelKey: 'Acme_Nav_Admin' })]` (spec 0024 §2.3) | §3.2 |
 | Remove a launcher entry and keep its route | `hide: ['entry:core.Role']` (spec 0024 §2.3) | §3.2 |
+| Show an entry only under a distribution option | `visibleWhen: ({ distribution }) => …` on its declaration | §3.1 |
 | An app-bar item | `appBar: [{ id, icon, labelKey, badge?, panel }]`, at most three in all features | §7.2 |
 | A launcher bucket (records, help) | `providers: [{ provide: TM_LAUNCHER_PROVIDERS, multi: true, useClass: … }]` on the feature | §9.6 |
 | A page shortcut | a `TmPageAction` with `shortcut` (spec 0026 §9.4), or `inject(TmShortcuts).register(…)` | §4 |
@@ -175,8 +176,10 @@ interface TmNavEntry {
   order?: number;                               // within the section; default 100; ties by localized label
   synonymsKey?: string;                         // default `${labelKey}_Synonyms` (§3.3)
   requires?: TmSecurableRef | readonly TmSecurableRef[]; // visible when any one passes
+  visibleWhen?: (context: TmNavContext) => boolean; // false hides the entry (below)
   helpKey?: string;                             // reserved for the help drawer (spec 0026 §9.8)
 }
+interface TmNavContext { readonly distribution: TmDistributionInfo } // TmLaunchCache.distribution (spec 0025 §3.1)
 interface TmNavItem extends TmNavEntry {        // a resolved, visible entry
   readonly kind: 'entity' | 'page' | 'report' | 'entry';
   readonly href: string;                        // url(routed tenant): '/17/customers'
@@ -188,14 +191,19 @@ declare class TmNavigation {                    // primary, root
   readonly sections: Signal<readonly TmNavSectionView[]>; // ordered; sections with no visible entry dropped
   readonly items: Signal<readonly TmNavItem[]>;           // every visible entry, search-only ones included
   byHref(href: string): TmNavItem | undefined;            // the exact canonical path, no query (pins, recents)
+  resolve(href: string): 'ok' | 'no-access' | 'unavailable'; // a stored URL's state (§8.3): pins, recents
 }
 ```
 
 - **Source.** `TmNavigation` reads the merged declarations of `TM_APP_DECLARATIONS`, after `hide`
   applies (spec 0024 §2.2). It resolves them for the routed tenant (`TmUrls.tenantId`). Tenantless
   routes have no items.
-- **Recomputed** when the `me` document's access, the language or the tenant changes. Never per
-  keystroke.
+- **`visibleWhen`.** An entry is visible when its permission rule (§3.2) passes and its
+  `visibleWhen`, when present, returns true. While the `distribution` document is absent, an entry
+  with `visibleWhen` is hidden. It hides navigation only: the route stays, and the server still
+  governs access.
+- **Recomputed** when the `me` document's access, the language, the tenant or the `distribution`
+  document changes. Never per keystroke.
 
 ### 3.2 Where entries come from
 
@@ -206,9 +214,9 @@ declare class TmNavigation {                    // primary, root
 | `tmCodedReport` | the key | `titleKey` | `/{t}/reports/{key}` | its `securable` passes | `chart-column` | — |
 | a feature's `entries` | `id` | `labelKey` | `url(t)` | any `requires` passes, or it has none | `link` | — |
 
-- **Members.** `section`, `order`, `icon` and `synonymsKey` sit flat on `tmEntity`, `tmPage`,
-  `tmCodedReport` and `entries`. An entry without `section` is search-only. A `section` that names
-  no declared section is the error `unknown-section` (spec 0024 Appendix A).
+- **Members.** `section`, `order`, `icon`, `synonymsKey` and `visibleWhen` sit flat on `tmEntity`,
+  `tmPage`, `tmCodedReport` and `entries`. An entry without `section` is search-only. A `section`
+  that names no declared section is the error `unknown-section` (spec 0024 Appendix A).
 - **Passes** means `TmPermissions.can(resource, action)`. `allows` adds the operation check (spec
   0029 §7).
 - **Parameterized pages.** A `tmPage` with path parameters gets no entry, because it has no fixed
@@ -642,12 +650,13 @@ click away. The shell owns the pin control, so no page writes pinning code.
 - **Current page's chip.** Full height, weight 500, teal-300, with a 2 px block-end bar and
   `aria-current="page"`.
 - **Folder chip:** its name and `chevron-down`, a menu button (§8.8), after a 1 × 16 px separator.
-- **More** (`ellipsis` + "More") shows past §8.7's count.
+- **More** (`ellipsis` + "More") shows when items overflow (§8.7).
 - **Pin control** near the inline end: a 24 px `pin`, filled on a pinned page. It is named "Pin
   this page" or "Edit pin", with `aria-keyshortcuts` `Alt+Shift+P`.
 - **Manage pins** at the inline end: a 24 px `settings-2` icon button named "Manage pins", which
   opens the dialog (§8.10). It shows in every state of the bar, the empty one included.
-- **Below `md`:** 24 px pills, the current one teal-tinted and first.
+- **Below `md`:** 24 px pills with the chips' 120 px label cap and tooltip, the current one
+  teal-tinted and first.
 - **Empty:** "Nothing pinned yet. Use the pin button to pin this page."; below `sm`, "Nothing pinned
   yet."
 
@@ -699,11 +708,12 @@ declare const tmPinnedBarVisibleKey: TmPreferenceKey<boolean>; // 'nav.pinnedBar
 
 ### 8.3 Resolving a pin
 
-Each pin resolves on render from `TmUrls.describe('/' + t + '/' + url)` (spec 0024 §9.4):
+`TmNavigation.resolve(href)` gives a stored URL's state from `TmUrls.describe(href)` (spec 0024
+§9.4). Pins resolve on render, and recents filter on it (spec 0025 §13):
 
 | State | When |
 |---|---|
-| `unavailable` | no route matches: the entity, page or report is gone |
+| `unavailable` | no route matches: the entity, page or report is gone; or `visibleWhen` hides the declaration that owns the route, or the entry whose `href` is the URL's path (§3.1) |
 | `no-access` | the route's permission check fails (below) |
 | `ok` | otherwise |
 
@@ -753,8 +763,10 @@ declare class TmPins {                                     // @tellma/core/shell
 ### 8.5 Pinning the current page
 
 1. The user clicks the pin control, or presses `Alt+Shift+P`, on an unpinned page.
-2. `TmPins.pinCurrent()` appends the pin; its chip appears and the control fills in the click's frame.
-3. A `tm-popover` of size `sm`, titled "Pinned", opens on the control. It holds:
+2. `TmPins.pinCurrent()` appends the pin; the bar renders it and the control fills in the click's
+   frame.
+3. Once that render's fit (§8.7) shows the new chip, a `tm-popover` of size `sm`, titled "Pinned",
+   opens on the control. It holds:
    - a name field, pre-filled and selected;
    - a folder select: "No folder", the folders, and "New folder…", which reveals a name field;
    - Remove and Done.
@@ -763,7 +775,7 @@ declare class TmPins {                                     // @tellma/core/shell
 
 - **On a pinned page** the control opens the same popover, titled "Edit pin". `Alt+Shift+P`
   instead unpins at once and announces "Unpinned {label}".
-- **When the new chip is not visible** (the bar is hidden, or the pin lands in More), no popover
+- **When the new chip is not visible** (the bar is hidden, or the fit puts the pin in More), no popover
   opens. Instead of announcing, the shell shows the toast "Pinned {label}." once (spec 0028 §8.1),
   and the toast host announces it.
 
@@ -780,15 +792,27 @@ declare class TmPins {                                     // @tellma/core/shell
 
 ### 8.7 Overflow
 
-The bar shows a fixed number of leading items per breakpoint, and the rest go into More. The count
-never depends on label widths, hover, focus or the current page, so nothing reflows.
+The bar shows as many leading items as fit, and the rest go into More. As with `tm-chip-set`'s
+collapse (spec 0023 §2, §4.3), the fit is recomputed on resize and when the items change, never on
+hover, focus or, from `md` up, the current page, so a chip never moves under the pointer.
 
-| Width | ≥ `xxl` | `xl` | `lg` | `md` | < `md` |
-|---|---|---|---|---|---|
-| Items before More | 10 | 8 | 6 | 4 | 2 |
-
-- **Items** are top-level pins and folders, in stored order. Chips of the full 120 px still fit each
-  band's count.
+- **Items** are top-level pins and folders, in stored order. They fill the space from the bar's
+  inline start to the pin control, each taking its width in the hidden row, the bar's spacing and a
+  folder's separator included. When any item overflows, More's width is reserved first.
+- **Widths.** A hidden, out-of-flow, `aria-hidden` row renders every item as the bar shows it, in
+  its current state (§8.12's `lock` included) and at the current chip's weight, so becoming current
+  never widens a chip; below `md` it renders pills. Its widths are cached per item and re-read when
+  a label, a pin's state, the language or direction, or the loaded fonts (`document.fonts`
+  `loadingdone`) change.
+- **Measuring.** One `ResizeObserver` on the bar, a pin change or a re-read width re-runs one
+  `afterRenderEffect`. Its `read` phase, after the render's DOM writes, reads the bar's space and
+  the widths and sets the fitted count, which Angular renders in the same tick.
+- **First render.** The chips stay `visibility: hidden` in the fixed 32 px row until the first fit.
+  That fit runs in the tick that first renders the bar when `document.fonts.status` is `loaded`,
+  else in the tick after `document.fonts.ready` resolves, so no unfitted or pre-swap frame paints.
+  A face that loads later re-reads the widths and re-fits.
+- **Below `md`** the pills fit the same way, but the current pill leads (§8.1), so there the fit
+  also follows navigation.
 - **More** lists the hidden items. Pins are link items, folders are submenus
   (spec 0010 §C.10), and revoked pins are locked, disabled rows.
 - **The current pin in More.** The More chip takes the current-page styling, and the pin's item
@@ -838,7 +862,7 @@ never depends on label widths, hover, focus or the current page, so nothing refl
 - **`no-access`.** The chip is dimmed with a `lock` and stays focusable. Activating it opens a menu
   with "You no longer have access to this page." and Unpin. It is never a link, so it never leads
   to a 403.
-- **`unavailable`.** The same, with "This page no longer exists."
+- **`unavailable`.** The same, with "This page isn't available."
 - **Never removed automatically.** A role edit can restore access.
 
 ## 9. The launcher and global search
@@ -922,7 +946,7 @@ Both the query and the terms go through `tmSearchNormalize`.
 |---|---|
 | every `TmNavItem` | its label and synonyms, in the active language and in English |
 | every `ok` pin whose URL is no entry's `href` (a filtered pin always counts) | its `label` and `title` |
-| every recent page whose URL is no entry's and no pin's | its title |
+| every recent page §9.3 shows whose URL is no entry's and no pin's | its title |
 
 - **English terms** are read through Transloco's `translate(key, {}, 'en')`. English loads at boot
   (spec 0024 §7.3).
@@ -1152,21 +1176,27 @@ from `TmLaunchCache.distribution` (spec 0025 §3.1), so legal pages move without
 
 Every automated suite runs on each PR; the manual checks run once per release.
 
-- **`TmNavigation`** (unit): §3.2's table; section versus search-only; any-of `requires`; order
-  bands; `hide` and `tmOverride`; the language re-sort; `byHref`.
+- **`TmNavigation`** (unit): §3.2's table; section versus search-only; any-of `requires`;
+  `visibleWhen`, with the `distribution` document absent and changing; order bands; `hide` and
+  `tmOverride`; the language re-sort; `byHref`; `resolve`'s §8.3 states, a URL hidden by
+  `visibleWhen` included.
 - **Matching** (unit): `tmSearchNormalize` vectors (Latin diacritics, Arabic letters, tashkeel,
   tatweel, digits); the "ال" variant; both classes and the order rule; synonyms split on `,` and
   `،`; create rows; the 50-row cap; a 300-entry benchmark (index ≤ 5 ms, query ≤ 2 ms).
 - **`TmShortcuts`** (unit): §4.2's steps (bubble phase, `defaultPrevented`, composition, repeat,
   editable targets, Option-typed characters, modals); `Mod+K` and `Mod+/` in a field on an Arabic
   layout run; every refusal of §4.3; labels.
-- **`TmPins`** (unit): validation and caps; the capture minus `page`; the current-pin rule; §8.3's
-  states; each mutation's document; the fallback.
+- **`TmPins`** (unit): validation and caps; the capture minus `page`; the current-pin rule; each
+  mutation's document; the fallback.
 - **Harnesses** (harness):
   - `TmTenantShellHarness`: each §7.5 state;
-  - `TmLauncherHarness`: §9.2's table, §9.5's keys, bucket placement;
-  - `TmPinnedBarHarness`: roving focus, §8.7's counts, folders, revoked pins, the Manage pins
-    button in every bar state;
+  - `TmLauncherHarness`: §9.2's table, §9.5's keys, bucket placement, a recent page hidden by
+    `visibleWhen` and one hidden by a lost permission;
+  - `TmPinnedBarHarness`: roving focus; §8.7's fit with long Arabic labels, in RTL, below `md`,
+    across a resize, a pin's state change and a font swap, with the current pin in More, unchanged
+    by hover or focus, and from `md` up by a navigation; a font that loads after the bar renders,
+    with no chip painted before the fit; folders, revoked pins, the Manage pins button in every bar
+    state;
   - `TmSessionMenuHarness`: the rows per condition; the avatar's `colorKey`;
   - `TmTenantPickerHarness`: order, names, badges, search threshold, empty, error; Connect's
     `forTenant` href; the notice after a chosen entry, and none after an automatic one.
@@ -1200,9 +1230,11 @@ Every automated suite runs on each PR; the manual checks run once per release.
   Pinned by `shell-feedback.spec` (a frame probe per click or key) and `launcher-perf.spec`.
 - **Non-blocking.** Page results are synchronous, providers abort when superseded, and writes never
   block. Pinned by `launcher-hang.spec`: a hung provider delays nothing.
-- **Stable layout.** Fixed boxes, overlaid counters, zero-width reserved slots, overflow by
-  count, buckets below the active row. Pinned by `shell-layout.spec` (boxes unchanged across a badge
-  from 9 to 10, a banner, a pin into More and a provider answer) and CLS 0 on a warm launch.
+- **Stable layout.** Fixed boxes, overlaid counters, zero-width reserved slots, overflow fitted
+  before the first paint with the chips hidden until the fonts are loaded and never on hover or
+  focus, buckets below the active row. Pinned by `shell-layout.spec` (boxes unchanged across a
+  badge from 9 to 10, a banner, a pin into More, a hover along the pinned bar and a provider answer)
+  and CLS 0 on a warm launch.
 - **RTL.** Logical properties, an unmirrored wordmark, direction-mapped keys, Arabic
   normalization, `lang` on tenant names. Pinned by every shell e2e running in `ar`.
 - **WCAG AA.** Landmarks, a skip link, one tab stop per bar, the APG combobox and menu patterns,
@@ -1254,8 +1286,10 @@ Every automated suite runs on each PR; the manual checks run once per release.
    (§8.5).
 10. **30 pins, 10 folders, one level; no default pins** — the caps fit the 32 KB value cap; defaults
     would need a settings editor for one convenience — (§8.2).
-11. **Overflow by count per breakpoint; one tab stop for the bar** — no measuring and no reflow; ten
-    pins are not ten tab stops — (§8.6, §8.7).
+11. **Measured overflow, fitted in the render's read phase; one tab stop for the bar** — the row
+    shows every pin that fits, long Arabic labels included, and re-fits only on resize, pin, label
+    or font changes (and, below `md`, navigation), so nothing moves under the pointer; ten pins are
+    not ten tab stops — (§8.6, §8.7).
 12. **Disjoint key families, a modifier on every key but `F2`, `Mod+/` for Shortcuts, bubble-phase
     dispatch** — no page takes a shell key; WCAG 2.1.4; a focused grid wins. `Alt+Shift` letters skip
     system and browser accessibility keys; the two browser keys taken reach the page first —
@@ -1286,8 +1320,8 @@ Every automated suite runs on each PR; the manual checks run once per release.
 2. **No default pins** (§8.2). Alternative: a `navigation.defaultPins` setting, used while
    `nav.pinned` is absent. Flips if administrators of less technical users ask for it.
 3. **30 pins, 10 folders** (§8.2). Alternative: 50, with shorter labels. Flips if users hit the cap.
-4. **Overflow by count** (§8.7). Alternative: measured overflow. Flips if long Arabic labels truncate
-   while the row has room.
+4. **Measured overflow** (§8.7). Alternative: a fixed count per breakpoint. Flips if measuring costs
+   frames or causes visible shifts.
 5. **`Mod+/`, not `?`** (§4.3). Alternative: `?` with a single-key switch. Flips if users bring a
    strong `?` habit from other products.
 6. **`P` and `I` taken from Chrome** (Appendix A). Alternative: free letters for the pin and the

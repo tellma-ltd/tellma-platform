@@ -38,6 +38,7 @@ Other specs that carry parts of this design:
 - **spec 0024** — §4.2, §8.4–§8.7, §11: the boot script's delete and the paths that run the
   sweeps; §7.8: `TmDeviceZone`, the only writer of the device partition.
 - **spec 0026** — §10.1: the dump section.
+- **spec 0027** — §3.1, §8.3: `TmNavigation.byHref` and `resolve`, which recents read.
 - **spec 0028** — §5.1: the two leader documents.
 
 ## Goals / Non-goals
@@ -1082,8 +1083,9 @@ declare class TmTreeExpansion {
 
 ## 13. Recently visited pages
 
-`TmRecents` lists the last ten pages the user visited in this tenant, for the launcher (spec 0027
-§9.3) and the home page (spec 0035 §15.3). It lives in the write-behind key `nav.recent`.
+`TmRecents` lists the pages the user last visited in this tenant, at most ten, for the launcher
+(spec 0027 §9.3) and the home page (spec 0035 §15.3). It lives in the write-behind key
+`nav.recent`.
 
 ```ts
 interface TmRecentPage {
@@ -1093,7 +1095,7 @@ interface TmRecentPage {
   readonly icon: string | null;                               // the launcher entry's icon, else null: the consumer picks one by kind
   readonly visitedAt: number;
 }
-declare class TmRecents { readonly pages: Signal<readonly TmRecentPage[]> } // the routed tenant's, newest first, at most 10
+declare class TmRecents { readonly pages: Signal<readonly TmRecentPage[]> } // the routed tenant's openable ones, newest first, at most 10
 ```
 
 - **What counts as a visit.** All three must hold:
@@ -1113,6 +1115,9 @@ declare class TmRecents { readonly pages: Signal<readonly TmRecentPage[]> } // t
 
 - **Title and icon** come from the launcher entry that `TmNavigation.byHref(url)` finds (spec 0027
   §3.1), following the active language. Without an entry, the title is `n` and the icon is null.
+- **Access.** `pages` skips an entry whose URL `TmNavigation.resolve` (spec 0027 §8.3) finds
+  `no-access` or `unavailable`, and recomputes when access changes. The filter runs on read, so
+  `nav.recent` keeps the entry for when access comes back.
 - **Across tabs.** A visit's `set` reaches every tab through `prefs.changed` (§9.3), and the next
   visit in any tab builds on that list.
 
@@ -1131,7 +1136,7 @@ deployment.
 | Leader | unit, two instances, real Web Locks, PR | grant and every release reason; the steal rules (hung, hidden and disconnected, never a visible leader, never `disabled`); the holder re-check; the degraded follower's 60 s probe |
 | `TmHub` | unit, fake connection, PR | §8.3's schedule and jitter bounds; nudges; terminal verdicts stop the loop; relay and drop rules; the `TmHubHttpClient` check |
 | Preferences | unit, PR | the read order; a same-frame `set`; flush timings; the `pagehide` bodies and cap; adoption; a received value drops the dirty one; the overlay's end; the key-cap drop and restore |
-| Page state, drafts, tree, recents | unit, PR | page state: LRU of 20, `markStale` on search and details entries, a permissions move marking every entry of the tenant stale, a settings move forgetting them; drafts: debounce, `pagehide` flush, quota, `sub` refusal; tree: the cap and `replace`; recents: kinds, dwell, de-duplication, cap and title source |
+| Page state, drafts, tree, recents | unit, PR | page state: LRU of 20, `markStale` on search and details entries, a permissions move marking every entry of the tenant stale, a settings move forgetting them; drafts: debounce, `pagehide` flush, quota, `sub` refusal; tree: the cap and `replace`; recents: kinds, dwell, de-duplication, cap, title source, and a `no-access` or `unavailable` page skipped, back when access returns, with `nav.recent` unchanged |
 | Multi-tab (Playwright, Acme host) | e2e, PR | the scenarios below |
 | Multi-tab on WebKit (`@cross-engine`) | e2e, PR | a hidden leader that stops answering is replaced through the hung-leader rule when a follower becomes visible |
 | Hidden-leader soak | nightly | a hidden leader keeps one connection for 15 min under Chromium's intensive throttling, with no leadership change |

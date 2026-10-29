@@ -1059,7 +1059,7 @@ public class Schedule : TopLevelEntity, IActivatable    // stack resource core.S
 `Schedule` is an ordinary editable top-level entity: `[Stack]` with the full operation set,
 `[Searchable]` on `Name` and `Code`, `[DefaultSelect]` of every column but `ArgumentsJson`, which
 `[JsonColumn]` keeps out of the Queryex schema (spec 0012 §2.6); the details read carries it (spec
-0015 §5.3). Activate and deactivate come from the activatable recipe of spec 0015; `IsActive` is
+0012 §11.4). Activate and deactivate come from the activatable recipe of spec 0015; `IsActive` is
 server-owned and changes only through the actions.
 
 A schedule is built-in exactly when its id lies in the reserved band (spec 0014 §2; spec 0012

@@ -421,8 +421,8 @@ compiles and seeks. Cross-column `CHECK`s that encode state rules stay where the
 them.
 
 **JSON columns.** A `[JsonColumn]` string is `nvarchar(max)`, bound as text, opaque to the data
-layer and absent from the Queryex schema. `ToJson()` owned types and primitive collections are not
-used.
+layer and absent from the Queryex schema; an entity query that asks for every mapped property
+still reads it (§11.4). `ToJson()` owned types and primitive collections are not used.
 
 ### 2.7 Natural keys
 
@@ -901,6 +901,7 @@ public sealed class EntityQuery<TEntity>
     public QueryArguments? Arguments { get; set; }
     public IReadOnlyList<KeySetRestriction> Restrictions { get; set; } = [];
     public IReadOnlyList<string> Children { get; set; } = [];   // [NotMapped] collection names; dotted for grandchildren
+    public bool AllProperties { get; set; } = false;    // Select names every mapped property; also reads [JsonColumn] columns (§11.4)
     public bool IncludeAncestors { get; set; } = false;
     public FilterTree? AncestorsFilter { get; set; }
 }
@@ -1816,7 +1817,8 @@ Spec 0008 is frozen. The engine changes this spec relies on are spec 0010 Part F
 - key-set restrictions (§F.1), `level()` (§F.2) and the prologue/body split (§F.3);
 - paging slots (§F.4) and versioned leaves (§F.6);
 - `FilterTree.Via` (§F.7);
-- constant statements (§F.9) and the `'uq'` calendar map (§F.11).
+- constant statements (§F.9) and the `'uq'` calendar map (§F.11);
+- undeclared root columns (§F.16).
 
 Binding the context slots to the tenant is this spec's own (§5.1, §11.3). Where the amendments
 are used:
@@ -1826,6 +1828,7 @@ are used:
   §5.4, §11.3, §11.4).
 - **The body.** Capped counts, key capture, assertions and delete-by-query embed the compiled body
   (§5.2, §5.4).
+- **Undeclared columns.** `AllProperties` queries read `[JsonColumn]` columns through them (§11.4).
 - **Unbuilt.** A language-level list parameter (`x in (@ids)`) and `descendantOf` over a TVP:
   restrictions on `Id` and `ParentId` cover every consumer.
 
@@ -1902,6 +1905,14 @@ the source is the root's ids TVP when the root is restricted by ids and the capt
 otherwise; grandchildren recurse through dotted names. `IncludeAncestors` and `AncestorsFilter`
 behave as for `Rows`; the ancestor rows materialise into `Related` under the root's own entity name.
 
+**Every mapped property.** `AllProperties` marks a query that asks for every mapped property, as
+the details read and an action's target load do (spec 0015 §5.3, §11.2). The host compiles it as
+above, with the root's `[JsonColumn]` column names, which the schema omits (§11.1), as
+`QuerySpec.UndeclaredColumns` (spec 0010 §F.16); the reader buffers each of their `String` columns
+as `string?[]` (§11.3). Each child query takes the flag from its root and passes its
+own table's `[JsonColumn]` columns, so they ride its own statement (`DashboardWidget.SettingsJson`,
+spec 0035 §3.1). Without the flag, no `[JsonColumn]` column is read.
+
 ### 11.5 The materializer
 
 `EntityMaterializer` walks each `QueryexColumn.Path`: a depth-1 column lands on the root instance
@@ -1913,8 +1924,9 @@ are partial (selected columns only), recorded with their projection in `RelatedE
 .Projection`, and never travel back into a save (a related instance in a save payload is ignored
 by the emitter because only the root type and its child collections bind). Children are stitched
 onto their parents after execution by parent key, in the order the child query returned them
-(`OrderBy` of the child query = the child's key). Missing columns (the N−1 rule) leave the
-property at its default.
+(`OrderBy` of the child query = the child's key). The `[JsonColumn]` columns of §11.4 carry no
+`Path`; the materializer sets each by its column name (`QueryexColumn.Text`) on the statement's
+own entity, root or child. Missing columns (the N−1 rule) leave the property at its default.
 
 ## 12. Telemetry, the DB-call budget, and the analyzers
 
@@ -2010,7 +2022,7 @@ by name.
 
 | Suite | Location | Tier | What it pins |
 |---|---|---|---|
-| Unit | `test/core/Tellma.Core.Tests/Data/` | PR | golden SQL per emitter statement kind against the fixture metadata (§8, §9, §10, §11.3); `SaveReceipt` reading from canned result sets; the `SaveHandle` and `DeleteHandle` listing one `ColumnCapture` per `[BlobReference]` column of every written table; `IDisplayNames` against spec 0029 §5.2's shared golden file (`display-name-golden.json`); allocator deficit and buffer arithmetic, temporary-id rewriting, hold/return; metadata construction and every §3.2 rule as a failing model; `CollationConvention`: `[Collation]` on an entity property sets the column's collation and its row image's, and on a standalone class property the UDTT column's; `SchemaFingerprint` stability; natural-key inference order; enum sizing (nullable enums included); retry classification for every number of §6.4, with 8134 and 8115 mapped to `ArithmeticFailureException` and their reasons; the commit-probe verdicts; `QueryRowSet.Builder` buffers for every (Queryex type, field type) pair of §11.3, `Scale` per numeric field type and `Precision` per `decimal` column, and the `InvalidOperationException` for any other pair; materializer routing (root, related, children, grandchildren, missing column); the persist frame assembly order of §5.5; parameter-count and result-set-count guards |
+| Unit | `test/core/Tellma.Core.Tests/Data/` | PR | golden SQL per emitter statement kind against the fixture metadata (§8, §9, §10, §11.3) and an `AllProperties` query's, root and child `[JsonColumn]` columns included (§11.4); `SaveReceipt` reading from canned result sets; the `SaveHandle` and `DeleteHandle` listing one `ColumnCapture` per `[BlobReference]` column of every written table; `IDisplayNames` against spec 0029 §5.2's shared golden file (`display-name-golden.json`); allocator deficit and buffer arithmetic, temporary-id rewriting, hold/return; metadata construction and every §3.2 rule as a failing model; `CollationConvention`: `[Collation]` on an entity property sets the column's collation and its row image's, and on a standalone class property the UDTT column's; `SchemaFingerprint` stability; natural-key inference order; enum sizing (nullable enums included); retry classification for every number of §6.4, with 8134 and 8115 mapped to `ArithmeticFailureException` and their reasons; the commit-probe verdicts; `QueryRowSet.Builder` buffers for every (Queryex type, field type) pair of §11.3, `Scale` per numeric field type and `Precision` per `decimal` column, and the `InvalidOperationException` for any other pair; materializer routing (root, related, children, grandchildren, `[JsonColumn]` by name, missing column); the persist frame assembly order of §5.5; parameter-count and result-set-count guards |
 | Integration | `test/core/Tellma.Core.IntegrationTests/Data/` | `Category=Integration`, PR on Windows (LocalDB) and Linux (Testcontainers) | everything in §13.3 |
 | Analyzers | `test/core/Tellma.Core.Analyzers.Tests/` | PR | each `TELLMA000n` condition and its negative |
 
@@ -2039,7 +2051,7 @@ on every fixture table, so the executor in test mode compares `CHANGETABLE(CHANG
 | Table | Shape | Columns beyond the capability sets |
 |---|---|---|
 | `fixture.Widgets` | `TopLevelEntity`, `[Temporal]`, `IActivatable`, `[NaturalKey] Code`, `[Multilingual] Name` | `Code varchar(50) NULL` (`UX_Widgets_Code`); `Kind varchar(8)` (enum `WidgetKind = Plain \| Fancy`); `Name/Name2/Name3 nvarchar(255)`; `Subject nvarchar(64) [WriteOnce] [Unique]`; `Price decimal(19,4) NULL`; `Settings nvarchar(max) [JsonColumn]`; `ImageId int? [BlobReference("fixture-image", Avatar)]`; history `fixture.WidgetsHistory` |
-| `fixture.WidgetParts` | `ChildEntity`, temporal with its parent | `WidgetId [ParentKey]`; `Ordinal int`; `Notes nvarchar(1024) NULL`; `UX_WidgetParts_WidgetId_Ordinal` |
+| `fixture.WidgetParts` | `ChildEntity`, temporal with its parent | `WidgetId [ParentKey]`; `Ordinal int`; `Notes nvarchar(1024) NULL`; `Settings nvarchar(max) [JsonColumn]`; `UX_WidgetParts_WidgetId_Ordinal` |
 | `fixture.WidgetPartNotes` | grandchild | `WidgetPartId [ParentKey]`; `Text nvarchar(max)` |
 | `fixture.Nodes` | `ActivatableTreeEntity`, `[Tree(MaxDepth = 8)]` | `Code varchar(50)` unique; `Name nvarchar(255)` |
 | `fixture.Links` | `ChildEntity` of `Nodes` with two FKs to the parent | `NodeId [ParentKey]`; `OtherNodeId`, an ordinary reference |
@@ -2112,7 +2124,9 @@ Each is a named test; the list is the behavioural contract of this spec:
   projection; `Properties<Enum>()` matches nullable enums; the three schemas differ only in
   `Name2`/`Name3`; a `FilterTree.Via` filter on `fixture.WidgetPartNotes` through
   `WidgetPart.Widget` returns exactly the notes of the matching widgets; `EvaluateConstant` beside a
-  `Rows` in one batch returns one row whose `today()` equals the query's.
+  `Rows` in one batch returns one row whose `today()` equals the query's; `fixture.Widgets.Settings`,
+  and `fixture.WidgetParts.Settings` through `Children`, read through an `AllProperties` query and
+  stay null without the flag.
 - **Isolation.** Two fixture databases sharing ids never share a buffer or a schema cache.
 
 ## 14. Definition of done

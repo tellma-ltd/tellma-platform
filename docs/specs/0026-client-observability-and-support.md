@@ -830,7 +830,8 @@ missing.
 ### 10.2 Page data
 
 A support request includes page data by default. The support dialog's checkbox "Include the data
-shown on the page" starts ticked each time the dialog opens, and its state is never remembered.
+shown on the page" starts ticked each time the dialog opens, unless the size cap drops the page
+data (§12.2), and its state is never remembered.
 
 - **Ticked:** the dump carries page data, and `page.url` keeps its query:
   `/17/customers?q=al%20faris`.
@@ -853,14 +854,19 @@ once the dump fits, and names each step in `truncated`:
 4. `sections` (`sections`).
 
 What remains after step 4 is bounded well under the cap. A typical dump is 30–80 KB, or about
-300 KB with 200 rows of 20 columns.
+300 KB with 200 rows of 20 columns. The support dialog tells the user when step 1 or 3 runs
+(§12.2).
 
 ### 10.4 Building and downloading
 
 1. On request, `TmSupport` snapshots the contexts synchronously, before the support dialog opens.
 2. It then imports `/support`, whose `tmBuildSupportDump(snapshot, { includeData })` adds the rest.
    Its only await is `navigator.storage.estimate()`, time-boxed to 200 ms.
-3. **Download** goes through a temporary `<a download>` and a revoked object URL. The file is named
+3. The support dialog builds its dump from that snapshot before the compose form replaces the
+   placeholder, and rebuilds it when the box changes. View, Download, Download instead and Send
+   use the dump it holds, waiting for a rebuild in flight, so what the form shows is what Send
+   submits.
+4. **Download** goes through a temporary `<a download>` and a revoked object URL. The file is named
    in local time with Latin digits: `<slug>-diagnostics-<yyyyMMdd-HHmmss>`, such as
    `acme-diagnostics-20261020-140312.json`.
 
@@ -965,9 +971,15 @@ The dialog has six states. Its notices are spec 0005's `tm-alert` (spec 0005 §1
 - **The compose form,** top to bottom: the title "Report a problem"; the optional message "What
   happened?"; "What's included", with the diagnostic information (View, Download) and the
   screenshot slot; the checkbox "Include the data shown on the page", ticked on open (§10.2); the
-  warning; and the buttons Download instead (link style), Cancel and Send (primary).
+  page-data notice; the warning; and the buttons Download instead (link style), Cancel and Send
+  (primary).
 - **The screenshot slot** offers Take screenshot and Attach image, or shows the preview with
   Remove, Retake and Download. It is a fixed 16:9 box.
+- **The page-data notice** is one `tm-alert` (`kind="info"`, `live="polite"`) that shows when the
+  size cap cut page data from a ticked box's dump (§10.3), worded by the last step that ran. After
+  step 1 it reads "The rows shown on the page are too large to send, so they're left out." After
+  step 3 it reads "The data shown on the page is too large to send, so it's left out.", and the
+  checkbox shows unticked and disabled, so the warning takes its unticked variant.
 - **The warning** has tone warning and `role="note"`. With `providerAccess`, it reads "Your
   administrators and the {displayName} support team will see what you send, including the data
   shown on the page and any screenshot." Without, it reads "Your administrators will see what you
@@ -992,12 +1004,12 @@ The dialog has six states. Its notices are spec 0005's `tm-alert` (spec 0005 §1
 
 **Send flow:**
 
-1. The dialog builds the dump, with page data unless the box is unticked (§10.2).
+1. The dialog takes the dump it holds for the box's state (§10.4).
 2. With a screenshot, `TmApi.upload('support-screenshot', screenshot.blob, { fileName:
    'screenshot.<ext>', signal, onProgress })` (spec 0024 §10.1; `<ext>` as in §11.2) returns a
    staged `BlobDescriptor` (spec 0017 §3.1). Without one, this step is skipped.
-3. `TmApi.write('support-requests/submit', submission)`, with the dump inline and the staged
-   `screenshotId`, answers the receipt.
+3. `TmApi.write('support-requests/submit', submission)`, with the dump inline, `includesPageData`
+   copied from the dump, and the staged `screenshotId`, answers the receipt.
 
 On a failure, Try again re-sends only the failed step, except that a `submit` refused at
 `screenshotId` re-uploads the screenshot first. A staged screenshot stays attachable for 24 h
@@ -1060,8 +1072,8 @@ public static class SupportTelemetryNames                                 // Tel
   or the URL is over 2,048 characters, then is cut to 2,048. The JSON body limit
   (`MaxJsonBodyBytes`, 8 MB, spec 0016 §8.1) admits a full dump inline.
 - **Reading the dump.** `[JsonColumn]` keeps `DumpJson` out of the Queryex schema (spec 0012 §2.6),
-  so no query, list or `[DefaultSelect]` can name it. The details `get` carries it, because it reads
-  every mapped property (spec 0015 §5.3, spec 0016 §3.6).
+  so no query, list or `[DefaultSelect]` can name it. The details `get` carries it, because its
+  entity query asks for every mapped property (spec 0012 §11.4, spec 0015 §5.3).
 - **One transaction.** `submit` enlists its insert with the action frame's `IOpenWriteHost` and
   awaits `PersistAsync` (spec 0015 §13.3). So spec 0017 §4.1's attach rule confirms a screenshot in
   the same transaction: kind `support-screenshot`, staged by the caller, unexpired, used once. It
@@ -1130,6 +1142,7 @@ The page is a stock search and details page on the CRUD frameworks, declared in 
 ```ts
 export const supportRequests = tmEntity('core.SupportRequest', {
   section: 'administration', order: 100, icon: 'life-buoy',
+  visibleWhen: ({ distribution }) => distribution.support.enabled,
   columns: ['Id', 'CreatedAt', 'CreatedBy', 'Message', 'RouteTemplate', 'Screenshot'],
   details: () => import('@tellma/core/support').then(m => m.TmSupportRequestDetails),
 });
@@ -1138,10 +1151,9 @@ export const supportRequests = tmEntity('core.SupportRequest', {
 - **Search.** There is no Create, because the stack has no `Save`. Free text searches `Message`.
   Delete needs `core.SupportRequest × Delete`. `Screenshot` is the blob navigation of
   `ScreenshotId`, a file column (spec 0029 §6.1), blank when there is none.
-- **Launcher entry and context.** The entry shows for every member, since the self-scope grants
-  `Read` (§12.6). A distribution that keeps support off hides it with
-  `hide: ['entry:core.SupportRequest']` (spec 0024 §2.3). The page context is the frameworks'
-  (§9.3).
+- **Launcher entry and context.** While support is enabled, the entry shows for every member,
+  since the self-scope grants `Read` (§12.6); its `visibleWhen` hides it otherwise (spec 0027
+  §3.1). The page context is the frameworks' (§9.3).
 - **Details** (markup only, `TmDetailsKit`) shows Number, Sent, From, Page (an in-app link), the UI
   and server versions with a "differs" badge, Includes page data and Expires. Then come the message
   (`dir="auto"`), the trace ids as `tm-reference` chips, and the buttons Download diagnostic file
@@ -1203,7 +1215,7 @@ Every suite runs on each PR, except the manual capture check, which runs per rel
 | Measurements, `TmRequestLog`, `TmAppVersion` | unit in browser mode, PR | visit boundaries on navigation and `pagehide`; the `chromeMs` and `ms` stamps; absent metrics stay absent; summaries per window; slow at 3 s while pending; the ring of 100; `diagnosticsText` goldens in `en`, `ar` and tenantless; `compare` vectors (newer, older, pre-release, another commit, the same build) and `serverNewer` |
 | Registry and dispatcher | unit and harness, PR | scope resolution (page, overlay, root); replacement with actions carried over; merged order; dispatcher steps 1–6 for each origin; shortcuts live only while `top`; snapshots with and without page data, masks included |
 | Dump | unit, PR | §10.1's contents; a section over its cap and a throwing reader; the four truncation steps in order; nothing of the "never" list with seeded storage and cookies; `page.url` per §10.2 |
-| Capture, support dialog | harness, PR | `TM_DISPLAY_MEDIA` fakes (granted, declined, no frame in 3 s, oversize needing two halvings); the dialog hidden during capture; the file fallback and its extension in the upload's file name; every state of §12.2; the page-data box ticked on every open; a send with and without a screenshot; a retry of only the failed step, and a re-upload when `submit` refuses the screenshot; the warning per `providerAccess` and the box; the Sent text per `administratorsNotified` and `providerAccess`; the other-windows note |
+| Capture, support dialog | harness, PR | `TM_DISPLAY_MEDIA` fakes (granted, declined, no frame in 3 s, oversize needing two halvings); the dialog hidden during capture; the file fallback and its extension in the upload's file name; every state of §12.2; the page-data box ticked on every open; the page-data notice after step 1 and after step 3, then the box unticked and disabled and the unticked warning, and the submitted dump and its `includesPageData` matching it; a send with and without a screenshot; a retry of only the failed step, and a re-upload when `submit` refuses the screenshot; the warning per `providerAccess` and the box; the Sent text per `administratorsNotified` and `providerAccess`; the other-windows note |
 | C# relay | integration, PR | §6.2 row by row; 204 with dropped items; 429 from the rate policy; skew correction; no session renewal; an in-memory exporter sees custom events named by `microsoft.custom_event.name`, Warning traces, the item's trace id on the record and no exported span; counter tags only from the closed sets |
 | C# support | integration on real SQL, PR | `submit`'s codes; the dump stored as sent; `UserAgent` and `PageUrl` cut to length; the screenshot attach and a submit without one; the daily limit; 403 on a read-only tenant; the self-scope; a details `get` carries `DumpJson` and a query cannot select it; `core.support.requested` to every administrator but the sender, one request per content slot, none when the sender is the only one, and `administratorsNotified` each way; a delete, by an administrator or by retention, withdraws it; `tellma.support.requests` once per committed submit with both tags, and `SupportRequestSubmitted`; a rolled-back submit notifies, counts and logs nothing; all three admin routes on an `Active` and a `ReadOnly` tenant, the screenshot route's 404, and `SupportRequestRead`; retention deletes rows and releases screenshots |
 | Playwright on Acme | e2e, PR | the shortcut copies diagnostics (clipboard read in Chromium); a 5xx → Report this problem → fake capture → Send → the Support requests page shows the request and its screenshot, and an administrator's bell shows the notification; the `pagehide` flush reaches the relay; offline hold, then flush; telemetry disabled sends nothing; the dialog and panel at 390, 768, 992 and 1440 px in `en` and `ar` |
