@@ -219,7 +219,7 @@ per instance; no limiter shares state across instances.
 | `/{tenantId}/api/web/{child-segment}/query` | POST | `Web` / `Tellma.Web` | A child query surface (spec 0033 §10): `query` over a child entity (`sales-invoice-lines/query`) under the owner's `Read`, rebased with `FilterTree.Via` |
 | `/{tenantId}/api/web/support-requests/{**operation}` | POST | `Web` / `Tellma.Web` | Spec 0026 §12.3's support requests: `query`, `get`, `get-by-ids`, `delete`, `delete-by-query` and the member-only `submit` |
 | `/{tenantId}/api/web/{route}/{**action}` | POST | `Web` / `Tellma.Web` | Every `[ApiRoute]` service action (§2.4) |
-| `/{tenantId}/blobs/{kind}?fileName=` | POST, raw body | `Blobs` / `Tellma.Web` | Staged upload (spec 0017), the `support-bundle` kind included (spec 0026 §12.4); `AcceptsBinaryMetadata(Blobs:MaxUploadSize)` |
+| `/{tenantId}/blobs/{kind}?fileName=` | POST, raw body | `Blobs` / `Tellma.Web` | Staged upload (spec 0017), the `support-screenshot` kind included (spec 0026 §12.4); `AcceptsBinaryMetadata(Blobs:MaxUploadSize)` |
 | `/{tenantId}/blobs/{kind}/{id:int}?variant=&download=` | GET | `Blobs` / `Tellma.Web` | The only GET on a tenant surface (spec 0017) |
 | `/{tenantId}/hub` | negotiate + WebSocket | `Hub` / `Tellma.Web` | `TellmaHub` (spec 0021) |
 | `/{tenantId}/mcp` | POST | tenant `Mcp` group / `Tellma.Mcp` | The Tellma Tenant MCP server (§11); GET and DELETE answer 405 |

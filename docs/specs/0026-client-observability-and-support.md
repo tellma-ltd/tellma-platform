@@ -18,21 +18,24 @@ assistant needs to know what the user is looking at. This spec ships three parts
 - **Page context:** a registry where every page and dialog publishes what it shows, what is wrong
   and what can be done. Toolbars, menus, shortcuts, the dump and the assistant read it.
 
-No tenant content or free text leaves the tab unless the user ticks "Include the data shown on the
-page". Nothing here blocks, retries or throws into the user's path. The design builds on spec
-0024's HTTP layer, spec 0011's OpenTelemetry pipeline and admin surface, and specs 0015 and 0017.
+Telemetry never carries tenant content or free text. Those leave the tab only through the support
+dialog, in a request the user sends or a file downloaded there, and page data only while "Include
+the data shown on the page" stays ticked (§10.2). Nothing here blocks, retries or throws into the
+user's path. The design builds on spec 0024's HTTP layer, spec 0011's OpenTelemetry pipeline and
+admin surface, and specs 0015, 0017 and 0021.
 
 Other specs that carry parts of this design:
 
 - spec 0011 §5.1, §5.3, §5.5, §5.9, §8, §9 — the relay's mapping, the reserved prefix, the
   no-renewal rule, `DistributionInfo.support` and `.telemetry`, the admin reads, the configuration
-  keys, and inbound `traceparent`;
+  keys, inbound `traceparent` and the alerts;
 - spec 0014 §2, §5.3 — the `core.SupportRequest` securable and its self-scope;
 - spec 0016 §2.1, §2.2, §8.2, §10.1 — the routes, the retry class, the `tellma-telemetry` rate
   policy and the meter;
-- spec 0017 §1.3, §5.2 — the `support-bundle` blob kind;
+- spec 0017 §1.3, §5.2 — the `support-screenshot` blob kind;
 - spec 0018 §6.2 — Acme turns support on;
 - spec 0020 §14.4 — retention;
+- spec 0021 §2.3 — the `core.support.requested` type and the `support` category;
 - spec 0023 §3.2 — physical-key matching;
 - spec 0024 §4.4, §8.4, §10.1–§10.3, §11 — page scopes, the sign-out flush, `send` and `upload`,
   `begin` and `end`, and the 5xx dialog's support actions;
@@ -48,7 +51,8 @@ Other specs that carry parts of this design:
 - **One relay, no browser SDK.** Items are pseudonymous and use closed names. They join the
   server's records by trace id, in Application Insights or any Serilog sink.
 - **Every call quotable.** A slow, failed or hanging call's trace id is two keystrokes away.
-- **Support in one send:** one blob, one row, opt-in per distribution.
+- **Support in one send:** one row, a blob only for the screenshot, opt-in per distribution, and
+  the people who act on it alerted.
 - **One model of page context and actions** for toolbars, menus, shortcuts, the dump and the
   future assistant.
 
@@ -75,12 +79,12 @@ documentation comments, bodies and cancellation tokens are omitted.
 |---|---|---|
 | `@tellma/core` primary, folders `observe/`, `requests/`, `context/`, `support/` | `TmTelemetry`, `TmErrorHandler`, `TmRequestLog`, `TmAppVersion`, `TmPageContexts`, `TmPageActions`, `provideTmPageScope`, `tmSerializePageContext`, `TmSupport`, `TM_HELP_ARTICLES` | eager; this spec's share ≤ 6 KB gzip |
 | `@tellma/core` primary, dynamic chunk | the load-metrics collector (§5.2) | at idle, after first render |
-| `@tellma/core/support` | `TmSupportDialog`, `TmScreenCapture`, `TM_DISPLAY_MEDIA`, `tmBuildSupportDump`, `TmDiagnosticsPanel` (`tm-diagnostics`), `TmSupportBundleSummary`, `TmSupportRequestDetails` | on demand, worker group `on-demand` (spec 0024 §5.3); ≤ 25 KB gzip |
+| `@tellma/core/support` | `TmSupportDialog`, `TmScreenCapture`, `TM_DISPLAY_MEDIA`, `tmBuildSupportDump`, `TmDiagnosticsPanel` (`tm-diagnostics`), `TmSupportDumpSummary`, `TmSupportRequestDetails` | on demand, worker group `on-demand` (spec 0024 §5.3); ≤ 25 KB gzip |
 | `@tellma/core-testing` | `TmFakeTelemetry` (records items, sends nothing), `tmFakeDisplayMedia()` (a canvas `captureStream`), `TmPageContextHarness` (reads the registry, invokes actions) | tests |
 | `@tellma/core-tools/eslint` | `tm/telemetry-names`: literal event names and action ids match §3.2 and §9.3 | lint |
-| `Tellma.Core.Abstractions.Api` | `ClientTelemetryBatch`, `ClientTelemetryItem`, `ClientTelemetryOptions`, `ClientTelemetryNames`, `SupportOptions` | — |
-| `Tellma.Core.AspNetCore` | `POST /api/client-telemetry`; the two admin support routes | `MapTellma` (spec 0011 §5.1) |
-| `Tellma.Core` | `SupportRequest`, `SupportRequestService`, `SupportRequestAccessCriteria`, the `support-bundle` transform, resx `SupportRequests.*` | `CoreFeature` |
+| `Tellma.Core.Abstractions.Api` | `ClientTelemetryBatch`, `ClientTelemetryItem`, `ClientTelemetryOptions`, `ClientTelemetryNames`, `SupportOptions`, `SupportTelemetryNames` | — |
+| `Tellma.Core.AspNetCore` | `POST /api/client-telemetry`; the three admin support routes | `MapTellma` (spec 0011 §5.1) |
+| `Tellma.Core` | `SupportRequest`, `SupportRequestService`, `SupportRequestAccessCriteria`, the `support-screenshot` transform, the `core.support.requested` type, resx `SupportRequests.*`, `Notification_core_support_requested`, `NotificationType_core_support_requested` and `NotificationCategory_support` | `CoreFeature` |
 
 **Vocabulary**
 
@@ -89,8 +93,6 @@ documentation comments, bodies and cancellation tokens are omitted.
 - **Visit** — one routed page, from its navigation start to the next navigation start or page hide.
 - **Slow request** — a call that reached 3 s, whether it has settled or is still pending.
 - **Dump** — the JSON describing the tab at a moment (§10).
-- **Bundle** — the dump with the screenshot embedded: the one file a support request stores
-  (§12.2).
 - **Page data** — what a page shows from the tenant: rows, form values, error messages, the user's
   search and filter text, and the URL's query.
 - **Overlay** — a context-bearing dialog above the routed page (`overlay: true`, §9.1).
@@ -772,8 +774,8 @@ facts reach the agent in `RunAgentInput` when a run starts.
 ## 10. The state dump
 
 The dump is one JSON document describing the tab at a moment: versions, environment, session,
-contexts, requests, errors, telemetry and contributed sections. It is always downloadable, and it
-is the body of a support request's bundle.
+contexts, requests, errors, telemetry and contributed sections. It is always downloadable, and a
+support request stores it in its row (§12.3).
 
 ### 10.1 Contents
 
@@ -797,7 +799,6 @@ interface TmSupportDump {
   readonly errors: readonly TmErrorRecord[];         // ≤ 50
   readonly telemetry: readonly TmTelemetryItem[];    // ≤ 100, sent or not
   readonly sections: Readonly<Record<string, TmJson>>; // contributed (below)
-  readonly screenshot?: { dataUrl: string; width: number; height: number; surface: TmScreenshot['surface'] }; // in a bundle only (§12.2)
 }
 ```
 
@@ -812,7 +813,8 @@ interface TmSupportDump {
 - **Never in a dump:** cookies, the profile cookie's name and e-mail, storage contents, launch
   document bodies, drafts, and request or response bodies.
 
-**Example —** an abridged dump, page data off: Farah's Center 5 in edit mode, with Code missing.
+**Example —** an abridged dump, page data left out: Farah's Center 5 in edit mode, with Code
+missing.
 
 ```json
 { "format": "tellma-support-dump", "formatVersion": 1, "createdAt": "2026-10-20T14:03:12.512+03:00",
@@ -827,25 +829,31 @@ interface TmSupportDump {
 
 ### 10.2 Page data
 
-Page data is off by default. Only the support dialog's checkbox "Include the data shown on the
-page" turns it on.
+A support request includes page data by default. The support dialog's checkbox "Include the data
+shown on the page" starts ticked each time the dialog opens, and its state is never remembered.
 
-- **Off:** contexts are serialised with `includeData: false` (§9.6), and `page.url` is the path
-  alone: `/17/customers`.
 - **Ticked:** the dump carries page data, and `page.url` keeps its query:
   `/17/customers?q=al%20faris`.
-- **"Download diagnostic file"** outside the dialog never includes page data.
+- **Unticked:** contexts are serialised with `includeData: false` (§9.6), and `page.url` is the
+  path alone: `/17/customers`.
+- **Without the box,** a downloaded dump never includes page data: the Diagnostics panel's
+  "Download diagnostic file" (§8.4, `TmSupport.downloadDump()`) and the Download only state
+  (§12.2). The compose form's View, Download and Download instead follow the box.
 
 ### 10.3 Size cap
 
-The cap is 2 MiB of UTF-8 (`TM_SUPPORT_DUMP_MAX_BYTES`), not counting `screenshot`. Over the cap,
-the builder drops these in order, stopping once the dump fits, and names each step in `truncated`:
+The cap is 2 MiB (`TM_SUPPORT_DUMP_MAX_BYTES`), measured as the UTF-8 bytes of the compact JSON
+sent; `submit` also enforces it (§12.3). Over the cap, the builder drops these in order, stopping
+once the dump fits, and names each step in `truncated`:
 
 1. every context's `visible.rows` (`visibleRows`);
-2. `telemetry` (`telemetry`).
+2. `telemetry` (`telemetry`);
+3. the rest of the page data: contexts serialised with `includeData: false`, `page.url` the path
+   alone and `includesPageData` false (`pageData`);
+4. `sections` (`sections`).
 
-Every other member is bounded. A typical dump is 30–80 KB, or about 300 KB with 200 rows of 20
-columns.
+What remains after step 4 is bounded well under the cap. A typical dump is 30–80 KB, or about
+300 KB with 200 rows of 20 columns.
 
 ### 10.4 Building and downloading
 
@@ -888,7 +896,8 @@ declare const TM_DISPLAY_MEDIA: InjectionToken<(options: DisplayMediaStreamOptio
 - **Declined** (`NotAllowedError`): the dialog returns as it was.
 - **No frame within 3 s, or any other error:** "Couldn't take a screenshot. You can attach one
   instead."
-- **Oversize.** An image over 8 MiB, captured or attached, is redrawn at half size.
+- **Oversize.** An image over 8 MiB, captured or attached, is redrawn in its own type at half the
+  dimensions, repeatedly, until it is at most 8 MiB.
 - **Policy.** `index.html` carries `Permissions-Policy: display-capture=(self)` (spec 0024 §6).
   The CSP already admits `blob:` and `data:` images. DOM rasterising (html2canvas) is approximate
   and is not used.
@@ -904,14 +913,16 @@ declare const TM_DISPLAY_MEDIA: InjectionToken<(options: DisplayMediaStreamOptio
 - **"Attach image"** is always offered: a file input (`accept="image/png,image/jpeg,image/webp"`)
   with the hint "Use your device's screenshot keys to capture the whole screen."
 - **The preview** adds "Check the screenshot. It may show other windows." when the surface is
-  `window` or `monitor`, and offers Download (`<slug>-screenshot-<yyyyMMdd-HHmmss>.png`).
+  `window` or `monitor`, and offers Download (`<slug>-screenshot-<yyyyMMdd-HHmmss>.<ext>`, `<ext>`
+  being `png`, `jpg` or `webp` by the image's type).
 
 ## 12. Support requests
 
 When the distribution opts in, the user can send the dump and screenshot from inside the app. The
-dialog uploads one bundle as a tenant blob, and one `submit` writes a `core.SupportRequests` row.
-The sender and administrators see the request on a stock page. The provider's support team reads
-it over the admin surface.
+dialog uploads the screenshot, when there is one, as a tenant blob, and one `submit` writes a
+`core.SupportRequests` row that holds the dump. The tenant's administrators get a bell notification
+and the provider's support team an alert. The sender and administrators see the request on a stock
+page. The provider's support team reads it over the admin surface.
 
 ### 12.1 Opt-in and `TmSupport`
 
@@ -945,24 +956,32 @@ The dialog has six states. Its notices are spec 0005's `tm-alert` (spec 0005 §1
 | State | What it shows |
 |---|---|
 | Compose (`canSend`) | The compose form (below) |
-| Download only | No message and no Send: "Download the diagnostic file and screenshot, then send them to your support contact.", with the reason when one applies ("You're offline.", "This tenant is read-only.") |
-| Sending | The fields lock; Send shows busy and the upload's progress |
-| Sent | "Your request number is 1042. Quote it when you talk to support.", a `tm-reference` "Request" copying "{displayName} support request 1042, tenant 17"; Close |
-| Failed | An inline error with the problem's text and its trace id chip; Try again, Download instead |
+| Download only | No message and no Send: "Download the diagnostic file and screenshot, then send them to your support contact.", with the reason when one applies ("You're offline.", "This tenant is read-only."); the file never includes page data (§10.2) |
+| Sending | The fields lock; Send shows busy, with the screenshot upload's progress when there is one |
+| Sent | "Your request number is 1042." and who was alerted (below); a `tm-reference` "Request" copying "{displayName} support request 1042, tenant 17"; Close |
+| Failed | An inline `tm-alert` with the problem's errors (`TmServerText.error`), else its title (`TmServerText.problem`, spec 0024 §7.5); its trace id chip; Try again, Download instead |
 | Unavailable | The `/support` import failed: "This isn't available offline. Press {keys} to copy diagnostics." `tm-kbd` renders the keys, which still work from the primary; Close |
 
 - **The compose form,** top to bottom: the title "Report a problem"; the optional message "What
   happened?"; "What's included", with the diagnostic information (View, Download) and the
-  screenshot slot; the checkbox "Include the data shown on the page"; the warning; and the buttons
-  Download instead (link style), Cancel and Send (primary).
+  screenshot slot; the checkbox "Include the data shown on the page", ticked on open (§10.2); the
+  warning; and the buttons Download instead (link style), Cancel and Send (primary).
 - **The screenshot slot** offers Take screenshot and Attach image, or shows the preview with
   Remove, Retake and Download. It is a fixed 16:9 box.
 - **The warning** has tone warning and `role="note"`. With `providerAccess`, it reads "Your
-  administrators and the {displayName} support team will see what you send, including any
-  screenshot." Without, it reads "Your administrators will see what you send, including any
-  screenshot." Both continue "Don't send it if the page shows information you're not allowed to
-  share." `{displayName}` is the localized display name, `TmLocalization.displayName` (spec 0024
-  §3.1).
+  administrators and the {displayName} support team will see what you send, including the data
+  shown on the page and any screenshot." Without, it reads "Your administrators will see what you
+  send, including the data shown on the page and any screenshot." While the box is ticked, both
+  continue "If the page shows something you may not share, untick 'Include the data shown on the
+  page' or don't send." While it is unticked, "the data shown on the page and" drops out, and both
+  continue "If the screenshot shows something you may not share, remove it or don't send."
+  `{displayName}` is the localized display name, `TmLocalization.displayName` (spec 0024 §3.1).
+- **The Sent text** continues with who was alerted, from the receipt's `administratorsNotified` and
+  `providerAccess`:
+  - both: "Your administrators and the {displayName} support team have been notified."
+  - administrators only: "Your administrators have been notified."
+  - `providerAccess` only: "The {displayName} support team has been notified."
+  - neither: "Quote it when you talk to support."
 - **Fields.** The message holds at most 2,000 characters, with `dir="auto"` and a counter from
   1,800. View shows the dump as read-only LTR monospace JSON.
 - **Keyboard and ARIA.** `role="dialog"` is labelled by the title, and focus starts in the message.
@@ -973,13 +992,15 @@ The dialog has six states. Its notices are spec 0005's `tm-alert` (spec 0005 §1
 
 **Send flow:**
 
-1. The dialog builds the bundle: the dump, with page data only when ticked (§10.2), and the
-   screenshot as a data URL in `screenshot`.
-2. `TmApi.upload('support-bundle', bundle, { fileName: 'support-bundle.json', signal, onProgress })`
-   (spec 0024 §10.1) returns a staged `BlobDescriptor` (spec 0017 §3.1).
-3. `TmApi.write('support-requests/submit', submission)` answers the receipt.
+1. The dialog builds the dump, with page data unless the box is unticked (§10.2).
+2. With a screenshot, `TmApi.upload('support-screenshot', screenshot.blob, { fileName:
+   'screenshot.<ext>', signal, onProgress })` (spec 0024 §10.1; `<ext>` as in §11.2) returns a
+   staged `BlobDescriptor` (spec 0017 §3.1). Without one, this step is skipped.
+3. `TmApi.write('support-requests/submit', submission)`, with the dump inline and the staged
+   `screenshotId`, answers the receipt.
 
-On a failure, Try again re-sends only what failed. A staged bundle stays attachable for 24 h
+On a failure, Try again re-sends only the failed step, except that a `submit` refused at
+`screenshotId` re-uploads the screenshot first. A staged screenshot stays attachable for 24 h
 (`StagingTtl`, spec 0017 §1.3).
 
 **Example —** the submission and its answer. `traceIds` lists the trace ids of the dump's errors
@@ -989,8 +1010,8 @@ and slow requests first, then those of the newest requests, at most 20.
 { "message": "Saving a center hangs for a minute, then fails.", "uiVersion": "1.4.0+3f9c2ab1e5d4…",
   "routeTemplate": "/:t/centers/:id", "pageUrl": "/17/centers/5",
   "traceIds": ["4bf92f3577b34da6a3ce929d0e0e4736", "0af7651916cd43dd8448eb211c80319c"],
-  "includesPageData": false, "hasScreenshot": true, "bundleId": 9001 }
-→ 200 { "id": 1042 }
+  "includesPageData": true, "dump": { "format": "tellma-support-dump", "formatVersion": 1, … }, "screenshotId": 9001 }
+→ 200 { "id": 1042, "administratorsNotified": true }
 ```
 
 ### 12.3 Server contract
@@ -998,8 +1019,8 @@ and slow requests first, then those of the newest requests, at most 20.
 ```csharp
 // Tellma.Core — table core.SupportRequests; resource core.SupportRequest (spec 0014 §2)
 // [Stack(Operations = Query | Details | Delete | Enlist, DefaultOrderBy = "Id desc")]
-[ApiResource(Segment = "support-requests", Mcp = McpExposure.Hidden)]        // bundles can hold other users' page data
-[DefaultSelect("Id,Message,UiVersion,ServerVersion,RouteTemplate,HasScreenshot,IncludesPageData,ExpiresAt,CreatedAt,CreatedById")]
+[ApiResource(Segment = "support-requests", Mcp = McpExposure.Hidden)]        // dumps and screenshots can hold other users' page data
+[DefaultSelect("Id,Message,UiVersion,ServerVersion,RouteTemplate,ScreenshotId,IncludesPageData,ExpiresAt,CreatedAt,CreatedById")]
 public sealed class SupportRequest : TopLevelEntity                            // Id and the four audit columns
 {
     [MaxLength(2000), Searchable] public string? Message { get; set; }
@@ -1010,13 +1031,13 @@ public sealed class SupportRequest : TopLevelEntity                            /
     [MaxLength(700)] public string? TraceIds { get; set; }                    // comma-separated, at most 20
     [MaxLength(512)] public string? UserAgent { get; set; }                   // the request header
     public bool IncludesPageData { get; set; }
-    public bool HasScreenshot { get; set; }
-    [BlobReference("support-bundle", MaxSizeBytes: 16_777_216)] public int? BundleId { get; set; } // required at submit
+    [JsonColumn] public string DumpJson { get; set; } = "";                   // the dump (§10), capped by §10.3
+    [BlobReference("support-screenshot", MaxSizeBytes: 8_388_608)] public int? ScreenshotId { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }                             // CreatedAt + RetentionDays
 }
 public sealed record SupportRequestSubmission(string? Message, string UiVersion, string? RouteTemplate,
-    string? PageUrl, IReadOnlyList<string> TraceIds, bool IncludesPageData, bool HasScreenshot, int BundleId);
-public sealed record SupportRequestReceipt(int Id);
+    string? PageUrl, IReadOnlyList<string> TraceIds, bool IncludesPageData, JsonElement Dump, int? ScreenshotId);
+public sealed record SupportRequestReceipt(int Id, bool AdministratorsNotified); // true: recipients besides the sender
 public sealed class SupportRequestService : EntityService<SupportRequest>, IEnlists<SupportRequest>
 {
     [ApiAction("submit", MemberOnly = true, Mutation = true, Idempotent = false, Mcp = McpExposure.Hidden)]
@@ -1025,14 +1046,60 @@ public sealed class SupportRequestService : EntityService<SupportRequest>, IEnli
 public sealed class SupportRequestAccessCriteria : IAccessCriteriaProvider; // core.SupportRequest; CreatedById = me() for Read, reason self
 public sealed class SupportOptions { public bool Enabled { get; set; } [Range(1, 365)] public int RetentionDays { get; set; } = 30;
     [Range(1, 1000)] public int MaxRequestsPerUserPerDay { get; set; } = 20; }  // Tellma:Support (spec 0011 §8); Enabled defaults to false
+public static class SupportTelemetryNames                                 // Tellma.Core.Abstractions.Api
+{
+    public const string MeterName = "Tellma.Core";
+    public const string Requests = "tellma.support.requests";             // counter, {request}; screenshot, page_data ∈ true | false
+    public const string ScreenshotTag = "screenshot", PageDataTag = "page_data";
+}
 ```
 
-- **`submit` builds one row,** filling `ServerVersion`, `UserAgent` and `ExpiresAt` on the server.
+- **`submit` builds one row,** filling `ServerVersion`, `UserAgent` (the header, cut to 512
+  characters) and `ExpiresAt` on the server, and `DumpJson` with the dump's raw text as received,
+  which is also what the cap measures. `PageUrl` loses its query when `IncludesPageData` is false
+  or the URL is over 2,048 characters, then is cut to 2,048. The JSON body limit
+  (`MaxJsonBodyBytes`, 8 MB, spec 0016 §8.1) admits a full dump inline.
+- **Reading the dump.** `[JsonColumn]` keeps `DumpJson` out of the Queryex schema (spec 0012 §2.6),
+  so no query, list or `[DefaultSelect]` can name it. The details `get` carries it, because it reads
+  every mapped property (spec 0015 §5.3, spec 0016 §3.6).
 - **One transaction.** `submit` enlists its insert with the action frame's `IOpenWriteHost` and
-  awaits `PersistAsync` (spec 0015 §13.3). So spec 0017 §4.1's attach rule confirms the bundle in
-  the same transaction: kind `support-bundle`, staged by the caller, unexpired, used once. It takes
-  two round trips.
+  awaits `PersistAsync` (spec 0015 §13.3). So spec 0017 §4.1's attach rule confirms a screenshot in
+  the same transaction: kind `support-screenshot`, staged by the caller, unexpired, used once. It
+  takes two round trips besides the administrator lookup.
+- **Administrators are notified in that transaction.** Before it enlists, `submit` reads
+  `IAdministratorDirectory.GetAdministratorIdsAsync()` (spec 0014 §10), drops the sender, and keeps
+  the recipients in the service's scoped state; `AdministratorsNotified` is computed from them. The
+  service's `ValidateAsync` adds two loads to the enlisted save's validation round (spec 0015
+  §7.2): `ByIds<User, int>` over the recipients and the sender
+  (`Id,Name,Name2,Name3,PreferredLanguage`), and the daily limit's `Count` of the caller's
+  requests since midnight in the tenant zone (spec 0016 §6.4). Its `ContributeAsync` hook raises
+  `core.support.requested` (below) on the persist context (`context.Notify`, spec 0015 §13.1), one
+  request per content slot of the recipients' languages (slot 1 when unset), so the rows commit
+  with the request and `inbox.changed` fires after commit (spec 0021 §3.4). No recipients, no
+  request. It is not `InboxOnly`, so every other channel follows each recipient's preference.
+- **A delete withdraws.** On a `DeletePersistContext`, the same hook withdraws
+  `core.SupportRequest:<id>` for each deleted id (`context.Withdraw`, spec 0021 §3.5), whether an
+  administrator or retention (§12.8) deletes.
+- **After commit,** once `PersistAsync` returns, `submit` adds one to `tellma.support.requests`,
+  tagged by `ScreenshotId` being set and by `IncludesPageData`, and logs
+  `SupportRequestSubmitted(TenantId, RequestId)` at Information; the logger scope carries the
+  tenant (spec 0011 §9). A rolled-back submit records neither. No tenant or user tag (spec 0016
+  §10.1).
+- **The provider's alert.** An alert query under `infra/monitoring/` notifies the provider's
+  support team of any increase of `tellma.support.requests`, beside §6.4's client alerts and spec
+  0011 §9's. On-premises, the operator routes it.
 - **Read-only tenant.** A `ReadOnly` tenant refuses with 403 `tenant-read-only` (spec 0011 §3.3).
+
+The notification type, declared by `CoreFeature` (spec 0021 §2.3):
+
+| Member | Value |
+|---|---|
+| `Key`; `Category` | `core.support.requested`; `support`, a Core category labelled by `NotificationCategory_support` |
+| `Mutable`, `Severity`, `Toast`, `Inbox` | `false`, `Warning`, `true`, `true` |
+| Target | `core.SupportRequest`, `TargetId` = the request's id |
+| Arguments | `{ id, actorName }`: `id` is the request number as an invariant-culture string; `actorName` is the sender's name in the request's content slot, falling back to slot 1 (as spec 0033 §7); never the message. `ActorUserId` is the sender |
+| Text | `Notification_core_support_requested` in Core's `Strings`: "{actorName} reported a problem (request {id})."; the settings label `NotificationType_core_support_requested`: "Problem reports" (spec 0021 §4.3) |
+| Duplicates | `DedupKey = 'core.SupportRequest:<id>'`, `OnDuplicate = Suppress` |
 
 `submit` fails with these codes:
 
@@ -1041,17 +1108,19 @@ public sealed class SupportOptions { public bool Enabled { get; set; } [Range(1,
 | `SupportRequests.Disabled` | root | `Tellma:Support:Enabled` is false |
 | `SupportRequests.DailyLimit` | root | the caller already sent `MaxRequestsPerUserPerDay` requests since tenant midnight |
 | `SupportRequests.TraceId` | `traceIds[i]` | not 32 lowercase hex, or more than 20 ids |
-| `Required` (spec 0015) | `bundleId` | no bundle |
-| `Blob.NotAttachable`, `Blob.DuplicateReference` | `bundleId` | spec 0017 §4.2 |
+| `SupportRequests.DumpInvalid` | `dump` | not an object, its `format` is not `tellma-support-dump`, or its `includesPageData` differs from `includesPageData` |
+| `SupportRequests.DumpTooLarge` | `dump` | over 2 MiB of UTF-8 |
+| `Blob.NotAttachable`, `Blob.DuplicateReference` | `screenshotId` | spec 0017 §4.2 |
 
-### 12.4 Blob kind `support-bundle`
+### 12.4 Blob kind `support-screenshot`
 
-- **Declared** by `SupportRequest.BundleId` (spec 0017 §1.3): preset `Attachment`, `MaxSize`
-  16 MiB, read access `OwnerRead` through `core.SupportRequest` (spec 0017 §5.2).
-- **JSON only.** `CoreFeature` narrows it with `BlobKind("support-bundle", p => p with {
-  AllowedContentTypes = ["application/json"], Thumbnail = null })`.
-- **Always fits.** A 2 MiB dump (§10.3) plus an 8 MiB PNG (§11.1) is about 10.7 MiB as a data URL.
-- **Upload route:** `POST /{t}/blobs/support-bundle?fileName=` (spec 0017 §8.1).
+- **Declared** by `SupportRequest.ScreenshotId` (spec 0017 §1.3): preset `Attachment`, `MaxSize`
+  8 MiB, read access `OwnerRead` through `core.SupportRequest` (spec 0017 §5.2).
+- **Images only.** `CoreFeature` narrows it with `BlobKind("support-screenshot", p => p with {
+  AllowedContentTypes = ["image/png", "image/jpeg", "image/webp"] })`. The preset's thumbnail
+  stays, so the details page shows one (§12.5).
+- **Always fits.** §11.1's redraw keeps every screenshot within 8 MiB.
+- **Upload route:** `POST /{t}/blobs/support-screenshot?fileName=` (spec 0017 §8.1).
 
 ### 12.5 The Support requests page (`/{t}/support-requests`)
 
@@ -1061,53 +1130,67 @@ The page is a stock search and details page on the CRUD frameworks, declared in 
 ```ts
 export const supportRequests = tmEntity('core.SupportRequest', {
   section: 'administration', order: 100, icon: 'life-buoy',
-  columns: ['Id', 'CreatedAt', 'CreatedBy', 'Message', 'RouteTemplate', 'HasScreenshot'],
+  columns: ['Id', 'CreatedAt', 'CreatedBy', 'Message', 'RouteTemplate', 'Screenshot'],
   details: () => import('@tellma/core/support').then(m => m.TmSupportRequestDetails),
 });
 ```
 
 - **Search.** There is no Create, because the stack has no `Save`. Free text searches `Message`.
-  Delete needs `core.SupportRequest × Delete`.
+  Delete needs `core.SupportRequest × Delete`. `Screenshot` is the blob navigation of
+  `ScreenshotId`, a file column (spec 0029 §6.1), blank when there is none.
 - **Launcher entry and context.** The entry shows for every member, since the self-scope grants
-  `Read` (§12.6). The page context is the frameworks' (§9.3).
+  `Read` (§12.6). A distribution that keeps support off hides it with
+  `hide: ['entry:core.SupportRequest']` (spec 0024 §2.3). The page context is the frameworks'
+  (§9.3).
 - **Details** (markup only, `TmDetailsKit`) shows Number, Sent, From, Page (an in-app link), the UI
   and server versions with a "differs" badge, Includes page data and Expires. Then come the message
-  (`dir="auto"`), the trace ids as `tm-reference` chips, and Download.
-- **Bundle summary.** `tm-support-bundle-summary` fetches the bundle through the blob GET. It shows
-  the screenshot, errors, slow requests, browser and locale.
+  (`dir="auto"`), the trace ids as `tm-reference` chips, and the buttons Download diagnostic file
+  (the stored dump) and Download screenshot.
+- **Dump summary.** `tm-support-dump-summary` (`TmSupportDumpSummary`) parses the `get`'s
+  `dumpJson` (§12.3) and loads the screenshot's thumbnail through the blob GET (spec 0017 §5.3),
+  opening the full image on click. It shows the screenshot, errors, slow requests, browser and
+  locale.
 
 ### 12.6 Access
 
 - **Self-scope:** a member reads the requests they sent (`CreatedById = me()`, spec 0014 §5.3).
 - **Administrators** read and delete every request through roles holding `core.SupportRequest ×
   Read` and `× Delete` (spec 0014 §2). The built-in administrator role holds both.
-- **Blobs.** The securable is not sensitive. The bundle follows "who can read the owner can read its
-  blobs" (spec 0017 §5.2).
+- **Blobs.** The securable is not sensitive. The screenshot follows "who can read the owner can read
+  its blobs" (spec 0017 §5.2).
 
 ### 12.7 The admin surface for the provider's support team
 
-Two read routes join spec 0011 §5.9's admin surface:
+Three read routes join spec 0011 §5.9's admin surface:
 
 ```csharp
 // Tellma.Core.AspNetCore — under /api/admin/v1, policy Tellma.ControlPlane, mapped with the admin surface
 //   GET /api/admin/v1/tenants/{id}/support-requests?before={requestId}&take={1..100}  → AdminSupportRequest[], newest first
-//   GET /api/admin/v1/tenants/{id}/support-requests/{requestId}/bundle               → the bundle, as an attachment
+//   GET /api/admin/v1/tenants/{id}/support-requests/{requestId}/dump                 → the dump, as a JSON attachment
+//   GET /api/admin/v1/tenants/{id}/support-requests/{requestId}/screenshot           → the screenshot, as an attachment
 public sealed record AdminSupportRequest(int Id, DateTimeOffset CreatedAt, string CreatedByName, string CreatedByEmail,
     string? Message, string UiVersion, string ServerVersion, string? RouteTemplate, string? PageUrl,
-    IReadOnlyList<string> TraceIds, string? UserAgent, bool IncludesPageData, bool HasScreenshot, long BundleSize,
-    DateTimeOffset ExpiresAt);
+    IReadOnlyList<string> TraceIds, string? UserAgent, bool IncludesPageData, bool HasScreenshot, long DumpBytes,
+    DateTimeOffset ExpiresAt);                    // HasScreenshot: ScreenshotId is set; DumpBytes: DATALENGTH(DumpJson)
 ```
 
-- **Reads** open a tenant scope as the system user (spec 0011 §4.4). They use the stack's query and
-  spec 0017's `ResolveAsync`. An unknown tenant or request is 404 `not-found`.
+- **Reads** open a tenant scope as the system user with `allowNonActive: true` (spec 0011 §4.4), so
+  a `ReadOnly` tenant's requests stay readable. The list is one read statement. The dump route uses
+  the details read (spec 0015 §5.3); the screenshot route reads the row's `ScreenshotId` the same
+  way and resolves it with spec 0017's `ResolveAsync`, whose `Read` check the system user passes
+  unrestricted (`UserAccess.System`, spec 0014 §5.1). A `Suspended` tenant is 403
+  `tenant-suspended`. A `Retired` or unknown tenant, an unknown request, or a request without a
+  screenshot on the screenshot route is 404 `not-found`.
 - **Audit.** Every call logs `SupportRequestRead(TenantId, RequestIds, ClientId)` at Information.
 - **Paging is by key,** with no paging record: `Id < before` (all when absent), `take` 50 by
-  default. For "request 1042, tenant 17", support reads `?before=1043&take=1`, then the bundle.
+  default. For "request 1042, tenant 17", support reads `?before=1043&take=1`, then the dump and
+  the screenshot.
 
 ### 12.8 Retention
 
 `ExpiresAt` is the submit time plus `RetentionDays` (30). Spec 0020's daily `core.file-retention`
-deletes expired rows as it does exports (spec 0020 §14.4), so their bundles are released.
+deletes expired rows as it does exports (spec 0020 §14.4), so their screenshots are released and
+their notifications withdrawn (§12.3); the dump goes with the row.
 
 ## 13. Testing
 
@@ -1119,18 +1202,18 @@ Every suite runs on each PR, except the manual capture check, which runs per rel
 | Redaction, `TmErrorHandler` | unit, PR | §4.3's table plus e-mail, URL, Arabic and digit vectors; stack reduction; each source and filter; fingerprint stability; once per fingerprint per 10 minutes; the 30-item ceiling |
 | Measurements, `TmRequestLog`, `TmAppVersion` | unit in browser mode, PR | visit boundaries on navigation and `pagehide`; the `chromeMs` and `ms` stamps; absent metrics stay absent; summaries per window; slow at 3 s while pending; the ring of 100; `diagnosticsText` goldens in `en`, `ar` and tenantless; `compare` vectors (newer, older, pre-release, another commit, the same build) and `serverNewer` |
 | Registry and dispatcher | unit and harness, PR | scope resolution (page, overlay, root); replacement with actions carried over; merged order; dispatcher steps 1–6 for each origin; shortcuts live only while `top`; snapshots with and without page data, masks included |
-| Dump | unit, PR | §10.1's contents; a section over its cap and a throwing reader; the truncation rule; nothing of the "never" list with seeded storage and cookies; `page.url` per §10.2 |
-| Capture, support dialog | harness, PR | `TM_DISPLAY_MEDIA` fakes (granted, declined, no frame in 3 s, oversize); the dialog hidden during capture; the file fallback; every state of §12.2; a retry of only the failed step; the warning per `providerAccess`; the other-windows note |
+| Dump | unit, PR | §10.1's contents; a section over its cap and a throwing reader; the four truncation steps in order; nothing of the "never" list with seeded storage and cookies; `page.url` per §10.2 |
+| Capture, support dialog | harness, PR | `TM_DISPLAY_MEDIA` fakes (granted, declined, no frame in 3 s, oversize needing two halvings); the dialog hidden during capture; the file fallback and its extension in the upload's file name; every state of §12.2; the page-data box ticked on every open; a send with and without a screenshot; a retry of only the failed step, and a re-upload when `submit` refuses the screenshot; the warning per `providerAccess` and the box; the Sent text per `administratorsNotified` and `providerAccess`; the other-windows note |
 | C# relay | integration, PR | §6.2 row by row; 204 with dropped items; 429 from the rate policy; skew correction; no session renewal; an in-memory exporter sees custom events named by `microsoft.custom_event.name`, Warning traces, the item's trace id on the record and no exported span; counter tags only from the closed sets |
-| C# support | integration on real SQL, PR | `submit`'s codes; the bundle attach; the daily limit; 403 on a read-only tenant; the self-scope; both admin routes and `SupportRequestRead`; retention deletes rows and releases bundles |
-| Playwright on Acme | e2e, PR | the shortcut copies diagnostics (clipboard read in Chromium); a 5xx → Report this problem → fake capture → Send → the Support requests page shows the request and its screenshot; the `pagehide` flush reaches the relay; offline hold, then flush; telemetry disabled sends nothing; the dialog and panel at 390, 768, 992 and 1440 px in `en` and `ar` |
+| C# support | integration on real SQL, PR | `submit`'s codes; the dump stored as sent; `UserAgent` and `PageUrl` cut to length; the screenshot attach and a submit without one; the daily limit; 403 on a read-only tenant; the self-scope; a details `get` carries `DumpJson` and a query cannot select it; `core.support.requested` to every administrator but the sender, one request per content slot, none when the sender is the only one, and `administratorsNotified` each way; a delete, by an administrator or by retention, withdraws it; `tellma.support.requests` once per committed submit with both tags, and `SupportRequestSubmitted`; a rolled-back submit notifies, counts and logs nothing; all three admin routes on an `Active` and a `ReadOnly` tenant, the screenshot route's 404, and `SupportRequestRead`; retention deletes rows and releases screenshots |
+| Playwright on Acme | e2e, PR | the shortcut copies diagnostics (clipboard read in Chromium); a 5xx → Report this problem → fake capture → Send → the Support requests page shows the request and its screenshot, and an administrator's bell shows the notification; the `pagehide` flush reaches the relay; offline hold, then flush; telemetry disabled sends nothing; the dialog and panel at 390, 768, 992 and 1440 px in `en` and `ar` |
 | Manual | per release | real capture on Chrome, Edge, Firefox and Safari desktop, recorded |
 
 ## 14. Definition of done
 
 - **Ships.** Every part of §1 ships with its API golden and within its budget. Every §13 suite is
-  green on Ubuntu and Windows. Specs 0011, 0014, 0016, 0017, 0018 and 0020 carry the sections
-  listed under Context.
+  green on Ubuntu and Windows. Specs 0011, 0014, 0016, 0017, 0018, 0020 and 0021 carry the
+  sections listed under Context.
 
 | Rule | How this design meets it | Pinning test |
 |---|---|---|
@@ -1162,34 +1245,41 @@ Every suite runs on each PR, except the manual capture check, which runs per rel
    logging (never opened) and a toast per slow call (§8).
 4. **A screenshot: one `getDisplayMedia` frame with the dialog hidden, else an attached image** —
    considered DOM rasterising (approximate), Element Capture (Chromium) — (§11).
-5. **Where support data goes: always downloadable; when enabled, one bundle blob and one
-   `core.SupportRequests` row** — considered the distribution's blob storage alone (devops only)
-   and a control-plane upload (credentials in every distribution, no tenant-admin view) — (§12).
+5. **Where support data goes: always downloadable; when enabled, one `core.SupportRequests` row
+   holding the dump, and the screenshot alone in a blob** — the dump is one write with no second
+   blob, the details read carries it, and a query cannot select it, so lists stay light; the
+   screenshot gets an image-only policy and a thumbnail. Considered the distribution's blob storage
+   alone (devops only) and a control-plane upload (credentials in every distribution, no
+   tenant-admin view) — (§12.3, §12.4).
 6. **The UI version: `X.Y.Z+<sha>`, equal to `Tellma-Build`, ordered by SemVer precedence** — one
    number per build, and the client tells a newer server from an older one without asking the
    worker. Considered a separate SPA build id (two numbers for one build) and a bare hash
    (unreadable, unordered) — (§7).
 7. **Request-linked client records are logged under the request's trace id** — one `operation_Id`
    search finds both sides — (§6.4).
-8. **Page data stays out unless ticked, and the URL is then a bare path** — administrators and the
-   provider read dumps of other users' screens — (§9.6, §10.2).
+8. **A support request includes page data unless the user unticks it, and a file downloaded where
+   the box is not shown never does** — most problems need the rows to reproduce, and the warning
+   tells the user who will see them — (§9.6, §10.2, §12.2).
 9. **One dispatcher; actions belong to the nearest page scope** — the rules hold once for every
    origin, and a dialog's action never lands on the page beneath — (§9.4, §9.5).
 10. **The context reaches an agent as AG-UI run input and frontend tools** — the agent's state
     events flow to the client, so they never write a page — (§9.7).
+11. **A support request alerts people: a bell notification to the tenant's administrators and a
+    `tellma.support.requests` alert for the provider's support team** — users expect "Report a
+    problem" to reach someone, and the Sent state says who it reached — (§12.2, §12.3).
 
 ## Review flags
 
 1. **A relay instead of the Application Insights web SDK** (§6). Alternative: the SDK. Flips if
    session replay or browser-side dependency tracking is needed.
-2. **Page data off by default** (§10.2). Alternative: on by default. Flips if support finds most
-   dumps useless without rows.
+2. **Page data on by default in a support request** (§10.2). Alternative: off by default. Flips on
+   a privacy review, or a customer that forbids it.
 3. **Request outcomes aggregated per flush window** (§5.3). Alternative: one item per request.
    Flips if per-request latency analysis is needed and the volume is affordable.
 4. **Client errors as Warning traces, not the `exceptions` table** (§6.4). Alternative: a synthetic
    exception so errors appear in the Failures blade. Flips if the team lives in that blade.
-5. **One bundle with the screenshot as a data URL** (§12.4). Alternative: two blob kinds and two
-   properties. Flips if support wants screenshot thumbnails in the list.
+5. **The dump in the row, the screenshot alone in a blob** (§12.3, §12.4). Alternative: the dump as
+   a second blob. Flips if dumps grow the tenant database noticeably.
 6. **Per-tenant admin reads, no cross-tenant index** (§12.7). Alternative: a catalog index row per
    request. Flips if support must triage requests nobody quoted.
 7. **30-day retention; distribution-level opt-in only** (§12.8, §12.1). Alternatives: 90 days; a

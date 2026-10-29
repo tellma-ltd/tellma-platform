@@ -52,8 +52,8 @@ Other specs that carry parts of this design:
   region (§1.3, §4.1);
 - spec 0024 §3.2 — the client metadata `emit-client-assets` writes (§6.1) and `TellmaRoutes`, the
   reserved words the endpoint audit reads (§5.3);
-- spec 0026 §6 and §12.7 — the client telemetry relay and the admin support-request routes
-  `MapTellma` maps (§5.1, §5.9);
+- spec 0026 §6, §12.3 and §12.7 — the client telemetry relay, the support-request alert (§9) and
+  the admin support-request routes `MapTellma` maps (§5.1, §5.9);
 - spec 0010 §A.11 — the identity database's collation and migrations, and the store check an
   in-proc host runs (§5.7, §6.7);
 - spec 0010 §G.1 — the builder call behind `TenantMembershipList.Subject`'s collation (§7.3).
@@ -646,9 +646,9 @@ verified (`404 tenant-not-found` for a non-member):
 
 | State | Read request | Mutating request | Background scope (`ITenantScopeFactory`) |
 |---|---|---|---|
-| `Provisioning` | `404 tenant-not-found`, indistinguishable from absent; the membership list (§3.8) carries the state, so the picker can show a tenant being set up | same | throws `TenantUnavailableException`, except the migrator's step runner (`allowNonActive`, §4.4) |
+| `Provisioning` | `404 tenant-not-found`, indistinguishable from absent; the membership list (§3.8) carries the state, so the picker can show a tenant being set up | same | throws `TenantUnavailableException`, except an `allowNonActive` caller (§4.4) |
 | `Active` | served | served | created |
-| `ReadOnly` | served; the connect initializer composes its premises with `StampActivity = false` and `AllowStateFlip = false`, so reads succeed against a database set `READ_ONLY` | `403 tenant-read-only` | throws `TenantUnavailableException`, except the migrator's step runner (§4.4); the worker skips the tenant |
+| `ReadOnly` | served; the connect initializer composes its premises with `StampActivity = false` and `AllowStateFlip = false`, so reads succeed against a database set `READ_ONLY` | `403 tenant-read-only` | throws `TenantUnavailableException`, except an `allowNonActive` caller (§4.4); the worker skips the tenant |
 | `Suspended` | `403 tenant-suspended` | same | throws |
 | `Retired` | `404 tenant-not-found`, indistinguishable from absent | same | throws |
 
@@ -1069,9 +1069,10 @@ scope runs under — spec 0020 §9's worker opens the scope inside its `process 
 migrator's step runner inside its step activity (§6.2) — so the connect and data spans nest under
 the caller's. `allowNonActive: true` is the migrator's door: it also accepts `Provisioning` and
 `ReadOnly` (never `Suspended` or `Retired`) and requires `Kind = System` — any other `Kind` with the
-flag set throws `InvalidOperationException` before a scope exists. Only the migrator's step runner
-(§6.2) passes it; a job scope never does. Callers: spec 0020's worker (the only background caller)
-and the migrator's provisioning steps (`Kind = System`). Scopes meter `tellma.tenancy.scopes` by
+flag set throws `InvalidOperationException` before a scope exists. The migrator's step runner
+(§6.2) and the admin surface's support-request reads (spec 0026 §12.7) pass it; a job scope never
+does. Callers: spec 0020's worker (the only background caller), the migrator's provisioning steps
+and those reads (`Kind = System`). Scopes meter `tellma.tenancy.scopes` by
 `kind ∈ request | background`.
 
 ### 4.5 Listeners
@@ -1648,7 +1649,7 @@ public interface ITenantProvisioningTrigger                 // Tellma.Core.Tenan
 | `POST /api/admin/v1/tenants/{id}/state` | Body `{ "state": "Active" \| "ReadOnly" \| "Suspended" \| "Retired", "reason": "…" }` → the descriptor plus `{ "effectiveWithinSeconds": 15 }`; `409` for an illegal transition. |
 | `POST /api/admin/v1/tenants` | Body `TenantRegistration` → registers a `Provisioning` row and calls `ITenantProvisioningTrigger.StartAsync`; `501` while only `NotConfiguredProvisioningTrigger` is registered. The id is sequence-allocated: `RegisterAsync` without `requestedId` (§3.7). |
 | `GET /api/admin/v1/tenants/{id}/members` | The hint table (§3.8). |
-| under `/api/admin/v1/tenants/{id}/support-requests` | The support-request reads (spec 0026 §12.7); each detail or file read is logged as `SupportRequestRead`. |
+| under `/api/admin/v1/tenants/{id}/support-requests` | The support-request reads (spec 0026 §12.7): the list, a request's dump and its screenshot; each read is logged as `SupportRequestRead`. |
 
 - **Admin versions.** The control plane calls every distribution, and each distribution adopts
   platform releases on its own schedule, so the admin contract carries its own version, independent
@@ -2225,8 +2226,9 @@ metrics.
   `DeploymentVersions` (§2.2). The OpenTelemetry resource sets `service.version` to the
   distribution version and `tellma.platform.version` to the platform version. So any log line joins
   its trace and names the exact commits.
-- **Alerts.** Alert queries under `infra/monitoring/`, the client alerts of spec 0026 §6.4 among
-  them, are checked in. The existing instrument-name test cross-checks them.
+- **Alerts.** Alert queries under `infra/monitoring/`, the client alerts of spec 0026 §6.4 and its
+  support-request alert (spec 0026 §12.3) among them, are checked in. The existing instrument-name
+  test cross-checks them.
 
 | Log event | Level | Properties |
 |---|---|---|

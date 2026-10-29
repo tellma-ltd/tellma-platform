@@ -1697,3 +1697,20 @@ deleted and regenerated. Where this part conflicts with the parts above, this pa
 - Hosting — "Databases": no Bicep declares a platform database, and an operator handles the shared
   identity database.
 - Open Questions — The `tellma_app` answer covers the catalog.
+
+# Spec 0026 feedback (28 October 2026)
+
+Trail: `.tmp/round-2/r6/` (decisions.md, applied-0026.md with its Fix pass, applied-rest.md).
+
+- **0026 §12 alerting:** `core.support.requested` (category `support`, not mutable, Warning, toast,
+  target `core.SupportRequest`) to the administrators other than the sender, raised in `submit`'s
+  transaction and withdrawn on delete; `tellma.support.requests` on the `Tellma.Core` meter
+  (`SupportTelemetryNames`, tags `screenshot`, `page_data`), `SupportRequestSubmitted` log and an
+  `infra/monitoring/` alert; receipt `AdministratorsNotified`; four Sent texts.
+- **0026 page data:** on by default in the support dialog, never remembered; downloads without the
+  box never carry it; warning, Context, §10.2, Decision 8, flag 2 rewritten.
+- **0026 storage:** bundle removed; `DumpJson` `[JsonColumn]` off the default select (read by the
+  details `get`); `ScreenshotId` blob kind `support-screenshot` (PNG/JPEG/WebP, 8 MiB); codes
+  `DumpInvalid`, `DumpTooLarge`; admin routes list, `/dump`, `/screenshot`; truncation steps 3–4.
+- **0011:** admin support reads open scopes `allowNonActive`; §5.9 row; §9 alerts.
+- **0016, 0017:** `support-screenshot` kind. **0021:** `support` category and the catalogue row.

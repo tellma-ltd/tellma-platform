@@ -63,7 +63,7 @@ cross-instance nudge over the hub, a rendered `Title` column, and the reserved M
 **Goals**
 
 - Ship `core.Notifications`, the `Notification` entity, the notification type registry with its
-  descriptors and the eleven Core types, the catalogue emitted into the client metadata, and
+  descriptors and the twelve Core types, the catalogue emitted into the client metadata, and
   `INotificationRenderer` (ICU rendering in a given localization context).
 - Ship `INotifier.Notify(batch, requests)` riding the caller's batch with inactive-recipient, mute
   and duplicate predicates inside the statement (a duplicate suppressed or replaced in place; for a
@@ -302,7 +302,7 @@ public interface INotificationTypeRegistry              // singleton; built at c
 | Member | Meaning |
 |---|---|
 | `Key` | The row's `Type`. Grammar `^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$`, at most 64 characters — the handler-key grammar of spec 0020, cited, not redefined. `core.` is reserved for the platform; modules use their slug (`gl.`), distributions their deployment slug (`acme.document.approved`). Keys are persisted and stable for the life of a distribution; a changed meaning is a new key. |
-| `Category` | Lowercase identifier `^[a-z][a-z0-9-]*$`, at most 32 characters; groups the Notification settings page (spec 0028 §10.3). Core categories: `jobs`, `files`, `users`, `reports`. A category's label is the resource `NotificationCategory_<Category>`, declared in the resources of the package that declares the category's first type. |
+| `Category` | Lowercase identifier `^[a-z][a-z0-9-]*$`, at most 32 characters; groups the Notification settings page (spec 0028 §10.3). Core categories: `jobs`, `files`, `users`, `reports`, `support`. A category's label is the resource `NotificationCategory_<Category>`, declared in the resources of the package that declares the category's first type. |
 | `Mutable` | `true`: the user may disable the `inbox` channel for the type. `false`: the inbox channel cannot be disabled (`Notifications.CannotMute` on save; the insert ignores preferences). Every other channel is always the user's choice. |
 | `TargetResource` | When set, every request of the type must carry this `TargetResource` and a `TargetId`, and the client maps the resource to a route. When null, requests carry neither. |
 | `Severity` | The default severity of the type's rows, overridable per request (§3.1); drives the row's icon and the badge colour (spec 0028 §6). |
@@ -325,14 +325,15 @@ catalogue, with the spec whose code raises each type and therefore declares its 
 | `core.report.shared` | `reports` | true | `Info` | false | `core.ReportDefinition` | spec 0033 §7, on a newly added user grant (`DedupKey = 'core.ReportDefinition:<id>'`) | `{ title, actorName }` |
 | `core.schedule.paused` | `jobs` | true | `Warning` | true | `core.Schedule` | spec 0020 (`DedupKey = 'core.schedule.paused:<scheduleId>'`) | `{ scheduleId, name, reason }` |
 | `core.scheduler.gap` | `jobs` | false | `Warning` | true | none | spec 0020 (`DedupKey = 'core.scheduler.gap'`) | `{ previousTickAt, now, heldCount }` |
+| `core.support.requested` | `support` | false | `Warning` | true | `core.SupportRequest` | spec 0026 §12.3's `submit`, for the tenant's administrators other than the sender (`DedupKey = 'core.SupportRequest:<id>'`) | `{ id, actorName }` |
 | `core.user.added` | `users` | true | `Info` | false | none | spec 0018's `UserService.Invite` (`DedupKey = 'core.user.added'`) | `{ tenantName, actorName }` |
 
 Each descriptor is declared once, by the feature code that raises it (the table's "Raised by"
 column). The one exception is `core.user.added`, which this spec's `CoreFeature` contribution
 declares. The registry rejects a duplicate key at startup. A type's duplicate policy and the
 trigger that withdraws it are the raiser's (spec 0020 §10, spec 0022 §5, spec 0018 §3.3, spec 0033
-§7, spec 0035 §7.2). A distribution declares its own types the same way, in its feature's
-`Contribute`.
+§7, spec 0035 §7.2, spec 0026 §12.3). A distribution declares its own types the same way, in its
+feature's `Contribute`.
 
 ### 2.4 Rendering
 

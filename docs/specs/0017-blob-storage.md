@@ -206,10 +206,10 @@ Core declares the kinds it ships by attributes on Core entities:
 | `export-file` | `Export.FileId` (spec 0019) | `Attachment` | `OwnerRead` |
 | `import-file` | `Import.FileId` (spec 0019) | `Attachment` | `OwnerRead` |
 | `email-attachment` | `OutgoingEmailAttachment.FileId` (spec 0022 §2.1) | `Attachment` | `OwnerRead` |
-| `support-bundle` | `SupportRequest.BundleId` (spec 0026 §12.4) | `Attachment` | `OwnerRead` |
+| `support-screenshot` | `SupportRequest.ScreenshotId` (spec 0026 §12.4) | `Attachment` | `OwnerRead` |
 
 Two kinds are narrowed after the preset. `CoreFeature`'s `BlobKind` transform turns off
-`email-attachment`'s thumbnail (spec 0022 §9.3), and spec 0026 §12.4 narrows `support-bundle`'s
+`email-attachment`'s thumbnail (spec 0022 §9.3), and spec 0026 §12.4 narrows `support-screenshot`'s
 policy.
 
 *Illustration* (a distribution that composes the store and processor itself instead of the Azure
@@ -780,7 +780,7 @@ The read access of the Core kinds (§1.3), and why:
   by spec 0019.
 - **`email-attachment`: `OwnerRead`** through its parent `core.OutgoingEmail`, which only
   administrators read by default (spec 0022 §8).
-- **`support-bundle`: `OwnerRead`** through `core.SupportRequest`. Its submitter and holders of
+- **`support-screenshot`: `OwnerRead`** through `core.SupportRequest`. Its submitter and holders of
   `core.SupportRequest × Read` read it (spec 0026 §12.6).
 
 ### 5.3 The endpoint
