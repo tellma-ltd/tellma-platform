@@ -254,6 +254,53 @@ namespace Tellma.Core.Queryex.Tests.Versioning
                 Options()));
         }
 
+        /// <summary>
+        ///     When a query is compiled, a stamped leaf binds under its own stamp and an unstamped
+        ///     one under the version the compilation names.
+        /// </summary>
+        /// <remarks>
+        ///     Pinned through a probe with a stamp this engine does not have, because while one
+        ///     version exists the bound trees are identical and nothing public could tell the two
+        ///     bindings apart.
+        /// </remarks>
+        [Fact]
+        public void ACompiledLeaf_BindsUnderItsOwnStamp()
+        {
+            var tree = FilterTree.And(
+            [
+                ProbeLeafBinding.StampedLeaf("IsPosted", QueryexLanguage.Version + 1),
+                FilterTree.Not(FilterTree.Leaf("Amount > 0")),
+            ]);
+
+            Assert.Equal(
+                [
+                    new ProbeLeafVersion("IsPosted", QueryexLanguage.Version + 1),
+                    new ProbeLeafVersion("Amount > 0", QueryexLanguage.Version),
+                ],
+                ProbeLeafBinding.Compiled(tree, QueryexLanguage.Version, LedgerFixture.Schema, LedgerFixture.Invoice));
+        }
+
+        /// <summary>
+        ///     When a query is discovered, a stamped leaf binds under its own stamp and an unstamped
+        ///     one under the version the discovery names.
+        /// </summary>
+        [Fact]
+        public void ADiscoveredLeaf_BindsUnderItsOwnStamp()
+        {
+            var tree = FilterTree.Or(
+            [
+                FilterTree.Leaf("Amount > 0"),
+                ProbeLeafBinding.StampedLeaf("IsPosted", QueryexLanguage.Version + 1),
+            ]);
+
+            Assert.Equal(
+                [
+                    new ProbeLeafVersion("Amount > 0", QueryexLanguage.Version),
+                    new ProbeLeafVersion("IsPosted", QueryexLanguage.Version + 1),
+                ],
+                ProbeLeafBinding.Discovered(tree, LedgerFixture.Schema, LedgerFixture.Invoice));
+        }
+
         /// <summary>Discovery reads a stamped leaf as readily as an unstamped one.</summary>
         [Fact]
         public void Discovery_ReadsAStampedLeaf()

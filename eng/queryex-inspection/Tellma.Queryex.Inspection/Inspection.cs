@@ -418,12 +418,20 @@ namespace Tellma.Queryex.Inspection
         private static string Declarations(IReadOnlyList<(string Table, IReadOnlyList<string> Keys)> tables)
         {
             System.Text.StringBuilder script = new();
-            foreach ((string table, IReadOnlyList<string> keys) in tables.DistinctBy(entry => entry.Table, StringComparer.OrdinalIgnoreCase))
+
+            // One table per name, ignoring case as the backend does, holding every key any entry
+            // naming it listed: two restrictions read the same table, so the keys written beside
+            // either belong to it whichever entry came first.
+            IEnumerable<(string Table, string[] Keys)> merged = tables
+                .GroupBy(entry => entry.Table, StringComparer.OrdinalIgnoreCase)
+                .Select(group => (group.First().Table, group.SelectMany(entry => entry.Keys).Distinct(StringComparer.Ordinal).ToArray()));
+
+            foreach ((string table, string[] keys) in merged)
             {
                 script.Append("DECLARE ").Append(table).Append(" TABLE ([Id] nvarchar(4000) COLLATE ")
                     .Append(LedgerDdl.Collation).Append(");\n");
 
-                if (keys.Count > 0)
+                if (keys.Length > 0)
                 {
                     script.Append("INSERT INTO ").Append(table).Append(" ([Id]) VALUES ")
                         .Append(string.Join(", ", keys.Select(key => "(N'" + key.Replace("'", "''", StringComparison.Ordinal) + "')")))
