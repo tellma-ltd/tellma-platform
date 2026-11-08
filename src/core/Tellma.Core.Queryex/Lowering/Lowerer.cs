@@ -108,9 +108,6 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>Where a value given a name here is collected: the statement's or a subquery's.</summary>
         private List<ValueBinding> _scopeBindings;
 
-        /// <summary>Which input each part of a composed filter came from, when one is being lowered.</summary>
-        private FilterLocations? _locations;
-
         /// <summary>Initializes a lowering.</summary>
         /// <param name="root">The entity the query reads.</param>
         /// <param name="batchOrdinal">The query's position among the ones executed together.</param>
@@ -154,23 +151,17 @@ namespace Tellma.Core.Queryex.Lowering
         ///     Whether a subexpression whose answer is already known may be replaced by that answer.
         ///     Off for a grouping key, which has to keep reading the columns it groups by.
         /// </param>
-        /// <param name="locations">
-        ///     Which input each part of a composed filter came from, when the clause is one; null
-        ///     otherwise, when everything in it belongs to <paramref name="location" />.
-        /// </param>
         internal void Begin(
             NullityMap nullity,
             DiagnosticLocation location,
             bool bindingsAllowed,
-            bool folding = true,
-            FilterLocations? locations = null)
+            bool folding = true)
         {
             _nullity = nullity;
             _location = location;
             _bindingsAllowed = bindingsAllowed;
             _folding = folding;
             _hint = null;
-            _locations = locations;
 
             // Every clause starts at the statement's own root, whatever the last one ended in.
             _base = Root;
@@ -214,25 +205,6 @@ namespace Tellma.Core.Queryex.Lowering
         /// <returns>The lowered predicate.</returns>
         internal PlanPredicate LowerPredicate(TypedExpr node)
         {
-            if (_locations is null || !_locations.TryFind(node, out DiagnosticLocation at))
-            {
-                return LowerPredicateHere(node);
-            }
-
-            // A leaf, a rebase or a semi-join of a composed filter: whatever it creates is written in
-            // its own input, so a ceiling it pushes over names it rather than the whole clause.
-            DiagnosticLocation saved = _location;
-            _location = at;
-            PlanPredicate lowered = LowerPredicateHere(node);
-            _location = saved;
-            return lowered;
-        }
-
-        /// <summary>Lowers one expression consumed as a truth value, in the current input.</summary>
-        /// <param name="node">The bound node.</param>
-        /// <returns>The lowered predicate.</returns>
-        private PlanPredicate LowerPredicateHere(TypedExpr node)
-        {
             return node switch
             {
                 TypedLiteral { Value: bool constant } => new PlanConstantPredicate(node.Span, constant),
@@ -248,11 +220,30 @@ namespace Tellma.Core.Queryex.Lowering
                 TypedIsNull test => LowerIsNull(test),
                 TypedCall call when call.Signature.Emit.ResultShape == EmitShape.Predicate =>
                     LowerCallPredicate(call),
-                TypedVia via => LowerVia(via),
-                TypedExists exists => LowerExists(exists),
+                TypedFilterLeaf leaf => In(leaf.Location, () => LowerPredicate(leaf.Expression)),
+                TypedVia via => In(via.Location, () => LowerVia(via)),
+                TypedExists exists => In(exists.Location, () => LowerExists(exists)),
                 TypedError => throw Unlowerable(node),
                 _ => ReadAsPredicate(node),
             };
+        }
+
+        /// <summary>Lowers one part of a composed filter in the input it was written in.</summary>
+        /// <param name="location">The part's input.</param>
+        /// <param name="lower">What lowers it.</param>
+        /// <returns>The lowered predicate.</returns>
+        /// <remarks>
+        ///     Whatever the part creates — joins, a subquery's source, parameters — remembers this
+        ///     input, so a ceiling it pushes over names the leaf, rebase or semi-join rather than the
+        ///     whole clause.
+        /// </remarks>
+        private PlanPredicate In(DiagnosticLocation location, Func<PlanPredicate> lower)
+        {
+            DiagnosticLocation saved = _location;
+            _location = location;
+            PlanPredicate lowered = lower();
+            _location = saved;
+            return lowered;
         }
 
         /// <summary>The failure for a node that should never have reached lowering.</summary>

@@ -323,6 +323,46 @@ namespace Tellma.Queryex.Testing.Corpus
                 Sites = [Site("QX5006", "Filter.Exists[InvoiceLine]", 0, 0, ("limit", "1"))],
             };
 
+            // One text under two rebases onto the same entity is bound once, but each place lowers
+            // onto joins of its own: the join over the ceiling is the second place's, and the
+            // problem names it.
+            yield return new QueryCase
+            {
+                Id = "refuse-joins-in-repeated-via",
+                Spec = new QuerySpec
+                {
+                    Root = LedgerFixture.Invoice,
+                    Select = "Id",
+                    Filter = FilterTree.And(
+                    [
+                        FilterTree.Via("Customer", FilterTree.Leaf("Region.Name = 'N'")),
+                        FilterTree.Via("Customer.Manager", FilterTree.Leaf("Region.Name = 'N'")),
+                    ]),
+                },
+                Limits = QueryexLimits.Default with { MaxJoins = 3 },
+                Diagnostics = ["QX5006"],
+                Sites = [Site("QX5006", "Filter.And[1].Via[Customer.Manager]", 0, 11, ("limit", "3"))],
+            };
+
+            // The same for one criterion in two semi-joins over the same entity.
+            yield return new QueryCase
+            {
+                Id = "refuse-joins-in-repeated-exists",
+                Spec = new QuerySpec
+                {
+                    Root = LedgerFixture.Invoice,
+                    Select = "Id",
+                    Filter = FilterTree.Or(
+                    [
+                        FilterTree.Exists("InvoiceLine", "Invoice", FilterTree.Leaf("Party.Name = 'a'")),
+                        FilterTree.Exists("InvoiceLine", "Invoice", FilterTree.Leaf("Party.Name = 'a'")),
+                    ]),
+                },
+                Limits = QueryexLimits.Default with { MaxJoins = 3 },
+                Diagnostics = ["QX5006"],
+                Sites = [Site("QX5006", "Filter.Or[1].Exists[InvoiceLine]", 0, 10, ("limit", "3"))],
+            };
+
             // A plain leaf of a composed filter is named the same way.
             yield return new QueryCase
             {

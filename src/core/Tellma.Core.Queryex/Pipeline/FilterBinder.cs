@@ -41,11 +41,10 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <param name="location">Which clause the tree belongs to.</param>
         /// <param name="budget">The ceilings shared across the compilation.</param>
         /// <param name="nullity">The answers for every leaf, merged.</param>
-        /// <param name="locations">
-        ///     Where to record which input each leaf, rebase and semi-join came from, so lowering can
-        ///     name it; null when nothing will be lowered.
-        /// </param>
-        /// <returns>The bound predicate, or null when a leaf failed.</returns>
+        /// <returns>
+        ///     The bound predicate, or null when a leaf failed. Every leaf, rebase and semi-join in it
+        ///     carries the input it was written in, so lowering can name it.
+        /// </returns>
         /// <exception cref="ArgumentException">
         ///     A rebase or a semi-join does not fit the schema. A compilation has refused such a tree
         ///     before it gets here, so this is reached only by a caller that skipped that check.
@@ -58,10 +57,9 @@ namespace Tellma.Core.Queryex.Pipeline
             DiagnosticSink sink,
             DiagnosticLocation location,
             CompilationBudget budget,
-            NullityMap nullity,
-            FilterLocations? locations = null)
+            NullityMap nullity)
         {
-            TreeBinder binder = new(compiler, limits, sink, budget, nullity, locations);
+            TreeBinder binder = new(compiler, limits, sink, budget, nullity);
             return binder.Bind(tree, context, location);
         }
 
@@ -71,14 +69,12 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <param name="sink">Where to record problems.</param>
         /// <param name="budget">The ceilings shared across the compilation.</param>
         /// <param name="nullity">The answers for every leaf, merged.</param>
-        /// <param name="locations">Where to record each node's input, or null.</param>
         private sealed class TreeBinder(
             ExpressionCompiler compiler,
             QueryexLimits limits,
             DiagnosticSink sink,
             CompilationBudget budget,
-            NullityMap nullity,
-            FilterLocations? locations)
+            NullityMap nullity)
         {
             /// <summary>Binds one node of the tree, by its kind.</summary>
             /// <param name="tree">The node.</param>
@@ -131,8 +127,8 @@ namespace Tellma.Core.Queryex.Pipeline
             /// <param name="leaf">The leaf.</param>
             /// <param name="context">What the leaf depends on besides its own text.</param>
             /// <param name="location">Which input this leaf is.</param>
-            /// <returns>The bound predicate, or null when it failed.</returns>
-            private TypedExpr? BindLeaf(FilterTree.LeafNode leaf, BindingContext context, DiagnosticLocation location)
+            /// <returns>The bound predicate, at its place in the tree, or null when it failed.</returns>
+            private TypedFilterLeaf? BindLeaf(FilterTree.LeafNode leaf, BindingContext context, DiagnosticLocation location)
             {
                 if (budget.Exceeded)
                 {
@@ -166,9 +162,12 @@ namespace Tellma.Core.Queryex.Pipeline
                 budget.TryConsumeTypedNodes(bound.NodeCount, bound.Items[0].Span, sink.Scope(location));
                 nullity.Absorb(bound.Nullity);
 
+                // The bound expression is shared by every place this text sits under this root; the
+                // node around it is this place alone.
                 TypedExpr expression = bound.Items[0].Expression;
-                locations?.Record(expression, location);
-                return expression;
+                TypedFilterLeaf placed = new(expression, location);
+                nullity.Set(placed, bound.Nullity[expression]);
+                return placed;
             }
 
             /// <summary>Binds every child of a connective and joins the results.</summary>
@@ -261,9 +260,8 @@ namespace Tellma.Core.Queryex.Pipeline
                     return null;
                 }
 
-                TypedVia node = new(resolved.Navigations, resolved.Segments, inner);
+                TypedVia node = new(resolved.Navigations, resolved.Segments, inner, inside);
                 nullity.Set(node, QueryexNullity.NotNull);
-                locations?.Record(node, inside);
                 return node;
             }
 
@@ -296,9 +294,8 @@ namespace Tellma.Core.Queryex.Pipeline
                     return null;
                 }
 
-                TypedExists node = new(resolved.Entity, resolved.Navigation, inner);
+                TypedExists node = new(resolved.Entity, resolved.Navigation, inner, inside);
                 nullity.Set(node, QueryexNullity.NotNull);
-                locations?.Record(node, inside);
                 return node;
             }
 

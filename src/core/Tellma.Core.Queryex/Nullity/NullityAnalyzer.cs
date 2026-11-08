@@ -101,6 +101,9 @@ namespace Tellma.Core.Queryex.Nullity
                     or TypedVia or TypedExists => QueryexNullity.NotNull,
 
                 TypedCall call => CallNullity(call),
+
+                // A leaf of a composed filter is its expression, at a place in the tree.
+                TypedFilterLeaf leaf => _map[leaf.Expression],
                 _ => QueryexNullity.Nullable,
             };
         }

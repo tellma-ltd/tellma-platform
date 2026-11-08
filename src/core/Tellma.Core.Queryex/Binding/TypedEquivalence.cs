@@ -68,6 +68,7 @@ namespace Tellma.Core.Queryex.Binding
                 TypedIn membership => SameIn(membership, (TypedIn)second),
                 TypedLogical logical => SameLogical(logical, (TypedLogical)second),
                 TypedCall call => SameCall(call, (TypedCall)second),
+                TypedFilterLeaf leaf => AreEquivalent(leaf.Expression, ((TypedFilterLeaf)second).Expression),
                 TypedVia via => SameVia(via, (TypedVia)second),
                 TypedExists exists => SameExists(exists, (TypedExists)second),
                 _ => false,
