@@ -13,7 +13,8 @@
 # Selection, mirrored by CONTRIBUTING.md:
 #   - dotnet: every test carrying [Trait("Category", "Nightly")], whatever its other Category
 #     (Integration and E2E tests included), except Live=true suites, which need credentials and
-#     run in nightly.yml.
+#     run in nightly.yml. On Linux all of them; on Windows those that are neither Integration nor
+#     E2E, matching the OS coverage the PR tier gives each kind.
 #   - Playwright: every test tagged @nightly, @cross-engine or @perf, on all four projects. The
 #     Firefox and WebKit projects keep their own @cross-engine filter on top, so a @nightly or
 #     @perf test reaches them only when it is also tagged @cross-engine.
@@ -33,9 +34,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # The dotnet nightly tier. Linux only: integration tests bring up Linux SQL Server containers,
-  # which Windows runners cannot host. The Chromium install serves the identity E2E project, whose
-  # Playwright tests may carry the Nightly category too.
+  # The dotnet nightly tier on Linux, every kind of test: integration tests bring up Linux SQL
+  # Server containers, which Windows runners cannot host. The Chromium install serves the identity
+  # E2E project, whose Playwright tests may carry the Nightly category too.
   dotnet:
     if: github.ref == 'refs/heads/platform-core'
     timeout-minutes: 120
@@ -61,6 +62,23 @@ jobs:
           name: nightly-playwright-traces
           path: test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright-traces
           if-no-files-found: ignore
+
+  # The Windows half of the dotnet nightly tier. The PR tier runs the unit suites on both OSes, so a
+  # unit test moved to the nightly tier must keep its Windows run. Integration and E2E tests stay on
+  # the Linux job above: they need Linux containers or the Linux browser setup.
+  dotnet-windows:
+    if: github.ref == 'refs/heads/platform-core'
+    timeout-minutes: 120
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet restore Tellma.slnx
+      - run: dotnet build Tellma.slnx -c Release --no-restore
+      - name: Nightly-tier dotnet unit tests
+        run: dotnet test Tellma.slnx -c Release --no-build --filter "Category=Nightly&Category!=Integration&Category!=E2E&Live!=true"
 
   # The Playwright nightly tier on the showcase, every browser engine.
   client-e2e:

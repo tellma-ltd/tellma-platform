@@ -94,6 +94,13 @@ tier passes.
 dotnet test Tellma.slnx --filter "Category=Nightly&Live!=true"
 ```
 
+CI runs that command on Linux, and on Windows runs the nightly tests that are neither integration
+nor E2E tests, as the PR tier does for the unit suites:
+
+```bash
+dotnet test Tellma.slnx --filter "Category=Nightly&Category!=Integration&Category!=E2E&Live!=true"
+```
+
 From `client/`, with all three browsers installed (`pnpm exec playwright install chromium firefox webkit`):
 
 ```bash
