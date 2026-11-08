@@ -34,6 +34,9 @@ import {
  *   scrolling — but only from anchors INSIDE the visual viewport, touches
  *   below the fold land on nothing) and for handle drags (the handle is
  *   `touch-action: none`, so pointermoves keep firing under capture).
+ * - Timestamped touchStart/touchEnd pairs for the double-tap: the browser
+ *   counts taps by event time, so the pair repeats (or not) by
+ *   construction, however slowly the runner dispatches it.
  * - A dispatched `touchStart` + held finger for the long-press, released
  *   with `touchCancel`: a real gesture recognizer cancels the pending tap
  *   once the long-press fires (no trailing click), while a raw `touchEnd`
@@ -107,6 +110,82 @@ async function touchHold(page: Page, point: Point, until: () => Promise<void>): 
   } finally {
     await client.detach();
   }
+}
+
+/**
+ * The gap, in seconds of event time, between the two taps of a double-tap:
+ * well inside the browser's double-tap window (a few hundred ms).
+ */
+const DOUBLE_TAP_GAP_S = 0.12;
+
+/**
+ * A gap, in seconds of event time, that no double-tap window spans: two
+ * taps this far apart are two single taps.
+ */
+const SEPARATE_TAPS_GAP_S = 2;
+
+/** How long, in seconds of event time, each finger stays on the glass. */
+const TAP_PRESS_S = 0.03;
+
+/**
+ * Two taps on the centre of `target`, `gapS` seconds apart in EVENT time.
+ *
+ * The browser's gesture recognizer decides whether a tap repeats the one
+ * before it from the timestamps the touch events carry, not from when they
+ * arrive. Each event is therefore dispatched over CDP with an explicit
+ * timestamp: the pair is a double-tap (or two single taps) by construction,
+ * however long the runner takes between the dispatches. Two `tap()` calls
+ * would instead each stamp their events with the wall clock, after an
+ * actionability check of their own, so a loaded runner could stretch a
+ * double-tap past the window. The events still go through the real touch
+ * pipeline: the browser synthesizes the clicks and the dblclick itself.
+ */
+async function tapTwice(page: Page, target: Locator, gapS: number): Promise<void> {
+  await target.scrollIntoViewIfNeeded();
+  const point = await centerOf(target);
+  const client = await page.context().newCDPSession(page);
+  try {
+    // Stamped from now: event time must not run behind the input the page
+    // has already received.
+    const start = Date.now() / 1000;
+    for (const downAt of [start, start + gapS]) {
+      await client.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: point.x, y: point.y, id: 1 }],
+        timestamp: downAt,
+      });
+      await client.send('Input.dispatchTouchEvent', {
+        type: 'touchEnd',
+        touchPoints: [],
+        timestamp: downAt + TAP_PRESS_S,
+      });
+    }
+  } finally {
+    await client.detach();
+  }
+}
+
+/**
+ * Starts recording the `detail` (the click count) of every click the page
+ * receives, readable through {@link recordedClickCounts}.
+ */
+async function recordClickCounts(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const counts: number[] = [];
+    (window as ClickLogWindow).tmClickCounts = counts;
+    document.addEventListener('click', (event) => counts.push(event.detail), true);
+  });
+}
+
+/** The click counts recorded since {@link recordClickCounts}. */
+async function recordedClickCounts(page: Page): Promise<readonly number[]> {
+  return page.evaluate(() => (window as ClickLogWindow).tmClickCounts ?? []);
+}
+
+/** The page-side shape of the click log {@link recordClickCounts} installs. */
+interface ClickLogWindow {
+  /** The `detail` of each click, in order. */
+  tmClickCounts?: number[];
 }
 
 /** The coarse-pointer range handles. */
@@ -204,17 +283,14 @@ test.describe('touch editing (grid-editable)', () => {
   });
 
   test('a double-tap opens the editor; the handles hide while it is open', async ({ page }) => {
-    // Handles are proven on a NEIGHBOURING cell, so the pair below can go
-    // out back to back: the two taps have to land inside the double-tap
-    // threshold, and an assertion between them can outlast it under load.
-    // A third tap is not an option either — it would close what the pair
-    // just opened.
+    // Handles are proven on a NEIGHBOURING cell: a third tap on the target
+    // would close what the pair opens.
     await cell(page, 1, 0).tap();
     await expect(handles(page)).toHaveCount(2);
 
-    const target = cell(page, 2, 0);
-    await target.tap(); // activates this cell, and opens the pair
-    await target.tap(); // …closes it → dblclick → edit
+    // The first tap activates the cell, the second makes the pair a
+    // dblclick, which opens the editor.
+    await tapTwice(page, cell(page, 2, 0), DOUBLE_TAP_GAP_S);
     await expect(editorInput(page)).toBeVisible();
     await expect(editorInput(page)).toBeFocused();
     await expect(handles(page)).toHaveCount(0); // hidden behind the editor
@@ -222,6 +298,21 @@ test.describe('touch editing (grid-editable)', () => {
     await page.keyboard.press('Escape'); // cancel: selection intact, handles back
     await expect(editor(page)).toHaveCount(0);
     await expect(handles(page)).toHaveCount(2);
+  });
+
+  test('two taps further apart than the double-tap window never open the editor', async ({
+    page,
+  }) => {
+    const target = cell(page, 2, 0);
+    await recordClickCounts(page);
+    await tapTwice(page, target, SEPARATE_TAPS_GAP_S);
+
+    // The browser read the pair as two single taps. A dblclick would follow
+    // the second click in the same dispatch, so once that click has landed
+    // the editor's absence is final, not merely early.
+    await expect.poll(() => recordedClickCounts(page)).toEqual([1, 1]);
+    await expect(target).toBeFocused();
+    await expect(editor(page)).toHaveCount(0);
   });
 
   test('a long-press opens the context menu at the press point', async ({ page }) => {
