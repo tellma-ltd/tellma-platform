@@ -137,6 +137,75 @@ namespace Tellma.Core.Queryex.Tests.Binding
                 use.Occurrences.Select(o => o.Location).Order(StringComparer.Ordinal));
         }
 
+        /// <summary>
+        ///     A rebased criterion's paths are reported with the rebase's segments in front, so every
+        ///     reported path reads from the query's root, nested rebases included.
+        /// </summary>
+        [Fact]
+        public void DiscoverQuery_PrefixesARebasedCriterionsPaths()
+        {
+            DiscoveryResult result = Engine.DiscoverQuery(
+                new QueryDiscoverySpec
+                {
+                    Filter = FilterTree.And(
+                    [
+                        FilterTree.Leaf("Amount > 0"),
+                        FilterTree.Via("Customer", FilterTree.Leaf("Name = @n and Region.Name = 'North'")),
+                        FilterTree.Via("customer", FilterTree.Via("Manager", FilterTree.Leaf("Gender = 'F'"))),
+                    ]),
+                },
+                new DiscoveryOptions { Schema = LedgerFixture.Schema, Root = LedgerFixture.Invoice });
+
+            Assert.Empty(result.Diagnostics);
+            Assert.Equal(
+                ["Amount", "Customer.Name", "Customer.Region.Name", "customer.Manager.Gender"],
+                result.Paths.Select(path => string.Join('.', path.Segments)));
+
+            // Each keeps the site of the text it was written in.
+            Assert.Equal(
+                ["Filter.And[0]", "Filter.And[1].Via[Customer]", "Filter.And[1].Via[Customer]", "Filter.And[2].Via[customer].Via[Manager]"],
+                result.Paths.Select(path => path.Site.Location));
+
+            // The parameter takes the type of the column it meets under the rebase.
+            Assert.Equal(QueryexType.QxString, Assert.Single(result.Parameters).InferredType);
+        }
+
+        /// <summary>
+        ///     A semi-join's criterion is bound for its problems and its parameters, but none of its
+        ///     paths is reported: they read another entity's rows, not the query's.
+        /// </summary>
+        [Fact]
+        public void DiscoverQuery_ReportsNoPathFromInsideASemiJoin()
+        {
+            DiscoveryResult result = Engine.DiscoverQuery(
+                new QueryDiscoverySpec
+                {
+                    Filter = FilterTree.And(
+                    [
+                        FilterTree.Leaf("Amount > 0"),
+                        FilterTree.Exists(
+                            "InvoiceLine",
+                            "Invoice",
+                            FilterTree.And(
+                            [
+                                FilterTree.Leaf("Memo = @m and Party.Name = 'Acme'"),
+                                FilterTree.Via("Party", FilterTree.Leaf("Missing = 1")),
+                            ])),
+                    ]),
+                },
+                new DiscoveryOptions { Schema = LedgerFixture.Schema, Root = LedgerFixture.Invoice });
+
+            Assert.Equal(["Amount"], result.Paths.Select(path => string.Join('.', path.Segments)));
+
+            ParameterUse use = Assert.Single(result.Parameters);
+            Assert.Equal(QueryexType.QxString, use.InferredType);
+            Assert.Equal("Filter.And[1].Exists[InvoiceLine].And[0]", Assert.Single(use.Occurrences).Location);
+
+            QueryexDiagnostic problem = Assert.Single(result.Diagnostics);
+            Assert.Equal("QX3001", problem.Code);
+            Assert.Equal("Filter.And[1].Exists[InvoiceLine].And[1].Via[Party]", problem.Location);
+        }
+
         /// <summary>A root without its schema is a caller mistake, not a diagnostic.</summary>
         [Fact]
         public void Discovery_WithARootButNoSchema_IsACallerMistake()

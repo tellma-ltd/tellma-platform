@@ -76,6 +76,16 @@ namespace Tellma.Core.Queryex.Tests.Corpus
                     [.. entry.Diagnostics.Order(StringComparer.Ordinal)],
                     [.. result.Diagnostics.Select(d => d.Code).Distinct().Order(StringComparer.Ordinal)]);
 
+                // Where the case pins a problem down, it is reported exactly there and carrying
+                // exactly that: the location a host attributes it to, the span within that input,
+                // and the arguments its message needs.
+                foreach (DiagnosticSite site in entry.Sites)
+                {
+                    Assert.True(
+                        result.Diagnostics.Any(site.Matches),
+                        "Expected " + site + " among " + string.Join("; ", result.Diagnostics.Select(Describe)));
+                }
+
                 return;
             }
 
@@ -128,6 +138,19 @@ namespace Tellma.Core.Queryex.Tests.Corpus
 
             Assert.Empty(expected.Except(stored, StringComparer.Ordinal));
             Assert.Empty(stored.Except(expected, StringComparer.Ordinal));
+        }
+
+        /// <summary>Describes a reported diagnostic the way an expectation describes itself.</summary>
+        /// <param name="diagnostic">The diagnostic.</param>
+        /// <returns>The description.</returns>
+        private static string Describe(QueryexDiagnostic diagnostic)
+        {
+            return new DiagnosticSite(
+                diagnostic.Code,
+                diagnostic.Location,
+                diagnostic.Span,
+                diagnostic.Arguments.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal))
+                .ToString();
         }
 
         /// <summary>Renders a compiled query into the form a file holds.</summary>

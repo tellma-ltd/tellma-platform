@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Collections.Immutable;
 using Tellma.Core.Queryex.Binding;
 using Tellma.Core.Queryex.Binding.Inference;
 using Tellma.Core.Queryex.Diagnostics;
@@ -91,9 +92,27 @@ namespace Tellma.Core.Queryex.Pipeline
             return state.Result();
         }
 
+        /// <summary>What the paths of one text resolve from, and how they are reported.</summary>
+        /// <param name="Root">The entity the paths resolve from, or null when there is no schema.</param>
+        /// <param name="Prefix">
+        ///     The segments of the rebases the text sits under, which every reported path begins with
+        ///     so that it stays relative to the query's root.
+        /// </param>
+        /// <param name="Reports">
+        ///     Whether paths are reported at all. They are not inside a semi-join, whose paths resolve
+        ///     from another entity's rows and are relative to nothing the query's root can reach.
+        /// </param>
+        private readonly record struct PathScope(
+            EntityDescriptor? Root,
+            ImmutableArray<string> Prefix,
+            bool Reports);
+
         /// <summary>What one discovery run has learned so far.</summary>
         private sealed class DiscoveryState
         {
+            /// <summary>The parameter name a caller error from a tree's structure is attributed to.</summary>
+            private const string SpecParameter = "spec";
+
             /// <summary>The stage runner.</summary>
             private readonly ExpressionCompiler _compiler;
 
@@ -156,6 +175,24 @@ namespace Tellma.Core.Queryex.Pipeline
                 DiagnosticLocation location,
                 int? queryexVersion = null)
             {
+                Read(text, mode, directions, location, queryexVersion, Top());
+            }
+
+            /// <summary>Reads one expression list, resolving its paths from a given scope.</summary>
+            /// <param name="text">The expression text.</param>
+            /// <param name="mode">The position it is written for.</param>
+            /// <param name="directions">Whether direction suffixes are accepted here.</param>
+            /// <param name="location">Which input this text is.</param>
+            /// <param name="queryexVersion">The version stamped on the text, when it has one.</param>
+            /// <param name="scope">What its paths resolve from, and how they are reported.</param>
+            private void Read(
+                string text,
+                QueryexMode mode,
+                bool directions,
+                DiagnosticLocation location,
+                int? queryexVersion,
+                PathScope scope)
+            {
                 if (_budget.Exceeded)
                 {
                     // The ceiling is blown and has already said so; reading further texts would only
@@ -182,7 +219,7 @@ namespace Tellma.Core.Queryex.Pipeline
                 // whether or not a schema was supplied and whatever binding does with it.
                 ReadParameters(syntax, location);
 
-                if (_options.Schema is null || _options.Root is null)
+                if (_options.Schema is null || scope.Root is null)
                 {
                     // Without a schema there is nothing to resolve a name against and nothing to
                     // constrain a parameter with, so what the grammar alone shows is the answer.
@@ -192,7 +229,7 @@ namespace Tellma.Core.Queryex.Pipeline
                 BindingContext context = new()
                 {
                     Schema = _options.Schema,
-                    Root = _options.Root,
+                    Root = scope.Root,
                     Mode = mode,
                     QueryexVersion = queryexVersion ?? _options.QueryexVersion,
                     Inference = _inference,
@@ -211,7 +248,7 @@ namespace Tellma.Core.Queryex.Pipeline
 
                 foreach (BoundItem item in bound.Items)
                 {
-                    ReadBound(item.Expression, location);
+                    ReadBound(item.Expression, location, scope);
                 }
             }
 
@@ -221,27 +258,100 @@ namespace Tellma.Core.Queryex.Pipeline
             /// <param name="location">Which clause the tree belongs to.</param>
             internal void ReadFilter(FilterTree tree, QueryexMode mode, DiagnosticLocation location)
             {
+                ReadFilter(tree, mode, location, Top());
+            }
+
+            /// <summary>Reads one node of a filter tree, resolving its paths from a given scope.</summary>
+            /// <param name="tree">The node.</param>
+            /// <param name="mode">The position its leaves are written for.</param>
+            /// <param name="location">Which input the node is.</param>
+            /// <param name="scope">What its paths resolve from, and how they are reported.</param>
+            private void ReadFilter(FilterTree tree, QueryexMode mode, DiagnosticLocation location, PathScope scope)
+            {
                 switch (tree)
                 {
                     case FilterTree.LeafNode leaf:
-                        Read(leaf.Text, mode, false, location, leaf.QueryexVersion);
+                        Read(leaf.Text, mode, false, location, leaf.QueryexVersion, scope);
                         return;
 
                     case FilterTree.NotNode negation:
-                        ReadFilter(negation.Operand, mode, location.Child(FilterConnective.Not, 0));
+                        ReadFilter(negation.Operand, mode, location.Child(FilterConnective.Not, 0), scope);
                         return;
 
                     case FilterTree.AndNode conjunction:
-                        ReadChildren(conjunction.Children, mode, location, FilterConnective.And);
+                        ReadChildren(conjunction.Children, mode, location, FilterConnective.And, scope);
                         return;
 
                     case FilterTree.OrNode disjunction:
-                        ReadChildren(disjunction.Children, mode, location, FilterConnective.Or);
+                        ReadChildren(disjunction.Children, mode, location, FilterConnective.Or, scope);
+                        return;
+
+                    case FilterTree.ViaNode via:
+                        ReadFilter(via.Inner, mode, location.Via(via.Navigation), Rebased(via, location, scope));
+                        return;
+
+                    case FilterTree.ExistsNode exists:
+                        ReadFilter(exists.Inner, mode, location.Exists(exists.Entity), Searched(exists, location, scope));
                         return;
 
                     default:
                         return;
                 }
+            }
+
+            /// <summary>The scope of the query's own clauses.</summary>
+            /// <returns>The scope.</returns>
+            private PathScope Top()
+            {
+                return new PathScope(_options.Root, [], Reports: true);
+            }
+
+            /// <summary>The scope of a rebased criterion.</summary>
+            /// <param name="via">The rebase.</param>
+            /// <param name="location">Where it sits.</param>
+            /// <param name="scope">The scope it sits in.</param>
+            /// <returns>The scope its criterion reads from.</returns>
+            /// <remarks>
+            ///     The criterion's paths resolve from the navigation's target and are reported with the
+            ///     navigation's segments in front, so every reported path still reads from the query's
+            ///     root.
+            /// </remarks>
+            private PathScope Rebased(FilterTree.ViaNode via, DiagnosticLocation location, PathScope scope)
+            {
+                if (_options.Schema is null || scope.Root is null)
+                {
+                    return scope;
+                }
+
+                ResolvedVia resolved = FilterStructure.ResolveVia(scope.Root, via, location, SpecParameter);
+                return scope with { Root = resolved.Target, Prefix = [.. scope.Prefix, .. resolved.Segments] };
+            }
+
+            /// <summary>The scope of a semi-join's criterion.</summary>
+            /// <param name="exists">The semi-join.</param>
+            /// <param name="location">Where it sits.</param>
+            /// <param name="scope">The scope it sits in.</param>
+            /// <returns>The scope its criterion reads from.</returns>
+            /// <remarks>
+            ///     The criterion is still bound, so its problems and its parameters are reported like
+            ///     any other leaf's. Its paths are not: they resolve from the searched entity's rows,
+            ///     and no prefix would make them read from the query's root.
+            /// </remarks>
+            private PathScope Searched(FilterTree.ExistsNode exists, DiagnosticLocation location, PathScope scope)
+            {
+                if (_options.Schema is null || scope.Root is null)
+                {
+                    return scope with { Reports = false };
+                }
+
+                ResolvedExists resolved = FilterStructure.ResolveExists(
+                    _options.Schema,
+                    scope.Root,
+                    exists,
+                    location,
+                    SpecParameter);
+
+                return new PathScope(resolved.Entity, [], Reports: false);
             }
 
             /// <summary>Collects everything learned into a result.</summary>
@@ -294,15 +404,17 @@ namespace Tellma.Core.Queryex.Pipeline
             /// <param name="mode">The position their leaves are written for.</param>
             /// <param name="location">Which clause the tree belongs to.</param>
             /// <param name="connective">The connective, as a location component.</param>
+            /// <param name="scope">What their paths resolve from, and how they are reported.</param>
             private void ReadChildren(
                 IReadOnlyList<FilterTree> children,
                 QueryexMode mode,
                 DiagnosticLocation location,
-                FilterConnective connective)
+                FilterConnective connective,
+                PathScope scope)
             {
                 for (int index = 0; index < children.Count; index++)
                 {
-                    ReadFilter(children[index], mode, location.Child(connective, index));
+                    ReadFilter(children[index], mode, location.Child(connective, index), scope);
                 }
             }
 
@@ -347,16 +459,21 @@ namespace Tellma.Core.Queryex.Pipeline
             /// <summary>Collects the facts only binding settles.</summary>
             /// <param name="node">The bound node.</param>
             /// <param name="location">Which input this text is.</param>
-            private void ReadBound(TypedExpr node, DiagnosticLocation location)
+            /// <param name="scope">What the text's paths resolve from, and how they are reported.</param>
+            private void ReadBound(TypedExpr node, DiagnosticLocation location, PathScope scope)
             {
-                if (node is TypedPath path)
+                if (node is TypedPath path && scope.Reports)
                 {
-                    _paths.Add(new PathUse(path.Segments, new QueryexTextSite(location.Text, path.Span)));
+                    IReadOnlyList<string> segments = scope.Prefix.IsEmpty
+                        ? path.Segments
+                        : [.. scope.Prefix, .. path.Segments];
+
+                    _paths.Add(new PathUse(segments, new QueryexTextSite(location.Text, path.Span)));
                 }
 
                 foreach (TypedExpr child in node.Children)
                 {
-                    ReadBound(child, location);
+                    ReadBound(child, location, scope);
                 }
             }
         }

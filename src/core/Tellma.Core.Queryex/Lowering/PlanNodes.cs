@@ -95,12 +95,21 @@ namespace Tellma.Core.Queryex.Lowering
         /// <param name="span">Where the path sits in the input.</param>
         /// <param name="table">The join whose alias qualifies the column.</param>
         /// <param name="property">The property whose column is read.</param>
-        internal PlanColumn(QueryexSpan span, JoinNode table, PropertyDescriptor property)
+        /// <param name="origin">Where the reference was written.</param>
+        internal PlanColumn(QueryexSpan span, JoinNode table, PropertyDescriptor property, PlanOrigin origin)
             : base(span, BoundTypes.FromPublic(property.Type), StoreTypes.OfProperty(property))
         {
             Table = table;
             Property = property;
+            Origin = origin;
         }
+
+        /// <summary>Where the reference was written.</summary>
+        /// <remarks>
+        ///     What a join is blamed on when it pushes the join ceiling over: the first surviving
+        ///     reference that reads it, rather than whatever created it — which may have folded away.
+        /// </remarks>
+        internal PlanOrigin Origin { get; }
 
         /// <summary>The join whose alias qualifies the column.</summary>
         internal JoinNode Table { get; }
@@ -118,11 +127,21 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>Initializes the node.</summary>
         /// <param name="span">Where the expression it came from sits in the input.</param>
         /// <param name="slot">The slot the host binds.</param>
-        internal PlanParameterRef(QueryexSpan span, ParameterSlot slot)
+        /// <param name="origin">Where the reference was written.</param>
+        internal PlanParameterRef(QueryexSpan span, ParameterSlot slot, PlanOrigin origin)
             : base(span, slot.Type, slot.StoreType)
         {
             Slot = slot;
+            Origin = origin;
         }
+
+        /// <summary>Where the reference was written.</summary>
+        /// <remarks>
+        ///     What a slot is blamed on when it pushes the parameter ceiling over: the first surviving
+        ///     reference to it, since equal values share one slot and the one that created it may have
+        ///     folded away.
+        /// </remarks>
+        internal PlanOrigin Origin { get; }
 
         /// <summary>The slot the host binds.</summary>
         internal ParameterSlot Slot { get; }
@@ -696,6 +715,28 @@ namespace Tellma.Core.Queryex.Lowering
 
         /// <summary>The looked-up position.</summary>
         internal PlanValue Key { get; }
+    }
+
+    /// <summary>
+    ///     A semi-join: whether the subquery finds any row.
+    /// </summary>
+    /// <remarks>
+    ///     Two-valued however its predicate is written, since an existence test has no third answer,
+    ///     so it negates soundly. It reads the statement's row only through the correlation, which
+    ///     compares the searched row's foreign key with the current root's key.
+    /// </remarks>
+    internal sealed class PlanExists : PlanPredicate
+    {
+        /// <summary>Initializes the node.</summary>
+        /// <param name="subquery">The subquery, its predicate already lowered.</param>
+        internal PlanExists(PlanSubquery subquery)
+            : base(default)
+        {
+            Subquery = subquery;
+        }
+
+        /// <summary>The subquery.</summary>
+        internal PlanSubquery Subquery { get; }
     }
 
     /// <summary>

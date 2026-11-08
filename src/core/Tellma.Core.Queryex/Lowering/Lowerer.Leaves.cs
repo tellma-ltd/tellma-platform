@@ -59,7 +59,8 @@ namespace Tellma.Core.Queryex.Lowering
 
             return new PlanParameterRef(
                 literal.Span,
-                Slot(literal.Type, store, QueryexParameterOrigin.Literal, literal.Value, null, literal.Span));
+                Slot(literal.Type, store, QueryexParameterOrigin.Literal, literal.Value, null, literal.Span),
+                Here(literal.Span));
         }
 
         /// <summary>Lowers a declared parameter.</summary>
@@ -82,7 +83,8 @@ namespace Tellma.Core.Queryex.Lowering
                     QueryexParameterOrigin.Declared,
                     null,
                     parameter.Symbol.Name,
-                    parameter.Span));
+                    parameter.Span),
+                Here(parameter.Span));
         }
 
         /// <summary>Lowers a path to the column of a joined table.</summary>
@@ -91,16 +93,18 @@ namespace Tellma.Core.Queryex.Lowering
         private PlanColumn LowerPath(TypedPath path)
         {
             JoinNode table = Walk(path.Navigations, path.Span);
-            return new PlanColumn(path.Span, table, path.Property);
+            return new PlanColumn(path.Span, table, path.Property, Here(path.Span));
         }
 
-        /// <summary>Follows a run of navigations from the root, creating joins as needed.</summary>
+        /// <summary>
+        ///     Follows a run of navigations from the current root, creating joins as needed.
+        /// </summary>
         /// <param name="navigations">The steps.</param>
         /// <param name="span">The range of the path that needed them.</param>
         /// <returns>The node the last step leads to.</returns>
         private JoinNode Walk(ImmutableArray<NavigationDescriptor> navigations, QueryexSpan span)
         {
-            JoinNode table = Root;
+            JoinNode table = _base;
             PlanOrigin origin = new(span, _location);
             foreach (NavigationDescriptor navigation in navigations)
             {
@@ -108,6 +112,14 @@ namespace Tellma.Core.Queryex.Lowering
             }
 
             return table;
+        }
+
+        /// <summary>Where something written at a range of the current input was written.</summary>
+        /// <param name="span">The range.</param>
+        /// <returns>The origin.</returns>
+        private PlanOrigin Here(QueryexSpan span)
+        {
+            return new PlanOrigin(span, _location);
         }
 
         /// <summary>Finds or allocates the slot a value binds through.</summary>
@@ -191,8 +203,10 @@ namespace Tellma.Core.Queryex.Lowering
                 return false;
             }
 
-            ValueBinding binding = new(_bindings.Count, value, value.Type);
-            _bindings.Add(binding);
+            // Collected where the value is computed: the statement's source, or the subquery whose
+            // rows it reads.
+            ValueBinding binding = new(_scopeBindings.Count, value, value.Type);
+            _scopeBindings.Add(binding);
             value = new PlanBindingRef(value.Span, binding);
             return true;
         }

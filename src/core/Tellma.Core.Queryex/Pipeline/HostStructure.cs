@@ -5,6 +5,7 @@
 
 using System.Collections.Immutable;
 using Tellma.Core.Queryex.Binding;
+using Tellma.Core.Queryex.Diagnostics;
 using static System.FormattableString;
 
 namespace Tellma.Core.Queryex.Pipeline
@@ -44,6 +45,64 @@ namespace Tellma.Core.Queryex.Pipeline
             }
 
             return resolved.MoveToImmutable();
+        }
+
+        /// <summary>Checks the rebases and semi-joins of a query's two predicates.</summary>
+        /// <param name="spec">The query.</param>
+        /// <param name="schema">The schema it compiles against.</param>
+        /// <exception cref="ArgumentException">
+        ///     A rebase or a semi-join does not fit the schema, or sits in the group-level predicate.
+        /// </exception>
+        internal static void RequireFilters(QuerySpec spec, QueryexSchema schema)
+        {
+            FilterStructure.Require(
+                spec.Filter,
+                schema,
+                spec.Root,
+                DiagnosticLocation.Clause(QueryexClause.Filter),
+                rowLevel: true,
+                nameof(spec));
+
+            FilterStructure.Require(
+                spec.Having,
+                schema,
+                spec.Root,
+                DiagnosticLocation.Clause(QueryexClause.Having),
+                rowLevel: false,
+                nameof(spec));
+        }
+
+        /// <summary>Checks the rebases and semi-joins of a query under authoring.</summary>
+        /// <param name="spec">The clauses written so far.</param>
+        /// <param name="schema">The schema, or null when discovery runs without one.</param>
+        /// <param name="root">The root, or null when discovery runs without a schema.</param>
+        /// <exception cref="ArgumentException">
+        ///     A rebase or a semi-join does not fit the schema, or sits in the group-level predicate.
+        /// </exception>
+        /// <remarks>
+        ///     Without a schema nothing can be resolved, so only the rule that needs none is checked:
+        ///     neither construct belongs in a group-level predicate.
+        /// </remarks>
+        internal static void RequireFilters(
+            QueryDiscoverySpec spec,
+            QueryexSchema? schema,
+            EntityDescriptor? root)
+        {
+            FilterStructure.Require(
+                spec.Filter,
+                schema,
+                root,
+                DiagnosticLocation.Clause(QueryexClause.Filter),
+                rowLevel: true,
+                nameof(spec));
+
+            FilterStructure.Require(
+                spec.Having,
+                schema,
+                root,
+                DiagnosticLocation.Clause(QueryexClause.Having),
+                rowLevel: false,
+                nameof(spec));
         }
 
         /// <summary>Checks a query's undeclared columns.</summary>

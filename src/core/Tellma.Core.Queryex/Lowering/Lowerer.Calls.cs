@@ -111,7 +111,8 @@ namespace Tellma.Core.Queryex.Lowering
             QueryexStoreType store = StoreTypes.Default(call.Type, null, 0, 0);
             return new PlanParameterRef(
                 call.Span,
-                Slot(call.Type, store, context.Origin, null, null, call.Span));
+                Slot(call.Type, store, context.Origin, null, null, call.Span),
+                Here(call.Span));
         }
 
         /// <summary>Lowers a conversion.</summary>
@@ -187,7 +188,7 @@ namespace Tellma.Core.Queryex.Lowering
                 return new PlanConstantPredicate(call.Span, false);
             }
 
-            PlanColumn node = new(keyPath.Span, table, treeNode);
+            PlanColumn node = new(keyPath.Span, table, treeNode, Here(keyPath.Span));
 
             // A position is certainly there only when the row holding it is: behind an optional
             // navigation there may be no row to read a position from at all.
@@ -286,7 +287,8 @@ namespace Tellma.Core.Queryex.Lowering
                         synthetic.Origin,
                         synthetic.Value,
                         null,
-                        call.Span));
+                        call.Span),
+                    Here(call.Span));
             }
 
             return ImmutableArray.Create(operands);
