@@ -44,14 +44,16 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-08 14:10 | 55 | 26 | 2026-11-10 20:00 | PC-002 done; PC-003 integrated 68ddcc0; PC-005 launched; PC-F03 fix1 |
 | 2026-11-08 15:10 | 57 | 26 | 2026-11-10 20:00 | PC-003 done; PC-005 integrated e33ceb3; PC-006 launched; ρ measured 0.0955 |
 | 2026-11-08 17:50 | 60 | 26 | 2026-11-10 20:00 | PC-017 integrated 65ce1d1; PC-007 launched; PC-006 r1; PC-008/015 integrating soon |
+| 2026-11-08 19:00 | 63 | 27 | 2026-11-10 20:00 | PC-008 integrated 0b64145; PC-F03 done; snapshot f112880; PC-016 launched; PC-006 r2 (Fable) |
+| 2026-11-08 22:10 | 68 | 28 | 2026-11-10 20:00 | CI red 0b64145..0a35bb9 (CSP leak); PC-F06 integrated c71a009 (CI pending); PC-006/007 held; PC-053 launched |
 
 ## In flight
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-015 | pc-1 | pc/PC-015 | fix2+integrate (R2 0/1/4; c2 0ebb7fc) | impl-PC-015 / a77753b07b64fdd2e (xhigh) | r1 aa56b090fbd5c6685; r2-PC-015 (xhigh) / a5f58f107ef40eefc | 2026-11-08 13:10 |
-| PC-007 | pc-3 | pc/PC-007 | impl | impl-PC-007 / a4e4582dfcf85ab22 (high) | | 2026-11-08 17:50 |
-| PC-006 | pc-4 | pc/PC-006 | r2 (c2 1991dc8) | impl-PC-006 / abec5dabf4eae8ca0 (high) | r1 a29223395330a564e; r2-PC-006 (fable, xhigh) / a36d793f2bcbb9bc8 | 2026-11-08 15:10 |
+| PC-053 | pc-1 | pc/PC-053 | impl | impl-PC-053 / a494e30e39dcc9c6d (high) | | 2026-11-08 22:10 |
+| PC-016 | pc-2 | pc/PC-016 | fix1+integrate (R1 0/0/8; c1 2cf9477) | impl-PC-016 / a7a4c107c0b2fd2e0 (high) | r1-PC-016 / ae157a67fc82e07e9 | 2026-11-08 19:00 |
+| PC-006 | pc-4 | pc/PC-006 | integrating (c3 cade933) | impl-PC-006 / abec5dabf4eae8ca0 (high) | r1 a29223395330a564e; r2-PC-006 (fable, xhigh) / a36d793f2bcbb9bc8 | 2026-11-08 15:10 |
 
 ## Fix items
 
@@ -60,7 +62,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F01 | PC-000 (CI red on 8a1ebf8) | done | 6ef6423, d1ab25e (pc) | 2.49 (impl 2.18, r1 0.31) | quarantined 5 flaky e2e; nightly job client-e2e-quarantine (non-blocking, per-test table); CI 42455962373 green; nightly 42456014559 green |
 | PC-F03 | entity-picker same-frame Enter race: Enter in the same frame as the last keystroke skips the highlight (reproduced, data-changing; frozen 0006 component) | done 000126e (R1 1/0/2 all fixed; CI 42505603036 green), fix-PC-F03 / a62d83dfcb72a8e4f (high); r1 aa9a0cc9ac7a293cb | af35d27, bcba0eb, 2645e7a, 000126e (pc) | 11.78M | arrow-key burst split out to PC-F04; from PC-F02 R1-2; brief: reviews/PC-F02.md R1-2 |
 | PC-F04 | entity-picker arrow keys in a burst: type + ArrowDown + Enter in one task picks row 1 where paced input picks row 2 (aria relays only the last arrow, after render) | todo (low; filler) | | | from PC-F03 R1 decisions; brief: reviews/PC-F03.md implementer notes "open risk" |
-| PC-F05 | e2e timing-sensitive tests: (a) grid-touch.spec.ts:206 double-tap opens the editor (wall-clock threshold; passed on retry locally); (b) entity-picker "axe floor › popup states" (five axe scans, 12-25 s against a 30 s cap, hit 30.1 s with 1 worker); (c) other heavy axe scans near the cap (grid-entity axe & RTL dropdown open (dark), grid-a11y-editable populated) | impl, pc-f, fix-PC-F05 / aa332812685080600 (high) | | | from PC-F03 fix1 + PC-008 r1 |
+| PC-F05 | e2e timing-sensitive tests: (a) grid-touch.spec.ts:206 double-tap opens the editor (wall-clock threshold; passed on retry locally); (b) entity-picker "axe floor › popup states" (five axe scans, 12-25 s against a 30 s cap, hit 30.1 s with 1 worker); (c) other heavy axe scans near the cap (grid-entity axe & RTL dropdown open (dark), grid-a11y-editable populated) | done 732a1af (CI green; R1 0/1/2 fixed), pc-f free, fix-PC-F05 / aa332812685080600 (high); r1 ae34baef2b7ac3576 | d67c757, 0073b2b, 1962b30, 732a1af (pc) | 9.76M | from PC-F03 fix1 + PC-008 r1 |
+| PC-F06 | CI red on 0b64145/f112880: tm-control-size.spec.ts 5/5 fail with CSP 'unsafe-eval' from Angular JIT; PC-008's tm-icu-csp.spec.ts CSP leaks into the shared vitest browser page (order-dependent) | done c71a009 (CI green), a6567bfbe1a75233d; r1 a9b4263ecc1f6dbc3 | ce1f544, ed4aa7e, c71a009 (pc) | | stop the line; PC-006 integration held |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -85,11 +88,13 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | e2e grid-entity.spec.ts:132 unresolved commit text resolves… after editor teardown | 2026-11-08 | fixed by PC-F02; un-quarantined |
 | e2e grid-keyboard.spec.ts:241 readonly grid is a single tab stop | 2026-11-08 | fixed by PC-F02; un-quarantined |
 | e2e popover.spec.ts:93 block-end/start alignment mirrors under RTL | 2026-11-08 | fixed by PC-F02; un-quarantined |
-| dotnet Identity integration Flows.AssurancePolicyTests.Max_age_zero_forces_one_reauthentication_then_completes: 200 not 302 at 2nd email-code verify, once in a full run (4/4 alone; local, pre-existing) | 2026-11-08 (PC-002 r2) | watch; PC-Fnn candidate if it recurs (identity suite, Tier 1) |
+| dotnet Identity integration Flows.AssurancePolicyTests.Max_age_zero_forces_one_reauthentication_then_completes | 2026-11-08 (PC-002 r2; recurred PC-006 r2: alone 3/3 fail) | root cause: OidcFlowClient.cs:101 WaitForCodeAsync returns the spent first code; fixed in PC-006 fix2 (CountFor + WaitForCodeAfterAsync) |
 | dotnet Smtp connector integration: port-in-use (local only, passed 3/3 on rerun) | 2026-11-08 (PC-002 fix1) | watch; quarantine if it recurs on CI |
 | dotnet EF integration CREATE DATABASE "Execution Timeout Expired" (ApplyMigrationsTests parity, MemoryOptimizedTests) under parallel-slot load; green on rerun | 2026-11-08 (PC-005 fix1; PC-015 saw an EF load timeout too) | watch; host load, not code. If it hits CI, raise the fixture's CREATE DATABASE timeout |
 | e2e grid-touch.spec.ts:206 double-tap opens the editor (touch) | 2026-11-08 (PC-F03 fix1, local) | PC-F05 |
 | e2e heavy axe scans time out at 30 s under parallel-slot CPU load (entity-picker popup states, grid-entity axe & RTL dropdown open (dark), grid-a11y-editable populated); pass alone | 2026-11-08 (PC-008 impl, PC-F03 fix1; also PC-F02) | watch; local load only so far. If CI shows it, raise those tests' timeout with a reason or split the scan |
+| e2e tooltip "the wrapper pattern gives disabled controls a working tooltip" | 2026-11-08 (PC-F05 stress: 1/2260 at 10 workers, not reproduced in 2860 more) | watch; track if CI shows it |
+| local machine overload: PR-tier e2e 465/478 (timeouts) and showcase esbuild service stopping during PC-F06 with 5 lanes + reviewers | 2026-11-08 19:00-21:00 | D-028: cap concurrent heavy agents |
 | e2e entity-picker.spec.ts:83 sync source keystroke-instant / async spinner | 2026-11-08 (CI 42456030333) | fixed by PC-F02 |
 | e2e grid-entity.spec.ts:58 type-to-edit … Enter commits with NO move | 2026-11-08 | fixed by PC-F02 |
 | e2e grid-keyboard.spec.ts:258 single tab stop with link column | 2026-11-08 | fixed by PC-F02 |
@@ -110,17 +115,17 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-003 | 0010-f1 | 1 | done | bfc40a1, b780419, de5c585, 68ddcc0 (pc) | 24.89M | Queryex fixture on DatabaseCollations.Platform (D-015 done); CI 42488163369 green |
 | PC-004 | 0023-a | 1 | done | cd25a67, d532bfa, 681f7f8 (pc) | 14.67M | CI 42484063555 green |
 | PC-005 | 0010-g1 | 1 | done | 6b6f48f, e33ceb3 (pc, ff) | 4.23M | 2nd MigrationsHost migration AddSubjectsList; Msg 468 seam stays open for 0012 (StringList has no collation) |
-| PC-006 | 0010-a2 | 1 | r2 | e99eb6f, 1991dc8 | | 3 deviations; ruling: counter counts every call incl. 401/403 (spec stands) |
-| PC-007 | 0010-f2 | 1 | impl | | | |
-| PC-008 | 0010-b1 | 1 | integrated | 2d7734a, 2161a0b, aa8686e, 0b64145 (pc) | | 8 deviations; primary ceiling 8 not 7; in-house eval-free ICU; client ICU has no date/time |
+| PC-006 | 0010-a2 | 1 | fix2 | e99eb6f, 1991dc8, cade933 | | 3 deviations; ruling: counter counts every call incl. 401/403 (spec stands) |
+| PC-007 | 0010-f2 | 1 | integrated | 66fa627, 334d4c7, 7f25a25, a6c928d (pc) | 24.07M | 3 deviations; Exists not in Paths (D-027) |
+| PC-008 | 0010-b1 | 1 | done | 2d7734a, 2161a0b, aa8686e, 0b64145 (pc) | 21.50M | CI 42509964842 red (CSP leak) → fixed by PC-F06; green at c71a009 | 8 deviations; primary ceiling 8 not 7; in-house eval-free ICU; client ICU has no date/time |
 | PC-009 | 0010-a3 | 1 | todo | | | |
 | PC-010 | 0010-f3 | 1 | todo | | | |
 | PC-011 | 0010-d1 | 1 | todo | | | |
 | PC-012 | 0010-f5 | 1 | todo | | | |
 | PC-013 | 0010-d2 | 1 | todo | | | |
 | PC-014 | 0010-a5 | 1 | todo | | | |
-| PC-015 | SEED | 1 | fix2 | ca3759b, 0ebb7fc | | 11 deviations; D-020 rulings + planner notes PC-018/032/035/039/090 |
-| PC-016 | 0013-a | 1 | todo | | | |
+| PC-015 | SEED | 1 | done | ca3759b, 0ebb7fc, 8d53a8c, 0a35bb9 (pc) | 35.86M | red only from the PC-008 CSP leak; green at c71a009 | 11 deviations; D-020 rulings + planner notes PC-018/032/035/039/090 |
+| PC-016 | 0013-a | 1 | fix1 | 2cf9477 | | 13 deviations; D-029 (Umm al-Qura authority, host-independent server text) |
 | PC-017 | 0017-a | 1 | done | e1133a6, 0c184db, 2193781, 65ce1d1 (pc) | 12.83M | 12 deviations; MaxSizeBytes narrow-only (D-022); Linux create-only via link(2) (D-024); no R2 (3 majors, no blocking) |
 | PC-018 | 0012-a | 1 | todo | | | |
 | PC-019 | 0013-b | 1 | todo | | | |
@@ -157,7 +162,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-050 | 0014-d | 1 | todo | | | |
 | PC-051 | 0010-c4 | 1 | todo | | | |
 | PC-052 | 0014-e | 1 | todo | | | |
-| PC-053 | 0017-b | 1 | todo | | | |
+| PC-053 | 0017-b | 1 | impl | | | |
 | PC-054 | 0010-c5 | 1 | todo | | | |
 | PC-055 | 0018-a | 1 | todo | | | |
 | PC-056 | 0010-c6 | 1 | todo | | | |
