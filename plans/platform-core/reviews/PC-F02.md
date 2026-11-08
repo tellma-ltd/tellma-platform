@@ -237,7 +237,7 @@ requires TSDoc on every declaration. Suggested fix: give each constant its own o
 
 ### Responses
 
-R1-1: fixed in FIXSHA. I took the reviewer's direction. `requestFocusActive()` is back to its
+R1-1: fixed in 4c36d45. I took the reviewer's direction. `requestFocusActive()` is back to its
 original form, with the pending flag set unconditionally. A real departure now cancels the pending
 request in two ways. (1) `onDocumentFocusIn` cancels it when focus lands outside the host and its
 overlays (`pendingGestureFocus &&= gridOwnsFocus`). A drop to `<body>` when the render removes the
@@ -263,11 +263,11 @@ stale highlight can satisfy it. This round adds the two sites still missing that
 "clearing the text stops the field claiming a selection…" (its setup did `fill` + Enter) and
 grid-entity "a no-resolver entity column records the invalid input directly".
 
-R1-3: fixed in FIXSHA. `appStable` races the hook against `APP_STABLE_TIMEOUT_MS` (10 s) inside
+R1-3: fixed in 4c36d45. `appStable` races the hook against `APP_STABLE_TIMEOUT_MS` (10 s) inside
 the page and then throws "The showcase app did not become stable within 10000 ms (a pending task
 that never ends, or a render loop)." The timer is cleared on success.
 
-R1-4: fixed in FIXSHA. `CLOCK_START` and `CLOCK_PAUSE` each have their own TSDoc.
+R1-4: fixed in 4c36d45. `CLOCK_START` and `CLOCK_PAUSE` each have their own TSDoc.
 
 Round-1 verification (local, CI=1 prod build, `--retries 0`, 2 workers, 4 CPUs pinned): all
 client gates pass (lint, typecheck, lint:test, tokens:check, build, test with 1149 core-ui
