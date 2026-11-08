@@ -10,7 +10,8 @@ comparison over absent values is easy to get subtly wrong and very hard to notic
 
 | Suite | What it proves |
 |---|---|
-| `DifferentialTests` | The rows on the server are the rows in memory, and every corpus query answers the same on both. |
+| `DifferentialTests` | The rows on the server are the rows in memory, and every corpus query answers the same on both — restrictions to key sets included, with each table of keys declared ahead of the statement the way a host would. |
+| `EmbeddingTests` | A compiled statement embeds in SQL of a host's own: its body counts as a derived table, unordered or paged, with its prologue written first; and keys one statement captures into a table restrict a second one in the same batch. |
 | `BackendFactsTests` | Every function that promises a value produces one even when everything it reads is missing; division keeps the fractional digits the language promises; emitted SQL means the same thing under hostile connection settings; and every zone the embedded table resolves to is one the server has. |
 
 Absence comes from **nullable columns with real NULL rows**, never from a `null` literal: a literal
@@ -35,8 +36,11 @@ export TELLMA_TEST_SQL='Server=localhost;Integrated Security=true;TrustServerCer
 dotnet test test/core/Tellma.Core.Queryex.IntegrationTests
 ```
 
-The connection string may name any database; the fixture creates and uses `TellmaQueryexTests`, and
-rebuilds its tables on every run.
+The connection string may name any database; the fixture creates and uses `TellmaQueryexTests`, in
+the platform collation (`Latin1_General_100_CI_AS`), and rebuilds its tables on every run. The
+fixture's text columns keep the collation they declare; the database's is what literals and table
+variables get. A `TellmaQueryexTests` left by an older run in another collation fails the fixture
+with a message asking for it to be dropped.
 
 Every class here is tagged `Category=Integration`, which is how CI both excludes it from the pull-request
 run and includes it in the integration job. A class without the trait runs in neither.

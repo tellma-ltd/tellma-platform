@@ -71,8 +71,22 @@ namespace Tellma.Queryex.Testing.Probe
         public static IReadOnlyList<string> BackendZoneNames { get; } =
             [.. Core.Queryex.Time.CldrTimeZones.BackendNames];
 
-        /// <summary>How many zone identifiers the embedded table knows.</summary>
+        /// <summary>How many current zone identifiers the embedded table knows.</summary>
         public static int ZoneIdentifierCount => Core.Queryex.Time.CldrTimeZones.Count;
+
+        /// <summary>Every current zone identifier, mapped to the backend zone name it resolves to.</summary>
+        /// <remarks>The table's own map of current ids, which the public list of ids is read from.</remarks>
+        public static IReadOnlyDictionary<string, string> CurrentZones => Core.Queryex.Time.CldrTimeZones.Zones;
+
+        /// <summary>The backend zone name an identifier resolves to, or null when it resolves to none.</summary>
+        /// <param name="ianaId">The identifier: a current one, or an alias of one.</param>
+        /// <returns>The backend name, or null.</returns>
+        public static string? ResolveZone(string ianaId)
+        {
+            ArgumentNullException.ThrowIfNull(ianaId);
+
+            return Core.Queryex.Time.CldrTimeZones.TryResolve(ianaId, out string? name) ? name : null;
+        }
 
         /// <summary>Scans and parses one input.</summary>
         /// <param name="text">The expression text.</param>

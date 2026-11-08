@@ -23,7 +23,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Bff_completes_the_authorization_code_flow_end_to_end()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idflow");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idflow");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, "alice@example.com");
 

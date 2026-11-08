@@ -25,7 +25,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task A_client_requiring_consent_stops_at_the_consent_screen()
         {
-            using StandaloneFactory factory = await CreateFactoryAsync("idconsent");
+            using StandaloneFactory factory = CreateFactory("idconsent");
             using OidcFlowClient flow = new(factory);
             await SignInAsync(factory, flow, "consent@example.com");
 
@@ -41,7 +41,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Allowing_consent_returns_an_authorization_code()
         {
-            using StandaloneFactory factory = await CreateFactoryAsync("idallow");
+            using StandaloneFactory factory = CreateFactory("idallow");
             using OidcFlowClient flow = new(factory);
             await SignInAsync(factory, flow, "allow@example.com");
 
@@ -69,7 +69,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task The_consent_page_allows_its_clients_callback_as_a_form_action()
         {
-            using StandaloneFactory factory = await CreateFactoryAsync("idcsp");
+            using StandaloneFactory factory = CreateFactory("idcsp");
             using OidcFlowClient flow = new(factory);
             await SignInAsync(factory, flow, "csp@example.com");
 
@@ -90,7 +90,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Denying_consent_returns_the_access_denied_error()
         {
-            using StandaloneFactory factory = await CreateFactoryAsync("iddeny");
+            using StandaloneFactory factory = CreateFactory("iddeny");
             using OidcFlowClient flow = new(factory);
             await SignInAsync(factory, flow, "deny@example.com");
 
@@ -117,7 +117,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Accepting_without_a_session_sends_the_client_an_error()
         {
-            using StandaloneFactory factory = await CreateFactoryAsync("idnosession");
+            using StandaloneFactory factory = CreateFactory("idnosession");
             using OidcFlowClient flow = new(factory);
 
             // An anonymous but otherwise well-formed grant. The token is minted on a page loaded
@@ -148,7 +148,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task A_first_party_grant_does_not_stand_in_for_consent()
         {
-            using StandaloneFactory factory = await CreateFactoryAsync("idscope");
+            using StandaloneFactory factory = CreateFactory("idscope");
             using OidcFlowClient flow = new(factory);
 
             // Signing in runs a full authorization through the first-party client, which is
@@ -167,7 +167,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Consent_is_remembered_for_the_next_authorization()
         {
-            using StandaloneFactory factory = await CreateFactoryAsync("idremember");
+            using StandaloneFactory factory = CreateFactory("idremember");
             using OidcFlowClient flow = new(factory);
             await SignInAsync(factory, flow, "remember@example.com");
 
@@ -191,9 +191,9 @@ namespace Tellma.Identity.IntegrationTests.Flows
         ///     Boots a host that seeds one consent-requiring third-party client alongside the
         ///     first-party distribution the sign-in itself runs through.
         /// </summary>
-        private async Task<StandaloneFactory> CreateFactoryAsync(string databasePrefix)
+        private StandaloneFactory CreateFactory(string databasePrefix)
         {
-            return await DatabaseBackedFactory.CreateStandaloneAsync(
+            return DatabaseBackedFactory.CreateStandalone(
                 fixture,
                 databasePrefix,
                 new Dictionary<string, string?>

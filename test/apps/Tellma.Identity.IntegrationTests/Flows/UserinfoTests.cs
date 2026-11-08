@@ -22,7 +22,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Userinfo_returns_scope_gated_claims_for_a_signed_in_user()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iduserinfo");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iduserinfo");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, "grace@example.com");
 
@@ -48,7 +48,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Userinfo_withholds_claims_whose_scope_was_not_granted()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iduserinfoscope");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iduserinfoscope");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, "heidi@example.com");
 
@@ -72,7 +72,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Userinfo_challenges_without_a_token()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iduserinfoanon");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iduserinfoanon");
             using HttpClient client = factory.CreateClient();
 
             using HttpResponseMessage response = await client.GetAsync(

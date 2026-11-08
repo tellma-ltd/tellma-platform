@@ -20,6 +20,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         private readonly List<StandaloneColumnConfiguration> _columns = [];
         private readonly List<string> _key = [];
         private readonly List<string> _grants = [];
+        private readonly List<(string Column, string Collation)> _collations = [];
         private bool _memoryOptimized;
         private bool _excludeFromMigrations;
 
@@ -36,7 +37,12 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         /// <param name="scale">The scale facet.</param>
         /// <param name="unicode">Whether the column is Unicode, when relevant.</param>
         /// <param name="fixedLength">Whether the column is fixed length, when relevant.</param>
-        /// <param name="collation">The explicit collation, when one is wanted.</param>
+        /// <param name="collation">
+        ///     The explicit collation, when one is wanted. Only a column that resolves to
+        ///     <c>char</c>, <c>varchar</c>, <c>nchar</c> or <c>nvarchar</c> takes one; any other store
+        ///     type, <c>json</c> included, fails model finalization. A <see cref="UseCollation" /> call
+        ///     for the column, before or after this one, wins over this argument.
+        /// </param>
         /// <returns>The same builder instance so that multiple calls can be chained.</returns>
         public virtual TableTypeBuilder Column<T>(
             string name,
@@ -73,7 +79,12 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         /// <param name="maxLength">The maximum length facet, carried into the metadata API.</param>
         /// <param name="precision">The precision facet, carried into the metadata API.</param>
         /// <param name="scale">The scale facet, carried into the metadata API.</param>
-        /// <param name="collation">The explicit collation, when one is wanted.</param>
+        /// <param name="collation">
+        ///     The explicit collation, when one is wanted. Only a <c>char</c>, <c>varchar</c>,
+        ///     <c>nchar</c> or <c>nvarchar</c> store type takes one; any other, <c>json</c> included,
+        ///     fails model finalization. A <see cref="UseCollation" /> call for the column, before or
+        ///     after this one, wins over this argument.
+        /// </param>
         /// <returns>The same builder instance so that multiple calls can be chained.</returns>
         public virtual TableTypeBuilder Column(
             string name,
@@ -97,6 +108,43 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
                 Scale = scale,
                 Collation = collation,
             });
+            return this;
+        }
+
+        /// <summary>
+        ///     Sets the collation of a column, whether the registered class or
+        ///     <see cref="Column{T}(string, bool, int?, int?, int?, bool?, bool?, string?)" /> added it —
+        ///     the way to give a class-derived string column a collation, for example a
+        ///     <c>Latin1_General_100_BIN2</c> key that a statement compares with an equally collated
+        ///     table column (without it, SQL Server refuses the comparison with Msg 468).
+        /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///         The collation is applied when the type is registered, after every column has been
+        ///         added, so this call may come before or after the <c>Column(…)</c> call that adds
+        ///         the column. The last call for a column wins, over an earlier call and over the
+        ///         <c>collation</c> argument of <c>Column(…)</c>. Column names match
+        ///         case-insensitively; a name that matches no column fails the registration with an
+        ///         <see cref="InvalidOperationException" />.
+        ///     </para>
+        ///     <para>
+        ///         Only <c>char</c>, <c>varchar</c>, <c>nchar</c> and <c>nvarchar</c> columns take a
+        ///         collation; any other store type, <c>json</c> included, fails model finalization.
+        ///         The collation name itself is not validated (SQL Server refuses an unknown name at
+        ///         <c>CREATE TYPE</c>). Write its canonical spelling: the name is part of the type's
+        ///         definition, so adding, changing, removing or re-casing it creates a new version of
+        ///         the type.
+        ///     </para>
+        /// </remarks>
+        /// <param name="column">The column name.</param>
+        /// <param name="collation">The SQL Server collation name, e.g. <c>Latin1_General_100_BIN2</c>.</param>
+        /// <returns>The same builder instance so that multiple calls can be chained.</returns>
+        public virtual TableTypeBuilder UseCollation(string column, string collation)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(column);
+            ArgumentException.ThrowIfNullOrWhiteSpace(collation);
+
+            _collations.Add((column, collation));
             return this;
         }
 
@@ -173,7 +221,11 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         /// <summary>Whether an explicit or derived key exists yet.</summary>
         internal bool HasKeyColumns => _key.Count > 0;
 
-        /// <summary>Materializes the configuration this builder collected.</summary>
+        /// <summary>
+        ///     Materializes the configuration this builder collected, applying the
+        ///     <see cref="UseCollation" /> calls to the finished column list.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">A <see cref="UseCollation" /> call names no column.</exception>
         internal StandaloneTableTypeConfiguration Build(string name, string? schema)
         {
             return new StandaloneTableTypeConfiguration
@@ -184,8 +236,47 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
                 ExcludeFromMigrations = _excludeFromMigrations,
                 Grants = [.. _grants],
                 Key = [.. _key],
-                Columns = [.. _columns],
+                Columns = ApplyCollations(name, schema),
             };
+        }
+
+        /// <summary>
+        ///     Returns the columns with every <see cref="UseCollation" /> call applied, in call order,
+        ///     so the last call for a column wins over earlier calls and over the column's own
+        ///     <c>collation</c> argument. Applying at build time, after every column exists, is what
+        ///     makes the call's position against <c>Column(…)</c> irrelevant.
+        /// </summary>
+        private List<StandaloneColumnConfiguration> ApplyCollations(string name, string? schema)
+        {
+            List<StandaloneColumnConfiguration> columns = [.. _columns];
+            foreach ((string column, string collation) in _collations)
+            {
+                // Case-insensitive, like the duplicate-column and key checks. A duplicate pair of
+                // names fails finalization anyway; until then the collation lands on both.
+                bool matched = false;
+                for (int i = 0; i < columns.Count; i++)
+                {
+                    if (string.Equals(columns[i].Name, column, StringComparison.OrdinalIgnoreCase))
+                    {
+                        columns[i] = columns[i] with { Collation = collation };
+                        matched = true;
+                    }
+                }
+
+                if (!matched)
+                {
+                    string displayName = schema is null ? $"[{name}]" : $"[{schema}].[{name}]";
+                    string known = columns.Count == 0
+                        ? "it has no columns"
+                        : "its columns are " + string.Join(", ", columns.Select(c => $"'{c.Name}'"));
+                    throw new InvalidOperationException(
+                        $"Standalone table type {displayName} has no column '{column}' to give collation " +
+                        $"'{collation}' ({known}). UseCollation must name a column the class or Column(...) adds; " +
+                        "names match case-insensitively.");
+                }
+            }
+
+            return columns;
         }
     }
 }

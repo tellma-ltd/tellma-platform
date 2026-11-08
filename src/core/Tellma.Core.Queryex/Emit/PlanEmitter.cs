@@ -34,6 +34,9 @@ namespace Tellma.Core.Queryex.Emit
         /// <summary>The column name a value binding is written under.</summary>
         internal const string BindingColumn = "v";
 
+        /// <summary>The column a host's table of keys holds them in.</summary>
+        internal const string KeySetColumn = "Id";
+
         /// <summary>Where the SQL is collected.</summary>
         private readonly SqlWriter _sql;
 
@@ -54,6 +57,12 @@ namespace Tellma.Core.Queryex.Emit
                     _sql.Quoted(column.Table.Alias);
                     _sql.Write('.');
                     _sql.Quoted(column.Property.Column);
+                    return;
+
+                case PlanUndeclaredColumn undeclared:
+                    _sql.Quoted(undeclared.Table.Alias);
+                    _sql.Write('.');
+                    _sql.Quoted(undeclared.Column);
                     return;
 
                 case PlanParameterRef parameter:
@@ -169,9 +178,30 @@ namespace Tellma.Core.Queryex.Emit
                     WriteTemplate(template.Template, template.Operands);
                     return;
 
+                case PlanKeySetRestriction restriction:
+                    WriteKeySetRestriction(restriction);
+                    return;
+
                 default:
                     return;
             }
+        }
+
+        /// <summary>Writes a row's key tested against a table of keys the host supplies.</summary>
+        /// <param name="restriction">The node.</param>
+        /// <remarks>
+        ///     The table's name is written as the host supplied it, which its form was checked to make
+        ///     safe: a marker and an identifier, with nothing that could end either one.
+        /// </remarks>
+        private void WriteKeySetRestriction(PlanKeySetRestriction restriction)
+        {
+            _sql.Write('(');
+            Value(restriction.Key);
+            _sql.Write(" IN (SELECT ");
+            _sql.Quoted(KeySetColumn);
+            _sql.Write(" FROM ");
+            _sql.Write(restriction.TableSource);
+            _sql.Write("))");
         }
 
         /// <summary>Writes the declaration of one hoisted lookup.</summary>

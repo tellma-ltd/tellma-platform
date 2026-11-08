@@ -46,7 +46,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             const string mine = "mine@example.com";
             const string theirs = "theirs@example.com";
 
-            using StandaloneFactory factory = await CreateFactoryAsync("idlinkswap");
+            using StandaloneFactory factory = CreateFactory("idlinkswap");
             await TestData.CreateActiveUserAsync(factory, mine);
             await TestData.CreateActiveUserAsync(factory, theirs);
 
@@ -78,7 +78,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             const string mine = "conflict-mine@example.com";
             const string theirs = "conflict-theirs@example.com";
 
-            using StandaloneFactory factory = await CreateFactoryAsync("idlinkconflict");
+            using StandaloneFactory factory = CreateFactory("idlinkconflict");
             await TestData.CreateActiveUserAsync(factory, mine);
             await TestData.CreateActiveUserAsync(factory, theirs);
             await TestData.AddExternalLoginAsync(factory, theirs, "Google", GoogleSubject);
@@ -101,7 +101,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         {
             const string mine = "unclaimed@example.com";
 
-            using StandaloneFactory factory = await CreateFactoryAsync("idlinkfresh");
+            using StandaloneFactory factory = CreateFactory("idlinkfresh");
             await TestData.CreateActiveUserAsync(factory, mine);
 
             using OidcFlowClient flow = new(factory);
@@ -122,7 +122,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         {
             const string mine = "reconnect@example.com";
 
-            using StandaloneFactory factory = await CreateFactoryAsync("idlinkagain");
+            using StandaloneFactory factory = CreateFactory("idlinkagain");
             await TestData.CreateActiveUserAsync(factory, mine);
             await TestData.AddExternalLoginAsync(factory, mine, "Google", GoogleSubject);
 
@@ -144,7 +144,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         {
             const string owner = "signin-owner@example.com";
 
-            using StandaloneFactory factory = await CreateFactoryAsync("idlinksignin");
+            using StandaloneFactory factory = CreateFactory("idlinksignin");
             await TestData.CreateActiveUserAsync(factory, owner);
             await TestData.AddExternalLoginAsync(factory, owner, "Google", GoogleSubject);
 
@@ -164,7 +164,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         {
             const string owner = "signin-disabled@example.com";
 
-            using StandaloneFactory factory = await CreateFactoryAsync("idlinkdisabled");
+            using StandaloneFactory factory = CreateFactory("idlinkdisabled");
             TellmaIdentityUser user = await TestData.CreateActiveUserAsync(factory, owner);
             await TestData.AddExternalLoginAsync(factory, owner, "Google", GoogleSubject);
             await TestData.SetLifecycleStateAsync(factory, user, UserLifecycleState.Disabled);
@@ -185,7 +185,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             const string signedIn = "bystander@example.com";
             const string invited = "invited@example.com";
 
-            using StandaloneFactory factory = await CreateFactoryAsync("idlinkinvite");
+            using StandaloneFactory factory = CreateFactory("idlinkinvite");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, signedIn);
 
@@ -220,7 +220,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             const string signedIn = "keeps-mine@example.com";
             const string invited = "keeps-theirs@example.com";
 
-            using StandaloneFactory factory = await CreateFactoryAsync("idlinkkeepflow");
+            using StandaloneFactory factory = CreateFactory("idlinkkeepflow");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, signedIn);
 
@@ -309,9 +309,9 @@ namespace Tellma.Identity.IntegrationTests.Flows
         }
 
         /// <summary>Boots a host with Google configured.</summary>
-        private async Task<StandaloneFactory> CreateFactoryAsync(string databasePrefix)
+        private StandaloneFactory CreateFactory(string databasePrefix)
         {
-            StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, databasePrefix, ProviderSeed);
 
             // Mints the provider assertion the callback reads, since the round trip to Google

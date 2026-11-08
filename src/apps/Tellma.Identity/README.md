@@ -103,6 +103,54 @@ fail-closed configuration pattern.
 EF Core migrations for the engine's database (SQL schema `idsvr`) live in the separate
 [`Tellma.Identity.Migrations`](../Tellma.Identity.Migrations/README.md) project.
 
+## The store check and seeding
+
+Every start runs `IdentitySeeder`, and its first step is the **store check**
+(`Services/Seeding/IdentityStoreCheck.cs`), which runs before any row is written:
+
+1. An existing database must be in the platform collation, `DatabaseCollations.Platform`
+   (`Latin1_General_100_CI_AS`); on Azure SQL Database its catalog collation must also be
+   `DATABASE_DEFAULT`. Anything else is refused, naming the database, the value expected and the
+   value found — with `Seed:ApplyMigrations` on or off, because a database's collation cannot be
+   changed in place.
+2. With `Seed:ApplyMigrations` on, the engine migrates the store itself, creating it when missing.
+   EF creates it in the model's collation with read-committed snapshot on, and step 1's check then
+   runs on what was created (a concurrent start may have created it first). The context must name
+   `Tellma.Identity.Migrations` as its migrations assembly, or the check refuses before creating
+   anything.
+3. The migration history must hold `TellmaIdentityConstants.LatestMigration`. A missing database, a
+   missing history table, or a history without that row fails the check, naming the database, the
+   `idsvr` schema, the migration and `Seed:MigrateCommand` when it is set. Later rows pass, so the
+   previous engine release runs on a store the next one has already migrated.
+
+**Only development and test hosts turn `Seed:ApplyMigrations` on.** A deployed engine holds no DDL
+rights: the shared store is migrated by an operator, and the in-proc store (the distribution's
+catalog) by the distribution's migrator through `TellmaIdentityStore.MigrateAsync`. Step 3 reads a
+constant, never the migrations, so a host that never migrates needs no reference to
+`Tellma.Identity.Migrations`. A failed check throws `IdentityStoreCheckException` and stops the host.
+
+Seeding then converges, in this order: the scope catalog, the platform clients of
+`Seed:Clients` (`Cli`, `Native`, `ControlPlane`), the `Distribution` entries, and the bootstrap
+identities. A **`Distribution` entry** registers a distribution's two clients through onboarding's own
+steps (`ClientRegistrationConverger.ConvergeDistributionAsync`, the path `CreateDistributionAsync`
+uses): the BFF client named by the slug and its `<slug>-svc` backend client without token exchange,
+both built by `ClientDescriptorFactory`, with the entry's `ClientSecret` and `ServiceClientSecret` in
+place of generated ones. Its `Origin` joins the `tellma_api` scope's resources and is granted to every
+seeded client that calls distribution APIs; `BackchannelLogoutUri` defaults to
+`{Origin}/bff/backchannel-logout`. An unchanged entry writes nothing; a changed secret, origin or
+redirect list is applied and audited as `DistributionSeedApplied`. The seeder never deletes an
+application, and never generates a secret: an entry needs both secrets outside Development, where
+startup validation also requires a slug of at most 15 lowercase characters and an `https` origin.
+
+Every seeded registration — scopes, platform clients and distributions — and onboarding go through
+`ClientRegistrationConverger`, which writes only what differs. Several instances start together when
+a secret is rotated or a deployment first comes up, and converge the same rows at once; a write lost
+to a concurrent writer (a stale concurrency token, a duplicate client id or scope name) is not an
+error: that write is converged again in a fresh scope, finds the winner's row and accepts or
+rewrites it. Each write point (an application, a scope, a grant) is retried on its own, up to
+`ClientRegistrationConverger.MaxAttemptsPerWrite` attempts, so a convergence with more write points
+tolerates more lost writes in total.
+
 The UI renders through three layouts under `Areas/Identity/Pages/Shared/`: `_Document` owns the
 document and the scripts slot, and two shells nest inside it — `_AuthLayout` for the sign-in flow
 (a brand panel beside the form on wide viewports, a card on a grey pane below that, and the bare

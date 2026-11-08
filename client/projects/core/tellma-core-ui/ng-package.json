@@ -5,7 +5,8 @@
     "entryFile": "public-api.ts"
   },
   "allowedNonPeerDependencies": [
-    "@internationalized/date"
+    "@internationalized/date",
+    "lucide"
   ],
   "assets": [
     "fonts/*.woff2",

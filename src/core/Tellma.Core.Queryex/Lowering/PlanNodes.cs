@@ -72,8 +72,10 @@ namespace Tellma.Core.Queryex.Lowering
 
     /// <summary>A plan node consumed as a truth value.</summary>
     /// <remarks>
-    ///     Every form here is two-valued. Nothing the plan can express evaluates to the backend's
-    ///     third possibility, which is what makes wrapping any of them in a negation sound.
+    ///     Every form here is two-valued but one. Nothing else the plan can express evaluates to the
+    ///     backend's third possibility, which is what makes wrapping any of them in a negation sound;
+    ///     the key-set restriction is the exception, and lowering only ever conjoins it at the top of
+    ///     the row filter.
     /// </remarks>
     internal abstract class PlanPredicate : PlanNode
     {
@@ -694,5 +696,64 @@ namespace Tellma.Core.Queryex.Lowering
 
         /// <summary>The looked-up position.</summary>
         internal PlanValue Key { get; }
+    }
+
+    /// <summary>
+    ///     A column of the root's source that the schema leaves out, read as it is stored.
+    /// </summary>
+    /// <remarks>
+    ///     The second place a host-authored column name enters the plan. Nothing but the select list
+    ///     ever holds one: no clause can name an undeclared column, so it claims no join, no binding
+    ///     and no parameter.
+    /// </remarks>
+    internal sealed class PlanUndeclaredColumn : PlanValue
+    {
+        /// <summary>Initializes the node.</summary>
+        /// <param name="table">The root, whose alias qualifies the column.</param>
+        /// <param name="column">The physical column name, unquoted.</param>
+        internal PlanUndeclaredColumn(JoinNode table, string column)
+            : base(default, BoundType.String, QueryexStoreType.QxNVarChar(null))
+        {
+            Table = table;
+            Column = column;
+        }
+
+        /// <summary>The root, whose alias qualifies the column.</summary>
+        internal JoinNode Table { get; }
+
+        /// <summary>The physical column name, unquoted.</summary>
+        internal string Column { get; }
+
+        /// <inheritdoc />
+        internal override bool IsAtomic => true;
+    }
+
+    /// <summary>
+    ///     A row's key tested against a table of keys the host supplies.
+    /// </summary>
+    /// <remarks>
+    ///     The one predicate here that is not two-valued: an absent key, or an absent key in the
+    ///     table, makes the backend's membership test neither true nor false. That is sound only
+    ///     because lowering never puts one anywhere but at the top of the row filter, conjoined with
+    ///     everything else, where neither true nor false keeps the row out exactly as false does — and
+    ///     a row whose key is absent is never in a key set.
+    /// </remarks>
+    internal sealed class PlanKeySetRestriction : PlanPredicate
+    {
+        /// <summary>Initializes the node.</summary>
+        /// <param name="key">The row's key.</param>
+        /// <param name="tableSource">The host's table of keys, written as it was supplied.</param>
+        internal PlanKeySetRestriction(PlanColumn key, string tableSource)
+            : base(default)
+        {
+            Key = key;
+            TableSource = tableSource;
+        }
+
+        /// <summary>The row's key.</summary>
+        internal PlanColumn Key { get; }
+
+        /// <summary>The host's table of keys, written as it was supplied.</summary>
+        internal string TableSource { get; }
     }
 }

@@ -183,7 +183,7 @@ namespace Tellma.Core.Queryex.Tests.Properties
                     text,
                     new ValidationOptions
                     {
-                        LanguageVersion = QueryexLanguage.Version,
+                        QueryexVersion = QueryexLanguage.Version,
                         Schema = LedgerFixture.Schema,
                         Root = LedgerFixture.Invoice,
                         Mode = QueryexMode.Filter,
@@ -224,7 +224,7 @@ namespace Tellma.Core.Queryex.Tests.Properties
                 text,
                 new ValidationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Root = LedgerFixture.Invoice,
                     Mode = QueryexMode.Value,
@@ -245,7 +245,7 @@ namespace Tellma.Core.Queryex.Tests.Properties
                 entry.Spec,
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Parameters = entry.Parameters,
                     HasUser = entry.HasUser,

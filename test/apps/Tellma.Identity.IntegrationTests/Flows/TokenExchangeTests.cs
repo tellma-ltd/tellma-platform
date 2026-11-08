@@ -23,7 +23,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Backend_exchanges_its_token_down_scoping_to_the_distribution_api()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idte");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idte");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(
                 factory, allowTokenExchange: true);
 
@@ -68,7 +68,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Exchange_cannot_widen_the_subject_token_scopes()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idtewiden");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idtewiden");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(
                 factory, allowTokenExchange: true);
 
@@ -108,7 +108,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             // neither its presenter nor its audience, so the protocol layer refuses this before the
             // endpoint runs. That is the outer of the two barriers against impersonation; the inner
             // one is Endpoint_refuses_a_user_token_even_from_the_client_that_holds_it below.
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idteuser");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idteuser");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(
                 factory, allowTokenExchange: true);
             await TestData.CreateActiveUserAsync(factory, "trudy@example.com");
@@ -145,7 +145,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             // impersonation capability, so the endpoint refuses user subjects itself. This test
             // grants the browser client that permission to reach the refusal, which is otherwise
             // unreachable and would be untested.
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idteself");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idteself");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(
                 factory, allowTokenExchange: true);
             await TestData.CreateActiveUserAsync(factory, "mallory@example.com");

@@ -5,6 +5,8 @@
     <!-- The "capture" transport mode exists to keep the real router in the loop, so proving it
          works requires composing the actual pipeline. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Email\Tellma.Core.Email.csproj" />
+    <!-- A provider for the contexts the migration pins are tried against; they never connect. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
     <PackageReference Include="Microsoft.Extensions.Configuration" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />

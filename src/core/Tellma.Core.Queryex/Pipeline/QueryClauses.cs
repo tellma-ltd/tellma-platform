@@ -49,6 +49,9 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <summary>The declared parameters, resolved once.</summary>
         private readonly FrozenDictionary<string, ParameterSymbol> _symbols;
 
+        /// <summary>The key-set restrictions, resolved against the schema.</summary>
+        private readonly ImmutableArray<ResolvedRestriction> _restrictions;
+
         /// <summary>The root of the join tree, once lowering has created it.</summary>
         private JoinNode? _root;
 
@@ -74,13 +77,15 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <param name="sink">Where problems are recorded.</param>
         /// <param name="budget">The ceilings shared across the compilation.</param>
         /// <param name="nullity">Every clause's nullity answers, merged.</param>
+        /// <param name="restrictions">The key-set restrictions, resolved against the schema.</param>
         internal QueryClauses(
             ExpressionCompiler compiler,
             QuerySpec spec,
             QueryCompilationOptions options,
             DiagnosticSink sink,
             CompilationBudget budget,
-            NullityMap nullity)
+            NullityMap nullity,
+            ImmutableArray<ResolvedRestriction> restrictions)
         {
             _compiler = compiler;
             _spec = spec;
@@ -89,6 +94,7 @@ namespace Tellma.Core.Queryex.Pipeline
             _budget = budget;
             _nullity = nullity;
             _symbols = Symbols.From(options.Parameters);
+            _restrictions = restrictions;
         }
 
         /// <summary>Binds every clause and checks the rules that span them.</summary>
@@ -133,13 +139,25 @@ namespace Tellma.Core.Queryex.Pipeline
             Lowerer lowerer = new(_spec.Root, _options.BatchOrdinal, _budget, _sink);
             _root = lowerer.Root;
 
-            PlanPredicate? where = LowerFilter(lowerer);
+            PlanPredicate? filter = LowerFilter(lowerer);
             (ImmutableArray<PlanSelectItem> select, ImmutableArray<PlanValue> groupBy) = LowerSelect(lowerer);
             PlanPredicate? having = LowerHaving(lowerer);
             ImmutableArray<PlanOrderItem> orderBy = LowerOrdering(lowerer, select);
 
-            ParameterSlot? skip = _spec.Skip is int rows ? lowerer.PagingSlot(rows) : null;
-            ParameterSlot? take = _spec.Take is int count ? lowerer.PagingSlot(count) : null;
+            // The restrictions are lowered after every clause a user wrote, so a join they share
+            // with one of those clauses keeps that clause's origin: a ceiling it pushes over is then
+            // reported where a user can see it, and a restriction is named only for the joins no
+            // user clause needed. Nothing else depends on the order, since a restriction claims no
+            // parameter and aliases follow the schema's declarations.
+            PlanPredicate? where = Conjoin(filter, LowerRestrictions(lowerer));
+
+            // Read after the compiled items, once the ordering above has matched select items by
+            // position without ever seeing them: nothing may name an undeclared column.
+            select = select.AddRange(UndeclaredColumns(lowerer, select.Length));
+
+            ParameterSlot? skip = _spec.Skip is int rows ? lowerer.PagingSlot(rows, "skip") : null;
+            ParameterSlot? take = _spec.Take is int count ? lowerer.PagingSlot(count, "take") : null;
+            ImmutableArray<ParameterSlot> paging = [.. new[] { skip, take }.OfType<ParameterSlot>()];
 
             // Everything the statement will contain, so that finishing the plan can tell what is
             // still read from what merely got as far as being built.
@@ -168,16 +186,16 @@ namespace Tellma.Core.Queryex.Pipeline
                 fragments.Add(having);
             }
 
-            ImmutableArray<JoinNode> joins = lowerer.Complete(
-                fragments,
-                new[] { skip, take }.Where(slot => slot is not null).Select(slot => slot!));
+            ImmutableArray<JoinNode> joins = lowerer.Complete(fragments, paging);
             return new RelationalPlan
             {
                 Root = lowerer.Root,
                 Joins = joins,
                 Variables = [.. lowerer.Variables],
                 Bindings = [.. lowerer.Bindings],
-                Parameters = [.. lowerer.Slots],
+
+                // The paging slots last, skip before take, so a page change moves nothing else.
+                Parameters = [.. lowerer.Slots, .. paging],
                 Select = select,
                 Where = where,
                 GroupBy = groupBy,
@@ -205,7 +223,7 @@ namespace Tellma.Core.Queryex.Pipeline
                 Schema = _options.Schema,
                 Root = _spec.Root,
                 Mode = mode,
-                LanguageVersion = _options.LanguageVersion,
+                QueryexVersion = _options.QueryexVersion,
                 HasUser = _options.HasUser,
                 HasGroupingKeys = _hasGroupingKeys,
                 Parameters = _symbols,
@@ -402,6 +420,86 @@ namespace Tellma.Core.Queryex.Pipeline
 
             lowerer.Begin(_nullity, DiagnosticLocation.Clause(QueryexClause.Filter), bindingsAllowed: true);
             return lowerer.LowerPredicate(_filter);
+        }
+
+        /// <summary>Lowers the key-set restrictions.</summary>
+        /// <param name="lowerer">The lowering.</param>
+        /// <returns>One conjunct per restriction, in the order supplied.</returns>
+        private ImmutableArray<PlanKeySetRestriction> LowerRestrictions(Lowerer lowerer)
+        {
+            ImmutableArray<PlanKeySetRestriction>.Builder conjuncts =
+                ImmutableArray.CreateBuilder<PlanKeySetRestriction>(_restrictions.Length);
+
+            var location = DiagnosticLocation.Clause(QueryexClause.Restrictions);
+            for (int index = 0; index < _restrictions.Length; index++)
+            {
+                // Begun with a location of its own, so a join ceiling a restriction's path pushes
+                // over is reported against that restriction rather than against the filter.
+                ResolvedRestriction restriction = _restrictions[index];
+                lowerer.Begin(_nullity, location.Item(index), bindingsAllowed: true);
+                conjuncts.Add(lowerer.LowerRestriction(
+                    restriction.Navigations,
+                    restriction.Property,
+                    restriction.TableSource));
+            }
+
+            return conjuncts.MoveToImmutable();
+        }
+
+        /// <summary>Conjoins the key-set restrictions after the row-level predicate.</summary>
+        /// <param name="filter">The lowered row-level predicate, when there is one.</param>
+        /// <param name="restrictions">The lowered restrictions.</param>
+        /// <returns>The row filter, or null when there is none.</returns>
+        /// <remarks>
+        ///     Each restriction is one more conjunct at the top of the row filter, which is the only
+        ///     place its membership test is sound: neither true nor false keeps a row out there
+        ///     exactly as false does. A filter already known to be true adds nothing, and one already
+        ///     known to be false keeps every row out whatever the restrictions say — so the
+        ///     restrictions are left out, and pruning drops the joins they would have needed.
+        /// </remarks>
+        private static PlanPredicate? Conjoin(
+            PlanPredicate? filter,
+            ImmutableArray<PlanKeySetRestriction> restrictions)
+        {
+            if (restrictions.IsEmpty || filter is PlanConstantPredicate { Value: false })
+            {
+                return filter;
+            }
+
+            List<PlanPredicate> conjuncts = [];
+            if (filter is not null and not PlanConstantPredicate { Value: true })
+            {
+                conjuncts.Add(filter);
+            }
+
+            conjuncts.AddRange(restrictions);
+            return conjuncts.Count == 1
+                ? conjuncts[0]
+                : new PlanJunction(default, true, [.. conjuncts]);
+        }
+
+        /// <summary>Reads the undeclared columns after the compiled select items.</summary>
+        /// <param name="lowerer">The lowering.</param>
+        /// <param name="first">The position of the first one among the result columns.</param>
+        /// <returns>One select item per column, in the order supplied.</returns>
+        private ImmutableArray<PlanSelectItem> UndeclaredColumns(Lowerer lowerer, int first)
+        {
+            ImmutableArray<PlanSelectItem>.Builder items =
+                ImmutableArray.CreateBuilder<PlanSelectItem>(_spec.UndeclaredColumns.Count);
+
+            for (int index = 0; index < _spec.UndeclaredColumns.Count; index++)
+            {
+                // Text that may be absent, with no path: the schema says nothing about the column,
+                // so nothing stronger can be promised about it.
+                string name = _spec.UndeclaredColumns[index];
+                int ordinal = first + index;
+                items.Add(new PlanSelectItem(
+                    lowerer.UndeclaredColumn(name),
+                    StatementEmitter.ColumnName(ordinal),
+                    new QueryexColumn(ordinal, name, QueryexType.QxString, QueryexNullity.Nullable, null, false)));
+            }
+
+            return items.MoveToImmutable();
         }
 
         /// <summary>Lowers the select list, and the grouping keys along with it.</summary>

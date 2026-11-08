@@ -662,18 +662,28 @@ namespace Tellma.Core.Queryex.Functions
                     Sql.Predicate(pattern)));
         }
 
-        /// <summary>The hierarchy predicates.</summary>
+        /// <summary>The hierarchy functions: the two predicates, and the depth of a position.</summary>
         /// <returns>The definitions.</returns>
         /// <remarks>
-        ///     Both are reflexive — a row is its own ancestor and its own descendant — and both take
-        ///     any number of keys, matching a row that relates to any of them. A key that identifies
-        ///     no row contributes nothing, so with every key unmatched the answer is false; there is
-        ///     no key value that makes either predicate universally true.
+        ///     Both predicates are reflexive — a row is its own ancestor and its own descendant — and
+        ///     both take any number of keys, matching a row that relates to any of them. A key that
+        ///     identifies no row contributes nothing, so with every key unmatched the answer is
+        ///     false; there is no key value that makes either predicate universally true.
         /// </remarks>
         private static IEnumerable<FunctionDefinition> Hierarchy()
         {
             yield return HierarchyPredicate("descendantOf", HierarchyStrategy.Descendant);
             yield return HierarchyPredicate("ancestorOf", HierarchyStrategy.Ancestor);
+
+            // The depth of a position, as the backend counts it: no numbering scheme is assumed,
+            // so a root-level row's depth is whatever its stored path makes it. Held in the type
+            // the backend's own method returns.
+            yield return Unary(
+                "level",
+                "{0}.GetLevel()",
+                TypeSpecs.Node,
+                TypeSpecs.Numeric,
+                store: QueryexStoreType.QxSmallInt);
         }
 
         /// <summary>One hierarchy predicate.</summary>

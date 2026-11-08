@@ -344,7 +344,9 @@ export function extractComponents(): ComponentsJson {
           ? primarySelector.replace(/^input\[|\]$/g, '')
           : selector,
         kind,
-        group: jsDocTag(cls, 'tmGroup') ?? 'form-control',
+        // Unchecked here: docs:build validates the closed set against the
+        // schema and names the offending component.
+        group: (jsDocTag(cls, 'tmGroup') ?? 'form-control') as ComponentDoc['group'],
         selector,
         entryPoint: source.entryPoint,
         formControl,

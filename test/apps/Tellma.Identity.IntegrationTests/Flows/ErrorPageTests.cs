@@ -21,7 +21,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task A_protocol_error_shows_its_code_and_a_reference()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iderrproto");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iderrproto");
             using OidcFlowClient flow = new(factory);
 
             // An unknown client cannot be answered by redirecting to it — there is no registration
@@ -43,7 +43,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task A_request_that_matches_nothing_still_shows_a_reference()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iderr404");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iderr404");
             using OidcFlowClient flow = new(factory);
 
             using HttpResponseMessage response = await flow.Browser.GetAsync(

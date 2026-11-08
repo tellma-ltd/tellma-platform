@@ -8,7 +8,8 @@ Design-time tests — the suites that need the EF Design package and Roslyn:
   rebuilt operations compared with the originals.
 - `Scaffolding/SnapshotRoundTripTests` — the standard EF technique: model → snapshot C# →
   compile → diff against the live model must be **empty**. Proves the table-type annotations
-  (including column order) survive model snapshots with stock snapshot code generation.
+  (including column order and a class-derived column's collation) survive model snapshots with
+  stock snapshot code generation.
 - `DesignTime/DesignTimeServicesTests` — the MSBuild-injected
   `[assembly: DesignTimeServicesReference]` on the MigrationsHost asset resolves to
   `TableTypesDesignTimeServices` (the Phase-1 `ProjectReference` discovery flow; the package

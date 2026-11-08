@@ -12,7 +12,7 @@ using Tellma.Identity.Data;
 namespace Tellma.Identity.Migrations
 {
     [DbContext(typeof(TellmaIdentityDbContext))]
-    [Migration("20260818225530_Initial")]
+    [Migration("20261108125718_Initial")]
     partial class Initial
     {
         /// <inheritdoc />
@@ -21,7 +21,8 @@ namespace Tellma.Identity.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("idsvr")
-                .HasAnnotation("ProductVersion", "10.0.9")
+                .UseCollation("Latin1_General_100_CI_AS")
+                .HasAnnotation("ProductVersion", "10.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
