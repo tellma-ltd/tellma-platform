@@ -101,11 +101,11 @@ already uses `no-restricted-syntax` blocks scoped by file globs.
 
 ### Responses
 
-R1-1: fixed in the review 1 fix commit. `scripts/test.mjs` builds the list as `['test',
+R1-1: fixed in ed4aa7e. `scripts/test.mjs` builds the list as `['test',
 ...test-* targets]`, so `test` always runs first whatever the declaration order; both comments
 now say so ("in declaration order among themselves" for the `test-*` targets).
 
-R1-2: fixed in the review 1 fix commit, as an ESLint guard on `projects/**/*.spec.ts`. It is a
+R1-2: fixed in ed4aa7e, as an ESLint guard on `projects/**/*.spec.ts`. It is a
 small custom rule, `tm/csp-only-in-csp-specs` (`tools/eslint/csp-only-in-csp-specs.mjs`), rather
 than a `no-restricted-syntax` entry. Flat config replaces that rule's options per block, and the
 grid-engine, calendar and l10n boundary blocks already set `no-restricted-syntax` for their own
