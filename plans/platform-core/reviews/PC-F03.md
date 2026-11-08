@@ -247,7 +247,7 @@ unit files (170/170) and the 11 new e2e tests on Chromium with CI=1, `--repeat-e
 
 ### Responses
 
-R1-1: fixed in SHA_PLACEHOLDER. Both mechanisms were as described. (1) Every write the picker makes
+R1-1: fixed in bcba0eb. Both mechanisms were as described. (1) Every write the picker makes
 to its open state now goes through `setExpanded()`. It writes aria's `Combobox.expanded` model as
 well as the picker's signal (`viewChild(Combobox)`), so an open by aria and a close by the picker
 in the same task can no longer leave the two-way binding unpushed. This covers every close and open
@@ -267,14 +267,14 @@ that makes `submit-count` 1, and a reopen showing the capped browse list with no
 The new e2e "the first keystrokes and Tab in one burst…" covers Tab. On af35d27 these fail: the
 unit Enter and Tab tests, and both e2e tests on `aria-expanded`. They pass now.
 
-R1-2: fixed in SHA_PLACEHOLDER. New unit test "a held Enter is consumed on every repeat but
+R1-2: fixed in bcba0eb. New unit test "a held Enter is consumed on every repeat but
 activates only on the first press". On a fresh empty typed set, a `repeat: true` Enter is
 `defaultPrevented` and shows no fail-fast error. With Create… highlighted, a `repeat: true` Enter
 is `defaultPrevented`, launches no modal, keeps the popup open, and picks nothing. It passes on
 af35d27 too (the guard was already there): it pins the behaviour against both regressions the
 finding names.
 
-R1-3: fixed in SHA_PLACEHOLDER. The Enter branch now starts with an IME guard. When
+R1-3: fixed in bcba0eb. The Enter branch now starts with an IME guard. When
 `event.isComposing` or `keyCode === 229` (read through a non-deprecated view, as `grid-core.ts`
 does), it stops propagation, so aria cannot relay the key, and returns with no `preventDefault`
 and no activation. New unit test "the Enter that confirms an IME composition picks nothing and is
