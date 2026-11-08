@@ -63,6 +63,10 @@
          release through 10.0.12 carries denial-of-service advisories that fail the audit;
          pinned forward to the patched line. -->
     <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
+    <!-- The relational model and migration operations alone, for the collation pin that
+         Tellma.Core.Testing ships to every suite owning a migrations assembly. Kept on the version
+         Microsoft.EntityFrameworkCore.SqlServer resolves to. -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.11" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.11" />
     <!-- On-premises secrets as one file per key (Docker or Kubernetes secrets, systemd

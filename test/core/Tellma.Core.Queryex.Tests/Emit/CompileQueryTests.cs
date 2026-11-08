@@ -25,7 +25,7 @@ namespace Tellma.Core.Queryex.Tests.Emit
                 spec,
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Parameters = parameters,
                 });
@@ -247,7 +247,7 @@ namespace Tellma.Core.Queryex.Tests.Emit
                 StringComparison.Ordinal);
 
             Assert.Contains(
-                "OFFSET @qx0_p0 ROWS FETCH NEXT @qx0_p1 ROWS ONLY\n",
+                "OFFSET @qx0_skip ROWS FETCH NEXT @qx0_take ROWS ONLY\n",
                 query.Sql,
                 StringComparison.Ordinal);
 
@@ -420,7 +420,7 @@ namespace Tellma.Core.Queryex.Tests.Emit
                 },
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                 });
 
@@ -442,7 +442,7 @@ namespace Tellma.Core.Queryex.Tests.Emit
                 },
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                 });
 
@@ -463,7 +463,7 @@ namespace Tellma.Core.Queryex.Tests.Emit
                 },
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                 });
 
@@ -489,7 +489,7 @@ namespace Tellma.Core.Queryex.Tests.Emit
                 spec,
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                 }).Value!.Sql;
 
@@ -509,7 +509,7 @@ namespace Tellma.Core.Queryex.Tests.Emit
                 },
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     BatchOrdinal = 3,
                 });

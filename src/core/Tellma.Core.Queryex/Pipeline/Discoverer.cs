@@ -145,7 +145,16 @@ namespace Tellma.Core.Queryex.Pipeline
             /// <param name="mode">The position it is written for.</param>
             /// <param name="directions">Whether direction suffixes are accepted here.</param>
             /// <param name="location">Which input this text is.</param>
-            internal void Read(string text, QueryexMode mode, bool directions, DiagnosticLocation location)
+            /// <param name="queryexVersion">
+            ///     The version to bind under, when the text carries a stamp of its own; otherwise the
+            ///     one the options name.
+            /// </param>
+            internal void Read(
+                string text,
+                QueryexMode mode,
+                bool directions,
+                DiagnosticLocation location,
+                int? queryexVersion = null)
             {
                 if (_budget.Exceeded)
                 {
@@ -185,7 +194,7 @@ namespace Tellma.Core.Queryex.Pipeline
                     Schema = _options.Schema,
                     Root = _options.Root,
                     Mode = mode,
-                    LanguageVersion = _options.LanguageVersion,
+                    QueryexVersion = queryexVersion ?? _options.QueryexVersion,
                     Inference = _inference,
                 };
 
@@ -215,7 +224,7 @@ namespace Tellma.Core.Queryex.Pipeline
                 switch (tree)
                 {
                     case FilterTree.LeafNode leaf:
-                        Read(leaf.Text, mode, false, location);
+                        Read(leaf.Text, mode, false, location, leaf.QueryexVersion);
                         return;
 
                     case FilterTree.NotNode negation:

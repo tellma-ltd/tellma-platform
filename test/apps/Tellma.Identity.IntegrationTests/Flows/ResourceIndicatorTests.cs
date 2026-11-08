@@ -21,7 +21,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Requesting_a_foreign_resource_is_rejected()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idrsrc");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idrsrc");
             using HttpClient client = factory.CreateClient();
 
             // Granted acme only; asks for globex.
@@ -49,7 +49,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Machine_caller_requesting_tellma_api_without_a_resource_is_rejected()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idrsrc2");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idrsrc2");
             using HttpClient client = factory.CreateClient();
 
             ServiceAccountCredentials account = await ClientCredentialsTests.CreateServiceAccountAsync(

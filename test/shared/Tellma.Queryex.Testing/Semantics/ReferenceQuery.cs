@@ -63,12 +63,14 @@ namespace Tellma.Queryex.Testing.Semantics
         /// <param name="Having">The group-level predicate, when there is one.</param>
         /// <param name="OrderBy">The ordering list.</param>
         /// <param name="Keys">Which select items became grouping keys.</param>
+        /// <param name="Undeclared">The columns read after the select list that the schema leaves out.</param>
         private sealed record Plan(
             ImmutableArray<BoundItem> Select,
             TypedExpr? Filter,
             TypedExpr? Having,
             ImmutableArray<BoundItem> OrderBy,
-            IReadOnlyList<int> Keys);
+            IReadOnlyList<int> Keys,
+            IReadOnlyList<string> Undeclared);
 
         /// <summary>Binds every clause of a query.</summary>
         /// <param name="spec">The query.</param>
@@ -158,7 +160,7 @@ namespace Tellma.Queryex.Testing.Semantics
                 }
             }
 
-            return new Plan(select.Items, filter, having, ordering, keys);
+            return new Plan(select.Items, filter, having, ordering, keys, spec.UndeclaredColumns);
         }
 
         /// <summary>The binding context for one clause.</summary>
@@ -197,21 +199,63 @@ namespace Tellma.Queryex.Testing.Semantics
             InterpreterContext context)
         {
             IReadOnlyList<LedgerRow> rows = LedgerData.Rows(spec.Root);
-            if (plan.Filter is null)
+            if (plan.Filter is null && spec.Restrictions.Count == 0)
             {
                 return rows;
             }
 
+            // A row is kept when the filter holds and every restriction's key is in its table: the
+            // restrictions are further conjuncts, read here straight from the rows rather than
+            // through anything the compiler built.
             List<LedgerRow> kept = [];
             foreach (LedgerRow row in rows)
             {
-                if (new Interpreter(row, context).Truth(plan.Filter))
+                bool passes = plan.Filter is null || new Interpreter(row, context).Truth(plan.Filter);
+                if (passes && spec.Restrictions.All(restriction => Holds(restriction, row, context)))
                 {
                     kept.Add(row);
                 }
             }
 
             return kept;
+        }
+
+        /// <summary>Whether a row's key is in the table a restriction names.</summary>
+        /// <param name="restriction">The restriction.</param>
+        /// <param name="row">The row.</param>
+        /// <param name="context">What the evaluation depends on, the tables of keys included.</param>
+        /// <returns>True when the row's key is present and held by the table.</returns>
+        /// <exception cref="InvalidOperationException">The case supplied no table by that name.</exception>
+        private static bool Holds(KeySetRestriction restriction, LedgerRow row, InterpreterContext context)
+        {
+            KeySet keys = context.KeySets.GetValueOrDefault(restriction.TableSource)
+                ?? throw new InvalidOperationException(
+                    "No key set named " + restriction.TableSource + " was supplied.");
+
+            return keys.Holds(KeyOf(row, restriction.Path));
+        }
+
+        /// <summary>Reads a restriction's key from a row, following each navigation by name.</summary>
+        /// <param name="row">The row.</param>
+        /// <param name="path">The restriction's dotted path.</param>
+        /// <returns>The key, or absence when a step along the way points at nothing.</returns>
+        private static QxValue KeyOf(LedgerRow row, string path)
+        {
+            string[] segments = path.Split('.');
+            LedgerRow? current = row;
+            foreach (string segment in segments[..^1])
+            {
+                NavigationDescriptor navigation = current.Entity.Navigations.Single(
+                    candidate => string.Equals(candidate.Name, segment, StringComparison.OrdinalIgnoreCase));
+
+                current = LedgerData.Find(navigation.Target, current[navigation.ForeignKey.Name]);
+                if (current is null)
+                {
+                    return QxValue.Absent(QueryexType.QxNumeric);
+                }
+            }
+
+            return current[segments[^1]];
         }
 
         /// <summary>Answers a grouped query.</summary>
@@ -342,6 +386,12 @@ namespace Tellma.Queryex.Testing.Semantics
             foreach (BoundItem item in plan.Select)
             {
                 values.Add(interpreter.Evaluate(item.Expression));
+            }
+
+            // Read as stored, after everything compiled: the schema says nothing about these.
+            foreach (string column in plan.Undeclared)
+            {
+                values.Add(reading.Undeclared.GetValueOrDefault(column) ?? QxValue.Absent(QueryexType.QxString));
             }
 
             return new Answer(values, rows, anchor);

@@ -70,13 +70,20 @@ namespace Tellma.Identity.Hosting
             services.TryAddSingleton(TimeProvider.System);
 
             // Startup seeding runs before Quartz (hosted services start in registration order),
-            // so pruning never races a not-yet-migrated store.
+            // so pruning never races a not-yet-migrated store. Its first step is the store check,
+            // which refuses a store in another collation or one behind the engine's migrations.
+            services.AddScoped<Services.Seeding.IdentityStoreCheck>();
             services.AddScoped<Services.Seeding.IdentitySeeder>();
             services.AddHostedService<Services.Seeding.IdentitySeedHostedService>();
 
             // Engine services.
             services.AddScoped<Services.Audit.IAuditLogger, Services.Audit.SqlAuditLogger>();
             services.AddScoped<Services.Provisioning.IClientProvisioningService, Services.Provisioning.ClientProvisioningService>();
+
+            // The one write path for the registrations the platform owns, shared by onboarding and
+            // startup seeding. Each convergence runs its attempts in scopes of its own, so it is
+            // resolved by its concrete type there.
+            services.AddScoped<Services.Provisioning.ClientRegistrationConverger>();
             services.AddSingleton<Services.AuthenticationPolicy.IAuthenticationPolicyService, Services.AuthenticationPolicy.AuthenticationPolicyService>();
             services.AddScoped<Services.AuthenticationPolicy.TellmaSignInService>();
             services.AddScoped<Services.AuthenticationPolicy.TellmaPrincipalFactory>();

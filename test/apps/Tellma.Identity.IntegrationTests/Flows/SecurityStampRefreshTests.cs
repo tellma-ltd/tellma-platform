@@ -25,7 +25,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task A_refreshed_session_can_still_authorize()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idstamp");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idstamp");
 
             // Zero makes every request re-validate, so the refresh this covers happens on the very
             // next hop instead of five minutes later.

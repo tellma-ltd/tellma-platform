@@ -20,7 +20,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Bff_front_channel_authorization_without_par_is_rejected()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idpar");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idpar");
             await TestData.ProvisionDistributionAsync(factory);
 
             using OidcFlowClient flow = new(factory);
@@ -53,7 +53,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Pushing_without_a_code_challenge_is_rejected()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idpkce");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idpkce");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
 
             using HttpClient backchannel = factory.CreateClient();
@@ -78,7 +78,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Pushing_a_plain_code_challenge_method_is_rejected()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idpkceplain");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idpkceplain");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             (string verifier, string _) = OidcFlowClient.CreatePkcePair();
 
@@ -107,7 +107,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Pushing_a_code_challenge_without_a_method_is_rejected()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idpkcenomethod");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idpkcenomethod");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             (string _, string challenge) = OidcFlowClient.CreatePkcePair();
 
@@ -136,7 +136,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Pushing_a_mismatched_redirect_uri_is_rejected()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idredir");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idredir");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             (string _, string challenge) = OidcFlowClient.CreatePkcePair();
 

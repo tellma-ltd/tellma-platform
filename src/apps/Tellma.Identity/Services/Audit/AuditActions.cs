@@ -113,6 +113,14 @@ namespace Tellma.Identity.Services.Audit
         /// <summary>An OAuth client registration was deleted.</summary>
         public const string ClientDeleted = "ClientDeleted";
 
+        /// <summary>
+        ///     A distribution seed entry changed the store at startup: it created or rewrote one of
+        ///     the distribution's two clients, added its origin to the API audiences, or granted the
+        ///     origin to a seeded platform client. A start that finds everything converged records
+        ///     nothing.
+        /// </summary>
+        public const string DistributionSeedApplied = "DistributionSeedApplied";
+
         /// <summary>A temporary access pass was issued by an operator.</summary>
         public const string TapIssued = "TapIssued";
 

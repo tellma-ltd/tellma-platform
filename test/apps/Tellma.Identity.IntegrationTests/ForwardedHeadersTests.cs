@@ -67,7 +67,7 @@ namespace Tellma.Identity.IntegrationTests
         [Fact]
         public async Task Enabling_forwarded_headers_with_a_known_proxy_boots()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture,
                 "idfwd",
                 new Dictionary<string, string?>
@@ -90,7 +90,7 @@ namespace Tellma.Identity.IntegrationTests
         {
             // Every test request arrives from the harness's address, so naming that as the known
             // proxy is what makes this request "one that came through the deployment's proxy".
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture,
                 "idfwdon",
                 new Dictionary<string, string?>
@@ -109,7 +109,7 @@ namespace Tellma.Identity.IntegrationTests
         {
             // The same request, but the deployment's proxy is somewhere else — so this caller is a
             // direct one, and trusting its header would let anyone forge the client address.
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture,
                 "idfwdspoof",
                 new Dictionary<string, string?>

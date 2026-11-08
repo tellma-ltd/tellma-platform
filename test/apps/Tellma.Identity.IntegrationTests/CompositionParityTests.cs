@@ -32,8 +32,8 @@ namespace Tellma.Identity.IntegrationTests
         [Fact]
         public async Task Both_compositions_serve_the_same_authority()
         {
-            using StandaloneFactory standalone = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idpar1");
-            using InProcFactory inProc = await DatabaseBackedFactory.CreateInProcAsync(fixture, "idpar2");
+            using StandaloneFactory standalone = DatabaseBackedFactory.CreateStandalone(fixture, "idpar1");
+            using InProcFactory inProc = DatabaseBackedFactory.CreateInProc(fixture, "idpar2");
 
             using JsonDocument standaloneDiscovery = await FetchDiscoveryAsync(
                 standalone.CreateClient(), "/.well-known/openid-configuration");
@@ -77,7 +77,7 @@ namespace Tellma.Identity.IntegrationTests
         [Fact]
         public async Task InProc_host_still_serves_its_own_routes()
         {
-            using InProcFactory inProc = await DatabaseBackedFactory.CreateInProcAsync(fixture, "idpar3");
+            using InProcFactory inProc = DatabaseBackedFactory.CreateInProc(fixture, "idpar3");
             using HttpClient client = inProc.CreateClient();
             string body = await client.GetStringAsync(new Uri("/", UriKind.Relative), TestContext.Current.CancellationToken);
             Assert.Equal("Distribution host", body);
@@ -86,8 +86,8 @@ namespace Tellma.Identity.IntegrationTests
         [Fact]
         public async Task Operator_routes_exist_standalone_but_not_in_proc()
         {
-            using StandaloneFactory standalone = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idpar4");
-            using InProcFactory inProc = await DatabaseBackedFactory.CreateInProcAsync(fixture, "idpar5");
+            using StandaloneFactory standalone = DatabaseBackedFactory.CreateStandalone(fixture, "idpar4");
+            using InProcFactory inProc = DatabaseBackedFactory.CreateInProc(fixture, "idpar5");
 
             // Standalone: the route exists, so an anonymous request draws an authentication
             // challenge, not a 404.

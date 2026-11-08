@@ -33,7 +33,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task A_delivery_report_is_recorded_against_the_row_it_names()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iddeliver");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iddeliver");
             string codeId = await SeedAsync(factory);
 
             await HandleAsync(factory, Event(codeId, EmailDeliveryEventType.Delivered, "evt-1"));
@@ -47,7 +47,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task A_redelivered_event_changes_nothing()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iddedupe");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iddedupe");
             string codeId = await SeedAsync(factory);
 
             await HandleAsync(factory, Event(codeId, EmailDeliveryEventType.Bounced, "evt-1", reason: "first"));
@@ -64,7 +64,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task A_late_transient_report_does_not_overwrite_a_terminal_one()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idstale");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idstale");
             string codeId = await SeedAsync(factory);
 
             await HandleAsync(factory, Event(codeId, EmailDeliveryEventType.Bounced, "evt-1"));
@@ -79,7 +79,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task A_spam_report_supersedes_a_delivery()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idspam");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idspam");
             string codeId = await SeedAsync(factory);
 
             await HandleAsync(factory, Event(codeId, EmailDeliveryEventType.Delivered, "evt-1"));
@@ -96,7 +96,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [InlineData(EmailDeliveryEventType.Clicked)]
         public async Task An_engagement_report_is_discarded(EmailDeliveryEventType type)
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idengage" + type.ToString().ToLowerInvariant());
             string codeId = await SeedAsync(factory);
 

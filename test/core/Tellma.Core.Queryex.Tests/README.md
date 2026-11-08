@@ -9,10 +9,11 @@ and cross-platform.
 | `Binding/` | Type checking, coercion, overload resolution, the mode rules, and what discovery reports to an authoring tool. |
 | `Functions/` | The registry's own consistency: no two overloads can tie, every pattern uses only the arguments its signature declares, every result that promises presence comes from an emission that tolerates absence. |
 | `Corpus/` | The conformance corpus: every case binds to the type and nullity it must, or produces the diagnostic it must — and every whole query emits the SQL its snapshot holds. |
-| `Emit/` | Whole-query compilation, clause by clause, with the emitted SQL asserted directly. |
+| `Emit/` | Whole-query compilation, clause by clause, with the emitted SQL asserted directly; and what a host composes beside the text — restrictions to key sets, the paging slots and the cache hits across pages, the undeclared columns, and the prologue and body it embeds. |
 | `Semantics/` | What absence means, checked against the reference implementation over rows that really are missing values; and the nullity analysis checked against it in both directions. |
 | `Coverage/` | That the suites cover what they claim: every diagnostic code is provoked somewhere, every function has a reading in the reference implementation and a case that exercises it, and every fixture string stays inside the collation's repertoire. |
-| `Versioning/` | The language-version stamp: that the engine asks for it, refuses one it cannot honour, and already tells two versions apart in the caches. |
+| `Versioning/` | The Queryex-version stamp: that the engine asks for it, refuses one it cannot honour, already tells two versions apart in the caches, and binds each stamped filter leaf under its own. |
+| `Time/` | The embedded zone table: current ids only, checked against a copy of the time-zone database's location ids kept beside the test, and the aliases browsers report. |
 | `Properties/` | Round-trip, determinism, no-duplication, and robustness, over generated input. |
 | `Goldens/` | The recorded SQL of every query the corpus compiles. |
 

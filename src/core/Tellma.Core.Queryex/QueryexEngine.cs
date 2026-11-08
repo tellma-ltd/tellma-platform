@@ -91,7 +91,7 @@ namespace Tellma.Core.Queryex
                 Schema = options.Schema,
                 Root = options.Root,
                 Mode = options.Mode,
-                LanguageVersion = options.LanguageVersion,
+                QueryexVersion = options.QueryexVersion,
                 HasUser = options.HasUser,
                 HasGroupingKeys = options.HasGroupingKeys,
                 Parameters = Symbols.From(options.Parameters),
@@ -185,7 +185,8 @@ namespace Tellma.Core.Queryex
         /// <exception cref="ArgumentException">
         ///     The root does not belong to the schema, a group-level predicate was supplied for a
         ///     query that does not group, the paging values are not usable, the batch ordinal is
-        ///     negative, or the declarations are not usable.
+        ///     negative, the declarations are not usable, a key-set restriction does not fit the
+        ///     schema, or the undeclared columns are not usable.
         /// </exception>
         /// <remarks>
         ///     The only door to SQL there is. A fragment compiled on its own could not share joins,
@@ -201,19 +202,58 @@ namespace Tellma.Core.Queryex
             RequireEntity(options.Schema, spec.Root);
             RequirePaging(spec, options);
 
+            // Checked on every call, a hit included: host structure that does not fit the schema
+            // is refused at the call that supplied it, whatever an earlier call left in the cache.
+            ImmutableArray<ResolvedRestriction> restrictions = HostStructure.ResolveRestrictions(spec);
+            HostStructure.RequireUndeclaredColumns(spec);
+
             var key = QueryKey.Of(spec, options);
             if (_queries.TryGet(key, out CompiledQuery? cached) && cached is not null)
             {
-                return new QueryexResult<CompiledQuery>(cached);
+                return new QueryexResult<CompiledQuery>(Restamped(cached, spec));
             }
 
-            QueryexResult<CompiledQuery> result = QueryCompiler.Compile(_compiler, spec, options);
+            QueryexResult<CompiledQuery> result = QueryCompiler.Compile(_compiler, spec, options, restrictions);
             if (result.Succeeded)
             {
                 _queries.Set(key, result.Value);
             }
 
             return result;
+        }
+
+        /// <summary>A cached compilation, carrying this call's page.</summary>
+        /// <param name="cached">The compilation a call for another page may have left.</param>
+        /// <param name="spec">This call's query.</param>
+        /// <returns>The compilation, with the paging slots holding this call's values.</returns>
+        /// <remarks>
+        ///     The key holds whether a query pages, never which page: two pages of one query are one
+        ///     statement, so the cached template and the backend's cached plan serve both. The values
+        ///     live only in the paging slots, which are always the last one or two parameters, skip
+        ///     before take — so each caller still sees its own page.
+        /// </remarks>
+        private static CompiledQuery Restamped(CompiledQuery cached, QuerySpec spec)
+        {
+            int paging = (spec.Skip is null ? 0 : 1) + (spec.Take is null ? 0 : 1);
+            if (paging == 0)
+            {
+                return cached;
+            }
+
+            QueryexParameterSlot[] parameters = [.. cached.Parameters];
+            int index = parameters.Length - paging;
+            if (spec.Skip is int skip)
+            {
+                parameters[index] = parameters[index] with { Value = skip };
+                index++;
+            }
+
+            if (spec.Take is int take)
+            {
+                parameters[index] = parameters[index] with { Value = take };
+            }
+
+            return cached with { Parameters = parameters };
         }
 
         /// <summary>Checks that a group-level predicate belongs to a query that groups.</summary>

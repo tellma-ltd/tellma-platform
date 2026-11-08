@@ -6,6 +6,7 @@
 using Microsoft.Data.SqlClient;
 using System.Globalization;
 using System.Text;
+using Tellma.Core.Abstractions.Hosting;
 using Tellma.Queryex.Testing.Schema;
 using Tellma.Queryex.Testing.Semantics;
 using Testcontainers.MsSql;
@@ -61,12 +62,15 @@ namespace Tellma.Core.Queryex.IntegrationTests
                 master = named;
             }
 
+            // The database is created in the platform collation, stated rather than left to the
+            // server, whose default on a test server is not the platform's. The text columns carry
+            // their own collation either way; the database's is what literals and variables get.
             SqlConnectionStringBuilder builder = new(master) { InitialCatalog = "master" };
             await using (SqlConnection connection = new(builder.ConnectionString))
             {
                 await connection.OpenAsync();
                 await Execute(connection, "IF DB_ID('" + DatabaseName + "') IS NULL CREATE DATABASE ["
-                    + DatabaseName + "];");
+                    + DatabaseName + "] COLLATE " + DatabaseCollations.Platform + ";");
             }
 
             builder.InitialCatalog = DatabaseName;
@@ -74,6 +78,21 @@ namespace Tellma.Core.Queryex.IntegrationTests
 
             await using SqlConnection database = new(ConnectionString);
             await database.OpenAsync();
+
+            // A database left on a named server by an older run keeps the collation it was created
+            // with, and a differential run against it would compare under the wrong one.
+            await using (SqlCommand command = database.CreateCommand())
+            {
+                command.CommandText = "SELECT CONVERT(nvarchar(128), DATABASEPROPERTYEX(DB_NAME(), 'Collation'));";
+                string? collation = (string?)await command.ExecuteScalarAsync();
+                if (!string.Equals(collation, DatabaseCollations.Platform, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        $"The test database '{DatabaseName}' uses the collation '{collation}', not the platform's "
+                            + $"'{DatabaseCollations.Platform}'. Drop it; the next run re-creates it.");
+                }
+            }
+
             await Execute(database, LedgerDdl.Drop());
             await Execute(database, LedgerDdl.Create());
             await Execute(database, LedgerData.Insert());

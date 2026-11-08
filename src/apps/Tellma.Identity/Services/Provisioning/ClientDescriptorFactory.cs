@@ -190,6 +190,9 @@ namespace Tellma.Identity.Services.Provisioning
                 TellmaIdentitySeedClientKind.Cli => PublicNativeClient(seed, includeIdentityScope: true),
                 TellmaIdentitySeedClientKind.Native => PublicNativeClient(seed, includeIdentityScope: false),
                 TellmaIdentitySeedClientKind.ControlPlane => ControlPlane(seed, issuerOrigin),
+                TellmaIdentitySeedClientKind.Distribution => throw new ArgumentException(
+                    $"Seed client '{seed.ClientId}' is a Distribution entry, which registers two clients; build it with SeededDistribution.",
+                    nameof(seed)),
                 _ => throw new InvalidOperationException($"Unknown seed client kind for '{seed.ClientId}'."),
             };
 
@@ -206,6 +209,44 @@ namespace Tellma.Identity.Services.Provisioning
             TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.FirstParty, "true");
 
             return descriptor;
+        }
+
+        /// <summary>
+        ///     The registration a <see cref="TellmaIdentitySeedClientKind.Distribution" /> seed entry
+        ///     converges on: onboarding's two clients for the entry's slug and origin, with the
+        ///     entry's secrets in place of generated ones and token exchange off. The back-channel
+        ///     logout endpoint defaults to the BFF's own under the origin.
+        /// </summary>
+        /// <param name="seed">A validated Distribution seed entry.</param>
+        /// <returns>The registration.</returns>
+        /// <exception cref="InvalidOperationException">The entry has no secret for one of its clients.</exception>
+        public static DistributionClientRegistration SeededDistribution(TellmaIdentitySeedClientOptions seed)
+        {
+            ArgumentNullException.ThrowIfNull(seed);
+            ArgumentException.ThrowIfNullOrWhiteSpace(seed.ClientId);
+            ArgumentException.ThrowIfNullOrWhiteSpace(seed.Origin);
+            if (seed.Kind != TellmaIdentitySeedClientKind.Distribution)
+            {
+                throw new ArgumentException($"Seed client '{seed.ClientId}' is not a Distribution entry.", nameof(seed));
+            }
+
+            // The seeder never invents a secret: in Development a host without one in its
+            // configuration supplies a per-boot secret before the entry reaches the engine, and
+            // outside Development startup validation has already refused the entry.
+            if (string.IsNullOrWhiteSpace(seed.ClientSecret) || string.IsNullOrWhiteSpace(seed.ServiceClientSecret))
+            {
+                throw new InvalidOperationException(
+                    $"Seeded distribution '{seed.ClientId}' requires both ClientSecret and ServiceClientSecret: its "
+                        + "clients are confidential, and the seeder never generates a secret.");
+            }
+
+            Uri origin = new(seed.Origin, UriKind.Absolute);
+            Uri backchannelLogoutUri = string.IsNullOrWhiteSpace(seed.BackchannelLogoutUri)
+                ? new Uri(origin.GetLeftPart(UriPartial.Authority) + TellmaIdentitySeedClientOptions.DefaultBackchannelLogoutPath)
+                : new Uri(seed.BackchannelLogoutUri, UriKind.Absolute);
+
+            return new DistributionClientRegistration(
+                seed.ClientId, origin, backchannelLogoutUri, seed.ClientSecret, seed.ServiceClientSecret, allowTokenExchange: false);
         }
 
         /// <summary>

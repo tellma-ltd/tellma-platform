@@ -86,7 +86,6 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
     protected onInputClick(): void;
     protected onInputKeydown(event: KeyboardEvent): void;
     protected onListboxClick(event: MouseEvent): void;
-    protected onListboxEnter(): void;
     protected onMagnifierClick(): void;
     protected onOutsideClick(): void;
     protected onPanelFocusin(): void;

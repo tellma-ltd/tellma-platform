@@ -51,7 +51,7 @@ namespace Tellma.Core.Queryex.Caching
         /// <param name="schema">The schema it bound against.</param>
         /// <param name="root">The entity paths resolved from.</param>
         /// <param name="mode">The position it was bound for.</param>
-        /// <param name="languageVersion">The language version it bound under.</param>
+        /// <param name="queryexVersion">The Queryex version it bound under.</param>
         /// <param name="hasUser">Whether execution will have a signed-in user.</param>
         /// <param name="hasGroupingKeys">Whether the enclosing query groups by anything.</param>
         /// <param name="directions">Whether direction suffixes were accepted.</param>
@@ -67,7 +67,7 @@ namespace Tellma.Core.Queryex.Caching
             QueryexSchema schema,
             EntityDescriptor root,
             QueryexMode mode,
-            int languageVersion,
+            int queryexVersion,
             bool hasUser,
             bool hasGroupingKeys,
             bool directions,
@@ -78,7 +78,7 @@ namespace Tellma.Core.Queryex.Caching
             Schema = schema;
             Root = root;
             Mode = mode;
-            LanguageVersion = languageVersion;
+            QueryexVersion = queryexVersion;
             HasUser = hasUser;
             HasGroupingKeys = hasGroupingKeys;
             Directions = directions;
@@ -90,7 +90,7 @@ namespace Tellma.Core.Queryex.Caching
             hash.Add(schema);
             hash.Add(root);
             hash.Add(mode);
-            hash.Add(languageVersion);
+            hash.Add(queryexVersion);
             hash.Add(hasUser);
             hash.Add(hasGroupingKeys);
             hash.Add(directions);
@@ -111,8 +111,8 @@ namespace Tellma.Core.Queryex.Caching
         /// <summary>The schema it bound against.</summary>
         internal QueryexSchema Schema { get; }
 
-        /// <summary>The language version it bound under.</summary>
-        internal int LanguageVersion { get; }
+        /// <summary>The Queryex version it bound under.</summary>
+        internal int QueryexVersion { get; }
 
         /// <summary>The entity paths resolved from.</summary>
         internal EntityDescriptor Root { get; }
@@ -146,6 +146,7 @@ namespace Tellma.Core.Queryex.Caching
             if (!ReferenceEquals(Schema, other.Schema)
                 || !ReferenceEquals(Root, other.Root)
                 || Mode != other.Mode
+                || QueryexVersion != other.QueryexVersion
                 || HasUser != other.HasUser
                 || HasGroupingKeys != other.HasGroupingKeys
                 || Directions != other.Directions
@@ -226,7 +227,10 @@ namespace Tellma.Core.Queryex.Caching
     /// <remarks>
     ///     <para>
     ///         The schema is held by identity and everything else is rendered: the clause texts with
-    ///         the shape of the filter trees they came from, the options, and the declarations.
+    ///         the shape of the filter trees they came from and the version stamped on each leaf,
+    ///         the key-set restrictions and the undeclared columns in order, whether the query pages,
+    ///         the options, and the declarations. Not which page: the paging values travel in their
+    ///         own slots, so every page of a query is one compilation.
     ///         Rendered rather than digested, for the same reason a parse is keyed on its text — a
     ///         collision would run a different query than the one that was asked for.
     ///     </para>
@@ -277,9 +281,12 @@ namespace Tellma.Core.Queryex.Caching
             Field(key, spec.Aggregate ? "1" : "0");
             Field(key, spec.Select);
             Field(key, spec.OrderBy);
-            Field(key, Number(spec.Skip));
-            Field(key, Number(spec.Take));
-            Field(key, Number(options.LanguageVersion));
+
+            // Whether the query pages, never which page: the values travel in the paging slots,
+            // which a hit re-stamps, so every page of a query shares one compilation.
+            Field(key, spec.Skip is null ? "0" : "1");
+            Field(key, spec.Take is null ? "0" : "1");
+            Field(key, Number(options.QueryexVersion));
             Field(key, options.HasUser ? "1" : "0");
             Field(key, Number(options.BatchOrdinal));
             Field(key, Ceilings(options.Limits));
@@ -287,6 +294,22 @@ namespace Tellma.Core.Queryex.Caching
             Render(key, spec.Filter);
             key.Append(Separator);
             Render(key, spec.Having);
+
+            // In order, each with its count first, because both lists are emitted in order and two
+            // lists that render alike must be the same list.
+            key.Append(Separator);
+            Field(key, Number(spec.Restrictions.Count));
+            foreach (KeySetRestriction restriction in spec.Restrictions)
+            {
+                Field(key, restriction.Path);
+                Field(key, restriction.TableSource);
+            }
+
+            Field(key, Number(spec.UndeclaredColumns.Count));
+            foreach (string column in spec.UndeclaredColumns)
+            {
+                Field(key, column);
+            }
 
             foreach (QueryexParameterDeclaration declaration in options.Parameters)
             {
@@ -378,7 +401,12 @@ namespace Tellma.Core.Queryex.Caching
                     return;
 
                 case FilterTree.LeafNode leaf:
+
+                    // The stamp is part of the leaf: two leaves with one text bind under different
+                    // rules once a second version exists, and an unstamped leaf takes whatever
+                    // version the compilation names, which the key holds separately.
                     key.Append('L');
+                    Field(key, Number(leaf.QueryexVersion));
                     Field(key, leaf.Text);
                     return;
 

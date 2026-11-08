@@ -57,6 +57,10 @@ the clock:
   asserted. Do not give the request a latency that the assertion then has to race.
 - After a gesture that opens a list, wait for the rows before you press a key that moves through
   them.
+- To test input that arrives faster than the page renders (a barcode scanner, a text expander, a
+  stalled main thread), dispatch the burst in one task with `pressInOneTask(page, keys)`
+  (`client/e2e/support/keyboard-burst.ts`). Never rely on pressing keys quickly: whether a render
+  slips in between two Playwright key presses is itself a matter of timing.
 
 ### PR tier
 

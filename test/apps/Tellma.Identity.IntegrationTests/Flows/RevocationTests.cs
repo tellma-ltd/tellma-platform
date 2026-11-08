@@ -24,7 +24,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Revoking_a_refresh_token_stops_it_and_is_audited_with_the_subject()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idrevoke");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idrevoke");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, "frank@example.com");
 

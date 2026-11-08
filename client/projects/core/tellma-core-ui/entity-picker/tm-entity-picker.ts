@@ -272,7 +272,6 @@ function isThenable<T>(
             [(value)]="listboxValue"
             [activeDescendant]="lb.activeDescendant()"
             (click)="onListboxClick($event)"
-            (keydown.enter)="onListboxEnter()"
           >
             @for (item of resultItems(); track idOf(item)) {
               <li
@@ -595,6 +594,12 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   } | null>(null);
   /** Monotonic sequence for highlight requests (each fresh result set re-applies). */
   private highlightSeq = 0;
+  /**
+   * The sequence of the request the after-render effect last applied. A
+   * request with any other sequence is still PENDING: its rows have not
+   * rendered, so aria's active option still describes the previous ones.
+   */
+  private appliedHighlightSeq = 0;
 
   /** The raw text channel over the value model. */
   private readonly rawText = transformedValue<Id | null, string>(this.value, {
@@ -612,6 +617,8 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   private readonly panelElement = viewChild<ElementRef<HTMLElement>>('panel');
   /** aria's rendered `[ngOption]` directives — activation reads active state. */
   private readonly ariaOptions = viewChildren(Option);
+  /** aria's combobox directive on the input, whose `expanded` model mirrors ours. */
+  private readonly combobox = viewChild(Combobox);
 
   /**
    * The shared anchored-overlay wiring. The origin is the CHROME the user
@@ -872,7 +879,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     // open must not stay interactive.
     effect(() => {
       if (this.disabled() || this.readonly()) {
-        untracked(() => this.expanded.set(false));
+        untracked(() => this.setExpanded(false));
       }
     });
 
@@ -972,9 +979,10 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
 
     // Effect 5: the ONE-DIRECTIONAL value bridge — mirror the committed id
     // into aria's listbox, re-applied whenever the option set changes.
-    // Defeats aria's unmatched-value auto-prune AND corrects the bare
-    // listbox's Enter-toggleOne on footer rows before paint; commits ride
-    // activation only (see the mouse-bug guard around angular/components#32504).
+    // Defeats aria's unmatched-value auto-prune AND corrects any selection
+    // the bare listbox toggles on its own (a press on a footer row) before
+    // paint; commits ride activation only (see the mouse-bug guard around
+    // angular/components#32504).
     effect(() => {
       const id = this.value();
       // A cleared field ticks nothing: the model still holds the old id
@@ -989,15 +997,31 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       }
     });
 
-    // Effect 6: dropdown open/close transitions.
+    // Effect 6: dropdown open/close transitions. ANY re-run that reads
+    // "closed" is a close, even with no open observed before it: input
+    // delivered faster than the page renders can open the popup (a
+    // keystroke) and close it again (a pick) between two runs of this
+    // effect, and the search state that keystroke built must still be
+    // reset, or the next open would re-apply the stale rows and their
+    // highlight. The effect only re-runs when the value changed, and the
+    // first run (closed, at construction) has nothing to reset.
     let wasExpanded = false;
+    let firstRun = true;
     effect(() => {
       const isExpanded = this.expanded();
-      if (isExpanded === wasExpanded) {
-        return;
-      }
+      const opened = isExpanded && !wasExpanded;
       wasExpanded = isExpanded;
-      untracked(() => (isExpanded ? this.onPopupOpened() : this.onPopupClosed()));
+      if (firstRun) {
+        firstRun = false;
+        if (!isExpanded) {
+          return;
+        }
+      }
+      if (!isExpanded) {
+        untracked(() => this.onPopupClosed());
+      } else if (opened) {
+        untracked(() => this.onPopupOpened());
+      }
     });
 
     // Effect 7: disarm aria's default-highlight machinery on every (per-
@@ -1040,6 +1064,8 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
             listbox._pattern.listBehavior.unfocus();
           }
         });
+        // From here on aria's active option is the truth (see keyboardActiveKey).
+        this.appliedHighlightSeq = request.seq;
       },
     });
 
@@ -1519,6 +1545,21 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     untracked(() => this.listbox()?._pattern.listBehavior.unfocus());
   }
 
+  /**
+   * Opens or closes the popup, writing aria's combobox model as well as this
+   * control's. The two are joined by a two-way binding, but a binding pushes
+   * only CHANGES, once per render: when aria opens the popup (a keystroke)
+   * and this control closes it again (a pick) before a render runs, the
+   * bound value reads closed at both checks, nothing is pushed, and aria
+   * stays expanded on its own. It would then announce a popup that is gone
+   * and consume the next Enter. Writing both keeps them in step whatever
+   * the timing.
+   */
+  private setExpanded(open: boolean): void {
+    this.expanded.set(open);
+    untracked(this.combobox)?.expanded.set(open);
+  }
+
   /** The dropdown just opened: run the initial (browse or seeded) search. */
   private onPopupOpened(): void {
     if (untracked(this.searchState).kind !== 'idle') {
@@ -1669,7 +1710,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
         'auto',
       );
       if (keepPopup) {
-        this.expanded.set(false); // the Enter path: a pick closes the popup
+        this.setExpanded(false); // the Enter path: a pick closes the popup
       } else {
         // Blur path: announce the auto-resolution outcome (§8).
         this.announceKey('entityPicker.announce.picked', {
@@ -1757,7 +1798,8 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   /**
    * The capture-phase keyboard layer on the host — the only reliable
    * pre-emption point against aria's own input listeners. Five cases, all
-   * version-locked to aria's current behavior and each guarded by a test:
+   * version-locked to aria's current behavior and each guarded by a test
+   * (the Enter case by the tests that deliver keys and Enter in one task):
    *
    * - Readonly, plain vertical arrows: aria expands the collapsed popup on
    *   ArrowDown and is stood down only by its OWN `disabled` input, which
@@ -1771,8 +1813,13 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    *   TODO: replace this re-dispatch with a plain pass-through once
    *   @angular/aria ships an input to suppress the collapsed
    *   ArrowDown-expands behavior.
-   * - Grid mode, dropdown open, Enter with no highlight: the grid's commit,
-   *   which aria would consume for its own empty relay.
+   * - Dropdown open, Enter: activated HERE, synchronously, against the
+   *   picker's own highlight state (see `keyboardActiveKey`). aria relays
+   *   Enter to the listbox from an after-render effect, so a key that
+   *   arrives before the render (a scanner, a text expander, a stalled main
+   *   thread) would be decided against the previous rows, or dropped when
+   *   the listbox has not mounted yet. In grid mode, Enter with no highlight
+   *   is the grid's commit instead, handed over as a clean clone.
    * - Dropdown open, plain Home/End: aria's relay would consume them and
    *   move the highlight; the APG editable-combobox model gives them to the
    *   CARET, so the relay is suppressed and the native caret motion runs.
@@ -1801,30 +1848,37 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       this.redispatchAbove(event);
       return;
     }
-    if (
-      this.cellHost !== null &&
-      isExpanded &&
-      event.key === 'Enter' &&
-      untracked(() => this.ariaOptions().find((o) => o.active())) === undefined
-    ) {
-      // Enter with no highlight in a cell is the GRID's commit — aria would
-      // consume it for the (empty) relay, and the grid's dropdown gate
-      // stands down only once the dropdown is closed, so close it first and
-      // hand the grid a clean clone.
-      event.stopPropagation();
-      this.expanded.set(false);
-      this.redispatchAbove(event);
+    if (isExpanded && event.key === 'Enter' && !this.disabled() && !this.readonly()) {
+      event.stopPropagation(); // aria's deferred relay never sees it
+      // The key that confirms an IME composition (`isComposing`, or WebKit's
+      // 229 status code) belongs to the composition: no pick, no commit, and
+      // no preventDefault, so the conversion completes untouched.
+      if (event.isComposing || (event as { readonly keyCode: number }).keyCode === 229) {
+        return;
+      }
+      const key = this.keyboardActiveKey();
+      if (key === undefined && this.cellHost !== null) {
+        // Enter with no highlight in a cell is the GRID's commit. The grid's
+        // dropdown gate stands down only once the dropdown is closed, so
+        // close it first and hand the grid a clean clone.
+        this.setExpanded(false);
+        this.redispatchAbove(event);
+        return;
+      }
+      // With the popup open Enter is always consumed: it never submits a form.
+      event.preventDefault();
+      // A held key's repeats are ignored, as aria's own binding ignores them:
+      // one press, one activation.
+      if (!event.repeat) {
+        this.activateActive(key, true);
+      }
       return;
     }
     if (isExpanded && (event.key === 'Home' || event.key === 'End')) {
       event.stopPropagation();
       return;
     }
-    if (
-      isExpanded &&
-      event.key === 'ArrowUp' &&
-      untracked(() => this.ariaOptions().find((o) => o.active())) === undefined
-    ) {
+    if (isExpanded && event.key === 'ArrowUp' && this.domActiveKey() === undefined) {
       // ArrowUp with nothing highlighted must wrap to the LAST option.
       // aria's prev() steps from an active index of -1, so it lands on the
       // second-to-last row instead — skipping whatever sits at the bottom
@@ -1880,7 +1934,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       return;
     }
     if (!untracked(this.expanded)) {
-      this.expanded.set(true);
+      this.setExpanded(true);
     }
   }
 
@@ -1970,7 +2024,8 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * Input keyboard: `Alt+ArrowDown` opens the dropdown (both modes); plain
    * `ArrowUp` opens it standalone (plain `ArrowDown` is aria's own
    * collapsed binding); Tab commits a highlighted entity row without being
-   * consumed. Esc and Enter-while-open are aria's.
+   * consumed. Esc is aria's; Enter-while-open is the capture layer's
+   * (see `onCaptureKeydown`).
    */
   protected onInputKeydown(event: KeyboardEvent): void {
     if (this.disabled() || this.readonly()) {
@@ -2009,45 +2064,75 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     if (!untracked(this.expanded)) {
       return;
     }
-    const active = untracked(() => this.ariaOptions().find((o) => o.active()));
-    if (active !== undefined) {
-      const key = active.value();
-      if (typeof key !== 'symbol') {
-        const item = untracked(this.resultItems).find((i) => untracked(this.itemId)(i) === key);
-        if (item !== undefined) {
-          this.applyPick(key as Id, untracked(this.itemLabel)(item), item, 'list', {
-            suppressCellActivate: true,
-          });
-        }
+    const key = this.keyboardActiveKey();
+    if (key !== undefined && typeof key !== 'symbol') {
+      const item = untracked(this.resultItems).find((i) => untracked(this.itemId)(i) === key);
+      if (item !== undefined) {
+        this.applyPick(key as Id, untracked(this.itemLabel)(item), item, 'list', {
+          suppressCellActivate: true,
+        });
       }
     }
-    this.expanded.set(false);
+    this.setExpanded(false);
+  }
+
+  /** The key of aria's active option, or `undefined` when none is active. */
+  private domActiveKey(): unknown {
+    return untracked(() => this.ariaOptions().find((o) => o.active())?.value());
+  }
+
+  /**
+   * The option a keyboard commit gesture (Enter, Tab) acts on: an entity id
+   * or a footer-row sentinel, or `undefined` when nothing is highlighted.
+   *
+   * Usually that is aria's active option. But the highlight protocol runs
+   * after the fresh rows render, and keys can arrive before that render: a
+   * barcode scanner, a text expander or a stalled main thread delivers the
+   * last keystroke and the commit key back to back. The DOM then still
+   * shows the previous rows, whose highlight the keystroke cleared. The
+   * fresh result set has already decided what the highlight will be, so a
+   * PENDING request answers instead: a typed query's first result, or
+   * nothing. The committed value then never depends on whether a render ran
+   * between the keystroke and the commit key.
+   */
+  private keyboardActiveKey(): unknown {
+    // spec 0006 §4.3 ties the auto-highlight to the fresh result set, and
+    // §4.2 renders a synchronous set "in the same turn": the highlight is a
+    // fact of the result set, not of the paint.
+    const request = untracked(this.highlightRequest);
+    if (request === null || request.seq === this.appliedHighlightSeq) {
+      return this.domActiveKey();
+    }
+    // A request whose rows were superseded before they rendered (a newer
+    // keystroke put the search back to loading) highlights nothing.
+    const state = untracked(this.searchState);
+    return request.query !== '' &&
+      request.count > 0 &&
+      state.kind === 'results' &&
+      state.query === request.query
+      ? untracked(this.itemId)(state.items[0])
+      : undefined;
   }
 
   /** Commits when an option row is clicked; other panel clicks do nothing. */
   protected onListboxClick(event: MouseEvent): void {
     const row = (event.target as Element).closest('[ngOption]');
     if (row !== null && row.getAttribute('aria-disabled') !== 'true') {
-      this.activateActive();
+      // The pointer's own target: aria makes the pressed row active, and a
+      // press can only land on a row that is on screen.
+      this.activateActive(this.domActiveKey());
     }
-  }
-
-  /** The relayed Enter on the listbox — activation plus the no-highlight fallbacks. */
-  protected onListboxEnter(): void {
-    this.activateActive({ enterFallbacks: true });
   }
 
   /**
    * One activation path for click and Enter (never `valueChange` — the
-   * aria-in-overlay mouse-bug posture): an active footer row opens its
-   * modal; an active entity row commits; Enter with no highlight falls back
-   * to resolution (loading), fail-fast (fresh empty typed set), or a plain
-   * close (pristine).
+   * aria-in-overlay mouse-bug posture), given the activated option's `key`:
+   * a footer row opens its modal; an entity row commits. With no key,
+   * Enter (`enterFallbacks`) falls back to resolution (loading), fail-fast
+   * (fresh empty typed set), or a plain close (pristine).
    */
-  private activateActive(opts?: { readonly enterFallbacks?: boolean }): void {
-    const active = untracked(() => this.ariaOptions().find((o) => o.active()));
-    if (active !== undefined) {
-      const key = active.value();
+  private activateActive(key: unknown, enterFallbacks = false): void {
+    if (key !== undefined) {
       if (key === ACTION_ADVANCED) {
         const page = untracked(this.advancedSearch);
         if (page !== undefined) {
@@ -2075,11 +2160,11 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       if (item !== undefined) {
         this.focus();
         this.applyPick(key as Id, untracked(this.itemLabel)(item), item, 'list');
-        this.expanded.set(false);
+        this.setExpanded(false);
       }
       return;
     }
-    if (opts?.enterFallbacks !== true || this.cellHost !== null) {
+    if (!enterFallbacks || this.cellHost !== null) {
       return;
     }
     const text = this.currentText();
@@ -2090,7 +2175,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       this.touchedSelf.set(true);
       this.touch.emit();
       this.setCanonicalText('', null);
-      this.expanded.set(false);
+      this.setExpanded(false);
       return;
     }
     if (!this.isBrowseText(text) && (state.kind === 'loading' || state.kind === 'error')) {
@@ -2112,7 +2197,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       return;
     }
     // Pristine text, no highlight: Enter simply closes the popup.
-    this.expanded.set(false);
+    this.setExpanded(false);
   }
 
   /**
@@ -2149,7 +2234,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
 
   /** An outside pointer press closes the dropdown (the text is kept). */
   protected onOutsideClick(): void {
-    this.expanded.set(false);
+    this.setExpanded(false);
   }
 
   /** The magnifier (pointer/AT path; never a tab stop) opens advanced search. */
@@ -2192,7 +2277,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     this.inFlight = null;
     this.cancelDebounce();
     this.suppressBlur = true; // focus moves into the dialog — not a departure
-    this.expanded.set(false);
+    this.setExpanded(false);
     // The modal captures whatever holds focus RIGHT NOW as its restore
     // target. A magnifier press suppresses its own focus transfer, so on a
     // picker that was never focused that target would be document.body and
@@ -2346,7 +2431,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       }
     }
     this.lastCommitted = untracked(this.value);
-    this.expanded.set(false);
+    this.setExpanded(false);
   }
 
   /** Reverts to the last committed value (a grid host's second Esc). */
@@ -2359,7 +2444,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       untracked(() => this.displayFor(this.lastCommitted)),
       this.lastCommitted,
     );
-    this.expanded.set(false);
+    this.setExpanded(false);
   }
 
   /**
@@ -2379,7 +2464,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     const element = this.inputElement;
     element.value = text;
     element.setSelectionRange(text.length, text.length);
-    this.expanded.set(true);
+    this.setExpanded(true);
     this.queueSearch(this.queryFor(text));
   }
 
@@ -2500,6 +2585,6 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       return;
     }
     this.focus();
-    this.expanded.set(true);
+    this.setExpanded(true);
   }
 }

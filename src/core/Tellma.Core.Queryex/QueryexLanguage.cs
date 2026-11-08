@@ -26,14 +26,14 @@ namespace Tellma.Core.Queryex
     public static class QueryexLanguage
     {
         /// <summary>
-        ///     The language version this engine writes. Incremented only by a change that alters
+        ///     The Queryex version this engine writes. Incremented only by a change that alters
         ///     the meaning of some currently-valid expression; additive changes, such as a new
         ///     function or a new calendar code, do not move it.
         /// </summary>
         public const int Version = 1;
 
         /// <summary>
-        ///     The oldest language version this engine still compiles.
+        ///     The oldest Queryex version this engine still compiles.
         /// </summary>
         /// <remarks>
         ///     Equal to <see cref="Version" /> while there has only ever been one. It moves above
