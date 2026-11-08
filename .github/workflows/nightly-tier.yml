@@ -1,0 +1,25 @@
+# Nightly tier trampoline.
+# GitHub fires `schedule` (and accepts `workflow_dispatch`) only for workflows on the default
+# branch. On main this job dispatches the same workflow file on the platform-core branch, whose
+# version of this file holds the real nightly-tier jobs.
+name: Nightly tier
+
+on:
+  schedule:
+    - cron: '23 2 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch the nightly tier on platform-core
+        run: gh workflow run nightly-tier.yml --repo "${{ github.repository }}" --ref platform-core
+        env:
+          GH_TOKEN: ${{ github.token }}
