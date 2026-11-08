@@ -1,7 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <Description>Tellma's runtime: the host-agnostic composition root (AddTellma, the feature graph, realisation of contribution items) and the two composition gates, with the platform's built-in startup checks. Takes no ASP.NET Core dependency, so the migrator and worker hosts compose it without the web stack.</Description>
+    <!-- The source-generated link(2) P/Invoke of the file-system blob store marshals its paths
+         through pointers. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Description>Tellma's runtime: the host-agnostic composition root (AddTellma, the feature graph, realisation of contribution items) and the two composition gates, with the platform's built-in startup checks; and the file-system blob store. Takes no ASP.NET Core dependency, so the migrator and worker hosts compose it without the web stack.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -12,6 +15,9 @@
     <!-- IHostEnvironment, IHostedLifecycleService (the startup gate) and HostDefaults; brings the
          dependency-injection, configuration, file-provider and logging abstractions with it. -->
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <!-- AddMetrics(), which registers the IMeterFactory the runtime's instruments (the blob store's
+         among them) are created from. -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics" />
     <!-- Referenced directly for its [LoggerMessage] source generator, which a transitive
          reference does not bring. -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />

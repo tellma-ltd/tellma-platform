@@ -1433,6 +1433,39 @@ describe('tm-grid entity columns (built-in tm-entity-picker editor)', () => {
     expect(document.activeElement).toBe(cellAt(scroller, 0, 2)); // commit-and-move
   });
 
+  // A barcode scanner or a stalled main thread delivers the whole entry in
+  // one burst: the type-to-edit key, the rest of the text and the commit
+  // key arrive with no render in between. The outcome must be the paced one
+  // (the two tests above).
+  it('type-to-edit, the rest of the text and Enter in ONE task commit the pick with NO move', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A'); // opens the seeded editor synchronously
+    const input = pickerInput(scroller)!;
+    typeInto(input, 'Al');
+    keydown(input, 'Enter');
+    await stable(fixture);
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(3); // the first result, as highlighted when paced
+    expect(pickerInput(scroller)).toBeNull();
+    expect(document.activeElement).toBe(cellAt(scroller, 0, 1)); // no move
+    expect(host.resolveCalls).toHaveLength(0);
+  });
+
+  it('type-to-edit, the rest of the text and Tab in ONE task commit the pick AND move', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A');
+    const input = pickerInput(scroller)!;
+    typeInto(input, 'Al');
+    keydown(input, 'Tab');
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(3);
+    expect(pickerInput(scroller)).toBeNull();
+    expect(document.activeElement).toBe(cellAt(scroller, 0, 2)); // commit-and-move
+    expect(host.resolveCalls).toHaveLength(0);
+  });
+
   it('Alt+ArrowDown from navigation opens editor AND browse dropdown in one press', async () => {
     const { fixture, host, scroller } = await setupEntity();
     await activateAgentCell(fixture, scroller);

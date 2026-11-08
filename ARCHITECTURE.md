@@ -238,7 +238,7 @@ tellma-platform/
 │   │   ├── Tellma.Core.Email/           # .csproj — email pipeline: transport selection, sandbox routing, the Development log sink, delivery-event dispatch. Composed explicitly by each host; never referenced by Tellma.Core.
 │   │   ├── Tellma.Core.EntityFrameworkCore/        # .csproj — EF Core extensions (runtime): table-type (UDTT) configuration, migration operations, migrations SQL generation, metadata API. Never references the EF Design package.
 │   │   ├── Tellma.Core.EntityFrameworkCore.Design/ # .csproj — design-time companion: C# migration operation generator + IDesignTimeServices, discovered via the [assembly: DesignTimeServicesReference] its MSBuild targets inject into the consuming migrator assembly. Referenced only by migrator projects.
-│   │   ├── Tellma.Core.Testing/         # .csproj — test doubles for the Abstractions contracts, the executable email-transport conformance suite, the migration pins, and test-run diagnostics. Referenced by test projects only.
+│   │   ├── Tellma.Core.Testing/         # .csproj — test doubles for the Abstractions contracts, the executable email-transport and blob-store conformance suites, the migration pins, and test-run diagnostics. Referenced by test projects only.
 │   │   └── Tellma.Core.Webhooks/        # .csproj — the shared HTTP fronting for inbound webhook receivers (/api/webhooks/{key}). Takes a FrameworkReference to Microsoft.AspNetCore.App, as Tellma.Core.AspNetCore and Tellma.Core.Mcp do.
 │   ├── module/                          # horizontal functional modules (entity classes, services, endpoints)
 │   │   ├── gl/                          # the first Tellma.Module.<M> pair — Center and the GL reference stack (docs/specs/0018-core-and-gl-reference-stacks.md)

@@ -6,7 +6,8 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { expectNoAxeViolations } from '../support/axe';
-import { holdResponses, releaseResponses } from '../support/held-responses';
+import { heldResponses, holdResponses, releaseResponses } from '../support/held-responses';
+import { pressInOneTask, releaseAndPressInOneTask } from '../support/keyboard-burst';
 import { appStable } from '../support/settle';
 import { storyUrl } from '../support/story-map';
 
@@ -459,6 +460,116 @@ test.describe('keyboard matrix', () => {
     await expect(fieldError(page)).toContainText('No match for');
     await expect(page.getByTestId('submit-count')).toHaveText('0');
     expect((await model(page)).supplierId).toBeNull();
+  });
+});
+
+// A barcode scanner, a text expander or a stalled main thread delivers keys
+// back to back. Each burst below arrives in ONE task, so no render runs
+// between the last keystroke and the commit key, and each must commit what
+// the same keys commit when paced (the keyboard matrix above).
+test.describe('input delivered faster than the page renders', () => {
+  test('the first keystrokes and Enter in one burst commit the first result, never a submit', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).focus();
+    await pressInOneTask(page, ['A', 'l', 'Enter']); // before the popup has even mounted
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Alice Green');
+    expect((await model(page)).supplierId).toBe(3);
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+    // The popup opened and closed with no render in between, and nothing of
+    // that open may linger: the combobox reads closed, so the next Enter is
+    // the form's again…
+    await expect(input(page)).toHaveAttribute('aria-expanded', 'false');
+    await input(page).press('Enter');
+    await expect(page.getByTestId('submit-count')).toHaveText('1');
+    // …and the next open is a fresh pristine browse, not the stale 'Al' rows
+    // with their highlight.
+    await input(page).click();
+    await expect(options(page)).toHaveCount(5); // the capped browse list
+    await expect(activeOption(page)).toHaveCount(0);
+  });
+
+  test('the first keystrokes and Tab in one burst commit and leave nothing of the open behind', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).focus();
+    await pressInOneTask(page, ['A', 'l', 'Tab']);
+    await expect(input(page)).toHaveValue('Alice Green');
+    expect((await model(page)).supplierId).toBe(3);
+    await expect(input(page)).toHaveAttribute('aria-expanded', 'false');
+    await input(page).click();
+    await expect(options(page)).toHaveCount(5);
+    await expect(activeOption(page)).toHaveCount(0);
+  });
+
+  test('a narrowing keystroke and Enter in one burst commit the FRESH first result', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).fill('A');
+    await expect(activeOption(page)).toHaveText('Adam Brown'); // the previous highlight
+    await appStable(page);
+    await pressInOneTask(page, ['l', 'Enter']);
+    await expect(input(page)).toHaveValue('Alice Green');
+    expect((await model(page)).supplierId).toBe(3);
+  });
+
+  test('a keystroke and Tab in one burst commit the fresh first result', async ({ page }) => {
+    await useSyncSearch(page);
+    const before = Number(await page.getByTestId('picked-count').textContent());
+    await input(page).fill('A');
+    await expect(activeOption(page)).toHaveText('Adam Brown');
+    await appStable(page);
+    await pressInOneTask(page, ['l', 'Tab']);
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Alice Green');
+    expect((await model(page)).supplierId).toBe(3);
+    expect(Number(await page.getByTestId('picked-count').textContent()) - before).toBe(1);
+  });
+
+  test('keys that find nothing and Enter in one burst fail fast with the popup open', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).focus();
+    await pressInOneTask(page, ['Z', 'e', 'b', 'r', 'a', 'Enter']);
+    await expect(panel(page)).toBeVisible();
+    await expect(fieldError(page)).toContainText('No match for');
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+    expect((await model(page)).supplierId).toBeNull();
+  });
+
+  test('Enter right after an async answer lands, before it renders, commits its first result', async ({
+    page,
+  }) => {
+    await holdResponses(page, 'search'); // the story's search is asynchronous by default
+    await input(page).fill('Al');
+    await expect(heldResponses(page, 'search')).toHaveText('1'); // asked, unanswered
+    await expect(status(page).locator('tm-spinner')).toBeVisible();
+    await releaseAndPressInOneTask(page, 'search', ['Enter']);
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Alice Green');
+    expect((await model(page)).supplierId).toBe(3);
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+  });
+
+  test('keys and Enter in one burst before the async search answers resolve the text', async ({
+    page,
+  }) => {
+    // No answer, no highlight: Enter resolves the typed text, as a paced
+    // Enter pressed while the spinner is up does.
+    await holdResponses(page, 'search');
+    await input(page).focus();
+    await pressInOneTask(page, ['A', 'l', 'i', 'c', 'e', ' ', 'G', 'r', 'Enter']);
+    await expect(input(page)).toBeFocused(); // focus retained while resolving
+    await expect(input(page)).toHaveAttribute('aria-busy', 'true');
+    await releaseResponses(page, 'search');
+    await expect(input(page)).toHaveValue('Alice Green');
+    expect((await model(page)).supplierId).toBe(3);
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
   });
 });
 
