@@ -61,7 +61,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             string prefix, string email, IReadOnlyDictionary<string, string?>? overrides)
         {
             using StandaloneFactory factory =
-                await DatabaseBackedFactory.CreateStandaloneAsync(fixture, prefix, overrides);
+                DatabaseBackedFactory.CreateStandalone(fixture, prefix, overrides);
             await TestData.CreateActiveUserAsync(factory, email);
 
             using OidcFlowClient flow = new(factory);

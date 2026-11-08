@@ -1284,6 +1284,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       const target = event.target;
       this.gridOwnsFocus =
         target instanceof Element && (deps.host.contains(target) || this.inOverlay(target));
+      // Focus that moved on to the page cancels a still-pending focus
+      // request: the next render must not pull it back. (A drop to <body>
+      // when the render removes the focused node fires no focusin, so the
+      // request that re-lands focus after a delete survives.)
+      this.pendingGestureFocus &&= this.gridOwnsFocus;
     };
     document.addEventListener('pointerdown', onDocumentPointerDown, true);
     document.addEventListener('focusin', onDocumentFocusIn, true);
@@ -1444,6 +1449,14 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   onKeydown(event: KeyboardEvent): void {
     if (event.target instanceof Element && this.inOverlay(event.target)) {
       return;
+    }
+    // A Tab either moves within the grid, which requests focus anew, or
+    // leaves it — possibly to no element at all (the end of the document
+    // fires no focusin). Either way a focus request still pending from an
+    // earlier gesture is void: honoured on the next render, it would pull
+    // focus straight back into the grid the user just tabbed out of.
+    if (event.key === 'Tab') {
+      this.pendingGestureFocus = false;
     }
     const engine = this.engine;
     const session = untracked(() => engine.edit.session());
@@ -4692,22 +4705,18 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         this.renderRows();
         const escaped = this.escapedSignal();
         untracked(() => {
-          if (escaped) {
-            this.pendingGestureFocus = false;
-            return;
-          }
+          // A pending gesture request is consumed by this render, whatever
+          // happens next.
+          const pending = this.pendingGestureFocus;
+          this.pendingGestureFocus = false;
           const scroller = this.scrollerSignal();
-          if (scroller === null || active === null) {
-            this.pendingGestureFocus = false;
+          if (escaped || scroller === null || active === null) {
             return;
           }
           const droppedByDomMove =
             this.focusDroppedByRerender() && document.activeElement === document.body;
           const shouldFocus =
-            this.pendingGestureFocus ||
-            scroller.contains(document.activeElement) ||
-            droppedByDomMove;
-          this.pendingGestureFocus = false;
+            pending || scroller.contains(document.activeElement) || droppedByDomMove;
           if (!shouldFocus) {
             return;
           }

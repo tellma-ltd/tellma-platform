@@ -33,7 +33,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task An_invitation_may_name_the_inviting_clients_own_origin()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idreturnok");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idreturnok");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory, "acme");
 
             JsonElement result = await InviteAsync(
@@ -51,7 +51,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task An_invitation_naming_somewhere_else_is_refused_rather_than_quietly_dropped()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idreturnbad");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idreturnbad");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory, "acme");
 
             JsonElement result = await InviteAsync(
@@ -70,7 +70,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task A_local_destination_is_still_accepted()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idreturnlocal");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idreturnlocal");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory, "acme");
 
             JsonElement result = await InviteAsync(
@@ -82,7 +82,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task An_already_used_link_offers_the_way_in_rather_than_a_dead_end()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idreused");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idreused");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory, "acme");
 
             await InviteAsync(factory, distribution, "returning@example.com", "https://acme.app.tellma.com/welcome");
@@ -110,7 +110,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task An_unknown_link_still_looks_exactly_like_an_expired_one()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idunknown");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idunknown");
 
             using HttpClient browser = factory.CreateClient(
                 new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { AllowAutoRedirect = false });

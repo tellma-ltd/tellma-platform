@@ -29,7 +29,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task Bulk_invite_returns_per_user_status_and_never_the_link()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idinvite");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idinvite");
 
             // An already-active user (with a credential) should come back as Active.
             TellmaIdentityUser active = await TestData.CreateActiveUserAsync(factory, "active@example.com");
@@ -78,7 +78,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task A_refused_user_gets_a_per_user_error_and_the_rest_of_the_batch_proceeds()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idinviteskip");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idinviteskip");
 
             // A disabled user sits in the middle of the batch; reactivating it must be a
             // deliberate operator action, never a side effect of a bulk invite.
@@ -139,7 +139,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task An_aborted_batch_still_delivers_the_links_it_already_issued()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idinviteabort");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idinviteabort");
 
             // The batch aborts partway exactly as a caller timeout or disconnect makes it: the
             // request's own token is cancelled while the second user is being processed. Users
@@ -244,7 +244,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task Invite_requires_the_identity_scope()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idinviteauth");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idinviteauth");
             using HttpClient client = factory.CreateClient();
 
             using HttpResponseMessage response = await client.PostAsJsonAsync(

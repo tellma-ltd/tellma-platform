@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Data.SqlClient;
+using Tellma.Core.Abstractions.Hosting;
 using Testcontainers.MsSql;
 
 [assembly: AssemblyFixture(typeof(Tellma.Core.EntityFrameworkCore.IntegrationTests.Infrastructure.SqlServerFixture))]
@@ -61,7 +62,13 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests.Infrastructure
             _masterConnectionString = _container.GetConnectionString();
         }
 
-        /// <summary>Creates a fresh, uniquely named database and returns a connection string to it.</summary>
+        /// <summary>
+        ///     Creates a fresh, uniquely named database in the platform collation and returns a
+        ///     connection string to it. The collation is stated rather than left to the server, whose
+        ///     default on a test server is not the platform's.
+        /// </summary>
+        /// <param name="prefix">The database name prefix identifying the test.</param>
+        /// <returns>The connection string.</returns>
         public async Task<string> CreateDatabaseAsync(string prefix)
         {
             string name = $"{prefix}_{Guid.NewGuid():N}";
@@ -69,7 +76,7 @@ namespace Tellma.Core.EntityFrameworkCore.IntegrationTests.Infrastructure
             {
                 await connection.OpenAsync(TestContext.Current.CancellationToken);
                 await using SqlCommand command = connection.CreateCommand();
-                command.CommandText = $"CREATE DATABASE [{name}]";
+                command.CommandText = $"CREATE DATABASE [{name}] COLLATE {DatabaseCollations.Platform}";
                 await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
             }
 

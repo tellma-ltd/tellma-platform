@@ -18,7 +18,7 @@ namespace Tellma.Identity.IntegrationTests
         [Fact]
         public async Task Discovery_document_advertises_the_expected_capabilities()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iddisc");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iddisc");
             using HttpClient client = factory.CreateClient();
             using HttpResponseMessage response = await client.GetAsync(
                 new Uri("/.well-known/openid-configuration", UriKind.Relative),
@@ -64,7 +64,7 @@ namespace Tellma.Identity.IntegrationTests
         [Fact]
         public async Task Jwks_publishes_only_asymmetric_signing_keys()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idjwks");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idjwks");
             using HttpClient client = factory.CreateClient();
             using HttpResponseMessage response = await client.GetAsync(
                 new Uri("/.well-known/jwks", UriKind.Relative),

@@ -6,6 +6,7 @@
 using Microsoft.Data.SqlClient;
 using System.Globalization;
 using System.Text;
+using Tellma.Core.Abstractions.Hosting;
 using Tellma.Queryex.Testing.Schema;
 using Tellma.Queryex.Testing.Semantics;
 using Testcontainers.MsSql;
@@ -27,17 +28,6 @@ namespace Tellma.Core.Queryex.IntegrationTests
 
         /// <summary>The database the fixture creates.</summary>
         private const string DatabaseName = "TellmaQueryexTests";
-
-        /// <summary>
-        ///     The collation the database is created with: the one every platform database uses.
-        /// </summary>
-        /// <remarks>
-        ///     Stated rather than inherited from the server, so what a statement compares under
-        ///     outside the fixture's own columns — a table variable's text column, a literal — is the
-        ///     same here as in production. The fixture's text columns keep the collation they
-        ///     declare.
-        /// </remarks>
-        private const string DatabaseCollation = "Latin1_General_100_CI_AS";
 
         /// <summary>
         ///     The image a container run uses.
@@ -72,12 +62,15 @@ namespace Tellma.Core.Queryex.IntegrationTests
                 master = named;
             }
 
+            // The database is created in the platform collation, stated rather than left to the
+            // server, whose default on a test server is not the platform's. The text columns carry
+            // their own collation either way; the database's is what literals and variables get.
             SqlConnectionStringBuilder builder = new(master) { InitialCatalog = "master" };
             await using (SqlConnection connection = new(builder.ConnectionString))
             {
                 await connection.OpenAsync();
                 await Execute(connection, "IF DB_ID('" + DatabaseName + "') IS NULL CREATE DATABASE ["
-                    + DatabaseName + "] COLLATE " + DatabaseCollation + ";");
+                    + DatabaseName + "] COLLATE " + DatabaseCollations.Platform + ";");
             }
 
             builder.InitialCatalog = DatabaseName;
@@ -85,6 +78,21 @@ namespace Tellma.Core.Queryex.IntegrationTests
 
             await using SqlConnection database = new(ConnectionString);
             await database.OpenAsync();
+
+            // A database left on a named server by an older run keeps the collation it was created
+            // with, and a differential run against it would compare under the wrong one.
+            await using (SqlCommand command = database.CreateCommand())
+            {
+                command.CommandText = "SELECT CONVERT(nvarchar(128), DATABASEPROPERTYEX(DB_NAME(), 'Collation'));";
+                string? collation = (string?)await command.ExecuteScalarAsync();
+                if (!string.Equals(collation, DatabaseCollations.Platform, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        $"The test database '{DatabaseName}' uses the collation '{collation}', not the platform's "
+                            + $"'{DatabaseCollations.Platform}'. Drop it; the next run re-creates it.");
+                }
+            }
+
             await Execute(database, LedgerDdl.Drop());
             await Execute(database, LedgerDdl.Create());
             await Execute(database, LedgerData.Insert());

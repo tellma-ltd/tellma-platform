@@ -1,5 +1,30 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Tellma's runtime: the host-agnostic composition root (AddTellma, the feature graph, realisation of contribution items) and the two composition gates, with the platform's built-in startup checks. Takes no ASP.NET Core dependency, so the migrator and worker hosts compose it without the web stack.</Description>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Tellma.Core.Abstractions\Tellma.Core.Abstractions.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- IHostEnvironment, IHostedLifecycleService (the startup gate) and HostDefaults; brings the
+         dependency-injection, configuration, file-provider and logging abstractions with it. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <!-- Referenced directly for its [LoggerMessage] source generator, which a transitive
+         reference does not bring. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <!-- Options binding from configuration (Bind) for the options a feature declares. -->
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <!-- ValidateDataAnnotations for the same options. -->
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The suites drive the pipeline, the realizers and each check directly, with test
+         realizers and probes, which keeps those seams out of the public surface. -->
+    <InternalsVisibleTo Include="Tellma.Core.Tests" />
+  </ItemGroup>
+
 </Project>

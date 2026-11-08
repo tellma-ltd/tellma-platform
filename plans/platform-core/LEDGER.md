@@ -11,7 +11,7 @@ It is committed by the snapshot procedure. Status values: `todo`, `impl`, `r1`, 
 | Started | 2026-11-08 05:03 UTC |
 | Orchestrator session id | 55d8a508-95e7-4eec-9239-0e94c12f0353 |
 | PR | #18 (platform-core → main, open, non-draft; CI green on 148c074) |
-| Slots | pc-1, pc-2, pc-3 (WT/pc-N, ports 43N0/71N0/42N0, DB_SUFFIX pcN) |
+| Slots | pc-1, pc-2, pc-3, pc-4 (WT/pc-N; pc-4 added 05:30 for the 4th cycle while backend and client work are both ready, ports 43N0/71N0/42N0, DB_SUFFIX pcN) |
 | Parked | no |
 | Parked at U | |
 | Agent tool supports name / effort / fable | name: **no** (address agents by id via SendMessage) / effort: yes / fable: yes (model enum) |
@@ -32,22 +32,48 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 |---|---|---|---|---|
 | 2026-11-08 02:20 | 40 | 22 | 2026-11-10 20:00 | after planning |
 | 2026-11-08 05:03 | 42 | 23 | 2026-11-10 20:00 | kickoff; window start for ρ (orchestrator units 0.21M) |
+| 2026-11-08 05:58 | 42 | 23 | 2026-11-10 20:00 | PC-000 impl done; 4 cycles in flight |
+| 2026-11-08 06:20 | 43 | 23 | 2026-11-10 20:00 | PC-000 fix1 done, integrating; no escalation (R1 0/1/2) |
+| 2026-11-08 07:15 | 45 | 23 | 2026-11-10 20:00 | PC-003 impl done; PC-F01 fixing |
 
 ## In flight
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-000 | pc-1 | pc/PC-000 | impl | impl-PC-000 / a3fb81ec9c6d58cbe | | 2026-11-08 05:08 |
+| PC-004 | pc-1 | pc/PC-004 | impl | impl-PC-004 / a940e8e69f24e8e64 | | 2026-11-08 06:27 |
+| PC-001 | pc-2 | pc/PC-001 | r1 (c1 13d1717) | impl-PC-001 / ab155d6eb6c614ee7 | r1-PC-001 / ab9b967bc77e590d2 | 2026-11-08 05:33 |
+| PC-002 | pc-3 | pc/PC-002 | impl | impl-PC-002 / a6a1eaf9977ca6828 | | 2026-11-08 05:33 |
+| PC-003 | pc-4 | pc/PC-003 | r1 (c1 bfc40a1) | impl-PC-003 / a3881a7cd27134ffc | r1-PC-003 / a6cd32f93e0c93774 | 2026-11-08 05:33 |
+
+## Fix items
+
+| Fix | For | Status | Commits | Cost units (M) | Notes |
+|---|---|---|---|---|---|
+| PC-F01 | PC-000 (CI red on 8a1ebf8) | integrated | 6ef6423, d1ab25e (pc) | 2.49 (impl 2.18, r1 0.31) | quarantined 5 flaky e2e; nightly job client-e2e-quarantine (non-blocking, per-test table); CI run 42455962373 pending |
+| PC-F02 | flaky root causes (5 quarantined e2e, LEDGER Flaky) | todo (filler) | | | brief: reviews/PC-F01.md failure modes; covers frozen 0004–0006 components |
 
 ## Batch reviews (one per phase)
 
 | Batch | Phase | Status | Commit | Findings |
 |---|---|---|---|---|
 
+## Merge-time tasks (before platform-core merges into main)
+
+| Task | Source |
+|---|---|
+| nightly-tier.yml: restore the schedule and a main guard, replacing the trampoline | PC-000, D-012 |
+| CONTRIBUTING.md: drop the platform-core-only sentences; .gitattributes: drop the plans/** line; delete plans/ | PC-000, D-012, PLAN.md header |
+| ARCHITECTURE.md CI/CD: client job is Ubuntu-only (spec 0024 target) — confirm wording | PC-000 impl note |
+
 ## Flaky
 
 | Test | Since | Tracking |
 |---|---|---|
+| e2e entity-picker.spec.ts:584 modal round-trips › create page prefills… | 2026-11-08 (hidden by retries:2 before) | PC-F01 quarantine; root-cause fix PC-F02 (queued) |
+| e2e entity-picker.spec.ts:607 modal round-trips › edit page targets committed id… | 2026-11-08 | PC-F01 / PC-F02 |
+| e2e grid-entity.spec.ts:132 unresolved commit text resolves… after editor teardown | 2026-11-08 | PC-F01 / PC-F02 |
+| e2e grid-keyboard.spec.ts:241 readonly grid is a single tab stop | 2026-11-08 | PC-F01 / PC-F02 |
+| e2e popover.spec.ts:93 block-end/start alignment mirrors under RTL | 2026-11-08 | PC-F01 / PC-F02 |
 
 ## Deferred tests
 
@@ -58,11 +84,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Analysis id | Tier | Status | Commits | Cost units (M) | Notes |
 |---|---|---|---|---|---|---|
-| PC-000 | SETUP | 1 | impl | | | |
-| PC-001 | 0011-a | 1 | todo | | | |
-| PC-002 | 0010-a1 | 1 | todo | | | |
-| PC-003 | 0010-f1 | 1 | todo | | | |
-| PC-004 | 0023-a | 1 | todo | | | |
+| PC-000 | SETUP | 1 | integrated | 61a1eba, ad7a24b, 8a1ebf8 (pc) | 2.80 (impl 2.25, r1 0.55) | nightly run 42452020325 green; CI run 42451990728 RED: 5 flaky e2e now fail the run (failOnFlakyTests) → PC-F01 |
+| PC-001 | 0011-a | 1 | r1 | 13d1717 | | |
+| PC-002 | 0010-a1 | 1 | impl | | | |
+| PC-003 | 0010-f1 | 1 | r1 | bfc40a1 | | |
+| PC-004 | 0023-a | 1 | impl | | | |
 | PC-005 | 0010-g1 | 1 | todo | | | |
 | PC-006 | 0010-a2 | 1 | todo | | | |
 | PC-007 | 0010-f2 | 1 | todo | | | |

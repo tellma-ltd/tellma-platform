@@ -3,6 +3,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Queryex\Tellma.Core.Queryex.csproj" />
     <ProjectReference Include="..\..\shared\Tellma.Queryex.Testing\Tellma.Queryex.Testing.csproj" />
+    <!-- The platform collation the fixture's database is created in. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Abstractions\Tellma.Core.Abstractions.csproj" />
     <!-- Executes the emitted SQL directly. This suite deliberately does not go through EF Core —
          it is comparing the engine's own output against the reference interpreter, so anything
          between it and the server would blur what is being tested. -->

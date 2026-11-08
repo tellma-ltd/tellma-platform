@@ -3,7 +3,6 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-using Microsoft.Extensions.Options;
 using OpenIddict.Abstractions;
 using System.Buffers.Text;
 using System.Collections.Immutable;
@@ -11,7 +10,6 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Tellma.Identity.Infrastructure;
-using Tellma.Identity.Options;
 using Tellma.Identity.Services.Audit;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
@@ -23,14 +21,12 @@ namespace Tellma.Identity.Services.Provisioning
     ///     caller exactly once.
     /// </summary>
     /// <param name="applicationManager">The OpenIddict application manager.</param>
-    /// <param name="scopeManager">The OpenIddict scope manager.</param>
-    /// <param name="options">The engine options.</param>
+    /// <param name="converger">The registration write path onboarding shares with startup seeding.</param>
     /// <param name="auditLogger">Audit emission.</param>
     /// <param name="timeProvider">The clock.</param>
     public sealed class ClientProvisioningService(
         IOpenIddictApplicationManager applicationManager,
-        IOpenIddictScopeManager scopeManager,
-        IOptions<TellmaIdentityOptions> options,
+        ClientRegistrationConverger converger,
         IAuditLogger auditLogger,
         TimeProvider timeProvider) : IClientProvisioningService
     {
@@ -44,34 +40,23 @@ namespace Tellma.Identity.Services.Provisioning
             ArgumentException.ThrowIfNullOrWhiteSpace(slug);
             ArgumentNullException.ThrowIfNull(origin);
 
-            string issuerOrigin = options.Value.Issuer!.GetLeftPart(UriPartial.Authority);
-            string originValue = origin.GetLeftPart(UriPartial.Authority);
-
-            string bffSecret = GenerateSecret();
-            string serviceSecret = GenerateSecret();
-
-            await UpsertAsync(
-                ClientDescriptorFactory.Distribution(slug, origin, backchannelLogoutUri, bffSecret), cancellationToken);
-            await UpsertAsync(
-                ClientDescriptorFactory.DistributionService(slug, origin, issuerOrigin, serviceSecret, allowTokenExchange),
-                cancellationToken);
-
-            // The origin becomes a requestable audience: recorded on the tellma_api scope entity
-            // (the audience registry) and granted to the seeded platform clients so the CLI and
-            // native apps may name it via the `resource` parameter.
-            await AppendScopeResourceAsync(TellmaIdentityConstants.ApiScope, originValue, cancellationToken);
-            await GrantResourceToPlatformClientsAsync(originValue, cancellationToken);
+            // Onboarding always rotates: fresh secrets make every run a create or an update.
+            DistributionClientRegistration registration = new(
+                slug, origin, backchannelLogoutUri, GenerateSecret(), GenerateSecret(), allowTokenExchange);
+            await converger.ConvergeDistributionAsync(registration, cancellationToken);
 
             await auditLogger.LogAsync(
                 new AuditEventEntry
                 {
                     Action = AuditActions.ClientCreated,
                     ClientId = slug,
-                    DetailsJson = JsonSerializer.Serialize(new { origin = originValue, kind = "distribution" }),
+                    DetailsJson = JsonSerializer.Serialize(
+                        new { origin = origin.GetLeftPart(UriPartial.Authority), kind = "distribution" }),
                 },
                 cancellationToken);
 
-            return new DistributionClientCredentials(slug, bffSecret, slug + "-svc", serviceSecret);
+            return new DistributionClientCredentials(
+                slug, registration.ClientSecret, registration.ServiceClientId, registration.ServiceClientSecret);
         }
 
         /// <inheritdoc />
@@ -240,79 +225,6 @@ namespace Tellma.Identity.Services.Provisioning
                 && string.Equals(ownerOrigin, callerOrigin, StringComparison.Ordinal)
                     ? (application, properties)
                     : invisible;
-        }
-
-        /// <summary>Creates or replaces a client registration by client id.</summary>
-        private async Task UpsertAsync(OpenIddictApplicationDescriptor descriptor, CancellationToken cancellationToken)
-        {
-            object? existing = await applicationManager.FindByClientIdAsync(descriptor.ClientId!, cancellationToken);
-            if (existing is null)
-            {
-                await applicationManager.CreateAsync(descriptor, cancellationToken);
-            }
-            else
-            {
-                await applicationManager.UpdateAsync(existing, descriptor, cancellationToken);
-            }
-        }
-
-        /// <summary>Appends one resource to a scope entity's resource registry.</summary>
-        private async Task AppendScopeResourceAsync(string scopeName, string resource, CancellationToken cancellationToken)
-        {
-            object? scope = await scopeManager.FindByNameAsync(scopeName, cancellationToken);
-            if (scope is null)
-            {
-                OpenIddictScopeDescriptor created = new() { Name = scopeName };
-                created.Resources.Add(resource);
-                await scopeManager.CreateAsync(created, cancellationToken);
-                return;
-            }
-
-            OpenIddictScopeDescriptor descriptor = new();
-            await scopeManager.PopulateAsync(descriptor, scope, cancellationToken);
-            if (descriptor.Resources.Add(resource))
-            {
-                await scopeManager.UpdateAsync(scope, descriptor, cancellationToken);
-            }
-        }
-
-        /// <summary>
-        ///     Grants a new distribution's audience to the platform clients that may name
-        ///     distribution APIs (CLI, native apps). The control plane is deliberately excluded: its
-        ///     only audience is the control-plane surface, so a compromised control-plane secret
-        ///     cannot mint tokens for a distribution API.
-        /// </summary>
-        private async Task GrantResourceToPlatformClientsAsync(string resource, CancellationToken cancellationToken)
-        {
-            string permission = Permissions.Prefixes.Resource + resource;
-
-            // Read the whole list before writing any of it. The store streams this query over the
-            // request's single connection, and multiple active result sets are not enabled, so an
-            // update issued while that reader is still open fails outright. Only a client carrying
-            // the marker is written, so a registry holding none never reached the write and never
-            // showed the fault.
-            List<object> applications = [];
-            await foreach (object application in applicationManager.ListAsync(cancellationToken: cancellationToken))
-            {
-                applications.Add(application);
-            }
-
-            foreach (object application in applications)
-            {
-                ImmutableDictionary<string, JsonElement> properties =
-                    await applicationManager.GetPropertiesAsync(application, cancellationToken);
-                if (!TellmaClientProperties.IsSet(properties, TellmaClientProperties.CallsDistributionApis))
-                {
-                    continue;
-                }
-
-                OpenIddictApplicationDescriptor descriptor = new();
-                await applicationManager.PopulateAsync(descriptor, application, cancellationToken);
-                if (descriptor.Permissions.Add(permission))
-                {
-                    await applicationManager.UpdateAsync(application, descriptor, cancellationToken);
-                }
-            }
         }
     }
 }

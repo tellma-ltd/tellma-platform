@@ -22,7 +22,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Service_account_obtains_an_access_token_with_explicit_audience()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idcc");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idcc");
             using HttpClient client = factory.CreateClient();
 
             ServiceAccountCredentials account = await CreateServiceAccountAsync(
@@ -60,7 +60,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Invalid_client_secret_is_rejected()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idccbad");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idccbad");
             using HttpClient client = factory.CreateClient();
 
             ServiceAccountCredentials account = await CreateServiceAccountAsync(factory, []);

@@ -28,7 +28,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task The_sweep_ends_lapsed_sessions_and_spares_live_ones()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idprune1");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idprune1");
             TellmaIdentityUser user = await TestData.CreateActiveUserAsync(factory, "prune1@example.com");
 
             using IServiceScope scope = factory.Services.CreateScope();
@@ -55,7 +55,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Retention_removes_long_terminated_rows_and_their_client_registrations()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idprune2");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idprune2");
             TellmaIdentityUser user = await TestData.CreateActiveUserAsync(factory, "prune2@example.com");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
 
@@ -94,7 +94,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Recording_activity_does_not_revive_a_terminated_session()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idprune3");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idprune3");
             TellmaIdentityUser user = await TestData.CreateActiveUserAsync(factory, "prune3@example.com");
 
             using IServiceScope scope = factory.Services.CreateScope();
@@ -112,7 +112,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Browsing_the_account_pages_keeps_a_session_out_of_the_sweep()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idprune4");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idprune4");
 
             // Zero makes every request revalidate the stamp, which is what marks the session as
             // seen. At the production interval this same path runs, five minutes apart.
