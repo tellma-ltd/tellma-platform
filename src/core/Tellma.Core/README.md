@@ -79,8 +79,11 @@ and for air-gapped on-premises deployments. Tenant `42`'s objects live under `{R
 object name's `/` becoming the directory separator (`user-image/3f/3fa9….thumb`).
 
 - **Writes are create-only and atomic.** Each object streams to a fresh
-  `{RootPath}/t42/.tmp/{guid}.part`, is flushed to disk, and is moved to its final name without
-  overwriting. A reader sees an object whole or not at all; a crash leaves at most a `.part` file,
+  `{RootPath}/t42/.tmp/{guid}.part`, is flushed to disk, and is published under its final name
+  without ever replacing one: a non-overwriting move on Windows, a hard link (`link(2)`) then an
+  unlink on Unix, so of two writers racing to one name exactly one wins. On Unix the root's file
+  system must support hard links; the store probes that before its first write or provisioning and
+  fails closed otherwise (`FileSystemBlobStore.ProbeCreateOnlyPublish` is the startup check's seam). A reader sees an object whole or not at all; a crash leaves at most a `.part` file,
   which `PurgeIncompleteAsync` removes once it is older than the cut-off. A content stream that
   yields more or fewer bytes than declared fails the write and leaves nothing.
 - **Names are validated twice.** Every name must satisfy `BlobName.IsValid` before storage is

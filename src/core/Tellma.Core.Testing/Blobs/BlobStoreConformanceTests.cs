@@ -150,6 +150,58 @@ namespace Tellma.Core.Testing.Blobs
             Assert.Equal(Bytes("original"), await ReadAsync(harness, harness.TenantId, name));
         }
 
+        /// <summary>
+        ///     Contract: create-only holds under contention. Writers of one name racing behind a
+        ///     barrier leave exactly one winner; every other writer gets
+        ///     <see cref="BlobAlreadyExistsException" />, the bytes read back are the winner's, and
+        ///     nothing incomplete remains.
+        /// </summary>
+        /// <returns>A task that completes when the case has run.</returns>
+        [Fact]
+        public async Task Concurrent_writers_of_one_name_leave_exactly_one_winner()
+        {
+            await using IBlobStoreHarness harness = await CreateHarnessAsync();
+            await harness.Store.EnsureTenantAsync(harness.TenantId, Token);
+            const int Writers = 8;
+            const int Rounds = 5;
+
+            for (int round = 0; round < Rounds; round++)
+            {
+                string name = NewName();
+                TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                Task[] writes = [.. Enumerable.Range(0, Writers).Select(writer => Task.Run(async () =>
+                {
+                    BlobWrite write = Write(name, Bytes($"round {round} writer {writer}"));
+                    await gate.Task;
+                    await harness.Store.WriteAsync(harness.TenantId, [write], Token);
+                }))];
+
+                gate.SetResult();
+                try
+                {
+                    await Task.WhenAll(writes);
+                }
+                catch (BlobAlreadyExistsException)
+                {
+                    // Inspected per writer below.
+                }
+
+                int winner = Assert.Single(Enumerable.Range(0, Writers), writer => writes[writer].IsCompletedSuccessfully);
+                for (int writer = 0; writer < Writers; writer++)
+                {
+                    if (writer != winner)
+                    {
+                        BlobAlreadyExistsException conflict = Assert.IsType<BlobAlreadyExistsException>(writes[writer].Exception?.InnerException);
+                        Assert.Equal(name, conflict.Name);
+                    }
+                }
+
+                Assert.Equal(Bytes($"round {round} writer {winner}"), await ReadAsync(harness, harness.TenantId, name));
+            }
+
+            Assert.Equal(0, await harness.CountIncompleteArtefactsAsync(harness.TenantId));
+        }
+
         /// <summary>Contract: a write is best-effort; a failing object leaves the call's other objects in place.</summary>
         /// <returns>A task that completes when the case has run.</returns>
         [Fact]

@@ -37,9 +37,10 @@ namespace Tellma.Core.Abstractions.Entities
         public BlobPreset Preset { get; } = preset;
 
         /// <summary>
-        ///     The kind's size limit in bytes, replacing the preset's when above 0; 0 keeps the
-        ///     preset's. Never negative. (An attribute argument cannot be a nullable value type, so 0
-        ///     stands for "not set".)
+        ///     Narrows the preset's size limit: above 0 it is the kind's limit in bytes, and it may
+        ///     not exceed the preset's; 0 keeps the preset's. Never negative. (An attribute argument
+        ///     cannot be a nullable value type, so 0 stands for "not set".) A composition transform,
+        ///     not the declaration, is where a limit is raised.
         /// </summary>
         public long MaxSizeBytes { get; set; }
 
@@ -52,7 +53,8 @@ namespace Tellma.Core.Abstractions.Entities
         ///     transforms apply on top of it.
         /// </summary>
         /// <returns>The declared policy.</returns>
-        /// <exception cref="InvalidOperationException"><see cref="MaxSizeBytes" /> is negative.</exception>
+        /// <exception cref="InvalidOperationException"><see cref="MaxSizeBytes" /> is negative or
+        ///     exceeds the preset's limit.</exception>
         /// <exception cref="ArgumentOutOfRangeException"><see cref="Preset" /> is not a defined preset.</exception>
         public BlobKindPolicy CreatePolicy()
         {
@@ -62,12 +64,17 @@ namespace Tellma.Core.Abstractions.Entities
                     $"The blob reference of kind '{Kind}' declares a negative MaxSizeBytes ({MaxSizeBytes}); use 0 to keep the preset's limit.");
             }
 
+            // The declaration only narrows: a larger value would loosen an upload limit (image kinds
+            // are buffered whole in memory up to it), so it is refused rather than clamped.
             var preset = BlobKindPolicy.For(Preset);
-            return preset with
-            {
-                MaxSize = MaxSizeBytes > 0 ? MaxSizeBytes : preset.MaxSize,
-                ReadAccess = ReadAccess,
-            };
+            return MaxSizeBytes <= preset.MaxSize
+                ? preset with
+                {
+                    MaxSize = MaxSizeBytes > 0 ? MaxSizeBytes : preset.MaxSize,
+                    ReadAccess = ReadAccess,
+                }
+                : throw new InvalidOperationException(
+                    $"The blob reference of kind '{Kind}' declares MaxSizeBytes {MaxSizeBytes}, above the {Preset} preset's limit of {preset.MaxSize} bytes; the declaration can only narrow the limit, and a composition transform raises it.");
         }
     }
 }

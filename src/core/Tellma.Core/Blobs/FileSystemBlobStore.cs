@@ -23,10 +23,19 @@ namespace Tellma.Core.Blobs
     ///         Layout: <c>{RootPath}/t{tenantId}/{name}</c>, the name's <c>/</c> becoming the
     ///         directory separator. A write streams to <c>{RootPath}/t{tenantId}/.tmp/{guid}.part</c>
     ///         (a fresh GUID per object, so a primary and its variants written in parallel never share
-    ///         one), flushes it to disk, then moves it to its final name without overwriting — an
-    ///         atomic rename, because both paths are inside one tenant directory and so on one
-    ///         volume. A reader therefore sees an object whole or not at all, and a crash leaves at
-    ///         most a <c>.part</c> file, which <see cref="PurgeIncompleteAsync" /> removes.
+    ///         one), flushes it to disk, then publishes it under its final name create-only: a
+    ///         non-overwriting move on Windows, and on Unix a hard link (<c>link(2)</c>) followed by
+    ///         an unlink of the part file. Both are atomic and both refuse an existing name, so of
+    ///         two writers racing to one name exactly one wins. Both paths are inside one tenant
+    ///         directory and so on one volume. A reader sees an object whole or not at all, and a
+    ///         crash leaves at most a <c>.part</c> file, which <see cref="PurgeIncompleteAsync" />
+    ///         removes.
+    ///     </para>
+    ///     <para>
+    ///         On Unix the root's file system must support hard links. The store probes that before
+    ///         its first write or tenant provisioning (<see cref="ProbeCreateOnlyPublish" />) and
+    ///         fails closed: without hard links every write fails, and the racy
+    ///         <c>rename(2)</c> is never used instead.
     ///     </para>
     ///     <para>
     ///         Every path is resolved with <see cref="Path.GetFullPath(string, string)" /> and must
@@ -51,6 +60,10 @@ namespace Tellma.Core.Blobs
 
         private readonly BlobStoreMetrics _metrics;
         private readonly ILogger<FileSystemBlobStore> _logger;
+
+        // Set once the root has been shown to support the create-only publish; only a success is
+        // remembered, so a transient failure is probed again by the next call.
+        private volatile bool _publishVerified;
 
         /// <summary>Creates the store over the configured root.</summary>
         /// <param name="options">The store's options; the root must be set, absolute and, on Windows, short enough.</param>
@@ -93,6 +106,9 @@ namespace Tellma.Core.Blobs
             long started = Stopwatch.GetTimestamp();
             try
             {
+                // Provisioning is the earliest point a tenant's storage is touched, so a root that
+                // cannot publish create-only is reported here, before any upload.
+                EnsurePublishSupported();
                 EnsureTenantDirectory(tenantId, tenantRoot);
             }
             catch (BlobStoreException)
@@ -146,7 +162,17 @@ namespace Tellma.Core.Blobs
             }
 
             long started = Stopwatch.GetTimestamp();
-            Exception? failure = await WriteAllAsync(tenantId, tenantRoot, writes, finalPaths, cancellationToken);
+            Exception? failure;
+            try
+            {
+                // Before any byte is streamed: a root without create-only publish fails every write.
+                EnsurePublishSupported();
+                failure = await WriteAllAsync(tenantId, tenantRoot, writes, finalPaths, cancellationToken);
+            }
+            catch (BlobStoreException exception)
+            {
+                failure = exception;
+            }
 
             // A cancelled call is neither a success nor a storage failure, so it is not metered.
             if (failure is OperationCanceledException)
@@ -320,6 +346,47 @@ namespace Tellma.Core.Blobs
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        ///     Checks that the file system under <paramref name="rootPath" /> can publish create-only:
+        ///     on Unix, by hard-linking a probe file under the root; on Windows, where the
+        ///     non-overwriting move needs nothing extra, it touches nothing. The startup check reuses
+        ///     it to fail a host before it serves traffic.
+        /// </summary>
+        /// <param name="rootPath">The store's root; created when absent.</param>
+        /// <returns>Null when publishing is supported; otherwise what is wrong, naming the root.</returns>
+        public static string? ProbeCreateOnlyPublish(string rootPath)
+        {
+            ArgumentNullException.ThrowIfNull(rootPath);
+            if (OperatingSystem.IsWindows())
+            {
+                return null;
+            }
+
+            string probe = Path.Join(rootPath, ".probe-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
+            string link = probe + ".link";
+            try
+            {
+                Directory.CreateDirectory(rootPath);
+                File.WriteAllBytes(probe, []);
+                return UnixHardLinks.TryLink(probe, link, out int errorNumber) switch
+                {
+                    HardLinkResult.Linked => null,
+                    HardLinkResult.NotSupported =>
+                        $"The file system under the blob root '{rootPath}' does not support hard links, which the file-system blob store needs to publish objects create-only ({UnixHardLinks.Describe(errorNumber)}).",
+                    HardLinkResult.AlreadyExists or HardLinkResult.Failed or _ => $"Hard-linking a probe file under the blob root '{rootPath}' failed ({UnixHardLinks.Describe(errorNumber)}).",
+                };
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                return $"The blob root '{rootPath}' could not be probed for hard links: {exception.Message}";
+            }
+            finally
+            {
+                _ = DeleteFile(link);
+                _ = DeleteFile(probe);
+            }
+        }
+
         /// <summary>Seconds elapsed since a <see cref="Stopwatch.GetTimestamp" /> reading.</summary>
         /// <param name="started">The reading.</param>
         /// <returns>The elapsed seconds.</returns>
@@ -447,6 +514,25 @@ namespace Tellma.Core.Blobs
                 : throw new ArgumentException($"The blob name '{relative}' resolves outside the tenant's storage.", parameterName);
         }
 
+        /// <summary>Probes the root for create-only publish once, remembering only a success.</summary>
+        /// <exception cref="BlobStoreException">The root cannot publish create-only.</exception>
+        private void EnsurePublishSupported()
+        {
+            if (_publishVerified)
+            {
+                return;
+            }
+
+            string? failure = ProbeCreateOnlyPublish(RootPath);
+            if (failure is not null)
+            {
+                BlobStoreLog.PublishUnsupported(_logger, RootPath, failure);
+                throw new BlobStoreException(failure, null);
+            }
+
+            _publishVerified = true;
+        }
+
         /// <summary>Creates the tenant's directory and its temporary directory.</summary>
         /// <param name="tenantId">The tenant.</param>
         /// <param name="tenantRoot">The tenant's directory.</param>
@@ -513,7 +599,7 @@ namespace Tellma.Core.Blobs
             }
         }
 
-        /// <summary>Writes one object: part file, flush to disk, non-overwriting move.</summary>
+        /// <summary>Writes one object: part file, flush to disk, create-only publish.</summary>
         /// <param name="tenantId">The tenant.</param>
         /// <param name="tenantRoot">The tenant's directory.</param>
         /// <param name="write">The write.</param>
@@ -523,7 +609,8 @@ namespace Tellma.Core.Blobs
         private async Task WriteOneAsync(
             int tenantId, string tenantRoot, BlobWrite write, string finalPath, CancellationToken cancellationToken)
         {
-            // Checked up front so a conflict costs no copy; the move below stays the authority.
+            // A cheap early answer so an obvious conflict costs no copy. It is only an optimisation:
+            // a racing writer can pass it too, and the create-only publish below is what decides.
             if (File.Exists(finalPath))
             {
                 throw new BlobAlreadyExistsException(write.Name);
@@ -531,7 +618,7 @@ namespace Tellma.Core.Blobs
 
             string partPath = Path.Join(
                 tenantRoot, TemporaryDirectoryName, Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture) + PartExtension);
-            bool moved = false;
+            bool published = false;
             try
             {
                 FileStream part;
@@ -558,7 +645,7 @@ namespace Tellma.Core.Blobs
                 }
 
                 // Stream, flush the stream's buffer, then force the bytes to the device, so the
-                // rename below can never publish a name whose bytes a crash would lose.
+                // publish below can never expose a name whose bytes a crash would lose.
                 await using (part)
                 {
                     await CopyExactlyAsync(write, part, cancellationToken);
@@ -567,17 +654,7 @@ namespace Tellma.Core.Blobs
                 }
 
                 Directory.CreateDirectory(Path.GetDirectoryName(finalPath)!);
-                try
-                {
-                    File.Move(partPath, finalPath, overwrite: false);
-                    moved = true;
-                }
-                catch (IOException) when (File.Exists(finalPath))
-                {
-                    // Another write of the same name won the race between the check above and the
-                    // move; the move refused to overwrite it.
-                    throw new BlobAlreadyExistsException(write.Name);
-                }
+                published = Publish(tenantId, write.Name, partPath, finalPath);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
@@ -587,11 +664,74 @@ namespace Tellma.Core.Blobs
             {
                 // A failed or cancelled write leaves no part file behind when it can help it; one
                 // that survives (a crash) is the purge's.
-                if (!moved)
+                if (!published)
                 {
                     _ = DeleteFile(partPath);
                 }
             }
+        }
+
+        /// <summary>
+        ///     Publishes a complete part file under its final name, atomically and without ever
+        ///     replacing an existing name.
+        /// </summary>
+        /// <remarks>
+        ///     On Windows, <c>File.Move(overwrite: false)</c> is <c>MoveFileEx</c> without
+        ///     <c>MOVEFILE_REPLACE_EXISTING</c>, which the file system refuses atomically when the
+        ///     name exists. On Unix the same call is a check followed by <c>rename(2)</c>, which
+        ///     replaces a name created in between, so the publish is <c>link(2)</c> instead, then an
+        ///     unlink of the part file.
+        /// </remarks>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="name">The object's name.</param>
+        /// <param name="partPath">The complete, flushed part file.</param>
+        /// <param name="finalPath">The object's final path.</param>
+        /// <returns>True: the part file no longer needs deleting (it was moved, or its unlink was attempted).</returns>
+        /// <exception cref="BlobAlreadyExistsException">The final name exists.</exception>
+        /// <exception cref="BlobStoreException">The file system cannot publish create-only.</exception>
+        private bool Publish(int tenantId, string name, string partPath, string finalPath)
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                try
+                {
+                    File.Move(partPath, finalPath, overwrite: false);
+                    return true;
+                }
+                catch (IOException) when (File.Exists(finalPath))
+                {
+                    // Another write of the same name published first; the move refused to
+                    // overwrite it.
+                    throw new BlobAlreadyExistsException(name);
+                }
+            }
+
+            switch (UnixHardLinks.TryLink(partPath, finalPath, out int errorNumber))
+            {
+                case HardLinkResult.Linked:
+                    break;
+                case HardLinkResult.AlreadyExists:
+                    throw new BlobAlreadyExistsException(name);
+                case HardLinkResult.NotSupported:
+                    // Fail closed: without hard links there is no create-only publish, and the
+                    // racy rename is never an acceptable substitute.
+                    throw new BlobStoreException(
+                        $"Publishing the blob '{name}' of tenant {tenantId} failed: the file system under '{RootPath}' does not support hard links, which the file-system blob store requires ({UnixHardLinks.Describe(errorNumber)}).", null);
+                case HardLinkResult.Failed:
+                default:
+                    throw new BlobStoreException(
+                        $"Publishing the blob '{name}' of tenant {tenantId} failed: {UnixHardLinks.Describe(errorNumber)}.", null);
+            }
+
+            // The object is published. A part file that cannot be unlinked is only a second name
+            // for the same bytes: logged and left for the purge, never the writer's failure.
+            Exception? unlinkFailure = DeleteFile(partPath);
+            if (unlinkFailure is not null)
+            {
+                BlobStoreLog.PartFileLeft(_logger, unlinkFailure, tenantId, partPath);
+            }
+
+            return true;
         }
 
         /// <summary>Enumerates a validated prefix's objects, one fan-out directory at a time.</summary>

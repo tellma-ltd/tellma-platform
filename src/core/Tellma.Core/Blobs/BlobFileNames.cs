@@ -14,7 +14,7 @@ namespace Tellma.Core.Blobs
     /// </summary>
     /// <remarks>
     ///     The rules: the name is trimmed; path separators, control characters, bidirectional
-    ///     formatting characters and unpaired surrogates each become <c>_</c>; the result is
+    ///     formatting characters, line and paragraph separators and unpaired surrogates each become <c>_</c>; the result is
     ///     normalised to NFC; a bare <c>.</c> or <c>..</c> becomes <c>file</c>; and a result longer
     ///     than <see cref="MaxLength" /> characters is shortened, keeping a short extension. Blank
     ///     input yields null.
@@ -73,7 +73,7 @@ namespace Tellma.Core.Blobs
             };
         }
 
-        /// <summary>Whether a character is replaced: a separator, a control or a bidirectional control.</summary>
+        /// <summary>Whether a character is replaced: a path separator, a control, a line or paragraph separator, a surrogate half or a bidirectional control.</summary>
         /// <param name="c">The character.</param>
         /// <returns>True when it is replaced.</returns>
         private static bool IsRefused(char c)
@@ -82,11 +82,16 @@ namespace Tellma.Core.Blobs
                 || char.IsControl(c)
                 || char.IsSurrogate(c)
 
-                // The bidirectional embeddings, overrides, isolates and marks, which can make
-                // "invoice_cod.exe" display as "invoice_exe.doc".
-                || c is '‎' or '‏' or '؜'
-                || c is >= '‪' and <= '‮'
-                || c is >= '⁦' and <= '⁩';
+                // The line and paragraph separators, which break a display name across lines.
+                || CharUnicodeInfo.GetUnicodeCategory(c) is UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator
+
+                // The bidirectional marks, embeddings, overrides and isolates, which can make
+                // "invoice_cod.exe" display as "invoice_exe.doc". Written as escapes so the source
+                // itself carries no invisible reordering characters. ZWJ and ZWNJ are kept: emoji
+                // sequences and Persian need them.
+                || c is '\u200E' or '\u200F' or '\u061C'
+                || c is >= '\u202A' and <= '\u202E'
+                || c is >= '\u2066' and <= '\u2069';
         }
 
         /// <summary>Shortens a name to <see cref="MaxLength" />, keeping its extension when it is short.</summary>

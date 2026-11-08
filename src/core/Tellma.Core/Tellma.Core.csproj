@@ -1,6 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- The source-generated link(2) P/Invoke of the file-system blob store marshals its paths
+         through pointers. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Description>Tellma's runtime: the host-agnostic composition root (AddTellma, the feature graph, realisation of contribution items) and the two composition gates, with the platform's built-in startup checks; and the file-system blob store. Takes no ASP.NET Core dependency, so the migrator and worker hosts compose it without the web stack.</Description>
   </PropertyGroup>
 

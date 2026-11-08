@@ -142,7 +142,7 @@ namespace Tellma.Core.Tests.Blobs
         }
 
         [Fact]
-        public void A_declared_size_replaces_the_presets_and_read_access_is_applied()
+        public void A_declared_size_narrows_the_presets_and_read_access_is_applied()
         {
             BlobReferenceAttribute declaration = new("user-signature", BlobPreset.Signature)
             {
@@ -156,6 +156,25 @@ namespace Tellma.Core.Tests.Blobs
             Assert.Equal(BlobReadAccess.AnyMember, policy.ReadAccess);
             Assert.Equal(BlobKindPolicy.Signature.Image, policy.Image);
             Assert.Equal(2 * Mebibyte, BlobKindPolicy.Signature.MaxSize);
+        }
+
+        [Fact]
+        public void A_declared_size_equal_to_the_presets_is_kept()
+        {
+            BlobReferenceAttribute declaration = new("fixture-photo", BlobPreset.Photo) { MaxSizeBytes = 10 * Mebibyte };
+
+            Assert.Equal(10 * Mebibyte, declaration.CreatePolicy().MaxSize);
+        }
+
+        [Fact]
+        public void A_declared_size_above_the_presets_is_refused()
+        {
+            BlobReferenceAttribute declaration = new("user-signature", BlobPreset.Signature) { MaxSizeBytes = 100 * Mebibyte };
+
+            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(declaration.CreatePolicy);
+            Assert.Contains("user-signature", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("104857600", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("2097152", exception.Message, StringComparison.Ordinal);
         }
 
         [Fact]

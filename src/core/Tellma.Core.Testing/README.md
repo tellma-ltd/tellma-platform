@@ -64,7 +64,8 @@ removing one behind the store's back, and planting incomplete artefacts. It pins
 - byte-for-byte round trips through a seekable stream of the object's length, empty objects
   included;
 - create-only writes: a second write of a name throws `BlobAlreadyExistsException` and keeps the
-  first bytes, and a failing object leaves the call's other writes in place;
+  first bytes, eight writers racing to one name leave exactly one winner whose bytes read back, and
+  a failing object leaves the call's other writes in place;
 - content that yields more or fewer bytes than declared failing with `BlobStoreException` and
   leaving no object;
 - a primary and its `thumb` variant written in one call;

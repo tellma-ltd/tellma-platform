@@ -74,6 +74,57 @@ namespace Tellma.Core.Tests.Blobs
         }
 
         [Fact]
+        public async Task A_writer_that_loses_the_race_after_the_early_check_is_refused_by_the_publish()
+        {
+            await using FileSystemBlobStoreHarness harness = new();
+            await harness.Store.EnsureTenantAsync(harness.TenantId, Token);
+            string name = BlobStoreConformanceTests.NewName();
+            await using GatedStream slow = new([1, 1, 1]);
+
+            // The slow writer passes the early existence check, then blocks inside its copy while
+            // a second writer of the same name publishes; only the publish can refuse it now.
+            Task slowWrite = harness.Store.WriteAsync(harness.TenantId, [new BlobWrite(name, "text/plain", slow, 3)], Token);
+            await slow.Reading.WaitAsync(Token);
+            await harness.Store.WriteAsync(harness.TenantId, [BlobStoreConformanceTests.Write(name, [2, 2, 2])], Token);
+            slow.Release();
+
+            BlobAlreadyExistsException conflict = await Assert.ThrowsAsync<BlobAlreadyExistsException>(() => slowWrite);
+            Assert.Equal(name, conflict.Name);
+            Assert.Equal([2, 2, 2], await File.ReadAllBytesAsync(harness.ObjectPath(harness.TenantId, name), Token));
+            Assert.Empty(Directory.GetFiles(harness.TemporaryDirectory(harness.TenantId)));
+        }
+
+        [Fact]
+        public async Task A_write_whose_lazy_ensure_fails_throws_once_and_leaves_nothing()
+        {
+            FakeLogger<FileSystemBlobStore> logger = new();
+            await using FileSystemBlobStoreHarness harness = new(logger);
+
+            // A regular file where the tenant's .tmp directory belongs: the part file cannot be
+            // created, and neither can the directory the retry would create.
+            Directory.CreateDirectory(harness.TenantDirectory(harness.TenantId));
+            await File.WriteAllTextAsync(harness.TemporaryDirectory(harness.TenantId), "not a directory", Token);
+            string name = BlobStoreConformanceTests.NewName();
+
+            await Assert.ThrowsAsync<BlobStoreException>(
+                () => harness.Store.WriteAsync(harness.TenantId, [BlobStoreConformanceTests.Write(name, [1])], Token));
+
+            Assert.Single(logger.Collector.GetSnapshot(), static record => record.Id.Name == "BlobTenantMissingOnWrite");
+            Assert.False(File.Exists(harness.ObjectPath(harness.TenantId, name)));
+            Assert.True(File.Exists(harness.TemporaryDirectory(harness.TenantId)));
+        }
+
+        [Fact]
+        public async Task The_create_only_probe_passes_on_the_test_file_system_and_leaves_nothing()
+        {
+            await using FileSystemBlobStoreHarness harness = new();
+
+            Assert.Null(FileSystemBlobStore.ProbeCreateOnlyPublish(harness.RootPath));
+
+            Assert.Empty(Directory.Exists(harness.RootPath) ? Directory.GetFileSystemEntries(harness.RootPath) : []);
+        }
+
+        [Fact]
         public async Task A_read_stream_lets_the_object_be_deleted_and_read_concurrently()
         {
             await using FileSystemBlobStoreHarness harness = new();
@@ -327,6 +378,46 @@ namespace Tellma.Core.Tests.Blobs
                 Options.Create(new FileSystemBlobStoreOptions { RootPath = rootPath }),
                 new BlobStoreMetrics(Metrics.GetRequiredService<IMeterFactory>()),
                 (ILogger<FileSystemBlobStore>?)logger ?? NullLogger<FileSystemBlobStore>.Instance);
+        }
+
+        /// <summary>A stream whose first read waits for <see cref="Release" />, to hold a write inside its copy.</summary>
+        /// <param name="bytes">The content.</param>
+        private sealed class GatedStream(byte[] bytes) : MemoryStream(bytes)
+        {
+            private readonly TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            private int _reads;
+
+            /// <summary>Signalled when the first read starts.</summary>
+            public SemaphoreSlim Reading { get; } = new(0, 1);
+
+            /// <summary>Lets the first read complete.</summary>
+            public void Release()
+            {
+                _released.TrySetResult();
+            }
+
+            /// <inheritdoc />
+            public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+            {
+                if (Interlocked.Increment(ref _reads) == 1)
+                {
+                    Reading.Release();
+                    await _released.Task.WaitAsync(cancellationToken);
+                }
+
+                return await base.ReadAsync(buffer, cancellationToken);
+            }
+
+            /// <inheritdoc />
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing)
+                {
+                    Reading.Dispose();
+                }
+
+                base.Dispose(disposing);
+            }
         }
 
         /// <summary>A stream that cancels its own write after the first read, to interrupt a write mid-copy.</summary>

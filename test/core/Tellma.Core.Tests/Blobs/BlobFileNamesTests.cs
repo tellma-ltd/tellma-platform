@@ -57,6 +57,22 @@ namespace Tellma.Core.Tests.Blobs
         }
 
         [Theory]
+        [InlineData("a\u2028b.pdf", "a_b.pdf")]
+        [InlineData("a\u2029b.pdf", "a_b.pdf")]
+        public void Line_and_paragraph_separators_become_underscores(string input, string expected)
+        {
+            Assert.Equal(expected, BlobFileNames.Sanitize(input));
+        }
+
+        [Theory]
+        [InlineData("\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645.pdf")]
+        [InlineData("family \uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67.png")]
+        public void Zero_width_joiners_and_non_joiners_are_kept(string input)
+        {
+            Assert.Equal(input, BlobFileNames.Sanitize(input));
+        }
+
+        [Theory]
         [InlineData(".", "file")]
         [InlineData("..", "file")]
         [InlineData(" .. ", "file")]
