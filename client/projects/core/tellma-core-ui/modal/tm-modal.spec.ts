@@ -270,6 +270,43 @@ describe('TmModal', () => {
     expect(pane.classList.contains('custom-panel')).toBe(true);
   });
 
+  it('mirrors an open modal when the document direction flips', async () => {
+    const { fixture, modal } = await setup();
+    const ref = modal.open(ContentProbe, { title: 'Mirrored' });
+    await fixture.whenStable();
+    // The overlay host carries the direction the pane's content inherits.
+    const host = (document.querySelector('.tm-modal-panel') as HTMLElement).parentElement!;
+    expect(host.getAttribute('dir')).toBe('ltr');
+    try {
+      document.documentElement.dir = 'rtl';
+      // The live root Directionality observes the attribute in a microtask.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(host.getAttribute('dir')).toBe('rtl');
+
+      document.documentElement.dir = 'ltr';
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(host.getAttribute('dir')).toBe('ltr');
+    } finally {
+      document.documentElement.removeAttribute('dir');
+      ref.close();
+    }
+  });
+
+  it('opens in the document direction current at open time', async () => {
+    const { fixture, modal } = await setup();
+    document.documentElement.dir = 'rtl';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    try {
+      const ref = modal.open(ContentProbe, { title: 'Opened in RTL' });
+      await fixture.whenStable();
+      const host = (document.querySelector('.tm-modal-panel') as HTMLElement).parentElement!;
+      expect(host.getAttribute('dir')).toBe('rtl');
+      ref.close();
+    } finally {
+      document.documentElement.removeAttribute('dir');
+    }
+  });
+
   it('marks footer content with the shell footer class', async () => {
     const { fixture, modal } = await setup();
     modal.open(ContentProbe, { title: 'Footer' });

@@ -3,10 +3,13 @@
 The component showcase and browser-test host. Never published.
 
 - Every component has a story page addressable as `/story/<id>`, in any
-  combination of `?dir=ltr|rtl` and `?theme=light|dark` — the Playwright
-  suite's addressing scheme.
+  combination of `?dir=ltr|rtl` and `?theme=light|dark|system` — the
+  Playwright suite's addressing scheme. `system` follows the OS preference;
+  an absent theme is light, so stories render alike on every machine.
 - The persistent header offers the story menu and live light/dark + EN/AR
   toggles on every page; the URL stays the source of truth for appearance.
+  The theme is painted by the library's `TmTheme` and direction by
+  `<html dir>` alone — no `[dir]` wrapper — exactly as in a distribution.
 - It doubles as the reference consumer wiring: `angular.json` (token +
   font stylesheets in the `styles` array) and `app.config.ts` (providers)
   show exactly what a distribution sets up; `pnpm run build:showcase` runs

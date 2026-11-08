@@ -7,7 +7,7 @@
  * The built-in ENGLISH library strings — the only locale that ships in the
  * core. Every other locale (Arabic included) ships as an optional
  * per-distribution locale pack contributing its strings as a Transloco
- * scope. Plurals use ICU MessageFormat (via @jsverse/transloco-messageformat).
+ * scope. Plurals and selects use ICU MessageFormat.
  *
  * Error keys mirror Signal Forms' camelCase error `kind`s one-for-one.
  */

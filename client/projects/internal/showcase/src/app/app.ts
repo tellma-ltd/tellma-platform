@@ -6,31 +6,34 @@
 import { Component, DOCUMENT, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { Dir } from '@angular/cdk/bidi';
 import { TranslocoService } from '@jsverse/transloco';
 
+import { TmTheme, type TmThemeSetting } from '@tellma/core-ui';
+
 import { ShowcaseCalendar, type ShowcaseCalendarId } from './i18n/showcase-calendar';
+import { showcaseThemeFromQuery } from './showcase-theme';
 import { SHOWCASE_STORIES } from './stories';
 
 /**
  * The showcase shell: a header carrying the light/dark, EN/AR, and
  * display-calendar toggles over a side rail listing the stories, both
  * present on every page. The URL stays the source of truth for appearance
- * (?theme=dark, ?dir=rtl — every story stays addressable in all
- * combinations for the Playwright matrix): the theme toggle rewrites the
- * query params, and this shell is the ONE place that applies
- * dir/lang/data-theme to <html>. Direction follows the language unless
- * ?dir= forces it.
+ * (?theme=dark|light|system, ?dir=rtl — every story stays addressable in
+ * all combinations for the Playwright matrix): the theme toggle rewrites
+ * the query params, and this shell is the ONE place that applies dir and
+ * lang to <html>. Direction follows the language unless ?dir= forces it.
  *
- * The story outlet is additionally wrapped in the CDK `Dir` directive: the
- * root Directionality reads <html dir> ONCE at construction, so a LIVE dir
- * flip would leave CDK overlays positioning (and stamping dir on) the old
- * direction. The wrapper gives every story a Directionality that follows
- * the toggle.
+ * The theme is painted by the library's `TmTheme`, exactly as a
+ * distribution paints it: `<html data-theme>` always holds light or dark,
+ * and `?theme=system` follows the OS preference live.
+ *
+ * Stories render straight under the router outlet, with no `[dir]` wrapper:
+ * the library's root Directionality follows <html dir> live, so a runtime
+ * flip reaches every overlay — open modals included — as it does in an app.
  */
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, Dir],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive],
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
@@ -48,26 +51,30 @@ export class App {
   // Query params are route-global, so the root route sees every page's.
   private readonly query = toSignal(inject(ActivatedRoute).queryParamMap);
 
+  /** The library theme the shell drives; its effective scheme labels the toggle. */
+  private readonly tmTheme = inject(TmTheme);
+  protected readonly theme = this.tmTheme.effective;
+
   /**
-   * Until the router resolves, the theme comes from the RAW url: the query
-   * signal starts `undefined`, and falling back to light would flip a cold
+   * The URL's theme setting. Until the router resolves it comes from the RAW
+   * url, which is also what seeded `TmTheme` at bootstrap: the query signal
+   * starts `undefined`, and falling back to light would flip a cold
    * ?theme=dark load light→dark across the first paint — WebKit sometimes
    * fails to re-resolve custom properties on part of the tree after such a
    * post-paint flip, leaving stale light-theme colors on a dark page.
    */
-  private readonly urlDark =
-    new URLSearchParams(this.document.location.search).get('theme') === 'dark';
+  private readonly themeSetting = computed<TmThemeSetting>(() => {
+    const query = this.query();
+    return showcaseThemeFromQuery(
+      query === undefined
+        ? new URLSearchParams(this.document.location.search).get('theme')
+        : query.get('theme'),
+    );
+  });
 
   /** Read the same way as the theme, and for the same first-paint reason. */
   private readonly urlSize = new URLSearchParams(this.document.location.search).get('size');
 
-  protected readonly theme = computed(() => {
-    const query = this.query();
-    if (query === undefined) {
-      return this.urlDark ? 'dark' : 'light';
-    }
-    return query.get('theme') === 'dark' ? 'dark' : 'light';
-  });
   protected readonly dir = computed(() =>
     (this.query()?.get('dir') ?? (this.lang() === 'ar' ? 'rtl' : 'ltr')) === 'rtl'
       ? ('rtl' as const)
@@ -90,17 +97,23 @@ export class App {
       const root = this.document.documentElement;
       root.dir = this.dir();
       root.lang = this.lang();
-      if (this.theme() === 'dark') {
-        root.setAttribute('data-theme', 'dark');
-      } else {
-        root.removeAttribute('data-theme');
-      }
     });
+    // A navigation that changes ?theme= (back/forward, a pasted link) applies
+    // it; the toggle's own navigation repeats what the click already
+    // painted, which TmTheme treats as a no-op.
+    effect(() => this.tmTheme.set(this.themeSetting()));
   }
 
+  /**
+   * Flips between light and dark. The click repaints synchronously through
+   * `TmTheme.set` — in its own frame, before the router has even started —
+   * and only then records the choice in the URL.
+   */
   protected toggleTheme(): void {
+    const next = this.theme() === 'dark' ? 'light' : 'dark';
+    this.tmTheme.set(next);
     void this.router.navigate([], {
-      queryParams: { theme: this.theme() === 'dark' ? null : 'dark' },
+      queryParams: { theme: next === 'dark' ? 'dark' : null },
       queryParamsHandling: 'merge',
     });
   }

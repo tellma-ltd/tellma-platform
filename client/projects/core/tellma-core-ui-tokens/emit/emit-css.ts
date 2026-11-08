@@ -21,7 +21,9 @@ const KEBAB = (s: string) => s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCas
  * Maps a token Ref path to its emitted variable name. Primitive paths map
  * mechanically ('teal.500' → '--teal-500'); semantic paths go through the
  * brand's canonical names ('action.primary' → '--color-primary',
- * 'status.error.fg' → '--error', 'font.size.sm' → '--text-sm').
+ * 'status.error.fg' → '--error', 'font.size.sm' → '--text-sm',
+ * 'categorical.3.onTint' → '--categorical-3-on-tint',
+ * 'sequential.4' → '--sequential-4').
  */
 export function tmRefToVarName(path: string): string {
   const parts = path.split('.');
@@ -80,6 +82,11 @@ export function tmRefToVarName(path: string): string {
       return `--focus-ring-${KEBAB(parts[1])}`;
     case 'formField':
       return `--field-${KEBAB(parts[1])}`;
+    case 'categorical':
+      // categorical.3.onTint → --categorical-3-on-tint
+      return `--categorical-${parts[1]}-${KEBAB(parts[2])}`;
+    case 'sequential':
+      return `--sequential-${parts[1]}`;
     default:
       return `--${parts.map(KEBAB).join('-')}`;
   }
@@ -119,6 +126,14 @@ function schemeVars(scheme: TmSchemeColors): VarMap {
   }
   for (const [key, value] of Object.entries(scheme.field)) {
     set(tmRefToVarName(`field.${key}`), value);
+  }
+  for (const [slot, tone] of Object.entries(scheme.categorical)) {
+    for (const [part, value] of Object.entries(tone)) {
+      set(tmRefToVarName(`categorical.${slot}.${part}`), value);
+    }
+  }
+  for (const [step, value] of Object.entries(scheme.sequential)) {
+    set(tmRefToVarName(`sequential.${step}`), value);
   }
   vars.set('color-scheme', scheme.colorScheme);
   return vars;
