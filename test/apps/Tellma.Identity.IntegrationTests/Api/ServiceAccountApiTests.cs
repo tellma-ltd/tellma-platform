@@ -23,7 +23,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task Create_returns_the_secret_once_and_the_account_can_authenticate()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idsvcacct");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idsvcacct");
             using HttpClient client = factory.CreateClient();
             client.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", await GetIdentityScopeTokenAsync(factory));
@@ -67,7 +67,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task Another_distribution_cannot_read_or_delete_the_account()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idsvcacctown");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idsvcacctown");
 
             // acme creates a service account.
             using HttpClient acmeClient = factory.CreateClient();
@@ -109,7 +109,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task The_control_plane_administers_any_distributions_service_account()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture,
                 "idsvcacctop",
                 new Dictionary<string, string?>
@@ -151,7 +151,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task Create_rejects_a_foreign_distribution_audience()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idsvcacctforeign");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idsvcacctforeign");
             using HttpClient client = factory.CreateClient();
             client.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", await GetIdentityScopeTokenAsync(factory));

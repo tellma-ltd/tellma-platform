@@ -21,8 +21,10 @@ import { FormFieldStory } from './form-field/form-field-story';
 import { GridStatesStory } from './grid/grid-states-story';
 import { TreeGridStory } from './grid/tree-grid-story';
 import { I18nStory } from './i18n/i18n-story';
+import { IconStory } from './icon/icon-story';
 import { ImageStory } from './image/image-story';
 import { InputStory } from './input/input-story';
+import { KbdStory } from './kbd/kbd-story';
 import { MenuStory } from './menu/menu-story';
 import { ModalStory } from './modal/modal-story';
 import { NumberStory } from './number/number-story';
@@ -61,6 +63,8 @@ export class WelcomeStory {}
 export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'welcome', title: 'Welcome', component: WelcomeStory },
   { id: 'theming', title: 'Tokens & theming', component: ThemingStory },
+  { id: 'icon', title: 'Icon (tm-icon)', component: IconStory },
+  { id: 'kbd', title: 'Keyboard keys (tm-kbd)', component: KbdStory },
   { id: 'button', title: 'Button (tmButton)', component: ButtonStory },
   { id: 'form-field', title: 'Form field (tm-form-field)', component: FormFieldStory },
   { id: 'alert', title: 'Alert (tm-alert)', component: AlertStory },

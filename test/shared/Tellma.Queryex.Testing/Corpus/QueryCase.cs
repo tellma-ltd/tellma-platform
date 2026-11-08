@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Core.Queryex;
+using Tellma.Queryex.Testing.Semantics;
 
 namespace Tellma.Queryex.Testing.Corpus
 {
@@ -26,6 +27,17 @@ namespace Tellma.Queryex.Testing.Corpus
 
         /// <summary>The ceilings, when this case is about one of them.</summary>
         public QueryexLimits Limits { get; init; } = QueryexLimits.Default;
+
+        /// <summary>
+        ///     The tables of keys the query's restrictions read, by the name each restriction gives
+        ///     its table.
+        /// </summary>
+        /// <remarks>
+        ///     What a host would have declared or bound ahead of the statement. Both halves of the
+        ///     differential check read the same keys from here.
+        /// </remarks>
+        public IReadOnlyDictionary<string, KeySet> KeySets { get; init; } =
+            new Dictionary<string, KeySet>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         ///     The diagnostic codes the case expects. Empty means the query is expected to compile,

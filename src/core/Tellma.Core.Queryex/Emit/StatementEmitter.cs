@@ -23,34 +23,46 @@ namespace Tellma.Core.Queryex.Emit
         /// <summary>The prefix every result column's name shares.</summary>
         internal const string ColumnPrefix = "c";
 
+        /// <summary>The text that ends a statement written on its own.</summary>
+        internal const string Terminator = ";\n";
+
         /// <summary>Writes one lowered query as SQL.</summary>
         /// <param name="plan">The plan.</param>
-        /// <returns>The batch.</returns>
-        internal static string Write(RelationalPlan plan)
+        /// <returns>
+        ///     The declarations the statement depends on, and the statement without its terminator.
+        ///     The whole batch is the two followed by <see cref="Terminator" />.
+        /// </returns>
+        /// <remarks>
+        ///     Written as two parts rather than cut out of one, so a host embedding the statement in
+        ///     its own SQL never has to find where the declarations end or strip a terminator — both
+        ///     of which are parsing compiled text, which nothing outside the engine may do.
+        /// </remarks>
+        internal static (string Prologue, string Body) Write(RelationalPlan plan)
         {
-            SqlWriter sql = new();
-            PlanEmitter emitter = new(sql);
-
+            // The hoisted declarations, then one empty line, or nothing at all.
+            SqlWriter prologue = new();
+            PlanEmitter declarations = new(prologue);
             foreach (HoistedVariable variable in plan.Variables)
             {
-                emitter.Declaration(variable);
+                declarations.Declaration(variable);
             }
 
             if (plan.Variables.Length > 0)
             {
-                sql.Line();
+                prologue.Line();
             }
 
-            WriteSelect(sql, emitter, plan);
-            WriteFrom(sql, emitter, plan);
-            WriteWhere(sql, emitter, plan);
-            WriteGrouping(sql, emitter, plan);
-            WriteOrdering(sql, emitter, plan);
-            WritePaging(sql, plan);
+            // The statement, clause by clause, each ending its own line.
+            SqlWriter body = new();
+            PlanEmitter emitter = new(body);
+            WriteSelect(body, emitter, plan);
+            WriteFrom(body, emitter, plan);
+            WriteWhere(body, emitter, plan);
+            WriteGrouping(body, emitter, plan);
+            WriteOrdering(body, emitter, plan);
+            WritePaging(body, plan);
 
-            sql.Write(';');
-            sql.Line();
-            return sql.ToString();
+            return (prologue.ToString(), body.ToString());
         }
 
         /// <summary>Writes the select list.</summary>

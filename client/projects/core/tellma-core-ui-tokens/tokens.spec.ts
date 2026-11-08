@@ -92,6 +92,24 @@ describe('tmEmitCss', () => {
     }
   });
 
+  it('emits the icon box, its five steps and the 1.75 stroke, and the 18px key cap', () => {
+    // These are the names tm-icon, tm-kbd and the containers that size icons
+    // read; a renamed key would leave those declarations silently dropped.
+    for (const declaration of [
+      '--icon-size: 16px;',
+      '--icon-size-xs: 12px;',
+      '--icon-size-sm: 14px;',
+      '--icon-size-md: 16px;',
+      '--icon-size-lg: 20px;',
+      '--icon-size-xl: 24px;',
+      '--icon-stroke-width: 1.75;',
+      '--kbd-height: 18px;',
+      '--kbd-min-width: 18px;',
+    ]) {
+      expect(css).toContain(declaration);
+    }
+  });
+
   it('carries the focus halo as a semantic role, so it flips with the scheme', () => {
     // The brand sheet gets its dark halo by re-mapping the teal-50 PRIMITIVE.
     // Primitives are scheme-invariant here, so the halo is a field role

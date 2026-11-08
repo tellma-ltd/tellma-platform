@@ -142,9 +142,15 @@ namespace Tellma.Core.Queryex.Pipeline
                 return null;
             }
 
+            // A stamped leaf binds under the version stored beside it, which is what it was
+            // validated under; an unstamped one takes the compilation's.
+            BindingContext leafContext = leaf.QueryexVersion is int stamped && stamped != context.QueryexVersion
+                ? context with { QueryexVersion = stamped }
+                : context;
+
             bool compiled = compiler.TryCompile(
                 leaf.Text,
-                context,
+                leafContext,
                 directions: false,
                 limits,
                 sink,

@@ -46,6 +46,17 @@ namespace Tellma.Core.Queryex.Pipeline
             _bindings = new BoundedCache<BindKey, BoundExpression>(options.MaxCachedBoundExpressions);
         }
 
+        /// <summary>
+        ///     Told of every binding request, with the text and the context it is bound under.
+        ///     Null on every compiler the engine builds.
+        /// </summary>
+        /// <remarks>
+        ///     Lets a check confirm what a binding depended on in the cases the public surface cannot
+        ///     yet show — a filter leaf binding under its own stamped version, while only one version
+        ///     exists, binds to the same tree under any of them.
+        /// </remarks>
+        internal Action<string, BindingContext>? BindObserver { get; init; }
+
         /// <summary>Scans and parses one expression list.</summary>
         /// <param name="text">The expression text.</param>
         /// <param name="limits">The ceilings for this call site.</param>
@@ -110,6 +121,10 @@ namespace Tellma.Core.Queryex.Pipeline
             DiagnosticSink sink,
             DiagnosticLocation location)
         {
+            // Told before the cache is consulted, so an observer sees every request rather than
+            // only the ones that missed.
+            BindObserver?.Invoke(text, context);
+
             BindKey? key = KeyFor(text, syntax, context, directions, limits);
             if (key is not null
                 && _bindings.TryGet(key, out BoundExpression? cached)
@@ -201,7 +216,7 @@ namespace Tellma.Core.Queryex.Pipeline
                     context.Schema,
                     context.Root,
                     context.Mode,
-                    context.LanguageVersion,
+                    context.QueryexVersion,
                     context.HasUser,
                     context.HasGroupingKeys,
                     directions,

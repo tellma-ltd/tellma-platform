@@ -60,7 +60,16 @@ separate DTO model — and creates/keeps it in sync through the same migrations 
    from a plain class via `modelBuilder.HasTableType<T>()` — the class then doubles as the TVP
    row DTO. The platform's canonical bulk shapes (`IdList`, `BigIdList`, `GuidList`,
    `StringList`) are plain classes in `Tellma.Core.Abstractions`, registered by distributions
-   through this same route — one mechanism, no special handling.
+   through this same route — one mechanism, no special handling. A column gets a collation
+   through `UseCollation(column, collation)` in the build action, whether the class or
+   `Column(…)` added it — e.g. `t => t.UseCollation("Subject", "Latin1_General_100_BIN2")` for a
+   key compared with a binary-collated table column, which SQL Server otherwise refuses (Msg 468).
+   It applies after every column is added, so its position against `Column(…)` does not matter;
+   the last call wins, also over `Column(…, collation)`; names match case-insensitively, and an
+   unknown name fails the registration. Only `char`, `varchar`, `nchar` and `nvarchar` columns
+   take a collation (any other store type, `json` included, fails model finalization). The
+   collation is part of the definition, so adding, changing or removing one creates a new
+   version; a type without one serializes exactly as before.
 
 ## Rules this project lives by
 

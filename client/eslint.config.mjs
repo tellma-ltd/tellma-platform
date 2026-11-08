@@ -169,6 +169,41 @@ export default defineConfig(
     },
   },
 
+  // Foundation entry-point boundary (spec 0023 §1): icon and kbd depend on
+  // no other @tellma entry point, since every other entry point builds on
+  // them, and the icon entry point carries no icon data of its own — the
+  // library registers nothing, so Lucide data belongs to its importers.
+  {
+    files: ['projects/core/tellma-core-ui/icon/**/*.ts', 'projects/core/tellma-core-ui/kbd/**/*.ts'],
+    ignores: ['**/*.spec.ts', '**/*.examples.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              // Covers the bare '@tellma/core-ui' as well as its subpaths.
+              group: ['@tellma/*'],
+              message: 'The icon and kbd entry points depend on no other @tellma entry point.',
+            },
+            {
+              group: ['lucide', 'lucide/*', '@lucide/*'],
+              message: 'The icon and kbd entry points ship no icon data; importers pass their own.',
+            },
+            {
+              group: ['@jsverse/*', 'rxjs', 'rxjs/*'],
+              message: 'The icon and kbd entry points are dependency-free beyond @angular/core.',
+            },
+            {
+              group: ['../*'],
+              message: 'The icon and kbd entry points must not reach into sibling entry points.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // Grid-engine entry-point boundary (spec 0004 §1, DoD 14): pure TypeScript
   // plus @angular/core SIGNALS only — no DOM, no dependency injection, no
   // components, no other @tellma packages except the contracts types. The

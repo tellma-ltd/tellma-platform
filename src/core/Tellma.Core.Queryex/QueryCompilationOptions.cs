@@ -12,7 +12,7 @@ namespace Tellma.Core.Queryex
         public required QueryexSchema Schema { get; init; }
 
         /// <summary>
-        ///     The language version the expressions were validated under.
+        ///     The Queryex version the expressions were validated under.
         /// </summary>
         /// <remarks>
         ///     Supplied by the host from what it stored alongside the text, not defaulted to the
@@ -25,7 +25,7 @@ namespace Tellma.Core.Queryex
         /// <exception cref="ArgumentOutOfRangeException">
         ///     The version is one this engine does not compile.
         /// </exception>
-        public required int LanguageVersion
+        public required int QueryexVersion
         {
             get;
             init
@@ -35,7 +35,7 @@ namespace Tellma.Core.Queryex
                     throw new ArgumentOutOfRangeException(
                         nameof(value),
                         value,
-                        "This engine does not compile that language version.");
+                        "This engine does not compile that Queryex version.");
                 }
 
                 field = value;
@@ -102,7 +102,7 @@ namespace Tellma.Core.Queryex
         public required QueryexMode Mode { get; init; }
 
         /// <summary>
-        ///     The language version this text is being validated under.
+        ///     The Queryex version this text is being validated under.
         /// </summary>
         /// <remarks>
         ///     This is where the stamp is minted: a host validating new text records the version it
@@ -117,7 +117,7 @@ namespace Tellma.Core.Queryex
         /// <exception cref="ArgumentOutOfRangeException">
         ///     The version is one this engine does not compile.
         /// </exception>
-        public required int LanguageVersion
+        public required int QueryexVersion
         {
             get;
             init
@@ -127,7 +127,7 @@ namespace Tellma.Core.Queryex
                     throw new ArgumentOutOfRangeException(
                         nameof(value),
                         value,
-                        "This engine does not compile that language version.");
+                        "This engine does not compile that Queryex version.");
                 }
 
                 field = value;
@@ -211,7 +211,7 @@ namespace Tellma.Core.Queryex
         public QueryexMode? Mode { get; init; }
 
         /// <summary>
-        ///     The language version the text is being authored under, current by default.
+        ///     The Queryex version the text is being authored under, current by default.
         /// </summary>
         /// <remarks>
         ///     Defaulted where the two persistence-facing entry points require it, because
@@ -223,7 +223,7 @@ namespace Tellma.Core.Queryex
         /// <exception cref="ArgumentOutOfRangeException">
         ///     The version is one this engine does not compile.
         /// </exception>
-        public int LanguageVersion
+        public int QueryexVersion
         {
             get;
             init
@@ -233,7 +233,7 @@ namespace Tellma.Core.Queryex
                     throw new ArgumentOutOfRangeException(
                         nameof(value),
                         value,
-                        "This engine does not compile that language version.");
+                        "This engine does not compile that Queryex version.");
                 }
 
                 field = value;

@@ -12,7 +12,27 @@ import { z } from 'zod';
 
 // 2.0.0: `harness` widened to string|null — breaking for readers that
 // assumed a string, hence the major bump.
-export const COMPONENTS_JSON_SCHEMA_VERSION = '2.0.0';
+// 2.1.0: `group` is a closed set (DOCS_GROUPS); every 2.0.0 value is in it.
+export const COMPONENTS_JSON_SCHEMA_VERSION = '2.1.0';
+
+/**
+ * The docs groups a component's `@tmGroup` tag may name — the families
+ * components.json, llms.txt and the MCP `list` tool sort by. A closed set,
+ * so a misspelt tag fails docs:build instead of inventing a group.
+ * `collection` holds the components that present many items (pagers,
+ * trees, reorderable lists, tiles).
+ */
+export const DOCS_GROUPS = [
+  'form-control',
+  'control',
+  'indicator',
+  'media',
+  'overlay',
+  'layout',
+  'collection',
+  'grid',
+  'files',
+] as const;
 
 const propDoc = z.object({
   name: z.string(),
@@ -38,7 +58,7 @@ const exampleDoc = z.object({
 export const componentDoc = z.object({
   name: z.string(),
   kind: z.enum(['component', 'directive']),
-  group: z.string(),
+  group: z.enum(DOCS_GROUPS),
   selector: z.string(),
   entryPoint: z.string(),
   formControl: z.enum(['FormValueControl', 'FormCheckboxControl']).nullable(),

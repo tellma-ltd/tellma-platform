@@ -43,12 +43,52 @@ namespace Tellma.Core.Queryex
         ///     The batch to execute as command text, with the parameters of
         ///     <see cref="Parameters" /> bound. Never string-interpolated further.
         /// </summary>
+        /// <remarks>
+        ///     Always <see cref="Prologue" />, then <see cref="Body" />, then a semicolon and a line
+        ///     feed.
+        /// </remarks>
         public required string Sql { get; init; }
 
-        /// <summary>The parameter slots, in the order they were assigned.</summary>
+        /// <summary>
+        ///     The declarations the statement depends on, each on its own line, followed by one
+        ///     empty line; empty when the statement needs none.
+        /// </summary>
+        /// <remarks>
+        ///     What a host composing the statement into its own SQL writes first. The variables
+        ///     declared here are read by <see cref="Body" />, so they belong to the same batch and
+        ///     precede it; a host composing several compiled statements writes each one's prologue
+        ///     before its body.
+        /// </remarks>
+        public string Prologue { get; init; } = string.Empty;
+
+        /// <summary>
+        ///     The statement itself: the select through its last clause and that clause's line
+        ///     feed, with no terminating semicolon.
+        /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///         What a host embeds in its own SQL — as the source of an insert, or as a derived
+        ///         table it counts or filters further. The values the select reads are named by
+        ///         <see cref="Parameters" /> exactly as for <see cref="Sql" />.
+        ///     </para>
+        ///     <para>
+        ///         A body is a valid derived table or insert source when it has no ordering, or when
+        ///         it pages: the backend refuses an ordering inside a derived table that neither
+        ///         limits nor offsets. A host that needs a bare count of an ordered query compiles an
+        ///         unordered twin of it.
+        ///     </para>
+        /// </remarks>
+        public string Body { get; init; } = string.Empty;
+
+        /// <summary>
+        ///     The parameter slots, in the order they were assigned, with the paging slots last.
+        /// </summary>
         public required IReadOnlyList<QueryexParameterSlot> Parameters { get; init; }
 
-        /// <summary>The result-set columns, positional to the select list.</summary>
+        /// <summary>
+        ///     The result-set columns, positional to the select list, followed by the undeclared
+        ///     columns the query asked for.
+        /// </summary>
         public required IReadOnlyList<QueryexColumn> Columns { get; init; }
     }
 }

@@ -500,6 +500,36 @@ export const tmTokensDefault: TmTokens = {
       dropzoneHintFontSize: '12.5px',
       dropzoneMetaFontSize: '11px',
     },
+    // tm-icon: the square glyph box. `size` is the default every unsized
+    // icon reads; a container re-points `--icon-size` at its own glyph token
+    // (a button at its icon size, a menu row at its), and the five steps are
+    // what the `size` input picks from. The stroke is a unitless SVG width
+    // in the 24-unit viewBox, so it scales with the box; a host that needs a
+    // heavier glyph sets its own `--icon-stroke-width`.
+    icon: {
+      size: '16px',
+      sizeXs: '12px',
+      sizeSm: '14px',
+      sizeMd: '16px',
+      sizeLg: '20px',
+      sizeXl: '24px',
+      strokeWidth: '1.75',
+    },
+    // tm-kbd: one key cap per key. The cap is 18px tall so a shortcut hint
+    // fits a 30px menu row and a line of 13px prose without growing either;
+    // the min width keeps a one-character cap at least square. The lower edge is drawn heavier (in
+    // the component CSS, from `border`) so a cap reads as a key, not a tag.
+    kbd: {
+      height: '18px',
+      minWidth: '18px',
+      paddingX: '4px',
+      gap: '4px',
+      radius: '{radius.xs}',
+      fontSize: '11px',
+      bg: '{surface.subtle}',
+      border: '{border.strong}',
+      text: '{text.body}',
+    },
     // tm-image: fixed-box chrome. The chrome fill is a static ink veil
     // that reads over any image on both schemes.
     image: {

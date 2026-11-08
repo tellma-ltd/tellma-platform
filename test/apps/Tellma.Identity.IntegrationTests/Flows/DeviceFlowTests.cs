@@ -28,7 +28,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Device_grant_completes_after_the_user_approves_the_code()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iddev", CliSeed);
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iddev", CliSeed);
             await TestData.CreateActiveUserAsync(factory, "frank@example.com");
 
             using OidcFlowClient flow = new(factory);
@@ -108,7 +108,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task A_user_code_that_does_not_resolve_says_so_instead_of_clearing_the_form()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iddevbad", CliSeed);
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iddevbad", CliSeed);
             await TestData.CreateActiveUserAsync(factory, "gina@example.com");
 
             using OidcFlowClient flow = new(factory);
@@ -137,7 +137,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Arriving_with_no_user_code_asks_for_one_without_an_error()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iddevnone", CliSeed);
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iddevnone", CliSeed);
             await TestData.CreateActiveUserAsync(factory, "hana@example.com");
 
             using OidcFlowClient flow = new(factory);

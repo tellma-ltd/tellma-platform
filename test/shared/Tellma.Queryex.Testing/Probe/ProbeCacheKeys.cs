@@ -15,16 +15,16 @@ namespace Tellma.Queryex.Testing.Probe
     /// <remarks>
     ///     A key that omits something the binding depended on is not a performance problem: it
     ///     hands one request the answer computed for a different one. Where that difference cannot
-    ///     yet be produced through the public surface — a language version this engine does not
+    ///     yet be produced through the public surface — a Queryex version this engine does not
     ///     implement, an execution fact no fixture sets — the key is asserted here instead, so the
     ///     omission is caught by a test rather than by whatever runs first in production.
     /// </remarks>
     public static class ProbeCacheKeys
     {
         /// <summary>
-        ///     Whether two bind keys differing only in language version are told apart.
+        ///     Whether two bind keys differing only in Queryex version are told apart.
         /// </summary>
-        /// <param name="first">One language version.</param>
+        /// <param name="first">One Queryex version.</param>
         /// <param name="second">The other.</param>
         /// <param name="schema">The schema both bound against.</param>
         /// <param name="root">The entity both resolved paths from.</param>
@@ -36,7 +36,7 @@ namespace Tellma.Queryex.Testing.Probe
         ///     different trees, and a key that had never distinguished them would serve one
         ///     version's tree for the other's request.
         /// </remarks>
-        public static bool DistinguishesLanguageVersions(
+        public static bool DistinguishesQueryexVersions(
             int first,
             int second,
             QueryexSchema schema,
@@ -53,19 +53,39 @@ namespace Tellma.Queryex.Testing.Probe
                 && one.GetHashCode() != other.GetHashCode();
         }
 
-        /// <summary>Builds a bind key that differs from its siblings only in language version.</summary>
-        /// <param name="languageVersion">The language version.</param>
+        /// <summary>Whether two compilations of whole queries share one cache entry.</summary>
+        /// <param name="first">One query.</param>
+        /// <param name="second">The other.</param>
+        /// <param name="options">The options both compile under.</param>
+        /// <returns>True when a compilation of one would be served for the other.</returns>
+        /// <remarks>
+        ///     Asked of the key itself, both directions and the hash, so an answer of "shared" cannot
+        ///     be an accident of which bucket two keys happened to land in.
+        /// </remarks>
+        public static bool ShareQueryEntry(QuerySpec first, QuerySpec second, QueryCompilationOptions options)
+        {
+            ArgumentNullException.ThrowIfNull(first);
+            ArgumentNullException.ThrowIfNull(second);
+            ArgumentNullException.ThrowIfNull(options);
+
+            var one = QueryKey.Of(first, options);
+            var other = QueryKey.Of(second, options);
+            return one.Equals(other) && other.Equals(one) && one.GetHashCode() == other.GetHashCode();
+        }
+
+        /// <summary>Builds a bind key that differs from its siblings only in Queryex version.</summary>
+        /// <param name="queryexVersion">The Queryex version.</param>
         /// <param name="schema">The schema.</param>
         /// <param name="root">The root entity.</param>
         /// <returns>The key.</returns>
-        private static BindKey Key(int languageVersion, QueryexSchema schema, EntityDescriptor root)
+        private static BindKey Key(int queryexVersion, QueryexSchema schema, EntityDescriptor root)
         {
             return new BindKey(
                 "Amount + 1",
                 schema,
                 root,
                 QueryexMode.Value,
-                languageVersion,
+                queryexVersion,
                 hasUser: true,
                 hasGroupingKeys: false,
                 directions: false,

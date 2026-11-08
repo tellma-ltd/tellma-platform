@@ -21,8 +21,10 @@ import {
   TM_CALENDAR,
   type TmControlSize,
 } from '@tellma/core-ui';
+import { provideTellmaIcons } from '@tellma/core-ui/icon';
 import { provideTellmaLocaleAr } from '@tellma/locale-ar';
 
+import { SHOWCASE_ICONS } from './icon/showcase-icons';
 import { ShowcaseCalendar } from './i18n/showcase-calendar';
 import { showcaseThemeFromQuery } from './showcase-theme';
 
@@ -57,6 +59,8 @@ export const appConfig: ApplicationConfig = {
       },
     }),
     provideTellmaLocaleAr(),
+    // The icon names the stories draw, registered the way a feature would.
+    provideTellmaIcons(SHOWCASE_ICONS),
     // The formatting-locale seam, exercised the way a distribution would:
     // UI language tags are bare (en/ar), but formatting nominates REGIONAL
     // locales — bare 'ar' resolves to Latin digits in ICU, ar-SA to
