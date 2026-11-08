@@ -278,7 +278,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
                 new AuthenticationHeaderValue("Bearer", await TokenAsync(factory, distribution));
 
             using HttpResponseMessage response = await client.PostAsJsonAsync(
-                new Uri("/api/identity/invitations", UriKind.Relative),
+                new Uri("/api/identity/v1/invitations", UriKind.Relative),
                 new { users = new object[] { new { email, displayName = email, locale = "en" } } },
                 TestContext.Current.CancellationToken);
 

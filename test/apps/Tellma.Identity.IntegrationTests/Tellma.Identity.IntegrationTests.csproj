@@ -9,6 +9,7 @@
     <ProjectReference Include="..\Tellma.Identity.TestSupport\Tellma.Identity.TestSupport.csproj" />
     <PackageReference Include="AngleSharp" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Testcontainers.MsSql" />
     <PackageReference Include="xunit.v3" />

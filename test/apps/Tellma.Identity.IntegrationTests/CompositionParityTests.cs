@@ -93,13 +93,13 @@ namespace Tellma.Identity.IntegrationTests
             // challenge, not a 404.
             using HttpClient standaloneClient = standalone.CreateClient();
             using HttpResponseMessage standaloneResponse = await standaloneClient.GetAsync(
-                new Uri("/api/identity/users/some-sub", UriKind.Relative), TestContext.Current.CancellationToken);
+                new Uri("/api/identity/v1/users/some-sub", UriKind.Relative), TestContext.Current.CancellationToken);
             Assert.Equal(System.Net.HttpStatusCode.Unauthorized, standaloneResponse.StatusCode);
 
             // In-proc: the operator controller is removed from the application model, so the
             // route does not exist at all — under either path shape.
             using HttpClient inProcClient = inProc.CreateClient();
-            foreach (string path in (string[])["/id/api/identity/users/some-sub", "/api/identity/users/some-sub"])
+            foreach (string path in (string[])["/id/api/identity/v1/users/some-sub", "/api/identity/v1/users/some-sub"])
             {
                 using HttpResponseMessage inProcResponse = await inProcClient.GetAsync(
                     new Uri(path, UriKind.Relative), TestContext.Current.CancellationToken);
