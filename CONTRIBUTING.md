@@ -61,6 +61,14 @@ the clock:
   stalled main thread), dispatch the burst in one task with `pressInOneTask(page, keys)`
   (`client/e2e/support/keyboard-burst.ts`). Never rely on pressing keys quickly: whether a render
   slips in between two Playwright key presses is itself a matter of timing.
+- A gesture that must fit inside a time window is never two separate Playwright actions. For a
+  window the browser measures (a double-tap), dispatch the touch events over CDP with explicit
+  `timestamp`s, as `tapTwice()` in `grid-touch.spec.ts` does. For a window the page measures
+  with a timer (a hover grace, a long-press delay), pause Playwright's clock (`page.clock`) around
+  the gesture and advance it explicitly.
+- Run one axe scan per test (`expectNoAxeViolations`). A test that walks through several states
+  replays the steps to each state in a test of its own, so no test carries several scans against
+  its timeout.
 
 ### PR tier
 
