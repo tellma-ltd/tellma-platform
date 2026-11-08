@@ -18,15 +18,25 @@ interval, an expiry) is driven by a fake clock or a test `TimeProvider` wherever
 | .NET (xUnit) | `[Trait("Category", "Nightly")]` | Runs in the nightly tier only. Add it beside the test's own category (`Integration`, `E2E`), never instead of it. |
 | Playwright | `@nightly` | Runs in the nightly tier only, on Chromium. |
 | Playwright | `@perf` | A timing or performance budget. Runs in the nightly tier only, on Chromium. |
+| Playwright | `@quarantine` | A flaky test taken out of the PR tier. Runs in the nightly tier, on Chromium, so the flake stays visible. See [Flaky tests](#flaky-tests). |
 | Playwright | `@cross-engine` | Runs on Chromium in the PR tier, and on Chromium, Firefox and WebKit in the nightly tier. Combine it with `@nightly` or `@perf` to run a nightly-only test on every engine. |
 
 A Playwright tag goes at the start of the test or `describe` title (`test('@cross-engine pastes …')`,
 which tags every test inside a tagged `describe`) or in the `tag` option
 (`test('pastes …', { tag: '@nightly' }, …)`). The tier filters match these names as text, so no
-other tag or title word may begin with `@nightly` or `@perf`.
+other tag or title word may begin with `@nightly`, `@perf` or `@quarantine`.
 
 Suites marked `[Trait("Live", "true")]` talk to real third-party services and belong to neither
 tier: they need credentials and run in `.github/workflows/nightly.yml`.
+
+### Flaky tests
+
+CI fails a run in which any Playwright test fails first and passes on retry: a flaky test never
+turns a red run green. When a test proves flaky, quarantine it with the `@quarantine` tag (in the
+`tag` option, so its title stays stable) and a comment saying how it failed. That takes it out of
+the PR tier while the nightly tier keeps running it. A quarantined test is tracked and fixed, never
+left: the fix removes the tag in the same change, and the tag is not a way to retire a test that
+is no longer wanted.
 
 ### PR tier
 
@@ -81,7 +91,7 @@ The PR-tier end-to-end suite runs on the Chromium engine only, desktop and touch
 nightly-tier tags excluded. Install the browser once with `pnpm exec playwright install chromium`.
 
 ```bash
-node scripts/e2e.mjs --project chromium --project touch --grep-invert "@nightly|@perf"
+node scripts/e2e.mjs --project chromium --project touch --grep-invert "@nightly|@perf|@quarantine"
 ```
 
 ### Nightly tier
@@ -104,7 +114,7 @@ dotnet test Tellma.slnx --filter "Category=Nightly&Category!=Integration&Categor
 From `client/`, with all three browsers installed (`pnpm exec playwright install chromium firefox webkit`):
 
 ```bash
-node scripts/e2e.mjs --grep "@nightly|@cross-engine|@perf" --pass-with-no-tests
+node scripts/e2e.mjs --grep "@nightly|@cross-engine|@perf|@quarantine" --pass-with-no-tests
 ```
 
 ## Contributor License Agreement

@@ -15,9 +15,10 @@
 #     (Integration and E2E tests included), except Live=true suites, which need credentials and
 #     run in nightly.yml. On Linux all of them; on Windows those that are neither Integration nor
 #     E2E, matching the OS coverage the PR tier gives each kind.
-#   - Playwright: every test tagged @nightly, @cross-engine or @perf, on all four projects. The
-#     Firefox and WebKit projects keep their own @cross-engine filter on top, so a @nightly or
-#     @perf test reaches them only when it is also tagged @cross-engine.
+#   - Playwright: every test tagged @nightly, @cross-engine, @perf or @quarantine, on all four
+#     projects. The Firefox and WebKit projects keep their own @cross-engine filter on top, so a
+#     @nightly, @perf or @quarantine test reaches them only when it is also tagged @cross-engine.
+#     Quarantined flaky tests run here so a flake stays visible until it is fixed.
 # An empty tier is a green run: both steps deliberately pass when nothing matches.
 name: Nightly tier
 
@@ -110,7 +111,7 @@ jobs:
       # No --project: on CI the script runs all four projects in one invocation. Without
       # --pass-with-no-tests Playwright fails a run that selects nothing.
       - name: Nightly-tier e2e (all engines)
-        run: node scripts/e2e.mjs --grep "@nightly|@cross-engine|@perf" --pass-with-no-tests
+        run: node scripts/e2e.mjs --grep "@nightly|@cross-engine|@perf|@quarantine" --pass-with-no-tests
       - name: Upload the Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v4

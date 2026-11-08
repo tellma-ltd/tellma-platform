@@ -127,37 +127,41 @@ test('the two-stage Esc: dropdown first, then the grid cancel', async ({ page })
   expect(await cellText(page, 0, 1)).toBe('Bob Stone');
 });
 
-test('unresolved commit text resolves through the column resolver AFTER editor teardown', async ({
-  page,
-}) => {
-  await page.getByTestId('resolver-delay').fill('600');
-  await activateCell(page, 2, 1);
-  await page.keyboard.press('Z');
-  await expect(pickerInput(page)).toBeVisible();
-  await page.keyboard.type('ebra'); // the search finds nothing — the resolver's question
-  await expect(pickerInput(page)).toHaveValue('Zebra'); // every keystroke landed
-  const searchesBefore = await searchCalls(page);
-  await activateCell(page, 2, 3); // click-elsewhere commit
-  // The editor tore down while the resolution is still pending — the
-  // pending affordance is the GRID's, and exactly one resolver call runs.
-  await expect(editor(page)).toHaveCount(0);
-  await expect(cell(page, 2, 1).locator('.tm-grid__cell-spin')).toBeVisible();
-  await expect(page.getByTestId('resolver-calls')).toHaveText('1');
-  // No duplicate round-trip through the picker either.
-  expect(await searchCalls(page)).toBe(searchesBefore);
+// Quarantined: flaky on Linux CI (failed its first attempt, passed on
+// retry). Out of the PR tier until the race is fixed; still runs nightly.
+test(
+  'unresolved commit text resolves through the column resolver AFTER editor teardown',
+  { tag: '@quarantine' },
+  async ({ page }) => {
+    await page.getByTestId('resolver-delay').fill('600');
+    await activateCell(page, 2, 1);
+    await page.keyboard.press('Z');
+    await expect(pickerInput(page)).toBeVisible();
+    await page.keyboard.type('ebra'); // the search finds nothing — the resolver's question
+    await expect(pickerInput(page)).toHaveValue('Zebra'); // every keystroke landed
+    const searchesBefore = await searchCalls(page);
+    await activateCell(page, 2, 3); // click-elsewhere commit
+    // The editor tore down while the resolution is still pending — the
+    // pending affordance is the GRID's, and exactly one resolver call runs.
+    await expect(editor(page)).toHaveCount(0);
+    await expect(cell(page, 2, 1).locator('.tm-grid__cell-spin')).toBeVisible();
+    await expect(page.getByTestId('resolver-calls')).toHaveText('1');
+    // No duplicate round-trip through the picker either.
+    expect(await searchCalls(page)).toBe(searchesBefore);
 
-  // 'Zebra' is neither a label nor a code: raw text kept, error-tinted.
-  await expect(cell(page, 2, 1)).toHaveClass(/tm-grid__cell--error/);
-  expect(await cellText(page, 2, 1)).toBe('Zebra');
-  expect((await lines(page))[2].agentId).toBeNull();
-  await expect(page.getByTestId('resolver-calls')).toHaveText('1');
+    // 'Zebra' is neither a label nor a code: raw text kept, error-tinted.
+    await expect(cell(page, 2, 1)).toHaveClass(/tm-grid__cell--error/);
+    expect(await cellText(page, 2, 1)).toBe('Zebra');
+    expect((await lines(page))[2].agentId).toBeNull();
+    await expect(page.getByTestId('resolver-calls')).toHaveText('1');
 
-  // One undo restores the pre-edit state.
-  await activateCell(page, 2, 1);
-  await pressUndo(page);
-  await expect(cell(page, 2, 1)).not.toHaveClass(/tm-grid__cell--error/);
-  expect((await lines(page))[2].agentId).toBeNull();
-});
+    // One undo restores the pre-edit state.
+    await activateCell(page, 2, 1);
+    await pressUndo(page);
+    await expect(cell(page, 2, 1)).not.toHaveClass(/tm-grid__cell--error/);
+    expect((await lines(page))[2].agentId).toBeNull();
+  },
+);
 
 test('a commit while the search is in flight is decided BY that search, not the resolver', async ({
   page,

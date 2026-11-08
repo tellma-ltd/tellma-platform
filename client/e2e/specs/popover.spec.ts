@@ -88,7 +88,9 @@ test.describe('open/close + focus (DoD 16)', () => {
 });
 
 test.describe('positioning (DoD 16)', () => {
-  test('block-end/start alignment mirrors under RTL', async ({ page }) => {
+  // Quarantined: flaky on Linux CI (failed its first attempt, passed on
+  // retry). Out of the PR tier until the race is fixed; still runs nightly.
+  test('block-end/start alignment mirrors under RTL', { tag: '@quarantine' }, async ({ page }) => {
     await page.goto(storyUrl('popover'));
     const trigger = page.getByTestId('popover-trigger');
     await trigger.click();

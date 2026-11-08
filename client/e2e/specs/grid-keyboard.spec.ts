@@ -236,20 +236,24 @@ test.describe('tab stop and mid-grid exit', () => {
     await expect(cell(page, 6, 2)).toBeFocused();
   });
 
-  test('a readonly grid is a single tab stop: Tab from a focused cell leaves it', async ({
-    page,
-  }) => {
-    await gotoGrid(page, 'grid-states');
-    await cell(page, 3, 1).click();
-    await expect(cell(page, 3, 1)).toBeFocused();
+  // Quarantined: flaky on Linux CI (failed its first attempt, passed on
+  // retry). Out of the PR tier until the race is fixed; still runs nightly.
+  test(
+    'a readonly grid is a single tab stop: Tab from a focused cell leaves it',
+    { tag: '@quarantine' },
+    async ({ page }) => {
+      await gotoGrid(page, 'grid-states');
+      await cell(page, 3, 1).click();
+      await expect(cell(page, 3, 1)).toBeFocused();
 
-    await page.keyboard.press('Tab');
-    const focusInsideGrid = await page.evaluate(() => {
-      const grid = document.querySelector('[role="grid"]');
-      return grid !== null && grid.contains(document.activeElement);
-    });
-    expect(focusInsideGrid).toBe(false);
-  });
+      await page.keyboard.press('Tab');
+      const focusInsideGrid = await page.evaluate(() => {
+        const grid = document.querySelector('[role="grid"]');
+        return grid !== null && grid.contains(document.activeElement);
+      });
+      expect(focusInsideGrid).toBe(false);
+    },
+  );
 
   test('single tab stop holds with interactive display content (link column)', async ({
     page,
