@@ -63,6 +63,42 @@ Format, one entry per ruling:
 - Ruling, suspect gates: all 5 kept (PC-046←044, PC-126←041, PC-087←055, PC-038←022, PC-059←013). Removing a gate risks a broken build; each costs little because the other gates of the same checkpoint (or its consumers) already wait on as deep a chain. PC-059←013 is treated as a deliberate serialization of shared core-ui files.
 - Revisit if: an implementer reports a gate as unnecessary or another missing; a new gate may only point to an earlier checkpoint.
 
+### D-010 (PC-000, 2026-11-08): the PR tier keeps @cross-engine tests on Chromium
+- Situation: the PC-000 entry said to grep-invert `@nightly`, `@cross-engine` and `@perf`. In this repo `@cross-engine` marks tests that run in full on Chromium plus a Firefox/WebKit subset, so excluding the tag would drop about 40 Chromium PR tests.
+- Ruling: the PR tier runs `node scripts/e2e.mjs --project chromium --project touch --grep-invert "@nightly|@perf"` (CONTRIBUTING.md); Firefox/WebKit runs are nightly. PROCESS.md §11 and PLAN.md §6 updated to match.
+
+### D-011 (PC-000, 2026-11-08): flaky tests must fail CI, not retry green
+- Situation: CI Playwright ran `retries: 2`, which turns a flaky test green silently, against PROCESS.md §5.3.
+- Ruling: CI keeps retries only if a test that passes on retry still fails the job (or retries go to 0); the flake then gets quarantined and tracked under LEDGER.md "Flaky".
+
+### D-012 (PC-000, 2026-11-08): nightly after the merge into main is a merge-time task
+- Ruling: platform-core's `nightly-tier.yml` stays guarded to `refs/heads/platform-core`. At the platform-core → main merge, restore its schedule and a main guard (the trampoline is replaced), and drop the platform-core sentences in CONTRIBUTING.md and the `.gitattributes` plans/** line with plans/. Tracked in LEDGER.md §Merge-time tasks.
+
+### D-013 (orchestrator, 2026-11-08): when the 4th cycle is allowed
+- Situation: PROCESS.md §5.1 allows 4 cycles "while the ready queue holds both backend and client work". After PC-000 integrated, the in-flight cycles were all backend (PC-001/002/003) and the ready queue all client (PC-004/008).
+- Ruling: count in-flight and ready work together. A 4th cycle runs when the 4 cycles would mix backend and client work, since the limit exists to avoid CPU and merge contention between same-layer builds.
+
+### D-014 (orchestrator, 2026-11-08): a dedicated fix slot for stop-the-line fixes
+- Situation: PROCESS.md §8.3 assigns a free slot to a PC-Fnn fix, but all four slots held in-flight checkpoints when PC-000's integration turned CI red (five flaky e2e tests, previously hidden by retries, now fail the run per D-011).
+- Ruling: a fifth worktree `WT/pc-f` serves only PC-Fnn fixes. Fixes are small, so it adds little CPU or merge contention, and the line restarts without waiting for a lane to free. The five tests are quarantined first (PC-F01); their root-cause fix is a separate queued item (PC-F02).
+- Revisit if: the fix slot ever holds more than one fix at a time.
+
+### D-015 (PC-003, 2026-11-08): Queryex host-composition rulings reported by the implementer
+- Zones: Antarctica/Troll is left out (no CLDR Windows mapping), giving 418 current ids; the tzdb release behind the checked-in zone.tab ids is pinned to 2026b (WATCHLIST gap).
+- A filter that folds to false drops the restrictions and their joins; QX5006 raised from a restriction reports location "Restrictions[i]".
+- The Queryex integration fixture writes COLLATE Latin1_General_100_CI_AS literally; whichever of PC-003 / PC-002 integrates second switches it to `DatabaseCollations`.
+- Seam: string key sets can hit SQL Msg 468 unless the host's list types carry the column collation (0010-G, PC-005, and spec 0012 must honour it).
+- Also fixed a latent `BindKey.Equals` bug (version was never compared).
+- Revisit if: Review 1/2 of PC-003 disputes any of these.
+
+### D-016 (PC-001, 2026-11-08): composition-root rulings that bind later checkpoints
+- `IClientAssetContributor`, `ClientAssetContext`, `ClientMetadataChunk` and `TellmaRoutes` are created by PC-001 (Tellma.Core.Abstractions.Client / .Composition). PC-015 (contract seed) extends them and never re-declares them (planner note added to PC-015).
+- A `[CollectionService]` attribute replaces the fixed collection-service exemption list. Every checkpoint that owns a multi-registration interface marks it, including `IRequestContextInitializer`, `ITenantStateListener`, `ISessionTerminationListener`, `IAccessCriteriaProvider` and `INotificationChannel`.
+- Declared options are validated by the `core.options` check inside the startup gate, not by `ValidateOnStart` (which would abort before the gate aggregates). Platform options from 0011 §8 bind later through `OptionsRegistrar`.
+- Contributions are collected before the graph gate, so nested features join it; `TellmaComposition.Validate` also returns realisation problems.
+- Every Microsoft 10.0.x pin and dotnet-ef move to 10.0.11 (one servicing line). Identity and other migrations are regenerated with dotnet-ef 10.0.11 after this lands (PC-002 first).
+- Revisit if: Review 1 of PC-001 disputes any of these.
+
 ### D-006 (Ahmad, 2026-11-08): review levers
 - Ruling: Review 2 runs only for the PROCESS.md §3 two-review list (security-bound or complex, 44 checkpoints) and for escalations (§4.4); every other checkpoint gets Review 1 and one fix round. Cross-checkpoint batch reviews run once per phase instead of per group.
 - Why: Ahmad traded some review depth for about 0.7 weeks of Tier-1 budget (PLAN.md §3.3). The escalation rule keeps a second review wherever Review 1 shows trouble.
