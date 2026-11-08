@@ -57,7 +57,9 @@ describe('tm/prefix-exports', () => {
   });
 });
 
-describe('tm/prefix-exports scope', () => {
+// The first lint loads the whole workspace config (typescript-eslint, angular-eslint), which
+// takes several seconds on a busy machine; the default 5 s test timeout would make that a flake.
+describe('tm/prefix-exports scope', { timeout: 60_000 }, () => {
   const eslint = new ESLint({ cwd: process.cwd() });
   const UNPREFIXED = 'export const helper = 1;\n';
   const ACCESSOR = 'export function injectTmSales(): number {\n  return 1;\n}\n';
