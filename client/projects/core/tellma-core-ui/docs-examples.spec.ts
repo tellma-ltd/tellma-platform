@@ -8,6 +8,7 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideHttpClient } from '@angular/common/http';
 import { form } from '@angular/forms/signals';
+import { Check, ChevronRight, CircleAlert, Plus } from 'lucide';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 import { TmAlert } from '@tellma/core-ui/alert';
@@ -24,8 +25,10 @@ import {
   TmGridEmptyDef,
   TmGridLoadingDef,
 } from '@tellma/core-ui/grid';
+import { TmIcon, provideTellmaIcons } from '@tellma/core-ui/icon';
 import { TmImage, TmImagePlaceholder } from '@tellma/core-ui/image';
 import { TmInput } from '@tellma/core-ui/input';
+import { TmKbd } from '@tellma/core-ui/kbd';
 import { TmContextMenuTrigger, TmMenu } from '@tellma/core-ui/menu';
 import { TmModalFooter } from '@tellma/core-ui/modal';
 import { TmNumber } from '@tellma/core-ui/number';
@@ -44,8 +47,10 @@ import * as entityPickerExamples from './entity-picker/tm-entity-picker.examples
 import * as dropzoneExamples from './files/tm-dropzone.examples';
 import * as filePickerExamples from './files/tm-file-picker.examples';
 import * as gridExamples from './grid/tm-grid.examples';
+import * as iconExamples from './icon/tm-icon.examples';
 import * as imageExamples from './image/tm-image.examples';
 import * as inputExamples from './input/tm-input.examples';
+import * as kbdExamples from './kbd/tm-kbd.examples';
 import * as menuExamples from './menu/tm-menu.examples';
 import * as modalFooterExamples from './modal/tm-modal-footer.examples';
 import * as numberExamples from './number/tm-number.examples';
@@ -116,9 +121,11 @@ class ExamplePage {}
     TmGridDisplayDef,
     TmGridEmptyDef,
     TmGridLoadingDef,
+    TmIcon,
     TmImage,
     TmImagePlaceholder,
     TmInput,
+    TmKbd,
     TmMenu,
     TmModalFooter,
     TmNumber,
@@ -156,6 +163,8 @@ class ExamplePage {}
     <tm-checkbox>placeholder</tm-checkbox>
     <tm-select><tm-option [value]="0">placeholder</tm-option></tm-select>
     <tm-spinner />
+    <tm-icon name="plus" />
+    <tm-kbd keys="Mod+K" />
     <div [tmContextMenuTrigger]="placeholderMenu">placeholder</div>
     <tm-menu #placeholderMenu [items]="[]" />
     <div tmModalFooter>placeholder</div>
@@ -205,6 +214,8 @@ class ExampleHost {
   protected readonly treeRowId = (row: ExampleTreeRow): number => row.id;
   protected readonly treeParentId = (row: ExampleTreeRow): number | null => row.parentId;
   protected readonly onImageChange = (): void => undefined;
+  // The icon examples' direct-data binding: library code passes Lucide data.
+  protected readonly checkIcon = Check;
   protected readonly onFiles = (selection: unknown): void => void selection;
   protected readonly treeHasChildren = (row: ExampleTreeRow): boolean => row.parentId === null;
   protected readonly loadTreeChildren = (): Promise<void> => Promise.resolve();
@@ -353,6 +364,16 @@ const MARKERS: {
         .some((el) => (el.componentInstance as TmPopover).contentTemplate() !== undefined),
   },
   {
+    // An unregistered name draws an empty box without failing, so an icon
+    // example that names an icon must actually draw every glyph it shows.
+    name: 'TmIcon glyph',
+    pattern: /<tm-icon\b/,
+    instantiated: (fixture) =>
+      Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('tm-icon')).every(
+        (icon) => icon.querySelector(':scope > svg') !== null,
+      ),
+  },
+  {
     name: 'TmTooltip',
     pattern: /\btmTooltip\b/,
     instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmTooltip)).length > 0,
@@ -411,6 +432,8 @@ const SUITES = [
   { source: 'checkbox/tm-checkbox.examples.ts', examples: checkboxExamples },
   { source: 'select/tm-select.examples.ts', examples: selectExamples },
   { source: 'spinner/tm-spinner.examples.ts', examples: spinnerExamples },
+  { source: 'icon/tm-icon.examples.ts', examples: iconExamples },
+  { source: 'kbd/tm-kbd.examples.ts', examples: kbdExamples },
   { source: 'tabs/tm-tabs.examples.ts', examples: tabsExamples },
   { source: 'modal/tm-modal-footer.examples.ts', examples: modalFooterExamples },
   { source: 'popover/tm-popover.examples.ts', examples: popoverExamples },
@@ -426,8 +449,17 @@ describe('co-located docs examples compile against the live API (§11)', () => {
       for (const [title, { template }] of Object.entries(examples)) {
         it(`'${title}' compiles, renders, and instantiates what it names`, async () => {
           TestBed.configureTestingModule({
-            // provideHttpClient backs tm-image's default TM_BLOB_FETCHER.
-            providers: [provideTellmaUi(), provideHttpClient()],
+            // provideHttpClient backs tm-image's default TM_BLOB_FETCHER; the
+            // icons are the registry names the icon examples draw.
+            providers: [
+              provideTellmaUi(),
+              provideHttpClient(),
+              provideTellmaIcons({
+                plus: Plus,
+                'circle-alert': CircleAlert,
+                'chevron-right': { node: ChevronRight, mirrorInRtl: true },
+              }),
+            ],
             errorOnUnknownElements: true,
             errorOnUnknownProperties: true,
           });

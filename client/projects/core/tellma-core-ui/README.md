@@ -35,6 +35,8 @@ disabled/readonly/required).
 | `@tellma/core-ui/tree-grid` | `tm-tree-grid` — the hierarchical grid |
 | `@tellma/core-ui/grid-engine` | The framework-free grid engine behind `tm-grid` |
 | `@tellma/core-ui/spinner` | `tm-spinner` — the shared decorative pending/progress glyph |
+| `@tellma/core-ui/icon` | `tm-icon` — a Lucide icon by registry name or from icon data, sized by `--icon-size`, mirrored in RTL when directional; `TmIconRegistry` + `provideTellmaIcons()` |
+| `@tellma/core-ui/kbd` | The `TmKeys` notation (`'Mod+K'`), `tmKeysMatch` (layout-independent, AltGr-safe), `tmFormatKeys`/`tmKeysText`/`tmAriaKeyShortcuts`, `tmIsApplePlatform`, and `tm-kbd`'s key caps |
 | `@tellma/core-ui/private` | Unstable wiring shared between Tellma libraries — no API goldens, never for app code |
 
 ## Consuming
@@ -50,6 +52,22 @@ Add to the application's `styles` array:
   authoritative list is `package.json`'s `"tellma".docs.globalStyles`, keyed
   by the entry point that needs it.
 
+Icons draw from data, not from a font or a sprite. The library registers no
+icon names: register the ones the application uses once, importing each
+icon's data from `lucide` (a dependency of this package):
+
+```ts
+import { ChevronRight, HandCoins } from 'lucide';
+
+providers: [
+  provideTellmaIcons({
+    'hand-coins': HandCoins,
+    // Glyphs that point along the reading direction flip in RTL.
+    'chevron-right': { node: ChevronRight, mirrorInRtl: true },
+  }),
+]
+```
+
 The build pipeline fingerprints the font binaries like any other
 CSS-referenced asset (see the showcase's `angular.json` for the reference
 wiring, and the workspace's `scripts/inject-font-preloads.mjs` for the
@@ -64,7 +82,14 @@ the components ship no hardcoded sizes or colors.
 - Entry points import shared code via `@tellma/core-ui` only — never a
   relative `../` path (each entry point is its own compilation unit).
 - Component hosts must be `display: block`: an inline host wrapping a block
-  child hit-tests above the child in Chromium, swallowing real clicks.
+  child hit-tests above the child in Chromium, swallowing real clicks. The
+  inline glyphs that sit inside text and controls (`tm-icon`, `tm-kbd`) are
+  `inline-flex` instead; neither takes pointer input.
+- `@tellma/core-ui/icon` and `/kbd` are the foundation every other entry
+  point builds on, so they import no other `@tellma` entry point (lint
+  enforces it). Library glyphs draw through `<tm-icon [svg]>` with data
+  imported from `lucide`; key combinations are matched and labelled through
+  the `kbd` helpers, the library's only platform check.
 - Usage examples live in co-located `*.examples.ts` files (dependency-free
   template objects); they feed the docs pipeline and are compile-checked
   against the live components by `docs-examples.spec.ts`.
