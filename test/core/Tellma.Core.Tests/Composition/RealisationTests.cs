@@ -33,6 +33,48 @@ namespace Tellma.Core.Tests.Composition
         }
 
         [Fact]
+        public void A_feature_replaces_the_service_of_a_feature_it_requires_transitively()
+        {
+            IServiceCollection services = TestComposition.Compose(tellma => tellma
+                .AddFeature(new TestFeature<Tag.A>("acme", d => d.Requires("sales"), c => c.Singleton<ISampleService, ReplacementService>()))
+                .AddFeature(new TestFeature<Tag.B>("sales", d => d.Requires("gl")))
+                .AddFeature(new TestFeature<Tag.C>("gl", contribute: c => c.Singleton<ISampleService, SampleService>())));
+
+            using ServiceProvider provider = services.BuildServiceProvider();
+            Assert.Equal("distribution", provider.GetRequiredService<ISampleService>().Who);
+        }
+
+        [Fact]
+        public void Two_unrelated_features_registering_one_service_type_are_reported_naming_both()
+        {
+            IReadOnlyList<CompositionProblem> problems = TestComposition.Problems(tellma => tellma
+                .AddFeature(new TestFeature<Tag.A>("sales", contribute: c => c.Scoped<ISampleService, SampleService>()))
+                .AddFeature(new TestFeature<Tag.B>("inventory", contribute: c => c.Scoped<ISampleService, ReplacementService>())));
+
+            CompositionProblem problem = Assert.Single(problems);
+            Assert.Contains("'sales' and 'inventory' both register the service", problem.Problem, StringComparison.Ordinal);
+            Assert.Contains("'inventory' requires 'sales'", problem.Fix, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Framework_multi_registration_types_are_collection_services()
+        {
+            IServiceCollection services = TestComposition.Compose(tellma => tellma
+                .AddFeature(new TestFeature<Tag.A>("sales", contribute: c => c
+                    .Singleton<IHostedService, ProbeHostedService>()
+                    .Singleton<IConfigureOptions<SampleOptions>, ConfigureSampleName>()))
+                .AddFeature(new TestFeature<Tag.B>("inventory", contribute: c => c
+                    .Singleton<IHostedService, ProbeHostedService>()
+                    .Singleton<IConfigureOptions<SampleOptions>, ConfigureSampleCount>())));
+
+            // Both hosted services stay beside the startup gate, and both configure steps apply.
+            Assert.Equal(3, services.Count(static d => d.ServiceType == typeof(IHostedService)));
+            using ServiceProvider provider = services.AddOptions().BuildServiceProvider();
+            SampleOptions options = provider.GetRequiredService<IOptions<SampleOptions>>().Value;
+            Assert.Equal(("configured", 5), (options.Name, options.Count));
+        }
+
+        [Fact]
         public void Collection_services_are_never_replaced()
         {
             IServiceCollection services = TestComposition.Compose(tellma => tellma
@@ -225,6 +267,26 @@ namespace Tellma.Core.Tests.Composition
         private static TellmaCompositionRecord Record(IServiceCollection services)
         {
             return (TellmaCompositionRecord)services.Single(static d => d.ServiceType == typeof(TellmaCompositionRecord)).ImplementationInstance!;
+        }
+
+        /// <summary>Sets <see cref="SampleOptions.Name" />.</summary>
+        private sealed class ConfigureSampleName : IConfigureOptions<SampleOptions>
+        {
+            /// <inheritdoc />
+            public void Configure(SampleOptions options)
+            {
+                options.Name = "configured";
+            }
+        }
+
+        /// <summary>Sets <see cref="SampleOptions.Count" />.</summary>
+        private sealed class ConfigureSampleCount : IConfigureOptions<SampleOptions>
+        {
+            /// <inheritdoc />
+            public void Configure(SampleOptions options)
+            {
+                options.Count = 5;
+            }
         }
 
         /// <summary>A base item kind with a realizer.</summary>

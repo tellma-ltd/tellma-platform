@@ -9,14 +9,22 @@ using Tellma.Core.Abstractions.Composition;
 namespace Tellma.Core.Composition.Realizers
 {
     /// <summary>
-    ///     Registers <see cref="ServiceContributionItem" />s. A later feature's registration of a
-    ///     service type replaces every earlier feature's, so a dependent feature overrides a service
-    ///     of a feature it requires; a <see cref="CollectionServiceAttribute" /> type only ever adds.
+    ///     Registers <see cref="ServiceContributionItem" />s. A dependent feature's registration of a
+    ///     service type replaces that of the feature it requires; a collection service type (marked
+    ///     <see cref="CollectionServiceAttribute" />, or a framework multi-registration type such as
+    ///     <c>IHostedService</c>) only ever adds.
     /// </summary>
     /// <remarks>
-    ///     Only registrations this realizer made are replaced. A host-level registration made directly
-    ///     on the builder's services stays in the collection; the feature's registration, added after
-    ///     it, is still the one a single resolution returns.
+    ///     <para>
+    ///         The graph gate refuses two features that register one non-collection service type
+    ///         unless one depends on the other, so the feature realised later is always the
+    ///         dependent one by the time an item reaches this realizer.
+    ///     </para>
+    ///     <para>
+    ///         Only registrations this realizer made are replaced. A host-level registration made
+    ///         directly on the builder's services stays in the collection; the feature's
+    ///         registration, added after it, is still the one a single resolution returns.
+    ///     </para>
     /// </remarks>
     internal sealed class ServiceContributionRealizer : IContributionRealizer<ServiceContributionItem>
     {
@@ -32,14 +40,14 @@ namespace Tellma.Core.Composition.Realizers
                 return;
             }
 
-            if (IsCollectionService(item.ServiceType))
+            if (CollectionServices.Contains(item.ServiceType))
             {
                 context.Services.Add(descriptor);
                 return;
             }
 
-            // Topological realisation puts every required feature first, so the registration being
-            // realised now belongs to the most dependent feature seen so far and wins.
+            // Topological realisation puts every required feature first, and the graph gate refused
+            // unrelated contributors, so the registration being realised now is the dependent's.
             if (_registered.Remove(item.ServiceType, out ServiceDescriptor? replaced))
             {
                 _ = context.Services.Remove(replaced);
@@ -109,15 +117,6 @@ namespace Tellma.Core.Composition.Realizers
             return assignable
                 ? new ServiceDescriptor(item.ServiceType, implementation, lifetime)
                 : Report(context, $"Feature {feature} registers {implementationName} for {service}, which it does not implement.", $"Register a class that implements {TypeDisplay.Short(item.ServiceType)}.");
-        }
-
-        /// <summary>Whether the service type, or its generic definition, is marked <see cref="CollectionServiceAttribute" />.</summary>
-        /// <param name="serviceType">The service type.</param>
-        /// <returns>True for a collection service.</returns>
-        private static bool IsCollectionService(Type serviceType)
-        {
-            Type definition = serviceType.IsGenericType ? serviceType.GetGenericTypeDefinition() : serviceType;
-            return definition.IsDefined(typeof(CollectionServiceAttribute), inherit: false);
         }
 
         /// <summary>Whether an open generic implementation derives from or implements a construction of an open generic service.</summary>

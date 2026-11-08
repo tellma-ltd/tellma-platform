@@ -62,6 +62,39 @@ namespace Tellma.Core.Tests.Composition
         }
 
         [Fact]
+        public async Task A_problem_text_spanning_lines_renders_as_one_message_line()
+        {
+            using IHost host = BuildHost(
+                static _ => { },
+                tellma => tellma.AddFeature(new TestFeature<Tag.A>("acme", contribute: c => c
+                    .Singleton<IStartupCheck, MultiLineThrowingCheck>()
+                    .Singleton<IStartupCheck, FailingCheck>())));
+
+            TellmaCompositionException exception = await Assert.ThrowsAsync<TellmaCompositionException>(
+                () => host.StartAsync(TestContext.Current.CancellationToken));
+
+            Assert.Equal(exception.Problems.Count + 1, exception.Message.Split('\n').Length);
+            Assert.Contains("first error second error", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task A_contributed_check_that_cannot_be_created_still_lets_the_built_in_checks_report()
+        {
+            using IHost host = BuildHost(
+                static _ => { },
+                tellma => tellma.AddFeature(new TestFeature<Tag.A>("acme", contribute: c => c.Singleton<IStartupCheck, UnconstructibleCheck>())),
+                new Dictionary<string, string?>());
+
+            TellmaCompositionException exception = await Assert.ThrowsAsync<TellmaCompositionException>(
+                () => host.StartAsync(TestContext.Current.CancellationToken));
+
+            Assert.Equal(2, exception.Problems.Count);
+            Assert.Contains("could not be created, so only the built-in ones ran", exception.Problems[0].Problem, StringComparison.Ordinal);
+            Assert.Contains("ArgumentException", exception.Problems[0].Problem, StringComparison.Ordinal);
+            Assert.Equal("core.public-origin", exception.Problems[1].Source);
+        }
+
+        [Fact]
         public async Task Built_in_check_problems_aggregate_with_contributed_ones()
         {
             using IHost host = BuildHost(

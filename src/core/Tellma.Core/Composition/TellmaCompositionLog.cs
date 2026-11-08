@@ -17,6 +17,12 @@ namespace Tellma.Core.Composition
         [LoggerMessage(Level = LogLevel.Error, Message = "The startup check {Check} threw.")]
         public static partial void CheckThrew(ILogger logger, string check, Exception exception);
 
+        /// <summary>The registered startup checks could not be created; only the built-in ones run.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">What creating them threw.</param>
+        [LoggerMessage(Level = LogLevel.Error, Message = "The startup checks could not be created; only the built-in checks run.")]
+        public static partial void ChecksUnresolvable(ILogger logger, Exception exception);
+
         /// <summary>Every startup check passed.</summary>
         /// <param name="logger">The logger.</param>
         [LoggerMessage(Level = LogLevel.Information, Message = "The Tellma startup gate passed.")]

@@ -26,10 +26,10 @@ namespace Tellma.Core.Composition
     ///         <see cref="Bind{TOptions}(string, string)" /> with the owner <c>core</c>.
     ///     </para>
     /// </remarks>
-    /// <param name="services">The host's services.</param>
+    /// <param name="context">The realisation: the services bindings register into, the record they are
+    ///     recorded in and where a conflicting binding is reported.</param>
     /// <param name="configuration">The configuration options bind from.</param>
-    /// <param name="record">The composition the bindings are recorded in.</param>
-    internal sealed class OptionsRegistrar(IServiceCollection services, IConfiguration configuration, TellmaCompositionRecord record)
+    internal sealed class OptionsRegistrar(RealizationContext context, IConfiguration configuration)
         : IFeatureOptionsBindingVisitor
     {
         private string _owner = CoreFeature.FeatureName;
@@ -50,19 +50,29 @@ namespace Tellma.Core.Composition
         public void Bind<TOptions>(string configurationPath, string owner)
             where TOptions : class
         {
-            // The graph gate already refused one type bound to two paths, so an existing binding of
-            // this type is the same binding declared twice, which binds once.
-            if (record.BoundOptions.Exists(bound => bound.OptionsType == typeof(TOptions)))
+            // The same type and path again is one binding declared twice, which binds once. Another
+            // path is a conflict: the graph gate refuses it between features, but a platform binding
+            // made through this seam meets a feature's only here.
+            BoundOptions? existing = context.Record.BoundOptions.Find(bound => bound.OptionsType == typeof(TOptions));
+            if (existing is not null)
             {
+                if (!string.Equals(existing.ConfigurationPath, configurationPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    context.Report(new CompositionProblem(
+                        CompositionNames.Source,
+                        $"The options type {TypeDisplay.Qualified(typeof(TOptions))} is bound from '{existing.ConfigurationPath}' (by '{existing.Owner}') and '{configurationPath}' (by '{owner}').",
+                        $"Bind {TypeDisplay.Short(typeof(TOptions))} from one configuration path; a second use needs an options type of its own."));
+                }
+
                 return;
             }
 
-            _ = services
+            _ = context.Services
                 .AddOptions<TOptions>()
                 .Bind(configuration.GetSection(configurationPath))
                 .ValidateDataAnnotations();
 
-            record.BoundOptions.Add(new BoundOptions(typeof(TOptions), configurationPath, owner, ValidateOptions<TOptions>));
+            context.Record.BoundOptions.Add(new BoundOptions(typeof(TOptions), configurationPath, owner, ValidateOptions<TOptions>));
         }
 
         /// <inheritdoc />

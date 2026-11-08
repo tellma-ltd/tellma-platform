@@ -57,6 +57,45 @@ namespace Tellma.Core.Tests.Infrastructure
         }
     }
 
+    /// <summary>A check that throws an exception whose message spans lines.</summary>
+    internal sealed class MultiLineThrowingCheck : IStartupCheck
+    {
+        /// <inheritdoc />
+        public string Name => "test.multiline";
+
+        /// <inheritdoc />
+        public bool RequiresInfrastructure => false;
+
+        /// <inheritdoc />
+        public Task<IReadOnlyList<CompositionProblem>> CheckAsync(IServiceProvider services, CancellationToken cancellationToken)
+        {
+            throw new InvalidOperationException("first error\r\nsecond error");
+        }
+    }
+
+    /// <summary>A check whose constructor throws.</summary>
+    internal sealed class UnconstructibleCheck : IStartupCheck
+    {
+        /// <summary>Always throws.</summary>
+        /// <exception cref="ArgumentException">Always.</exception>
+        public UnconstructibleCheck()
+        {
+            throw new ArgumentException("The check refuses to be created.");
+        }
+
+        /// <inheritdoc />
+        public string Name => "test.unconstructible";
+
+        /// <inheritdoc />
+        public bool RequiresInfrastructure => false;
+
+        /// <inheritdoc />
+        public Task<IReadOnlyList<CompositionProblem>> CheckAsync(IServiceProvider services, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<CompositionProblem>>([]);
+        }
+    }
+
     /// <summary>A scoped dependency two checks share.</summary>
     internal sealed class ScopedProbe
     {

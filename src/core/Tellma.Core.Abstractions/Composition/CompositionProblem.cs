@@ -27,11 +27,16 @@ namespace Tellma.Core.Abstractions.Composition
         /// <inheritdoc cref="CompositionProblem(string, string, string?)" />
         public string Problem { get; } = ValidateText(Problem, nameof(Problem));
 
-        /// <summary>Renders the problem as one line: the source, the problem and, when present, the fix.</summary>
+        /// <summary>
+        ///     Renders the problem as one line: the source, the problem and, when present, the fix.
+        ///     Line breaks inside any component (an embedded exception message can carry several) are
+        ///     rendered as spaces, so the rendering is always exactly one line.
+        /// </summary>
         /// <returns>The one-line rendering.</returns>
         public string Describe()
         {
-            return Fix is null ? $"[{Source}] {Problem}" : $"[{Source}] {Problem} Fix: {Fix}";
+            string line = Fix is null ? $"[{Source}] {Problem}" : $"[{Source}] {Problem} Fix: {Fix}";
+            return line.ReplaceLineEndings(" ");
         }
 
         /// <summary>Refuses a null, empty or whitespace component.</summary>

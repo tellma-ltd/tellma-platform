@@ -56,13 +56,17 @@ namespace Tellma.Core.Composition
                 {
                     checks = [.. scope.ServiceProvider.GetServices<IStartupCheck>()];
                 }
-                catch (InvalidOperationException exception)
+                catch (Exception exception) when (exception is not OperationCanceledException)
                 {
-                    // A check whose own dependencies cannot be resolved takes the whole list with it.
-                    return [new CompositionProblem(
+                    // One check that cannot be created takes the whole resolved list with it, so the
+                    // run falls back to the built-in checks, which the composition created itself and
+                    // which therefore always exist: the gate still reports everything it can.
+                    TellmaCompositionLog.ChecksUnresolvable(logger, exception);
+                    problems.Add(new CompositionProblem(
                         CompositionNames.Source,
-                        $"The startup checks could not be created: {exception.Message}",
-                        "Register every service the startup checks depend on.")];
+                        $"The startup checks could not be created, so only the built-in ones ran: {exception.GetType().Name}: {exception.Message}",
+                        "Register every service the contributed startup checks depend on, and keep their constructors from throwing."));
+                    checks = services.GetService<TellmaCompositionRecord>()?.BuiltInChecks ?? [];
                 }
 
                 foreach (IStartupCheck check in checks)

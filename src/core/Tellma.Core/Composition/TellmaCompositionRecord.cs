@@ -46,6 +46,12 @@ namespace Tellma.Core.Composition
         /// <summary>The entity shapes features require of other features' entities, in realisation order.</summary>
         public List<ShapeRequirement> ShapeRequirements { get; } = [];
 
+        /// <summary>
+        ///     The platform's built-in startup checks, also registered as services. The startup gate
+        ///     runs these alone when a contributed check cannot be created.
+        /// </summary>
+        public List<IStartupCheck> BuiltInChecks { get; } = [];
+
         /// <summary>Every options type bound by the composition, with the validation the startup gate runs.</summary>
         public List<BoundOptions> BoundOptions { get; } = [];
 

@@ -28,18 +28,23 @@ services.AddTellma("acme", configuration, environment, tellma => tellma
    `TellmaCompositionException`, before the host is built: a requirement no added feature has
    (naming the feature that requires it), two features with one name, a cycle (with its path), a
    feature type added as two instances, an options type bound to two paths, a slug or feature name
-   outside its grammar, a second leaf for one default, and an item no realizer handles.
+   outside its grammar, a second leaf for one default, an item no realizer handles, and two
+   features registering one non-collection service type when neither depends on the other.
 4. **Realise.** Items are realised in topological order (`core` first, each feature after what it
    requires and nests, otherwise in the order added). A later feature's service registration
    replaces an earlier one's, so a distribution replaces a pack's service by requiring the pack and
-   registering the same service type; a type marked `[CollectionService]` (`IStartupCheck`,
-   `IClientAssetContributor`) only ever adds. Realizer problems are thrown together, again before
+   registering the same service type; a collection service only ever adds: a type marked
+   `[CollectionService]` (`IStartupCheck`, `IClientAssetContributor`) or one of the framework's
+   multi-registration types (`IHostedService`, `IHostedLifecycleService`, `IConfigureOptions<>`,
+   `IConfigureNamedOptions<>`, `IPostConfigureOptions<>`, `IValidateOptions<>`,
+   `IOptionsChangeTokenSource<>`, `IStartupFilter`). Realizer problems are thrown together, again before
    the host is built.
 
 The **realised gate**, `TellmaStartupGate`, is inserted as the first hosted service. In
 `IHostedLifecycleService.StartingAsync` it runs every registered `IStartupCheck` inside one scope
 and throws one `TellmaCompositionException` carrying every problem, before any other hosted service
-starts and before the host serves traffic. `TellmaStartupGate.RunChecksAsync` runs the same checks
+starts and before the host serves traffic. When a contributed check cannot be created, the gate
+reports that and still runs the built-in checks. `TellmaStartupGate.RunChecksAsync` runs the same checks
 for a host that is not started, optionally skipping those with `RequiresInfrastructure`.
 
 `TellmaComposition.Validate` runs the same composition host-free and returns, rather than throws,
@@ -53,7 +58,7 @@ every problem `AddTellma` would throw.
 | `core.deployment-identity` | the registered `DeploymentIdentity` names another application, or no `ISandboxContext` resolves | no |
 | `core.globalization` | the process does not run ICU (invariant mode or Windows NLS) | no |
 | `core.key-vault-literals` | a value under `Tellma:` is an unresolved `@Microsoft.KeyVault(` reference | yes |
-| `core.public-origin` | `Tellma:PublicOrigin` is missing, relative, more than an origin, or not https outside Development | yes |
+| `core.public-origin` | `Tellma:PublicOrigin` is missing, relative, more than an origin (a trailing slash included, since derived URIs append `/…` to it), or not https outside Development | yes |
 | `core.taxonomy` | in Development, the repository's `taxonomy.json` does not list the slug | no |
 | `core.entity-shapes` | the leaf registered for an entity does not implement a shape another feature requires of it; the fix lists the members | no |
 

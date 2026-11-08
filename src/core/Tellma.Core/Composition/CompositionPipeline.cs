@@ -120,7 +120,7 @@ namespace Tellma.Core.Composition
             }
 
             // --- Declared options ---
-            OptionsRegistrar options = new(services, configuration, _record);
+            OptionsRegistrar options = new(context, configuration);
             foreach (ComposedFeature feature in ordered)
             {
                 foreach (FeatureOptionsBinding binding in feature.OptionsBindings)
@@ -337,6 +337,79 @@ namespace Tellma.Core.Composition
                 }
             }
 
+            // --- One service type from two unrelated features ---
+            problems.AddRange(CheckServiceOverrides(features, dependencies));
+
+            return problems;
+        }
+
+        /// <summary>
+        ///     Reports every pair of features that register one non-collection service type when
+        ///     neither depends on the other, directly or transitively: only a dependent feature may
+        ///     replace the service of a feature it builds on, and between unrelated features the
+        ///     winner would be decided by the order they happen to be added in.
+        /// </summary>
+        /// <param name="features">The collected features.</param>
+        /// <param name="dependencies">Each feature's direct requirements and nested features, by index.</param>
+        /// <returns>One problem per unrelated pair and service type.</returns>
+        private static List<CompositionProblem> CheckServiceOverrides(IReadOnlyList<ComposedFeature> features, List<List<int>> dependencies)
+        {
+            List<CompositionProblem> problems = [];
+
+            // Which features each feature depends on, transitively. Core is implicit under every
+            // feature, so core's registrations are replaceable by anyone. A breadth-first walk per
+            // feature tolerates the cycles the gate reports separately.
+            List<HashSet<int>> reaches = [];
+            foreach (ComposedFeature feature in features)
+            {
+                HashSet<int> reached = feature.Index == 0 ? [] : [0];
+                Queue<int> queue = new(dependencies[feature.Index]);
+                while (queue.Count > 0)
+                {
+                    int next = queue.Dequeue();
+                    if (reached.Add(next))
+                    {
+                        foreach (int further in dependencies[next])
+                        {
+                            queue.Enqueue(further);
+                        }
+                    }
+                }
+
+                reaches.Add(reached);
+            }
+
+            IEnumerable<IGrouping<Type, ComposedFeature>> contributed = features
+                .SelectMany(static feature => feature.Contribution!.Items
+                    .OfType<ServiceContributionItem>()
+                    .Where(static item => item.ServiceType is not null && !CollectionServices.Contains(item.ServiceType))
+                    .Select(item => (item.ServiceType, Feature: feature)))
+                .Distinct()
+                .GroupBy(static pair => pair.ServiceType, static pair => pair.Feature);
+
+            foreach (IGrouping<Type, ComposedFeature> group in contributed)
+            {
+                List<ComposedFeature> owners = [.. group];
+                for (int i = 0; i < owners.Count; i++)
+                {
+                    for (int j = i + 1; j < owners.Count; j++)
+                    {
+                        ComposedFeature first = owners[i];
+                        ComposedFeature second = owners[j];
+                        if (reaches[first.Index].Contains(second.Index) || reaches[second.Index].Contains(first.Index))
+                        {
+                            continue;
+                        }
+
+                        string service = TypeDisplay.Short(group.Key);
+                        problems.Add(new CompositionProblem(
+                            CompositionNames.Source,
+                            $"The features '{first.Name}' and '{second.Name}' both register the service {TypeDisplay.Qualified(group.Key)}, and neither requires the other.",
+                            $"Make the feature that replaces {service} require the other ('{second.Name}' requires '{first.Name}', or the reverse), or register a different service type in one of them."));
+                    }
+                }
+            }
+
             return problems;
         }
 
@@ -365,14 +438,23 @@ namespace Tellma.Core.Composition
         /// <summary>Registers the platform's built-in startup checks.</summary>
         private void RegisterBuiltInChecks()
         {
-            // Registered as instances over this composition's record, in the order they report.
-            services.AddSingleton<IStartupCheck>(new OptionsCheck(_record));
-            services.AddSingleton<IStartupCheck>(new DeploymentIdentityCheck(_record));
-            services.AddSingleton<IStartupCheck>(new GlobalizationCheck(icuProbe));
-            services.AddSingleton<IStartupCheck>(new KeyVaultLiteralsCheck(_record));
-            services.AddSingleton<IStartupCheck>(new PublicOriginCheck(_record));
-            services.AddSingleton<IStartupCheck>(new TaxonomyCheck(_record));
-            services.AddSingleton<IStartupCheck>(new EntityShapesCheck(_record));
+            // Registered as instances over this composition's record, in the order they report, and
+            // kept on the record so the gate can still run them when a contributed check fails.
+            _record.BuiltInChecks.AddRange(
+            [
+                new OptionsCheck(_record),
+                new DeploymentIdentityCheck(_record),
+                new GlobalizationCheck(icuProbe),
+                new KeyVaultLiteralsCheck(_record),
+                new PublicOriginCheck(_record),
+                new TaxonomyCheck(_record),
+                new EntityShapesCheck(_record),
+            ]);
+
+            foreach (IStartupCheck check in _record.BuiltInChecks)
+            {
+                services.AddSingleton(check);
+            }
         }
     }
 }
