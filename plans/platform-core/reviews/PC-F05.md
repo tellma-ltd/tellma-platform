@@ -281,7 +281,7 @@ the `[1, 1]` click counts already rule out. It does not hold for the editor's re
 
 ### Responses
 
-R1-1: fixed in <sha>. Both origin reads in `loadAxe` now use `self.origin`, the document's own
+R1-1: fixed in 0073b2b. Both origin reads in `loadAxe` now use `self.origin`, the document's own
 origin, which an `about:blank` or `srcdoc` frame inherits from its parent. A new self-check
 spec, `e2e/specs/axe-runner.spec.ts`, covers the runner on the button story:
 - the story alone is clean;
@@ -296,7 +296,7 @@ The runner gained `axeViolations(page, selector?)`, the non-asserting form that
 `location.origin` restored as a check, the three frame tests fail with "The frame at about:srcdoc
 is cross-origin (null)…", and they pass with the fix.
 
-R1-2: fixed in <sha>, per the orchestrator's ruling. A cross-origin frame inside the scan's scope
+R1-2: fixed in 0073b2b, per the orchestrator's ruling. A cross-origin frame inside the scan's scope
 still fails loudly. The check now covers only the scan's scope: with a selector, a frame is
 checked and loaded only when its outermost ancestor frame's owner element matches the selector or
 lies inside a match (the walk crosses shadow roots to their hosts). Frames outside the scope are
@@ -307,7 +307,7 @@ message corrects it. New test in `axe-runner.spec.ts`: a `data:` frame (opaque o
 outside the story's main element makes a whole-page scan throw `cross-origin`, while a scan scoped
 to `main.story-main` passes. On commit 1's page-wide check, the scoped half would throw.
 
-R1-3: fixed in <sha>. The negative double-tap test now waits for `appStable(page)` before
+R1-3: fixed in 0073b2b. The negative double-tap test now waits for `appStable(page)` before
 `expect(editor(page)).toHaveCount(0)`. The comment now says the click counts prove there was no
 dblclick, and the settle makes the editor's absence final.
 
