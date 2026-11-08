@@ -1,2 +1,15 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Tellma's contract surface: the interfaces, records, attributes, exceptions and constants every layer above Core consumes, and the only Tellma package a module, industry, compliance, locale or connector library references. No package references; its one edge is Tellma.Core.Queryex.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The one edge, and a project reference rather than a package: the filter and query types
+         contract members name (QueryexDiagnostic, FilterTree, QuerySpec) are Queryex types, and
+         Queryex itself references nothing, so the edge carries no weight. Every other dependency is
+         forbidden here (see the README). -->
+    <ProjectReference Include="..\Tellma.Core.Queryex\Tellma.Core.Queryex.csproj" />
+  </ItemGroup>
+
 </Project>
