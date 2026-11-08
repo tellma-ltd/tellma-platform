@@ -11,6 +11,7 @@ import angular from 'angular-eslint';
 
 import tmPrefixExports from './tools/eslint/tm-prefix-exports.mjs';
 import noStateBindingsOnFormField from './tools/eslint/no-state-bindings-on-form-field.mjs';
+import cspOnlyInCspSpecs from './tools/eslint/csp-only-in-csp-specs.mjs';
 
 /**
  * The reviewed allowlist for deliberately-unprefixed library exports — the
@@ -33,6 +34,7 @@ const tmPlugin = {
   rules: {
     'prefix-exports': tmPrefixExports,
     'no-state-bindings-on-form-field': noStateBindingsOnFormField,
+    'csp-only-in-csp-specs': cspOnlyInCspSpecs,
   },
 };
 
@@ -437,6 +439,17 @@ export default defineConfig(
           message: 'The l10n entry point must stay DI-free (the calendar token lives in the primary entry point).',
         },
       ],
+    },
+  },
+
+  // Unit specs share one browser page per run, and a CSP <meta> can never be
+  // lifted: a spec that installs one must be a *.csp.spec.ts, which runs in
+  // the test-csp target, a run of its own.
+  {
+    files: ['projects/**/*.spec.ts'],
+    plugins: { tm: tmPlugin },
+    rules: {
+      'tm/csp-only-in-csp-specs': 'error',
     },
   },
 

@@ -11,10 +11,11 @@
  * its consumers — is skipped, since its runner would fail on zero tests.)
  *
  * A project may also declare `test-<name>` targets: each runs as a run of
- * its own after `test`, in declaration order. The unit runner shares one
- * browser page between the files of a run, so a suite that changes the page
- * irreversibly — `test-csp` installs a Content Security Policy, which can
- * never be lifted — must not share a run with anything else.
+ * its own after `test`, in declaration order among themselves. The unit
+ * runner shares one browser page between the files of a run, so a suite
+ * that changes the page irreversibly — `test-csp` installs a Content
+ * Security Policy, which can never be lifted — must not share a run with
+ * anything else.
  *
  * Usage: node scripts/test.mjs
  */
@@ -52,10 +53,12 @@ for (const [name, project] of Object.entries(projects)) {
     console.log(`[test] ${name}: no spec files — skipped`);
     continue;
   }
-  // `test` first, then every `test-<name>` target, each in a run of its own.
-  const targets = Object.keys(project.architect).filter(
-    (target) => target === 'test' || target.startsWith('test-'),
-  );
+  // `test` first, then every `test-<name>` target in declaration order, each
+  // in a run of its own.
+  const targets = [
+    'test',
+    ...Object.keys(project.architect).filter((target) => target.startsWith('test-')),
+  ];
   for (const target of targets) {
     const label = target === 'test' ? name : `${name}:${target}`;
     console.log(`[test] ${label}`);
