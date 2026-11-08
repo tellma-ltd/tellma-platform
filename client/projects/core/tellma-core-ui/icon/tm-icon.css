@@ -1,0 +1,57 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* Unencapsulated (the <svg> is built imperatively and carries no emulated
+   attribute), so every selector is scoped to the tm-icon host class. */
+
+/* The square box. It keeps its size whether or not a glyph is drawn, so an
+   unknown name or a glyph swap never moves anything around it. */
+.tm-icon {
+  display: inline-flex;
+  flex: none;
+  inline-size: var(--icon-size);
+  block-size: var(--icon-size);
+  vertical-align: middle;
+}
+
+/* The size input re-points the box at one step of the ladder; unset, the
+   box inherits --icon-size from whichever container set it last. */
+.tm-icon--xs {
+  --icon-size: var(--icon-size-xs);
+}
+
+.tm-icon--sm {
+  --icon-size: var(--icon-size-sm);
+}
+
+.tm-icon--md {
+  --icon-size: var(--icon-size-md);
+}
+
+.tm-icon--lg {
+  --icon-size: var(--icon-size-lg);
+}
+
+.tm-icon--xl {
+  --icon-size: var(--icon-size-xl);
+}
+
+/* The glyph fills the box; the stroke width is a token a host may override
+   (a heavier check, for instance). */
+.tm-icon > .tm-icon__svg {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  stroke-width: var(--icon-stroke-width);
+}
+
+/* Directional glyphs mirror under a right-to-left direction. :dir() follows
+   the nearest dir attribute live, so a language switch flips the glyph in
+   place and a dir="ltr" island inside an Arabic page keeps it unflipped. */
+.tm-icon--mirror:dir(rtl) > .tm-icon__svg {
+  transform: scale(-1, 1);
+}
