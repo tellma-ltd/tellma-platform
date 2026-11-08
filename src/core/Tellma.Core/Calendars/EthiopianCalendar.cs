@@ -32,11 +32,36 @@ namespace Tellma.Core.Calendars
         /// <summary>The largest month offset <see cref="AddMonths" /> accepts, as the framework's own calendars do.</summary>
         private const int MaxMonthOffset = 120000;
 
+        /// <summary>The default of <see cref="TwoDigitYearMax" />.</summary>
+        private const int DefaultTwoDigitYearMax = 2041;
+
         /// <summary>The last representable day, as a day number.</summary>
         private static readonly int MaxDayNumber = DateOnly.MaxValue.DayNumber;
 
         /// <summary>The last representable year.</summary>
         private static readonly int MaxYear = FromDayNumber(MaxDayNumber).Year;
+
+        /// <summary>The year whose two-digit form is the largest that maps into the current century.</summary>
+        private int _twoDigitYearMax = DefaultTwoDigitYearMax;
+
+        /// <inheritdoc />
+        /// <remarks>2041 by default: the Ethiopian year of Gregorian 2049, the framework Gregorian calendar's default.</remarks>
+        public override int TwoDigitYearMax
+        {
+            get => _twoDigitYearMax;
+
+            set
+            {
+                if (IsReadOnly)
+                {
+                    throw new InvalidOperationException("The calendar is read-only.");
+                }
+
+                ArgumentOutOfRangeException.ThrowIfLessThan(value, 99);
+                ArgumentOutOfRangeException.ThrowIfGreaterThan(value, MaxYear);
+                _twoDigitYearMax = value;
+            }
+        }
 
         /// <inheritdoc />
         public override DateTime MinSupportedDateTime => DateOnly.FromDayNumber(EpochDayNumber).ToDateTime(TimeOnly.MinValue);

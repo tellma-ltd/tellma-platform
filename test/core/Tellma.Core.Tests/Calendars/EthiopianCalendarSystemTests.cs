@@ -152,13 +152,17 @@ namespace Tellma.Core.Tests.Calendars
         }
 
         [Fact]
-        public void A_date_before_the_epoch_cannot_be_decomposed_and_renders_in_the_iso_gregorian_form()
+        public void A_date_before_the_epoch_cannot_be_decomposed_and_renders_in_the_marked_iso_gregorian_form()
         {
             DateOnly beforeEpoch = new(8, 8, 26);
 
             Assert.Throws<ArgumentOutOfRangeException>(() => System.Decompose(beforeEpoch));
-            Assert.Equal("0008-08-26", System.Format(beforeEpoch, PinnedCultures.EnGb, DateStyle.Long));
-            Assert.Equal("0001-01-01", System.Format(DateOnly.MinValue, PinnedCultures.EnGb, DateStyle.Short));
+            Assert.Equal("0008-08-26 gc", System.Format(beforeEpoch, PinnedCultures.EnGb, DateStyle.Long));
+            Assert.Equal("0001-01-01 gc", System.Format(DateOnly.MinValue, PinnedCultures.EnGb, DateStyle.Short));
+
+            // The marker keeps the fallback from reading back as an Ethiopian date (AD 0012-08-27).
+            Assert.Null(System.TryParse(System.Format(new DateOnly(5, 1, 1), PinnedCultures.EnGb, DateStyle.Short), PinnedCultures.EnGb));
+            Assert.Null(System.TryParse(System.Format(new DateOnly(5, 1, 1), PinnedCultures.EnGb, DateStyle.Short), CultureInfo.InvariantCulture));
         }
 
         [Theory]
@@ -210,6 +214,10 @@ namespace Tellma.Core.Tests.Calendars
 
             Assert.True(calendar.IsReadOnly);
             Assert.Equal([1], calendar.Eras);
+            Assert.Equal(2041, calendar.TwoDigitYearMax);
+            Assert.Equal(2015, calendar.ToFourDigitYear(15));
+            Assert.Equal(1942, calendar.ToFourDigitYear(42));
+            Assert.Throws<InvalidOperationException>(() => calendar.TwoDigitYearMax = 2050);
             Assert.Equal(13, calendar.GetMonthsInYear(2017));
             Assert.Equal(366, calendar.GetDaysInYear(2015));
             Assert.Equal(365, calendar.GetDaysInYear(2016));

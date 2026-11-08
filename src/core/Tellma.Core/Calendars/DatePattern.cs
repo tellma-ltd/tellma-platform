@@ -71,6 +71,27 @@ namespace Tellma.Core.Calendars
                 .Select(static t => t.Kind)
                 .Distinct()];
 
+        /// <summary>The literal text before the first field, trimmed; empty when the pattern starts with a field.</summary>
+        public string Prefix => string.Concat(Tokens.TakeWhile(static t => !IsField(t)).Select(static t => t.Text)).Trim();
+
+        /// <summary>The literal text after the last field, trimmed (<c>г.</c> in Bulgarian, <c>.</c> in Korean); empty when the pattern ends with a field.</summary>
+        public string Suffix => string.Concat(Tokens.Reverse().TakeWhile(static t => !IsField(t)).Reverse().Select(static t => t.Text)).Trim();
+
+        /// <summary>The literal texts between the first and the last field that hold a letter, trimmed.</summary>
+        public IReadOnlyList<string> InnerWords
+        {
+            get
+            {
+                int first = Tokens.IndexOf(Tokens.First(IsField));
+                int last = Tokens.LastIndexOf(Tokens.Last(IsField));
+                return [.. Tokens
+                    .Skip(first)
+                    .Take(last - first + 1)
+                    .Where(static t => t.Kind == DatePatternTokenKind.Literal && t.Text.Any(char.IsLetter))
+                    .Select(static t => t.Text.Trim())];
+            }
+        }
+
         /// <summary>Reads a pattern of the framework's custom date format grammar.</summary>
         /// <param name="pattern">The pattern.</param>
         /// <returns>The pattern's tokens, normalised.</returns>
@@ -163,15 +184,18 @@ namespace Tellma.Core.Calendars
             }
 
             // The weekday is joined to the date by a run of punctuation and spaces ("dddd, d MMMM",
-            // "d MMMM y, dddd"); a literal holding letters ("日" before a trailing weekday) stays.
+            // "d MMMM y, dddd"), which goes with it. When the literal beside it also holds letters
+            // (Lithuanian "d., " before a trailing weekday, Romansh ", ils " after a leading one), only
+            // the comma-like run touching the weekday goes; a literal with no such run ("日" before a
+            // trailing weekday) stays whole.
             tokens.RemoveAt(index);
-            if (index < tokens.Count && IsJoiner(tokens[index]))
+            if (index < tokens.Count && tokens[index].Kind == DatePatternTokenKind.Literal && (IsJoiner(tokens[index]) || StartsJoined(tokens[index].Text)))
             {
-                tokens.RemoveAt(index);
+                tokens[index] = IsJoiner(tokens[index]) ? Literal(string.Empty) : Literal(TrimJoining(tokens[index].Text, fromStart: true));
             }
-            else if (index > 0 && IsJoiner(tokens[index - 1]))
+            else if (index > 0 && tokens[index - 1].Kind == DatePatternTokenKind.Literal && (IsJoiner(tokens[index - 1]) || EndsJoined(tokens[index - 1].Text)))
             {
-                tokens.RemoveAt(index - 1);
+                tokens[index - 1] = IsJoiner(tokens[index - 1]) ? Literal(string.Empty) : Literal(TrimJoining(tokens[index - 1].Text, fromStart: false));
             }
 
             return new DatePattern(Normalise(tokens)).WithoutWeekday();
@@ -290,6 +314,49 @@ namespace Tellma.Core.Calendars
         private static DatePatternToken Literal(string text)
         {
             return new DatePatternToken(DatePatternTokenKind.Literal, 0, text);
+        }
+
+        /// <summary>Whether a character joins a weekday to a date: white space or a comma-like mark (not a full stop, which closes an abbreviation).</summary>
+        /// <param name="c">The character.</param>
+        /// <returns>True for white space and the Latin, Arabic, Ethiopic, CJK and fullwidth commas and semicolons.</returns>
+        private static bool IsJoining(char c)
+        {
+            return char.IsWhiteSpace(c) || c is ',' or ';' or '\u060C' or '\u061B' or '\u1363' or '\u3001' or '\uFF0C' or '\uFF1B';
+        }
+
+        /// <summary>Whether text begins with a joining character.</summary>
+        /// <param name="text">The text.</param>
+        /// <returns>True when it does.</returns>
+        private static bool StartsJoined(string text)
+        {
+            return text.Length > 0 && IsJoining(text[0]);
+        }
+
+        /// <summary>Whether text ends with a joining character.</summary>
+        /// <param name="text">The text.</param>
+        /// <returns>True when it does.</returns>
+        private static bool EndsJoined(string text)
+        {
+            return text.Length > 0 && IsJoining(text[^1]);
+        }
+
+        /// <summary>Removes the run of joining characters at one end of text.</summary>
+        /// <param name="text">The text.</param>
+        /// <param name="fromStart">Whether to trim the start rather than the end.</param>
+        /// <returns>The trimmed text.</returns>
+        private static string TrimJoining(string text, bool fromStart)
+        {
+            return fromStart
+                ? new string([.. text.SkipWhile(IsJoining)])
+                : new string([.. text.Reverse().SkipWhile(IsJoining).Reverse()]);
+        }
+
+        /// <summary>Whether a token is a field: anything but literal text and the separator.</summary>
+        /// <param name="token">The token.</param>
+        /// <returns>True for a day, month, year or weekday.</returns>
+        private static bool IsField(DatePatternToken token)
+        {
+            return token.Kind is not (DatePatternTokenKind.Literal or DatePatternTokenKind.DateSeparator);
         }
 
         /// <summary>Whether a token is a literal of punctuation and spaces only, the kind that joins a weekday to a date.</summary>

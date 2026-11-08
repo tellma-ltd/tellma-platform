@@ -24,13 +24,16 @@ namespace Tellma.Core.Abstractions.Settings
     ///         <item>
     ///             the value type is <see cref="bool" />, <see cref="int" />, <see cref="long" />,
     ///             <see cref="decimal" />, <see cref="string" />, <see cref="DateOnly" />,
-    ///             <see cref="TimeOnly" />, <see cref="Guid" />, an enum, or a nullable or array form of
-    ///             one, unless the key supplies its own serialization contract;
+    ///             <see cref="TimeOnly" />, <see cref="Guid" />, an enum, a nullable form of one, or an
+    ///             <see cref="System.Collections.Immutable.ImmutableArray{T}" /> of one (never a
+    ///             <c>T[]</c>: the tenant's settings are shared by every request, so a value must not
+    ///             be changeable, and an empty default is <c>[]</c>), unless the key supplies its own
+    ///             serialization contract;
     ///         </item>
     ///         <item>a nullable key, and every <see cref="SettingVisibility.Secret" /> key, defaults to null;</item>
     ///         <item>
     ///             <see cref="References" /> names an <see cref="int" />-keyed stack entity and the value
-    ///             type is <see cref="int" />, <c>int?</c> or <c>int[]</c>; a secret key references
+    ///             type is <see cref="int" />, <c>int?</c> or <c>ImmutableArray&lt;int&gt;</c>; a secret key references
     ///             nothing.
     ///         </item>
     ///     </list>
@@ -99,6 +102,19 @@ namespace Tellma.Core.Abstractions.Settings
 
         /// <summary>The label's resource key: <c>Setting_</c> and the name with each <c>.</c> as <c>_</c>.</summary>
         public string LabelKey { get; }
+
+        /// <summary>
+        ///     Reads a stored JSON value as the key's type and checks it, for code that holds keys
+        ///     without their type (the settings loader, the editor's save).
+        /// </summary>
+        /// <param name="json">The stored value.</param>
+        /// <param name="value">The value read, boxed; the key's default when it does not read or is refused.</param>
+        /// <param name="validationCode">
+        ///     The key's own validation code when the value reads but the key's check refuses it; null
+        ///     otherwise, including when the value does not read as the key's type.
+        /// </param>
+        /// <returns>True when the value reads and the key's check accepts it.</returns>
+        public abstract bool TryReadValue(JsonElement json, out object? value, out string? validationCode);
 
         /// <summary>
         ///     The group a key's name derives: the segments between the first and the last, less a

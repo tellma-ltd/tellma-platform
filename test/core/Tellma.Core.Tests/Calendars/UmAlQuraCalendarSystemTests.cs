@@ -11,7 +11,7 @@ namespace Tellma.Core.Tests.Calendars
 {
     /// <summary>
     ///     The Umm al-Qura calendar: published dates, the table's bounds, the months of the whole
-    ///     table, the tabular Islamic calendar beyond it, and the epoch of the Islamic era.
+    ///     table, the tabular Islamic calendar beyond it, and the epoch of the Islamic era, and the framework calendar over the same range.
     /// </summary>
     public class UmAlQuraCalendarSystemTests
     {
@@ -49,7 +49,7 @@ namespace Tellma.Core.Tests.Calendars
             Assert.Equal((1500, 12, 30), System.Decompose(System.MaxSupported));
             Assert.Equal(CalendarCodes.UmAlQura, System.Code);
             Assert.Equal(12, System.MonthCount);
-            Assert.IsType<UmAlQuraCalendar>(System.Calendar);
+            Assert.Equal(System.MinSupported, DateOnly.FromDateTime(new UmAlQuraCalendar().MinSupportedDateTime));
             Assert.True(System.Calendar.IsReadOnly);
         }
 
@@ -96,21 +96,79 @@ namespace Tellma.Core.Tests.Calendars
             HijriCalendar tabular = new() { HijriAdjustment = 0 };
             DateOnly after = System.MaxSupported.AddDays(1);
 
-            // The tabular calendar's 1501-01-01 falls on the table's last day, so the day after the
-            // table is 1501-01-02 and 1501-01-01 is never rendered (nor read back).
-            Assert.Equal((1501, 1, 2), System.Decompose(after));
-            Assert.Equal("2/1/1501", System.Format(after, PinnedCultures.ArSa, DateStyle.Short));
-            Assert.Equal(after, System.TryParse("2/1/1501", PinnedCultures.ArSa));
-            Assert.Null(System.TryParse("1/1/1501", PinnedCultures.ArSa));
+            // The tabular calendar's 1501-01-01 falls on the table's last day, so Muharram 1501
+            // begins the day after the table and has the tabular month's other 29 days.
+            Assert.Equal((1501, 1, 1), System.Decompose(after));
+            Assert.Equal("1/1/1501", System.Format(after, PinnedCultures.ArSa, DateStyle.Short));
+            Assert.Equal(after, System.TryParse("1/1/1501", PinnedCultures.ArSa));
+            Assert.Equal((1501, 1, 29), System.Decompose(new DateOnly(2077, 12, 15)));
+            Assert.Null(System.TryParse("1501-01-30", CultureInfo.InvariantCulture));
+            Assert.Equal(29, System.Calendar.GetDaysInMonth(1501, 1));
 
-            for (DateOnly date = after; date <= new DateOnly(2100, 12, 31); date = date.AddDays(1))
+            // From Safar 1501 every date is the tabular calendar's.
+            DateOnly safar = new(2077, 12, 16);
+            Assert.Equal((1501, 2, 1), System.Decompose(safar));
+            for (DateOnly date = safar; date <= new DateOnly(2100, 12, 31); date = date.AddDays(1))
             {
                 var time = date.ToDateTime(TimeOnly.MinValue);
                 Assert.Equal((tabular.GetYear(time), tabular.GetMonth(time), tabular.GetDayOfMonth(time)), System.Decompose(date));
-                Assert.Equal(date, System.TryParse(System.Format(date, PinnedCultures.ArSa, DateStyle.Short), PinnedCultures.ArSa));
             }
 
             Assert.Equal((9666, 4, 3), System.Decompose(DateOnly.MaxValue));
+        }
+
+        [Fact]
+        public void Every_day_from_the_islamic_epoch_converts_both_ways_with_consecutive_days()
+        {
+            // Decompose, the framework calendar and the numeric style agree on every day from
+            // AH 1-01-01 to 2100, across both seams: consecutive dates are consecutive days, and each
+            // month has the length the calendar reports.
+            Calendar calendar = System.Calendar;
+            Assert.Equal((1, 1, 1), System.Decompose(new DateOnly(622, 7, 18)));
+            (int Year, int Month, int Day) previous = (1, 1, 1);
+            for (DateOnly date = new(622, 7, 19); date <= new DateOnly(2100, 12, 31); date = date.AddDays(1))
+            {
+                (int year, int month, int day) = System.Decompose(date);
+                var time = date.ToDateTime(TimeOnly.MinValue);
+
+                Assert.Equal((year, month, day), (calendar.GetYear(time), calendar.GetMonth(time), calendar.GetDayOfMonth(time)));
+                Assert.Equal(time, calendar.ToDateTime(year, month, day, 0, 0, 0, 0));
+                bool nextDay = (year, month, day) == (previous.Year, previous.Month, previous.Day + 1);
+                bool nextMonth = day == 1
+                    && previous.Day == calendar.GetDaysInMonth(previous.Year, previous.Month)
+                    && ((year, month) == (previous.Year, previous.Month + 1) || (year, month) == (previous.Year + 1, 1));
+                Assert.True(nextDay || nextMonth, $"{date:yyyy-MM-dd} is {year}-{month}-{day} after {previous}.");
+                previous = (year, month, day);
+            }
+
+            Assert.Equal(DateOnly.FromDateTime(calendar.MinSupportedDateTime), new DateOnly(622, 7, 18));
+        }
+
+        [Fact]
+        public void The_framework_calendar_does_arithmetic_beyond_the_table()
+        {
+            Calendar calendar = System.Calendar;
+
+            Assert.Equal(1307, calendar.GetYear(new DateTime(1890, 1, 1)));
+            var lastMonth = calendar.ToDateTime(1500, 12, 30, 9, 0, 0, 0);
+            DateTime muharram = calendar.AddMonths(lastMonth, 1);
+            Assert.Equal((1501, 1, 29), (calendar.GetYear(muharram), calendar.GetMonth(muharram), calendar.GetDayOfMonth(muharram)));
+            Assert.Equal(lastMonth.TimeOfDay, muharram.TimeOfDay);
+            DateTime back = calendar.AddMonths(calendar.ToDateTime(1318, 1, 15, 0, 0, 0, 0), -1);
+            Assert.Equal((1317, 12, 15), (calendar.GetYear(back), calendar.GetMonth(back), calendar.GetDayOfMonth(back)));
+            DateTime nextYear = calendar.AddYears(calendar.ToDateTime(1500, 1, 1, 0, 0, 0, 0), 1);
+            Assert.Equal((1501, 1, 1), (calendar.GetYear(nextYear), calendar.GetMonth(nextYear), calendar.GetDayOfMonth(nextYear)));
+            Assert.Equal(new DateTime(2077, 11, 17), nextYear);
+            Assert.Equal(new HijriCalendar { HijriAdjustment = 0 }.GetDaysInYear(1501) - 1, calendar.GetDaysInYear(1501));
+
+            Assert.Equal(12, calendar.GetMonthsInYear(1447));
+            Assert.Equal([1], calendar.Eras);
+            Assert.Equal(1451, calendar.TwoDigitYearMax);
+            Assert.Equal(1447, calendar.ToFourDigitYear(47));
+            Assert.Throws<InvalidOperationException>(() => calendar.TwoDigitYearMax = 1500);
+            Assert.Throws<ArgumentOutOfRangeException>(() => calendar.GetYear(new DateTime(622, 7, 17)));
+            Assert.Throws<ArgumentOutOfRangeException>(() => calendar.ToDateTime(1501, 1, 30, 0, 0, 0, 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => calendar.AddMonths(calendar.ToDateTime(1, 1, 1, 0, 0, 0, 0), -1));
         }
 
         [Fact]
@@ -129,7 +187,8 @@ namespace Tellma.Core.Tests.Calendars
         {
             Assert.Equal((1, 1, 1), System.Decompose(new DateOnly(622, 7, 18)));
             Assert.Throws<ArgumentOutOfRangeException>(() => System.Decompose(new DateOnly(622, 7, 17)));
-            Assert.Equal("0622-07-17", System.Format(new DateOnly(622, 7, 17), PinnedCultures.ArSa, DateStyle.Full));
+            Assert.Equal("0622-07-17 gc", System.Format(new DateOnly(622, 7, 17), PinnedCultures.ArSa, DateStyle.Full));
+            Assert.Null(System.TryParse(System.Format(new DateOnly(600, 1, 1), PinnedCultures.ArSa, DateStyle.Short), PinnedCultures.ArSa));
         }
 
         [Theory]

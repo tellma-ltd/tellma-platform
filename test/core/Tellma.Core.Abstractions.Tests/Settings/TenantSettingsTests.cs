@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.Time.Testing;
+using System.Collections.Immutable;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Caching;
@@ -49,6 +50,20 @@ namespace Tellma.Core.Abstractions.Tests.Settings
             Assert.Equal(6, settings.Get(Width));
 
             Assert.Equal([(AutoNumber.Name, SettingEntryProblem.Invalid), (Width.Name, SettingEntryProblem.Invalid)], problems);
+        }
+
+        [Fact]
+        public void An_array_value_is_shared_as_an_immutable_array()
+        {
+            SettingKey<ImmutableArray<int>> days = new("gl.posting.days", [1]);
+            TenantSettings settings = Settings(new() { [days.Name] = Parse("[3,1,2]") });
+
+            ImmutableArray<int> first = settings.Get(days);
+            ImmutableArray<int> sorted = first.Sort();
+
+            Assert.Equal([3, 1, 2], settings.Get(days));
+            Assert.Equal([1, 2, 3], sorted);
+            Assert.Equal([1], Settings([]).Get(days));
         }
 
         [Fact]

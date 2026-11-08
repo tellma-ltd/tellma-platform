@@ -23,10 +23,12 @@ namespace Tellma.Core.Calendars
     ///         <see cref="MaxSupported" /> bound the exact range, and validators warn beyond it.
     ///     </para>
     ///     <para>
-    ///         The two meet without a repeated day: the tabular calendar continues AH 1317-12-29 into
-    ///         the table's 1318-01-01, and after the table's 1500-12-30 continues at 1501-01-02, so
-    ///         no date renders as 1501-01-01. A date before AH 1-01-01 (AD 622-07-18) has no
-    ///         rendering in this calendar and renders in the ISO Gregorian form.
+    ///         The two meet without a gap or a repeated day: the tabular calendar's 1317-12-29 is the
+    ///         day before the table's 1318-01-01; its 1501-01-01 falls on the table's last day, so
+    ///         Muharram 1501 begins the day after the table, with 29 days, and from Safar 1501 every
+    ///         date is the tabular calendar's. <see cref="Calendar" /> follows the same rule. A date
+    ///         before AH 1-01-01 (AD 622-07-18) has no rendering in this calendar and renders in the
+    ///         ISO Gregorian form marked <c>gc</c>.
     ///     </para>
     /// </remarks>
     public sealed class UmAlQuraCalendarSystem : ICalendarSystem
@@ -38,18 +40,23 @@ namespace Tellma.Core.Calendars
         public string Code => CalendarCodes.UmAlQura;
 
         /// <inheritdoc />
-        public Calendar Calendar { get; } = Calendar.ReadOnly(new UmAlQuraCalendar());
+        /// <remarks>
+        ///     The framework's Umm al-Qura table extended by the tabular calendar exactly as
+        ///     <see cref="Decompose" /> extends it, so arithmetic covers every date the system renders
+        ///     and reads, from AD 622-07-18 on.
+        /// </remarks>
+        public Calendar Calendar { get; } = Calendar.ReadOnly(new UmAlQuraExtendedCalendar());
 
         /// <inheritdoc />
         public int MonthCount => 12;
 
         /// <inheritdoc />
         /// <remarks>AD 1900-04-30, AH 1318-01-01: the first day of the Umm al-Qura table.</remarks>
-        public DateOnly MinSupported => Converter.TableStart;
+        public DateOnly MinSupported => UmAlQuraExtendedCalendar.TableStart;
 
         /// <inheritdoc />
         /// <remarks>AD 2077-11-16, AH 1500-12-30: the last day of the Umm al-Qura table.</remarks>
-        public DateOnly MaxSupported => Converter.TableEnd;
+        public DateOnly MaxSupported => UmAlQuraExtendedCalendar.TableEnd;
 
         /// <inheritdoc />
         public (int Year, int Month, int Day) Decompose(DateOnly date)
@@ -84,30 +91,6 @@ namespace Tellma.Core.Calendars
         /// <summary>The Umm al-Qura table, with the tabular Islamic calendar outside it.</summary>
         private sealed class Converter : CalendarConverter
         {
-            /// <summary>The exact table, used for arithmetic only.</summary>
-            private static readonly UmAlQuraCalendar Table = new();
-
-            /// <summary>
-            ///     The tabular Islamic calendar beyond the table. Its adjustment is fixed at 0: the
-            ///     framework's default reads a per-host setting on Windows.
-            /// </summary>
-            private static readonly Calendar Tabular = Calendar.ReadOnly(new HijriCalendar { HijriAdjustment = 0 });
-
-            /// <summary>The first Gregorian day of the table.</summary>
-            public static DateOnly TableStart { get; } = DateOnly.FromDateTime(Table.MinSupportedDateTime);
-
-            /// <summary>The last Gregorian day of the table.</summary>
-            public static DateOnly TableEnd { get; } = DateOnly.FromDateTime(Table.MaxSupportedDateTime);
-
-            /// <summary>The first Gregorian day the tabular calendar converts.</summary>
-            private static DateOnly TabularStart { get; } = DateOnly.FromDateTime(Tabular.MinSupportedDateTime);
-
-            /// <summary>The first year of the table.</summary>
-            private static int TableFirstYear { get; } = Table.GetYear(Table.MinSupportedDateTime);
-
-            /// <summary>The last year of the table.</summary>
-            private static int TableLastYear { get; } = Table.GetYear(Table.MaxSupportedDateTime);
-
             /// <inheritdoc />
             public override string Code => CalendarCodes.UmAlQura;
 
@@ -117,41 +100,13 @@ namespace Tellma.Core.Calendars
             /// <inheritdoc />
             public override bool TryDecompose(DateOnly date, out int year, out int month, out int day)
             {
-                Calendar calendar = date >= TableStart && date <= TableEnd ? Table : Tabular;
-                if (date < TabularStart)
-                {
-                    (year, month, day) = (0, 0, 0);
-                    return false;
-                }
-
-                var time = date.ToDateTime(TimeOnly.MinValue);
-                (year, month, day) = (calendar.GetYear(time), calendar.GetMonth(time), calendar.GetDayOfMonth(time));
-                return true;
+                return UmAlQuraExtendedCalendar.TryDecompose(date, out year, out month, out day);
             }
 
             /// <inheritdoc />
             public override DateOnly? Compose(int year, int month, int day)
             {
-                // A year of the table converts through it; every other year through the tabular
-                // calendar. The caller's round trip refuses the tabular 1501-01-01, which falls on the
-                // table's last day.
-                Calendar calendar = year >= TableFirstYear && year <= TableLastYear ? Table : Tabular;
-                if (year < 1 || month is < 1 or > 12 || day < 1)
-                {
-                    return null;
-                }
-
-                try
-                {
-                    return day <= calendar.GetDaysInMonth(year, month)
-                        ? DateOnly.FromDateTime(calendar.ToDateTime(year, month, day, 0, 0, 0, 0))
-                        : null;
-                }
-                catch (ArgumentOutOfRangeException)
-                {
-                    // Beyond the last year the tabular calendar converts (AH 9666).
-                    return null;
-                }
+                return UmAlQuraExtendedCalendar.Compose(year, month, day);
             }
         }
     }

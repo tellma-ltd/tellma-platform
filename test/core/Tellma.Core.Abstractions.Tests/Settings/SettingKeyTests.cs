@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Collections.Immutable;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Tellma.Core.Abstractions.Settings;
@@ -74,7 +75,7 @@ namespace Tellma.Core.Abstractions.Tests.Settings
             Assert.Equal("\"2026-03-15\"", Json(new SettingKey<DateOnly>("a.b", new DateOnly(2026, 3, 15))));
             Assert.Equal("\"08:30:00.0000000\"", Json(new SettingKey<TimeOnly>("a.b", new TimeOnly(8, 30))));
             Assert.Equal("\"Quarterly\"", Json(new SettingKey<Period>("a.b", Period.Quarterly)));
-            Assert.Equal("[1,2]", Json(new SettingKey<int[]>("a.b", [1, 2])));
+            Assert.Equal("[1,2]", Json(new SettingKey<ImmutableArray<int>>("a.b", [1, 2])));
             Assert.Equal("\"فاتورة\"", Json(new SettingKey<string>("a.b", "فاتورة")));
             Assert.Equal("null", Json(new SettingKey<string?>("a.b", null)));
         }
@@ -132,6 +133,35 @@ namespace Tellma.Core.Abstractions.Tests.Settings
             Assert.False(new SettingKey<string>("a.b", "x").TryRead(Parse("null"), out string notNull));
             Assert.Equal("x", notNull);
             Assert.False(new SettingKey<int?>("a.b", 5).TryRead(Parse("null"), out _));
+        }
+
+        [Fact]
+        public void An_array_setting_reads_as_an_immutable_array()
+        {
+            SettingKey<ImmutableArray<Period>> key = new("a.b", [Period.Monthly]);
+
+            Assert.True(key.TryRead(Parse("[\"Quarterly\",\"Monthly\"]"), out ImmutableArray<Period> value));
+            Assert.Equal([Period.Quarterly, Period.Monthly], value);
+            Assert.False(key.TryRead(Parse("[\"Yearly\"]"), out _));
+            Assert.False(key.TryRead(Parse("null"), out _));
+        }
+
+        [Fact]
+        public void A_key_without_its_type_reads_and_checks_a_value()
+        {
+            SettingKey width = new SettingKey<int>("gl.posting.width", 6, validate: static w => w is >= 1 and <= 12 ? null : "Gl.WidthOutOfRange");
+
+            Assert.True(width.TryReadValue(Parse("8"), out object? read, out string? code));
+            Assert.Equal(8, read);
+            Assert.Null(code);
+
+            Assert.False(width.TryReadValue(Parse("40"), out read, out code));
+            Assert.Equal(6, read);
+            Assert.Equal("Gl.WidthOutOfRange", code);
+
+            Assert.False(width.TryReadValue(Parse("\"8\""), out read, out code));
+            Assert.Equal(6, read);
+            Assert.Null(code);
         }
 
         /// <summary>A key's default as JSON text.</summary>

@@ -38,6 +38,8 @@ namespace Tellma.Core.Tests.Calendars
         [InlineData("yyyy年M月d日dddd", "yyyy'年'M'月'd'日'")]
         [InlineData("dddd, d 'de' MMMM 'de' yyyy", "d' de 'MMMM' de 'yyyy")]
         [InlineData("d MMMM yyyy", "d' 'MMMM' 'yyyy")]
+        [InlineData("yyyy 'm'. MMMM d 'd'., dddd", "yyyy' m. 'MMMM' 'd' d.'")]
+        [InlineData("dddd, 'ils' d 'da' MMMM yyyy", "'ils 'd' da 'MMMM' 'yyyy")]
         public void Removing_the_weekday_removes_the_punctuation_that_joins_it_and_keeps_letters(string pattern, string expected)
         {
             Assert.Equal(expected, DatePattern.Parse(pattern).WithoutWeekday().ToString());

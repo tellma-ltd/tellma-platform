@@ -30,11 +30,23 @@ namespace Tellma.Core.Calendars
             var data = CalendarCultureData.For(culture);
             DatePattern pattern = data.PatternOf(style);
 
-            // A date before the calendar's epoch has no rendering in it; the ISO Gregorian form keeps
-            // the text unambiguous rather than failing the whole render.
+            // A date before the calendar's epoch has no rendering in it. The ISO Gregorian form marked
+            // with the Gregorian code keeps the text unambiguous rather than failing the whole render,
+            // and the marker keeps the text from reading back as this calendar's numeric form.
             return converter.TryDecompose(date, out int year, out int month, out int day)
                 ? Render(converter, pattern, date, year, month, day, culture, data)
-                : date.ToString("yyyy'-'MM'-'dd", CultureInfo.InvariantCulture);
+                : GregorianFallback(date);
+        }
+
+        /// <summary>
+        ///     The rendering of a date a calendar cannot represent: ISO <c>yyyy-MM-dd</c> followed by the
+        ///     Gregorian calendar's code, <c>0600-01-01 gc</c>.
+        /// </summary>
+        /// <param name="date">The date.</param>
+        /// <returns>The text.</returns>
+        public static string GregorianFallback(DateOnly date)
+        {
+            return $"{date.ToString("yyyy'-'MM'-'dd", CultureInfo.InvariantCulture)} {CalendarCodes.Gregorian}";
         }
 
         /// <summary>Renders an instant's date and, optionally, its time of day, on a zone's wall clock.</summary>
@@ -85,7 +97,9 @@ namespace Tellma.Core.Calendars
         /// <summary>
         ///     Reads a date in the numeric style of a culture, or in the <c>yyyy-MM-dd</c> form: three
         ///     groups of digits (any script's) separated by anything but letters, the year in four
-        ///     digits, in the culture's order, naming a day the calendar renders that way.
+        ///     digits, in the culture's order, naming a day the calendar renders that way. Outside the
+        ///     three groups only white space and the culture pattern's own leading and trailing text
+        ///     may stand, so a sign, a bracket or a stray separator refuses the text.
         /// </summary>
         /// <param name="converter">The calendar.</param>
         /// <param name="text">The text.</param>
@@ -100,18 +114,29 @@ namespace Tellma.Core.Calendars
                 return null;
             }
 
+            // --- Remove what the culture's own numeric style writes besides digits and separators ---
+            // Bidirectional controls go first; then the pattern's leading and trailing text (Bulgarian
+            // ends with " г.", Korean with ".") and any word between its fields, so that what remains
+            // must begin and end with a digit: a sign, a bracket or a trailing separator refuses.
+            DatePattern shortPattern = CalendarCultureData.For(culture).Short;
+            string body = StripAffixes(string.Concat(text.Where(static c => !CalendarText.IsBidiControl(c))).Trim(), shortPattern);
+            foreach (string word in shortPattern.InnerWords)
+            {
+                body = body.Replace(word, " ", StringComparison.Ordinal);
+            }
+
+            if (body.Length == 0 || CalendarText.DigitValue(body[0]) < 0 || CalendarText.DigitValue(body[^1]) < 0)
+            {
+                return null;
+            }
+
             // --- Split into digit groups and the separator runs between them ---
             List<string> groups = [];
             List<string> separators = [];
             StringBuilder digits = new();
             StringBuilder separator = new();
-            foreach (char c in text)
+            foreach (char c in body)
             {
-                if (CalendarText.IsBidiControl(c))
-                {
-                    continue;
-                }
-
                 int value = CalendarText.DigitValue(c);
                 if (value >= 0)
                 {
@@ -154,7 +179,7 @@ namespace Tellma.Core.Calendars
             IReadOnlyList<DatePatternTokenKind> order =
                 groups[0].Length == 4 && separators is ["-", "-"]
                     ? [DatePatternTokenKind.Year, DatePatternTokenKind.Month, DatePatternTokenKind.Day]
-                    : CalendarCultureData.For(culture).Short.FieldOrder;
+                    : shortPattern.FieldOrder;
 
             // The year must have four digits (the style always writes four, so a two-digit year is
             // never guessed at), the day and the month one or two.
@@ -190,6 +215,27 @@ namespace Tellma.Core.Calendars
                 && (y, m, d) == (year, month, day)
                 ? found
                 : null;
+        }
+
+        /// <summary>Removes a pattern's leading and trailing literal text from text that carries it.</summary>
+        /// <param name="text">The trimmed text.</param>
+        /// <param name="pattern">The pattern.</param>
+        /// <returns>The text without them, trimmed.</returns>
+        private static string StripAffixes(string text, DatePattern pattern)
+        {
+            string prefix = pattern.Prefix;
+            string suffix = pattern.Suffix;
+            if (prefix.Length > 0 && text.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                text = text[prefix.Length..].TrimStart();
+            }
+
+            if (suffix.Length > 0 && text.EndsWith(suffix, StringComparison.Ordinal))
+            {
+                text = text[..^suffix.Length].TrimEnd();
+            }
+
+            return text;
         }
 
         /// <summary>Fills a pattern with a date's fields.</summary>

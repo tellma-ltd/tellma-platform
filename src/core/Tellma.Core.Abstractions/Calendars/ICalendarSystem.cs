@@ -41,7 +41,8 @@ namespace Tellma.Core.Abstractions.Calendars
         string Code { get; }
 
         /// <summary>
-        ///     A framework calendar for date arithmetic in this system. It is never assigned to a
+        ///     A framework calendar for date arithmetic in this system, valid over every date the
+        ///     system decomposes, renders and reads. It is never assigned to a
         ///     <see cref="DateTimeFormatInfo" />.
         /// </summary>
         Calendar Calendar { get; }
@@ -71,7 +72,11 @@ namespace Tellma.Core.Abstractions.Calendars
         /// <param name="date">The date.</param>
         /// <param name="culture">The culture whose order, separators and names to use.</param>
         /// <param name="style">The rendering.</param>
-        /// <returns>The rendered date, with ASCII digits and no bidirectional control characters.</returns>
+        /// <returns>
+        ///     The rendered date, with ASCII digits and no bidirectional control characters. A date the
+        ///     calendar cannot represent (before its epoch) renders as its ISO Gregorian date followed
+        ///     by the Gregorian code, <c>0600-01-01 gc</c>, which <see cref="TryParse" /> refuses.
+        /// </returns>
         /// <exception cref="ArgumentNullException"><paramref name="culture" /> is null.</exception>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="style" /> is not a defined style.</exception>
         string Format(DateOnly date, CultureInfo culture, DateStyle style);

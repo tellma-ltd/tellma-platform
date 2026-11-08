@@ -106,6 +106,21 @@ namespace Tellma.Core.Abstractions.Settings
             }
         }
 
+        /// <inheritdoc />
+        public override bool TryReadValue(JsonElement json, out object? value, out string? validationCode)
+        {
+            validationCode = null;
+            if (!TryRead(json, out T read))
+            {
+                value = DefaultValue;
+                return false;
+            }
+
+            validationCode = Validate?.Invoke(read);
+            value = validationCode is null ? read : DefaultValue;
+            return validationCode is null;
+        }
+
         /// <summary>Serializes the default once, under the key's contract or the platform's rules.</summary>
         /// <param name="value">The default.</param>
         /// <param name="typeInfo">The key's contract, if any.</param>

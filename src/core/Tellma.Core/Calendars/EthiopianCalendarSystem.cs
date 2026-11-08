@@ -24,7 +24,8 @@ namespace Tellma.Core.Calendars
     ///         <see cref="MinSupported" /> and <see cref="MaxSupported" /> (AD 1752-09-14 to
     ///         2500-01-01) are the range the platform guarantees and validators warn beyond; the
     ///         arithmetic itself is exact from the epoch, AD 0008-08-27, onwards. A date before the
-    ///         epoch has no rendering in this calendar and renders in the ISO Gregorian form.
+    ///         epoch has no rendering in this calendar and renders in the ISO Gregorian form marked
+    ///         <c>gc</c>.
     ///     </para>
     /// </remarks>
     public sealed class EthiopianCalendarSystem : ICalendarSystem
