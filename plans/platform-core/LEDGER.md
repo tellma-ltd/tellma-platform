@@ -35,22 +35,28 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-08 05:58 | 42 | 23 | 2026-11-10 20:00 | PC-000 impl done; 4 cycles in flight |
 | 2026-11-08 06:20 | 43 | 23 | 2026-11-10 20:00 | PC-000 fix1 done, integrating; no escalation (R1 0/1/2) |
 | 2026-11-08 07:15 | 45 | 23 | 2026-11-10 20:00 | PC-003 impl done; PC-F01 fixing |
+| 2026-11-08 08:05 | 47 | 23 | 2026-11-10 20:00 | PC-003 → r2; line stopped for PC-F02 |
+| 2026-11-08 09:10 | 50 | 26 | 2026-11-10 20:00 | PC-001/003 held; PC-002 r2 (Fable); PC-004 fix1; PC-F02 impl |
+| 2026-11-08 12:40 | 51 | 26 | 2026-11-10 20:00 | PC-F02 done (CI 42471952389 green on 4c89ae1); PC-001 + PC-004 integrating; PC-002/003 held |
+| 2026-11-08 12:55 | 52 | 26 | 2026-11-10 20:00 | PC-001 integrated 354f93d; PC-002 + PC-004 integrating; PC-008 launched (p≈3.6); PC-F03 impl |
+| 2026-11-08 13:30 | 54 | 26 | 2026-11-10 20:00 | PC-004 done; PC-002 integrated e971e64; PC-003 integrating; PC-015 + PC-017 launched |
 
 ## In flight
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-004 | pc-1 | pc/PC-004 | impl | impl-PC-004 / a940e8e69f24e8e64 | | 2026-11-08 06:27 |
-| PC-001 | pc-2 | pc/PC-001 | r1 (c1 13d1717) | impl-PC-001 / ab155d6eb6c614ee7 | r1-PC-001 / ab9b967bc77e590d2 | 2026-11-08 05:33 |
-| PC-002 | pc-3 | pc/PC-002 | impl | impl-PC-002 / a6a1eaf9977ca6828 | | 2026-11-08 05:33 |
-| PC-003 | pc-4 | pc/PC-003 | r1 (c1 bfc40a1) | impl-PC-003 / a3881a7cd27134ffc | r1-PC-003 / a6cd32f93e0c93774 | 2026-11-08 05:33 |
+| PC-015 | pc-1 | pc/PC-015 | impl | impl-PC-015 / a77753b07b64fdd2e (xhigh) | | 2026-11-08 13:10 |
+| PC-008 | pc-2 | pc/PC-008 | impl | impl-PC-008 / a6567bfbe1a75233d (high) | | 2026-11-08 12:55 |
+| PC-017 | pc-3 | pc/PC-017 | impl | impl-PC-017 / a6415c68954c2a576 (high) | | 2026-11-08 13:30 |
 
 ## Fix items
 
 | Fix | For | Status | Commits | Cost units (M) | Notes |
 |---|---|---|---|---|---|
-| PC-F01 | PC-000 (CI red on 8a1ebf8) | integrated | 6ef6423, d1ab25e (pc) | 2.49 (impl 2.18, r1 0.31) | quarantined 5 flaky e2e; nightly job client-e2e-quarantine (non-blocking, per-test table); CI run 42455962373 pending |
-| PC-F02 | flaky root causes (5 quarantined e2e, LEDGER Flaky) | todo (filler) | | | brief: reviews/PC-F01.md failure modes; covers frozen 0004–0006 components |
+| PC-F01 | PC-000 (CI red on 8a1ebf8) | done | 6ef6423, d1ab25e (pc) | 2.49 (impl 2.18, r1 0.31) | quarantined 5 flaky e2e; nightly job client-e2e-quarantine (non-blocking, per-test table); CI 42455962373 green; nightly 42456014559 green |
+| PC-F03 | entity-picker same-frame Enter race: Enter in the same frame as the last keystroke skips the highlight (reproduced, data-changing; frozen 0006 component) | fix1 (R1 1/0/2), pc-f, fix-PC-F03 / a62d83dfcb72a8e4f (high); r1 aa9a0cc9ac7a293cb | af35d27 | | arrow-key burst split out to PC-F04; from PC-F02 R1-2; brief: reviews/PC-F02.md R1-2 |
+| PC-F04 | entity-picker arrow keys in a burst: type + ArrowDown + Enter in one task picks row 1 where paced input picks row 2 (aria relays only the last arrow, after render) | todo (low; filler) | | | from PC-F03 R1 decisions; brief: reviews/PC-F03.md implementer notes "open risk" |
+| PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
 
@@ -69,11 +75,17 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Test | Since | Tracking |
 |---|---|---|
-| e2e entity-picker.spec.ts:584 modal round-trips › create page prefills… | 2026-11-08 (hidden by retries:2 before) | PC-F01 quarantine; root-cause fix PC-F02 (queued) |
-| e2e entity-picker.spec.ts:607 modal round-trips › edit page targets committed id… | 2026-11-08 | PC-F01 / PC-F02 |
-| e2e grid-entity.spec.ts:132 unresolved commit text resolves… after editor teardown | 2026-11-08 | PC-F01 / PC-F02 |
-| e2e grid-keyboard.spec.ts:241 readonly grid is a single tab stop | 2026-11-08 | PC-F01 / PC-F02 |
-| e2e popover.spec.ts:93 block-end/start alignment mirrors under RTL | 2026-11-08 | PC-F01 / PC-F02 |
+| e2e entity-picker.spec.ts:584 modal round-trips › create page prefills… | 2026-11-08 (hidden by retries:2 before) | fixed by PC-F02 (4c36d45); un-quarantined |
+| e2e entity-picker.spec.ts:607 modal round-trips › edit page targets committed id… | 2026-11-08 | fixed by PC-F02; un-quarantined |
+| e2e grid-entity.spec.ts:132 unresolved commit text resolves… after editor teardown | 2026-11-08 | fixed by PC-F02; un-quarantined |
+| e2e grid-keyboard.spec.ts:241 readonly grid is a single tab stop | 2026-11-08 | fixed by PC-F02; un-quarantined |
+| e2e popover.spec.ts:93 block-end/start alignment mirrors under RTL | 2026-11-08 | fixed by PC-F02; un-quarantined |
+| dotnet Identity integration Flows.AssurancePolicyTests.Max_age_zero_forces_one_reauthentication_then_completes: 200 not 302 at 2nd email-code verify, once in a full run (4/4 alone; local, pre-existing) | 2026-11-08 (PC-002 r2) | watch; PC-Fnn candidate if it recurs (identity suite, Tier 1) |
+| dotnet Smtp connector integration: port-in-use (local only, passed 3/3 on rerun) | 2026-11-08 (PC-002 fix1) | watch; quarantine if it recurs on CI |
+| e2e entity-picker.spec.ts:83 sync source keystroke-instant / async spinner | 2026-11-08 (CI 42456030333) | fixed by PC-F02 |
+| e2e grid-entity.spec.ts:58 type-to-edit … Enter commits with NO move | 2026-11-08 | fixed by PC-F02 |
+| e2e grid-keyboard.spec.ts:258 single tab stop with link column | 2026-11-08 | fixed by PC-F02 |
+| e2e modal.spec.ts:135 focus trapped and restored to opener | 2026-11-08 | fixed by PC-F02 |
 
 ## Deferred tests
 
@@ -84,24 +96,24 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Analysis id | Tier | Status | Commits | Cost units (M) | Notes |
 |---|---|---|---|---|---|---|
-| PC-000 | SETUP | 1 | integrated | 61a1eba, ad7a24b, 8a1ebf8 (pc) | 2.80 (impl 2.25, r1 0.55) | nightly run 42452020325 green; CI run 42451990728 RED: 5 flaky e2e now fail the run (failOnFlakyTests) → PC-F01 |
-| PC-001 | 0011-a | 1 | r1 | 13d1717 | | |
-| PC-002 | 0010-a1 | 1 | impl | | | |
-| PC-003 | 0010-f1 | 1 | r1 | bfc40a1 | | |
-| PC-004 | 0023-a | 1 | impl | | | |
+| PC-000 | SETUP | 1 | done | 61a1eba, ad7a24b, 8a1ebf8 (pc) | 2.80 (impl 2.25, r1 0.55) | nightly 42452020325 green; CI 42451990728 red (5 flaky) → PC-F01; done with PC-F01 at d1ab25e (CI 42455962373 green) |
+| PC-001 | 0011-a | 1 | done | 13d1717, 6ffd1dc, 354f93d (pc) | 13.40M | CI 42482202715 green |
+| PC-002 | 0010-a1 | 1 | done | 24e9a35, cd7ca36, 3a77d35, e971e64 (pc) | 27.79M | blocks=1 in fix1: agent tried amend + force-with-lease (denied; Ahmad notified 08:50). Review responses cite 88fa52a = cd7ca36; identity migration regenerated as 20261108125718_Initial; CI 42486546065 green |
+| PC-003 | 0010-f1 | 1 | integrated | bfc40a1, b780419, de5c585, 68ddcc0 (pc) | 24.89M | Queryex fixture on DatabaseCollations.Platform (D-015 done) |
+| PC-004 | 0023-a | 1 | done | cd25a67, d532bfa, 681f7f8 (pc) | 14.67M | CI 42484063555 green |
 | PC-005 | 0010-g1 | 1 | todo | | | |
 | PC-006 | 0010-a2 | 1 | todo | | | |
 | PC-007 | 0010-f2 | 1 | todo | | | |
-| PC-008 | 0010-b1 | 1 | todo | | | |
+| PC-008 | 0010-b1 | 1 | impl | | | |
 | PC-009 | 0010-a3 | 1 | todo | | | |
 | PC-010 | 0010-f3 | 1 | todo | | | |
 | PC-011 | 0010-d1 | 1 | todo | | | |
 | PC-012 | 0010-f5 | 1 | todo | | | |
 | PC-013 | 0010-d2 | 1 | todo | | | |
 | PC-014 | 0010-a5 | 1 | todo | | | |
-| PC-015 | SEED | 1 | todo | | | |
+| PC-015 | SEED | 1 | impl | | | |
 | PC-016 | 0013-a | 1 | todo | | | |
-| PC-017 | 0017-a | 1 | todo | | | |
+| PC-017 | 0017-a | 1 | impl | | | |
 | PC-018 | 0012-a | 1 | todo | | | |
 | PC-019 | 0013-b | 1 | todo | | | |
 | PC-020 | 0023-b | 1 | todo | | | |

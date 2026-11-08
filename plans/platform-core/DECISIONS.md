@@ -89,6 +89,7 @@ Format, one entry per ruling:
 - The Queryex integration fixture writes COLLATE Latin1_General_100_CI_AS literally; whichever of PC-003 / PC-002 integrates second switches it to `DatabaseCollations`.
 - Seam: string key sets can hit SQL Msg 468 unless the host's list types carry the column collation (0010-G, PC-005, and spec 0012 must honour it).
 - Also fixed a latent `BindKey.Equals` bug (version was never compared).
+- After Review 2: `level()` accepts any HierarchyId-typed operand (null, coalesce, if produce one, and SQL Server accepts GetLevel() on each); the spec's "only a path" premise is corrected in code and recorded as a deviation. The `Restrictions[i]` location applies only to joins no user clause needs (restrictions are lowered after all user clauses).
 - Revisit if: Review 1/2 of PC-003 disputes any of these.
 
 ### D-016 (PC-001, 2026-11-08): composition-root rulings that bind later checkpoints
@@ -97,7 +98,26 @@ Format, one entry per ruling:
 - Declared options are validated by the `core.options` check inside the startup gate, not by `ValidateOnStart` (which would abort before the gate aggregates). Platform options from 0011 §8 bind later through `OptionsRegistrar`.
 - Contributions are collected before the graph gate, so nested features join it; `TellmaComposition.Validate` also returns realisation problems.
 - Every Microsoft 10.0.x pin and dotnet-ef move to 10.0.11 (one servicing line). Identity and other migrations are regenerated with dotnet-ef 10.0.11 after this lands (PC-002 first).
+- After Review 1 (orchestrator rulings): override is allowed only along transitive dependencies (requires, nesting, the implicit core); two unrelated features registering one non-collection service type is a graph-gate problem. Registrations made directly on `tellma.Services` (host store choices) stay outside that rule. Framework multi-registration types (IHostedService, IHostedLifecycleService, IConfigureOptions<>, IConfigureNamedOptions<>, IPostConfigureOptions<>, IValidateOptions<>, IOptionsChangeTokenSource<>, IStartupFilter, IStartupCheck) are collection services by definition. A contributed check that cannot be created is reported, and the built-in checks still run. `Tellma:PublicOrigin` refuses a trailing slash.
 - Revisit if: Review 1 of PC-001 disputes any of these.
+
+### D-017 (PC-002, 2026-11-08): identity-store rulings and integration order with PC-001/PC-003
+- The shared collation pin (and a latest-migration pin) lives in Tellma.Core.Testing/Database, which adds a Microsoft.EntityFrameworkCore.Relational line to Directory.Packages.props. Whichever of PC-001 / PC-002 integrates second raises it to 10.0.11 with the other EF pins (else NU1605) and regenerates the identity migration with dotnet-ef 10.0.11.
+- PC-002 also moved the EF and Queryex integration fixtures onto the platform collation, so PC-005's fixture deliverable is already done (PC-005 verifies, does not redo). PC-003's literal COLLATE in the Queryex fixture switches to the shared pin at whichever integration comes second (D-015).
+- A Development Distribution entry without secrets fails seeding: the seeder never generates a secret. Spec 0011's `AddTellma` path (the in-proc identity mode, PC-047, and the Acme distribution, PC-085) must supply per-boot development secrets.
+- Pre-existing, not fixed: StandaloneFactory removes user secrets only at Build(), so registration-time reads in local test hosts see the developer's secrets (CI unaffected). Queued for the 0011 host checkpoints to settle.
+- Revisit if: Review 1/2 of PC-002 disputes any of these.
+
+### D-018 (orchestrator, 2026-11-08): systemic e2e flakiness is root-caused, not quarantined test by test
+- Situation: after PC-F01 quarantined five flaky tests, CI on a plans-only snapshot (5250c6c, run 42456030333) went red on four different flaky tests; the run on d1ab25e in between was clean. Each run of the ~435-test PR tier flakes on a few tests, which retries: 2 used to hide.
+- Ruling: the line stays stopped and PC-F02 root-causes the flakiness across all nine tests (CI worker count vs runner vCPUs, focus-dependent assertions, timing waits, animations), fixes it deterministically and un-quarantines what it fixes. Quarantining each new flake would empty the suite piece by piece and leave every integration's verdict a coin toss. PC-000 and PC-F01 are `done` on d1ab25e's green run; 5250c6c's red is the flake, not a regression.
+- Revisit if: PC-F02 cannot reach a reliably green PR tier; then cut CI workers to 1 as a stopgap and quarantine the rest, recorded here.
+
+### D-019 (PC-004, 2026-11-08): kbd grammar refuses Shift with a symbol key; icon/kbd size ceilings
+- Spec: 0023 §3.2 (shortcut grammar), §1 (entry-point budgets).
+- Situation: §3.2 is silent on Shift beside a symbol key; a binding such as `Mod+Shift+/` never matches on a US layout, because Shift changes the produced character. The measured ./icon and ./kbd bundles exceed §1's estimates.
+- Ruling: the grammar rejects Shift combined with a symbol key at parse/registration time and names the shifted symbol to bind instead. The ceilings are ./icon 3 KB and ./kbd 2.5 KB, as real logic weight; the budget notes state the measured reason.
+- Revisit if: a layout-independent key-code binding is ever needed (spec 0027's shortcut registry).
 
 ### D-006 (Ahmad, 2026-11-08): review levers
 - Ruling: Review 2 runs only for the PROCESS.md §3 two-review list (security-bound or complex, 44 checkpoints) and for escalations (§4.4); every other checkpoint gets Review 1 and one fix round. Cross-checkpoint batch reviews run once per phase instead of per group.
