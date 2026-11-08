@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Composition;
 
 namespace Tellma.Core.Abstractions.Tests.Composition
@@ -43,6 +44,14 @@ namespace Tellma.Core.Abstractions.Tests.Composition
         }
 
         [Fact]
+        public void The_calendar_sugar_records_its_item()
+        {
+            FeatureContribution contribution = new FeatureContribution().Calendar<CalendarSystem>();
+
+            Assert.Equal(new CalendarContributionItem(typeof(CalendarSystem)), Assert.Single(contribution.Items));
+        }
+
+        [Fact]
         public void Add_and_Feature_record_items_and_nested_features_and_refuse_null()
         {
             NestedFeature nested = new();
@@ -61,6 +70,55 @@ namespace Tellma.Core.Abstractions.Tests.Composition
 
         /// <summary>Its implementation.</summary>
         private sealed class Service : IService;
+
+        /// <summary>A calendar system; only its type is recorded.</summary>
+        private sealed class CalendarSystem : ICalendarSystem
+        {
+            /// <inheritdoc />
+            public string Code => "xx";
+
+            /// <inheritdoc />
+            public System.Globalization.Calendar Calendar { get; } = new System.Globalization.GregorianCalendar();
+
+            /// <inheritdoc />
+            public int MonthCount => 12;
+
+            /// <inheritdoc />
+            public DateOnly MinSupported => DateOnly.MinValue;
+
+            /// <inheritdoc />
+            public DateOnly MaxSupported => DateOnly.MaxValue;
+
+            /// <inheritdoc />
+            public (int Year, int Month, int Day) Decompose(DateOnly date)
+            {
+                return (date.Year, date.Month, date.Day);
+            }
+
+            /// <inheritdoc />
+            public string Format(DateOnly date, System.Globalization.CultureInfo culture, DateStyle style)
+            {
+                return string.Empty;
+            }
+
+            /// <inheritdoc />
+            public string Format(DateTimeOffset instant, TimeZoneInfo zone, System.Globalization.CultureInfo culture, DateStyle style, bool includeTime = true)
+            {
+                return string.Empty;
+            }
+
+            /// <inheritdoc />
+            public string MonthName(int month, System.Globalization.CultureInfo culture, bool abbreviated)
+            {
+                return string.Empty;
+            }
+
+            /// <inheritdoc />
+            public DateOnly? TryParse(string text, System.Globalization.CultureInfo culture)
+            {
+                return null;
+            }
+        }
 
         /// <summary>A nested feature.</summary>
         private sealed class NestedFeature : ITellmaFeature

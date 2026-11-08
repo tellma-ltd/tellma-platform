@@ -5,9 +5,9 @@ worker compose it through the same composition method. It takes no ASP.NET Core 
 host without the web stack composes it unchanged, and its services are testable without an HTTP
 context.
 
-Today it holds the composition root and the first piece of blob storage, the file-system store.
-Data access, the CRUD pipeline, access control, settings, the rest of blobs, Excel, jobs and
-notifications join it as namespaces.
+Today it holds the composition root, the first piece of blob storage (the file-system store) and
+the three calendar systems. Data access, the CRUD pipeline, access control, settings, caching,
+localization, the rest of blobs, Excel, jobs and notifications join it as namespaces.
 
 ## The composition root
 
@@ -105,14 +105,45 @@ Internally the namespace also holds the upload content-type sniffer (signatures 
 declaration; executables, HTML and SVG never stored) and the file-name sanitiser, which the
 staging service uses.
 
+## Calendars
+
+`CoreFeature` registers the three calendar systems, in this order, and the `ICalendarRegistry` over
+every system the composition contributed (a distribution adds one with
+`contribution.Calendar<TCalendar>()`):
+
+| Code | System | Exact range | Beyond it |
+|---|---|---|---|
+| `gc` | `GregorianCalendarSystem`, over `GregorianCalendar` | every `DateOnly` | — |
+| `uq` | `UmAlQuraCalendarSystem`, over `UmAlQuraCalendar` | AD 1900-04-30 to 2077-11-16 (AH 1318 to 1500) | the tabular `HijriCalendar` with `HijriAdjustment = 0`, an approximation; before AH 1, the ISO Gregorian form |
+| `et` | `EthiopianCalendarSystem`, a port of ICU's Julian-day-number arithmetic (13 months, leap year `y % 4 == 3`, one era) | AD 1752-09-14 to 2500-01-01 guaranteed; exact from the epoch, AD 0008-08-27 | before the epoch, the ISO Gregorian form |
+
+Rendering is the platform's own code, never a culture's calendar. Each culture is read once
+(`CalendarCultureData`): its Gregorian formats (a culture whose own calendar is another, such as
+`ar-SA`, is switched to its Gregorian calendar on a private clone), the four styles' patterns
+(`Short` the numeric short date, `Full` the long date with a weekday, `Long` without it, `Medium`
+with the month abbreviated), its short time pattern and its names. Every pattern loses CLDR's
+right-to-left marks and eras, every year renders in full and every digit in ASCII, so a date pasted
+from an email or an export stays a date. `TryParse` reads the numeric style back (any script's
+digits, any separators, the year in four digits) and the ISO `yyyy-MM-dd` form, and returns a date
+only when the calendar renders it with the same three numbers.
+
+Month names of `uq` and `et` are Core's resources, `Calendar_<code>_Month<n>` in
+`Resources/Strings.resx` (English) and its Arabic and Amharic satellites, taken from CLDR so the
+server and the browser agree; `gc` takes the culture's own.
+
+Culture data comes from the host's ICU, so two releases can differ in a pattern's punctuation or a
+name's spelling (Windows' and Ubuntu's do, for `en-GB`'s full date and `am-ET`'s month names).
+
 ## Layout
 
 | Folder | Contents |
 |---|---|
 | `Composition/` | `AddTellma`, `TellmaBuilder`, `TellmaComposition.Validate`, `CoreFeature`, `IContributionRealizer<T>`, `RealizationContext`, `TellmaStartupGate`; internally the pipeline, the feature graph, the composition record the checks and later runtimes read, and Core's model contributions. |
-| `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements and Core's model configurations. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
+| `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations and calendar systems. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
 | `Composition/Checks/` | The built-in startup checks above. |
 | `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |
+| `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian framework calendar, the shared renderer and reader, the culture data and the date-pattern reader. |
+| `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; so far the month names of `uq` and `et`. |
 
 ## Tests
 

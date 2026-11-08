@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Tellma.Core.Abstractions.Calendars;
+
 namespace Tellma.Core.Abstractions.Composition
 {
     /// <summary>
@@ -99,6 +101,18 @@ namespace Tellma.Core.Abstractions.Composition
             where TRow : class
         {
             return Add(new TableTypeContributionItem(typeof(TRow)));
+        }
+
+        /// <summary>
+        ///     Contributes a calendar system. The platform creates one instance of it, a singleton,
+        ///     and composes it into the calendar registry by its code.
+        /// </summary>
+        /// <typeparam name="TCalendar">The calendar system class, with a public parameterless constructor.</typeparam>
+        /// <returns>This contribution, for chaining.</returns>
+        public FeatureContribution Calendar<TCalendar>()
+            where TCalendar : class, ICalendarSystem
+        {
+            return Add(new CalendarContributionItem(typeof(TCalendar)));
         }
 
         /// <summary>
