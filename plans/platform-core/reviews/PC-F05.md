@@ -56,9 +56,11 @@
     rule/node-count summaries for violations, passes and incomplete;
   - (b) on a page seeded with five violations (image-alt, button-name, color-contrast, label,
     link-name), the new scan reported the same rule ids and the same node targets as AxeBuilder.
-  Frames: axe-core's frame messaging only answers same-origin frames. So a cross-origin frame now
-  fails the scan with a clear error instead of dropping out silently. None of the scanned stories
-  has a frame. No scan is scoped further than before. Measurement showed that scoping the picker
+  Frames: axe-core's frame messaging here answers only same-origin frames, so a cross-origin
+  frame inside the scan's scope now fails the scan with a clear error. (Corrected after Review 1:
+  `AxeBuilder`'s default `runPartial` mode did scan cross-origin frames, so this gives up a
+  capability, not a silent drop. No story embeds such a frame.) None of the scanned stories has a
+  frame. No scan is scoped further than before. Measurement showed that scoping the picker
   scan to the story's main element and the overlay container saved nothing measurable
   (0.27-0.30 s either way), because the shell is small. It would also have dropped the shell's
   landmarks and controls from every scan.
@@ -195,3 +197,127 @@ The `Directory.Packages.props` edit is a comment only, so no .NET gate applies.
 - The tooltip crossing on a paused clock: that the assertion would fail if pointerenter on the
   panel did not cancel the grace (the hide fires inside `runFor(250)`, and `appStable` lets it
   render before the assertion).
+
+## Review 1
+
+Reviewed d67c757 only. Evidence (CI=1 prod build, `--retries 0` unless noted, default 10 workers):
+
+- Parity probe (scratch, not committed): `@axe-core/playwright` 4.12.1 restored from the local pnpm
+  store, run against the new `expectNoAxeViolations` on the same page state.
+  - Real stories: entity-picker `Al` (light, dark), tooltip hover (dark), grid-editable, tree-grid
+    with `include('tm-tree-grid')`, file-preview with the image open. Violations agree (none), and
+    the rule/node-count summaries of passes and incomplete agree exactly with an `axe.run` using
+    the new context and options.
+  - Seeded page (image-alt, button-name, color-contrast, label, link-name, plus a button and an
+    image inside an open shadow root, plus a low-contrast `.tm-select__value--placeholder`): the
+    same rule ids and node targets, shadow targets included, and the placeholder excluded by both.
+  - `include`: a seeded button outside `tm-tree-grid` is ignored by both, and one inside it is
+    reported by both.
+  - Reload, then a seeded button: reported (axe is re-injected into the new document). A second
+    scan on the same document picks up a newly added image (the reused axe sees DOM changes).
+  - Frames: see R1-1 and R1-2.
+- `@axe-core/playwright` has no other users in the repository (only the comment in axe.ts
+  mentions `AxeBuilder`). The lockfile diff is exactly its three entries. `axe-core` 4.12.1 stays a
+  direct devDependency.
+- The touch project is Chromium (Pixel 7), so `newCDPSession` and the CDP timestamps are safe
+  there. grid-touch is never run by firefox or webkit (`testMatch`/`testIgnore`, and it has no
+  `@cross-engine` tag).
+- entity-picker, tooltip (chromium) and grid-touch (touch), `--repeat-each 10`: **690/690 passed**
+  (8.3 min).
+- PR tier (`--project chromium --project touch --grep-invert "@nightly|@perf|@quarantine"`, CI
+  retries 1 and `failOnFlakyTests`): **478/478 passed, 0 flaky** (3.8 min).
+- (c) Coverage is kept. Each split popup-state test replays the old steps verbatim up to its state
+  and scans once, so all five states are reached and scanned as before, in both themes. The
+  tooltip axe gate scans the same two themes. The paused-clock crossing keeps the old 250 ms
+  intent, and the implementer's leave-for-blank-space probe shows the final assertion is not
+  vacuous.
+
+### Findings
+
+**R1-1 (major) Same-origin `about:blank` and `srcdoc` frames fail the scan as "cross-origin".**
+`client/e2e/support/axe.ts:122` and `:128` compare `location.origin`. For an `about:blank` or
+`about:srcdoc` frame, `location.origin` serializes the URL's origin, which is `"null"`, even though
+the document inherits its parent's origin. Probe on the tooltip story, with a `srcdoc` iframe and a
+script-filled `about:blank` iframe: `location.origin` gives `null` for both, and `self.origin` gives
+`http://localhost:4350` for both.
+- Failure scenario: any scanned page with such a frame fails with "The frame at about:srcdoc is
+  cross-origin (null); the scan cannot reach it." The old runner scanned these frames and reported
+  the seeded button and image inside the `srcdoc` frame. The product makes such frames:
+  file-preview's `print()` appends a blank iframe (`tm-file-preview-content.ts:320`), and rich-text
+  or print previews will too. So a correct page fails with a wrong diagnosis.
+- No current test hits it, so it is not blocking.
+- Suggested fix: compare `self.origin` (the document's origin) in both evaluates. With axe loaded
+  in every frame, `axe.run` from the top document reports the violations inside both frames
+  (verified in the probe). Add a check with a seeded `srcdoc` frame to whatever self-test the
+  runner gets (see R1-2).
+
+**R1-2 (minor) The cross-origin refusal narrows the old runner, ignores the scan's scope, and the
+notes misstate the old behaviour.** `client/e2e/support/axe.ts:115-133`.
+- In its default `runPartial` mode, `AxeBuilder.analyze()` did scan cross-origin frames. Probe: a
+  `http://127.0.0.1` frame on a `localhost` story doubled the passes (button-name 6 to 12,
+  link-name 30 to 60). So the commit message ("instead of dropping out") and the implementer notes
+  ("dropping out silently") are wrong about the old runner: this is a loss of capability, not a
+  fix. It fails loudly, which is acceptable while no story has such a frame.
+- `loadAxe` walks every frame in the page whatever `selector` is. So `expectNoAxeViolations(page,
+  'tm-tree-grid')` on a page that has a cross-origin frame elsewhere (for example Chromium's PDF
+  viewer frame, if a PDF-preview scan is ever added) throws, although the scan's scope never
+  reaches the frame.
+- Suggested fix: state the old behaviour correctly in the notes, and in the `loadAxe` TSDoc say
+  that cross-origin frames are unsupported, not only "unreachable". Either limit the origin check
+  to frames whose owner element lies inside the scan context, or say in the TSDoc that the check
+  is page-wide.
+
+**R1-3 (minor) The negative double-tap test's editor check is early, not final.**
+`client/e2e/specs/grid-touch.spec.ts:310-315`. The comment says the editor's absence "is final,
+not merely early" once the second click has landed. That holds for the dblclick dispatch, which
+the `[1, 1]` click counts already rule out. It does not hold for the editor's render.
+- Failure scenario: a regression where a second single tap on the active cell opens the editor
+  (tap-to-edit). The editor would render a frame later. `toHaveCount(0)` resolves on its first
+  poll, so the test passes although its title says the editor never opens. That is the early
+  negative D-018 targets.
+- Suggested fix: `await appStable(page)` (from `../support/settle`) before
+  `expect(editor(page)).toHaveCount(0)`, and reword the comment: the click counts prove no
+  dblclick, and the settle proves no editor.
+
+### Responses
+
+R1-1: fixed in <sha>. Both origin reads in `loadAxe` now use `self.origin`, the document's own
+origin, which an `about:blank` or `srcdoc` frame inherits from its parent. A new self-check
+spec, `e2e/specs/axe-runner.spec.ts`, covers the runner on the button story:
+- the story alone is clean;
+- a `srcdoc` frame with an unnamed button reports exactly `button-name`, and the target is inside
+  the iframe;
+- a script-filled `about:blank` frame (the print-helper shape) with an `alt`-less image reports
+  exactly `image-alt` inside the frame;
+- a clean `srcdoc` frame keeps the scan clean.
+
+The runner gained `axeViolations(page, selector?)`, the non-asserting form that
+`expectNoAxeViolations` now wraps, so a test can assert on what a scan reports. With
+`location.origin` restored as a check, the three frame tests fail with "The frame at about:srcdoc
+is cross-origin (null)…", and they pass with the fix.
+
+R1-2: fixed in <sha>, per the orchestrator's ruling. A cross-origin frame inside the scan's scope
+still fails loudly. The check now covers only the scan's scope: with a selector, a frame is
+checked and loaded only when its outermost ancestor frame's owner element matches the selector or
+lies inside a match (the walk crosses shadow roots to their hosts). Frames outside the scope are
+left alone. The `loadAxe` TSDoc says cross-origin frames are unsupported, and the module comment
+states the capability given up against `AxeBuilder`. The implementer note above is corrected. The
+claim in commit 1's message ("instead of dropping out") cannot be amended, so this fix commit's
+message corrects it. New test in `axe-runner.spec.ts`: a `data:` frame (opaque origin) appended
+outside the story's main element makes a whole-page scan throw `cross-origin`, while a scan scoped
+to `main.story-main` passes. On commit 1's page-wide check, the scoped half would throw.
+
+R1-3: fixed in <sha>. The negative double-tap test now waits for `appStable(page)` before
+`expect(editor(page)).toHaveCount(0)`. The comment now says the click counts prove there was no
+dblclick, and the settle makes the editor's absence final.
+
+Round-1 verification (local Windows, CI=1 prod build):
+- Gates: lint, typecheck and lint:test pass. Only e2e files changed, so no library gate is
+  affected.
+- The touched specs (entity-picker, tooltip, grid-a11y, grid-a11y-editable, grid-entity and
+  axe-runner on Chromium; grid-touch and tooltip-touch on touch), `--repeat-each 10 --retries 0`
+  at the default 10 workers: **1180/1180 passed** (15.5 min).
+- PR tier (`--project chromium --project touch --grep-invert "@nightly|@perf|@quarantine"`, CI
+  retries 1 and `failOnFlakyTests`): **483/483 passed, 0 flaky** (4.2 min). That is the 478 tests
+  from before plus the 5 axe-runner self-checks.
+- Integration held: the orchestrator holds it until platform-core CI is green (PC-F06).

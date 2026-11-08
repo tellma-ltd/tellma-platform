@@ -16,6 +16,7 @@ import {
   scrollTopOf,
   selectedCells,
 } from '../support/grid';
+import { appStable } from '../support/settle';
 
 /**
  * The touch battery (spec 0004 §8.6, DoD 16) — runs ONLY on the `touch`
@@ -307,11 +308,13 @@ test.describe('touch editing (grid-editable)', () => {
     await recordClickCounts(page);
     await tapTwice(page, target, SEPARATE_TAPS_GAP_S);
 
-    // The browser read the pair as two single taps. A dblclick would follow
-    // the second click in the same dispatch, so once that click has landed
-    // the editor's absence is final, not merely early.
+    // The click counts prove the browser read the pair as two single taps
+    // (no dblclick). An editor that the second tap opened some other way
+    // would render on a later pass: once the app is stable, its absence is
+    // final, not merely early.
     await expect.poll(() => recordedClickCounts(page)).toEqual([1, 1]);
     await expect(target).toBeFocused();
+    await appStable(page);
     await expect(editor(page)).toHaveCount(0);
   });
 

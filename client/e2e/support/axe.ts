@@ -21,23 +21,17 @@ import { expect, type Frame, type Page } from '@playwright/test';
  * to their timeout. Here axe-core is loaded once per document and reused,
  * and every scan runs the same rules over the same nodes: only the
  * reporting of rule groups other than violations is trimmed, which no
- * assertion reads.
+ * assertion reads. Same-origin frames (including `about:blank` and
+ * `srcdoc` ones) are scanned as before. One capability is given up:
+ * `AxeBuilder` also scanned cross-origin frames, and this scan refuses a
+ * cross-origin frame inside its scope with an error rather than report a
+ * partial result. No story embeds one.
  */
 
 /** The page-side shape of a document that has axe-core loaded. */
 interface AxeWindow {
   /** The axe-core API, once its source has been evaluated in the document. */
   readonly axe?: typeof axeCore;
-}
-
-/** One violation as the scan reports it back to the test. */
-interface ScanViolation {
-  /** The rule id (`color-contrast`, `button-name`, …). */
-  readonly id: string;
-  /** The rule's one-line description. */
-  readonly help: string;
-  /** The CSS selector path of every offending node. */
-  readonly targets: readonly string[];
 }
 
 /** The rule set every scan runs: WCAG 2.1 levels A and AA. */
@@ -66,24 +60,53 @@ interface ScanRequest {
   readonly tags: readonly string[];
 }
 
+/** One violation as {@link axeViolations} reports it. */
+export interface AxeViolation {
+  /** The rule id (`color-contrast`, `button-name`, …). */
+  readonly id: string;
+  /** The rule's one-line description. */
+  readonly help: string;
+  /** The CSS selector path of every offending node (a frame's nodes are prefixed by the frame). */
+  readonly targets: readonly string[];
+}
+
 /**
  * Runs the axe-core scan over the page (or only inside `selector`) and fails
  * the test on any violation, listing each rule and the nodes that break it.
  */
 export async function expectNoAxeViolations(page: Page, selector?: string): Promise<void> {
-  await loadAxe(page);
+  const violations = await axeViolations(page, selector);
+  expect(
+    violations,
+    violations.map((v) => `${v.id}: ${v.help} -> ${v.targets.join(', ')}`).join('\n'),
+  ).toEqual([]);
+}
+
+/**
+ * Runs the axe-core scan over the page (or only inside `selector`) and
+ * returns its violations, without asserting on them. Tests assert through
+ * {@link expectNoAxeViolations}; this form lets a test check what a scan
+ * reports.
+ */
+export async function axeViolations(
+  page: Page,
+  selector?: string,
+): Promise<readonly AxeViolation[]> {
+  await loadAxe(page, selector);
   const request: ScanRequest = {
     include: selector === undefined ? null : [selector],
     exclude: EXCLUDED,
     tags: WCAG_TAGS,
   };
-  const violations = await page.evaluate(async ({ include, exclude, tags }: ScanRequest) => {
+  return page.evaluate(async ({ include, exclude, tags }: ScanRequest) => {
     const axe = (window as AxeWindow).axe;
     if (axe === undefined) {
       throw new Error('axe-core is not loaded in this document.');
     }
     const context =
-      include === null ? { exclude: [...exclude] } : { include: [...include], exclude: [...exclude] };
+      include === null
+        ? { exclude: [...exclude] }
+        : { include: [...include], exclude: [...exclude] };
     const results = await axe.run(context, {
       runOnly: { type: 'tag', values: [...tags] },
       // Full node detail for violations only: axe still evaluates every
@@ -93,46 +116,75 @@ export async function expectNoAxeViolations(page: Page, selector?: string): Prom
       resultTypes: ['violations'],
     });
     // Only what the assertion message needs crosses back to the test.
-    return results.violations.map(
-      (violation): ScanViolation => ({
-        id: violation.id,
-        help: violation.help,
-        targets: violation.nodes.map((node) => String(node.target)),
-      }),
-    );
+    return results.violations.map((violation): AxeViolation => ({
+      id: violation.id,
+      help: violation.help,
+      targets: violation.nodes.map((node) => String(node.target)),
+    }));
   }, request);
-  expect(
-    violations,
-    violations.map((v) => `${v.id}: ${v.help} -> ${v.targets.join(', ')}`).join('\n'),
-  ).toEqual([]);
 }
 
 /**
  * Makes axe-core available in the page's document and in every frame inside
- * it, evaluating its source only where it is not loaded yet: a reload or a
+ * the scan's scope (the whole page, or the frames under `selector`),
+ * evaluating its source only where it is not loaded yet: a reload or a
  * navigation starts a new document, which loads it again on its next scan.
  *
  * The scan runs from the top document and reaches each frame through
- * axe-core's own frame messaging, which only answers frames of the same
- * origin. A cross-origin frame would silently drop out of the scan, so it
- * fails the scan instead.
+ * axe-core's own frame messaging, which here answers only frames of the
+ * same origin. Cross-origin frames inside the scope are therefore not
+ * supported: one fails the scan with an error, rather than leave a partial
+ * result. Frames outside the scope are left alone, whatever their origin.
  */
-async function loadAxe(page: Page): Promise<void> {
+async function loadAxe(page: Page, selector: string | undefined): Promise<void> {
   const main = page.mainFrame();
-  const origin = await main.evaluate(() => location.origin);
+  // `self.origin` is the document's origin: an about:blank or srcdoc frame
+  // inherits its parent's, where `location.origin` would report "null".
+  const origin = await main.evaluate(() => self.origin);
+  await loadAxeInto(main);
   for (const frame of page.frames()) {
-    if (frame.isDetached()) {
+    if (frame === main || frame.isDetached()) {
       continue;
     }
-    if (frame !== main) {
-      const frameOrigin = await frame.evaluate(() => location.origin);
-      if (frameOrigin !== origin) {
-        throw new Error(
-          `The frame at ${frame.url()} is cross-origin (${frameOrigin}); the scan cannot reach it.`,
-        );
-      }
+    if (selector !== undefined && !(await insideScope(frame, selector))) {
+      continue;
+    }
+    const frameOrigin = await frame.evaluate(() => self.origin);
+    if (frameOrigin !== origin) {
+      throw new Error(
+        `The frame at ${frame.url()} is cross-origin (${frameOrigin}), which the axe scan does not support.`,
+      );
     }
     await loadAxeInto(frame);
+  }
+}
+
+/**
+ * Whether `frame` lies inside the scan scope `selector`: its outermost
+ * ancestor frame under the top document is owned by an element that matches
+ * `selector` or sits inside a match, shadow roots included.
+ */
+async function insideScope(frame: Frame, selector: string): Promise<boolean> {
+  let outermost = frame;
+  for (let parent = frame.parentFrame(); parent?.parentFrame(); parent = parent.parentFrame()) {
+    outermost = parent;
+  }
+  const owner = await outermost.frameElement();
+  try {
+    return await owner.evaluate((element, scope) => {
+      // Up through the ancestors, crossing shadow roots to their hosts, as
+      // axe's own context matching does.
+      for (let node: Element | null = element as Element; node !== null;) {
+        if (node.matches(scope)) {
+          return true;
+        }
+        const root = node.getRootNode();
+        node = node.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
+      }
+      return false;
+    }, selector);
+  } finally {
+    await owner.dispose();
   }
 }
 
