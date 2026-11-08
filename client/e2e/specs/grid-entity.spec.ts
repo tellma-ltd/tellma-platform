@@ -127,8 +127,8 @@ test('the two-stage Esc: dropdown first, then the grid cancel', async ({ page })
   expect(await cellText(page, 0, 1)).toBe('Bob Stone');
 });
 
-// Quarantined: flaky on Linux CI (failed its first attempt, passed on
-// retry). Out of the PR tier until the race is fixed; still runs nightly.
+// Quarantined: on Linux CI the picker had run 5 searches, not the 4
+// counted before the click-elsewhere commit; passed on retry.
 test(
   'unresolved commit text resolves through the column resolver AFTER editor teardown',
   { tag: '@quarantine' },

@@ -34,9 +34,13 @@ tier: they need credentials and run in `.github/workflows/nightly.yml`.
 CI fails a run in which any Playwright test fails first and passes on retry: a flaky test never
 turns a red run green. When a test proves flaky, quarantine it with the `@quarantine` tag (in the
 `tag` option, so its title stays stable) and a comment saying how it failed. That takes it out of
-the PR tier while the nightly tier keeps running it. A quarantined test is tracked and fixed, never
-left: the fix removes the tag in the same change, and the tag is not a way to retire a test that
-is no longer wanted.
+the PR tier. The nightly tier runs every quarantined test ten times in a job of its own, which
+never decides the nightly verdict, and lists each one in that job's summary with how many runs
+passed, flaked or failed. That list is the quarantine's record: every test on it is tracked there
+each night, and one that fails every run is no longer a flake but broken.
+
+A quarantined test is fixed, never left: the fix removes the tag in the same change, and the tag
+is not a way to retire a test that is no longer wanted.
 
 ### PR tier
 
@@ -97,8 +101,8 @@ node scripts/e2e.mjs --project chromium --project touch --grep-invert "@nightly|
 ### Nightly tier
 
 `nightly-tier.yml` runs each night on the `platform-core` branch, and can be started by hand with
-`gh workflow run nightly-tier.yml --ref platform-core`. Its two commands also run locally; an empty
-tier passes.
+`gh workflow run nightly-tier.yml --ref platform-core`. Its commands also run locally; an empty tier
+passes.
 
 ```bash
 dotnet test Tellma.slnx --filter "Category=Nightly&Live!=true"
@@ -114,7 +118,13 @@ dotnet test Tellma.slnx --filter "Category=Nightly&Category!=Integration&Categor
 From `client/`, with all three browsers installed (`pnpm exec playwright install chromium firefox webkit`):
 
 ```bash
-node scripts/e2e.mjs --grep "@nightly|@cross-engine|@perf|@quarantine" --pass-with-no-tests
+node scripts/e2e.mjs --grep "@nightly|@cross-engine|@perf" --grep-invert "@quarantine" --pass-with-no-tests
+```
+
+The quarantined tests, ten runs each:
+
+```bash
+node scripts/e2e.mjs --grep "@quarantine" --repeat-each 10 --pass-with-no-tests
 ```
 
 ## Contributor License Agreement

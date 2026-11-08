@@ -579,8 +579,8 @@ test.describe('modal round-trips', () => {
     await expect(input(page)).toBeFocused();
   });
 
-  // Quarantined: flaky on Linux CI (failed its first attempt, passed on
-  // retry). Out of the PR tier until the race is fixed; still runs nightly.
+  // Quarantined: on Linux CI the committed model's supplierId was still
+  // null after the input already showed 'Newco'; passed on retry.
   test(
     'the create page prefills the query; its pick applies with the fresh label',
     { tag: '@quarantine' },
@@ -602,8 +602,8 @@ test.describe('modal round-trips', () => {
     },
   );
 
-  // Quarantined: flaky on Linux CI (failed its first attempt, passed on
-  // retry). Out of the PR tier until the race is fixed; still runs nightly.
+  // Quarantined: on Linux CI no option became active within 5 s after the
+  // click and ArrowUp (expected 'Edit…'); passed on retry.
   test(
     'the edit page targets the committed id; rename re-applies, delete clears',
     { tag: '@quarantine' },

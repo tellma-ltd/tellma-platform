@@ -88,8 +88,8 @@ test.describe('open/close + focus (DoD 16)', () => {
 });
 
 test.describe('positioning (DoD 16)', () => {
-  // Quarantined: flaky on Linux CI (failed its first attempt, passed on
-  // retry). Out of the PR tier until the race is fixed; still runs nightly.
+  // Quarantined: on Linux CI the LTR panel's top sat 0.11 px above the
+  // 1 px tolerance below the trigger; passed on retry.
   test('block-end/start alignment mirrors under RTL', { tag: '@quarantine' }, async ({ page }) => {
     await page.goto(storyUrl('popover'));
     const trigger = page.getByTestId('popover-trigger');

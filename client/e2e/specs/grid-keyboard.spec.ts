@@ -236,8 +236,8 @@ test.describe('tab stop and mid-grid exit', () => {
     await expect(cell(page, 6, 2)).toBeFocused();
   });
 
-  // Quarantined: flaky on Linux CI (failed its first attempt, passed on
-  // retry). Out of the PR tier until the race is fixed; still runs nightly.
+  // Quarantined: on Linux CI focus was still inside the grid right after
+  // the Tab; passed on retry.
   test(
     'a readonly grid is a single tab stop: Tab from a focused cell leaves it',
     { tag: '@quarantine' },

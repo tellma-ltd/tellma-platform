@@ -104,4 +104,99 @@ Line numbers are as in the CI log. After this change the tests start at entity-p
 
 ## Review 1
 ### Findings
+
+Checked and found sound: (a) `--list` with `CI=1` on this commit gives 435 for the PR-tier command
+and 440 with `@quarantine` left out of the invert. The sorted, line-stripped diff of the two lists is
+exactly the five tests, all `[chromium]`. `--grep "@quarantine"` lists exactly those five. The
+nightly command lists 125: 45 chromium, of which 40 are `@cross-engine` and the 5 quarantined ones.
+No quarantined test reaches firefox, webkit or touch. (b) The pattern is the same in ci.yml:195,
+CONTRIBUTING.md:94, nightly-tier.yml:114 and CONTRIBUTING.md:117. No other e2e tier invocation
+exists in the repo. (d) client/e2e/playwright.config.ts is untouched: `retries: 1` and
+`failOnFlakyTests: !!CI` are unchanged. (e) The change adds no declarations. No PC id or plans/
+path appears in a test title, tag, comment, workflow or CONTRIBUTING prose.
+
+R1-1 (major) nightly-tier.yml:113-114, CONTRIBUTING.md:116-118. The quarantined tests run in the
+same step as every other nightly Playwright test, so a known flake decides the nightly verdict.
+Scenario: the nightly runs `CI=1` with `retries: 1` and `failOnFlakyTests`, all four projects in a
+single parallel invocation, so the runner is more contended than in the PR-tier run where these five
+flaked. Any one of the five failing its first attempt turns `client-e2e`, and the whole nightly-tier
+run, red. That can happen most nights until PC-F02 lands. A new failure, for example a real
+`@cross-engine` regression on WebKit, then arrives in a run that is already red for a known reason.
+PROCESS.md §5.3 triage reads the latest nightly run and turns "each new failure" into a PC-Fnn item,
+and a red that is red every night teaches the reader to skim past it. The open risk in the
+implementer notes calls this intended, but visibility of the flake does not need to cost the
+verdict of everything else. A second effect: a quarantined test that turns from flaky into
+deterministically failing, a real regression in that code path, looks exactly like the flake it
+replaced. Suggested fix: give the quarantined set its own clearly reported job.
+  - Main nightly step: `node scripts/e2e.mjs --grep "@nightly|@cross-engine|@perf" --grep-invert "@quarantine" --pass-with-no-tests`.
+  - New job `client-e2e-quarantine`, Chromium only, same setup:
+    `node scripts/e2e.mjs --project chromium --grep "@quarantine" --repeat-each 10 --pass-with-no-tests`,
+    with its own report artifact name. `--repeat-each` makes the job measure a flake rate rather
+    than a coin toss: about 50 short runs per night, a few seconds of runner time. That rate is
+    also the bar PC-F02 has to clear (0 failures in N), and it separates "still flaky" (some
+    passes) from "now broken" (none).
+  - Split the CONTRIBUTING.md nightly command the same way and update the nightly-tier.yml header
+    comment (lines 18-21).
+
+  Whether the quarantine job also sets `continue-on-error: true`, so the run conclusion reflects
+  only non-quarantined tests, or stays blocking with triage reading per-job conclusions
+  (`gh run view <id> --json jobs`), is the orchestrator's call: see the decision line.
+
+R1-2 (minor) entity-picker.spec.ts:582-583 and :605-606, grid-entity.spec.ts:130-131,
+grid-keyboard.spec.ts:239-240, popover.spec.ts:91-92. The five quarantine comments are identical
+("flaky on Linux CI … until the race is fixed"), so they break the rule this commit adds at
+CONTRIBUTING.md:35-36: quarantine with "a comment saying how it failed". The per-test failure modes
+exist only in this review file, and plans/ is deleted at the merge into main (D-012). After that,
+whoever picks up a still-quarantined test has to re-derive them. "The race" also prejudges the
+cause: popover.spec.ts:100 missed a 1 px tolerance by 0.11 px (measurement or rounding), and the
+grid-entity and grid-keyboard cases may be product bugs. Suggested fix: one or two lines per test
+stating the observed failure, for example
+`// Quarantined: on Linux CI, supplierId was still null after the input showed 'Newco'; passed on retry.`
+and for popover
+`// Quarantined: on Linux CI the panel's top sat 0.11 px above the 1 px tolerance; passed on retry.`
+Drop "the race".
+
+R1-3 (minor) CONTRIBUTING.md:37-39. The text says "A quarantined test is tracked and fixed, never
+left" but does not say where it is tracked, and CONTRIBUTING.md may not point at plans/.
+Scenario: after the merge into main, or for any contributor outside this run, nothing records a
+quarantine and nothing bounds how many accumulate. The tag then becomes the silent retirement the
+paragraph forbids. Suggested fix: name a durable tracker, for example "open an issue labelled
+`flaky-test` and link it in the quarantine comment". Or say the count is visible because the
+nightly lists every `@quarantine` test in its quarantine job's summary, which R1-1's separate job
+makes possible (`--list --grep "@quarantine"` into `$GITHUB_STEP_SUMMARY`).
+
 ### Responses
+
+R1-1: fixed in the "PC-F01: review 1 fixes" commit, following the orchestrator ruling (a separate,
+non-blocking quarantine job that reports per test and keeps failOnFlakyTests). In
+`nightly-tier.yml`, the main `client-e2e` step now runs
+`--grep "@nightly|@cross-engine|@perf" --grep-invert "@quarantine"`. A new job,
+`client-e2e-quarantine`, has job-level `continue-on-error: true` and runs
+`node scripts/e2e.mjs --grep "@quarantine" --repeat-each 10 --pass-with-no-tests --reporter list,json,html`
+on all projects, so a quarantined `@cross-engine` test would still reach every engine. The config's
+`failOnFlakyTests` and `retries: 1` are unchanged, so the job's own conclusion stays honest. A new
+script, `client/scripts/e2e-quarantine-summary.mjs`, turns the JSON report into a per-test,
+per-project table in the job's step summary: passed, flaky and failed run counts, a verdict
+("passed every run", "flaky", "failing every run") and the first error. The HTML report, the JSON
+report and the results upload under their own artifact name whatever the outcome. A missing
+report makes the summary step fail, since it means the run did not finish. A local dry run under
+`CI=1` with `--repeat-each 2` and two temporary probes (one that passes only on retry, one that
+always fails; deleted, never committed) produced the expected table: the five quarantined tests
+"passed every run" 2/2, the probes "flaky" 0/2/0 and "failing every run" 0/0/2, the Playwright
+step exit 1, the summary exit 0. A missing report gave exit 1, an empty one "No test is
+quarantined." `--list` counts: main nightly 120 (40 per engine, with no quarantined test),
+quarantine job 50 (5 × 10), PR tier 435. CONTRIBUTING.md now gives the two nightly Playwright
+commands separately. The workflow header and the ARCHITECTURE.md sentence are updated.
+
+R1-2: fixed in the "PC-F01: review 1 fixes" commit. Each quarantine comment now states the failure
+the CI log showed, with no guess at the cause: a null supplierId after the input showed 'Newco';
+no active option within 5 s after the click and ArrowUp; 5 searches instead of 4; focus still
+inside the grid after Tab; the panel top 0.11 px past the 1 px tolerance. Each ends "passed on
+retry". "The race" is gone.
+
+R1-3: fixed in the "PC-F01: review 1 fixes" commit, using the reviewer's second option.
+CONTRIBUTING.md now names the record: the nightly quarantine job lists every quarantined test each
+night in its summary, with its counts, so none can sit unseen, and a test that fails every run is
+flagged as broken. I did not adopt the issue-tracker option: opening issues is outside what this
+run may do, and a CONTRIBUTING rule that the five existing quarantines do not follow would be
+broken from day one. The orchestrator can still add a tracker rule when issues are in use.

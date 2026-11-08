@@ -15,11 +15,13 @@
 #     (Integration and E2E tests included), except Live=true suites, which need credentials and
 #     run in nightly.yml. On Linux all of them; on Windows those that are neither Integration nor
 #     E2E, matching the OS coverage the PR tier gives each kind.
-#   - Playwright: every test tagged @nightly, @cross-engine, @perf or @quarantine, on all four
-#     projects. The Firefox and WebKit projects keep their own @cross-engine filter on top, so a
-#     @nightly, @perf or @quarantine test reaches them only when it is also tagged @cross-engine.
-#     Quarantined flaky tests run here so a flake stays visible until it is fixed.
-# An empty tier is a green run: both steps deliberately pass when nothing matches.
+#   - Playwright: every test tagged @nightly, @cross-engine or @perf, on all four projects, minus
+#     the quarantined ones. The Firefox and WebKit projects keep their own @cross-engine filter on
+#     top, so a @nightly or @perf test reaches them only when it is also tagged @cross-engine.
+#   - Quarantined Playwright tests (@quarantine) run in a job of their own, ten times each, and
+#     report per test whether they passed, flaked or failed. That job never decides the run's
+#     verdict: a known flake must not hide a new failure in the jobs above.
+# An empty tier is a green run: every test step deliberately passes when nothing matches.
 name: Nightly tier
 
 on:
@@ -81,7 +83,7 @@ jobs:
       - name: Nightly-tier dotnet unit tests
         run: dotnet test Tellma.slnx -c Release --no-build --filter "Category=Nightly&Category!=Integration&Category!=E2E&Live!=true"
 
-  # The Playwright nightly tier on the showcase, every browser engine.
+  # The Playwright nightly tier on the showcase, every browser engine, quarantined tests excluded.
   client-e2e:
     if: github.ref == 'refs/heads/platform-core'
     timeout-minutes: 120
@@ -111,11 +113,63 @@ jobs:
       # No --project: on CI the script runs all four projects in one invocation. Without
       # --pass-with-no-tests Playwright fails a run that selects nothing.
       - name: Nightly-tier e2e (all engines)
-        run: node scripts/e2e.mjs --grep "@nightly|@cross-engine|@perf|@quarantine" --pass-with-no-tests
+        run: node scripts/e2e.mjs --grep "@nightly|@cross-engine|@perf" --grep-invert "@quarantine" --pass-with-no-tests
       - name: Upload the Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: nightly-client-e2e-report
           path: client/.artifacts/e2e
+          if-no-files-found: ignore
+
+  # The quarantined Playwright tests: flaky tests taken out of the PR tier until they are fixed. Each
+  # runs ten times so the job measures a flake rate rather than tossing a coin once, and tells a test
+  # that still flakes from one that now fails every run. failOnFlakyTests stays on, so the job's own
+  # conclusion is honest, but `continue-on-error` keeps it out of the run's verdict. Triage reads the
+  # per-test table in the job summary; the full report is uploaded whatever the outcome.
+  client-e2e-quarantine:
+    if: github.ref == 'refs/heads/platform-core'
+    continue-on-error: true
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    env:
+      # The CLI --reporter below replaces the config's reporters, so their output locations are set
+      # here: the JSON report feeds the summary step, the HTML report is uploaded.
+      PLAYWRIGHT_JSON_OUTPUT_FILE: .artifacts/e2e-quarantine/report.json
+      PLAYWRIGHT_HTML_OUTPUT_DIR: .artifacts/e2e-quarantine/report
+      PLAYWRIGHT_HTML_OPEN: never
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6 # version from client/package.json packageManager
+        with:
+          package_json_file: client/package.json
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: client/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Install browsers
+        timeout-minutes: 15
+        run: pnpm exec playwright install chromium firefox webkit --with-deps
+      - run: pnpm run tokens:build-css
+      - run: pnpm run build:showcase
+      # All projects, so a quarantined @cross-engine test still runs on every engine.
+      - name: Quarantined e2e (ten runs each)
+        run: >
+          node scripts/e2e.mjs --grep "@quarantine" --repeat-each 10 --pass-with-no-tests
+          --reporter list,json,html
+          --output .artifacts/e2e-quarantine/results
+      - name: Summarise the quarantined tests
+        if: always()
+        run: node scripts/e2e-quarantine-summary.mjs .artifacts/e2e-quarantine/report.json
+      - name: Upload the quarantined-test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-quarantine-e2e-report
+          path: client/.artifacts/e2e-quarantine
           if-no-files-found: ignore
