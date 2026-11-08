@@ -2,9 +2,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\core\Tellma.Core\Tellma.Core.csproj" />
+    <!-- Dogfoods the shipped test package: the blob-store conformance suite runs against the
+         file-system store. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
     <ProjectReference Include="..\..\shared\Tellma.Testing.Support\Tellma.Testing.Support.csproj" />
     <!-- In-memory configuration for the compositions under test. -->
     <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <!-- MetricCollector and FakeLogger, for the store instruments and log events. -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
     <!-- A real generic host, so the startup gate runs the way a deployment starts it. -->
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />

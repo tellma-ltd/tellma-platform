@@ -5,8 +5,9 @@ worker compose it through the same composition method. It takes no ASP.NET Core 
 host without the web stack composes it unchanged, and its services are testable without an HTTP
 context.
 
-Today it holds the composition root. Data access, the CRUD pipeline, access control, settings,
-blobs, Excel, jobs and notifications join it as namespaces.
+Today it holds the composition root and the first piece of blob storage, the file-system store.
+Data access, the CRUD pipeline, access control, settings, the rest of blobs, Excel, jobs and
+notifications join it as namespaces.
 
 ## The composition root
 
@@ -66,6 +67,41 @@ Options a feature declares are validated by `core.options` rather than by the ho
 `ValidateOnStart`, which would stop startup at the first failing options type before the gate could
 report the other problems.
 
+## Blobs: the file-system store
+
+```csharp
+builder.Services.AddFileSystemBlobStore();                       // binds Tellma:Blobs:FileSystem
+builder.Services.AddFileSystemBlobStore(o => o.RootPath = "/srv/tellma/blobs");
+```
+
+`AddFileSystemBlobStore` registers the process's one `IBlobStore`: the default for local development
+and for air-gapped on-premises deployments. Tenant `42`'s objects live under `{RootPath}/t42/`, the
+object name's `/` becoming the directory separator (`user-image/3f/3fa9….thumb`).
+
+- **Writes are create-only and atomic.** Each object streams to a fresh
+  `{RootPath}/t42/.tmp/{guid}.part`, is flushed to disk, and is moved to its final name without
+  overwriting. A reader sees an object whole or not at all; a crash leaves at most a `.part` file,
+  which `PurgeIncompleteAsync` removes once it is older than the cut-off. A content stream that
+  yields more or fewer bytes than declared fails the write and leaves nothing.
+- **Names are validated twice.** Every name must satisfy `BlobName.IsValid` before storage is
+  touched, and every resolved path must stay inside the tenant's directory.
+- **Missing storage reads as absent.** A read, delete, list or purge in a tenant whose directory does
+  not exist creates nothing; a write creates the directory once and retries once.
+- **Reads share deletes.** A read stream is opened with `FileShare.Read | FileShare.Delete`, so the
+  sweep can delete an object while a download of it is still streaming.
+- **The root.** In Development an unset `RootPath` defaults to `Tellma/{slug}/blobs` under the
+  user's local application data folder (`%LOCALAPPDATA%` on Windows, `~/.local/share` on Linux);
+  outside Development it must be set. It must be absolute and, on Windows, at most 153 characters,
+  so the deepest object path stays within 259. The resolved root is logged (`BlobFileSystemRoot`)
+  when the store is created.
+- **Telemetry.** `tellma.blobs.store.operations` and `tellma.blobs.store.duration` on the
+  `Tellma.Blobs` meter, one measurement per call, tagged with the operation, the outcome and, on a
+  write's duration, its size class; never a tenant.
+
+Internally the namespace also holds the upload content-type sniffer (signatures over the
+declaration; executables, HTML and SVG never stored) and the file-name sanitiser, which the
+staging service uses.
+
 ## Layout
 
 | Folder | Contents |
@@ -73,6 +109,7 @@ report the other problems.
 | `Composition/` | `AddTellma`, `TellmaBuilder`, `TellmaComposition.Validate`, `CoreFeature`, `IContributionRealizer<T>`, `RealizationContext`, `TellmaStartupGate`; internally the pipeline, the feature graph, the composition record the checks and later runtimes read, and Core's model contributions. |
 | `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements and Core's model configurations. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
 | `Composition/Checks/` | The built-in startup checks above. |
+| `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |
 
 ## Tests
 
