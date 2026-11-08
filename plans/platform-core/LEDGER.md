@@ -8,13 +8,15 @@ It is committed by the snapshot procedure. Status values: `todo`, `impl`, `r1`, 
 
 | Item | Value |
 |---|---|
-| Started | |
-| Orchestrator session id | |
-| PR | |
-| Slots | |
+| Started | 2026-11-08 05:03 UTC |
+| Orchestrator session id | 55d8a508-95e7-4eec-9239-0e94c12f0353 |
+| PR | #18 (platform-core → main, open, non-draft; CI green on 148c074) |
+| Slots | pc-1, pc-2, pc-3 (WT/pc-N, ports 43N0/71N0/42N0, DB_SUFFIX pcN) |
 | Parked | no |
 | Parked at U | |
-| Agent tool supports name / effort / fable | |
+| Agent tool supports name / effort / fable | name: **no** (address agents by id via SendMessage) / effort: yes / fable: yes (model enum) |
+| Environment check | git clean on platform-core, no prompt on `cd MAIN && …`; gh logged in (repo, workflow scopes); Docker 29.6.2; .NET SDK 10.0.401 (+9.0.314); Node 24.18.0; pnpm 11.9.0; check_deps 218 checkpoints, 0 problems |
+| Notification test | email "Platform-core: run starting" delivered (Gmail id 1a1b98a787d056c9); PushNotification not sent (terminal active, tool skips while Ahmad is at the machine; it reaches the phone when he is away) |
 
 ## Calibration
 
@@ -29,11 +31,13 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | When (UTC) | Weekly all % | Weekly Fable % | Resets | Note |
 |---|---|---|---|---|
 | 2026-11-08 02:20 | 40 | 22 | 2026-11-10 20:00 | after planning |
+| 2026-11-08 05:03 | 42 | 23 | 2026-11-10 20:00 | kickoff; window start for ρ (orchestrator units 0.21M) |
 
 ## In flight
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
+| PC-000 | pc-1 | pc/PC-000 | impl | impl-PC-000 / a3fb81ec9c6d58cbe | | 2026-11-08 05:08 |
 
 ## Batch reviews (one per phase)
 
@@ -54,7 +58,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Analysis id | Tier | Status | Commits | Cost units (M) | Notes |
 |---|---|---|---|---|---|---|
-| PC-000 | SETUP | 1 | todo | | | |
+| PC-000 | SETUP | 1 | impl | | | |
 | PC-001 | 0011-a | 1 | todo | | | |
 | PC-002 | 0010-a1 | 1 | todo | | | |
 | PC-003 | 0010-f1 | 1 | todo | | | |
