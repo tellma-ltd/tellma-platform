@@ -161,8 +161,12 @@ import { SHOWCASE_ICONS } from './showcase-icons';
   `,
 })
 export class IconStory {
+  /** Every registry name the showcase registers, for the gallery. */
   protected readonly names = Object.keys(SHOWCASE_ICONS);
+  /** Lucide data drawn directly, as library code does. */
   protected readonly checkIcon = Check;
+  /** The row numbers inserted on demand. */
   protected readonly rows = Array.from({ length: 20 }, (_, index) => index + 1);
+  /** Whether the on-demand rows are in the page. */
   protected readonly inserted = signal(false);
 }

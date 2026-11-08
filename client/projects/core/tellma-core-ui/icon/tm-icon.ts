@@ -143,8 +143,13 @@ function appendElements(document: Document, parent: Element, node: TmIconNode): 
   },
 })
 export class TmIcon {
+  /** The host element, which holds the drawn `<svg>`. */
   private readonly host: HTMLElement = inject(ElementRef<HTMLElement>).nativeElement;
+
+  /** Where registry names resolve. */
   private readonly registry = inject(TmIconRegistry);
+
+  /** Where refused direct `svg` data is reported. */
   private readonly errorHandler = inject(ErrorHandler);
 
   /** A registry name such as `chevron-right`. */
@@ -190,6 +195,7 @@ export class TmIcon {
   /** The `<svg>` currently in the host, and the node it was cloned from. */
   private drawn: { readonly node: TmIconNode; readonly element: SVGSVGElement } | undefined;
 
+  /** Wires the draw effect: the glyph follows `svg`, `name` and the registry. */
   constructor() {
     // A component effect runs inside the change-detection pass that creates
     // the component, before the frame paints (spec 0023 §3.1 "First frame").

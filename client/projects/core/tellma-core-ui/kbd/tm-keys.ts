@@ -13,6 +13,11 @@
  * `KeyboardEvent.key` spells it (`'PageUp'`, `'F2'`), which is also how its
  * cap reads. Examples: `'Mod+K'`, `'?'`, `'F2'`, `'Mod+Plus'`,
  * `'Alt+Shift+P'`. Every name matches case-insensitively.
+ *
+ * A symbol key never takes `Shift`: which symbol a key types with Shift
+ * depends on the layout, so a symbol binding names the symbol itself
+ * (`'Mod+?'`, not `'Mod+Shift+/'`) and matches with or without Shift.
+ * Writing Shift beside a symbol is an error that names the symbol to bind.
  */
 export type TmKeys = string;
 
@@ -36,8 +41,11 @@ interface TmParsedKeys {
   readonly aria: string;
   /**
    * How the key matches when `event.key` cannot: `letter` and `digit` by
-   * `KeyX`/`DigitN` code, `punctuation` through the US layout's codes,
-   * `symbol` (other printable non-alphanumerics) and `named` never.
+   * `KeyX`/`DigitN` code, `punctuation` through the US layout's codes, and
+   * never for `symbol` (any other printable character that is not a letter,
+   * digit or space), `named` (a key name such as `F2`) or `other` (a space,
+   * or a letter or digit outside ASCII, which has no US key to fall back
+   * to). Shift is compared for every kind but `punctuation` and `symbol`.
    */
   readonly kind: 'letter' | 'digit' | 'punctuation' | 'symbol' | 'named' | 'other';
 }
@@ -90,6 +98,22 @@ function invalid(keys: TmKeys): Error {
   );
 }
 
+/**
+ * The error a combination of Shift and a symbol throws. It names the binding
+ * to write instead: the US layout's shifted symbol for an unshifted
+ * punctuation key (`'Mod+Shift+/'` → `'Mod+?'`), else the same symbol
+ * without Shift (`'Shift+?'` → `'?'`).
+ */
+function shiftedSymbol(keys: TmKeys, parts: readonly string[], key: string): Error {
+  const shifted = Object.values(US_PUNCTUATION).find(([plain]) => plain === key)?.[1] ?? key;
+  const written = shifted === '+' ? 'Plus' : shifted === '-' ? 'Minus' : shifted;
+  const instead = [...parts.filter((part) => part.toLowerCase() !== 'shift'), written].join('+');
+  return new Error(
+    `tmKeys: "${keys}" combines Shift with a symbol key, and the layout decides which ` +
+      `symbol Shift types; bind the symbol itself instead: '${instead}'.`,
+  );
+}
+
 /** Parses (or recalls) a key combination, throwing on a malformed one. */
 function parse(keys: TmKeys): TmParsedKeys {
   const cached = parsed.get(keys);
@@ -139,6 +163,12 @@ function parse(keys: TmKeys): TmParsedKeys {
     kind = 'named';
     label = KEY_LABELS[key] ?? keyPart;
     aria = keyPart;
+  }
+  // A symbol never compares Shift (see tmKeysMatch), so a written Shift
+  // beside one could never be honoured: refuse it rather than bind a
+  // shortcut that silently never fires.
+  if (modifiers.shift && (kind === 'punctuation' || kind === 'symbol')) {
+    throw shiftedSymbol(keys, parts, key);
   }
   const result: TmParsedKeys = { ...modifiers, key, label, aria, kind };
   parsed.set(keys, result);
@@ -293,6 +323,7 @@ function usReading(code: string, shift: boolean, kind: TmParsedKeys['kind']): st
  * Whether a keydown matches a key combination, on any keyboard layout.
  *
  * - **Modifiers match exactly**, except Shift beside a printable symbol
+ *   (which is why a symbol binding cannot name Shift)
  *   (`?`, `+`, `/`): layouts differ on whether a symbol needs Shift, so
  *   `'?'` matches Shift+/ on a US layout and `'Mod+Alt+Plus'` matches both
  *   the numpad `+` and Shift+= on the main keys.

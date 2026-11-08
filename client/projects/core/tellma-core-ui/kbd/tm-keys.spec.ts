@@ -85,6 +85,25 @@ describe('tmFormatKeys and tmKeysText', () => {
     }
     expect(() => tmFormatKeys('Mod++', WINDOWS)).toThrow(/'Plus'/);
   });
+
+  it('refuse Shift beside a symbol, naming the symbol to bind instead', () => {
+    for (const [keys, instead] of [
+      ['Mod+Shift+/', "'Mod+?'"],
+      ['Mod+Shift+.', "'Mod+>'"],
+      ['Shift+=', "'Plus'"],
+      ['Mod+Alt+Shift+Minus', "'Mod+Alt+_'"],
+      ['Shift+?', "'?'"],
+      ['Mod+Shift+Plus', "'Mod+Plus'"],
+      ['shift+!', "'!'"],
+    ] as const) {
+      expect(() => tmFormatKeys(keys, WINDOWS), keys).toThrow(/combines Shift with a symbol/);
+      expect(() => tmKeysText(keys, APPLE), keys).toThrow(instead);
+    }
+    // Shift beside letters, digits, space and named keys stays valid.
+    for (const keys of ['Mod+Shift+K', 'Alt+Shift+1', 'Shift+Space', 'Shift+F2', 'Shift+Tab']) {
+      expect(() => tmFormatKeys(keys, WINDOWS), keys).not.toThrow();
+    }
+  });
 });
 
 describe('tmAriaKeyShortcuts', () => {
@@ -135,6 +154,12 @@ describe('tmKeysMatch', () => {
       expect(
         tmKeysMatch(keydown({ key: 'k', code: 'KeyK', ctrl: true }), 'Mod+Shift+K', WINDOWS),
       ).toBe(false);
+    });
+
+    it('the shifted symbol binds a symbol that needs Shift: Mod+? from Ctrl+Shift+/', () => {
+      const event = keydown({ key: '?', code: 'Slash', ctrl: true, shift: true });
+      expect(tmKeysMatch(event, 'Mod+?', WINDOWS)).toBe(true);
+      expect(tmKeysMatch(event, 'Mod+/', WINDOWS)).toBe(false);
     });
 
     it('Shift is not compared beside a printable symbol', () => {

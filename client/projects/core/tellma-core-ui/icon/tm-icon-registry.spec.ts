@@ -16,15 +16,22 @@ import { TmIconRegistry, provideTellmaIcons, type TmIconSource } from './tm-icon
  * children.
  */
 // The package types attributes as Record<string, any>; restated verbatim.
+/** An element's attributes, as `@lucide/icons` types them. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type LucideIconsAttributes = Record<string, any>;
+/** One element, optionally with nested children, as `@lucide/icons` types it. */
 type LucideIconsNode =
   | [name: string, attributes: LucideIconsAttributes]
   | [name: string, attributes: LucideIconsAttributes, children: LucideIconsNode[]];
+/** One icon object, as `@lucide/icons` exports it. */
 interface LucideIconsData {
+  /** The icon's kebab-case name. */
   name?: string;
+  /** The icon's SVG children. */
   node: LucideIconsNode[];
+  /** Other names the icon is known by. */
   aliases?: string[];
+  /** The viewBox size the data is drawn in. */
   size?: number;
 }
 

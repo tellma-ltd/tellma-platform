@@ -129,16 +129,21 @@ const BINDINGS: readonly TmKeys[] = [
   `,
 })
 export class KbdStory {
+  /** The bindings the table lists and the tester matches. */
   protected readonly bindings = BINDINGS;
+  /** Whether this browser reports an Apple platform. */
   protected readonly apple = tmIsApplePlatform();
+  /** The last keydown the tester saw, with the bindings it matched. */
   protected readonly last = signal<
     { readonly key: string; readonly code: string; readonly matched: readonly TmKeys[] } | undefined
   >(undefined);
 
+  /** The combination as sentence text for one platform. */
   protected text(keys: TmKeys, apple: boolean): string {
     return tmKeysText(keys, apple);
   }
 
+  /** The combination as an `aria-keyshortcuts` value for this platform. */
   protected aria(keys: TmKeys): string {
     return tmAriaKeyShortcuts(keys);
   }
