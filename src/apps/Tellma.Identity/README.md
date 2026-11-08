@@ -72,41 +72,6 @@ An `Active` result from the invite API means the user already had a credential a
 sent**. Telling them they now have access is the caller's job; the server has no tenants and cannot
 tell a new membership from an existing one.
 
-## The management API
-
-The management API lives under a version segment relative to the authority, `api/identity/v1/…`
-(under the path base in-proc, for example `/id/api/identity/v1/…`); nothing answers without the
-segment. Version 1 is:
-
-| Routes | Scope |
-|---|---|
-| `POST invitations`, `POST invitations/delivery-status` | `tellma_identity` |
-| `POST service-accounts`; `GET`, `DELETE service-accounts/{clientId}` | `tellma_identity` |
-| `GET users/{sub}`; `POST users/{sub}/temporary-access-passes` | `tellma_control_plane`, standalone only |
-
-The version is the API's own integer, not the engine's release. An additive change — a new endpoint,
-response member or optional request member — stays inside a version, and callers ignore response
-members they do not know. A breaking change is mapped as the next version beside the current one in
-one release, and the old one is removed once nothing calls it. Both facts live in one place:
-`[ManagementApi(n)]` on a controller maps its routes under `v{n}` and records each call, and
-`[ManagementApiEndpoint(…)]` names each action from the closed set in `ManagementApiEndpoints`.
-Every call that reaches an action — authorized, before model binding — is counted on
-`tellma.identity.api.calls` (tags `version`, `endpoint`) and logged with the calling client's id, so
-an operator sees when a version falls silent and who still calls it. The client id is never a tag.
-
-A bulk-invite item with `existingOnly: true` is a lookup by email, used by sandbox tenants: it never
-creates a user, issues a link or queues an email, whatever the rest of the batch does. A user who
-holds a credential answers `Active` with their `sub` (an orphaned one is restored, as an ordinary
-invite restores them); a user without one answers the error `existing_user_has_no_credential`; an
-address nobody holds answers `unknown_email`; a disabled or purged user gets the refusal any invite
-gives. The item's `returnUrl` is ignored, since no link carries it.
-
-Every access token carries `tellma_kind`: `individual` for the `authorization_code` and
-`device_code` grants and their refreshes, `service` for `client_credentials` and the exchange of a
-machine token. `TellmaKindClaimHandler` writes it inside OpenIddict's sign-in pipeline from the
-grant type, after each token's principal is built and before any token is signed, and strips it
-from every other token; nothing a client sends and no claim already on the principal can set it.
-
 `Services/Email/tellma-wordmark-email.png` is the brand mark those emails carry, embedded in the
 assembly and attached to each message as an inline part. It is a hand-committed raster of
 `wwwroot/img/tellma-wordmark-on-dark.svg` rendered well above the size it is drawn at, because mail
@@ -137,6 +102,48 @@ fail-closed configuration pattern.
 
 EF Core migrations for the engine's database (SQL schema `idsvr`) live in the separate
 [`Tellma.Identity.Migrations`](../Tellma.Identity.Migrations/README.md) project.
+
+## The management API
+
+The management API lives under a version segment relative to the authority, `api/identity/v1/…`
+(under the path base in-proc, for example `/id/api/identity/v1/…`); nothing answers without the
+segment. Version 1 is:
+
+| Routes | Scope |
+|---|---|
+| `POST invitations`, `POST invitations/delivery-status` | `tellma_identity` |
+| `POST service-accounts`; `GET`, `DELETE service-accounts/{clientId}` | `tellma_identity` |
+| `GET users/{sub}`; `POST users/{sub}/temporary-access-passes` | `tellma_control_plane`, standalone only |
+
+The version is the API's own integer, not the engine's release. An additive change — a new endpoint,
+response member or optional request member — stays inside a version, and callers ignore response
+members they do not know. A breaking change is mapped as the next version beside the current one in
+one release, and the old one is removed once nothing calls it. Both facts live in one place:
+`[ManagementApi(n)]` on a controller maps its routes under `v{n}` and records each call, and
+`[ManagementApiEndpoint(…)]` names each action from the closed set in `ManagementApiEndpoints`.
+Every call is counted on `tellma.identity.api.calls` (tags `version`, `endpoint`, `outcome`) and
+logged with the calling client's id, so an operator sees when a version falls silent and who still
+calls it, including a caller whose every call is refused. A refused call never reaches MVC: the
+authorization middleware answers it, so the engine decorates the host's
+`IAuthorizationMiddlewareResultHandler` (or the framework default) to record it as `unauthorized`
+(no valid token, so no client to name) or `forbidden` (the client is named). An authorized call is
+recorded by the controller's filter once answered, as `error` for an unhandled exception or a 5xx
+and `ok` otherwise. A host that registers its own result handler must do so before
+`AddTellmaIdentity`; one registered after it would replace the decorator, and startup refuses that.
+The client id is never a tag.
+
+A bulk-invite item with `existingOnly: true` is a lookup by email, used by sandbox tenants: it never
+creates a user, issues a link or queues an email, whatever the rest of the batch does. A user who
+holds a credential answers `Active` with their `sub` (an orphaned one is restored, as an ordinary
+invite restores them); a user without one answers the error `existing_user_has_no_credential`; an
+address nobody holds answers `unknown_email`; a disabled or purged user gets the refusal any invite
+gives. The item's `returnUrl` is ignored, since no link carries it.
+
+Every access token carries `tellma_kind`: `individual` for the `authorization_code` and
+`device_code` grants and their refreshes, `service` for `client_credentials` and the exchange of a
+machine token. `TellmaKindClaimHandler` writes it inside OpenIddict's sign-in pipeline from the
+grant type, after each token's principal is built and before any token is signed, and strips it
+from every other token; nothing a client sends and no claim already on the principal can set it.
 
 ## The store check and seeding
 

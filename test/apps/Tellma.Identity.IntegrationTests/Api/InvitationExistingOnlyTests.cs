@@ -45,6 +45,8 @@ namespace Tellma.Identity.IntegrationTests.Api
             TellmaIdentityUser orphaned = await TestData.CreateActiveUserAsync(factory, "orphan@example.com");
             await TestData.AddPasswordAsync(factory, orphaned);
             await TestData.SetLifecycleStateAsync(factory, orphaned, UserLifecycleState.Orphaned);
+            TellmaIdentityUser lapsed = await TestData.CreateActiveUserAsync(factory, "lapsed@example.com");
+            await TestData.SetLifecycleStateAsync(factory, lapsed, UserLifecycleState.Orphaned);
 
             using HttpClient client = factory.CreateClient();
             client.DefaultRequestHeaders.Authorization =
@@ -63,6 +65,7 @@ namespace Tellma.Identity.IntegrationTests.Api
                         new { email = "nobody@example.com", existingOnly = true },
                         new { email = "disabled@example.com", existingOnly = true },
                         new { email = "orphan@example.com", existingOnly = true },
+                        new { email = "lapsed@example.com", existingOnly = true },
                         new { email = "fresh@example.com", existingOnly = false },
                     },
                 },
@@ -74,7 +77,7 @@ namespace Tellma.Identity.IntegrationTests.Api
             using var document = JsonDocument.Parse(body);
             JsonElement[] results = [.. document.RootElement.GetProperty("results").EnumerateArray()];
             Assert.Equal(
-                ["member@example.com", "pending@example.com", "nobody@example.com", "disabled@example.com", "orphan@example.com", "fresh@example.com"],
+                ["member@example.com", "pending@example.com", "nobody@example.com", "disabled@example.com", "orphan@example.com", "lapsed@example.com", "fresh@example.com"],
                 results.Select(static r => r.GetProperty("email").GetString()));
 
             // A user who holds a credential: Active, with their subject.
@@ -93,8 +96,11 @@ namespace Tellma.Identity.IntegrationTests.Api
             // An orphaned user with a credential: Active, restored as an ordinary invite restores.
             AssertActive(results[4], orphaned.Id);
 
+            // An orphaned user without a credential: the credential error, and no restore.
+            AssertError(results[5], "existing_user_has_no_credential");
+
             // The ordinary invite in the same batch proceeds as always.
-            Assert.Equal("Invited", results[5].GetProperty("status").GetString());
+            Assert.Equal("Invited", results[6].GetProperty("status").GetString());
 
             // The ordinary invite's mail arrives; the whole batch was one hand-off, so once it has
             // been queued nothing else of this batch can still be on its way.
@@ -110,11 +116,20 @@ namespace Tellma.Identity.IntegrationTests.Api
             Assert.Equal(UserLifecycleState.Active, (await userManager.FindByIdAsync(withoutCredential.Id))!.LifecycleState);
             Assert.Equal(UserLifecycleState.Disabled, (await userManager.FindByIdAsync(disabled.Id))!.LifecycleState);
             Assert.Equal(UserLifecycleState.Active, (await userManager.FindByIdAsync(orphaned.Id))!.LifecycleState);
+            Assert.Equal(UserLifecycleState.Orphaned, (await userManager.FindByIdAsync(lapsed.Id))!.LifecycleState);
 
             TellmaIdentityDbContext store = scope.ServiceProvider.GetRequiredService<TellmaIdentityDbContext>();
-            string[] lookedUp = [withCredential.Id, withoutCredential.Id, disabled.Id, orphaned.Id];
+            string[] lookedUp = [withCredential.Id, withoutCredential.Id, disabled.Id, orphaned.Id, lapsed.Id];
             Assert.False(await store.Set<SingleUseCode>()
                 .AnyAsync(code => lookedUp.Contains(code.UserId), TestContext.Current.CancellationToken));
+
+            // The one restore is audited with the distribution whose request caused it, and the
+            // credential-less orphan has no lifecycle row at all.
+            AuditEvent restore = Assert.Single(await store.Set<AuditEvent>()
+                .Where(static e => e.Action == "UserLifecycleChanged")
+                .ToListAsync(TestContext.Current.CancellationToken));
+            Assert.Equal(orphaned.Id, restore.Subject);
+            Assert.Equal("acme-svc", restore.ClientId);
         }
 
         [Fact]

@@ -347,7 +347,7 @@ namespace Tellma.Identity.Services.Invitations
                 return;
             }
 
-            (TellmaIdentityUser? user, InvitationStatus status, string? error) = await CreateOrGetAsync(item);
+            (TellmaIdentityUser? user, InvitationStatus status, string? error) = await CreateOrGetAsync(item, createdByClientId);
             if (error is not null || user is null)
             {
                 await RefuseAsync(item, user?.Id, error, createdByClientId, results);
@@ -425,7 +425,7 @@ namespace Tellma.Identity.Services.Invitations
             // ordinary invite ends it — but no link is issued and no email is queued.
             if (existing!.LifecycleState == UserLifecycleState.Orphaned)
             {
-                string? restoreError = await RestoreOrphanedAsync(existing, reason: "existing_only");
+                string? restoreError = await RestoreOrphanedAsync(existing, reason: "existing_only", createdByClientId);
                 if (restoreError is not null)
                 {
                     await RefuseAsync(item, existing.Id, restoreError, createdByClientId, results);
@@ -486,8 +486,9 @@ namespace Tellma.Identity.Services.Invitations
         /// <summary>Restores an orphaned user to <c>Active</c> and audits the change.</summary>
         /// <param name="user">The orphaned user, tracked by the shared store.</param>
         /// <param name="reason">Why the user was restored, for the audit row.</param>
+        /// <param name="clientId">The calling client whose request caused the restore, for the audit row.</param>
         /// <returns>Null on success, or the per-user error when the restore failed.</returns>
-        private async Task<string?> RestoreOrphanedAsync(TellmaIdentityUser user, string reason)
+        private async Task<string?> RestoreOrphanedAsync(TellmaIdentityUser user, string reason, string? clientId)
         {
             user.LifecycleState = UserLifecycleState.Active;
             user.OrphanedUtc = null;
@@ -508,6 +509,10 @@ namespace Tellma.Identity.Services.Invitations
             {
                 Action = AuditActions.UserLifecycleChanged,
                 Subject = user.Id,
+
+                // The distribution whose request reactivated the account, so an operator can tell
+                // who made a retained identity able to obtain tokens again.
+                ClientId = clientId,
                 Outcome = "success",
                 DetailsJson = System.Text.Json.JsonSerializer.Serialize(new { from = "Orphaned", to = "Active", reason }),
             });
@@ -518,8 +523,10 @@ namespace Tellma.Identity.Services.Invitations
         ///     Creates a new user or resolves the existing one, returning the outcome status — or a
         ///     per-user error when the user must be refused.
         /// </summary>
+        /// <param name="item">The user to invite.</param>
+        /// <param name="createdByClientId">The calling client, for audit attribution.</param>
         private async Task<(TellmaIdentityUser? User, InvitationStatus Status, string? Error)> CreateOrGetAsync(
-            InvitationRequestItem item)
+            InvitationRequestItem item, string? createdByClientId)
         {
             TellmaIdentityUser? existing = await userManager.FindByEmailAsync(item.Email);
             if (existing is not null)
@@ -541,7 +548,7 @@ namespace Tellma.Identity.Services.Invitations
                 // Restore an orphaned user; a credential-less Active user is simply re-invited.
                 if (existing.LifecycleState == UserLifecycleState.Orphaned)
                 {
-                    string? restoreError = await RestoreOrphanedAsync(existing, reason: "reinvited");
+                    string? restoreError = await RestoreOrphanedAsync(existing, reason: "reinvited", createdByClientId);
                     if (restoreError is not null)
                     {
                         return (existing, default, restoreError);

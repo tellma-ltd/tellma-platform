@@ -9,15 +9,17 @@ using System.Diagnostics.Metrics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Tellma.Identity.Infrastructure;
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using Tellma.Identity.Services.Provisioning;
 
 namespace Tellma.Identity.IntegrationTests.Api
 {
     /// <summary>
     ///     The management API's routes live under a version segment: every route answers under
-    ///     <c>v1</c>, nothing answers without the segment or under an unmapped version, and each
-    ///     call is counted on the <c>Tellma.Identity</c> meter.
+    ///     <c>v1</c>, nothing answers without the segment or under an unmapped version, and every
+    ///     call, answered or refused, is counted on the <c>Tellma.Identity</c> meter.
     /// </summary>
     [Collection(SqlServerCollectionDefinition.Name)]
     [Trait("Category", "Integration")]
@@ -88,10 +90,11 @@ namespace Tellma.Identity.IntegrationTests.Api
         }
 
         [Fact]
-        public async Task A_call_is_counted_on_the_identity_meter_with_its_version_and_endpoint()
+        public async Task Every_call_is_counted_on_the_identity_meter_with_its_outcome()
         {
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idapicalls");
-            string token = await TestData.GetIdentityScopeTokenAsync(factory);
+            string identityToken = await TestData.GetIdentityScopeTokenAsync(factory);
+            string apiToken = await GetDistributionApiTokenAsync(factory, "beta");
 
             // Collected from the host's own meter factory, which the engine's metrics are built on.
             using MetricCollector<long> calls = new(
@@ -99,27 +102,66 @@ namespace Tellma.Identity.IntegrationTests.Api
                 IdentityMetrics.MeterName,
                 IdentityMetrics.ApiCallsInstrumentName);
 
+            // An authorized call, a token without the identity scope, and no token at all.
+            Assert.Equal(HttpStatusCode.OK, await PostDeliveryStatusAsync(factory, identityToken));
+            Assert.Equal(HttpStatusCode.Forbidden, await PostDeliveryStatusAsync(factory, apiToken));
+            Assert.Equal(HttpStatusCode.Unauthorized, await PostDeliveryStatusAsync(factory, token: null));
+
+            // One measurement per call, each with the version, the endpoint and its outcome: a
+            // refused call never reaches MVC, and is counted all the same.
+            IReadOnlyList<CollectedMeasurement<long>> measurements = calls.GetMeasurementSnapshot();
+            Assert.Equal(
+                [ManagementApiOutcomes.Ok, ManagementApiOutcomes.Forbidden, ManagementApiOutcomes.Unauthorized],
+                measurements.Select(static m => m.Tags[IdentityMetrics.ApiOutcomeTag]));
+            Assert.All(measurements, static measurement =>
+            {
+                Assert.Equal(1, measurement.Value);
+                Assert.Equal("v1", measurement.Tags[IdentityMetrics.ApiVersionTag]);
+                Assert.Equal(ManagementApiEndpoints.DeliveryStatus, measurement.Tags[IdentityMetrics.ApiEndpointTag]);
+            });
+        }
+
+        /// <summary>Posts a delivery-status request with an optional bearer token and returns its status.</summary>
+        private static async Task<HttpStatusCode> PostDeliveryStatusAsync(StandaloneFactory factory, string? token)
+        {
             using HttpClient client = factory.CreateClient();
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            if (token is not null)
+            {
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            }
+
             using HttpResponseMessage response = await client.PostAsJsonAsync(
                 new Uri("/api/identity/v1/invitations/delivery-status", UriKind.Relative),
                 new { subs = UnknownSubject },
                 TestContext.Current.CancellationToken);
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            return response.StatusCode;
+        }
 
-            CollectedMeasurement<long> measurement = Assert.Single(calls.GetMeasurementSnapshot());
-            Assert.Equal(1, measurement.Value);
-            Assert.Equal("v1", measurement.Tags[IdentityMetrics.ApiVersionTag]);
-            Assert.Equal(ManagementApiEndpoints.DeliveryStatus, measurement.Tags[IdentityMetrics.ApiEndpointTag]);
+        /// <summary>
+        ///     Provisions a distribution and obtains a token for its backend client carrying only
+        ///     the <c>tellma_api</c> scope: authentic, but forbidden at the management API.
+        /// </summary>
+        private static async Task<string> GetDistributionApiTokenAsync(StandaloneFactory factory, string slug)
+        {
+            DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory, slug);
 
-            // An anonymous call never reaches the API, so it is not counted.
-            using HttpClient anonymous = factory.CreateClient();
-            using HttpResponseMessage refused = await anonymous.PostAsJsonAsync(
-                new Uri("/api/identity/v1/invitations/delivery-status", UriKind.Relative),
-                new { subs = UnknownSubject },
+            using HttpClient client = factory.CreateClient();
+            using HttpResponseMessage response = await client.PostAsync(
+                new Uri("/connect/token", UriKind.Relative),
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["grant_type"] = "client_credentials",
+                    ["client_id"] = distribution.ServiceClientId,
+                    ["client_secret"] = distribution.ServiceClientSecret,
+                    ["scope"] = "tellma_api",
+                    ["resource"] = $"https://{slug}.app.tellma.com",
+                }),
                 TestContext.Current.CancellationToken);
-            Assert.Equal(HttpStatusCode.Unauthorized, refused.StatusCode);
-            Assert.Single(calls.GetMeasurementSnapshot());
+
+            string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.True(response.IsSuccessStatusCode, body);
+            using var document = JsonDocument.Parse(body);
+            return document.RootElement.GetProperty("access_token").GetString()!;
         }
 
         /// <summary>Sends an anonymous request and asserts its status, naming the request on failure.</summary>

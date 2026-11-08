@@ -131,6 +131,12 @@ namespace Tellma.Identity.Hosting
             services.AddAuthorization();
             services.Configure<Microsoft.AspNetCore.Authorization.AuthorizationOptions>(ApiPolicies.Configure);
 
+            // Every management-API call is counted and logged: an authorized one by the
+            // controllers' own filter, a refused one by the decorated authorization result
+            // handler, because the authorization middleware answers it before MVC runs.
+            services.AddSingleton<ManagementApiCallRecorder>();
+            ManagementApiAuthorizationResultHandler.Decorate(services);
+
             // Best-effort logout-token delivery: bounded timeout plus the standard retry pipeline.
             services.AddHttpClient(
                     Services.BackchannelLogout.BackchannelLogoutService.HttpClientName,
