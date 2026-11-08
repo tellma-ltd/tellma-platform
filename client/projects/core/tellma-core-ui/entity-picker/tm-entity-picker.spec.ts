@@ -297,6 +297,40 @@ async function press(
   return { defaultPrevented: event.defaultPrevented };
 }
 
+/**
+ * Types `text` (replacing the content) and dispatches `key` in the SAME
+ * task, with no render, effect or timer between them. This is how a barcode
+ * scanner, a text expander, or a main thread that fell behind delivers
+ * input: the commit key arrives while the DOM still shows the state before
+ * the keystroke. Returns the key's event, to read its consumption.
+ */
+function typeAndPressAtOnce(input: HTMLInputElement, text: string, key: string): KeyboardEvent {
+  input.focus();
+  input.value = text;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+  input.dispatchEvent(event);
+  return event;
+}
+
+/** Dispatches `key` on the input at once, with no settle before or after. */
+function pressNow(input: HTMLInputElement, key: string): KeyboardEvent {
+  const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+  input.dispatchEvent(event);
+  return event;
+}
+
+/**
+ * Runs pending promise continuations (a released response reaching the
+ * picker) without yielding to a task. Renders are scheduled as tasks, so
+ * none can run here: the answer is in the picker's state but not on screen.
+ */
+async function flushMicrotasks(): Promise<void> {
+  for (let i = 0; i < 20; i++) {
+    await Promise.resolve();
+  }
+}
+
 /** The portaled panel, if open. */
 function panel(): HTMLElement | null {
   return document.querySelector('.tm-entity-picker__panel');
@@ -991,6 +1025,101 @@ describe('tm-entity-picker', () => {
       // Not consumed by the relay: the native caret motion runs.
       expect(home.defaultPrevented).toBe(false);
       expect(activeRow()?.textContent?.trim()).toBe(before);
+    });
+  });
+
+  // Keystrokes and the commit key delivered back to back, with no render
+  // between them. Each test asserts what the SAME keys commit when paced
+  // (the keyboard-model tests above), so the outcome cannot depend on
+  // whether the page found time to paint in between.
+  describe('input delivered faster than the page renders', () => {
+    it('Enter in the same task as the first keystroke commits the first result', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      // The popup has not even mounted yet: no listbox exists to relay to.
+      const enter = typeAndPressAtOnce(input, 'Al', 'Enter');
+      expect(enter.defaultPrevented).toBe(true); // consumed: never a form submit
+      await settle(fixture);
+      expect(host.model().agentId).toBe(3);
+      expect(input.value).toBe('Alice Green');
+      expect(panel()).toBeNull();
+      expect(host.picks.map((p) => p.source)).toEqual(['list']);
+    });
+
+    it('Enter in the same task as a narrowing keystroke commits the NEW first result', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      await type(fixture, input, 'A');
+      expect(activeRow()?.textContent?.trim()).toBe('Adam Brown'); // the previous highlight
+      typeAndPressAtOnce(input, 'Al', 'Enter');
+      await settle(fixture);
+      expect(host.model().agentId).toBe(3);
+      expect(host.picks.map((p) => p.source)).toEqual(['list']);
+    });
+
+    it('Tab in the same task as a keystroke commits the first result without consuming the key', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      await type(fixture, input, 'A');
+      const tab = typeAndPressAtOnce(input, 'Al', 'Tab');
+      expect(tab.defaultPrevented).toBe(false);
+      await settle(fixture);
+      expect(host.model().agentId).toBe(3);
+      expect(input.value).toBe('Alice Green');
+      expect(panel()).toBeNull();
+    });
+
+    it('Enter in the same task as a keystroke that finds nothing fails fast, popup open', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.createPage.set(pageOf(FakePage));
+      await settle(fixture);
+      const enter = typeAndPressAtOnce(input, 'Zebra', 'Enter');
+      expect(enter.defaultPrevented).toBe(true);
+      await settle(fixture);
+      expect(host.model().agentId).toBeNull();
+      expect(panel()).not.toBeNull();
+      expect(errorText(fixture)).toBe('No match for ‘Zebra’');
+    });
+
+    it('Enter right after an async answer lands, before it renders, commits its first result', async () => {
+      const { fixture, host, input } = await setup();
+      const search = manualSearch();
+      host.search.set(search.fn);
+      host.debounce.set(0);
+      await settle(fixture);
+      await type(fixture, input, 'A');
+      search.answer();
+      await settle(fixture);
+      expect(activeRow()?.textContent?.trim()).toBe('Adam Brown');
+      await type(fixture, input, 'Al'); // the spinner replaces the rows
+      search.answer();
+      await flushMicrotasks(); // the answer is in, nothing has rendered it
+      const enter = pressNow(input, 'Enter');
+      expect(enter.defaultPrevented).toBe(true);
+      await settle(fixture);
+      expect(host.model().agentId).toBe(3);
+      expect(host.picks.map((p) => p.source)).toEqual(['list']);
+    });
+
+    it('Enter in the same task as a keystroke an async search has not answered resolves the text', async () => {
+      const { fixture, host, input } = await setup();
+      const search = manualSearch();
+      host.search.set(search.fn);
+      await settle(fixture);
+      const enter = typeAndPressAtOnce(input, 'Alice Gr', 'Enter');
+      expect(enter.defaultPrevented).toBe(true);
+      await settle(fixture);
+      expect(document.activeElement).toBe(input); // focus retained while resolving
+      search.answer();
+      await settle(fixture);
+      expect(host.model().agentId).toBe(3);
+      expect(input.value).toBe('Alice Green');
+      expect(panel()).toBeNull();
+      expect(host.picks.map((p) => p.source)).toEqual(['auto']);
     });
   });
 
@@ -2078,6 +2207,105 @@ describe('tm-entity-picker', () => {
       await sleep(20);
       expect(editor.value()).toBeNull(); // no auto-pick happened
       expect(editor.text()).toBe('Alice Gr');
+    });
+
+    // Keystrokes and the commit key back to back, with no render between
+    // them: the outcome must match the same keys paced (pick-is-the-edit for
+    // Enter on a highlight, Tab-commit for Tab, the grid's commit while the
+    // search is still loading).
+    describe('input delivered faster than the page renders', () => {
+      /** Counts the picker's cell activations (the grid's commit-and-close). */
+      function countActivations(picker: TmEntityPicker<Agent, number>): { count: number } {
+        const counter = { count: 0 };
+        picker.ɵcellActivate.subscribe(() => counter.count++);
+        return counter;
+      }
+
+      it('Enter in the same task as a keystroke picks the first result and keeps the key from the grid', async () => {
+        const { fixture, host, input, editor, picker } = await setupCell();
+        const activations = countActivations(picker);
+        editor.focus();
+        editor.seed?.('A');
+        await settle(fixture);
+        const enter = typeAndPressAtOnce(input, 'Al', 'Enter');
+        expect(enter.defaultPrevented).toBe(true);
+        await settle(fixture);
+        expect(host.keys).not.toContain('Enter'); // no grid commit-and-move
+        expect(editor.value()).toBe(3);
+        expect(editor.text()).toBeNull(); // the value channel is authoritative
+        expect(activations.count).toBe(1); // the pick IS the edit
+        expect(panel()).toBeNull();
+      });
+
+      it('a seed, more keystrokes and Enter in ONE task still pick the first result', async () => {
+        const { fixture, host, input, editor, picker } = await setupCell();
+        const activations = countActivations(picker);
+        editor.focus();
+        editor.seed?.('A'); // the type-to-edit open: nothing has rendered since
+        typeAndPressAtOnce(input, 'Alice', 'Enter');
+        await settle(fixture);
+        expect(host.keys).not.toContain('Enter');
+        expect(editor.value()).toBe(3);
+        expect(activations.count).toBe(1);
+      });
+
+      it('Tab in the same task as a keystroke commits the first result and reaches the grid', async () => {
+        const { fixture, host, input, editor, picker } = await setupCell();
+        const activations = countActivations(picker);
+        editor.focus();
+        editor.seed?.('A');
+        await settle(fixture);
+        const tab = typeAndPressAtOnce(input, 'Al', 'Tab');
+        expect(tab.defaultPrevented).toBe(false);
+        expect(host.keys).toContain('Tab'); // the grid performs its commit-and-move
+        expect(editor.value()).toBe(3);
+        expect(activations.count).toBe(0); // Tab-commits stay silent
+        await settle(fixture);
+        expect(panel()).toBeNull();
+      });
+
+      it('Enter right after an async answer lands, before it renders, picks its first result', async () => {
+        const { fixture, host, input, editor, picker } = await setupCell();
+        const search = manualSearch();
+        host.search.set(search.fn);
+        host.debounce.set(0);
+        await settle(fixture);
+        const activations = countActivations(picker);
+        editor.focus();
+        editor.seed?.('Al');
+        await settle(fixture); // the spinner is up
+        search.answer();
+        await flushMicrotasks(); // the answer is in, nothing has rendered it
+        const enter = pressNow(input, 'Enter');
+        expect(enter.defaultPrevented).toBe(true);
+        await settle(fixture);
+        expect(host.keys).not.toContain('Enter');
+        expect(editor.value()).toBe(3);
+        expect(activations.count).toBe(1);
+      });
+
+      it('Enter while an async search is unanswered is the grid commit, rendered or not', async () => {
+        // Results that have not arrived highlight nothing, so Enter is the
+        // grid's commit of the typed text (which adopts this very search).
+        const { fixture, host, input, editor, picker } = await setupCell();
+        const search = manualSearch();
+        host.search.set(search.fn);
+        host.debounce.set(0);
+        await settle(fixture);
+        const activations = countActivations(picker);
+        editor.focus();
+        editor.seed?.('A');
+        await settle(fixture);
+        search.answer();
+        await settle(fixture);
+        typeAndPressAtOnce(input, 'Al', 'Enter');
+        expect(host.keys).toContain('Enter'); // handed to the grid
+        expect(picker.isDropdownOpen()).toBe(false); // …past a closed dropdown gate
+        expect(editor.value()).toBeNull();
+        expect(editor.text()).toBe('Al');
+        expect(activations.count).toBe(0);
+        await settle(fixture);
+      });
     });
 
     it('isDropdownOpen()/openDropdown() drive the dropdown gate', async () => {
