@@ -489,15 +489,12 @@ namespace Tellma.Identity.E2E.Infrastructure
                 masterConnectionString = _container.GetConnectionString();
             }
 
+            // The database is only named here. The host starts with migrations on, so the engine
+            // creates it through its own model — in the platform collation, with read-committed
+            // snapshot on — exactly as a developer's first start does; a bare CREATE DATABASE
+            // would take the server's default collation, which the engine's store check refuses.
             string database = $"ide2e_{Guid.NewGuid():N}";
             _databaseName = database;
-            await using (SqlConnection connection = new(masterConnectionString))
-            {
-                await connection.OpenAsync(TestContext.Current.CancellationToken);
-                await using SqlCommand command = connection.CreateCommand();
-                command.CommandText = $"CREATE DATABASE [{database}]";
-                await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
-            }
 
             return new SqlConnectionStringBuilder(masterConnectionString) { InitialCatalog = database }.ConnectionString;
         }

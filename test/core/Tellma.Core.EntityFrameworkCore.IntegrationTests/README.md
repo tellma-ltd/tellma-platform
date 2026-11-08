@@ -31,8 +31,9 @@ $env:TELLMA_TEST_SQL = "Server=localhost;Integrated Security=true;TrustServerCer
 dotnet test test/core/Tellma.Core.EntityFrameworkCore.IntegrationTests
 ```
 
-Each test creates its own uniquely named database; databases created on a `TELLMA_TEST_SQL`
-server are dropped when the fixture disposes.
+Each test creates its own uniquely named database, in the platform collation
+(`Latin1_General_100_CI_AS`) rather than the server's default; databases created on a
+`TELLMA_TEST_SQL` server are dropped when the fixture disposes.
 
 If the default `mcr.microsoft.com/mssql/server:2022-latest` image crashes on your Docker
 Desktop/WSL2 kernel (exits 255 at startup), pick another image:

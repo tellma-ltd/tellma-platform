@@ -70,7 +70,9 @@ namespace Tellma.Identity.Hosting
             services.TryAddSingleton(TimeProvider.System);
 
             // Startup seeding runs before Quartz (hosted services start in registration order),
-            // so pruning never races a not-yet-migrated store.
+            // so pruning never races a not-yet-migrated store. Its first step is the store check,
+            // which refuses a store in another collation or one behind the engine's migrations.
+            services.AddScoped<Services.Seeding.IdentityStoreCheck>();
             services.AddScoped<Services.Seeding.IdentitySeeder>();
             services.AddHostedService<Services.Seeding.IdentitySeedHostedService>();
 

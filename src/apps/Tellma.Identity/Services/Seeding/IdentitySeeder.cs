@@ -19,13 +19,16 @@ using Tellma.Identity.Services.Provisioning;
 namespace Tellma.Identity.Services.Seeding
 {
     /// <summary>
-    ///     Idempotent startup seeding: pending migrations (when enabled), the fixed scope catalog
-    ///     with its platform audiences, the seeded platform clients, and the bootstrap identities
-    ///     (dev admin in Development; break-glass admin into an empty store).
+    ///     Idempotent startup seeding: the store check (with pending migrations applied first when
+    ///     enabled), the fixed scope catalog with its platform audiences, the seeded platform
+    ///     clients, the seeded distributions, and the bootstrap identities (dev admin in
+    ///     Development; break-glass admin into an empty store).
     /// </summary>
     /// <param name="context">The identity store.</param>
+    /// <param name="storeCheck">The store check that runs before anything is written.</param>
     /// <param name="applicationManager">The OpenIddict application manager.</param>
     /// <param name="scopeManager">The OpenIddict scope manager.</param>
+    /// <param name="provisioning">Onboarding's client registration steps, which distribution entries reuse.</param>
     /// <param name="userManager">The Identity user manager.</param>
     /// <param name="options">The engine options.</param>
     /// <param name="environment">The host environment (gates the dev admin).</param>
@@ -34,8 +37,10 @@ namespace Tellma.Identity.Services.Seeding
     /// <param name="logger">Progress logging.</param>
     public sealed class IdentitySeeder(
         TellmaIdentityDbContext context,
+        IdentityStoreCheck storeCheck,
         IOpenIddictApplicationManager applicationManager,
         IOpenIddictScopeManager scopeManager,
+        IClientProvisioningService provisioning,
         UserManager<TellmaIdentityUser> userManager,
         IOptions<TellmaIdentityOptions> options,
         IHostEnvironment environment,
@@ -46,21 +51,34 @@ namespace Tellma.Identity.Services.Seeding
         /// <summary>Runs the full seed pass.</summary>
         /// <param name="cancellationToken">Aborts seeding.</param>
         /// <returns>A task that completes when seeding finishes.</returns>
+        /// <exception cref="IdentityStoreCheckException">The store failed the check; nothing was written.</exception>
         public async Task SeedAsync(CancellationToken cancellationToken)
         {
             TellmaIdentityOptions engineOptions = options.Value;
 
-            if (engineOptions.Seed.ApplyMigrations)
-            {
-                IdentitySeederLog.ApplyingMigrations(logger);
-                await context.Database.MigrateAsync(cancellationToken);
-            }
+            // The store check comes first, so a store in the wrong collation, or one that is
+            // missing or behind, stops the host before any row is written (spec 0010 §A.11).
+            await storeCheck.CheckAsync(cancellationToken);
 
             await EnsureScopesAsync(engineOptions, cancellationToken);
 
+            // Platform clients first, distributions after: a distribution grants its origin to
+            // the seeded clients that call distribution APIs, so those must exist by then, in
+            // whatever order the configuration lists the entries.
             foreach (TellmaIdentitySeedClientOptions client in engineOptions.Seed.Clients)
             {
-                await EnsureClientAsync(engineOptions, client, cancellationToken);
+                if (client.Kind != TellmaIdentitySeedClientKind.Distribution)
+                {
+                    await EnsureClientAsync(engineOptions, client, cancellationToken);
+                }
+            }
+
+            foreach (TellmaIdentitySeedClientOptions client in engineOptions.Seed.Clients)
+            {
+                if (client.Kind == TellmaIdentitySeedClientKind.Distribution)
+                {
+                    await EnsureDistributionAsync(client, cancellationToken);
+                }
             }
 
             await EnsureDevAdminAsync(engineOptions, cancellationToken);
@@ -157,6 +175,56 @@ namespace Tellma.Identity.Services.Seeding
             await applicationManager.UpdateAsync(existing, descriptor, cancellationToken);
         }
 
+        /// <summary>
+        ///     Converges one distribution entry's two clients through onboarding's own steps, and
+        ///     records an audit event when that changed anything.
+        /// </summary>
+        private async Task EnsureDistributionAsync(TellmaIdentitySeedClientOptions seed, CancellationToken cancellationToken)
+        {
+            DistributionClientRegistration registration = ClientDescriptorFactory.SeededDistribution(seed);
+            DistributionConvergence convergence = await provisioning.ConvergeDistributionAsync(registration, cancellationToken);
+
+            string origin = registration.Origin.GetLeftPart(UriPartial.Authority);
+            if (!convergence.Changed)
+            {
+                IdentitySeederLog.DistributionUnchanged(logger, registration.Slug);
+                return;
+            }
+
+            IdentitySeederLog.DistributionApplied(
+                logger, registration.Slug, origin, convergence.Client, convergence.ServiceClient);
+
+            // The outcome per client and per grant, never a secret: a rotation shows as an update
+            // of the client whose secret changed.
+            await auditLogger.LogAsync(
+                new AuditEventEntry
+                {
+                    Action = AuditActions.DistributionSeedApplied,
+                    ClientId = registration.Slug,
+                    DetailsJson = JsonSerializer.Serialize(new
+                    {
+                        origin,
+                        client = ConvergenceName(convergence.Client),
+                        serviceClient = ConvergenceName(convergence.ServiceClient),
+                        audienceAdded = convergence.AudienceAdded,
+                        grantsAdded = convergence.GrantsAdded,
+                    }),
+                },
+                cancellationToken);
+        }
+
+        /// <summary>The audit-detail spelling of a convergence outcome.</summary>
+        private static string ConvergenceName(ClientConvergence convergence)
+        {
+            return convergence switch
+            {
+                ClientConvergence.Unchanged => "unchanged",
+                ClientConvergence.Created => "created",
+                ClientConvergence.Updated => "updated",
+                _ => throw new ArgumentOutOfRangeException(nameof(convergence), convergence, null),
+            };
+        }
+
         /// <summary>Seeds the Development-only admin identity with its fixed subject.</summary>
         private async Task EnsureDevAdminAsync(TellmaIdentityOptions engineOptions, CancellationToken cancellationToken)
         {
@@ -240,15 +308,28 @@ namespace Tellma.Identity.Services.Seeding
     /// <summary>Source-generated log messages for <see cref="IdentitySeeder" />.</summary>
     internal static partial class IdentitySeederLog
     {
-        /// <summary>Migrations are about to be applied.</summary>
-        /// <param name="logger">The logger.</param>
-        [LoggerMessage(Level = LogLevel.Information, Message = "Applying pending identity store migrations.")]
-        public static partial void ApplyingMigrations(ILogger logger);
-
         /// <summary>A platform client was seeded.</summary>
         /// <param name="logger">The logger.</param>
         /// <param name="clientId">The seeded client id.</param>
         [LoggerMessage(Level = LogLevel.Information, Message = "Seeded platform client {ClientId}.")]
         public static partial void SeededClient(ILogger logger, string clientId);
+
+        /// <summary>A distribution entry changed the store.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="slug">The distribution slug.</param>
+        /// <param name="origin">The distribution origin.</param>
+        /// <param name="clientOutcome">The BFF client's outcome.</param>
+        /// <param name="serviceClientOutcome">The backend client's outcome.</param>
+        [LoggerMessage(
+            Level = LogLevel.Information,
+            Message = "Applied distribution seed {Slug} at {Origin}: client {ClientOutcome}, service client {ServiceClientOutcome}.")]
+        public static partial void DistributionApplied(
+            ILogger logger, string slug, string origin, ClientConvergence clientOutcome, ClientConvergence serviceClientOutcome);
+
+        /// <summary>A distribution entry was already converged.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="slug">The distribution slug.</param>
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Distribution seed {Slug} is already converged.")]
+        public static partial void DistributionUnchanged(ILogger logger, string slug);
     }
 }

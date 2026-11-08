@@ -25,6 +25,15 @@ namespace Tellma.Identity
         /// <summary>The assembly that holds the EF Core migrations for the identity store.</summary>
         public const string MigrationsAssemblyName = "Tellma.Identity.Migrations";
 
+        /// <summary>
+        ///     The id of the last migration in <see cref="MigrationsAssemblyName" />: the row the
+        ///     store check requires in the store's migration history at every start. Kept here
+        ///     rather than read from the migrations assembly, so a host that never migrates its
+        ///     store carries no migrations at all. A unit test keeps it equal to the assembly's last
+        ///     migration.
+        /// </summary>
+        public const string LatestMigration = "20261108054654_Initial";
+
         /// <summary>The scope requested to call a distribution API.</summary>
         public const string ApiScope = "tellma_api";
 

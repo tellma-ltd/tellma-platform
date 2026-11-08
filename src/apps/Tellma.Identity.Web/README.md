@@ -18,6 +18,26 @@ sink when no transport is named — writes invitation and recovery mail to the c
 sending it. Configuration schema: see the `TellmaIdentity` section in `appsettings.json` and the
 options documentation in the engine README.
 
+## The store
+
+The store is a SQL Server database in the platform collation, `Latin1_General_100_CI_AS`. At every
+start the engine checks it: a database in another collation is refused, and so is one that is
+missing, empty or behind the engine's last migration.
+
+- **Development** turns `TellmaIdentity:Seed:ApplyMigrations` on, so the first start creates the
+  LocalDB database in the platform collation and migrates it. A developer database created before
+  the platform collation existed is refused, naming both collations: drop it, and the next start
+  re-creates and re-seeds it.
+- **Deployed**, the host never migrates. An operator creates the shared database once in the
+  platform collation, turns read-committed snapshot on, and applies each release's migrations before
+  the engine deploys (see the [`Tellma.Identity.Migrations` README](../Tellma.Identity.Migrations/README.md)).
+  `appsettings.json` sets `TellmaIdentity:Seed:MigrateCommand` to that `dotnet ef database update`
+  command, so a store the operator has not migrated stops the host with the command that fixes it.
+  The engine's database principal needs `SELECT`, `INSERT`, `UPDATE` and `DELETE` on schema `idsvr`
+  and `SELECT` on `dbo.__EFMigrationsHistory`.
+
+This host references `Tellma.Identity.Migrations` only so Development can migrate at startup.
+
 ## Email
 
 This host composes the platform's email pipeline; the engine only asks for `IEmailSender`. All three

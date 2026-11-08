@@ -49,6 +49,21 @@ namespace Tellma.Identity.Services.Provisioning
         Task<DistributionClientCredentials> CreateDistributionAsync(
             string slug, Uri origin, Uri? backchannelLogoutUri, bool allowTokenExchange, CancellationToken cancellationToken);
 
+        /// <summary>
+        ///     Converges a distribution's two registrations on the given values through onboarding's
+        ///     own steps: the BFF and backend clients built by <see cref="ClientDescriptorFactory" />,
+        ///     the origin added to the distribution API's audiences, and the origin granted to the
+        ///     seeded platform clients that call distribution APIs. Registrations that already match
+        ///     are left untouched, so running it again with the same values writes nothing; a changed
+        ///     secret, origin or redirect list is applied. It never deletes an application, and it
+        ///     converges the two it names whoever created them.
+        /// </summary>
+        /// <param name="registration">The registration values, secrets included.</param>
+        /// <param name="cancellationToken">Aborts the operation.</param>
+        /// <returns>What the convergence wrote.</returns>
+        Task<DistributionConvergence> ConvergeDistributionAsync(
+            DistributionClientRegistration registration, CancellationToken cancellationToken);
+
         /// <summary>Creates a service account and returns its credentials once.</summary>
         /// <param name="displayName">Human-readable name recorded on the registration.</param>
         /// <param name="resources">The audiences the account may request.</param>

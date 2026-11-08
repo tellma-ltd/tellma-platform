@@ -26,7 +26,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         {
             // Disable the concurrency reuse leeway so an immediate re-use is treated as replay
             // (production keeps the ~30 s leeway that tolerates the multi-tab refresh race).
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idrt", new Dictionary<string, string?> { ["TellmaIdentity:Lifetimes:RefreshTokenReuseLeeway"] = "00:00:00" });
             RefreshContext context = await SignInAndGetTokensAsync(factory, "carol@example.com");
 
@@ -63,7 +63,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Sign_out_everywhere_stops_renewal_via_the_security_stamp()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idrtstamp");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idrtstamp");
             RefreshContext context = await SignInAndGetTokensAsync(factory, "dave@example.com");
 
             // Bump the security stamp the way "sign out everywhere" does.
@@ -82,7 +82,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task A_disabled_method_stops_renewal()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idrtmethod");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idrtmethod");
             RefreshContext context = await SignInAndGetTokensAsync(factory, "erin@example.com");
 
             // The tenant tightens policy: email code is no longer allowed. The BFF pushes the new
@@ -106,7 +106,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task A_malformed_pushed_allow_list_is_rejected_rather_than_ignored()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idrtbadlist");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idrtbadlist");
             RefreshContext context = await SignInAndGetTokensAsync(factory, "grace2@example.com");
 
             // Unknown vocabulary must be a protocol error here exactly as it is at the

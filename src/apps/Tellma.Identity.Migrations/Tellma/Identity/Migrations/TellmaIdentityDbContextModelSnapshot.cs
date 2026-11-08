@@ -18,6 +18,7 @@ namespace Tellma.Identity.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("idsvr")
+                .UseCollation("Latin1_General_100_CI_AS")
                 .HasAnnotation("ProductVersion", "10.0.9")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 

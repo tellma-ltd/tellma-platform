@@ -24,7 +24,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         {
             // A seeded CLI client is the ordinary deployed shape, and the one that makes the grant
             // do work rather than fall through.
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture,
                 "idplatgrant",
                 new Dictionary<string, string?>
@@ -55,7 +55,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task Provisioning_a_second_distribution_accumulates_audiences()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture,
                 "idplatgrant2",
                 new Dictionary<string, string?>
