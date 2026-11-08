@@ -31,7 +31,7 @@ PROCESS.md §10 lists.
   10 and Node 24. Up to four slot worktrees under
   `C:/Users/ahmad/workspace/tellma/tellma-platform-worktrees/platform-core/`.
 - The public GitHub repo `tellma-ltd/tellma-platform`, so Actions minutes are free. PR
-  [#number] (`platform-core → main`) runs CI on every integration push. Never merge it. The
+  #18 (`platform-core → main`) runs CI on every integration push. Never merge it. The
   nightly tier is dispatched to `platform-core` each night by the trampoline on `main`.
 - Brand files in `C:/Users/ahmad/workspace/tellma/tellma-brand/brand-assets/logo/exports/svg/` for
   spec 0024 §7.6 and spec 0027.
