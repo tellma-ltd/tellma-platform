@@ -5,6 +5,7 @@
 
 import { expect, type Locator, type Page } from '@playwright/test';
 
+import { appStable } from './settle';
 import { storyUrl, type StoryUrlOptions } from './story-map';
 
 /**
@@ -178,9 +179,12 @@ export function statusChip(page: Page): Locator {
 
 /**
  * Parses the story's live model dump (`data-testid="model-json"` — the
- * reactive JSON.stringify of the bound rows array).
+ * reactive JSON.stringify of the bound rows array), once the app is stable:
+ * the dump renders a beat after the write it reflects, so an immediate read
+ * could still see the model as it was before the last gesture.
  */
 export async function modelJson<T>(page: Page): Promise<T> {
+  await appStable(page);
   const text = await page.getByTestId('model-json').textContent();
   return JSON.parse(text ?? 'null') as T;
 }

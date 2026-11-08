@@ -4012,6 +4012,16 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       return;
     }
     this.activeCellElement()?.focus({ preventScroll: true });
+    // The request stays pending for the effect only while focus is NOT in
+    // the grid (the cell is not rendered yet, or refused focus). Once focus
+    // is in, the request is fulfilled: left pending, the effect would pull
+    // focus back on the next render even after the user moved on, so a Tab
+    // pressed between the gesture and that render (a frame on a fast
+    // machine, far longer on a starved one) would leave the grid and be
+    // pulled straight back. Focus that stays in the grid is still carried to
+    // the active cell by the effect's own "focus is in the scroller" branch,
+    // and a DOM-move drop by its reclaim.
+    this.pendingGestureFocus = !this.deps.host.contains(document.activeElement);
   }
 
   private requestReveal(): void {

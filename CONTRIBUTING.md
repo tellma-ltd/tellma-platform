@@ -42,6 +42,22 @@ each night, and one that fails every run is no longer a flake but broken.
 A quarantined test is fixed, never left: the fix removes the tag in the same change, and the tag
 is not a way to retire a test that is no longer wanted.
 
+Most flakes are a test that reads, or acts on, a state the page has not reached yet. A slow runner
+widens that gap from a frame to hundreds of milliseconds. Wait on the page's own signals, never on
+the clock:
+
+- Assert with web-first assertions (`expect(locator)…`, `expect.poll`), not one-shot reads.
+- Call `appStable(page)` (`client/e2e/support/settle.ts`) before reading or acting on state that
+  the next render updates but the current DOM cannot tell apart from the previous one. Examples:
+  the model dump, a highlight that two successive queries share, and focus that a pending render
+  could still move. The grid and picker model helpers already call it.
+- Call `animationsSettled(locator)` before measuring an element that has an enter animation.
+- Keep an in-flight state (a spinner, a pending cell, a panel measured while loading) on screen
+  with the story's held-response gate (`client/e2e/support/held-responses.ts`) until it has been
+  asserted. Do not give the request a latency that the assertion then has to race.
+- After a gesture that opens a list, wait for the rows before you press a key that moves through
+  them.
+
 ### PR tier
 
 Run these from the repository root before opening or updating a pull request. CI runs the same

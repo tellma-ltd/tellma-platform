@@ -198,6 +198,27 @@ describe('tm-grid (readonly core)', () => {
     expect(scroller.getAttribute('tabindex')).toBe('-1');
   });
 
+  it('focus that leaves before the next render is not pulled back into the grid', async () => {
+    const { fixture, scroller } = await setup();
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    try {
+      scroller.focus();
+      keydown(scroller, 'ArrowDown');
+      await stable(fixture);
+      // A move lands focus synchronously; the user leaves in the same task,
+      // before the render that follows the move has run (a Tab pressed
+      // within a frame of the keystroke, or on a starved machine).
+      keydown(scroller, 'ArrowDown');
+      expect(document.activeElement).toBe(cellAt(scroller, 1, 0));
+      outside.focus();
+      await stable(fixture);
+      expect(document.activeElement).toBe(outside);
+    } finally {
+      outside.remove();
+    }
+  });
+
   it('Shift+ArrowDown extends the selection from the anchor', async () => {
     const { fixture, scroller } = await setup();
     scroller.focus();

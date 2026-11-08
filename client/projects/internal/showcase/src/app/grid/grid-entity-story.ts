@@ -12,6 +12,8 @@ import type { TmEntityPick, TmEntitySearchResult } from '@tellma/core-ui/entity-
 import { TM_GRID_CONTEXT, TmGrid, TmGridColumn } from '@tellma/core-ui/grid';
 import { TmModalFooter, TmModalRef } from '@tellma/core-ui/modal';
 
+import { HeldResponses, HeldResponsesControls } from '../held-responses';
+
 interface Agent {
   readonly id: number;
   readonly name: string;
@@ -78,11 +80,11 @@ export class GridAgentPage {
  * `tm-entity-picker` editor (search + accessors + modal pages + the async
  * paste/typed-commit resolver); the Other column has search but NO resolver
  * (typed labels become invalid inputs directly). The toolbar tunes the
- * search and resolver latencies and counts their calls; the model dump is
- * the committed-value oracle.
+ * search and resolver latencies (or holds their responses until released)
+ * and counts their calls; the model dump is the committed-value oracle.
  */
 @Component({
-  imports: [TmGrid, TmGridColumn],
+  imports: [TmGrid, TmGridColumn, HeldResponsesControls],
   providers: [
     { provide: TM_GRID_CONTEXT, useValue: { tenantId: signal('t1'), distributionKey: 'd1' } },
   ],
@@ -100,6 +102,7 @@ export class GridAgentPage {
           (input)="onSearchDelayChange($event)"
         />
       </label>
+      <app-held-responses [gate]="heldSearches" name="search" />
       <span>Search calls: <span data-testid="search-calls">{{ searchCalls() }}</span></span>
       <label>
         Resolver delay (ms)
@@ -111,6 +114,7 @@ export class GridAgentPage {
           (input)="onResolverDelayChange($event)"
         />
       </label>
+      <app-held-responses [gate]="heldResolutions" name="resolver" />
       <span>Resolver calls: <span data-testid="resolver-calls">{{ resolverCalls() }}</span></span>
       <button type="button" data-testid="clear-history" (click)="clearHistory()">
         Clear history
@@ -204,6 +208,10 @@ export class GridEntityStory {
   readonly searchCalls = signal(0);
   readonly resolverDelay = signal(150);
   readonly resolverCalls = signal(0);
+  /** The search's latency gate: the delay, or a hold until released. */
+  readonly heldSearches = new HeldResponses();
+  /** The resolver's latency gate: the delay, or a hold until released. */
+  readonly heldResolutions = new HeldResponses();
 
   private readonly grid = viewChild.required(TmGrid);
   private nextTempId = -1;
@@ -226,7 +234,10 @@ export class GridEntityStory {
   readonly agentFormat = (value: number | null): string =>
     value === null ? '' : (AGENTS.find((agent) => agent.id === value)?.name ?? `#${String(value)}`);
 
-  /** Sync at delay 0 (the fast path); a delayed promise otherwise. */
+  /**
+   * Sync at delay 0 (the fast path) unless searches are held; a delayed
+   * (or held) promise otherwise.
+   */
   readonly search = (
     query: string,
   ): TmEntitySearchResult<Agent> | Promise<TmEntitySearchResult<Agent>> => {
@@ -235,10 +246,10 @@ export class GridEntityStory {
     const matches =
       q === '' ? [...AGENTS] : AGENTS.filter((agent) => agent.name.toLowerCase().includes(q));
     const delay = this.searchDelay();
-    if (delay <= 0) {
+    if (delay <= 0 && !this.heldSearches.holding()) {
       return matches;
     }
-    return new Promise((resolve) => setTimeout(() => resolve(matches), delay));
+    return this.heldSearches.wait(delay).then(() => matches);
   };
 
   /**
@@ -251,7 +262,7 @@ export class GridEntityStory {
     labels: string[],
   ): Promise<ReadonlyMap<string, TmLabelResolution<number | null>>> => {
     this.resolverCalls.update((count) => count + 1);
-    await new Promise((resolve) => setTimeout(resolve, this.resolverDelay()));
+    await this.heldResolutions.wait(this.resolverDelay());
     const map = new Map<string, TmLabelResolution<number | null>>();
     for (const label of labels) {
       const key = label.trim().toLowerCase();
