@@ -9,7 +9,7 @@ disabled/readonly/required).
 
 | Import | Contents |
 |---|---|
-| `@tellma/core-ui` | `provideTellmaUi()` / `provideTellmaForms()`, the `TM_UI_TRANSLATE` i18n seam + `TM_UI_MESSAGE_CONTEXT`, `TM_ACTIVE_LOCALE`, the `TmL10n` formatting facade, `TM_CALENDAR` + `provideTmCalendar()`, `TmClientCache`, the `tmMinDate`/`tmMaxDate` validators, field-error resolution, self-hosted Latin/Mono fonts (`fonts/fonts.css`) |
+| `@tellma/core-ui` | `provideTellmaUi()` / `provideTellmaForms()` (with the translations loader, the theme seed and a live root `Directionality`), the `TM_UI_TRANSLATE` i18n seam + `TM_UI_MESSAGE_CONTEXT`, `TM_ACTIVE_LOCALE`, the `TmL10n` formatting facade, `TM_CALENDAR` + `provideTmCalendar()`, `TmBreakpoints` + `TM_BREAKPOINTS`, `TmTheme`, `TmClientCache`, the `tmMinDate`/`tmMaxDate` validators, field-error resolution, self-hosted Latin/Mono fonts (`fonts/fonts.css`) |
 | `@tellma/core-ui/contracts` | Dependency-free contracts: `SignalLike`, `TmFormFieldControl`, the grid cell interfaces |
 | `@tellma/core-ui/l10n` | Framework-free number/date codecs (`tmFormatNumber`, `tmParseNumber`, `tmFormatDate`, `tmParseDate`, …) and the `TmCalendar` seam with the Gregorian default |
 | `@tellma/core-ui/calendar-umalqura` | `tmUmalquraCalendar()` — the Umm al-Qura (Hijri) calendar pack |
@@ -75,6 +75,32 @@ post-build step that injects `<link rel="preload">` tags for the emitted font
 URLs). Theming, sizing, and typography all flow from the token variables —
 the components ship no hardcoded sizes or colors.
 
+## Layout, theme, strings and direction
+
+- **Breakpoints.** One closed set of widths (`sm` 576, `md` 768, `lg` 992,
+  `xl` 1200, `xxl` 1440), kept once in `layout/breakpoints.json` and
+  exported as `@tellma/core-ui/breakpoints.json`. Pages switch structure
+  with `TmBreakpoints`; components adapt with container queries on an inner
+  wrapper. Stylesheets spell width queries in range syntax at those values
+  only — `(width >= 768px)`, `(width < 576px)`, `(576px <= width < 992px)` —
+  which the `tm/allowed-breakpoints` stylelint rule enforces.
+- **Touch sizes.** Below `sm`, a field, button or select whose `size` is
+  unset renders at `lg` (46 px); an explicit size always wins, and grids
+  keep their row size.
+- **Theme.** `TmTheme` resolves System, Light or Dark and writes
+  `<html data-theme>` (always `light` or `dark`). Seed it with
+  `provideTellmaUi({ theme: { initial } })`; the app persists the choice.
+- **Strings.** `provideTellmaUi({ translations })` registers the app's
+  loader; loaded tables merge with the built-in English and installed locale
+  packs. ICU MessageFormat is interpreted, never compiled to code, so it
+  runs under a Content Security Policy without `'unsafe-eval'`. Typed
+  arguments (`number`, `date`, `time`) format through
+  `TM_UI_ARGUMENT_FORMATTER`: numbers with `Intl`, dates and times as ISO
+  8601 by default, which an app replaces with its calendar-aware formatting.
+- **Direction.** Flip `document.documentElement.dir` (and `lang`): the root
+  `Directionality` follows live, so open modals mirror in place and every
+  overlay opened afterwards takes the new direction.
+
 ## Authoring conventions
 
 - The package root is the code root: every folder either is an entry point
@@ -90,6 +116,10 @@ the components ship no hardcoded sizes or colors.
   enforces it). Library glyphs draw through `<tm-icon [svg]>` with data
   imported from `lucide`; key combinations are matched and labelled through
   the `kbd` helpers, the library's only platform check.
+- Unit spec files share one browser page per run. A spec that changes the
+  page irreversibly (a Content Security Policy, which can never be lifted)
+  is named `*.csp.spec.ts`: the `test` target excludes that suffix and the
+  `test-csp` target runs those files in a run of their own.
 - Usage examples live in co-located `*.examples.ts` files (dependency-free
   template objects); they feed the docs pipeline and are compile-checked
   against the live components by `docs-examples.spec.ts`.

@@ -119,6 +119,75 @@ Format, one entry per ruling:
 - Ruling: the grammar rejects Shift combined with a symbol key at parse/registration time and names the shifted symbol to bind instead. The ceilings are ./icon 3 KB and ./kbd 2.5 KB, as real logic weight; the budget notes state the measured reason.
 - Revisit if: a layout-independent key-code binding is ever needed (spec 0027's shortcut registry).
 
+### D-020 (PC-015 + orchestrator, 2026-11-08): contract-seed rulings and the owners of unseeded types
+- Specs: 0015 §2.3, §14.1; 0016 §1.3, §4.1, me payload; 0017 §1.1; 0021 descriptors; 0014 §4.5.
+- Spec conflicts (implementer rulings, kept):
+  - [Stack] has no DefaultSelect. 0015 §2.3 lists one, but 0016 §4.1 and every consumer use [DefaultSelect].
+  - TellmaException does not check its Code's grammar. 0015 §14.1 says kebab-case, but 0017's BlobRejectedException carries dotted Blob.* codes.
+  - TellmaException's constructor is private protected, so the exception set is closed at compile time and every owner lives in Abstractions.
+- Long ids in ConcurrencyConflict.Id and ConfirmationRequest.Ids serialize as strings until PC-064 adds the problem-body id display rule.
+- Owners assigned by the orchestrator, with planner notes added:
+  - The MeResult family (MeResult, UserProfileView, AccessSummary) → PC-090, the self-service me endpoint.
+  - ApiOptions.ClientNames → PC-032, which creates Tellma.Core.AspNetCore and its CSRF rule.
+  - PC-035 and PC-039 extend the seeded notification descriptors and endpoint metadata.
+  - PC-018's Queryex edge and CI pack step are already done.
+- Unknown-member counting (tellma.api.unknown_members) stays with 0016-e, on the web host's HTTP JSON options.
+- Scratch files: agents shared one scratchpad folder, and PC-015 may have overwritten another agent's draft (commit1.txt, build/format logs). From now on every brief tells agents to keep scratch files under a subfolder named for their PC id and role.
+- Revisit if: a later spec section re-declares a seeded type, or the closed exception set blocks a distribution-owned exception.
+
+### D-021 (orchestrator, 2026-11-08): TellmaJson writes non-ASCII text unescaped
+- Spec: 0016 §3 (TellmaJson options). The spec does not say which encoder to use.
+- Situation: the default System.Text.Json encoder writes Arabic and Amharic as \uXXXX. That costs about six times the bytes on the wire, in stored JSON, and against MCP's MaxToolResultChars, for a product whose main markets write in those scripts.
+- Ruling: TellmaJson uses `JavaScriptEncoder.Create(UnicodeRanges.All)`. HTML-sensitive characters (<, >, &, ', ") stay escaped, so JSON embedded in HTML stays safe. UnsafeRelaxedJsonEscaping is never used. A test pins both halves.
+- Revisit if: a consumer needs ASCII-only JSON (none known).
+
+### D-022 (orchestrator, 2026-11-08): a blob reference's MaxSizeBytes only narrows its preset
+- Spec: 0017 §2.3.
+- Situation: PC-017's implementer made a BlobReferenceAttribute.MaxSizeBytes above 0 replace the preset's MaxSize, so a declaration could widen an upload limit. The concern was that a silent clamp would hide the declared value.
+- Ruling: the spec stands. The effective limit is min(attribute, preset), and an attribute value larger than its preset is refused at model validation with a clear message, never silently widened or clamped. MaxUploadSize still caps everything.
+- Also accepted from PC-017:
+  - the kind grammar refuses Windows device names;
+  - the Windows RootPath cap is 153 characters (root + 106 = 259);
+  - listing prefixes are whole segments (BlobName.IsValidPrefix), with planner notes on PC-083 and PC-089.
+- Revisit if: a real stack needs a reference larger than every preset (add a preset instead).
+
+### D-023 (PC-008 + orchestrator, 2026-11-08): eval-free in-house ICU interpreter; date/time through a formatter seam; primary at 8 KB
+- Specs: 0010 §B.3, the PC-008 planner note on the CSP (0024 §6: no unsafe-eval, Trusted Types), 0013 §10.2, 0023 §10 and 0002.
+- Ruling (implementer): @messageformat/core compiles messages with new Function, so it and @jsverse/transloco-messageformat were dropped. An in-house interpreter now handles every tmUi, tm and string-pack message. A CSP test pins it.
+- Ruling (orchestrator, from R1-2): `{x, number|date|time}` arguments go through an injectable formatter seam. The default date/time output is ISO 8601. Spec 0024's TmServerText (PC-104) supplies the calendar-aware formatter.
+- Budget: the primary ceiling is 8 KB, not the planned 7 (measured 7.04 KB; the interpreter costs about 1.4 KB). PC-011 and the other Part D checkpoints must re-measure primary before adding to it. ./grid sits at 38.00/38 KB.
+- **Misalignment for Ahmad:** specs 0002 (around line 857) and 0023 §10 (around line 1300) still name @jsverse/transloco-messageformat. The code and ARCHITECTURE.md use the in-house interpreter, so the specs are the stale side.
+- Revisit if: a CSP-safe upstream ICU engine appears that is smaller than the in-house one.
+
+### D-024 (orchestrator, 2026-11-08): file-system blob store publishes create-only with link(2) outside Windows
+- Spec: 0017 §1.3 and §2.3 (blobs are immutable; a second write of the same name raises BlobAlreadyExistsException).
+- Situation: on Unix, .NET 10's File.Move(overwrite: false) runs lstat and then rename(2), and rename replaces an existing file. PC-017's Review 1 measured both racing writers succeed in 1313 of 2000 trials on Linux, against 0 on Windows. A racing writer silently replaced an immutable blob.
+- Ruling:
+  - Outside Windows, publish by hard-linking the finished part file to its destination with link(2), called through LibraryImport. EEXIST means the blob already exists. The part file is then unlinked.
+  - renameat2(RENAME_NOREPLACE) is rejected: it is Linux-only, and some filesystems lack it.
+  - A filesystem without hard links fails closed. The store's probe refuses the root path at startup, and there is never a fallback to rename.
+  - Windows keeps File.Move without overwrite, which is atomic there.
+  - The abstract conformance suite gains a concurrent same-name race, which binds every future adapter, Azure included.
+- Revisit if: .NET ships a portable create-only move.
+
+### D-025 (orchestrator, 2026-11-08): TellmaJson refuses undefined enum values
+- Spec: 0016 §3.1 (enum wire form via JsonStringEnumConverter<TEnum>).
+- Situation: PC-015's Review 2 showed that the spec'd converter reads comma lists on non-[Flags] enums. "ReadOnly, Hidden" becomes an undefined McpExposure 3, and "B, C" silently becomes D. Spec 0012 stores enums as varchar with no CHECK constraint, and writing an undefined value back throws, so a single save would turn every later read of that row into a 500.
+- Ruling: the TellmaJson enum converter refuses any value that is not a defined member, in both Read and ReadAsPropertyName. For [Flags] enums it refuses any undeclared bit, and a non-[Flags] enum refuses a comma list outright. A refused value is a normal JSON binding error (400).
+- **Spec clarification for Ahmad:** 0016 §3.1 should state this rule. As written, the spec's converter choice allows the hole.
+- Revisit if: a wire contract ever needs forward-compatible unknown enum values (none does; the client and server ship together).
+
+### D-026 (PC-006 + orchestrator, 2026-11-08): management API rulings
+- Spec: 0010 §A.6-§A.8.
+- The tellma.identity.api.calls counter and its log line cover every call to a management route, including 401 and 403, as the spec says. They carry an outcome tag (ok, unauthorized, forbidden, error) alongside version and endpoint.
+  - Rejected calls are recorded by a decorating IAuthorizationMiddlewareResultHandler, because AuthorizationMiddleware answers before MVC filters run.
+  - A 403 names the client. A 401 has no client to name.
+- Implementer rulings accepted, where the spec is silent:
+  - existingOnly ignores ReturnUrl, since no link carries it.
+  - existingOnly on an orphaned user who holds a credential answers Active and restores the user. The restore is audited with the calling client's id.
+  - The endpoint tag values are a closed set of operation names (for example invitations.invite), and the version tag is "v1". Dashboards key on these values.
+- Revisit if: a v2 management API is added (the tag values must stay stable across versions).
+
 ### D-006 (Ahmad, 2026-11-08): review levers
 - Ruling: Review 2 runs only for the PROCESS.md §3 two-review list (security-bound or complex, 44 checkpoints) and for escalations (§4.4); every other checkpoint gets Review 1 and one fix round. Cross-checkpoint batch reviews run once per phase instead of per group.
 - Why: Ahmad traded some review depth for about 0.7 weeks of Tier-1 budget (PLAN.md §3.3). The escalation rule keeps a second review wherever Review 1 shows trouble.

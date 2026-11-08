@@ -17,7 +17,7 @@ import {
   untracked,
 } from '@angular/core';
 
-import { TM_FORM_FIELD_DEFAULTS, type TmControlSize } from '@tellma/core-ui';
+import { ɵtmControlSize, type TmControlSize } from '@tellma/core-ui';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
 /** The brand-themed visual variants of {@link TmButton}. */
@@ -59,8 +59,8 @@ export type TmButtonSize = TmControlSize;
     '[class.tm-button--secondary]': 'variant() === "secondary"',
     '[class.tm-button--ghost]': 'variant() === "ghost"',
     '[class.tm-button--danger]': 'variant() === "danger"',
-    '[class.tm-button--sm]': 'size() === "sm"',
-    '[class.tm-button--lg]': 'size() === "lg"',
+    '[class.tm-button--sm]': 'resolvedSize() === "sm"',
+    '[class.tm-button--lg]': 'resolvedSize() === "lg"',
     '[class.tm-button--pending]': 'pending()',
     '[attr.aria-busy]': 'pending() ? "true" : null',
   },
@@ -68,16 +68,18 @@ export type TmButtonSize = TmControlSize;
 export class TmButton {
   private readonly element = inject<ElementRef<HTMLButtonElement>>(ElementRef).nativeElement;
   private readonly environmentInjector = inject(EnvironmentInjector);
-  private readonly defaults = inject(TM_FORM_FIELD_DEFAULTS);
 
   /** The visual variant. Default `secondary` — the workhorse toolbar button. */
   readonly variant = input<TmButtonVariant>('secondary');
   /**
-   * The size step, mapped to the shared control size tokens. Defaults to
-   * the workspace default from `TM_FORM_FIELD_DEFAULTS`, so a button in a
-   * toolbar lines up with the fields beside it without being told twice.
+   * The size step, mapped to the shared control size tokens. Unset, the
+   * button takes the workspace default from `TM_FORM_FIELD_DEFAULTS` — so a
+   * button in a toolbar lines up with the fields beside it without being
+   * told twice — and the `lg` touch height below the `sm` breakpoint.
    */
-  readonly size = input<TmButtonSize>(this.defaults.size);
+  readonly size = input<TmButtonSize | undefined>(undefined);
+  /** The size step the button renders at: `size`, else the responsive default. */
+  protected readonly resolvedSize = ɵtmControlSize(this.size);
   /**
    * Async-action state: announces `aria-busy`, swallows click/Enter/Space
    * activation, hides the label (box size kept) and overlays a centered

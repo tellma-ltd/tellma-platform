@@ -14,10 +14,14 @@ import { z } from 'zod';
 import type { TmTokens } from '@tellma/core-ui-tokens';
 
 const value = z.string().min(1);
-const ramp = <S extends number>(stops: readonly S[]) =>
-  z.object(Object.fromEntries(stops.map((s) => [s, value])) as { [K in S]: typeof value });
+/** An object with one required member per stop, each matching `member` (a value by default). */
+const ramp = <S extends number, M extends z.ZodType = typeof value>(
+  stops: readonly S[],
+  member?: M,
+) => z.object(Object.fromEntries(stops.map((s) => [s, member ?? value])) as { [K in S]: M });
 
 const statusColors = z.object({ fg: value, bg: value, border: value });
+const categoricalTone = z.object({ mark: value, tint: value, onTint: value });
 
 const schemeColors = z.object({
   colorScheme: z.enum(['light', 'dark']),
@@ -67,6 +71,8 @@ const schemeColors = z.object({
     placeholder: value,
     icon: value,
   }),
+  categorical: ramp([1, 2, 3, 4, 5, 6, 7, 8] as const, categoricalTone),
+  sequential: ramp([1, 2, 3, 4, 5, 6, 7] as const),
 });
 
 export const tmTokensZodSchema = z.object({

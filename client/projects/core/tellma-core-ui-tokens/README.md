@@ -14,6 +14,14 @@ preset, a tokens→CSS emitter, and a shipped validation gate.
   comfortable type and padding reads as a squeezed comfortable control.
   The shipped default is `sm`; `provideTellmaForms({ formFieldDefaults })`
   moves it, and each component's `size` input overrides one instance.
+- **Colour groups for data** — `categorical` (eight slots, each a solid
+  `mark` for chart series plus a `tint`/`onTint` pair for keyed avatars) and
+  `sequential` (a seven-step magnitude ramp over the brand teal, step 1 the
+  faintest). Both live in the scheme shape because the component tier emits
+  once, in `:root`, while these need their own values in dark. A slot keeps
+  its place across releases, so a series or an avatar keeps its colour; a
+  distribution re-brands a slot's values in `@layer tm.theme`, never the
+  order.
 - **Kebab hazard** — the emitter splits `heightSm` into `--field-height-sm`
   but leaves two ADJACENT capitals joined, so `paddingXSm` would emit
   `--field-padding-xsm`. Keys whose name would hit that are spelled the way

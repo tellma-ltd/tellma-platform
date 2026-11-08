@@ -50,7 +50,11 @@ export type TmControlSize = 'sm' | 'md' | 'lg';
  * ladder — form fields, buttons, selects, entity pickers and data grids.
  */
 export interface TmFormFieldDefaults {
-  /** The size step controls use when they do not set one. */
+  /**
+   * The size step controls use when they do not set one, from the `sm`
+   * breakpoint up. Below `sm`, an unset control renders at `lg` (the 46 px
+   * touch height) instead; data grids keep this size at every width.
+   */
   readonly size: TmControlSize;
   /** The visual required marker; announced via the localized string. */
   readonly requiredMarker: string;
