@@ -699,6 +699,28 @@ namespace Tellma.Core.Queryex.Lowering
     }
 
     /// <summary>
+    ///     A semi-join: whether the subquery finds any row.
+    /// </summary>
+    /// <remarks>
+    ///     Two-valued however its predicate is written, since an existence test has no third answer,
+    ///     so it negates soundly. It reads the statement's row only through the correlation, which
+    ///     compares the searched row's foreign key with the current root's key.
+    /// </remarks>
+    internal sealed class PlanExists : PlanPredicate
+    {
+        /// <summary>Initializes the node.</summary>
+        /// <param name="subquery">The subquery, its predicate already lowered.</param>
+        internal PlanExists(PlanSubquery subquery)
+            : base(default)
+        {
+            Subquery = subquery;
+        }
+
+        /// <summary>The subquery.</summary>
+        internal PlanSubquery Subquery { get; }
+    }
+
+    /// <summary>
     ///     A column of the root's source that the schema leaves out, read as it is stored.
     /// </summary>
     /// <remarks>

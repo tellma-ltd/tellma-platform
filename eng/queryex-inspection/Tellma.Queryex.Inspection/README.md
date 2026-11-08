@@ -19,8 +19,15 @@ Beside the clauses, two inputs mirror what a host composes a query from:
   which the server converts to whatever the key column is.
 - **undeclared columns** — root columns the schema leaves out, separated by commas, such as
   `ExtrasJson, AuditJson`.
+- **filter via** — a dotted navigation path the filter is rebased onto, so its paths resolve from
+  the path's target: with `Customer` the filter `Name = 'Acme'` asks for invoices whose customer is
+  Acme. With no filter, it asks only that the path reach a row.
+- **exists** — semi-joins conjoined with the filter, separated by semicolons, each an entity, its
+  navigation to the root, and optionally a colon and a criterion over the entity's rows:
+  `InvoiceLine Invoice: Amount > 10`.
 
-A malformed entry in either is a caller error, shown the way the engine's own caller errors are.
+A malformed entry in any of them is a caller error, shown the way the engine's own caller errors
+are.
 
 ```bash
 dotnet run --project eng/queryex-inspection/Tellma.Queryex.Inspection

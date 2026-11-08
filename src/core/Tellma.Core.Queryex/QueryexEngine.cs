@@ -159,8 +159,9 @@ namespace Tellma.Core.Queryex
         /// <returns>What they refer to, and whatever problems could still be reported.</returns>
         /// <exception cref="ArgumentNullException">An argument is null.</exception>
         /// <exception cref="ArgumentException">
-        ///     A root was supplied without its schema, or a group-level predicate was supplied for a
-        ///     query that does not group.
+        ///     A root was supplied without its schema, a group-level predicate was supplied for a
+        ///     query that does not group, or a rebase or semi-join does not fit the schema or sits in
+        ///     the group-level predicate.
         /// </exception>
         /// <remarks>
         ///     One inference run across every clause, which is why this exists beside the
@@ -174,6 +175,7 @@ namespace Tellma.Core.Queryex
             RequirePairedSchema(options);
 
             RequireGrouping(spec.Having, spec.Aggregate, nameof(spec));
+            HostStructure.RequireFilters(spec, options.Schema, options.Root);
             return Discoverer.DiscoverQuery(_compiler, spec, options);
         }
 
@@ -186,7 +188,8 @@ namespace Tellma.Core.Queryex
         ///     The root does not belong to the schema, a group-level predicate was supplied for a
         ///     query that does not group, the paging values are not usable, the batch ordinal is
         ///     negative, the declarations are not usable, a key-set restriction does not fit the
-        ///     schema, or the undeclared columns are not usable.
+        ///     schema, the undeclared columns are not usable, or a rebase or semi-join does not fit
+        ///     the schema or sits in the group-level predicate.
         /// </exception>
         /// <remarks>
         ///     The only door to SQL there is. A fragment compiled on its own could not share joins,
@@ -206,6 +209,7 @@ namespace Tellma.Core.Queryex
             // is refused at the call that supplied it, whatever an earlier call left in the cache.
             ImmutableArray<ResolvedRestriction> restrictions = HostStructure.ResolveRestrictions(spec);
             HostStructure.RequireUndeclaredColumns(spec);
+            HostStructure.RequireFilters(spec, options.Schema);
 
             var key = QueryKey.Of(spec, options);
             if (_queries.TryGet(key, out CompiledQuery? cached) && cached is not null)

@@ -9,9 +9,9 @@ framework, so `dotnet test` never tries to run it.
 | Folder | Contents |
 |---|---|
 | `Probe/` | A public mirror of the engine's internal intermediate representations: tokens, the parse tree, the bound tree with types and nullities, the function registry, the findings a lowered plan yields, and what a cache key tells apart. |
-| `Schema/` | The fixture schema (`LedgerFixture`), the columns its tables hold that the schema leaves out on purpose, and the DDL that deploys both (`LedgerDdl`), including its declared collation. |
-| `Corpus/` | The conformance corpus: every expression case and every whole-query case, with what each is expected to produce. |
-| `Semantics/` | The runtime value model, the collation table, the fixture rows, the tables of keys a query's restrictions read (`KeySet`), and the reference interpreter — a second implementation of the language, expression by expression and whole query by whole query. |
+| `Schema/` | The fixture schema (`LedgerFixture`) — a child table of invoice lines among its entities, for semi-joins — the columns its tables hold that the schema leaves out on purpose, and the DDL that deploys both (`LedgerDdl`), including its declared collation. |
+| `Corpus/` | The conformance corpus: every expression case and every whole-query case, with what each is expected to produce — down to the location, span and arguments of a diagnostic where that is what a case is about. |
+| `Semantics/` | The runtime value model, the collation table, the fixture rows, the tables of keys a query's restrictions read (`KeySet`), and the reference interpreter — a second implementation of the language, expression by expression and whole query by whole query, which follows a rebase's navigations and searches a semi-join's rows itself rather than reading the joins and subqueries the compiler builds. |
 
 ## Why one shared library rather than two copies
 

@@ -37,6 +37,10 @@ namespace Tellma.Core.Queryex.Lowering
                 PlanSetMembership set => [set.Value, .. set.Elements.Cast<PlanNode>()],
                 PlanHierarchyTest hierarchy => [hierarchy.Node, hierarchy.Key],
                 PlanKeySetRestriction restriction => [restriction.Key],
+
+                // A subquery's own predicate is what it reads; its bindings are reached through the
+                // references to them, exactly as the statement's are.
+                PlanExists exists => exists.Subquery.Where is PlanPredicate where ? [where] : [],
                 _ => [],
             };
         }

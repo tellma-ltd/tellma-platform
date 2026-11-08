@@ -101,5 +101,21 @@ namespace Tellma.Core.Queryex.Diagnostics
 
             return new DiagnosticLocation(Text + suffix, Order);
         }
+
+        /// <summary>The criterion of a navigation rebase within this clause's filter tree.</summary>
+        /// <param name="navigation">The navigation path, as the caller wrote it.</param>
+        /// <returns>The location.</returns>
+        internal DiagnosticLocation Via(string navigation)
+        {
+            return new DiagnosticLocation(Text + ".Via[" + navigation + "]", Order);
+        }
+
+        /// <summary>The criterion of a semi-join within this clause's filter tree.</summary>
+        /// <param name="entity">The entity searched, as the caller wrote it.</param>
+        /// <returns>The location.</returns>
+        internal DiagnosticLocation Exists(string entity)
+        {
+            return new DiagnosticLocation(Text + ".Exists[" + entity + "]", Order);
+        }
     }
 }

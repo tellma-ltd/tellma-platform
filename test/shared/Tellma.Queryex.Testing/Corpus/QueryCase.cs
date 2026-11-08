@@ -46,6 +46,16 @@ namespace Tellma.Queryex.Testing.Corpus
         public IReadOnlyList<string> Diagnostics { get; init; } = [];
 
         /// <summary>
+        ///     The diagnostics the case pins exactly — location, span and arguments as well as code —
+        ///     when where a problem is reported is what the case is about.
+        /// </summary>
+        /// <remarks>
+        ///     Each must be among what the compilation reports. Their codes must also be listed in
+        ///     <see cref="Diagnostics" />, which stays the complete set of codes the case expects.
+        /// </remarks>
+        public IReadOnlyList<DiagnosticSite> Sites { get; init; } = [];
+
+        /// <summary>
         ///     Whether this case is expected to match no rows at all.
         /// </summary>
         /// <remarks>

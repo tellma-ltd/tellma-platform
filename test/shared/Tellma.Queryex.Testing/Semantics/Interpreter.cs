@@ -111,6 +111,8 @@ namespace Tellma.Queryex.Testing.Semantics
                 TypedNot not => QxValue.Flag(!Truth(not.Operand)),
                 TypedLogical logical => QxValue.Flag(Junction(logical)),
                 TypedCall call => Call(call),
+                TypedVia via => QxValue.Flag(Rebased(via)),
+                TypedExists exists => QxValue.Flag(Found(exists)),
                 _ => QxValue.Absent(Named(node.Type)),
             };
         }

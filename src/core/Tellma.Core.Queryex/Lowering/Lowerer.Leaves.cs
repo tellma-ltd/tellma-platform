@@ -94,13 +94,15 @@ namespace Tellma.Core.Queryex.Lowering
             return new PlanColumn(path.Span, table, path.Property);
         }
 
-        /// <summary>Follows a run of navigations from the root, creating joins as needed.</summary>
+        /// <summary>
+        ///     Follows a run of navigations from the current root, creating joins as needed.
+        /// </summary>
         /// <param name="navigations">The steps.</param>
         /// <param name="span">The range of the path that needed them.</param>
         /// <returns>The node the last step leads to.</returns>
         private JoinNode Walk(ImmutableArray<NavigationDescriptor> navigations, QueryexSpan span)
         {
-            JoinNode table = Root;
+            JoinNode table = _base;
             PlanOrigin origin = new(span, _location);
             foreach (NavigationDescriptor navigation in navigations)
             {
@@ -191,8 +193,10 @@ namespace Tellma.Core.Queryex.Lowering
                 return false;
             }
 
-            ValueBinding binding = new(_bindings.Count, value, value.Type);
-            _bindings.Add(binding);
+            // Collected where the value is computed: the statement's source, or the subquery whose
+            // rows it reads.
+            ValueBinding binding = new(_scopeBindings.Count, value, value.Type);
+            _scopeBindings.Add(binding);
             value = new PlanBindingRef(value.Span, binding);
             return true;
         }

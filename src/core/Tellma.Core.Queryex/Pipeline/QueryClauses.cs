@@ -52,6 +52,12 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <summary>The key-set restrictions, resolved against the schema.</summary>
         private readonly ImmutableArray<ResolvedRestriction> _restrictions;
 
+        /// <summary>Which input each part of the row-level predicate came from.</summary>
+        private readonly FilterLocations _filterLocations = new();
+
+        /// <summary>Which input each part of the group-level predicate came from.</summary>
+        private readonly FilterLocations _havingLocations = new();
+
         /// <summary>The root of the join tree, once lowering has created it.</summary>
         private JoinNode? _root;
 
@@ -248,7 +254,8 @@ namespace Tellma.Core.Queryex.Pipeline
                 _sink,
                 DiagnosticLocation.Clause(QueryexClause.Filter),
                 _budget,
-                _nullity);
+                _nullity,
+                _filterLocations);
         }
 
         /// <summary>Binds the select list.</summary>
@@ -284,7 +291,8 @@ namespace Tellma.Core.Queryex.Pipeline
                 _sink,
                 DiagnosticLocation.Clause(QueryexClause.Having),
                 _budget,
-                _nullity);
+                _nullity,
+                _havingLocations);
         }
 
         /// <summary>Binds the ordering list.</summary>
@@ -418,7 +426,12 @@ namespace Tellma.Core.Queryex.Pipeline
                 return null;
             }
 
-            lowerer.Begin(_nullity, DiagnosticLocation.Clause(QueryexClause.Filter), bindingsAllowed: true);
+            lowerer.Begin(
+                _nullity,
+                DiagnosticLocation.Clause(QueryexClause.Filter),
+                bindingsAllowed: true,
+                locations: _filterLocations);
+
             return lowerer.LowerPredicate(_filter);
         }
 
@@ -559,7 +572,12 @@ namespace Tellma.Core.Queryex.Pipeline
 
             // Whatever a group-level predicate reads is read per group, and a lateral binding is per
             // row; the backend rejects a reference to one from here unless the grouping saw it.
-            lowerer.Begin(_nullity, DiagnosticLocation.Clause(QueryexClause.Having), bindingsAllowed: false);
+            lowerer.Begin(
+                _nullity,
+                DiagnosticLocation.Clause(QueryexClause.Having),
+                bindingsAllowed: false,
+                locations: _havingLocations);
+
             return lowerer.LowerPredicate(_having);
         }
 

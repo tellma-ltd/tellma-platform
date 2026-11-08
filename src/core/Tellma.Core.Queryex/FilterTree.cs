@@ -173,6 +173,94 @@ namespace Tellma.Core.Queryex
             return new NotNode(operand, DepthOf([operand], nameof(operand)));
         }
 
+        /// <summary>A criterion written against the row a to-one navigation path reaches.</summary>
+        /// <param name="navigation">
+        ///     The dotted path of to-one navigations from the current root, such as <c>Invoice</c> or
+        ///     <c>Line.Invoice</c>. Each segment is resolved against the schema when the tree is
+        ///     compiled.
+        /// </param>
+        /// <param name="inner">
+        ///     The criterion, whose paths resolve from the entity the navigation path reaches.
+        /// </param>
+        /// <returns>The node.</returns>
+        /// <exception cref="ArgumentNullException">An argument is null.</exception>
+        /// <exception cref="ArgumentException">
+        ///     The path is empty or has an empty segment, or the result would nest deeper than
+        ///     <see cref="MaxDepth" />.
+        /// </exception>
+        /// <remarks>
+        ///     <para>
+        ///         True for a row whose navigation path reaches a row on which <paramref name="inner" />
+        ///         is true, and false when the path reaches no row. The criterion is rebased onto the
+        ///         navigation structurally rather than rewritten as text, which would need a parser on
+        ///         the host's side, mangle literals and context functions, and lose each leaf's version
+        ///         stamp.
+        ///     </para>
+        ///     <para>
+        ///         A row-level construct: it is refused in a group-level predicate.
+        ///     </para>
+        /// </remarks>
+        public static FilterTree Via(string navigation, FilterTree inner)
+        {
+            ArgumentNullException.ThrowIfNull(navigation);
+            ArgumentNullException.ThrowIfNull(inner);
+
+            // Checked for shape here, where the caller built it; whether each segment is a
+            // navigation is a question for the schema, which only compilation has.
+            foreach (string segment in navigation.Split('.'))
+            {
+                if (string.IsNullOrWhiteSpace(segment))
+                {
+                    throw new ArgumentException(
+                        "A navigation path is one or more navigation names separated by dots, with none of them empty.",
+                        nameof(navigation));
+                }
+            }
+
+            return new ViaNode(navigation, inner, DepthOf([inner], nameof(inner)));
+        }
+
+        /// <summary>
+        ///     True for a row that some row of another entity points at, through one of that entity's
+        ///     navigations, while satisfying a criterion.
+        /// </summary>
+        /// <param name="entity">The logical name of the entity whose rows are searched.</param>
+        /// <param name="navigation">
+        ///     The navigation of <paramref name="entity" /> that points at the current root.
+        /// </param>
+        /// <param name="inner">
+        ///     The criterion a pointing row must satisfy, whose paths resolve from
+        ///     <paramref name="entity" />. <c>And([])</c> asks for any pointing row at all.
+        /// </param>
+        /// <returns>The node.</returns>
+        /// <exception cref="ArgumentNullException">An argument is null.</exception>
+        /// <exception cref="ArgumentException">
+        ///     A name is empty or whitespace, or the result would nest deeper than
+        ///     <see cref="MaxDepth" />.
+        /// </exception>
+        /// <remarks>
+        ///     <para>
+        ///         A semi-join, so it never multiplies the rows it filters and an aggregation over
+        ///         them stays sound. Its negation is the plain complement: a row with no such pointing
+        ///         row. The language itself gains no collection syntax; a host composes this node.
+        ///     </para>
+        ///     <para>
+        ///         A row-level construct: it is refused in a group-level predicate.
+        ///     </para>
+        /// </remarks>
+        public static FilterTree Exists(string entity, string navigation, FilterTree inner)
+        {
+            ArgumentNullException.ThrowIfNull(entity);
+            ArgumentNullException.ThrowIfNull(navigation);
+            ArgumentNullException.ThrowIfNull(inner);
+
+            return string.IsNullOrWhiteSpace(entity)
+                ? throw new ArgumentException("An entity name must not be empty.", nameof(entity))
+                : string.IsNullOrWhiteSpace(navigation)
+                    ? throw new ArgumentException("A navigation name must not be empty.", nameof(navigation))
+                    : new ExistsNode(entity, navigation, inner, DepthOf([inner], nameof(inner)));
+        }
+
         /// <summary>Validates a child list and takes a defensive copy of it.</summary>
         /// <param name="children">The children supplied by the caller.</param>
         /// <param name="parameterName">The caller's parameter name, for the exception.</param>
@@ -268,6 +356,58 @@ namespace Tellma.Core.Queryex
 
             /// <summary>The negated operand.</summary>
             public FilterTree Operand { get; }
+        }
+
+        /// <summary>A criterion rebased onto the row a to-one navigation path reaches.</summary>
+        public sealed class ViaNode : FilterTree
+        {
+            /// <summary>Initializes the node.</summary>
+            /// <param name="navigation">The dotted navigation path.</param>
+            /// <param name="inner">The rebased criterion.</param>
+            /// <param name="depth">The height of this subtree.</param>
+            internal ViaNode(string navigation, FilterTree inner, int depth)
+                : base(depth)
+            {
+                Navigation = navigation;
+                Inner = inner;
+            }
+
+            /// <summary>The dotted navigation path, as the caller wrote it.</summary>
+            public string Navigation { get; }
+
+            /// <summary>The criterion, whose paths resolve from the path's target.</summary>
+            public FilterTree Inner { get; }
+        }
+
+        /// <summary>
+        ///     A semi-join: some row of another entity points at this row and satisfies a criterion.
+        /// </summary>
+        public sealed class ExistsNode : FilterTree
+        {
+            /// <summary>Initializes the node.</summary>
+            /// <param name="entity">The entity whose rows are searched.</param>
+            /// <param name="navigation">Its navigation to the current root.</param>
+            /// <param name="inner">The criterion a pointing row must satisfy.</param>
+            /// <param name="depth">The height of this subtree.</param>
+            internal ExistsNode(string entity, string navigation, FilterTree inner, int depth)
+                : base(depth)
+            {
+                Entity = entity;
+                Navigation = navigation;
+                Inner = inner;
+            }
+
+            /// <summary>The logical name of the entity whose rows are searched, as the caller wrote it.</summary>
+            public string Entity { get; }
+
+            /// <summary>
+            ///     The navigation of <see cref="Entity" /> that points at the current root, as the
+            ///     caller wrote it.
+            /// </summary>
+            public string Navigation { get; }
+
+            /// <summary>The criterion, whose paths resolve from <see cref="Entity" />.</summary>
+            public FilterTree Inner { get; }
         }
     }
 }
