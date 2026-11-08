@@ -288,13 +288,6 @@ namespace Tellma.Core.Abstractions.Api
         }
     }
 
-    /// <summary>
-    ///     Writes every enum as its member name (or the name its member declares for the wire), and
-    ///     refuses an integer on the way in: an enum is a string on the wire, and an integer would
-    ///     admit values the enum does not define.
-    /// </summary>
-    internal sealed class StrictEnumJsonConverter() : JsonStringEnumConverter(namingPolicy: null, allowIntegerValues: false);
-
     /// <summary>Helpers the scalar converters share.</summary>
     internal static class ScalarJson
     {

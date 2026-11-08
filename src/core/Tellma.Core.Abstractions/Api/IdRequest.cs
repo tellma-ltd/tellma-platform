@@ -15,11 +15,17 @@ namespace Tellma.Core.Abstractions.Api
 
     /// <summary>The body of a single-target entity action that takes arguments.</summary>
     /// <remarks>
-    ///     <see cref="Id" /> follows the rules of <see cref="IdRequest.Id" />. An error in the
-    ///     arguments is rooted at <c>arguments</c>.
+    ///     <see cref="Id" /> follows the rules of <see cref="IdRequest.Id" />. <see cref="Arguments" />
+    ///     is required: a body that omits it or sends null is refused as a binding error. An error in
+    ///     the arguments is rooted at <c>arguments</c>.
     /// </remarks>
     /// <typeparam name="TArguments">The action's arguments record.</typeparam>
     /// <param name="Id">The row's id; a number or a string on the wire, narrowed to the stack's key type.</param>
-    /// <param name="Arguments">The action's arguments.</param>
-    public sealed record IdRequest<TArguments>(long Id, TArguments Arguments);
+    /// <param name="Arguments">The action's arguments; never null.</param>
+    /// <exception cref="System.Text.Json.JsonException"><paramref name="Arguments" /> is null.</exception>
+    public sealed record IdRequest<TArguments>(long Id, TArguments Arguments)
+    {
+        /// <inheritdoc cref="IdRequest{TArguments}(long, TArguments)" />
+        public TArguments Arguments { get; } = WireMembers.Required(Arguments, "arguments");
+    }
 }

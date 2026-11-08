@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Globalization;
+using System.Text;
 
 namespace Tellma.Core.Abstractions.Validation
 {
@@ -11,12 +12,20 @@ namespace Tellma.Core.Abstractions.Validation
     ///     One step of a <see cref="ValidationPath" />: an <see cref="IndexSegment" /> into a list or a
     ///     <see cref="PropertySegment" /> naming a member. These two are the only kinds.
     /// </summary>
+    /// <remarks>
+    ///     The set is closed by construction: a record's copy constructor is always reachable by a
+    ///     derived type, but <see cref="AppendTo" /> is an internal abstract member, which a type
+    ///     outside this assembly cannot implement. Every renderer can therefore switch on the two
+    ///     kinds.
+    /// </remarks>
     public abstract record PathSegment
     {
-        /// <summary>Creates a segment; only the two kinds in this assembly derive.</summary>
-        private protected PathSegment()
-        {
-        }
+        /// <summary>
+        ///     Appends the segment's bracket form to the text rendered so far: an index as <c>[i]</c>,
+        ///     a property as its name, after a dot when something precedes it.
+        /// </summary>
+        /// <param name="text">The text rendered so far.</param>
+        internal abstract void AppendTo(StringBuilder text);
     }
 
     /// <summary>
@@ -39,6 +48,13 @@ namespace Tellma.Core.Abstractions.Validation
         public override string ToString()
         {
             return string.Create(CultureInfo.InvariantCulture, $"[{Index}]");
+        }
+
+        /// <inheritdoc />
+        internal override void AppendTo(StringBuilder text)
+        {
+            // An index follows what precedes it directly: Lines[1].
+            text.Append('[').Append(Index.ToString(CultureInfo.InvariantCulture)).Append(']');
         }
     }
 
@@ -66,6 +82,18 @@ namespace Tellma.Core.Abstractions.Validation
         public override string ToString()
         {
             return Name;
+        }
+
+        /// <inheritdoc />
+        internal override void AppendTo(StringBuilder text)
+        {
+            // A property is joined to what precedes it with a dot: [3].Lines.
+            if (text.Length > 0)
+            {
+                text.Append('.');
+            }
+
+            text.Append(Name);
         }
 
         /// <summary>Refuses a null, empty or white-space name.</summary>

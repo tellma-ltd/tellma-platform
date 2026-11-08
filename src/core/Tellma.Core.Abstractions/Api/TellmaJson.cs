@@ -39,7 +39,13 @@ namespace Tellma.Core.Abstractions.Api
     ///             for bit. <see cref="DateOnly" /> is <c>yyyy-MM-dd</c>, a <see cref="Guid" /> its
     ///             canonical lowercase form and a byte array base64.
     ///         </item>
-    ///         <item>Enums are their member names as strings; an integer is refused.</item>
+    ///         <item>
+    ///             Enums are their member names as strings, and read back only as what the enum
+    ///             defines: one declared member, or for a flags enum a comma list of declared members.
+    ///             An integer, a numeric string, a comma list on any other enum and an undefined value
+    ///             are refused, so an undefined value never reaches a row. A name a member declares
+    ///             for the wire never starts with a digit or a sign.
+    ///         </item>
     ///         <item>
     ///             Text in any script of the basic plane (Arabic, Amharic) is written as itself, not
     ///             as <c>\uXXXX</c> escapes, so a response, a stored column or an agent's result is not
@@ -55,9 +61,9 @@ namespace Tellma.Core.Abstractions.Api
     ///         </item>
     ///     </list>
     ///     <para>
-    ///         The platform's wire records resolve through the source-generated
-    ///         <see cref="TellmaApiJsonContext" />; entity, child and operation body types resolve by
-    ///         reflection after it, so a distribution declares nothing.
+    ///         The platform's wire records resolve through an internal source-generated context, first
+    ///         in the resolver chain; entity, child and operation body types resolve by reflection
+    ///         after it, so a distribution declares nothing.
     ///     </para>
     /// </remarks>
     public static class TellmaJson

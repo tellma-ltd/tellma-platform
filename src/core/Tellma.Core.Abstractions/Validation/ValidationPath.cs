@@ -84,16 +84,12 @@ namespace Tellma.Core.Abstractions.Validation
         /// <returns>The bracket form.</returns>
         public override string ToString()
         {
+            // Each kind appends itself: a property after another segment is joined with a dot, an
+            // index never is.
             StringBuilder text = new();
             foreach (PathSegment segment in Segments)
             {
-                // A property after another segment is joined with a dot; an index never is.
-                if (segment is PropertySegment && text.Length > 0)
-                {
-                    text.Append('.');
-                }
-
-                text.Append(segment);
+                segment.AppendTo(text);
             }
 
             return text.ToString();

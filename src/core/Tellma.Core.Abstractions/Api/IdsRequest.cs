@@ -29,14 +29,20 @@ namespace Tellma.Core.Abstractions.Api
     /// </summary>
     /// <remarks>
     ///     <see cref="Ids" /> follows the rules of <see cref="IdsRequest.Ids" />, a missing list binding
-    ///     empty. An error in the arguments is rooted at <c>arguments</c> (<c>arguments.creditLimit</c>).
+    ///     empty. <see cref="Arguments" /> is required: a body that omits it or sends null is refused as
+    ///     a binding error. An error in the arguments is rooted at <c>arguments</c>
+    ///     (<c>arguments.creditLimit</c>).
     /// </remarks>
     /// <typeparam name="TArguments">The action's arguments record.</typeparam>
     /// <param name="Ids">The rows' ids; numbers or strings on the wire, narrowed to the stack's key type.</param>
-    /// <param name="Arguments">The action's arguments.</param>
+    /// <param name="Arguments">The action's arguments; never null.</param>
+    /// <exception cref="System.Text.Json.JsonException"><paramref name="Arguments" /> is null.</exception>
     public sealed record IdsRequest<TArguments>(IReadOnlyList<long> Ids, TArguments Arguments)
     {
         /// <inheritdoc cref="IdsRequest{TArguments}(IReadOnlyList{long}, TArguments)" />
         public IReadOnlyList<long> Ids { get; } = Ids ?? [];
+
+        /// <inheritdoc cref="IdsRequest{TArguments}(IReadOnlyList{long}, TArguments)" />
+        public TArguments Arguments { get; } = WireMembers.Required(Arguments, "arguments");
     }
 }

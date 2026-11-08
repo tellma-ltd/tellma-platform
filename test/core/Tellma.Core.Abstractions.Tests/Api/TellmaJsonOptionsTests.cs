@@ -44,7 +44,10 @@ namespace Tellma.Core.Abstractions.Tests.Api
         {
             IList<IJsonTypeInfoResolver> chain = Options.TypeInfoResolverChain;
 
-            Assert.Same(TellmaApiJsonContext.Default, chain[0]);
+            // The generated context is internal: no caller can serialize with its own default options.
+            JsonSerializerContext context = Assert.IsAssignableFrom<JsonSerializerContext>(chain[0]);
+            Assert.Equal("TellmaApiJsonContext", context.GetType().Name);
+            Assert.False(context.GetType().IsPublic);
             _ = Assert.IsType<DefaultJsonTypeInfoResolver>(chain[^1]);
         }
 
@@ -88,7 +91,16 @@ namespace Tellma.Core.Abstractions.Tests.Api
         [InlineData(typeof(byte[]))]
         public void The_wire_records_and_scalars_have_generated_metadata(Type type)
         {
-            Assert.NotNull(TellmaApiJsonContext.Default.GetTypeInfo(type));
+            IJsonTypeInfoResolver context = Options.TypeInfoResolverChain[0];
+
+            Assert.NotNull(context.GetTypeInfo(type, Options));
+        }
+
+        [Fact]
+        public void A_type_the_context_does_not_list_falls_through_to_reflection()
+        {
+            Assert.Null(Options.TypeInfoResolverChain[0].GetTypeInfo(typeof(Probe), Options));
+            Assert.NotNull(Options.GetTypeInfo(typeof(Probe)));
         }
 
         [Fact]
@@ -102,7 +114,7 @@ namespace Tellma.Core.Abstractions.Tests.Api
             Assert.Equal(JsonNumberHandling.Strict, host.NumberHandling);
             Assert.False(host.AllowDuplicateProperties);
             Assert.Equal(16, host.MaxDepth);
-            Assert.Same(TellmaApiJsonContext.Default, host.TypeInfoResolverChain[0]);
+            Assert.Same(Options.TypeInfoResolverChain[0], host.TypeInfoResolverChain[0]);
 
             Probe probe = new() { Id = 9_007_199_254_740_993, Amount = 1234.5000m, Name = null };
             Assert.Equal(JsonSerializer.Serialize(probe, Options), JsonSerializer.Serialize(probe, host));

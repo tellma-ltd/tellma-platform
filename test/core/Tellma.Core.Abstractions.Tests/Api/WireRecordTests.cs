@@ -50,8 +50,8 @@ namespace Tellma.Core.Abstractions.Tests.Api
         }
 
         [Theory]
-        [InlineData(/*lang=json,strict*/ "{}")]
-        [InlineData(/*lang=json,strict*/ """{ "ids": null }""")]
+        [InlineData(/*lang=json,strict*/ """{ "arguments": { "creditLimit": "1" } }""")]
+        [InlineData(/*lang=json,strict*/ """{ "ids": null, "arguments": { "creditLimit": "1" } }""")]
         public void A_missing_id_list_binds_empty_so_the_count_rule_refuses_it(string body)
         {
             // An empty list is the id ceiling's refusal (limit-exceeded), never a null the binder trips on.
@@ -61,6 +61,30 @@ namespace Tellma.Core.Abstractions.Tests.Api
             Assert.Empty(Read<EntityActionRequest>(body).Ids);
             Assert.Empty(Read<EntityActionRequest<CreditArguments>>(body).Ids);
             Assert.Empty(new IdsRequest(null!).Ids);
+        }
+
+        [Theory]
+        [InlineData(/*lang=json,strict*/ """{ "id": 1, "ids": [1] }""")]
+        [InlineData(/*lang=json,strict*/ """{ "id": 1, "ids": [1], "arguments": null }""")]
+        public void Missing_or_null_arguments_are_a_binding_error(string body)
+        {
+            // The action method would otherwise receive null and fail with a 500.
+            _ = Assert.Throws<JsonException>(() => Read<EntityActionRequest<CreditArguments>>(body));
+            _ = Assert.Throws<JsonException>(() => Read<IdsRequest<CreditArguments>>(body));
+            _ = Assert.Throws<JsonException>(() => Read<IdRequest<CreditArguments>>(body));
+            _ = Assert.Throws<JsonException>(() => new IdRequest<CreditArguments>(1, null!));
+        }
+
+        [Theory]
+        [InlineData(/*lang=json,strict*/ "{}")]
+        [InlineData(/*lang=json,strict*/ """{ "resource": "gl.Center" }""")]
+        [InlineData(/*lang=json,strict*/ """{ "resource": null, "action": "Read" }""")]
+        public void An_access_holders_request_needs_both_halves_of_its_pair(string body)
+        {
+            _ = Assert.Throws<JsonException>(() => Read<AccessHoldersRequest>(body));
+
+            AccessHoldersRequest complete = Read<AccessHoldersRequest>(/*lang=json,strict*/ """{ "resource": "gl.Center", "action": "Read" }""");
+            Assert.Equal(("gl.Center", "Read"), (complete.Resource, complete.Action));
         }
 
         [Fact]

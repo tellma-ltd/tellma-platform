@@ -4,6 +4,8 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Text;
+using System.Text.Json;
+using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Client;
 
 namespace Tellma.Core.Abstractions.Tests.Client
@@ -26,6 +28,18 @@ namespace Tellma.Core.Abstractions.Tests.Client
             ClientMetadataSection section = Assert.Single(_context.Sections);
             Assert.Equal((ClientMetadataChunk.Core, "routing"), (section.Chunk, section.Name));
             Assert.Equal(/*lang=json,strict*/ """{"slug":"acme"}""", Encoding.UTF8.GetString(section.Json.Span));
+        }
+
+        [Fact]
+        public void A_section_spells_text_as_the_platform_json_rules_do()
+        {
+            // A writer handed to the serializer keeps its own encoder, so the context's must be the platform's.
+            _context.Section(ClientMetadataChunk.Core, "probe", static writer => JsonSerializer.Serialize(writer, "مركز <b>", TellmaJson.Options));
+
+            ClientMetadataSection section = Assert.Single(_context.Sections);
+            Assert.Equal(JsonSerializer.Serialize("مركز <b>", TellmaJson.Options), Encoding.UTF8.GetString(section.Json.Span));
+            Assert.Contains("مركز", Encoding.UTF8.GetString(section.Json.Span), StringComparison.Ordinal);
+            Assert.DoesNotContain("<", Encoding.UTF8.GetString(section.Json.Span), StringComparison.Ordinal);
         }
 
         [Fact]

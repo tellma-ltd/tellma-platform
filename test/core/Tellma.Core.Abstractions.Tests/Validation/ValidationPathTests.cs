@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Reflection;
 using Tellma.Core.Abstractions.Validation;
 
 namespace Tellma.Core.Abstractions.Tests.Validation
@@ -105,6 +106,19 @@ namespace Tellma.Core.Abstractions.Tests.Validation
             Assert.Equal(constructed, built);
             Assert.NotEqual(ValidationPath.Root.Property("Entries").Property("gl").Property("posting").Property("autoNumberOnPost"), built);
             Assert.Equal("Entries.gl.posting.autoNumberOnPost", built.ToString());
+        }
+
+        [Fact]
+        public void The_two_segment_kinds_are_the_only_kinds()
+        {
+            // An internal abstract member is what no type outside the assembly can implement.
+            Assert.Contains(
+                typeof(PathSegment).GetMethods(BindingFlags.Instance | BindingFlags.NonPublic),
+                static method => method.IsAbstract && method.IsAssembly);
+
+            Type[] kinds = [.. typeof(PathSegment).Assembly.GetTypes().Where(static type => type.IsSubclassOf(typeof(PathSegment)))];
+            Assert.Equal([typeof(IndexSegment), typeof(PropertySegment)], kinds.OrderBy(static type => type.Name, StringComparer.Ordinal).ToArray());
+            Assert.All(kinds, static kind => Assert.True(kind.IsSealed));
         }
 
         [Fact]

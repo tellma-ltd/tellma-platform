@@ -15,10 +15,12 @@ namespace Tellma.Core.Abstractions.Api
     ///     resolves entity, child and operation body types.
     /// </summary>
     /// <remarks>
-    ///     Metadata only, generated at build time. Use it through <see cref="TellmaJson.Options" />,
-    ///     which supplies the platform's rules and converters; this context's own default options
-    ///     carry none of them. A generic record is resolved by reflection, closed over its arguments
-    ///     type.
+    ///     Metadata only, generated at build time. Internal on purpose: its typed metadata used on its
+    ///     own (<c>Default.JobAccepted</c>) would serialize under the context's default options,
+    ///     PascalCase, with nulls and numeric longs, none of the platform's rules. The only way to
+    ///     reach it is through <see cref="TellmaJson.Options" /> or <see cref="TellmaJson.Configure" />,
+    ///     which supply the rules and converters. A generic record is resolved by reflection, closed
+    ///     over its arguments type.
     /// </remarks>
     [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
 
@@ -59,5 +61,5 @@ namespace Tellma.Core.Abstractions.Api
     [JsonSerializable(typeof(TimeOnly))]
     [JsonSerializable(typeof(Guid))]
     [JsonSerializable(typeof(byte[]))]
-    public sealed partial class TellmaApiJsonContext : JsonSerializerContext;
+    internal sealed partial class TellmaApiJsonContext : JsonSerializerContext;
 }

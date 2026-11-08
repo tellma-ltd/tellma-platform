@@ -30,11 +30,20 @@ namespace Tellma.Core.Abstractions.Api
     }
 
     /// <summary>The body of an entity action that answers its target rows read back and takes arguments.</summary>
-    /// <remarks>An error in the arguments is rooted at <c>arguments</c> (<c>arguments.creditLimit</c>).</remarks>
+    /// <remarks>
+    ///     <see cref="Arguments" /> is required: a body that omits it fails the serializer's
+    ///     required-member check, and one that sends null is refused by the setter, both as binding
+    ///     errors. An error in the arguments is rooted at <c>arguments</c> (<c>arguments.creditLimit</c>).
+    /// </remarks>
     /// <typeparam name="TArguments">The action's arguments record.</typeparam>
     public sealed class EntityActionRequest<TArguments> : EntityActionRequest
     {
-        /// <summary>The action's arguments.</summary>
-        public TArguments Arguments { get; set; } = default!;
+        /// <summary>The action's arguments; never null.</summary>
+        /// <exception cref="System.Text.Json.JsonException">The value set is null.</exception>
+        public required TArguments Arguments
+        {
+            get;
+            set => field = WireMembers.Required(value, "arguments");
+        }
     }
 }
