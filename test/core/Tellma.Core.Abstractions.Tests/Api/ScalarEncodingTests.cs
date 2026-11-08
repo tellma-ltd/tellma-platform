@@ -102,6 +102,61 @@ namespace Tellma.Core.Abstractions.Tests.Api
         }
 
         [Fact]
+        public void A_decimal_key_round_trips_at_full_scale()
+        {
+            Dictionary<decimal, int> map = new() { [1234.5000m] = 1 };
+
+            Assert.Equal(/*lang=json,strict*/ """{"1234.5000":1}""", Write(map));
+            Assert.Equal(4, Read<Dictionary<decimal, int>>(/*lang=json,strict*/ """{"1234.5000":1}""").Keys.Single().Scale);
+        }
+
+        [Theory]
+        [InlineData(/*lang=json,strict*/ """{"1e3":1}""")]
+        [InlineData(/*lang=json,strict*/ """{"1,5":1}""")]
+        [InlineData(/*lang=json,strict*/ """{"0.00000000000000000000000000001":1}""")]
+        public void A_decimal_key_refuses_what_a_decimal_value_refuses(string json)
+        {
+            _ = Assert.Throws<JsonException>(() => Read<Dictionary<decimal, int>>(json));
+        }
+
+        [Fact]
+        public void A_date_time_key_round_trips_and_refuses_an_offset()
+        {
+            Dictionary<DateTime, int> map = new() { [new DateTime(2026, 8, 30, 12, 2, 10)] = 1 };
+
+            Assert.Equal(/*lang=json,strict*/ """{"2026-08-30T12:02:10.0000000":1}""", Write(map));
+            Assert.Equal(map.Keys.Single(), Read<Dictionary<DateTime, int>>(Write(map)).Keys.Single());
+            _ = Assert.Throws<JsonException>(() => Read<Dictionary<DateTime, int>>(/*lang=json,strict*/ """{"2026-08-30T12:02:10Z":1}"""));
+        }
+
+        [Fact]
+        public void An_instant_key_keeps_its_offset_through_the_encoders_escaping()
+        {
+            DateTimeOffset key = new(2026, 8, 30, 12, 2, 10, TimeSpan.FromHours(3));
+            Dictionary<DateTimeOffset, int> map = new() { [key] = 1 };
+
+            // A key goes through the encoder, which escapes the offset's plus sign.
+            string json = Write(map);
+            Assert.StartsWith("{\"2026-08-30T12:02:10.0000000", json, StringComparison.Ordinal);
+            Assert.Contains("\\u002B03:00", json, StringComparison.Ordinal);
+            Assert.DoesNotContain("+", json, StringComparison.Ordinal);
+
+            DateTimeOffset read = Read<Dictionary<DateTimeOffset, int>>(json).Keys.Single();
+            Assert.Equal((key.Ticks, key.Offset), (read.Ticks, read.Offset));
+            _ = Assert.Throws<JsonException>(() => Read<Dictionary<DateTimeOffset, int>>(/*lang=json,strict*/ """{"2026-08-30T12:02:10":1}"""));
+        }
+
+        [Fact]
+        public void A_time_of_day_key_round_trips_and_refuses_another_form()
+        {
+            Dictionary<TimeOnly, int> map = new() { [new TimeOnly(12, 2, 10)] = 1 };
+
+            Assert.Equal(/*lang=json,strict*/ """{"12:02:10.0000000":1}""", Write(map));
+            Assert.Equal(map.Keys.Single(), Read<Dictionary<TimeOnly, int>>(Write(map)).Keys.Single());
+            _ = Assert.Throws<JsonException>(() => Read<Dictionary<TimeOnly, int>>(/*lang=json,strict*/ """{"8:00":1}"""));
+        }
+
+        [Fact]
         public void A_token_longer_than_any_scalar_is_refused_unread()
         {
             _ = Assert.Throws<JsonException>(() => Read<long>("\"" + new string('1', 200) + "\""));

@@ -46,7 +46,7 @@ namespace Tellma.Core.Abstractions.Api
                 int[] keys = new int[ids.Count];
                 for (int i = 0; i < keys.Length; i++)
                 {
-                    keys[i] = Narrow(ids[i], string.Create(CultureInfo.InvariantCulture, $"{path}[{i}]"));
+                    keys[i] = Narrow(ids[i], path, i);
                 }
 
                 return (IReadOnlyList<TKey>)(object)Array.AsReadOnly(keys);
@@ -71,21 +71,33 @@ namespace Tellma.Core.Abstractions.Api
             return typeof(TKey) == typeof(long)
                 ? (TKey)(object)id
                 : typeof(TKey) == typeof(int)
-                    ? (TKey)(object)Narrow(id, path)
+                    ? (TKey)(object)Narrow(id, path, index: null)
                     : throw Unsupported<TKey>();
         }
 
         /// <summary>Narrows one id to an <see cref="int" /> key, or refuses it naming its path.</summary>
         /// <param name="id">The id.</param>
-        /// <param name="path">The id's path in the request.</param>
+        /// <param name="path">The request member that carried the id.</param>
+        /// <param name="index">The id's position in that member's list; null for a single id.</param>
         /// <returns>The key.</returns>
-        private static int Narrow(long id, string path)
+        private static int Narrow(long id, string path, int? index)
         {
             return id is >= int.MinValue and <= int.MaxValue
                 ? (int)id
-                : throw new BadRequestException(
-                    $"The id at '{path}' is outside the range of the resource's key.",
-                    new Dictionary<string, object?>(StringComparer.Ordinal) { ["path"] = path });
+                : throw OutOfRange(index is { } i ? string.Create(CultureInfo.InvariantCulture, $"{path}[{i}]") : path);
+        }
+
+        /// <summary>
+        ///     The refusal of an id outside an <see cref="int" /> key's range. The indexed path is
+        ///     formatted here, on the failure, so narrowing a valid list allocates nothing per id.
+        /// </summary>
+        /// <param name="path">The id's full path in the request, such as <c>ids[2]</c>.</param>
+        /// <returns>The exception to throw.</returns>
+        private static BadRequestException OutOfRange(string path)
+        {
+            return new BadRequestException(
+                $"The id at '{path}' is outside the range of the resource's key.",
+                new Dictionary<string, object?>(StringComparer.Ordinal) { ["path"] = path });
         }
 
         /// <summary>The refusal of a key type no stack has.</summary>

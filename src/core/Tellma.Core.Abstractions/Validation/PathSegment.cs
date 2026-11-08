@@ -43,16 +43,19 @@ namespace Tellma.Core.Abstractions.Validation
     }
 
     /// <summary>
-    ///     A member of the value the path has reached, by its CLR property name (<c>Lines</c>,
-    ///     <c>Quantity</c>, <c>Arguments</c>), never by its JSON name: each renderer applies its own
-    ///     naming.
+    ///     A member of the value the path has reached: a CLR property name (<c>Lines</c>,
+    ///     <c>Quantity</c>, <c>Arguments</c>), never a JSON name, since each renderer applies its own
+    ///     naming; or a key of a keyed collection, such as a setting key under <c>Entries</c>
+    ///     (<c>gl.posting.autoNumberOnPost</c>).
     /// </summary>
     /// <remarks>
     ///     <see cref="Name" /> is get-only and validated, so a <c>with</c> expression cannot produce an
-    ///     empty name. Names compare ordinally, as CLR member names do.
+    ///     empty name. Names compare ordinally, as CLR member names do. A name may hold any
+    ///     character: a path is a segment list that no renderer parses, so a dotted key stays one
+    ///     segment even though the bracket form of <see cref="ValidationPath.ToString" /> shows it
+    ///     with its dots.
     /// </remarks>
-    /// <param name="Name">The CLR property name; not empty, and holding none of <c>.</c>, <c>[</c>
-    ///     and <c>]</c>, so the bracket form stays unambiguous.</param>
+    /// <param name="Name">The property name or key; not null, empty or white space.</param>
     public sealed record PropertySegment(string Name) : PathSegment
     {
         /// <inheritdoc cref="PropertySegment(string)" />
@@ -65,15 +68,13 @@ namespace Tellma.Core.Abstractions.Validation
             return Name;
         }
 
-        /// <summary>Refuses an empty name or one that would make the bracket form ambiguous.</summary>
+        /// <summary>Refuses a null, empty or white-space name.</summary>
         /// <param name="name">The candidate name.</param>
         /// <returns>The name.</returns>
         private static string ValidateName(string name)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(name);
-            return name.AsSpan().IndexOfAny(".[]") < 0
-                ? name
-                : throw new ArgumentException($"A path property name holds no '.', '[' or ']'; received '{name}'.", nameof(name));
+            return name;
         }
     }
 }

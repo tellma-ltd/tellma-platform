@@ -195,6 +195,40 @@ namespace Tellma.Core.Abstractions.Tests.Api
             _ = Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<McpExposure>("1", Options));
         }
 
+        [Theory]
+        [InlineData("مركز الرياض")]
+        [InlineData("ማዕከል")]
+        [InlineData("Zürich – Genève")]
+        public void Text_in_any_script_is_written_as_itself(string text)
+        {
+            string json = JsonSerializer.Serialize(text, Options);
+
+            Assert.Equal("\"" + text + "\"", json);
+            Assert.Equal(text, JsonSerializer.Deserialize<string>(json, Options));
+        }
+
+        [Theory]
+        [InlineData("<script>", "\"\\u003Cscript\\u003E\"")]
+        [InlineData("a&b", "\"a\\u0026b\"")]
+        [InlineData("it's", "\"it\\u0027s\"")]
+        [InlineData("say \"hi\"", "\"say \\u0022hi\\u0022\"")]
+        [InlineData("a+b", "\"a\\u002Bb\"")]
+        public void Characters_html_gives_meaning_to_stay_escaped(string text, string json)
+        {
+            Assert.Equal(json, JsonSerializer.Serialize(text, Options));
+            Assert.Equal(text, JsonSerializer.Deserialize<string>(json, Options));
+        }
+
+        [Fact]
+        public void A_hosts_options_write_text_the_same_way()
+        {
+            JsonSerializerOptions host = new(JsonSerializerDefaults.Web);
+
+            TellmaJson.Configure(host);
+
+            Assert.Equal("\"مركز \\u003Cb\\u003E\"", JsonSerializer.Serialize("مركز <b>", host));
+        }
+
         [Fact]
         public void An_enum_member_may_declare_its_wire_name()
         {

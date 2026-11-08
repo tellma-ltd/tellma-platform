@@ -181,6 +181,11 @@ namespace Tellma.Core.Abstractions.Api
     ///     the same form with one to seven fractional digits or none, and <c>Z</c> for a zero offset;
     ///     the offset is required.
     /// </summary>
+    /// <remarks>
+    ///     A value is written raw, so its <c>+</c> stays a plus. A dictionary key goes through the
+    ///     writer's encoder, which escapes <c>+</c> as <c>\u002B</c>: the key is still the same text to
+    ///     every JSON reader, and reads back here.
+    /// </remarks>
     internal sealed class DateTimeOffsetJsonConverter : JsonConverter<DateTimeOffset>
     {
         /// <summary>The written form.</summary>

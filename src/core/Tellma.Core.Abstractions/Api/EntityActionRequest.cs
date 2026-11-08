@@ -10,12 +10,17 @@ namespace Tellma.Core.Abstractions.Api
     ///     target rows read back and takes no arguments.
     /// </summary>
     /// <remarks>
-    ///     <see cref="Ids" /> follows the rules of <see cref="IdsRequest.Ids" />.
+    ///     <see cref="Ids" /> follows the rules of <see cref="IdsRequest.Ids" />: a body that omits it,
+    ///     or sends null, binds an empty list.
     /// </remarks>
     public class EntityActionRequest
     {
-        /// <summary>The target rows' ids; numbers or strings on the wire, narrowed to the stack's key type.</summary>
-        public IReadOnlyList<long> Ids { get; set; } = [];
+        /// <summary>The target rows' ids; numbers or strings on the wire, narrowed to the stack's key type. Never null.</summary>
+        public IReadOnlyList<long> Ids
+        {
+            get;
+            set => field = value ?? [];
+        } = [];
 
         /// <summary>Whether the answer carries the target rows read back in details shape; true by default.</summary>
         public bool ReturnEntities { get; set; } = true;

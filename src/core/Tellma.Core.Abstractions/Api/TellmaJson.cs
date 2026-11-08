@@ -3,9 +3,11 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using System.Text.Unicode;
 
 namespace Tellma.Core.Abstractions.Api
 {
@@ -38,6 +40,13 @@ namespace Tellma.Core.Abstractions.Api
     ///             canonical lowercase form and a byte array base64.
     ///         </item>
     ///         <item>Enums are their member names as strings; an integer is refused.</item>
+    ///         <item>
+    ///             Text in any script of the basic plane (Arabic, Amharic) is written as itself, not
+    ///             as <c>\uXXXX</c> escapes, so a response, a stored column or an agent's result is not
+    ///             six times longer for a non-Latin tenant. The characters HTML gives meaning to
+    ///             (<c>&lt;</c>, <c>&gt;</c>, <c>&amp;</c>, quotes, <c>+</c>) stay escaped, so a body
+    ///             is safe to embed.
+    ///         </item>
     ///         <item>A duplicate member is refused.</item>
     ///         <item>An unknown member is skipped, so a details payload round-trips into a save unchanged.</item>
     ///         <item>
@@ -55,6 +64,15 @@ namespace Tellma.Core.Abstractions.Api
     {
         /// <summary>The deepest nesting a document may have.</summary>
         private const int MaxDepth = 16;
+
+        // Declared before Options: static initializers run in declaration order, and creating the
+        // options reads it.
+
+        /// <summary>
+        ///     The encoder: every script of the basic plane as itself, with the HTML-sensitive
+        ///     characters still escaped. Never the unsafe relaxed encoder.
+        /// </summary>
+        private static readonly JavaScriptEncoder TextEncoder = JavaScriptEncoder.Create(UnicodeRanges.All);
 
         /// <summary>
         ///     The one read-only options instance with the platform's rules, for every serializer
@@ -82,6 +100,7 @@ namespace Tellma.Core.Abstractions.Api
             options.AllowDuplicateProperties = false;
             options.UnmappedMemberHandling = JsonUnmappedMemberHandling.Skip;
             options.MaxDepth = MaxDepth;
+            options.Encoder = TextEncoder;
 
             // --- The converters, ahead of any the host added ---
             JsonConverter[] converters =

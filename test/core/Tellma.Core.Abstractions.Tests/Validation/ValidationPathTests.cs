@@ -87,11 +87,24 @@ namespace Tellma.Core.Abstractions.Tests.Validation
         [Theory]
         [InlineData("")]
         [InlineData(" ")]
-        [InlineData("Lines.Quantity")]
-        [InlineData("Lines[0]")]
-        public void A_property_name_is_one_plain_name(string name)
+        public void A_property_name_is_never_blank(string name)
         {
             _ = Assert.Throws<ArgumentException>(() => ValidationPath.Root.Property(name));
+            _ = Assert.Throws<ArgumentNullException>(() => ValidationPath.Root.Property(null!));
+        }
+
+        [Fact]
+        public void A_dotted_key_is_one_segment()
+        {
+            // A setting key is dotted by grammar, and an error on it points under the entries member.
+            ValidationPath built = ValidationPath.Root.Property("Entries").Property("gl.posting.autoNumberOnPost");
+            ValidationPath constructed = new([new PropertySegment("Entries"), new PropertySegment("gl.posting.autoNumberOnPost")]);
+
+            Assert.Equal(2, built.Segments.Count);
+            Assert.Equal("gl.posting.autoNumberOnPost", ((PropertySegment)built.Segments[1]).Name);
+            Assert.Equal(constructed, built);
+            Assert.NotEqual(ValidationPath.Root.Property("Entries").Property("gl").Property("posting").Property("autoNumberOnPost"), built);
+            Assert.Equal("Entries.gl.posting.autoNumberOnPost", built.ToString());
         }
 
         [Fact]

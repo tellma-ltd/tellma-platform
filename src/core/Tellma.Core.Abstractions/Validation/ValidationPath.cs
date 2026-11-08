@@ -44,10 +44,10 @@ namespace Tellma.Core.Abstractions.Validation
             return Append(new IndexSegment(index));
         }
 
-        /// <summary>This path followed by a member of the value it has reached.</summary>
-        /// <param name="name">The CLR property name.</param>
+        /// <summary>This path followed by a member of the value it has reached, or a key of a keyed collection.</summary>
+        /// <param name="name">The CLR property name, or the key (a setting key such as <c>gl.posting.autoNumberOnPost</c>).</param>
         /// <returns>The longer path.</returns>
-        /// <exception cref="ArgumentException"><paramref name="name" /> is empty or holds <c>.</c>, <c>[</c> or <c>]</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="name" /> is null, empty or white space.</exception>
         public ValidationPath Property(string name)
         {
             return Append(new PropertySegment(name));

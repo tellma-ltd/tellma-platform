@@ -49,6 +49,20 @@ namespace Tellma.Core.Abstractions.Tests.Api
             Assert.Equal([5L, 9_007_199_254_740_993L], request.Ids);
         }
 
+        [Theory]
+        [InlineData(/*lang=json,strict*/ "{}")]
+        [InlineData(/*lang=json,strict*/ """{ "ids": null }""")]
+        public void A_missing_id_list_binds_empty_so_the_count_rule_refuses_it(string body)
+        {
+            // An empty list is the id ceiling's refusal (limit-exceeded), never a null the binder trips on.
+            Assert.Empty(Read<IdsRequest>(body).Ids);
+            Assert.Empty(Read<IdsRequest<CreditArguments>>(body).Ids);
+            Assert.Empty(Read<GetByIdsRequest>(body).Ids);
+            Assert.Empty(Read<EntityActionRequest>(body).Ids);
+            Assert.Empty(Read<EntityActionRequest<CreditArguments>>(body).Ids);
+            Assert.Empty(new IdsRequest(null!).Ids);
+        }
+
         [Fact]
         public void A_generated_record_writes_its_long_members_through_the_platform_converter()
         {
