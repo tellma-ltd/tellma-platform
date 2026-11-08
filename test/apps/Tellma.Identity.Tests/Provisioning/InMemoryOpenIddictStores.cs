@@ -65,6 +65,27 @@ namespace Tellma.Identity.Tests.Provisioning
 
         /// <summary>The stored Settings column.</summary>
         public ImmutableDictionary<string, string> Settings { get; set; } = [];
+
+        /// <summary>Copies every stored column from another row, as reading a committed row back would.</summary>
+        /// <param name="other">The row to copy.</param>
+        public void CopyFrom(InMemoryApplication other)
+        {
+            ArgumentNullException.ThrowIfNull(other);
+            ApplicationType = other.ApplicationType;
+            ClientId = other.ClientId;
+            ClientSecret = other.ClientSecret;
+            ClientType = other.ClientType;
+            ConsentType = other.ConsentType;
+            DisplayName = other.DisplayName;
+            DisplayNames = other.DisplayNames;
+            JsonWebKeySet = other.JsonWebKeySet;
+            Permissions = other.Permissions;
+            PostLogoutRedirectUris = other.PostLogoutRedirectUris;
+            Properties = other.Properties;
+            RedirectUris = other.RedirectUris;
+            Requirements = other.Requirements;
+            Settings = other.Settings;
+        }
     }
 
     /// <summary>An OpenIddict scope row held in memory.</summary>
@@ -104,6 +125,13 @@ namespace Tellma.Identity.Tests.Provisioning
         /// <summary>The rows.</summary>
         private readonly List<InMemoryApplication> _rows = [];
 
+        /// <summary>
+        ///     Each row's last committed values. The managers mutate the row object before asking the
+        ///     store to write it, so a write that fails puts these back, as a database that rolled
+        ///     the statement back would still hold them.
+        /// </summary>
+        private readonly Dictionary<InMemoryApplication, InMemoryApplication> _committed = [];
+
         /// <summary>Every row, in insertion order.</summary>
         public IReadOnlyList<InMemoryApplication> Rows => _rows;
 
@@ -115,6 +143,27 @@ namespace Tellma.Identity.Tests.Provisioning
 
         /// <summary>How many rows were deleted.</summary>
         public int Deletes { get; private set; }
+
+        /// <summary>
+        ///     Runs before a row is created; an exception it returns is thrown instead, as a store
+        ///     losing a race to a concurrent writer would. Null lets every create through.
+        /// </summary>
+        public Func<InMemoryApplication, Exception?>? BeforeCreate { get; set; }
+
+        /// <summary>
+        ///     Runs before a row is written back; an exception it returns is thrown instead, as a
+        ///     store whose concurrency check failed would. Null lets every update through.
+        /// </summary>
+        public Func<InMemoryApplication, Exception?>? BeforeUpdate { get; set; }
+
+        /// <summary>Records a row's current values as committed.</summary>
+        /// <param name="application">The row.</param>
+        private void Commit(InMemoryApplication application)
+        {
+            InMemoryApplication committed = new();
+            committed.CopyFrom(application);
+            _committed[application] = committed;
+        }
 
         /// <summary>The row with the client id, or null.</summary>
         /// <param name="clientId">The value to match.</param>
@@ -140,7 +189,13 @@ namespace Tellma.Identity.Tests.Provisioning
         /// <inheritdoc />
         public ValueTask CreateAsync(InMemoryApplication application, CancellationToken cancellationToken)
         {
+            if (BeforeCreate?.Invoke(application) is { } failure)
+            {
+                return ValueTask.FromException(failure);
+            }
+
             _rows.Add(application);
+            Commit(application);
             Creates++;
             return ValueTask.CompletedTask;
         }
@@ -405,6 +460,17 @@ namespace Tellma.Identity.Tests.Provisioning
         /// <inheritdoc />
         public ValueTask UpdateAsync(InMemoryApplication application, CancellationToken cancellationToken)
         {
+            if (BeforeUpdate?.Invoke(application) is { } failure)
+            {
+                if (_committed.TryGetValue(application, out InMemoryApplication? committed))
+                {
+                    application.CopyFrom(committed);
+                }
+
+                return ValueTask.FromException(failure);
+            }
+
+            Commit(application);
             Updates++;
             return ValueTask.CompletedTask;
         }

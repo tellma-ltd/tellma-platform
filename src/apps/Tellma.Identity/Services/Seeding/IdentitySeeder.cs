@@ -8,8 +8,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using OpenIddict.Abstractions;
-using System.Collections.Immutable;
 using System.Text.Json;
 using Tellma.Identity.Data;
 using Tellma.Identity.Options;
@@ -26,9 +24,10 @@ namespace Tellma.Identity.Services.Seeding
     /// </summary>
     /// <param name="context">The identity store.</param>
     /// <param name="storeCheck">The store check that runs before anything is written.</param>
-    /// <param name="applicationManager">The OpenIddict application manager.</param>
-    /// <param name="scopeManager">The OpenIddict scope manager.</param>
-    /// <param name="provisioning">Onboarding's client registration steps, which distribution entries reuse.</param>
+    /// <param name="converger">
+    ///     The registration write path onboarding shares, which distribution entries, platform
+    ///     clients and scopes all converge through, safe against instances starting together.
+    /// </param>
     /// <param name="userManager">The Identity user manager.</param>
     /// <param name="options">The engine options.</param>
     /// <param name="environment">The host environment (gates the dev admin).</param>
@@ -38,9 +37,7 @@ namespace Tellma.Identity.Services.Seeding
     public sealed class IdentitySeeder(
         TellmaIdentityDbContext context,
         IdentityStoreCheck storeCheck,
-        IOpenIddictApplicationManager applicationManager,
-        IOpenIddictScopeManager scopeManager,
-        IClientProvisioningService provisioning,
+        ClientRegistrationConverger converger,
         UserManager<TellmaIdentityUser> userManager,
         IOptions<TellmaIdentityOptions> options,
         IHostEnvironment environment,
@@ -69,7 +66,7 @@ namespace Tellma.Identity.Services.Seeding
             {
                 if (client.Kind != TellmaIdentitySeedClientKind.Distribution)
                 {
-                    await EnsureClientAsync(engineOptions, client, cancellationToken);
+                    await EnsureClientAsync(client, cancellationToken);
                 }
             }
 
@@ -114,65 +111,17 @@ namespace Tellma.Identity.Services.Seeding
         private async Task EnsureScopeAsync(
             string name, string displayName, IReadOnlyList<string> resources, CancellationToken cancellationToken)
         {
-            object? scope = await scopeManager.FindByNameAsync(name, cancellationToken);
-            if (scope is null)
-            {
-                OpenIddictScopeDescriptor descriptor = new() { Name = name, DisplayName = displayName };
-                descriptor.Resources.UnionWith(resources);
-                await scopeManager.CreateAsync(descriptor, cancellationToken);
-                return;
-            }
-
-            // Preserve resources appended at runtime (per-distribution audiences).
-            OpenIddictScopeDescriptor existing = new();
-            await scopeManager.PopulateAsync(existing, scope, cancellationToken);
-            if (!resources.All(existing.Resources.Contains))
-            {
-                existing.Resources.UnionWith(resources);
-                await scopeManager.UpdateAsync(scope, existing, cancellationToken);
-            }
+            // Resources appended at runtime (per-distribution audiences) are preserved.
+            await converger.ConvergeScopeAsync(name, displayName, resources, cancellationToken);
         }
 
-        /// <summary>Creates or refreshes one seeded platform client.</summary>
-        private async Task EnsureClientAsync(
-            TellmaIdentityOptions engineOptions, TellmaIdentitySeedClientOptions seed, CancellationToken cancellationToken)
+        /// <summary>Creates or refreshes one seeded platform client, keeping the audiences onboarding granted it.</summary>
+        private async Task EnsureClientAsync(TellmaIdentitySeedClientOptions seed, CancellationToken cancellationToken)
         {
-            OpenIddictApplicationDescriptor descriptor = ClientDescriptorFactory.SeededClient(engineOptions, seed);
-
-            object? existing = await applicationManager.FindByClientIdAsync(descriptor.ClientId!, cancellationToken);
-            if (existing is null)
+            if (await converger.ConvergeSeededClientAsync(seed, cancellationToken) == ClientConvergence.Created)
             {
-                await applicationManager.CreateAsync(descriptor, cancellationToken);
-                IdentitySeederLog.SeededClient(logger, descriptor.ClientId!);
-                return;
+                IdentitySeederLog.SeededClient(logger, seed.ClientId!);
             }
-
-            // Re-seeding must not wipe the per-distribution resource permissions granted to the CLI
-            // and native apps at provisioning time — but only those clients accumulate them, so a
-            // client that never names distribution APIs (the control plane) never resurrects a
-            // stale grant. The marker is read from the stored client OR the fresh descriptor:
-            // a client seeded before the marker existed carries it only in the descriptor, and
-            // gating on the stored copy alone would drop its accumulated grants on the first boot
-            // after the upgrade.
-            ImmutableDictionary<string, JsonElement> existingProperties =
-                await applicationManager.GetPropertiesAsync(existing, cancellationToken);
-            bool callsDistributionApis =
-                TellmaClientProperties.IsSet(existingProperties, TellmaClientProperties.CallsDistributionApis)
-                || TellmaClientProperties.IsSet(descriptor.Properties, TellmaClientProperties.CallsDistributionApis);
-            if (callsDistributionApis)
-            {
-                OpenIddictApplicationDescriptor current = new();
-                await applicationManager.PopulateAsync(current, existing, cancellationToken);
-                foreach (string permission in current.Permissions)
-                {
-                    if (permission.StartsWith(OpenIddictConstants.Permissions.Prefixes.Resource, StringComparison.Ordinal))
-                    {
-                        descriptor.Permissions.Add(permission);
-                    }
-                }
-            }
-
-            await applicationManager.UpdateAsync(existing, descriptor, cancellationToken);
         }
 
         /// <summary>
@@ -182,7 +131,7 @@ namespace Tellma.Identity.Services.Seeding
         private async Task EnsureDistributionAsync(TellmaIdentitySeedClientOptions seed, CancellationToken cancellationToken)
         {
             DistributionClientRegistration registration = ClientDescriptorFactory.SeededDistribution(seed);
-            DistributionConvergence convergence = await provisioning.ConvergeDistributionAsync(registration, cancellationToken);
+            DistributionConvergence convergence = await converger.ConvergeDistributionAsync(registration, cancellationToken);
 
             string origin = registration.Origin.GetLeftPart(UriPartial.Authority);
             if (!convergence.Changed)

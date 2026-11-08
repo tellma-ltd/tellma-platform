@@ -79,6 +79,11 @@ namespace Tellma.Identity.Hosting
             // Engine services.
             services.AddScoped<Services.Audit.IAuditLogger, Services.Audit.SqlAuditLogger>();
             services.AddScoped<Services.Provisioning.IClientProvisioningService, Services.Provisioning.ClientProvisioningService>();
+
+            // The one write path for the registrations the platform owns, shared by onboarding and
+            // startup seeding. Each convergence runs its attempts in scopes of its own, so it is
+            // resolved by its concrete type there.
+            services.AddScoped<Services.Provisioning.ClientRegistrationConverger>();
             services.AddSingleton<Services.AuthenticationPolicy.IAuthenticationPolicyService, Services.AuthenticationPolicy.AuthenticationPolicyService>();
             services.AddScoped<Services.AuthenticationPolicy.TellmaSignInService>();
             services.AddScoped<Services.AuthenticationPolicy.TellmaPrincipalFactory>();

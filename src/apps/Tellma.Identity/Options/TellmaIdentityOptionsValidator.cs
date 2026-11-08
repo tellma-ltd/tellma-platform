@@ -157,8 +157,10 @@ namespace Tellma.Identity.Options
             TellmaIdentitySeedOptions seed, IHostEnvironment environment, List<string> failures)
         {
             // A distribution entry registers two clients, so its backend id counts too: two entries
-            // that resolve to one client id would overwrite each other at every start.
-            Dictionary<string, string> claimed = new(StringComparer.Ordinal);
+            // that resolve to one client id would overwrite each other at every start. Compared
+            // ignoring case, as the store's unique index on the client id is under the platform's
+            // case-insensitive collation: "ACME-svc" and "acme-svc" are one row there.
+            Dictionary<string, string> claimed = new(StringComparer.OrdinalIgnoreCase);
             for (int index = 0; index < seed.Clients.Count; index++)
             {
                 TellmaIdentitySeedClientOptions client = seed.Clients[index];

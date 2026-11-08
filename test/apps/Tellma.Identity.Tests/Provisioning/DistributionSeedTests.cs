@@ -25,6 +25,28 @@ namespace Tellma.Identity.Tests.Provisioning
         private const string Issuer = "https://identity.tellma.com";
         private const string Origin = "https://acme.example.com";
 
+        /// <summary>One change per member the convergence compares, each enough to make it rewrite the row.</summary>
+        private static readonly Dictionary<string, Action<OpenIddictApplicationDescriptor>> Changes = new()
+        {
+            ["ClientId"] = static d => d.ClientId = "other",
+            ["ClientSecret"] = static d => d.ClientSecret = "other-hash",
+            ["ClientType"] = static d => d.ClientType = ClientTypes.Public,
+            ["ApplicationType"] = static d => d.ApplicationType = ApplicationTypes.Native,
+            ["ConsentType"] = static d => d.ConsentType = ConsentTypes.Explicit,
+            ["DisplayName"] = static d => d.DisplayName = "other",
+            ["DisplayNames"] = static d => d.DisplayNames.Clear(),
+            ["JsonWebKeySet"] = static d => d.JsonWebKeySet = new Microsoft.IdentityModel.Tokens.JsonWebKeySet(),
+            ["Permissions"] = static d => d.Permissions.Remove(Permissions.Endpoints.Revocation),
+            ["Requirements"] = static d => d.Requirements.Remove(Requirements.Features.PushedAuthorizationRequests),
+            ["RedirectUris"] = static d => d.RedirectUris.Add(new Uri(Origin + "/other")),
+            ["PostLogoutRedirectUris"] = static d => d.PostLogoutRedirectUris.Clear(),
+            ["Properties"] = static d => d.Properties.Remove(TellmaClientProperties.BackchannelLogoutUri),
+            ["PropertyValue"] = static d => TellmaClientProperties.Set(
+                d.Properties, TellmaClientProperties.BackchannelLogoutUri, Origin + "/other"),
+            ["Settings"] = static d => d.Settings.Clear(),
+            ["SettingValue"] = static d => d.Settings["tkn_lft:act"] = "00:20:00",
+        };
+
         private readonly ServiceProvider _services = BuildServices();
 
         [Fact]
@@ -261,6 +283,219 @@ namespace Tellma.Identity.Tests.Provisioning
             Assert.DoesNotContain(Entry().ClientSecret!, registration.ToString(), StringComparison.Ordinal);
         }
 
+        [Fact]
+        public async Task A_changed_back_channel_endpoint_alone_rewrites_the_bff_client()
+        {
+            await ConvergeAsync(Entry());
+            TellmaIdentitySeedClientOptions moved = Entry();
+            moved.BackchannelLogoutUri = Origin + "/moved/logout";
+
+            DistributionConvergence convergence = await ConvergeAsync(moved);
+
+            Assert.Equal(ClientConvergence.Updated, convergence.Client);
+            Assert.Equal(ClientConvergence.Unchanged, convergence.ServiceClient);
+            Assert.Equal(
+                Origin + "/moved/logout",
+                TellmaClientProperties.Get(Applications.Find("acme")!.Properties, TellmaClientProperties.BackchannelLogoutUri));
+        }
+
+        [Fact]
+        public async Task A_requirement_removed_by_hand_is_restored()
+        {
+            await ConvergeAsync(Entry());
+
+            // An operator dropped pushed authorization requests from the BFF client: a downgrade.
+            InMemoryApplication bff = Applications.Find("acme")!;
+            bff.Requirements = bff.Requirements.Remove(Requirements.Features.PushedAuthorizationRequests);
+
+            DistributionConvergence convergence = await ConvergeAsync(Entry());
+
+            Assert.Equal(ClientConvergence.Updated, convergence.Client);
+            Assert.Contains(Requirements.Features.PushedAuthorizationRequests, Applications.Find("acme")!.Requirements);
+        }
+
+        [Theory]
+        [MemberData(nameof(SingleMemberChanges))]
+        public void Registrations_that_differ_in_one_member_are_not_the_same(string member)
+        {
+            OpenIddictApplicationDescriptor left = Descriptor();
+            OpenIddictApplicationDescriptor right = Descriptor();
+            Assert.True(ClientRegistrationConverger.HaveSameRegistration(left, right));
+
+            Change(right, member);
+
+            Assert.False(ClientRegistrationConverger.HaveSameRegistration(left, right), member);
+            Assert.False(ClientRegistrationConverger.HaveSameRegistration(right, left), member);
+        }
+
+        [Fact]
+        public void Registrations_that_list_the_same_members_in_another_order_are_the_same()
+        {
+            OpenIddictApplicationDescriptor left = Descriptor();
+            OpenIddictApplicationDescriptor right = new()
+            {
+                ClientId = left.ClientId,
+                ClientSecret = left.ClientSecret,
+                ClientType = left.ClientType,
+                ApplicationType = left.ApplicationType,
+                ConsentType = left.ConsentType,
+                DisplayName = left.DisplayName,
+            };
+            right.Permissions.UnionWith(left.Permissions.Reverse());
+            right.Requirements.UnionWith(left.Requirements.Reverse());
+            right.RedirectUris.UnionWith(left.RedirectUris.Reverse());
+            right.PostLogoutRedirectUris.UnionWith(left.PostLogoutRedirectUris.Reverse());
+            foreach ((string key, JsonElement value) in left.Properties.Reverse())
+            {
+                right.Properties[key] = value;
+            }
+
+            foreach ((string key, string value) in left.Settings.Reverse())
+            {
+                right.Settings[key] = value;
+            }
+
+            foreach ((System.Globalization.CultureInfo culture, string name) in left.DisplayNames)
+            {
+                right.DisplayNames[culture] = name;
+            }
+
+            Assert.True(ClientRegistrationConverger.HaveSameRegistration(left, right));
+        }
+
+        [Fact]
+        public async Task An_update_lost_to_a_concurrent_writer_is_converged_again()
+        {
+            await ConvergeAsync(Entry());
+            int failures = 0;
+            Applications.BeforeUpdate = _ => failures++ == 0
+                ? new OpenIddictExceptions.ConcurrencyException("Another instance updated the row.")
+                : null;
+            TellmaIdentitySeedClientOptions rotated = Entry();
+            rotated.ClientSecret = "bff-secret-rotated-0123456789abcdef";
+
+            DistributionConvergence convergence = await ConvergeAsync(rotated);
+
+            Assert.Equal(2, failures);
+            Assert.Equal(ClientConvergence.Updated, convergence.Client);
+            Assert.True(await ValidateSecretAsync("acme", "bff-secret-rotated-0123456789abcdef"));
+        }
+
+        [Fact]
+        public async Task A_create_lost_to_a_concurrent_writer_is_converged_against_the_winners_row()
+        {
+            CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+            bool raced = false;
+
+            // Just before this instance creates the BFF client, another instance creates it with
+            // the same values, and this create then fails as the manager's validation would.
+            Applications.BeforeCreate = application =>
+            {
+                if (raced || application.ClientId != "acme")
+                {
+                    return null;
+                }
+
+                raced = true;
+                using IServiceScope scope = _services.CreateScope();
+                scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>()
+                    .CreateAsync(
+                        ClientDescriptorFactory.Distribution(
+                            "acme", new Uri(Origin), new Uri(Origin + "/bff/backchannel-logout"), Entry().ClientSecret!),
+                        cancellationToken)
+                    .AsTask().GetAwaiter().GetResult();
+                return new OpenIddictExceptions.ValidationException(
+                    "The client identifier is already in use.", []);
+            };
+
+            DistributionConvergence convergence = await ConvergeAsync(Entry());
+
+            Assert.True(raced);
+            Assert.Single(Applications.Rows, static row => row.ClientId == "acme");
+            Assert.Equal(ClientConvergence.Unchanged, convergence.Client);
+            Assert.Equal(ClientConvergence.Created, convergence.ServiceClient);
+            Assert.True(await ValidateSecretAsync("acme", Entry().ClientSecret!));
+        }
+
+        [Fact]
+        public async Task A_conflict_that_persists_past_the_bounded_attempts_is_thrown()
+        {
+            await ConvergeAsync(Entry());
+            int failures = 0;
+            Applications.BeforeUpdate = _ =>
+            {
+                failures++;
+                return new OpenIddictExceptions.ConcurrencyException("Another instance updated the row.");
+            };
+            TellmaIdentitySeedClientOptions rotated = Entry();
+            rotated.ClientSecret = "bff-secret-rotated-0123456789abcdef";
+
+            await Assert.ThrowsAsync<OpenIddictExceptions.ConcurrencyException>(() => ConvergeAsync(rotated));
+            Assert.Equal(ClientRegistrationConverger.MaxAttempts, failures);
+        }
+
+        [Fact]
+        public async Task A_failure_that_is_not_a_conflict_is_thrown_at_once()
+        {
+            await ConvergeAsync(Entry());
+            int failures = 0;
+            Applications.BeforeUpdate = _ =>
+            {
+                failures++;
+                return new InvalidOperationException("The store is unavailable.");
+            };
+            TellmaIdentitySeedClientOptions rotated = Entry();
+            rotated.ClientSecret = "bff-secret-rotated-0123456789abcdef";
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => ConvergeAsync(rotated));
+            Assert.Equal(1, failures);
+        }
+
+        [Fact]
+        public async Task An_unchanged_seeded_platform_client_is_left_untouched_and_keeps_its_grants()
+        {
+            CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+            TellmaIdentitySeedClientOptions cli = new()
+            {
+                ClientId = "tellma-cli",
+                Kind = TellmaIdentitySeedClientKind.Cli,
+                RedirectUris = { "http://127.0.0.1/callback" },
+            };
+            using IServiceScope scope = _services.CreateScope();
+            ClientRegistrationConverger converger = scope.ServiceProvider.GetRequiredService<ClientRegistrationConverger>();
+
+            Assert.Equal(ClientConvergence.Created, await converger.ConvergeSeededClientAsync(cli, cancellationToken));
+            await ConvergeAsync(Entry());
+            int updates = Applications.Updates;
+
+            Assert.Equal(ClientConvergence.Unchanged, await converger.ConvergeSeededClientAsync(cli, cancellationToken));
+            Assert.Equal(updates, Applications.Updates);
+            Assert.Contains(Permissions.Prefixes.Resource + Origin, Applications.Find("tellma-cli")!.Permissions);
+
+            cli.DisplayName = "Tellma command line";
+            Assert.Equal(ClientConvergence.Updated, await converger.ConvergeSeededClientAsync(cli, cancellationToken));
+            Assert.Contains(Permissions.Prefixes.Resource + Origin, Applications.Find("tellma-cli")!.Permissions);
+        }
+
+        /// <summary>Every member a single-member change test flips, by name.</summary>
+        public static TheoryData<string> SingleMemberChanges => [.. Changes.Keys];
+
+        /// <summary>A descriptor with every compared member set.</summary>
+        private static OpenIddictApplicationDescriptor Descriptor()
+        {
+            OpenIddictApplicationDescriptor descriptor = ClientDescriptorFactory.Distribution(
+                "acme", new Uri(Origin), new Uri(Origin + "/bff/backchannel-logout"), "stored-hash");
+            descriptor.DisplayNames[System.Globalization.CultureInfo.GetCultureInfo("ar")] = "أكمي";
+            descriptor.Settings["tkn_lft:act"] = "00:10:00";
+            return descriptor;
+        }
+
+        /// <summary>Changes one named member of a descriptor.</summary>
+        private static void Change(OpenIddictApplicationDescriptor descriptor, string member)
+        {
+            Changes[member](descriptor);
+        }
+
         /// <inheritdoc />
         public void Dispose()
         {
@@ -294,6 +529,7 @@ namespace Tellma.Identity.Tests.Provisioning
             services.AddSingleton<IAuditLogger, RecordingAuditLogger>();
             services.AddSingleton(Microsoft.Extensions.Options.Options.Create(new TellmaIdentityOptions { Issuer = new Uri(Issuer) }));
             services.AddSingleton(TimeProvider.System);
+            services.AddScoped<ClientRegistrationConverger>();
             services.AddScoped<IClientProvisioningService, ClientProvisioningService>();
             return services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         }
@@ -331,7 +567,7 @@ namespace Tellma.Identity.Tests.Provisioning
         private async Task<DistributionConvergence> ConvergeAsync(TellmaIdentitySeedClientOptions entry)
         {
             using IServiceScope scope = _services.CreateScope();
-            return await scope.ServiceProvider.GetRequiredService<IClientProvisioningService>().ConvergeDistributionAsync(
+            return await scope.ServiceProvider.GetRequiredService<ClientRegistrationConverger>().ConvergeDistributionAsync(
                 ClientDescriptorFactory.SeededDistribution(entry), TestContext.Current.CancellationToken);
         }
 
@@ -359,6 +595,7 @@ namespace Tellma.Identity.Tests.Provisioning
             Assert.Equal(
                 expected.PostLogoutRedirectUris.Order(StringComparer.Ordinal),
                 actual.PostLogoutRedirectUris.Order(StringComparer.Ordinal));
+            Assert.Equal(expected.Settings.OrderBy(static pair => pair.Key, StringComparer.Ordinal), actual.Settings.OrderBy(static pair => pair.Key, StringComparer.Ordinal));
             Assert.Equal(expected.Properties.Keys.Order(StringComparer.Ordinal), actual.Properties.Keys.Order(StringComparer.Ordinal));
             foreach ((string key, JsonElement value) in expected.Properties)
             {

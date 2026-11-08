@@ -175,6 +175,24 @@ namespace Tellma.Identity.Tests.Options
         }
 
         [Fact]
+        public void Two_entries_whose_client_ids_differ_only_in_case_fail_naming_both()
+        {
+            // The store's unique index on the client id is case-insensitive, so these would collide
+            // there with a raw constraint violation instead of this message.
+            TellmaIdentitySeedClientOptions cli = new()
+            {
+                ClientId = "ACME-svc",
+                Kind = TellmaIdentitySeedClientKind.Cli,
+            };
+
+            ValidateOptionsResult result = Production.Validate(null, With(cli, Entry()));
+
+            Assert.True(result.Failed);
+            Assert.Contains(result.Failures!, static f => f.Contains("TellmaIdentity:Seed:Clients:1 ('acme')", StringComparison.Ordinal)
+                && f.Contains("TellmaIdentity:Seed:Clients:0 ('ACME-svc')", StringComparison.Ordinal));
+        }
+
+        [Fact]
         public void An_entry_without_a_client_id_fails()
         {
             TellmaIdentitySeedClientOptions entry = Entry();

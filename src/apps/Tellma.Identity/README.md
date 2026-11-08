@@ -132,7 +132,7 @@ constant, never the migrations, so a host that never migrates needs no reference
 Seeding then converges, in this order: the scope catalog, the platform clients of
 `Seed:Clients` (`Cli`, `Native`, `ControlPlane`), the `Distribution` entries, and the bootstrap
 identities. A **`Distribution` entry** registers a distribution's two clients through onboarding's own
-steps (`IClientProvisioningService.ConvergeDistributionAsync`, the path `CreateDistributionAsync`
+steps (`ClientRegistrationConverger.ConvergeDistributionAsync`, the path `CreateDistributionAsync`
 uses): the BFF client named by the slug and its `<slug>-svc` backend client without token exchange,
 both built by `ClientDescriptorFactory`, with the entry's `ClientSecret` and `ServiceClientSecret` in
 place of generated ones. Its `Origin` joins the `tellma_api` scope's resources and is granted to every
@@ -141,6 +141,13 @@ seeded client that calls distribution APIs; `BackchannelLogoutUri` defaults to
 redirect list is applied and audited as `DistributionSeedApplied`. The seeder never deletes an
 application, and never generates a secret: an entry needs both secrets outside Development, where
 startup validation also requires a slug of at most 15 lowercase characters and an `https` origin.
+
+Every seeded registration — scopes, platform clients and distributions — and onboarding go through
+`ClientRegistrationConverger`, which writes only what differs. Several instances start together when
+a secret is rotated or a deployment first comes up, and converge the same rows at once; a write lost
+to a concurrent writer (a stale concurrency token, a duplicate client id or scope name) is not an
+error: the convergence runs again in a fresh scope, finds the winner's row and accepts or rewrites
+it, up to `ClientRegistrationConverger.MaxAttempts` attempts.
 
 The UI renders through three layouts under `Areas/Identity/Pages/Shared/`: `_Document` owns the
 document and the scripts slot, and two shells nest inside it — `_AuthLayout` for the sign-in flow
