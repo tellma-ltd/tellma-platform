@@ -89,8 +89,9 @@ test.beforeEach(async ({ page }) => {
   await expect(input(page)).toBeVisible();
 });
 
-/** Where the fake clock starts, and where it pauses (a jump well past any setup). */
+/** The instant the fake clock starts from. */
 const CLOCK_START = new Date('2026-01-05T09:00:00Z');
+/** The instant the fake clock jumps to and pauses at, well past any setup. */
 const CLOCK_PAUSE = new Date('2026-01-05T09:10:00Z');
 
 /**
@@ -419,6 +420,8 @@ test.describe('keyboard matrix', () => {
     // "this is your supplier" while the box reads empty.
     await useSyncSearch(page);
     await input(page).fill('Alice Gr');
+    // The highlight renders a beat after the keystroke; Enter acts on it.
+    await expect(activeOption(page)).toHaveText('Alice Green');
     await input(page).press('Enter');
     await expect(input(page)).toHaveValue('Alice Green');
 

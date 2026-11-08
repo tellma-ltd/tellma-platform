@@ -147,3 +147,130 @@ pass. lint:test passed on a rerun. The first run timed out in two tools tests (v
   holds a pending task. Only input-story uses `resource()`, and input.spec does not call it.
 - That each held-response conversion still asserts what the test name claims, especially the
   blur-resolution "lands after the departure" and the size-stability sequence.
+
+## Review 1
+
+Reviewed 2c91df43c9d9c1b06935da778842838b5891b9b5. Verified independently:
+
+- Stability: the five spec files (grid-keyboard, modal, entity-picker, grid-entity, popover; all nine
+  flaky tests and the five unquarantined ones), chromium, CI=1 prod build, `--workers 2
+  --retries 0 --repeat-each 10`, Playwright pinned to 4 CPUs: **960/960 passed** (12.6 min).
+- The new unit test `tm-grid.spec.ts` "focus that leaves before the next render …" fails on a
+  HEAD^ copy (`expect(document.activeElement).toBe(outside)`, focus back on the cell) and passes
+  at HEAD.
+- (a) No assertion was loosened, no retry, fixed timeout or skipped step was added; every held-
+  response conversion still asserts its in-flight state, now before release (stronger than the
+  old delay race). `waitForTimeout(600)` was removed. (b) `HeldResponses`, the controls and the
+  `tmShowcaseWhenStable` hook live only in the internal showcase; nothing reaches the library
+  bundles. `releaseResponses` refuses to release an empty gate, `appStable` throws on a missing
+  hook, and `animationsSettled` sees the panel's CSS enter animation (set on the panel from
+  insertion), so none of the three passes vacuously. (e) The 5 B grid fix is product behaviour and
+  belongs in the library; nothing test-only was added to the grid. (g) No PC ids, plans/ paths or
+  spec citations in the new code, comments or test names.
+
+### Findings
+
+**R1-1 (blocking): the grid focus fix drops the deferred refocus after a pointer-driven menu
+"Delete rows"; focus falls to `<body>`.**
+`client/projects/core/tellma-core-ui/grid/internal/grid-core.ts:4024`.
+`requestFocusActive()` now clears `pendingGestureFocus` whenever focus is inside the host after
+the synchronous attempt. But that attempt runs before the render, against the old DOM. When the
+render that follows destroys the node that holds focus, only the pending request recovered focus.
+Example: the menu's Delete-rows action (`grid-core.ts:3936-3941`, whose comment says it exists
+"so focus would otherwise fall out of the grid"). The sync `focus()` lands on the doomed row's
+cell, the flag clears, and the menu's `restoreFocus` also targets a deleted cell. The render then
+removes the rows and focus drops to `<body>`. The effect's `droppedByDomMove` reclaim cannot cover
+this, because the pointerdown on the menu item (a CDK overlay, outside the host) set
+`lastOutsidePointerDown` milliseconds earlier and the 200 ms guard vetoes the reclaim.
+Measured on prod builds (grid-editable story: click row 1, Shift-click row 3, right-click row 2,
+click "Delete 3 rows", read `document.activeElement` 500 ms later): HEAD^ left focus on a grid
+cell 5/5 times; HEAD left it on `BODY` 5/5 times. The keyboard path (Shift+F10, Enter) still
+reclaims, because no outside pointerdown precedes it. After a mouse delete, arrows and Ctrl+Z go to
+the page instead of the grid, the regression that comment guards against. No test caught it:
+`grid-menu.spec.ts:145` and `tm-grid-editing.spec.ts:759` never assert focus. The comment at
+`:4021-4023` is also inaccurate: the check uses `host.contains`, but the effect's carry branch uses
+`scroller.contains`, and the find bar and status bar are in the host but outside the scroller.
+Suggested fix: restore the unconditional pending flag and cancel it only on a real departure. In
+`onDocumentFocusIn` (`grid-core.ts:1283`), after computing `gridOwnsFocus`, add
+`if (!this.gridOwnsFocus) this.pendingGestureFocus = false;`. A Tab or other move to an element
+outside the host and its overlays fires `focusin` and cancels the request. A DOM-removal drop
+fires none, so the pending refocus survives. This should cost about the same bytes as the current
+line. Keep the new unit test, add a unit test for the pointer path of menu Delete rows (pointerdown
+plus click on the panel item, then assert the surviving active cell is focused), and add a
+`toBeFocused()` check on the surviving cell to the `grid-menu.spec.ts:145` e2e.
+
+**R1-2 (major): the entity-picker "same-frame Enter" race is a reproducible product bug that
+changes the committed value. Fix it, or track it as a product defect, not as an open risk.**
+`client/projects/core/tellma-core-ui/entity-picker/tm-entity-picker.ts:1804-1818` (the Enter
+"no highlight" test), with `queueSearch` → `clearHighlight()` (`:1317`) and the after-render
+highlight effect (`:1025-1044`).
+Reproduced on the prod build (grid-entity story, cell 2,1, press `A`, let it settle). Then the
+next keystroke and Enter were sent back-to-back over CDP, as a scanner, text expander, remote-
+desktop client or busy main thread delivers them. `l`+Enter committed the raw text "Al" as an
+errored cell and moved down (3/3). The same keys with a render between them picked the
+highlighted "Alice Green" and stayed (3/3). `ice`+Enter after "Al" gives the right value but moves
+down instead of staying (6/6, idle or with a 300 ms main-thread block). So batched input commits
+different data than paced input. In an ERP, a barcode scanner (characters a few ms apart, then
+Enter) is a normal input device, so "users cannot type that fast" does not bound the risk. The
+form (non-cell) path drops the Enter instead.
+Suggested fix: record the `seq` that the highlight effect last applied. In the capture keydown
+Enter path (and the cell Tab path), when `highlightRequest()` is newer than that `seq`, has
+`query !== ''` and `count > 0`, commit `settledResult.items[0]` through the normal pick path
+instead of treating the key as "no highlight". Add a unit test that dispatches `input` and Enter
+in the same task with no render between them. If it is not fixed in PC-F02, it needs a tracked
+PC-Fnn or LEDGER entry (see decisions).
+
+**R1-3 (minor): `appStable` has no bound of its own, so a page that never stabilises fails as an
+anonymous 30 s test timeout.**
+`client/e2e/support/settle.ts:33-45`. `ApplicationRef.whenStable()` waits on every pending
+task, including `resource()`, HttpClient and router navigation. `modelJson` (used by every grid
+spec), `searchCalls` and `model` now call it on every read. If a story ever keeps a task pending,
+for example a held or slow loader that registers one, every oracle read hangs until the test
+times out, and the report never names the hook. Suggested fix: race the hook against a timeout
+(for example 10 s) inside the `evaluate` and throw "the showcase app did not become stable within
+10 s (a pending task or a render loop)" so the cause is named.
+
+**R1-4 (minor): `CLOCK_PAUSE` has no TSDoc of its own.**
+`client/e2e/specs/entity-picker.spec.ts:93-94`. One comment covers both constants, but AGENTS.md
+requires TSDoc on every declaration. Suggested fix: give each constant its own one-line TSDoc
+(start instant; pause instant, jumped to after setup).
+
+### Responses
+
+R1-1: fixed in FIXSHA. I took the reviewer's direction. `requestFocusActive()` is back to its
+original form, with the pending flag set unconditionally. A real departure now cancels the pending
+request in two ways. (1) `onDocumentFocusIn` cancels it when focus lands outside the host and its
+overlays (`pendingGestureFocus &&= gridOwnsFocus`). A drop to `<body>` when the render removes the
+focused row fires no focusin, so the refocus after a menu Delete rows survives. (2) A Tab keydown
+reaching the grid's keydown handler cancels it. The focusin alone does not cover the Tab tests:
+the grid is the last focusable element in those stories, and Tab past it leaves the document with
+no focusin at all (probed: `activeElement` is BODY, `hasFocus()` is false, the only event is a
+focusout with a null `relatedTarget`). A Tab that stays in the grid requests focus again. To fit
+the 38 KB ceiling, the roving-focus effect now consumes the flag once at the top instead of
+clearing it in three branches; behaviour is the same. Grid: 38912 B, which is 38.00 of 38 KB.
+The inaccurate comment is gone along with the code it described. Regression tests: the new unit
+test `tm-grid-editing.spec.ts` "a pointer Delete rows from the menu leaves focus on the surviving
+active cell" dispatches pointerdown on the menu item, then a click. It fails on 2c91df4 (focus is
+`<body>`) and passes now. `grid-menu.spec.ts` "Delete rows removes the selected rows …" now ends
+with `expect(activeCell(page)).toBeFocused()`. The earlier unit test (focus that leaves before
+the next render) still passes.
+
+R1-2: pushed back: tracked as a separate fix item (orchestrator ruling). The e2e tests no longer
+depend on the race. Every test that types and then presses a key acting on the highlight first
+waits for the render: `typeInEditor()` (appStable) in grid-entity, or a web-first wait for the
+fresh highlight or status in entity-picker, where the panel was closed before the `fill()`, so no
+stale highlight can satisfy it. This round adds the two sites still missing that wait: entity-picker
+"clearing the text stops the field claiming a selection…" (its setup did `fill` + Enter) and
+grid-entity "a no-resolver entity column records the invalid input directly".
+
+R1-3: fixed in FIXSHA. `appStable` races the hook against `APP_STABLE_TIMEOUT_MS` (10 s) inside
+the page and then throws "The showcase app did not become stable within 10000 ms (a pending task
+that never ends, or a render loop)." The timer is cleared on success.
+
+R1-4: fixed in FIXSHA. `CLOCK_START` and `CLOCK_PAUSE` each have their own TSDoc.
+
+Round-1 verification (local, CI=1 prod build, `--retries 0`, 2 workers, 4 CPUs pinned): all
+client gates pass (lint, typecheck, lint:test, tokens:check, build, test with 1149 core-ui
+tests, api:check, docs:build, size:check with grid at 38.00 of 38). The PR tier (chromium +
+touch) passed 440/440. The five affected spec files (all nine formerly flaky tests) plus
+grid-menu, at repeat-each 10, passed 1060/1060.

@@ -314,7 +314,7 @@ test('a cell awaiting resolution shows the text being resolved, not an empty cel
 test('a no-resolver entity column records the invalid input directly', async ({ page }) => {
   await activateCell(page, 1, 2); // otherId: search, no resolver
   await page.keyboard.press('Z');
-  await page.keyboard.type('ebra');
+  await typeInEditor(page, 'ebra');
   await page.keyboard.press('Enter'); // no highlight (empty set) → the grid commits
   await expect(editor(page)).toHaveCount(0);
   await expect(cell(page, 1, 2)).toHaveClass(/tm-grid__cell--error/);

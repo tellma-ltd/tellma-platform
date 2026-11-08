@@ -18,8 +18,17 @@ interface StabilityHookWindow {
 }
 
 /**
+ * How long {@link appStable} waits before it fails. A settled render takes
+ * milliseconds; a page that is still unstable after this long has a task
+ * that never ends (a pending request, a render loop), and the failure says
+ * so instead of surfacing as an anonymous test timeout.
+ */
+const APP_STABLE_TIMEOUT_MS = 10_000;
+
+/**
  * Waits until the showcase app is stable: every render that the preceding
- * actions scheduled has run, effects included.
+ * actions scheduled has run, effects included. Fails, naming the cause,
+ * when the app is not stable within {@link APP_STABLE_TIMEOUT_MS}.
  *
  * Use it where the DOM alone cannot tell a settled page from one whose next
  * render is still queued. A keystroke updates component state at once but
@@ -31,7 +40,7 @@ interface StabilityHookWindow {
  * milliseconds.
  */
 export async function appStable(page: Page): Promise<void> {
-  await page.evaluate(async () => {
+  await page.evaluate(async (timeoutMs) => {
     const hook = (window as StabilityHookWindow).tmShowcaseWhenStable;
     if (hook === undefined) {
       // A missing hook must fail loudly: skipping the wait would quietly
@@ -40,8 +49,27 @@ export async function appStable(page: Page): Promise<void> {
         'The showcase stability hook (window.tmShowcaseWhenStable) is not installed.',
       );
     }
-    await hook();
-  });
+    // Bounded: the hook waits on every pending task, so a task that never
+    // ends would otherwise hang the caller until the test's own timeout.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () =>
+          reject(
+            new Error(
+              `The showcase app did not become stable within ${timeoutMs} ms ` +
+                '(a pending task that never ends, or a render loop).',
+            ),
+          ),
+        timeoutMs,
+      );
+    });
+    try {
+      await Promise.race([hook(), timedOut]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }, APP_STABLE_TIMEOUT_MS);
 }
 
 /**

@@ -1284,6 +1284,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       const target = event.target;
       this.gridOwnsFocus =
         target instanceof Element && (deps.host.contains(target) || this.inOverlay(target));
+      // Focus that moved on to the page cancels a still-pending focus
+      // request: the next render must not pull it back. (A drop to <body>
+      // when the render removes the focused node fires no focusin, so the
+      // request that re-lands focus after a delete survives.)
+      this.pendingGestureFocus &&= this.gridOwnsFocus;
     };
     document.addEventListener('pointerdown', onDocumentPointerDown, true);
     document.addEventListener('focusin', onDocumentFocusIn, true);
@@ -1444,6 +1449,14 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   onKeydown(event: KeyboardEvent): void {
     if (event.target instanceof Element && this.inOverlay(event.target)) {
       return;
+    }
+    // A Tab either moves within the grid, which requests focus anew, or
+    // leaves it — possibly to no element at all (the end of the document
+    // fires no focusin). Either way a focus request still pending from an
+    // earlier gesture is void: honoured on the next render, it would pull
+    // focus straight back into the grid the user just tabbed out of.
+    if (event.key === 'Tab') {
+      this.pendingGestureFocus = false;
     }
     const engine = this.engine;
     const session = untracked(() => engine.edit.session());
@@ -4012,16 +4025,6 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       return;
     }
     this.activeCellElement()?.focus({ preventScroll: true });
-    // The request stays pending for the effect only while focus is NOT in
-    // the grid (the cell is not rendered yet, or refused focus). Once focus
-    // is in, the request is fulfilled: left pending, the effect would pull
-    // focus back on the next render even after the user moved on, so a Tab
-    // pressed between the gesture and that render (a frame on a fast
-    // machine, far longer on a starved one) would leave the grid and be
-    // pulled straight back. Focus that stays in the grid is still carried to
-    // the active cell by the effect's own "focus is in the scroller" branch,
-    // and a DOM-move drop by its reclaim.
-    this.pendingGestureFocus = !this.deps.host.contains(document.activeElement);
   }
 
   private requestReveal(): void {
@@ -4702,22 +4705,18 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         this.renderRows();
         const escaped = this.escapedSignal();
         untracked(() => {
-          if (escaped) {
-            this.pendingGestureFocus = false;
-            return;
-          }
+          // A pending gesture request is consumed by this render, whatever
+          // happens next.
+          const pending = this.pendingGestureFocus;
+          this.pendingGestureFocus = false;
           const scroller = this.scrollerSignal();
-          if (scroller === null || active === null) {
-            this.pendingGestureFocus = false;
+          if (escaped || scroller === null || active === null) {
             return;
           }
           const droppedByDomMove =
             this.focusDroppedByRerender() && document.activeElement === document.body;
           const shouldFocus =
-            this.pendingGestureFocus ||
-            scroller.contains(document.activeElement) ||
-            droppedByDomMove;
-          this.pendingGestureFocus = false;
+            pending || scroller.contains(document.activeElement) || droppedByDomMove;
           if (!shouldFocus) {
             return;
           }
