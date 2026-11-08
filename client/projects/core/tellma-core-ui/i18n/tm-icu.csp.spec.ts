@@ -12,10 +12,15 @@ import { TM_UI_I18N_SCOPE, TM_UI_TRANSLATE } from './tm-ui-translate';
 /*
  * The app's web host serves a policy with `script-src 'self'`, no
  * 'unsafe-eval', and Trusted Types required for scripts (spec 0024 §6).
- * This file enforces the same policy on its own test frame — it lives
- * alone so the policy reaches no other suite — and then formats messages
- * through the real Transloco path. An engine that compiled messages to
- * JavaScript would throw here.
+ * This file enforces the same policy on its test page and then formats
+ * messages through the real Transloco path; an engine that compiled
+ * messages to JavaScript would throw here.
+ *
+ * A CSP <meta> can never be lifted once applied, and the unit runner shares
+ * one page between the files of a run. So this file is a `*.csp.spec.ts`:
+ * the main `test` target excludes that suffix and the `test-csp` target
+ * runs it in a run (and a page) of its own, where the policy can reach no
+ * other suite.
  */
 const POLICY =
   "script-src 'self'; require-trusted-types-for 'script'; trusted-types angular angular#bundler tellma";

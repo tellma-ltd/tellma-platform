@@ -31,6 +31,21 @@
             "tsConfig": "projects/core/tellma-core-ui/tsconfig.spec.json",
             "browsers": [
               "chromiumHeadless"
+            ],
+            "exclude": [
+              "**/*.csp.spec.ts"
+            ]
+          }
+        },
+        "test-csp": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "projects/core/tellma-core-ui/tsconfig.spec.json",
+            "browsers": [
+              "chromiumHeadless"
+            ],
+            "include": [
+              "**/*.csp.spec.ts"
             ]
           }
         }
