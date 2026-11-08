@@ -11,6 +11,17 @@ nullity, the diagnostics with their codes and spans, the expression printed back
 shortest and its fully parenthesised form, and the emitted SQL with its parameter slots and result
 columns.
 
+Beside the clauses, two inputs mirror what a host composes a query from:
+
+- **restrictions** — key-set restrictions separated by semicolons, each a path and a table name and
+  optionally the keys the table holds when the query is run: `Customer.Id @tb0_parties = 1, 2; Id
+  @tb0_ids`. When the query is run, each table is declared ahead of it holding those keys as text,
+  which the server converts to whatever the key column is.
+- **undeclared columns** — root columns the schema leaves out, separated by commas, such as
+  `ExtrasJson, AuditJson`.
+
+A malformed entry in either is a caller error, shown the way the engine's own caller errors are.
+
 ```bash
 dotnet run --project eng/queryex-inspection/Tellma.Queryex.Inspection
 ```

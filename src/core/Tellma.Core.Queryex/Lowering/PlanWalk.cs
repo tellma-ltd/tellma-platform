@@ -36,6 +36,7 @@ namespace Tellma.Core.Queryex.Lowering
                 PlanSetComparison set => [set.Left, set.Right],
                 PlanSetMembership set => [set.Value, .. set.Elements.Cast<PlanNode>()],
                 PlanHierarchyTest hierarchy => [hierarchy.Node, hierarchy.Key],
+                PlanKeySetRestriction restriction => [restriction.Key],
                 _ => [],
             };
         }
@@ -51,7 +52,7 @@ namespace Tellma.Core.Queryex.Lowering
         {
             return node switch
             {
-                PlanColumn => true,
+                PlanColumn or PlanUndeclaredColumn => true,
                 PlanBindingRef binding => ReadsAColumn(binding.Binding.Value),
                 _ => Children(node).Any(ReadsAColumn),
             };

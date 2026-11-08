@@ -97,26 +97,20 @@ namespace Tellma.Queryex.Testing.Schema
         {
             script.Append("CREATE TABLE ").Append(entity.Source).Append(" (\n");
 
-            for (int index = 0; index < entity.Properties.Count; index++)
+            // The declared columns, then the ones the schema leaves out, which the table has to hold
+            // all the same for a query to read them by name.
+            List<string> columns = [];
+            foreach (PropertyDescriptor property in entity.Properties)
             {
-                PropertyDescriptor property = entity.Properties[index];
-                script.Append("    [").Append(property.Column).Append("] ")
-                    .Append(TypeName(StoreTypeOf(property)));
-
-                if (IsText(StoreTypeOf(property).Family))
-                {
-                    script.Append(" COLLATE ").Append(Collation);
-                }
-
-                script.Append(property.IsNotNull ? " NOT NULL" : " NULL");
-                if (index < entity.Properties.Count - 1)
-                {
-                    script.Append(',');
-                }
-
-                script.Append('\n');
+                columns.Add(Column(property.Column, StoreTypeOf(property), property.IsNotNull));
             }
 
+            foreach (UndeclaredColumn undeclared in LedgerFixture.UndeclaredColumns(entity))
+            {
+                columns.Add(Column(undeclared.Name, undeclared.StoreType, isNotNull: false));
+            }
+
+            script.Append(string.Join(",\n", columns)).Append('\n');
             script.Append(");\n");
             script.Append("ALTER TABLE ").Append(entity.Source).Append(" ADD CONSTRAINT [PK_")
                 .Append(entity.Name).Append("] PRIMARY KEY ([").Append(entity.Key.Column).Append("]);\n");
@@ -132,6 +126,17 @@ namespace Tellma.Queryex.Testing.Schema
                         .Append(" ([").Append(property.Column).Append("]);\n");
                 }
             }
+        }
+
+        /// <summary>One column definition.</summary>
+        /// <param name="name">The physical column name.</param>
+        /// <param name="type">Its type.</param>
+        /// <param name="isNotNull">Whether it refuses absent values.</param>
+        /// <returns>The definition, indented and without a trailing comma.</returns>
+        private static string Column(string name, QueryexStoreType type, bool isNotNull)
+        {
+            string collation = IsText(type.Family) ? " COLLATE " + Collation : string.Empty;
+            return "    [" + name + "] " + TypeName(type) + collation + (isNotNull ? " NOT NULL" : " NULL");
         }
 
         /// <summary>The declared type of a property, or the default for its type in the language.</summary>

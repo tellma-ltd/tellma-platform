@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Design;
 using Microsoft.Extensions.DependencyInjection;
+using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using Tellma.Core.EntityFrameworkCore.Design.Tests.Infrastructure;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
@@ -44,6 +45,10 @@ namespace Tellma.Core.EntityFrameworkCore.Design.Tests.Scaffolding
                     .Column<short>("State")
                     .HasKey("Id")
                     .HasGrants("tellma_app"));
+
+                // A class-derived standalone type with a collated column.
+                mb.HasTableType<CollatedSubject>(schema: "dbo", buildAction: type => type
+                    .UseCollation("Subject", "Latin1_General_100_BIN2"));
             });
 
             using ServiceProvider services = DesignTestHelpers.BuildDesignServices(context);
@@ -63,6 +68,12 @@ namespace Tellma.Core.EntityFrameworkCore.Design.Tests.Scaffolding
                 $"HasAnnotation(\"{TableTypeAnnotationNames.DefinitionPrefix}", snapshotCode, StringComparison.Ordinal);
             Assert.DoesNotContain(TableTypeAnnotationNames.StandalonePrefix, snapshotCode, StringComparison.Ordinal);
 
+            // The collated column is written with its collation, which the replay below restores.
+            Assert.Contains(
+                ".Column(name: \"Subject\", storeType: \"nvarchar(255)\", maxLength: 255, collation: \"Latin1_General_100_BIN2\")",
+                snapshotCode,
+                StringComparison.Ordinal);
+
             Assembly assembly = DesignTestHelpers.Compile(snapshotCode, "RoundTripSnapshot");
             Type snapshotType = assembly.GetType("RoundTrip.Migrations.RoundTripModelSnapshot")!;
             var snapshot = (ModelSnapshot)Activator.CreateInstance(snapshotType)!;
@@ -79,6 +90,20 @@ namespace Tellma.Core.EntityFrameworkCore.Design.Tests.Scaffolding
             Assert.Equal(
                 liveModel.GetTableTypes().Select(TableTypes.Json.TableTypeJson.Serialize),
                 snapshotModel.GetTableTypes().Select(TableTypes.Json.TableTypeJson.Serialize));
+            Assert.Equal(
+                "Latin1_General_100_BIN2",
+                snapshotModel.GetTableTypes().Single(t => t.Name == nameof(CollatedSubject))
+                    .Columns.Single(c => c.Name == "Subject").Collation);
+        }
+
+        /// <summary>A class-derived standalone shape whose string column carries a collation.</summary>
+        private sealed class CollatedSubject
+        {
+            [Key]
+            public int Id { get; set; }
+
+            [MaxLength(255)]
+            public string Subject { get; set; } = null!;
         }
     }
 }

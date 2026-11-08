@@ -89,7 +89,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
                 spec,
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                 });
 
@@ -104,13 +104,16 @@ namespace Tellma.Core.Queryex.IntegrationTests
         public async Task Case_AnswersTheSameOnTheServer(string id)
         {
             QueryCase entry = QueryCorpus.All.Single(c => c.Id == id);
-            InterpreterContext context = entry.HasUser ? Context : Context with { UserId = null };
+            InterpreterContext context = (entry.HasUser ? Context : Context with { UserId = null }) with
+            {
+                KeySets = entry.KeySets,
+            };
 
             QueryexResult<CompiledQuery> result = _engine.CompileQuery(
                 entry.Spec,
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Parameters = entry.Parameters,
                     HasUser = entry.HasUser,
@@ -263,7 +266,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
         {
             await using SqlConnection connection = await server.OpenAsync();
             await using SqlCommand command = connection.CreateCommand();
-            command.CommandText = query.Sql;
+            command.CommandText = KeySetDeclarations(context) + query.Sql;
             SqlBinding.Bind(command, query, context);
 
             List<IReadOnlyList<QxValue>> rows = [];
@@ -274,6 +277,20 @@ namespace Tellma.Core.Queryex.IntegrationTests
             }
 
             return rows;
+        }
+
+        /// <summary>
+        ///     The table variables a query's restrictions read, declared and filled the way a host
+        ///     would ahead of the statement.
+        /// </summary>
+        /// <param name="context">What the values depend on, the tables of keys included.</param>
+        /// <returns>The statements, or nothing when the query reads no table of keys.</returns>
+        /// <remarks>Shared with the suite that embeds compiled statements in SQL of its own.</remarks>
+        internal static string KeySetDeclarations(InterpreterContext context)
+        {
+            return string.Concat(context.KeySets
+                .OrderBy(table => table.Key, StringComparer.Ordinal)
+                .Select(table => table.Value.Declaration(table.Key)));
         }
 
         /// <summary>Whether two numbers are the same number, as far as the language says.</summary>

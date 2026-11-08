@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Collections.Immutable;
 using Tellma.Core.Queryex.Diagnostics;
 using Tellma.Core.Queryex.Emit;
 using Tellma.Core.Queryex.Lowering;
@@ -26,16 +27,18 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <param name="compiler">The stage runner, which remembers what it has already done.</param>
         /// <param name="spec">The query.</param>
         /// <param name="options">The compilation options.</param>
+        /// <param name="restrictions">The query's key-set restrictions, resolved against the schema.</param>
         /// <returns>The compiled query, or the diagnostics that stopped it.</returns>
         internal static QueryexResult<CompiledQuery> Compile(
             ExpressionCompiler compiler,
             QuerySpec spec,
-            QueryCompilationOptions options)
+            QueryCompilationOptions options,
+            ImmutableArray<ResolvedRestriction> restrictions)
         {
             DiagnosticSink sink = new();
             CompilationBudget budget = new(options.Limits);
             NullityMap nullity = new();
-            QueryClauses clauses = new(compiler, spec, options, sink, budget, nullity);
+            QueryClauses clauses = new(compiler, spec, options, sink, budget, nullity, restrictions);
 
             if (!clauses.TryBind())
             {
@@ -43,14 +46,22 @@ namespace Tellma.Core.Queryex.Pipeline
             }
 
             RelationalPlan plan = clauses.Lower();
-            return sink.Count > 0
-                ? new QueryexResult<CompiledQuery>(sink.Drain())
-                : new QueryexResult<CompiledQuery>(new CompiledQuery
-                {
-                    Sql = StatementEmitter.Write(plan),
-                    Parameters = StatementEmitter.Parameters(plan.Parameters),
-                    Columns = [.. plan.Select.Select(static item => item.Column)],
-                });
+            if (sink.Count > 0)
+            {
+                return new QueryexResult<CompiledQuery>(sink.Drain());
+            }
+
+            // The batch is assembled from the two parts rather than the parts cut out of the batch,
+            // so the identity a host composing the statement relies on holds by construction.
+            (string prologue, string body) = StatementEmitter.Write(plan);
+            return new QueryexResult<CompiledQuery>(new CompiledQuery
+            {
+                Sql = prologue + body + StatementEmitter.Terminator,
+                Prologue = prologue,
+                Body = body,
+                Parameters = StatementEmitter.Parameters(plan.Parameters),
+                Columns = [.. plan.Select.Select(static item => item.Column)],
+            });
         }
 
         /// <summary>

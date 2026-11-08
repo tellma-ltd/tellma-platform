@@ -11,6 +11,11 @@ views.
   TABLE sorting); a definitional change creates a **new version alongside** the old, which a
   zero-grace sweep then collects; `Migrate()` re-run no-op; the `--idempotent` script runs twice
   cleanly; `EnsureCreated()` creates types too.
+- `ColumnCollationTests` — the MigrationsHost's class-derived `SubjectsList` type deploys with
+  `Latin1_General_100_BIN2` on its `Subject` column (`sys.columns.collation_name`) and the
+  database collation on the other; a variable of the type joins a binary-collated table column
+  with binary semantics, while the same join through `StringList` (no collation) fails with
+  Msg 468.
 - `DropGuardTests` — a planted procedure referencing a type makes a manual `DropTableType` fail
   with error 53102 naming the procedure; after removing it, the drop and a recreate succeed.
 - `MemoryOptimizedTests` — a memory-optimized type deploys with `is_memory_optimized = 1` on
