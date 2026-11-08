@@ -121,7 +121,7 @@ namespace Tellma.Identity.IntegrationTests
             await TellmaIdentityStore.MigrateAsync(connectionString, TestContext.Current.CancellationToken);
             await ExecuteAsync(
                 connectionString,
-                "INSERT INTO [dbo].[__EFMigrationsHistory] ([MigrationId], [ProductVersion]) VALUES (N'29991231235959_Future', N'10.0.9')");
+                "INSERT INTO [dbo].[__EFMigrationsHistory] ([MigrationId], [ProductVersion]) VALUES (N'29991231235959_Future', N'10.0.11')");
             using StandaloneFactory factory = Factory(connectionString, applyMigrations: false);
 
             using (factory.CreateClient())

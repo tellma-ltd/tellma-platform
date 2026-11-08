@@ -19,7 +19,7 @@ namespace Tellma.Identity.Migrations
             modelBuilder
                 .HasDefaultSchema("idsvr")
                 .UseCollation("Latin1_General_100_CI_AS")
-                .HasAnnotation("ProductVersion", "10.0.9")
+                .HasAnnotation("ProductVersion", "10.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);

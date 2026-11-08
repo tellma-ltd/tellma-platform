@@ -781,6 +781,26 @@ describe('tm-grid (editing)', () => {
     expect(document.querySelector('.tm-menu__panel')).toBeNull();
   });
 
+  it('a pointer Delete rows from the menu leaves focus on the surviving active cell', async () => {
+    const { fixture, host, scroller } = await setup();
+    await activateOrigin(fixture, scroller);
+
+    keydown(scroller, 'F10', { shiftKey: true });
+    await stable(fixture);
+    const deleteItem = [
+      ...document.querySelectorAll<HTMLElement>('.tm-menu__panel .tm-menu__item'),
+    ].find((el) => el.textContent!.includes('Delete 1 row')) as HTMLElement;
+    // A mouse pick: the press lands on the menu panel, outside the grid,
+    // and the render that follows removes the row whose cell held focus.
+    pointerPress(deleteItem);
+    deleteItem.click();
+    await stable(fixture);
+    expect(host.model().length).toBe(2);
+    const active = scroller.querySelector('[data-tm-cell][tabindex="0"]');
+    expect(active).not.toBeNull();
+    expect(document.activeElement).toBe(active);
+  });
+
   it('a consumer *tmGridEditor control registers through TM_CELL_EDITOR_HOST and commits', async () => {
     TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
     const fixture = TestBed.createComponent(CustomEditorHost);

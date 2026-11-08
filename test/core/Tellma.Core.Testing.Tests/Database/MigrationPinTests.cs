@@ -170,7 +170,7 @@ namespace Tellma.Core.Testing.Tests.Database
             {
                 modelBuilder
                     .UseCollation(DatabaseCollations.Platform)
-                    .HasAnnotation("ProductVersion", "10.0.9")
+                    .HasAnnotation("ProductVersion", "10.0.11")
                     .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
                 SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
