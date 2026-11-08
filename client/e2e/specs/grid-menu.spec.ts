@@ -158,6 +158,10 @@ test.describe('row operations', () => {
     expect(after[0].id).toBe(before[0].id);
     expect(after[1].id).toBe(before[4].id); // rows 1–3 are gone
     await expect(liveRegion(page)).toContainText('3 rows deleted');
+    // The mouse pick pressed outside the grid and the render removed the
+    // focused row: focus must still land on the surviving active cell, not
+    // fall to the page (arrows and undo would stop reaching the grid).
+    await expect(activeCell(page)).toBeFocused();
   });
 
   test('Insert row above adds a factory-minted row (negative temp id)', async ({ page }) => {

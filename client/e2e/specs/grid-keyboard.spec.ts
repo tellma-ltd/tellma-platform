@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 import {
   activeCell,
@@ -16,6 +16,7 @@ import {
   rowHeightOf,
   selectedCells,
 } from '../support/grid';
+import { appStable } from '../support/settle';
 
 /**
  * The readonly keyboard matrix (spec 0004 §8.2) against the 100k-row story:
@@ -28,6 +29,20 @@ import {
 test.beforeEach(async ({ page }) => {
   await gotoGrid(page, 'grid-readonly');
 });
+
+/**
+ * Whether focus sits inside the grid once the app has settled. Read only
+ * after every render the preceding gestures scheduled has run: a grid that
+ * pulled focus back on its next render would otherwise pass an immediate
+ * read and fail the next one.
+ */
+async function focusInsideGrid(page: Page): Promise<boolean> {
+  await appStable(page);
+  return page.evaluate(() => {
+    const grid = document.querySelector('[role="grid"]');
+    return grid !== null && grid.contains(document.activeElement);
+  });
+}
 
 test.describe('entering the grid', () => {
   test('the empty grid container is the tab stop; an arrow enters at cell 0,0', async ({
@@ -224,11 +239,7 @@ test.describe('tab stop and mid-grid exit', () => {
     await expect(activeCell(page)).toHaveCount(0); // cells left the tab order
 
     await page.keyboard.press('Tab');
-    const focusInsideGrid = await page.evaluate(() => {
-      const grid = document.querySelector('[role="grid"]');
-      return grid !== null && grid.contains(document.activeElement);
-    });
-    expect(focusInsideGrid).toBe(false);
+    expect(await focusInsideGrid(page)).toBe(false);
 
     // Any arrow re-enters at the active cell (§8.2 Esc row).
     await gridScroller(page).focus();
@@ -236,20 +247,17 @@ test.describe('tab stop and mid-grid exit', () => {
     await expect(cell(page, 6, 2)).toBeFocused();
   });
 
-  test('a readonly grid is a single tab stop: Tab from a focused cell leaves it', async ({
-    page,
-  }) => {
-    await gotoGrid(page, 'grid-states');
-    await cell(page, 3, 1).click();
-    await expect(cell(page, 3, 1)).toBeFocused();
+  test(
+    'a readonly grid is a single tab stop: Tab from a focused cell leaves it',
+    async ({ page }) => {
+      await gotoGrid(page, 'grid-states');
+      await cell(page, 3, 1).click();
+      await expect(cell(page, 3, 1)).toBeFocused();
 
-    await page.keyboard.press('Tab');
-    const focusInsideGrid = await page.evaluate(() => {
-      const grid = document.querySelector('[role="grid"]');
-      return grid !== null && grid.contains(document.activeElement);
-    });
-    expect(focusInsideGrid).toBe(false);
-  });
+      await page.keyboard.press('Tab');
+      expect(await focusInsideGrid(page)).toBe(false);
+    },
+  );
 
   test('single tab stop holds with interactive display content (link column)', async ({
     page,
@@ -259,12 +267,9 @@ test.describe('tab stop and mid-grid exit', () => {
     // the grid; the links stay reachable via Enter on the cell.
     await gotoGrid(page, 'grid-readonly');
     await cell(page, 3, 1).click();
+    await expect(cell(page, 3, 1)).toBeFocused();
     await page.keyboard.press('Tab');
-    const focusInsideGrid = await page.evaluate(() => {
-      const grid = document.querySelector('[role="grid"]');
-      return grid !== null && grid.contains(document.activeElement);
-    });
-    expect(focusInsideGrid).toBe(false);
+    expect(await focusInsideGrid(page)).toBe(false);
   });
 });
 

@@ -243,8 +243,11 @@ The full analyst notes are in WATCHLIST.md §Cross-spec ordering notes.
 | **Nightly tier** | `nightly-tier.yml` on `platform-core`, dispatched each night by the trampoline on `main` (SETUP.md §1); the orchestrator triages the result on each wake | full viewport × language matrices, Firefox/WebKit `@cross-engine`, frame and rAF probes, `@perf` budgets, full axe batteries, Lighthouse and installability, multi-tab soaks (0025's 15-minute hidden leader), drain timeouts, the read-only database, the drift scanner on an intermediate schema, 0010 §F.15's differential if it exceeds 2 minutes |
 | **Deferred** | Not run in this effort; tracked in LEDGER.md | Azure staging smokes (0024 §12, 0025 §14, 0030 §19); live suites needing secrets (SendGrid, ACS, Azure SignalR, MCP `Live=true`); the human-only Excel desktop check (0019 §15), with synthetic fixtures committed as stand-ins; 0018's smoke deployment; 0033 §15's 1M-row pivot performance (nightly once 0033 lands) |
 
-Tags: dotnet `[Trait("Category", "Nightly")]`; Playwright `@nightly`, `@cross-engine`, `@perf`.
-PC-000 makes CI exclude them from PR runs. When a spec says a matrix runs "on every PR", the
+Tags: dotnet `[Trait("Category", "Nightly")]`; Playwright `@nightly`, `@cross-engine`, `@perf`, and
+`@quarantine` (a flaky test awaiting its fix: out of the PR tier, run nightly in its own non-blocking
+job, tracked in LEDGER.md "Flaky").
+PC-000 makes CI exclude `@nightly` and `@perf` from PR runs; `@cross-engine` tests still run on
+Chromium in the PR tier, and only their Firefox/WebKit runs are nightly. When a spec says a matrix runs "on every PR", the
 PR-tier subset plus the nightly full matrix satisfies it, and the split is recorded as a
 deviation. Timing-sensitive assertions are `@perf` with a CI multiplier. Wall-clock waits (60 s
 watchdogs, 75 s polls, a one-hour membership) are driven by fake clocks or a test `TimeProvider`

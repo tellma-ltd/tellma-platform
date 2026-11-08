@@ -18,15 +18,45 @@ interval, an expiry) is driven by a fake clock or a test `TimeProvider` wherever
 | .NET (xUnit) | `[Trait("Category", "Nightly")]` | Runs in the nightly tier only. Add it beside the test's own category (`Integration`, `E2E`), never instead of it. |
 | Playwright | `@nightly` | Runs in the nightly tier only, on Chromium. |
 | Playwright | `@perf` | A timing or performance budget. Runs in the nightly tier only, on Chromium. |
+| Playwright | `@quarantine` | A flaky test taken out of the PR tier. Runs in the nightly tier, on Chromium, so the flake stays visible. See [Flaky tests](#flaky-tests). |
 | Playwright | `@cross-engine` | Runs on Chromium in the PR tier, and on Chromium, Firefox and WebKit in the nightly tier. Combine it with `@nightly` or `@perf` to run a nightly-only test on every engine. |
 
 A Playwright tag goes at the start of the test or `describe` title (`test('@cross-engine pastes …')`,
 which tags every test inside a tagged `describe`) or in the `tag` option
 (`test('pastes …', { tag: '@nightly' }, …)`). The tier filters match these names as text, so no
-other tag or title word may begin with `@nightly` or `@perf`.
+other tag or title word may begin with `@nightly`, `@perf` or `@quarantine`.
 
 Suites marked `[Trait("Live", "true")]` talk to real third-party services and belong to neither
 tier: they need credentials and run in `.github/workflows/nightly.yml`.
+
+### Flaky tests
+
+CI fails a run in which any Playwright test fails first and passes on retry: a flaky test never
+turns a red run green. When a test proves flaky, quarantine it with the `@quarantine` tag (in the
+`tag` option, so its title stays stable) and a comment saying how it failed. That takes it out of
+the PR tier. The nightly tier runs every quarantined test ten times in a job of its own, which
+never decides the nightly verdict, and lists each one in that job's summary with how many runs
+passed, flaked or failed. That list is the quarantine's record: every test on it is tracked there
+each night, and one that fails every run is no longer a flake but broken.
+
+A quarantined test is fixed, never left: the fix removes the tag in the same change, and the tag
+is not a way to retire a test that is no longer wanted.
+
+Most flakes are a test that reads, or acts on, a state the page has not reached yet. A slow runner
+widens that gap from a frame to hundreds of milliseconds. Wait on the page's own signals, never on
+the clock:
+
+- Assert with web-first assertions (`expect(locator)…`, `expect.poll`), not one-shot reads.
+- Call `appStable(page)` (`client/e2e/support/settle.ts`) before reading or acting on state that
+  the next render updates but the current DOM cannot tell apart from the previous one. Examples:
+  the model dump, a highlight that two successive queries share, and focus that a pending render
+  could still move. The grid and picker model helpers already call it.
+- Call `animationsSettled(locator)` before measuring an element that has an enter animation.
+- Keep an in-flight state (a spinner, a pending cell, a panel measured while loading) on screen
+  with the story's held-response gate (`client/e2e/support/held-responses.ts`) until it has been
+  asserted. Do not give the request a latency that the assertion then has to race.
+- After a gesture that opens a list, wait for the rows before you press a key that moves through
+  them.
 
 ### PR tier
 
@@ -81,14 +111,14 @@ The PR-tier end-to-end suite runs on the Chromium engine only, desktop and touch
 nightly-tier tags excluded. Install the browser once with `pnpm exec playwright install chromium`.
 
 ```bash
-node scripts/e2e.mjs --project chromium --project touch --grep-invert "@nightly|@perf"
+node scripts/e2e.mjs --project chromium --project touch --grep-invert "@nightly|@perf|@quarantine"
 ```
 
 ### Nightly tier
 
 `nightly-tier.yml` runs each night on the `platform-core` branch, and can be started by hand with
-`gh workflow run nightly-tier.yml --ref platform-core`. Its two commands also run locally; an empty
-tier passes.
+`gh workflow run nightly-tier.yml --ref platform-core`. Its commands also run locally; an empty tier
+passes.
 
 ```bash
 dotnet test Tellma.slnx --filter "Category=Nightly&Live!=true"
@@ -104,7 +134,13 @@ dotnet test Tellma.slnx --filter "Category=Nightly&Category!=Integration&Categor
 From `client/`, with all three browsers installed (`pnpm exec playwright install chromium firefox webkit`):
 
 ```bash
-node scripts/e2e.mjs --grep "@nightly|@cross-engine|@perf" --pass-with-no-tests
+node scripts/e2e.mjs --grep "@nightly|@cross-engine|@perf" --grep-invert "@quarantine" --pass-with-no-tests
+```
+
+The quarantined tests, ten runs each:
+
+```bash
+node scripts/e2e.mjs --grep "@quarantine" --repeat-each 10 --pass-with-no-tests
 ```
 
 ## Contributor License Agreement

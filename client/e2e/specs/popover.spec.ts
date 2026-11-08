@@ -6,6 +6,7 @@
 import { expect, test } from '@playwright/test';
 
 import { expectNoAxeViolations } from '../support/axe';
+import { animationsSettled } from '../support/settle';
 import { storyUrl } from '../support/story-map';
 
 /**
@@ -88,12 +89,16 @@ test.describe('open/close + focus (DoD 16)', () => {
 });
 
 test.describe('positioning (DoD 16)', () => {
+  // Geometry is read once the panel's enter animation has finished: the
+  // panel slides in from a few pixels off its final position, and a box read
+  // mid-slide measures the motion, not the placement.
   test('block-end/start alignment mirrors under RTL', async ({ page }) => {
     await page.goto(storyUrl('popover'));
     const trigger = page.getByTestId('popover-trigger');
     await trigger.click();
     const panelLtr = page.locator('.tm-popover__panel');
     await expect(panelLtr).toBeVisible();
+    await animationsSettled(panelLtr);
     const triggerBox = (await trigger.boundingBox())!;
     const panelBox = (await panelLtr.boundingBox())!;
     expect(Math.abs(panelBox.x - triggerBox.x)).toBeLessThan(2); // start = left in LTR
@@ -104,6 +109,7 @@ test.describe('positioning (DoD 16)', () => {
     await rtlTrigger.click();
     const panelRtl = page.locator('.tm-popover__panel');
     await expect(panelRtl).toBeVisible();
+    await animationsSettled(panelRtl);
     const rtlTriggerBox = (await rtlTrigger.boundingBox())!;
     const rtlPanelBox = (await panelRtl.boundingBox())!;
     // start = RIGHT edge in RTL.
@@ -118,8 +124,10 @@ test.describe('positioning (DoD 16)', () => {
     await trigger.click();
     const content = page.getByTestId('edge-content');
     await expect(content).toBeVisible();
+    const edgePanel = page.locator('.tm-popover__panel').last();
+    await animationsSettled(edgePanel);
     const triggerBox = (await trigger.boundingBox())!;
-    const panelBox = (await page.locator('.tm-popover__panel').last().boundingBox())!;
+    const panelBox = (await edgePanel.boundingBox())!;
     expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(triggerBox.y + 1); // above
   });
 });

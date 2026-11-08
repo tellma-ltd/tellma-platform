@@ -346,8 +346,11 @@ commit integrates like any checkpoint.
   freed when the checkpoint reaches `integrated`.
 - On each wake (at least daily), read the latest `nightly-tier` run on `platform-core` and turn each
   new failure into a `PC-Fnn` item, prioritised by the tier of the code it covers.
-- A flaky test is never retried into green silently. Quarantine it with a tag or trait, record it
-  under LEDGER.md "Flaky", and queue a fix.
+- A flaky test is never retried into green silently (CI fails a run when a test passes only on
+  retry). Quarantine it with `@quarantine` (or a trait for dotnet), record it under LEDGER.md
+  "Flaky", and queue a fix. Quarantined tests run nightly in their own non-blocking job: read that
+  job's per-test report on each triage, and a quarantined test that fails outright becomes a fix
+  item at once.
 
 ## 6. Usage pacing
 
@@ -533,8 +536,9 @@ goes to LEDGER.md and DECISIONS.md.
   Never run an unfiltered `dotnet test Tellma.slnx`.
 - **Client PR tier.** `cd <slot>/client && pnpm run <gate>` for lint, typecheck, lint:test,
   tokens:check, build, test, api:check, docs:build and size:check, and e2e with
-  `cd <slot>/client && node scripts/e2e.mjs --project chromium` (tagged tests excluded per
-  CONTRIBUTING.md after PC-000). Once 0024-a moves the pnpm workspace to the repo root, run them
+  `cd <slot>/client && node scripts/e2e.mjs --project chromium --project touch --grep-invert "@nightly|@perf|@quarantine"`
+  (the CONTRIBUTING.md PR-tier command; `@cross-engine` tests run on Chromium in the PR tier and
+  on Firefox/WebKit only nightly). Once 0024-a moves the pnpm workspace to the repo root, run them
   there.
 - Write files as UTF-8 without BOM; `dotnet format` fails on BOMs and charset. Write scripts with
   the Write tool: Bash heredocs can halve backslashes (use `chr(92)` in Python).
