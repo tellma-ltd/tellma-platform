@@ -59,7 +59,8 @@ namespace Tellma.Core.Queryex.Lowering
 
             return new PlanParameterRef(
                 literal.Span,
-                Slot(literal.Type, store, QueryexParameterOrigin.Literal, literal.Value, null, literal.Span));
+                Slot(literal.Type, store, QueryexParameterOrigin.Literal, literal.Value, null, literal.Span),
+                Here(literal.Span));
         }
 
         /// <summary>Lowers a declared parameter.</summary>
@@ -82,7 +83,8 @@ namespace Tellma.Core.Queryex.Lowering
                     QueryexParameterOrigin.Declared,
                     null,
                     parameter.Symbol.Name,
-                    parameter.Span));
+                    parameter.Span),
+                Here(parameter.Span));
         }
 
         /// <summary>Lowers a path to the column of a joined table.</summary>
@@ -91,7 +93,7 @@ namespace Tellma.Core.Queryex.Lowering
         private PlanColumn LowerPath(TypedPath path)
         {
             JoinNode table = Walk(path.Navigations, path.Span);
-            return new PlanColumn(path.Span, table, path.Property);
+            return new PlanColumn(path.Span, table, path.Property, Here(path.Span));
         }
 
         /// <summary>
@@ -110,6 +112,14 @@ namespace Tellma.Core.Queryex.Lowering
             }
 
             return table;
+        }
+
+        /// <summary>Where something written at a range of the current input was written.</summary>
+        /// <param name="span">The range.</param>
+        /// <returns>The origin.</returns>
+        private PlanOrigin Here(QueryexSpan span)
+        {
+            return new PlanOrigin(span, _location);
         }
 
         /// <summary>Finds or allocates the slot a value binds through.</summary>

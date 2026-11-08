@@ -51,7 +51,10 @@ namespace Tellma.Core.Queryex.Lowering
                 return inner;
             }
 
-            PlanIsNull present = new(via.Span, new PlanColumn(via.Span, target, target.Entity.Key), negated: true);
+            PlanIsNull present = new(
+                via.Span,
+                new PlanColumn(via.Span, target, target.Entity.Key, Here(via.Span)),
+                negated: true);
             return inner is PlanConstantPredicate { Value: true } && _folding
                 ? present
                 : new PlanJunction(via.Span, isConjunction: true, [present, inner]);
@@ -103,8 +106,8 @@ namespace Tellma.Core.Queryex.Lowering
             PlanCompare correlation = new(
                 exists.Span,
                 PlanComparison.Equal,
-                new PlanColumn(exists.Span, subquery.Root, exists.Navigation.ForeignKey),
-                new PlanColumn(exists.Span, outer, outer.Entity.Key));
+                new PlanColumn(exists.Span, subquery.Root, exists.Navigation.ForeignKey, Here(exists.Span)),
+                new PlanColumn(exists.Span, outer, outer.Entity.Key, Here(exists.Span)));
 
             subquery.Where = inner is PlanConstantPredicate { Value: true } && _folding
                 ? correlation

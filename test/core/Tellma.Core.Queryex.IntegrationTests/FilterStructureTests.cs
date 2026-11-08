@@ -31,6 +31,12 @@ namespace Tellma.Core.Queryex.IntegrationTests
         /// <summary>The invoices with no lines, which no semi-join over the lines finds anything for.</summary>
         private static readonly int[] WithoutLines = [2, 6];
 
+        /// <summary>The lines with no party, which a rebase onto the party reaches nothing from.</summary>
+        private static readonly int[] WithoutParty = [2, 4];
+
+        /// <summary>The lines of invoices with no customer, which a rebase through to the customer reaches nothing from.</summary>
+        private static readonly int[] WithoutCustomerThroughInvoice = [5];
+
         /// <summary>The server the fixture put the rows on.</summary>
         private readonly SqlServerFixture _server = server;
 
@@ -56,7 +62,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
             IReadOnlySet<int> rest = await Ids(FilterTree.Not(positive));
 
             Assert.Equal(expected.Order(), kept.Order());
-            AssertPartition(kept, rest);
+            AssertPartition(kept, rest, LedgerFixture.Invoice);
 
             if (navigation.StartsWith("Customer", StringComparison.Ordinal))
             {
@@ -64,6 +70,34 @@ namespace Tellma.Core.Queryex.IntegrationTests
                 // negation, whatever the criterion asks of the target.
                 Assert.Superset(WithoutCustomer.ToHashSet(), rest.ToHashSet());
             }
+        }
+
+        /// <summary>
+        ///     A child filtered by a criterion on its owner: the rebase and its negation split the
+        ///     lines between them, and a line whose optional owner is absent is in the negation.
+        /// </summary>
+        /// <param name="navigation">The rebase's path from the line.</param>
+        /// <param name="criterion">The criterion, against the path's target.</param>
+        /// <param name="expected">The lines the criterion keeps.</param>
+        [Theory]
+        [InlineData("Party", "Name = 'Acme'", new[] { 1, 6 })]
+        [InlineData("Party", "Gender is null", new[] { 5 })]
+        [InlineData("Invoice.Customer", "Name = 'Acme'", new[] { 3, 4 })]
+        public async Task AViaFromAChildAndItsNegation_PartitionTheChildRows(
+            string navigation,
+            string criterion,
+            int[] expected)
+        {
+            var positive = FilterTree.Via(navigation, FilterTree.Leaf(criterion));
+
+            IReadOnlySet<int> kept = await Ids(positive, LedgerFixture.InvoiceLine);
+            IReadOnlySet<int> rest = await Ids(FilterTree.Not(positive), LedgerFixture.InvoiceLine);
+
+            Assert.Equal(expected.Order(), kept.Order());
+            AssertPartition(kept, rest, LedgerFixture.InvoiceLine);
+
+            int[] unreached = navigation == "Party" ? WithoutParty : WithoutCustomerThroughInvoice;
+            Assert.Superset(unreached.ToHashSet(), rest.ToHashSet());
         }
 
         /// <summary>A semi-join and its negation split the invoices between them.</summary>
@@ -83,7 +117,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
             IReadOnlySet<int> rest = await Ids(FilterTree.Not(positive));
 
             Assert.Equal(expected.Order(), kept.Order());
-            AssertPartition(kept, rest);
+            AssertPartition(kept, rest, LedgerFixture.Invoice);
 
             // Nothing points at an invoice without lines, so it is in every negation.
             Assert.Superset(WithoutLines.ToHashSet(), rest.ToHashSet());
@@ -116,23 +150,25 @@ namespace Tellma.Core.Queryex.IntegrationTests
             }
         }
 
-        /// <summary>Asserts that two sets of invoices split every invoice between them.</summary>
+        /// <summary>Asserts that two sets of rows split every row of an entity between them.</summary>
         /// <param name="kept">What the criterion keeps.</param>
         /// <param name="rest">What its negation keeps.</param>
-        private static void AssertPartition(IReadOnlySet<int> kept, IReadOnlySet<int> rest)
+        /// <param name="entity">The entity whose rows they are.</param>
+        private static void AssertPartition(IReadOnlySet<int> kept, IReadOnlySet<int> rest, EntityDescriptor entity)
         {
             Assert.Empty(kept.Intersect(rest));
             Assert.Equal(
-                LedgerData.Rows(LedgerFixture.Invoice).Count,
+                LedgerData.Rows(entity).Count,
                 kept.Count + rest.Count);
         }
 
-        /// <summary>The invoices a filter keeps, on the server, checked against the second implementation.</summary>
+        /// <summary>The rows a filter keeps, on the server, checked against the second implementation.</summary>
         /// <param name="filter">The filter.</param>
-        /// <returns>The invoices' keys.</returns>
-        private async Task<IReadOnlySet<int>> Ids(FilterTree filter)
+        /// <param name="root">The entity queried; the invoices when not given.</param>
+        /// <returns>The rows' keys.</returns>
+        private async Task<IReadOnlySet<int>> Ids(FilterTree filter, EntityDescriptor? root = null)
         {
-            QuerySpec spec = Spec(filter);
+            QuerySpec spec = Spec(filter) with { Root = root ?? LedgerFixture.Invoice };
             IReadOnlySet<int> answered = Identifiers(
                 await DifferentialTests.ExecuteOn(_server, Compile(spec), InterpreterContext.Fixed));
 

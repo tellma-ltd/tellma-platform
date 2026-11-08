@@ -81,6 +81,15 @@ namespace Tellma.Queryex.Testing.Corpus
                 Filter = FilterTree.Via("Customer", FilterTree.And([])),
             });
 
+            // A child whose optional owner is absent is outside the rebased criterion, so it is inside
+            // the negation.
+            yield return Query("via-line-left-negated", new QuerySpec
+            {
+                Root = LedgerFixture.InvoiceLine,
+                Select = "Id",
+                Filter = FilterTree.Not(FilterTree.Via("Party", FilterTree.Leaf("Name = 'Acme'"))),
+            });
+
             // The way a child is filtered by its owner's criterion.
             yield return Query("via-from-line", new QuerySpec
             {
@@ -361,6 +370,60 @@ namespace Tellma.Queryex.Testing.Corpus
                 Limits = QueryexLimits.Default with { MaxJoins = 3 },
                 Diagnostics = ["QX5006"],
                 Sites = [Site("QX5006", "Filter.Or[1].Exists[InvoiceLine]", 0, 10, ("limit", "3"))],
+            };
+
+            // A join a folded part of the filter made, but only the select list still reads, is the
+            // select list's to answer for.
+            yield return new QueryCase
+            {
+                Id = "refuse-joins-read-only-by-select",
+                Spec = new QuerySpec
+                {
+                    Root = LedgerFixture.Invoice,
+                    Select = "Centre.Name",
+                    Filter = FilterTree.Via("Centre", FilterTree.Leaf("Id is not null")),
+                },
+                Limits = QueryexLimits.Default with { MaxJoins = 0 },
+                Diagnostics = ["QX5006"],
+                Sites = [Site("QX5006", "Select[0]", 0, 11, ("limit", "0"))],
+            };
+
+            // The same when the part that made it is a disjunct that folded away.
+            yield return new QueryCase
+            {
+                Id = "refuse-joins-after-a-folded-disjunct",
+                Spec = new QuerySpec
+                {
+                    Root = LedgerFixture.Invoice,
+                    Select = "Customer.Name",
+                    Filter = FilterTree.Or(
+                    [
+                        FilterTree.Via("Customer", FilterTree.Leaf("Id is null")),
+                        FilterTree.Leaf("IsPosted"),
+                    ]),
+                },
+                Limits = QueryexLimits.Default with { MaxJoins = 0 },
+                Diagnostics = ["QX5006"],
+                Sites = [Site("QX5006", "Select[0]", 0, 13, ("limit", "0"))],
+            };
+
+            // A slot a folded semi-join made, but only a later leaf still reads, is that leaf's.
+            yield return new QueryCase
+            {
+                Id = "refuse-parameters-after-a-folded-exists",
+                Spec = new QuerySpec
+                {
+                    Root = LedgerFixture.Invoice,
+                    Select = "Id",
+                    Filter = FilterTree.Or(
+                    [
+                        FilterTree.Exists("InvoiceLine", "Invoice", FilterTree.Leaf("Amount = 5 and Id is null")),
+                        FilterTree.Leaf("Amount = 5"),
+                    ]),
+                },
+                Limits = QueryexLimits.Default with { MaxParameters = 0 },
+                Diagnostics = ["QX5007"],
+                Sites = [Site("QX5007", "Filter.Or[1]", 9, 1, ("limit", "0"))],
             };
 
             // A plain leaf of a composed filter is named the same way.

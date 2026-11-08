@@ -68,6 +68,12 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>Whether anything that survived lowering reads this node.</summary>
         internal bool IsReferenced { get; set; }
 
+        /// <summary>
+        ///     Where the first surviving reference that reads this node was written, once one has;
+        ///     null for a root, which is read whatever survives.
+        /// </summary>
+        internal PlanOrigin? ReachedFrom { get; private set; }
+
         /// <summary>Finds or creates the step for a navigation.</summary>
         /// <param name="navigation">The navigation.</param>
         /// <param name="origin">Where the path taking the step was written.</param>
@@ -88,12 +94,18 @@ namespace Tellma.Core.Queryex.Lowering
         }
 
         /// <summary>Marks this node and everything above it as read.</summary>
-        internal void MarkReferenced()
+        /// <param name="origin">Where the reference that reads it was written.</param>
+        /// <remarks>
+        ///     A node already read keeps the reference that read it first, and so does everything
+        ///     above it; every node marked here is read on behalf of this reference.
+        /// </remarks>
+        internal void MarkReferenced(PlanOrigin origin)
         {
             JoinNode? current = this;
             while (current is not null && !current.IsReferenced)
             {
                 current.IsReferenced = true;
+                current.ReachedFrom = origin;
                 current = current.Parent;
             }
         }

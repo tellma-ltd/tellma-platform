@@ -29,6 +29,7 @@ namespace Tellma.Core.Queryex.Tests.Coverage
             { ".Exists[", "QX5006" },
             { ".Exists[", "QX5007" },
             { ".And[", "QX5006" },
+            { ".Or[", "QX5007" },
         };
 
         /// <summary>Each form is pinned by a corpus case reporting that problem inside it.</summary>

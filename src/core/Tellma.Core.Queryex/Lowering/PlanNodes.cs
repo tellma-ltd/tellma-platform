@@ -95,12 +95,21 @@ namespace Tellma.Core.Queryex.Lowering
         /// <param name="span">Where the path sits in the input.</param>
         /// <param name="table">The join whose alias qualifies the column.</param>
         /// <param name="property">The property whose column is read.</param>
-        internal PlanColumn(QueryexSpan span, JoinNode table, PropertyDescriptor property)
+        /// <param name="origin">Where the reference was written.</param>
+        internal PlanColumn(QueryexSpan span, JoinNode table, PropertyDescriptor property, PlanOrigin origin)
             : base(span, BoundTypes.FromPublic(property.Type), StoreTypes.OfProperty(property))
         {
             Table = table;
             Property = property;
+            Origin = origin;
         }
+
+        /// <summary>Where the reference was written.</summary>
+        /// <remarks>
+        ///     What a join is blamed on when it pushes the join ceiling over: the first surviving
+        ///     reference that reads it, rather than whatever created it — which may have folded away.
+        /// </remarks>
+        internal PlanOrigin Origin { get; }
 
         /// <summary>The join whose alias qualifies the column.</summary>
         internal JoinNode Table { get; }
@@ -118,11 +127,21 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>Initializes the node.</summary>
         /// <param name="span">Where the expression it came from sits in the input.</param>
         /// <param name="slot">The slot the host binds.</param>
-        internal PlanParameterRef(QueryexSpan span, ParameterSlot slot)
+        /// <param name="origin">Where the reference was written.</param>
+        internal PlanParameterRef(QueryexSpan span, ParameterSlot slot, PlanOrigin origin)
             : base(span, slot.Type, slot.StoreType)
         {
             Slot = slot;
+            Origin = origin;
         }
+
+        /// <summary>Where the reference was written.</summary>
+        /// <remarks>
+        ///     What a slot is blamed on when it pushes the parameter ceiling over: the first surviving
+        ///     reference to it, since equal values share one slot and the one that created it may have
+        ///     folded away.
+        /// </remarks>
+        internal PlanOrigin Origin { get; }
 
         /// <summary>The slot the host binds.</summary>
         internal ParameterSlot Slot { get; }
