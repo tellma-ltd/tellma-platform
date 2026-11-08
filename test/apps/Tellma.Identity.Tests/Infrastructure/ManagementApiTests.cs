@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.Routing;
@@ -86,8 +87,15 @@ namespace Tellma.Identity.Tests.Infrastructure
                 // always applies.
                 Assert.Single(controller.GetCustomAttributes().OfType<IRouteTemplateProvider>());
 
-                foreach (MethodInfo action in Actions(controller))
+                foreach (MethodInfo action in MvcActions(controller))
                 {
+                    // Every action MVC sees declares an HTTP method with its own route: one
+                    // without would answer every method at the bare version prefix.
+                    Assert.True(
+                        action.GetCustomAttributes().OfType<IActionHttpMethodProvider>().Any()
+                            && action.GetCustomAttributes().OfType<IRouteTemplateProvider>().Any(static a => a.Template is not null),
+                        $"{controller.Name}.{action.Name} is an action without an HTTP method and route of its own.");
+
                     // Relative to the version prefix, never rooted, so the prefix always applies.
                     foreach (string? template in action.GetCustomAttributes().OfType<IRouteTemplateProvider>().Select(static a => a.Template))
                     {
@@ -137,6 +145,21 @@ namespace Tellma.Identity.Tests.Infrastructure
             Assert.Contains("v1", record.Message, StringComparison.Ordinal);
             Assert.Contains(ManagementApiEndpoints.Invite, record.Message, StringComparison.Ordinal);
             Assert.Contains(ManagementApiOutcomes.Ok, record.Message, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData(StatusCodes.Status401Unauthorized, ManagementApiOutcomes.Unauthorized)]
+        [InlineData(StatusCodes.Status403Forbidden, ManagementApiOutcomes.Forbidden)]
+        public void A_challenge_or_forbid_returned_by_the_action_is_tagged_as_the_middleware_tags_it(
+            int status, string outcome)
+        {
+            using Telemetry telemetry = new();
+            ActionContext action = Action(ManagementApiEndpoints.DeliveryStatus, Principal(("client_id", "acme-svc")));
+            action.HttpContext.Response.StatusCode = status;
+
+            new ManagementApiCallFilter("v1", telemetry.Recorder).OnResourceExecuted(Executed(action));
+
+            Assert.Equal(outcome, Assert.Single(telemetry.Calls.GetMeasurementSnapshot()).Tags[IdentityMetrics.ApiOutcomeTag]);
         }
 
         [Fact]
@@ -259,6 +282,53 @@ namespace Tellma.Identity.Tests.Infrastructure
         }
 
         [Fact]
+        public void A_scoped_host_handler_is_decorated_as_scoped_and_passes_the_startup_check()
+        {
+            // The authorization middleware resolves the handler per request, so a host handler
+            // may be scoped; the decorator keeps that lifetime, and the startup check resolves it
+            // in a scope rather than from the root.
+            ServiceCollection services = new();
+            services.AddMetrics().AddLogging();
+            services.AddSingleton<IdentityMetrics>().AddSingleton<ManagementApiCallRecorder>();
+            services.AddScoped<IAuthorizationMiddlewareResultHandler, RecordingResultHandler>();
+
+            ManagementApiAuthorizationResultHandler.Decorate(services);
+
+            Assert.Equal(
+                ServiceLifetime.Scoped,
+                Assert.Single(services, static d => d.ServiceType == typeof(IAuthorizationMiddlewareResultHandler)).Lifetime);
+            using ServiceProvider provider = services.BuildServiceProvider(
+                new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+            using (IServiceScope scope = provider.CreateScope())
+            {
+                Assert.IsType<ManagementApiAuthorizationResultHandler>(
+                    scope.ServiceProvider.GetRequiredService<IAuthorizationMiddlewareResultHandler>());
+            }
+
+            bool started = false;
+            Assert.Single(provider.GetServices<IStartupFilter>()).Configure(_ => started = true)(new ApplicationBuilder(provider));
+            Assert.True(started);
+        }
+
+        [Fact]
+        public void The_model_check_refuses_a_management_action_without_its_own_route_or_name()
+        {
+            // An action on a versioned controller with no route of its own, and one with a route
+            // but no endpoint name: either is refused when MVC builds its model.
+            foreach (ActionModel action in (ActionModel[])
+                [
+                    ActionModel(route: null, endpoint: ManagementApiEndpoints.Invite),
+                    ActionModel(route: "invitations", endpoint: null),
+                ])
+            {
+                Assert.Throws<InvalidOperationException>(() => new ManagementApiModelConvention().Apply(Application(action)));
+            }
+
+            // A named, routed, method-bound action passes.
+            new ManagementApiModelConvention().Apply(Application(ActionModel("invitations", ManagementApiEndpoints.Invite)));
+        }
+
+        [Fact]
         public void A_host_that_replaces_the_result_handler_after_the_engine_does_not_start()
         {
             ServiceCollection services = new();
@@ -283,6 +353,46 @@ namespace Tellma.Identity.Tests.Infrastructure
             Assert.Null(ManagementApiCaller.ClientIdOf(Principal()));
         }
 
+        /// <summary>
+        ///     Every method MVC treats as an action of a controller: each public instance method it
+        ///     declares that is not marked <c>[NonAction]</c>, with or without a route attribute.
+        /// </summary>
+        private static IEnumerable<MethodInfo> MvcActions(Type controller)
+        {
+            return controller.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .Where(static method => !method.IsSpecialName && method.GetCustomAttribute<NonActionAttribute>() is null);
+        }
+
+        /// <summary>An application model with one versioned controller holding the given action.</summary>
+        private static ApplicationModel Application(ActionModel action)
+        {
+            ControllerModel controller = new(
+                typeof(ManagementApiTests).GetTypeInfo(), [new ManagementApiAttribute(ManagementApiVersions.V1)]);
+            controller.Actions.Add(action);
+            action.Controller = controller;
+
+            ApplicationModel application = new();
+            application.Controllers.Add(controller);
+            return application;
+        }
+
+        /// <summary>An action model with an optional POST route and endpoint name.</summary>
+        private static ActionModel ActionModel(string? route, string? endpoint)
+        {
+            ActionModel action = new(
+                typeof(ManagementApiTests).GetMethod(nameof(A_version_maps_under_its_own_segment))!,
+                endpoint is null ? [] : [new ManagementApiEndpointAttribute(endpoint)]);
+            SelectorModel selector = new();
+            if (route is not null)
+            {
+                selector.AttributeRouteModel = new AttributeRouteModel { Template = route };
+                selector.EndpointMetadata.Add(new HttpMethodMetadata(["POST"]));
+            }
+
+            action.Selectors.Add(selector);
+            return action;
+        }
+
         /// <summary>The public instance actions a controller declares.</summary>
         private static IEnumerable<MethodInfo> Actions(Type controller)
         {
@@ -305,7 +415,7 @@ namespace Tellma.Identity.Tests.Infrastructure
             return classTemplates
                 .Concat(actionTemplates)
                 .Concat(classTemplates.SelectMany(prefix => actionTemplates.Select(
-                    template => Microsoft.AspNetCore.Mvc.ApplicationModels.AttributeRouteModel.CombineTemplates(prefix, template) ?? string.Empty)));
+                    template => AttributeRouteModel.CombineTemplates(prefix, template) ?? string.Empty)));
         }
 
         /// <summary>The endpoint metadata MVC builds for a management action: class and action attributes.</summary>

@@ -8,8 +8,10 @@ using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.Routing;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OpenIddict.Abstractions;
@@ -141,16 +143,16 @@ namespace Tellma.Identity.Infrastructure
     /// </summary>
     public static class ManagementApiOutcomes
     {
-        /// <summary>The call was authorized and answered without a server error.</summary>
+        /// <summary>The call was answered with neither a server error, a 401 nor a 403.</summary>
         public const string Ok = "ok";
 
-        /// <summary>The call was authorized and failed with an unhandled exception or a 5xx status.</summary>
+        /// <summary>The call failed with an unhandled exception or a 5xx status.</summary>
         public const string Error = "error";
 
-        /// <summary>The call presented no valid token and was challenged (401).</summary>
+        /// <summary>The call was challenged (401): it presented no valid token.</summary>
         public const string Unauthorized = "unauthorized";
 
-        /// <summary>The call's token lacked what the endpoint's policy requires (403).</summary>
+        /// <summary>The call was forbidden (403): its token lacked what the endpoint requires.</summary>
         public const string Forbidden = "forbidden";
     }
 
@@ -178,6 +180,44 @@ namespace Tellma.Identity.Infrastructure
 
         /// <summary>The endpoint name.</summary>
         public string Name { get; }
+    }
+
+    /// <summary>
+    ///     Refuses, when MVC builds its model at startup, a management-API controller with an
+    ///     action that is not a named, attribute-routed, method-bound endpoint. Every public method
+    ///     of a controller is an action, and on a <see cref="ManagementApiAttribute" /> controller
+    ///     one without its own route would answer every method at the bare version prefix with no
+    ///     endpoint name to count it under.
+    /// </summary>
+    internal sealed class ManagementApiModelConvention : IApplicationModelConvention
+    {
+        /// <inheritdoc />
+        public void Apply(ApplicationModel application)
+        {
+            ArgumentNullException.ThrowIfNull(application);
+
+            foreach (ControllerModel controller in application.Controllers)
+            {
+                if (!controller.Attributes.OfType<ManagementApiAttribute>().Any())
+                {
+                    continue;
+                }
+
+                foreach (ActionModel action in controller.Actions)
+                {
+                    bool routed = action.Selectors.Count > 0 && action.Selectors.All(static selector =>
+                        selector.AttributeRouteModel is { Template.Length: > 0 }
+                        && selector.EndpointMetadata.OfType<HttpMethodMetadata>().Any());
+                    int names = action.Attributes.OfType<ManagementApiEndpointAttribute>().Count();
+                    if (!routed || names != 1)
+                    {
+                        throw new InvalidOperationException(
+                            $"The management API action '{controller.ControllerType.Name}.{action.ActionMethod.Name}' "
+                            + "must declare an HTTP method with its own route template and exactly one endpoint name.");
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>Resolves who is calling the management API.</summary>
@@ -248,7 +288,9 @@ namespace Tellma.Identity.Infrastructure
     /// <summary>
     ///     Records an authorized management-API call once its action and result have run:
     ///     <see cref="ManagementApiOutcomes.Error" /> for an unhandled exception or a 5xx status,
-    ///     <see cref="ManagementApiOutcomes.Ok" /> otherwise.
+    ///     <see cref="ManagementApiOutcomes.Unauthorized" /> or <see cref="ManagementApiOutcomes.Forbidden" />
+    ///     for a 401 or 403 the action itself returned, and <see cref="ManagementApiOutcomes.Ok" />
+    ///     otherwise.
     /// </summary>
     /// <param name="segment">The version's route segment, for example <c>v1</c>.</param>
     /// <param name="recorder">Records the call.</param>
@@ -269,16 +311,28 @@ namespace Tellma.Identity.Infrastructure
         {
             ArgumentNullException.ThrowIfNull(context);
 
+            recorder.Record(segment, EndpointOf(context.ActionDescriptor), OutcomeOf(context), context.HttpContext.User);
+        }
+
+        /// <summary>
+        ///     The outcome of an answered call, read from the answer itself, so that a challenge or
+        ///     a forbid an action returns is tagged exactly as the authorization middleware's is.
+        /// </summary>
+        /// <param name="context">The executed resource's context.</param>
+        /// <returns>The outcome, one of <see cref="ManagementApiOutcomes" />.</returns>
+        internal static string OutcomeOf(ResourceExecutedContext context)
+        {
             // An exception still unhandled here becomes a 500; a handled one has already been
             // turned into whatever response the status code now shows.
-            bool failed = (context.Exception is not null && !context.ExceptionHandled)
-                || context.HttpContext.Response.StatusCode >= StatusCodes.Status500InternalServerError;
-
-            recorder.Record(
-                segment,
-                EndpointOf(context.ActionDescriptor),
-                failed ? ManagementApiOutcomes.Error : ManagementApiOutcomes.Ok,
-                context.HttpContext.User);
+            return context.Exception is not null && !context.ExceptionHandled
+                ? ManagementApiOutcomes.Error
+                : context.HttpContext.Response.StatusCode switch
+                {
+                    StatusCodes.Status401Unauthorized => ManagementApiOutcomes.Unauthorized,
+                    StatusCodes.Status403Forbidden => ManagementApiOutcomes.Forbidden,
+                    >= StatusCodes.Status500InternalServerError => ManagementApiOutcomes.Error,
+                    _ => ManagementApiOutcomes.Ok,
+                };
         }
 
         /// <summary>The endpoint name the action declares.</summary>
@@ -377,7 +431,11 @@ namespace Tellma.Identity.Infrastructure
             {
                 return app =>
                 {
-                    if (app.ApplicationServices.GetRequiredService<IAuthorizationMiddlewareResultHandler>()
+                    // Resolved in a scope, as the authorization middleware resolves it per request:
+                    // a host's handler may legitimately be scoped, and the decorator keeps its
+                    // lifetime, so resolving from the root would refuse or capture it.
+                    using IServiceScope scope = app.ApplicationServices.CreateScope();
+                    if (scope.ServiceProvider.GetRequiredService<IAuthorizationMiddlewareResultHandler>()
                         is not ManagementApiAuthorizationResultHandler)
                     {
                         throw new InvalidOperationException(

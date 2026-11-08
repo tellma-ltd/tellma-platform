@@ -209,6 +209,11 @@ namespace Tellma.Identity.Hosting
             services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(mvc =>
                 mvc.Conventions.Add(new RemoveControlPlaneControllersConvention(snapshot.Mode)));
 
+            // Every management-API action must be a named, routed endpoint, refused at startup
+            // otherwise, so none answers at the bare version prefix or goes uncounted.
+            services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(static mvc =>
+                mvc.Conventions.Add(new ManagementApiModelConvention()));
+
             string prefix = snapshot.RoutePrefix;
             if (prefix.Length > 0)
             {

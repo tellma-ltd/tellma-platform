@@ -85,6 +85,10 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
                 new Uri(loginUrl, UriKind.RelativeOrAbsolute), TestContext.Current.CancellationToken);
             Assert.True(loginPage.IsSuccessStatusCode, $"Login page failed: {loginPage.StatusCode}");
 
+            // The baseline is taken before the code is requested: a test that signs one address
+            // in twice would otherwise be handed the first, already redeemed code.
+            int delivered = _factory.Emails.CountFor(email);
+
             (string action, Dictionary<string, string> fields) = await ParseFormAsync(loginPage);
             fields["Email"] = email;
             using HttpResponseMessage codeRedirect = await PostFormAsync(action, fields);
@@ -97,8 +101,9 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
             Assert.True(codePage.IsSuccessStatusCode, $"Code page failed: {codePage.StatusCode}");
 
             // The code is delivered by the background mail worker, so the redirect above arrives
-            // first. The capturing sender signals when the message lands rather than being polled.
-            string code = await _factory.Emails.WaitForCodeAsync(email);
+            // first. The capturing sender signals when the message lands rather than being polled,
+            // and only a message past the baseline counts.
+            string code = await _factory.Emails.WaitForCodeAfterAsync(email, delivered);
 
             (string verifyAction, Dictionary<string, string> verifyFields) = await ParseFormAsync(codePage);
             verifyFields["Code"] = code;
