@@ -37,7 +37,12 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         /// <param name="scale">The scale facet.</param>
         /// <param name="unicode">Whether the column is Unicode, when relevant.</param>
         /// <param name="fixedLength">Whether the column is fixed length, when relevant.</param>
-        /// <param name="collation">The explicit collation, when one is wanted.</param>
+        /// <param name="collation">
+        ///     The explicit collation, when one is wanted. Only a column that resolves to
+        ///     <c>char</c>, <c>varchar</c>, <c>nchar</c> or <c>nvarchar</c> takes one; any other store
+        ///     type, <c>json</c> included, fails model finalization. A <see cref="UseCollation" /> call
+        ///     for the column, before or after this one, wins over this argument.
+        /// </param>
         /// <returns>The same builder instance so that multiple calls can be chained.</returns>
         public virtual TableTypeBuilder Column<T>(
             string name,
@@ -74,7 +79,12 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         /// <param name="maxLength">The maximum length facet, carried into the metadata API.</param>
         /// <param name="precision">The precision facet, carried into the metadata API.</param>
         /// <param name="scale">The scale facet, carried into the metadata API.</param>
-        /// <param name="collation">The explicit collation, when one is wanted.</param>
+        /// <param name="collation">
+        ///     The explicit collation, when one is wanted. Only a <c>char</c>, <c>varchar</c>,
+        ///     <c>nchar</c> or <c>nvarchar</c> store type takes one; any other, <c>json</c> included,
+        ///     fails model finalization. A <see cref="UseCollation" /> call for the column, before or
+        ///     after this one, wins over this argument.
+        /// </param>
         /// <returns>The same builder instance so that multiple calls can be chained.</returns>
         public virtual TableTypeBuilder Column(
             string name,
