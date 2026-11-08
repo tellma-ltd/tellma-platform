@@ -62,6 +62,11 @@ namespace Tellma.Queryex.Testing.Corpus
             yield return Runs("fn-round", "round(Amount, 2)");
             yield return Runs("fn-round-zero", "round(Rate, 0)");
 
+            // Hierarchy depth, of a stored position and of a computed one: the backend's own method
+            // has to accept whatever expression the language lets reach it.
+            yield return Runs("fn-level", "level(AltNode)");
+            yield return Runs("fn-level-computed", "level(coalesce(AltNode, Account.Node))");
+
             // Text. Trailing spaces and fixed-width storage are why several of these read Ref.
             yield return Runs("fn-upper", "upper(Memo)");
             yield return Runs("fn-lower", "lower(Code)");
@@ -495,6 +500,38 @@ namespace Tellma.Queryex.Testing.Corpus
                 Mode = QueryexMode.Filter,
                 Diagnostics = ["QX3303"],
             };
+
+            // The depth of a position: a number, present exactly when the position is.
+            yield return new ExpressionCase
+            {
+                Id = "hierarchy-level",
+                Text = "level(Account.Node)",
+                Type = QueryexType.QxNumeric,
+                Nullity = QueryexNullity.NotNull,
+            };
+
+            yield return Nullity("hierarchy-level-of-an-optional-node", "level(AltNode)", QueryexNullity.Nullable);
+
+            yield return new ExpressionCase
+            {
+                Id = "hierarchy-level-behind-an-optional-step",
+                Text = "level(Parent.Node)",
+                Root = "Account",
+                Nullity = QueryexNullity.Nullable,
+            };
+
+            yield return new ExpressionCase
+            {
+                Id = "hierarchy-level-compared",
+                Text = "level(Node) <= 1",
+                Root = "Account",
+                Mode = QueryexMode.Filter,
+            };
+
+            // Only a path supplies a position, so anything else is a type mismatch.
+            yield return Bad("hierarchy-level-not-a-node", "level(Amount)", "QX3005");
+            yield return Bad("hierarchy-level-of-text", "level('/1/')", "QX3005");
+            yield return Bad("hierarchy-level-needs-an-argument", "level()", "QX3004");
         }
 
         /// <summary>What inference concludes about undeclared parameters.</summary>

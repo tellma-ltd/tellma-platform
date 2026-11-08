@@ -58,13 +58,14 @@ namespace Tellma.Queryex.Testing.Probe
                 spec,
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = schema,
                     Parameters = parameters ?? [],
                 },
                 sink,
                 budget,
-                new NullityMap());
+                new NullityMap(),
+                HostStructure.ResolveRestrictions(spec));
 
             if (!clauses.TryBind())
             {

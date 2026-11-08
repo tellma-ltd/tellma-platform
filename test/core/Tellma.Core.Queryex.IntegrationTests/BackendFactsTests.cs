@@ -78,7 +78,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
                     new QuerySpec { Root = LedgerFixture.Invoice, Select = "Id", Filter = FilterTree.Leaf(expression) },
                     new QueryCompilationOptions
                     {
-                        LanguageVersion = QueryexLanguage.Version,
+                        QueryexVersion = QueryexLanguage.Version,
                         Schema = LedgerFixture.Schema,
                     });
 
@@ -110,7 +110,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
                 },
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                 });
 
@@ -148,7 +148,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
                     entry.Spec,
                     new QueryCompilationOptions
                     {
-                        LanguageVersion = QueryexLanguage.Version,
+                        QueryexVersion = QueryexLanguage.Version,
                         Schema = LedgerFixture.Schema,
                         Parameters = entry.Parameters,
                         HasUser = entry.HasUser,
@@ -156,8 +156,12 @@ namespace Tellma.Core.Queryex.IntegrationTests
 
                 Assert.True(result.Succeeded, entry.Id);
 
-                IReadOnlyList<string> plain = await Rendered(result.Value, string.Empty);
-                IReadOnlyList<string> altered = await Rendered(result.Value, settings);
+                // A case restricted to key sets has its tables declared ahead of it, as a host would.
+                string declarations = DifferentialTests.KeySetDeclarations(
+                    InterpreterContext.Fixed with { KeySets = entry.KeySets });
+
+                IReadOnlyList<string> plain = await Rendered(result.Value, string.Empty, declarations);
+                IReadOnlyList<string> altered = await Rendered(result.Value, settings, declarations);
                 Assert.Equal(plain, altered);
             }
         }
@@ -184,12 +188,13 @@ namespace Tellma.Core.Queryex.IntegrationTests
         /// <summary>Reads one column of a compiled query as text, under given settings.</summary>
         /// <param name="query">The compiled query.</param>
         /// <param name="settings">The settings to apply first, or nothing.</param>
+        /// <param name="declarations">The tables of keys the query reads, declared, or nothing.</param>
         /// <returns>One line per row.</returns>
-        private async Task<IReadOnlyList<string>> Rendered(CompiledQuery query, string settings)
+        private async Task<IReadOnlyList<string>> Rendered(CompiledQuery query, string settings, string declarations)
         {
             await using SqlConnection connection = await _server.OpenAsync();
             await using SqlCommand command = connection.CreateCommand();
-            command.CommandText = settings + "\n" + query.Sql;
+            command.CommandText = settings + "\n" + declarations + query.Sql;
             SqlBinding.Bind(command, query, InterpreterContext.Fixed with
             {
                 Parameters = new Dictionary<string, QxValue>(StringComparer.OrdinalIgnoreCase)
@@ -235,12 +240,12 @@ namespace Tellma.Core.Queryex.IntegrationTests
                 },
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                 });
 
             Assert.True(counting.Succeeded, expression);
-            return await Rendered(counting.Value, string.Empty);
+            return await Rendered(counting.Value, string.Empty, string.Empty);
         }
 
         /// <summary>Reads one scalar computed over a compiled query's first column.</summary>

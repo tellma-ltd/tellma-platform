@@ -20,6 +20,12 @@ namespace Tellma.Queryex.Inspection
     /// <param name="Aggregate">Whether the query groups.</param>
     /// <param name="Root">The entity paths resolve from.</param>
     /// <param name="Execute">Whether to run the compiled query against a server.</param>
+    /// <param name="Restrictions">
+    ///     The key-set restrictions, separated by semicolons. Each is a path and a table name, then
+    ///     optionally an equals sign and the comma-separated keys the table holds when the query is
+    ///     run: <c>Customer.Id @tb0_parties = 1, 2</c>.
+    /// </param>
+    /// <param name="UndeclaredColumns">The undeclared root columns to read, separated by commas.</param>
     public sealed record InspectRequest(
         string? Select,
         string? Filter,
@@ -27,7 +33,9 @@ namespace Tellma.Queryex.Inspection
         string? OrderBy,
         bool Aggregate,
         string? Root,
-        bool Execute);
+        bool Execute,
+        string? Restrictions = null,
+        string? UndeclaredColumns = null);
 
     /// <summary>One scanned token, as the page shows it.</summary>
     /// <param name="Kind">What kind of token it is.</param>
@@ -121,28 +129,35 @@ namespace Tellma.Queryex.Inspection
             List<TokenView> tokens = [.. parsed.Tokens.Select(
                 token => new TokenView(token.Kind, token.Text, token.Start, token.Length))];
 
-            QuerySpec spec = new()
-            {
-                Root = root,
-                Select = select,
-                Aggregate = request.Aggregate,
-                Filter = Leaf(request.Filter),
-                Having = request.Aggregate ? Leaf(request.Having) : null,
-                OrderBy = string.IsNullOrWhiteSpace(request.OrderBy) ? null : request.OrderBy,
-            };
-
             List<NodeView> nodes = Bound(select, root, request.Aggregate);
 
+            QuerySpec spec;
+            IReadOnlyList<(string Table, IReadOnlyList<string> Keys)> tables;
             QueryexResult<CompiledQuery> compiled;
             try
             {
+                // Host structure, read from the page's own syntax. A malformed entry is a caller
+                // error, and is shown the way the engine's own caller errors are.
+                (IReadOnlyList<KeySetRestriction> restrictions, tables) = Restrictions(request.Restrictions);
+                spec = new QuerySpec
+                {
+                    Root = root,
+                    Select = select,
+                    Aggregate = request.Aggregate,
+                    Filter = Leaf(request.Filter),
+                    Having = request.Aggregate ? Leaf(request.Having) : null,
+                    OrderBy = string.IsNullOrWhiteSpace(request.OrderBy) ? null : request.OrderBy,
+                    Restrictions = restrictions,
+                    UndeclaredColumns = Names(request.UndeclaredColumns),
+                };
+
                 compiled = Engine.CompileQuery(
                     spec,
                     new QueryCompilationOptions
                     {
                         // The current version, because the page compiles what is being typed right
                         // now rather than something stored under a version of its own.
-                        LanguageVersion = QueryexLanguage.Version,
+                        QueryexVersion = QueryexLanguage.Version,
                         Schema = LedgerFixture.Schema,
                     });
             }
@@ -179,7 +194,7 @@ namespace Tellma.Queryex.Inspection
             }
 
             (IReadOnlyList<IReadOnlyList<string>>? rows, string? error) = request.Execute
-                ? await RunAsync(compiled.Value, connectionString)
+                ? await RunAsync(compiled.Value, tables, connectionString)
                 : (null, null);
 
             return new InspectResponse(
@@ -201,6 +216,54 @@ namespace Tellma.Queryex.Inspection
         private static FilterTree? Leaf(string? text)
         {
             return string.IsNullOrWhiteSpace(text) ? null : FilterTree.Leaf(text);
+        }
+
+        /// <summary>Reads the page's restrictions.</summary>
+        /// <param name="text">The restrictions, separated by semicolons.</param>
+        /// <returns>The restrictions, and the keys each table holds when the query is run.</returns>
+        /// <exception cref="ArgumentException">An entry is not a path and a table name.</exception>
+        private static (IReadOnlyList<KeySetRestriction> Restrictions, IReadOnlyList<(string Table, IReadOnlyList<string> Keys)> Tables)
+            Restrictions(string? text)
+        {
+            List<KeySetRestriction> restrictions = [];
+            List<(string, IReadOnlyList<string>)> tables = [];
+            foreach (string entry in Split(text, ';'))
+            {
+                // "<path> <table>", then optionally "= <key>, <key>, …".
+                int equals = entry.IndexOf('=', StringComparison.Ordinal);
+                string head = equals < 0 ? entry : entry[..equals];
+                string[] parts = head.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (parts.Length != 2)
+                {
+                    throw new ArgumentException(
+                        "A restriction is written as a path and a table name, such as 'Customer.Id @tb0_parties = 1, 2'.",
+                        nameof(text));
+                }
+
+                restrictions.Add(new KeySetRestriction(parts[0], parts[1]));
+                tables.Add((parts[1], equals < 0 ? [] : Split(entry[(equals + 1)..], ',')));
+            }
+
+            return (restrictions, tables);
+        }
+
+        /// <summary>Reads a comma-separated list of names.</summary>
+        /// <param name="text">The names.</param>
+        /// <returns>The names, trimmed.</returns>
+        private static string[] Names(string? text)
+        {
+            return Split(text, ',');
+        }
+
+        /// <summary>Splits text on a separator, dropping empty entries and surrounding blanks.</summary>
+        /// <param name="text">The text, or null.</param>
+        /// <param name="separator">The separator.</param>
+        /// <returns>The entries.</returns>
+        private static string[] Split(string? text, char separator)
+        {
+            return string.IsNullOrWhiteSpace(text)
+                ? []
+                : text.Split(separator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         }
 
         /// <summary>Binds the select list and flattens what came out.</summary>
@@ -293,6 +356,7 @@ namespace Tellma.Queryex.Inspection
 
         /// <summary>Runs a compiled query against a server, when one was configured.</summary>
         /// <param name="query">The compiled query.</param>
+        /// <param name="tables">The tables of keys the restrictions read, with the keys each holds.</param>
         /// <param name="connectionString">The server.</param>
         /// <returns>The rows, or what went wrong.</returns>
         /// <remarks>
@@ -301,6 +365,7 @@ namespace Tellma.Queryex.Inspection
         /// </remarks>
         private static async Task<(IReadOnlyList<IReadOnlyList<string>>?, string?)> RunAsync(
             CompiledQuery query,
+            IReadOnlyList<(string Table, IReadOnlyList<string> Keys)> tables,
             string? connectionString)
         {
             if (string.IsNullOrWhiteSpace(connectionString))
@@ -313,7 +378,7 @@ namespace Tellma.Queryex.Inspection
                 await using SqlConnection connection = new(connectionString);
                 await connection.OpenAsync();
                 await using SqlCommand command = connection.CreateCommand();
-                command.CommandText = query.Sql;
+                command.CommandText = Declarations(tables) + query.Sql;
                 Bind(command, query);
 
                 List<IReadOnlyList<string>> rows = [];
@@ -338,6 +403,35 @@ namespace Tellma.Queryex.Inspection
             {
                 return (null, problem.Message);
             }
+        }
+
+        /// <summary>Declares and fills the tables of keys the restrictions read.</summary>
+        /// <param name="tables">The tables, with the keys each holds.</param>
+        /// <returns>The statements to run ahead of the query.</returns>
+        /// <remarks>
+        ///     Each table holds its keys as text, which the backend converts to the type of whatever
+        ///     column it is compared with, so a playground need not know the key's type. The text
+        ///     carries the fixture's collation so a text key compares without a collation conflict.
+        ///     Keys are written as literals with their quotes doubled, because this is a developer's
+        ///     own input to a developer's own database.
+        /// </remarks>
+        private static string Declarations(IReadOnlyList<(string Table, IReadOnlyList<string> Keys)> tables)
+        {
+            System.Text.StringBuilder script = new();
+            foreach ((string table, IReadOnlyList<string> keys) in tables.DistinctBy(entry => entry.Table, StringComparer.OrdinalIgnoreCase))
+            {
+                script.Append("DECLARE ").Append(table).Append(" TABLE ([Id] nvarchar(4000) COLLATE ")
+                    .Append(LedgerDdl.Collation).Append(");\n");
+
+                if (keys.Count > 0)
+                {
+                    script.Append("INSERT INTO ").Append(table).Append(" ([Id]) VALUES ")
+                        .Append(string.Join(", ", keys.Select(key => "(N'" + key.Replace("'", "''", StringComparison.Ordinal) + "')")))
+                        .Append(";\n");
+                }
+            }
+
+            return script.ToString();
         }
 
         /// <summary>Binds every slot with a value a playground can supply.</summary>

@@ -21,6 +21,12 @@ namespace Tellma.Core.Queryex.Diagnostics
 
         /// <summary>The ordering list.</summary>
         OrderBy = 3,
+
+        /// <summary>
+        ///     The key-set restrictions. Host structure rather than text, so the only problem one can
+        ///     be named in is a ceiling its joins push over.
+        /// </summary>
+        Restrictions = 4,
     }
 
     /// <summary>A logical connective inside a filter tree.</summary>

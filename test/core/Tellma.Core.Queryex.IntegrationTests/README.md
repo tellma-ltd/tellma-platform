@@ -10,7 +10,8 @@ comparison over absent values is easy to get subtly wrong and very hard to notic
 
 | Suite | What it proves |
 |---|---|
-| `DifferentialTests` | The rows on the server are the rows in memory, and every corpus query answers the same on both. |
+| `DifferentialTests` | The rows on the server are the rows in memory, and every corpus query answers the same on both — restrictions to key sets included, with each table of keys declared ahead of the statement the way a host would. |
+| `EmbeddingTests` | A compiled statement embeds in SQL of a host's own: its body counts as a derived table, unordered or paged, with its prologue written first; and keys one statement captures into a table restrict a second one in the same batch. |
 | `BackendFactsTests` | Every function that promises a value produces one even when everything it reads is missing; division keeps the fractional digits the language promises; emitted SQL means the same thing under hostile connection settings; and every zone the embedded table resolves to is one the server has. |
 
 Absence comes from **nullable columns with real NULL rows**, never from a `null` literal: a literal
@@ -36,7 +37,8 @@ dotnet test test/core/Tellma.Core.Queryex.IntegrationTests
 ```
 
 The connection string may name any database; the fixture creates and uses `TellmaQueryexTests`, and
-rebuilds its tables on every run.
+rebuilds its tables on every run. A database it creates gets the platform's collation,
+`Latin1_General_100_CI_AS`; the fixture's text columns keep the collation they declare.
 
 Every class here is tagged `Category=Integration`, which is how CI both excludes it from the pull-request
 run and includes it in the integration job. A class without the trait runs in neither.

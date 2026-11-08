@@ -62,7 +62,7 @@ namespace Tellma.Core.Queryex.Tests.Corpus
                 entry.Spec,
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Parameters = entry.Parameters,
                     HasUser = entry.HasUser,
@@ -82,6 +82,15 @@ namespace Tellma.Core.Queryex.Tests.Corpus
             Assert.True(
                 result.Succeeded,
                 string.Join(", ", result.Diagnostics.Select(d => d.Code + "@" + d.Location)));
+
+            // The parts a host embeds are exactly the batch, cut where a host needs it cut: the
+            // declarations and their empty line, then the statement with no terminator.
+            CompiledQuery query = result.Value;
+            Assert.Equal(query.Sql, query.Prologue + query.Body + ";\n");
+            Assert.True(query.Prologue.Length == 0 || query.Prologue.EndsWith(";\n\n", StringComparison.Ordinal));
+            Assert.StartsWith("SELECT\n", query.Body, StringComparison.Ordinal);
+            Assert.EndsWith("\n", query.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain(";", query.Body, StringComparison.Ordinal);
 
             string rendered = Render(result.Value);
             string path = Path.Combine(GoldenDirectory(), id + ".sql");

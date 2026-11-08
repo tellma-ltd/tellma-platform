@@ -29,6 +29,17 @@ namespace Tellma.Core.Queryex.IntegrationTests
         private const string DatabaseName = "TellmaQueryexTests";
 
         /// <summary>
+        ///     The collation the database is created with: the one every platform database uses.
+        /// </summary>
+        /// <remarks>
+        ///     Stated rather than inherited from the server, so what a statement compares under
+        ///     outside the fixture's own columns — a table variable's text column, a literal — is the
+        ///     same here as in production. The fixture's text columns keep the collation they
+        ///     declare.
+        /// </remarks>
+        private const string DatabaseCollation = "Latin1_General_100_CI_AS";
+
+        /// <summary>
         ///     The image a container run uses.
         /// </summary>
         /// <remarks>
@@ -66,7 +77,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
             {
                 await connection.OpenAsync();
                 await Execute(connection, "IF DB_ID('" + DatabaseName + "') IS NULL CREATE DATABASE ["
-                    + DatabaseName + "];");
+                    + DatabaseName + "] COLLATE " + DatabaseCollation + ";");
             }
 
             builder.InitialCatalog = DatabaseName;

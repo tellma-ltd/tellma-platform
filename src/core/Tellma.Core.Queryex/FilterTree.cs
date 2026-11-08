@@ -60,11 +60,51 @@ namespace Tellma.Core.Queryex
         /// </exception>
         public static FilterTree Leaf(string text)
         {
+            return new LeafNode(RequireText(text), null);
+        }
+
+        /// <summary>A single expression, stamped with the Queryex version it was validated under.</summary>
+        /// <param name="text">The expression text, which must not be empty or whitespace.</param>
+        /// <param name="queryexVersion">
+        ///     The version stored beside the text. The leaf binds under it, whatever version the rest
+        ///     of the compilation names.
+        /// </param>
+        /// <returns>The leaf node.</returns>
+        /// <exception cref="ArgumentException">
+        ///     <paramref name="text" /> is null, empty, or whitespace.
+        /// </exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        ///     <paramref name="queryexVersion" /> is one this engine does not compile.
+        /// </exception>
+        /// <remarks>
+        ///     A composed tree mixes criteria saved at different times: an access criterion stored
+        ///     years ago beside a filter typed a moment ago. Each was validated under the version
+        ///     stamped beside it, so each binds under that version rather than under one chosen for
+        ///     the whole query. Refused here rather than at compilation, so a stale stamp is reported
+        ///     at the call that read it from storage.
+        /// </remarks>
+        public static FilterTree Leaf(string text, int queryexVersion)
+        {
+            string required = RequireText(text);
+            return QueryexLanguage.IsSupported(queryexVersion)
+                ? new LeafNode(required, queryexVersion)
+                : throw new ArgumentOutOfRangeException(
+                    nameof(queryexVersion),
+                    queryexVersion,
+                    "This engine does not compile that Queryex version.");
+        }
+
+        /// <summary>Checks a leaf's text.</summary>
+        /// <param name="text">The expression text.</param>
+        /// <returns>The same text.</returns>
+        /// <exception cref="ArgumentException">The text is null, empty, or whitespace.</exception>
+        private static string RequireText(string text)
+        {
             return string.IsNullOrWhiteSpace(text)
                 ? throw new ArgumentException(
                     "A filter leaf must carry an expression. Omit the node instead of passing empty text.",
                     nameof(text))
-                : new LeafNode(text);
+                : text;
         }
 
         /// <summary>The height one node adds to the deepest of its children.</summary>
@@ -160,14 +200,26 @@ namespace Tellma.Core.Queryex
         {
             /// <summary>Initializes the leaf.</summary>
             /// <param name="text">The expression text.</param>
-            internal LeafNode(string text)
+            /// <param name="queryexVersion">The version stamped on it, or null when it has none.</param>
+            internal LeafNode(string text, int? queryexVersion)
                 : base(1)
             {
                 Text = text;
+                QueryexVersion = queryexVersion;
             }
 
             /// <summary>The expression text.</summary>
             public string Text { get; }
+
+            /// <summary>
+            ///     The Queryex version the leaf was stamped with, or null when it was built without
+            ///     one.
+            /// </summary>
+            /// <remarks>
+            ///     A leaf without a stamp binds under the version the compilation or the discovery
+            ///     names. A stamped one binds under its own.
+            /// </remarks>
+            public int? QueryexVersion { get; }
         }
 
         /// <summary>The conjunction of zero or more children. Empty is <c>true</c>.</summary>

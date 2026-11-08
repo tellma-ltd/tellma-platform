@@ -73,6 +73,12 @@ namespace Tellma.Core.Queryex.Functions
             RequiresZoneResolution = true,
         };
 
+        /// <summary>
+        ///     A position in a hierarchy. Only a path can supply one: the language has no literal
+        ///     for it, and a declared parameter cannot have its type.
+        /// </summary>
+        internal static TypeSpec Node { get; } = new TypeSpec { Admits = TypeMask.HierarchyId };
+
         /// <summary>A literal selector, whose text is consumed at compile time.</summary>
         internal static TypeSpec Selector { get; } = new TypeSpec { Admits = TypeMask.String };
 

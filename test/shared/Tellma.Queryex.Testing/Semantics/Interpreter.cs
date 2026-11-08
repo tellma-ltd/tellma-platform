@@ -23,6 +23,13 @@ namespace Tellma.Queryex.Testing.Semantics
         TimeZoneInfo TimeZone,
         IReadOnlyDictionary<string, QxValue> Parameters)
     {
+        /// <summary>
+        ///     The tables of keys a query's restrictions read, by the name the restriction gives
+        ///     them, matched ignoring case.
+        /// </summary>
+        public IReadOnlyDictionary<string, KeySet> KeySets { get; init; } =
+            new Dictionary<string, KeySet>(StringComparer.OrdinalIgnoreCase);
+
         /// <summary>A context with fixed values, so a run produces the same answers as the last.</summary>
         public static InterpreterContext Fixed { get; } = new(
             new DateOnly(2024, 6, 15),

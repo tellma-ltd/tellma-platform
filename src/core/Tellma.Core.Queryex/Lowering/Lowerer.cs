@@ -215,20 +215,58 @@ namespace Tellma.Core.Queryex.Lowering
 
         /// <summary>Allocates the slot a paging value binds through.</summary>
         /// <param name="value">The value.</param>
-        /// <returns>The slot.</returns>
+        /// <param name="suffix">What follows the batch prefix in the slot's name.</param>
+        /// <returns>The slot, already named.</returns>
         /// <remarks>
-        ///     Bound as a whole number rather than at the language's numeric default: the paging
-        ///     clause rejects a fractional count outright.
+        ///     <para>
+        ///         Bound as a whole number rather than at the language's numeric default: the paging
+        ///         clause rejects a fractional count outright.
+        ///     </para>
+        ///     <para>
+        ///         Kept out of the shared table of slots and given a fixed name, rather than the next
+        ///         number in sequence and a share in any equal value. A page is then not part of what
+        ///         a compilation is: the second page of a query is the first page's SQL with two values
+        ///         changed, so the cached template and the backend's cached plan both serve it.
+        ///     </para>
         /// </remarks>
-        internal ParameterSlot PagingSlot(int value)
+        internal ParameterSlot PagingSlot(int value, string suffix)
         {
-            return Slot(
+            return new ParameterSlot(
                 BoundType.Numeric,
                 QueryexStoreType.QxInt,
                 QueryexParameterOrigin.Literal,
                 value,
-                declaredName: null,
-                default);
+                null,
+                new PlanOrigin(default, _location))
+            {
+                Name = Prefix + "_" + suffix,
+            };
+        }
+
+        /// <summary>Lowers one key-set restriction into a conjunct of the row filter.</summary>
+        /// <param name="navigations">The navigations from the root to the restricted property.</param>
+        /// <param name="property">The restricted property.</param>
+        /// <param name="tableSource">The host's table of keys.</param>
+        /// <returns>The lowered predicate.</returns>
+        /// <remarks>
+        ///     The navigations are walked through the shared join tree like any path a clause wrote,
+        ///     so a restriction through a navigation the select list also reads costs no second join.
+        /// </remarks>
+        internal PlanKeySetRestriction LowerRestriction(
+            ImmutableArray<NavigationDescriptor> navigations,
+            PropertyDescriptor property,
+            string tableSource)
+        {
+            JoinNode table = Walk(navigations, default);
+            return new PlanKeySetRestriction(new PlanColumn(default, table, property), tableSource);
+        }
+
+        /// <summary>Reads a column of the root that the schema leaves out.</summary>
+        /// <param name="column">The physical column name, unquoted.</param>
+        /// <returns>The lowered value.</returns>
+        internal PlanUndeclaredColumn UndeclaredColumn(string column)
+        {
+            return new PlanUndeclaredColumn(Root, column);
         }
 
         /// <summary>
@@ -236,7 +274,10 @@ namespace Tellma.Core.Queryex.Lowering
         ///     every surviving join, binding, variable, and slot the name it is written under.
         /// </summary>
         /// <param name="fragments">Every fragment the statement will actually contain.</param>
-        /// <param name="paging">The slots the paging clause binds, which no fragment mentions.</param>
+        /// <param name="paging">
+        ///     The slots the paging clause binds, which no fragment mentions and which are named
+        ///     already.
+        /// </param>
         /// <returns>The surviving joins, in alias order and excluding the root.</returns>
         /// <remarks>
         ///     What survives is read off the finished fragments rather than noted while they were
@@ -247,9 +288,9 @@ namespace Tellma.Core.Queryex.Lowering
         /// </remarks>
         internal ImmutableArray<JoinNode> Complete(
             IEnumerable<PlanNode> fragments,
-            IEnumerable<ParameterSlot> paging)
+            IReadOnlyList<ParameterSlot> paging)
         {
-            Reach(fragments, paging);
+            Reach(fragments);
 
             ImmutableArray<JoinNode>.Builder joins = ImmutableArray.CreateBuilder<JoinNode>();
             int alias = 0;
@@ -288,7 +329,9 @@ namespace Tellma.Core.Queryex.Lowering
                 _budget.TryConsumeJoin(join.Origin.Span, _sink.Scope(join.Origin.Location));
             }
 
-            foreach (ParameterSlot slot in _slots)
+            // The paging slots count too: they are parameters of the statement like any other, and
+            // only their names and their place at the end of the list set them apart.
+            foreach (ParameterSlot slot in _slots.Concat(paging))
             {
                 _budget.TryConsumeParameter(slot.Written.Span, _sink.Scope(slot.Written.Location));
             }
@@ -299,32 +342,32 @@ namespace Tellma.Core.Queryex.Lowering
                     "B" + (index + 1).ToString(CultureInfo.InvariantCulture);
             }
 
-            string prefix = "@qx" + _batchOrdinal.ToString(CultureInfo.InvariantCulture);
             for (int index = 0; index < _variables.Count; index++)
             {
                 _variables[index].Name =
-                    prefix + "_v" + index.ToString(CultureInfo.InvariantCulture);
+                    Prefix + "_v" + index.ToString(CultureInfo.InvariantCulture);
             }
 
             for (int index = 0; index < _slots.Count; index++)
             {
                 _slots[index].Name =
-                    prefix + "_p" + index.ToString(CultureInfo.InvariantCulture);
+                    Prefix + "_p" + index.ToString(CultureInfo.InvariantCulture);
             }
 
             return joins.ToImmutable();
         }
 
+        /// <summary>The prefix every name this query emits begins with.</summary>
+        /// <remarks>
+        ///     The engine's reserved namespace, then the query's position among those a host executes
+        ///     together, so that several compiled queries compose into one batch without colliding.
+        /// </remarks>
+        private string Prefix => "@qx" + _batchOrdinal.ToString(CultureInfo.InvariantCulture);
+
         /// <summary>Finds everything the finished fragments actually read.</summary>
         /// <param name="fragments">Every fragment the statement will contain.</param>
-        /// <param name="paging">The slots the paging clause binds.</param>
-        private void Reach(IEnumerable<PlanNode> fragments, IEnumerable<ParameterSlot> paging)
+        private void Reach(IEnumerable<PlanNode> fragments)
         {
-            foreach (ParameterSlot slot in paging)
-            {
-                _liveSlots.Add(slot);
-            }
-
             Queue<PlanNode> pending = new(fragments);
             HashSet<PlanNode> seen = new(ReferenceEqualityComparer.Instance);
 

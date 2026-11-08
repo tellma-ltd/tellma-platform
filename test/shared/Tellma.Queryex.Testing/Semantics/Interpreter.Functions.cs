@@ -38,7 +38,7 @@ namespace Tellma.Queryex.Testing.Semantics
                 "abs", "floor", "ceiling", "round",
                 "length", "trim", "upper", "lower", "left", "right", "substring", "replace",
                 "contains", "startsWith", "endsWith",
-                "descendantOf", "ancestorOf",
+                "descendantOf", "ancestorOf", "level",
                 "sum", "avg", "min", "max", "count",
             ],
             StringComparer.OrdinalIgnoreCase);
@@ -142,9 +142,22 @@ namespace Tellma.Queryex.Testing.Semantics
                 "CONTAINS" => QxValue.Flag(Collation.IndexOf(arguments[0].AsText, arguments[1].AsText) > 0),
                 "STARTSWITH" => QxValue.Flag(Collation.IndexOf(arguments[0].AsText, arguments[1].AsText) == 1),
                 "ENDSWITH" => QxValue.Flag(EndsWith(arguments[0].AsText, arguments[1].AsText)),
+                "LEVEL" => QxValue.Number(Depth(arguments[0].AsNode)),
                 _ => throw new NotSupportedException(
                     "The reference reading of the language does not cover '" + name + "'."),
             };
+        }
+
+        /// <summary>How deep a position sits in its hierarchy.</summary>
+        /// <param name="path">The position, written as its path: <c>/</c> for the root, <c>/1/2/</c> below it.</param>
+        /// <returns>The number of steps from the root, which is the number of segments the path names.</returns>
+        /// <remarks>
+        ///     Counted from the written path rather than from any stored depth or numbering scheme,
+        ///     because the language promises only what the backend's own depth reports.
+        /// </remarks>
+        private static int Depth(string path)
+        {
+            return path.Count(character => character == '/') - 1;
         }
 
         /// <summary>The first argument that has a value.</summary>

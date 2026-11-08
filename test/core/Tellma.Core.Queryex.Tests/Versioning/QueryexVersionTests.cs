@@ -19,7 +19,7 @@ namespace Tellma.Core.Queryex.Tests.Versioning
     ///     remembered — which is what has to be true before a second version can be added without
     ///     rewriting the callers or the caches.
     /// </remarks>
-    public sealed class LanguageVersionTests
+    public sealed class QueryexVersionTests
     {
         /// <summary>The engine under test.</summary>
         private static readonly QueryexEngine Engine = new();
@@ -56,7 +56,7 @@ namespace Tellma.Core.Queryex.Tests.Versioning
             Assert.Throws<ArgumentOutOfRangeException>(
                 () => new ValidationOptions
                 {
-                    LanguageVersion = version,
+                    QueryexVersion = version,
                     Schema = LedgerFixture.Schema,
                     Root = LedgerFixture.Invoice,
                     Mode = QueryexMode.Value,
@@ -65,12 +65,12 @@ namespace Tellma.Core.Queryex.Tests.Versioning
             Assert.Throws<ArgumentOutOfRangeException>(
                 () => new QueryCompilationOptions
                 {
-                    LanguageVersion = version,
+                    QueryexVersion = version,
                     Schema = LedgerFixture.Schema,
                 });
 
             Assert.Throws<ArgumentOutOfRangeException>(
-                () => new DiscoveryOptions { LanguageVersion = version });
+                () => new DiscoveryOptions { QueryexVersion = version });
         }
 
         /// <summary>
@@ -84,7 +84,7 @@ namespace Tellma.Core.Queryex.Tests.Versioning
             ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
                 () => new ValidationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version + 1,
+                    QueryexVersion = QueryexLanguage.Version + 1,
                     Schema = LedgerFixture.Schema,
                     Root = LedgerFixture.Invoice,
                     Mode = QueryexMode.Value,
@@ -101,12 +101,12 @@ namespace Tellma.Core.Queryex.Tests.Versioning
         [Fact]
         public void Discovery_DefaultsToTheCurrentVersion()
         {
-            Assert.Equal(QueryexLanguage.Version, new DiscoveryOptions().LanguageVersion);
+            Assert.Equal(QueryexLanguage.Version, new DiscoveryOptions().QueryexVersion);
 
             // Settable all the same: a host reopening a stored expression for editing describes it
             // under the rules it was written against, not under today's.
-            DiscoveryOptions reopened = new() { LanguageVersion = QueryexLanguage.Minimum };
-            Assert.Equal(QueryexLanguage.Minimum, reopened.LanguageVersion);
+            DiscoveryOptions reopened = new() { QueryexVersion = QueryexLanguage.Minimum };
+            Assert.Equal(QueryexLanguage.Minimum, reopened.QueryexVersion);
         }
 
         /// <summary>
@@ -120,7 +120,7 @@ namespace Tellma.Core.Queryex.Tests.Versioning
                 "Amount + 1",
                 new ValidationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Root = LedgerFixture.Invoice,
                     Mode = QueryexMode.Value,
@@ -132,7 +132,7 @@ namespace Tellma.Core.Queryex.Tests.Versioning
                 new QuerySpec { Root = LedgerFixture.Invoice, Select = "Amount" },
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                 });
 
@@ -153,11 +153,132 @@ namespace Tellma.Core.Queryex.Tests.Versioning
         [Fact]
         public void TwoVersions_AreDifferentCacheEntries()
         {
-            Assert.True(ProbeCacheKeys.DistinguishesLanguageVersions(
+            Assert.True(ProbeCacheKeys.DistinguishesQueryexVersions(
                 QueryexLanguage.Version,
                 QueryexLanguage.Version + 1,
                 LedgerFixture.Schema,
                 LedgerFixture.Invoice));
+        }
+
+        /// <summary>
+        ///     A leaf stamped with a version this engine does not compile is refused when it is
+        ///     built, below the floor and above the ceiling alike.
+        /// </summary>
+        /// <param name="version">The unsupported version.</param>
+        [Theory]
+        [InlineData(0)]
+        [InlineData(-1)]
+        [InlineData(QueryexLanguage.Version + 1)]
+        public void AStampedLeaf_WithAnUnsupportedVersion_IsRefused(int version)
+        {
+            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+                () => FilterTree.Leaf("IsPosted", version));
+
+            Assert.Equal(version, thrown.ActualValue);
+            Assert.Equal("queryexVersion", thrown.ParamName);
+        }
+
+        /// <summary>A stamped leaf still refuses empty text, as the unstamped form does.</summary>
+        [Fact]
+        public void AStampedLeaf_WithEmptyText_IsRefused()
+        {
+            Assert.Throws<ArgumentException>(() => FilterTree.Leaf("  ", QueryexLanguage.Version));
+        }
+
+        /// <summary>A leaf carries the stamp it was built with, and the one-argument form none.</summary>
+        [Fact]
+        public void ALeaf_CarriesItsStamp()
+        {
+            var stamped = (FilterTree.LeafNode)FilterTree.Leaf("IsPosted", QueryexLanguage.Minimum);
+            var unstamped = (FilterTree.LeafNode)FilterTree.Leaf("IsPosted");
+
+            Assert.Equal(QueryexLanguage.Minimum, stamped.QueryexVersion);
+            Assert.Null(unstamped.QueryexVersion);
+        }
+
+        /// <summary>
+        ///     A tree mixing stamped and unstamped leaves compiles, and while one version exists it
+        ///     compiles to exactly what the unstamped tree does.
+        /// </summary>
+        [Fact]
+        public void ATreeMixingBothForms_Compiles()
+        {
+            QuerySpec mixed = new()
+            {
+                Root = LedgerFixture.Invoice,
+                Select = "Id",
+                Filter = FilterTree.And(
+                [
+                    FilterTree.Leaf("IsPosted", QueryexLanguage.Version),
+                    FilterTree.Or([FilterTree.Leaf("Amount > 0"), FilterTree.Leaf("Count > 3", QueryexLanguage.Minimum)]),
+                ]),
+            };
+
+            QuerySpec plain = mixed with
+            {
+                Filter = FilterTree.And(
+                [
+                    FilterTree.Leaf("IsPosted"),
+                    FilterTree.Or([FilterTree.Leaf("Amount > 0"), FilterTree.Leaf("Count > 3")]),
+                ]),
+            };
+
+            QueryexResult<CompiledQuery> stamped = Engine.CompileQuery(mixed, Options());
+            QueryexResult<CompiledQuery> unstamped = Engine.CompileQuery(plain, Options());
+
+            Assert.True(stamped.Succeeded);
+            Assert.True(unstamped.Succeeded);
+            Assert.Equal(unstamped.Value.Sql, stamped.Value.Sql);
+        }
+
+        /// <summary>
+        ///     Two trees that differ only in one leaf's stamp are different compilations: once a
+        ///     second version exists, the stamp changes what the leaf binds to.
+        /// </summary>
+        [Fact]
+        public void TreesDifferingOnlyInALeafStamp_AreDifferentCacheEntries()
+        {
+            QuerySpec unstamped = new()
+            {
+                Root = LedgerFixture.Invoice,
+                Select = "Id",
+                Filter = FilterTree.Leaf("IsPosted"),
+            };
+
+            QuerySpec stamped = unstamped with { Filter = FilterTree.Leaf("IsPosted", QueryexLanguage.Version) };
+
+            Assert.False(ProbeCacheKeys.ShareQueryEntry(unstamped, stamped, Options()));
+            Assert.True(ProbeCacheKeys.ShareQueryEntry(
+                stamped,
+                unstamped with { Filter = FilterTree.Leaf("IsPosted", QueryexLanguage.Version) },
+                Options()));
+        }
+
+        /// <summary>Discovery reads a stamped leaf as readily as an unstamped one.</summary>
+        [Fact]
+        public void Discovery_ReadsAStampedLeaf()
+        {
+            DiscoveryResult result = Engine.DiscoverQuery(
+                new QueryDiscoverySpec
+                {
+                    Select = "Id",
+                    Filter = FilterTree.Leaf("PostingDate >= @From", QueryexLanguage.Version),
+                },
+                new DiscoveryOptions { Schema = LedgerFixture.Schema, Root = LedgerFixture.Invoice });
+
+            ParameterUse from = Assert.Single(result.Parameters);
+            Assert.Equal(QueryexType.QxDate, from.InferredType);
+        }
+
+        /// <summary>The options every compilation here runs under.</summary>
+        /// <returns>The options.</returns>
+        private static QueryCompilationOptions Options()
+        {
+            return new QueryCompilationOptions
+            {
+                QueryexVersion = QueryexLanguage.Version,
+                Schema = LedgerFixture.Schema,
+            };
         }
     }
 }

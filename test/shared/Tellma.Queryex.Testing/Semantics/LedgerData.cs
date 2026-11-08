@@ -17,6 +17,13 @@ namespace Tellma.Queryex.Testing.Semantics
     /// <param name="Values">Its values, by logical property name.</param>
     public sealed record LedgerRow(EntityDescriptor Entity, FrozenDictionary<string, QxValue> Values)
     {
+        /// <summary>
+        ///     The values of the columns the schema leaves out, by physical column name. Every one of
+        ///     them is text, and absent where the row has none.
+        /// </summary>
+        public FrozenDictionary<string, QxValue> Undeclared { get; init; } =
+            FrozenDictionary<string, QxValue>.Empty;
+
         /// <summary>One value of the row.</summary>
         /// <param name="property">The logical property name.</param>
         /// <returns>The value, or absence when the row has none.</returns>
@@ -103,7 +110,7 @@ namespace Tellma.Queryex.Testing.Semantics
             {
                 foreach (LedgerRow row in rows)
                 {
-                    foreach (QxValue value in row.Values.Values)
+                    foreach (QxValue value in row.Values.Values.Concat(row.Undeclared.Values))
                     {
                         if (!value.IsAbsent && value.Type == QueryexType.QxString)
                         {
@@ -326,7 +333,21 @@ namespace Tellma.Queryex.Testing.Semantics
                     ? QxValue.Number(1 + (id % 3))
                     : QxValue.Absent(QueryexType.QxNumeric)),
                 ("CentreId", QxValue.Number(1 + (id % 2))),
-                ("AccountId", QxValue.Number(1 + (id % 5))));
+                ("AccountId", QxValue.Number(1 + (id % 5)))) with
+            {
+                // Opaque text the schema never declares: present on some rows and absent on others,
+                // and the two columns absent on different rows, so reading one in place of the
+                // other shows.
+                Undeclared = new Dictionary<string, QxValue>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["ExtrasJson"] = everything
+                        ? QxValue.Text("{\"line\":" + id.ToString(CultureInfo.InvariantCulture) + "}")
+                        : QxValue.Absent(QueryexType.QxString),
+                    ["AuditJson"] = id % 3 == 0
+                        ? QxValue.Absent(QueryexType.QxString)
+                        : QxValue.Text("{\"by\":\"user-" + (id % 3).ToString(CultureInfo.InvariantCulture) + "\"}"),
+                }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase),
+            };
         }
 
         /// <summary>A stable identifier for a row, so a run produces the same values as the last.</summary>
@@ -371,29 +392,42 @@ namespace Tellma.Queryex.Testing.Semantics
         /// <param name="row">The row.</param>
         private static void AppendInsert(StringBuilder script, EntityDescriptor entity, LedgerRow row)
         {
-            script.Append("INSERT INTO ").Append(entity.Source).Append(" (");
-            for (int index = 0; index < entity.Properties.Count; index++)
+            // The declared columns, then the ones the schema leaves out, in the order the table
+            // declares them.
+            List<string> columns = [];
+            List<string> values = [];
+            foreach (PropertyDescriptor property in entity.Properties)
             {
-                if (index > 0)
-                {
-                    script.Append(", ");
-                }
-
-                script.Append('[').Append(entity.Properties[index].Column).Append(']');
+                columns.Add("[" + property.Column + "]");
+                values.Add(Rendered(row[property.Name]));
             }
 
-            script.Append(") VALUES (");
-            for (int index = 0; index < entity.Properties.Count; index++)
+            foreach (UndeclaredColumn undeclared in LedgerFixture.UndeclaredColumns(entity))
             {
-                if (index > 0)
-                {
-                    script.Append(", ");
-                }
-
-                script.Append(Rendered(row[entity.Properties[index].Name]));
+                columns.Add("[" + undeclared.Name + "]");
+                values.Add(Rendered(row.Undeclared.GetValueOrDefault(undeclared.Name)
+                    ?? QxValue.Absent(QueryexType.QxString)));
             }
 
-            script.Append(");\n");
+            script.Append("INSERT INTO ").Append(entity.Source).Append(" (")
+                .Append(string.Join(", ", columns))
+                .Append(") VALUES (")
+                .Append(string.Join(", ", values))
+                .Append(");\n");
+        }
+
+        /// <summary>Writes one value the way a statement carries it, for a host's own statements.</summary>
+        /// <param name="value">The value.</param>
+        /// <returns>The rendered value, or <c>NULL</c> when it is absent.</returns>
+        /// <remarks>
+        ///     What a test uses to fill a table of keys the same way the fixture fills its own tables,
+        ///     so the two cannot read one value differently.
+        /// </remarks>
+        public static string Literal(QxValue value)
+        {
+            ArgumentNullException.ThrowIfNull(value);
+
+            return Rendered(value);
         }
 
         /// <summary>Writes one value the way a statement carries it.</summary>

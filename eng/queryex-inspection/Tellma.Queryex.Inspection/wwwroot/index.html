@@ -32,6 +32,8 @@
   <label><span>filter</span><input type="text" id="filter" value="Amount &gt; 0"></label>
   <label><span>having</span><input type="text" id="having" value=""></label>
   <label><span>order by</span><input type="text" id="orderBy" value=""></label>
+  <label><span>restrictions (path @table = keys; …)</span><input type="text" id="restrictions" value=""></label>
+  <label><span>undeclared columns</span><input type="text" id="undeclaredColumns" value=""></label>
 </div>
 
 <div class="options">
@@ -55,7 +57,7 @@
 <script>
 // Everything the page does is one round trip per keystroke, debounced. The compiler is fast enough
 // that watching every stage react as the input changes is the whole point of the tool.
-const fields = ['select', 'filter', 'having', 'orderBy'];
+const fields = ['select', 'filter', 'having', 'orderBy', 'restrictions', 'undeclaredColumns'];
 const el = id => document.getElementById(id);
 
 function table(headers, rows) {
@@ -77,7 +79,9 @@ async function inspect() {
     orderBy: el('orderBy').value,
     aggregate: el('aggregate').checked,
     root: el('root').value,
-    execute: el('execute').checked
+    execute: el('execute').checked,
+    restrictions: el('restrictions').value,
+    undeclaredColumns: el('undeclaredColumns').value
   };
 
   el('status').textContent = 'compiling…';

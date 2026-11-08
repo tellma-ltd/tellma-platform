@@ -7,6 +7,11 @@ using Tellma.Core.Queryex;
 
 namespace Tellma.Queryex.Testing.Schema
 {
+    /// <summary>A column a fixture table holds that the schema does not declare.</summary>
+    /// <param name="Name">The physical column name.</param>
+    /// <param name="StoreType">The column's type.</param>
+    public sealed record UndeclaredColumn(string Name, QueryexStoreType StoreType);
+
     /// <summary>
     ///     The schema every Queryex suite binds against.
     /// </summary>
@@ -42,6 +47,30 @@ namespace Tellma.Queryex.Testing.Schema
 
         /// <summary>An entity that is not hierarchical, so asking it for ancestry fails.</summary>
         public static EntityDescriptor Party { get; } = Schema.FindEntity("Party")!;
+
+        /// <summary>
+        ///     The columns an entity's table holds that the schema leaves out on purpose.
+        /// </summary>
+        /// <param name="entity">The entity.</param>
+        /// <returns>The columns, in the order the table declares them; empty for most entities.</returns>
+        /// <remarks>
+        ///     Opaque text the schema omits by design, the way a host leaves JSON columns out of what
+        ///     an expression can name. Kept beside the schema rather than in it, because the whole
+        ///     point is that the compiler never learns about them: a query reads them by name, and
+        ///     the tables a differential run creates have to hold them all the same.
+        /// </remarks>
+        public static IReadOnlyList<UndeclaredColumn> UndeclaredColumns(EntityDescriptor entity)
+        {
+            ArgumentNullException.ThrowIfNull(entity);
+
+            return ReferenceEquals(entity, Invoice)
+                ?
+                [
+                    new UndeclaredColumn("ExtrasJson", QueryexStoreType.QxNVarChar(null)),
+                    new UndeclaredColumn("AuditJson", QueryexStoreType.QxNVarChar(null)),
+                ]
+                : [];
+        }
 
         /// <summary>Builds the schema.</summary>
         /// <returns>The schema.</returns>
