@@ -6,6 +6,8 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { expectNoAxeViolations } from '../support/axe';
+import { holdResponses, releaseResponses } from '../support/held-responses';
+import { appStable } from '../support/settle';
 import { storyUrl } from '../support/story-map';
 
 /**
@@ -55,8 +57,13 @@ function fieldError(page: Page): Locator {
   return page.getByTestId('ff').locator('.tm-form-field__error');
 }
 
-/** The story's committed-model oracle. */
+/**
+ * The story's committed-model oracle, read once the app is stable: the dump
+ * renders a beat after the commit it reflects (the input shows a pick's
+ * label at once), so an immediate read could see the model before it.
+ */
 async function model(page: Page): Promise<{ supplierId: number | null; populatedId: number | null }> {
+  await appStable(page);
   const text = await page.getByTestId('model-json').textContent();
   return JSON.parse(text ?? '{}') as { supplierId: number | null; populatedId: number | null };
 }
@@ -66,11 +73,14 @@ async function useSyncSearch(page: Page): Promise<void> {
   await page.getByTestId('search-async').uncheck();
 }
 
+/** Sets the story's async search latency. */
 async function setSearchDelay(page: Page, ms: number): Promise<void> {
   await page.getByTestId('search-delay').fill(String(ms));
 }
 
+/** The story's search-call counter, read once the app is stable. */
 async function searchCalls(page: Page): Promise<number> {
+  await appStable(page);
   return Number(await page.getByTestId('search-calls').textContent());
 }
 
@@ -78,6 +88,37 @@ test.beforeEach(async ({ page }) => {
   await page.goto(storyUrl('entity-picker'));
   await expect(input(page)).toBeVisible();
 });
+
+/** The instant the fake clock starts from. */
+const CLOCK_START = new Date('2026-01-05T09:00:00Z');
+/** The instant the fake clock jumps to and pauses at, well past any setup. */
+const CLOCK_PAUSE = new Date('2026-01-05T09:10:00Z');
+
+/**
+ * Reloads the story on Playwright's fake clock and focuses the field
+ * picker, leaving the clock running; `configure` then sets the story up in
+ * real time. The clock is paused last, so from then on page time (the
+ * coalescing window, the search latency, renders) moves only when the test
+ * advances it. A timing claim then rests on page time alone: real-time
+ * delays between key presses are what CDP jitter and a slow runner bend,
+ * and a stretched gap would open a window the burst never left.
+ */
+async function pauseClockAfter(page: Page, configure: () => Promise<void>): Promise<void> {
+  await page.clock.install({ time: CLOCK_START });
+  await page.reload();
+  await expect(input(page)).toBeVisible();
+  await configure();
+  await input(page).focus();
+  await page.clock.pauseAt(CLOCK_PAUSE);
+}
+
+/** Presses each character in turn, advancing page time by `gapMs` after each. */
+async function typeOnClock(page: Page, text: string, gapMs: number): Promise<void> {
+  for (const key of text) {
+    await page.keyboard.press(key);
+    await page.clock.runFor(gapMs);
+  }
+}
 
 test.describe('search lifecycle', () => {
   test('sync source renders keystroke-instant with no spinner; async shows the immediate spinner', async ({
@@ -89,11 +130,14 @@ test.describe('search lifecycle', () => {
     await expect(status(page)).toHaveCount(0); // no spinner ever appeared
 
     // Async: the spinner shows at once and holds until the fresh set lands.
+    // The response is held, so the in-flight state stays on screen until it
+    // has been asserted, however slow the runner.
     await page.getByTestId('search-async').check();
-    await setSearchDelay(page, 400);
+    await holdResponses(page, 'search');
     await input(page).fill('Alice');
     await expect(status(page).locator('tm-spinner')).toBeVisible();
     await expect(options(page)).toHaveCount(0); // stale rows cleared immediately
+    await releaseResponses(page, 'search');
     await expect(options(page)).toHaveText(['Alice Green']);
     await expect(status(page)).toHaveCount(0);
   });
@@ -102,13 +146,22 @@ test.describe('search lifecycle', () => {
     // The window slides: every keystroke inside it pushes the deadline out,
     // so a sustained burst costs the leading request plus one trailing one
     // — not one per window, which is what a fixed window would charge.
-    // The window is widened here only so the assertion cannot be decided
-    // by CDP round-trip jitter; the semantics under test are the default's.
-    await setSearchDelay(page, 200);
-    await page.getByTestId('search-debounce').fill('300');
-    const before = await searchCalls(page);
-    await input(page).pressSequentially('aaaaaaaaaaaaaaaaaaaa', { delay: 33 });
-    await page.waitForTimeout(600);
+    // The window is widened to 300 ms, far beyond the 33 ms repeat; the
+    // semantics under test are the default's. Page time runs on a paused
+    // fake clock, so no real-time stall can stretch a gap past the window.
+    let before = 0;
+    await pauseClockAfter(page, async () => {
+      await setSearchDelay(page, 200);
+      await page.getByTestId('search-debounce').fill('300');
+      before = await searchCalls(page);
+    });
+    await typeOnClock(page, 'aaaaaaaaaaaaaaaaaaaa', 33); // a key repeating every 33 ms
+    await page.clock.runFor(300); // the window goes quiet: the trailing request fires
+    await page.clock.runFor(200); // …and its answer lands
+    await page.clock.resume();
+    // Nothing matches the run of a's, and the leading request was aborted
+    // by the next keystroke: 'No results' is the trailing request's answer.
+    await expect(status(page)).toHaveText('No results');
     expect((await searchCalls(page)) - before).toBe(2);
   });
 
@@ -117,9 +170,13 @@ test.describe('search lifecycle', () => {
   }) => {
     // The window only absorbs bursts: at human typing speed each keystroke
     // is its own leading edge and fires immediately.
-    await setSearchDelay(page, 100);
-    const before = await searchCalls(page);
-    await input(page).pressSequentially('Ali', { delay: 120 });
+    let before = 0;
+    await pauseClockAfter(page, async () => {
+      await setSearchDelay(page, 100);
+      before = await searchCalls(page);
+    });
+    await typeOnClock(page, 'Ali', 120); // each key lands after the 50 ms window closed
+    await page.clock.resume();
     await expect(options(page)).toHaveText(['Alice Green']);
     expect((await searchCalls(page)) - before).toBe(3);
   });
@@ -363,6 +420,8 @@ test.describe('keyboard matrix', () => {
     // "this is your supplier" while the box reads empty.
     await useSyncSearch(page);
     await input(page).fill('Alice Gr');
+    // The highlight renders a beat after the keystroke; Enter acts on it.
+    await expect(activeOption(page)).toHaveText('Alice Green');
     await input(page).press('Enter');
     await expect(input(page)).toHaveValue('Alice Green');
 
@@ -407,10 +466,11 @@ test.describe('blur resolution', () => {
   test('a unique match auto-picks even when the response lands after the departure', async ({
     page,
   }) => {
-    await setSearchDelay(page, 500);
+    await holdResponses(page, 'search');
     await input(page).fill('Alice Gr');
     await page.getByTestId('submit').focus(); // real departure mid-flight
     await expect(panel(page)).toHaveCount(0);
+    await releaseResponses(page, 'search'); // the response lands after the departure
     await expect(input(page)).toHaveValue('Alice Green');
     expect((await model(page)).supplierId).toBe(3);
     await expect(fieldError(page)).toHaveText(''); // no error flash
@@ -487,16 +547,17 @@ test.describe('panel placement', () => {
     // so the very first painted position is the final one. (Choosing it
     // from the panel instead means measuring an empty panel, which always
     // "fits below" and then gets yanked up a frame later.)
-    await setSearchDelay(page, 600); // the panel is still a spinner when it attaches
+    await holdResponses(page, 'search'); // the panel is still a spinner when it attaches
     const flip = input(page, 'picker-flip');
     const anchor = (await flip.boundingBox())!;
     await flip.click();
-    await expect(panel(page)).toBeVisible();
+    await expect(status(page).locator('tm-spinner')).toBeVisible();
 
     const whileLoading = (await panel(page).boundingBox())!;
     expect(whileLoading.y + whileLoading.height).toBeLessThanOrEqual(anchor.y + 2);
 
     // …and it stays above once the results replace the spinner.
+    await releaseResponses(page, 'search');
     await expect(options(page).first()).toBeVisible();
     const withResults = (await panel(page).boundingBox())!;
     expect(withResults.y + withResults.height).toBeLessThanOrEqual(anchor.y + 2);
@@ -505,13 +566,14 @@ test.describe('panel placement', () => {
   test('a growing result set never re-orients the panel or overflows the viewport', async ({
     page,
   }) => {
-    await setSearchDelay(page, 400);
+    await holdResponses(page, 'search');
     const flip = input(page, 'picker-flip');
     await flip.click();
-    await expect(panel(page)).toBeVisible();
+    await expect(status(page).locator('tm-spinner')).toBeVisible();
     const loadingTop = (await panel(page).boundingBox())!.y;
 
     // The full directory is the longest set this picker can show.
+    await releaseResponses(page, 'search');
     await expect(options(page).first()).toBeVisible();
     const grown = (await panel(page).boundingBox())!;
     const viewport = page.viewportSize()!;
@@ -541,22 +603,25 @@ test.describe('size stability', () => {
   test('the field box keeps its size across loading, resolving, resolved, and error states', async ({
     page,
   }) => {
-    await setSearchDelay(page, 800);
+    await holdResponses(page, 'search');
     const box = page.getByTestId('ff').locator('.tm-form-field__box');
     const before = (await box.boundingBox())!;
 
     await input(page).fill('Alice Gr'); // loading — dropdown-only churn
+    await expect(status(page).locator('tm-spinner')).toBeVisible();
     const loading = (await box.boundingBox())!;
 
     await page.getByTestId('submit').focus(); // resolving — the spinner slot fills
     await expect(page.getByTestId('ff').locator('.tm-form-field__spinner')).toBeVisible();
     const resolving = (await box.boundingBox())!;
 
+    await releaseResponses(page, 'search');
     await expect(input(page)).toHaveValue('Alice Green'); // the pick lands
     const resolved = (await box.boundingBox())!;
 
     await input(page).fill('Zebra'); // kept-error state
     await page.getByTestId('submit').focus();
+    await releaseResponses(page, 'search');
     await expect(fieldError(page)).toContainText('No match for');
     const errored = (await box.boundingBox())!;
 
@@ -579,50 +644,56 @@ test.describe('modal round-trips', () => {
     await expect(input(page)).toBeFocused();
   });
 
-  test('the create page prefills the query; its pick applies with the fresh label', async ({
-    page,
-  }) => {
-    await useSyncSearch(page);
-    await input(page).fill('Newco');
-    await expect(status(page)).toHaveText('No results');
-    // Each arrow waits for the row it asked for: a burst measures how fast
-    // the runner is, not where the highlight goes.
-    await input(page).press('ArrowDown');
-    await expect(activeOption(page)).toHaveText('Advanced search…');
-    await input(page).press('ArrowDown');
-    await expect(activeOption(page)).toHaveText('Create supplier…');
-    await input(page).press('Enter');
-    await expect(page.getByTestId('create-name')).toHaveValue('Newco');
-    await page.getByTestId('create-save').click();
-    await expect(input(page)).toHaveValue('Newco');
-    expect((await model(page)).supplierId).toBeGreaterThanOrEqual(100);
-  });
+  test(
+    'the create page prefills the query; its pick applies with the fresh label',
+    async ({ page }) => {
+      await useSyncSearch(page);
+      await input(page).fill('Newco');
+      await expect(status(page)).toHaveText('No results');
+      // Each arrow waits for the row it asked for: a burst measures how fast
+      // the runner is, not where the highlight goes.
+      await input(page).press('ArrowDown');
+      await expect(activeOption(page)).toHaveText('Advanced search…');
+      await input(page).press('ArrowDown');
+      await expect(activeOption(page)).toHaveText('Create supplier…');
+      await input(page).press('Enter');
+      await expect(page.getByTestId('create-name')).toHaveValue('Newco');
+      await page.getByTestId('create-save').click();
+      await expect(input(page)).toHaveValue('Newco');
+      expect((await model(page)).supplierId).toBeGreaterThanOrEqual(100);
+    },
+  );
 
-  test('the edit page targets the committed id; rename re-applies, delete clears', async ({
-    page,
-  }) => {
-    await useSyncSearch(page);
-    const populated = input(page, 'picker-populated');
-    await populated.click();
-    // ArrowUp with nothing highlighted wraps straight to the LAST option.
-    await populated.press('ArrowUp');
-    await expect(activeOption(page)).toHaveText('Edit…');
-    await populated.press('Enter');
-    await expect(page.getByTestId('edit-id')).toHaveText('5');
-    await page.getByTestId('edit-name').fill('Bob S. (renamed)');
-    await page.getByTestId('edit-save').click();
-    await expect(populated).toHaveValue('Bob S. (renamed)');
-    expect((await model(page)).populatedId).toBe(5); // same id, fresh label
+  test(
+    'the edit page targets the committed id; rename re-applies, delete clears',
+    async ({ page }) => {
+      await useSyncSearch(page);
+      const populated = input(page, 'picker-populated');
+      await populated.click();
+      // The click opens the browse list, whose rows mount on a later render;
+      // an arrow pressed before they exist has nothing to move through.
+      await expect(actions(page).last()).toHaveText('Edit…');
+      // ArrowUp with nothing highlighted wraps straight to the LAST option.
+      await populated.press('ArrowUp');
+      await expect(activeOption(page)).toHaveText('Edit…');
+      await populated.press('Enter');
+      await expect(page.getByTestId('edit-id')).toHaveText('5');
+      await page.getByTestId('edit-name').fill('Bob S. (renamed)');
+      await page.getByTestId('edit-save').click();
+      await expect(populated).toHaveValue('Bob S. (renamed)');
+      expect((await model(page)).populatedId).toBe(5); // same id, fresh label
 
-    // Round 2: the page deletes the entity — close(null) clears the field.
-    await populated.click();
-    await populated.press('ArrowUp');
-    await expect(activeOption(page)).toHaveText('Edit…');
-    await populated.press('Enter');
-    await page.getByTestId('edit-delete').click();
-    await expect(populated).toHaveValue('');
-    expect((await model(page)).populatedId).toBeNull();
-  });
+      // Round 2: the page deletes the entity — close(null) clears the field.
+      await populated.click();
+      await expect(actions(page).last()).toHaveText('Edit…');
+      await populated.press('ArrowUp');
+      await expect(activeOption(page)).toHaveText('Edit…');
+      await populated.press('Enter');
+      await page.getByTestId('edit-delete').click();
+      await expect(populated).toHaveValue('');
+      expect((await model(page)).populatedId).toBeNull();
+    },
+  );
 
   test('a picker inside a modal stacks its pages and Esc dismisses innermost-first', async ({
     page,
@@ -716,7 +787,7 @@ test.describe('axe floor', () => {
 
       // The loading state (a long-latency async search).
       await page.getByTestId('search-async').check();
-      await setSearchDelay(page, 5000);
+      await holdResponses(page, 'search');
       await input(page).fill('Alice');
       await expect(status(page).locator('tm-spinner')).toBeVisible();
       await expectNoAxeViolations(page);

@@ -8,6 +8,8 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { expectNoAxeViolations } from '../support/axe';
 import { pressUndo, syntheticPaste } from '../support/clipboard';
 import { activeCell, activateCell, cell, cellText, editor, gotoGrid, modelJson } from '../support/grid';
+import { holdResponses, releaseResponses } from '../support/held-responses';
+import { appStable } from '../support/settle';
 
 /**
  * The built-in entity editor inside the grid (the grid-entity story):
@@ -47,7 +49,27 @@ function activeOption(page: Page): Locator {
   return page.locator('.tm-entity-picker__option[data-active="true"]');
 }
 
+/** The dropdown's command footer rows (Advanced search…, Create…, Edit…). */
+function actions(page: Page): Locator {
+  return page.locator('.tm-entity-picker__action');
+}
+
+/**
+ * Types into the open editor and waits for the app to settle. Each
+ * keystroke re-runs the search at once, but the fresh highlight renders a
+ * beat later; until then the DOM still shows the previous query's
+ * highlight, which for a narrowing query is often the very row the test
+ * expects. A key that acts on the highlight (Enter, Tab) must not be
+ * pressed in that gap.
+ */
+async function typeInEditor(page: Page, text: string): Promise<void> {
+  await page.keyboard.type(text);
+  await appStable(page);
+}
+
+/** The story's search-call counter, read once the app is stable. */
 async function searchCalls(page: Page): Promise<number> {
+  await appStable(page);
   return Number(await page.getByTestId('search-calls').textContent());
 }
 
@@ -62,7 +84,7 @@ test('type-to-edit searches the seed; Enter on the highlight commits with NO mov
   await page.keyboard.press('A');
   await expect(pickerInput(page)).toBeVisible();
   await expect(pickerInput(page)).toHaveValue('A');
-  await page.keyboard.type('lice');
+  await typeInEditor(page, 'lice');
   await expect(pickerInput(page)).toHaveValue('Alice'); // every keystroke landed
   await expect(activeOption(page)).toHaveText('Alice Green');
   await page.keyboard.press('Enter');
@@ -101,7 +123,7 @@ test('Tab with a highlighted result commits and the grid moves to the next cell'
 }) => {
   await activateCell(page, 1, 1);
   await page.keyboard.press('A');
-  await page.keyboard.type('lan');
+  await typeInEditor(page, 'lan');
   await expect(activeOption(page)).toHaveText('Alan Grey');
   await page.keyboard.press('Tab');
   await expect(editor(page)).toHaveCount(0);
@@ -127,37 +149,40 @@ test('the two-stage Esc: dropdown first, then the grid cancel', async ({ page })
   expect(await cellText(page, 0, 1)).toBe('Bob Stone');
 });
 
-test('unresolved commit text resolves through the column resolver AFTER editor teardown', async ({
-  page,
-}) => {
-  await page.getByTestId('resolver-delay').fill('600');
-  await activateCell(page, 2, 1);
-  await page.keyboard.press('Z');
-  await expect(pickerInput(page)).toBeVisible();
-  await page.keyboard.type('ebra'); // the search finds nothing — the resolver's question
-  await expect(pickerInput(page)).toHaveValue('Zebra'); // every keystroke landed
-  const searchesBefore = await searchCalls(page);
-  await activateCell(page, 2, 3); // click-elsewhere commit
-  // The editor tore down while the resolution is still pending — the
-  // pending affordance is the GRID's, and exactly one resolver call runs.
-  await expect(editor(page)).toHaveCount(0);
-  await expect(cell(page, 2, 1).locator('.tm-grid__cell-spin')).toBeVisible();
-  await expect(page.getByTestId('resolver-calls')).toHaveText('1');
-  // No duplicate round-trip through the picker either.
-  expect(await searchCalls(page)).toBe(searchesBefore);
+test(
+  'unresolved commit text resolves through the column resolver AFTER editor teardown',
+  async ({ page }) => {
+    // Held, the resolution stays pending until the test has seen it pending.
+    await holdResponses(page, 'resolver');
+    await activateCell(page, 2, 1);
+    await page.keyboard.press('Z');
+    await expect(pickerInput(page)).toBeVisible();
+    await page.keyboard.type('ebra'); // the search finds nothing — the resolver's question
+    await expect(pickerInput(page)).toHaveValue('Zebra'); // every keystroke landed
+    const searchesBefore = await searchCalls(page);
+    await activateCell(page, 2, 3); // click-elsewhere commit
+    // The editor tore down while the resolution is still pending — the
+    // pending affordance is the GRID's, and exactly one resolver call runs.
+    await expect(editor(page)).toHaveCount(0);
+    await expect(cell(page, 2, 1).locator('.tm-grid__cell-spin')).toBeVisible();
+    await expect(page.getByTestId('resolver-calls')).toHaveText('1');
+    // No duplicate round-trip through the picker either.
+    expect(await searchCalls(page)).toBe(searchesBefore);
+    await releaseResponses(page, 'resolver');
 
-  // 'Zebra' is neither a label nor a code: raw text kept, error-tinted.
-  await expect(cell(page, 2, 1)).toHaveClass(/tm-grid__cell--error/);
-  expect(await cellText(page, 2, 1)).toBe('Zebra');
-  expect((await lines(page))[2].agentId).toBeNull();
-  await expect(page.getByTestId('resolver-calls')).toHaveText('1');
+    // 'Zebra' is neither a label nor a code: raw text kept, error-tinted.
+    await expect(cell(page, 2, 1)).toHaveClass(/tm-grid__cell--error/);
+    expect(await cellText(page, 2, 1)).toBe('Zebra');
+    expect((await lines(page))[2].agentId).toBeNull();
+    await expect(page.getByTestId('resolver-calls')).toHaveText('1');
 
-  // One undo restores the pre-edit state.
-  await activateCell(page, 2, 1);
-  await pressUndo(page);
-  await expect(cell(page, 2, 1)).not.toHaveClass(/tm-grid__cell--error/);
-  expect((await lines(page))[2].agentId).toBeNull();
-});
+    // One undo restores the pre-edit state.
+    await activateCell(page, 2, 1);
+    await pressUndo(page);
+    await expect(cell(page, 2, 1)).not.toHaveClass(/tm-grid__cell--error/);
+    expect((await lines(page))[2].agentId).toBeNull();
+  },
+);
 
 test('a commit while the search is in flight is decided BY that search, not the resolver', async ({
   page,
@@ -165,7 +190,7 @@ test('a commit while the search is in flight is decided BY that search, not the 
   // The search the user was already waiting for outlives the editor: the
   // cell shows what they typed, the answer lands, and the column's resolver
   // — which asks a different question — is never troubled.
-  await page.getByTestId('search-delay').fill('700');
+  await holdResponses(page, 'search'); // the search stays in flight until released
   await activateCell(page, 2, 1);
   await page.keyboard.press('D');
   await page.keyboard.type('ana Ree'); // unique, but nothing is on screen yet
@@ -173,6 +198,7 @@ test('a commit while the search is in flight is decided BY that search, not the 
   await expect(editor(page)).toHaveCount(0);
   await expect(cell(page, 2, 1).locator('.tm-grid__cell-spin')).toBeVisible();
   expect(await cellText(page, 2, 1)).toBe('Dana Ree');
+  await releaseResponses(page, 'search');
   await expect.poll(async () => (await lines(page))[2].agentId).toBe(7);
   expect(await cellText(page, 2, 1)).toBe('Dana Reed');
   await expect(page.getByTestId('resolver-calls')).toHaveText('0');
@@ -269,7 +295,7 @@ test('dismissing the dropdown does not un-fetch its answer: the commit still cos
 test('a cell awaiting resolution shows the text being resolved, not an empty cell', async ({
   page,
 }) => {
-  await page.getByTestId('resolver-delay').fill('700');
+  await holdResponses(page, 'resolver'); // mid-flight until released
   await activateCell(page, 2, 1);
   await page.keyboard.press('Z');
   await page.keyboard.type('ebra'); // no search match — the resolver path
@@ -280,6 +306,7 @@ test('a cell awaiting resolution shows the text being resolved, not an empty cel
   expect(await cellText(page, 2, 1)).toBe('Zebra');
   // The cell is not errored YET — the answer has not come back.
   await expect(cell(page, 2, 1)).not.toHaveClass(/tm-grid__cell--error/);
+  await releaseResponses(page, 'resolver');
   await expect(cell(page, 2, 1)).toHaveClass(/tm-grid__cell--error/);
   expect(await cellText(page, 2, 1)).toBe('Zebra');
 });
@@ -287,7 +314,7 @@ test('a cell awaiting resolution shows the text being resolved, not an empty cel
 test('a no-resolver entity column records the invalid input directly', async ({ page }) => {
   await activateCell(page, 1, 2); // otherId: search, no resolver
   await page.keyboard.press('Z');
-  await page.keyboard.type('ebra');
+  await typeInEditor(page, 'ebra');
   await page.keyboard.press('Enter'); // no highlight (empty set) → the grid commits
   await expect(editor(page)).toHaveCount(0);
   await expect(cell(page, 1, 2)).toHaveClass(/tm-grid__cell--error/);
@@ -340,7 +367,9 @@ test('a mid-edit modal dismissal returns to the intact session; close(null) clea
   // Edit… (footer row) → the page reports the entity gone → the field
   // clears; committing writes null through the value channel.
   await page.keyboard.press('Alt+ArrowDown');
-  await expect(panel(page)).toBeVisible();
+  // The rows mount a render after the panel: an arrow pressed before they
+  // exist has nothing to move through.
+  await expect(actions(page).last()).toHaveText('Edit…');
   await page.keyboard.press('ArrowUp'); // wraps straight to the last — Edit…
   await expect(activeOption(page)).toHaveText('Edit…');
   await page.keyboard.press('Enter');

@@ -17,6 +17,8 @@ import {
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TM_MODAL_DATA, TmModal, TmModalFooter, TmModalRef } from '@tellma/core-ui/modal';
 
+import { HeldResponses, HeldResponsesControls } from '../held-responses';
+
 interface Agent {
   readonly id: number;
   readonly name: string;
@@ -199,12 +201,12 @@ export class DemoPickerModalPage {
  * form (submit counting proves Enter-never-submits-while-open), a bare
  * standalone picker, a no-magnifier picker, and a prepopulated picker whose
  * label only `displayWith` knows. The toolbar switches sync/async search,
- * tunes the artificial latency, arms a one-shot failure, toggles
- * abort-signal honoring, and counts search calls; the model dump is the
- * Playwright battery's committed-value oracle.
+ * tunes the artificial latency (or holds async responses until released),
+ * arms a one-shot failure, toggles abort-signal honoring, and counts search
+ * calls; the model dump is the Playwright battery's committed-value oracle.
  */
 @Component({
-  imports: [TmEntityPicker, TmFormField, TmButton, FormField],
+  imports: [TmEntityPicker, TmFormField, TmButton, FormField, HeldResponsesControls],
   template: `
     <h2>Entity picker</h2>
 
@@ -238,6 +240,7 @@ export class DemoPickerModalPage {
           (input)="onDebounceChange($event)"
         />
       </label>
+      <app-held-responses [gate]="heldSearches" name="search" />
       <span>Search calls: <span data-testid="search-calls">{{ searchCalls() }}</span></span>
       <span>Picked: <span data-testid="picked-count">{{ pickedCount() }}</span></span>
       <label>
@@ -394,6 +397,8 @@ export class EntityPickerStory {
   /** The picker's coalescing window, exposed so the burst behavior is drivable. */
   readonly searchDebounce = signal(50);
   readonly searchCalls = signal(0);
+  /** The async search's latency gate: the delay, or a hold until released. */
+  readonly heldSearches = new HeldResponses();
   /** Every `picked` emit from the field picker — one commit gesture must cost one. */
   readonly pickedCount = signal(0);
   readonly failNext = signal(false);
@@ -414,10 +419,11 @@ export class EntityPickerStory {
 
   /**
    * The demo search: sync mode returns instantly (the zero-flicker fast
-   * path); async mode resolves after the configured delay, honoring the
-   * abort signal unless the ignore toggle simulates a misbehaving consumer
-   * (the picker's discard-on-arrival covers that). Browse results above the
-   * cap come back truncated with `hasMore`.
+   * path); async mode resolves after the configured delay (or, while held,
+   * on release), honoring the abort signal unless the ignore toggle
+   * simulates a misbehaving consumer (the picker's discard-on-arrival
+   * covers that). Browse results above the cap come back truncated with
+   * `hasMore`.
    */
   readonly search: TmEntitySearchFn<Agent> = (query, signal) => {
     this.searchCalls.update((count) => count + 1);
@@ -436,21 +442,11 @@ export class EntityPickerStory {
     if (!this.asyncMode()) {
       return compute();
     }
-    return new Promise<TmEntitySearchResult<Agent>>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        try {
-          resolve(compute());
-        } catch (error) {
-          reject(error as Error);
-        }
-      }, this.searchDelay());
-      if (!this.ignoreAbort()) {
-        signal.addEventListener('abort', () => {
-          clearTimeout(timer);
-          reject(new Error('aborted'));
-        });
-      }
-    });
+    // An armed failure throws inside compute(), after the wait: the promise
+    // rejects, which the picker reports as a failed search.
+    return this.heldSearches
+      .wait(this.searchDelay(), this.ignoreAbort() ? undefined : signal)
+      .then(compute);
   };
 
   /** A 24-entry directory returned uncapped — enough rows to scroll. */
