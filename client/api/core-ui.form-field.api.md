@@ -39,11 +39,12 @@ export class TmFormField {
     protected readonly ownsErrorIcon: _angular_core.Signal<boolean>;
     protected readonly pending: _angular_core.Signal<boolean>;
     protected readonly requiredMarker: string;
+    protected readonly resolvedSize: _angular_core.Signal<TmControlSize>;
     protected readonly showError: _angular_core.Signal<boolean>;
     protected readonly showErrorPopover: _angular_core.Signal<boolean>;
     protected readonly showHint: _angular_core.Signal<boolean>;
     protected readonly showRequiredMarker: _angular_core.Signal<boolean>;
-    readonly size: _angular_core.InputSignal<TmControlSize>;
+    readonly size: _angular_core.InputSignal<TmControlSize | undefined>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmFormField, "tm-form-field", never, { "label": { "alias": "label"; "required": false; "isSignal": true; }; "hint": { "alias": "hint"; "required": false; "isSignal": true; }; "error": { "alias": "error"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; }, {}, ["control"], ["[tmPrefix]", "*", "[tmSuffix]"], true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmFormField, never>;
 }

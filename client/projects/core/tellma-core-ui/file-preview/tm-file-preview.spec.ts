@@ -6,6 +6,7 @@
 import { Component } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
+import { page } from 'vitest/browser';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 import { TmFilePreviewHarness } from '@tellma/core-ui-testing';
@@ -109,6 +110,34 @@ describe('TmFilePreview', () => {
     expect(await harness.hasPrintButton()).toBe(true); // images only
     expect(await harness.getDownloadName()).toBe('photo.png');
     ref.close();
+  });
+
+  it('sizes the download anchor exactly like the print button, touch size included', async () => {
+    const { fixture, preview } = await setup();
+    const sizeClasses = (element: Element): string[] =>
+      [...element.classList].filter((name) => /^tm-button--(sm|md|lg)$/.test(name));
+    const actions = (): [Element, Element] => [
+      content()!.querySelector('[data-tm-preview-action="print"]')!,
+      content()!.querySelector('[data-tm-preview-action="download"]')!,
+    ];
+    try {
+      await page.viewport(390, 800);
+      await vi.waitUntil(() => window.innerWidth === 390);
+      const ref = preview.open({ name: 'photo.png', type: 'image/png', source: await pngBlob() });
+      // Print appears once the image is ready; wait for both actions.
+      await until(
+        fixture,
+        () =>
+          content()?.querySelector('[data-tm-preview-action="print"]') != null &&
+          content()?.querySelector('[data-tm-preview-action="download"]') != null,
+      );
+      const [print, download] = actions();
+      expect(sizeClasses(print)).toEqual(['tm-button--lg']);
+      expect(sizeClasses(download)).toEqual(sizeClasses(print));
+      ref.close();
+    } finally {
+      await page.viewport(1280, 800);
+    }
   });
 
   it('renders plain text escaped, capped at 1 MB with a notice', async () => {

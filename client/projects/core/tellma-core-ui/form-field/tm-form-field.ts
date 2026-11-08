@@ -25,7 +25,12 @@ import {
 } from '@angular/cdk/overlay';
 
 import type { TmFormFieldControl } from '@tellma/core-ui/contracts';
-import { TM_ERROR_DISPLAY, TM_FORM_FIELD_DEFAULTS, type TmControlSize } from '@tellma/core-ui';
+import {
+  TM_ERROR_DISPLAY,
+  TM_FORM_FIELD_DEFAULTS,
+  ɵtmControlSize,
+  type TmControlSize,
+} from '@tellma/core-ui';
 import { tmCreateAnchoredOverlay, tmLogicalPositions, ɵTmErrorPopover } from '@tellma/core-ui/private';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
@@ -165,8 +170,8 @@ let nextUniqueId = 0;
     '[class.tm-form-field--invalid]': 'showError()',
     '[class.tm-form-field--disabled]': 'control()?.disabled() ?? false',
     '[class.tm-form-field--readonly]': 'control()?.readonly() ?? false',
-    '[class.tm-form-field--sm]': 'size() === "sm"',
-    '[class.tm-form-field--lg]': 'size() === "lg"',
+    '[class.tm-form-field--sm]': 'resolvedSize() === "sm"',
+    '[class.tm-form-field--lg]': 'resolvedSize() === "lg"',
     '(focusin)': 'onFocusIn()',
     '(focusout)': 'onFocusOut($event)',
   },
@@ -190,8 +195,15 @@ export class TmFormField {
    * control's own errors take precedence while displayed.
    */
   readonly error = input('');
-  /** Size step, mapping to the --field-height/-font-size/-padding-x tokens. */
-  readonly size = input<TmControlSize>(this.defaults.size);
+  /**
+   * Size step, mapping to the --field-height/-font-size/-padding-x tokens,
+   * and inherited by the projected control. Unset, the field takes the
+   * workspace default from `TM_FORM_FIELD_DEFAULTS`, and the `lg` touch
+   * height below the `sm` breakpoint.
+   */
+  readonly size = input<TmControlSize | undefined>(undefined);
+  /** The size step the field renders at: `size`, else the responsive default. */
+  protected readonly resolvedSize = ɵtmControlSize(this.size);
 
   /** The projected control, discovered through the TM_FORM_FIELD_CONTROL token. */
   protected readonly control = contentChild(TM_FORM_FIELD_CONTROL);

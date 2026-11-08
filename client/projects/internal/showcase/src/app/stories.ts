@@ -36,7 +36,7 @@ import { ThemingStory } from './theming/theming-story';
  * The showcase story registry.
  *
  * Each entry is a demo page the Playwright suite (and a human) can address as
- * /story/<id>, with ?dir=rtl|ltr and ?theme=light|dark applied to <html>.
+ * /story/<id>, with ?dir=rtl|ltr and ?theme=light|dark|system applied to <html>.
  * Component stages register their demo hosts here.
  */
 export interface ShowcaseStory {

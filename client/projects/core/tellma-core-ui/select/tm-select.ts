@@ -35,6 +35,7 @@ import {
   TM_FORM_FIELD_DEFAULTS,
   TM_UI_TRANSLATE,
   tmResolveFieldErrors,
+  ɵtmControlSize,
   type TmControlSize,
 } from '@tellma/core-ui';
 import { TM_FORM_FIELD_CONTROL, TmFormField } from '@tellma/core-ui/form-field';
@@ -251,19 +252,29 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
   /**
    * Size step. Unset, a select inside a `tm-form-field` follows the FIELD's
    * size (the field publishes its ladder as inheritable locals), and a bare
-   * select follows the workspace-wide control default.
+   * select follows the workspace-wide control default — the `lg` touch
+   * height below the `sm` breakpoint.
    */
   readonly size = input<TmControlSize | undefined>(undefined);
+
+  /** A bare select's size: `size`, else the responsive workspace default. */
+  private readonly standaloneSize = ɵtmControlSize(this.size);
 
   /**
    * The size step the host classes apply. Deliberately `undefined` for an
    * unsized select inside a field: a size class would re-declare the ladder
    * locals on this host, and an element's own custom property always beats
    * an inherited one — exactly what must NOT happen when the field's size
-   * is meant to reach the trigger and its dropdown rows.
+   * is meant to reach the trigger and its dropdown rows. A select editing a
+   * grid cell keeps the workspace default at every width: grids are not
+   * subject to the touch size, and its rows must match the grid's.
    */
-  protected readonly effectiveSize = computed(
-    () => this.size() ?? (this.field === null ? this.defaults.size : undefined),
+  protected readonly effectiveSize = computed(() =>
+    this.field !== null
+      ? this.size()
+      : this.cellHost !== null
+        ? (this.size() ?? this.defaults.size)
+        : this.standaloneSize(),
   );
   /** Emits the committed value whenever the user activates an option. */
   readonly selectionChange = output<T>();

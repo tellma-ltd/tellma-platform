@@ -32,6 +32,9 @@ describe('tmRefToVarName', () => {
     // Two adjacent capitals do NOT split: the padding variants are spelled
     // the way they emit, matching --button-padding-xsm.
     expect(tmRefToVarName('formField.paddingXsm')).toBe('--field-padding-xsm');
+    expect(tmRefToVarName('categorical.3.onTint')).toBe('--categorical-3-on-tint');
+    expect(tmRefToVarName('categorical.8.mark')).toBe('--categorical-8-mark');
+    expect(tmRefToVarName('sequential.4')).toBe('--sequential-4');
   });
 
   it('turns refs into var() and passes literals through', () => {
@@ -189,5 +192,106 @@ describe('tmValidateTokens (missing-ref gate)', () => {
     expect(
       issues.some((i) => i.gate === 'missing-ref' && i.message.includes('leadingByLang.he')),
     ).toBe(true);
+  });
+});
+
+/** WCAG 2 relative luminance of a `#RRGGBB` colour. */
+function luminance(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const channel = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** WCAG 2 contrast ratio between two `#RRGGBB` colours. */
+function contrast(a: string, b: string): number {
+  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (light + 0.05) / (dark + 0.05);
+}
+
+describe('the categorical and sequential colour groups', () => {
+  const css = tmEmitCss(tmTokensDefault);
+  const SLOTS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+  const STEPS = [1, 2, 3, 4, 5, 6, 7] as const;
+  const NAMES = [
+    ...SLOTS.flatMap((slot) => [
+      `--categorical-${slot}-mark`,
+      `--categorical-${slot}-tint`,
+      `--categorical-${slot}-on-tint`,
+    ]),
+    ...STEPS.map((step) => `--sequential-${step}`),
+  ];
+
+  /** The declarations of one emitted block, by its selector. */
+  function blockNames(selector: string): string[] {
+    const start = css.indexOf(`${selector} {`);
+    const body = css.slice(start, css.indexOf('}', start));
+    return [...body.matchAll(/^\s*(--[a-z0-9-]+):/gm)].map((match) => match[1]);
+  }
+
+  it('emits the same 31 names in both scheme blocks', () => {
+    expect(NAMES).toHaveLength(31);
+    const light = blockNames(':root');
+    const dark = blockNames('[data-theme=dark]');
+    for (const name of NAMES) {
+      expect(light, name).toContain(name);
+      expect(dark, name).toContain(name);
+    }
+    expect(dark.filter((name) => /^--(categorical|sequential)-/.test(name))).toHaveLength(31);
+  });
+
+  it('gives every slot its own values in each scheme', () => {
+    const light = tmEmittedSchemeVars(tmTokensDefault, 'light');
+    const dark = tmEmittedSchemeVars(tmTokensDefault, 'dark');
+    expect(light.get('--categorical-1-mark')).toBe('#118AA6');
+    expect(light.get('--categorical-3-on-tint')).toBe('#2C3173');
+    expect(dark.get('--categorical-1-mark')).toBe('#2AA5C2');
+    expect(dark.get('--categorical-8-tint')).toBe('#583136');
+  });
+
+  it('runs the sequential ramp faint to strong over the teal ramp, reversed in dark', () => {
+    const light = tmEmittedSchemeVars(tmTokensDefault, 'light');
+    const dark = tmEmittedSchemeVars(tmTokensDefault, 'dark');
+    expect(STEPS.map((step) => light.get(`--sequential-${step}`))).toEqual(
+      [100, 200, 300, 400, 600, 700, 800].map((stop) => `var(--teal-${stop})`),
+    );
+    expect(STEPS.map((step) => dark.get(`--sequential-${step}`))).toEqual(
+      [900, 800, 700, 600, 400, 300, 200].map((stop) => `var(--teal-${stop})`),
+    );
+    // References, so a distribution that re-brands teal re-brands the steps.
+    expect(tmResolveVar(light, '--sequential-1')).toBe('#CBE6EC');
+    expect(tmResolveVar(dark, '--sequential-7')).toBe('#A3D3DD');
+  });
+
+  it('reads text on every tint at 4.5:1 or more, in both schemes', () => {
+    for (const scheme of ['light', 'dark'] as const) {
+      const vars = tmEmittedSchemeVars(tmTokensDefault, scheme);
+      for (const slot of SLOTS) {
+        const tint = tmResolveVar(vars, `--categorical-${slot}-tint`);
+        const onTint = tmResolveVar(vars, `--categorical-${slot}-on-tint`);
+        expect(tint, `${scheme} slot ${slot} tint`).toMatch(/^#[0-9A-Fa-f]{6}$/);
+        expect(onTint, `${scheme} slot ${slot} onTint`).toMatch(/^#[0-9A-Fa-f]{6}$/);
+        expect(contrast(tint!, onTint!), `${scheme} slot ${slot}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it('fails the missing-ref gate on a step that references a missing teal stop', () => {
+    const light = tmTokensDefault.semantic.colorScheme.light;
+    const broken: TmTokens = {
+      ...tmTokensDefault,
+      semantic: {
+        ...tmTokensDefault.semantic,
+        colorScheme: {
+          ...tmTokensDefault.semantic.colorScheme,
+          light: { ...light, sequential: { ...light.sequential, 4: '{teal.450}' } },
+        },
+      },
+    };
+    const issues = tmValidateTokens(broken);
+    expect(issues.some((i) => i.message.includes('--sequential-4') && i.message.includes('--teal-450'))).toBe(
+      true,
+    );
   });
 });

@@ -11,6 +11,7 @@
     "fonts/*.woff2",
     "fonts/*.css",
     "fonts/*.txt",
+    "layout/breakpoints.json",
     "styles/**/*.css"
   ]
 }
