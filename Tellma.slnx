@@ -14,6 +14,7 @@
     <File Path="LICENSE" />
     <File Path="README.md" />
     <File Path="SECURITY.md" />
+    <File Path="taxonomy.json" />
   </Folder>
   <Folder Name="/eng/">
     <Project Path="eng/queryex-inspection/Tellma.Queryex.Inspection/Tellma.Queryex.Inspection.csproj" />
@@ -45,6 +46,7 @@
     <Project Path="test/apps/Tellma.Identity.E2E/Tellma.Identity.E2E.csproj" />
     <Project Path="test/apps/Tellma.Identity.TestSupport/Tellma.Identity.TestSupport.csproj" />
     <Project Path="test/core/Tellma.Core.Abstractions.Tests/Tellma.Core.Abstractions.Tests.csproj" />
+    <Project Path="test/core/Tellma.Core.Tests/Tellma.Core.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.Email.Tests/Tellma.Core.Email.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Tests/Tellma.Core.EntityFrameworkCore.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Design.Tests/Tellma.Core.EntityFrameworkCore.Design.Tests.csproj" />
