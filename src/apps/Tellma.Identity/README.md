@@ -146,8 +146,10 @@ Every seeded registration — scopes, platform clients and distributions — and
 `ClientRegistrationConverger`, which writes only what differs. Several instances start together when
 a secret is rotated or a deployment first comes up, and converge the same rows at once; a write lost
 to a concurrent writer (a stale concurrency token, a duplicate client id or scope name) is not an
-error: the convergence runs again in a fresh scope, finds the winner's row and accepts or rewrites
-it, up to `ClientRegistrationConverger.MaxAttempts` attempts.
+error: that write is converged again in a fresh scope, finds the winner's row and accepts or
+rewrites it. Each write point (an application, a scope, a grant) is retried on its own, up to
+`ClientRegistrationConverger.MaxAttemptsPerWrite` attempts, so a convergence with more write points
+tolerates more lost writes in total.
 
 The UI renders through three layouts under `Areas/Identity/Pages/Shared/`: `_Document` owns the
 document and the scripts slot, and two shells nest inside it — `_AuthLayout` for the sign-in flow

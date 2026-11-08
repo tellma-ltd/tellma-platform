@@ -431,7 +431,50 @@ namespace Tellma.Identity.Tests.Provisioning
             rotated.ClientSecret = "bff-secret-rotated-0123456789abcdef";
 
             await Assert.ThrowsAsync<OpenIddictExceptions.ConcurrencyException>(() => ConvergeAsync(rotated));
-            Assert.Equal(ClientRegistrationConverger.MaxAttempts, failures);
+            Assert.Equal(ClientRegistrationConverger.MaxAttemptsPerWrite, failures);
+        }
+
+        [Fact]
+        public async Task Every_write_point_losing_its_writes_up_to_the_bound_still_converges()
+        {
+            // A first start with two seeded clients calling distribution APIs has five write points:
+            // two creates, the audience append and two grants. Each loses all but its last allowed
+            // attempt, many more lost writes in total than any one point's bound.
+            await SeedPlatformClientsAsync(_services);
+            await SeedNativeClientAsync(_services);
+            int losses = 0;
+            Dictionary<string, int> applicationLosses = [];
+            Applications.BeforeCreate = application => Lose(applicationLosses, "create:" + application.ClientId, ref losses);
+            Applications.BeforeUpdate = application => Lose(applicationLosses, "update:" + application.ClientId, ref losses);
+            Dictionary<string, int> scopeLosses = [];
+            Scopes.BeforeCreate = scope => Lose(scopeLosses, "create:" + scope.Name, ref losses);
+            Scopes.BeforeUpdate = scope => Lose(scopeLosses, "update:" + scope.Name, ref losses);
+
+            DistributionConvergence convergence = await ConvergeAsync(Entry());
+
+            int bound = ClientRegistrationConverger.MaxAttemptsPerWrite - 1;
+            Assert.Equal(5 * bound, losses);
+            Assert.Equal(new DistributionConvergence(ClientConvergence.Created, ClientConvergence.Created, true, 2), convergence);
+            Assert.Single(Applications.Rows, static row => row.ClientId == "acme");
+            Assert.Single(Applications.Rows, static row => row.ClientId == "acme-svc");
+            Assert.Contains(Origin, Scopes.Find(TellmaIdentityConstants.ApiScope)!.Resources);
+            Assert.Contains(Permissions.Prefixes.Resource + Origin, Applications.Find("tellma-cli")!.Permissions);
+            Assert.Contains(Permissions.Prefixes.Resource + Origin, Applications.Find("tellma-native")!.Permissions);
+            Assert.True(await ValidateSecretAsync("acme", Entry().ClientSecret!));
+        }
+
+        [Fact]
+        public async Task A_refused_create_that_no_concurrent_writer_explains_is_thrown_at_once()
+        {
+            int failures = 0;
+            Applications.BeforeCreate = _ =>
+            {
+                failures++;
+                return new OpenIddictExceptions.ValidationException("The descriptor is invalid.", []);
+            };
+
+            await Assert.ThrowsAsync<OpenIddictExceptions.ValidationException>(() => ConvergeAsync(Entry()));
+            Assert.Equal(1, failures);
         }
 
         [Fact]
@@ -561,6 +604,39 @@ namespace Tellma.Identity.Tests.Provisioning
                         ClientSecret = "control-plane-secret-0123456789abcdef",
                     }),
                 cancellationToken);
+        }
+
+        /// <summary>
+        ///     Loses a write at one point with a concurrency conflict until that point has lost all
+        ///     but its last allowed attempt, then lets it through.
+        /// </summary>
+        private static OpenIddictExceptions.ConcurrencyException? Lose(Dictionary<string, int> perPoint, string point, ref int losses)
+        {
+            int lost = perPoint.GetValueOrDefault(point);
+            if (lost >= ClientRegistrationConverger.MaxAttemptsPerWrite - 1)
+            {
+                return null;
+            }
+
+            perPoint[point] = lost + 1;
+            losses++;
+            return new OpenIddictExceptions.ConcurrencyException($"Another instance wrote {point}.");
+        }
+
+        /// <summary>Seeds a native app, a second client that calls distribution APIs.</summary>
+        private static async Task SeedNativeClientAsync(ServiceProvider services)
+        {
+            using IServiceScope scope = services.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>().CreateAsync(
+                ClientDescriptorFactory.SeededClient(
+                    new TellmaIdentityOptions { Issuer = new Uri(Issuer) },
+                    new TellmaIdentitySeedClientOptions
+                    {
+                        ClientId = "tellma-native",
+                        Kind = TellmaIdentitySeedClientKind.Native,
+                        RedirectUris = { "http://127.0.0.1/native" },
+                    }),
+                TestContext.Current.CancellationToken);
         }
 
         /// <summary>Converges an entry the way the seeder does.</summary>

@@ -114,6 +114,20 @@ namespace Tellma.Identity.Tests.Provisioning
 
         /// <summary>The stored Resources column.</summary>
         public ImmutableArray<string> Resources { get; set; } = [];
+
+        /// <summary>Copies every stored column from another row, as reading a committed row back would.</summary>
+        /// <param name="other">The row to copy.</param>
+        public void CopyFrom(InMemoryScope other)
+        {
+            ArgumentNullException.ThrowIfNull(other);
+            Name = other.Name;
+            Description = other.Description;
+            Descriptions = other.Descriptions;
+            DisplayName = other.DisplayName;
+            DisplayNames = other.DisplayNames;
+            Properties = other.Properties;
+            Resources = other.Resources;
+        }
     }
 
     /// <summary>
@@ -499,11 +513,29 @@ namespace Tellma.Identity.Tests.Provisioning
         /// <summary>The rows.</summary>
         private readonly List<InMemoryScope> _rows = [];
 
+        /// <summary>Each row's last committed values, put back when a write fails (see the application store).</summary>
+        private readonly Dictionary<InMemoryScope, InMemoryScope> _committed = [];
+
         /// <summary>Every row, in insertion order.</summary>
         public IReadOnlyList<InMemoryScope> Rows => _rows;
 
         /// <summary>How many times a row was written back.</summary>
         public int Updates { get; private set; }
+
+        /// <summary>Runs before a row is created; an exception it returns is thrown instead.</summary>
+        public Func<InMemoryScope, Exception?>? BeforeCreate { get; set; }
+
+        /// <summary>Runs before a row is written back; an exception it returns is thrown instead.</summary>
+        public Func<InMemoryScope, Exception?>? BeforeUpdate { get; set; }
+
+        /// <summary>Records a row's current values as committed.</summary>
+        /// <param name="scope">The row.</param>
+        private void Commit(InMemoryScope scope)
+        {
+            InMemoryScope committed = new();
+            committed.CopyFrom(scope);
+            _committed[scope] = committed;
+        }
 
         /// <summary>The row with the scope name, or null.</summary>
         /// <param name="name">The value to match.</param>
@@ -529,7 +561,13 @@ namespace Tellma.Identity.Tests.Provisioning
         /// <inheritdoc />
         public ValueTask CreateAsync(InMemoryScope scope, CancellationToken cancellationToken)
         {
+            if (BeforeCreate?.Invoke(scope) is { } failure)
+            {
+                return ValueTask.FromException(failure);
+            }
+
             _rows.Add(scope);
+            Commit(scope);
             return ValueTask.CompletedTask;
         }
 
@@ -694,6 +732,17 @@ namespace Tellma.Identity.Tests.Provisioning
         /// <inheritdoc />
         public ValueTask UpdateAsync(InMemoryScope scope, CancellationToken cancellationToken)
         {
+            if (BeforeUpdate?.Invoke(scope) is { } failure)
+            {
+                if (_committed.TryGetValue(scope, out InMemoryScope? committed))
+                {
+                    scope.CopyFrom(committed);
+                }
+
+                return ValueTask.FromException(failure);
+            }
+
+            Commit(scope);
             Updates++;
             return ValueTask.CompletedTask;
         }

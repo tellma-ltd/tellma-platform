@@ -6,6 +6,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Migrations;
@@ -166,6 +167,101 @@ namespace Tellma.Identity.IntegrationTests
             // The entry applies nothing more on a second run.
             await TellmaIdentityStore.MigrateAsync(connectionString, TestContext.Current.CancellationToken);
             Assert.Single(await AppliedMigrationsAsync(connectionString));
+        }
+
+        [Fact]
+        public async Task A_login_without_a_user_in_an_existing_store_is_named_not_reported_as_unmigrated()
+        {
+            // Creating a login needs a server this suite owns: the container, not a developer's.
+            Assert.SkipWhen(
+                !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TELLMA_TEST_SQL")),
+                "Creates a server login, which only the suite's own container is used for.");
+
+            string connectionString = await fixture.CreateDatabaseAsync("idstorenouser");
+            await TellmaIdentityStore.MigrateAsync(connectionString, TestContext.Current.CancellationToken);
+
+            // A login with no user in the store: the operator's missed fourth step.
+            string login = $"idnouser_{Guid.NewGuid():N}";
+            string password = $"Aa1!{Guid.NewGuid():N}";
+            await ExecuteAsync(fixture.MasterConnectionString, $"CREATE LOGIN [{login}] WITH PASSWORD = N'{password}', CHECK_POLICY = OFF");
+            try
+            {
+                SqlConnectionStringBuilder asLogin = new(connectionString)
+                {
+                    IntegratedSecurity = false,
+                    UserID = login,
+                    Password = password,
+                };
+                using StandaloneFactory factory = Factory(asLogin.ConnectionString, applyMigrations: false);
+
+                IdentityStoreCheckException failure = StartupFailure(factory);
+
+                Assert.Contains("cannot open it", failure.Message, StringComparison.Ordinal);
+                Assert.Contains("needs a user in it", failure.Message, StringComparison.Ordinal);
+                Assert.Contains(login, failure.Message, StringComparison.Ordinal);
+                Assert.DoesNotContain(password, failure.Message, StringComparison.Ordinal);
+            }
+            finally
+            {
+                await ExecuteAsync(fixture.MasterConnectionString, $"DROP LOGIN [{login}]");
+            }
+        }
+
+        [Fact]
+        public void An_unreachable_store_fails_the_check_naming_the_database()
+        {
+            // Nothing listens on port 1, so the connection is refused at once.
+            using StandaloneFactory factory = Factory(
+                "Server=tcp:127.0.0.1,1;Database=idstoreunreachable;User ID=unused;Password=unused;Connect Timeout=2;Encrypt=False",
+                applyMigrations: false);
+
+            IdentityStoreCheckException failure = StartupFailure(factory);
+
+            Assert.Contains("could not read database 'idstoreunreachable'", failure.Message, StringComparison.Ordinal);
+            Assert.NotNull(Unwrap<System.Data.Common.DbException>(failure));
+        }
+
+        [Fact]
+        public async Task An_invalid_distribution_entry_stops_the_host_before_its_store_is_touched()
+        {
+            // Startup validation of seed entries runs only through the host's own options pipeline,
+            // so this is the test that fails if that wiring ever drops it.
+            string connectionString = fixture.ReserveDatabase("idstoreinvalidseed");
+            using StandaloneFactory factory = Factory(connectionString, applyMigrations: true);
+            factory.ConfigurationOverrides["TellmaIdentity:Seed:Clients:0:ClientId"] = "Not_A_Slug";
+            factory.ConfigurationOverrides["TellmaIdentity:Seed:Clients:0:Kind"] = "Distribution";
+            factory.ConfigurationOverrides["TellmaIdentity:Seed:Clients:0:Origin"] = "https://acme.example.com/app";
+
+            Exception exception = Assert.ThrowsAny<Exception>(factory.CreateClient);
+
+            OptionsValidationException failure = Assert.IsType<OptionsValidationException>(
+                Unwrap<OptionsValidationException>(exception));
+            Assert.Contains(failure.Failures, static f => f.Contains("TellmaIdentity:Seed:Clients:0 ('Not_A_Slug')", StringComparison.Ordinal)
+                && f.Contains("slug", StringComparison.Ordinal));
+            Assert.Contains(failure.Failures, static f => f.Contains("('Not_A_Slug'): Origin must", StringComparison.Ordinal));
+            Assert.Null(await ScalarAsync(
+                fixture.MasterConnectionString, $"SELECT DB_ID(N'{DatabaseName(connectionString)}')"));
+        }
+
+        /// <summary>The first exception of the given type in a failure's inner chain, or null.</summary>
+        private static T? Unwrap<T>(Exception exception)
+            where T : Exception
+        {
+            for (Exception? current = exception; current is not null; current = current.InnerException)
+            {
+                if (current is T match)
+                {
+                    return match;
+                }
+
+                if (current is AggregateException aggregate
+                    && aggregate.Flatten().InnerExceptions.OfType<T>().FirstOrDefault() is { } inner)
+                {
+                    return inner;
+                }
+            }
+
+            return null;
         }
 
         /// <summary>A standalone host on the given store, quoting <see cref="MigrateCommand" /> on failure.</summary>

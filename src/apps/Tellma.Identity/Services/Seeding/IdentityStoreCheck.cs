@@ -94,10 +94,18 @@ namespace Tellma.Identity.Services.Seeding
             }
             else if (!exists)
             {
+                // SQL Server answers a missing database and a login with no user in an existing one
+                // with the same error, which EF's existence probe turns into "missing". Both are
+                // named, with what the server said, so an operator who skipped the database user is
+                // not sent to re-run migrations that were already applied.
+                string serverSaid = await DescribeOpenFailureAsync(cancellationToken);
                 throw new IdentityStoreCheckException(
-                    $"The identity store check failed: database '{databaseName}' does not exist, so it holds no "
-                        + $"identity schema '{TellmaIdentityConstants.Schema}' migrated to "
-                        + $"'{TellmaIdentityConstants.LatestMigration}'. {Remedy(seed)}");
+                    $"The identity store check failed: database '{databaseName}' does not exist, or this host's "
+                        + $"login cannot open it{serverSaid}. If it exists, the engine's database principal needs a "
+                        + $"user in it, with SELECT, INSERT, UPDATE and DELETE on schema '{TellmaIdentityConstants.Schema}' "
+                        + "and SELECT on dbo.__EFMigrationsHistory. If it does not, it must be created in the platform "
+                        + $"collation and hold the identity schema migrated to '{TellmaIdentityConstants.LatestMigration}'. "
+                        + Remedy(seed));
             }
 
             // Step 3: the migration history must hold the engine's last migration. The constant is
@@ -224,6 +232,40 @@ namespace Tellma.Identity.Services.Seeding
             }
         }
 
+        /// <summary>
+        ///     What the server says when the store's connection is opened, for a database the
+        ///     existence probe reported missing: " (the server said: …)", or empty when it opens.
+        /// </summary>
+        private async Task<string> DescribeOpenFailureAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                await context.Database.OpenConnectionAsync(cancellationToken);
+                await context.Database.CloseConnectionAsync();
+                return string.Empty;
+            }
+            catch (Exception exception) when (FindDbException(exception) is { } database)
+            {
+                // EF may wrap the provider's failure (as a suspected transient fault); the
+                // provider's own message is the one that says which it was.
+                return $" (the server said: {database.Message})";
+            }
+        }
+
+        /// <summary>The first database exception in a failure's inner chain, or null.</summary>
+        private static DbException? FindDbException(Exception exception)
+        {
+            for (Exception? current = exception; current is not null; current = current.InnerException)
+            {
+                if (current is DbException database)
+                {
+                    return database;
+                }
+            }
+
+            return null;
+        }
+
         /// <summary>Creates a command on the store's open connection.</summary>
         private DbCommand CreateCommand(string sql)
         {
@@ -242,10 +284,10 @@ namespace Tellma.Identity.Services.Seeding
             {
                 return await read();
             }
-            catch (DbException exception)
+            catch (Exception exception) when (exception is not IdentityStoreCheckException && FindDbException(exception) is { } database)
             {
                 throw new IdentityStoreCheckException(
-                    $"The identity store check could not read database '{databaseName}': {exception.Message}",
+                    $"The identity store check could not read database '{databaseName}': {database.Message}",
                     exception);
             }
         }

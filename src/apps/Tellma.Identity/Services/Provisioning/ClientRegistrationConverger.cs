@@ -28,11 +28,13 @@ namespace Tellma.Identity.Services.Provisioning
     ///         deployment — and converge the same registrations at once. Every write either lands
     ///         or loses to a concurrent writer: an update to a row another instance changed meanwhile
     ///         fails its concurrency check, and a create of a row another instance created meanwhile
-    ///         fails validation or the unique index. A lost write is never an error here. The whole
-    ///         convergence is re-run, in a fresh service scope so no stale tracked entity or cached
-    ///         application survives into it, and on the re-run it finds the winner's row and either
-    ///         accepts it or rewrites it. The attempts are bounded; a conflict that persists past them
-    ///         is thrown.
+    ///         fails validation or the unique index. A lost write is not an error here. Each write
+    ///         point — one application, one scope, one grant — is converged on its own and retried
+    ///         on its own: the loser re-reads the row in a fresh service scope, so no stale tracked
+    ///         entity or cached application survives, finds the winner's values and accepts or
+    ///         rewrites them. A convergence with more write points therefore tolerates more lost
+    ///         writes in total, <see cref="MaxAttemptsPerWrite" /> at each. A conflict that persists
+    ///         past that bound at one point is thrown.
     ///     </para>
     ///     <para>
     ///         Every attempt runs in a scope of its own, never the caller's, so a lost write leaves
@@ -51,8 +53,12 @@ namespace Tellma.Identity.Services.Provisioning
         IServiceScopeFactory scopeFactory,
         ILogger<ClientRegistrationConverger> logger)
     {
-        /// <summary>How many times one convergence is attempted before a persisting conflict is thrown.</summary>
-        public const int MaxAttempts = 4;
+        /// <summary>
+        ///     How many times one write point (an application, a scope, a grant) is attempted before a
+        ///     conflict that persists there is thrown. Each point loses only to a writer of that same
+        ///     row, and the re-read that follows a loss sees the winner, so a handful is generous.
+        /// </summary>
+        public const int MaxAttemptsPerWrite = 4;
 
         /// <summary>SQL Server's errors for a duplicate key in a unique index and in a unique constraint.</summary>
         private static readonly int[] DuplicateKeyErrors = [2601, 2627];
@@ -73,14 +79,56 @@ namespace Tellma.Identity.Services.Provisioning
         {
             ArgumentNullException.ThrowIfNull(registration);
 
-            // What earlier, interrupted attempts wrote stays written; the progress keeps it, so the
-            // outcome reports a client this instance created even if a later step lost a race.
-            DistributionProgress progress = new();
-            await WithRetryAsync(
+            string issuerOrigin = options.Value.Issuer!.GetLeftPart(UriPartial.Authority);
+            string originValue = registration.Origin.GetLeftPart(UriPartial.Authority);
+
+            // Each write point converges, and retries, on its own (see the remarks), so a lost
+            // write costs one re-read of that point and never a re-run of the points before it.
+            ClientConvergence client = await WithRetryAsync(
                 registration.Slug,
-                converger => converger.ConvergeDistributionOnceAsync(registration, progress, cancellationToken),
+                converger => converger.ConvergeApplicationAsync(
+                    ClientDescriptorFactory.Distribution(
+                        registration.Slug, registration.Origin, registration.BackchannelLogoutUri, registration.ClientSecret),
+                    adjust: null,
+                    cancellationToken),
                 cancellationToken);
-            return progress.ToConvergence();
+            ClientConvergence serviceClient = await WithRetryAsync(
+                registration.ServiceClientId,
+                converger => converger.ConvergeApplicationAsync(
+                    ClientDescriptorFactory.DistributionService(
+                        registration.Slug,
+                        registration.Origin,
+                        issuerOrigin,
+                        registration.ServiceClientSecret,
+                        registration.AllowTokenExchange),
+                    adjust: null,
+                    cancellationToken),
+                cancellationToken);
+
+            // The origin becomes a requestable audience: recorded on the tellma_api scope entity
+            // (the audience registry) and granted to the seeded platform clients so the CLI and
+            // native apps may name it via the `resource` parameter.
+            bool audienceAdded = await WithRetryAsync(
+                TellmaIdentityConstants.ApiScope,
+                converger => converger.AppendScopeResourceAsync(TellmaIdentityConstants.ApiScope, originValue, cancellationToken),
+                cancellationToken);
+
+            int grantsAdded = 0;
+            foreach (string clientId in await WithRetryAsync(
+                registration.Slug,
+                converger => converger.ListClientsCallingDistributionApisAsync(cancellationToken),
+                cancellationToken))
+            {
+                if (await WithRetryAsync(
+                    clientId,
+                    converger => converger.GrantResourceAsync(clientId, originValue, cancellationToken),
+                    cancellationToken))
+                {
+                    grantsAdded++;
+                }
+            }
+
+            return new DistributionConvergence(client, serviceClient, audienceAdded, grantsAdded);
         }
 
         /// <summary>
@@ -97,16 +145,10 @@ namespace Tellma.Identity.Services.Provisioning
         {
             ArgumentNullException.ThrowIfNull(seed);
 
-            ClientConvergence outcome = ClientConvergence.Unchanged;
-            await WithRetryAsync(
+            return await WithRetryAsync(
                 seed.ClientId ?? string.Empty,
-                async converger =>
-                {
-                    outcome = Merge(outcome, await converger.ConvergeSeededClientOnceAsync(seed, cancellationToken));
-                    return true;
-                },
+                converger => converger.ConvergeSeededClientOnceAsync(seed, cancellationToken),
                 cancellationToken);
-            return outcome;
         }
 
         /// <summary>
@@ -125,16 +167,10 @@ namespace Tellma.Identity.Services.Provisioning
             ArgumentException.ThrowIfNullOrWhiteSpace(name);
             ArgumentNullException.ThrowIfNull(resources);
 
-            bool changed = false;
-            await WithRetryAsync(
+            return await WithRetryAsync(
                 name,
-                async converger =>
-                {
-                    changed |= await converger.ConvergeScopeOnceAsync(name, displayName, resources, cancellationToken);
-                    return true;
-                },
+                converger => converger.ConvergeScopeOnceAsync(name, displayName, resources, cancellationToken),
                 cancellationToken);
-            return changed;
         }
 
         /// <summary>
@@ -173,20 +209,19 @@ namespace Tellma.Identity.Services.Provisioning
 
         /// <summary>
         ///     Whether a failed write lost a race with a concurrent writer rather than failing on its
-        ///     own: a stale concurrency token, a duplicate key, or the manager's own validation
-        ///     refusing a client id or scope name that appeared since this attempt looked. A
-        ///     validation failure that is not a race fails identically on every attempt, so retrying
-        ///     it costs a few bounded re-runs and then surfaces it unchanged.
+        ///     own: a stale concurrency token, a duplicate key, or a create the manager refused
+        ///     because the row appeared after this attempt looked. Any other validation failure is
+        ///     the descriptor's own fault and is never retried.
         /// </summary>
         /// <param name="exception">The failure.</param>
-        /// <returns>True when a re-run may succeed.</returns>
+        /// <returns>True when a re-read and another attempt may succeed.</returns>
         internal static bool IsConcurrentWriteConflict(Exception exception)
         {
             for (Exception? current = exception; current is not null; current = current.InnerException)
             {
                 if (current is OpenIddictExceptions.ConcurrencyException
-                    or OpenIddictExceptions.ValidationException
                     or DbUpdateConcurrencyException
+                    or ConcurrentCreateException
                     || (current is SqlException sql && DuplicateKeyErrors.Contains(sql.Number)))
                 {
                     return true;
@@ -196,18 +231,12 @@ namespace Tellma.Identity.Services.Provisioning
             return false;
         }
 
-        /// <summary>The outcome that reports every write: a create or update by any attempt outranks a later no-op.</summary>
-        private static ClientConvergence Merge(ClientConvergence earlier, ClientConvergence later)
-        {
-            return earlier == ClientConvergence.Unchanged ? later : earlier;
-        }
-
         /// <summary>
-        ///     Runs a convergence in a fresh scope, and again in another when it loses a write to a
-        ///     concurrent writer, up to <see cref="MaxAttempts" /> attempts.
+        ///     Runs one write point in a fresh scope, and again in another when it loses its write to
+        ///     a concurrent writer, up to <see cref="MaxAttemptsPerWrite" /> attempts.
         /// </summary>
-        private async Task WithRetryAsync(
-            string subject, Func<ClientRegistrationConverger, Task<bool>> attempt, CancellationToken cancellationToken)
+        private async Task<T> WithRetryAsync<T>(
+            string subject, Func<ClientRegistrationConverger, Task<T>> attempt, CancellationToken cancellationToken)
         {
             for (int number = 1; ; number++)
             {
@@ -215,44 +244,13 @@ namespace Tellma.Identity.Services.Provisioning
                 try
                 {
                     await using AsyncServiceScope scope = scopeFactory.CreateAsyncScope();
-                    await attempt(scope.ServiceProvider.GetRequiredService<ClientRegistrationConverger>());
-                    return;
+                    return await attempt(scope.ServiceProvider.GetRequiredService<ClientRegistrationConverger>());
                 }
-                catch (Exception exception) when (number < MaxAttempts && IsConcurrentWriteConflict(exception))
+                catch (Exception exception) when (number < MaxAttemptsPerWrite && IsConcurrentWriteConflict(exception))
                 {
-                    ClientRegistrationConvergerLog.LostConcurrentWrite(logger, subject, number, MaxAttempts, exception);
+                    ClientRegistrationConvergerLog.LostConcurrentWrite(logger, subject, number, MaxAttemptsPerWrite, exception);
                 }
             }
-        }
-
-        /// <summary>One attempt at converging a distribution, recording each step's outcome in the progress.</summary>
-        private async Task<bool> ConvergeDistributionOnceAsync(
-            DistributionClientRegistration registration, DistributionProgress progress, CancellationToken cancellationToken)
-        {
-            string issuerOrigin = options.Value.Issuer!.GetLeftPart(UriPartial.Authority);
-            string originValue = registration.Origin.GetLeftPart(UriPartial.Authority);
-
-            progress.Client = Merge(progress.Client, await ConvergeApplicationAsync(
-                ClientDescriptorFactory.Distribution(
-                    registration.Slug, registration.Origin, registration.BackchannelLogoutUri, registration.ClientSecret),
-                adjust: null,
-                cancellationToken));
-            progress.ServiceClient = Merge(progress.ServiceClient, await ConvergeApplicationAsync(
-                ClientDescriptorFactory.DistributionService(
-                    registration.Slug,
-                    registration.Origin,
-                    issuerOrigin,
-                    registration.ServiceClientSecret,
-                    registration.AllowTokenExchange),
-                adjust: null,
-                cancellationToken));
-
-            // The origin becomes a requestable audience: recorded on the tellma_api scope entity
-            // (the audience registry) and granted to the seeded platform clients so the CLI and
-            // native apps may name it via the `resource` parameter.
-            progress.AudienceAdded |= await AppendScopeResourceAsync(TellmaIdentityConstants.ApiScope, originValue, cancellationToken);
-            progress.GrantsAdded += await GrantResourceToPlatformClientsAsync(originValue, cancellationToken);
-            return true;
         }
 
         /// <summary>One attempt at converging a seeded platform client.</summary>
@@ -289,7 +287,7 @@ namespace Tellma.Identity.Services.Provisioning
             {
                 OpenIddictScopeDescriptor descriptor = new() { Name = name, DisplayName = displayName };
                 descriptor.Resources.UnionWith(resources);
-                await scopeManager.CreateAsync(descriptor, cancellationToken);
+                await CreateScopeAsync(descriptor, cancellationToken);
                 return true;
             }
 
@@ -314,7 +312,7 @@ namespace Tellma.Identity.Services.Provisioning
         /// <param name="adjust">Folds what must survive from the stored registration into the desired one.</param>
         /// <param name="cancellationToken">Aborts the operation.</param>
         /// <returns>What happened to the stored registration.</returns>
-        private async Task<ClientConvergence> ConvergeApplicationAsync(
+        internal async Task<ClientConvergence> ConvergeApplicationAsync(
             OpenIddictApplicationDescriptor descriptor,
             Action<OpenIddictApplicationDescriptor, OpenIddictApplicationDescriptor>? adjust,
             CancellationToken cancellationToken)
@@ -322,7 +320,22 @@ namespace Tellma.Identity.Services.Provisioning
             object? existing = await applicationManager.FindByClientIdAsync(descriptor.ClientId!, cancellationToken);
             if (existing is null)
             {
-                await applicationManager.CreateAsync(descriptor, cancellationToken);
+                try
+                {
+                    await applicationManager.CreateAsync(descriptor, cancellationToken);
+                }
+                catch (OpenIddictExceptions.ValidationException exception)
+                {
+                    // The client id was free when this attempt looked and taken when it wrote: a
+                    // lost race. Any other refusal is the descriptor's own and surfaces as is.
+                    if (await ApplicationExistsAsync(descriptor.ClientId!, cancellationToken))
+                    {
+                        throw new ConcurrentCreateException(descriptor.ClientId!, exception);
+                    }
+
+                    throw;
+                }
+
                 return ClientConvergence.Created;
             }
 
@@ -352,14 +365,14 @@ namespace Tellma.Identity.Services.Provisioning
 
         /// <summary>Appends one resource to a scope entity's resource registry.</summary>
         /// <returns>Whether the resource was new to the scope.</returns>
-        private async Task<bool> AppendScopeResourceAsync(string scopeName, string resource, CancellationToken cancellationToken)
+        internal async Task<bool> AppendScopeResourceAsync(string scopeName, string resource, CancellationToken cancellationToken)
         {
             object? scope = await scopeManager.FindByNameAsync(scopeName, cancellationToken);
             if (scope is null)
             {
                 OpenIddictScopeDescriptor created = new() { Name = scopeName };
                 created.Resources.Add(resource);
-                await scopeManager.CreateAsync(created, cancellationToken);
+                await CreateScopeAsync(created, cancellationToken);
                 return true;
             }
 
@@ -375,77 +388,110 @@ namespace Tellma.Identity.Services.Provisioning
         }
 
         /// <summary>
-        ///     Grants a distribution's audience to the platform clients that may name distribution
-        ///     APIs (CLI, native apps). The control plane is deliberately excluded: its only audience
-        ///     is the control-plane surface, so a compromised control-plane secret cannot mint tokens
-        ///     for a distribution API.
+        ///     The client ids of the platform clients that may name distribution APIs (CLI, native
+        ///     apps): the clients a distribution's audience is granted to. The control plane is
+        ///     deliberately excluded: its only audience is the control-plane surface, so a compromised
+        ///     control-plane secret cannot mint tokens for a distribution API.
         /// </summary>
-        /// <returns>How many clients were newly granted the resource.</returns>
-        private async Task<int> GrantResourceToPlatformClientsAsync(string resource, CancellationToken cancellationToken)
+        /// <returns>The client ids.</returns>
+        internal async Task<List<string>> ListClientsCallingDistributionApisAsync(CancellationToken cancellationToken)
         {
-            string permission = Permissions.Prefixes.Resource + resource;
-
             // Read the whole list before writing any of it. The store streams this query over the
             // request's single connection, and multiple active result sets are not enabled, so an
-            // update issued while that reader is still open fails outright. Only a client carrying
-            // the marker is written, so a registry holding none never reached the write and never
-            // showed the fault.
+            // update issued while that reader is still open fails outright.
             List<object> applications = [];
             await foreach (object application in applicationManager.ListAsync(cancellationToken: cancellationToken))
             {
                 applications.Add(application);
             }
 
-            int granted = 0;
+            List<string> clientIds = [];
             foreach (object application in applications)
             {
                 ImmutableDictionary<string, JsonElement> properties =
                     await applicationManager.GetPropertiesAsync(application, cancellationToken);
-                if (!TellmaClientProperties.IsSet(properties, TellmaClientProperties.CallsDistributionApis))
+                if (TellmaClientProperties.IsSet(properties, TellmaClientProperties.CallsDistributionApis)
+                    && await applicationManager.GetClientIdAsync(application, cancellationToken) is { } clientId)
                 {
-                    continue;
-                }
-
-                OpenIddictApplicationDescriptor descriptor = new();
-                await applicationManager.PopulateAsync(descriptor, application, cancellationToken);
-                if (descriptor.Permissions.Add(permission))
-                {
-                    await applicationManager.UpdateAsync(application, descriptor, cancellationToken);
-                    granted++;
+                    clientIds.Add(clientId);
                 }
             }
 
-            return granted;
+            return clientIds;
         }
 
-        /// <summary>What a distribution's convergence wrote so far, across attempts.</summary>
-        private sealed class DistributionProgress
+        /// <summary>Grants one resource to one client, if it lacks it.</summary>
+        /// <returns>Whether the client was newly granted the resource.</returns>
+        internal async Task<bool> GrantResourceAsync(string clientId, string resource, CancellationToken cancellationToken)
         {
-            /// <summary>The BFF client's outcome.</summary>
-            public ClientConvergence Client { get; set; }
-
-            /// <summary>The backend client's outcome.</summary>
-            public ClientConvergence ServiceClient { get; set; }
-
-            /// <summary>Whether the origin was added to the API audiences.</summary>
-            public bool AudienceAdded { get; set; }
-
-            /// <summary>How many platform clients were granted the origin.</summary>
-            public int GrantsAdded { get; set; }
-
-            /// <summary>The outcome as the caller sees it.</summary>
-            /// <returns>The convergence.</returns>
-            public DistributionConvergence ToConvergence()
+            object? application = await applicationManager.FindByClientIdAsync(clientId, cancellationToken);
+            if (application is null)
             {
-                return new DistributionConvergence(Client, ServiceClient, AudienceAdded, GrantsAdded);
+                return false;
+            }
+
+            OpenIddictApplicationDescriptor descriptor = new();
+            await applicationManager.PopulateAsync(descriptor, application, cancellationToken);
+            if (!descriptor.Permissions.Add(Permissions.Prefixes.Resource + resource))
+            {
+                return false;
+            }
+
+            await applicationManager.UpdateAsync(application, descriptor, cancellationToken);
+            return true;
+        }
+
+        /// <summary>Creates a scope, reporting a name taken since the attempt looked as a lost race.</summary>
+        private async Task CreateScopeAsync(OpenIddictScopeDescriptor descriptor, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await scopeManager.CreateAsync(descriptor, cancellationToken);
+            }
+            catch (OpenIddictExceptions.ValidationException exception)
+            {
+                if (await ScopeExistsAsync(descriptor.Name!, cancellationToken))
+                {
+                    throw new ConcurrentCreateException(descriptor.Name!, exception);
+                }
+
+                throw;
             }
         }
+
+        /// <summary>
+        ///     Whether a client id is registered now, read in a fresh scope: this scope's manager
+        ///     caches the miss it saw before the create, while its validation read the store itself.
+        /// </summary>
+        private async Task<bool> ApplicationExistsAsync(string clientId, CancellationToken cancellationToken)
+        {
+            await using AsyncServiceScope scope = scopeFactory.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>()
+                .FindByClientIdAsync(clientId, cancellationToken) is not null;
+        }
+
+        /// <summary>Whether a scope name is registered now, read in a fresh scope (see <see cref="ApplicationExistsAsync" />).</summary>
+        private async Task<bool> ScopeExistsAsync(string name, CancellationToken cancellationToken)
+        {
+            await using AsyncServiceScope scope = scopeFactory.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<IOpenIddictScopeManager>()
+                .FindByNameAsync(name, cancellationToken) is not null;
+        }
+
+        /// <summary>
+        ///     A create the manager refused because a concurrent writer created the same row after
+        ///     this attempt looked for it: a lost race, retried, never a validation failure.
+        /// </summary>
+        /// <param name="subject">The client id or scope name.</param>
+        /// <param name="innerException">The manager's validation failure.</param>
+        private sealed class ConcurrentCreateException(string subject, Exception innerException)
+            : Exception($"'{subject}' was created by a concurrent writer.", innerException);
     }
 
     /// <summary>Source-generated log messages for <see cref="ClientRegistrationConverger" />.</summary>
     internal static partial class ClientRegistrationConvergerLog
     {
-        /// <summary>A write lost to a concurrent writer; the convergence runs again.</summary>
+        /// <summary>A write lost to a concurrent writer; that write point is converged again.</summary>
         /// <param name="logger">The logger.</param>
         /// <param name="subject">The client id or scope name being converged.</param>
         /// <param name="attempt">The attempt that lost.</param>
