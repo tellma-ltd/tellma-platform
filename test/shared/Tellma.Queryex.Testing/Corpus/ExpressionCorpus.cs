@@ -66,6 +66,7 @@ namespace Tellma.Queryex.Testing.Corpus
             // has to accept whatever expression the language lets reach it.
             yield return Runs("fn-level", "level(AltNode)");
             yield return Runs("fn-level-computed", "level(coalesce(AltNode, Account.Node))");
+            yield return Runs("fn-level-conditional", "level(if(IsPosted, AltNode, Account.Node))");
 
             // Text. Trailing spaces and fixed-width storage are why several of these read Ref.
             yield return Runs("fn-upper", "upper(Memo)");

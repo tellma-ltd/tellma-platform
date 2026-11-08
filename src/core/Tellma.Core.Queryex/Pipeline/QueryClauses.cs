@@ -139,10 +139,17 @@ namespace Tellma.Core.Queryex.Pipeline
             Lowerer lowerer = new(_spec.Root, _options.BatchOrdinal, _budget, _sink);
             _root = lowerer.Root;
 
-            PlanPredicate? where = Conjoin(LowerFilter(lowerer), LowerRestrictions(lowerer));
+            PlanPredicate? filter = LowerFilter(lowerer);
             (ImmutableArray<PlanSelectItem> select, ImmutableArray<PlanValue> groupBy) = LowerSelect(lowerer);
             PlanPredicate? having = LowerHaving(lowerer);
             ImmutableArray<PlanOrderItem> orderBy = LowerOrdering(lowerer, select);
+
+            // The restrictions are lowered after every clause a user wrote, so a join they share
+            // with one of those clauses keeps that clause's origin: a ceiling it pushes over is then
+            // reported where a user can see it, and a restriction is named only for the joins no
+            // user clause needed. Nothing else depends on the order, since a restriction claims no
+            // parameter and aliases follow the schema's declarations.
+            PlanPredicate? where = Conjoin(filter, LowerRestrictions(lowerer));
 
             // Read after the compiled items, once the ordering above has matched select items by
             // position without ever seeing them: nothing may name an undeclared column.

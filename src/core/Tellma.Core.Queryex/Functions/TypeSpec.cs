@@ -74,9 +74,15 @@ namespace Tellma.Core.Queryex.Functions
         };
 
         /// <summary>
-        ///     A position in a hierarchy. Only a path can supply one: the language has no literal
-        ///     for it, and a declared parameter cannot have its type.
+        ///     A position in a hierarchy.
         /// </summary>
+        /// <remarks>
+        ///     The language has no literal for one, and a declared parameter cannot have its type, so
+        ///     every position starts from a path. Expressions over paths can still produce one — a
+        ///     <c>coalesce</c> or an <c>if</c> of positions — as can the absent value <c>null</c>.
+        ///     The backend's hierarchy methods accept each of those forms, so they are admitted
+        ///     too, not only a bare path.
+        /// </remarks>
         internal static TypeSpec Node { get; } = new TypeSpec { Admits = TypeMask.HierarchyId };
 
         /// <summary>A literal selector, whose text is consumed at compile time.</summary>

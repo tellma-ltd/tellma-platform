@@ -244,6 +244,31 @@ namespace Tellma.Core.Queryex.Tests.Emit
             Assert.Equal("Restrictions[1]", problem.Location);
         }
 
+        /// <summary>
+        ///     A join a user's clause shares with a restriction is the user's: when it pushes the
+        ///     count over the ceiling, the problem is reported on the clause the user wrote.
+        /// </summary>
+        [Fact]
+        public void ASharedJoinOverTheCeiling_IsReportedOnTheUsersClause()
+        {
+            QuerySpec spec = new()
+            {
+                Root = LedgerFixture.Invoice,
+                Select = "Customer.Region.Name",
+            };
+
+            QueryCompilationOptions tight = Options() with { Limits = QueryexLimits.Default with { MaxJoins = 1 } };
+            QueryexDiagnostic alone = Assert.Single(Engine.CompileQuery(spec, tight).Diagnostics);
+            QueryexDiagnostic shared = Assert.Single(Engine.CompileQuery(
+                spec with { Restrictions = [new KeySetRestriction("Customer.Region.Id", "@keys")] },
+                tight).Diagnostics);
+
+            Assert.Equal("QX5006", shared.Code);
+            Assert.Equal("Select[0]", shared.Location);
+            Assert.Equal(new QueryexSpan(0, 20), shared.Span);
+            Assert.Equal((alone.Code, alone.Location, alone.Span), (shared.Code, shared.Location, shared.Span));
+        }
+
         /// <summary>The restrictions are part of what a compilation is remembered under.</summary>
         [Fact]
         public void Restrictions_ArePartOfTheCacheKey()
