@@ -31,6 +31,21 @@
             "tsConfig": "projects/core/tellma-core-ui/tsconfig.spec.json",
             "browsers": [
               "chromiumHeadless"
+            ],
+            "exclude": [
+              "**/*.csp.spec.ts"
+            ]
+          }
+        },
+        "test-csp": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "projects/core/tellma-core-ui/tsconfig.spec.json",
+            "browsers": [
+              "chromiumHeadless"
+            ],
+            "include": [
+              "**/*.csp.spec.ts"
             ]
           }
         }
@@ -126,7 +141,6 @@
           "options": {
             "browser": "projects/internal/showcase/src/main.ts",
             "tsConfig": "projects/internal/showcase/tsconfig.app.json",
-            "allowedCommonJsDependencies": ["@messageformat/core"],
             "assets": [
               {
                 "glob": "**/*",

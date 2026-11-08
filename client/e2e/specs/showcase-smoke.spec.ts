@@ -32,7 +32,7 @@ test.describe('showcase shell', () => {
     await page.getByTestId('toggle-theme').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await page.getByTestId('toggle-theme').click();
-    await expect(page.locator('html')).not.toHaveAttribute('data-theme');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 
     // Language toggles from ANY page.
     await page.getByTestId('lang-ar').click();
@@ -53,6 +53,7 @@ test.describe('showcase shell', () => {
     await page.goto(storyUrl('welcome'));
     await expect(page.getByRole('heading', { name: 'Welcome' })).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('dir', 'ltr');
-    await expect(page.locator('html')).not.toHaveAttribute('data-theme');
+    // The theme always paints a scheme: light, never an absent attribute.
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   });
 });

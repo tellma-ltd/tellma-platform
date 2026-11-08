@@ -10,6 +10,13 @@
  * a test target but no specs — e.g. a harness-only package exercised through
  * its consumers — is skipped, since its runner would fail on zero tests.)
  *
+ * A project may also declare `test-<name>` targets: each runs as a run of
+ * its own after `test`, in declaration order among themselves. The unit
+ * runner shares one browser page between the files of a run, so a suite
+ * that changes the page irreversibly — `test-csp` installs a Content
+ * Security Policy, which can never be lifted — must not share a run with
+ * anything else.
+ *
  * Usage: node scripts/test.mjs
  */
 import { spawnSync } from 'node:child_process';
@@ -46,12 +53,21 @@ for (const [name, project] of Object.entries(projects)) {
     console.log(`[test] ${name}: no spec files — skipped`);
     continue;
   }
-  console.log(`[test] ${name}`);
-  const result = spawnSync(process.execPath, [ng, 'test', name, '--watch=false'], {
-    cwd: clientDir,
-    stdio: 'inherit',
-  });
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1);
+  // `test` first, then every `test-<name>` target in declaration order, each
+  // in a run of its own.
+  const targets = [
+    'test',
+    ...Object.keys(project.architect).filter((target) => target.startsWith('test-')),
+  ];
+  for (const target of targets) {
+    const label = target === 'test' ? name : `${name}:${target}`;
+    console.log(`[test] ${label}`);
+    const result = spawnSync(process.execPath, [ng, 'run', `${name}:${target}`, '--watch=false'], {
+      cwd: clientDir,
+      stdio: 'inherit',
+    });
+    if (result.status !== 0) {
+      process.exit(result.status ?? 1);
+    }
   }
 }

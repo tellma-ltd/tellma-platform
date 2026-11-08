@@ -5,6 +5,7 @@
 
 using System.Buffers;
 using System.Text.Json;
+using Tellma.Core.Abstractions.Api;
 
 namespace Tellma.Core.Abstractions.Client
 {
@@ -25,6 +26,12 @@ namespace Tellma.Core.Abstractions.Client
         // emitted tree must be identical on every build machine.
         private static readonly SearchValues<char> ForbiddenPathCharacters = SearchValues.Create("\\<>:\"|?*");
 
+        /// <summary>
+        ///     The section writer's options: the platform's encoder, so a section spells text exactly
+        ///     as everything else serialized under <see cref="TellmaJson.Options" /> does.
+        /// </summary>
+        private static readonly JsonWriterOptions WriterOptions = new() { Encoder = TellmaJson.Options.Encoder };
+
         private readonly List<ClientMetadataSection> _sections = [];
         private readonly List<ClientGeneratedFile> _files = [];
 
@@ -42,7 +49,9 @@ namespace Tellma.Core.Abstractions.Client
 
         /// <summary>
         ///     Writes one member of a metadata chunk. <paramref name="write" /> runs at once and must
-        ///     write exactly one complete JSON value: the member's value, without its name.
+        ///     write exactly one complete JSON value: the member's value, without its name. The writer
+        ///     escapes text as <see cref="TellmaJson.Options" /> does: every script as itself, the
+        ///     HTML-sensitive characters escaped.
         /// </summary>
         /// <param name="chunk">The chunk the member belongs to.</param>
         /// <param name="name">The member's name: camelCase, starting with a lowercase letter.</param>
@@ -75,9 +84,11 @@ namespace Tellma.Core.Abstractions.Client
 
             // --- Capture the value ---
             // The writer validates structure, so a second root value or an unbalanced object throws
-            // inside the contributor's own call, where the stack trace points at the culprit.
+            // inside the contributor's own call, where the stack trace points at the culprit. It
+            // escapes text as the platform's JSON rules do: a writer handed to the serializer keeps
+            // its own encoder, whatever the serializer options say.
             ArrayBufferWriter<byte> buffer = new();
-            using (Utf8JsonWriter writer = new(buffer))
+            using (Utf8JsonWriter writer = new(buffer, WriterOptions))
             {
                 write(writer);
                 writer.Flush();

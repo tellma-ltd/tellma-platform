@@ -11,6 +11,7 @@ import {
   TemplateRef,
   type Type,
 } from '@angular/core';
+import { Directionality } from '@angular/cdk/bidi';
 import { Dialog } from '@angular/cdk/dialog';
 
 import { TmModalRef, type TmModalResult, type ɵTmModalShellPayload } from './tm-modal-ref';
@@ -106,6 +107,8 @@ let nextTitleId = 0;
 @Injectable({ providedIn: 'root' })
 export class TmModal {
   private readonly dialog = inject(Dialog);
+  /** The live root direction: an open modal mirrors when the document's direction flips. */
+  private readonly direction = inject(Directionality);
 
   /**
    * Opens a modal over `content` — a component type (instantiated with
@@ -166,6 +169,16 @@ export class TmModal {
       },
     );
     ref.ɵattach(dialogRef);
+    // No `direction` is passed to the CDK, so the overlay and the content
+    // both take the live root direction at creation; while open, a flip of
+    // the document's direction re-stamps the pane so the open modal mirrors
+    // in place.
+    const overlayRef = dialogRef.overlayRef;
+    const directionChange = this.direction.change.subscribe((direction) => {
+      overlayRef.setDirection(direction);
+      overlayRef.updatePosition();
+    });
+    dialogRef.closed.subscribe(() => directionChange.unsubscribe());
     return ref;
   }
 }

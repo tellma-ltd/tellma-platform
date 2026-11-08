@@ -54,6 +54,21 @@ export interface TmStatusColors {
 }
 
 /**
+ * One categorical colour slot: a solid hue and a tinted pair for text. A
+ * slot keeps its place across releases, so a chart series or an avatar
+ * keeps its colour; a distribution re-brands a slot's values, never the
+ * order.
+ */
+export interface TmCategoricalTone {
+  /** A solid hue for chart marks; never carries text. */
+  readonly mark: TmTokenValue;
+  /** A pale background of the hue. */
+  readonly tint: TmTokenValue;
+  /** Text on `tint`, at a contrast of at least 4.5:1. */
+  readonly onTint: TmTokenValue;
+}
+
+/**
  * Everything scheme-dependent, one instance per scheme (light/dark). Dark
  * mode is a second base scheme, not a separate mechanism. Primitives are
  * scheme-invariant — `--white` is always white, `--grey-900` always the
@@ -137,6 +152,18 @@ export interface TmSchemeColors {
     readonly placeholder: TmTokenValue;
     readonly icon: TmTokenValue;
   };
+  /**
+   * Eight hues that tell things apart — chart series and keyed avatars —
+   * emitted as `--categorical-<slot>-mark`, `-tint` and `-on-tint`. Every
+   * other surface keeps the brand's roles.
+   */
+  readonly categorical: Readonly<Record<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8, TmCategoricalTone>>;
+  /**
+   * A seven-step magnitude ramp, step 1 the faintest against the scheme's
+   * surface, emitted as `--sequential-<step>`. Per scheme because the light
+   * ramp runs pale to dark and the dark ramp the reverse.
+   */
+  readonly sequential: Readonly<Record<1 | 2 | 3 | 4 | 5 | 6 | 7, TmTokenValue>>;
 }
 
 /** The full token document (one preset = one TmTokens instance). */

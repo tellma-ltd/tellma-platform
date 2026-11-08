@@ -8,7 +8,8 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { expectNoAxeViolations } from '../support/axe';
 import { pressUndo, syntheticPaste } from '../support/clipboard';
 import { activeCell, activateCell, cell, cellText, editor, gotoGrid, modelJson } from '../support/grid';
-import { holdResponses, releaseResponses } from '../support/held-responses';
+import { heldResponses, holdResponses, releaseResponses } from '../support/held-responses';
+import { pressInOneTask, releaseAndPressInOneTask } from '../support/keyboard-burst';
 import { appStable } from '../support/settle';
 
 /**
@@ -129,6 +130,96 @@ test('Tab with a highlighted result commits and the grid moves to the next cell'
   await expect(editor(page)).toHaveCount(0);
   await expect.poll(async () => (await lines(page))[1].agentId).toBe(4);
   await expect(activeCell(page)).toHaveAttribute('data-col', '2'); // commit-and-move
+});
+
+// A barcode scanner, a text expander or a stalled main thread delivers keys
+// back to back. Each burst below arrives in ONE task, so no render runs
+// between the last keystroke and the commit key, and each must commit what
+// the same keys commit when paced (the two tests above).
+test.describe('input delivered faster than the page renders', () => {
+  test('a keystroke and Enter in one burst pick the fresh first result with NO move', async ({
+    page,
+  }) => {
+    await activateCell(page, 2, 1);
+    await page.keyboard.press('A');
+    await expect(activeOption(page)).toHaveText('Adam Brown'); // the previous highlight
+    await appStable(page);
+    await pressInOneTask(page, ['l', 'Enter']);
+    await expect(editor(page)).toHaveCount(0);
+    await expect.poll(async () => (await lines(page))[2].agentId).toBe(3);
+    await expect(activeCell(page)).toHaveAttribute('data-row', '2'); // the pick IS the edit
+    await expect(activeCell(page)).toHaveAttribute('data-col', '1');
+    await expect(cell(page, 2, 1)).not.toHaveClass(/tm-grid__cell--error/);
+    expect(await cellText(page, 2, 1)).toBe('Alice Green');
+    await expect(page.getByTestId('resolver-calls')).toHaveText('0');
+  });
+
+  test('the whole entry in one burst, from the type-to-edit key to Enter, picks with NO move', async ({
+    page,
+  }) => {
+    await activateCell(page, 4, 1); // row 4's agent starts empty
+    await pressInOneTask(page, ['A', 'l', 'i', 'c', 'e', 'Enter']);
+    await expect(editor(page)).toHaveCount(0);
+    await expect.poll(async () => (await lines(page))[4].agentId).toBe(3);
+    await expect(activeCell(page)).toHaveAttribute('data-row', '4');
+    await expect(activeCell(page)).toHaveAttribute('data-col', '1');
+  });
+
+  test('a keystroke and Tab in one burst commit the fresh first result and move', async ({
+    page,
+  }) => {
+    await activateCell(page, 1, 1);
+    await page.keyboard.press('A');
+    await expect(activeOption(page)).toHaveText('Adam Brown');
+    await appStable(page);
+    await pressInOneTask(page, ['l', 'Tab']);
+    await expect(editor(page)).toHaveCount(0);
+    await expect.poll(async () => (await lines(page))[1].agentId).toBe(3);
+    await expect(activeCell(page)).toHaveAttribute('data-col', '2'); // commit-and-move
+    await expect(cell(page, 1, 1)).not.toHaveClass(/tm-grid__cell--error/);
+    await expect(page.getByTestId('resolver-calls')).toHaveText('0');
+  });
+
+  test('Enter right after an async answer lands, before it renders, picks it with NO move', async ({
+    page,
+  }) => {
+    await page.getByTestId('search-delay').fill('200'); // asynchronous search
+    await holdResponses(page, 'search');
+    await activateCell(page, 2, 1);
+    await page.keyboard.press('A');
+    await page.keyboard.type('l');
+    await expect(pickerInput(page)).toHaveValue('Al');
+    // Both requests are held ('A' and 'Al'), so 'Al' has been asked and is
+    // still unanswered: the spinner is what is on screen.
+    await expect(heldResponses(page, 'search')).toHaveText('2');
+    await expect(panel(page).locator('tm-spinner')).toBeVisible();
+    await releaseAndPressInOneTask(page, 'search', ['Enter']);
+    await expect(editor(page)).toHaveCount(0);
+    await expect.poll(async () => (await lines(page))[2].agentId).toBe(3);
+    await expect(activeCell(page)).toHaveAttribute('data-row', '2');
+    await expect(cell(page, 2, 1)).not.toHaveClass(/tm-grid__cell--error/);
+    await expect(page.getByTestId('resolver-calls')).toHaveText('0');
+  });
+
+  test('keys and Enter in one burst while the async search is unanswered are the grid commit', async ({
+    page,
+  }) => {
+    // No answer, no highlight: Enter commits the typed text and moves, and
+    // that commit is decided by the very search the keys started, exactly
+    // as when the same Enter is pressed paced while the spinner is up.
+    await page.getByTestId('search-delay').fill('200');
+    await holdResponses(page, 'search');
+    await activateCell(page, 2, 1);
+    await page.keyboard.press('A');
+    await expect(pickerInput(page)).toHaveValue('A');
+    await pressInOneTask(page, ['l', 'i', 'c', 'e', 'Enter']);
+    await expect(editor(page)).toHaveCount(0);
+    await expect(activeCell(page)).toHaveAttribute('data-row', '3'); // commit-and-move
+    await expect(cell(page, 2, 1).locator('.tm-grid__cell-spin')).toBeVisible();
+    await releaseResponses(page, 'search');
+    await expect.poll(async () => (await lines(page))[2].agentId).toBe(3);
+    await expect(page.getByTestId('resolver-calls')).toHaveText('0');
+  });
 });
 
 test('the two-stage Esc: dropdown first, then the grid cancel', async ({ page }) => {

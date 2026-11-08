@@ -27,6 +27,9 @@ export function provideTmCalendar(calendar: TmCalendar | Signal<TmCalendar>): En
 export const TM_ACTIVE_LOCALE: InjectionToken<Signal<string>>;
 
 // @public
+export const TM_BREAKPOINTS: Readonly<Record<Exclude<TmBreakpoint, 'xs'>, number>>;
+
+// @public
 export const TM_CALENDAR: InjectionToken<Signal<TmCalendar>>;
 
 // @public
@@ -37,6 +40,9 @@ export const TM_ERROR_DISPLAY: InjectionToken<TmErrorDisplayPolicy>;
 
 // @public
 export const TM_FORM_FIELD_DEFAULTS: InjectionToken<TmFormFieldDefaults>;
+
+// @public
+export const TM_UI_ARGUMENT_FORMATTER: InjectionToken<TmUiArgumentFormatter>;
 
 // @public
 export const TM_UI_I18N_SCOPE = "tmUi";
@@ -220,6 +226,18 @@ export const TM_UI_STRINGS_EN: {
 export const TM_UI_TRANSLATE: InjectionToken<TmUiTranslateFn>;
 
 // @public
+export type TmBreakpoint = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
+
+// @public
+export class TmBreakpoints {
+    constructor();
+    atLeast(breakpoint: TmBreakpoint): Signal<boolean>;
+    readonly current: Signal<TmBreakpoint>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmBreakpoints, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmBreakpoints>;
+}
+
+// @public
 export class TmClientCache {
     clearAll(): Promise<void>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmClientCache, never>;
@@ -234,6 +252,9 @@ export function tmDefaultActiveLocale(): Signal<string>;
 
 // @public
 export const tmDefaultErrorDisplay: TmErrorDisplayPolicy;
+
+// @public
+export function tmDefaultUiArgumentFormatter(type: TmUiArgumentType, value: unknown, style: string, locale: string): string;
 
 // @public
 export function tmDefaultUiTranslate(): TmUiTranslateFn;
@@ -287,15 +308,52 @@ export function tmMinDate<TValue extends string | null, TPathKind extends PathKi
 export function tmResolveFieldErrors(errors: Signal<readonly ValidationError.WithOptionalFieldTree[]>, translate: TmUiTranslateFn, formatDate?: (iso: string) => string): Signal<readonly TmFieldError[]>;
 
 // @public
+export class TmTheme {
+    constructor();
+    readonly effective: Signal<'light' | 'dark'>;
+    set(setting: TmThemeSetting): void;
+    readonly setting: Signal<TmThemeSetting>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmTheme, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmTheme>;
+}
+
+// @public
+export interface TmThemeOptions {
+    readonly initial?: TmThemeSetting | (() => TmThemeSetting);
+}
+
+// @public
+export type TmThemeSetting = 'system' | 'light' | 'dark';
+
+// @public
+export type TmUiArgumentFormatter = (type: TmUiArgumentType, value: unknown, style: string, locale: string) => string;
+
+// @public
+export type TmUiArgumentType = 'number' | 'date' | 'time';
+
+// @public
 export type TmUiMessageContext = Record<string, unknown>;
 
 // @public
 export interface TmUiOptions {
     readonly availableLangs?: readonly string[];
     readonly forms?: TmFormsOptions;
+    readonly theme?: TmThemeOptions;
+    readonly translations?: TmUiTranslationsLoader;
 }
 
 // @public
 export type TmUiTranslateFn = (key: string, params?: Record<string, unknown>) => Signal<string>;
+
+// @public
+export type TmUiTranslationsLoader = (request: {
+    readonly lang: string;
+    readonly scope: string | null;
+}) => Promise<TmUiTranslationTable>;
+
+// @public
+export type TmUiTranslationTable = {
+    readonly [key: string]: string | TmUiTranslationTable;
+};
 
 ```

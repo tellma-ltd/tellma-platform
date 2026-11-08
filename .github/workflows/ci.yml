@@ -106,8 +106,10 @@ jobs:
         run: dotnet ef migrations bundle --project "$HOST" --startup-project "$HOST" -o artifacts/efbundle
 
       # --- Package flow ---
+      # Tellma.Core.Abstractions depends on Tellma.Core.Queryex, so the feed carries both.
       - name: Pack the libraries
         run: |
+          dotnet pack src/core/Tellma.Core.Queryex -c Release -o artifacts/pkg
           dotnet pack src/core/Tellma.Core.Abstractions -c Release -o artifacts/pkg
           dotnet pack src/core/Tellma.Core.EntityFrameworkCore -c Release -o artifacts/pkg
           dotnet pack src/core/Tellma.Core.EntityFrameworkCore.Design -c Release -o artifacts/pkg
