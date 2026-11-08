@@ -144,12 +144,13 @@ namespace Tellma.Core.Queryex.Pipeline
             PlanPredicate? having = LowerHaving(lowerer);
             ImmutableArray<PlanOrderItem> orderBy = LowerOrdering(lowerer, select);
 
-            // The restrictions are lowered after every clause a user wrote, so a join they share
-            // with one of those clauses keeps that clause's origin: a ceiling it pushes over is then
-            // reported where a user can see it, and a restriction is named only for the joins no
-            // user clause needed. Nothing else depends on the order, since a restriction claims no
-            // parameter and aliases follow the schema's declarations.
-            PlanPredicate? where = Conjoin(filter, LowerRestrictions(lowerer));
+            // The restrictions are lowered after every clause a user wrote, and reached after them
+            // too, so a join they share with one of those clauses is that clause's: a ceiling it
+            // pushes over is then reported where a user can see it, and a restriction is named only
+            // for the joins no user clause needed. Nothing else depends on the order, since a
+            // restriction claims no parameter and aliases follow the schema's declarations.
+            ImmutableArray<PlanKeySetRestriction> restrictions = LowerRestrictions(lowerer);
+            PlanPredicate? where = Conjoin(filter, restrictions);
 
             // Read after the compiled items, once the ordering above has matched select items by
             // position without ever seeing them: nothing may name an undeclared column.
@@ -160,14 +161,25 @@ namespace Tellma.Core.Queryex.Pipeline
             ImmutableArray<ParameterSlot> paging = [.. new[] { skip, take }.OfType<ParameterSlot>()];
 
             // Everything the statement will contain, so that finishing the plan can tell what is
-            // still read from what merely got as far as being built.
+            // still read from what merely got as far as being built — in the order the clauses were
+            // lowered, so a join or a slot two clauses read is named for the one written first.
             List<PlanNode> fragments = [];
+            if (filter is not null)
+            {
+                fragments.Add(filter);
+            }
+
             foreach (PlanSelectItem item in select)
             {
                 fragments.Add(item.Value);
             }
 
             fragments.AddRange(groupBy);
+            if (having is not null)
+            {
+                fragments.Add(having);
+            }
+
             foreach (PlanOrderItem term in orderBy)
             {
                 if (term.Value is not null)
@@ -176,14 +188,16 @@ namespace Tellma.Core.Queryex.Pipeline
                 }
             }
 
+            // The restrictions only where the row filter still holds them: one already known to be
+            // false leaves them out, along with every join they would have needed.
+            if (!ReferenceEquals(where, filter))
+            {
+                fragments.AddRange(restrictions);
+            }
+
             if (where is not null)
             {
                 fragments.Add(where);
-            }
-
-            if (having is not null)
-            {
-                fragments.Add(having);
             }
 
             ImmutableArray<JoinNode> joins = lowerer.Complete(fragments, paging);
@@ -667,7 +681,11 @@ namespace Tellma.Core.Queryex.Pipeline
             }
 
             terms.Add(new PlanOrderItem(
-                new PlanColumn(default, _root!, _spec.Root.Key),
+                new PlanColumn(
+                    default,
+                    _root!,
+                    _spec.Root.Key,
+                    new PlanOrigin(default, DiagnosticLocation.Clause(QueryexClause.OrderBy))),
                 null,
                 false));
         }

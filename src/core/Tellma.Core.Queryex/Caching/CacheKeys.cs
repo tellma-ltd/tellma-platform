@@ -227,8 +227,8 @@ namespace Tellma.Core.Queryex.Caching
     /// <remarks>
     ///     <para>
     ///         The schema is held by identity and everything else is rendered: the clause texts with
-    ///         the shape of the filter trees they came from and the version stamped on each leaf,
-    ///         the key-set restrictions and the undeclared columns in order, whether the query pages,
+    ///         the shape of the filter trees they came from — their rebases and semi-joins with the
+    ///         names each carries — and the version stamped on each leaf, the key-set restrictions and the undeclared columns in order, whether the query pages,
     ///         the options, and the declarations. Not which page: the paging values travel in their
     ///         own slots, so every page of a query is one compilation.
     ///         Rendered rather than digested, for the same reason a parse is keyed on its text — a
@@ -422,6 +422,25 @@ namespace Tellma.Core.Queryex.Caching
 
                 case FilterTree.OrNode disjunction:
                     RenderChildren(key, 'O', disjunction.Children);
+                    return;
+
+                // The names are fields of their own, so a rebase onto one path can never render like
+                // a rebase onto another, nor a semi-join like a rebase.
+                case FilterTree.ViaNode via:
+                    key.Append('V');
+                    Field(key, via.Navigation);
+                    key.Append('(');
+                    Render(key, via.Inner);
+                    key.Append(')');
+                    return;
+
+                case FilterTree.ExistsNode exists:
+                    key.Append('E');
+                    Field(key, exists.Entity);
+                    Field(key, exists.Navigation);
+                    key.Append('(');
+                    Render(key, exists.Inner);
+                    key.Append(')');
                     return;
 
                 default:

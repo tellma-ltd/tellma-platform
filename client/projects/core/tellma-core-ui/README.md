@@ -116,6 +116,10 @@ the components ship no hardcoded sizes or colors.
   enforces it). Library glyphs draw through `<tm-icon [svg]>` with data
   imported from `lucide`; key combinations are matched and labelled through
   the `kbd` helpers, the library's only platform check.
+- Unit spec files share one browser page per run. A spec that changes the
+  page irreversibly (a Content Security Policy, which can never be lifted)
+  is named `*.csp.spec.ts`: the `test` target excludes that suffix and the
+  `test-csp` target runs those files in a run of their own.
 - Usage examples live in co-located `*.examples.ts` files (dependency-free
   template objects); they feed the docs pipeline and are compile-checked
   against the live components by `docs-examples.spec.ts`.

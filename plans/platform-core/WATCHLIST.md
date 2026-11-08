@@ -410,7 +410,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 **External dependencies:**
 
 - lucide npm package (a new dependency of @tellma/core-ui, introduced by 0023 §1/§3.1; not yet in client/package.json)
-- pnpm 11 / Node, vitest browser mode with Playwright 1.61.1 browsers (chromium, firefox, webkit), @axe-core/playwright (existing)
+- pnpm 11 / Node, vitest browser mode with Playwright 1.61.1 browsers (chromium, firefox, webkit), axe-core run in-page by client/e2e/support/axe.ts (removed 2026-11-08 by PC-F05: the e2e axe floor runs axe-core directly through client/e2e/support/axe.ts)
 - Browsers supporting media-query range syntax (Safari 16.4+, Firefox 102+); Part B Review flag 4
 
 ## 0010-C
@@ -962,7 +962,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 
 - npm `lucide` (vanilla, ISC), new to the repo. A `dependencies` entry of @tellma/core-ui with allowedNonPeerDependencies. Review flag 2: check at implementation time whether `@lucide/icons` v1 is stable; the registry accepts its `{ node }` objects either way.
 - @angular/aria/tree, inside the existing @angular/aria 22.0.3. Verify that tree supports selectionMode 'explicit' and lazily rendered ngTreeItemGroup in 22.0.3.
-- Existing toolchain only otherwise: Playwright Chromium, Firefox and WebKit plus the Pixel 7 device project, @axe-core/playwright, vitest browser mode.
+- Existing toolchain only otherwise: Playwright Chromium, Firefox and WebKit plus the Pixel 7 device project, axe-core via client/e2e/support/axe.ts (removed 2026-11-08 by PC-F05: the e2e axe floor runs axe-core directly through client/e2e/support/axe.ts), vitest browser mode.
 - Browser features: Popover API (popover=manual) for the toast and busy-overlay hosts; the `inert` attribute; Intl.Segmenter (avatar initials); navigator.clipboard (copy, with fallback); document.execCommand('delete') for undoable clear; HTML5 DnD (no touch DnD on Samsung Internet or Firefox Android, Review flag 1).
 
 ## 0024
@@ -1177,7 +1177,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 
 **External dependencies:**
 
-- Playwright 1.61.1 browsers (Chromium, Firefox, WebKit) installed on CI (`playwright install --with-deps`). `@axe-core/playwright` 4.12.1 and vitest are already in client/package.json.
+- Playwright 1.61.1 browsers (Chromium, Firefox, WebKit) installed on CI (`playwright install --with-deps`). axe-core (run in-page by client/e2e/support/axe.ts) and vitest are already in client/package.json (removed 2026-11-08 by PC-F05: the e2e axe floor runs axe-core directly through client/e2e/support/axe.ts).
 - The full Acme e2e host (spec 0024 §13): SQL Server with the Acme database and dev data (spec 0018 §6.3), the multitenant web host (0011), the identity server (0003) for sign-in, blob storage for import files and export downloads (0017: filesystem or Azurite), and the background job runner (0020) for `export/start` and `import/start` (the background export e2e path).
 - Lucide icon names that must be registered in the platform icon registry (0024 §2): table-2, layout-grid, list-tree, list, funnel, columns-3, inbox, search-x, circle-alert, refresh-cw, check, plus a chevron.
 - English and Arabic copy for every `tm.search.*` string (ICU plurals, `tm.search.filterButton`, `tm.search.orderedBy`); e2e runs in `ar`.

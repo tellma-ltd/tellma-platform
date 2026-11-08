@@ -182,9 +182,83 @@ namespace Tellma.Core.Queryex.Emit
                     WriteKeySetRestriction(restriction);
                     return;
 
+                case PlanExists exists:
+                    WriteExists(exists.Subquery);
+                    return;
+
                 default:
                     return;
             }
+        }
+
+        /// <summary>Writes one join of a join tree, without the line break that ends it.</summary>
+        /// <param name="join">The join, already named.</param>
+        /// <remarks>
+        ///     The condition equates the target's key with the foreign key of the node it was reached
+        ///     from, which is the statement's root, an earlier join, or a subquery's source.
+        /// </remarks>
+        internal void Join(JoinNode join)
+        {
+            _sql.Write(join.IsInner ? "INNER JOIN " : "LEFT JOIN ");
+            _sql.Write(join.Entity.Source);
+            _sql.Write(" AS ");
+            _sql.Quoted(join.Alias);
+            _sql.Write(" ON ");
+            _sql.Quoted(join.Alias);
+            _sql.Write('.');
+            _sql.Quoted(join.Entity.Key.Column);
+            _sql.Write(" = ");
+            _sql.Quoted(join.Parent!.Alias);
+            _sql.Write('.');
+            _sql.Quoted(join.Navigation!.ForeignKey.Column);
+        }
+
+        /// <summary>Writes one value binding, without the line break that ends it.</summary>
+        /// <param name="binding">The binding, already named.</param>
+        /// <remarks>
+        ///     A one-row lateral source: it names a value the guards can mention as often as they need
+        ///     to without the expression behind it being written more than once.
+        /// </remarks>
+        internal void Binding(ValueBinding binding)
+        {
+            _sql.Write("CROSS APPLY (VALUES (");
+            Value(binding.Value);
+            _sql.Write(")) AS ");
+            _sql.Quoted(binding.Alias);
+            _sql.Write(" (");
+            _sql.Quoted(BindingColumn);
+            _sql.Write(')');
+        }
+
+        /// <summary>Writes a semi-join's subquery inside its existence test.</summary>
+        /// <param name="subquery">The subquery, already named.</param>
+        /// <remarks>
+        ///     On one line, like every other predicate, with its source, joins and bindings in the
+        ///     order the statement writes its own. It selects a constant: an existence test reads no
+        ///     column of the row it finds.
+        /// </remarks>
+        private void WriteExists(PlanSubquery subquery)
+        {
+            _sql.Write("EXISTS (SELECT 1 FROM ");
+            _sql.Write(subquery.Root.Entity.Source);
+            _sql.Write(" AS ");
+            _sql.Quoted(subquery.Root.Alias);
+
+            foreach (JoinNode join in subquery.Joins)
+            {
+                _sql.Write(' ');
+                Join(join);
+            }
+
+            foreach (ValueBinding binding in subquery.Bindings)
+            {
+                _sql.Write(' ');
+                Binding(binding);
+            }
+
+            _sql.Write(" WHERE ");
+            Predicate(subquery.Where!);
+            _sql.Write(')');
         }
 
         /// <summary>Writes a row's key tested against a table of keys the host supplies.</summary>

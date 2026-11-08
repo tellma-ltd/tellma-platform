@@ -101,34 +101,16 @@ namespace Tellma.Core.Queryex.Emit
             sql.Quoted(plan.Root.Alias);
             sql.Line();
 
+            // One join or binding per line; a subquery writes the same parts on one line of its own.
             foreach (JoinNode join in plan.Joins)
             {
-                sql.Write(join.IsInner ? "INNER JOIN " : "LEFT JOIN ");
-                sql.Write(join.Entity.Source);
-                sql.Write(" AS ");
-                sql.Quoted(join.Alias);
-                sql.Write(" ON ");
-                sql.Quoted(join.Alias);
-                sql.Write('.');
-                sql.Quoted(join.Entity.Key.Column);
-                sql.Write(" = ");
-                sql.Quoted(join.Parent!.Alias);
-                sql.Write('.');
-                sql.Quoted(join.Navigation!.ForeignKey.Column);
+                emitter.Join(join);
                 sql.Line();
             }
 
             foreach (ValueBinding binding in plan.Bindings)
             {
-                // A one-row lateral source: it names a value the guards can mention as often as they
-                // need to without the expression behind it being written more than once.
-                sql.Write("CROSS APPLY (VALUES (");
-                emitter.Value(binding.Value);
-                sql.Write(")) AS ");
-                sql.Quoted(binding.Alias);
-                sql.Write(" (");
-                sql.Quoted(PlanEmitter.BindingColumn);
-                sql.Write(')');
+                emitter.Binding(binding);
                 sql.Line();
             }
         }

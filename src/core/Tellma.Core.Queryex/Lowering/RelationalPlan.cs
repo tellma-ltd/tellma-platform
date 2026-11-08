@@ -68,6 +68,12 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>Whether anything that survived lowering reads this node.</summary>
         internal bool IsReferenced { get; set; }
 
+        /// <summary>
+        ///     Where the first surviving reference that reads this node was written, once one has;
+        ///     null for a root, which is read whatever survives.
+        /// </summary>
+        internal PlanOrigin? ReachedFrom { get; private set; }
+
         /// <summary>Finds or creates the step for a navigation.</summary>
         /// <param name="navigation">The navigation.</param>
         /// <param name="origin">Where the path taking the step was written.</param>
@@ -88,12 +94,18 @@ namespace Tellma.Core.Queryex.Lowering
         }
 
         /// <summary>Marks this node and everything above it as read.</summary>
-        internal void MarkReferenced()
+        /// <param name="origin">Where the reference that reads it was written.</param>
+        /// <remarks>
+        ///     A node already read keeps the reference that read it first, and so does everything
+        ///     above it; every node marked here is read on behalf of this reference.
+        /// </remarks>
+        internal void MarkReferenced(PlanOrigin origin)
         {
             JoinNode? current = this;
             while (current is not null && !current.IsReferenced)
             {
                 current.IsReferenced = true;
+                current.ReachedFrom = origin;
                 current = current.Parent;
             }
         }
@@ -202,6 +214,62 @@ namespace Tellma.Core.Queryex.Lowering
     {
         /// <summary>The name this variable is written under.</summary>
         internal string Name { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    ///     The subquery of one semi-join: a join tree, bindings and a predicate of its own.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///         A subquery reads another entity's rows, so its paths cannot share the statement's
+    ///         joins and its per-row bindings cannot sit in the statement's own source: each is
+    ///         computed against a row of the searched entity. The parameters and the hoisted lookups,
+    ///         which do not vary by row, stay the statement's.
+    ///     </para>
+    ///     <para>
+    ///         Its aliases continue the statement's sequences rather than starting again, so a name
+    ///         used inside never shadows one used outside — which matters, because the predicate inside
+    ///         refers to the row outside by its alias.
+    ///     </para>
+    /// </remarks>
+    internal sealed class PlanSubquery
+    {
+        /// <summary>Initializes a subquery.</summary>
+        /// <param name="entity">The entity whose rows it searches.</param>
+        /// <param name="origin">Where the semi-join was written, for the join ceiling.</param>
+        internal PlanSubquery(EntityDescriptor entity, PlanOrigin origin)
+        {
+            Root = new JoinNode(entity, null, null, origin) { IsReferenced = true };
+            Origin = origin;
+        }
+
+        /// <summary>The root of its join tree: the searched entity's own rows.</summary>
+        internal JoinNode Root { get; }
+
+        /// <summary>Where the semi-join was written.</summary>
+        /// <remarks>
+        ///     Its source is a table the statement reads, and counts toward the join ceiling like a
+        ///     join does; this is what the problem names when that count is what goes over.
+        /// </remarks>
+        internal PlanOrigin Origin { get; }
+
+        /// <summary>
+        ///     The bindings made while lowering the predicate, in the order they were made, before
+        ///     the ones nothing reads are dropped.
+        /// </summary>
+        internal List<ValueBinding> Pending { get; } = [];
+
+        /// <summary>The predicate, once lowered: the correlation, then the criterion.</summary>
+        internal PlanPredicate? Where { get; set; }
+
+        /// <summary>Whether anything that survived lowering contains this subquery.</summary>
+        internal bool IsReferenced { get; set; }
+
+        /// <summary>The joins that survived, in the order their aliases were assigned.</summary>
+        internal ImmutableArray<JoinNode> Joins { get; set; } = [];
+
+        /// <summary>The bindings that survived, in the order their aliases were assigned.</summary>
+        internal ImmutableArray<ValueBinding> Bindings { get; set; } = [];
     }
 
     /// <summary>One item of the select list, lowered.</summary>

@@ -38,8 +38,15 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>The slots by what they carry, so equal values share one.</summary>
         private readonly Dictionary<SlotKey, ParameterSlot> _slotIndex = [];
 
-        /// <summary>The values computed once per row and given a name.</summary>
+        /// <summary>The statement's values computed once per row and given a name.</summary>
         private readonly List<ValueBinding> _bindings = [];
+
+        /// <summary>The semi-joins' subqueries, in the order they were begun.</summary>
+        /// <remarks>
+        ///     A subquery is begun before its own predicate is lowered, so this order is the pre-order
+        ///     of the statement's subqueries — the order their aliases are numbered in.
+        /// </remarks>
+        private readonly List<PlanSubquery> _subqueries = [];
 
         /// <summary>The values computed once before the statement runs.</summary>
         private readonly List<HoistedVariable> _variables = [];
@@ -55,6 +62,10 @@ namespace Tellma.Core.Queryex.Lowering
 
         /// <summary>The slots something that survived still binds.</summary>
         private readonly HashSet<ParameterSlot> _liveSlots = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>Where the first surviving reference to each live slot was written.</summary>
+        private readonly Dictionary<ParameterSlot, PlanOrigin> _slotsReachedFrom =
+            new(ReferenceEqualityComparer.Instance);
 
         /// <summary>The ceilings, shared with binding.</summary>
         private readonly CompilationBudget _budget;
@@ -88,6 +99,19 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>The column the value being lowered is compared against, when there is one.</summary>
         private QueryexStoreType? _hint;
 
+        /// <summary>
+        ///     The current root: the join that paths being lowered resolve from.
+        /// </summary>
+        /// <remarks>
+        ///     The statement's root, the target of an enclosing rebase, or the root of an enclosing
+        ///     semi-join's subquery. A path walks from here through the join tree the current root
+        ///     belongs to, so a rebased criterion shares the joins of every other clause.
+        /// </remarks>
+        private JoinNode _base;
+
+        /// <summary>Where a value given a name here is collected: the statement's or a subquery's.</summary>
+        private List<ValueBinding> _scopeBindings;
+
         /// <summary>Initializes a lowering.</summary>
         /// <param name="root">The entity the query reads.</param>
         /// <param name="batchOrdinal">The query's position among the ones executed together.</param>
@@ -100,6 +124,8 @@ namespace Tellma.Core.Queryex.Lowering
             DiagnosticSink sink)
         {
             Root = new JoinNode(root, null, null, default) { IsReferenced = true };
+            _base = Root;
+            _scopeBindings = _bindings;
             _batchOrdinal = batchOrdinal;
             _budget = budget;
             _sink = sink;
@@ -140,6 +166,10 @@ namespace Tellma.Core.Queryex.Lowering
             _bindingsAllowed = bindingsAllowed;
             _folding = folding;
             _hint = null;
+
+            // Every clause starts at the statement's own root, whatever the last one ended in.
+            _base = Root;
+            _scopeBindings = _bindings;
         }
 
         /// <summary>Lowers one expression consumed as a scalar.</summary>
@@ -194,9 +224,30 @@ namespace Tellma.Core.Queryex.Lowering
                 TypedIsNull test => LowerIsNull(test),
                 TypedCall call when call.Signature.Emit.ResultShape == EmitShape.Predicate =>
                     LowerCallPredicate(call),
+                TypedFilterLeaf leaf => In(leaf.Location, () => LowerPredicate(leaf.Expression)),
+                TypedVia via => In(via.Location, () => LowerVia(via)),
+                TypedExists exists => In(exists.Location, () => LowerExists(exists)),
                 TypedError => throw Unlowerable(node),
                 _ => ReadAsPredicate(node),
             };
+        }
+
+        /// <summary>Lowers one part of a composed filter in the input it was written in.</summary>
+        /// <param name="location">The part's input.</param>
+        /// <param name="lower">What lowers it.</param>
+        /// <returns>The lowered predicate.</returns>
+        /// <remarks>
+        ///     Whatever the part creates — joins, a subquery's source, parameters — remembers this
+        ///     input, so a ceiling it pushes over names the leaf, rebase or semi-join rather than the
+        ///     whole clause.
+        /// </remarks>
+        private PlanPredicate In(DiagnosticLocation location, Func<PlanPredicate> lower)
+        {
+            DiagnosticLocation saved = _location;
+            _location = location;
+            PlanPredicate lowered = lower();
+            _location = saved;
+            return lowered;
         }
 
         /// <summary>The failure for a node that should never have reached lowering.</summary>
@@ -258,7 +309,7 @@ namespace Tellma.Core.Queryex.Lowering
             string tableSource)
         {
             JoinNode table = Walk(navigations, default);
-            return new PlanKeySetRestriction(new PlanColumn(default, table, property), tableSource);
+            return new PlanKeySetRestriction(new PlanColumn(default, table, property, Here(default)), tableSource);
         }
 
         /// <summary>Reads a column of the root that the schema leaves out.</summary>
@@ -314,6 +365,17 @@ namespace Tellma.Core.Queryex.Lowering
                 joins.Add(node);
             }
 
+            // The subqueries that survived, numbered in pre-order. Each one's joins and bindings take
+            // the next numbers of the statement's own sequences, so no alias inside a subquery can
+            // shadow one outside it — the correlation reads the outer row by its alias.
+            List<PlanSubquery> subqueries = [.. _subqueries.Where(subquery => subquery.IsReferenced)];
+            for (int index = 0; index < subqueries.Count; index++)
+            {
+                PlanSubquery subquery = subqueries[index];
+                subquery.Root.Alias = "X" + (index + 1).ToString(CultureInfo.InvariantCulture);
+                subquery.Joins = Aliased(subquery.Root, ref alias);
+            }
+
             _bindings.RemoveAll(binding => !_liveBindings.Contains(binding));
             _variables.RemoveAll(variable => !_liveVariables.Contains(variable));
             _slots.RemoveAll(slot => !_liveSlots.Contains(slot));
@@ -326,20 +388,48 @@ namespace Tellma.Core.Queryex.Lowering
             // count over, because each of these remembers where it was written.
             foreach (JoinNode join in joins)
             {
-                _budget.TryConsumeJoin(join.Origin.Span, _sink.Scope(join.Origin.Location));
+                Consume(join);
+            }
+
+            // A subquery's source is one more table the statement reads, and its joins are joins like
+            // any other; counting them is what keeps a semi-join from being a way around the ceiling.
+            foreach (PlanSubquery subquery in subqueries)
+            {
+                _budget.TryConsumeJoin(subquery.Origin.Span, _sink.Scope(subquery.Origin.Location));
+                foreach (JoinNode join in subquery.Joins)
+                {
+                    Consume(join);
+                }
             }
 
             // The paging slots count too: they are parameters of the statement like any other, and
             // only their names and their place at the end of the list set them apart.
             foreach (ParameterSlot slot in _slots.Concat(paging))
             {
-                _budget.TryConsumeParameter(slot.Written.Span, _sink.Scope(slot.Written.Location));
+                // Named for the first surviving reference to it; the paging slots, which no fragment
+                // mentions, for where they were made.
+                PlanOrigin origin = _slotsReachedFrom.GetValueOrDefault(slot, slot.Written);
+                _budget.TryConsumeParameter(origin.Span, _sink.Scope(origin.Location));
             }
 
             for (int index = 0; index < _bindings.Count; index++)
             {
                 _bindings[index].Alias =
                     "B" + (index + 1).ToString(CultureInfo.InvariantCulture);
+            }
+
+            // Continuing the statement's numbering, subquery by subquery in pre-order.
+            int binding = _bindings.Count;
+            foreach (PlanSubquery subquery in subqueries)
+            {
+                ImmutableArray<ValueBinding> live = [.. subquery.Pending.Where(_liveBindings.Contains)];
+                foreach (ValueBinding named in live)
+                {
+                    binding++;
+                    named.Alias = "B" + binding.ToString(CultureInfo.InvariantCulture);
+                }
+
+                subquery.Bindings = live;
             }
 
             for (int index = 0; index < _variables.Count; index++)
@@ -357,6 +447,42 @@ namespace Tellma.Core.Queryex.Lowering
             return joins.ToImmutable();
         }
 
+        /// <summary>Counts one surviving join toward the ceiling.</summary>
+        /// <param name="join">The join.</param>
+        /// <remarks>
+        ///     Named for the first surviving reference that reads it rather than for whatever created
+        ///     it, which may have folded away: a join that only a select item still reads is the select
+        ///     item's to answer for.
+        /// </remarks>
+        private void Consume(JoinNode join)
+        {
+            PlanOrigin origin = join.ReachedFrom ?? join.Origin;
+            _budget.TryConsumeJoin(origin.Span, _sink.Scope(origin.Location));
+        }
+
+        /// <summary>Names every surviving join of one join tree, parents first.</summary>
+        /// <param name="root">The tree's root, which is named already.</param>
+        /// <param name="alias">The last join number used, advanced past the ones assigned here.</param>
+        /// <returns>The surviving joins, in alias order and excluding the root.</returns>
+        private static ImmutableArray<JoinNode> Aliased(JoinNode root, ref int alias)
+        {
+            ImmutableArray<JoinNode>.Builder joins = ImmutableArray.CreateBuilder<JoinNode>();
+            foreach (JoinNode node in root.Walk())
+            {
+                // The root is the subquery's source, and an unread node has only unread nodes below it.
+                if (node.Parent is null || !node.IsReferenced)
+                {
+                    continue;
+                }
+
+                alias++;
+                node.Alias = "P" + alias.ToString(CultureInfo.InvariantCulture);
+                joins.Add(node);
+            }
+
+            return joins.ToImmutable();
+        }
+
         /// <summary>The prefix every name this query emits begins with.</summary>
         /// <remarks>
         ///     The engine's reserved namespace, then the query's position among those a host executes
@@ -365,28 +491,47 @@ namespace Tellma.Core.Queryex.Lowering
         private string Prefix => "@qx" + _batchOrdinal.ToString(CultureInfo.InvariantCulture);
 
         /// <summary>Finds everything the finished fragments actually read.</summary>
-        /// <param name="fragments">Every fragment the statement will contain.</param>
+        /// <param name="fragments">
+        ///     Every fragment the statement will contain, in the order they were lowered.
+        /// </param>
+        /// <remarks>
+        ///     Depth first, in the order things were written, so the first surviving reference to a
+        ///     join or a slot is the one a ceiling it pushes over is reported against — the same one
+        ///     that created it, unless that one folded away.
+        /// </remarks>
         private void Reach(IEnumerable<PlanNode> fragments)
         {
-            Queue<PlanNode> pending = new(fragments);
+            Stack<PlanNode> pending = new(fragments.Reverse());
             HashSet<PlanNode> seen = new(ReferenceEqualityComparer.Instance);
 
             while (pending.Count > 0)
             {
-                PlanNode node = pending.Dequeue();
+                PlanNode node = pending.Pop();
                 if (!seen.Add(node))
                 {
                     continue;
                 }
 
+                // Pushed last-first, so they are visited in the order they are written; whatever a
+                // binding or a variable reads is pushed after them, so it is visited first.
+                ImmutableArray<PlanNode> children = PlanWalk.Children(node);
+                for (int index = children.Length - 1; index >= 0; index--)
+                {
+                    pending.Push(children[index]);
+                }
+
                 switch (node)
                 {
                     case PlanColumn column:
-                        column.Table.MarkReferenced();
+                        column.Table.MarkReferenced(column.Origin);
                         break;
 
                     case PlanParameterRef parameter:
-                        _liveSlots.Add(parameter.Slot);
+                        if (_liveSlots.Add(parameter.Slot))
+                        {
+                            _slotsReachedFrom[parameter.Slot] = parameter.Origin;
+                        }
+
                         break;
 
                     case PlanBindingRef binding:
@@ -395,9 +540,15 @@ namespace Tellma.Core.Queryex.Lowering
                         // from a surviving fragment keeps alive whatever it names.
                         if (_liveBindings.Add(binding.Binding))
                         {
-                            pending.Enqueue(binding.Binding.Value);
+                            pending.Push(binding.Binding.Value);
                         }
 
+                        break;
+
+                    case PlanExists exists:
+
+                        // A subquery is part of the statement exactly when its semi-join is.
+                        exists.Subquery.IsReferenced = true;
                         break;
 
                     case PlanVariableRef variable:
@@ -405,18 +556,13 @@ namespace Tellma.Core.Queryex.Lowering
                         {
                             // A variable is computed against its own table rather than a join, so
                             // only the key it looks up can reach back into the join tree.
-                            pending.Enqueue(variable.Variable.Key);
+                            pending.Push(variable.Variable.Key);
                         }
 
                         break;
 
                     default:
                         break;
-                }
-
-                foreach (PlanNode child in PlanWalk.Children(node))
-                {
-                    pending.Enqueue(child);
                 }
             }
         }

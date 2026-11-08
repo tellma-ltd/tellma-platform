@@ -26,6 +26,16 @@ namespace Tellma.Queryex.Inspection
     ///     run: <c>Customer.Id @tb0_parties = 1, 2</c>.
     /// </param>
     /// <param name="UndeclaredColumns">The undeclared root columns to read, separated by commas.</param>
+    /// <param name="Via">
+    ///     A dotted navigation path the filter is rebased onto, so that its paths resolve from the
+    ///     path's target: <c>Customer.Region</c>. With no filter, the rebase asks only that the path
+    ///     reach a row.
+    /// </param>
+    /// <param name="Exists">
+    ///     Semi-joins conjoined with the filter, separated by semicolons. Each is an entity and its
+    ///     navigation to the root, then optionally a colon and the criterion a pointing row must
+    ///     satisfy: <c>InvoiceLine Invoice: Amount &gt; 10</c>.
+    /// </param>
     public sealed record InspectRequest(
         string? Select,
         string? Filter,
@@ -35,7 +45,9 @@ namespace Tellma.Queryex.Inspection
         string? Root,
         bool Execute,
         string? Restrictions = null,
-        string? UndeclaredColumns = null);
+        string? UndeclaredColumns = null,
+        string? Via = null,
+        string? Exists = null);
 
     /// <summary>One scanned token, as the page shows it.</summary>
     /// <param name="Kind">What kind of token it is.</param>
@@ -144,7 +156,7 @@ namespace Tellma.Queryex.Inspection
                     Root = root,
                     Select = select,
                     Aggregate = request.Aggregate,
-                    Filter = Leaf(request.Filter),
+                    Filter = Filter(request.Filter, request.Via, request.Exists),
                     Having = request.Aggregate ? Leaf(request.Having) : null,
                     OrderBy = string.IsNullOrWhiteSpace(request.OrderBy) ? null : request.OrderBy,
                     Restrictions = restrictions,
@@ -216,6 +228,50 @@ namespace Tellma.Queryex.Inspection
         private static FilterTree? Leaf(string? text)
         {
             return string.IsNullOrWhiteSpace(text) ? null : FilterTree.Leaf(text);
+        }
+
+        /// <summary>Composes the filter from the page's filter, rebase and semi-joins.</summary>
+        /// <param name="filter">The filter text.</param>
+        /// <param name="via">The navigation path the filter is rebased onto, when there is one.</param>
+        /// <param name="exists">The semi-joins, separated by semicolons.</param>
+        /// <returns>The composed filter, or null when the page supplied none of the three.</returns>
+        /// <exception cref="ArgumentException">An entry is not of the page's form.</exception>
+        private static FilterTree? Filter(string? filter, string? via, string? exists)
+        {
+            List<FilterTree> conjuncts = [];
+            FilterTree? leaf = Leaf(filter);
+            if (!string.IsNullOrWhiteSpace(via))
+            {
+                conjuncts.Add(FilterTree.Via(via.Trim(), leaf ?? FilterTree.And([])));
+            }
+            else if (leaf is not null)
+            {
+                conjuncts.Add(leaf);
+            }
+
+            foreach (string entry in Split(exists, ';'))
+            {
+                // "<entity> <navigation>", then optionally ": <criterion>".
+                int colon = entry.IndexOf(':', StringComparison.Ordinal);
+                string head = colon < 0 ? entry : entry[..colon];
+                string[] parts = head.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (parts.Length != 2)
+                {
+                    throw new ArgumentException(
+                        "A semi-join is written as an entity and its navigation, such as 'InvoiceLine Invoice: Amount > 10'.",
+                        nameof(exists));
+                }
+
+                FilterTree? criterion = colon < 0 ? null : Leaf(entry[(colon + 1)..]);
+                conjuncts.Add(FilterTree.Exists(parts[0], parts[1], criterion ?? FilterTree.And([])));
+            }
+
+            return conjuncts.Count switch
+            {
+                0 => null,
+                1 => conjuncts[0],
+                _ => FilterTree.And(conjuncts),
+            };
         }
 
         /// <summary>Reads the page's restrictions.</summary>

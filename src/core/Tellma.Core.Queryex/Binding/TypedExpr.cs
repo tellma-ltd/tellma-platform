@@ -49,6 +49,15 @@ namespace Tellma.Core.Queryex.Binding
         /// <summary>A resolved function call.</summary>
         Call,
 
+        /// <summary>One leaf of a composed filter, at the place in the tree it was written.</summary>
+        FilterLeaf,
+
+        /// <summary>A filter criterion rebased onto the row a navigation path reaches.</summary>
+        Via,
+
+        /// <summary>A semi-join over the rows of another entity that point at this one.</summary>
+        Exists,
+
         /// <summary>A node that failed to bind.</summary>
         Error,
     }

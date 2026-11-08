@@ -132,6 +132,7 @@ namespace Tellma.Queryex.Testing.Semantics
                 ["Centre"] = Centres(),
                 ["Account"] = Accounts(),
                 ["Invoice"] = Invoices(),
+                ["InvoiceLine"] = Lines(),
             };
 
             return tables.ToFrozenDictionary(StringComparer.Ordinal);
@@ -348,6 +349,57 @@ namespace Tellma.Queryex.Testing.Semantics
                         : QxValue.Text("{\"by\":\"user-" + (id % 3).ToString(CultureInfo.InvariantCulture) + "\"}"),
                 }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase),
             };
+        }
+
+        /// <summary>The invoice lines, which point at their invoices.</summary>
+        /// <returns>The rows.</returns>
+        /// <remarks>
+        ///     Invoices 2 and 6 have no lines, so a semi-join has rows it must leave out whatever its
+        ///     criterion says. Each other invoice has lines its criteria tell apart: a negative and a
+        ///     zero amount, a line with no party, and lines created by different users, so one compiled
+        ///     statement answers differently for two of them.
+        /// </remarks>
+        private static IReadOnlyList<LedgerRow> Lines()
+        {
+            EntityDescriptor line = LedgerFixture.InvoiceLine;
+            return
+            [
+                Line(line, 1, invoice: 1, "10.0000", "first", party: 1, createdBy: 1),
+                Line(line, 2, invoice: 1, "-5.0000", null, party: null, createdBy: 2),
+                Line(line, 3, invoice: 3, "20.0000", "third", party: 3, createdBy: 2),
+                Line(line, 4, invoice: 3, "0.0000", "zero", party: null, createdBy: 3),
+                Line(line, 5, invoice: 4, "40.0000", null, party: 2, createdBy: 1),
+                Line(line, 6, invoice: 5, "7.5000", "fifth", party: 1, createdBy: 2),
+                Line(line, 7, invoice: 5, "12.2500", null, party: 3, createdBy: 3),
+            ];
+        }
+
+        /// <summary>One invoice line.</summary>
+        /// <param name="entity">The entity.</param>
+        /// <param name="id">Its key.</param>
+        /// <param name="invoice">The invoice it belongs to.</param>
+        /// <param name="amount">Its amount, written at the column's scale.</param>
+        /// <param name="memo">Its memo, when it has one.</param>
+        /// <param name="party">The party it names, when it names one.</param>
+        /// <param name="createdBy">The user who created it.</param>
+        /// <returns>The row.</returns>
+        private static LedgerRow Line(
+            EntityDescriptor entity,
+            int id,
+            int invoice,
+            string amount,
+            string? memo,
+            int? party,
+            int createdBy)
+        {
+            return Row(
+                entity,
+                ("Id", QxValue.Number(id)),
+                ("InvoiceId", QxValue.Number(invoice)),
+                ("Amount", QxValue.Number(SqlDecimal.Parse(amount))),
+                ("Memo", memo is null ? QxValue.Absent(QueryexType.QxString) : QxValue.Text(memo)),
+                ("PartyId", party is int key ? QxValue.Number(key) : QxValue.Absent(QueryexType.QxNumeric)),
+                ("CreatedById", QxValue.Number(createdBy)));
         }
 
         /// <summary>A stable identifier for a row, so a run produces the same values as the last.</summary>

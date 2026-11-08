@@ -48,6 +48,9 @@ namespace Tellma.Queryex.Testing.Schema
         /// <summary>An entity that is not hierarchical, so asking it for ancestry fails.</summary>
         public static EntityDescriptor Party { get; } = Schema.FindEntity("Party")!;
 
+        /// <summary>A child of <see cref="Invoice" />, pointing at its parent, for semi-joins.</summary>
+        public static EntityDescriptor InvoiceLine { get; } = Schema.FindEntity("InvoiceLine")!;
+
         /// <summary>
         ///     The columns an entity's table holds that the schema leaves out on purpose.
         /// </summary>
@@ -160,6 +163,20 @@ namespace Tellma.Queryex.Testing.Schema
 
             // A cycle, which the two-phase build exists to handle.
             account.Navigation("Parent", "Account", "ParentId");
+
+            // A child of the invoice: no navigation reaches it, so only a semi-join can ask about it.
+            // The key and the parent's foreign key are named differently from their columns, and the
+            // optional party sits beside the mandatory parent, so a rebase inside a semi-join has an
+            // outer path to guard.
+            QueryexSchemaBuilder.EntityBuilder line = builder.Entity("InvoiceLine", "[gl].[DocumentLines]");
+            line.Key("Id", QueryexType.QxNumeric, "LineId", QueryexStoreType.QxInt);
+            line.Property("InvoiceId", QueryexType.QxNumeric, "DocumentId", isNotNull: true, storeType: QueryexStoreType.QxInt);
+            line.Property("Amount", QueryexType.QxNumeric, "LineAmount", isNotNull: true, storeType: QueryexStoreType.QxDecimal(19, 4));
+            line.Property("Memo", QueryexType.QxString, "Memo", storeType: QueryexStoreType.QxNVarChar(255));
+            line.Property("PartyId", QueryexType.QxNumeric, "AgentFk", storeType: QueryexStoreType.QxInt);
+            line.Property("CreatedById", QueryexType.QxNumeric, "CreatedById", isNotNull: true, storeType: QueryexStoreType.QxInt);
+            line.Navigation("Invoice", "Invoice", "InvoiceId");
+            line.Navigation("Party", "Party", "PartyId");
 
             return builder.Build();
         }
