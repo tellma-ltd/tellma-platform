@@ -1,13 +1,13 @@
 # Kickoff prompt
 
 Paste everything below the line into a new local Claude Desktop session on `platform-core`
-(SETUP.md §3). Fill in the bracketed items first.
+(SETUP.md §3).
 
 ---
 
 You are the orchestrator of the Tellma platform-core implementation run. You will implement specs
-`docs/specs/0010` to `0035` on the `platform-core` branch over the next five to eight weeks of
-usage windows, mostly unattended. Tier 1 (the MVP) should take about four and three-quarters. Specs
+`docs/specs/0010` to `0035` on the `platform-core` branch over the next four to seven weeks of
+usage windows, mostly unattended. Tier 1 (the MVP) should take about four. Specs
 0001–0009 are implemented and frozen, except where spec 0010 amends them.
 
 ## Your documents
@@ -16,7 +16,7 @@ Read these in full before doing anything else. After every compaction, re-read t
 PROCESS.md §10 lists.
 
 - `plans/platform-core/PLAN.md`: what to build and in which order; tiers, forecast, test tiers,
-  definition of done, batch-review groups.
+  definition of done, review levers, batch reviews per phase.
 - `plans/platform-core/PROCESS.md`: how. It is your operating manual. **Follow it exactly.**
   Where it is silent, use judgement and record the choice in DECISIONS.md.
 - `plans/platform-core/LEDGER.md`: your live state, and how you survive compaction. Keep it
@@ -36,7 +36,7 @@ PROCESS.md §10 lists.
 - Brand files in `C:/Users/ahmad/workspace/tellma/tellma-brand/brand-assets/logo/exports/svg/` for
   spec 0024 §7.6 and spec 0027.
 - A Claude Ultra subscription with a weekly window that resets every Tuesday at 20:00 UTC (noon
-  Pacific). About [59]% of this week's window is left at kickoff. Ahmad will apply a one-time manual
+  Pacific). About 59% of this week's window is left at kickoff. Ahmad will apply a one-time manual
   reset in the window that starts Tue Nov 10, after you park near the limit. That reset is his only
   planned input. You detect it with `get_usage`; never ask for it and never wait for an answer.
 
@@ -58,25 +58,26 @@ PROCESS.md §10 lists.
 
 ## How you work
 
-- **Checkpoints** follow PROCESS.md §4 exactly. An implementer (a background agent, resumed for both
-  fix rounds and integration) builds it, then Review 1, fixes, Review 2, fixes, integration. That
-  is three commits per checkpoint (two for PC-000 and PC-Fnn fixes), each titled with its id and
-  pushed immediately. Set each agent's model and effort explicitly per PROCESS.md §1 and §3. This
-  instruction authorises it.
-- **Workflows only for batch reviews and the MVP-gate review** (PROCESS.md §13). Ultracode is on to
+- **Checkpoints** follow PROCESS.md §4 exactly. An implementer (a background agent, resumed for
+  its fix rounds and integration) builds each one, then Review 1, fixes, and integration: two
+  commits. Checkpoints on the PROCESS.md §3 two-review list (security-bound or complex), and any
+  escalated under §4.4, also get Review 2 and a second fix round: three commits. Each commit is
+  titled with its id and pushed immediately. Set each agent's model and effort explicitly per
+  PROCESS.md §1 and §3. This instruction authorises it.
+- **Workflows only for the batch reviews, one per phase, and the MVP-gate review** (PROCESS.md §13). Ultracode is on to
   lift concurrency caps, not to change the process. Despite its default, every checkpoint step is a
   background Agent-tool spawn or a resume, and you add no fan-out stages the process does not list.
 - **Concurrency:** 3 slots by default, 4 while backend and client work are both ready.
 - **Pacing:** read `get_usage` before every launch and after every agent completion. Calibrate
   from transcripts with `tools/usage_window.py`, never from completion summaries. Apply the gates
   of PROCESS.md §6, and drain, park and wake per §7.
-- **Tiers:** Tier 1 strictly first (PLAN.md §4). The Tier 3 order is [Excel → reports → dashboards
-  → the rest].
+- **Tiers:** Tier 1 strictly first (PLAN.md §4). The Tier 3 order is Excel, then reports, then
+  dashboards, then the rest.
 - **Nothing waits for Ahmad.** Rule on ambiguities yourself under Rule 4, and record non-obvious
   rulings in DECISIONS.md.
-- **Notify Ahmad** only for the events in PROCESS.md §9, by PushNotification[, and by an email to
+- **Notify Ahmad** only for the events in PROCESS.md §9, by PushNotification and by an email to
   ahmad.akra@tellma.com through the Gmail connector, which he authorises for these notifications
-  only]. A permission block or pause is always notified at once.
+  only. Send the email to that address only, with a subject starting "Platform-core:". A permission block or pause is always notified at once.
 - **Keep your own context lean.** Agents return the one-line summaries of PROCESS.md §4.7 and write
   details to files. Never paste large outputs into the conversation.
 
@@ -96,8 +97,8 @@ PROCESS.md §10 lists.
    which must report 0 problems. Record your session id
    (`python -I plans/platform-core/tools/usage_window.py --latest` prints it) and run `get_usage`,
    logging both in LEDGER.md.
-2. **Test notifications.** Send Ahmad a PushNotification ("platform-core run starting") and record
-   whether the result says it was delivered.
+2. **Test notifications.** Send Ahmad a PushNotification and an email ("Platform-core: run
+   starting"), and record whether each was delivered.
 3. **Create slots `pc-1` to `pc-3`** and warm them (PROCESS.md §2), then fill in LEDGER.md §Run.
 4. **Run PC-000 first**: CI tiers and the nightly workflow, with Review 1 only. In parallel, run
    **one dependency-audit agent** (inherit, effort `high`). It reads each Tier-1 entry's "Analyst

@@ -13,9 +13,9 @@ Paths: **MAIN** = `C:/Users/ahmad/workspace/tellma/tellma-platform` (the main ch
 | Role | Who | Model and effort | Writes |
 |---|---|---|---|
 | **Orchestrator** | the main session | session model (Opus), session effort | LEDGER.md, DECISIONS.md, DEPS.md and CHECKPOINTS.md edits (gates, splits), slot setup, launches, notifications. All only in MAIN |
-| **Implementer** | one background agent per checkpoint, resumed for both fix rounds and integration | inherit; `high`, or `xhigh` for the §3 list | code, tests, docs, `reviews/PC-nnn.md` (notes and responses), commits 1–3, the integration merge. All only in its slot |
+| **Implementer** | one background agent per checkpoint, resumed for its fix round(s) and integration | inherit; `high`, or `xhigh` for the §3 list | code, tests, docs, `reviews/PC-nnn.md` (notes and responses), commits 1–3, the integration merge. All only in its slot |
 | **Reviewer 1** | fresh background agent | inherit; `high` | `reviews/PC-nnn.md` "## Review 1 / ### Findings" only |
-| **Reviewer 2** | fresh background agent | inherit at `xhigh`, or `fable` for the §3 security list | "## Review 2 / ### Findings" only |
+| **Reviewer 2** | fresh background agent, only for the §3 two-review list and escalations (§4.4) | `fable` for security-bound checkpoints, inherit at `xhigh` for complex ones | "## Review 2 / ### Findings" only |
 | **Batch finders** | Workflow agents | `fable` while the Fable meter is under 90%, otherwise inherit at `xhigh`; read-only | structured findings |
 | **Batch fixer** | Workflow agent | inherit; `high` | fixes, `PC-Bnn` commit, integration |
 | **Fix agent** | background agent for a red CI run, nightly failure or hotfix | inherit; `high` | `PC-Fnn` commits |
@@ -92,10 +92,15 @@ cd <slot> && git fetch origin && git switch -C pc/PC-nnn origin/platform-core
 - **Implementer `xhigh`:** SEED (PC-015), 0011-e, 0011-f, 0012-c1, 0012-c2, 0012-e, 0012-f,
   0013-d, 0013-f, 0014-c, 0014-d, 0014-e, 0014-f, 0015-d, 0015-f, 0015-g, 0015-i, 0020-c,
   0024-d, 0025-b, 0031-d, 0033-d, 0033-e, 0033-f. Everything else `high`.
-- **Reviewer 2 on `fable`** (security, identity, access, concurrency): 0010-a1/a2/a3/a4/a5, 0011-e,
-  0011-f, 0014-c, 0014-d, 0014-e, 0014-f, 0015-g, 0016-c, 0016-d, 0017-c2, 0017-d, 0018-c, 0020-c,
-  0021-d, 0024-c, 0024-d. Everything else: inherit at `xhigh`. If the weekly Fable meter is at or
-  above 90%, use inherit at `xhigh` everywhere.
+- **Two-review list.** Only these checkpoints get Review 2 (Ahmad's ruling, PLAN.md §3.3); every
+  other checkpoint gets Review 1 only, unless it is escalated (§4.4).
+  - **Security-bound** (Reviewer 2 on `fable`): 0010-a1/a2/a3/a4/a5, 0011-e, 0011-f, 0014-c,
+    0014-d, 0014-e, 0014-f, 0015-g, 0016-c, 0016-d, 0017-c2, 0017-d, 0018-c, 0020-c, 0021-d, 0024-c,
+    0024-d.
+  - **Complex** (Reviewer 2 inherit at `xhigh`): SEED, 0010-f1, 0010-f2, 0010-f3, 0010-f6, 0012-c1,
+    0012-c2, 0012-d, 0012-e, 0012-f, 0013-d, 0013-e, 0013-f, 0015-d, 0015-f, 0015-i, 0019-e,
+    0025-b, 0025-c, 0031-d, 0033-d, 0033-e, 0033-f.
+  - If the weekly Fable meter is at or above 90%, use inherit at `xhigh` for every Reviewer 2.
 
 ## 4. The checkpoint cycle
 
@@ -103,15 +108,17 @@ cd <slot> && git fetch origin && git switch -C pc/PC-nnn origin/platform-core
 orchestrator: assign slot, create pc/PC-nnn, LEDGER row → impl
   Implementer ── commit 1 "PC-nnn: <title>" ── push branch                         → r1
   Reviewer 1 (fresh) ── findings R1-n into reviews/PC-nnn.md                        → fix1
-  Implementer (resumed) ── fix or push back ── commit 2 "PC-nnn: review 1 fixes" ── push → r2
-  Reviewer 2 (fresh) ── reviews commits 1+2, findings R2-n                          → fix2
-  Implementer (resumed) ── fix or push back ── commit 3 "PC-nnn: review 2 fixes" ── push
+  Implementer (resumed) ── fix or push back ── commit 2 "PC-nnn: review 1 fixes" ── push
+    two-review list or escalated (§3, §4.4) only:                                   → r2
+    Reviewer 2 (fresh) ── reviews commits 1+2, findings R2-n                        → fix2
+    Implementer (resumed) ── fix or push back ── commit 3 "PC-nnn: review 2 fixes" ── push
   Implementer (resumed) ── integrate into platform-core ── push                     → integrated
   CI green for that sha                                                             → done
 ```
 
-Commits 2 and 3 are made even when a review changes nothing: they then carry only the review file
-with its responses. PC-000 and `PC-Fnn` fixes take Review 1 only (two commits).
+A checkpoint off the two-review list has two commits; one on it has three. Fix commits are made
+even when a review changes nothing: they then carry only the review file with its responses.
+PC-000 and `PC-Fnn` fixes take Review 1 only.
 
 ### 4.1 Implementer brief (orchestrator fills `{}`)
 
@@ -235,7 +242,7 @@ as fixing a right one. Record each response under that review's "### Responses" 
 (format §4.6), push with `cd {slot} && git push origin pc/{PC}`, and return the §4.7 summary.
 ```
 
-Integration (after fix 2):
+Integration (after the last fix round):
 
 ```
 Integrate {PC}: run `cd {slot} && git fetch origin`. If origin/platform-core is not an ancestor of
@@ -247,12 +254,16 @@ platform-core push is rejected, repeat from the fetch. Return the §4.7 summary 
 pushed to platform-core.
 ```
 
-### 4.4 When a review round needs more
+### 4.4 Escalation and verification
 
-If fix 2 rewrites a large part of the checkpoint (about a third or more), or the orchestrator doubts
-a pushback on a blocking finding, it may run **one** targeted verification agent on the disputed
-points before integration, logged in LEDGER.md. There is never a fourth implementer round. Anything
-still unresolved goes to DECISIONS.md, and the checkpoint integrates.
+- **Escalate to Review 2.** A checkpoint off the two-review list gets Review 2 (inherit at `xhigh`)
+  when Review 1 reports a blocking finding, or four or more major findings, or when fix 1 rewrites
+  about a third of the checkpoint or more. Record the escalation in LEDGER.md.
+- **Verify disputed points.** If the last fix round rewrites a large part of the checkpoint, or
+  the orchestrator doubts a pushback on a blocking finding, it may run **one** targeted verification
+  agent on the disputed points before integration, and log it in LEDGER.md.
+- There is never a fourth implementer round. Anything still unresolved goes to DECISIONS.md, and the
+  checkpoint integrates.
 
 ### 4.5 Review file
 
@@ -302,7 +313,7 @@ deviations=<n>; blocks=<n>; decisions_for_orchestrator=<one line each, or none>;
   `cd C:/Users/ahmad/workspace/tellma/tellma-platform && python -I plans/platform-core/tools/check_deps.py --ready`
   lists the ready checkpoints. After any edit to DEPS.md (a split, a merge, a new gate) the same script must report
   0 problems before scheduling continues. A new gate may only point to an earlier checkpoint.
-- **PC-140 (MVP gate)** also needs batch reviews PC-B01…B11 to be integrated. It is never filler
+- **PC-140 (MVP gate)** also needs batch reviews PC-B01…B07 to be integrated. It is never filler
   work.
 - **Concurrency:** **3** cycles by default, and **4** only while the ready queue holds both backend
   and client work.
@@ -321,8 +332,8 @@ deviations=<n>; blocks=<n>; decisions_for_orchestrator=<one line each, or none>;
 
 ### 5.2 Batch reviews (PLAN.md §8.2)
 
-Start a batch review as soon as every member of its group is `done` and the usage gates allow
-about 6 points. Prepare a free slot (§13) and run the batch workflow alongside the lanes. Its fix
+There is one batch review per phase (PLAN.md §8.2). Start it as soon as every checkpoint of its
+phase is `done` (or one layer's half of it, PLAN.md §8.2) and the usage gates allow about 8 points. Prepare a free slot (§13) and run the batch workflow alongside the lanes. Its fix
 commit integrates like any checkpoint.
 
 ### 5.3 CI verdicts and nightly triage
@@ -351,8 +362,10 @@ endpoint is rate-limited, so never poll it in a loop.
 ### 6.2 Cost model and calibration
 
 - The cost of a full checkpoint cycle in points is `p = LOC/1000 × k`, with priors **k = 0.36
-  (backend or infra) and 0.80 (client or both)** (PLAN.md §3.1). Step shares of `p`: implement
-  0.55, review 1 0.10, fix 1 0.12, review 2 0.13, fix 2 + integrate 0.10.
+  (backend or infra) and 0.80 (client or both)** (PLAN.md §3.1). That `p` is a two-review cycle.
+  Step shares of `p`: implement 0.55, review 1 0.10, fix 1 0.12, review 2 0.13, fix 2 + integrate
+  0.10. A one-review cycle costs about 0.82 × p: implement 0.55, review 1 0.10, fix 1 0.12,
+  integrate 0.05.
 - **Calibrate from transcripts, never from completion summaries.** The token count in a completion
   notice is the agent's final context size. Get cost units with
   `cd MAIN && python -I plans/platform-core/tools/usage_window.py --session <orchestrator session id> --from <window start UTC>`.
@@ -366,7 +379,8 @@ endpoint is rate-limited, so never poll it in a loop.
 - Fable steps cost about 1.8× their raw units, which the script's price weights already include.
   Also log ΔFable% against Fable units.
 - The running forecast in LEDGER.md §Calibration is the remaining cycles at the current `k`, plus 6
-  points per pending batch review, plus 0.15 points per pending checkpoint for the orchestrator.
+  points per pending batch review (8 for a phase over 20 checkpoints), plus 0.15 points per pending
+  checkpoint for the orchestrator.
   Publish it after 15 and after 40 integrated checkpoints (§9).
 
 ### 6.3 Gates
@@ -376,7 +390,7 @@ Let `R = 100 − U`, and `F` = the sum over in-flight checkpoints of `p × (rema
 - **Launch a new checkpoint** only if `R − F − p_new ≥ 5` (and `S ≤ 85` if a short window exists).
 - **Start the next step** of an in-flight checkpoint only if `R ≥ 2 + that step's cost`. Finishing
   started work comes first.
-- **Batch review** only if `R − F − 6 ≥ 5`.
+- **Batch review** only if `R − F − 8 ≥ 5`.
 - **Filler.** When no full checkpoint fits but `R − F ≥ 3`, use the remainder on small,
   self-contained work: nightly triage, a `PC-Fnn` fix, a checkpoint under 2k LOC, or scoping the
   next batch review. Points left at a reset are lost.
@@ -394,16 +408,25 @@ running, park.
    ready checkpoints. Then run the snapshot procedure (§2).
 2. CronCreate a **one-shot** at `resetsAt` + 10 minutes, in local time, with the prompt:
    `Platform-core run: the usage window reset. Resume per plans/platform-core/PROCESS.md §7.3.`
-3. **Only in the manual-reset week** (the window starting Tue Nov 10) and only if `U ≥ 90`:
-   - CronCreate a recurring check at `7,37 * * * *` with the prompt: `Platform-core run is parked
-     (LEDGER.md §Run). Call get_usage. If weekly all-models usage is at least 15 points below
-     "Parked at U", resume per plans/platform-core/PROCESS.md §7.3; otherwise end the turn without
-     doing anything else.` A 30-minute cadence keeps the session's one-hour prompt cache warm, so
-     each check costs a cache read rather than a rewrite.
-   - Notify Ahmad (§9): `Platform-core parked at U%. Apply the one-time usage reset (by Sat Nov 14 20:00 UTC); the run resumes within 30 min.`
-4. A short-window park (`S > 85` with nothing running) uses a one-shot at that window's reset + 5
+3. At **every** park, CronCreate a recurring check at `7,37 * * * *` with the prompt:
+   `Platform-core run is parked (LEDGER.md §Run). Call get_usage. If weekly all-models usage is at
+   least 15 points below "Parked at U", resume per plans/platform-core/PROCESS.md §7.3; otherwise
+   end the turn without doing anything else.` This catches Ahmad's manual reset and any
+   promotional reset Anthropic grants all users, within 30 minutes. A 30-minute cadence keeps the
+   session's one-hour prompt cache warm, so each check costs a cache read (about 0.3 points a day).
+4. **Only in the manual-reset week** (the window starting Tue Nov 10) and only if `U ≥ 90`, notify
+   Ahmad (§9): `Platform-core parked at U%. Apply the one-time usage reset (by Sat Nov 14 20:00 UTC); the run resumes within 30 min.`
+5. A short-window park (`S > 85` with nothing running) uses a one-shot at that window's reset + 5
    minutes, with the same prompt as step 2.
-5. End the turn.
+6. End the turn.
+
+**Unexpected resets while running.** The gates read `get_usage` before every launch, so a
+promotional reset that lands mid-run simply shows up as more headroom. Log it in LEDGER.md §Usage
+as "unexpected reset", recalibrate the window start for `ρ` (§6.2), and update the forecast. If it
+lands in the manual-reset week before Ahmad's reset, his one-time reset is still to come and the
+§7.2 step-4 notice still applies at the next near-limit park. Ahmad may also wake a parked run at
+any time with "Check usage and resume per PROCESS.md §7.3". That is harmless when nothing has
+reset: the run re-parks.
 
 If a request ever hits a limit anyway, the interactive session waits and continues by itself at
 the reset (`autoContinueAtUsageLimit`, up to three times). A background agent caught by a limit may
@@ -412,7 +435,7 @@ fail. Its slot keeps the files, and §8.4 recovers it once usage allows.
 ### 7.3 Resume
 
 Delete the parking cron jobs (CronList, CronDelete), set `Parked = no`, read and log `get_usage`. If
-a manual reset happened, compare the new `resetsAt` with the previous one; if it moved, log it,
+a manual or promotional reset happened, compare the new `resetsAt` with the previous one; if it moved, log it,
 recompute the forecast, and notify Ahmad. Then recover per §10 if anything was
 interrupted, and schedule per §5.
 
@@ -475,7 +498,8 @@ connected, plus email if KICKOFF.md authorises it. Notify him only for these eve
 - any **permission pause or classifier block** an agent reports, or the session itself waiting for
   approval. Send this at once: `Platform-core: permission block on <PC>: <command>. Approve or widen the allowlist.`
 - the calibrated forecast after 15 and after 40 integrated checkpoints
-- a park in the manual-reset week (§7.2), and a moved `resetsAt` after the manual reset
+- a park in the manual-reset week (§7.2), a moved `resetsAt` after the manual reset, and any
+  unexpected (promotional) reset with the revised forecast
 - the MVP gate closing, and the end of each tier
 - a blocker that stops all lanes
 

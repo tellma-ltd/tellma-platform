@@ -169,6 +169,10 @@ phone or at the machine.
   only idle hours, not tokens.
 - If the manual reset turns out to move the weekly reset time, the run detects it, recomputes the
   forecast and tells you.
+- **Promotional resets** (a blanket reset Anthropic grants all users) are caught the same way.
+  While running, the usage gates see the extra headroom at the next launch. While parked, the
+  30-minute check resumes the run once usage drops 15 points below where it parked. You never need
+  to prompt it, but you can: "Check usage and resume per PROCESS.md §7.3" is always safe.
 
 ## 5. Answers to the open questions
 
@@ -183,10 +187,10 @@ phone or at the machine.
    explicitly authorised by PROCESS.md. If effort turns out to be capped at the session level, raise
    the session to xhigh.
 3. **Subagents vs side sessions.** Background subagents (the Agent tool) for the checkpoint cycle,
-   because the implementer can be resumed with its context intact for both fix rounds and
+   because the implementer can be resumed with its context intact for its fix rounds and
    integration, as your process asks. Workflows only for batch reviews. Side sessions report back
    only a 400-character note (cloud ones nothing), and can't be orchestrated step by step.
-4. **Models.** Opus everywhere by inheritance. Fable is used for Review 2 on the security list and
+4. **Models.** Opus everywhere by inheritance. Fable is used for Review 2 on security-bound checkpoints and
    for batch finders while its own weekly meter is under 90%; it costs about 1.8× Opus per token.
    No Sonnet or Haiku: the run is bound by quality and tokens, and rework from a weaker model costs
    more than it saves.
@@ -199,15 +203,13 @@ phone or at the machine.
    caught by a weekly limit may fail, because the documented workflow pause covers only resets
    within 24 hours. But every step commits and pushes, and the slot keeps uncommitted files, so a
    failure costs at most one agent's reasoning, never days.
-7. **Is ~3.5 weeks enough?** Not for everything (≈ 7.5 weeks central), and not quite for Tier 1
-   (≈ 4.7 weeks central, range 3.4–6.5, against ≈ 3.6 available by Nov 20). The central
-   expectation is the MVP gate at the end of November (around Nov 30 to Dec 2). Tier 2 follows early
-   in the Dec 8 window, and Tier 3 (Excel, reports, dashboards, MCP, support, assignments) ends in the
-   Dec 15 window. That is your Option B. Tiers keep whatever exists coherent and testable, and you get
-   calibrated forecasts after 15 and 40 checkpoints. If Nov 20 matters more than review depth,
-   PLAN.md §3.3 lists the two levers: together they save about 0.85 weeks
-   and bring the MVP to around Wed Nov 25. A second subscription is not
-   recommended.
+7. **Is ~3.5 weeks enough?** Not for everything. With the two review levers applied (PLAN.md §3.3),
+   the central estimate is ≈ 6.3 weeks for everything and ≈ 4.0 for Tier 1 (range 2.9–5.5), against
+   ≈ 3.6 available by Nov 20. The central expectation is the MVP gate early in the Nov 24 window
+   (around Nov 25–26), Tier 2 around Dec 2, and Tier 3 (Excel, reports, dashboards, MCP, support,
+   assignments) within the Dec 8 window. That is your Option B. Tiers keep whatever exists
+   coherent and testable, and you get calibrated forecasts after 15 and 40 checkpoints. A second
+   subscription is not recommended.
 8. **Slow tests.** There are many: full viewport × language matrices, Firefox/WebKit, frame and perf
    probes, the 15-minute hidden-leader soak, Lighthouse, a one-hour membership expiry, multi-minute
    job e2e, the 1M-row pivot. They move to the nightly GitHub workflow or are deferred (PLAN.md §6),
@@ -217,6 +219,6 @@ phone or at the machine.
    The 0017 `.tmp` mention is a runtime folder the blob store creates. No spec specifies a
    watermark.
 10. **If you're away at the critical moment.** The run never waits on a question. It parks,
-    notifies you, and checks every 30 minutes, so it resumes within half an hour of the reset,
+    notifies you in the manual-reset week, and checks every 30 minutes, so it resumes within half an hour of the reset,
     whenever you apply it. AskUserQuestion would block the session and gain nothing. The one thing
     that can stall it is a permission pause, and that is notified immediately.

@@ -79,7 +79,7 @@ def main():
                  if status.get(pc, "todo") == "todo" and all(status.get(g) == "done" for g in gates)]
         for pc in ready:
             # The MVP gate also needs the Tier-1 batch reviews, which DEPS.md does not list.
-            extra = " (also needs PC-B01…B11 integrated)" if graph[pc][1] == "MVP" else ""
+            extra = " (also needs PC-B01…B07 integrated)" if graph[pc][1] == "MVP" else ""
             print(f"READY {pc} T{graph[pc][0]} {graph[pc][1]}{extra}")
     sys.exit(1 if problems else 0)
 

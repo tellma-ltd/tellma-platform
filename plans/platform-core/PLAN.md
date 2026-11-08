@@ -39,10 +39,10 @@ budget runs out is a coherent product:
    dashboards, assignments, support requests, the MCP server, client ID metadata documents, and
    housekeeping jobs.
 
-**Target dates (central forecast, §3).** Tier 1 lands at the end of November: late in the Nov 24
-window or early in the Dec 1 window. With both §3.3 levers it lands around Wed Nov 25, and Nov 20
-is reachable only if the first calibration comes in well under the priors. Tier 2 follows early in
-the Dec 8 window, and Tier 3 ends in the Dec 15 window. Human testing starts at the MVP gate.
+**Target dates (central forecast, §3, with Ahmad's two review levers applied, §3.3).** Tier 1
+lands early in the Nov 24 window, around Wed–Thu Nov 25–26. Nov 20 is reachable only if the
+first calibration comes in well under the priors. Tier 2 follows around Dec 2, and Tier 3 ends in
+the Dec 8 window. Human testing starts at the MVP gate.
 
 ## 2. Shape of the work
 
@@ -110,18 +110,22 @@ consumption, so it is never used for calibration.
 
 | Scope | LOC (backend / client) | Checkpoint cycles | Batch and gate reviews | Orchestrator | Central | Range |
 |---|---|---|---|---|---|---|
-| Tier 1 | 670k (363k / 308k) | 377 pts | 74 pts (B01–B11, MVP gate) | 20 pts | **≈ 4.7 weeks** | 3.4–6.5 |
-| Tier 2 | 129k (44k / 85k) | 84 | 12 | 5 | **≈ 1.0** | 0.7–1.5 |
-| Tier 3 | 244k (120k / 124k) | 143 | 30 | 7 | **≈ 1.8** | 1.3–2.6 |
-| **All** | **1.04M** | 604 | 116 | 32 | **≈ 7.5 weeks** | 5–10 |
+| Tier 1 | 670k (363k / 308k) | 316 pts | 64 pts (B01–B07, MVP gate) | 20 pts | **≈ 4.0 weeks** | 2.9–5.5 |
+| Tier 2 | 129k (44k / 85k) | 68 | 8 | 5 | **≈ 0.8** | 0.6–1.2 |
+| Tier 3 | 244k (120k / 124k) | 115 | 28 | 7 | **≈ 1.5** | 1.1–2.1 |
+| **All** | **1.04M** | 499 | 100 | 32 | **≈ 6.3 weeks** | 4.5–8.5 |
+
+The cycle column assumes the two-review cycle only for the PROCESS.md §3 two-review list (about 38
+Tier-1 checkpoints and 44 in all), and the one-review cycle (0.82 × p) for the rest. Batch reviews
+run once per phase (§8.2).
 
 **Available by Fri Nov 20: ≈ 3.6 weeks.** That is what remains of this window (≈ 59 points
 after planning), the window from Nov 10, the one-time manual reset, and the window from Nov 17
 used by Friday.
 
-**Reading.** Tier 1 needs about 1.1 weeks more than is available by Nov 20, and the Nov 24 window
-holds about 1.0, so the central landing is at the end of November (around Nov 30 to Dec 2). This is Ahmad's Option B, and the plan is built
-for it. Tiers are strict, every checkpoint leaves `platform-core` green, and the MVP gate writes
+**Reading.** Tier 1 needs about 0.4 weeks more than is available by Nov 20, so the central
+landing is early in the Nov 24 window (around Wed–Thu Nov 25–26). This is Ahmad's Option B, and
+the plan is built for it. Tiers are strict, every checkpoint leaves `platform-core` green, and the MVP gate writes
 the human-testing guide the moment Tier 1 completes. Option A (a second subscription) is not
 recommended.
 
@@ -129,13 +133,13 @@ recommended.
 publishes a calibrated forecast and notifies Ahmad (PROCESS.md §9). The first should arrive
 around Sun Nov 8 or Mon Nov 9.
 
-### 3.3 Levers if Nov 20 matters more than review depth (Ahmad's call; default: none)
+### 3.3 Review levers (applied by Ahmad, 2026-11-08)
 
-| Lever | Saves (T1) | Cost |
+| Lever | Saves (T1) | Trade-off, and how it is contained |
 |---|---|---|
-| Review 2 only on the §3 security/complexity list in PROCESS.md (about 45 checkpoints) | ≈ 55–60 pts | Less adversarial depth on routine UI and plumbing |
-| Batch reviews per phase rather than per group (7 instead of 11) | ≈ 25 pts | Coarser cross-checkpoint review |
-| Both | ≈ 0.85 weeks | Tier 1 central lands around Wed Nov 25 |
+| Review 2 only for security-bound or complex checkpoints (the PROCESS.md §3 two-review list, 44 checkpoints) | ≈ 60 pts | Less adversarial depth on routine UI and plumbing. Any other checkpoint is escalated to Review 2 when Review 1 finds a blocking issue or many majors, or when fix 1 rewrites much of it (PROCESS.md §4.4) |
+| Cross-checkpoint batch reviews once per phase (7 in Tier 1) instead of per group (11) | ≈ 10 pts | Larger review scope per batch; the finders work at `xhigh` |
+| Both | ≈ 0.7 weeks | Tier 1 central moves from about Dec 1 to about Nov 25–26 |
 
 ### 3.4 Throughput vs budget
 
@@ -164,7 +168,7 @@ Idle stretches are the time to read DECISIONS.md and the batch-review summaries.
 - Reviewers get the exact spec sections and commit range, not the corpus.
 - The orchestrator keeps its context lean. Agents return one-line summaries and write details to
   files, and auto-compaction at 400k (SETUP.md) caps the cost of each turn.
-- The same implementer, resumed, handles both fix rounds. It knows why each decision was made, so
+- The same implementer, resumed, handles its fix round(s). It knows why each decision was made, so
   its pushback is informed and nothing is re-derived.
 - Adjacent checkpoints of the same spec under 3k LOC may be merged when both are ready, which
   saves a review cycle.
@@ -272,7 +276,7 @@ hook. Only when that is impossible do they go to nightly.
 6. ARCHITECTURE.md is updated in the same checkpoint when the code settles something it describes
    differently. The implementer reports this in its return value, and only the orchestrator writes
    DECISIONS.md.
-7. Both review rounds are closed. Every finding is fixed or pushed back with reasons in
+7. Every review round is closed. Every finding is fixed or pushed back with reasons in
    `reviews/PC-nnn.md`.
 8. The checkpoint is integrated: merged into `platform-core` and pushed (status `integrated`). It
    becomes `done` when the CI run for that sha is green (PROCESS.md §5.3). A red run is a
@@ -280,7 +284,7 @@ hook. Only when that is impossible do they go to nightly.
 
 ### 7.2 MVP gate (PC-140)
 
-PC-140 is gated on every Tier-1 checkpoint and on batch reviews PC-B01…B11. Its done-when: the
+PC-140 is gated on every Tier-1 checkpoint and on batch reviews PC-B01…B07. Its done-when: the
 nightly tier is green or triaged, and `HUMAN-TESTING.md` exists with a one-command local smoke
 that Ahmad can run on a clean clone. Then a Fable scenario review walks the main journeys end to
 end: sign in, open a tenant, land on home, create a user, invite them, assign a role with a
@@ -291,19 +295,21 @@ save conflict, deactivate. Its findings are fixed before the gate closes, and Ah
 
 ### 8.1 Per checkpoint (PROCESS.md §4)
 
-Implement → commit 1 → **Review 1** → fix or push back → commit 2 → **Review 2** → fix or push
-back → commit 3 → integrate. Every commit is pushed when it is made. PC-000 and `PC-Fnn` hotfixes
-take Review 1 only.
+**Every checkpoint:** implement → commit 1 → **Review 1** → fix or push back → commit 2 →
+integrate. **Checkpoints on the two-review list** (security-bound or complex, PROCESS.md §3) add
+**Review 2** → fix or push back → commit 3 before integration. Every commit is pushed when it is
+made. A checkpoint off the list is escalated to Review 2 when Review 1 reports a blocking finding
+or four or more majors, or when fix 1 rewrites about a third of the checkpoint (PROCESS.md §4.4).
 
 - **Review 1**: inherit (Opus), `high`. It checks commit 1's spec conformance section by section,
-  test adequacy, and the AGENTS.md rules.
-- **Review 2**: inherit at `xhigh`, or Fable for the security list in PROCESS.md §3. It reviews
-  commits 1+2 adversarially for bugs, concurrency, security and cross-spec contracts, and judges
-  the implementer's pushbacks.
+  test adequacy, correctness, and the AGENTS.md rules.
+- **Review 2**: Fable for the security-bound checkpoints, inherit at `xhigh` for the complex ones.
+  It reviews commits 1+2 adversarially for bugs, concurrency, security and cross-spec contracts,
+  and judges the implementer's pushbacks.
 
-### 8.2 Batch reviews (every 5–15 related checkpoints)
+### 8.2 Batch reviews (one per phase)
 
-A batch review starts when every member of its group is `done`, and it runs alongside the lanes as
+A batch review starts when every checkpoint of its phase is `done`, and it runs alongside the lanes as
 a Workflow (PROCESS.md §13). Three read-only finders walk cross-checkpoint concerns (Fable while
 the Fable meter is under 90%, otherwise Opus at `xhigh`). An Opus fixer verifies each finding
 against the code, fixes it or pushes back, and integrates `PC-Bnn: batch review fixes`. Ahmad asked
@@ -311,33 +317,33 @@ for a reviewer that fixes. This split into finders and a fixer follows the lesso
 rounds: Fable finds cross-spec gaps that grep-style checks miss, but per-file verification and
 editing go better on Opus. It is recorded in DECISIONS.md.
 
-| Batch | Group (analysis ids) |
+| Batch | Phase (members: PLAN.md Appendix A) |
 |---|---|
-| PC-B01 | Backend foundations: 0011-a, 0010-g1, 0010-a1/a2/a3/a5, 0010-f1/f2/f3/f5 |
-| PC-B02 | Core-UI foundations: 0023-a…g, 0010-b1, 0010-d1, 0010-d2 |
-| PC-B03 | Contracts and data-access core: seed, 0013-a, 0017-a, 0012-a…g, 0011-b…e |
-| PC-B04 | Settings, caching, access control: 0013-b…g, 0014-a…e, 0011-f, 0017-b, 0018-a, 0020-a, 0021-a |
-| PC-B05 | Grid, menu, picker amendments: 0010-c1…c6, 0010-e1/e2, 0010-d3, 0010-b2 |
-| PC-B06 | CRUD pipeline: 0015-a…i, 0014-f, 0013-h |
-| PC-B07 | Web API, blobs, distribution, reference stacks: 0016-b…f, 0017-c1/c2/d, 0011-g, 0018-b…e, 0018-g/h |
-| PC-B08 | Jobs, notifications core, discovery: 0020-b…d, 0021-b, 0010-f4, 0029-a, 0029-f |
-| PC-B09 | Client foundation: 0024-a…i and k, 0025-a/b/c/e |
-| PC-B10 | Shell, entity model, home scaffold: 0026-a…c, 0027-a…e, 0028-c, 0029-b…e/g, 0035-a1 |
-| PC-B11 | Pages: 0030-a…d/g, 0031-a…f, 0032-a/c/d/f (followed by the MVP-gate scenario review) |
-| PC-B12, B13 | Tier 2: backend completion (incl. 0018-f); client completion |
-| PC-B14…B18 | Tier 3: Excel; reports engine; report renderers and studio; dashboards; the rest |
+| PC-B01 | Phase 1, foundations and amendments: PC-000…PC-014 |
+| PC-B02 | Phase 2, contracts and data-access core: PC-015…PC-031 |
+| PC-B03 | Phase 3, queries, caching, access control, grid amendments: PC-032…PC-061 |
+| PC-B04 | Phase 4, CRUD pipeline, web API, blobs, client package skeleton: PC-062…PC-084 |
+| PC-B05 | Phase 5, distribution, reference stacks, jobs, discovery: PC-085…PC-102 |
+| PC-B06 | Phase 6, client foundation, shell, entity model, home scaffold: PC-103…PC-123 |
+| PC-B07 | Phase 7, search, details and stock pages: PC-124…PC-139 (followed by the MVP-gate scenario review, PC-140) |
+| PC-B08 | Phase 8, Tier 2: PC-141…PC-172 |
+| PC-B09…B12 | Tier 3: Excel (9a), reports (9b), dashboards (9c), the rest (9d) |
 
-## 9. Decisions and inputs for Ahmad (before kickoff)
+A phase spans backend and client work, so the finders of a large phase review each layer's
+cross-checkpoint seams and the seams between the layers. When the gates allow, a batch may begin
+on the phase's backend or client half as soon as that half is `done`. Its fix commit then covers
+that half, and the batch closes when both halves have been reviewed.
 
-1. **Brand files** (0024 §7.6, 0027). `tellma-brand` has the color and grayscale wordmark SVGs but
-   **no on-dark (white) wordmark SVG and no vector mark**. The white wordmark exists only in
-   `.tmp/ui-design/assets/`, so rescue it before archiving `.tmp`, and export a mark SVG from
-   `brand-assets/logo/source-ai/` (SETUP.md §1). **No spec mentions a watermark.** If you expect
-   one (print or PDF), it is not specced.
+## 9. Decisions and inputs from Ahmad
+
+1. **Brand files** (0024 §7.6, 0027), settled in pre-flight: `tellma-brand` now has
+   `tellma-wordmark-color-cropped.svg`, `tellma-wordmark-white.svg`, `tellma-mark-color.svg` and
+   `tellma-mark-white.svg`. The mark is cropped from the wordmark's "a" and teal dot, and a designer
+   should confirm it. **No spec mentions a watermark.**
 2. **Vendor callback URIs** (0010 §A.4). By default the claude-web and codex-web seed entries are
    left out, because their callback URIs are not given. Supply them to include the entries.
-3. **Tier 3 order** (§4): Excel first by default.
-4. **Levers for Nov 20** (§3.3): none applied by default.
+3. **Tier 3 order** (§4): Excel first, confirmed by Ahmad.
+4. **Review levers** (§3.3): both applied by Ahmad.
 5. **Carried open question:** should `core.user.added`'s `actorName` become `LocalizedText`? By
    default the spec stands as written.
 

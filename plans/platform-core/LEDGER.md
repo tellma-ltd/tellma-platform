@@ -22,7 +22,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Updated | ρ | k_backend | k_client | Forecast T1 / T2 / T3 (weeks, incl. batch reviews and orchestrator) |
 |---|---|---|---|---|
-| 2026-11-07 (prior) | 0.115 | 0.36 | 0.80 | 4.7 / 1.0 / 1.8 |
+| 2026-11-08 (prior, levers applied) | 0.115 | 0.36 | 0.80 | 4.0 / 0.8 / 1.5 |
 
 ## Usage
 
@@ -35,9 +35,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 
-## Batch reviews
+## Batch reviews (one per phase)
 
-| Batch | Members | Status | Commit | Findings |
+| Batch | Phase | Status | Commit | Findings |
 |---|---|---|---|---|
 
 ## Flaky
