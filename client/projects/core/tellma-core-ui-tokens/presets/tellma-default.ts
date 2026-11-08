@@ -74,6 +74,30 @@ const light: TmSchemeColors = {
     placeholder: '{grey.400}',
     icon: '{grey.400}',
   },
+  // Eight hues that tell things apart (chart series, keyed avatars), in a
+  // fixed slot order: teal, orange, violet, amber, magenta, green, blue,
+  // red. Every onTint reads at 7:1 or more on its tint.
+  categorical: {
+    1: { mark: '#118AA6', tint: '#D3E9EE', onTint: '#084B5D' },
+    2: { mark: '#EB6834', tint: '#FBE3DA', onTint: '#6A3B2A' },
+    3: { mark: '#6250D6', tint: '#E2DFF7', onTint: '#2C3173' },
+    4: { mark: '#C98500', tint: '#F4E8D0', onTint: '#5A4813' },
+    5: { mark: '#D55181', tint: '#F7DFE8', onTint: '#60314D' },
+    6: { mark: '#008300', tint: '#D0E8D0', onTint: '#004813' },
+    7: { mark: '#2A78D6', tint: '#D8E6F7', onTint: '#134373' },
+    8: { mark: '#E34948', tint: '#F9DDDD', onTint: '#662E33' },
+  },
+  // The magnitude ramp over the brand teal (re-branding teal re-brands the
+  // steps), from near the white surface to the strongest teal.
+  sequential: {
+    1: '{teal.100}',
+    2: '{teal.200}',
+    3: '{teal.300}',
+    4: '{teal.400}',
+    5: '{teal.600}',
+    6: '{teal.700}',
+    7: '{teal.800}',
+  },
 };
 
 // The dark neutral scale — the brand's inversion of the light greys, stated
@@ -152,6 +176,29 @@ const dark: TmSchemeColors = {
     textDisabled: darkNeutral[400],
     placeholder: darkNeutral[400],
     icon: darkNeutral[400],
+  },
+  // The same eight hues, re-toned for the dark surfaces: tints are deep, and
+  // text on them is pale. Every onTint reads at 6.5:1 or more on its tint.
+  categorical: {
+    1: { mark: '#2AA5C2', tint: '#144554', onTint: '#AED6DF' },
+    2: { mark: '#D95926', tint: '#5A3A2F', onTint: '#F0CCBD' },
+    3: { mark: '#9085E9', tint: '#2E3363', onTint: '#C7C5EE' },
+    4: { mark: '#C98500', tint: '#4F441F', onTint: '#E6D5AE' },
+    5: { mark: '#D55181', tint: '#533348', onTint: '#E9C5D4' },
+    6: { mark: '#008300', tint: '#0F431F', onTint: '#A9D4AE' },
+    7: { mark: '#3987E5', tint: '#1C4063', onTint: '#B6D1EE' },
+    8: { mark: '#E66767', tint: '#583136', onTint: '#EDC3C3' },
+  },
+  // The ramp reversed: step 1 sits near the dark surface, step 7 is the
+  // brightest teal.
+  sequential: {
+    1: '{teal.900}',
+    2: '{teal.800}',
+    3: '{teal.700}',
+    4: '{teal.600}',
+    5: '{teal.400}',
+    6: '{teal.300}',
+    7: '{teal.200}',
   },
 };
 

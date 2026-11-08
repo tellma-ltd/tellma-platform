@@ -34,9 +34,11 @@
   block-size: calc(100vh - 2 * var(--modal-lg-margin));
 }
 
-/* Small-viewport convergence: every bucket goes near-full-screen. (A raw
-   600px breakpoint — custom properties don't resolve in media queries.) */
-@media (max-width: 600px) {
+/* Small-viewport convergence: below the sm breakpoint every bucket goes
+   near-full-screen. (A literal threshold — custom properties don't resolve
+   in media queries; the value is the sm entry of breakpoints.json.) Between
+   576 and 600 px a md modal keeps its width, clamped by max-inline-size. */
+@media (width < 576px) {
   .tm-modal-panel--sm,
   .tm-modal-panel--md,
   .tm-modal-panel--lg {

@@ -5,6 +5,13 @@
 ```ts
 
 // @public
+export interface TmCategoricalTone {
+    readonly mark: TmTokenValue;
+    readonly onTint: TmTokenValue;
+    readonly tint: TmTokenValue;
+}
+
+// @public
 export type TmColorRamp = Partial<Record<25 | 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900, string>>;
 
 // @public
@@ -43,6 +50,7 @@ export interface TmSchemeColors {
         readonly strong: TmTokenValue;
         readonly divider: TmTokenValue;
     };
+    readonly categorical: Readonly<Record<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8, TmCategoricalTone>>;
     readonly colorScheme: 'light' | 'dark';
     readonly field: {
         readonly bg: TmTokenValue;
@@ -62,6 +70,7 @@ export interface TmSchemeColors {
         readonly bg: TmTokenValue;
         readonly text: TmTokenValue;
     };
+    readonly sequential: Readonly<Record<1 | 2 | 3 | 4 | 5 | 6 | 7, TmTokenValue>>;
     readonly status: {
         readonly success: TmStatusColors;
         readonly warning: TmStatusColors;

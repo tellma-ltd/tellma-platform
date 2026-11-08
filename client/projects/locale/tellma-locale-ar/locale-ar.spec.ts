@@ -168,7 +168,7 @@ function sampleParams(args: Map<string, string>): Record<string, unknown> {
   const params: Record<string, unknown> = {};
   for (const [name, type] of args) {
     if (type === 'plural' || type === 'selectordinal' || type === 'number') {
-      params[name] = 5; // messageformat throws on a non-number here
+      params[name] = 5; // a plural picks its arm from a number
     } else if (type === 'date' || type === 'time') {
       params[name] = new Date(0);
     } else if (type === 'select') {
@@ -256,21 +256,24 @@ describe('@tellma/locale-ar (DoD 13)', () => {
     await settle(fixture);
 
     // The four tests above pin four messages; malformed ICU anywhere else
-    // would first surface as a runtime throw in whichever component happens
-    // to render that string. Reading each signal runs the real transpiler.
+    // would render as its raw source (with a development warning) in
+    // whichever component happens to show that string. Reading each signal
+    // runs the real transpiler.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const broken: string[] = [];
     for (const path of keyPaths(TM_LOCALE_AR_STRINGS)) {
       const message = messageAt(TM_LOCALE_AR_STRINGS, path);
-      try {
-        const rendered = host.translate(path, sampleParams(icuArguments(message)))();
-        if (rendered === '') {
-          broken.push(`${path}: rendered empty`);
-        }
-      } catch (error) {
-        broken.push(`${path}: ${(error as Error).message}`);
+      const rendered = host.translate(path, sampleParams(icuArguments(message)))();
+      if (rendered === '') {
+        broken.push(`${path}: rendered empty`);
+      } else if (/[{}]/.test(rendered)) {
+        broken.push(`${path}: rendered unresolved syntax: ${rendered}`);
       }
     }
+    const malformed = warn.mock.calls.filter(([text]) => String(text).includes('Malformed'));
+    warn.mockRestore();
     expect(broken).toEqual([]);
+    expect(malformed).toEqual([]);
   });
 
   it('the ambient gender context conjugates the imperative', async () => {

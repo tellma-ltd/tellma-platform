@@ -9,8 +9,7 @@
     "@angular/common": "^22.0.0",
     "@angular/core": "^22.0.0",
     "@angular/forms": "^22.0.0",
-    "@jsverse/transloco": "^8.4.0",
-    "@jsverse/transloco-messageformat": "^8.4.0"
+    "@jsverse/transloco": "^8.4.0"
   },
   "dependencies": {
     "@internationalized/date": "^3.12.2",
@@ -19,9 +18,14 @@
   },
   "sideEffects": false,
   "type": "module",
+  "exports": {
+    "./breakpoints.json": {
+      "default": "./layout/breakpoints.json"
+    }
+  },
   "tellma": {
     "budgetsInKb": {
-      ".": 5,
+      ".": 8,
       "./alert": 2,
       "./button": 2,
       "./calendar-ethiopic": 2,
@@ -52,6 +56,7 @@
       "./tabs": 4
     },
     "budgetNotes": {
+      ".": "Raised from 5 to 8. About 1.1 KB is the foundation seams the app shell builds on: TmBreakpoints over five media query lists, TmTheme with its System tracking, the live root Directionality, the translations loader and the touch-size resolver. About 1.4 KB is the ICU MessageFormat interpreter that replaced the eval-based compiler, so messages format under a script-src 'self' Content Security Policy with no 'unsafe-eval'; the old compiler lived in an external @jsverse package outside this measurement, so the app bundle itself shrinks (it no longer carries @messageformat/core and its plural data). The remaining headroom is for the l10n facade's planned instant and time-zone additions.",
       "./entity-picker": "Raised from 11 to 12 for the in-field invalid glyph the picker now draws itself (the field can only append its own AFTER the whole control, which would shove the magnifier sideways every time an error came and went). Previously raised from 10 to 11. The picker measures ~10.5 KB as one eager surface: it is an editable combobox that also carries an async search lifecycle, a text/value resolution channel, three modal pages, and a grid cell-editor implementation. The remaining lever is deferring the popup into its own chunk (the date-picker's shape), which is a change to the mounting sequence this control's overlay placement and highlight protocol are sensitive to — not worth reopening for 0.5 KB. Revisit if the popup is extracted for other reasons.",
       "./form-field": "Raised from 4 to 5 for the validation popover: the field now anchors an overlay (the shared @tellma/core-ui/private helper plus a CdkConnectedOverlay in its template) instead of writing a message into a row. The weight is the overlay wiring, not the bubble — the bubble itself is one presentational component shared with the grid.",
       "./icon": "Raised from 2 to 3 at birth: measured 2.7. The spec's 2 was an estimate below the real logic: the registry and the icon-data guard (the allowed elements, the refused event-handler and link attributes, attribute-name and kebab-case name checks, and refusal messages that are the only diagnostic a developer gets), plus the draw path (the template cache, the clone, the unknown-name and refusal reporting). The component's duplicated decorator metadata costs about 0.1 of it. Nothing here grows with the number of icons: icon data is its importer's weight.",

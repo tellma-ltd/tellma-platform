@@ -118,15 +118,18 @@ export default defineConfig(
     },
   },
 
-  // tm/Tm/TM_ prefix on every library export (reviewed allowlist above).
+  // tm/Tm/TM_ prefix on every library export (reviewed allowlist above),
+  // in core packages, feature packs and locale packs alike.
   {
-    files: ['projects/core/**/*.ts', 'projects/locale/**/*.ts'],
+    files: ['projects/core/**/*.ts', 'projects/module/**/*.ts', 'projects/locale/**/*.ts'],
     ignores: [
       '**/*.spec.ts',
       '**/*.examples.ts',
       // Spec-only helpers (not exported from any entry point).
       '**/*testing.util.ts',
+      // Node packages: tooling, not library surface.
       'projects/core/tellma-core-ui-mcp/**',
+      'projects/core/tellma-core-tools/**',
     ],
     plugins: { tm: tmPlugin },
     rules: {
