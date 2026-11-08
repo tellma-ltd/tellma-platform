@@ -617,6 +617,8 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   private readonly panelElement = viewChild<ElementRef<HTMLElement>>('panel');
   /** aria's rendered `[ngOption]` directives — activation reads active state. */
   private readonly ariaOptions = viewChildren(Option);
+  /** aria's combobox directive on the input, whose `expanded` model mirrors ours. */
+  private readonly combobox = viewChild(Combobox);
 
   /**
    * The shared anchored-overlay wiring. The origin is the CHROME the user
@@ -877,7 +879,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     // open must not stay interactive.
     effect(() => {
       if (this.disabled() || this.readonly()) {
-        untracked(() => this.expanded.set(false));
+        untracked(() => this.setExpanded(false));
       }
     });
 
@@ -995,15 +997,31 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       }
     });
 
-    // Effect 6: dropdown open/close transitions.
+    // Effect 6: dropdown open/close transitions. ANY re-run that reads
+    // "closed" is a close, even with no open observed before it: input
+    // delivered faster than the page renders can open the popup (a
+    // keystroke) and close it again (a pick) between two runs of this
+    // effect, and the search state that keystroke built must still be
+    // reset, or the next open would re-apply the stale rows and their
+    // highlight. The effect only re-runs when the value changed, and the
+    // first run (closed, at construction) has nothing to reset.
     let wasExpanded = false;
+    let firstRun = true;
     effect(() => {
       const isExpanded = this.expanded();
-      if (isExpanded === wasExpanded) {
-        return;
-      }
+      const opened = isExpanded && !wasExpanded;
       wasExpanded = isExpanded;
-      untracked(() => (isExpanded ? this.onPopupOpened() : this.onPopupClosed()));
+      if (firstRun) {
+        firstRun = false;
+        if (!isExpanded) {
+          return;
+        }
+      }
+      if (!isExpanded) {
+        untracked(() => this.onPopupClosed());
+      } else if (opened) {
+        untracked(() => this.onPopupOpened());
+      }
     });
 
     // Effect 7: disarm aria's default-highlight machinery on every (per-
@@ -1527,6 +1545,21 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     untracked(() => this.listbox()?._pattern.listBehavior.unfocus());
   }
 
+  /**
+   * Opens or closes the popup, writing aria's combobox model as well as this
+   * control's. The two are joined by a two-way binding, but a binding pushes
+   * only CHANGES, once per render: when aria opens the popup (a keystroke)
+   * and this control closes it again (a pick) before a render runs, the
+   * bound value reads closed at both checks, nothing is pushed, and aria
+   * stays expanded on its own. It would then announce a popup that is gone
+   * and consume the next Enter. Writing both keeps them in step whatever
+   * the timing.
+   */
+  private setExpanded(open: boolean): void {
+    this.expanded.set(open);
+    untracked(this.combobox)?.expanded.set(open);
+  }
+
   /** The dropdown just opened: run the initial (browse or seeded) search. */
   private onPopupOpened(): void {
     if (untracked(this.searchState).kind !== 'idle') {
@@ -1677,7 +1710,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
         'auto',
       );
       if (keepPopup) {
-        this.expanded.set(false); // the Enter path: a pick closes the popup
+        this.setExpanded(false); // the Enter path: a pick closes the popup
       } else {
         // Blur path: announce the auto-resolution outcome (§8).
         this.announceKey('entityPicker.announce.picked', {
@@ -1817,12 +1850,18 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     }
     if (isExpanded && event.key === 'Enter' && !this.disabled() && !this.readonly()) {
       event.stopPropagation(); // aria's deferred relay never sees it
+      // The key that confirms an IME composition (`isComposing`, or WebKit's
+      // 229 status code) belongs to the composition: no pick, no commit, and
+      // no preventDefault, so the conversion completes untouched.
+      if (event.isComposing || (event as { readonly keyCode: number }).keyCode === 229) {
+        return;
+      }
       const key = this.keyboardActiveKey();
       if (key === undefined && this.cellHost !== null) {
         // Enter with no highlight in a cell is the GRID's commit. The grid's
         // dropdown gate stands down only once the dropdown is closed, so
         // close it first and hand the grid a clean clone.
-        this.expanded.set(false);
+        this.setExpanded(false);
         this.redispatchAbove(event);
         return;
       }
@@ -1895,7 +1934,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       return;
     }
     if (!untracked(this.expanded)) {
-      this.expanded.set(true);
+      this.setExpanded(true);
     }
   }
 
@@ -2034,7 +2073,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
         });
       }
     }
-    this.expanded.set(false);
+    this.setExpanded(false);
   }
 
   /** The key of aria's active option, or `undefined` when none is active. */
@@ -2121,7 +2160,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       if (item !== undefined) {
         this.focus();
         this.applyPick(key as Id, untracked(this.itemLabel)(item), item, 'list');
-        this.expanded.set(false);
+        this.setExpanded(false);
       }
       return;
     }
@@ -2136,7 +2175,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       this.touchedSelf.set(true);
       this.touch.emit();
       this.setCanonicalText('', null);
-      this.expanded.set(false);
+      this.setExpanded(false);
       return;
     }
     if (!this.isBrowseText(text) && (state.kind === 'loading' || state.kind === 'error')) {
@@ -2158,7 +2197,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       return;
     }
     // Pristine text, no highlight: Enter simply closes the popup.
-    this.expanded.set(false);
+    this.setExpanded(false);
   }
 
   /**
@@ -2195,7 +2234,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
 
   /** An outside pointer press closes the dropdown (the text is kept). */
   protected onOutsideClick(): void {
-    this.expanded.set(false);
+    this.setExpanded(false);
   }
 
   /** The magnifier (pointer/AT path; never a tab stop) opens advanced search. */
@@ -2238,7 +2277,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     this.inFlight = null;
     this.cancelDebounce();
     this.suppressBlur = true; // focus moves into the dialog — not a departure
-    this.expanded.set(false);
+    this.setExpanded(false);
     // The modal captures whatever holds focus RIGHT NOW as its restore
     // target. A magnifier press suppresses its own focus transfer, so on a
     // picker that was never focused that target would be document.body and
@@ -2392,7 +2431,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       }
     }
     this.lastCommitted = untracked(this.value);
-    this.expanded.set(false);
+    this.setExpanded(false);
   }
 
   /** Reverts to the last committed value (a grid host's second Esc). */
@@ -2405,7 +2444,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       untracked(() => this.displayFor(this.lastCommitted)),
       this.lastCommitted,
     );
-    this.expanded.set(false);
+    this.setExpanded(false);
   }
 
   /**
@@ -2425,7 +2464,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     const element = this.inputElement;
     element.value = text;
     element.setSelectionRange(text.length, text.length);
-    this.expanded.set(true);
+    this.setExpanded(true);
     this.queueSearch(this.queryFor(text));
   }
 
@@ -2546,6 +2585,6 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       return;
     }
     this.focus();
-    this.expanded.set(true);
+    this.setExpanded(true);
   }
 }

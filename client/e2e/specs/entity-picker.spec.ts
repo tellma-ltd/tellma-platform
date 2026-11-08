@@ -478,6 +478,31 @@ test.describe('input delivered faster than the page renders', () => {
     await expect(input(page)).toHaveValue('Alice Green');
     expect((await model(page)).supplierId).toBe(3);
     await expect(page.getByTestId('submit-count')).toHaveText('0');
+    // The popup opened and closed with no render in between, and nothing of
+    // that open may linger: the combobox reads closed, so the next Enter is
+    // the form's again…
+    await expect(input(page)).toHaveAttribute('aria-expanded', 'false');
+    await input(page).press('Enter');
+    await expect(page.getByTestId('submit-count')).toHaveText('1');
+    // …and the next open is a fresh pristine browse, not the stale 'Al' rows
+    // with their highlight.
+    await input(page).click();
+    await expect(options(page)).toHaveCount(5); // the capped browse list
+    await expect(activeOption(page)).toHaveCount(0);
+  });
+
+  test('the first keystrokes and Tab in one burst commit and leave nothing of the open behind', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).focus();
+    await pressInOneTask(page, ['A', 'l', 'Tab']);
+    await expect(input(page)).toHaveValue('Alice Green');
+    expect((await model(page)).supplierId).toBe(3);
+    await expect(input(page)).toHaveAttribute('aria-expanded', 'false');
+    await input(page).click();
+    await expect(options(page)).toHaveCount(5);
+    await expect(activeOption(page)).toHaveCount(0);
   });
 
   test('a narrowing keystroke and Enter in one burst commit the FRESH first result', async ({

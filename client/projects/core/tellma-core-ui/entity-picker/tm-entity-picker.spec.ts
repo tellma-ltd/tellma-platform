@@ -1045,6 +1045,69 @@ describe('tm-entity-picker', () => {
       expect(input.value).toBe('Alice Green');
       expect(panel()).toBeNull();
       expect(host.picks.map((p) => p.source)).toEqual(['list']);
+      // The popup opened and closed with no render in between, and nothing
+      // of that open may linger: aria reads closed, so the next Enter is the
+      // platform's again (a form submit)…
+      expect(input.getAttribute('aria-expanded')).toBe('false');
+      expect((await press(fixture, input, 'Enter')).defaultPrevented).toBe(false);
+      // …and the next open is a fresh pristine browse, not the stale 'Al'
+      // rows with their highlight.
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      await settle(fixture);
+      expect(optionRows()).toHaveLength(DIRECTORY.length);
+      expect(activeRow()).toBeNull();
+    });
+
+    it('Tab in the same task as the first keystroke commits and leaves nothing of the open behind', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      const tab = typeAndPressAtOnce(input, 'Al', 'Tab');
+      expect(tab.defaultPrevented).toBe(false);
+      await settle(fixture);
+      expect(host.model().agentId).toBe(3);
+      expect(input.getAttribute('aria-expanded')).toBe('false');
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      await settle(fixture);
+      expect(optionRows()).toHaveLength(DIRECTORY.length); // a fresh pristine browse
+      expect(activeRow()).toBeNull();
+    });
+
+    it('a held Enter is consumed on every repeat but activates only on the first press', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.createPage.set(pageOf(FakePage));
+      await settle(fixture);
+      await type(fixture, input, 'Zebra'); // a fresh empty set: Enter would fail fast
+      const repeat = await press(fixture, input, 'Enter', { repeat: true });
+      expect(repeat.defaultPrevented).toBe(true); // never a form submit
+      expect(errorText(fixture)).toBe(''); // …and no fail-fast either
+      await press(fixture, input, 'ArrowDown');
+      expect(activeRow()?.textContent?.trim()).toBe('Create…');
+      const onFooter = await press(fixture, input, 'Enter', { repeat: true });
+      expect(onFooter.defaultPrevented).toBe(true);
+      expect(document.querySelector('[data-testid="page-pick"]')).toBeNull(); // no modal launch
+      expect(panel()).not.toBeNull();
+      expect(host.model().agentId).toBeNull();
+      expect(host.picks).toHaveLength(0);
+    });
+
+    it('the Enter that confirms an IME composition picks nothing and is left to the IME', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      await type(fixture, input, 'Al');
+      expect(activeRow()?.textContent?.trim()).toBe('Alice Green');
+      const confirm = await press(fixture, input, 'Enter', { isComposing: true });
+      expect(confirm.defaultPrevented).toBe(false);
+      expect(host.model().agentId).toBeNull();
+      expect(host.picks).toHaveLength(0);
+      expect(panel()).not.toBeNull();
+      // The next, plain Enter is the user's: it commits the highlight.
+      await press(fixture, input, 'Enter');
+      expect(host.model().agentId).toBe(3);
     });
 
     it('Enter in the same task as a narrowing keystroke commits the NEW first result', async () => {
