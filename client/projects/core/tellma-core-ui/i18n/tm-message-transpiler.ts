@@ -13,6 +13,7 @@ import {
 
 import { ɵtmFormatMessage } from './tm-icu';
 import { TM_ACTIVE_LOCALE } from './tm-active-locale';
+import { TM_UI_ARGUMENT_FORMATTER } from './tm-ui-argument-formatter';
 
 /**
  * The ICU MessageFormat transpiler behind every Transloco message — the
@@ -37,6 +38,10 @@ import { TM_ACTIVE_LOCALE } from './tm-active-locale';
  * `TM_ACTIVE_LOCALE` factory probes the transpiler token to decide whether
  * Transloco is present, so injecting it any earlier would close a cycle.
  *
+ * Typed arguments (`number`, `date`, `time`) format through
+ * `TM_UI_ARGUMENT_FORMATTER`, which an app replaces to render dates in its
+ * own calendar and time zone.
+ *
  * Only ICU syntax is interpreted: Transloco's `{{param}}` interpolation is
  * not applied first, so a parameter's VALUE can never be re-read as message
  * syntax, and the parse cache stays keyed by the message alone.
@@ -59,8 +64,9 @@ export class ɵTmMessageFormatTranspiler implements TranslocoTranspiler {
     // dependency HERE would instead tie every consumer that reads a string
     // to the transpiler's internals.
     const locale = untracked(() => this.injector.get(TM_ACTIVE_LOCALE)());
+    const format = this.injector.get(TM_UI_ARGUMENT_FORMATTER);
     if (typeof value === 'string') {
-      return ɵtmFormatMessage(value, params, locale);
+      return ɵtmFormatMessage(value, params, locale, format);
     }
     if (typeof value === 'object' && !Array.isArray(value)) {
       let table = value as Record<string, unknown>;
@@ -68,7 +74,11 @@ export class ɵTmMessageFormatTranspiler implements TranslocoTranspiler {
         const message: unknown = getValue(table, path);
         if (typeof message === 'string') {
           const nested = (params as Record<string, unknown>)[path];
-          table = setValue(table, path, ɵtmFormatMessage(message, toParams(nested), locale));
+          table = setValue(
+            table,
+            path,
+            ɵtmFormatMessage(message, toParams(nested), locale, format),
+          );
         }
       }
       return table;

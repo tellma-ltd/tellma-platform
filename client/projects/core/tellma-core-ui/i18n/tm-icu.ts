@@ -3,7 +3,11 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { isDevMode } from '@angular/core';
+import { ɵtmIntl as intl, ɵtmWarnOnce as warnOnce } from './tm-intl';
+import {
+  tmDefaultUiArgumentFormatter,
+  type TmUiArgumentFormatter,
+} from './tm-ui-argument-formatter';
 
 /*
  * An ICU MessageFormat interpreter: messages are parsed once into a small
@@ -13,9 +17,9 @@ import { isDevMode } from '@angular/core';
  * policy the app's web host serves (spec 0024 §6). The dialect is that of
  * the MessageFormat engine the library used before (the messageformat
  * project's default, non-strict mode): plural, selectordinal and select
- * with nesting, `offset:` and `=N` cases, `#`, `{n, number}` with its
- * `integer`, `percent` and `currency:XXX` styles, and ICU apostrophe
- * quoting.
+ * with nesting, `offset:` and `=N` cases, `#`, typed `number`, `date` and
+ * `time` arguments (formatted by a pluggable argument formatter), and ICU
+ * apostrophe quoting.
  *
  * The parser is a set of closures over one cursor rather than a class, so
  * the minifier can shorten every internal name: this file ships in the
@@ -244,66 +248,12 @@ function parse(src: string): IcuNode[] {
 
 /** Parsed messages by source. Bounded by the string tables, which messages come from. */
 const parsed = new Map<string, readonly IcuNode[] | IcuSyntaxError>();
-/** `Intl` formatters and rules, by locale and options. */
-const intlCache = new Map<string, Intl.NumberFormat | Intl.PluralRules>();
-/** What already warned in development, so each problem warns once. */
-const warned = new Set<string>();
-
-/** Warns once per distinct problem, in development only. */
-function warnOnce(message: string): void {
-  if (isDevMode() && !warned.has(message)) {
-    warned.add(message);
-    console.warn(`[tellma-ui] ${message}`);
-  }
-}
-
-/**
- * The cached `Intl` object for `locale` and `key`, created by `create` —
- * falling back to the runtime's default locale for an invalid tag, so a
- * bad locale never throws out of a message.
- */
-function intl<T extends Intl.NumberFormat | Intl.PluralRules>(
-  key: string,
-  locale: string,
-  create: (locale: string | undefined) => T,
-): T {
-  const cacheKey = `${locale}\u0000${key}`;
-  let value = intlCache.get(cacheKey) as T | undefined;
-  if (value === undefined) {
-    try {
-      value = create(locale);
-    } catch {
-      value = create(undefined);
-    }
-    intlCache.set(cacheKey, value);
-  }
-  return value;
-}
-
-/** Formats a number in `locale` with a `{n, number, style}` style ('' for none). */
-function formatNumber(value: unknown, style: string, locale: string): string {
-  const currency = /^currency:\s*([a-z]{3})$/i.exec(style);
-  let options: Intl.NumberFormatOptions = {};
-  if (style === 'integer') {
-    options = { maximumFractionDigits: 0 };
-  } else if (style === 'percent') {
-    options = { style: 'percent' };
-  } else if (currency) {
-    options = { style: 'currency', currency: currency[1].toUpperCase() };
-  } else if (style !== '') {
-    warnOnce(`Unsupported ICU number style "${style}".`);
-    style = '';
-  }
-  return intl(`n${style}`, locale, (tag) => new Intl.NumberFormat(tag, options)).format(
-    typeof value === 'bigint' ? value : Number(value),
-  );
-}
-
 /** Walks a parsed message. `pound` is the innermost plural's value minus its offset. */
 function render(
   nodes: readonly IcuNode[],
   params: Readonly<Record<string, unknown>>,
   locale: string,
+  format: TmUiArgumentFormatter,
   pound: number | null,
 ): string {
   let out = '';
@@ -311,18 +261,21 @@ function render(
     if (typeof node === 'string') {
       out += node;
     } else if (node.kind === 'pound') {
-      out += pound === null ? '#' : formatNumber(pound, '', locale);
+      out += pound === null ? '#' : format('number', pound, '', locale);
     } else {
-      const value = params[node.name];
+      // Own members only: a name such as `constructor` must never resolve to
+      // an inherited Object.prototype member.
+      const value = Object.hasOwn(params, node.name) ? params[node.name] : undefined;
       if (node.kind === 'argument') {
+        const type = node.type;
         if (value === undefined) {
           // A missing parameter shows as its placeholder, never as "undefined".
           out += `{${node.name}}`;
-        } else if (node.type === 'number') {
-          out += formatNumber(value, node.style, locale);
+        } else if (type === 'number' || type === 'date' || type === 'time') {
+          out += format(type, value, node.style, locale);
         } else {
-          if (node.type !== null) {
-            warnOnce(`Unsupported ICU argument type "${node.type}"; pass it formatted.`);
+          if (type !== null) {
+            warnOnce(`Unsupported ICU argument type "${type}"; pass it formatted.`);
           }
           out += String(value);
         }
@@ -349,7 +302,7 @@ function render(
               ).select(inner),
             );
         }
-        out += render(chosen ?? node.cases.get('other')!, params, locale, inner);
+        out += render(chosen ?? node.cases.get('other')!, params, locale, format, inner);
       }
     }
   }
@@ -359,7 +312,8 @@ function render(
 /**
  * Formats an ICU MessageFormat message with its parameters in `locale` —
  * the locale that picks plural categories and formats every number the
- * message carries. A message that fails to parse renders as its raw text
+ * message carries; typed arguments (and a plural's `#`) format through
+ * `format`. A message that fails to parse renders as its raw text
  * (with a development warning) rather than throwing, so one malformed
  * translation never takes down the view showing it.
  *
@@ -370,6 +324,7 @@ export function ɵtmFormatMessage(
   message: string,
   params: Readonly<Record<string, unknown>>,
   locale: string,
+  format: TmUiArgumentFormatter = tmDefaultUiArgumentFormatter,
 ): string {
   if (!SYNTAX.test(message)) {
     return message;
@@ -390,5 +345,5 @@ export function ɵtmFormatMessage(
     warnOnce(`Malformed ICU message (${nodes.message}): ${message}`);
     return message;
   }
-  return render(nodes, params, locale, null);
+  return render(nodes, params, locale, format, null);
 }

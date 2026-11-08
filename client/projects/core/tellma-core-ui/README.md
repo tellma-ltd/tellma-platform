@@ -75,7 +75,10 @@ the components ship no hardcoded sizes or colors.
 - **Strings.** `provideTellmaUi({ translations })` registers the app's
   loader; loaded tables merge with the built-in English and installed locale
   packs. ICU MessageFormat is interpreted, never compiled to code, so it
-  runs under a Content Security Policy without `'unsafe-eval'`.
+  runs under a Content Security Policy without `'unsafe-eval'`. Typed
+  arguments (`number`, `date`, `time`) format through
+  `TM_UI_ARGUMENT_FORMATTER`: numbers with `Intl`, dates and times as ISO
+  8601 by default, which an app replaces with its calendar-aware formatting.
 - **Direction.** Flip `document.documentElement.dir` (and `lang`): the root
   `Directionality` follows live, so open modals mirror in place and every
   overlay opened afterwards takes the new direction.

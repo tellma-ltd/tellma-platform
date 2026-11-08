@@ -16,6 +16,7 @@
 export * from './cache/tm-client-cache';
 export * from './i18n/strings-en';
 export * from './i18n/tm-active-locale';
+export * from './i18n/tm-ui-argument-formatter';
 export type { TmUiTranslationTable, TmUiTranslationsLoader } from './i18n/tm-translations-loader';
 export * from './i18n/tm-ui-translate';
 export * from './forms/field-errors';

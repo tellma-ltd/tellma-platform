@@ -17,6 +17,7 @@ import { TRANSLOCO_TRANSPILER, TranslocoService } from '@jsverse/transloco';
 import { TM_UI_STRINGS_EN } from './strings-en';
 import { TM_ACTIVE_LOCALE } from './tm-active-locale';
 import { ɵtmFormatMessage } from './tm-icu';
+import { TM_UI_ARGUMENT_FORMATTER } from './tm-ui-argument-formatter';
 
 /**
  * The thin one-function i18n seam: resolves a library string key to a
@@ -111,13 +112,14 @@ export function tmDefaultUiTranslate(): TmUiTranslateFn {
   const translocoProvided = inject(TRANSLOCO_TRANSPILER, { optional: true }) !== null;
   const context = inject(TM_UI_MESSAGE_CONTEXT);
   const locale = inject(TM_ACTIVE_LOCALE);
+  const format = inject(TM_UI_ARGUMENT_FORMATTER);
   if (!translocoProvided) {
     return (key, params) =>
       computed(() => {
         const merged = { ...context(), ...params };
         const english = tmEnglishString(key);
         return english !== null
-          ? ɵtmFormatMessage(english, merged, locale())
+          ? ɵtmFormatMessage(english, merged, locale(), format)
           : missingKeyGuard(key);
       });
   }
@@ -155,7 +157,7 @@ export function tmDefaultUiTranslate(): TmUiTranslateFn {
         // Raw-key echo: the key is missing everywhere Transloco looked.
         const english = tmEnglishString(key);
         return english !== null
-          ? ɵtmFormatMessage(english, merged, locale())
+          ? ɵtmFormatMessage(english, merged, locale(), format)
           : missingKeyGuard(key);
       }
       return text;

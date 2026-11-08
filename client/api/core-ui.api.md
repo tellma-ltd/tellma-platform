@@ -42,6 +42,9 @@ export const TM_ERROR_DISPLAY: InjectionToken<TmErrorDisplayPolicy>;
 export const TM_FORM_FIELD_DEFAULTS: InjectionToken<TmFormFieldDefaults>;
 
 // @public
+export const TM_UI_ARGUMENT_FORMATTER: InjectionToken<TmUiArgumentFormatter>;
+
+// @public
 export const TM_UI_I18N_SCOPE = "tmUi";
 
 // @public
@@ -251,6 +254,9 @@ export function tmDefaultActiveLocale(): Signal<string>;
 export const tmDefaultErrorDisplay: TmErrorDisplayPolicy;
 
 // @public
+export function tmDefaultUiArgumentFormatter(type: TmUiArgumentType, value: unknown, style: string, locale: string): string;
+
+// @public
 export function tmDefaultUiTranslate(): TmUiTranslateFn;
 
 // @public
@@ -318,6 +324,12 @@ export interface TmThemeOptions {
 
 // @public
 export type TmThemeSetting = 'system' | 'light' | 'dark';
+
+// @public
+export type TmUiArgumentFormatter = (type: TmUiArgumentType, value: unknown, style: string, locale: string) => string;
+
+// @public
+export type TmUiArgumentType = 'number' | 'date' | 'time';
 
 // @public
 export type TmUiMessageContext = Record<string, unknown>;

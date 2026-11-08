@@ -3,8 +3,18 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { TestBed } from '@angular/core/testing';
+import { TranslocoService } from '@jsverse/transloco';
+
+import { provideTellmaUi } from '../providers/provide-tellma-ui';
 import { TM_UI_STRINGS_EN } from './strings-en';
 import { ɵtmFormatMessage as format } from './tm-icu';
+import {
+  TM_UI_ARGUMENT_FORMATTER,
+  tmDefaultUiArgumentFormatter,
+  type TmUiArgumentFormatter,
+} from './tm-ui-argument-formatter';
+import { TM_UI_I18N_SCOPE, TM_UI_TRANSLATE } from './tm-ui-translate';
 
 /** Every leaf message of a nested string table. */
 function messages(table: object, prefix = ''): Array<[string, string]> {
@@ -28,6 +38,15 @@ describe('ICU message interpreter', () => {
       expect(format('{label} selected', { label: 'Acme' }, 'en-US')).toBe('Acme selected');
       expect(format('{label} selected', {}, 'en-US')).toBe('{label} selected');
       expect(format('{ label } and {n}', { label: 'A', n: 0 }, 'en-US')).toBe('A and 0');
+    });
+
+    it('never resolves an argument name to an inherited Object member', () => {
+      expect(format('{constructor} and {toString}', {}, 'en-US')).toBe(
+        '{constructor} and {toString}',
+      );
+      expect(format('{hasOwnProperty, select, other {other}}', {}, 'en-US')).toBe('other');
+      expect(format('{valueOf, plural, one {one} other {other}}', {}, 'en-US')).toBe('other');
+      expect(format('{constructor}', { constructor: 'own' }, 'en-US')).toBe('own');
     });
 
     it('never re-reads a parameter value as message syntax', () => {
@@ -168,7 +187,7 @@ describe('ICU message interpreter', () => {
 
     it('shows an unsupported argument type as its raw value, with a warning', () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      expect(format('On {d, date, short}', { d: '2026-11-08' }, 'en-US')).toBe('On 2026-11-08');
+      expect(format('Rank {n, spellout}', { n: 3 }, 'en-US')).toBe('Rank 3');
       expect(warn).toHaveBeenCalled();
     });
 
@@ -187,5 +206,72 @@ describe('ICU message interpreter', () => {
       expect(rendered, key).not.toBe('');
     }
     expect(warn.mock.calls.filter(([text]) => String(text).includes('Malformed'))).toEqual([]);
+  });
+
+  describe('the argument formatter', () => {
+    const instant = new Date(Date.UTC(2026, 10, 8, 12, 30, 0));
+
+    it('renders dates and times as ISO 8601 by default, never in the device locale', () => {
+      expect(format('On {d, date, medium}', { d: instant }, 'en-US')).toBe(
+        'On 2026-11-08T12:30:00.000Z',
+      );
+      expect(format('At {t, time, short}', { t: instant }, 'ar-SA')).toBe(
+        'At 2026-11-08T12:30:00.000Z',
+      );
+      // A value that is already text (an ISO date) passes through as is.
+      expect(format('On {d, date}', { d: '2026-11-08' }, 'en-US')).toBe('On 2026-11-08');
+      expect(tmDefaultUiArgumentFormatter('date', new Date(Number.NaN), '', 'en-US')).toBe(
+        'Invalid Date',
+      );
+    });
+
+    it('formats numbers with Intl in the default formatter', () => {
+      expect(tmDefaultUiArgumentFormatter('number', 1234.5, '', 'en-US')).toBe('1,234.5');
+      expect(tmDefaultUiArgumentFormatter('number', 0.25, 'percent', 'en-US')).toBe('25%');
+      expect(tmDefaultUiArgumentFormatter('number', 1234.5, 'integer', 'ar-SA')).toBe('١٬٢٣٥');
+    });
+
+    it('routes every typed argument and a plural # through a supplied formatter', () => {
+      const calls: string[] = [];
+      const custom: TmUiArgumentFormatter = (type, value, style, locale) => {
+        calls.push(`${type}|${style}|${locale}`);
+        return type === 'number' ? `n(${String(value)})` : `${type}(${String(value)})`;
+      };
+      const message =
+        'Due {d, date, long} at {t, time} for {amount, number, integer}; ' +
+        '{count, plural, one {# item} other {# items}}';
+      expect(
+        format(message, { d: '2026-11-08', t: '09:00', amount: 12, count: 3 }, 'en-US', custom),
+      ).toBe('Due date(2026-11-08) at time(09:00) for n(12); n(3) items');
+      expect(calls).toEqual([
+        'date|long|en-US',
+        'time||en-US',
+        'number|integer|en-US',
+        'number||en-US',
+      ]);
+    });
+
+    it('is the formatter every library message uses, replaceable through its token', () => {
+      const custom: TmUiArgumentFormatter = (type, value, style, locale) =>
+        type === 'date'
+          ? `[${String(value)}]`
+          : tmDefaultUiArgumentFormatter(type, value, style, locale);
+      TestBed.configureTestingModule({
+        providers: [provideTellmaUi(), { provide: TM_UI_ARGUMENT_FORMATTER, useValue: custom }],
+      });
+      TestBed.inject(TranslocoService).setTranslation(
+        { [TM_UI_I18N_SCOPE]: { probe: { due: 'Due {d, date, medium}, {n, number} left' } } },
+        'en',
+        { merge: true },
+      );
+      const translate = TestBed.inject(TM_UI_TRANSLATE);
+      expect(translate('probe.due', { d: '2026-11-08', n: 1500 })()).toBe(
+        'Due [2026-11-08], 1,500 left',
+      );
+    });
+
+    it('defaults the token to the ISO and Intl formatter', () => {
+      expect(TestBed.inject(TM_UI_ARGUMENT_FORMATTER)).toBe(tmDefaultUiArgumentFormatter);
+    });
   });
 });
