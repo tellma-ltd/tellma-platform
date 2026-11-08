@@ -101,8 +101,28 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.16.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.16.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.SqlClient" Version="1.16.0" />
+    <!-- PDF first-page thumbnails (MIT), rendered through PDFium. Referenced by
+         Tellma.Core.Imaging only: it and the Skia/PDFium natives below are the platform's one
+         native-binary package set, kept out of Tellma.Core. -->
+    <PackageVersion Include="PDFtoImage" Version="5.4.0" />
+    <!-- PDFium builds (Apache-2.0) PDFtoImage 5.4.0 is compiled against, pinned at the version it
+         declares: they parse every uploaded PDF, so a move is a deliberate, reviewed change on the
+         PDFtoImage line rather than a transitive drift. Linux carries linux-x64 and linux-arm64
+         (glibc and musl); Win32 carries win-x64 and win-arm64. -->
+    <PackageVersion Include="bblanchon.PDFium.Linux" Version="152.0.7961" />
+    <PackageVersion Include="bblanchon.PDFium.macOS" Version="152.0.7961" />
+    <PackageVersion Include="bblanchon.PDFium.Win32" Version="152.0.7961" />
     <PackageVersion Include="Quartz.Extensions.Hosting" Version="3.18.2" />
     <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
+    <!-- Image normalisation and thumbnails (MIT). The native packages move in lockstep with the
+         managed one: SkiaSharp refuses a native library of another milestone at load. PDFtoImage
+         asks for 4.150.1 of each; transitive pinning lifts them to this line. The NoDependencies
+         Linux build embeds what the stock Linux build loads from fontconfig, which Linux runners
+         and containers lack. -->
+    <PackageVersion Include="SkiaSharp" Version="4.152.1" />
+    <PackageVersion Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.152.1" />
+    <PackageVersion Include="SkiaSharp.NativeAssets.macOS" Version="4.152.1" />
+    <PackageVersion Include="SkiaSharp.NativeAssets.Win32" Version="4.152.1" />
     <!-- In-process SMTP endpoint for the MailKit protocol suite; no external infrastructure. -->
     <PackageVersion Include="SmtpServer" Version="11.1.0" />
     <!-- The first version patched against GHSA-q939-rpr3-3284; referenced only to lift the

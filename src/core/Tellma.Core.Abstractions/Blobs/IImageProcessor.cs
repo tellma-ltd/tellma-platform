@@ -18,6 +18,12 @@ namespace Tellma.Core.Abstractions.Blobs
     ///         encoded orientation; and writes output that carries no metadata.
     ///     </para>
     ///     <para>
+    ///         An implementation measures itself: it records the <c>tellma.blobs.image.duration</c>
+    ///         and <c>tellma.blobs.image.failures</c> instruments of <see cref="BlobTelemetryNames" />
+    ///         under the kind it is given, and logs which input it is about to
+    ///         decode before every native decode or render, so the caller records neither.
+    ///     </para>
+    ///     <para>
     ///         Implementations are singletons and must be safe to call concurrently.
     ///     </para>
     /// </remarks>
@@ -27,6 +33,7 @@ namespace Tellma.Core.Abstractions.Blobs
         ///     Normalises an uploaded image per <paramref name="policy" /> and, when
         ///     <paramref name="thumbnail" /> is set, renders its thumbnail from the normalised image.
         /// </summary>
+        /// <param name="kind">The blob kind the image is uploaded as; tags the telemetry.</param>
         /// <param name="input">The uploaded bytes; at most the kind's size limit.</param>
         /// <param name="policy">How the image is normalised.</param>
         /// <param name="thumbnail">The thumbnail to render, or null for none.</param>
@@ -34,21 +41,31 @@ namespace Tellma.Core.Abstractions.Blobs
         /// <returns>The bytes to store, their dimensions and media type, and the thumbnail.</returns>
         /// <exception cref="ImageRejectedException">The input is not an accepted image, declares too
         ///     many pixels, or cannot be decoded.</exception>
+        /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
         Task<ProcessedImage> ProcessAsync(
-            byte[] input, ImagePolicy policy, ThumbnailPolicy? thumbnail, CancellationToken cancellationToken);
+            string kind, byte[] input, ImagePolicy policy, ThumbnailPolicy? thumbnail, CancellationToken cancellationToken);
 
         /// <summary>
         ///     Renders a thumbnail of a stored file that was not normalised: one of the four image
         ///     types, under the default pixel cap, or a PDF's first page. Returns null for anything it
         ///     cannot render — another type, an encrypted or unparsable PDF, an image over the cap, a
-        ///     render that exceeds its time budget. Null is never a rejection of the file.
+        ///     render that exceeds <paramref name="timeout" />. Null is never a rejection of the file.
         /// </summary>
-        /// <param name="input">The stored bytes, positioned at the start.</param>
+        /// <remarks>
+        ///     Once the call returns, no new read of <paramref name="input" /> starts, even when a
+        ///     render that exceeded its time budget is still unwinding; the caller may dispose the
+        ///     stream.
+        /// </remarks>
+        /// <param name="kind">The blob kind the file is stored as; tags the telemetry.</param>
+        /// <param name="input">The stored bytes, readable and seekable, positioned at the file's start.</param>
         /// <param name="contentType">The stored media type.</param>
         /// <param name="policy">The thumbnail to render.</param>
+        /// <param name="timeout">How long the render may take, waiting for a render slot included;
+        ///     positive, or <see cref="Timeout.InfiniteTimeSpan" /> for no limit.</param>
         /// <param name="cancellationToken">Cancels the call.</param>
-        /// <returns>The encoded thumbnail, or null when the file cannot be rendered.</returns>
+        /// <returns>The encoded thumbnail in the policy's format, or null when the file cannot be rendered.</returns>
+        /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
         Task<byte[]?> ThumbnailAsync(
-            Stream input, string contentType, ThumbnailPolicy policy, CancellationToken cancellationToken);
+            string kind, Stream input, string contentType, ThumbnailPolicy policy, TimeSpan timeout, CancellationToken cancellationToken);
     }
 }
