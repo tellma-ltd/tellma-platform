@@ -88,6 +88,7 @@ import { TmSelectBase } from './tm-select-base';
       [attr.aria-invalid]="showsInvalid() ? 'true' : null"
       [attr.aria-busy]="pending() ? 'true' : null"
       [attr.aria-required]="required() ? 'true' : null"
+      [attr.aria-readonly]="readonly() ? 'true' : null"
       (keydown)="onTriggerKeydown($event)"
       (blur)="touch.emit()"
     >
@@ -241,8 +242,8 @@ export class TmMultiSelect<T> extends TmSelectBase<T, readonly T[]> {
       .filter((label) => label !== ''),
   );
 
-  /** Whether the trigger currently shows the placeholder (nothing to show). */
-  protected readonly showsPlaceholder = computed(() => this.labels().length === 0);
+  /** Whether the trigger currently shows the placeholder (nothing is selected). */
+  protected readonly showsPlaceholder = computed(() => this.value().length === 0);
 
   /** The trigger's one line: the joined labels, or the placeholder. */
   protected readonly triggerLabel = computed(() =>
@@ -256,19 +257,29 @@ export class TmMultiSelect<T> extends TmSelectBase<T, readonly T[]> {
 
   /**
    * A selected value's trigger label: `displayWith`, else its option's
-   * label, else — for a value no option matches — `String(value)`, with a
-   * development warning once per value.
+   * label, else `String(value)` — for a value no option matches, or whose
+   * option has no `label` and has not rendered yet (its text is only read
+   * from the open panel) — with a development warning once per value.
    */
   private displayLabel(item: T): string {
-    if (this.displayWith() !== undefined || this.optionOf(item) !== undefined) {
+    if (this.displayWith() !== undefined) {
       return this.labelOf(item);
+    }
+    const option = this.optionOf(item);
+    const label = option?.effectiveLabel() ?? '';
+    if (label !== '') {
+      return label;
     }
     const key = this.keyOf(item);
     if (isDevMode() && !this.warnedKeys.has(key)) {
       this.warnedKeys.add(key);
       console.warn(
-        `tm-multi-select: no option matches the value "${String(item)}", so it is labelled ` +
-          'with String(value). Pass displayWith to label values the options do not cover.',
+        option === undefined
+          ? `tm-multi-select: no option matches the value "${String(item)}", so it is labelled ` +
+              'with String(value). Pass displayWith to label values the options do not cover.'
+          : `tm-multi-select: the option for the value "${String(item)}" has no label, so the ` +
+              'closed trigger labels it with String(value). Pass the option a label, or pass ' +
+              'displayWith.',
       );
     }
     return String(item);

@@ -672,6 +672,7 @@ describe('tm-select (§3.4)', () => {
     it('a readonly select never opens, by click or by key, and keeps its value', async () => {
       const { fixture, select } = await setup(Host);
       const trigger = fixture.nativeElement.querySelector('.tm-select__trigger') as HTMLElement;
+      expect(trigger.getAttribute('aria-readonly')).toBe('true');
       trigger.focus();
       trigger.click();
       await fixture.whenStable();

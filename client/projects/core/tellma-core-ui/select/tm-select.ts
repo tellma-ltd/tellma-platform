@@ -80,6 +80,7 @@ import { TmSelectBase } from './tm-select-base';
       [attr.aria-invalid]="showsInvalid() ? 'true' : null"
       [attr.aria-busy]="pending() ? 'true' : null"
       [attr.aria-required]="required() ? 'true' : null"
+      [attr.aria-readonly]="readonly() ? 'true' : null"
       (keydown)="onTriggerKeydown($event)"
       (blur)="touch.emit()"
     >

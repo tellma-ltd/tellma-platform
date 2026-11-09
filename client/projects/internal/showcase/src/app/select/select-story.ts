@@ -150,7 +150,9 @@ export class SelectStory {
     { label: 'Operating', types: ['Service', 'Operation'] },
     { label: 'Commercial', types: ['Sale', 'Marketing'] },
   ];
+  /** The grouped select's value, empty until a center type is picked. */
   readonly groupedValue = signal<string | undefined>(undefined);
+  /** The grouped multi-select's values, starting with one selected. */
   readonly multiValue = signal<readonly string[]>(['Sale']);
   readonly flipValue = signal<number | undefined>(undefined);
 

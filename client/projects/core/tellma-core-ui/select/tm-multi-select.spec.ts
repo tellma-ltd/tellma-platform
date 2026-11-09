@@ -343,6 +343,37 @@ describe('tm-multi-select', () => {
     });
   });
 
+  describe('options without a label', () => {
+    @Component({
+      imports: [TmMultiSelect, TmOption],
+      template: `
+        <tm-multi-select [(value)]="value" aria-label="Types">
+          <tm-option value="Service">Service</tm-option>
+          <tm-option value="Operation" label="Operation">Operation</tm-option>
+          <tm-option value="Sale">Sale</tm-option>
+        </tm-multi-select>
+      `,
+    })
+    class Host {
+      readonly value = signal<readonly string[]>(['Sale', 'Operation']);
+    }
+
+    it('a prepopulated value never shows the placeholder before the panel first renders', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      try {
+        const { select } = await setup(Host);
+        // The panel never opened: the label-less option falls back to its value.
+        expect(await select.isPlaceholderShown()).toBe(false);
+        expect(await select.getValueText()).toBe('Operation, Sale');
+        const warnings = warn.mock.calls.map((call) => String(call[0]));
+        expect(warnings.filter((text) => text.includes('"Sale"'))).toHaveLength(1);
+        expect(warnings.filter((text) => text.includes('"Operation"'))).toHaveLength(0);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+  });
+
   describe('option groups', () => {
     @Component({
       imports: [TmMultiSelect, TmOption, TmOptionGroup],
@@ -473,6 +504,7 @@ describe('tm-multi-select', () => {
       expect(await select.isOpen()).toBe(false);
 
       const trigger = fixture.nativeElement.querySelector('.tm-select__trigger') as HTMLElement;
+      expect(trigger.getAttribute('aria-readonly')).toBe('true');
       trigger.focus();
       trigger.click();
       await settle(fixture);
