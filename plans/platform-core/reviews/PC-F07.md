@@ -125,3 +125,83 @@ changed.
   with responses held).
 - That the full seven-label list in the pluralization test is the menu's real contents for a
   3-row selection, and not an over-pin.
+
+## Review 1
+
+Scope: commit 97502a4 only. Read the full diff, `support/held-responses.ts`, `support/settle.ts`,
+the showcase `held-responses.ts` and `main.ts` stability hook, and D-011, D-018 and D-028.
+
+Verified:
+- (a) `menuLabels` → `toHaveText([...7 labels])` waits for the exact count and order, so it cannot
+  pass on `[]` or on a partly rendered panel. The seven labels are the real contents (passes 10/10
+  and in the PR tier; the right-click inside the range keeps the selection, so the plural labels
+  also prove that). `expectCellText` retries to the expected text; each converted site asserts
+  either a state already reached by a preceding wait or one held stable (grid-entity's mid-flight
+  "Dana Ree" / "Zebra" sit behind held responses, so no later state exists to be accepted). The
+  `files` poll returns `null` for `none`, so it retries instead of throwing. The alert and button
+  `toHaveCount(4)` guards remove the zero-iteration pass.
+- (b) No expectation was weakened or removed. The pluralization test is stronger (full list
+  instead of three `toContain`s). The `toContain` → `toContainText(useInnerText)` swap is
+  equivalent. `cellText` captures now settle first, which only makes `before` values more exact.
+- (c) The gate is confined to `projects/internal/showcase` (the library diff is empty). It is an
+  instance field of the story component, so each test's `gotoGrid` gets a fresh gate; nothing
+  leaks between tests. The held wait is a plain promise, not a `PendingTasks` entry, so
+  `appStable` (`appRef.whenStable()`) does not block on a held load. `releaseResponses` first
+  asserts the held count is non-zero, which proves the spinner, `aria-expanded="false"`,
+  rowcount 10 and (in the re-collapse test) the second click all happened while the load was in
+  flight. The failure test still uses the unheld delay path.
+- (d) Remaining `textContent(`/`innerText(`/`getAttribute(`/`.count()` reads in `client/e2e`:
+  each is either a pre-action capture, behind a web-first barrier or `appStable`, polled, or an
+  absence check after a positive wait (file-preview, icon). The tooltip `aria-describedby` read
+  right after `goto` is safe: the describer runs in an effect within the same change-detection
+  tick that creates the element. No missed snapshot race found.
+- (e) `--repeat-each 10 --retries 0`, CI=1 prod build, default workers: grid-menu, tree-grid,
+  files and grid-entity, **640/640 passed** (6.0 min). PR tier (chromium + touch, CI=1, retries 1,
+  `failOnFlakyTests`): **493/493 passed, 0 flaky** (3.7 min).
+- (f) TSDoc is present on `menuLabels`, `readout`, `expectCellText`, `cellText` and
+  `heldLoads`, and the story markup has a demarcating comment. No PC ids or `docs/` references in
+  code.
+
+### Findings
+
+R1-1 (minor) `client/e2e/support/grid.ts:105-116`: the `expectCellText` TSDoc says it matches the
+cell's text "as {@link cellText} reads it", but the two compare differently. `cellText` returns
+`innerText().trim()` verbatim. A string passed to `toHaveText` normalizes whitespace on both sides
+(Playwright 1.61 `serializeExpectedTextValues(..., { normalizeWhiteSpace: true })`), so runs of
+spaces, tabs and newlines inside the text collapse to one space. No converted site is affected
+today, because none of the 39 expected values has an internal whitespace run. But a future caller
+asserting, say, a pasted `'tab\there'` or a two-space value would get a weaker check than the
+`expect(await cellText(...)).toBe(...)` it replaced, while the TSDoc says the two are equivalent.
+Suggested fix: state the normalization in the TSDoc ("whitespace-normalized, as `toHaveText`
+compares; for exact whitespace, poll `cellText`"). Or, if exact whitespace matters, match a
+regex anchored on the escaped, trimmed text (`new RegExp('^\s*' + escape(expected) + '\s*$')`),
+which `toHaveText` does not normalize.
+
+### Responses
+
+R1-1: fixed in the review 1 fixes commit. The `expectCellText` TSDoc now states the comparison:
+- By default it is whitespace-normalized, as `toHaveText` compares a string. Leading and trailing
+  whitespace is dropped, and every inner run of spaces, tabs and newlines counts as one space.
+  The TSDoc gives examples.
+- A new option, `{ exactWhitespace: true }` (`ExpectCellTextOptions`, with TSDoc), matches an
+  anchored regex `^\s*<escaped, trimmed expected>\s*$` instead. Playwright does not normalize a
+  regex expectation, so inner whitespace must match exactly, and only the whitespace that
+  `cellText` trims stays free.
+
+The 39 converted sites keep the default, because none has an inner whitespace run. A scratch probe
+(not committed) on grid-readonly cell 1,1 ("Item 1 North") showed the behaviour:
+- the text with a doubled space passes by default;
+- the exact text passes with `exactWhitespace`;
+- the doubled-space text fails with `exactWhitespace`.
+
+Also in this round, outside the finding: lint:test failed 3 times in a row on
+`tools/tests/extract-examples.spec.mts` at vitest's 5 s default (5.7-7.7 s). The machine was at
+75 % CPU from other slots. The test builds a non-in-memory ts-morph Project, which loads the
+TypeScript compiler and its lib files on first use. It now carries a 60 s timeout, with a comment
+giving the reason, the same remedy PC-008 applied to the prefix-rule scope test. No assertion
+changed.
+
+Round-1 verification: lint passes, lint:test passes (36/36) after that change, and the probe
+above ran on the CI=1 prod build. The
+merged-tree unit tests and PR-tier e2e run at integration.
+

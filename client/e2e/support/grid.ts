@@ -103,17 +103,49 @@ export async function cellText(page: Page, row: number, col: number): Promise<st
   return (await cell(page, row, col).innerText()).trim();
 }
 
+/** Options of {@link expectCellText}. */
+export interface ExpectCellTextOptions {
+  /**
+   * Compare whitespace inside the text exactly (tabs, newlines and runs of
+   * spaces must match), instead of the default whitespace-normalized
+   * comparison. Leading and trailing whitespace is ignored either way, as
+   * {@link cellText} trims it.
+   */
+  readonly exactWhitespace?: boolean;
+}
+
 /**
- * Asserts, web-first, that a cell's display text (as {@link cellText} reads
- * it) is `expected`: the assertion retries until the cell shows it.
+ * Asserts, web-first, that a cell's display text (its `innerText`, as
+ * {@link cellText} reads it) is `expected`: the assertion retries until the
+ * cell shows it.
+ *
+ * By default the comparison is whitespace-normalized, as Playwright's
+ * `toHaveText` compares a string: on both sides, leading and trailing
+ * whitespace is dropped and every inner run of spaces, tabs and newlines
+ * counts as one space. So `'a  b'` and `'a\tb'` both match a cell showing
+ * `a b`. Pass `{ exactWhitespace: true }` when the whitespace is the point
+ * (a pasted tab, a two-space value). The text must then match exactly,
+ * apart from the leading and trailing whitespace that {@link cellText} trims.
  */
 export async function expectCellText(
   page: Page,
   row: number,
   col: number,
   expected: string,
+  options: ExpectCellTextOptions = {},
 ): Promise<void> {
-  await expect(cell(page, row, col)).toHaveText(expected, { useInnerText: true });
+  // A regex is matched against the raw text (Playwright normalizes only
+  // string expectations), anchored so that only the surrounding whitespace
+  // is free.
+  const matcher = options.exactWhitespace
+    ? new RegExp(`^\\s*${escapeRegExp(expected.trim())}\\s*$`)
+    : expected;
+  await expect(cell(page, row, col)).toHaveText(matcher, { useInnerText: true });
+}
+
+/** Escapes `text` for use as a literal inside a regular expression. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /** The resolved `--grid-row-height` in px, measured from the sticky header band. */
