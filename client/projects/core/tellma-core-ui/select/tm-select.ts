@@ -39,7 +39,7 @@ import {
   type TmControlSize,
 } from '@tellma/core-ui';
 import { TM_FORM_FIELD_CONTROL, TmFormField } from '@tellma/core-ui/form-field';
-import { tmCreateAnchoredOverlay } from '@tellma/core-ui/private';
+import { tmCreateAnchoredOverlay } from '@tellma/core-ui/overlay';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
 import { TmOption } from './tm-option';

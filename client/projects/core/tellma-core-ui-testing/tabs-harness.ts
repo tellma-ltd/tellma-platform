@@ -65,6 +65,22 @@ export class TmTabGroupHarness extends ComponentHarness {
     return tabs.selectTab({ title: label });
   }
 
+  /**
+   * Whether the panel of the tab with this id holds rendered content —
+   * the selected tab's, a visited `preserveContent` tab's, or an
+   * instantiated tab's (`TmTabGroup.instantiate`). False for an unknown id.
+   */
+  async isInstantiated(id: string): Promise<boolean> {
+    const escaped = id.replace(/["\\]/g, '\\$&');
+    const panel = await this.locatorForOptional(`.tm-tab-group__panel[data-tm-tab="${escaped}"]`)();
+    if (panel === null) {
+      return false;
+    }
+    return (
+      (await panel.getProperty<number>('childElementCount')) > 0 || (await panel.text()).trim() !== ''
+    );
+  }
+
   /** The visible (non-inert) panel's text content, trimmed. */
   async getActivePanelText(): Promise<string> {
     const panels = await this.locatorForAll('.tm-tab-group__panel:not([inert])')();

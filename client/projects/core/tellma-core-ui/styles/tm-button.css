@@ -19,6 +19,9 @@
   --tm-button-padding-x: var(--button-padding-x);
   --tm-button-font-size: var(--button-font-size);
   --tm-button-gap: var(--button-gap);
+  /* Projected tm-icon children read their box from here, as a projected
+     svg takes the size rule below. */
+  --icon-size: var(--button-icon-size);
 
   position: relative;
   display: inline-flex;
@@ -74,8 +77,11 @@
 
 /* Disabled is a flat plate, not a faded live button: a translucent control
    shows whatever is behind it and stops reading as one surface. The border
-   goes with it, so a disabled ghost does not grow a box it never had. */
-.tm-button:disabled {
+   goes with it, so a disabled ghost does not grow a box it never had. A
+   button disabled with a reason (aria-disabled, still focusable) looks the
+   same as a natively disabled one. */
+.tm-button:disabled,
+.tm-button[aria-disabled='true'] {
   background: var(--button-disabled-bg);
   border-color: transparent;
   color: var(--button-disabled-text);
@@ -90,12 +96,12 @@
   color: var(--button-primary-text);
 }
 
-.tm-button--primary:hover:not(:disabled):not(.tm-button--pending) {
+.tm-button--primary:hover:not(:disabled):not([aria-disabled='true']):not(.tm-button--pending) {
   background: var(--button-primary-hover-bg);
   border-color: var(--button-primary-hover-bg);
 }
 
-.tm-button--primary:active:not(:disabled):not(.tm-button--pending) {
+.tm-button--primary:active:not(:disabled):not([aria-disabled='true']):not(.tm-button--pending) {
   background: var(--button-primary-active-bg);
   border-color: var(--button-primary-active-bg);
 }
@@ -106,12 +112,12 @@
   color: var(--button-secondary-text);
 }
 
-.tm-button--secondary:hover:not(:disabled):not(.tm-button--pending) {
+.tm-button--secondary:hover:not(:disabled):not([aria-disabled='true']):not(.tm-button--pending) {
   background: var(--button-secondary-hover-bg);
   border-color: var(--button-secondary-hover-border);
 }
 
-.tm-button--secondary:active:not(:disabled):not(.tm-button--pending) {
+.tm-button--secondary:active:not(:disabled):not([aria-disabled='true']):not(.tm-button--pending) {
   background: var(--button-secondary-active-bg);
 }
 
@@ -120,11 +126,11 @@
   color: var(--button-ghost-text);
 }
 
-.tm-button--ghost:hover:not(:disabled):not(.tm-button--pending) {
+.tm-button--ghost:hover:not(:disabled):not([aria-disabled='true']):not(.tm-button--pending) {
   background: var(--button-ghost-hover-bg);
 }
 
-.tm-button--ghost:active:not(:disabled):not(.tm-button--pending) {
+.tm-button--ghost:active:not(:disabled):not([aria-disabled='true']):not(.tm-button--pending) {
   background: var(--button-ghost-active-bg);
 }
 
@@ -137,29 +143,36 @@
 /* The status palette has no hover/active steps; a small uniform brightness
    shift reads as press feedback in both schemes without inventing new
    semantic slots for a single variant. */
-.tm-button--danger:hover:not(:disabled):not(.tm-button--pending) {
+.tm-button--danger:hover:not(:disabled):not([aria-disabled='true']):not(.tm-button--pending) {
   filter: brightness(0.94);
 }
 
-.tm-button--danger:active:not(:disabled):not(.tm-button--pending) {
+.tm-button--danger:active:not(:disabled):not([aria-disabled='true']):not(.tm-button--pending) {
   filter: brightness(0.86);
 }
 
 /* An outline variant's disabled plate is the quieter one: the filled
    variants' plate under a ghost button would invent a box out of nothing. */
 .tm-button--secondary:disabled,
-.tm-button--ghost:disabled {
+.tm-button--ghost:disabled,
+.tm-button--secondary[aria-disabled='true'],
+.tm-button--ghost[aria-disabled='true'] {
   background: var(--button-disabled-bg-subtle);
 }
 
 /* Projected icons ride the text color and never intercept the click. The
    size rule is not optional: an icon set's natural size is 24px, which is
-   taller than a small button's entire content box. */
-.tm-button > svg {
+   taller than a small button's entire content box. A tm-icon sizes its own
+   box from the --icon-size set on the button. */
+.tm-button > svg,
+.tm-button > tm-icon {
   flex: none;
+  pointer-events: none;
+}
+
+.tm-button > svg {
   inline-size: var(--button-icon-size);
   block-size: var(--button-icon-size);
-  pointer-events: none;
 }
 
 /* Pending: the box keeps its exact size — text stays in layout but renders
@@ -215,7 +228,8 @@
 
   /* The flat disabled plate is forced away with every other background, so
      the greyed system ink is what is left to say the button is dead. */
-  .tm-button:disabled {
+  .tm-button:disabled,
+  .tm-button[aria-disabled='true'] {
     border-color: GrayText;
     color: GrayText;
   }

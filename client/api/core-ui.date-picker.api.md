@@ -17,7 +17,7 @@ import { ValidationError } from '@angular/forms/signals';
 export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | null> {
     constructor();
     protected readonly activeCalendar: Signal<TmCalendar>;
-    protected readonly anchored: _tellma_core_ui_private.TmAnchoredOverlay;
+    protected readonly anchored: _tellma_core_ui_overlay.TmAnchoredOverlay;
     readonly ariaDescribedby: _angular_core.InputSignal<string | null>;
     readonly ariaLabel: _angular_core.InputSignal<string | null>;
     readonly calendar: _angular_core.InputSignal<TmCalendar | undefined>;

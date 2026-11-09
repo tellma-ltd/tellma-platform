@@ -63,7 +63,7 @@ namespace Tellma.Core.Tests.Calendars
         [Fact]
         public void The_numeric_style_reads_back_in_every_calendar_in_every_predefined_culture()
         {
-            // Every specific culture the host's ICU predefines, Bulgarian's trailing " г." and
+            // Every specific culture the host's ICU predefines, Bulgarian's trailing " \u0433." and
             // Korean's trailing "." included.
             foreach (CultureInfo culture in CultureInfo.GetCultures(CultureTypes.SpecificCultures))
             {
@@ -82,12 +82,15 @@ namespace Tellma.Core.Tests.Calendars
         [Fact]
         public void Bulgarian_dates_read_back_past_the_year_word()
         {
-            var bulgarian = CultureInfo.GetCultureInfo("bg-BG");
+            // The pattern is pinned to the one ICU 74 to 78 give bg-BG, so the trailing year word is
+            // there whatever the host.
+            var bulgarian = (CultureInfo)CultureInfo.GetCultureInfo("bg-BG").Clone();
+            bulgarian.DateTimeFormat.ShortDatePattern = "d.MM.yyyy '\u0433'.";
             GregorianCalendarSystem system = new();
 
             string text = system.Format(new DateOnly(2026, 3, 5), bulgarian, DateStyle.Short);
 
-            Assert.EndsWith("\u0433.", text, StringComparison.Ordinal);
+            Assert.Equal("5.03.2026 \u0433.", text);
             Assert.Equal(new DateOnly(2026, 3, 5), system.TryParse(text, bulgarian));
             Assert.Equal(new DateOnly(2026, 3, 5), system.TryParse("5.03.2026", bulgarian));
         }
@@ -135,13 +138,31 @@ namespace Tellma.Core.Tests.Calendars
         [Fact]
         public void A_culture_whose_own_calendar_is_umm_al_qura_still_renders_gregorian_dates_with_gregorian_names()
         {
-            // ar-SA's default calendar is Umm al-Qura; the Gregorian system uses its Gregorian names.
-            var arSa = CultureInfo.GetCultureInfo("ar-SA");
-            Assert.IsType<UmAlQuraCalendar>(arSa.DateTimeFormat.Calendar);
+            // An ar-SA clone switched to Umm al-Qura: the host's ICU decides ar-SA's default
+            // calendar (Umm al-Qura up to ICU 74, Gregorian from ICU 78), so the test sets it.
+            var arSa = (CultureInfo)CultureInfo.GetCultureInfo("ar-SA").Clone();
+            arSa.DateTimeFormat.Calendar = arSa.OptionalCalendars.OfType<UmAlQuraCalendar>().Single();
+            var gregorian = (CultureInfo)CultureInfo.GetCultureInfo("ar-SA").Clone();
+            gregorian.DateTimeFormat.Calendar = gregorian.OptionalCalendars.OfType<GregorianCalendar>().First();
+            GregorianCalendarSystem system = new();
+            DateOnly date = new(2026, 3, 15);
 
-            string text = new GregorianCalendarSystem().Format(new DateOnly(2026, 3, 15), arSa, DateStyle.Long);
+            // The Gregorian rendering carries the culture's Gregorian name of March, never the name
+            // of the date's month in its own calendar (Ramadan), whatever names the host's ICU holds.
+            string march = gregorian.DateTimeFormat.GetMonthName(3);
+            string ownMonth = arSa.DateTimeFormat.GetMonthName(arSa.DateTimeFormat.Calendar.GetMonth(date.ToDateTime(TimeOnly.MinValue)));
+            string text = system.Format(date, arSa, DateStyle.Long);
+            Assert.NotEqual(march, ownMonth);
+            Assert.Contains(march, text, StringComparison.Ordinal);
+            Assert.DoesNotContain(ownMonth, text, StringComparison.Ordinal);
+            Assert.StartsWith("15 ", text, StringComparison.Ordinal);
+            Assert.EndsWith(" 2026", text, StringComparison.Ordinal);
+            foreach (DateStyle style in Enum.GetValues<DateStyle>())
+            {
+                Assert.Equal(system.Format(date, gregorian, style), system.Format(date, arSa, style));
+            }
 
-            Assert.Equal("15 مارس 2026", text);
+            Assert.Equal(march, system.MonthName(3, arSa, abbreviated: false));
         }
 
         [Theory]
@@ -179,7 +200,7 @@ namespace Tellma.Core.Tests.Calendars
 
             Assert.Equal("September", system.MonthName(9, PinnedCultures.EnGb, abbreviated: false));
             Assert.Equal("Sept", system.MonthName(9, PinnedCultures.EnGb, abbreviated: true));
-            Assert.Equal("مارس", system.MonthName(3, CultureInfo.GetCultureInfo("ar-SA"), abbreviated: false));
+            Assert.Equal("مارس", system.MonthName(3, PinnedCultures.ArSa, abbreviated: false));
         }
 
         [Theory]
@@ -213,8 +234,8 @@ namespace Tellma.Core.Tests.Calendars
             GregorianCalendarSystem system = new();
 
             Assert.Equal(new DateOnly(2026, 3, 4), system.TryParse("4/3/2026", PinnedCultures.EnGb));
-            Assert.Equal(new DateOnly(2026, 4, 3), system.TryParse("4/3/2026", CultureInfo.GetCultureInfo("en-US")));
-            Assert.Equal(new DateOnly(2026, 3, 4), system.TryParse("2026/3/4", CultureInfo.GetCultureInfo("zh-CN")));
+            Assert.Equal(new DateOnly(2026, 4, 3), system.TryParse("4/3/2026", WithShortDate("en-US", "M/d/yyyy")));
+            Assert.Equal(new DateOnly(2026, 3, 4), system.TryParse("2026/3/4", WithShortDate("zh-CN", "yyyy/M/d")));
         }
 
         [Theory]
@@ -287,9 +308,25 @@ namespace Tellma.Core.Tests.Calendars
             Assert.Equal((2024, 2, 29), system.Decompose(new DateOnly(2024, 2, 29)));
             Assert.Equal((1, 1, 1), system.Decompose(DateOnly.MinValue));
             Assert.Equal((9999, 12, 31), system.Decompose(DateOnly.MaxValue));
-            Assert.Equal("0001-01-01", system.Format(DateOnly.MinValue, CultureInfo.GetCultureInfo("ja-JP"), DateStyle.Short).Replace('/', '-'));
+            Assert.Equal("0001/01/01", system.Format(DateOnly.MinValue, WithShortDate("ja-JP", "yyyy/MM/dd"), DateStyle.Short));
             Assert.Equal(DateOnly.MaxValue, system.TryParse("9999-12-31", CultureInfo.InvariantCulture));
             Assert.True(system.Calendar.IsReadOnly);
+        }
+
+        /// <summary>
+        ///     A clone of a culture whose short date pattern and separator are pinned, so an assertion
+        ///     on its field order does not move with the host's ICU release.
+        /// </summary>
+        /// <param name="name">The culture.</param>
+        /// <param name="pattern">The short date pattern, with <c>/</c> as the separator.</param>
+        /// <returns>The read-only clone.</returns>
+        private static CultureInfo WithShortDate(string name, string pattern)
+        {
+            var culture = (CultureInfo)CultureInfo.GetCultureInfo(name).Clone();
+            culture.DateTimeFormat.Calendar = culture.OptionalCalendars.OfType<GregorianCalendar>().First();
+            culture.DateTimeFormat.DateSeparator = "/";
+            culture.DateTimeFormat.ShortDatePattern = pattern;
+            return CultureInfo.ReadOnly(culture);
         }
     }
 }

@@ -267,3 +267,65 @@ describe('tmTooltip', () => {
     expect(await harness.getTooltipText()).toBe('Refresh the list');
   });
 });
+
+describe('tmTooltip show on tap', () => {
+  @Component({
+    imports: [TmTooltip],
+    template: `
+      <div style="padding-inline: 200px">
+        <button class="tap" tmTooltip="Tap to read" [ɵshowOnTap]="tap()">Info</button>
+      </div>
+    `,
+  })
+  class TapHost {
+    readonly tap = signal(true);
+  }
+
+  /** A touch press lifted where it started, with optional travel. */
+  function tap(element: Element, travel = 0): void {
+    const init = { pointerType: 'touch', isPrimary: true, pointerId: 11, bubbles: true };
+    element.dispatchEvent(new PointerEvent('pointerdown', { ...init, clientX: 10, clientY: 10 }));
+    element.dispatchEvent(
+      new PointerEvent('pointerup', { ...init, clientX: 10 + travel, clientY: 10 }),
+    );
+  }
+
+  async function setupTap(): Promise<{ fixture: ComponentFixture<TapHost>; button: HTMLElement }> {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(TapHost);
+    await fixture.whenStable();
+    return {
+      fixture,
+      button: (fixture.nativeElement as HTMLElement).querySelector('.tap') as HTMLElement,
+    };
+  }
+
+  it('a tap shows the tooltip; the next tap elsewhere hides it', async () => {
+    const { fixture, button } = await setupTap();
+    tap(button);
+    await tick(fixture);
+    expect(panel()?.textContent?.trim()).toBe('Tap to read');
+
+    document.body.dispatchEvent(
+      new PointerEvent('pointerdown', { pointerType: 'touch', isPrimary: true, bubbles: true }),
+    );
+    await tick(fixture);
+    expect(panel()).toBeNull();
+  });
+
+  it('a drag is not a tap', async () => {
+    const { fixture, button } = await setupTap();
+    tap(button, 40);
+    await tick(fixture);
+    expect(panel()).toBeNull();
+  });
+
+  it('without the flag a tap shows nothing (long-press only)', async () => {
+    const { fixture, button } = await setupTap();
+    fixture.componentInstance.tap.set(false);
+    await fixture.whenStable();
+    tap(button);
+    await tick(fixture);
+    expect(panel()).toBeNull();
+  });
+});

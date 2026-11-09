@@ -48,6 +48,14 @@
   user-select: none;
 }
 
+/* A failed load shown as the placeholder: the wrapper fills the box exactly
+   as the host does, so the placeholder template lays out the same whether
+   the image is still loading (rendered straight into the host) or failed. */
+.tm-image__fallback {
+  position: absolute;
+  inset: 0;
+}
+
 .tm-image__glyph {
   display: flex;
   align-items: center;

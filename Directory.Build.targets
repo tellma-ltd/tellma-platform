@@ -5,4 +5,9 @@
        imported here. Its target self-gates on a ProjectReference to
        Tellma.Core.EntityFrameworkCore.Design, so it is a no-op for every other project. -->
   <Import Project="$(MSBuildThisFileDirectory)src\core\Tellma.Core.EntityFrameworkCore.Design\build\net10.0\Tellma.Core.EntityFrameworkCore.Design.targets" />
+  <!-- The imaging package's targets, for in-repo consumers that reach SkiaSharp through a
+       ProjectReference (NuGet consumers get the same file as buildTransitive): they keep
+       SkiaSharp's Windows native symbol files out of build and publish output. A no-op in a
+       project without SkiaSharp. -->
+  <Import Project="$(MSBuildThisFileDirectory)src\core\Tellma.Core.Imaging\build\Tellma.Core.Imaging.targets" />
 </Project>

@@ -7,6 +7,7 @@
 import * as _angular_core from '@angular/core';
 import { CdkConnectedOverlay } from '@angular/cdk/overlay';
 import { CdkConnectedOverlayConfig } from '@angular/cdk/overlay';
+import { ConnectedOverlayPositionChange } from '@angular/cdk/overlay';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
 import { Signal } from '@angular/core';
@@ -16,20 +17,25 @@ import { TemplateRef } from '@angular/core';
 export class TmPopover {
     constructor();
     readonly align: _angular_core.InputSignal<TmOverlayAlign>;
-    protected readonly anchored: _tellma_core_ui_private.TmAnchoredOverlay;
+    protected readonly anchored: _tellma_core_ui_overlay.TmAnchoredOverlay;
     readonly ariaLabel: _angular_core.InputSignal<string | null>;
     close(): void;
     readonly closed: _angular_core.OutputEmitterRef<void>;
     readonly contentTemplate: Signal<TmPopoverContent | undefined>;
     protected readonly expanded: _angular_core.WritableSignal<boolean>;
+    protected readonly inlineCap: _angular_core.WritableSignal<number | null>;
     readonly isOpen: Signal<boolean>;
     protected onPanelFocusOut(event: FocusEvent): void;
     protected onPanelKeydown(event: KeyboardEvent): void;
+    protected onPositionChange(change: ConnectedOverlayPositionChange): void;
     open(anchor: TmPopoverAnchor): void;
     readonly opened: _angular_core.OutputEmitterRef<void>;
     protected readonly overlayOrigin: _angular_core.WritableSignal<TmPopoverAnchor | null>;
+    readonly panelClass: _angular_core.InputSignal<string | undefined>;
+    protected readonly panelClasses: Signal<string>;
     readonly position: _angular_core.InputSignal<TmOverlaySide>;
-    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmPopover, "tm-popover", never, { "position": { "alias": "position"; "required": false; "isSignal": true; }; "align": { "alias": "align"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; }, { "opened": "opened"; "closed": "closed"; }, ["contentTemplate"], never, true, never>;
+    readonly size: _angular_core.InputSignal<TmPopoverSize>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmPopover, "tm-popover", never, { "position": { "alias": "position"; "required": false; "isSignal": true; }; "align": { "alias": "align"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; "panelClass": { "alias": "panelClass"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; }, { "opened": "opened"; "closed": "closed"; }, ["contentTemplate"], never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmPopover, never>;
     // @internal
 }
@@ -43,6 +49,9 @@ export class TmPopoverContent {
     static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmPopoverContent, "ng-template[tmPopoverContent]", never, {}, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmPopoverContent, never>;
 }
+
+// @public
+export type TmPopoverSize = 'auto' | 'sm' | 'md' | 'lg';
 
 // @public
 export class TmPopoverTrigger {

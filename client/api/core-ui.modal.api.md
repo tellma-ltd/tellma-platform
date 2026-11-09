@@ -25,8 +25,11 @@ export interface TmModalConfig {
     backdropDismiss?: boolean;
     canDismiss?: () => boolean | Promise<boolean>;
     data?: unknown;
+    describedBy?: string;
     escapeDismiss?: boolean;
     panelClass?: string;
+    placement?: 'center' | 'end';
+    role?: 'dialog' | 'alertdialog';
     showClose?: boolean;
     size?: TmModalSize;
     title?: string;
