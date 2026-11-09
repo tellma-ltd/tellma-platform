@@ -142,8 +142,9 @@ server and the browser agree; `gc` takes the culture's own.
 
 Culture data comes from the host's ICU, so two releases can differ in a pattern's punctuation or a
 name's spelling (Windows' and Ubuntu's do, for `en-GB`'s full date and `am-ET`'s month names, and ICU 78 gives
-`ar-SA` a Gregorian default calendar). The golden tests therefore pin their cultures' data, and the
-host-culture tests assert only properties.
+`ar-SA` a Gregorian default calendar). The golden tests and every test of a concrete value therefore pin the
+culture data they assert; the tests over the host's own cultures assert properties, and the test of
+a culture on Umm al-Qura compares it with the same culture's own Gregorian data.
 
 ## Layout
 

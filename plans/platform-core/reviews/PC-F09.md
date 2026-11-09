@@ -43,3 +43,24 @@ Windows: build 0 warnings, unit filter green (Tellma.Core.Tests 850). Ubuntu 26.
 
 - Is any other assertion in `test/core/Tellma.Core.Tests/Calendars/` still tied to one ICU release's
   data?
+
+## Review 1
+
+### Findings
+
+Checked: (a) the product is unchanged and correct. `CalendarCultureData.cs:44-53` is the only production path that reads a culture's calendar. It tests the instance's own `DateTimeFormat.Calendar` and switches a private clone to a Gregorian calendar from that instance's `OptionalCalendars`. It never looks up the host's default for the culture's name. No other code under `src/` reads `OptionalCalendars` or a culture's `Calendar`. (b) The new ar-SA test is not vacuous. Without the switch, an Umm al-Qura format yields Hijri month names, and the golden "15 مارس 2026" and the `MonthName` check would fail. On every host the clone is genuinely on `UmAlQuraCalendar`. (c) A probe over ar-SA, ar-AE, fa-IR, th-TH, he-IL, am-ET, ti-ET, en-GB, bg-BG, ja-JP, zh-CN and en-US on Windows, ICU 74 and ICU 78 showed several changes on ICU 78. ar-SA defaults to Gregorian, with Umm al-Qura still optional. ti-ET's short pattern is M/d/yyyy. am-ET's long pattern is "dddd d MMMM yyyy". bg-BG's pattern is the same on all three. Every concrete host-data assertion that is left (ar-SA مارس, en-US and zh-CN field order, ja-JP's short pattern) holds on all three. The goldens use `PinnedCultures`. CI run 42553979775 shows this test as the only unit failure on ubuntu-26.04. (d) Tellma.Core.Tests results: Windows 850/850. sdk:10.0-resolute (libicu 78) and sdk:10.0 (libicu 74) each gave 845 passed, 1 skipped and the same 4 `TaxonomyTests` failures. Those four fail because a `git archive` copy has no `.git` for `TaxonomyCheck.FindRepositoryRoot`, so ICU is not the cause. With an empty `.git` added, resolute gives 849 passed and 1 skipped.
+
+R1-1 (minor) `src/core/Tellma.Core/README.md:145-146`: the new sentence says the host-culture tests "assert only properties". That is not true. `CalendarFormattingTests.cs:150` (the new "15 مارس 2026" golden over host ar-SA data), `:194` (host ar-SA مارس), `:228-229` (host en-US and zh-CN order) and `:302` (host ja-JP short pattern) all assert concrete host CLDR values. They pass on Windows and on ICU 74 and 78 today. Failure scenario: a reader trusts the README and treats a future ICU-driven failure of one of these tests as a product bug, or adds more host goldens on the belief that none exist. Suggested fix: reword it, for example "the golden tests pin their cultures' data, and the host-culture tests assert properties plus a few values stable across ICU releases (Arabic's Gregorian month names, field order)". Alternatively, pin those few values as the Bulgarian test now does.
+
+### Responses
+
+- R1-1: fixed in the review 1 fixes commit, the robust way. Every concrete-value assertion now pins
+  the culture data it reads: the ar-SA month name uses `PinnedCultures.ArSa`; the en-US and zh-CN
+  field orders and the ja-JP short rendering use clones with a pinned short pattern and separator
+  (`WithShortDate`). The Umm al-Qura culture test can't pin Gregorian names on a clone whose calendar
+  is Umm al-Qura, because the switch to its optional Gregorian calendar reloads them from the host.
+  It therefore drops the host golden: it asserts that the rendering carries the same culture's own
+  Gregorian name of March and not the name of the date's month in Umm al-Qura, plus the day and year,
+  and still checks every style against the Gregorian-switched clone. The README sentence now says
+  that goldens and value assertions pin their data, host-culture tests assert properties, and the
+  Umm al-Qura test compares with the culture's own Gregorian data.

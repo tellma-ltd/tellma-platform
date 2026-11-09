@@ -147,13 +147,22 @@ namespace Tellma.Core.Tests.Calendars
             GregorianCalendarSystem system = new();
             DateOnly date = new(2026, 3, 15);
 
-            Assert.Equal("15 مارس 2026", system.Format(date, arSa, DateStyle.Long));
+            // The Gregorian rendering carries the culture's Gregorian name of March, never the name
+            // of the date's month in its own calendar (Ramadan), whatever names the host's ICU holds.
+            string march = gregorian.DateTimeFormat.GetMonthName(3);
+            string ownMonth = arSa.DateTimeFormat.GetMonthName(arSa.DateTimeFormat.Calendar.GetMonth(date.ToDateTime(TimeOnly.MinValue)));
+            string text = system.Format(date, arSa, DateStyle.Long);
+            Assert.NotEqual(march, ownMonth);
+            Assert.Contains(march, text, StringComparison.Ordinal);
+            Assert.DoesNotContain(ownMonth, text, StringComparison.Ordinal);
+            Assert.StartsWith("15 ", text, StringComparison.Ordinal);
+            Assert.EndsWith(" 2026", text, StringComparison.Ordinal);
             foreach (DateStyle style in Enum.GetValues<DateStyle>())
             {
                 Assert.Equal(system.Format(date, gregorian, style), system.Format(date, arSa, style));
             }
 
-            Assert.Equal("مارس", system.MonthName(3, arSa, abbreviated: false));
+            Assert.Equal(march, system.MonthName(3, arSa, abbreviated: false));
         }
 
         [Theory]
@@ -191,7 +200,7 @@ namespace Tellma.Core.Tests.Calendars
 
             Assert.Equal("September", system.MonthName(9, PinnedCultures.EnGb, abbreviated: false));
             Assert.Equal("Sept", system.MonthName(9, PinnedCultures.EnGb, abbreviated: true));
-            Assert.Equal("مارس", system.MonthName(3, CultureInfo.GetCultureInfo("ar-SA"), abbreviated: false));
+            Assert.Equal("مارس", system.MonthName(3, PinnedCultures.ArSa, abbreviated: false));
         }
 
         [Theory]
@@ -225,8 +234,8 @@ namespace Tellma.Core.Tests.Calendars
             GregorianCalendarSystem system = new();
 
             Assert.Equal(new DateOnly(2026, 3, 4), system.TryParse("4/3/2026", PinnedCultures.EnGb));
-            Assert.Equal(new DateOnly(2026, 4, 3), system.TryParse("4/3/2026", CultureInfo.GetCultureInfo("en-US")));
-            Assert.Equal(new DateOnly(2026, 3, 4), system.TryParse("2026/3/4", CultureInfo.GetCultureInfo("zh-CN")));
+            Assert.Equal(new DateOnly(2026, 4, 3), system.TryParse("4/3/2026", WithShortDate("en-US", "M/d/yyyy")));
+            Assert.Equal(new DateOnly(2026, 3, 4), system.TryParse("2026/3/4", WithShortDate("zh-CN", "yyyy/M/d")));
         }
 
         [Theory]
@@ -299,9 +308,25 @@ namespace Tellma.Core.Tests.Calendars
             Assert.Equal((2024, 2, 29), system.Decompose(new DateOnly(2024, 2, 29)));
             Assert.Equal((1, 1, 1), system.Decompose(DateOnly.MinValue));
             Assert.Equal((9999, 12, 31), system.Decompose(DateOnly.MaxValue));
-            Assert.Equal("0001-01-01", system.Format(DateOnly.MinValue, CultureInfo.GetCultureInfo("ja-JP"), DateStyle.Short).Replace('/', '-'));
+            Assert.Equal("0001/01/01", system.Format(DateOnly.MinValue, WithShortDate("ja-JP", "yyyy/MM/dd"), DateStyle.Short));
             Assert.Equal(DateOnly.MaxValue, system.TryParse("9999-12-31", CultureInfo.InvariantCulture));
             Assert.True(system.Calendar.IsReadOnly);
+        }
+
+        /// <summary>
+        ///     A clone of a culture whose short date pattern and separator are pinned, so an assertion
+        ///     on its field order does not move with the host's ICU release.
+        /// </summary>
+        /// <param name="name">The culture.</param>
+        /// <param name="pattern">The short date pattern, with <c>/</c> as the separator.</param>
+        /// <returns>The read-only clone.</returns>
+        private static CultureInfo WithShortDate(string name, string pattern)
+        {
+            var culture = (CultureInfo)CultureInfo.GetCultureInfo(name).Clone();
+            culture.DateTimeFormat.Calendar = culture.OptionalCalendars.OfType<GregorianCalendar>().First();
+            culture.DateTimeFormat.DateSeparator = "/";
+            culture.DateTimeFormat.ShortDatePattern = pattern;
+            return CultureInfo.ReadOnly(culture);
         }
     }
 }
