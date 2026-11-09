@@ -33,5 +33,13 @@ namespace Tellma.Core.Abstractions.Hosting
         ///     names in the shared directory.
         /// </summary>
         public const string Platform = "Latin1_General_100_CI_AS";
+
+        /// <summary>
+        ///     The binary collation, <c>Latin1_General_100_BIN2</c>, which a column takes explicitly
+        ///     when its values are identifiers compared byte for byte rather than text: an identity
+        ///     subject, a session key. A table-valued parameter column compared with such a column
+        ///     declares it too.
+        /// </summary>
+        public const string Binary = "Latin1_General_100_BIN2";
     }
 }

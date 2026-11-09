@@ -6,8 +6,9 @@ host without the web stack composes it unchanged, and its services are testable 
 context.
 
 Today it holds the composition root, the tenant data model (`TellmaDbContext`, its conventions and
-the table-type binder), the first piece of blob storage (the file-system store) and the three
-calendar systems. The rest of data access, the CRUD pipeline, access control, settings, caching,
+the table-type binder), the tenancy runtime (the catalog model, the tenant registry, connection
+resolution, the catalog's write side and the membership hints), the first piece of blob storage (the
+file-system store) and the three calendar systems. The rest of data access, the CRUD pipeline, access control, settings, caching,
 localization, the rest of blobs, Excel, jobs and notifications join it as namespaces.
 
 ## The composition root
@@ -60,6 +61,7 @@ every problem `AddTellma` would throw.
 | `core.deployment-identity` | the registered `DeploymentIdentity` names another application, or no `ISandboxContext` resolves | no |
 | `core.globalization` | the process does not run ICU (invariant mode or Windows NLS) | no |
 | `core.key-vault-literals` | a value under `Tellma:` is an unresolved `@Microsoft.KeyVault(` reference | yes |
+| `core.sql-profiles` | no `default` credential profile; a profile that does not parse, has an unusable name, or does not set `Max Pool Size` within `Tellma:Sql:MaxPoolSizePerTenant`; outside Development, a profile or the catalog connection that does not set `Encrypt` (true or strict) or carries a password without `Tellma:Sql:AllowSqlPassword`; an unresolved Key Vault reference inside either; outside Development, an empty `Tellma:Sql:AllowedServers`; a malformed entry in it. Problems name a profile and a keyword, never a value | yes |
 | `core.public-origin` | `Tellma:PublicOrigin` is missing, relative, more than an origin (a trailing slash included, since derived URIs append `/…` to it), or not https outside Development | yes |
 | `core.taxonomy` | in Development, the repository's `taxonomy.json` does not list the slug | no |
 | `core.entity-shapes` | the leaf registered for an entity does not implement a shape another feature requires of it; the fix lists the members | no |
@@ -146,6 +148,26 @@ culture), and one compiled accessor per column, matched by name, that applies th
 conversion (so an enum binds by name). Records are created lazily and again on every enumeration,
 so a retry re-sends the rows; an empty list binds as no value. Nothing else in the platform builds
 a `SqlDataRecord`.
+
+## Tenancy
+
+One catalog database per distribution holds every tenant's registration, state and location
+(`catalog.Tenants`), the version every catalog write replaces (`catalog.CatalogState`), the
+membership hints (`catalog.TenantMemberships`) and the sessions (`catalog.Sessions`). It holds no
+connection string and no secret: a tenant row names a server, a database and a credential profile.
+
+| Piece | What it does |
+|---|---|
+| `CatalogDbContext`, `CatalogMigrations` | The catalog's EF model, in the platform collation with its own conventions (explicit names, `datetimeoffset(3)`, enum columns as `nvarchar(16)` with `CHECK`s, no identity), its sequence `catalog.sq_Tenants` from 1000, and the membership table type. The migrations live in `Tellma.Core.Migrator`; `CatalogMigrations.Latest` names the last, which the web host's startup compares with the catalog's history. |
+| `ITenantRegistry` | The process's snapshot of the tenants with their composed connection strings, probed every `Tellma:Catalog:RefreshInterval` (15 s) and reloaded only when `catalog.CatalogState.Version` differs (`!=`, so a restored older catalog reloads too). Refreshes are single-flight; a forced refresh never joins one already running, so it reads what was committed before it was asked for. Beyond `Tellma:Catalog:MaxStaleness` (5 min) since the last confirmation, or before the first load, every lookup throws `TenantUnavailableException` (`catalog-unavailable`). A row whose server is malformed or outside `Tellma:Sql:AllowedServers`, whose database is malformed, or whose profile is not configured stays out of the snapshot, logged at Error. Listeners (`ITenantStateListener`) hear of every descriptor a reload changed. |
+| The refresh service | Loads the registry at start within 10 seconds: a catalog behind `CatalogMigrations.Latest` fails startup naming the migrator command, as does a missing catalog database in Development; an unreachable catalog lets the host start not ready while the loop retries. The migrator turns this verification off. |
+| `ITenantConnectionFactory` | A tenant's connection from the snapshot's string, composed with `SqlConnectionStringBuilder` from the profile's fragment, the row's server and database and the deployment id as `Application Name`; and the catalog's. No string is cached twice or logged. `ITenantConnectionProvider` is the tenant-scope door the request context binds. |
+| `ITenantCatalog` | Registration (`Provisioning`, the sequence's id or a requested one in 1–999), state transitions against the state table, renames and relocations of frozen or provisioning tenants. Each is one transaction that bumps the catalog version and whose own precondition settles a race (`THROW 50409` translated to `TenantStateException`), then refreshes the local registry. |
+| `ITenantMembershipDirectory` | A subject's memberships in one query; the best-effort upsert of the hint writers, never thrown; and the per-tenant reconciliation that also deletes the tenant's stale hints, through the membership table type bound by `TableTypeBinder`. |
+| `DatabaseCreation` | The migrator's `CREATE DATABASE` statement: the platform collation, and on Azure SQL Database the configured options and `CATALOG_COLLATION = DATABASE_DEFAULT`. |
+
+Options: `Tellma:Catalog` (`TellmaCatalogOptions`) and `Tellma:Sql` (`TellmaSqlOptions`), validated
+by the startup gate.
 
 ## Blobs: the file-system store
 
@@ -236,10 +258,14 @@ a culture on Umm al-Qura compares it with the same culture's own Gregorian data.
 | `Data/` | `TellmaDbContext`, `UseTellmaSqlServer`, `TableTypeSweepScopes`; internally the model definition and factory, the platform's own tables and the entity-contract reflection. |
 | `Data/Conventions/` | The model conventions above, the plugin that installs them, and the constraint names. |
 | `Data/TableTypes/` | `TableTypeBinder`, its bindings and the store-type metadata. |
+| `Tenancy/` | `CatalogDbContext`, `CatalogMigrations`, the options, `ITenantRegistry`, `ITenantConnectionFactory`, `ITenantConnectionProvider`, `ITenantCatalog`, `TenantInfo`, `TenantLocation`, `TenantRegistration`, `DatabaseCreation`; internally the registry and its refresh service, the catalog reader and statements, the location grammar, the connection composition, the state table, the membership directory, the log events and instruments. |
+| `Tenancy/Catalog/` | The row classes the catalog model maps for its migrations. |
 | `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
 | `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; so far the month names of `uq` and `et`. |
 
 ## Tests
 
-`test/core/Tellma.Core.Tests` (`dotnet test test/core/Tellma.Core.Tests`).
+`test/core/Tellma.Core.Tests` (`dotnet test test/core/Tellma.Core.Tests`) runs without a database.
+`test/core/Tellma.Core.IntegrationTests` (`Category=Integration`) runs the catalog migrations, the
+write side, the registry and the membership hints against SQL Server.
