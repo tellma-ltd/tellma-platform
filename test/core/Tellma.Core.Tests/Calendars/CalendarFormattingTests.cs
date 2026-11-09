@@ -63,7 +63,7 @@ namespace Tellma.Core.Tests.Calendars
         [Fact]
         public void The_numeric_style_reads_back_in_every_calendar_in_every_predefined_culture()
         {
-            // Every specific culture the host's ICU predefines, Bulgarian's trailing " г." and
+            // Every specific culture the host's ICU predefines, Bulgarian's trailing " \u0433." and
             // Korean's trailing "." included.
             foreach (CultureInfo culture in CultureInfo.GetCultures(CultureTypes.SpecificCultures))
             {
@@ -82,12 +82,15 @@ namespace Tellma.Core.Tests.Calendars
         [Fact]
         public void Bulgarian_dates_read_back_past_the_year_word()
         {
-            var bulgarian = CultureInfo.GetCultureInfo("bg-BG");
+            // The pattern is pinned to the one ICU 74 to 78 give bg-BG, so the trailing year word is
+            // there whatever the host.
+            var bulgarian = (CultureInfo)CultureInfo.GetCultureInfo("bg-BG").Clone();
+            bulgarian.DateTimeFormat.ShortDatePattern = "d.MM.yyyy '\u0433'.";
             GregorianCalendarSystem system = new();
 
             string text = system.Format(new DateOnly(2026, 3, 5), bulgarian, DateStyle.Short);
 
-            Assert.EndsWith("\u0433.", text, StringComparison.Ordinal);
+            Assert.Equal("5.03.2026 \u0433.", text);
             Assert.Equal(new DateOnly(2026, 3, 5), system.TryParse(text, bulgarian));
             Assert.Equal(new DateOnly(2026, 3, 5), system.TryParse("5.03.2026", bulgarian));
         }
@@ -135,13 +138,22 @@ namespace Tellma.Core.Tests.Calendars
         [Fact]
         public void A_culture_whose_own_calendar_is_umm_al_qura_still_renders_gregorian_dates_with_gregorian_names()
         {
-            // ar-SA's default calendar is Umm al-Qura; the Gregorian system uses its Gregorian names.
-            var arSa = CultureInfo.GetCultureInfo("ar-SA");
-            Assert.IsType<UmAlQuraCalendar>(arSa.DateTimeFormat.Calendar);
+            // An ar-SA clone switched to Umm al-Qura: the host's ICU decides ar-SA's default
+            // calendar (Umm al-Qura up to ICU 74, Gregorian from ICU 78), so the test sets it.
+            var arSa = (CultureInfo)CultureInfo.GetCultureInfo("ar-SA").Clone();
+            arSa.DateTimeFormat.Calendar = arSa.OptionalCalendars.OfType<UmAlQuraCalendar>().Single();
+            var gregorian = (CultureInfo)CultureInfo.GetCultureInfo("ar-SA").Clone();
+            gregorian.DateTimeFormat.Calendar = gregorian.OptionalCalendars.OfType<GregorianCalendar>().First();
+            GregorianCalendarSystem system = new();
+            DateOnly date = new(2026, 3, 15);
 
-            string text = new GregorianCalendarSystem().Format(new DateOnly(2026, 3, 15), arSa, DateStyle.Long);
+            Assert.Equal("15 مارس 2026", system.Format(date, arSa, DateStyle.Long));
+            foreach (DateStyle style in Enum.GetValues<DateStyle>())
+            {
+                Assert.Equal(system.Format(date, gregorian, style), system.Format(date, arSa, style));
+            }
 
-            Assert.Equal("15 مارس 2026", text);
+            Assert.Equal("مارس", system.MonthName(3, arSa, abbreviated: false));
         }
 
         [Theory]

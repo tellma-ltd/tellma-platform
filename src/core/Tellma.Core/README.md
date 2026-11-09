@@ -119,7 +119,8 @@ every system the composition contributed (a distribution adds one with
 
 Rendering is the platform's own code, never a culture's calendar. Each culture is read once
 (`CalendarCultureData`): its Gregorian formats (a culture whose own calendar is another, such as
-`ar-SA`, is switched to its Gregorian calendar on a private clone), the four styles' patterns
+`ar-SA` on Umm al-Qura, which ICU made its default before release 78, is switched to its optional
+Gregorian calendar on a private clone), the four styles' patterns
 (`Short` the numeric short date, `Full` the long date with a weekday, `Long` without it, `Medium`
 with the month abbreviated), its short time pattern and its names. Every pattern loses CLDR's
 right-to-left marks and eras, every year renders in full and every digit in ASCII, so a date pasted
@@ -140,7 +141,9 @@ Month names of `uq` and `et` are Core's resources, `Calendar_<code>_Month<n>` in
 server and the browser agree; `gc` takes the culture's own.
 
 Culture data comes from the host's ICU, so two releases can differ in a pattern's punctuation or a
-name's spelling (Windows' and Ubuntu's do, for `en-GB`'s full date and `am-ET`'s month names).
+name's spelling (Windows' and Ubuntu's do, for `en-GB`'s full date and `am-ET`'s month names, and ICU 78 gives
+`ar-SA` a Gregorian default calendar). The golden tests therefore pin their cultures' data, and the
+host-culture tests assert only properties.
 
 ## Layout
 
