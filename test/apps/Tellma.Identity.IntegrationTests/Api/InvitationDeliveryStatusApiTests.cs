@@ -133,7 +133,7 @@ namespace Tellma.Identity.IntegrationTests.Api
 
             using HttpClient client = factory.CreateClient();
             using HttpResponseMessage anonymous = await client.PostAsJsonAsync(
-                new Uri("/api/identity/invitations/delivery-status", UriKind.Relative),
+                new Uri("/api/identity/v1/invitations/delivery-status", UriKind.Relative),
                 new { subs = AnonymousProbe },
                 TestContext.Current.CancellationToken);
 
@@ -152,7 +152,7 @@ namespace Tellma.Identity.IntegrationTests.Api
                 new AuthenticationHeaderValue("Bearer", await TokenAsync(factory, distribution));
 
             using HttpResponseMessage response = await client.PostAsJsonAsync(
-                new Uri("/api/identity/invitations", UriKind.Relative),
+                new Uri("/api/identity/v1/invitations", UriKind.Relative),
                 new { users = new object[] { new { email, displayName = email, locale = "en" } } },
                 TestContext.Current.CancellationToken);
 
@@ -174,7 +174,7 @@ namespace Tellma.Identity.IntegrationTests.Api
                 new AuthenticationHeaderValue("Bearer", await TokenAsync(factory, distribution));
 
             using HttpResponseMessage response = await client.PostAsJsonAsync(
-                new Uri("/api/identity/invitations/delivery-status", UriKind.Relative),
+                new Uri("/api/identity/v1/invitations/delivery-status", UriKind.Relative),
                 new { subs },
                 TestContext.Current.CancellationToken);
 

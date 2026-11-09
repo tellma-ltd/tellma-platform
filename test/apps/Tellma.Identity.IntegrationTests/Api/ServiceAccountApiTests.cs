@@ -30,7 +30,7 @@ namespace Tellma.Identity.IntegrationTests.Api
 
             string[] resources = ["https://acme.app.tellma.com"];
             using HttpResponseMessage createResponse = await client.PostAsJsonAsync(
-                new Uri("/api/identity/service-accounts", UriKind.Relative),
+                new Uri("/api/identity/v1/service-accounts", UriKind.Relative),
                 new { displayName = "Nightly job", resources },
                 TestContext.Current.CancellationToken);
 
@@ -43,7 +43,7 @@ namespace Tellma.Identity.IntegrationTests.Api
 
             // The metadata endpoint never returns the secret.
             using HttpResponseMessage getResponse = await client.GetAsync(
-                new Uri($"/api/identity/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
+                new Uri($"/api/identity/v1/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
             string metadata = await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             Assert.DoesNotContain(clientSecret, metadata, StringComparison.Ordinal);
             Assert.DoesNotContain("secret", metadata, StringComparison.OrdinalIgnoreCase);
@@ -74,7 +74,7 @@ namespace Tellma.Identity.IntegrationTests.Api
             acmeClient.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", await GetIdentityScopeTokenAsync(factory));
             using HttpResponseMessage createResponse = await acmeClient.PostAsJsonAsync(
-                new Uri("/api/identity/service-accounts", UriKind.Relative),
+                new Uri("/api/identity/v1/service-accounts", UriKind.Relative),
                 new { displayName = "Acme job", resources = Array.Empty<string>() },
                 TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
@@ -89,20 +89,20 @@ namespace Tellma.Identity.IntegrationTests.Api
                 new AuthenticationHeaderValue("Bearer", await GetIdentityScopeTokenAsync(factory, slug: "beta"));
 
             using HttpResponseMessage foreignGet = await betaClient.GetAsync(
-                new Uri($"/api/identity/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
+                new Uri($"/api/identity/v1/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.NotFound, foreignGet.StatusCode);
 
             using HttpResponseMessage foreignDelete = await betaClient.DeleteAsync(
-                new Uri($"/api/identity/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
+                new Uri($"/api/identity/v1/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.NotFound, foreignDelete.StatusCode);
 
             // The owner still reads and deletes it.
             using HttpResponseMessage ownerGet = await acmeClient.GetAsync(
-                new Uri($"/api/identity/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
+                new Uri($"/api/identity/v1/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, ownerGet.StatusCode);
 
             using HttpResponseMessage ownerDelete = await acmeClient.DeleteAsync(
-                new Uri($"/api/identity/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
+                new Uri($"/api/identity/v1/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.NoContent, ownerDelete.StatusCode);
         }
 
@@ -124,7 +124,7 @@ namespace Tellma.Identity.IntegrationTests.Api
             acmeClient.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", await GetIdentityScopeTokenAsync(factory));
             using HttpResponseMessage createResponse = await acmeClient.PostAsJsonAsync(
-                new Uri("/api/identity/service-accounts", UriKind.Relative),
+                new Uri("/api/identity/v1/service-accounts", UriKind.Relative),
                 new { displayName = "Acme job", resources = Array.Empty<string>() },
                 TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
@@ -140,11 +140,11 @@ namespace Tellma.Identity.IntegrationTests.Api
                 new AuthenticationHeaderValue("Bearer", await GetControlPlaneTokenAsync(factory));
 
             using HttpResponseMessage operatorGet = await operatorClient.GetAsync(
-                new Uri($"/api/identity/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
+                new Uri($"/api/identity/v1/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, operatorGet.StatusCode);
 
             using HttpResponseMessage operatorDelete = await operatorClient.DeleteAsync(
-                new Uri($"/api/identity/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
+                new Uri($"/api/identity/v1/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.NoContent, operatorDelete.StatusCode);
         }
 
@@ -159,7 +159,7 @@ namespace Tellma.Identity.IntegrationTests.Api
             // The caller (acme's backend) names a different distribution's origin as an audience.
             string[] resources = ["https://evil.app.tellma.com"];
             using HttpResponseMessage response = await client.PostAsJsonAsync(
-                new Uri("/api/identity/service-accounts", UriKind.Relative),
+                new Uri("/api/identity/v1/service-accounts", UriKind.Relative),
                 new { displayName = "Cross-tenant job", resources },
                 TestContext.Current.CancellationToken);
 

@@ -911,7 +911,7 @@ function Invoke-InvitationFlow {
 
     $mark = Get-LogMark
     $status = 0
-    $response = Invoke-RestMethod -Method Post -Uri "$script:Base/api/identity/invitations" `
+    $response = Invoke-RestMethod -Method Post -Uri "$script:Base/api/identity/v1/invitations" `
         -Headers @{ Authorization = "Bearer $accessToken" } `
         -ContentType 'application/json' -Body $body `
         -SkipHttpErrorCheck -StatusCodeVariable 'status' @script:Http
@@ -956,7 +956,7 @@ function Invoke-TapFlow {
 
     $status = 0
     $pass = Invoke-RestMethod -Method Post `
-        -Uri "$script:Base/api/identity/users/$sub/temporary-access-passes" `
+        -Uri "$script:Base/api/identity/v1/users/$sub/temporary-access-passes" `
         -Headers @{ Authorization = "Bearer $accessToken" } `
         -SkipHttpErrorCheck -StatusCodeVariable 'status' @script:Http
 

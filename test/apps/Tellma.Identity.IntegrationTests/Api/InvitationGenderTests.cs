@@ -32,7 +32,7 @@ namespace Tellma.Identity.IntegrationTests.Api
                 new AuthenticationHeaderValue("Bearer", await GetIdentityScopeTokenAsync(factory));
 
             using HttpResponseMessage response = await client.PostAsJsonAsync(
-                new Uri("/api/identity/invitations", UriKind.Relative),
+                new Uri("/api/identity/v1/invitations", UriKind.Relative),
                 new
                 {
                     users = new object[]
@@ -70,7 +70,7 @@ namespace Tellma.Identity.IntegrationTests.Api
                 new AuthenticationHeaderValue("Bearer", await GetIdentityScopeTokenAsync(factory));
 
             using HttpResponseMessage response = await client.PostAsJsonAsync(
-                new Uri("/api/identity/invitations", UriKind.Relative),
+                new Uri("/api/identity/v1/invitations", UriKind.Relative),
                 new
                 {
                     users = new object[]

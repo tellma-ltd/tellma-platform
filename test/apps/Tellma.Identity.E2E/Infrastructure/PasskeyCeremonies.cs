@@ -72,18 +72,16 @@ namespace Tellma.Identity.E2E.Infrastructure
             string passkeysPath = prefix + "/Identity/Manage/Passkeys";
             await page.GotoAsync(prefix + "/Identity/Account/Login?returnUrl=" + Uri.EscapeDataString(passkeysPath));
             await page.GetByLabel("Email").FillAsync(email);
+
+            // The baseline is taken before the code is requested, so a second sign-in of the same
+            // address waits for its own code rather than reading the first, already redeemed one.
+            int delivered = server.Emails.CountFor(email);
             await page.GetByRole(AriaRole.Button, new() { Name = "Email me a sign-in code" }).ClickAsync();
 
-            string code = await WaitForCodeAsync(server, email);
+            string code = await server.Emails.WaitForCodeAfterAsync(email, delivered);
             await page.GetByLabel("Code").FillAsync(code);
             await page.GetByRole(AriaRole.Button, new() { Name = "Verify" }).ClickAsync();
             await page.WaitForPathAsync(passkeysPath);
-        }
-
-        /// <summary>Waits for the sign-in code the background worker delivers.</summary>
-        private static Task<string> WaitForCodeAsync(IdentityServerFixtureBase server, string email)
-        {
-            return server.Emails.WaitForCodeAsync(email);
         }
     }
 }

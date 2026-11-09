@@ -6,7 +6,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using OpenIddict.Abstractions;
 using Tellma.Identity.Controllers.Api;
 using Tellma.Identity.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
@@ -16,10 +15,12 @@ namespace Tellma.Identity.Controllers
     /// <summary>
     ///     The distribution-facing service-account API (machine-to-machine, <c>tellma_identity</c>
     ///     scope). Creating an account returns its secret exactly once; the lost-secret path is
-    ///     delete and recreate.
+    ///     delete and recreate. Mapped under version 1 of the management API
+    ///     (<c>api/identity/v1</c>).
     /// </summary>
     /// <param name="provisioning">The client-provisioning service.</param>
     [ApiController]
+    [ManagementApi(ManagementApiVersions.V1)]
     [Authorize(AuthenticationSchemes = OpenIddict.Validation.AspNetCore.OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme,
         Policy = ApiPolicies.IdentityScope)]
     public sealed class ServiceAccountsController(IClientProvisioningService provisioning) : ControllerBase
@@ -27,7 +28,8 @@ namespace Tellma.Identity.Controllers
         /// <summary>Creates a service account and returns its credentials once.</summary>
         /// <param name="request">The account details.</param>
         /// <returns>The created account's client id and one-time secret.</returns>
-        [HttpPost("api/identity/service-accounts")]
+        [HttpPost("service-accounts")]
+        [ManagementApiEndpoint(ManagementApiEndpoints.CreateServiceAccount)]
         public async Task<ActionResult<CreateServiceAccountResponse>> Create([FromBody] CreateServiceAccountRequest request)
         {
             ArgumentNullException.ThrowIfNull(request);
@@ -36,7 +38,7 @@ namespace Tellma.Identity.Controllers
             try
             {
                 credentials = await provisioning.CreateServiceAccountAsync(
-                    request.DisplayName, [.. request.Resources], CallerClientId(), HttpContext.RequestAborted);
+                    request.DisplayName, [.. request.Resources], ManagementApiCaller.ClientIdOf(User), HttpContext.RequestAborted);
             }
             catch (ProvisioningValidationException exception)
             {
@@ -53,7 +55,8 @@ namespace Tellma.Identity.Controllers
         /// <summary>Reads a service account's metadata (never the secret); scoped to the caller's own accounts.</summary>
         /// <param name="clientId">The service-account client id.</param>
         /// <returns>The metadata, or 404 (including for another distribution's account).</returns>
-        [HttpGet("api/identity/service-accounts/{clientId}")]
+        [HttpGet("service-accounts/{clientId}")]
+        [ManagementApiEndpoint(ManagementApiEndpoints.GetServiceAccount)]
         public async Task<ActionResult<ServiceAccountResponse>> Get(string clientId)
         {
             ServiceAccountDetails? details = await provisioning.GetServiceAccountAsync(
@@ -71,17 +74,12 @@ namespace Tellma.Identity.Controllers
         /// <summary>Deletes a service account; scoped to the caller's own accounts.</summary>
         /// <param name="clientId">The service-account client id.</param>
         /// <returns>204 on success, 404 when the caller owns no such account.</returns>
-        [HttpDelete("api/identity/service-accounts/{clientId}")]
+        [HttpDelete("service-accounts/{clientId}")]
+        [ManagementApiEndpoint(ManagementApiEndpoints.DeleteServiceAccount)]
         public async Task<IActionResult> Delete(string clientId)
         {
             bool deleted = await provisioning.DeleteServiceAccountAsync(clientId, User, HttpContext.RequestAborted);
             return deleted ? NoContent() : NotFound();
-        }
-
-        /// <summary>The calling client's id, for audit attribution on creation.</summary>
-        private string? CallerClientId()
-        {
-            return User.GetClaim(OpenIddictConstants.Claims.ClientId) ?? User.GetClaim(OpenIddictConstants.Claims.Subject);
         }
     }
 }
