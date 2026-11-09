@@ -6,6 +6,15 @@
          file-system store. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
     <ProjectReference Include="..\..\shared\Tellma.Testing.Support\Tellma.Testing.Support.csproj" />
+    <!-- The tenant model's migration is scaffolded the way a distribution's migrator scaffolds it:
+         with the table-type design-time services, the EF Design package and Roslyn to compile
+         the scaffolded code back in. The Design package is developmentDependency=true, so it is
+         referenced directly, as a migrator project references it. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.EntityFrameworkCore.Design\Tellma.Core.EntityFrameworkCore.Design.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>none</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <!-- In-memory configuration for the compositions under test. -->
     <PackageReference Include="Microsoft.Extensions.Configuration" />
     <!-- MetricCollector and FakeLogger, for the store instruments and log events. -->

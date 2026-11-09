@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.ComponentModel.DataAnnotations;
+using Tellma.Core.Abstractions.Entities;
 
 namespace Tellma.Core.Abstractions.TableTypes
 {
@@ -13,8 +14,9 @@ namespace Tellma.Core.Abstractions.TableTypes
     /// </summary>
     /// <remarks>
     ///     A standalone table-type shape beside <see cref="IdList" /> and <see cref="StringList" />,
-    ///     annotated with BCL data annotations only.
+    ///     annotated with BCL data annotations and the platform's <see cref="TableTypeAttribute" /> only.
     /// </remarks>
+    [TableType]
     public class VersionTagList
     {
         /// <summary>The tag name, <c>nvarchar(128)</c>; the key.</summary>
