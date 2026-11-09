@@ -164,29 +164,23 @@ namespace Tellma.Core.Imaging
                 }
             }
 
-            // Section: the work, on the pool under its own budget. The slot is released by the work
-            // itself when its native part ends, which may be after this call has given up on it.
+            // Section: the work, on the pool under its own budget. Once the work is running, it
+            // releases the slot itself when its native part ends, which may be after this call has
+            // given up on it; until then, the finally below releases it.
             using CancellationTokenSource workBudget = Budget(timeout);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, workBudget.Token);
             CancellationToken token = linked.Token;
-            Stream bytes;
-            GatedReadStream gated;
+            Stream? bytes = null;
+            GatedReadStream? gated = null;
+            Task<ProcessedImage>? work = null;
+            long? started = null;
             try
             {
                 bytes = _openInput(input);
-                gated = new GatedReadStream(bytes, token);
-            }
-            catch
-            {
-                _imageSlots.Release();
-                throw;
-            }
-
-            ImagingLog.Render(_logger, kind, operation, contentType, input.LongLength);
-            long started = _timeProvider.GetTimestamp();
-            Task<ProcessedImage> work = RunInSlot(() => SkiaPipeline.Process(gated, contentType, policy, thumbnail, token));
-            try
-            {
+                GatedReadStream view = gated = new GatedReadStream(bytes, token);
+                ImagingLog.Render(_logger, kind, operation, contentType, input.LongLength);
+                started = _timeProvider.GetTimestamp();
+                work = RunInSlot(() => SkiaPipeline.Process(view, contentType, policy, thumbnail, token));
                 ProcessedImage result = await work.WaitAsync(token).ConfigureAwait(false);
                 RecordDuration(kind, operation, started);
                 return result;
@@ -221,10 +215,20 @@ namespace Tellma.Core.Imaging
             }
             finally
             {
-                // Section: from here on the input is never touched: closing the view waits for a
-                // read in flight and refuses every later one.
-                gated.Dispose();
-                await bytes.DisposeAsync().ConfigureAwait(false);
+                // Section: a slot the work never took over goes back here. From here on the input
+                // is never touched: closing the view waits for a read in flight and refuses every
+                // later one.
+                if (work is null)
+                {
+                    _imageSlots.Release();
+                }
+
+                gated?.Dispose();
+                if (bytes is not null)
+                {
+                    await bytes.DisposeAsync().ConfigureAwait(false);
+                }
+
                 Observe(work);
             }
         }
@@ -314,11 +318,20 @@ namespace Tellma.Core.Imaging
                 }
                 else
                 {
-                    // Section: the image path, in an image slot, on the pool so the budget can end the wait.
+                    // Section: the image path, in an image slot, on the pool so the budget can end the
+                    // wait. Until the work has taken the slot over, a failure gives it back here.
                     await _imageSlots.WaitAsync(token).ConfigureAwait(false);
-                    ImagingLog.Render(_logger, kind, operation, type, gated.Length);
-                    started = _timeProvider.GetTimestamp();
-                    work = RunInSlot(() => SkiaPipeline.Thumbnail(gated, type, policy, ImagePolicy.DefaultMaxInputPixels, token));
+                    try
+                    {
+                        ImagingLog.Render(_logger, kind, operation, type, gated.Length);
+                        started = _timeProvider.GetTimestamp();
+                        work = RunInSlot(() => SkiaPipeline.Thumbnail(gated, type, policy, ImagePolicy.DefaultMaxInputPixels, token));
+                    }
+                    catch
+                    {
+                        _imageSlots.Release();
+                        throw;
+                    }
                 }
 
                 byte[] thumbnail = await work.WaitAsync(token).ConfigureAwait(false);
@@ -369,34 +382,27 @@ namespace Tellma.Core.Imaging
 
         /// <summary>
         ///     Runs image work on the pool in a slot the caller already holds, releasing the slot when
-        ///     the work ends, however it ends.
+        ///     the work ends, however it ends. Should scheduling itself throw, the slot stays the
+        ///     caller's to release.
         /// </summary>
         /// <typeparam name="T">The work's result.</typeparam>
         /// <param name="work">The work.</param>
         /// <returns>The running work.</returns>
         private Task<T> RunInSlot<T>(Func<T> work)
         {
-            try
-            {
-                return Task.Run(
-                    () =>
+            return Task.Run(
+                () =>
+                {
+                    try
                     {
-                        try
-                        {
-                            return work();
-                        }
-                        finally
-                        {
-                            _imageSlots.Release();
-                        }
-                    },
-                    CancellationToken.None);
-            }
-            catch
-            {
-                _imageSlots.Release();
-                throw;
-            }
+                        return work();
+                    }
+                    finally
+                    {
+                        _imageSlots.Release();
+                    }
+                },
+                CancellationToken.None);
         }
 
         /// <summary>

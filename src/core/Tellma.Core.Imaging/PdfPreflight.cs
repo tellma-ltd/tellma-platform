@@ -19,14 +19,21 @@ namespace Tellma.Core.Imaging
     ///     <para>
     ///         PDFium decodes an embedded image at its own resolution whatever the output size, and
     ///         one render call cannot be interrupted, so these caps are checked on the declarations
-    ///         alone, before <c>FPDF_RenderPageBitmap</c> runs. Loading page 1 parses its content
-    ///         (forms included), which is bounded by the input-length cap; decoding images and
-    ///         drawing are what the walk keeps from happening.
+    ///         alone, before <c>FPDF_RenderPageBitmap</c> runs: decoding images and drawing are what
+    ///         the walk keeps from happening.
     ///     </para>
     ///     <para>
-    ///         What the walk cannot see stays a residual risk: memory spent on non-image content,
-    ///         images inside patterns, soft masks and Type 3 glyphs, and PDFium's own bugs. Rendering
-    ///         out of process is the structural answer to those.
+    ///         Loading page 1 is not bounded the same way. <c>FPDF_LoadPage</c> parses the page's
+    ///         content and builds a separate instance of every form for every time it is drawn, so a
+    ///         page that nests forms costs objects, memory and time exponential in the nesting depth,
+    ///         whatever the file's size: the input-length cap does not bound it, and the object cap
+    ///         applies only after the load has returned. That load cannot be interrupted either.
+    ///     </para>
+    ///     <para>
+    ///         So these stay residual risks, which only rendering out of process (in a memory-limited,
+    ///         killable worker) removes: that expansion of nested forms inside the load, memory spent on
+    ///         non-image content, images inside patterns, soft masks and Type 3 glyphs, and PDFium's own
+    ///         bugs.
     ///     </para>
     ///     <para>
     ///         Not thread-safe, like PDFium: the caller holds the process-wide render gate. The

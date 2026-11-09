@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using PDFtoImage;
 using SkiaSharp;
 using System.Text;
@@ -11,8 +13,9 @@ using Tellma.Core.Abstractions.Composition;
 namespace Tellma.Core.Imaging
 {
     /// <summary>
-    ///     <c>core.imaging</c>: the processor's native libraries load and work in this process. Skia
-    ///     encodes and decodes a tiny image, and PDFium opens a tiny generated PDF.
+    ///     <c>core.imaging</c>: the processor's options are valid, and its native libraries load and
+    ///     work in this process. Skia encodes and decodes a tiny image, and PDFium opens a tiny
+    ///     generated PDF.
     /// </summary>
     /// <remarks>
     ///     A missing or mismatched native library otherwise surfaces on the first upload, as a server
@@ -47,6 +50,21 @@ namespace Tellma.Core.Imaging
 
             // Section: one problem per library that failed, with what failed and the fix.
             List<CompositionProblem> problems = [];
+
+            // Section: the processor's options, which are otherwise validated only when the first
+            // upload constructs the processor, so a bad value would surface as a server error then.
+            try
+            {
+                _ = services.GetService<IOptions<SkiaImageProcessorOptions>>()?.Value;
+            }
+            catch (OptionsValidationException exception)
+            {
+                problems.Add(new CompositionProblem(
+                    Name,
+                    $"The image processor's options are invalid: {string.Join(" ", exception.Failures)}",
+                    $"Set {SkiaImageProcessorOptions.SectionName}:{nameof(SkiaImageProcessorOptions.ImageConcurrency)} to a positive number of concurrent image operations, or remove it to take the default."));
+            }
+
             if (skia is not null)
             {
                 problems.Add(new CompositionProblem(

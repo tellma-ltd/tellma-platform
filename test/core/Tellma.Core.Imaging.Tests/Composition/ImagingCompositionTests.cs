@@ -73,6 +73,17 @@ namespace Tellma.Core.Imaging.Tests.Composition
         }
 
         [Fact]
+        public async Task A_non_positive_concurrency_fails_the_startup_check_naming_its_key()
+        {
+            using ServiceProvider provider = Build(new Dictionary<string, string?> { ["Tellma:Blobs:ImageConcurrency"] = "0" });
+
+            IReadOnlyList<CompositionProblem> problems = await new ImagingStartupCheck().CheckAsync(provider, TestContext.Current.CancellationToken);
+
+            CompositionProblem problem = Assert.Single(problems);
+            Assert.Contains("Tellma:Blobs:ImageConcurrency", problem.Fix, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void A_host_clock_is_kept()
         {
             var services = new ServiceCollection();

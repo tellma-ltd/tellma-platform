@@ -64,9 +64,14 @@ render past its time budget yields null, which is never a rejection of the file.
 - **PDF preflight.** A PDF over 32 MiB is not read. Otherwise page 1 is walked through PDFium's
   object API before it is rendered, and refused when a page side exceeds 14,400 points, an image
   declares more than 50 megapixels (16 for JPEG 2000 and JBIG2, whose decoders hold the whole image),
-  or the page holds more than 100,000 objects counted through every form. What the walk cannot see
-  (memory for non-image content, images in patterns, soft masks or Type 3 glyphs, PDFium bugs) stays
-  a residual risk that only an out-of-process renderer removes.
+  or the page holds more than 100,000 objects counted through every form. The walk runs after
+  PDFium has loaded page 1, and that load is not bounded: PDFium builds a separate instance of every
+  form for every time it is drawn, so nested forms cost memory and time exponential in their depth,
+  whatever the file's size, before the object cap can act, and the load cannot be interrupted. That
+  expansion, memory for non-image content, images in patterns, soft masks or Type 3 glyphs, and
+  PDFium bugs stay residual risks that only an out-of-process, memory-limited renderer removes.
+- **A thumbnail never fails an upload.** Every refusal, failure, timeout and unanticipated exception
+  of a thumbnail yields null; only the caller's own cancellation and invalid arguments throw.
 - **The time budget cancels for real.** Native decoders read their input on demand through a gated
   view; when the budget runs out the call returns null at once and the view reads as end of input,
   so a streaming decode in flight stops at its next read instead of running on. A PDF render that is
