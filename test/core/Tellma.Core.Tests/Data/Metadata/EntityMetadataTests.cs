@@ -193,13 +193,13 @@ namespace Tellma.Core.Tests.Data.Metadata
         // --- Resets ---
 
         [Fact]
-        public void ResetServerOwned_restores_every_server_owned_property_to_a_fresh_instances_value()
+        public void ResetServerOwned_restores_every_server_owned_property_but_the_key_to_a_fresh_instances_value()
         {
             EntityMetadata metadata = _provider.Get(typeof(Account));
             DateTimeOffset stamp = new(2026, 11, 8, 10, 0, 0, TimeSpan.Zero);
             Account account = new()
             {
-                Id = 5,
+                Id = -5,
                 CreatedAt = stamp,
                 CreatedById = 3,
                 ModifiedAt = stamp,
@@ -214,7 +214,9 @@ namespace Tellma.Core.Tests.Data.Metadata
 
             metadata.ResetServerOwned(account);
 
-            Assert.Equal((0, 0, 0), (account.Id, account.CreatedById, account.ModifiedById));
+            // A temporary id survives, so the rows that reference it can be rewritten after the reset.
+            Assert.Equal(-5, account.Id);
+            Assert.Equal((0, 0), (account.CreatedById, account.ModifiedById));
             Assert.Equal(DateTimeOffset.MinValue, account.CreatedAt);
             Assert.Equal(DateTimeOffset.MinValue, account.ModifiedAt);
             Assert.Equal((true, "unverified"), (account.IsActive, account.Evidence));

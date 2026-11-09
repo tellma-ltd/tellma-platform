@@ -417,6 +417,43 @@ namespace Tellma.Core.Tests.Data.Metadata
             Assert.Contains("share the entity name 'fixture.Duplicate'", MetadataModels.SingleProblem(typeof(First.Duplicate), typeof(Second.Duplicate)), StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void An_entity_mapped_to_a_view_is_refused()
+        {
+            string problem = MetadataModels.SingleProblem(MetadataModels.Build([typeof(Viewed)], [typeof(ViewedConfiguration)]));
+
+            Assert.Contains("Malformed.Viewed is not mapped to a table", problem, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void An_entity_mapped_as_derived_from_another_is_refused()
+        {
+            Assert.Contains("maps Tellma.Core.Tests.Data.Metadata.Malformed.VipCustomer as derived from Tellma.Core.Tests.Data.Metadata.Malformed.Customer", MetadataModels.SingleProblem(typeof(Customer), typeof(VipCustomer)), StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void A_leaf_registered_for_two_defaults_is_refused()
+        {
+            string problem = MetadataModels.SingleProblem(MetadataModels.Build(
+                [typeof(FirstDefault)],
+                [],
+                new Dictionary<Type, Type> { [typeof(FirstDefault)] = typeof(TwoDefaultsLeaf), [typeof(SecondDefault)] = typeof(TwoDefaultsLeaf) }));
+
+            Assert.Contains("TwoDefaultsLeaf replaces Tellma.Core.Tests.Data.Metadata.Malformed.FirstDefault and Tellma.Core.Tests.Data.Metadata.Malformed.SecondDefault", problem, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Two_leaves_on_one_table_are_refused()
+        {
+            Assert.Contains("The table [fixture].[Split] is mapped by", MetadataModels.SingleProblem(typeof(SplitOwner), typeof(SplitHalf)), StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void An_entity_without_a_parameterless_constructor_is_refused()
+        {
+            Assert.Contains("Constructed has no parameterless constructor", MetadataModels.SingleProblem(typeof(Constructed)), StringComparison.Ordinal);
+        }
+
         // --- Every problem at once ---
 
         [Fact]

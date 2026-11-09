@@ -804,4 +804,59 @@ namespace Tellma.Core.Tests.Data.Metadata.Malformed
         [References(typeof(Tabled))]
         public int? TabledId { get; set; }
     }
+
+    // --- Mappings the metadata cannot describe ---
+
+    /// <summary>An entity a configuration maps to a view rather than a table.</summary>
+    public class Viewed : Entity<int>
+    {
+        [MaxLength(20)]
+        public string? Code { get; set; }
+    }
+
+    /// <summary>Maps <see cref="Viewed" /> to a view.</summary>
+    public sealed class ViewedConfiguration : IEntityTypeConfiguration<Viewed>
+    {
+        public void Configure(EntityTypeBuilder<Viewed> builder)
+        {
+            _ = builder.ToView("Viewed", "fixture");
+        }
+    }
+
+    /// <summary>A class derived from a contributed entity and contributed itself, so it shares its base's table.</summary>
+    public class VipCustomer : Customer;
+
+    /// <summary>The first default of a leaf registered for two.</summary>
+    [Table("TwoDefaults", Schema = "fixture")]
+    [TableType]
+    public class FirstDefault : TopLevelEntity;
+
+    /// <summary>The second default, derived from the first.</summary>
+    public class SecondDefault : FirstDefault;
+
+    /// <summary>The leaf registered for both defaults.</summary>
+    public sealed class TwoDefaultsLeaf : SecondDefault;
+
+    /// <summary>An owner whose sibling shares its table.</summary>
+    [Table("Split", Schema = "fixture")]
+    [TableType]
+    public class SplitOwner : TopLevelEntity;
+
+    /// <summary>A sibling mapped to its owner's table.</summary>
+    [Table("Split", Schema = "fixture")]
+    [Sibling(typeof(SplitOwner), "Half")]
+    public class SplitHalf : Entity<int>
+    {
+        [MaxLength(20)]
+        public string? Note { get; set; }
+    }
+
+    /// <summary>An entity the model builds through its constructor, which has no parameterless one.</summary>
+    [Table("Constructed", Schema = "fixture")]
+    [TableType]
+    public class Constructed(string code) : TopLevelEntity
+    {
+        [MaxLength(20)]
+        public string Code { get; set; } = code;
+    }
 }

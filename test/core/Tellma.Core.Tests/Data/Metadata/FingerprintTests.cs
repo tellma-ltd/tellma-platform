@@ -95,6 +95,25 @@ namespace Tellma.Core.Tests.Data.Metadata
         }
 
         [Fact]
+        public void A_storage_fingerprint_changes_with_a_computed_columns_definition_and_storage()
+        {
+            string upper = MetadataModels.Build([typeof(StoreUpper)], [typeof(StoreUpperConfiguration)]).Provider!.StorageFingerprint;
+            string lower = MetadataModels.Build([typeof(StoreLower)], [typeof(StoreLowerConfiguration)]).Provider!.StorageFingerprint;
+            string stored = MetadataModels.Build([typeof(StoreUpperStored)], [typeof(StoreUpperStoredConfiguration)]).Provider!.StorageFingerprint;
+
+            Assert.NotEqual(upper, lower);
+            Assert.NotEqual(upper, stored);
+        }
+
+        [Fact]
+        public void A_storage_fingerprint_changes_with_a_sequence()
+        {
+            string sequenced = MetadataModels.Build([typeof(StoreSequenced)], [typeof(StoreSequencedConfiguration)]).Provider!.StorageFingerprint;
+
+            Assert.NotEqual(Storage(typeof(Store)), sequenced);
+        }
+
+        [Fact]
         public void A_storage_fingerprint_changes_with_a_table_type_alone()
         {
             Assert.NotEqual(Storage(typeof(StoreWithScratch)), Storage(typeof(StoreScratchExcluded)));

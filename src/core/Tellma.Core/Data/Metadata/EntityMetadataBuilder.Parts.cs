@@ -68,7 +68,11 @@ namespace Tellma.Core.Data.Metadata
             IEntityType entityType = leaf.EntityType;
 
             // --- The table, the capability columns and the members the model maps ---
-            TableName table = DescribeTable(leaf);
+            if (DescribeTable(leaf) is not TableName table)
+            {
+                return;
+            }
+
             CollectCapabilities(leaf);
             leaf.ParentKey = FindParentKey(leaf);
             List<(PropertyInfo Member, IProperty Property)> mapped = MappedMembers(leaf);
@@ -153,11 +157,20 @@ namespace Tellma.Core.Data.Metadata
         ///     it), and a leaf that re-declares the attribute names its default's table.
         /// </summary>
         /// <param name="leaf">The leaf.</param>
-        /// <returns>The table.</returns>
-        private TableName DescribeTable(Leaf leaf)
+        /// <returns>The table, or <see langword="null" /> when the entity is not mapped to a table.</returns>
+        private TableName? DescribeTable(Leaf leaf)
         {
             string? schema = leaf.EntityType.GetSchema();
-            string name = leaf.EntityType.GetTableName()!;
+            if (leaf.EntityType.GetTableName() is not string name)
+            {
+                // A view, query or function mapping has no table to describe; the rest of the leaf's
+                // rules need one, so this is its one problem.
+                Report(
+                    $"The entity {Display(leaf)} is not mapped to a table.",
+                    "Remove the model configuration's ToView, ToSqlQuery or ToFunction mapping; an entity is stored in a table of its own.");
+                return null;
+            }
+
             TableName table = new(string.IsNullOrEmpty(schema) ? DefaultSchema : schema, name);
 
             if (EntityShapes.GetAttribute<TableAttribute>(leaf.ClrType) is not TableAttribute declared)

@@ -19,42 +19,26 @@ namespace Tellma.Core.Data.Metadata
         private const string IdSuffix = "Id";
 
         /// <summary>
-        ///     Pairs every child collection of a leaf with its child's parent key. Reports a collection
-        ///     whose child maps no leaf, a parent key that is not a foreign key to the parent, a
-        ///     non-positive <see cref="MaxChildrenAttribute" />, and a <c>[NotMapped]</c> list of a class
-        ///     that is not a child entity.
+        ///     Pairs every child collection of a leaf with its child's parent key. Reports a non-positive
+        ///     <see cref="MaxChildrenAttribute" /> and a <c>[NotMapped]</c> list of a class that is not a
+        ///     child entity.
         /// </summary>
         /// <param name="leaf">The parent leaf.</param>
         private void PairChildren(Leaf leaf)
         {
             foreach ((PropertyInfo collection, Type childType) in EntityShapes.ChildCollections(leaf.ClrType))
             {
+                // The model definition maps every child a collection carries, and the child convention
+                // adds the parent key's foreign key to the carrying parent; a child that is missing
+                // here, or one without metadata or one parent key, already had its own problem reported.
                 Type childClr = _definition.LeafOf(childType);
                 Leaf? child = _leaves.FirstOrDefault(candidate => candidate.ClrType == childClr && candidate.Metadata is not null);
-                if (child is null)
-                {
-                    Report(
-                        $"The child collection {Display(leaf)}.{collection.Name} carries {TypeDisplay.Qualified(childClr)}, which the model maps no leaf for.",
-                        $"Correct the child entity {TypeDisplay.Short(childClr)} so that the model maps it.");
-                    continue;
-                }
-
-                // A child without one parent key was reported when it was described.
-                if (child.ParentKey is null || !child.Properties.TryGetValue(child.ParentKey.Name, out PropertyMetadata? parentKey))
+                if (child?.ParentKey is null || !child.Properties.TryGetValue(child.ParentKey.Name, out PropertyMetadata? parentKey))
                 {
                     continue;
                 }
 
                 child.Parent = leaf;
-                bool referencesParent = child.EntityType.FindProperty(parentKey.Name)!
-                    .GetContainingForeignKeys()
-                    .Any(foreignKey => foreignKey.PrincipalEntityType == leaf.EntityType);
-                if (!referencesParent)
-                {
-                    Report(
-                        $"The parent key {Display(child)}.{parentKey.Name} is not a foreign key to {Display(leaf)}, whose collection {collection.Name} carries the child.",
-                        $"Remove the model configuration that redirects the foreign key of {parentKey.Name}.");
-                }
 
                 int maxCount = EntityShapes.GetAttribute<MaxChildrenAttribute>(collection)?.Count ?? MaxChildrenAttribute.DefaultCount;
                 if (maxCount < 1)

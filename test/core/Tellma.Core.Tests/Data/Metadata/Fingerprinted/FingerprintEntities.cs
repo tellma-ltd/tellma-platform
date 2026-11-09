@@ -260,4 +260,85 @@ namespace Tellma.Core.Tests.Data.Metadata.Fingerprinted
         [ExcludeFromTableType]
         public string? Scratch { get; set; }
     }
+
+    /// <summary>A store with a computed label: <c>UPPER([Name])</c>, stored false.</summary>
+    [Table("Stores", Schema = "fixture")]
+    [TableType]
+    public class StoreUpper : TopLevelEntity
+    {
+        [MaxLength(100)]
+        public string Name { get; set; } = null!;
+
+        [MaxLength(100)]
+        public string? Label { get; set; }
+    }
+
+    /// <summary>Computes <see cref="StoreUpper.Label" />.</summary>
+    public sealed class StoreUpperConfiguration : IEntityTypeConfiguration<StoreUpper>
+    {
+        public void Configure(EntityTypeBuilder<StoreUpper> builder)
+        {
+            _ = builder.Property(static store => store.Label).HasComputedColumnSql("UPPER([Name])", stored: false);
+        }
+    }
+
+    /// <summary>A store with a computed label: <c>LOWER([Name])</c>, stored false.</summary>
+    [Table("Stores", Schema = "fixture")]
+    [TableType]
+    public class StoreLower : TopLevelEntity
+    {
+        [MaxLength(100)]
+        public string Name { get; set; } = null!;
+
+        [MaxLength(100)]
+        public string? Label { get; set; }
+    }
+
+    /// <summary>Computes <see cref="StoreLower.Label" />.</summary>
+    public sealed class StoreLowerConfiguration : IEntityTypeConfiguration<StoreLower>
+    {
+        public void Configure(EntityTypeBuilder<StoreLower> builder)
+        {
+            _ = builder.Property(static store => store.Label).HasComputedColumnSql("LOWER([Name])", stored: false);
+        }
+    }
+
+    /// <summary>A store with a computed label: <c>UPPER([Name])</c>, stored true.</summary>
+    [Table("Stores", Schema = "fixture")]
+    [TableType]
+    public class StoreUpperStored : TopLevelEntity
+    {
+        [MaxLength(100)]
+        public string Name { get; set; } = null!;
+
+        [MaxLength(100)]
+        public string? Label { get; set; }
+    }
+
+    /// <summary>Computes <see cref="StoreUpperStored.Label" />.</summary>
+    public sealed class StoreUpperStoredConfiguration : IEntityTypeConfiguration<StoreUpperStored>
+    {
+        public void Configure(EntityTypeBuilder<StoreUpperStored> builder)
+        {
+            _ = builder.Property(static store => store.Label).HasComputedColumnSql("UPPER([Name])", stored: true);
+        }
+    }
+
+    /// <summary>The reference storage, with one more sequence in the model.</summary>
+    [Table("Stores", Schema = "fixture")]
+    [TableType]
+    public class StoreSequenced : TopLevelEntity
+    {
+        [MaxLength(100)]
+        public string Name { get; set; } = null!;
+    }
+
+    /// <summary>Adds the sequence <c>fixture.sq_Extra</c> to the model.</summary>
+    public sealed class StoreSequencedConfiguration : IEntityTypeConfiguration<StoreSequenced>
+    {
+        public void Configure(EntityTypeBuilder<StoreSequenced> builder)
+        {
+            _ = builder.Metadata.Model.AddSequence("sq_Extra", "fixture");
+        }
+    }
 }

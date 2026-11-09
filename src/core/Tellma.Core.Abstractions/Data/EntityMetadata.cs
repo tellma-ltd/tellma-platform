@@ -115,7 +115,9 @@ namespace Tellma.Core.Abstractions.Data
 
             // --- What the reset methods restore, fixed once ---
             _createInstance = createInstance;
-            _serverOwned = [.. Properties.Where(static property => property.Ownership == PropertyOwnership.ServerOwned)];
+            // The key is server-owned, but the id allocator owns it: a temporary (negative) id must
+            // survive the reset, since the rows that reference it are rewritten after it.
+            _serverOwned = [.. Properties.Where(property => property.Ownership == PropertyOwnership.ServerOwned && !ReferenceEquals(property, Key))];
             _derived = [.. Properties.Where(static property => property.Ownership == PropertyOwnership.Derived)];
 
             // --- The parts that name other entities, built on first read ---
@@ -208,8 +210,10 @@ namespace Tellma.Core.Abstractions.Data
         public string SchemaFingerprint => _schemaFingerprint.Value;
 
         /// <summary>
-        ///     Restores every server-owned property of an instance to its value on a freshly constructed
-        ///     instance. The pipeline calls it on new rows before the emitter reads them.
+        ///     Restores every server-owned property of an instance but the key to its value on a freshly
+        ///     constructed instance. The pipeline calls it on new rows before the emitter reads them. The
+        ///     key, which the id allocator owns, is kept, so a temporary id and the references to it
+        ///     survive until the allocator rewrites them.
         /// </summary>
         /// <param name="entity">An instance of the leaf.</param>
         /// <exception cref="ArgumentNullException"><paramref name="entity" /> is null.</exception>
