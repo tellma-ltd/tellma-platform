@@ -30,7 +30,7 @@ stale schema; composition is expressed through `FilterTree` instead.
 |---|---|
 | `QueryexEngine` | The entry point. Thread-safe; hosts register one instance and share it. |
 | `QueryexSchema`, `QueryexSchemaBuilder` | The host-built description of the entities a root can reach. |
-| `FilterTree` | Structural composition of predicates — the alternative to concatenating text. A leaf may carry the Queryex version stored beside it. |
+| `FilterTree` | Structural composition of predicates — the alternative to concatenating text. A leaf may carry the Queryex version stored beside it; `Via` rebases a criterion onto a to-one navigation's target, and `Exists` searches another entity's rows that point at this one. |
 | `QuerySpec`, `CompiledQuery` | One query in, SQL plus parameter slots and result columns out — and the prologue and body a host embeds in SQL of its own. |
 | `KeySetRestriction` | Restricts a query's root rows to keys a host holds in a table of its own. |
 | `QueryexTimeZones` | The time-zone ids `local` compiles, and the older ids browsers report for them, for a host's list of zones. |
@@ -72,6 +72,8 @@ far:
 | Prologue and body (§F.3) | `CompiledQuery.Prologue` (the hoisted declarations and an empty line) and `CompiledQuery.Body` (the statement without its terminator); `Sql` is always `Prologue + Body + ";\n"`. |
 | Paging slots (§F.4) | `Skip` and `Take` bind through `@qx{b}_skip` and `@qx{b}_take`, the last parameters, skip before take. A compilation is cached on whether a query pages, never on which page, and a hit re-stamps the two slots' values. |
 | Versioned leaves (§F.6) | `FilterTree.Leaf(text, queryexVersion)`: a stored criterion binds under the version stamped beside it. |
+| `FilterTree.Via` (§F.7) | `Via(navigation, inner)`: `inner` binds against the target of a dotted to-one path and joins through the query's shared joins. Behind an optional step the target's key is tested first, so the node stays two-valued under `not`. Discovery reports the criterion's paths with the navigation's segments in front. |
+| `FilterTree.Exists` (§F.12) | `Exists(entity, navigation, inner)`: an `EXISTS` subquery over `entity`'s rows whose `navigation` points at the current root, with its own joins and bindings and the statement's parameters. Its aliases continue the statement's (`[X1]`, `[X2]`, … in pre-order, then the next `[P{n}]` and `[B{n}]`), its source and joins count toward `MaxJoins`, and discovery reports no path from inside it. |
 | Undeclared columns (§F.16) | `QuerySpec.UndeclaredColumns`: root columns the schema omits on purpose, read as nullable text after the select list. |
 | Current and legacy zone ids (§F.22) | The zone table holds current ids only — the time-zone database's locations and `UTC` — plus the nineteen older ids browsers report, each resolving through its current id. Retired spellings such as `US/Alaska` and the `Etc/GMT±n` zones are QX3101. `QueryexTimeZones` exposes both lists. |
 

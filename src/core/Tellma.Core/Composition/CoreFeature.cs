@@ -3,7 +3,9 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Calendars;
 
 namespace Tellma.Core.Composition
 {
@@ -34,8 +36,14 @@ namespace Tellma.Core.Composition
         /// <inheritdoc />
         public void Contribute(FeatureContribution contribution)
         {
-            // Empty until the platform's own entities, services and model configurations land.
             ArgumentNullException.ThrowIfNull(contribution);
+
+            // --- Calendars: the platform's three systems, first in the registry, and the registry ---
+            _ = contribution
+                .Calendar<GregorianCalendarSystem>()
+                .Calendar<UmAlQuraCalendarSystem>()
+                .Calendar<EthiopianCalendarSystem>()
+                .Singleton<ICalendarRegistry, CalendarRegistry>();
         }
     }
 }

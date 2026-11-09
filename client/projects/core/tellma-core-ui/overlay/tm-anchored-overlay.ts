@@ -74,10 +74,12 @@ export interface TmAnchoredOverlayConfig {
   /**
    * The top-layer host. `'inline'` (the default) inserts the popover next
    * to the origin — right for most anchors, and it keeps the panel inside
-   * the component's DOM so emulated-encapsulation styles apply. Pass
-   * `{type: 'parent', element}` where sibling insertion would violate ARIA
-   * structure (e.g. an anchor inside `role="row"`); a function defers the
-   * choice to open time.
+   * the component's DOM so emulated-encapsulation styles apply. A container
+   * that delegates key or pointer events must then ignore events coming
+   * from inside `.cdk-overlay-pane`, since the pane sits in its subtree.
+   * Pass `{type: 'parent', element}` where sibling insertion would violate
+   * ARIA structure (e.g. an anchor inside `role="row"`); a function defers
+   * the choice to open time.
    */
   readonly popoverHost?: FlexibleOverlayPopoverLocation | (() => FlexibleOverlayPopoverLocation);
   /** Match the panel's inline-size to the origin's. Default `false`. */

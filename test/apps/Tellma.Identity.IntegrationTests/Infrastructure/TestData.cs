@@ -33,6 +33,51 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
                 TestContext.Current.CancellationToken);
         }
 
+        /// <summary>
+        ///     Provisions a distribution and obtains a client-credentials token for its backend
+        ///     client carrying the <c>tellma_identity</c> scope, the token the management API takes.
+        /// </summary>
+        /// <param name="factory">The host under test.</param>
+        /// <param name="slug">The distribution slug.</param>
+        /// <returns>The access token.</returns>
+        public static async Task<string> GetIdentityScopeTokenAsync(StandaloneFactory factory, string slug = "acme")
+        {
+            DistributionClientCredentials distribution = await ProvisionDistributionAsync(factory, slug);
+
+            using HttpClient client = factory.CreateClient();
+            using HttpResponseMessage response = await client.PostAsync(
+                new Uri("/connect/token", UriKind.Relative),
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["grant_type"] = "client_credentials",
+                    ["client_id"] = distribution.ServiceClientId,
+                    ["client_secret"] = distribution.ServiceClientSecret,
+                    ["scope"] = "tellma_identity",
+                }),
+                TestContext.Current.CancellationToken);
+
+            string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.True(response.IsSuccessStatusCode, body);
+            using var document = System.Text.Json.JsonDocument.Parse(body);
+            return document.RootElement.GetProperty("access_token").GetString()!;
+        }
+
+        /// <summary>Gives a user a password, so that they count as holding a credential.</summary>
+        /// <param name="factory">The host under test.</param>
+        /// <param name="user">The user.</param>
+        /// <returns>A task that completes when the password is stored.</returns>
+        public static async Task AddPasswordAsync(StandaloneFactory factory, TellmaIdentityUser user)
+        {
+            using IServiceScope scope = factory.Services.CreateScope();
+            UserManager<TellmaIdentityUser> userManager =
+                scope.ServiceProvider.GetRequiredService<UserManager<TellmaIdentityUser>>();
+
+            TellmaIdentityUser tracked = (await userManager.FindByIdAsync(user.Id))!;
+            IdentityResult result = await userManager.AddPasswordAsync(tracked, "correct horse battery staple");
+
+            Assert.True(result.Succeeded, string.Join("; ", result.Errors.Select(static e => e.Description)));
+        }
+
         /// <summary>Creates an active, email-confirmed user directly in the store.</summary>
         /// <param name="factory">The host under test.</param>
         /// <param name="email">The user's email.</param>

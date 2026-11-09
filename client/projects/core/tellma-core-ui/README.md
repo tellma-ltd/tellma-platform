@@ -21,13 +21,13 @@ disabled/readonly/required).
 | `@tellma/core-ui/checkbox` | `tm-checkbox` — native-input tri-state checkbox |
 | `@tellma/core-ui/form-field` | `tm-form-field` — label/hint/message chrome around any control. Validation messages are an anchored popover shown while the control holds focus, never a row under the field, so an error can never reflow the page; the words themselves live in a permanently rendered visually-hidden live region |
 | `@tellma/core-ui/select` | `tm-select` + `tm-option` — overlay single-select |
-| `@tellma/core-ui/button` | `tmButton` — variants, sizes, and the `pending` suppressed-activation state |
-| `@tellma/core-ui/tabs` | `tm-tab-group` + `tm-tab` — active-only-DOM tabs with `preserveContent` |
-| `@tellma/core-ui/modal` | `TmModal` + `TmModalRef` — service-opened dialogs with a typed result channel |
-| `@tellma/core-ui/popover` | `tm-popover` + `tmPopoverTriggerFor` — anchored non-modal dialog panels |
+| `@tellma/core-ui/button` | `tmButton` on a `<button>` or a link — variants, sizes (sizing `tm-icon` children), the `pending` suppressed-activation state, and `disabledReason` (focusable, activation swallowed, the reason as tooltip and description) |
+| `@tellma/core-ui/tabs` | `tm-tab-group` + `tm-tab` — active-only-DOM tabs with `preserveContent`, and `instantiate()` to render unselected tabs on request |
+| `@tellma/core-ui/modal` | `TmModal` + `TmModalRef` — service-opened dialogs with a typed result channel: centered, as a drawer at the inline-end edge (`placement: 'end'`), or as an alert dialog (`role: 'alertdialog'`) |
+| `@tellma/core-ui/popover` | `tm-popover` + `tmPopoverTriggerFor` — anchored non-modal dialog panels, content-sized or at a fixed `sm`/`md`/`lg` width |
 | `@tellma/core-ui/tooltip` | `tmTooltip` — plain-text tooltips with an always-available description |
 | `@tellma/core-ui/alert` | `tm-alert` — page/section status messaging with live announcement |
-| `@tellma/core-ui/image` | `tm-image` — cached record images with an edit (replace/re-fit/delete) mode |
+| `@tellma/core-ui/image` | `tm-image` — cached record images with an edit (replace/re-fit/delete) mode, and `placeholderOnError` for a placeholder fallback (an avatar's initials) |
 | `@tellma/core-ui/files` | `tmFilePicker` + `tm-dropzone` — file selection over one guardrail engine |
 | `@tellma/core-ui/file-preview` | `TmFilePreview` — the modal file viewer (download-only for HTML/unknown) |
 | `@tellma/core-ui/menu` | `tm-menu` + `tmContextMenuTrigger` — programmatic and context menus |
@@ -37,7 +37,8 @@ disabled/readonly/required).
 | `@tellma/core-ui/spinner` | `tm-spinner` — the shared decorative pending/progress glyph |
 | `@tellma/core-ui/icon` | `tm-icon` — a Lucide icon by registry name or from icon data, sized by `--icon-size`, mirrored in RTL when directional; `TmIconRegistry` + `provideTellmaIcons()` |
 | `@tellma/core-ui/kbd` | The `TmKeys` notation (`'Mod+K'`), `tmKeysMatch` (layout-independent, AltGr-safe), `tmFormatKeys`/`tmKeysText`/`tmAriaKeyShortcuts`, `tmIsApplePlatform`, and `tm-kbd`'s key caps |
-| `@tellma/core-ui/private` | Unstable wiring shared between Tellma libraries — no API goldens, never for app code |
+| `@tellma/core-ui/overlay` | `tmCreateAnchoredOverlay`, `tmLogicalPositions` and `tmPushEscapeDismissal` — the anchoring and the one Escape stack every Tellma overlay shares, for overlays built outside the library |
+| `@tellma/core-ui/private` | Unstable wiring shared between Tellma libraries (the validation bubble) — no API goldens, never for app code |
 
 ## Consuming
 

@@ -7,7 +7,15 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { expectNoAxeViolations } from '../support/axe';
 import { pressUndo, syntheticPaste } from '../support/clipboard';
-import { activeCell, activateCell, cell, cellText, editor, gotoGrid, modelJson } from '../support/grid';
+import {
+  activateCell,
+  activeCell,
+  cell,
+  editor,
+  expectCellText,
+  gotoGrid,
+  modelJson,
+} from '../support/grid';
 import { heldResponses, holdResponses, releaseResponses } from '../support/held-responses';
 import { pressInOneTask, releaseAndPressInOneTask } from '../support/keyboard-burst';
 import { appStable } from '../support/settle';
@@ -94,7 +102,7 @@ test('type-to-edit searches the seed; Enter on the highlight commits with NO mov
   // The pick IS the edit: no move.
   await expect(activeCell(page)).toHaveAttribute('data-row', '2');
   await expect(activeCell(page)).toHaveAttribute('data-col', '1');
-  expect(await cellText(page, 2, 1)).toBe('Alice Green');
+  await expectCellText(page, 2, 1, 'Alice Green');
 });
 
 test('Alt+ArrowDown opens editor + browse dropdown anchored to the cell box', async ({ page }) => {
@@ -150,7 +158,7 @@ test.describe('input delivered faster than the page renders', () => {
     await expect(activeCell(page)).toHaveAttribute('data-row', '2'); // the pick IS the edit
     await expect(activeCell(page)).toHaveAttribute('data-col', '1');
     await expect(cell(page, 2, 1)).not.toHaveClass(/tm-grid__cell--error/);
-    expect(await cellText(page, 2, 1)).toBe('Alice Green');
+    await expectCellText(page, 2, 1, 'Alice Green');
     await expect(page.getByTestId('resolver-calls')).toHaveText('0');
   });
 
@@ -237,7 +245,7 @@ test('the two-stage Esc: dropdown first, then the grid cancel', async ({ page })
   await page.keyboard.press('Escape'); // №2: the grid cancels the session
   await expect(editor(page)).toHaveCount(0);
   expect((await lines(page))[0].agentId).toBe(5); // nothing was written
-  expect(await cellText(page, 0, 1)).toBe('Bob Stone');
+  await expectCellText(page, 0, 1, 'Bob Stone');
 });
 
 test(
@@ -263,7 +271,7 @@ test(
 
     // 'Zebra' is neither a label nor a code: raw text kept, error-tinted.
     await expect(cell(page, 2, 1)).toHaveClass(/tm-grid__cell--error/);
-    expect(await cellText(page, 2, 1)).toBe('Zebra');
+    await expectCellText(page, 2, 1, 'Zebra');
     expect((await lines(page))[2].agentId).toBeNull();
     await expect(page.getByTestId('resolver-calls')).toHaveText('1');
 
@@ -288,10 +296,10 @@ test('a commit while the search is in flight is decided BY that search, not the 
   await activateCell(page, 2, 3);
   await expect(editor(page)).toHaveCount(0);
   await expect(cell(page, 2, 1).locator('.tm-grid__cell-spin')).toBeVisible();
-  expect(await cellText(page, 2, 1)).toBe('Dana Ree');
+  await expectCellText(page, 2, 1, 'Dana Ree');
   await releaseResponses(page, 'search');
   await expect.poll(async () => (await lines(page))[2].agentId).toBe(7);
-  expect(await cellText(page, 2, 1)).toBe('Dana Reed');
+  await expectCellText(page, 2, 1, 'Dana Reed');
   await expect(page.getByTestId('resolver-calls')).toHaveText('0');
 });
 
@@ -309,7 +317,7 @@ test('text the search cannot answer still reaches the resolver, which knows code
   await expect(editor(page)).toHaveCount(0);
   await expect(page.getByTestId('resolver-calls')).toHaveText('1');
   await expect.poll(async () => (await lines(page))[2].agentId).toBe(7);
-  expect(await cellText(page, 2, 1)).toBe('Dana Reed');
+  await expectCellText(page, 2, 1, 'Dana Reed');
 });
 
 test("a multi-hit still asks the resolver; the search's verdict is only the fallback", async ({
@@ -329,7 +337,7 @@ test("a multi-hit still asks the resolver; the search's verdict is only the fall
   await expect(editor(page)).toHaveCount(0);
   await expect(page.getByTestId('resolver-calls')).toHaveText('1');
   await expect(cell(page, 2, 1)).toHaveClass(/tm-grid__cell--error/);
-  expect(await cellText(page, 2, 1)).toBe('Al');
+  await expectCellText(page, 2, 1, 'Al');
   expect((await lines(page))[2].agentId).toBeNull();
   await activateCell(page, 2, 1);
   await expect(page.locator('.tm-grid__error-msg')).toContainText('matches more than one');
@@ -380,7 +388,7 @@ test('dismissing the dropdown does not un-fetch its answer: the commit still cos
   await expect(editor(page)).toHaveCount(0);
   await expect.poll(async () => (await lines(page))[2].agentId).toBe(3);
   await expect(page.getByTestId('resolver-calls')).toHaveText('0');
-  expect(await cellText(page, 2, 1)).toBe('Alice Green');
+  await expectCellText(page, 2, 1, 'Alice Green');
 });
 
 test('a cell awaiting resolution shows the text being resolved, not an empty cell', async ({
@@ -394,12 +402,12 @@ test('a cell awaiting resolution shows the text being resolved, not an empty cel
   await expect(editor(page)).toHaveCount(0);
   // Mid-flight: the spinner AND what the user committed.
   await expect(cell(page, 2, 1).locator('.tm-grid__cell-spin')).toBeVisible();
-  expect(await cellText(page, 2, 1)).toBe('Zebra');
+  await expectCellText(page, 2, 1, 'Zebra');
   // The cell is not errored YET — the answer has not come back.
   await expect(cell(page, 2, 1)).not.toHaveClass(/tm-grid__cell--error/);
   await releaseResponses(page, 'resolver');
   await expect(cell(page, 2, 1)).toHaveClass(/tm-grid__cell--error/);
-  expect(await cellText(page, 2, 1)).toBe('Zebra');
+  await expectCellText(page, 2, 1, 'Zebra');
 });
 
 test('a no-resolver entity column records the invalid input directly', async ({ page }) => {
@@ -409,7 +417,7 @@ test('a no-resolver entity column records the invalid input directly', async ({ 
   await page.keyboard.press('Enter'); // no highlight (empty set) → the grid commits
   await expect(editor(page)).toHaveCount(0);
   await expect(cell(page, 1, 2)).toHaveClass(/tm-grid__cell--error/);
-  expect(await cellText(page, 1, 2)).toBe('Zebra');
+  await expectCellText(page, 1, 2, 'Zebra');
   expect((await lines(page))[1].otherId).toBeNull();
   await expect(cell(page, 1, 2).locator('.tm-grid__cell-spin')).toHaveCount(0); // no pending
 });

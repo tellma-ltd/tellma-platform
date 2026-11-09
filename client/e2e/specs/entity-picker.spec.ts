@@ -216,6 +216,8 @@ test.describe('search lifecycle', () => {
     await useSyncSearch(page);
     await input(page).fill('Al');
     await expect(options(page)).toHaveCount(2);
+    // The ids are read, not asserted: let the highlight's render land first.
+    await appStable(page);
     const controls = await input(page).getAttribute('aria-controls');
     expect(controls).toBeTruthy();
     await expect(page.locator(`[id="${controls}"]`)).toHaveRole('listbox');
@@ -404,7 +406,9 @@ test.describe('keyboard matrix', () => {
     await input(page).fill('Adam');
     await expect(activeOption(page)).toHaveText('Adam Brown');
     // Both rows read 'Adam Brown', so the highlight has to be tracked by
-    // identity: waiting on the TEXT would let Tab race the arrow.
+    // identity: waiting on the TEXT would let Tab race the arrow. The id is
+    // read once the render that set it has landed.
+    await appStable(page);
     const first = await input(page).getAttribute('aria-activedescendant');
     await input(page).press('ArrowDown'); // the SECOND 'Adam Brown', id 2
     await expect(input(page)).not.toHaveAttribute('aria-activedescendant', first ?? '');
@@ -869,39 +873,73 @@ test.describe('RTL & locale', () => {
   });
 });
 
-test.describe('axe floor', () => {
-  for (const theme of ['light', 'dark'] as const) {
-    test(`no violations across popup states (${theme})`, async ({ page }) => {
-      await page.goto(storyUrl('entity-picker', { theme }));
-      await useSyncSearch(page);
+/** One popup state the axe floor scans, and the step that reaches it. */
+interface PopupState {
+  /** The state's name, as it appears in the test title. */
+  readonly name: string;
+  /** Moves the story from the previous state into this one, and waits for it. */
+  readonly reach: (page: Page) => Promise<void>;
+}
 
-      // Results + footer rows.
+/**
+ * The popup states the axe floor covers, in the order one session walks
+ * through them: each state's step starts from the state before it.
+ */
+const POPUP_STATES: readonly PopupState[] = [
+  {
+    name: 'results with the footer rows',
+    reach: async (page) => {
       await input(page).fill('Al');
       await expect(options(page)).toHaveCount(2);
-      await expectNoAxeViolations(page);
-
-      // The truncated browse (hasMore hint) — aria-hidden rows must stay
-      // clean inside the listbox.
+    },
+  },
+  {
+    // aria-hidden rows must stay clean inside the listbox.
+    name: 'the truncated browse list',
+    reach: async (page) => {
       await input(page).fill('');
       await expect(options(page)).toHaveCount(5);
-      await expectNoAxeViolations(page);
-
-      // Empty set.
+    },
+  },
+  {
+    name: 'an empty result set',
+    reach: async (page) => {
       await input(page).fill('Zebra');
       await expect(status(page)).toHaveText('No results');
-      await expectNoAxeViolations(page);
-
-      // Kept resolution error on the field.
+    },
+  },
+  {
+    name: 'a kept resolution error on the field',
+    reach: async (page) => {
       await page.getByTestId('submit').focus();
       await expect(fieldError(page)).toContainText('No match for');
-      await expectNoAxeViolations(page);
-
-      // The loading state (a long-latency async search).
+    },
+  },
+  {
+    name: 'a search in flight',
+    reach: async (page) => {
       await page.getByTestId('search-async').check();
       await holdResponses(page, 'search');
       await input(page).fill('Alice');
       await expect(status(page).locator('tm-spinner')).toBeVisible();
-      await expectNoAxeViolations(page);
+    },
+  },
+];
+
+test.describe('axe floor', () => {
+  // One scan per test: each test replays the session up to its state (the
+  // steps are cheap; the scan is the cost), so no test carries the time of
+  // several scans against its timeout.
+  for (const theme of ['light', 'dark'] as const) {
+    POPUP_STATES.forEach((state, index) => {
+      test(`no violations with ${state.name} (${theme})`, async ({ page }) => {
+        await page.goto(storyUrl('entity-picker', { theme }));
+        await useSyncSearch(page);
+        for (const step of POPUP_STATES.slice(0, index + 1)) {
+          await step.reach(page);
+        }
+        await expectNoAxeViolations(page);
+      });
     });
   }
 });

@@ -7,12 +7,14 @@ import {
   inject,
   Injectable,
   InjectionToken,
+  Injector,
   isDevMode,
   TemplateRef,
   type Type,
 } from '@angular/core';
 import { Directionality } from '@angular/cdk/bidi';
 import { Dialog } from '@angular/cdk/dialog';
+import { createGlobalPositionStrategy } from '@angular/cdk/overlay';
 
 import { TmModalRef, type TmModalResult, type ɵTmModalShellPayload } from './tm-modal-ref';
 import { ɵTmModalShell } from './internal/tm-modal-shell';
@@ -27,11 +29,14 @@ import { ɵTmModalShell } from './internal/tm-modal-shell';
 export const TM_MODAL_DATA = new InjectionToken<unknown>('TM_MODAL_DATA');
 
 /**
- * The semantic size buckets of a modal. `sm` and `md` are fixed token
- * widths (`--modal-width-sm`/`--modal-width-md`) with body scroll past the
- * viewport-capped max height; `lg` fills the viewport minus a constant
- * margin (`--modal-lg-margin`) on all sides. On small viewports all three
- * converge to near-full-screen.
+ * The semantic size buckets of a modal. Centered, `sm` and `md` are fixed
+ * token widths (`--modal-width-sm`/`--modal-width-md`) with body scroll past
+ * the viewport-capped max height, and `lg` fills the viewport minus a
+ * constant margin (`--modal-lg-margin`) on all sides; below the `sm`
+ * breakpoint all three converge to near-full-screen. As a drawer
+ * (`placement: 'end'`) the bucket picks the drawer's width
+ * (`--modal-drawer-width-sm|md|lg`), and below the `sm` breakpoint every
+ * drawer takes the full width.
  */
 export type TmModalSize = 'sm' | 'md' | 'lg';
 
@@ -39,6 +44,34 @@ export type TmModalSize = 'sm' | 'md' | 'lg';
 export interface TmModalConfig {
   /** The size bucket. Default `'md'`. */
   size?: TmModalSize;
+  /**
+   * Where the modal sits. `'center'` (the default) is the centered dialog;
+   * `'end'` is the drawer: a modal side sheet docked to the inline-end edge
+   * (the right in a left-to-right page, the left in a right-to-left one) at
+   * the full viewport height, with the same header, scrolling body, footer,
+   * focus trap, dismissal paths and scrim as the centered dialog. The
+   * drawer appears at once, with no entrance motion, and never resizes
+   * while open.
+   *
+   * @example
+   * ```ts
+   * this.modal.open(TrayPanel, { placement: 'end', size: 'sm', title: 'Notifications' });
+   * ```
+   */
+  placement?: 'center' | 'end';
+  /**
+   * The dialog's ARIA role. Default `'dialog'`. Use `'alertdialog'` for a
+   * dialog that interrupts with a message the user must answer (a confirm,
+   * an error), and name that message with {@link TmModalConfig.describedBy}
+   * so a screen reader reads it on open; an alert dialog without one is a
+   * dev-mode warning.
+   */
+  role?: 'dialog' | 'alertdialog';
+  /**
+   * The id of an element inside the content that describes the dialog —
+   * an alert dialog's message. It becomes the dialog's `aria-describedby`.
+   */
+  describedBy?: string;
   /**
    * Extra CSS class applied to the overlay panel — the escape hatch for
    * the rare modal the semantic buckets genuinely don't fit (dimensions
@@ -77,7 +110,9 @@ let nextTitleId = 0;
  * initial-focus/restore-focus, backdrop, dialog stacking), wrapped in the
  * standard Tellma shell: header (title + X), scrollable body, and a footer
  * region content marks with the `TmModalFooter` directive — so every
- * Tellma modal reads alike.
+ * Tellma modal reads alike. The same shell serves the centered dialog, the
+ * drawer (`placement: 'end'`, a side sheet at the inline-end edge) and the
+ * alert dialog (`role: 'alertdialog'`).
  *
  * Content components inject {@link TmModalRef} to close themselves with a
  * result and {@link TM_MODAL_DATA} for input; the opener awaits
@@ -106,7 +141,10 @@ let nextTitleId = 0;
  */
 @Injectable({ providedIn: 'root' })
 export class TmModal {
+  /** The CDK dialog service every modal opens through. */
   private readonly dialog = inject(Dialog);
+  /** The injector the drawer's position strategy is created with. */
+  private readonly injector = inject(Injector);
   /** The live root direction: an open modal mirrors when the document's direction flips. */
   private readonly direction = inject(Directionality);
 
@@ -123,11 +161,21 @@ export class TmModal {
     // An empty title is "no title": a present-but-empty aria-labelledby
     // target is worse for AT heuristics than an unnamed dialog.
     const title = config.title === '' ? undefined : config.title;
-    if (title === undefined && isDevMode()) {
-      console.warn(
-        '[tellma-ui] TmModal.open called without a title — the dialog has no accessible ' +
-          'name. Pass `title`, or have the content label the dialog itself.',
-      );
+    const role = config.role ?? 'dialog';
+    const describedBy = config.describedBy === '' ? undefined : config.describedBy;
+    if (isDevMode()) {
+      if (title === undefined) {
+        console.warn(
+          '[tellma-ui] TmModal.open called without a title — the dialog has no accessible ' +
+            'name. Pass `title`, or have the content label the dialog itself.',
+        );
+      }
+      if (role === 'alertdialog' && describedBy === undefined) {
+        console.warn(
+          '[tellma-ui] TmModal.open with role "alertdialog" but no `describedBy` — a screen ' +
+            'reader will not read the alert message on open. Pass the id of the message element.',
+        );
+      }
     }
     const titleId = `tm-modal-title-${nextTitleId++}`;
     const ref = new TmModalRef<R>({
@@ -140,12 +188,19 @@ export class TmModal {
       template: content instanceof TemplateRef ? content : null,
       title,
       titleId,
+      placement: config.placement ?? 'center',
       showClose: config.showClose ?? true,
       data: config.data,
       ref: ref as TmModalRef<unknown>,
     };
     const size = config.size ?? 'md';
+    const drawer = payload.placement === 'end';
     const panelClass = ['tm-modal-panel', `tm-modal-panel--${size}`];
+    const backdropClass = ['tm-modal-backdrop'];
+    if (drawer) {
+      panelClass.push('tm-modal-panel--end');
+      backdropClass.push('tm-modal-backdrop--end');
+    }
     if (config.panelClass !== undefined) {
       panelClass.push(config.panelClass);
     }
@@ -158,10 +213,15 @@ export class TmModal {
         disableClose: true,
         autoFocus: 'first-tabbable',
         restoreFocus: true,
-        role: 'dialog',
+        role,
         ariaLabelledBy: title !== undefined ? titleId : null,
+        ariaDescribedBy: describedBy ?? null,
         panelClass,
-        backdropClass: 'tm-modal-backdrop',
+        backdropClass,
+        // The drawer docks to the inline-end edge at the top. `end` is
+        // resolved against the overlay's own direction on every apply, so
+        // the live flip below moves an open drawer to the other edge.
+        ...(drawer ? { positionStrategy: createGlobalPositionStrategy(this.injector).end('0').top('0') } : {}),
         providers: [
           { provide: TM_MODAL_DATA, useValue: config.data ?? null },
           { provide: TmModalRef, useValue: ref },
@@ -172,7 +232,7 @@ export class TmModal {
     // No `direction` is passed to the CDK, so the overlay and the content
     // both take the live root direction at creation; while open, a flip of
     // the document's direction re-stamps the pane so the open modal mirrors
-    // in place.
+    // in place, and the re-applied position moves an open drawer's edge.
     const overlayRef = dialogRef.overlayRef;
     const directionChange = this.direction.change.subscribe((direction) => {
       overlayRef.setDirection(direction);

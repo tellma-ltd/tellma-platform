@@ -19,7 +19,7 @@ namespace Tellma.Queryex.Testing.Corpus
     ///     file, which is the only way a change in emission gets looked at rather than merely
     ///     re-recorded.
     /// </remarks>
-    public static class QueryCorpus
+    public static partial class QueryCorpus
     {
         /// <summary>Every case, in a stable order.</summary>
         public static ImmutableArray<QueryCase> All { get; } = Build();
@@ -28,7 +28,12 @@ namespace Tellma.Queryex.Testing.Corpus
         /// <returns>The cases.</returns>
         private static ImmutableArray<QueryCase> Build()
         {
-            IEnumerable<QueryCase> all = Shapes().Concat(Emission()).Concat(Composition()).Concat(Refusals());
+            IEnumerable<QueryCase> all = Shapes()
+                .Concat(Emission())
+                .Concat(Composition())
+                .Concat(Structure())
+                .Concat(Refusals())
+                .Concat(StructureRefusals());
             return [.. all];
         }
 

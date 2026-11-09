@@ -188,6 +188,41 @@ Format, one entry per ruling:
   - The endpoint tag values are a closed set of operation names (for example invitations.invite), and the version tag is "v1". Dashboards key on these values.
 - Revisit if: a v2 management API is added (the tag values must stay stable across versions).
 
+### D-027 (PC-007 + orchestrator, 2026-11-08): Exists paths stay out of DiscoveryResult.Paths
+- Spec: 0010 §F.12, §F.13 and §F.21.
+- Conflict: §F.21 says Via and Exists nodes' "paths still appear in Paths", but §F.12 says Exists reports no PathUse.
+- Ruling: §F.12 and §F.13 govern. Exists paths do not appear in Paths. §F.21's sentence covers Via only, with Via's prefix. PC-101, which owns §F.21, has a planner note.
+- Also from PC-007:
+  - Lowering-time ceiling diagnostics (QX5006/QX5007) inside a composed filter report the leaf's own location, for example Filter.And[1]. This fixes a latent bug against spec 0008 §2.3.
+  - The fixture has no optional centre, so the "lines with no center" differential uses invoices with no customer.
+- Revisit if: a discovery consumer needs to know which entities an Exists touches.
+
+### D-028 (orchestrator, 2026-11-08): cap concurrent heavy agents on the laptop
+- Situation: with four checkpoint lanes, the fix slot and their reviewers all building and running suites, the laptop hit its limits around 19:00-21:00. Symptoms:
+  - about 47 dotnet and 34 headless-chrome processes;
+  - PR-tier e2e at 465/478 from timeouts;
+  - the showcase's esbuild service stopping;
+  - CREATE DATABASE timeouts;
+  - one 30-minute Identity suite.
+- These are false failures that cost reruns and blur real flakes. PROCESS.md §5.1 caps checkpoint cycles at 4, but it does not count the fix slot or reviewers.
+- Ruling: at most 5 agents that build or run tests at the same time, counting implementers, reviewers and fix agents. A step that would exceed it waits for the next completion. Steps that only read are exempt. Client e2e runs are the heaviest, so the scheduler prefers not to overlap more than two client lanes.
+- Revisit if: local timeouts persist at 5, or vanish and the window has points to spare.
+
+### D-029 (PC-016 + orchestrator, 2026-11-08): one calendar authority, host-independent server text
+- Spec: 0013 §5-§6 and Appendix A; 0024 (client localization).
+- Umm al-Qura:
+  - Situation: .NET's tables, which spec 0013 mandates, and browser ICU agree only for AH 1420-1450 (1999-2029). Outside that span they differ by one day on 35,920 of 64,850 days. .NET matches the historical anchor 1 Muharram 1400 = 1979-11-20; ICU gives 1979-11-21.
+  - Ruling: .NET is the single authority, used by the server and by Queryex's core.CalendarMonths. The client converts Umm al-Qura dates with a month-start table generated from .NET over its supported range and shipped as data, never with Intl's islamic-umalqura. PC-104 owns the client side (planner note).
+- Server text:
+  - Situation: Gregorian month names and date patterns come from the host's ICU, so Windows and Ubuntu differ. For example, the en-GB full date has a comma on only one of them, and am-ET month spellings differ.
+  - Ruling: server text is host-independent. PC-019's negotiated culture clone pins the CLDR names and patterns for every supported language (planner note). Until then, PC-016's goldens run over pinned culture clones.
+- Accepted from PC-016:
+  - The calendar contribution item, Calendar<T>(), its realizer and the CoreFeature registrations landed in PC-016, because no checkpoint listed them.
+  - StaleContextException (0013 §2.9) joins the closed exception set.
+- **Spec error for Ahmad:** Appendix A's prose rule ("12 September in the year before a Gregorian leap year") is wrong for 2099. 1 Meskerem 2092 falls on 2099-09-12 (ICU agrees with the code). The code follows the arithmetic, not the prose.
+- Addendum (PC-016 Review 1): array setting values are ImmutableArray<T> rather than T[], a deviation from 0013 §5.3. A tenant snapshot is then shared safely without copying. The client's Umm al-Qura fallback outside the table is islamic-tbla, which equals .NET's HijriCalendar with adjustment 0.
+- Revisit if: the client must convert dates outside .NET's Umm al-Qura range (AH 1318-1500).
+
 ### D-006 (Ahmad, 2026-11-08): review levers
 - Ruling: Review 2 runs only for the PROCESS.md §3 two-review list (security-bound or complex, 44 checkpoints) and for escalations (§4.4); every other checkpoint gets Review 1 and one fix round. Cross-checkpoint batch reviews run once per phase instead of per group.
 - Why: Ahmad traded some review depth for about 0.7 weeks of Tier-1 budget (PLAN.md §3.3). The escalation rule keeps a second review wherever Review 1 shows trouble.

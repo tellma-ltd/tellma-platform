@@ -28,7 +28,7 @@ export class TmOption<T> {
 // @public
 export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefined> {
     constructor();
-    protected readonly anchored: _tellma_core_ui_private.TmAnchoredOverlay;
+    protected readonly anchored: _tellma_core_ui_overlay.TmAnchoredOverlay;
     readonly ariaDescribedby: _angular_core.InputSignal<string | null>;
     readonly ariaLabel: _angular_core.InputSignal<string | null>;
     protected readonly ariaLabelledBy: Signal<string | null>;

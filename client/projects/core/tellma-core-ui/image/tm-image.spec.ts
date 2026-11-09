@@ -62,6 +62,30 @@ class Host {
 })
 class PlaceholderHost {}
 
+/** An avatar-like image whose failed load may fall back to its placeholder. */
+@Component({
+  imports: [TmImage, TmImagePlaceholder],
+  template: `
+    <tm-image
+      src="/img/agent-9"
+      [alt]="alt()"
+      [width]="50"
+      [height]="50"
+      [defer]="false"
+      [placeholderOnError]="fallback()"
+    >
+      @if (withTemplate()) {
+        <ng-template tmImagePlaceholder><span class="initials">LH</span></ng-template>
+      }
+    </tm-image>
+  `,
+})
+class FallbackHost {
+  readonly alt = signal('Lina Hakim');
+  readonly fallback = signal(true);
+  readonly withTemplate = signal(true);
+}
+
 interface FetcherControl {
   readonly urls: string[];
   fail: boolean;
@@ -167,6 +191,58 @@ describe('tm-image', () => {
     expect(glyph.getAttribute('aria-label')).toBe('The image could not be loaded');
     const box = query<HTMLElement>(fixture, 'tm-image')!;
     expect(box.getBoundingClientRect().width).toBe(50); // fixed box, no CLS
+  });
+
+  it('placeholderOnError: a failing fetch renders the placeholder, named by alt, silently', async () => {
+    const control = setupFetcher();
+    control.fail = true;
+    const fixture = TestBed.createComponent(FallbackHost);
+    await fixture.whenStable();
+    await until(fixture, () => query(fixture, '.tm-image__fallback') !== null);
+    const fallback = query<HTMLElement>(fixture, '.tm-image__fallback')!;
+    expect(fallback.querySelector('.initials')?.textContent).toBe('LH');
+    expect(fallback.getAttribute('role')).toBe('img');
+    expect(fallback.getAttribute('aria-label')).toBe('Lina Hakim');
+    expect(query(fixture, '.tm-image__glyph--error')).toBeNull();
+    expect(noticeText(fixture)).toBe('');
+    // The placeholder fills the same fixed box.
+    expect(fallback.getBoundingClientRect().width).toBe(50);
+    expect(fallback.getBoundingClientRect().height).toBe(50);
+  });
+
+  it('placeholderOnError with a decorative alt hides the fallback from assistive technology', async () => {
+    const control = setupFetcher();
+    control.fail = true;
+    const fixture = TestBed.createComponent(FallbackHost);
+    fixture.componentInstance.alt.set('');
+    await fixture.whenStable();
+    await until(fixture, () => query(fixture, '.tm-image__fallback') !== null);
+    const fallback = query<HTMLElement>(fixture, '.tm-image__fallback')!;
+    expect(fallback.hasAttribute('role')).toBe(false);
+    expect(fallback.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('without placeholderOnError a failing fetch keeps the error glyph and its notice', async () => {
+    const control = setupFetcher();
+    control.fail = true;
+    const fixture = TestBed.createComponent(FallbackHost);
+    fixture.componentInstance.fallback.set(false);
+    await fixture.whenStable();
+    await until(fixture, () => query(fixture, '.tm-image__glyph--error') !== null);
+    expect(query(fixture, '.tm-image__fallback')).toBeNull();
+    expect(query(fixture, '.initials')).toBeNull();
+    expect(noticeText(fixture)).toBe('The image could not be loaded');
+  });
+
+  it('placeholderOnError without a placeholder template shows the glyph as usual', async () => {
+    const control = setupFetcher();
+    control.fail = true;
+    const fixture = TestBed.createComponent(FallbackHost);
+    fixture.componentInstance.withTemplate.set(false);
+    await fixture.whenStable();
+    await until(fixture, () => query(fixture, '.tm-image__glyph--error') !== null);
+    expect(query(fixture, '.tm-image__fallback')).toBeNull();
+    expect(noticeText(fixture)).toBe('The image could not be loaded');
   });
 
   it('an etag change refetches; the same etag does not', async () => {

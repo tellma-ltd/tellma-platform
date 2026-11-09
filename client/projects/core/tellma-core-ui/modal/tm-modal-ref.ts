@@ -178,11 +178,20 @@ export class TmModalRef<R = void> {
  * @internal
  */
 export interface ɵTmModalShellPayload {
+  /** The content component, or null for template content. */
   readonly component: Type<unknown> | null;
+  /** The content template, or null for component content. */
   readonly template: TemplateRef<unknown> | null;
+  /** The header title, or undefined for none. */
   readonly title: string | undefined;
+  /** The title element's id, the dialog's `aria-labelledby`. */
   readonly titleId: string;
+  /** Where the modal sits: centered, or the drawer at the inline-end edge. */
+  readonly placement: 'center' | 'end';
+  /** Whether the header shows the X button. */
   readonly showClose: boolean;
+  /** The open config's data. */
   readonly data: unknown;
+  /** The modal's ref, the template context's `$implicit`. */
   readonly ref: TmModalRef<unknown>;
 }

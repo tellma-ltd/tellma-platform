@@ -11,6 +11,7 @@ comparison over absent values is easy to get subtly wrong and very hard to notic
 | Suite | What it proves |
 |---|---|
 | `DifferentialTests` | The rows on the server are the rows in memory, and every corpus query answers the same on both — restrictions to key sets included, with each table of keys declared ahead of the statement the way a host would. |
+| `FilterStructureTests` | A rebase onto a navigation's target and a semi-join over another entity's rows are each the exact complement of their negation — the rows whose navigation reaches nothing, and the rows nothing points at, included — and one compiled statement answers for every user. |
 | `EmbeddingTests` | A compiled statement embeds in SQL of a host's own: its body counts as a derived table, unordered or paged, with its prologue written first; and keys one statement captures into a table restrict a second one in the same batch. |
 | `BackendFactsTests` | Every function that promises a value produces one even when everything it reads is missing; division keeps the fractional digits the language promises; emitted SQL means the same thing under hostile connection settings; and every zone the embedded table resolves to is one the server has. |
 

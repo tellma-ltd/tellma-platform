@@ -131,6 +131,12 @@ namespace Tellma.Identity.Hosting
             services.AddAuthorization();
             services.Configure<Microsoft.AspNetCore.Authorization.AuthorizationOptions>(ApiPolicies.Configure);
 
+            // Every management-API call is counted and logged: an authorized one by the
+            // controllers' own filter, a refused one by the decorated authorization result
+            // handler, because the authorization middleware answers it before MVC runs.
+            services.AddSingleton<ManagementApiCallRecorder>();
+            ManagementApiAuthorizationResultHandler.Decorate(services);
+
             // Best-effort logout-token delivery: bounded timeout plus the standard retry pipeline.
             services.AddHttpClient(
                     Services.BackchannelLogout.BackchannelLogoutService.HttpClientName,
@@ -202,6 +208,11 @@ namespace Tellma.Identity.Hosting
             // the application model in-proc so its routes do not exist there at all.
             services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(mvc =>
                 mvc.Conventions.Add(new RemoveControlPlaneControllersConvention(snapshot.Mode)));
+
+            // Every management-API action must be a named, routed endpoint, refused at startup
+            // otherwise, so none answers at the bare version prefix or goes uncounted.
+            services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(static mvc =>
+                mvc.Conventions.Add(new ManagementApiModelConvention()));
 
             string prefix = snapshot.RoutePrefix;
             if (prefix.Length > 0)

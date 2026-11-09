@@ -19,7 +19,7 @@ export const TM_FORM_FIELD_CONTROL: InjectionToken<TmFormFieldControl>;
 // @public
 export class TmFormField {
     constructor();
-    protected readonly anchoredError: _tellma_core_ui_private.TmAnchoredOverlay;
+    protected readonly anchoredError: _tellma_core_ui_overlay.TmAnchoredOverlay;
     protected readonly chromeless: _angular_core.Signal<boolean>;
     protected readonly control: _angular_core.Signal<TmFormFieldControl | undefined>;
     readonly error: _angular_core.InputSignal<string>;

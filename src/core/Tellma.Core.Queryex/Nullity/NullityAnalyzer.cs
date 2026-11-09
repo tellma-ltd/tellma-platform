@@ -94,11 +94,16 @@ namespace Tellma.Core.Queryex.Nullity
 
                 // Every construct that yields a truth value yields one: comparison is defined for
                 // absent operands rather than undefined by them, so a predicate is never anything
-                // but true or false and no third possibility leaks through a negation.
-                TypedComparison or TypedIn or TypedIsNull or TypedLogical or TypedNot =>
-                    QueryexNullity.NotNull,
+                // but true or false and no third possibility leaks through a negation. A rebased
+                // criterion and a semi-join are the same: one tests for the row it needs before
+                // reading it, and the other is an existence test, which has no third answer.
+                TypedComparison or TypedIn or TypedIsNull or TypedLogical or TypedNot
+                    or TypedVia or TypedExists => QueryexNullity.NotNull,
 
                 TypedCall call => CallNullity(call),
+
+                // A leaf of a composed filter is its expression, at a place in the tree.
+                TypedFilterLeaf leaf => _map[leaf.Expression],
                 _ => QueryexNullity.Nullable,
             };
         }

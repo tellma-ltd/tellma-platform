@@ -95,6 +95,15 @@ namespace Tellma.Queryex.Testing.Probe
             if (plan.Where is not null)
             {
                 Inspect(plan.Where, "filter", findings);
+
+                // A semi-join's bindings sit in its subquery's own source, each a fragment of its own.
+                foreach (PlanSubquery subquery in Subqueries(plan.Where))
+                {
+                    foreach (ValueBinding binding in subquery.Bindings)
+                    {
+                        Inspect(binding.Value, "subquery binding " + binding.Alias, findings);
+                    }
+                }
             }
 
             if (plan.Having is not null)
@@ -152,6 +161,25 @@ namespace Tellma.Queryex.Testing.Probe
             }
         }
 
+        /// <summary>Every subquery under a node, nested ones included.</summary>
+        /// <param name="node">The node.</param>
+        /// <returns>The subqueries, outer ones first.</returns>
+        private static IEnumerable<PlanSubquery> Subqueries(PlanNode node)
+        {
+            if (node is PlanExists exists)
+            {
+                yield return exists.Subquery;
+            }
+
+            foreach (PlanNode child in Children(node))
+            {
+                foreach (PlanSubquery nested in Subqueries(child))
+                {
+                    yield return nested;
+                }
+            }
+        }
+
         /// <summary>Whether a value contains an aggregation anywhere.</summary>
         /// <param name="node">The value.</param>
         /// <returns>True when it does.</returns>
@@ -163,47 +191,13 @@ namespace Tellma.Queryex.Testing.Probe
         /// <summary>What sits directly under one plan node.</summary>
         /// <param name="node">The node.</param>
         /// <returns>Its children.</returns>
+        /// <remarks>
+        ///     The engine's own reading of the plan's shape, shared rather than restated, so a node kind
+        ///     the plan gains is inspected here the day it is added.
+        /// </remarks>
         private static ImmutableArray<PlanNode> Children(PlanNode node)
         {
-            return node switch
-            {
-                PlanTemplateValue template => template.Operands,
-                PlanTemplatePredicate template => template.Operands,
-                PlanArithmetic arithmetic => [arithmetic.Left, arithmetic.Right],
-                PlanNegate negate => [negate.Operand],
-                PlanAggregate aggregate => Both(aggregate.Argument, aggregate.Condition),
-                PlanValueOfPredicate truth => [truth.Inner],
-                PlanPredicateOfValue truth => [truth.Inner],
-                PlanJunction junction => [.. junction.Operands.Cast<PlanNode>()],
-                PlanNegation negation => [negation.Operand],
-                PlanCompare compare => [compare.Left, compare.Right],
-                PlanIsNull test => [test.Value],
-                PlanIn membership => [membership.Value, .. membership.Elements.Cast<PlanNode>()],
-                PlanSetComparison set => [set.Left, set.Right],
-                PlanSetMembership set => [set.Value, .. set.Elements.Cast<PlanNode>()],
-                PlanHierarchyTest hierarchy => [hierarchy.Node, hierarchy.Key],
-                _ => [],
-            };
-        }
-
-        /// <summary>The children an aggregation has, skipping the ones it does not.</summary>
-        /// <param name="argument">The value aggregated, when there is one.</param>
-        /// <param name="condition">The per-row condition, when there is one.</param>
-        /// <returns>The children.</returns>
-        private static ImmutableArray<PlanNode> Both(PlanValue? argument, PlanPredicate? condition)
-        {
-            ImmutableArray<PlanNode>.Builder children = ImmutableArray.CreateBuilder<PlanNode>(2);
-            if (argument is not null)
-            {
-                children.Add(argument);
-            }
-
-            if (condition is not null)
-            {
-                children.Add(condition);
-            }
-
-            return children.ToImmutable();
+            return PlanWalk.Children(node);
         }
     }
 }

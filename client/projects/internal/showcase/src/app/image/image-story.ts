@@ -12,8 +12,9 @@ import { TmImage, TmImagePlaceholder, type TmImageEdit } from '@tellma/core-ui/i
 /**
  * tm-image demo host — three same-src instances (the cache coalesces to
  * one request), etag flip + clearAll refetch hooks for the network
- * counting battery, the error glyph, custom placeholder, and edit mode
- * with an emission readout. Drives the Playwright battery.
+ * counting battery, the error glyph, custom placeholder, the placeholder
+ * fallback on error, and edit mode with an emission readout. Drives the
+ * Playwright battery.
  */
 @Component({
   imports: [TmButton, TmImage, TmImagePlaceholder],
@@ -77,6 +78,21 @@ import { TmImage, TmImagePlaceholder, type TmImageEdit } from '@tellma/core-ui/i
         <tm-image data-testid="empty-image" src="" alt="" [width]="96" [height]="96" [defer]="false">
           <ng-template tmImagePlaceholder>
             <span class="initials" data-testid="custom-placeholder">LH</span>
+          </ng-template>
+        </tm-image>
+        <!-- An avatar whose photo fails falls back to its initials. -->
+        <tm-image
+          data-testid="fallback-image"
+          src="/missing-avatar.png"
+          alt="Lina Hakim"
+          shape="circle"
+          [width]="96"
+          [height]="96"
+          [defer]="false"
+          placeholderOnError
+        >
+          <ng-template tmImagePlaceholder>
+            <span class="initials" data-testid="fallback-initials">LH</span>
           </ng-template>
         </tm-image>
       </div>

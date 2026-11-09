@@ -40,7 +40,7 @@ namespace Tellma.Identity.IntegrationTests.Api
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
             using HttpResponseMessage response = await client.PostAsJsonAsync(
-                new Uri("/api/identity/invitations", UriKind.Relative),
+                new Uri("/api/identity/v1/invitations", UriKind.Relative),
                 new
                 {
                     users = new[]
@@ -90,7 +90,7 @@ namespace Tellma.Identity.IntegrationTests.Api
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
             using HttpResponseMessage response = await client.PostAsJsonAsync(
-                new Uri("/api/identity/invitations", UriKind.Relative),
+                new Uri("/api/identity/v1/invitations", UriKind.Relative),
                 new
                 {
                     users = new[]
@@ -248,7 +248,7 @@ namespace Tellma.Identity.IntegrationTests.Api
             using HttpClient client = factory.CreateClient();
 
             using HttpResponseMessage response = await client.PostAsJsonAsync(
-                new Uri("/api/identity/invitations", UriKind.Relative),
+                new Uri("/api/identity/v1/invitations", UriKind.Relative),
                 new { users = new[] { new { email = "x@example.com" } } },
                 TestContext.Current.CancellationToken);
 

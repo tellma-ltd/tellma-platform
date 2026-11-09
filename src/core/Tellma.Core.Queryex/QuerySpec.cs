@@ -47,6 +47,11 @@ namespace Tellma.Core.Queryex
         /// <summary>
         ///     The group-level predicate. A caller error unless <see cref="Aggregate" /> is set.
         /// </summary>
+        /// <remarks>
+        ///     It sees groups rather than rows, so neither a <see cref="FilterTree.ViaNode" /> nor a
+        ///     <see cref="FilterTree.ExistsNode" /> may appear in it: both read rows, and are a caller
+        ///     error here.
+        /// </remarks>
         public FilterTree? Having { get; init; }
 
         /// <summary>
@@ -162,7 +167,7 @@ namespace Tellma.Core.Queryex
 
         /// <summary>
         ///     The group-level predicate, when present. A caller error unless
-        ///     <see cref="Aggregate" /> is set.
+        ///     <see cref="Aggregate" /> is set, or when it holds a rebase or a semi-join.
         /// </summary>
         public FilterTree? Having { get; init; }
 

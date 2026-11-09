@@ -57,11 +57,12 @@ interface LocalPreview {
 }
 
 /**
- * The four mutually exclusive box renderings. Named so the emitted
- * declaration carries the alias — a literal union's print order follows
- * the compiler's type interning and churns the API golden.
+ * The five mutually exclusive box renderings. `fallback` is a failed load
+ * rendered through the placeholder template (`placeholderOnError`). Named so
+ * the emitted declaration carries the alias — a literal union's print order
+ * follows the compiler's type interning and churns the API golden.
  */
-type DisplayState = 'preview' | 'image' | 'error' | 'placeholder';
+type DisplayState = 'preview' | 'image' | 'error' | 'fallback' | 'placeholder';
 
 /** An active fitting session. */
 interface FittingSession {
@@ -126,6 +127,18 @@ interface FittingSession {
         }
         @case ('image') {
           <img class="tm-image__img" [src]="displayUrl()" [alt]="alt()" draggable="false" />
+        }
+        @case ('fallback') {
+          <!-- A failed load shown as the placeholder (an avatar's initials):
+               the box still presents the image, named by its alt text. -->
+          <div
+            class="tm-image__fallback"
+            [attr.role]="alt() === '' ? null : 'img'"
+            [attr.aria-label]="alt() === '' ? null : alt()"
+            [attr.aria-hidden]="alt() === '' ? 'true' : null"
+          >
+            <ng-container [ngTemplateOutlet]="placeholder()!.template" />
+          </div>
         }
         @case ('error') {
           <div
@@ -299,6 +312,14 @@ export class TmImage {
   readonly editSrc = input<string | undefined>(undefined);
   /** `view` renders; `edit` adds replace / re-fit / delete. */
   readonly mode = input<'view' | 'edit'>('view');
+  /**
+   * Render a failed load through the `tmImagePlaceholder` template instead
+   * of the broken-image glyph — an avatar falls back to its initials. The
+   * box then presents the image as before, named by `alt`, and the failure
+   * shows no notice. Without a placeholder template the glyph shows as
+   * usual. Default `false`.
+   */
+  readonly placeholderOnError = input(false, { transform: booleanAttribute });
   /** Reject picked files over this many bytes (before any processing). */
   readonly maxFileBytes = input(20 * 1024 * 1024);
   /** Downscale picked output whose longest edge exceeds this many px. */
@@ -352,7 +373,12 @@ export class TmImage {
     return notice === null ? null : this.translate(notice.key, notice.params)();
   });
 
-  /** Which of the four mutually exclusive box renderings is active. */
+  /** Whether a failed load renders the placeholder template (and stays silent). */
+  private readonly fallsBackOnError = computed(
+    () => this.placeholderOnError() && this.placeholder() !== undefined,
+  );
+
+  /** Which of the mutually exclusive box renderings is active. */
   protected readonly displayState = computed<DisplayState>(() => {
     if (this.preview() !== null) {
       return 'preview';
@@ -364,7 +390,10 @@ export class TmImage {
     if (status === 'ready') {
       return 'image';
     }
-    return status === 'error' ? 'error' : 'placeholder';
+    if (status !== 'error') {
+      return 'placeholder';
+    }
+    return this.fallsBackOnError() ? 'fallback' : 'error';
   });
 
   /** Whether an image (stored or local preview) is showing — gates delete. */
@@ -509,6 +538,8 @@ export class TmImage {
    * Fails the pipeline (stale tokens no-op). The error glyph is silent to
    * a screen reader until it is focused, so the failure also goes through
    * the status region — the channel pick rejections already announce on.
+   * A failure that falls back to the placeholder stays silent: the box
+   * still presents the image by its alt text, as an avatar's initials do.
    */
   private failLoad(token: number): void {
     if (token !== this.loadToken) {
@@ -516,7 +547,9 @@ export class TmImage {
     }
     this.status.set('error');
     this.setDisplayUrl(null);
-    this.noticeKey.set({ key: 'image.error' });
+    if (!untracked(this.fallsBackOnError)) {
+      this.noticeKey.set({ key: 'image.error' });
+    }
   }
 
   /**

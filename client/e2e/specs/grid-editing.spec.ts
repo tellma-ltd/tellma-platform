@@ -13,6 +13,7 @@ import {
   editor,
   editorCaret,
   editorInput,
+  expectCellText,
   gotoGrid,
   gridScroller,
   modelJson,
@@ -203,7 +204,7 @@ test.describe('type-to-edit and commit paths', () => {
     await page.keyboard.press('5');
     await page.keyboard.press('Enter');
     await expect.poll(async () => (await lineAt(page, 0)).quantity).toBe(5);
-    expect(await cellText(page, 0, 1)).toBe('5');
+    await expectCellText(page, 0, 1, '5');
     await expect(cell(page, 0, 1)).not.toHaveClass(/tm-grid__cell--error/);
   });
 
@@ -263,7 +264,7 @@ test.describe('enum cells (built-in tm-select editor)', () => {
     await expect(editor(page)).toHaveCount(0);
     await expect.poll(async () => (await lineAt(page, 0)).category).toBe('freight');
     await expect(cell(page, 0, 5)).toBeFocused();
-    expect(await cellText(page, 0, 5)).toBe('Freight');
+    await expectCellText(page, 0, 5, 'Freight');
   });
 
   test('two-stage Esc: the first closes the panel, the second cancels the session', async ({
@@ -453,7 +454,7 @@ test.describe('clearHistory (§12)', () => {
     // reach, so the first edit stands.
     await page.keyboard.press('Control+z');
     await expect.poll(async () => (await lineAt(page, 0)).description).toBe('X');
-    expect(await cellText(page, 0, 0)).toBe('X');
+    await expectCellText(page, 0, 0, 'X');
   });
 });
 
@@ -480,6 +481,6 @@ test.describe('custom editor story (grid-custom-editor)', () => {
     await expect
       .poll(async () => (await modelJson<Review[]>(page))[0].rating)
       .toBe(4);
-    expect(await cellText(page, 0, 1)).toBe('4');
+    await expectCellText(page, 0, 1, '4');
   });
 });

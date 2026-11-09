@@ -5,9 +5,9 @@ worker compose it through the same composition method. It takes no ASP.NET Core 
 host without the web stack composes it unchanged, and its services are testable without an HTTP
 context.
 
-Today it holds the composition root and the first piece of blob storage, the file-system store.
-Data access, the CRUD pipeline, access control, settings, the rest of blobs, Excel, jobs and
-notifications join it as namespaces.
+Today it holds the composition root, the first piece of blob storage (the file-system store) and
+the three calendar systems. Data access, the CRUD pipeline, access control, settings, caching,
+localization, the rest of blobs, Excel, jobs and notifications join it as namespaces.
 
 ## The composition root
 
@@ -105,14 +105,57 @@ Internally the namespace also holds the upload content-type sniffer (signatures 
 declaration; executables, HTML and SVG never stored) and the file-name sanitiser, which the
 staging service uses.
 
+## Calendars
+
+`CoreFeature` registers the three calendar systems, in this order, and the `ICalendarRegistry` over
+every system the composition contributed (a distribution adds one with
+`contribution.Calendar<TCalendar>()`):
+
+| Code | System | Exact range | Beyond it |
+|---|---|---|---|
+| `gc` | `GregorianCalendarSystem`, over `GregorianCalendar` | every `DateOnly` | — |
+| `uq` | `UmAlQuraCalendarSystem`, over `UmAlQuraCalendar` | AD 1900-04-30 to 2077-11-16 (AH 1318 to 1500) | the tabular `HijriCalendar` with `HijriAdjustment = 0`, an approximation, except that Muharram 1501, whose tabular first day is the table's last, begins the day after the table with 29 days; before AH 1, the marked ISO Gregorian form |
+| `et` | `EthiopianCalendarSystem`, a port of ICU's Julian-day-number arithmetic (13 months, leap year `y % 4 == 3`, one era) | AD 1752-09-14 to 2500-01-01 guaranteed; exact from the epoch, AD 0008-08-27 | before the epoch, the marked ISO Gregorian form |
+
+Rendering is the platform's own code, never a culture's calendar. Each culture is read once
+(`CalendarCultureData`): its Gregorian formats (a culture whose own calendar is another, such as
+`ar-SA` on Umm al-Qura, which ICU made its default before release 78, is switched to its optional
+Gregorian calendar on a private clone), the four styles' patterns
+(`Short` the numeric short date, `Full` the long date with a weekday, `Long` without it, `Medium`
+with the month abbreviated), its short time pattern and its names. Every pattern loses CLDR's
+right-to-left marks and eras, every year renders in full and every digit in ASCII, so a date pasted
+from an email or an export stays a date. The weekday leaves `Long` with the punctuation that joined
+it, and with only that where the literal beside it also holds words. A date a calendar cannot
+represent renders as its ISO Gregorian date marked with the Gregorian code (`0600-01-01 gc`).
+`TryParse` reads the numeric style back (any script's digits, any separators between the three
+groups, the year in four digits; outside them only white space and the pattern's own leading and
+trailing text, such as Bulgarian's ` г.`) and the ISO `yyyy-MM-dd` form, and returns a date only
+when the calendar renders it with the same three numbers.
+
+Each system's framework `Calendar` covers exactly the dates the system decomposes: `uq`'s is the
+table extended by the tabular calendar under the same rule (`UmAlQuraExtendedCalendar`), so month
+arithmetic works beyond the table too.
+
+Month names of `uq` and `et` are Core's resources, `Calendar_<code>_Month<n>` in
+`Resources/Strings.resx` (English) and its Arabic and Amharic satellites, taken from CLDR so the
+server and the browser agree; `gc` takes the culture's own.
+
+Culture data comes from the host's ICU, so two releases can differ in a pattern's punctuation or a
+name's spelling (Windows' and Ubuntu's do, for `en-GB`'s full date and `am-ET`'s month names, and ICU 78 gives
+`ar-SA` a Gregorian default calendar). The golden tests and every test of a concrete value therefore pin the
+culture data they assert; the tests over the host's own cultures assert properties, and the test of
+a culture on Umm al-Qura compares it with the same culture's own Gregorian data.
+
 ## Layout
 
 | Folder | Contents |
 |---|---|
 | `Composition/` | `AddTellma`, `TellmaBuilder`, `TellmaComposition.Validate`, `CoreFeature`, `IContributionRealizer<T>`, `RealizationContext`, `TellmaStartupGate`; internally the pipeline, the feature graph, the composition record the checks and later runtimes read, and Core's model contributions. |
-| `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements and Core's model configurations. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
+| `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations and calendar systems. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
 | `Composition/Checks/` | The built-in startup checks above. |
 | `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |
+| `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
+| `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; so far the month names of `uq` and `et`. |
 
 ## Tests
 

@@ -23,12 +23,14 @@ export class TmAlertHarness extends ComponentHarness {
 export class TmButtonHarness extends ComponentHarness {
     click(): Promise<void>;
     focus(): Promise<void>;
+    getDisabledReason(): Promise<string | null>;
     getSize(): Promise<'sm' | 'md' | 'lg'>;
     getText(): Promise<string>;
     getVariant(): Promise<'primary' | 'secondary' | 'ghost' | 'danger'>;
     static hostSelector: string;
     isDisabled(): Promise<boolean>;
     isFocused(): Promise<boolean>;
+    isLink(): Promise<boolean>;
     isPending(): Promise<boolean>;
 }
 
@@ -262,6 +264,7 @@ export class TmMenuItemHarness extends ComponentHarness {
 export class TmModalHarness extends ComponentHarness {
     close(): Promise<void>;
     getBodyText(): Promise<string>;
+    getPlacement(): Promise<'center' | 'end'>;
     getTitle(): Promise<string | null>;
     hasCloseButton(): Promise<boolean>;
     static hostSelector: string;
@@ -292,6 +295,7 @@ export class TmOptionHarness extends ComponentHarness {
 // @public
 export class TmPopoverHarness extends ComponentHarness {
     getAriaLabel(): Promise<string | null>;
+    getSize(): Promise<'auto' | 'sm' | 'md' | 'lg'>;
     getText(): Promise<string>;
     static hostSelector: string;
     isFocused(): Promise<boolean>;
@@ -318,6 +322,7 @@ export class TmTabGroupHarness extends ComponentHarness {
     getSelectedTab(): Promise<TmTabHarness | null>;
     getTabs(): Promise<TmTabHarness[]>;
     static hostSelector: string;
+    isInstantiated(id: string): Promise<boolean>;
     selectTab(label: string): Promise<void>;
 }
 

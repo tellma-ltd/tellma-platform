@@ -31,6 +31,8 @@ export class TmTabContent {
 export class TmTabGroup {
     constructor();
     protected readonly effectiveSelectedId: _angular_core.Signal<string | undefined>;
+    instantiate(ids?: readonly string[]): void;
+    protected readonly instantiatedIds: _angular_core.WritableSignal<ReadonlySet<string>>;
     protected measureStrip(strip: EventTarget | null): void;
     protected onSelectedTabChange(id: string | undefined): void;
     protected onStripWheel(event: WheelEvent): void;
