@@ -12,6 +12,7 @@ using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Composition.Checks;
 using Tellma.Core.Composition.Realizers;
+using Tellma.Core.Data;
 
 namespace Tellma.Core.Composition
 {
@@ -128,6 +129,9 @@ namespace Tellma.Core.Composition
                     options.Bind(binding, feature.Name!);
                 }
             }
+
+            // --- The tenant model, built from what the realizers recorded ---
+            TellmaModelFactory.Register(services, _record);
 
             // --- The realised gate, first among the hosted services ---
             // Hosted services start in registration order, and a host may have registered some
@@ -449,6 +453,7 @@ namespace Tellma.Core.Composition
                 new PublicOriginCheck(_record),
                 new TaxonomyCheck(_record),
                 new EntityShapesCheck(_record),
+                new ModelContributorsCheck(_record),
             ]);
 
             foreach (IStartupCheck check in _record.BuiltInChecks)

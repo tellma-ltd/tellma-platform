@@ -5,8 +5,9 @@ worker compose it through the same composition method. It takes no ASP.NET Core 
 host without the web stack composes it unchanged, and its services are testable without an HTTP
 context.
 
-Today it holds the composition root, the first piece of blob storage (the file-system store) and
-the three calendar systems. Data access, the CRUD pipeline, access control, settings, caching,
+Today it holds the composition root, the tenant data model (`TellmaDbContext`, its conventions and
+the table-type binder), the first piece of blob storage (the file-system store) and the three
+calendar systems. The rest of data access, the CRUD pipeline, access control, settings, caching,
 localization, the rest of blobs, Excel, jobs and notifications join it as namespaces.
 
 ## The composition root
@@ -62,10 +63,89 @@ every problem `AddTellma` would throw.
 | `core.public-origin` | `Tellma:PublicOrigin` is missing, relative, more than an origin (a trailing slash included, since derived URIs append `/…` to it), or not https outside Development | yes |
 | `core.taxonomy` | in Development, the repository's `taxonomy.json` does not list the slug | no |
 | `core.entity-shapes` | the leaf registered for an entity does not implement a shape another feature requires of it; the fix lists the members | no |
+| `core.model-contributors` | a model configuration Core contributes is not one the tenant model can apply: a concrete entity type configuration, closed, or open over exactly the entity it configures with that parameter constrained to the replaceable default, and with a parameterless constructor | no |
 
 Options a feature declares are validated by `core.options` rather than by the host's
 `ValidateOnStart`, which would stop startup at the first failing options type before the gate could
 report the other problems.
+
+## The tenant model
+
+`TellmaDbContext` (`Tellma.Core.Data`) is the platform's tenant EF context, and its model is built
+from the composition alone. `AddTellma` registers it as a singleton `IModel`, built on first use
+from a context with no connection, beside the `TableTypeBinder` over it.
+
+- **Entities.** Every contributed entity (`contribution.Entity<T>()`), with each default a
+  `UseEntity<TDefault, TLeaf>()` replaced swapped for its leaf, so the model maps one type per
+  table; then, depth first, the children each one's `[NotMapped]` collections carry (a child is
+  never contributed), each swapped for its leaf too.
+- **Core's configurations**, in feature order: a closed `IEntityTypeConfiguration<T>`, or an open
+  one (`UserConfiguration<TUser> where TUser : User`) closed over the leaf registered for its type
+  parameter's constraint. `CoreFeature` contributes `dbo.__TellmaSchema` and
+  `dbo.__TellmaProvisioning` this way; no module or distribution can contribute one.
+- **Standalone table types**: every `contribution.TableType<T>()` class, in `dbo` under its class
+  name unless its `[TableType]` says otherwise. `CoreFeature` contributes `IdList`, `BigIdList`,
+  `GuidList`, `StringList`, `DateList`, `IdStampList` and `VersionTagList`.
+- **The platform collation** (`DatabaseCollations.Platform`) and named default constraints.
+
+Standalone types follow the entity rules: enums by name, timestamps `datetimeoffset(3)` unless
+the class declares a column type.
+
+`UseTellmaSqlServer(connectionString, deployment, sweepScope)` is the one place provider options
+are applied: `UseSqlServer` with `UseHierarchyId()` and compatibility level 160 (so a JSON column
+never turns into the native `json` type), the table-type extension under the sweep scope
+(`TableTypeSweepScopes.Tenant` by default), the platform's conventions, and the connection
+string's `Application Name` set to the deployment id, so EF's connections and the executor's share
+one pool.
+
+### Conventions
+
+The conventions run, in this order, at the head of the model-finalizing conventions, over the
+finished model and before the provider settles key generation and the table-type extension derives
+each type. Each configures as a declaration would: an explicit model configuration wins over it,
+and it wins over the provider's own conventions. Foreign keys are added explicitly, since the
+provider's model cleanup removes every foreign key without a navigation, and the platform maps no
+navigation. The provider's convention that indexes every foreign key is removed: an index exists
+only where a convention or Core's configuration declares it, under the platform's name.
+
+| Convention | Effect |
+|---|---|
+| `EnumStringConvention` | every enum or nullable enum property stored by member name |
+| `EnumStringLengthConvention` | `varchar(n)`, `n = max(8, longest value)` (a flags enum's longest value joins every flag), unless a length, unicode or column type is declared; no `CHECK` |
+| `JsonColumnConvention` | `[JsonColumn]` → `nvarchar(max)` |
+| `TimestampConvention` | every `DateTimeOffset` property `datetimeoffset(3)`, unless a precision or column type is declared |
+| `AuditConvention` | `CreatedById`/`ModifiedById` → `FK_<Table>_<Column>` to `core.Users`, no cascade, no index; both timestamps `datetimeoffset(7)` |
+| `CollationConvention` | `[Collation]` → the column's collation, which the row image copies |
+| `TableTypeConvention` | `[TableType]` → the extension's opt-in, granted to `tellma_app`; `[ExcludeFromTableType]` → the column's exclusion; standalone classes registered with their collations, exclusions and enums by name |
+| `TemporalConvention` | `[Temporal]` → system versioning, history `<schema>.<Table>History`, shadow `ValidFrom`/`ValidTo` left out of the table type; children follow their parent unless `[Temporal(false)]`; a table-per-type root or leaf fails |
+| `ChildConvention` | `[ParentKey]` → `FK_<Table>_<Column>` to the parent, no cascade, `IX_<Table>_<Column> INCLUDE (Id)` |
+| `ReferenceConvention` | `[References(typeof(T))]` → `FK_<Table>_<Column>` to the leaf registered for `T`, no cascade, `IX_<Table>_<Column>` |
+| `SiblingConvention` | `[Sibling]` → `FK_<Table>_Id` to the owner's leaf, `ON DELETE CASCADE` |
+| `TableIndexConvention` | `[TableIndex(…)]` → `IX_<Table>_<Columns>` in the declared order |
+| `TreeConvention` | `ParentId` → `FK_<Table>_ParentId` to the table itself and `IX_<Table>_ParentId`; shadow `Node hierarchyid NOT NULL`, `UX_<Table>_Node`, left out of the table type; subtree counts default 1; the maximum depth recorded |
+| `ActivatableConvention` | `IsActive` defaults 1, `DF_<Table>_IsActive` |
+| `JobEntityConvention` | `JobId` → `FK_<Table>_JobId` to `core.Jobs` `ON DELETE SET NULL`, `UX_<Table>_JobId` where not null |
+| `UniqueConvention` | `[Unique]`, `[NaturalKey]` → `UX_<Table>_<Column>`, filtered when nullable; on a child `(ParentKey, Column)` |
+| `BlobReferenceConvention` | `[BlobReference]` → `FK_<Table>_<Column>` to `core.Blobs`, `UX_<Table>_<Column>` where not null |
+| `SequenceConvention` | every keyed table's key never database-generated, and every one but a sibling's sequence `<schema>.sq_<Table>`, `int` or `bigint` like the key, `START WITH 1000 INCREMENT BY 1 NO CYCLE` |
+| `PositiveKeyConvention` | every keyed table → `CK_<Table>_Id CHECK ([Id] > 0)` |
+| `MultilingualConvention` | the `P2`/`P3` twins of a `[Multilingual]` anchor take its length and unicode, unless they declare their own, and are nullable |
+| `ConstraintNameConvention` | every primary key `PK_<Table>`, and every foreign key a Core configuration leaves unnamed `FK_<Table>_<Columns>` |
+
+A declaration the model cannot be built with (a reference to an entity absent from the model or
+mapped twice, an index over a property the class lacks, a key neither `int` nor `long`, a
+capability column ignored or hidden, a missing `core.Users`, `core.Jobs` or `core.Blobs`) fails the model with the class and the declaration named.
+
+### The table-type binder
+
+`TableTypeBinder` (`[TableTypeBinder]`) binds rows to table-valued parameters from the model's
+table-type definitions: an entity's rows to its table's row image, a standalone class's to its
+type. Each binding builds its `SqlMetaData` once, in the definition's column order (store type,
+length, precision, scale; text with the platform collation's locale rather than the thread's
+culture), and one compiled accessor per column, matched by name, that applies the model's value
+conversion (so an enum binds by name). Records are created lazily and again on every enumeration,
+so a retry re-sends the rows; an empty list binds as no value. Nothing else in the platform builds
+a `SqlDataRecord`.
 
 ## Blobs: the file-system store
 
@@ -119,7 +199,8 @@ every system the composition contributed (a distribution adds one with
 
 Rendering is the platform's own code, never a culture's calendar. Each culture is read once
 (`CalendarCultureData`): its Gregorian formats (a culture whose own calendar is another, such as
-`ar-SA`, is switched to its Gregorian calendar on a private clone), the four styles' patterns
+`ar-SA` on Umm al-Qura, which ICU made its default before release 78, is switched to its optional
+Gregorian calendar on a private clone), the four styles' patterns
 (`Short` the numeric short date, `Full` the long date with a weekday, `Long` without it, `Medium`
 with the month abbreviated), its short time pattern and its names. Every pattern loses CLDR's
 right-to-left marks and eras, every year renders in full and every digit in ASCII, so a date pasted
@@ -140,15 +221,21 @@ Month names of `uq` and `et` are Core's resources, `Calendar_<code>_Month<n>` in
 server and the browser agree; `gc` takes the culture's own.
 
 Culture data comes from the host's ICU, so two releases can differ in a pattern's punctuation or a
-name's spelling (Windows' and Ubuntu's do, for `en-GB`'s full date and `am-ET`'s month names).
+name's spelling (Windows' and Ubuntu's do, for `en-GB`'s full date and `am-ET`'s month names, and ICU 78 gives
+`ar-SA` a Gregorian default calendar). The golden tests and every test of a concrete value therefore pin the
+culture data they assert; the tests over the host's own cultures assert properties, and the test of
+a culture on Umm al-Qura compares it with the same culture's own Gregorian data.
 
 ## Layout
 
 | Folder | Contents |
 |---|---|
 | `Composition/` | `AddTellma`, `TellmaBuilder`, `TellmaComposition.Validate`, `CoreFeature`, `IContributionRealizer<T>`, `RealizationContext`, `TellmaStartupGate`; internally the pipeline, the feature graph, the composition record the checks and later runtimes read, and Core's model contributions. |
-| `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations and calendar systems. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
+| `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems and entities. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
 | `Composition/Checks/` | The built-in startup checks above. |
+| `Data/` | `TellmaDbContext`, `UseTellmaSqlServer`, `TableTypeSweepScopes`; internally the model definition and factory, the platform's own tables and the entity-contract reflection. |
+| `Data/Conventions/` | The model conventions above, the plugin that installs them, and the constraint names. |
+| `Data/TableTypes/` | `TableTypeBinder`, its bindings and the store-type metadata. |
 | `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
 | `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; so far the month names of `uq` and `et`. |

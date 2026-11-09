@@ -14,7 +14,10 @@ namespace Tellma.Core.Abstractions.Blobs
         /// </summary>
         Contain,
 
-        /// <summary>Centre-crop to a square, then scale to the maximum dimension.</summary>
+        /// <summary>
+        ///     Centre-crop to a square on the shorter side, then scale it down to the maximum
+        ///     dimension; a square smaller than the maximum is kept at its size, never upscaled.
+        /// </summary>
         CoverSquare,
     }
 }

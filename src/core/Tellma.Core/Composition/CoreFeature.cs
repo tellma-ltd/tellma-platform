@@ -5,7 +5,9 @@
 
 using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Calendars;
+using Tellma.Core.Data;
 
 namespace Tellma.Core.Composition
 {
@@ -44,6 +46,21 @@ namespace Tellma.Core.Composition
                 .Calendar<UmAlQuraCalendarSystem>()
                 .Calendar<EthiopianCalendarSystem>()
                 .Singleton<ICalendarRegistry, CalendarRegistry>();
+
+            // --- The platform's own tables in every tenant database, mapped for migrations only ---
+            _ = contribution
+                .Model<TellmaSchemaRowConfiguration>()
+                .Model<TellmaProvisioningRowConfiguration>();
+
+            // --- The standalone table types: the canonical bulk-operation shapes, and the version-tag guard's ---
+            _ = contribution
+                .TableType<IdList>()
+                .TableType<BigIdList>()
+                .TableType<GuidList>()
+                .TableType<StringList>()
+                .TableType<DateList>()
+                .TableType<IdStampList>()
+                .TableType<VersionTagList>();
         }
     }
 }

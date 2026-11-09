@@ -13,8 +13,9 @@ namespace Tellma.Core.Calendars
     ///     every date a <see cref="DateOnly" /> holds, with the culture's own Gregorian month names.
     /// </summary>
     /// <remarks>
-    ///     A culture whose default calendar is another (<c>ar-SA</c>'s is Umm al-Qura) still renders
-    ///     here with its Gregorian month names and patterns.
+    ///     A culture whose calendar is another (an <c>ar-SA</c> culture on Umm al-Qura, which older
+    ///     ICU releases make its default) still renders here with its Gregorian month names and
+    ///     patterns, taken from its optional Gregorian calendar.
     /// </remarks>
     public sealed class GregorianCalendarSystem : ICalendarSystem
     {

@@ -35,9 +35,12 @@ namespace Tellma.Core.Calendars
         private CalendarCultureData(CultureInfo culture)
         {
             // --- The culture's formats under the Gregorian calendar ---
-            // A culture whose default calendar is another (ar-SA's is Umm al-Qura) carries its
-            // Gregorian names and patterns behind its optional Gregorian calendar; a clone switched to
-            // it reads them. Only this private clone is ever switched.
+            // A culture whose calendar is another (ar-SA's is Umm al-Qura under ICU before 78, and any
+            // clone may be set to one) carries its Gregorian names and patterns behind its optional
+            // Gregorian calendar; a clone switched to it reads them. The decision rests on the
+            // culture's own calendar, never on the host's default for the culture's name, and a
+            // culture already on a Gregorian calendar (a pinned negotiated clone) is used as it is.
+            // Only this private clone is ever switched.
             var format = (DateTimeFormatInfo)culture.DateTimeFormat.Clone();
             if (format.Calendar is not GregorianCalendar)
             {

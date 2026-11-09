@@ -62,7 +62,7 @@ namespace Tellma.Core.Abstractions.Blobs
         public const string ImageDecodeFailedReason = ImageRejectedException.DecodeFailedReason;
 
         /// <summary><see cref="BlobTelemetryNames.ReasonTag" /> of an image failure: a render past its time budget.</summary>
-        public const string ImageTimeoutReason = "timeout";
+        public const string ImageTimeoutReason = ImageRejectedException.TimeoutReason;
 
         /// <summary><see cref="BlobTelemetryNames.ReasonTag" /> of a refused attach: no such blob.</summary>
         public const string AttachMissing = "missing";

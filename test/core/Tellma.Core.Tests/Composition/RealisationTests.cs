@@ -184,10 +184,12 @@ namespace Tellma.Core.Tests.Composition
                     .RequiresShape<SampleEntity, IEInvoiceTracked>()))
                 .UseEntity<SampleEntity, TrackedLeaf>());
 
+            // Core's own table types and configurations come first; core is realised before every feature.
             TellmaCompositionRecord record = Record(services);
-            Assert.Equal("gl", Assert.Single(record.TableTypes).Owner.Name);
+            Assert.All(record.TableTypes.TakeWhile(static t => t.Owner is CoreFeature), static t => Assert.Equal("core", t.Owner.Name));
+            Assert.Equal("gl", Assert.Single(record.TableTypes, static t => t.Owner is not CoreFeature).Owner.Name);
             Type[] configurations = [typeof(SampleRowConfiguration), typeof(OpenConfiguration<>)];
-            Assert.Equal(configurations, record.ModelConfigurations.Select(static c => c.Type));
+            Assert.Equal(configurations, record.ModelConfigurations.Where(static c => c.Owner is not CoreFeature).Select(static c => c.Type));
             Assert.Single(record.ShapeRequirements);
             Assert.Equal(typeof(TrackedLeaf), record.LeafOf(typeof(SampleEntity)));
             Assert.Equal(typeof(SampleRow), record.LeafOf(typeof(SampleRow)));
