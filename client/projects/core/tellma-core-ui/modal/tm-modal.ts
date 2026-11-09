@@ -141,7 +141,9 @@ let nextTitleId = 0;
  */
 @Injectable({ providedIn: 'root' })
 export class TmModal {
+  /** The CDK dialog service every modal opens through. */
   private readonly dialog = inject(Dialog);
+  /** The injector the drawer's position strategy is created with. */
   private readonly injector = inject(Injector);
   /** The live root direction: an open modal mirrors when the document's direction flips. */
   private readonly direction = inject(Directionality);

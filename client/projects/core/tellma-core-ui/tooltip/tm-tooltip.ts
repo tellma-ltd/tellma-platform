@@ -64,25 +64,34 @@ export class TmTooltip implements OnDestroy {
   readonly ɵshowOnTap = input(false, { transform: booleanAttribute });
 
   /**
-   * A text that replaces `text` while set: a `tmButton` on the same host
-   * shows its disabled reason here, which a tap then also opens.
+   * A disabled reason a `tmButton` on the same host shows here while set:
+   * the surface shows the tooltip text and then the reason on its own line
+   * (an icon-only button keeps its only visible label), the reason joins
+   * the host's description, and a tap also opens the tooltip.
    * @internal
    */
   readonly ɵreason = signal<string | null>(null);
 
+  /** The tooltip behaviour this directive drives from its inputs. */
   private readonly controller = new ɵTmTooltipController(
     inject<ElementRef<HTMLElement>>(ElementRef).nativeElement,
     () => this.viewContainer,
     inject(AriaDescriber),
   );
+  /** Where the surface is created, next to the host. */
   private readonly viewContainer = inject(ViewContainerRef);
 
   constructor() {
     // The description is available to AT from the start — no opening
     // needed. Re-registered whenever the shown text changes.
     effect(() => {
-      const text = this.ɵreason() ?? this.text();
-      untracked(() => this.controller.setText(text));
+      const text = this.text();
+      const reason = this.ɵreason();
+      untracked(() =>
+        reason === null
+          ? this.controller.setText(text)
+          : this.controller.setText(`${text}\n${reason}`, [text, reason]),
+      );
     });
     effect(() => {
       this.controller.showOnTap = this.ɵshowOnTap() || this.ɵreason() !== null;

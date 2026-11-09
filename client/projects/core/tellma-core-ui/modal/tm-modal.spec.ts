@@ -395,6 +395,27 @@ describe('TmModal', () => {
     expect(getComputedStyle(container()).animationName).toBe('none');
   });
 
+  it('a drawer dismisses on its backdrop through the canDismiss guard', async () => {
+    const { fixture, modal } = await setup();
+    let allow = false;
+    const ref = modal.open(ContentProbe, {
+      title: 'Drawer',
+      placement: 'end',
+      canDismiss: () => allow,
+    });
+    const tracked = track(ref);
+    await fixture.whenStable();
+    const backdrop = document.querySelector('.tm-modal-backdrop--end') as HTMLElement;
+    backdrop.click();
+    await fixture.whenStable();
+    expect(tracked.result()).toBe('open');
+    expect(shell()).not.toBeNull();
+
+    allow = true;
+    backdrop.click();
+    expect(await ref.closed).toEqual({ via: 'backdrop' });
+  });
+
   it('moves an open drawer to the other edge when the document direction flips', async () => {
     const { fixture, modal } = await setup();
     const ref = modal.open(ContentProbe, { title: 'Drawer', placement: 'end' });

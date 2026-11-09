@@ -19,10 +19,15 @@
   border-radius: var(--popover-radius);
   box-shadow: var(--shadow-md);
   padding: var(--popover-padding);
-  /* Every size stays inside the viewport less its margin on each side;
-     'auto' takes the content's width up to the token as well. */
-  --tm-popover-max-inline-size: calc(100vw - 2 * var(--popover-viewport-margin));
-  max-inline-size: min(var(--popover-max-inline-size), var(--tm-popover-max-inline-size));
+  /* Every size stays inside the visible viewport less its margin on each
+     side (the component writes the cap; 100vw, which counts a classic
+     scrollbar, stands in until it has). A fixed size sets its width;
+     'auto' takes the content's width up to the token. */
+  inline-size: var(--tm-popover-width, auto);
+  max-inline-size: min(
+    var(--tm-popover-width, var(--popover-max-inline-size)),
+    var(--tm-popover-inline-cap, calc(100vw - 2 * var(--popover-viewport-margin)))
+  );
   /* The room the chosen side offers, written by the component once the
      overlay is placed; the content scrolls inside. */
   max-block-size: var(--tm-popover-block-cap, none);
@@ -38,21 +43,15 @@
    the viewport less the margin on each side, so a lg panel is full width
    there. */
 .tm-popover__panel--sm {
-  inline-size: var(--popover-width-sm);
+  --tm-popover-width: var(--popover-width-sm);
 }
 
 .tm-popover__panel--md {
-  inline-size: var(--popover-width-md);
+  --tm-popover-width: var(--popover-width-md);
 }
 
 .tm-popover__panel--lg {
-  inline-size: var(--popover-width-lg);
-}
-
-.tm-popover__panel--sm,
-.tm-popover__panel--md,
-.tm-popover__panel--lg {
-  max-inline-size: var(--tm-popover-max-inline-size);
+  --tm-popover-width: var(--popover-width-lg);
 }
 
 .tm-popover__panel:focus-visible {

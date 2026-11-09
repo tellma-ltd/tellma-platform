@@ -23,6 +23,7 @@ export class TmPopover {
     readonly closed: _angular_core.OutputEmitterRef<void>;
     readonly contentTemplate: Signal<TmPopoverContent | undefined>;
     protected readonly expanded: _angular_core.WritableSignal<boolean>;
+    protected readonly inlineCap: _angular_core.WritableSignal<number | null>;
     readonly isOpen: Signal<boolean>;
     protected onPanelFocusOut(event: FocusEvent): void;
     protected onPanelKeydown(event: KeyboardEvent): void;

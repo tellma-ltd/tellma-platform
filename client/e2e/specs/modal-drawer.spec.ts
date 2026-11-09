@@ -142,6 +142,16 @@ test.describe('drawer geometry', () => {
     expect(Math.abs(state.right - (await clientWidth(page)))).toBeLessThanOrEqual(1);
   });
 
+  test('the drawer keeps its box while its content loads', async ({ page }) => {
+    await page.goto(storyUrl('modal'));
+    await openDrawer(page);
+    const before = await drawerBox(page);
+    await page.getByTestId('drawer-load').click();
+    await expect(page.getByTestId('drawer-entry')).toHaveCount(50);
+    const after = await drawerBox(page);
+    expect(after).toEqual(before);
+  });
+
   test('focus is trapped in the drawer, Escape closes it, and focus returns', async ({
     page,
   }) => {

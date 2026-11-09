@@ -113,16 +113,20 @@ export class StackingModalContent {
 
 /**
  * Drawer content: a list long enough to scroll inside the full-height body,
- * with the pinned footer.
+ * with the pinned footer, and a control that loads long, wide rows while
+ * the drawer is open (its box must not move).
  */
 @Component({
   selector: 'showcase-modal-drawer-content',
   imports: [TmButton, TmModalFooter],
   template: `
     <p data-testid="drawer-content">Recent activity on INV-00042.</p>
+    <button tmButton variant="ghost" data-testid="drawer-load" (click)="loadMore()">
+      Load older activity
+    </button>
     <ul>
-      @for (entry of entries; track entry) {
-        <li>{{ entry }}</li>
+      @for (entry of entries(); track $index) {
+        <li data-testid="drawer-entry">{{ entry }}</li>
       }
     </ul>
     <div tmModalFooter>
@@ -134,10 +138,23 @@ export class StackingModalContent {
 })
 export class DrawerModalContent {
   protected readonly ref = inject(TmModalRef) as TmModalRef<void>;
-  protected readonly entries = Array.from(
-    { length: 30 },
-    (_, index) => `Line ${index + 1} posted to the ledger`,
+  protected readonly entries = signal<readonly string[]>(
+    Array.from({ length: 30 }, (_, index) => `Line ${index + 1} posted to the ledger`),
   );
+
+  /** Appends rows long enough to widen any box that sized itself to them. */
+  protected loadMore(): void {
+    const start = this.entries().length;
+    this.entries.set([
+      ...this.entries(),
+      ...Array.from(
+        { length: 20 },
+        (_, index) =>
+          `Line ${start + index + 1}: an adjustment posted by the period-end revaluation of ` +
+          'foreign-currency receivables, with its reference and the account it moved',
+      ),
+    ]);
+  }
 }
 
 /** Alert-dialog content: the message the dialog is described by, and the choice. */

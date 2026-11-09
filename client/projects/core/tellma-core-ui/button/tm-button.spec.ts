@@ -329,13 +329,16 @@ describe('tmButton disabledReason', () => {
     expect(get('reason').hasAttribute('aria-disabled')).toBe(false);
   });
 
-  it('a tmTooltip on the same button shows the reason in place of its text', async () => {
+  it('a tmTooltip on the same button shows its text, then the reason', async () => {
     const { fixture, host, get } = await setupReason();
     const button = get('with-tooltip');
+    // The name stays the label; the description is the reason (the label,
+    // equal to aria-label, is not described a second time).
+    expect(button.getAttribute('aria-label')).toBe('Delete');
     expect(descriptions(button)).toEqual(['Needs the Customers permission.']);
     button.dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'mouse' }));
     await tick(fixture);
-    expect(tooltipText()).toBe('Needs the Customers permission.');
+    expect(tooltipText()).toBe('Delete\nNeeds the Customers permission.');
 
     host.reason.set(null);
     await fixture.whenStable();

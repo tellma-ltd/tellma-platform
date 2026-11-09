@@ -47,10 +47,15 @@ export class ɵTmTooltipController {
   /** Whether a touch tap on the host shows the tooltip (long-press always does). */
   showOnTap = false;
 
+  /** The text the surface shows. */
   private text = '';
-  private describedText: string | null = null;
+  /** The descriptions registered on the host, to remove them again. */
+  private described: readonly string[] = [];
+  /** The floating surface, created on first show. */
   private panelRef: ComponentRef<ɵTmTooltipPanel> | null = null;
+  /** The pending hover show (the token delay). */
   private showTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The pending grace-period hide. */
   private hideTimer: ReturnType<typeof setTimeout> | undefined;
   /** Where the current touch press started, for telling a tap from a drag. */
   private press: { readonly id: number; readonly x: number; readonly y: number } | null = null;
@@ -84,16 +89,19 @@ export class ɵTmTooltipController {
   }
 
   /**
-   * Sets the tooltip text: re-registers the host's description (available
-   * to assistive technology whether or not the tooltip ever opens) and
-   * updates a visible surface in place.
+   * Sets the tooltip text the surface shows (a line break starts a new
+   * line) and the host's descriptions, by default the text itself. The
+   * descriptions are available to assistive technology whether or not the
+   * tooltip ever opens; the describer skips one equal to the host's
+   * `aria-label`, so a label is never read twice. A visible surface updates
+   * in place.
    */
-  setText(text: string): void {
-    if (this.describedText !== null) {
-      this.describer.removeDescription(this.host, this.describedText);
+  setText(text: string, descriptions: readonly string[] = [text]): void {
+    this.removeDescriptions();
+    for (const description of descriptions) {
+      this.describer.describe(this.host, description);
     }
-    this.describer.describe(this.host, text);
-    this.describedText = text;
+    this.described = descriptions;
     this.text = text;
     this.panelRef?.instance.text.set(text);
   }
@@ -109,10 +117,7 @@ export class ɵTmTooltipController {
     this.host.removeEventListener('pointerup', this.onPointerUp);
     this.host.removeEventListener('focus', this.onFocus);
     this.host.removeEventListener('blur', this.onBlur);
-    if (this.describedText !== null) {
-      this.describer.removeDescription(this.host, this.describedText);
-      this.describedText = null;
-    }
+    this.removeDescriptions();
     this.panelRef?.destroy();
     this.panelRef = null;
   }
@@ -197,10 +202,20 @@ export class ɵTmTooltipController {
     document.addEventListener('pointerdown', this.onDocumentPointerDownCapture, true);
   }
 
+  /** Removes the descriptions this controller registered. */
+  private removeDescriptions(): void {
+    for (const description of this.described) {
+      this.describer.removeDescription(this.host, description);
+    }
+    this.described = [];
+  }
+
+  /** The hover show delay, from the `--tooltip-delay` token (500 ms when unset). */
   private showDelayMs(): number {
     return parseCssTime(getComputedStyle(this.host).getPropertyValue('--tooltip-delay'), 500);
   }
 
+  /** Shows the surface now, creating it on first use; hides any other tooltip. */
   private showNow(): void {
     clearTimeout(this.showTimer);
     clearTimeout(this.hideTimer);
@@ -230,6 +245,7 @@ export class ɵTmTooltipController {
     this.hideTimer = setTimeout(() => this.hideNow(), HIDE_GRACE_MS);
   }
 
+  /** Hides the surface now and releases the Escape stack and the next-tap listener. */
   private hideNow(): void {
     clearTimeout(this.showTimer);
     clearTimeout(this.hideTimer);

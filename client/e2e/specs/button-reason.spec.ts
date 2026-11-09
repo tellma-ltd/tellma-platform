@@ -133,11 +133,18 @@ test.describe('disabled with a reason', () => {
     await expect(page.getByTestId('reason-btn')).toBeFocused();
   });
 
-  test('a reason replaces a tmTooltip on the same button while it is set', async ({ page }) => {
+  test('a tmTooltip on the same button shows its label, then the reason', async ({ page }) => {
     await page.goto(storyUrl('button'));
     const button = page.getByTestId('reason-icon-btn');
     await button.hover();
-    await expect(tooltip(page)).toHaveText(REASON);
+    // The icon-only button keeps its only visible label, above the reason.
+    await expect(tooltip(page)).toHaveText(`Delete ${REASON}`);
+    const lines = await tooltip(page).evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size;
+    });
+    expect(lines).toBeGreaterThanOrEqual(2);
     await expect(button).toHaveAccessibleName('Delete');
     await expect(button).toHaveAccessibleDescription(REASON);
 

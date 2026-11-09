@@ -29,6 +29,8 @@
   font-family: var(--font-ui);
   font-size: var(--tooltip-font-size);
   line-height: var(--leading-snug);
+  /* A line break in the text starts a new line (a label, then a reason). */
+  white-space: pre-line;
   box-shadow: var(--shadow-sm);
   animation: tm-tooltip-enter var(--duration-fast) var(--ease-out);
 }

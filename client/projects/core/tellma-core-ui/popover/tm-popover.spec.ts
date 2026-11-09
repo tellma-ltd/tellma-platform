@@ -344,6 +344,7 @@ describe('tm-popover + tmPopoverTriggerFor', () => {
         }
       </ng-template>
     </tm-popover>
+    <div [style.block-size.px]="spacer()"></div>
     </div>
   `,
 })
@@ -352,6 +353,7 @@ class SizedHost {
   readonly extraClass = signal<string | undefined>(undefined);
   readonly inset = signal(16);
   readonly lines = signal<readonly number[]>([]);
+  readonly spacer = signal(0);
 }
 
 describe('tm-popover sizes', () => {
@@ -432,6 +434,42 @@ describe('tm-popover sizes', () => {
     const box = (await openSized(fixture)).getBoundingClientRect();
     expect(box.left).toBeGreaterThanOrEqual(margin() - 1);
     expect(box.right).toBeLessThanOrEqual(document.documentElement.clientWidth - margin() + 1);
+  });
+
+  it('caps the width at the visible viewport, never counting a scrollbar', async () => {
+    const { fixture, host } = await setup(SizedHost);
+    host.size.set('lg');
+    await settle(fixture);
+    const surface = await openSized(fixture);
+    const cap = document.documentElement.clientWidth - 2 * margin();
+    expect(surface.style.getPropertyValue('--tm-popover-inline-cap')).toBe(`${cap}px`);
+    expect(surface.getBoundingClientRect().width).toBeLessThanOrEqual(cap + 1);
+  });
+
+  it('re-fits the height cap as the page scrolls while the panel is open', async () => {
+    const { fixture, host } = await setup(SizedHost);
+    host.lines.set(Array.from({ length: 80 }, (_, index) => index));
+    host.spacer.set(3000);
+    await settle(fixture);
+    const surface = await openSized(fixture);
+    const trigger = fixture.nativeElement.querySelector('.sized-trigger') as HTMLElement;
+    const capFor = (): string =>
+      `${Math.floor(
+        document.documentElement.clientHeight - trigger.getBoundingClientRect().bottom - margin(),
+      )}px`;
+    expect(surface.style.getPropertyValue('--tm-popover-block-cap')).toBe(capFor());
+    try {
+      // The anchor moves up the page, so the room below it grows.
+      const capBefore = surface.style.getPropertyValue('--tm-popover-block-cap');
+      window.scrollBy(0, 40);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await fixture.whenStable();
+      expect(window.scrollY).toBeGreaterThan(0);
+      expect(surface.style.getPropertyValue('--tm-popover-block-cap')).not.toBe(capBefore);
+      expect(surface.style.getPropertyValue('--tm-popover-block-cap')).toBe(capFor());
+    } finally {
+      window.scrollTo(0, 0);
+    }
   });
 
   it('applies panelClass to the panel', async () => {

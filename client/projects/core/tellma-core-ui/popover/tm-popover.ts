@@ -24,6 +24,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { Directionality } from '@angular/cdk/bidi';
+import { ScrollDispatcher, ViewportRuler } from '@angular/cdk/scrolling';
 import {
   CdkConnectedOverlay,
   type ConnectedOverlayPositionChange,
@@ -113,6 +114,7 @@ const FOCUSABLE =
         role="dialog"
         tabindex="-1"
         [class]="panelClasses()"
+        [style.--tm-popover-inline-cap.px]="inlineCap()"
         [attr.aria-label]="ariaLabel()"
         (keydown)="onPanelKeydown($event)"
         (focusout)="onPanelFocusOut($event)"
@@ -185,9 +187,17 @@ export class TmPopover {
    * viewport margins on a block side (see `fitInline`).
    */
   private readonly inlineShift = signal(0);
+  /**
+   * The widest the panel may be: the visible viewport width (a classic
+   * scrollbar excluded, which `100vw` would count) less the margin on each
+   * side; null until the first open.
+   */
+  protected readonly inlineCap = signal<number | null>(null);
   /** The side the CDK last placed the panel on, for re-fitting the height. */
   private placedPair: ConnectionPositionPair | null = null;
+  /** The host element, on which the size tokens are resolved. */
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+  /** The live root direction, against which start and end resolve. */
   private readonly direction = inject(Directionality);
 
   private readonly overlay = viewChild(CdkConnectedOverlay);
@@ -235,6 +245,29 @@ export class TmPopover {
 
   constructor() {
     this.isOpen = this.expanded.asReadonly();
+
+    // While open, a scroll moves the anchor and a resize the viewport, but
+    // the CDK reports a placement only when its side changes: re-fit the
+    // height on every scroll, and the width and offset on a resize (the new
+    // offset reaches the CDK with the next render, which the re-anchor's
+    // macrotask follows).
+    const scrolls = inject(ScrollDispatcher);
+    const viewport = inject(ViewportRuler);
+    effect((onCleanup) => {
+      if (!this.expanded()) {
+        return;
+      }
+      const scrolled = scrolls.scrolled(0).subscribe(() => this.fitBlock());
+      const resized = viewport.change().subscribe(() => {
+        this.fitInline();
+        this.fitBlock();
+        this.anchored.reanchor();
+      });
+      onCleanup(() => {
+        scrolled.unsubscribe();
+        resized.unsubscribe();
+      });
+    });
     inject(DestroyRef).onDestroy(() => {
       this.destroyed = true;
     });
@@ -354,9 +387,10 @@ export class TmPopover {
   }
 
   /**
-   * Keeps a fixed-size panel on a block side inside the viewport margins.
-   * Its width is known before it renders (the size token, clamped to the
-   * viewport as the stylesheet clamps it), so the offset is worked out
+   * Writes the panel's width cap (the visible viewport less the margin on
+   * each side), and keeps a fixed-size panel on a block side inside the
+   * viewport margins. Its width is known before it renders (the size
+   * token, clamped to that cap), so the offset is worked out
    * from the anchor alone and handed to the CDK with the positions: a `lg`
    * panel on a phone then sits full width with the margin on both sides,
    * instead of hanging off the edge its anchor is near. `'auto'` panels
@@ -365,17 +399,18 @@ export class TmPopover {
   private fitInline(): void {
     const size = untracked(this.size);
     const anchor = this.anchorRect();
+    const margin = tmTokenPx(this.host, '--popover-viewport-margin');
+    const viewport = document.documentElement.clientWidth;
+    const cap = viewport - 2 * margin;
+    this.inlineCap.set(cap);
     let shift = 0;
     if (size !== 'auto' && anchor !== null && !untracked(this.position).startsWith('inline')) {
-      const margin = tmTokenPx(this.host, '--popover-viewport-margin');
       shift = tmPopoverInlineShift(
         anchor,
-        // `100vw` in the stylesheet counts a classic scrollbar; the visible
-        // width the panel must stay inside does not.
-        Math.min(tmTokenPx(this.host, `--popover-width-${size}`), window.innerWidth - 2 * margin),
+        Math.min(tmTokenPx(this.host, `--popover-width-${size}`), cap),
         untracked(this.align),
         this.direction.value === 'rtl',
-        document.documentElement.clientWidth,
+        viewport,
         margin,
       );
     }
