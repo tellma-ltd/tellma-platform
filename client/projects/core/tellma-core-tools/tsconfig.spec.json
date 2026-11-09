@@ -1,0 +1,17 @@
+/*
+ * Type-checks the specs beside the sources (`pnpm run typecheck`). Vitest
+ * runs them from source; nothing here is emitted. The lint fixtures belong to
+ * the projects the rule tests give them.
+ */
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "sourceMap": false,
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/fixtures/**"]
+}
