@@ -18,7 +18,7 @@ package, built with `tsc -b` into `dist/`, and nothing in it ships to the browse
 | `tm/core-import-boundary` | Inside `@tellma/core`, a static import that leaves the entry-point graph or crosses entry points by a relative path; everywhere, an import below an entry point, and `@tellma/core/private` outside platform packages |
 | `tm/no-raw-http` | `fetch`, `XMLHttpRequest` and Angular's `HttpClient`: every request goes through `TmApi` |
 | `tm/no-web-storage` | `localStorage`, `sessionStorage`, `indexedDB` and `caches`: the platform's client store keeps data per user |
-| `tm/lazy-layouts` | A layout member of a declaration (`details`, `page`, `create`, `search`, `component`, `display`, `dialog`, `home`, `settingsEditor`, `panel`) that is not an inline `() => import('…')` |
+| `tm/lazy-layouts` | In `tmEntity`, `tmPage`, `tmFeature`, `tmWidget`, `tmOverride` and `tmCodedReport`, a layout member (`details`, `page`, `create`, `search`, `component`, `display`, `dialog`, `home`, `settingsEditor`, `panel`) that is not an inline `() => import('…')`; an entity's `details` may be an object whose `page` and `create` are checked instead, and `icons` and `providers` are not entered |
 | `tm/literal-declaration-keys` | A declaration key that is not a string literal |
 | `tm/no-decimal-operators` | `+`, `+=`, `<`, `<=`, `>` and `>=` on a `TmDecimal` (type-aware) |
 

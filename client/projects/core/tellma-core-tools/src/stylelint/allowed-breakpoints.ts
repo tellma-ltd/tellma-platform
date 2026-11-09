@@ -35,35 +35,72 @@ interface TmLibraryManifest {
   readonly exports: Readonly<Record<string, string | { readonly default: string }>>;
 }
 
-/**
- * Resolves the breakpoint file through the `@tellma/core-ui` package export
- * of the project being linted. Inside the platform's own workspace the
- * library is source rather than an installed package, so the export is
- * resolved through the library's manifest instead — the same `exports` entry
- * either way.
- */
-function loadBreakpoints(): number[] {
-  let file: string;
+/** The breakpoint file's package specifier: `@tellma/core-ui`'s export. */
+const BREAKPOINTS_SPECIFIER = '@tellma/core-ui/breakpoints.json';
+
+/** Resolves `specifier` as a module next to `from` (a file or package.json path), or `null`. */
+function tryResolve(from: string, specifier: string): string | null {
   try {
-    file = createRequire(join(process.cwd(), 'package.json')).resolve('@tellma/core-ui/breakpoints.json');
+    return createRequire(from).resolve(specifier);
   } catch {
-    // src/stylelint and dist/stylelint both sit three levels inside client/projects/core.
-    const libraryDir = fileURLToPath(new URL('../../../tellma-core-ui/', import.meta.url));
-    const manifest = JSON.parse(readFileSync(join(libraryDir, 'package.json'), 'utf8')) as TmLibraryManifest;
-    const target = manifest.exports['./breakpoints.json'];
-    if (target === undefined) {
-      throw new Error("@tellma/core-ui exports no './breakpoints.json'.");
-    }
-    file = join(libraryDir, typeof target === 'string' ? target : target.default);
+    return null;
   }
-  const table = JSON.parse(readFileSync(file, 'utf8')) as Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Inside the platform's own workspace the library is source rather than an
+ * installed package, so the export is resolved through the library's manifest
+ * instead — the same `exports` entry either way. `null` outside that workspace.
+ */
+function resolveFromSourceTree(): string | null {
+  // src/stylelint and dist/stylelint both sit three levels inside client/projects/core.
+  const libraryDir = fileURLToPath(new URL('../../../tellma-core-ui/', import.meta.url));
+  let manifest: TmLibraryManifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(libraryDir, 'package.json'), 'utf8')) as TmLibraryManifest;
+  } catch {
+    return null;
+  }
+  const target = manifest.exports['./breakpoints.json'];
+  return target === undefined ? null : join(libraryDir, typeof target === 'string' ? target : target.default);
+}
+
+/**
+ * Finds the breakpoint file of `@tellma/core-ui`, in order: from this
+ * package's own location; from the project being linted (the current
+ * directory); next to `@tellma/core`, whose peer it is, so a project that
+ * depends on `@tellma/core` alone still finds it under a strict layout; and
+ * in the platform's source tree.
+ */
+function breakpointsFile(): string {
+  const project = join(process.cwd(), 'package.json');
+  const core = tryResolve(project, '@tellma/core/package.json');
+  const file =
+    tryResolve(import.meta.url, BREAKPOINTS_SPECIFIER) ??
+    tryResolve(project, BREAKPOINTS_SPECIFIER) ??
+    (core === null ? null : tryResolve(core, BREAKPOINTS_SPECIFIER)) ??
+    resolveFromSourceTree();
+  if (file === null) {
+    throw new Error(
+      `tm/allowed-breakpoints could not find ${BREAKPOINTS_SPECIFIER}: add @tellma/core-ui to the project's dependencies.`,
+    );
+  }
+  return file;
+}
+
+/** Reads the breakpoint thresholds from the library's breakpoint file. */
+function loadBreakpoints(): number[] {
+  const table = JSON.parse(readFileSync(breakpointsFile(), 'utf8')) as Readonly<Record<string, unknown>>;
   return Object.values(table)
     .map(Number)
     .sort((a, b) => a - b);
 }
 
-/** The breakpoint thresholds in pixels, ascending. */
-const THRESHOLDS: readonly number[] = loadBreakpoints();
+/**
+ * The breakpoint thresholds in pixels, ascending. Exported for this package's
+ * own tests only: the module is not one of the package's entry points.
+ */
+export const THRESHOLDS: readonly number[] = loadBreakpoints();
 
 /** The thresholds as the messages list them. */
 const SET_TEXT = THRESHOLDS.map((value) => `${value}px`).join(', ');

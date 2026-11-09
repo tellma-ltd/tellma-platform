@@ -31,6 +31,21 @@
             "tsConfig": "projects/core/tellma-core/tsconfig.spec.json",
             "browsers": [
               "chromiumHeadless"
+            ],
+            "exclude": [
+              "**/*.csp.spec.ts"
+            ]
+          }
+        },
+        "test-csp": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "projects/core/tellma-core/tsconfig.spec.json",
+            "browsers": [
+              "chromiumHeadless"
+            ],
+            "include": [
+              "**/*.csp.spec.ts"
             ]
           }
         }
@@ -60,6 +75,21 @@
             "tsConfig": "projects/core/tellma-core-testing/tsconfig.spec.json",
             "browsers": [
               "chromiumHeadless"
+            ],
+            "exclude": [
+              "**/*.csp.spec.ts"
+            ]
+          }
+        },
+        "test-csp": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "projects/core/tellma-core-testing/tsconfig.spec.json",
+            "browsers": [
+              "chromiumHeadless"
+            ],
+            "include": [
+              "**/*.csp.spec.ts"
             ]
           }
         }
@@ -130,7 +160,19 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
-            "tsConfig": "projects/core/tellma-core-ui-tokens/tsconfig.spec.json"
+            "tsConfig": "projects/core/tellma-core-ui-tokens/tsconfig.spec.json",
+            "exclude": [
+              "**/*.csp.spec.ts"
+            ]
+          }
+        },
+        "test-csp": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "projects/core/tellma-core-ui-tokens/tsconfig.spec.json",
+            "include": [
+              "**/*.csp.spec.ts"
+            ]
           }
         }
       }
@@ -156,7 +198,19 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
-            "tsConfig": "projects/core/tellma-core-ui-testing/tsconfig.spec.json"
+            "tsConfig": "projects/core/tellma-core-ui-testing/tsconfig.spec.json",
+            "exclude": [
+              "**/*.csp.spec.ts"
+            ]
+          }
+        },
+        "test-csp": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "projects/core/tellma-core-ui-testing/tsconfig.spec.json",
+            "include": [
+              "**/*.csp.spec.ts"
+            ]
           }
         }
       }
@@ -182,7 +236,19 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
-            "tsConfig": "projects/locale/tellma-locale-ar/tsconfig.spec.json"
+            "tsConfig": "projects/locale/tellma-locale-ar/tsconfig.spec.json",
+            "exclude": [
+              "**/*.csp.spec.ts"
+            ]
+          }
+        },
+        "test-csp": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "projects/locale/tellma-locale-ar/tsconfig.spec.json",
+            "include": [
+              "**/*.csp.spec.ts"
+            ]
           }
         }
       }
@@ -252,7 +318,20 @@
           "defaultConfiguration": "development"
         },
         "test": {
-          "builder": "@angular/build:unit-test"
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "exclude": [
+              "**/*.csp.spec.ts"
+            ]
+          }
+        },
+        "test-csp": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "include": [
+              "**/*.csp.spec.ts"
+            ]
+          }
         }
       }
     }

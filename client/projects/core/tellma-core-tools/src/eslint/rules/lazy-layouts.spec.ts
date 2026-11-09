@@ -42,6 +42,20 @@ describe('tm/lazy-layouts', () => {
         { code: 'register({ component: StaticPage });' },
         // A spread's members are checked where they are written.
         { code: 'tmPage("x", { ...shared, titleKey: "X" });' },
+        // The object form of details: its page and create are the layouts.
+        {
+          code: `tmEntity('acme.Customer', {
+            details: { page: () => import('./d'), create: () => import('./c'), header: 'compact', edit: 'page' },
+          });`,
+        },
+        // Free-key members of a feature are not declaration members.
+        { code: "tmFeature({ key: 'acme', icons: { search: searchIcon, home: homeIcon } });" },
+        {
+          code: "tmFeature({ key: 'acme', providers: [{ provide: T, useValue: { display: 'compact', page: 20 } }] });",
+        },
+        // Helpers named tm… are not declarations.
+        { code: "tmFormatNumber(v, { display: 'short' });" },
+        { code: "tmInlineReport('acme.sales', { component: Eager });" },
       ],
       invalid: [
         {
@@ -83,6 +97,22 @@ describe('tm/lazy-layouts', () => {
         {
           code: "tmFeature({ key: 'acme', home: Home });",
           errors: [{ messageId: 'notLazy', data: { member: 'home' } }],
+        },
+        {
+          code: "tmEntity('acme.Customer', { details: { page: EagerDetails, create: () => import('./c') } });",
+          errors: [{ messageId: 'notLazy', data: { member: 'page' } }],
+        },
+        {
+          code: "tmEntity('acme.Customer', { details: { page: () => import('./d'), create: CreateLayout } });",
+          errors: [{ messageId: 'notLazy', data: { member: 'create' } }],
+        },
+        {
+          code: "tmFeature({ key: 'acme', entities: [tmEntity('acme.Customer', { search: CustomerSearch })] });",
+          errors: [{ messageId: 'notLazy', data: { member: 'search' } }],
+        },
+        {
+          code: "tmPage('x', { component: { page: () => import('./x') }, titleKey: 'X' });",
+          errors: [{ messageId: 'notLazy', data: { member: 'component' } }],
         },
       ],
     });

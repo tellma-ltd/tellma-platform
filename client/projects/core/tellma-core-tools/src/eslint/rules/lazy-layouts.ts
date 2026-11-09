@@ -29,8 +29,35 @@ const LAYOUT_MEMBERS: ReadonlySet<string> = new Set([
   'panel',
 ]);
 
-/** A declaration function: `tmEntity`, `tmPage`, `tmFeature`, `tmWidget` and the rest. */
-const DECLARATION_FUNCTION = /^tm[A-Z]/;
+/** The declaration functions whose arguments the rule reads. */
+const DECLARATION_FUNCTIONS: ReadonlySet<string> = new Set([
+  'tmEntity',
+  'tmPage',
+  'tmFeature',
+  'tmWidget',
+  'tmOverride',
+  'tmCodedReport',
+]);
+
+/**
+ * Members whose keys are free, not declaration members: `icons` maps icon
+ * names to their data, and `providers` holds Angular providers. Neither is
+ * entered.
+ */
+const OPAQUE_MEMBERS: ReadonlySet<string> = new Set(['icons', 'providers']);
+
+/**
+ * The layout member that may also be written as an object, whose own layout
+ * members are then checked: an entity's `details` (`{ page, create, … }`).
+ */
+const OBJECT_FORM_MEMBERS: ReadonlySet<string> = new Set(['details']);
+
+/** Unwraps `x as T` and `x satisfies T`. */
+function unwrap(node: TSESTree.Node): TSESTree.Node {
+  return node.type === AST_NODE_TYPES.TSAsExpression || node.type === AST_NODE_TYPES.TSSatisfiesExpression
+    ? unwrap(node.expression)
+    : node;
+}
 
 /** Whether `node` is `import('…')` with a literal specifier. */
 function isLiteralImport(node: TSESTree.Node): boolean {
@@ -59,9 +86,13 @@ function isLazyLoader(node: TSESTree.Node): boolean {
 }
 
 /**
- * `tm/lazy-layouts`: in the arguments of a declaration function, every layout
- * member (`details`, `page`, `create`, `search`, `component`, `display`,
- * `dialog`, `home`, `settingsEditor`, `panel`) must be `() => import('…')`.
+ * `tm/lazy-layouts`: in the arguments of a declaration function (`tmEntity`,
+ * `tmPage`, `tmFeature`, `tmWidget`, `tmOverride`, `tmCodedReport`), every
+ * layout member (`details`, `page`, `create`, `search`, `component`,
+ * `display`, `dialog`, `home`, `settingsEditor`, `panel`) must be
+ * `() => import('…')`. An entity's `details` may instead be an object whose
+ * own layout members (`page`, `create`) are checked; `icons` and `providers`
+ * are not entered.
  */
 export const tmLazyLayouts = tmCreateRule({
   name: 'lazy-layouts',
@@ -104,8 +135,14 @@ export const tmLazyLayouts = tmCreateRule({
           continue; // a spread's members are checked where they are written
         }
         const name = tmStaticName(property.key, property.computed);
+        if (name !== null && OPAQUE_MEMBERS.has(name)) {
+          continue;
+        }
         if (name !== null && LAYOUT_MEMBERS.has(name)) {
-          if (!isLazyLoader(property.value)) {
+          const value = unwrap(property.value);
+          if (OBJECT_FORM_MEMBERS.has(name) && value.type === AST_NODE_TYPES.ObjectExpression) {
+            walk(value);
+          } else if (!isLazyLoader(property.value)) {
             context.report({ node: property.value, messageId: 'notLazy', data: { member: name } });
           }
           continue;
@@ -116,7 +153,7 @@ export const tmLazyLayouts = tmCreateRule({
 
     return {
       CallExpression(node) {
-        if (node.callee.type === AST_NODE_TYPES.Identifier && DECLARATION_FUNCTION.test(node.callee.name)) {
+        if (node.callee.type === AST_NODE_TYPES.Identifier && DECLARATION_FUNCTIONS.has(node.callee.name)) {
           node.arguments.forEach(walk);
         }
       },

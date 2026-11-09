@@ -227,6 +227,7 @@ jobs:
       - run: pnpm run api:check
       - run: pnpm run docs:build
       - run: pnpm run size:check
+      - run: pnpm run build:showcase
 
   # PR merge gate: the single status check required by branch protection. It fails if any job
   # below did not succeed, without making any individual job a required check (which would couple
