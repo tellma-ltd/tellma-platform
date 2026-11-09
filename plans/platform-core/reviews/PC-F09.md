@@ -54,7 +54,7 @@ R1-1 (minor) `src/core/Tellma.Core/README.md:145-146`: the new sentence says the
 
 ### Responses
 
-- R1-1: fixed in the review 1 fixes commit, the robust way. Every concrete-value assertion now pins
+- R1-1: fixed in ba9e69d, the robust way. Every concrete-value assertion now pins
   the culture data it reads: the ar-SA month name uses `PinnedCultures.ArSa`; the en-US and zh-CN
   field orders and the ja-JP short rendering use clones with a pinned short pattern and separator
   (`WithShortDate`). The Umm al-Qura culture test can't pin Gregorian names on a clone whose calendar
