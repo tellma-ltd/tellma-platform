@@ -202,6 +202,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
                     ["TellmaIdentity:Seed:Clients:0:DisplayName"] = "Third Party App",
                     ["TellmaIdentity:Seed:Clients:0:Kind"] = "Native",
                     ["TellmaIdentity:Seed:Clients:0:RequireConsent"] = "true",
+                    ["TellmaIdentity:Seed:Clients:0:ThirdParty"] = "true",
                     ["TellmaIdentity:Seed:Clients:0:RedirectUris:0"] = CallbackUri,
                 });
         }

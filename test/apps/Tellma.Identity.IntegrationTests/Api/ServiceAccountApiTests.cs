@@ -135,6 +135,19 @@ namespace Tellma.Identity.IntegrationTests.Api
             // The control plane holds no distribution origin, so ownership scoping alone would
             // leave it — and therefore everyone — unable to clean the account up. Holding the
             // control-plane scope is what makes it the operator.
+            // Its token is the one it asks for without a resource, carrying the control-plane
+            // audience beside the management one. A token it narrowed to the management audience
+            // alone holds the scope but not that audience, so it is an ordinary caller there and
+            // finds nothing it does not own.
+            using (HttpClient narrowedClient = factory.CreateClient())
+            {
+                narrowedClient.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Bearer", await GetControlPlaneTokenAsync(factory, resource: "urn:tellma:identity"));
+                using HttpResponseMessage narrowedGet = await narrowedClient.GetAsync(
+                    new Uri($"/api/identity/v1/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
+                Assert.Equal(HttpStatusCode.NotFound, narrowedGet.StatusCode);
+            }
+
             using HttpClient operatorClient = factory.CreateClient();
             operatorClient.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", await GetControlPlaneTokenAsync(factory));
@@ -169,20 +182,25 @@ namespace Tellma.Identity.IntegrationTests.Api
         /// <summary>The seeded control-plane client's secret for the operator-path test.</summary>
         private const string ControlPlaneSecret = "control-plane-test-secret-0123456789";
 
-        /// <summary>Obtains a token carrying both the control-plane and identity scopes.</summary>
-        private static async Task<string> GetControlPlaneTokenAsync(StandaloneFactory factory)
+        /// <summary>Obtains a token carrying both the control-plane and identity scopes, optionally naming a resource.</summary>
+        private static async Task<string> GetControlPlaneTokenAsync(StandaloneFactory factory, string? resource = null)
         {
+            Dictionary<string, string> parameters = new()
+            {
+                ["grant_type"] = "client_credentials",
+                ["client_id"] = "tellma-control-plane",
+                ["client_secret"] = ControlPlaneSecret,
+                ["scope"] = "tellma_control_plane tellma_identity",
+            };
+            if (resource is not null)
+            {
+                parameters["resource"] = resource;
+            }
+
             using HttpClient client = factory.CreateClient();
             using HttpResponseMessage response = await client.PostAsync(
                 new Uri("/connect/token", UriKind.Relative),
-                new FormUrlEncodedContent(new Dictionary<string, string>
-                {
-                    ["grant_type"] = "client_credentials",
-                    ["client_id"] = "tellma-control-plane",
-                    ["client_secret"] = ControlPlaneSecret,
-                    ["scope"] = "tellma_control_plane tellma_identity",
-                    ["resource"] = "http://localhost",
-                }),
+                new FormUrlEncodedContent(parameters),
                 TestContext.Current.CancellationToken);
 
             string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -205,7 +223,7 @@ namespace Tellma.Identity.IntegrationTests.Api
                     ["client_id"] = distribution.ServiceClientId,
                     ["client_secret"] = distribution.ServiceClientSecret,
                     ["scope"] = "tellma_identity",
-                    ["resource"] = "http://localhost",
+                    ["resource"] = "urn:tellma:identity",
                 }),
                 TestContext.Current.CancellationToken);
 
