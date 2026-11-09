@@ -43,6 +43,9 @@ namespace Tellma.Core.Composition
         /// <summary>The standalone table-type row classes the features contributed, in realisation order.</summary>
         public List<ContributedType> TableTypes { get; } = [];
 
+        /// <summary>The calendar system classes the features contributed, in realisation order: the platform's three first.</summary>
+        public List<ContributedType> Calendars { get; } = [];
+
         /// <summary>The entity shapes features require of other features' entities, in realisation order.</summary>
         public List<ShapeRequirement> ShapeRequirements { get; } = [];
 

@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Calendar_uq_Month1" xml:space="preserve">
+    <value>محرم</value>
+  </data>
+  <data name="Calendar_uq_Month2" xml:space="preserve">
+    <value>صفر</value>
+  </data>
+  <data name="Calendar_uq_Month3" xml:space="preserve">
+    <value>ربيع الأول</value>
+  </data>
+  <data name="Calendar_uq_Month4" xml:space="preserve">
+    <value>ربيع الآخر</value>
+  </data>
+  <data name="Calendar_uq_Month5" xml:space="preserve">
+    <value>جمادى الأولى</value>
+  </data>
+  <data name="Calendar_uq_Month6" xml:space="preserve">
+    <value>جمادى الآخرة</value>
+  </data>
+  <data name="Calendar_uq_Month7" xml:space="preserve">
+    <value>رجب</value>
+  </data>
+  <data name="Calendar_uq_Month8" xml:space="preserve">
+    <value>شعبان</value>
+  </data>
+  <data name="Calendar_uq_Month9" xml:space="preserve">
+    <value>رمضان</value>
+  </data>
+  <data name="Calendar_uq_Month10" xml:space="preserve">
+    <value>شوال</value>
+  </data>
+  <data name="Calendar_uq_Month11" xml:space="preserve">
+    <value>ذو القعدة</value>
+  </data>
+  <data name="Calendar_uq_Month12" xml:space="preserve">
+    <value>ذو الحجة</value>
+  </data>
+  <data name="Calendar_et_Month1" xml:space="preserve">
+    <value>مسكريم</value>
+  </data>
+  <data name="Calendar_et_Month2" xml:space="preserve">
+    <value>تكمت</value>
+  </data>
+  <data name="Calendar_et_Month3" xml:space="preserve">
+    <value>هدار</value>
+  </data>
+  <data name="Calendar_et_Month4" xml:space="preserve">
+    <value>تهساس</value>
+  </data>
+  <data name="Calendar_et_Month5" xml:space="preserve">
+    <value>تر</value>
+  </data>
+  <data name="Calendar_et_Month6" xml:space="preserve">
+    <value>يكتت</value>
+  </data>
+  <data name="Calendar_et_Month7" xml:space="preserve">
+    <value>مجابيت</value>
+  </data>
+  <data name="Calendar_et_Month8" xml:space="preserve">
+    <value>ميازيا</value>
+  </data>
+  <data name="Calendar_et_Month9" xml:space="preserve">
+    <value>جنبت</value>
+  </data>
+  <data name="Calendar_et_Month10" xml:space="preserve">
+    <value>سين</value>
+  </data>
+  <data name="Calendar_et_Month11" xml:space="preserve">
+    <value>هامل</value>
+  </data>
+  <data name="Calendar_et_Month12" xml:space="preserve">
+    <value>نهاس</value>
+  </data>
+  <data name="Calendar_et_Month13" xml:space="preserve">
+    <value>باجمن</value>
+  </data>
+</root>
