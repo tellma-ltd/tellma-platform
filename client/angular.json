@@ -7,6 +7,64 @@
   },
   "newProjectRoot": "projects",
   "projects": {
+    "core": {
+      "projectType": "library",
+      "root": "projects/core/tellma-core",
+      "sourceRoot": "projects/core/tellma-core",
+      "prefix": "tm",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:ng-packagr",
+          "configurations": {
+            "production": {
+              "tsConfig": "projects/core/tellma-core/tsconfig.lib.prod.json"
+            },
+            "development": {
+              "tsConfig": "projects/core/tellma-core/tsconfig.lib.json"
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "test": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "projects/core/tellma-core/tsconfig.spec.json",
+            "browsers": [
+              "chromiumHeadless"
+            ]
+          }
+        }
+      }
+    },
+    "core-testing": {
+      "projectType": "library",
+      "root": "projects/core/tellma-core-testing",
+      "sourceRoot": "projects/core/tellma-core-testing",
+      "prefix": "tm",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:ng-packagr",
+          "configurations": {
+            "production": {
+              "tsConfig": "projects/core/tellma-core-testing/tsconfig.lib.prod.json"
+            },
+            "development": {
+              "tsConfig": "projects/core/tellma-core-testing/tsconfig.lib.json"
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "test": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "projects/core/tellma-core-testing/tsconfig.spec.json",
+            "browsers": [
+              "chromiumHeadless"
+            ]
+          }
+        }
+      }
+    },
     "core-ui": {
       "projectType": "library",
       "root": "projects/core/tellma-core-ui",

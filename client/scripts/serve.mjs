@@ -52,11 +52,22 @@ const port =
  * workspace tsconfig maps every `@tellma/*` specifier at projects/), so dist/
  * is output, never input. Deletions count too — a folder's own mtime moves
  * when an entry disappears, hence directories are walked, not just files.
+ * Paths are client-relative; the lockfile lives at the root of the pnpm
+ * workspace, one level up.
  */
-const BUILD_INPUTS = ['projects', 'angular.json', 'package.json', 'pnpm-lock.yaml', 'tsconfig.json'];
+const BUILD_INPUTS = [
+  'projects',
+  'angular.json',
+  'package.json',
+  join('..', 'pnpm-lock.yaml'),
+  'tsconfig.json',
+];
 
 /** Folders inside the source tree that are build OUTPUT, not build input. */
 const NON_SOURCE_DIRS = new Set(['node_modules', 'dist', '.angular']);
+
+/** Whether a file inside the source tree is build OUTPUT: a TypeScript build-info cache. */
+const isBuildCache = (name) => name.endsWith('.tsbuildinfo');
 
 if (!prod) {
   console.log(`[serve] ${project} on http://localhost:${port}/`);
@@ -80,7 +91,7 @@ function newestMtime(path) {
   }
   let newest = info.mtimeMs;
   for (const entry of readdirSync(path, { withFileTypes: true })) {
-    if (entry.isDirectory() && NON_SOURCE_DIRS.has(entry.name)) {
+    if (entry.isDirectory() ? NON_SOURCE_DIRS.has(entry.name) : isBuildCache(entry.name)) {
       continue;
     }
     newest = Math.max(newest, newestMtime(join(path, entry.name)));

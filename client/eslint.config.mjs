@@ -8,6 +8,7 @@ import { defineConfig } from 'eslint/config';
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import angular from 'angular-eslint';
+import { TM_RESTRICT_PLUS_OPERANDS, tmEslintPlugin } from '@tellma/core-tools/eslint';
 
 import tmPrefixExports from './tools/eslint/tm-prefix-exports.mjs';
 import noStateBindingsOnFormField from './tools/eslint/no-state-bindings-on-form-field.mjs';
@@ -28,10 +29,21 @@ const UNPREFIXED_EXPORTS = [
   // The calendar provider — the name the component-basics spec defines
   // (`provideTm…` carries the brand inside; only the prefix pattern differs).
   'provideTmCalendar',
+  // The page-scope provider, named by the observability spec in the same shape.
+  'provideTmPageScope',
+  // The Playwright assertion the app-foundation spec names for every suite.
+  'expectNoAxeViolations',
 ];
 
+/**
+ * One `tm` plugin for the whole workspace: the rules @tellma/core-tools ships
+ * to distributions, plus the library-only rules under tools/eslint. ESLint
+ * refuses two different objects under one plugin name, so they merge here.
+ */
 const tmPlugin = {
+  meta: tmEslintPlugin.meta,
   rules: {
+    ...tmEslintPlugin.rules,
     'prefix-exports': tmPrefixExports,
     'no-state-bindings-on-form-field': noStateBindingsOnFormField,
     'csp-only-in-csp-specs': cspOnlyInCspSpecs,
@@ -80,6 +92,7 @@ export default defineConfig(
       '.angular/',
       '**/generated/',
       'projects/core/tellma-core-ui-mcp/dist/',
+      'projects/core/tellma-core-tools/dist/',
       '**/*.d.ts',
     ],
   },
@@ -136,6 +149,48 @@ export default defineConfig(
     plugins: { tm: tmPlugin },
     rules: {
       'tm/prefix-exports': ['error', { allow: UNPREFIXED_EXPORTS }],
+    },
+  },
+
+  // The app framework's packages (spec 0024 §1, §10.4, §12): static imports
+  // between @tellma/core entry points follow its graph, declarations keep
+  // their keys literal and their layouts lazy, and no + or comparison ever
+  // runs on a TmDecimal's text. The decimal rules need type information, so
+  // these files lint against their TypeScript projects.
+  {
+    files: ['projects/core/tellma-core/**/*.ts', 'projects/core/tellma-core-testing/**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        project: [
+          './projects/core/tellma-core/tsconfig.lib.json',
+          './projects/core/tellma-core/tsconfig.spec.json',
+          './projects/core/tellma-core-testing/tsconfig.json',
+        ],
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    plugins: { tm: tmPlugin },
+    rules: {
+      'tm/core-import-boundary': ['error', { allowPrivate: true }],
+      'tm/lazy-layouts': 'error',
+      'tm/literal-declaration-keys': 'error',
+      'tm/no-decimal-operators': 'error',
+      '@typescript-eslint/restrict-plus-operands': TM_RESTRICT_PLUS_OPERANDS,
+    },
+  },
+
+  // Feature packs hold declarations and layouts, like a distribution's own
+  // code, so they take the distribution rules (spec 0024 §2.1) — all but the
+  // type-aware decimal rule, which joins when the first pack has a project.
+  {
+    files: ['projects/module/**/*.ts'],
+    plugins: { tm: tmPlugin },
+    rules: {
+      'tm/core-import-boundary': ['error', { allowPrivate: true }],
+      'tm/no-raw-http': 'error',
+      'tm/no-web-storage': 'error',
+      'tm/lazy-layouts': 'error',
+      'tm/literal-declaration-keys': 'error',
     },
   },
 
@@ -465,7 +520,7 @@ export default defineConfig(
 
   // Workspace tooling (node scripts, lint rules, e2e specs).
   {
-    files: ['scripts/**/*.mjs', 'tools/**/*.mjs'],
+    files: ['scripts/**/*.mjs', 'tools/**/*.mjs', 'projects/core/tellma-core-tools/bin/*.js'],
     extends: [eslint.configs.recommended],
     languageOptions: {
       globals: {

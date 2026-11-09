@@ -9,8 +9,13 @@ import { join } from 'node:path';
 import stylelint from 'stylelint';
 import { describe, expect, it } from 'vitest';
 
+import preset, { tmAllowedBreakpoints } from './index.js';
+
+/** The library whose exported breakpoint file the rule reads. */
+const libraryDir = join(import.meta.dirname, '..', '..', '..', 'tellma-core-ui');
+
 const config = {
-  plugins: ['./tools/stylelint/tm-allowed-breakpoints.mjs'],
+  plugins: [tmAllowedBreakpoints],
   rules: {
     'tm/allowed-breakpoints': true,
   },
@@ -18,21 +23,14 @@ const config = {
 
 async function warningsFor(code: string): Promise<string[]> {
   const result = await stylelint.lint({ code, config, cwd: process.cwd() });
-  return result.results[0].warnings.map((w) => w.text);
+  return result.results[0]?.warnings.map((w) => w.text) ?? [];
 }
 
 describe('tm/allowed-breakpoints', () => {
   it('reads its thresholds from the breakpoints.json the library exports', async () => {
-    const manifest = JSON.parse(
-      readFileSync(join('projects', 'core', 'tellma-core-ui', 'package.json'), 'utf8'),
-    );
+    const manifest = JSON.parse(readFileSync(join(libraryDir, 'package.json'), 'utf8'));
     expect(manifest.exports['./breakpoints.json'].default).toBe('./layout/breakpoints.json');
-    const table = JSON.parse(
-      readFileSync(
-        join('projects', 'core', 'tellma-core-ui', 'layout', 'breakpoints.json'),
-        'utf8',
-      ),
-    );
+    const table = JSON.parse(readFileSync(join(libraryDir, 'layout', 'breakpoints.json'), 'utf8'));
     const [warning] = await warningsFor('@media (min-width: 1px) {}');
     expect(warning).toContain(
       Object.values(table)
@@ -136,5 +134,13 @@ describe('tm/allowed-breakpoints', () => {
     expect(
       await warningsFor('@media (min-width: 576px) and (hover: hover), (max-width: 400px) {}'),
     ).toHaveLength(2);
+  });
+});
+
+describe('the stylelint preset', () => {
+  it('enables tm/allowed-breakpoints through its own plugin', async () => {
+    expect(preset.plugins).toEqual([tmAllowedBreakpoints]);
+    const result = await stylelint.lint({ code: '@media (min-width: 768px) {}', config: preset });
+    expect(result.results[0]?.warnings.map((w) => w.rule)).toEqual(['tm/allowed-breakpoints']);
   });
 });

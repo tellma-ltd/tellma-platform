@@ -23,7 +23,11 @@
  * --pass-with-no-tests); CONTRIBUTING.md at the repository root gives the
  * exact PR-tier and nightly-tier invocations.
  *
- * Usage: node scripts/e2e.mjs [playwright args...]
+ * Playwright runs in client/ whatever the caller's directory, so a relative
+ * path argument (--output, a spec file) resolves against client/.
+ *
+ * Usage: node client/scripts/e2e.mjs [playwright args...]   (from the repository root)
+ *        node scripts/e2e.mjs [playwright args...]          (from client/)
  */
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
