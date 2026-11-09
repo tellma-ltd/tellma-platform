@@ -57,6 +57,25 @@ namespace Tellma.Core.Imaging
             Message = "The {Operation} of a {ContentType} input of a {Kind} blob failed unexpectedly.")]
         public static partial void UnexpectedFailure(ILogger logger, Exception exception, string kind, string operation, string contentType);
 
+        /// <summary>
+        ///     A PDF worker failed rather than refusing the document: it could not start, ended
+        ///     before it answered (crashed, or was stopped by its memory or CPU limit), broke the
+        ///     protocol, or reported its own failure. The thumbnail is not stored; the upload and the
+        ///     host are unaffected. Frequent events point at a hostile upload, a PDFium bug, or limits
+        ///     too tight for honest documents.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The failure.</param>
+        /// <param name="kind">The blob kind.</param>
+        /// <param name="failure">How the worker failed: <c>Start</c>, <c>Exited</c>, <c>Protocol</c> or <c>Failed</c>.</param>
+        /// <param name="exitCode">The worker's exit code, when it had exited.</param>
+        /// <param name="detail">What failed.</param>
+        [LoggerMessage(
+            EventName = "BlobPdfWorkerFailed",
+            Level = LogLevel.Warning,
+            Message = "The PDF worker rendering a {Kind} thumbnail failed ({Failure}, exit code {ExitCode}): {Detail}")]
+        public static partial void PdfWorkerFailed(ILogger logger, Exception exception, string kind, string failure, int? exitCode, string detail);
+
         /// <summary>No image slot became free within the budget: the server is busy, the upload is not at fault.</summary>
         /// <param name="logger">The logger.</param>
         /// <param name="kind">The blob kind.</param>

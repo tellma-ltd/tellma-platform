@@ -17,8 +17,10 @@ namespace Tellma.Core.Imaging
         /// <summary>
         ///     Registers <see cref="SkiaImageProcessor" /> as the process's one
         ///     <see cref="IImageProcessor" />, its options bound from <c>Tellma:Blobs</c>
-        ///     (<see cref="SkiaImageProcessorOptions.ImageConcurrency" />), and the <c>core.imaging</c>
-        ///     startup check that loads its native libraries before the host serves traffic.
+        ///     (<see cref="SkiaImageProcessorOptions.ImageConcurrency" />,
+        ///     <see cref="SkiaImageProcessorOptions.PdfWorkerMemoryLimit" />), and the
+        ///     <c>core.imaging</c> startup check that loads Skia and starts a PDF worker before the
+        ///     host serves traffic.
         /// </summary>
         /// <remarks>
         ///     A process runs on at most one image processor, so no other processor is registered

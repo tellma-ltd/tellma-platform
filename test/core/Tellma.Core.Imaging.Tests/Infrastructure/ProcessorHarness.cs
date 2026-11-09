@@ -8,6 +8,7 @@ using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging.Testing;
 using System.Diagnostics.Metrics;
 using Tellma.Core.Abstractions.Blobs;
+using Tellma.Core.Imaging.Workers;
 
 namespace Tellma.Core.Imaging.Tests.Infrastructure
 {
@@ -27,11 +28,11 @@ namespace Tellma.Core.Imaging.Tests.Infrastructure
 
         /// <summary>Creates the harness.</summary>
         /// <param name="timeProvider">The clock; the system's when null.</param>
-        /// <param name="pdf">The PDF rasterizer; PDFium when null.</param>
+        /// <param name="pdf">Renders PDFs in workers; the real PDF worker when null.</param>
         /// <param name="concurrency">The image slots; four when null.</param>
         /// <param name="openInput">Opens an upload's bytes for the decoder; an in-memory stream when null.</param>
         public ProcessorHarness(
-            TimeProvider? timeProvider = null, IPdfRasterizer? pdf = null, int? concurrency = null, Func<byte[], Stream>? openInput = null)
+            TimeProvider? timeProvider = null, PdfWorkerClient? pdf = null, int? concurrency = null, Func<byte[], Stream>? openInput = null)
         {
             _services = new ServiceCollection().AddMetrics().BuildServiceProvider();
             IMeterFactory meterFactory = _services.GetRequiredService<IMeterFactory>();
@@ -40,12 +41,15 @@ namespace Tellma.Core.Imaging.Tests.Infrastructure
             Duration = new MetricCollector<double>(meterFactory, BlobTelemetryNames.MeterName, BlobTelemetryNames.ImageDuration);
             Failures = new MetricCollector<long>(meterFactory, BlobTelemetryNames.MeterName, BlobTelemetryNames.ImageFailures);
             var options = new SkiaImageProcessorOptions { ImageConcurrency = concurrency ?? 4 };
-            Processor = new SkiaImageProcessor(
-                Logger, meterFactory, timeProvider ?? TimeProvider.System, options, pdf ?? PdfiumRasterizer.Instance, openInput);
+            Pdf = pdf ?? TestWorkers.Real();
+            Processor = new SkiaImageProcessor(Logger, meterFactory, timeProvider ?? TimeProvider.System, options, Pdf, openInput);
         }
 
         /// <summary>The processor.</summary>
         public SkiaImageProcessor Processor { get; }
+
+        /// <summary>The processor's PDF workers.</summary>
+        public PdfWorkerClient Pdf { get; }
 
         /// <summary>The processor's log.</summary>
         public FakeLogger<SkiaImageProcessor> Logger { get; }
@@ -90,6 +94,7 @@ namespace Tellma.Core.Imaging.Tests.Infrastructure
         /// <inheritdoc />
         public void Dispose()
         {
+            Processor.Dispose();
             Duration.Dispose();
             Failures.Dispose();
             _services.Dispose();

@@ -10,6 +10,7 @@ using Microsoft.Extensions.Options;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Imaging.Tests.Infrastructure;
+using Tellma.Core.Imaging.Workers;
 
 namespace Tellma.Core.Imaging.Tests.Composition
 {
@@ -106,7 +107,62 @@ namespace Tellma.Core.Imaging.Tests.Composition
             Assert.Equal("core.imaging", check.Name);
             Assert.False(check.RequiresInfrastructure);
             Assert.Empty(problems);
-            Assert.Equal(1, PdfRenderGate.Semaphore.CurrentCount);
+        }
+
+        [Fact]
+        public async Task The_startup_check_fails_naming_the_fix_when_no_pdf_worker_can_start()
+        {
+            var check = new ImagingStartupCheck(new PdfWorkerLauncher(Path.Combine(AppContext.BaseDirectory, "missing", "Tellma.Core.Imaging.PdfWorker.dll")));
+
+            IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(
+                new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
+
+            CompositionProblem problem = Assert.Single(problems);
+            Assert.Contains("PDF worker assembly", problem.Problem, StringComparison.Ordinal);
+            Assert.Contains("framework-dependent", problem.Fix, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData("crash-before-ready", "ended before it rendered")]
+        [InlineData("not-png", "did not render")]
+        public async Task The_startup_check_fails_when_the_pdf_worker_does_not_render_the_probe(string mode, string description)
+        {
+            var check = new ImagingStartupCheck(new PdfWorkerLauncher(TestWorkers.StandInPath, [mode]));
+
+            IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(
+                new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
+
+            CompositionProblem problem = Assert.Single(problems);
+            Assert.Contains(description, problem.Problem, StringComparison.Ordinal);
+            Assert.False(string.IsNullOrWhiteSpace(problem.Fix));
+        }
+
+        [Fact]
+        public void The_worker_memory_limit_binds_from_the_blob_section()
+        {
+            using ServiceProvider provider = Build(new Dictionary<string, string?> { ["Tellma:Blobs:PdfWorkerMemoryLimit"] = "134217728" });
+
+            Assert.Equal(128L * 1024 * 1024, provider.GetRequiredService<IOptions<SkiaImageProcessorOptions>>().Value.PdfWorkerMemoryLimit);
+        }
+
+        [Fact]
+        public void The_worker_memory_limit_defaults_to_256_mib()
+        {
+            using ServiceProvider provider = Build([]);
+
+            Assert.Equal(256L * 1024 * 1024, provider.GetRequiredService<IOptions<SkiaImageProcessorOptions>>().Value.PdfWorkerMemoryLimit);
+        }
+
+        [Fact]
+        public async Task Too_small_a_worker_memory_limit_fails_the_startup_check_naming_its_key()
+        {
+            using ServiceProvider provider = Build(new Dictionary<string, string?> { ["Tellma:Blobs:PdfWorkerMemoryLimit"] = "1048576" });
+
+            Assert.Throws<OptionsValidationException>(provider.GetRequiredService<IImageProcessor>);
+            IReadOnlyList<CompositionProblem> problems = await new ImagingStartupCheck().CheckAsync(provider, TestContext.Current.CancellationToken);
+            CompositionProblem problem = Assert.Single(problems);
+            Assert.Contains("Tellma:Blobs:PdfWorkerMemoryLimit", problem.Problem, StringComparison.Ordinal);
+            Assert.Contains("Tellma:Blobs:PdfWorkerMemoryLimit", problem.Fix, StringComparison.Ordinal);
         }
 
         [Fact]

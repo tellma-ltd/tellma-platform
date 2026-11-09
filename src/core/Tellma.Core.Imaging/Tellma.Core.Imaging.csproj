@@ -1,22 +1,28 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- The source-generated PDFium P/Invokes of the PDF preflight pin the document buffer. -->
+    <!-- The Windows interop that starts PDF workers in their Job Objects builds its structures
+         natively. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Description>Tellma's image processor: SkiaImageProcessor normalises uploaded images and renders thumbnails on SkiaSharp, with PDF first-page thumbnails through PDFtoImage (PDFium). The platform's only package carrying native binaries; composed explicitly by a host through AddTellmaSkia, and never referenced by Tellma.Core.</Description>
+    <Description>Tellma's image processor: SkiaImageProcessor normalises uploaded images and renders thumbnails on SkiaSharp, with PDF first-page thumbnails rendered by PDFium in a disposable, memory-capped worker process (Tellma.Core.Imaging.PdfWorker), so PDFium never runs in the host. The platform's only package carrying native binaries; composed explicitly by a host through AddTellmaSkia, and never referenced by Tellma.Core.</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Tellma.Core.Abstractions\Tellma.Core.Abstractions.csproj" />
+    <!-- The PDF worker: an assembly the processor starts as a process of its own with the host's
+         runtime configuration and dependency manifest, which therefore must list it and its
+         natives. A plain reference does exactly that, in a build, a publish and, as a package
+         dependency, for package consumers. It also shares the worker's protocol with the host. -->
+    <ProjectReference Include="..\Tellma.Core.Imaging.PdfWorker\Tellma.Core.Imaging.PdfWorker.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The imaging libraries. SkiaSharp's managed package brings the Windows and macOS natives;
+    <!-- The imaging library. SkiaSharp's managed package brings the Windows and macOS natives;
          the Linux natives are the NoDependencies build, so no fontconfig is needed on a server.
-         PDFtoImage brings the PDFium natives (bblanchon.PDFium.*), pinned centrally. -->
+         PDFium (PDFtoImage and the bblanchon.PDFium natives) comes with the worker, pinned
+         centrally, and is never loaded in this process. -->
     <PackageReference Include="SkiaSharp" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
-    <PackageReference Include="PDFtoImage" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <!-- AddMetrics(), which registers the IMeterFactory the image instruments are created from. -->
     <PackageReference Include="Microsoft.Extensions.Diagnostics" />
@@ -34,9 +40,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The suite holds the PDF render lock and inspects native-handle bookkeeping through
-         internal seams, which keeps them out of the public surface. -->
+    <!-- The suite inspects slots, workers and native-handle bookkeeping through internal seams,
+         which keeps them out of the public surface. -->
     <InternalsVisibleTo Include="Tellma.Core.Imaging.Tests" />
+    <!-- The suite's host-shaped asset, which reports its workers' process ids. -->
+    <InternalsVisibleTo Include="Tellma.Core.Imaging.SmokeHost" />
   </ItemGroup>
 
 </Project>
