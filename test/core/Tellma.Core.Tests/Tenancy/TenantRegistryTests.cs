@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging;
 using Tellma.Core.Abstractions.Composition;
@@ -154,18 +155,22 @@ namespace Tellma.Core.Tests.Tenancy
             await harness.LoadAsync(unchanged, suspended, relocated);
             Assert.Empty(listener.Calls);
 
-            // One state change, one relocation (version moves, descriptor does not), one new tenant.
+            // One state change, one relocation (version moves, descriptor does not), one new tenant,
+            // one deleted tenant.
             harness.Catalog.Update(suspended with { State = "Suspended" });
             harness.Catalog.Update(relocated with { Database = "tenant-3-moved" });
             harness.Catalog.Update(FakeCatalogReader.Row(4, "Provisioning"));
+            harness.Catalog.Remove(1);
             await harness.Registry.RefreshAsync(force: false, Token);
+            await harness.DeliveredAsync();
 
             (TenantDescriptor Tenant, TenantState? Previous)[] calls = [.. listener.Calls];
             Assert.Equal(2, calls.Length);
             Assert.Equal((2, TenantState.Suspended, (TenantState?)TenantState.Active), (calls[0].Tenant.Id, calls[0].Tenant.State, calls[0].Previous));
             Assert.Equal((4, TenantState.Provisioning, null), (calls[1].Tenant.Id, calls[1].Tenant.State, calls[1].Previous));
             Assert.Equal("tenant-3-moved", harness.Registry.Get(3).Location.Database);
-            LogContains(harness, "TenantSnapshotReloaded", LogLevel.Information, "2 descriptor(s) changed");
+            Assert.Equal(1, Assert.Single(listener.Removals).Id);
+            LogContains(harness, "TenantSnapshotReloaded", LogLevel.Information, "3 descriptor(s) changed");
         }
 
         [Fact]
@@ -179,10 +184,112 @@ namespace Tellma.Core.Tests.Tenancy
 
             harness.Catalog.Update(row with { State = "ReadOnly" });
             await harness.Registry.RefreshAsync(force: false, Token);
+            await harness.DeliveredAsync();
 
             Assert.Single(failing.Calls);
             Assert.Single(healthy.Calls);
             Assert.Equal(LogLevel.Error, Assert.Single(harness.Events("TenantStateListenerFailed")).Level);
+        }
+
+        [Fact]
+        public async Task A_tenant_that_leaves_the_snapshot_by_breaking_a_rule_is_announced_as_removed()
+        {
+            RecordingListener listener = new();
+            using RegistryHarness harness = new(listeners: listener);
+            TenantRow row = FakeCatalogReader.Row(1);
+            await harness.LoadAsync(row, FakeCatalogReader.Row(2));
+
+            // The operator cuts the tenant's host off: the row stays, the tenant leaves.
+            harness.Catalog.Update(row with { Server = "retired.example.com" });
+            await harness.Registry.RefreshAsync(force: false, Token);
+            await harness.DeliveredAsync();
+
+            Assert.Equal([2], harness.TenantIds);
+            TenantDescriptor removed = Assert.Single(listener.Removals);
+            Assert.Equal((1, TenantState.Active), (removed.Id, removed.State));
+            Assert.Empty(listener.Calls);
+        }
+
+        [Fact]
+        public async Task A_hung_listener_never_holds_the_refresh_and_times_out_into_the_next_notification()
+        {
+            HangingListener hung = new();
+            RecordingListener after = new();
+            using RegistryHarness harness = new(listenerTimeout: TimeSpan.FromSeconds(5), listeners: [hung, after]);
+            TenantRow row = FakeCatalogReader.Row(1);
+            await harness.LoadAsync(row);
+
+            harness.Catalog.Update(row with { State = "Suspended" });
+            await harness.Registry.RefreshAsync(force: false, Token);
+            await hung.Entered.Task.WaitAsync(Token);
+
+            // The flight has ended: the next probe confirms the snapshot while the listener hangs.
+            harness.Time.Advance(TimeSpan.FromSeconds(1));
+            await harness.Registry.RefreshAsync(force: false, Token).WaitAsync(TimeSpan.FromSeconds(10), Token);
+            Assert.Equal(harness.Time.GetUtcNow(), harness.Registry.SnapshotLoadedAt);
+            Assert.Empty(after.Calls);
+
+            // Past the bound the call is logged and the next listener hears.
+            harness.Time.Advance(TimeSpan.FromSeconds(5));
+            await harness.DeliveredAsync();
+            Assert.Single(after.Calls);
+            Assert.Equal(LogLevel.Error, Assert.Single(harness.Events("TenantStateListenerTimedOut")).Level);
+            hung.Release.SetResult();
+        }
+
+        [Fact]
+        public async Task A_listener_that_refreshes_the_registry_does_not_deadlock()
+        {
+            RegistryHarness? built = null;
+            ReentrantListener reentrant = new(() => built!.Registry);
+            using RegistryHarness harness = new(listeners: reentrant);
+            built = harness;
+            TenantRow row = FakeCatalogReader.Row(1);
+            await harness.LoadAsync(row);
+
+            harness.Catalog.Update(row with { State = "ReadOnly" });
+            await harness.Registry.RefreshAsync(force: false, Token);
+
+            await reentrant.Refreshed.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
+            await harness.DeliveredAsync();
+            Assert.Equal(3, harness.Catalog.Reloads);
+        }
+
+        [Fact]
+        public async Task Every_listener_call_runs_in_a_scope_of_its_own()
+        {
+            List<ScopedListener> seen = [];
+            using RegistryHarness harness = new(configureServices: services => services
+                .AddSingleton(seen)
+                .AddScoped<ITenantStateListener, ScopedListener>());
+            TenantRow first = FakeCatalogReader.Row(1);
+            TenantRow second = FakeCatalogReader.Row(2);
+            await harness.LoadAsync(first, second);
+
+            harness.Catalog.Update(first with { State = "ReadOnly" });
+            harness.Catalog.Update(second with { State = "ReadOnly" });
+            await harness.Registry.RefreshAsync(force: false, Token);
+            await harness.DeliveredAsync();
+
+            Assert.Equal(2, seen.Count);
+            Assert.NotSame(seen[0], seen[1]);
+        }
+
+        [Fact]
+        public async Task A_reloaded_profile_that_breaks_the_connection_rules_carries_no_tenant()
+        {
+            using RegistryHarness harness = new();
+            await harness.LoadAsync(FakeCatalogReader.Row(1));
+
+            // A configuration reload delivers an unencrypted profile outside Development.
+            TellmaSqlOptions changed = new();
+            changed.Profiles["default"] = "Authentication=Active Directory Managed Identity;Encrypt=False;Max Pool Size=20";
+            changed.AllowedServers.Add(".database.windows.net");
+            harness.Sql.Change(changed);
+            await WaitUntilAsync(() => harness.Catalog.Reloads == 2);
+
+            Assert.Empty(harness.TenantIds);
+            Assert.Contains(harness.Events("TenantProfileRefused"), static record => record.Level == LogLevel.Error);
         }
 
         [Fact]
@@ -462,6 +569,7 @@ namespace Tellma.Core.Tests.Tenancy
         {
             using RegistryHarness harness = new(static sql =>
             {
+                sql.AllowSqlPassword = true;
                 sql.Profiles["sql-login"] = "User Id=tellma_web;Password=hunter2-secret;Encrypt=True;Max Pool Size=20";
                 sql.MaxWarmTenants = 0;
                 sql.Profiles["warm"] = "Integrated Security=true;Encrypt=True;Max Pool Size=20;Min Pool Size=1";

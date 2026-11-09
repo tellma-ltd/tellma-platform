@@ -26,8 +26,10 @@ namespace Tellma.Core.Tenancy
     ///         always starts after the write that asked for it committed.
     ///     </para>
     ///     <para>
-    ///         Listeners hear of the tenants whose descriptor a reload changed, in tenant order, once
-    ///         the new snapshot is published. The first snapshot a process loads tells no one.
+    ///         Listeners hear of the tenants whose descriptor a reload changed or that left the
+    ///         snapshot, in tenant order, from an ordered queue delivered after the refresh has ended,
+    ///         each call in a scope of its own and within a bound. The first snapshot a process loads
+    ///         tells no one.
     ///     </para>
     /// </remarks>
     internal sealed class TenantRegistry : ITenantRegistry, IDisposable
@@ -53,6 +55,7 @@ namespace Tellma.Core.Tenancy
         private volatile bool _catalogVerified;
         private Run? _running;
         private Run? _pending;
+        private Task _notifications = Task.CompletedTask;
 
         /// <summary>Creates the registry; the hosted refresh service loads it.</summary>
         /// <param name="reader">The catalog reads.</param>
@@ -109,6 +112,18 @@ namespace Tellma.Core.Tenancy
 
         /// <inheritdoc />
         public bool IsAvailable => IsFresh(_published);
+
+        /// <summary>The listener deliveries queued so far; completes when every one has ended.</summary>
+        public Task NotificationsDelivered
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _notifications;
+                }
+            }
+        }
 
         /// <summary>The rows the current snapshot refused; empty before the first load.</summary>
         public IReadOnlyList<RefusedTenantRow> Refused => _published?.Snapshot.Refused ?? [];
@@ -362,12 +377,11 @@ namespace Tellma.Core.Tenancy
                     TenancyLog.WarmTenantsExceeded(_logger, snapshot.WarmTenants, sql.MaxWarmTenants);
                 }
 
-                List<(TenantDescriptor Tenant, TenantState? Previous)> changed = Changes(previous?.Snapshot, snapshot);
-                TenancyLog.SnapshotReloaded(_logger, changed.Count, snapshot.Tenants.Count);
-                if (previous is not null)
-                {
-                    await NotifyAsync(changed).ConfigureAwait(false);
-                }
+                // The first snapshot tells no one; later ones queue their changes, delivered after
+                // this refresh has ended so no listener can hold the single flight.
+                List<TenantChange> changes = previous is null ? [] : Changes(previous.Snapshot, snapshot);
+                TenancyLog.SnapshotReloaded(_logger, previous is null ? snapshot.Tenants.Count : changes.Count, snapshot.Tenants.Count);
+                Enqueue(changes);
             }
             catch (CatalogNotMigratedException)
             {
@@ -465,66 +479,138 @@ namespace Tellma.Core.Tenancy
         }
 
         /// <summary>
-        ///     The tenants whose descriptor differs between two snapshots, new ones included, in id
-        ///     order. A row whose version moved without a descriptor change (a relocation) is not one.
+        ///     The tenants whose descriptor differs between two snapshots, new ones included, and the
+        ///     tenants the new one no longer serves, in id order. A row whose version moved without a
+        ///     descriptor change (a relocation) is not one.
         /// </summary>
-        /// <param name="previous">The snapshot replaced, or null for the first.</param>
+        /// <param name="previous">The snapshot replaced.</param>
         /// <param name="next">The new snapshot.</param>
-        /// <returns>Each changed tenant with the state it had before.</returns>
-        private static List<(TenantDescriptor Tenant, TenantState? Previous)> Changes(TenantSnapshot? previous, TenantSnapshot next)
+        /// <returns>Each change.</returns>
+        private static List<TenantChange> Changes(TenantSnapshot previous, TenantSnapshot next)
         {
-            List<(TenantDescriptor, TenantState?)> changed = [];
+            List<TenantChange> changes = [];
             foreach (TenantInfo tenant in next.Tenants)
             {
-                TenantInfo? before = previous?.Find(tenant.Id);
+                TenantInfo? before = previous.Find(tenant.Id);
                 if (before is null || (before.Version != tenant.Version && before.Descriptor != tenant.Descriptor))
                 {
-                    changed.Add((tenant.Descriptor, before?.Descriptor.State));
+                    changes.Add(new TenantChange(tenant.Descriptor, before?.Descriptor.State, Removed: false));
                 }
             }
 
-            return changed;
+            foreach (TenantInfo tenant in previous.Tenants)
+            {
+                if (next.Find(tenant.Id) is null)
+                {
+                    changes.Add(new TenantChange(tenant.Descriptor, tenant.Descriptor.State, Removed: true));
+                }
+            }
+
+            changes.Sort(static (left, right) => left.Tenant.Id.CompareTo(right.Tenant.Id));
+            return changes;
         }
 
-        /// <summary>Tells every listener of every changed tenant, in one scope; a failing listener is logged.</summary>
-        /// <param name="changed">The changed tenants.</param>
-        /// <returns>A task that completes when every listener was called.</returns>
-        private async Task NotifyAsync(List<(TenantDescriptor Tenant, TenantState? Previous)> changed)
+        /// <summary>
+        ///     Queues the changes of one reload for the listeners, behind every earlier reload's. The
+        ///     refresh does not wait: a listener that is slow, hung or re-entrant never holds the
+        ///     registry's single flight.
+        /// </summary>
+        /// <param name="changes">The changes.</param>
+        private void Enqueue(List<TenantChange> changes)
         {
-            if (changed.Count == 0)
+            if (changes.Count == 0)
             {
                 return;
             }
 
-            AsyncServiceScope scope = _scopes.CreateAsyncScope();
-            await using (scope.ConfigureAwait(false))
+            lock (_sync)
             {
-                IReadOnlyList<ITenantStateListener> listeners;
-                try
-                {
-                    listeners = [.. scope.ServiceProvider.GetServices<ITenantStateListener>()];
-                }
-                catch (Exception exception)
-                {
-                    TenancyLog.ListenerFailed(_logger, nameof(ITenantStateListener), changed[0].Tenant.Id, exception);
-                    return;
-                }
+                _notifications = DispatchAfterAsync(_notifications, changes);
+            }
+        }
 
-                foreach ((TenantDescriptor tenant, TenantState? previousState) in changed)
+        /// <summary>Delivers one reload's changes once the deliveries ahead of it are done.</summary>
+        /// <param name="previous">The deliveries ahead.</param>
+        /// <param name="changes">The changes.</param>
+        /// <returns>The delivery.</returns>
+        private async Task DispatchAfterAsync(Task previous, List<TenantChange> changes)
+        {
+            // Off the refresh's thread at once, in order behind the earlier deliveries.
+            await previous.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing | ConfigureAwaitOptions.ForceYielding);
+
+            int count;
+            try
+            {
+                AsyncServiceScope probe = _scopes.CreateAsyncScope();
+                await using (probe.ConfigureAwait(false))
                 {
-                    foreach (ITenantStateListener listener in listeners)
-                    {
-                        try
-                        {
-                            await listener.OnStateChangedAsync(tenant, previousState).ConfigureAwait(false);
-                        }
-                        catch (Exception exception)
-                        {
-                            TenancyLog.ListenerFailed(_logger, listener.GetType().FullName ?? listener.GetType().Name, tenant.Id, exception);
-                        }
-                    }
+                    count = probe.ServiceProvider.GetServices<ITenantStateListener>().Count();
                 }
             }
+            catch (Exception exception)
+            {
+                TenancyLog.ListenerFailed(_logger, nameof(ITenantStateListener), changes[0].Tenant.Id, exception);
+                return;
+            }
+
+            foreach (TenantChange change in changes)
+            {
+                for (int index = 0; index < count; index++)
+                {
+                    await CallAsync(change, index).ConfigureAwait(false);
+                }
+            }
+        }
+
+        /// <summary>
+        ///     Calls one listener about one change, in a scope of its own and within the listener bound.
+        ///     A call that outlasts the bound is logged and left to finish on its own; its scope is
+        ///     disposed when it does.
+        /// </summary>
+        /// <param name="change">The change.</param>
+        /// <param name="index">The listener's position among the registrations.</param>
+        /// <returns>A task that completes when the call ended, failed or timed out.</returns>
+        private async Task CallAsync(TenantChange change, int index)
+        {
+            AsyncServiceScope scope = _scopes.CreateAsyncScope();
+            string name = nameof(ITenantStateListener);
+            Task call;
+            try
+            {
+                ITenantStateListener listener = scope.ServiceProvider.GetServices<ITenantStateListener>().ElementAt(index);
+                name = listener.GetType().FullName ?? listener.GetType().Name;
+                call = change.Removed
+                    ? listener.OnRemovedAsync(change.Tenant)
+                    : listener.OnStateChangedAsync(change.Tenant, change.Previous);
+            }
+            catch (Exception exception)
+            {
+                TenancyLog.ListenerFailed(_logger, name, change.Tenant.Id, exception);
+                await scope.DisposeAsync().ConfigureAwait(false);
+                return;
+            }
+
+            try
+            {
+                await call.WaitAsync(_startup.ListenerTimeout, _time).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                // The call runs on; its scope goes when it ends, never under it.
+                TenancyLog.ListenerTimedOut(_logger, name, change.Tenant.Id, _startup.ListenerTimeout);
+                _ = call.ContinueWith(
+                    _ => scope.DisposeAsync().AsTask(),
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+                return;
+            }
+            catch (Exception exception)
+            {
+                TenancyLog.ListenerFailed(_logger, name, change.Tenant.Id, exception);
+            }
+
+            await scope.DisposeAsync().ConfigureAwait(false);
         }
 
         /// <summary>Refreshes with a reload after the profiles changed, once a snapshot exists.</summary>
@@ -571,6 +657,12 @@ namespace Tellma.Core.Tenancy
         /// <param name="Snapshot">The snapshot.</param>
         /// <param name="ConfirmedAt">When it was last loaded or found current.</param>
         private sealed record Published(TenantSnapshot Snapshot, DateTimeOffset ConfirmedAt);
+
+        /// <summary>One change a listener hears of.</summary>
+        /// <param name="Tenant">The tenant as it is now, or as the snapshot last held it when removed.</param>
+        /// <param name="Previous">The state before; null for a new tenant.</param>
+        /// <param name="Removed">Whether the tenant left the snapshot.</param>
+        private sealed record TenantChange(TenantDescriptor Tenant, TenantState? Previous, bool Removed);
 
         /// <summary>One refresh, running or queued.</summary>
         /// <param name="forced">Whether it reloads regardless of the version.</param>

@@ -24,7 +24,7 @@ namespace Tellma.Core.Tenancy
         /// <summary>The row names a profile that is not configured.</summary>
         ProfileUnknown,
 
-        /// <summary>The row's profile is configured but is not a valid connection-string fragment.</summary>
+        /// <summary>The row's profile is configured but is not a valid fragment, or breaks the connection rules.</summary>
         ProfileMalformed,
     }
 
@@ -98,7 +98,11 @@ namespace Tellma.Core.Tenancy
         {
             if (!_profiles.TryGetValue(profileName, out SqlConnectionStringBuilder? parsed))
             {
-                parsed = sql.Profiles.TryGetValue(profileName, out string? fragment) && TenantConnectionStrings.TryParse(fragment, out SqlConnectionStringBuilder builder)
+                // A profile is used only when it follows the startup check's rules, so a reloaded
+                // configuration cannot put tenants on an unencrypted, password or unbounded profile.
+                parsed = sql.Profiles.TryGetValue(profileName, out string? fragment)
+                    && SqlProfileRules.IsUsable(profileName, fragment, sql, isDevelopment)
+                    && TenantConnectionStrings.TryParse(fragment, out SqlConnectionStringBuilder builder)
                     ? builder
                     : null;
                 _profiles[profileName] = parsed;

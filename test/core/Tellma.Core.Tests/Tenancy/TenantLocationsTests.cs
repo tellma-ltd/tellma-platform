@@ -107,6 +107,25 @@ namespace Tellma.Core.Tests.Tenancy
         }
 
         [Theory]
+        [InlineData("sql1.contoso.local", "sql1.contoso.local")]
+        [InlineData("tcp:sql1.contoso.local", "sql1.contoso.local")]
+        [InlineData("SQL1.Contoso.Local,1433", "sql1.contoso.local")]
+        [InlineData("tcp:SQL1.contoso.local,1433", "sql1.contoso.local")]
+        [InlineData("sql1.contoso.local,14330", "sql1.contoso.local,14330")]
+        [InlineData("SQL1\\Tellma,1433", "sql1\\tellma")]
+        [InlineData("(localdb)\\MSSQLLocalDB", "(localdb)\\mssqllocaldb")]
+        public void Spellings_of_one_server_share_one_canonical_form(string server, string canonical)
+        {
+            Assert.Equal(canonical, TenantLocations.Canonicalize(server));
+        }
+
+        [Fact]
+        public void Only_a_server_in_the_grammar_has_a_canonical_form()
+        {
+            _ = Assert.Throws<ArgumentException>(() => TenantLocations.Canonicalize("np:sql1"));
+        }
+
+        [Theory]
         [InlineData("Tellma.dev.acme.1", true)]
         [InlineData("tellma-acme-1000", true)]
         [InlineData("tenant;Password=x", false)]

@@ -36,6 +36,10 @@ namespace Tellma.Core.Tenancy
         /// <exception cref="InvalidOperationException">The catalog connection string is not configured.</exception>
         public string Server => _builder.Value.DataSource;
 
+        /// <summary>The catalog's own database, which no tenant may be located at.</summary>
+        /// <exception cref="InvalidOperationException">The catalog connection string is not configured.</exception>
+        public string Database => _builder.Value.InitialCatalog;
+
         /// <summary>Opens a connection to the catalog.</summary>
         /// <param name="cancellationToken">Cancels the open.</param>
         /// <returns>The open connection; the caller disposes it.</returns>

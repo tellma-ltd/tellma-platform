@@ -3,7 +3,6 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -34,7 +33,6 @@ namespace Tellma.Core.Composition.Checks
     /// <param name="record">The realised composition.</param>
     internal sealed class SqlProfilesCheck(TellmaCompositionRecord record) : IStartupCheck
     {
-        private const string KeyVaultLiteral = "@Microsoft.KeyVault(";
         private const string ProfilesKey = TellmaSqlOptions.SectionPath + ":Profiles";
         private const string AllowedServersKey = TellmaSqlOptions.SectionPath + ":AllowedServers";
         private const string CatalogKey = TellmaCatalogOptions.SectionPath + ":ConnectionString";
@@ -131,62 +129,9 @@ namespace Tellma.Core.Composition.Checks
         private void CheckFragment(
             string fragment, string subject, string key, TellmaSqlOptions sql, bool isDevelopment, bool requirePoolSize, List<CompositionProblem> problems)
         {
-            // --- An unresolved Key Vault reference, anywhere in the value ---
-            if (fragment.Contains(KeyVaultLiteral, StringComparison.OrdinalIgnoreCase))
-            {
-                problems.Add(new CompositionProblem(
-                    Name,
-                    $"{subject} holds an unresolved Key Vault reference.",
-                    $"Grant the host's identity access to the vault so the reference in {key} resolves, or deliver the secret through a configuration provider."));
-                return;
-            }
-
-            if (!TenantConnectionStrings.TryParse(fragment, out SqlConnectionStringBuilder parsed))
-            {
-                problems.Add(new CompositionProblem(
-                    Name,
-                    $"{subject} is not a valid SqlClient connection string.",
-                    $"Set {key} to keywords and values separated by ';', such as 'Encrypt=True;Max Pool Size=20'."));
-                return;
-            }
-
-            // --- The pool bound: every profile sets it, within the per-tenant bound ---
-            if (requirePoolSize && !parsed.ShouldSerialize("Max Pool Size"))
-            {
-                problems.Add(new CompositionProblem(
-                    Name,
-                    $"{subject} does not set Max Pool Size, so SqlClient's default of 100 per tenant would apply.",
-                    $"Add 'Max Pool Size={sql.MaxPoolSizePerTenant}' (or less) to {key}."));
-            }
-            else if (requirePoolSize && parsed.MaxPoolSize > sql.MaxPoolSizePerTenant)
-            {
-                problems.Add(new CompositionProblem(
-                    Name,
-                    $"{subject} sets Max Pool Size to {parsed.MaxPoolSize}, above {TellmaSqlOptions.SectionPath}:MaxPoolSizePerTenant ({sql.MaxPoolSizePerTenant}).",
-                    $"Lower Max Pool Size in {key} to {sql.MaxPoolSizePerTenant} or less, or raise {TellmaSqlOptions.SectionPath}:MaxPoolSizePerTenant with the server's session budget in mind."));
-            }
-
-            if (isDevelopment)
-            {
-                return;
-            }
-
-            // --- Outside Development: encryption, and no password unless allowed ---
-            if (!parsed.ShouldSerialize("Encrypt") || parsed.Encrypt == SqlConnectionEncryptOption.Optional)
-            {
-                problems.Add(new CompositionProblem(
-                    Name,
-                    $"{subject} does not require encryption.",
-                    $"Add 'Encrypt=True' (or 'Encrypt=Strict') to {key}."));
-            }
-
-            if (parsed.ShouldSerialize("Password") && !sql.AllowSqlPassword)
-            {
-                problems.Add(new CompositionProblem(
-                    Name,
-                    $"{subject} carries a SQL password outside Development.",
-                    $"Connect with a managed identity or integrated security, or, where a SQL login is the only option, set {TellmaSqlOptions.SectionPath}:AllowSqlPassword to true and deliver the password through a configuration provider."));
-            }
+            // The rules are shared with the registry, which applies them to every snapshot it composes.
+            problems.AddRange(SqlProfileRules.Check(fragment, subject, key, sql, isDevelopment, requirePoolSize)
+                .Select(violation => new CompositionProblem(Name, violation.Problem, violation.Fix)));
         }
 
         /// <summary>Checks the allowed servers: required outside Development, and every entry well formed.</summary>

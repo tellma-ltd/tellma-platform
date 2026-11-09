@@ -88,10 +88,13 @@ namespace Tellma.Core.Tenancy
                 throw new ArgumentException("The database name must be 1 to 128 characters without ';', '=', ']' or a control character.", nameof(registration));
             }
 
-            if (RefuseLocation(server, profile, sql) is string locationProblem)
+            if (RefuseLocation(server, database, profile, sql) is string locationProblem)
             {
                 throw Refused(TenantProblemCodes.RegistrationRefused, $"The registration of '{name}' was refused: {locationProblem}");
             }
+
+            // Stored canonical, so the location index sees two spellings of one server as one.
+            server = TenantLocations.Canonicalize(server);
 
             SqlConnection connection = await connections.OpenCatalogAsync(cancellationToken).ConfigureAwait(false);
             int registered;
@@ -244,10 +247,12 @@ namespace Tellma.Core.Tenancy
                 throw new ArgumentException("The database name must be 1 to 128 characters without ';', '=', ']' or a control character.", nameof(location));
             }
 
-            if (RefuseLocation(location.Server, location.CredentialProfile, sqlOptions.CurrentValue) is string locationProblem)
+            if (RefuseLocation(location.Server, location.Database, location.CredentialProfile, sqlOptions.CurrentValue) is string locationProblem)
             {
                 throw Refused(TenantProblemCodes.LocationRefused, $"The relocation of tenant {tenantId} was refused: {locationProblem}");
             }
+
+            location = location with { Server = TenantLocations.Canonicalize(location.Server) };
 
             SqlConnection connection = await connections.OpenCatalogAsync(cancellationToken).ConfigureAwait(false);
             await using (connection.ConfigureAwait(false))
@@ -450,18 +455,36 @@ namespace Tellma.Core.Tenancy
                 : throw new ArgumentException($"An actor is 1 to {MaxActorLength} characters, not blank and without control characters.", nameof(actor));
         }
 
-        /// <summary>Why a server and profile cannot hold a tenant, or null when they can.</summary>
+        /// <summary>Why a location cannot hold a tenant, or null when it can.</summary>
         /// <param name="server">The server.</param>
+        /// <param name="database">The database, or null for the default name, which is never the catalog's.</param>
         /// <param name="profile">The profile's name.</param>
         /// <param name="sql">The SQL options in effect.</param>
         /// <returns>The problem, as the end of a sentence, or null.</returns>
-        private string? RefuseLocation(string server, string profile, TellmaSqlOptions sql)
+        private string? RefuseLocation(string server, string? database, string profile, TellmaSqlOptions sql)
         {
             return !TenantLocations.IsServerAllowed(server, sql.AllowedServers, environment.IsDevelopment)
                 ? $"the server '{server}' is malformed or outside Tellma:Sql:AllowedServers."
                 : !TenantLocations.IsValidProfileName(profile) || !sql.Profiles.ContainsKey(profile)
                     ? $"the credential profile '{profile}' is not configured under Tellma:Sql:Profiles."
-                    : null;
+                    : database is not null && IsCatalogLocation(server, database)
+                        ? "the location is the catalog's own database."
+                        : null;
+        }
+
+        /// <summary>Whether a location names the catalog's own database, whatever the server's spelling.</summary>
+        /// <param name="server">The server; it follows the grammar.</param>
+        /// <param name="database">The database.</param>
+        /// <returns>True when it does.</returns>
+        private bool IsCatalogLocation(string server, string database)
+        {
+            string catalogServer = TenantLocations.TryParseServer(catalog.Server, out _)
+                ? TenantLocations.Canonicalize(catalog.Server)
+                : catalog.Server;
+
+            // Database names compare as the server does by default, without regard to case.
+            return string.Equals(TenantLocations.Canonicalize(server), catalogServer, StringComparison.Ordinal)
+                && string.Equals(database, catalog.Database, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>The distribution's default language: the first it offers, else English.</summary>

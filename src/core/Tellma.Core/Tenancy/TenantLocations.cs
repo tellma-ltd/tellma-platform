@@ -34,6 +34,9 @@ namespace Tellma.Core.Tenancy
         /// <summary>The longest profile name a row may hold.</summary>
         public const int MaxProfileLength = 64;
 
+        /// <summary>SQL Server's default TCP port, which a canonical server leaves out.</summary>
+        public const int DefaultPort = 1433;
+
         /// <summary>The protocol prefix the grammar accepts.</summary>
         private const string TcpPrefix = "tcp:";
 
@@ -90,6 +93,35 @@ namespace Tellma.Core.Tenancy
 
             host = rest.ToString();
             return true;
+        }
+
+        /// <summary>
+        ///     The canonical spelling of a server, which a row stores so that two spellings of one
+        ///     server compare equal: no <c>tcp:</c> prefix, no default port <c>,1433</c>, lower case
+        ///     (SQL Server host and instance names ignore case). Two names DNS resolves alike, such as a
+        ///     short name and its fully qualified one, are not unified.
+        /// </summary>
+        /// <param name="server">The server value; it must follow the grammar.</param>
+        /// <returns>The canonical value.</returns>
+        /// <exception cref="ArgumentException">The value does not follow the grammar.</exception>
+        public static string Canonicalize(string server)
+        {
+            if (!TryParseServer(server, out _))
+            {
+                throw new ArgumentException("The server does not follow the location grammar.", nameof(server));
+            }
+
+            ReadOnlySpan<char> rest = server.AsSpan();
+            if (rest.StartsWith(TcpPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                rest = rest[TcpPrefix.Length..];
+            }
+
+            string canonical = rest.ToString().ToLowerInvariant();
+            int comma = canonical.IndexOf(',', StringComparison.Ordinal);
+            return comma >= 0 && int.Parse(canonical.AsSpan(comma + 1), System.Globalization.CultureInfo.InvariantCulture) == DefaultPort
+                ? canonical[..comma]
+                : canonical;
         }
 
         /// <summary>Whether a server value parses and its host is allowed.</summary>

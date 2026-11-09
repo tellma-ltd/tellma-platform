@@ -6,7 +6,7 @@
 namespace Tellma.Core.Tenancy
 {
     /// <summary>
-    ///     How the registry's first load behaves at startup. Not configuration: the web host keeps the
+    ///     How the registry loads at startup and bounds its listeners. Not configuration: the web host keeps the
     ///     defaults, the migrator turns the catalog verification off, and the suites shorten the bound.
     /// </summary>
     internal sealed class TenantRegistryStartupOptions
@@ -23,5 +23,8 @@ namespace Tellma.Core.Tenancy
 
         /// <summary>How long startup waits for the first load before the host starts without it.</summary>
         public TimeSpan FirstLoadTimeout { get; set; } = DefaultFirstLoadTimeout;
+
+        /// <summary>The bound on one tenant-state listener call; 10 seconds by default.</summary>
+        public TimeSpan ListenerTimeout { get; set; } = TimeSpan.FromSeconds(10);
     }
 }

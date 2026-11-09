@@ -34,7 +34,7 @@ namespace Tellma.Core.IntegrationTests.Catalog
 
             // The default location: the catalog's server, the prefixed database, the default profile.
             TenantInfo stored = (await host.Catalog.ListAsync(Token)).Single(static tenant => tenant.Id == 1000);
-            Assert.Equal(new TenantLocation(sql.Server, "Tellma.it.1000", "default"), stored.Location);
+            Assert.Equal(new TenantLocation(TenantLocations.Canonicalize(sql.Server), "Tellma.it.1000", "default"), stored.Location);
             Assert.Equal("migrator", await SqlServerFixture.ScalarAsync<string>(host.ConnectionString, "SELECT [StateChangedBy] FROM [catalog].[Tenants] WHERE [Id] = 1000;"));
 
             // The writing instance's registry holds the tenants at once.
@@ -66,6 +66,48 @@ namespace Tellma.Core.IntegrationTests.Catalog
                 new TenantRegistration("Acme two", TenantCategory.Live, null, shared), "migrator", cancellationToken: Token));
 
             Assert.Equal(TenantProblemCodes.RegistrationRefused, refused.Code);
+        }
+
+        [Fact]
+        public async Task Another_spelling_of_a_tenants_server_cannot_alias_its_database()
+        {
+            await using CatalogHost host = await CatalogHost.CreateAsync(sql, "register_alias");
+            _ = await host.Catalog.RegisterAsync(
+                new TenantRegistration("Acme", TenantCategory.Live, null, new TenantLocation("sql1.contoso.local", "acme", "default")), "migrator", cancellationToken: Token);
+            TenantDescriptor other = await host.Catalog.RegisterAsync(
+                new TenantRegistration("Other", TenantCategory.Live, null, new TenantLocation("sql1.contoso.local", "other", "default")), "migrator", cancellationToken: Token);
+            _ = await host.Catalog.SetStateAsync(other.Id, TenantState.Active, null, "migrator", Token);
+            _ = await host.Catalog.SetStateAsync(other.Id, TenantState.Frozen, null, "migrator", Token);
+
+            foreach (string alias in (string[])["tcp:sql1.contoso.local", "SQL1.Contoso.Local,1433", "tcp:SQL1.CONTOSO.LOCAL,1433"])
+            {
+                TenantStateException registration = await Assert.ThrowsAsync<TenantStateException>(() => host.Catalog.RegisterAsync(
+                    new TenantRegistration("Alias", TenantCategory.Live, null, new TenantLocation(alias, "acme", "default")), "migrator", cancellationToken: Token));
+                TenantStateException relocation = await Assert.ThrowsAsync<TenantStateException>(() => host.Catalog.RelocateAsync(
+                    other.Id, new TenantLocation(alias, "acme", "default"), "migrator", Token));
+
+                Assert.Equal(TenantProblemCodes.RegistrationRefused, registration.Code);
+                Assert.Equal(TenantProblemCodes.LocationRefused, relocation.Code);
+            }
+        }
+
+        [Fact]
+        public async Task No_tenant_may_be_located_at_the_catalog_itself()
+        {
+            await using CatalogHost host = await CatalogHost.CreateAsync(sql, "register_catalog");
+            string catalogDatabase = new SqlConnectionStringBuilder(host.ConnectionString).InitialCatalog;
+            TenantDescriptor tenant = await host.Catalog.RegisterAsync(new TenantRegistration("Acme", TenantCategory.Live, null, null), "migrator", cancellationToken: Token);
+
+            foreach (string server in (string[])[sql.Server, "tcp:" + sql.Server.ToUpperInvariant()])
+            {
+                TenantLocation catalog = new(server, catalogDatabase.ToUpperInvariant(), "default");
+                TenantStateException registration = await Assert.ThrowsAsync<TenantStateException>(() => host.Catalog.RegisterAsync(
+                    new TenantRegistration("Catalog", TenantCategory.Live, null, catalog), "migrator", cancellationToken: Token));
+                TenantStateException relocation = await Assert.ThrowsAsync<TenantStateException>(() => host.Catalog.RelocateAsync(tenant.Id, catalog, "migrator", Token));
+
+                Assert.Contains("the catalog's own database", registration.Detail, StringComparison.Ordinal);
+                Assert.Equal(TenantProblemCodes.LocationRefused, relocation.Code);
+            }
         }
 
         [Fact]

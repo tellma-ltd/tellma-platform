@@ -69,7 +69,7 @@ namespace Tellma.Core.Tenancy
         [LoggerMessage(
             EventName = "TenantProfileRefused",
             Level = LogLevel.Error,
-            Message = "Tenant {TenantId} uses the credential profile '{Profile}', which is not configured as a valid Tellma:Sql:Profiles entry; the tenant is left out of the snapshot.")]
+            Message = "Tenant {TenantId} uses the credential profile '{Profile}', which is not configured under Tellma:Sql:Profiles or breaks the connection rules core.sql-profiles reports; the tenant is left out of the snapshot.")]
         public static partial void TenantProfileRefused(ILogger logger, int tenantId, string profile);
 
         /// <summary>A row holds a category or state this runtime does not know.</summary>
@@ -128,6 +128,17 @@ namespace Tellma.Core.Tenancy
             Level = LogLevel.Error,
             Message = "The tenant-state listener {Listener} failed for tenant {TenantId}.")]
         public static partial void ListenerFailed(ILogger logger, string listener, int tenantId, Exception exception);
+
+        /// <summary>A tenant-state listener outlasted its bound; the queue moved on.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="listener">The listener's type.</param>
+        /// <param name="tenantId">The tenant it was told about.</param>
+        /// <param name="timeout">The bound.</param>
+        [LoggerMessage(
+            EventName = "TenantStateListenerTimedOut",
+            Level = LogLevel.Error,
+            Message = "The tenant-state listener {Listener} did not finish within {Timeout} for tenant {TenantId}; the next notification proceeds.")]
+        public static partial void ListenerTimedOut(ILogger logger, string listener, int tenantId, TimeSpan timeout);
 
         /// <summary>A tenant was registered.</summary>
         /// <param name="logger">The logger.</param>

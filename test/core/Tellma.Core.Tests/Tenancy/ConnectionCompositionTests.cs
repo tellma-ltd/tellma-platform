@@ -83,6 +83,19 @@ namespace Tellma.Core.Tests.Tenancy
             Assert.True(refusal is TenantRowRefusal.ServerRefused or TenantRowRefusal.DatabaseMalformed);
         }
 
+        [Theory]
+        [InlineData("Authentication=Active Directory Managed Identity;Encrypt=False;Max Pool Size=20")]
+        [InlineData("Authentication=Active Directory Managed Identity;Encrypt=True")]
+        [InlineData("Authentication=Active Directory Managed Identity;Encrypt=True;Max Pool Size=21")]
+        [InlineData("User Id=tellma_web;Password=x;Encrypt=True;Max Pool Size=20")]
+        public void A_profile_that_breaks_the_startup_checks_rules_refuses_its_rows(string profile)
+        {
+            TenantRowComposer composer = new(Sql(profile), isDevelopment: false, "acme");
+
+            Assert.False(composer.TryCompose(FakeCatalogReader.Row(1), out _, out TenantRowRefusal refusal));
+            Assert.Equal(TenantRowRefusal.ProfileMalformed, refusal);
+        }
+
         [Fact]
         public void A_profile_that_is_not_a_valid_fragment_refuses_its_rows()
         {
@@ -97,7 +110,9 @@ namespace Tellma.Core.Tests.Tenancy
         [Fact]
         public void A_tenant_logs_everything_but_its_connection_string()
         {
-            TenantRowComposer composer = new(Sql("User Id=tellma_web;Password=hunter2;Encrypt=True;Max Pool Size=20"), isDevelopment: false, "acme");
+            TellmaSqlOptions sql = Sql("User Id=tellma_web;Password=hunter2;Encrypt=True;Max Pool Size=20");
+            sql.AllowSqlPassword = true;
+            TenantRowComposer composer = new(sql, isDevelopment: false, "acme");
             Assert.True(composer.TryCompose(FakeCatalogReader.Row(1), out TenantInfo tenant, out _));
 
             string text = tenant.ToString();

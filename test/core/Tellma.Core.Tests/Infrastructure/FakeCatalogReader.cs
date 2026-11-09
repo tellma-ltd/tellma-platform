@@ -119,6 +119,17 @@ namespace Tellma.Core.Tests.Infrastructure
             }
         }
 
+        /// <summary>Deletes one row and moves the catalog version.</summary>
+        /// <param name="tenantId">The row's id.</param>
+        public void Remove(int tenantId)
+        {
+            lock (_sync)
+            {
+                _ = _rows.RemoveAll(row => row.Id == tenantId);
+                Version = Guid.NewGuid();
+            }
+        }
+
         /// <inheritdoc />
         public async Task<CatalogHistoryState> ReadHistoryAsync(CancellationToken cancellationToken)
         {

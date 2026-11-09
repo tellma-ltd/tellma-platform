@@ -30,11 +30,15 @@ namespace Tellma.Core.Tests.Tenancy
         /// <param name="configure">Changes the SQL options before the registry is created.</param>
         /// <param name="isDevelopment">Whether the composition runs in Development.</param>
         /// <param name="verifyCatalog">Whether startup verifies the catalog's migrations.</param>
+        /// <param name="configureServices">Adds services, such as scoped listeners, beside the given ones.</param>
+        /// <param name="listenerTimeout">The bound on one listener call; 5 seconds when null.</param>
         /// <param name="listeners">The tenant-state listeners.</param>
         public RegistryHarness(
             Action<TellmaSqlOptions>? configure = null,
             bool isDevelopment = false,
             bool verifyCatalog = true,
+            Action<IServiceCollection>? configureServices = null,
+            TimeSpan? listenerTimeout = null,
             params ITenantStateListener[] listeners)
         {
             TellmaSqlOptions sql = new();
@@ -50,6 +54,8 @@ namespace Tellma.Core.Tests.Tenancy
                 _ = services.AddSingleton(listener);
             }
 
+            configureServices?.Invoke(services);
+
             _services = services.BuildServiceProvider();
             MeterFactory = _services.GetRequiredService<IMeterFactory>();
 
@@ -63,7 +69,11 @@ namespace Tellma.Core.Tests.Tenancy
                 _services.GetRequiredService<IServiceScopeFactory>(),
                 new TenancyMetrics(MeterFactory),
                 Logger,
-                Options.Create(new TenantRegistryStartupOptions { VerifyCatalog = verifyCatalog }));
+                Options.Create(new TenantRegistryStartupOptions
+                {
+                    VerifyCatalog = verifyCatalog,
+                    ListenerTimeout = listenerTimeout ?? TimeSpan.FromSeconds(5),
+                }));
         }
 
         /// <summary>The catalog.</summary>
@@ -94,6 +104,13 @@ namespace Tellma.Core.Tests.Tenancy
 
         /// <summary>The ids of the snapshot's tenants.</summary>
         public int[] TenantIds => [.. Registry.Tenants.Select(static tenant => tenant.Id)];
+
+        /// <summary>Waits until every queued listener delivery has ended.</summary>
+        /// <returns>A task that completes when they have.</returns>
+        public Task DeliveredAsync()
+        {
+            return Registry.NotificationsDelivered.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        }
 
         /// <summary>Writes rows and loads them as the first snapshot.</summary>
         /// <param name="rows">The rows.</param>
@@ -161,6 +178,19 @@ namespace Tellma.Core.Tests.Tenancy
     {
         private readonly Lock _sync = new();
         private readonly List<(TenantDescriptor Tenant, TenantState? Previous)> _calls = [];
+        private readonly List<TenantDescriptor> _removals = [];
+
+        /// <summary>Every removal, in order.</summary>
+        public IReadOnlyList<TenantDescriptor> Removals
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return [.. _removals];
+                }
+            }
+        }
 
         /// <summary>Every call, in order.</summary>
         public IReadOnlyList<(TenantDescriptor Tenant, TenantState? Previous)> Calls
@@ -183,6 +213,84 @@ namespace Tellma.Core.Tests.Tenancy
             }
 
             return throws ? throw new InvalidOperationException("The listener failed.") : Task.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public Task OnRemovedAsync(TenantDescriptor tenant)
+        {
+            lock (_sync)
+            {
+                _removals.Add(tenant);
+            }
+
+            return throws ? throw new InvalidOperationException("The listener failed.") : Task.CompletedTask;
+        }
+    }
+
+    /// <summary>A listener whose every call waits for a signal the test may never give.</summary>
+    internal sealed class HangingListener : ITenantStateListener
+    {
+        /// <summary>Released to let every call end.</summary>
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>Completed once a call has started.</summary>
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <inheritdoc />
+        public Task OnStateChangedAsync(TenantDescriptor tenant, TenantState? previous)
+        {
+            _ = Entered.TrySetResult();
+            return Release.Task;
+        }
+
+        /// <inheritdoc />
+        public Task OnRemovedAsync(TenantDescriptor tenant)
+        {
+            _ = Entered.TrySetResult();
+            return Release.Task;
+        }
+    }
+
+    /// <summary>A listener that calls back into the registry, forcing a refresh, and waits for it.</summary>
+    /// <param name="registry">Resolves the registry once the harness has built it.</param>
+    internal sealed class ReentrantListener(Func<ITenantRegistry> registry) : ITenantStateListener
+    {
+        /// <summary>Completed when the listener's own refresh has finished.</summary>
+        public TaskCompletionSource Refreshed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <inheritdoc />
+        public async Task OnStateChangedAsync(TenantDescriptor tenant, TenantState? previous)
+        {
+            await registry().RefreshAsync(force: true);
+            _ = Refreshed.TrySetResult();
+        }
+
+        /// <inheritdoc />
+        public Task OnRemovedAsync(TenantDescriptor tenant)
+        {
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>A scoped listener that records which instance, and so which scope, took each call.</summary>
+    /// <param name="seen">The instances, shared across scopes.</param>
+    internal sealed class ScopedListener(List<ScopedListener> seen) : ITenantStateListener
+    {
+        /// <inheritdoc />
+        public Task OnStateChangedAsync(TenantDescriptor tenant, TenantState? previous)
+        {
+            lock (seen)
+            {
+                seen.Add(this);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public Task OnRemovedAsync(TenantDescriptor tenant)
+        {
+            return OnStateChangedAsync(tenant, null);
         }
     }
 }
