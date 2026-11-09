@@ -216,6 +216,8 @@ test.describe('search lifecycle', () => {
     await useSyncSearch(page);
     await input(page).fill('Al');
     await expect(options(page)).toHaveCount(2);
+    // The ids are read, not asserted: let the highlight's render land first.
+    await appStable(page);
     const controls = await input(page).getAttribute('aria-controls');
     expect(controls).toBeTruthy();
     await expect(page.locator(`[id="${controls}"]`)).toHaveRole('listbox');
@@ -404,7 +406,9 @@ test.describe('keyboard matrix', () => {
     await input(page).fill('Adam');
     await expect(activeOption(page)).toHaveText('Adam Brown');
     // Both rows read 'Adam Brown', so the highlight has to be tracked by
-    // identity: waiting on the TEXT would let Tab race the arrow.
+    // identity: waiting on the TEXT would let Tab race the arrow. The id is
+    // read once the render that set it has landed.
+    await appStable(page);
     const first = await input(page).getAttribute('aria-activedescendant');
     await input(page).press('ArrowDown'); // the SECOND 'Adam Brown', id 2
     await expect(input(page)).not.toHaveAttribute('aria-activedescendant', first ?? '');

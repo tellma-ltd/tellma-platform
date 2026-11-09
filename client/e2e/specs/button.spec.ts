@@ -86,6 +86,7 @@ test.describe('forced-colors (DoD 2)', () => {
     await page.emulateMedia({ forcedColors: 'active' });
     await page.goto(storyUrl('button'));
     const buttons = page.getByTestId('variants').locator('button');
+    await expect(buttons).toHaveCount(4); // rendered, so the loop cannot run over none
     for (let i = 0; i < (await buttons.count()); i++) {
       const style = await buttons
         .nth(i)

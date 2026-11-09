@@ -50,9 +50,14 @@ async function dispatchFiles(
   );
 }
 
+/**
+ * The story's last selection as data, or `null` while it reads `none` (no
+ * selection has rendered yet). Poll it: the readout renders a pass after the
+ * gesture that produced the selection.
+ */
 async function readout(page: Page): Promise<unknown> {
   const text = await page.getByTestId('selection-readout').textContent();
-  return JSON.parse(text ?? 'null');
+  return text === null || text === 'none' ? null : JSON.parse(text);
 }
 
 test.describe('dialog paths (DoD 12)', () => {
@@ -96,15 +101,16 @@ test.describe('drops and paste', () => {
       { name: 'big.txt', type: 'text/plain', size: 2 * 1024 * 1024 },
       { name: 'nope.bin', type: 'application/octet-stream', size: 10 },
     ]);
-    const selection = (await readout(page)) as {
-      accepted: string[];
-      rejected: { name: string; reason: string }[];
-    };
-    expect(selection.accepted).toEqual(['a.txt']);
-    expect(selection.rejected).toEqual([
-      { name: 'big.txt', reason: 'size' },
-      { name: 'nope.bin', reason: 'type' },
-    ]);
+    // The readout renders a pass after the drop: poll it, never read it once.
+    await expect
+      .poll(() => readout(page))
+      .toEqual({
+        accepted: ['a.txt'],
+        rejected: [
+          { name: 'big.txt', reason: 'size' },
+          { name: 'nope.bin', reason: 'type' },
+        ],
+      });
   });
 
   test('@cross-engine a single-file zone takes the first and rejects the rest', async ({
@@ -115,12 +121,9 @@ test.describe('drops and paste', () => {
       { name: 'first.txt', type: 'text/plain', size: 5 },
       { name: 'second.txt', type: 'text/plain', size: 5 },
     ]);
-    const selection = (await readout(page)) as {
-      accepted: string[];
-      rejected: { name: string; reason: string }[];
-    };
-    expect(selection.accepted).toEqual(['first.txt']);
-    expect(selection.rejected).toEqual([{ name: 'second.txt', reason: 'count' }]);
+    await expect
+      .poll(() => readout(page))
+      .toEqual({ accepted: ['first.txt'], rejected: [{ name: 'second.txt', reason: 'count' }] });
   });
 
   test('rejections are announced through the live announcer', async ({ page }) => {

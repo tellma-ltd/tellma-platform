@@ -9,10 +9,10 @@ import { mulberry32 } from '../../projects/internal/showcase/src/app/grid/seeded
 import {
   activeCell,
   cell,
-  cellText,
   centerOf,
   clientHeightOf,
   colHeader,
+  expectCellText,
   gotoGrid,
   gridScroller,
   renderedRows,
@@ -22,6 +22,7 @@ import {
   selectedCells,
   setScrollTop,
 } from '../support/grid';
+import { appStable } from '../support/settle';
 
 /**
  * Virtualization structure (spec 0004 §4: window + overscan + the
@@ -54,6 +55,7 @@ test.describe('windowed rendering (100k rows)', () => {
     const bound = Math.ceil(clientHeight / rowHeight) + 10;
 
     await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '100001');
+    await appStable(page); // the window is counted, not asserted: let it settle
     const rendered = await renderedRows(page).count();
     expect(rendered).toBeLessThanOrEqual(bound);
     expect(rendered).toBeLessThan(100);
@@ -78,6 +80,7 @@ test.describe('windowed rendering (100k rows)', () => {
     await expect(
       page.locator('.tm-grid__row:has([data-tm-rowhdr][data-row="50000"])'),
     ).toHaveAttribute('aria-rowindex', '50002'); // 1-based, counting the header row
+    await appStable(page);
     expect(await renderedRows(page).count()).toBeLessThanOrEqual(bound);
   });
 
@@ -108,10 +111,12 @@ test.describe('windowed rendering (100k rows)', () => {
   }) => {
     await page.getByTestId('row-count').selectOption('1000');
     await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '1001');
+    await appStable(page); // both windows are counted once settled
     const with1k = await renderedRows(page).count();
 
     await page.getByTestId('row-count').selectOption('100000');
     await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '100001');
+    await appStable(page);
     const with100k = await renderedRows(page).count();
 
     expect(with100k).toBe(with1k);
@@ -168,7 +173,7 @@ test.describe('state lifetimes (§12 walk on grid-states)', () => {
   }) => {
     await setScrollTop(page, 256); // bring rows ~8..22 into view
     await cell(page, 22, 0).click();
-    expect(await cellText(page, 22, 0)).toBe('Row 22');
+    await expectCellText(page, 22, 0, 'Row 22');
 
     await page.getByTestId('remove-rows').click(); // removes rows 20..29 by id
 
@@ -178,7 +183,7 @@ test.describe('state lifetimes (§12 walk on grid-states)', () => {
     // slid into view index 22.
     await expect(activeCell(page)).toHaveAttribute('data-row', '19');
     await expect(activeCell(page)).toHaveAttribute('data-col', '0');
-    expect(await cellText(page, 19, 0)).toBe('Row 19');
+    await expectCellText(page, 19, 0, 'Row 19');
     await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '41');
   });
 
@@ -186,7 +191,7 @@ test.describe('state lifetimes (§12 walk on grid-states)', () => {
     await cell(page, 5, 0).click();
     await cell(page, 8, 1).click({ modifiers: ['Shift'] }); // 4×2 range
     await expect(selectedCells(page)).toHaveCount(8);
-    expect(await cellText(page, 5, 1)).toBe('105');
+    await expectCellText(page, 5, 1, '105');
 
     await page.getByTestId('refresh-rows').click(); // same ids, new objects, new values
 
@@ -207,7 +212,7 @@ test.describe('state lifetimes (§12 walk on grid-states)', () => {
     expect(target).toBeGreaterThanOrEqual(0);
     // The active row is always rendered, wherever the shuffle put it.
     await expect(activeCell(page)).toHaveAttribute('data-row', String(target));
-    expect(await cellText(page, target, 0)).toBe('Row 3');
+    await expectCellText(page, target, 0, 'Row 3');
     await expect(rowHeader(page, target)).toHaveClass(/tm-grid__rowhdr--hit/);
     await expect(cell(page, target, 2)).toHaveAttribute('aria-selected', 'true');
   });

@@ -91,9 +91,29 @@ export function findCounter(page: Page): Locator {
   return page.locator('[data-tm-find-counter]');
 }
 
-/** A cell's display text as the user sees it (visually-hidden text included). */
+/**
+ * A cell's display text as the user sees it (visually-hidden text included),
+ * read once the app is stable: a cell renders its new text on the pass after
+ * the change it reflects, so an immediate read could see the old text. Use
+ * it to capture a value; to assert one, use {@link expectCellText}, which
+ * waits for the text instead of reading it once.
+ */
 export async function cellText(page: Page, row: number, col: number): Promise<string> {
+  await appStable(page);
   return (await cell(page, row, col).innerText()).trim();
+}
+
+/**
+ * Asserts, web-first, that a cell's display text (as {@link cellText} reads
+ * it) is `expected`: the assertion retries until the cell shows it.
+ */
+export async function expectCellText(
+  page: Page,
+  row: number,
+  col: number,
+  expected: string,
+): Promise<void> {
+  await expect(cell(page, row, col)).toHaveText(expected, { useInnerText: true });
 }
 
 /** The resolved `--grid-row-height` in px, measured from the sticky header band. */

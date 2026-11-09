@@ -6,6 +6,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { expectNoAxeViolations } from '../support/axe';
+import { appStable } from '../support/settle';
 import { storyUrl } from '../support/story-map';
 
 /**
@@ -101,6 +102,7 @@ test.describe('overlay composition (§3.4/DoD 6)', () => {
     expect(controls).toBeTruthy();
     await expect(page.locator(`[id="${controls}"]`)).toHaveRole('listbox');
 
+    await appStable(page); // the open's highlight has rendered before it is read
     const initialActive = await trigger.getAttribute('aria-activedescendant');
     await trigger.press('ArrowDown');
     if (initialActive) {
@@ -121,6 +123,7 @@ test.describe('keyboard + focus (§6)', () => {
   }) => {
     const { trigger, panel } = await openSelect(page, 'select-country');
 
+    await appStable(page); // the open's highlight has rendered before it is read
     const before = await trigger.getAttribute('aria-activedescendant');
     await trigger.press('ArrowDown');
     await expect(trigger).toBeFocused(); // activedescendant model — no focus move
@@ -186,6 +189,7 @@ test.describe('keyboard + focus (§6)', () => {
 
     await trigger.press('j'); // Jordan
     await expect(panel).toBeVisible();
+    await appStable(page); // the typeahead's highlight has rendered before it is read
     const activeId = await trigger.getAttribute('aria-activedescendant');
     await expect(page.locator(`[id="${activeId}"]`)).toContainText('Jordan');
     // The keystroke searched; it did not silently change the value.
