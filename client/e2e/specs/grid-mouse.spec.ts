@@ -109,8 +109,7 @@ test.describe('drag selection', () => {
     await page.mouse.up();
 
     // The drag extended the selection to the rows it scrolled past.
-    const count = await selectedCells(page).count();
-    expect(count).toBeGreaterThan(1);
+    await expect.poll(() => selectedCells(page).count()).toBeGreaterThan(1);
   });
 });
 

@@ -9,7 +9,10 @@ import { describe, expect, it } from 'vitest';
 
 import { extractExamples } from '../docs/extract-components.mjs';
 
-describe('extractExamples (AST scan)', () => {
+// A non-in-memory ts-morph Project loads the TypeScript compiler and its lib files on first use,
+// which takes several seconds on a busy machine; the default 5 s test timeout would make that a
+// flake.
+describe('extractExamples (AST scan)', { timeout: 60_000 }, () => {
   it('survives template-less exports, sibling properties, and skips non-exports', () => {
     const project = new Project({ useInMemoryFileSystem: false });
     // extractExamples derives <name>.examples.ts from the source path.
