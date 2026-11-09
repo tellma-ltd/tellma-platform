@@ -4,47 +4,17 @@
 // LICENSE file in the root directory of this source tree.
 
 import { NgTemplateOutlet } from '@angular/common';
-import {
-  afterRenderEffect,
-  booleanAttribute,
-  Component,
-  computed,
-  contentChildren,
-  effect,
-  ElementRef,
-  inject,
-  input,
-  model,
-  output,
-  type Signal,
-  signal,
-  untracked,
-  viewChild,
-  viewChildren,
-} from '@angular/core';
+import { Component, computed, effect, model, output, type Signal } from '@angular/core';
 import { Combobox, ComboboxPopup, ComboboxWidget } from '@angular/aria/combobox';
 import { Listbox, Option } from '@angular/aria/listbox';
-import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
-import type { ConnectedPosition } from '@angular/cdk/overlay';
-import type { ValidationError } from '@angular/forms/signals';
+import { OverlayModule } from '@angular/cdk/overlay';
 
-import type { TmCellEditor, TmFieldError, TmFormFieldControl } from '@tellma/core-ui/contracts';
-import {
-  TM_CELL_EDITOR_HOST,
-  TM_ERROR_DISPLAY,
-  TM_FORM_FIELD_DEFAULTS,
-  TM_UI_TRANSLATE,
-  tmResolveFieldErrors,
-  ɵtmControlSize,
-  type TmControlSize,
-} from '@tellma/core-ui';
-import { TM_FORM_FIELD_CONTROL, TmFormField } from '@tellma/core-ui/form-field';
-import { tmCreateAnchoredOverlay } from '@tellma/core-ui/overlay';
+import type { TmCellEditor } from '@tellma/core-ui/contracts';
+import { TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/form-field';
+import { TmIcon } from '@tellma/core-ui/icon';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
-import { TmOption } from './tm-option';
-
-let nextUniqueId = 0;
+import { TmSelectBase } from './tm-select-base';
 
 /**
  * Single-select dropdown: a custom `<div>` trigger composed with
@@ -60,7 +30,8 @@ let nextUniqueId = 0;
  *
  * The projected `tm-option`s are data + content templates; the actual
  * `[ngOption]` rows render here inside the listbox (aria's DI does not
- * cross content projection).
+ * cross content projection). Options may sit under `tm-option-group`
+ * headings; navigation and typeahead skip the headings.
  *
  * Value integrity: the `value` model is the single source of truth.
  * It is mirrored into aria's listbox as a `valueKey`-mapped stable key and
@@ -78,6 +49,7 @@ let nextUniqueId = 0;
  *   A printable character on the CLOSED trigger opens the panel and moves
  *   the active option to the first match (select-only combobox behavior) —
  *   typing never changes the value silently; committing stays explicit.
+ *   Option groups render as `role="group"` named by their heading.
  */
 @Component({
   selector: 'tm-select',
@@ -89,6 +61,7 @@ let nextUniqueId = 0;
     Option,
     NgTemplateOutlet,
     OverlayModule,
+    TmIcon,
     TmSpinner,
   ],
   providers: [{ provide: TM_FORM_FIELD_CONTROL, useExisting: TmSelect }],
@@ -116,18 +89,7 @@ let nextUniqueId = 0;
       @if (pending()) {
         <tm-spinner class="tm-select__spinner" />
       }
-      <svg
-        class="tm-select__caret"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.75"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <path d="m6 9 6 6 6-6" />
-      </svg>
+      <tm-icon class="tm-select__caret" [svg]="caretIcon" />
     </div>
 
     <ng-template
@@ -151,31 +113,50 @@ let nextUniqueId = 0;
             (keydown.enter)="commitFromListbox()"
             (keydown.space)="onSpaceKey()"
           >
-            @for (option of options(); track option) {
-              <li
-                ngOption
-                #optionRow
-                class="tm-option__row"
-                [value]="keyOf(option.value())"
-                [label]="option.effectiveLabel()"
-                [disabled]="option.disabled()"
-              >
-                <span class="tm-option__content">
-                  <ng-container [ngTemplateOutlet]="option.contentTemplate()" />
-                </span>
-                <svg
-                  class="tm-option__check"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.75"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M20 6 9 17l-5-5" />
-                </svg>
-              </li>
+            <!-- Runs of rows: an ungrouped run draws its options directly in
+                 the listbox, exactly as a select without groups always has;
+                 a group wraps its run in role=group under a heading row. -->
+            @for (entry of entries(); track entry.key) {
+              @if (entry.group; as group) {
+                <li class="tm-option-group" role="group" [attr.aria-labelledby]="group.headingId">
+                  <div class="tm-option-group__heading" [id]="group.headingId">
+                    {{ group.label() }}
+                  </div>
+                  <ul class="tm-option-group__options" role="none">
+                    @for (option of entry.options; track option) {
+                      <li
+                        ngOption
+                        #optionRow
+                        class="tm-option__row"
+                        [value]="keyOf(option.value())"
+                        [label]="option.effectiveLabel()"
+                        [disabled]="option.disabled()"
+                      >
+                        <span class="tm-option__content">
+                          <ng-container [ngTemplateOutlet]="option.contentTemplate()" />
+                        </span>
+                        <tm-icon class="tm-option__check" [svg]="checkIcon" />
+                      </li>
+                    }
+                  </ul>
+                </li>
+              } @else {
+                @for (option of entry.options; track option) {
+                  <li
+                    ngOption
+                    #optionRow
+                    class="tm-option__row"
+                    [value]="keyOf(option.value())"
+                    [label]="option.effectiveLabel()"
+                    [disabled]="option.disabled()"
+                  >
+                    <span class="tm-option__content">
+                      <ng-container [ngTemplateOutlet]="option.contentTemplate()" />
+                    </span>
+                    <tm-icon class="tm-option__check" [svg]="checkIcon" />
+                  </li>
+                }
+              }
             }
           </ul>
         </div>
@@ -197,135 +178,14 @@ let nextUniqueId = 0;
     '[class.tm-select--lg]': 'effectiveSize() === "lg"',
   },
 })
-export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefined> {
-  private readonly translate = inject(TM_UI_TRANSLATE);
-  private readonly errorDisplay = inject(TM_ERROR_DISPLAY);
-  private readonly defaults = inject(TM_FORM_FIELD_DEFAULTS);
-  /** The enclosing grid cell's registration sink, if any — absent standalone. */
-  private readonly cellHost = inject(TM_CELL_EDITOR_HOST, { optional: true });
-  /** The enclosing form field, if any — decides whether the size ladder is inherited. */
-  private readonly field = inject(TmFormField, { optional: true });
-
-  // ---- FormValueControl<T | undefined> + optional state inputs (§5) ----
+export class TmSelect<T>
+  extends TmSelectBase<T, T | undefined>
+  implements TmCellEditor<T | undefined>
+{
   /** The selected domain value — THE source of truth. */
   readonly value = model<T | undefined>(undefined);
-  /** Non-form usage only — the bound field is authoritative when bound via [formField]. */
-  readonly disabled = input(false, { transform: booleanAttribute });
-  /** Readonly state for non-form usage — the bound field is authoritative when bound via [formField]. */
-  readonly readonly = input(false, { transform: booleanAttribute });
-  /** Required state for non-form usage — the bound field is authoritative when bound via [formField]. */
-  readonly required = input(false, { transform: booleanAttribute });
-  /** Validity state for non-form usage — the bound field is authoritative when bound via [formField]. */
-  readonly invalid = input(false, { transform: booleanAttribute });
-  /** Touched state for non-form usage — the bound field is authoritative when bound via [formField]. */
-  readonly touched = input(false, { transform: booleanAttribute });
-  /** Dirty state for non-form usage — the bound field is authoritative when bound via [formField]. */
-  readonly dirty = input(false, { transform: booleanAttribute });
-  /** Async-validation-pending state — the bound field is authoritative when bound via [formField]. */
-  readonly pending = input(false, { transform: booleanAttribute });
-  /** The raw framework errors, bound by [formField] and localized into `localizedErrors`. */
-  readonly errors = input<readonly ValidationError.WithOptionalFieldTree[]>([]);
-  /** Emits when the trigger blurs — touch reporting for the bound field. */
-  readonly touch = output<void>();
-
-  // ---- Own API (§3.4) ----
-  /**
-   * Maps a domain value to a STABLE primitive key (aria selects with `===`).
-   * Unneeded for primitive values.
-   */
-  readonly valueKey = input<((value: T) => string | number) | undefined>(undefined);
-  /**
-   * Resolves the trigger label without a materialized option — required in
-   * practice for prepopulated/async lists.
-   */
-  readonly displayWith = input<((value: T) => string) | undefined>(undefined);
-  /** Trigger text while no value is selected; defaults to the localized built-in placeholder. */
-  readonly placeholder = input<string | undefined>(undefined);
-  /** Accessible name for a select used WITHOUT tm-form-field. */
-  readonly ariaLabel = input<string | null>(null, { alias: 'aria-label' });
-  /**
-   * Author-supplied describedby ids (space-separated), relocated to the
-   * TRIGGER and preserved — the enclosing field's hint/error ids are merged
-   * AFTER them, never over them.
-   */
-  readonly ariaDescribedby = input<string | null>(null, { alias: 'aria-describedby' });
-  /**
-   * Size step. Unset, a select inside a `tm-form-field` follows the FIELD's
-   * size (the field publishes its ladder as inheritable locals), and a bare
-   * select follows the workspace-wide control default — the `lg` touch
-   * height below the `sm` breakpoint.
-   */
-  readonly size = input<TmControlSize | undefined>(undefined);
-
-  /** A bare select's size: `size`, else the responsive workspace default. */
-  private readonly standaloneSize = ɵtmControlSize(this.size);
-
-  /**
-   * The size step the host classes apply. Deliberately `undefined` for an
-   * unsized select inside a field: a size class would re-declare the ladder
-   * locals on this host, and an element's own custom property always beats
-   * an inherited one — exactly what must NOT happen when the field's size
-   * is meant to reach the trigger and its dropdown rows. A select editing a
-   * grid cell keeps the workspace default at every width: grids are not
-   * subject to the touch size, and its rows must match the grid's.
-   */
-  protected readonly effectiveSize = computed(() =>
-    this.field !== null
-      ? this.size()
-      : this.cellHost !== null
-        ? (this.size() ?? this.defaults.size)
-        : this.standaloneSize(),
-  );
   /** Emits the committed value whenever the user activates an option. */
   readonly selectionChange = output<T>();
-  /** Emits when the options panel opens. */
-  readonly opened = output<void>();
-  /** Emits when the options panel closes. */
-  readonly closed = output<void>();
-
-  /** Stable generated id of the trigger — the target for the field's aria wiring. */
-  readonly controlId = signal(`tm-select-${nextUniqueId++}`).asReadonly();
-
-  /** Whether the options panel is open. */
-  protected readonly expanded = signal(false);
-  /** aria's listbox value — an ARRAY of keys; never the source of truth. */
-  protected readonly listboxValue = signal<unknown[]>([]);
-  /** The projected `tm-option` children. */
-  protected readonly options = contentChildren(TmOption<T>);
-
-  /** Overlay positions: below the trigger, flipping above when space runs out. */
-  protected readonly positions: ConnectedPosition[] = [
-    { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top' },
-    { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom' },
-  ];
-
-  private readonly combobox = viewChild(Combobox);
-  private readonly overlay = viewChild(CdkConnectedOverlay);
-  private readonly listbox = viewChild(Listbox);
-  private readonly optionRows = viewChildren('optionRow', { read: ElementRef });
-  /** aria's rendered `[ngOption]` directives — activation guards read active/disabled. */
-  private readonly ariaOptions = viewChildren(Option);
-
-  /**
-   * The shared anchored-overlay wiring (config + macrotask re-measure —
-   * aria's DeferredContent inserts the panel one render pass after the CDK
-   * attaches and measures, so flip-up would otherwise measure a zero-height
-   * panel and never flip).
-   */
-  protected readonly anchored = tmCreateAnchoredOverlay({
-    overlay: () => this.overlay(),
-    origin: () => this.combobox()?.element ?? null,
-    positions: this.positions,
-    matchWidth: true,
-    remeasure: 'macrotask',
-  });
-
-  /**
-   * A printable character typed on the CLOSED trigger, held until the panel
-   * renders so it can seed aria's typeahead (the panel content inserts one
-   * render pass after the overlay attaches).
-   */
-  private pendingTypeaheadKey: string | null = null;
 
   /** Grid revert baseline (TmCellEditor): the value `cancel()` returns to. */
   private lastCommitted: T | undefined;
@@ -339,66 +199,8 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
    */
   private selfWrite: { readonly value: T | undefined } | null = null;
 
-  // ---- TmFormFieldControl (§2.1) ----
-  /** Renders its own trigger chrome; the field adds only label/hint/error. */
-  readonly ownsChrome = true;
-  private readonly fieldDescribedBy = signal<readonly string[]>([]);
-  /** Every exposed describedby id: author-supplied first, then the field's hint/error ids. */
-  readonly describedByIds: Signal<readonly string[]> = computed(() => [
-    ...(this.ariaDescribedby()?.split(/\s+/).filter(Boolean) ?? []),
-    ...this.fieldDescribedBy(),
-  ]);
-  private readonly labelIdFromField = signal<string | null>(null);
-  /** Already-localized error messages resolved from `errors` — read by the enclosing field. */
-  readonly localizedErrors: () => readonly TmFieldError[] = tmResolveFieldErrors(
-    this.errors,
-    this.translate,
-  );
-
-  /** The merged aria-describedby attribute value, or null when no ids apply. */
-  protected readonly describedByAttr = computed(() => this.describedByIds().join(' ') || null);
-  /** The field-provided label id, bound as aria-labelledby on the trigger. */
-  protected readonly ariaLabelledBy = computed(() => this.labelIdFromField());
-
-  /** Whether the enclosing field displays an error this control must mark (see `setFieldError`). */
-  private readonly fieldError = signal(false);
-
-  /**
-   * Whether invalidity is surfaced (aria-invalid) — follows the
-   * error-display policy, or the enclosing field's own displayed error: the
-   * field's plain `error` input never reaches this control's bound state,
-   * and the select owns the only chrome there is to mark.
-   */
-  protected readonly showsInvalid = computed(
-    () =>
-      this.fieldError() ||
-      this.errorDisplay({
-        invalid: this.invalid(),
-        touched: this.touched(),
-        dirty: this.dirty(),
-        pending: this.pending(),
-      }),
-  );
-
-  /** Receives whether the enclosing field displays an error (its plain `error` input included). */
-  setFieldError(showsError: boolean): void {
-    this.fieldError.set(showsError);
-  }
-
-  /** Domain value → the stable primitive key aria selects on. */
-  keyOf(value: T): unknown {
-    if (value === undefined || value === null) {
-      return value;
-    }
-    const keyFn = this.valueKey();
-    return keyFn ? keyFn(value) : value;
-  }
-
-  private readonly defaultPlaceholder = this.translate('select.placeholder');
-  /** The placeholder in effect: the `placeholder` input, or the localized default. */
-  protected readonly effectivePlaceholder = computed(
-    () => this.placeholder() ?? this.defaultPlaceholder(),
-  );
+  /** The localized built-in placeholder ("Select an option"). */
+  protected readonly defaultPlaceholder = this.translate('select.placeholder');
 
   /** Whether the trigger currently shows the placeholder (no value selected). */
   protected readonly showsPlaceholder = computed(
@@ -411,51 +213,14 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     if (value === undefined || value === null) {
       return this.effectivePlaceholder();
     }
-    const displayWith = this.displayWith();
-    if (displayWith) {
-      return displayWith(value);
-    }
-    const key = this.keyOf(value);
-    const option = this.options().find((o) => this.keyOf(o.value()) === key);
-    const label = option?.effectiveLabel() ?? '';
+    const label = this.labelOf(value);
     return label !== '' ? label : this.effectivePlaceholder();
   });
 
+  /** Registers with an enclosing grid cell and tracks the revert baseline. */
   constructor() {
+    super();
     this.cellHost?.register(this);
-
-    // The ONE-DIRECTIONAL value bridge (§3.4): mirror the model into aria's
-    // listbox (as the stable key), re-applied whenever the option set
-    // changes — aria's afterRenderEffect prunes any selected key without a
-    // rendered option, and by re-asserting here a prepopulated value
-    // SURVIVES async option arrival. Reading listboxValue also re-asserts
-    // right after a prune. Never treat aria's value as authoritative.
-    effect(() => {
-      const value = this.value();
-      this.options(); // re-apply on option turnover
-      const current = this.listboxValue();
-      const desired = value === undefined || value === null ? [] : [this.keyOf(value)];
-      if (current.length !== desired.length || current[0] !== desired[0]) {
-        this.listboxValue.set(desired);
-      }
-    });
-
-    // Panel lifecycle outputs.
-    let wasExpanded = false;
-    effect(() => {
-      const isExpanded = this.expanded();
-      if (isExpanded !== wasExpanded) {
-        wasExpanded = isExpanded;
-        if (isExpanded) {
-          this.opened.emit();
-        } else {
-          // A seed the panel never got to consume must not leak into the
-          // NEXT open (e.g. Escape racing the panel render).
-          this.pendingTypeaheadKey = null;
-          this.closed.emit();
-        }
-      }
-    });
 
     // External writes (form resets, grid loads) move the revert baseline;
     // the select's own writes (marked via `selfWrite`) do not.
@@ -467,87 +232,24 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
         this.lastCommitted = value;
       }
     });
-
-    // Typeahead textContent fallback (§3.4): after the rows render, feed
-    // each label-less option its rendered text.
-    afterRenderEffect(() => {
-      const rows = this.optionRows();
-      const options = this.options();
-      for (let i = 0; i < rows.length && i < options.length; i++) {
-        if (untracked(() => options[i].label()) === undefined) {
-          const text =
-            (rows[i].nativeElement as HTMLElement)
-              .querySelector('.tm-option__content')
-              ?.textContent?.trim() ?? '';
-          options[i].derivedText.set(text);
-        }
-      }
-      // Closed-trigger typeahead, second half: the character that opened the
-      // panel is forwarded once the listbox exists (the panel content
-      // inserts a render pass after the overlay attaches — and after the
-      // derivedText loop above, so label-less options are searchable too).
-      // Everything happens HERE, before the highlight ever renders — any
-      // deferral (a macrotask, even a scheduler race) lets a frame paint
-      // with the DEFAULT highlight first, a visible jump to the match. The
-      // options are already registered (DI, during change detection), but
-      // the listbox initializes its active state only in ITS OWN
-      // after-render callbacks, which run after this one — so the default
-      // state is initialized imperatively to anchor the search, and the
-      // dispatched keydown marks the listbox as interacted, which turns its
-      // own later initialization into a no-op instead of a clobber
-      // (version-locked internal seam, guarded by the tests).
-      // Gated on RENDERED ROWS, not just the listbox: the panel mounts in
-      // stages, and on the earliest run the listbox shell exists with zero
-      // registered options — consuming the seed there loses it (an empty
-      // listbox swallows the keydown entirely). This effect re-runs when
-      // the rows land (optionRows() is tracked above).
-      const listbox = this.listbox();
-      if (listbox && this.pendingTypeaheadKey !== null && rows.length > 0) {
-        const key = this.pendingTypeaheadKey;
-        this.pendingTypeaheadKey = null;
-        listbox._pattern.setDefaultState();
-        listbox.element.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
-      }
-      listbox?.scrollActiveItemIntoView();
-    });
   }
 
-  // ---- Commit path: activation events ONLY, never valueChange (§3.4) ----
+  /** The one key the current value selects, or none. */
+  protected selectedKeys(): readonly unknown[] {
+    const value = this.value();
+    return value === undefined || value === null ? [] : [this.keyOf(value)];
+  }
+
+  // ---- Commit path: activation events ONLY, never valueChange ----
   /** Commits when an ENABLED option row is clicked; other clicks do nothing. */
   protected onListboxClick(event: MouseEvent): void {
-    // Only option rows commit — panel padding/scrollbar clicks don't close.
-    // A DISABLED row doesn't either: no commit, no close, and no re-emit of
-    // the previous selection.
+    // Only option rows commit — panel padding/scrollbar clicks and group
+    // headings don't close. A DISABLED row doesn't either: no commit, no
+    // close, and no re-emit of the previous selection.
     const row = (event.target as Element).closest('[ngOption]');
     if (row && row.getAttribute('aria-disabled') !== 'true') {
       this.commitFromListbox();
     }
-  }
-
-  /**
-   * Closed-trigger typeahead (the APG select-only combobox behavior): a
-   * printable character on the CLOSED trigger opens the panel and seeds the
-   * typeahead with that character — the active option moves to the first
-   * match, and committing stays an explicit activation. (Deliberately NOT
-   * the native <select> behavior of changing the value silently while
-   * closed: a keystroke must never mutate the model.) aria's own collapsed
-   * handling covers only ArrowDown/Enter/Space, all plain opens.
-   */
-  protected onTriggerKeydown(event: KeyboardEvent): void {
-    if (
-      this.expanded() ||
-      this.disabled() ||
-      this.readonly() ||
-      event.key.length !== 1 ||
-      event.key === ' ' || // aria's own binding: space opens, never searches
-      event.ctrlKey ||
-      event.metaKey ||
-      event.altKey
-    ) {
-      return;
-    }
-    this.pendingTypeaheadKey = event.key;
-    this.expanded.set(true);
   }
 
   /** Space commits — unless it is part of an in-progress typeahead query. */
@@ -555,9 +257,8 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     // While a typeahead query is active, aria routes space into the search
     // string (its own select-on-space binding goes dormant); the commit here
     // must go dormant with it, or typing "united arab" closes the panel at
-    // the first space. isTyping() is the same predicate aria keys that
-    // behavior on (version-locked internal seam; the unit test guards it).
-    if (this.listbox()?._pattern.listBehavior.isTyping()) {
+    // the first space.
+    if (this.isTyping()) {
       return;
     }
     this.commitFromListbox();
@@ -565,10 +266,13 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
 
   /** Commits the listbox's active selection into `value` and closes the panel. */
   protected commitFromListbox(): void {
+    if (this.readonly()) {
+      return;
+    }
     // softDisabled (aria's default) keeps disabled options NAVIGABLE, so
     // Enter/Space can activate one — a no-op: the panel stays open and the
     // previous selection is not re-emitted.
-    if (this.ariaOptions().find((o) => o.active())?.disabled()) {
+    if (this.activeOptionDisabled()) {
       return;
     }
     const keys = this.listboxValue();
@@ -583,24 +287,8 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
       }
     }
     // Activation fires whether or not the value changed: same-value
-    // reselection closes with no special case (§3.4).
+    // reselection closes with no special case.
     this.expanded.set(false);
-  }
-
-  // ---- TmFormFieldControl plumbing ----
-  /** Receives the field's hint/error ids and exposes them via aria-describedby. */
-  setDescribedByIds(ids: readonly string[]): void {
-    this.fieldDescribedBy.set(ids);
-  }
-
-  /** The <div> trigger is not labelable — the field hands us its label id. */
-  setLabelId(id: string | null): void {
-    this.labelIdFromField.set(id);
-  }
-
-  /** Focuses the trigger when the user clicks the field's container chrome. */
-  onContainerClick(): void {
-    this.focus();
   }
 
   // ---- TmCellEditor<T | undefined> ----
@@ -612,16 +300,7 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
    */
   readonly text: Signal<string | null> = computed(() => {
     const value = this.value();
-    if (value === undefined || value === null) {
-      return '';
-    }
-    const displayWith = this.displayWith();
-    if (displayWith) {
-      return displayWith(value);
-    }
-    const key = this.keyOf(value);
-    const option = this.options().find((o) => this.keyOf(o.value()) === key);
-    return option?.effectiveLabel() ?? '';
+    return value === undefined || value === null ? '' : this.labelOf(value);
   });
 
   /** Accepts the current value as the revert baseline and closes the panel. */
@@ -639,24 +318,6 @@ export class TmSelect<T> implements TmFormFieldControl, TmCellEditor<T | undefin
     this.selfWrite = { value: this.lastCommitted };
     this.value.set(this.lastCommitted);
     this.expanded.set(false);
-  }
-
-  /** Focuses the trigger; Signal Forms calls this when asked to focus the field. */
-  focus(options?: FocusOptions): void {
-    untracked(() => this.combobox())?.element.focus(options);
-  }
-
-  /**
-   * Opens the options panel programmatically — how a grid host translates
-   * Enter / Alt+ArrowDown on the cell into the dropdown opening. Focuses
-   * the trigger first: the combobox keeps its popup open only while it owns
-   * focus. A no-op while disabled or readonly.
-   */
-  open(): void {
-    if (!this.disabled() && !this.readonly()) {
-      this.focus();
-      this.expanded.set(true);
-    }
   }
 
   /**

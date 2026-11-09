@@ -20,7 +20,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/entity-picker` | `tm-entity-picker` — server-searched FK selector with advanced-search/create/edit modal pages |
 | `@tellma/core-ui/checkbox` | `tm-checkbox` — native-input tri-state checkbox |
 | `@tellma/core-ui/form-field` | `tm-form-field` — label/hint/message chrome around any control. Validation messages are an anchored popover shown while the control holds focus, never a row under the field, so an error can never reflow the page; the words themselves live in a permanently rendered visually-hidden live region |
-| `@tellma/core-ui/select` | `tm-select` + `tm-option` — overlay single-select |
+| `@tellma/core-ui/select` | `tm-select` and `tm-multi-select` over `tm-option` and `tm-option-group` — overlay single- and multiple-choice selects with option headings |
 | `@tellma/core-ui/button` | `tmButton` on a `<button>` or a link — variants, sizes (sizing `tm-icon` children), the `pending` suppressed-activation state, and `disabledReason` (focusable, activation swallowed, the reason as tooltip and description) |
 | `@tellma/core-ui/tabs` | `tm-tab-group` + `tm-tab` — active-only-DOM tabs with `preserveContent`, and `instantiate()` to render unselected tabs on request |
 | `@tellma/core-ui/modal` | `TmModal` + `TmModalRef` — service-opened dialogs with a typed result channel: centered, as a drawer at the inline-end edge (`placement: 'end'`), or as an alert dialog (`role: 'alertdialog'`) |

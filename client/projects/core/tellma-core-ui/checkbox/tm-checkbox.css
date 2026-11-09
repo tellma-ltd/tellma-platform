@@ -64,15 +64,12 @@
   pointer-events: none;
 }
 
-/* The mark is inset inside the box rather than filling it: a Lucide check
-   spans nearly its whole viewBox, so drawn edge to edge it would touch the
-   box's own border. */
+/* The mark (a tm-icon) is inset inside the box rather than filling it: a
+   Lucide check spans nearly its whole viewBox, so drawn edge to edge it
+   would touch the box's own border. Present but transparent while
+   unchecked, so checking paints a glyph that was always laid out. */
 .tm-checkbox__glyph {
-  inline-size: var(--checkbox-glyph-size);
-  block-size: var(--checkbox-glyph-size);
-}
-
-.tm-checkbox__mark {
+  --icon-size: var(--checkbox-glyph-size);
   opacity: 0;
 }
 
@@ -82,8 +79,8 @@
   border-color: var(--color-primary);
 }
 
-:host(.tm-checkbox--checked) .tm-checkbox__mark,
-:host(.tm-checkbox--indeterminate) .tm-checkbox__mark {
+:host(.tm-checkbox--checked) .tm-checkbox__glyph,
+:host(.tm-checkbox--indeterminate) .tm-checkbox__glyph {
   opacity: 1;
 }
 

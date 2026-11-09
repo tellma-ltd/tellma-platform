@@ -116,10 +116,10 @@
   color: var(--field-placeholder);
 }
 
+/* The caret is a tm-icon: pointing its size token at the select's glyph
+   size keeps the box it always had. */
 .tm-select__caret {
-  flex: none;
-  inline-size: var(--select-check-size);
-  block-size: var(--select-check-size);
+  --icon-size: var(--select-check-size);
   color: var(--field-icon);
   transition: transform var(--duration-fast) var(--ease-standard);
 }
@@ -227,16 +227,43 @@
   white-space: nowrap;
 }
 
+/* A tm-icon whose box is reserved on every row and shown only on the
+   selected one, so selecting never shifts a label. */
 .tm-option__check {
-  flex: none;
-  inline-size: var(--select-check-size);
-  block-size: var(--select-check-size);
+  --icon-size: var(--select-check-size);
   color: var(--color-primary);
   visibility: hidden;
 }
 
 .tm-option__row[aria-selected='true'] .tm-option__check {
   visibility: visible;
+}
+
+/* Option groups: a heading row at the option height over its run of
+   options, so a grouped panel measures like a flat one. The heading is
+   neither navigable nor selectable; the options stay flush with it. */
+.tm-option-group,
+.tm-option-group__options {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tm-option-group__heading {
+  /* A block centred by its line box, not a flex row: a flex container
+     cannot ellipsize its own text. */
+  block-size: var(--tm-field-option-height, var(--field-option-height));
+  line-height: var(--tm-field-option-height, var(--field-option-height));
+  box-sizing: border-box;
+  padding-inline: var(--select-option-padding-x);
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
 }
 
 @media (forced-colors: active) {
