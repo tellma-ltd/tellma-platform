@@ -50,8 +50,13 @@ function menuItem(page: Page, name: string) {
   return page.getByRole('menuitem', { name, exact: true });
 }
 
-async function menuLabels(page: Page): Promise<string[]> {
-  return menuPanel(page).locator('.tm-menu__label').allInnerTexts();
+/**
+ * The open menu's item labels, in order. A locator, not a snapshot: the menu
+ * renders a pass after the gesture that opens it, so assert on it web-first
+ * (`toHaveText([...])`), which waits for the items instead of reading none.
+ */
+function menuLabels(page: Page) {
+  return menuPanel(page).locator('.tm-menu__label');
 }
 
 test.beforeEach(async ({ page }) => {
@@ -112,7 +117,7 @@ test.describe('items', () => {
     await activateCell(page, 2, 0);
     await page.keyboard.press('Shift+F10');
 
-    expect(await menuLabels(page)).toEqual([
+    await expect(menuLabels(page)).toHaveText([
       'Cut',
       'Copy',
       'Copy with headers',
@@ -133,10 +138,15 @@ test.describe('items', () => {
     await cell(page, 3, 0).click({ modifiers: ['Shift'] }); // rows 1–3
     await cell(page, 2, 0).click({ button: 'right' }); // inside the selection: kept
 
-    const labels = await menuLabels(page);
-    expect(labels).toContain('Insert 3 rows above');
-    expect(labels).toContain('Insert 3 rows below');
-    expect(labels).toContain('Delete 3 rows');
+    await expect(menuLabels(page)).toHaveText([
+      'Cut',
+      'Copy',
+      'Copy with headers',
+      'Paste',
+      'Insert 3 rows above',
+      'Insert 3 rows below',
+      'Delete 3 rows',
+    ]);
     await page.keyboard.press('Escape');
   });
 });

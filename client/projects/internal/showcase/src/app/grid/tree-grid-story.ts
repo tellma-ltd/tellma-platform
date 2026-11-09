@@ -9,6 +9,8 @@ import { applyEach, form, required } from '@angular/forms/signals';
 import { TmGridColumn } from '@tellma/core-ui/grid';
 import { TmTreeGrid } from '@tellma/core-ui/tree-grid';
 
+import { HeldResponses, HeldResponsesControls } from '../held-responses';
+
 /** A chart-of-accounts line: a flat adjacency-list row. */
 interface Account {
   readonly id: number;
@@ -113,14 +115,14 @@ const LAZY_CHILDREN: readonly Account[] = [
  * Editable tm-tree-grid demo host: a ~4-level accounts tree over a Signal
  * Forms field tree (name required), the new-row placeholder plus
  * insert-child through `newRow(parent)`, lazy loading behind a
- * configurable delay and failure toggle, the readonly flip, a
- * default-depth select, contentKey switching and unmount/remount buttons
- * to exercise expansion-state persistence, `searchable` (the find bar's
- * tree deep-search), and a live JSON model dump the Playwright battery
- * asserts against.
+ * configurable delay, a held-response gate and a failure toggle, the
+ * readonly flip, a default-depth select, contentKey switching and
+ * unmount/remount buttons to exercise expansion-state persistence,
+ * `searchable` (the find bar's tree deep-search), and a live JSON model
+ * dump the Playwright battery asserts against.
  */
 @Component({
-  imports: [TmTreeGrid, TmGridColumn],
+  imports: [TmTreeGrid, TmGridColumn, HeldResponsesControls],
   template: `
     <h2>Tree grid</h2>
 
@@ -153,6 +155,9 @@ const LAZY_CHILDREN: readonly Account[] = [
         />
         Fail lazy loads
       </label>
+      <!-- Holds lazy loads open, so the browser tests can assert the
+           in-flight state without racing the delay. -->
+      <app-held-responses [gate]="heldLoads" name="loader" />
       <label>
         Default depth
         <!-- Static options (first = the default): dynamic bindings inside
@@ -260,6 +265,8 @@ export class TreeGridStory {
   readonly readonly = signal(false);
   readonly lazyDelay = signal(400);
   readonly lazyFail = signal(false);
+  /** The latency gate of the lazy loader (see {@link HeldResponses}). */
+  readonly heldLoads = new HeldResponses();
   readonly depth = signal<number | undefined>(undefined);
   readonly contentName = signal<'a' | 'b'>('a');
   readonly mounted = signal(true);
@@ -292,13 +299,13 @@ export class TreeGridStory {
   });
 
   /**
-   * The lazy loader: waits the configured delay, rejects while the failure
-   * toggle is on, and otherwise appends the lazy children to the model
-   * array (once) — the grid re-derives the tree and expands over them.
+   * The lazy loader: waits the configured delay (or, while the gate holds,
+   * for its release), rejects while the failure toggle is on, and otherwise
+   * appends the lazy children to the model array (once) — the grid
+   * re-derives the tree and expands over them.
    */
   readonly loadChildren = async (account: Account): Promise<void> => {
-    const delay = this.lazyDelay();
-    await new Promise((resolve) => setTimeout(resolve, delay));
+    await this.heldLoads.wait(this.lazyDelay());
     if (this.lazyFail()) {
       throw new Error('lazy load failed (story toggle)');
     }

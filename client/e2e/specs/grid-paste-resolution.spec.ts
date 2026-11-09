@@ -7,11 +7,11 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { pressUndo, syntheticPaste } from '../support/clipboard';
 import {
-  activeCell,
   activateCell,
+  activeCell,
   cell,
-  cellText,
   editor,
+  expectCellText,
   gotoGrid,
   modelJson,
   rowHeightOf,
@@ -118,8 +118,8 @@ test('notFound and ambiguous labels become invalid inputs with distinct messages
   // cleared (§10) — never a stale or guessed id.
   await expect(cell(page, 1, 6)).toHaveClass(/tm-grid__cell--error/);
   await expect(cell(page, 2, 6)).toHaveClass(/tm-grid__cell--error/);
-  expect(await cellText(page, 1, 6)).toBe('Nobody Real');
-  expect(await cellText(page, 2, 6)).toBe('Adam Brown');
+  await expectCellText(page, 1, 6, 'Nobody Real');
+  await expectCellText(page, 2, 6, 'Adam Brown');
   const model = await lines(page);
   expect(model[1].agentId).toBeNull();
   expect(model[2].agentId).toBeNull();
