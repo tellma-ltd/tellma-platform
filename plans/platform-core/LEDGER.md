@@ -26,6 +26,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 |---|---|---|---|---|
 | 2026-11-08 (prior, levers applied) | 0.115 | 0.36 | 0.80 | 4.0 / 0.8 / 1.5 |
 | 2026-11-08 15:10 (first measured ρ: 15 pts / 157.06M units since 05:03) | 0.0955 | 0.36 (prior; refit after more done) | 0.80 (prior) | not yet republished (due at 15 integrated) |
+| 2026-11-09 07:40 (first measured k, from 12 integrated checkpoints: real units × ρ ÷ estimated kLOC; one-review cycles scaled to full) | 0.0955 | 0.45 (range 0.20-0.89; PC-053 0.89, PC-005 0.20) | 0.60 (PC-008 0.46, PC-011 0.35, PC-065 1.48 outlier: workspace move) | forecast due at 15 integrated |
 
 ## Usage
 
@@ -46,14 +47,24 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-08 17:50 | 60 | 26 | 2026-11-10 20:00 | PC-017 integrated 65ce1d1; PC-007 launched; PC-006 r1; PC-008/015 integrating soon |
 | 2026-11-08 19:00 | 63 | 27 | 2026-11-10 20:00 | PC-008 integrated 0b64145; PC-F03 done; snapshot f112880; PC-016 launched; PC-006 r2 (Fable) |
 | 2026-11-08 22:10 | 68 | 28 | 2026-11-10 20:00 | CI red 0b64145..0a35bb9 (CSP leak); PC-F06 integrated c71a009 (CI pending); PC-006/007 held; PC-053 launched |
+| 2026-11-08 23:20 | 70 | 28 | 2026-11-10 20:00 | line green (c71a009, 732a1af); PC-F05 done; PC-007 integrated a6c928d; snapshot 35f367b; PC-011 launched |
+| 2026-11-09 02:50 | 75 | 28 | 2026-11-10 20:00 | CI red a6c928d/35f367b (flaky grid-menu) → PC-F07 done 4220487; PC-006 integrated da3b766; PC-018 launched |
+| 2026-11-09 03:30 | 76 | 28 | 2026-11-10 20:00 | PC-006 done; PC-016 integrated 0492c35; PC-065 (workspace root move) launched ahead of PC-060 to limit client-lane churn |
+| 2026-11-09 05:00 | 79 | 28 | 2026-11-10 20:00 | CI red 0492c35/05cd337 (host-ICU test) → PC-F09 done f8d5130; PC-011/016 done; PC-053 integrating; PC-018 r1; PC-F08 waits for PC-053 |
+| 2026-11-09 05:40 | 81 | 28 | 2026-11-10 20:00 | PC-053 integrated 63f0394; PC-F08 launched (pc-f, xhigh); PC-009 launched (pc-1) |
+| 2026-11-09 06:30 | 83 | 28 | 2026-11-10 20:00 | PC-053 done; ready queue is client-only (PC-013/041/060): held until PC-065 (workspace move) integrates, to avoid cross-move merges; points will run out before the reset anyway |
+| 2026-11-09 07:20 | 84 | 28 | 2026-11-10 20:00 | PC-018 done (a996caa green); PC-021 + PC-024 launched; PC-009 r1; PC-065 fix1; PC-F08 impl |
+| 2026-11-09 07:45 | 86 | 28 | 2026-11-10 20:00 | PC-065 integrated eee616f (62M: workspace move); PC-009 fix1; PC-060 launched (gate with measured k: 14 - 6.1 - 2.4 = 5.5) |
+| 2026-11-09 09:40 | 93 | 31 | 2026-11-10 20:00 | DRAIN: R=7 < F≈7.5; no new launches. PC-065/F10 done (b0bb12e green); PC-009 fix2; PC-F08 r1; PC-021/024/060 impl |
 
 ## In flight
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-053 | pc-1 | pc/PC-053 | impl | impl-PC-053 / a494e30e39dcc9c6d (high) | | 2026-11-08 22:10 |
-| PC-016 | pc-2 | pc/PC-016 | fix1+integrate (R1 0/0/8; c1 2cf9477) | impl-PC-016 / a7a4c107c0b2fd2e0 (high) | r1-PC-016 / ae157a67fc82e07e9 | 2026-11-08 19:00 |
-| PC-006 | pc-4 | pc/PC-006 | integrating (c3 cade933) | impl-PC-006 / abec5dabf4eae8ca0 (high) | r1 a29223395330a564e; r2-PC-006 (fable, xhigh) / a36d793f2bcbb9bc8 | 2026-11-08 15:10 |
+| PC-009 | pc-1 | pc/PC-009 | fix2 (R2 0/1/4; c2 372c259) | impl-PC-009 / a584af71acfe37be7 (high) | r1 a86a786727d33a296; r2-PC-009 (fable, xhigh) / a81304bb5df1122f6 | 2026-11-09 05:40 |
+| PC-060 | pc-2 | pc/PC-060 | impl | impl-PC-060 / a517313f6813eaf8a (high) | | 2026-11-09 07:45 |
+| PC-021 | pc-4 | pc/PC-021 | impl | impl-PC-021 / a71dae021826abce3 (high) | | 2026-11-09 07:20 |
+| PC-024 | pc-3 | pc/PC-024 | impl | impl-PC-024 / a608c7913686c19a8 (high) | | 2026-11-09 07:20 |
 
 ## Fix items
 
@@ -64,6 +75,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F04 | entity-picker arrow keys in a burst: type + ArrowDown + Enter in one task picks row 1 where paced input picks row 2 (aria relays only the last arrow, after render) | todo (low; filler) | | | from PC-F03 R1 decisions; brief: reviews/PC-F03.md implementer notes "open risk" |
 | PC-F05 | e2e timing-sensitive tests: (a) grid-touch.spec.ts:206 double-tap opens the editor (wall-clock threshold; passed on retry locally); (b) entity-picker "axe floor › popup states" (five axe scans, 12-25 s against a 30 s cap, hit 30.1 s with 1 worker); (c) other heavy axe scans near the cap (grid-entity axe & RTL dropdown open (dark), grid-a11y-editable populated) | done 732a1af (CI green; R1 0/1/2 fixed), pc-f free, fix-PC-F05 / aa332812685080600 (high); r1 ae34baef2b7ac3576 | d67c757, 0073b2b, 1962b30, 732a1af (pc) | 9.76M | from PC-F03 fix1 + PC-008 r1 |
 | PC-F06 | CI red on 0b64145/f112880: tm-control-size.spec.ts 5/5 fail with CSP 'unsafe-eval' from Angular JIT; PC-008's tm-icu-csp.spec.ts CSP leaks into the shared vitest browser page (order-dependent) | done c71a009 (CI green), a6567bfbe1a75233d; r1 a9b4263ecc1f6dbc3 | ce1f544, ed4aa7e, c71a009 (pc) | | stop the line; PC-006 integration held |
+| PC-F07 | CI red on a6c928d and 35f367b: grid-menu.spec.ts:131 "a 3-row selection pluralizes the row items" flaky (menuLabels read [] before the menu rendered) | done 4220487 (CI green; R1 0/0/1 fixed), pc-f free, fix-PC-F07 = aa332812685080600; r1 a56b459f20f91c5fd | 97502a4, 4220487 (pc) | 7.34M | stop the line; PC-006/PC-016 integrations held |
+| PC-F08 | out-of-process PDF rendering for thumbnails: PDFium form-XObject fan-out expands in-process inside FPDF_LoadPage (memory unbounded, D-030 addendum 2) | r1 (xhigh; two reviews: security-bound), pc-f, fix-PC-F08 / a2885b9362b097797; r1 a8779ceb6a081e7d0; blocks=1 (rm empty scratch dir; Ahmad notified 08:4x); MUST land before PC-140; evidence: 1.4 KB PDF = 3-11 s CPU on Linux holding the PDF gate) | da3714f | | from PC-053 R2-1 |
+| PC-F09 | CI red on 0492c35 (ubuntu only): CalendarFormattingTests umm-al-qura culture test assumes host ICU default calendar (UmAlQura) — Ubuntu gives Gregorian | done f8d5130 (CI green), pc-f free, fix-PC-F09 = impl-PC-016 a7a4c107c0b2fd2e0 (resumed); r1 a63ec536f92b2800c | c6ac197, ba9e69d, f8d5130 (pc) | | stop the line; PC-053 integration held |
+| PC-F10 | CI red on eee616f (client + client-windows): tools/tests/core-lint-scope.spec.mts 2/4 fail on a clean runner (lint sees no rules); passed locally (build-state dependency) | done b0bb12e (CI green), pc-f2 free (new 2nd fix slot, D-035), fix-PC-F10 = impl-PC-065 aa5429f429a3c864d (resumed); r1 a74b58946c4730232 | 4eb5789, b0bb12e (pc) | | stop the line |
+| PC-F11 | PDF worker filesystem confinement (Landlock on Linux; AppContainer or low-integrity on Windows) | todo (before GA, not MVP) | | | from PC-F08 residual risk (D-030 addendum 3) |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -94,6 +110,14 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | e2e grid-touch.spec.ts:206 double-tap opens the editor (touch) | 2026-11-08 (PC-F03 fix1, local) | PC-F05 |
 | e2e heavy axe scans time out at 30 s under parallel-slot CPU load (entity-picker popup states, grid-entity axe & RTL dropdown open (dark), grid-a11y-editable populated); pass alone | 2026-11-08 (PC-008 impl, PC-F03 fix1; also PC-F02) | watch; local load only so far. If CI shows it, raise those tests' timeout with a reason or split the scan |
 | e2e tooltip "the wrapper pattern gives disabled controls a working tooltip" | 2026-11-08 (PC-F05 stress: 1/2260 at 10 workers, not reproduced in 2860 more) | watch; track if CI shows it |
+| e2e grid-menu.spec.ts:131 a 3-row selection pluralizes the row items | 2026-11-08 (CI 42532168842 and the 35f367b run) | PC-F07 |
+| e2e tree-grid lazy loading in-flight spinner tests (2/20 under stress: load landed before the spinner assertion) | 2026-11-08 (PC-F07 stress) | fixed in PC-F07 (held-response loader gate in the showcase story) |
+| e2e grid-clipboard real-clipboard test timed out 2/20 locally (Windows cross-worker clipboard lock) | 2026-11-08 (PC-F07, local only) | known local-Windows limitation (PROCESS §11); watch on CI |
+| dotnet Tellma.Core.Testing.Tests runner start glitch ("Test process did not return valid JSON") in the solution-wide unit filter under load; alone 39/39 | 2026-11-09 (PC-006 integrate) | watch; host load |
+| dotnet Identity integration RefreshTokenTests.A_malformed_pushed_allow_list_is_rejected_rather_than_ignored (67 s, failed once under host load; rerun 140/140) | 2026-11-09 (PC-016 integrate) | watch; load-induced (identity suite) |
+| e2e image.spec.ts: 2 misses in a loaded 10-minute run (code untouched), then 33/33 at repeat-each 3 | 2026-11-09 (PC-011 fix1) | watch; possible load flake |
+| client lint:test mcp-server.spec 60 s beforeAll timeout on a clean checkout (reproduced twice locally, also on the parent commit) | 2026-11-09 (PC-065 r1) | watch; pre-existing, cold-start cost |
+| dotnet Imaging suite runtime ~3 min on Windows (≈150 worker starts) after PC-F08 | 2026-11-09 | watch against CI build-test's 20-minute timeout |
 | local machine overload: PR-tier e2e 465/478 (timeouts) and showcase esbuild service stopping during PC-F06 with 5 lanes + reviewers | 2026-11-08 19:00-21:00 | D-028: cap concurrent heavy agents |
 | e2e entity-picker.spec.ts:83 sync source keystroke-instant / async spinner | 2026-11-08 (CI 42456030333) | fixed by PC-F02 |
 | e2e grid-entity.spec.ts:58 type-to-edit … Enter commits with NO move | 2026-11-08 | fixed by PC-F02 |
@@ -115,25 +139,25 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-003 | 0010-f1 | 1 | done | bfc40a1, b780419, de5c585, 68ddcc0 (pc) | 24.89M | Queryex fixture on DatabaseCollations.Platform (D-015 done); CI 42488163369 green |
 | PC-004 | 0023-a | 1 | done | cd25a67, d532bfa, 681f7f8 (pc) | 14.67M | CI 42484063555 green |
 | PC-005 | 0010-g1 | 1 | done | 6b6f48f, e33ceb3 (pc, ff) | 4.23M | 2nd MigrationsHost migration AddSubjectsList; Msg 468 seam stays open for 0012 (StringList has no collation) |
-| PC-006 | 0010-a2 | 1 | fix2 | e99eb6f, 1991dc8, cade933 | | 3 deviations; ruling: counter counts every call incl. 401/403 (spec stands) |
-| PC-007 | 0010-f2 | 1 | integrated | 66fa627, 334d4c7, 7f25a25, a6c928d (pc) | 24.07M | 3 deviations; Exists not in Paths (D-027) |
+| PC-006 | 0010-a2 | 1 | done | e99eb6f, 1991dc8, cade933, da3b766 (pc) | 23.84M | 3 deviations; ruling: counter counts every call incl. 401/403 (spec stands) |
+| PC-007 | 0010-f2 | 1 | done (red run was the flaky grid-menu test, fixed by PC-F07; green at 4220487) | 66fa627, 334d4c7, 7f25a25, a6c928d (pc) | 24.07M | 3 deviations; Exists not in Paths (D-027) |
 | PC-008 | 0010-b1 | 1 | done | 2d7734a, 2161a0b, aa8686e, 0b64145 (pc) | 21.50M | CI 42509964842 red (CSP leak) → fixed by PC-F06; green at c71a009 | 8 deviations; primary ceiling 8 not 7; in-house eval-free ICU; client ICU has no date/time |
-| PC-009 | 0010-a3 | 1 | todo | | | |
+| PC-009 | 0010-a3 | 1 | fix2 | 42c5e6a, 372c259, 00e104c | | 13 deviations; D-034 |
 | PC-010 | 0010-f3 | 1 | todo | | | |
-| PC-011 | 0010-d1 | 1 | todo | | | |
+| PC-011 | 0010-d1 | 1 | done | d35f4fc, 672b257, 05cd337 (pc) | 20.20M | ./popover ceiling 4→4.5 KB under D-031 | | 9 deviations; budgets: popover 9 B, grid 3 B, image 53 B left (D-031) |
 | PC-012 | 0010-f5 | 1 | todo | | | |
 | PC-013 | 0010-d2 | 1 | todo | | | |
 | PC-014 | 0010-a5 | 1 | todo | | | |
 | PC-015 | SEED | 1 | done | ca3759b, 0ebb7fc, 8d53a8c, 0a35bb9 (pc) | 35.86M | red only from the PC-008 CSP leak; green at c71a009 | 11 deviations; D-020 rulings + planner notes PC-018/032/035/039/090 |
-| PC-016 | 0013-a | 1 | fix1 | 2cf9477 | | 13 deviations; D-029 (Umm al-Qura authority, host-independent server text) |
+| PC-016 | 0013-a | 1 | done (red run was the host-ICU test, fixed by PC-F09; green at f8d5130) | 2cf9477, 8210754, cb3438f, 0492c35 (pc) | 24.53M | 13 deviations; D-029 (Umm al-Qura authority, host-independent server text) |
 | PC-017 | 0017-a | 1 | done | e1133a6, 0c184db, 2193781, 65ce1d1 (pc) | 12.83M | 12 deviations; MaxSizeBytes narrow-only (D-022); Linux create-only via link(2) (D-024); no R2 (3 majors, no blocking) |
-| PC-018 | 0012-a | 1 | todo | | | |
+| PC-018 | 0012-a | 1 | done | 7c001cb, 05131bc, a996caa (pc) | 27.44M | 14 deviations; planner notes PC-033/034/063 |
 | PC-019 | 0013-b | 1 | todo | | | |
 | PC-020 | 0023-b | 1 | todo | | | |
-| PC-021 | 0012-b | 1 | todo | | | |
+| PC-021 | 0012-b | 1 | impl | | | |
 | PC-022 | 0013-c | 1 | todo | | | |
 | PC-023 | 0023-c | 1 | todo | | | |
-| PC-024 | 0011-b | 1 | todo | | | |
+| PC-024 | 0011-b | 1 | impl | | | |
 | PC-025 | 0011-c | 1 | todo | | | |
 | PC-026 | 0023-d | 1 | todo | | | |
 | PC-027 | 0012-c1 | 1 | todo | | | |
@@ -162,19 +186,19 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-050 | 0014-d | 1 | todo | | | |
 | PC-051 | 0010-c4 | 1 | todo | | | |
 | PC-052 | 0014-e | 1 | todo | | | |
-| PC-053 | 0017-b | 1 | impl | | | |
+| PC-053 | 0017-b | 1 | done | 7f6643a, 8c01d52, 4dd6091, 8a27e10, 81a154f, 63f0394 (pc) | 27.83M | 11 deviations; D-030; ESCALATED to R2 (2 blocking) |
 | PC-054 | 0010-c5 | 1 | todo | | | |
 | PC-055 | 0018-a | 1 | todo | | | |
 | PC-056 | 0010-c6 | 1 | todo | | | |
 | PC-057 | 0010-e1 | 1 | todo | | | |
 | PC-058 | 0010-e2 | 1 | todo | | | |
 | PC-059 | 0010-d3 | 1 | todo | | | |
-| PC-060 | 0010-b2 | 1 | todo | | | |
+| PC-060 | 0010-b2 | 1 | impl | | | |
 | PC-061 | 0023-g | 1 | todo | | | |
 | PC-062 | 0015-a | 1 | todo | | | |
 | PC-063 | 0015-b | 1 | todo | | | |
 | PC-064 | 0016-b | 1 | todo | | | |
-| PC-065 | 0024-a | 1 | todo | | | |
+| PC-065 | 0024-a | 1 | done (red run fixed by PC-F10; green at b0bb12e) | e5ad0db, 1bfcefa, eee616f (pc) | 62.04M | | 14 deviations; workspace root moved (D-032) |
 | PC-066 | 0015-c | 1 | todo | | | |
 | PC-067 | 0024-b | 1 | todo | | | |
 | PC-068 | 0015-d | 1 | todo | | | |
