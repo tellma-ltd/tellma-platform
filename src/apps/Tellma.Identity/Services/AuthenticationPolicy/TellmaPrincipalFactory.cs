@@ -220,9 +220,9 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
 
         /// <summary>
         ///     Derives token audiences: explicit <c>resource</c> parameters win (already
-        ///     validated against the client's permissions); a browser client's distribution
-        ///     audience derives from its registered origin; fixed platform audiences come from
-        ///     the scope registry.
+        ///     validated against the client's grants by the engine's resource check, per tenant
+        ///     resources included); a browser client's distribution audience derives from its
+        ///     registered origin; fixed platform audiences come from the scope registry.
         /// </summary>
         private async Task<string?> SetAudiencesAsync(
             ClaimsIdentity identity, GrantRequest grant, object application, CancellationToken cancellationToken)

@@ -201,12 +201,26 @@ namespace Tellma.Identity.Services.Provisioning
                 descriptor.Permissions.Add(Permissions.Prefixes.Resource + resource);
             }
 
-            if (seed.RequireConsent)
+            // A third-party client is never trusted the way the platform's own are: its consent is
+            // explicit whatever RequireConsent says, and it carries no first-party marker, so no
+            // first-party treatment reaches it. Startup validation accepts the flag on Native
+            // entries only; it is refused here on any other kind as well, so a descriptor can never
+            // be built from an entry that slipped past it.
+            if (seed.ThirdParty && seed.Kind != TellmaIdentitySeedClientKind.Native)
+            {
+                throw new ArgumentException(
+                    $"Seed client '{seed.ClientId}' sets ThirdParty, which only a Native entry accepts.", nameof(seed));
+            }
+
+            if (seed.RequireConsent || seed.ThirdParty)
             {
                 descriptor.ConsentType = ConsentTypes.Explicit;
             }
 
-            TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.FirstParty, "true");
+            if (!seed.ThirdParty)
+            {
+                TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.FirstParty, "true");
+            }
 
             return descriptor;
         }
@@ -302,7 +316,12 @@ namespace Tellma.Identity.Services.Provisioning
             return descriptor;
         }
 
-        /// <summary>The control plane: a confidential client-credentials caller.</summary>
+        /// <summary>
+        ///     The control plane: a confidential client-credentials caller. It stores no
+        ///     distribution grant: its resource permissions are the two platform audiences of the
+        ///     identity server's own APIs, and a distribution's origin is checked against the
+        ///     distribution-origin list when a request names it.
+        /// </summary>
         private static OpenIddictApplicationDescriptor ControlPlane(
             TellmaIdentitySeedClientOptions seed, string issuerOrigin)
         {

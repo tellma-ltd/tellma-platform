@@ -13,7 +13,8 @@ namespace Tellma.Identity.Tests.Options
     /// <summary>
     ///     Startup validation of <c>Distribution</c> seed entries: the slug, the origin, the
     ///     back-channel endpoint and, outside Development, both secrets. Every failure names its
-    ///     entry, and no two entries may register the same client.
+    ///     entry, no two entries may register the same client, and only a <c>Native</c> entry may
+    ///     be third-party.
     /// </summary>
     public sealed class DistributionSeedValidationTests
     {
@@ -190,6 +191,38 @@ namespace Tellma.Identity.Tests.Options
             Assert.True(result.Failed);
             Assert.Contains(result.Failures!, static f => f.Contains("TellmaIdentity:Seed:Clients:1 ('acme')", StringComparison.Ordinal)
                 && f.Contains("TellmaIdentity:Seed:Clients:0 ('ACME-svc')", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void A_third_party_native_entry_is_accepted()
+        {
+            TellmaIdentitySeedClientOptions agent = new()
+            {
+                ClientId = "claude-code",
+                Kind = TellmaIdentitySeedClientKind.Native,
+                RequireConsent = true,
+                ThirdParty = true,
+                RedirectUris = { "http://127.0.0.1/callback" },
+            };
+
+            Assert.Equal(ValidateOptionsResult.Success, Production.Validate(null, With(agent)));
+        }
+
+        [Theory]
+        [InlineData(TellmaIdentitySeedClientKind.Cli)]
+        [InlineData(TellmaIdentitySeedClientKind.ControlPlane)]
+        [InlineData(TellmaIdentitySeedClientKind.Distribution)]
+        public void ThirdParty_on_any_kind_but_native_fails_naming_the_entry(TellmaIdentitySeedClientKind kind)
+        {
+            TellmaIdentitySeedClientOptions entry = Entry();
+            entry.Kind = kind;
+            entry.ThirdParty = true;
+
+            ValidateOptionsResult result = Production.Validate(null, With(entry));
+
+            Assert.True(result.Failed);
+            Assert.Contains(result.Failures!, static f => f.Contains("TellmaIdentity:Seed:Clients:0 ('acme')", StringComparison.Ordinal)
+                && f.Contains("ThirdParty", StringComparison.Ordinal));
         }
 
         [Fact]

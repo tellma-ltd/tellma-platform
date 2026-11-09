@@ -109,11 +109,17 @@ The management API lives under a version segment relative to the authority, `api
 (under the path base in-proc, for example `/id/api/identity/v1/…`); nothing answers without the
 segment. Version 1 is:
 
-| Routes | Scope |
-|---|---|
-| `POST invitations`, `POST invitations/delivery-status` | `tellma_identity` |
-| `POST service-accounts`; `GET`, `DELETE service-accounts/{clientId}` | `tellma_identity` |
-| `GET users/{sub}`; `POST users/{sub}/temporary-access-passes` | `tellma_control_plane`, standalone only |
+| Routes | Scope | Audience |
+|---|---|---|
+| `POST invitations`, `POST invitations/delivery-status` | `tellma_identity` | the issuer's origin |
+| `POST service-accounts`; `GET`, `DELETE service-accounts/{clientId}` | `tellma_identity` | the issuer's origin |
+| `GET users/{sub}`; `POST users/{sub}/temporary-access-passes` | `tellma_control_plane`, standalone only | `urn:tellma:control-plane` |
+
+Each policy in `ApiPolicies` requires its scope **and** its audience (`ApiPolicies.HasAudience`
+beside `HasScope`), so a token minted for a distribution — whose only audience is that
+distribution's origin — answers `403` at both APIs whatever its scopes. A caller reads and deletes
+every service account only with control-plane authority (`ApiPolicies.HasControlPlaneAuthority`:
+the control-plane scope and the control-plane audience).
 
 The version is the API's own integer, not the engine's release. An additive change — a new endpoint,
 response member or optional request member — stays inside a version, and callers ignore response
@@ -144,6 +150,39 @@ Every access token carries `tellma_kind`: `individual` for the `authorization_co
 machine token. `TellmaKindClaimHandler` writes it inside OpenIddict's sign-in pipeline from the
 grant type, after each token's principal is built and before any token is signed, and strips it
 from every other token; nothing a client sends and no claim already on the principal can set it.
+
+## Resources and audiences
+
+A `resource` parameter (RFC 8707) is decided in one place. `IResourceGrantEvaluator` holds the rule:
+a requested resource is granted when it equals a granted one exactly, or when it is exactly
+`<origin>/<tenant id>/mcp` under a granted resource that is itself a canonical origin, with a positive
+32-bit tenant id without leading zeros — nothing else, and always compared ordinally.
+`ResourceGrantValidator` decides what a request is evaluated against and audits every refusal as
+`ResourceRefused`, and one OpenIddict handler per endpoint asks it (`Handlers/ResourceGrantHandlers.cs`):
+authorization, pushed authorization, device authorization, and the token endpoint for every grant.
+OpenIddict's own resource checks are turned off, and a refusal is always `invalid_target`.
+
+| Request | Evaluated against |
+|---|---|
+| A code exchange, device-code redemption or refresh | the presented grant's own resources: it may narrow, never widen |
+| Any other request | the client's `rsrc:` permissions; a document client (`tellma:document_client`) also holds every origin of the distribution-origin list |
+| A control-plane client (one permitted `tellma_control_plane`) | its own permissions exactly, never the tenant pattern; with the control-plane scope on `client_credentials`, also any origin of the distribution-origin list, exactly |
+
+The distribution-origin list is the `tellma_api` scope's resources, which onboarding appends each
+distribution's origin to. A device request's resources are carried into its codes. A token request
+against a stored grant narrows the access token alone (`NarrowAccessTokenAudienceHandler`); the
+rotated refresh token keeps the grant, so every refresh is evaluated against the original
+authorization.
+
+A machine token's audience (`MachineTokenAudiences`, for `client_credentials` and token exchange)
+is exactly its named resources; without one, it is the requested scopes' platform audiences
+(`urn:tellma:control-plane`, the issuer's origin), and `tellma_api` always needs a resource. The
+control plane therefore asks for one token per distribution, naming its origin, and one without a
+resource for the identity server's own APIs.
+
+A `Native` seed entry with `ThirdParty` is third-party software, such as a coding agent: it carries
+no `tellma:first_party` marker, so no first-party treatment applies to it, and its consent is always
+explicit.
 
 ## The store check and seeding
 

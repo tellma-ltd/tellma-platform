@@ -132,6 +132,15 @@ namespace Tellma.Identity.Options
         public bool RequireConsent { get; set; }
 
         /// <summary>
+        ///     Marks a <see cref="TellmaIdentitySeedClientKind.Native" /> client as third-party
+        ///     software, such as a coding agent: it gets no first-party marker, so no first-party
+        ///     treatment applies to it (the account pages' way back to the app, an invitation's
+        ///     return link), and its consent is always explicit, as if
+        ///     <see cref="RequireConsent" /> were set. Accepted on <c>Native</c> entries only.
+        /// </summary>
+        public bool ThirdParty { get; set; }
+
+        /// <summary>
         ///     The distribution's browser origin: absolute and path-less, <c>https</c> outside the
         ///     Development environment. Required for, and only read by, a
         ///     <see cref="TellmaIdentitySeedClientKind.Distribution" /> entry.

@@ -38,6 +38,35 @@ missing, empty or behind the engine's last migration.
 
 This host references `Tellma.Identity.Migrations` only so Development can migrate at startup.
 
+## Seeded clients
+
+`TellmaIdentity:Seed:Clients` is deployment configuration: `appsettings.json` lists no client,
+because configuration binds an array by index, and an entry shipped here would merge field by field
+with whatever entry a deployment (or a test host) puts at the same index. A deployment lists its own
+entries in its own configuration.
+
+The interim clients for coding agents are `Native` entries with `RequireConsent` and `ThirdParty`
+set: public, PKCE, the `tellma_api` scope, explicit consent, and no first-party treatment.
+Onboarding grants each distribution's origin to them, as to every seeded client that calls
+distribution APIs, so they hold the distribution-origin list. One entry per agent, with the
+redirect URIs the agent actually registers — a port-less loopback URI accepts any port at runtime:
+
+```json
+{
+  "ClientId": "claude-code",
+  "DisplayName": "Claude Code",
+  "Kind": "Native",
+  "RequireConsent": true,
+  "ThirdParty": true,
+  "RedirectUris": [ "http://127.0.0.1/<the agent's callback path>" ]
+}
+```
+
+The hosted agents' web clients (`claude-web`, `codex-web`) take the vendors' published callback
+URIs in `RedirectUris` the same way. These entries leave the configuration once client ID metadata
+documents have served production traffic for one release; the seeder never deletes an application,
+so an operator then deletes the applications from the store.
+
 ## Email
 
 This host composes the platform's email pipeline; the engine only asks for `IEmailSender`. All three

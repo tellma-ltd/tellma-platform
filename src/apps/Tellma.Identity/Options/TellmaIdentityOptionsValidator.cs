@@ -187,6 +187,14 @@ namespace Tellma.Identity.Options
                 {
                     ValidateDistribution(client, entry, environment.IsDevelopment(), failures);
                 }
+
+                // Third-party software is a public native client by definition; on any other kind
+                // the flag would either be meaningless or strip a first-party marker the platform's
+                // own clients rely on.
+                if (client.ThirdParty && client.Kind != TellmaIdentitySeedClientKind.Native)
+                {
+                    failures.Add($"{entry}: ThirdParty is accepted on Native entries only.");
+                }
             }
         }
 

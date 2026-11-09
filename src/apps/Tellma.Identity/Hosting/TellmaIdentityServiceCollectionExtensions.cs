@@ -88,6 +88,11 @@ namespace Tellma.Identity.Hosting
             services.AddScoped<Services.AuthenticationPolicy.TellmaSignInService>();
             services.AddScoped<Services.AuthenticationPolicy.TellmaPrincipalFactory>();
 
+            // The one rule for `resource` parameters, and the one request-time decision point
+            // every endpoint's resource check asks.
+            services.AddSingleton<Services.IResourceGrantEvaluator, Services.ResourceGrantEvaluator>();
+            services.AddScoped<Services.ResourceGrantValidator>();
+
             // Every page in the sign-in flow needs this to name the pending client's callbacks in
             // its own policy, or the form that completes the flow submits and the browser refuses
             // to follow the redirect home.
@@ -127,9 +132,13 @@ namespace Tellma.Identity.Hosting
             services.AddScoped<Services.Tap.ITemporaryAccessPassService, Services.Tap.TemporaryAccessPassService>();
             services.AddSingleton<IdentityMetrics>();
 
-            // Management-API authorization policies (tellma_identity, tellma_control_plane).
+            // Management-API authorization policies (tellma_identity, tellma_control_plane), each
+            // requiring its scope and its own audience. The management audience is the issuer's
+            // origin, read from the final options rather than the registration-time snapshot.
             services.AddAuthorization();
-            services.Configure<Microsoft.AspNetCore.Authorization.AuthorizationOptions>(ApiPolicies.Configure);
+            services.AddOptions<Microsoft.AspNetCore.Authorization.AuthorizationOptions>()
+                .Configure<IOptions<TellmaIdentityOptions>>(static (authorization, engine) =>
+                    ApiPolicies.Configure(authorization, engine.Value.Issuer!.GetLeftPart(UriPartial.Authority)));
 
             // Every management-API call is counted and logged: an authorized one by the
             // controllers' own filter, a refused one by the decorated authorization result

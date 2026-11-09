@@ -68,10 +68,9 @@ namespace Tellma.Identity.Controllers
             OpenIddictRequest request = HttpContext.GetOpenIddictServerRequest()
                 ?? throw new InvalidOperationException("The OpenID Connect request cannot be retrieved.");
 
-            // OpenIddict defers manager-based validation (client existence, PAR, redirect_uri) to
-            // the final sign-in in pass-through mode. Enforce the two guards that decide whether
-            // the interaction may even begin up front, so an unknown client or a BFF bypassing
-            // PAR gets a clean error instead of failing deep in the sign-in.
+            // The two guards that decide whether the interaction may even begin are also enforced
+            // here, independently of OpenIddict's validation, so an unknown client or a BFF
+            // bypassing PAR gets a clean error instead of failing deep in the sign-in.
             object? application = string.IsNullOrEmpty(request.ClientId)
                 ? null
                 : await applicationManager.FindByClientIdAsync(request.ClientId);
@@ -84,6 +83,15 @@ namespace Tellma.Identity.Controllers
                 && string.IsNullOrEmpty(request.RequestUri))
             {
                 return ForbidProtocol(Errors.InvalidRequest, "This client must use pushed authorization requests.");
+            }
+
+            // Any other request OpenIddict refused while validating it — a redirect URI, scope or
+            // resource the client does not hold — still reaches this action: error pass-through
+            // hands it on so the error page can render the refusal. The interaction must never
+            // begin for it.
+            if (RefusedByProtocol() is { } refusal)
+            {
+                return refusal;
             }
 
             // The tenant's method allow-list rides the pushed request; unknown vocabulary is a
@@ -255,6 +263,13 @@ namespace Tellma.Identity.Controllers
             OpenIddictRequest request = HttpContext.GetOpenIddictServerRequest()
                 ?? throw new InvalidOperationException("The OpenID Connect request cannot be retrieved.");
 
+            // The consent form posts the whole request back, which OpenIddict validates again: a
+            // request refused this time is never granted, whatever the form says.
+            if (RefusedByProtocol() is { } refusal)
+            {
+                return refusal;
+            }
+
             if (User.Identity?.IsAuthenticated != true)
             {
                 return ForbidProtocol(Errors.LoginRequired, "The session ended before consent was granted.");
@@ -412,6 +427,18 @@ namespace Tellma.Identity.Controllers
             }
 
             return Redirect(prefix + "/Identity/Account/Login" + query.ToQueryString());
+        }
+
+        /// <summary>
+        ///     The refusal of a request OpenIddict already refused while validating it, re-raised
+        ///     through the protocol pipeline so the error page renders it, or null when the request
+        ///     passed validation.
+        /// </summary>
+        private ForbidResult? RefusedByProtocol()
+        {
+            return HttpContext.GetOpenIddictServerResponse() is { Error: { Length: > 0 } error } response
+                ? ForbidProtocol(error, response.ErrorDescription ?? string.Empty)
+                : null;
         }
 
         /// <summary>Returns a protocol error through the OpenIddict response pipeline.</summary>

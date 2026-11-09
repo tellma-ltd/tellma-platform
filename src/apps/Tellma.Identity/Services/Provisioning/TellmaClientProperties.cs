@@ -34,6 +34,13 @@ namespace Tellma.Identity.Services.Provisioning
         /// </summary>
         public const string CallsDistributionApis = "tellma:calls_distribution_apis";
 
+        /// <summary>
+        ///     Marks a document client: a client whose id is the URL of its own metadata document.
+        ///     Such a client stores no resource permission; it is granted the distribution-origin
+        ///     list, and the per-tenant resources under each origin, at request time.
+        /// </summary>
+        public const string DocumentClient = "tellma:document_client";
+
         /// <summary>Marks runtime-provisioned service accounts.</summary>
         public const string ServiceAccount = "tellma:service_account";
 

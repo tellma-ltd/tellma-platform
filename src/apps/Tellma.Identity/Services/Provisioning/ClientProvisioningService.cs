@@ -209,9 +209,10 @@ namespace Tellma.Identity.Services.Provisioning
 
             // The control plane administers every service account — including one whose owning
             // distribution is gone, and one created before ownership was recorded, which no
-            // distribution can claim. The scope is read from the token the server itself issued
-            // and validated, so this cannot be asserted by a caller.
-            if (ApiPolicies.HasScope(caller, TellmaIdentityConstants.ControlPlaneScope))
+            // distribution can claim. The scope and the control-plane audience are read from the
+            // token the server itself issued and validated, so this cannot be asserted by a
+            // caller, and a control-plane token minted for a distribution never carries it.
+            if (ApiPolicies.HasControlPlaneAuthority(caller))
             {
                 return (application, properties);
             }
