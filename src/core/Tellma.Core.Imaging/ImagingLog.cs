@@ -42,15 +42,29 @@ namespace Tellma.Core.Imaging
             Message = "The {Operation} of a {Kind} blob failed ({Reason}): {Detail}")]
         public static partial void Failed(ILogger logger, Exception? exception, string kind, string operation, string reason, string detail);
 
-        /// <summary>A thumbnail render threw an exception the processor does not anticipate; no thumbnail is stored.</summary>
+        /// <summary>
+        ///     An operation threw an exception the processor does not anticipate: an upload is then
+        ///     refused as undecodable, and a thumbnail is not stored.
+        /// </summary>
         /// <param name="logger">The logger.</param>
         /// <param name="exception">The exception.</param>
         /// <param name="kind">The blob kind.</param>
+        /// <param name="operation"><c>process</c> or <c>thumbnail</c>.</param>
         /// <param name="contentType">The input's media type.</param>
         [LoggerMessage(
-            EventName = "BlobThumbnailUnexpectedFailure",
+            EventName = "BlobImageUnexpectedFailure",
             Level = LogLevel.Warning,
-            Message = "A thumbnail of a {ContentType} input of a {Kind} blob failed unexpectedly; no thumbnail is stored.")]
-        public static partial void UnexpectedThumbnailFailure(ILogger logger, Exception exception, string kind, string contentType);
+            Message = "The {Operation} of a {ContentType} input of a {Kind} blob failed unexpectedly.")]
+        public static partial void UnexpectedFailure(ILogger logger, Exception exception, string kind, string operation, string contentType);
+
+        /// <summary>No image slot became free within the budget: the server is busy, the upload is not at fault.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="kind">The blob kind.</param>
+        /// <param name="concurrency">How many image operations may run at once.</param>
+        [LoggerMessage(
+            EventName = "BlobImageBusy",
+            Level = LogLevel.Warning,
+            Message = "A {Kind} upload found all {Concurrency} image slots busy for its whole time budget; it was refused as busy.")]
+        public static partial void Busy(ILogger logger, string kind, int concurrency);
     }
 }

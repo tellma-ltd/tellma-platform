@@ -14,7 +14,8 @@ namespace Tellma.Core.Abstractions.Blobs
     /// <remarks>
     ///     Every <see cref="IImageProcessor" /> throws it, and only it, for an input it refuses, with
     ///     a <see cref="ReasonArgument" /> among the arguments: <see cref="FormatReason" />,
-    ///     <see cref="TooManyPixelsReason" /> or <see cref="DecodeFailedReason" />.
+    ///     <see cref="TooManyPixelsReason" />, <see cref="DecodeFailedReason" /> or
+    ///     <see cref="TimeoutReason" />.
     /// </remarks>
     /// <param name="code">The processor's code for the refusal; not blank.</param>
     /// <param name="arguments">The refusal's arguments, including a non-blank string under <see cref="ReasonArgument" />.</param>
@@ -35,6 +36,9 @@ namespace Tellma.Core.Abstractions.Blobs
         /// <summary>The image could not be decoded.</summary>
         public const string DecodeFailedReason = "decode-failed";
 
+        /// <summary>Normalising the image took longer than its time budget.</summary>
+        public const string TimeoutReason = "timeout";
+
         /// <summary>The processor's code for the refusal.</summary>
         public string Code { get; } = code;
 
@@ -44,7 +48,7 @@ namespace Tellma.Core.Abstractions.Blobs
         /// <summary>The refusal's arguments, a copy taken at construction.</summary>
         public IReadOnlyDictionary<string, object?> Arguments { get; } = Validate(code, arguments);
 
-        /// <summary>The reason argument: <see cref="FormatReason" />, <see cref="TooManyPixelsReason" /> or <see cref="DecodeFailedReason" />.</summary>
+        /// <summary>The reason argument: <see cref="FormatReason" />, <see cref="TooManyPixelsReason" />, <see cref="DecodeFailedReason" /> or <see cref="TimeoutReason" />.</summary>
         public string Reason { get; } = (string)arguments[ReasonArgument]!;
 
         /// <summary>Validates the code and the arguments, and copies the arguments.</summary>

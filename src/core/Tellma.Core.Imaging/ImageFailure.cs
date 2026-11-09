@@ -21,8 +21,9 @@ namespace Tellma.Core.Imaging
         /// <summary>
         ///     The reason, as the failure counter and the rejection carry it:
         ///     <see cref="ImageRejectedException.FormatReason" />,
-        ///     <see cref="ImageRejectedException.TooManyPixelsReason" /> or
-        ///     <see cref="ImageRejectedException.DecodeFailedReason" />.
+        ///     <see cref="ImageRejectedException.TooManyPixelsReason" />,
+        ///     <see cref="ImageRejectedException.DecodeFailedReason" /> or
+        ///     <see cref="ImageRejectedException.TimeoutReason" />.
         /// </summary>
         public string Reason { get; } = reason;
 
@@ -50,6 +51,13 @@ namespace Tellma.Core.Imaging
         public static ImageFailure DecodeFailed(string message, Exception? innerException = null)
         {
             return new ImageFailure(ImageRejectedException.DecodeFailedReason, message, innerException);
+        }
+
+        /// <summary>The work ran past its time budget.</summary>
+        /// <returns>The failure.</returns>
+        public static ImageFailure Timeout()
+        {
+            return new ImageFailure(ImageRejectedException.TimeoutReason, "The work did not finish within its time budget.");
         }
 
         /// <summary>The input's header declares more pixels than the cap.</summary>

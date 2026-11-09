@@ -217,6 +217,69 @@ namespace Tellma.Core.Imaging.Tests.Fixtures
         }
 
         /// <summary>
+        ///     An animated WebP of <paramref name="width" /> x <paramref name="height" /> whose frames
+        ///     are each one solid colour: a VP8X header with the animation flag, an ANIM chunk, and one
+        ///     ANMF chunk per frame wrapping Skia's lossless encoding of that colour.
+        /// </summary>
+        /// <param name="width">The width.</param>
+        /// <param name="height">The height.</param>
+        /// <param name="colors">Each frame's colour.</param>
+        /// <returns>The WebP.</returns>
+        public static byte[] AnimatedWebP(int width, int height, SKColor[] colors)
+        {
+            var chunks = new List<byte>();
+
+            // VP8X: the animation flag, then the canvas size less one, 24 bits each.
+            byte[] vp8x = new byte[10];
+            vp8x[0] = 0x02;
+            WriteUInt24(vp8x, 4, width - 1);
+            WriteUInt24(vp8x, 7, height - 1);
+            AddChunk(chunks, "VP8X", vp8x);
+
+            // ANIM: a transparent background and an infinite loop.
+            AddChunk(chunks, "ANIM", new byte[6]);
+
+            foreach (SKColor color in colors)
+            {
+                using SKBitmap frame = Solid(width, height, color);
+                byte[] still = Encode(frame, SKEncodedImageFormat.Webp);
+
+                // ANMF: offset 0,0, the frame size less one, a 100 ms duration, no blending; then
+                // the still image's VP8L chunk as the frame data.
+                byte[] header = new byte[16];
+                WriteUInt24(header, 6, width - 1);
+                WriteUInt24(header, 9, height - 1);
+                WriteUInt24(header, 12, 100);
+                header[15] = 0x02;
+                AddChunk(chunks, "ANMF", [.. header, .. still[12..]]);
+            }
+
+            byte[] riff = [.. "RIFF"u8, 0, 0, 0, 0, .. "WEBP"u8, .. chunks];
+            BinaryPrimitives.WriteUInt32LittleEndian(riff.AsSpan(4), (uint)(riff.Length - 8));
+            return riff;
+
+            static void WriteUInt24(byte[] buffer, int offset, int value)
+            {
+                buffer[offset] = (byte)(value & 0xFF);
+                buffer[offset + 1] = (byte)((value >> 8) & 0xFF);
+                buffer[offset + 2] = (byte)((value >> 16) & 0xFF);
+            }
+
+            static void AddChunk(List<byte> chunks, string fourCc, byte[] payload)
+            {
+                chunks.AddRange(Encoding.ASCII.GetBytes(fourCc));
+                byte[] size = new byte[4];
+                BinaryPrimitives.WriteUInt32LittleEndian(size, (uint)payload.Length);
+                chunks.AddRange(size);
+                chunks.AddRange(payload);
+                if ((payload.Length & 1) == 1)
+                {
+                    chunks.Add(0);
+                }
+            }
+        }
+
+        /// <summary>
         ///     A real image with its header's declared size patched to <paramref name="width" /> x
         ///     <paramref name="height" />. The pixel data is the small image's, so a decode of the
         ///     declared size would fail as truncated: refusing it as too large proves the header was

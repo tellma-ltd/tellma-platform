@@ -251,6 +251,25 @@ namespace Tellma.Core.Imaging.Tests.Processing
             Assert.InRange(ImageInspector.Decode(result.Thumbnail!).FrameCount, 0, 1);
         }
 
+        [Fact]
+        public async Task An_animated_webp_is_reduced_to_its_first_frame_at_a_reduced_scale()
+        {
+            // Frame 0 red, frame 1 blue; the 16-pixel output makes the WebP codec decode scaled.
+            byte[] input = ImageFixtures.AnimatedWebP(64, 64, [SKColors.Red, SKColors.Blue]);
+            using (var data = SKData.CreateCopy(input))
+            using (var source = SKCodec.Create(data))
+            {
+                Assert.Equal(2, source.FrameCount);
+            }
+
+            ProcessedImage result = await _harness.ProcessAsync(input, new ImagePolicy(16, ImageFit.Contain, ImageFormat.Png));
+
+            DecodedOutput output = ImageInspector.Decode(result.Primary);
+            Assert.Equal((16, 16), (output.Width, output.Height));
+            Assert.InRange(output.FrameCount, 0, 1);
+            Assert.All(output.Pixels, static pixel => Assert.True(ImageInspector.Near(SKColors.Red, pixel, 8), $"Found {pixel}."));
+        }
+
         /// <summary>Asserts the colour at the centre of each quadrant of an output.</summary>
         /// <param name="output">The decoded output.</param>
         /// <param name="expected">Top-left, top-right, bottom-left and bottom-right colours.</param>

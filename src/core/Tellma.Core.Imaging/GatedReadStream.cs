@@ -24,6 +24,12 @@ namespace Tellma.Core.Imaging
     ///         throws: a failing inner stream closes the gate and reads as end of input. The view
     ///         never disposes the inner stream, which stays the caller's.
     ///     </para>
+    ///     <para>
+    ///         One lock covers the gate check and the inner read, and closing the gate takes it too:
+    ///         once <see cref="CloseGate" /> (or disposal) returns, no read of the inner stream is in
+    ///         flight and none can start. Inner reads are single bounded calls on an in-memory or
+    ///         file stream, so closing waits at most for one of them.
+    ///     </para>
     /// </remarks>
     internal sealed class GatedReadStream : Stream
     {
@@ -35,6 +41,9 @@ namespace Tellma.Core.Imaging
 
         private readonly Stream _inner;
         private readonly CancellationToken _token;
+
+        // Serialises the gate check with the inner read, and closing with both.
+        private readonly Lock _sync = new();
         private long _position;
         private volatile bool _closed;
 
@@ -79,12 +88,15 @@ namespace Tellma.Core.Imaging
         }
 
         /// <summary>
-        ///     Closes the gate. Reads that start after this return end of input; a read already inside
-        ///     the inner stream completes against it.
+        ///     Closes the gate, waiting for a read already inside the inner stream to finish; from
+        ///     then on the inner stream is never touched again.
         /// </summary>
         public void CloseGate()
         {
-            _closed = true;
+            lock (_sync)
+            {
+                _closed = true;
+            }
         }
 
         /// <inheritdoc />
@@ -96,26 +108,30 @@ namespace Tellma.Core.Imaging
         /// <inheritdoc />
         public override int Read(Span<byte> buffer)
         {
-            // Section: the gate. A closed gate is end of input, never an exception.
-            if (IsClosed || buffer.IsEmpty || _position >= _length)
+            // Section: the gate, checked under the same lock as the read, so a close never races a
+            // read into the caller's stream. A closed gate is end of input, never an exception.
+            lock (_sync)
             {
-                return 0;
-            }
+                if (IsClosed || buffer.IsEmpty || _position >= _length)
+                {
+                    return 0;
+                }
 
-            int count = (int)Math.Min(buffer.Length, _length - _position);
-            try
-            {
-                _inner.Position = _origin + _position;
-                int read = _inner.Read(buffer[..count]);
-                _position += read;
-                return read;
-            }
+                int count = (int)Math.Min(buffer.Length, _length - _position);
+                try
+                {
+                    _inner.Position = _origin + _position;
+                    int read = _inner.Read(buffer[..count]);
+                    _position += read;
+                    return read;
+                }
 #pragma warning disable CA1031 // A native caller cannot receive an exception; a failed read ends the input instead.
-            catch (Exception)
+                catch (Exception)
 #pragma warning restore CA1031
-            {
-                _closed = true;
-                return 0;
+                {
+                    _closed = true;
+                    return 0;
+                }
             }
         }
 

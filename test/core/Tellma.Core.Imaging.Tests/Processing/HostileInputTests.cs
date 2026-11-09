@@ -154,7 +154,7 @@ namespace Tellma.Core.Imaging.Tests.Processing
             byte[] input = ImageFixtures.QuadrantImage(SKEncodedImageFormat.Png, 40, 40);
 
             await Assert.ThrowsAnyAsync<OperationCanceledException>(
-                () => _harness.Processor.ProcessAsync(ProcessorHarness.Kind, input, BlobKindPolicy.Photo.Image!, null, cancellation.Token));
+                () => _harness.Processor.ProcessAsync(ProcessorHarness.Kind, input, BlobKindPolicy.Photo.Image!, null, ProcessorHarness.Generous, cancellation.Token));
 
             Assert.Empty(_harness.FailureReasons);
         }
@@ -166,13 +166,14 @@ namespace Tellma.Core.Imaging.Tests.Processing
             CancellationToken token = TestContext.Current.CancellationToken;
             SkiaImageProcessor processor = _harness.Processor;
 
-            await Assert.ThrowsAsync<ArgumentException>(() => processor.ProcessAsync(" ", input, BlobKindPolicy.Photo.Image!, null, token));
-            await Assert.ThrowsAsync<ArgumentNullException>(() => processor.ProcessAsync("k", null!, BlobKindPolicy.Photo.Image!, null, token));
-            await Assert.ThrowsAsync<ArgumentNullException>(() => processor.ProcessAsync("k", input, null!, null, token));
-            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => processor.ProcessAsync("k", input, new ImagePolicy(0, ImageFit.Contain), null, token));
-            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => processor.ProcessAsync("k", input, new ImagePolicy(8, ImageFit.Contain, MaxInputPixels: 0), null, token));
-            await Assert.ThrowsAsync<ArgumentException>(() => processor.ProcessAsync("k", input, new ImagePolicy(8, (ImageFit)9), null, token));
-            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => processor.ProcessAsync("k", input, BlobKindPolicy.Photo.Image!, new ThumbnailPolicy(0), token));
+            await Assert.ThrowsAsync<ArgumentException>(() => processor.ProcessAsync(" ", input, BlobKindPolicy.Photo.Image!, null, ProcessorHarness.Generous, token));
+            await Assert.ThrowsAsync<ArgumentNullException>(() => processor.ProcessAsync("k", null!, BlobKindPolicy.Photo.Image!, null, ProcessorHarness.Generous, token));
+            await Assert.ThrowsAsync<ArgumentNullException>(() => processor.ProcessAsync("k", input, null!, null, ProcessorHarness.Generous, token));
+            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => processor.ProcessAsync("k", input, new ImagePolicy(0, ImageFit.Contain), null, ProcessorHarness.Generous, token));
+            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => processor.ProcessAsync("k", input, new ImagePolicy(8, ImageFit.Contain, MaxInputPixels: 0), null, ProcessorHarness.Generous, token));
+            await Assert.ThrowsAsync<ArgumentException>(() => processor.ProcessAsync("k", input, new ImagePolicy(8, (ImageFit)9), null, ProcessorHarness.Generous, token));
+            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => processor.ProcessAsync("k", input, BlobKindPolicy.Photo.Image!, new ThumbnailPolicy(0), ProcessorHarness.Generous, token));
+            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => processor.ProcessAsync("k", input, BlobKindPolicy.Photo.Image!, null, TimeSpan.Zero, token));
         }
     }
 }

@@ -34,6 +34,9 @@ namespace Tellma.Core.Imaging.Tests.Internals
             byte[] gif = ImageFixtures.Gif(16, 16, [[0], [1]]);
             byte[] bomb = ImageFixtures.DeclaringSize(SKEncodedImageFormat.Png, 10_000, 6_000);
             byte[] truncated = ImageFixtures.TruncatedJpeg(0.5);
+            byte[] unreadable = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, .. new byte[256]];
+            byte[] webp = ImageFixtures.AnimatedWebP(32, 32, [SKColors.Red, SKColors.Blue]);
+            byte[] bigImagePdf = DocumentFixtures.DeclaringImage(20_000, 20_000, "FlateDecode");
             byte[] pdf = DocumentFixtures.HalfBlackPage(200, 100);
             byte[] encrypted = DocumentFixtures.PasswordProtected();
 
@@ -43,6 +46,9 @@ namespace Tellma.Core.Imaging.Tests.Internals
                 await harness.ProcessAsync(gif, BlobKindPolicy.Signature.Image!);
                 await Assert.ThrowsAsync<ImageRejectedException>(() => harness.ProcessAsync(bomb, BlobKindPolicy.Photo.Image!));
                 await Assert.ThrowsAsync<ImageRejectedException>(() => harness.ProcessAsync(truncated, BlobKindPolicy.Photo.Image!));
+                await Assert.ThrowsAsync<ImageRejectedException>(() => harness.ProcessAsync(unreadable, BlobKindPolicy.Photo.Image!));
+                await harness.ProcessAsync(webp, BlobKindPolicy.Photo.Image!, BlobKindPolicy.Photo.Thumbnail);
+                Assert.Null(await harness.ThumbnailAsync(bigImagePdf, BlobContentTypes.Pdf));
                 Assert.NotNull(await harness.ThumbnailAsync(photo, BlobContentTypes.Jpeg));
                 Assert.NotNull(await harness.ThumbnailAsync(pdf, BlobContentTypes.Pdf));
                 Assert.Null(await harness.ThumbnailAsync(encrypted, BlobContentTypes.Pdf));
@@ -56,6 +62,39 @@ namespace Tellma.Core.Imaging.Tests.Internals
             for (int i = 0; i < 5; i++)
             {
                 await RoundAsync();
+            }
+
+            Assert.Equal(before, LiveNativeObjects());
+        }
+
+        [Fact]
+        public async Task A_thumbnail_abandoned_mid_decode_leaves_no_native_object_behind()
+        {
+            var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+            using var harness = new ProcessorHarness(time);
+            byte[] png = ImageFixtures.Noise(512, 512, SKEncodedImageFormat.Png);
+            CancellationToken token = TestContext.Current.CancellationToken;
+
+            // A first, completed render creates the shared singletons.
+            Assert.NotNull(await harness.ThumbnailAsync(png, BlobContentTypes.Png));
+            int before = LiveNativeObjects();
+
+            using var input = new BlockingStream(png, blockAfter: 16 * 1024);
+            Task<byte[]?> thumbnail = harness.Processor.ThumbnailAsync(
+                ProcessorHarness.Kind, input, BlobContentTypes.Png, new ThumbnailPolicy(64), TimeSpan.FromSeconds(5), token);
+            Assert.True(input.Blocked.Wait(TimeSpan.FromSeconds(30), token));
+            var advanced = Task.Run(() => time.Advance(TimeSpan.FromSeconds(5)), token);
+            await Task.Delay(100, token);
+            input.Release.Set();
+            await advanced.WaitAsync(TimeSpan.FromSeconds(30), token);
+            Assert.Null(await thumbnail.WaitAsync(TimeSpan.FromSeconds(30), token));
+
+            // The abandoned decode has ended once its slot is back; nothing it made may survive it.
+            DateTime deadline = DateTime.UtcNow.AddSeconds(30);
+            while (harness.Processor.FreeImageSlots != 4)
+            {
+                Assert.True(DateTime.UtcNow < deadline, "The abandoned decode did not end.");
+                await Task.Delay(20, token);
             }
 
             Assert.Equal(before, LiveNativeObjects());

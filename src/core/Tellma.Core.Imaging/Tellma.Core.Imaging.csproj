@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- The source-generated PDFium P/Invokes of the PDF preflight pin the document buffer. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Description>Tellma's image processor: SkiaImageProcessor normalises uploaded images and renders thumbnails on SkiaSharp, with PDF first-page thumbnails through PDFtoImage (PDFium). The platform's only package carrying native binaries; composed explicitly by a host through AddTellmaSkia, and never referenced by Tellma.Core.</Description>
   </PropertyGroup>
 
@@ -20,6 +22,15 @@
     <PackageReference Include="Microsoft.Extensions.Diagnostics" />
     <!-- Referenced directly for its [LoggerMessage] source generator. -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <!-- Binds the processor's options from configuration. -->
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Keeps SkiaSharp's Windows native symbol files (about 100 MB per runtime) out of every
+         consumer's build and publish output; imported for in-repo consumers by the repository's
+         Directory.Build.targets, and packed for package consumers. -->
+    <None Include="build\**" Pack="true" PackagePath="build;buildTransitive" />
   </ItemGroup>
 
   <ItemGroup>

@@ -34,6 +34,16 @@ namespace Tellma.Core.Imaging.Tests.Packaging
         }
 
         [Fact]
+        public void No_native_symbol_file_reaches_the_output_or_the_dependency_manifest()
+        {
+            string runtimes = Path.Combine(AppContext.BaseDirectory, "runtimes");
+            string manifest = Path.Combine(AppContext.BaseDirectory, "Tellma.Core.Imaging.Tests.deps.json");
+
+            Assert.Empty(Directory.EnumerateFiles(runtimes, "*.pdb", SearchOption.AllDirectories));
+            Assert.DoesNotContain(".pdb", File.ReadAllText(manifest), StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public void The_package_references_no_tellma_assembly_but_the_abstractions()
         {
             string[] tellma = [.. typeof(SkiaImageProcessor).Assembly.GetReferencedAssemblies()

@@ -12,9 +12,11 @@ package.
 builder.Services.AddTellmaSkia();
 ```
 
-`AddTellmaSkia` registers the processor (once, however often it is called) and the `core.imaging`
-startup check, which loads both native libraries before the host serves traffic: a missing or
-mismatched native asset fails startup with the fix, not the first upload with a server error.
+`AddTellmaSkia` registers the processor (once, however often it is called), binds its options from
+`Tellma:Blobs` (`ImageConcurrency`, default half the processor count, at least one), and registers
+the `core.imaging` startup check, which loads both native libraries before the host serves traffic:
+a missing or mismatched native asset fails startup with the fix, not the first upload with a server
+error.
 
 ## What it does
 
@@ -37,22 +39,40 @@ embedded metadata and decompression bombs never reach storage.
    stays opaque; JPEG composites transparency over white.
 
 Refusals are `ImageRejectedException` with code `Image.Rejected` and a `reason` of `format`,
-`too-many-pixels` or `decode-failed`.
+`too-many-pixels`, `decode-failed` or `timeout`. An exception the processor does not anticipate is
+refused as `decode-failed` too, never surfaced as a server error.
 
 **Renders thumbnails of stored files** (`ThumbnailAsync`): an image under the default 50-megapixel
 cap, fitted and oriented the same way, or a PDF's first page fitted to the thumbnail square on
-white. Anything else, an encrypted or unparsable PDF, an image over the cap, or a render past its
-time budget yields null, which is never a rejection of the file.
+white. Anything else, a PDF that needs a password or is unparsable, an image over the cap, or a
+render past its time budget yields null, which is never a rejection of the file.
 
 ## Hostile input and native code
 
-- **One PDF render at a time.** PDFium is not thread-safe, so renders queue behind one process-wide
-  gate. The time budget covers the wait and the render.
+- **Bounded image work.** A native decode cannot be stopped mid-call, so normalisations and image
+  thumbnails run in `ImageConcurrency` slots, each released only when its native work really ends.
+  A hostile file within the pixel cap wastes one slot for a while; it never starves the host, and
+  memory is bounded by the slots times one decoded frame (four bytes per pixel under the cap, a
+  third more for the mipmaps of the downscaling draw) plus the output.
+- **Budgets.** `ProcessAsync`'s budget bounds the wait for a slot and, separately, the work: no slot
+  in time is `ImageProcessingBusyException` (the server is busy; 503 with `Retry-After`), work past
+  its budget is a `timeout` rejection (the input is at fault). A thumbnail's budget covers the wait
+  for its gate or slot and the render, and running out yields null.
+- **One PDF render at a time.** PDFium is not thread-safe, so PDF work queues behind one
+  process-wide gate. While a render whose caller gave up still holds it, new PDF thumbnails fail
+  fast instead of waiting out their budgets.
+- **PDF preflight.** A PDF over 32 MiB is not read. Otherwise page 1 is walked through PDFium's
+  object API before it is rendered, and refused when a page side exceeds 14,400 points, an image
+  declares more than 50 megapixels (16 for JPEG 2000 and JBIG2, whose decoders hold the whole image),
+  or the page holds more than 100,000 objects counted through every form. What the walk cannot see
+  (memory for non-image content, images in patterns, soft masks or Type 3 glyphs, PDFium bugs) stays
+  a residual risk that only an out-of-process renderer removes.
 - **The time budget cancels for real.** Native decoders read their input on demand through a gated
   view; when the budget runs out the call returns null at once and the view reads as end of input,
   so a streaming decode in flight stops at its next read instead of running on. A PDF render that is
   already inside PDFium cannot be interrupted: it keeps the gate until its native call returns.
-  Once the call has returned, no new read of the caller's stream starts.
+  One lock covers the gate check and each read of the caller's stream, and closing takes it, so once
+  the call has returned the processor never touches that stream again.
 - **No managed exception reaches native code.** Every member of the gated view that a native reader
   calls returns end of input instead of throwing.
 - **No native handle outlives a call.** Every Skia object is disposed in the method that creates
@@ -74,5 +94,9 @@ The package pins SkiaSharp and PDFtoImage centrally, with the Skia natives on th
 (SkiaSharp refuses a mismatched one) and the PDFium builds PDFtoImage is compiled against. Linux
 uses SkiaSharp's NoDependencies build, so no fontconfig is needed on a server or in a container.
 A framework-dependent build carries the natives for win-x64, win-arm64, linux-x64, linux-arm64
-(glibc and musl) and macOS; a runtime-specific publish carries its runtime's only. Licences: SkiaSharp
+(glibc and musl) and macOS; a runtime-specific publish carries its runtime's only. The package's
+`buildTransitive` targets (imported by the repository's `Directory.Build.targets` for in-repo
+consumers) drop SkiaSharp's Windows native symbol files, about 100 MB per runtime, from every
+consumer's build output, deps.json and publish. The PDF preflight binds the same PDFium library
+PDFtoImage loads. Licences: SkiaSharp
 and PDFtoImage MIT, the PDFium builds Apache-2.0 (PDFium itself BSD-3-Clause).

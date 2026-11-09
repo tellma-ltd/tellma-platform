@@ -35,14 +35,14 @@ namespace Tellma.Core.Imaging
         {
             string? skia = Probe(ProbeSkia);
             string? pdfium;
-            await SkiaImageProcessor.PdfRenderGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await PdfRenderGate.Semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 pdfium = Probe(ProbePdfium);
             }
             finally
             {
-                SkiaImageProcessor.PdfRenderGate.Release();
+                PdfRenderGate.Semaphore.Release();
             }
 
             // Section: one problem per library that failed, with what failed and the fix.

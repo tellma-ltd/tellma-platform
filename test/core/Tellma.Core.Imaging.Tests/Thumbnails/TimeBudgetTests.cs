@@ -12,9 +12,10 @@ using Tellma.Core.Imaging.Tests.Infrastructure;
 namespace Tellma.Core.Imaging.Tests.Thumbnails
 {
     /// <summary>
-    ///     The thumbnail time budget, on a fake clock: a render past it yields null at once, a PDF
-    ///     render keeps the process-wide gate until its native call returns, a render still waiting
-    ///     for the gate never starts, and a decode in flight stops reading the input.
+    ///     The time budgets and gates, on a fake clock: work past its budget returns at once while its
+    ///     gate or slot stays held until the native work ends; work that cannot get a gate or slot in
+    ///     time never starts; an abandoned PDF render makes later thumbnails fail fast; and once a
+    ///     call returns, the caller's stream is never touched again.
     /// </summary>
     [Collection(SerialSuites.Name)]
     public sealed class TimeBudgetTests
@@ -28,13 +29,13 @@ namespace Tellma.Core.Imaging.Tests.Thumbnails
         public async Task A_render_still_waiting_for_the_gate_when_the_budget_runs_out_yields_null_and_never_starts()
         {
             var time = new FakeTimeProvider();
-            var rasterizer = new BlockingRasterizer(block: false);
+            using var rasterizer = new BlockingRasterizer(block: false);
             using var harness = new ProcessorHarness(time, rasterizer);
-            await SkiaImageProcessor.PdfRenderGate.WaitAsync(TestContext.Current.CancellationToken);
+            await PdfRenderGate.Semaphore.WaitAsync(TestContext.Current.CancellationToken);
             Task<byte[]?> thumbnail;
             try
             {
-                thumbnail = ThumbnailAsync(harness, DocumentFixtures.HalfBlackPage(100, 100), BlobContentTypes.Pdf);
+                thumbnail = PdfThumbnailAsync(harness);
                 Assert.False(thumbnail.IsCompleted);
 
                 time.Advance(Budget);
@@ -43,46 +44,50 @@ namespace Tellma.Core.Imaging.Tests.Thumbnails
             }
             finally
             {
-                SkiaImageProcessor.PdfRenderGate.Release();
+                PdfRenderGate.Semaphore.Release();
             }
 
             Assert.Equal(0, rasterizer.Calls);
             Assert.Equal([BlobTelemetryTagValues.ImageTimeoutReason], harness.FailureReasons);
-            Assert.Equal(1, SkiaImageProcessor.PdfRenderGate.CurrentCount);
+            Assert.Equal(1, PdfRenderGate.Semaphore.CurrentCount);
         }
 
         [Fact]
-        public async Task A_render_past_the_budget_yields_null_at_once_and_keeps_the_gate_until_the_native_call_returns()
+        public async Task A_render_past_the_budget_yields_null_at_once_keeps_the_gate_and_makes_later_pdfs_fail_fast()
         {
             var time = new FakeTimeProvider();
             using var rasterizer = new BlockingRasterizer(block: true);
             using var harness = new ProcessorHarness(time, rasterizer);
 
-            Task<byte[]?> thumbnail = ThumbnailAsync(harness, DocumentFixtures.HalfBlackPage(100, 100), BlobContentTypes.Pdf);
+            Task<byte[]?> thumbnail = PdfThumbnailAsync(harness);
             Assert.True(rasterizer.Entered.Wait(Patience, TestContext.Current.CancellationToken));
 
             time.Advance(Budget);
 
             // The call gives up while the "native" render is still running and holding the gate.
             Assert.Null(await thumbnail.WaitAsync(Patience, TestContext.Current.CancellationToken));
-            Assert.Equal(0, SkiaImageProcessor.PdfRenderGate.CurrentCount);
-            Assert.Equal([BlobTelemetryTagValues.ImageTimeoutReason], harness.FailureReasons);
+            Assert.Equal(0, PdfRenderGate.Semaphore.CurrentCount);
             Assert.Equal(BlobTelemetryTagValues.ImageThumbnail, harness.Duration.GetMeasurementSnapshot().Single().Tags[BlobTelemetryNames.OperationTag]);
 
-            // When it returns, the gate is free for the next render.
+            // A later PDF does not wait out its budget behind the abandoned render: it fails at once.
+            Task<byte[]?> later = PdfThumbnailAsync(harness);
+            Assert.True(later.IsCompleted);
+            Assert.Null(await later);
+            Assert.Equal(1, rasterizer.Calls);
+            Assert.Equal([BlobTelemetryTagValues.ImageTimeoutReason, BlobTelemetryTagValues.ImageTimeoutReason], harness.FailureReasons);
+
+            // When the render returns, the gate is free and PDFs render again.
             rasterizer.Release.Set();
-            await WaitUntilAsync(static () => SkiaImageProcessor.PdfRenderGate.CurrentCount == 1);
+            await WaitUntilAsync(static () => PdfRenderGate.Semaphore.CurrentCount == 1 && !PdfRenderGate.IsHeldByAbandonedRender);
+            Assert.NotNull(await PdfThumbnailAsync(harness).WaitAsync(Patience, TestContext.Current.CancellationToken));
         }
 
         [Fact]
         public async Task A_render_within_the_budget_returns_its_thumbnail()
         {
-            var time = new FakeTimeProvider();
-            using var harness = new ProcessorHarness(time);
+            using var harness = new ProcessorHarness(new FakeTimeProvider());
 
-            byte[]? thumbnail = await ThumbnailAsync(harness, DocumentFixtures.HalfBlackPage(100, 100), BlobContentTypes.Pdf);
-
-            Assert.NotNull(thumbnail);
+            Assert.NotNull(await PdfThumbnailAsync(harness));
             Assert.Empty(harness.FailureReasons);
         }
 
@@ -91,7 +96,7 @@ namespace Tellma.Core.Imaging.Tests.Thumbnails
         {
             using var harness = new ProcessorHarness();
             using var stream = new MemoryStream(DocumentFixtures.HalfBlackPage(100, 100), writable: false);
-            await SkiaImageProcessor.PdfRenderGate.WaitAsync(TestContext.Current.CancellationToken);
+            await PdfRenderGate.Semaphore.WaitAsync(TestContext.Current.CancellationToken);
             Task<byte[]?> thumbnail;
             try
             {
@@ -102,7 +107,7 @@ namespace Tellma.Core.Imaging.Tests.Thumbnails
             }
             finally
             {
-                SkiaImageProcessor.PdfRenderGate.Release();
+                PdfRenderGate.Semaphore.Release();
             }
 
             Assert.NotNull(await thumbnail.WaitAsync(Patience, TestContext.Current.CancellationToken));
@@ -113,10 +118,10 @@ namespace Tellma.Core.Imaging.Tests.Thumbnails
         {
             using var harness = new ProcessorHarness(new FakeTimeProvider());
             using var cancellation = new CancellationTokenSource();
-            await SkiaImageProcessor.PdfRenderGate.WaitAsync(TestContext.Current.CancellationToken);
+            using var stream = new MemoryStream(DocumentFixtures.HalfBlackPage(100, 100), writable: false);
+            await PdfRenderGate.Semaphore.WaitAsync(TestContext.Current.CancellationToken);
             try
             {
-                using var stream = new MemoryStream(DocumentFixtures.HalfBlackPage(100, 100), writable: false);
                 Task<byte[]?> thumbnail = harness.Processor.ThumbnailAsync(
                     ProcessorHarness.Kind, stream, BlobContentTypes.Pdf, new ThumbnailPolicy(64), Budget, cancellation.Token);
 
@@ -126,48 +131,164 @@ namespace Tellma.Core.Imaging.Tests.Thumbnails
             }
             finally
             {
-                SkiaImageProcessor.PdfRenderGate.Release();
+                PdfRenderGate.Semaphore.Release();
             }
 
             Assert.Empty(harness.FailureReasons);
         }
 
         [Fact]
-        public async Task An_image_decode_in_flight_stops_reading_the_input_once_the_budget_runs_out()
+        public async Task A_read_in_flight_holds_the_call_until_it_returns_and_the_stream_is_never_touched_after()
         {
             var time = new FakeTimeProvider();
             using var harness = new ProcessorHarness(time);
 
-            // A large noise PNG whose data the decoder must pull in many reads; the stream blocks
-            // the first read past its first 16 KiB, so the decode is in flight when the budget ends.
-            byte[] png = ImageFixtures.Noise(512, 512, SKEncodedImageFormat.Png);
-            using var input = new BlockingStream(png, blockAfter: 16 * 1024);
+            // A large noise PNG whose data the decoder pulls in many reads; the stream blocks the first
+            // read past its first 16 KiB, so a read is inside the caller's stream when the budget ends.
+            using var input = new BlockingStream(ImageFixtures.Noise(512, 512, SKEncodedImageFormat.Png), blockAfter: 16 * 1024);
             Task<byte[]?> thumbnail = harness.Processor.ThumbnailAsync(
                 ProcessorHarness.Kind, input, BlobContentTypes.Png, new ThumbnailPolicy(64), Budget, TestContext.Current.CancellationToken);
             Assert.True(input.Blocked.Wait(Patience, TestContext.Current.CancellationToken));
 
+            // The budget fires on another thread: the cancellation runs the call's continuation
+            // inline, and that continuation waits for the read in flight.
+            Task advanced = AdvanceElsewhere(time);
+
+            // The call cannot return while a read of the caller's stream is in flight.
+            await Task.Delay(300, TestContext.Current.CancellationToken);
+            Assert.False(thumbnail.IsCompleted);
+
+            input.Release.Set();
+            await advanced.WaitAsync(Patience, TestContext.Current.CancellationToken);
+            Assert.Null(await thumbnail.WaitAsync(Patience, TestContext.Current.CancellationToken));
+            input.MarkReturned();
+            Assert.Equal([BlobTelemetryTagValues.ImageTimeoutReason], harness.FailureReasons);
+
+            // The abandoned decode unwinds; it never reads or repositions the caller's stream again.
+            await WaitUntilAsync(() => harness.Processor.FreeImageSlots == 4);
+            Assert.Equal(0, input.TouchesAfterReturn);
+        }
+
+        [Fact]
+        public async Task An_image_thumbnail_waiting_for_a_slot_past_the_budget_yields_null_and_never_starts()
+        {
+            var time = new FakeTimeProvider();
+            using var blocker = new BlockingStream(ImageFixtures.Noise(512, 512, SKEncodedImageFormat.Png), blockAfter: 16 * 1024);
+            using var harness = new ProcessorHarness(time, concurrency: 1, openInput: _ => blocker);
+            Task<ProcessedImage> holder = harness.Processor.ProcessAsync(
+                ProcessorHarness.Kind, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], BlobKindPolicy.Photo.Image!, null, Timeout.InfiniteTimeSpan, TestContext.Current.CancellationToken);
+            Assert.True(blocker.Blocked.Wait(Patience, TestContext.Current.CancellationToken));
+
+            using var stream = new MemoryStream(ImageFixtures.QuadrantImage(SKEncodedImageFormat.Png, 32, 32), writable: false);
+            Task<byte[]?> thumbnail = harness.Processor.ThumbnailAsync(
+                ProcessorHarness.Kind, stream, BlobContentTypes.Png, new ThumbnailPolicy(64), Budget, TestContext.Current.CancellationToken);
             time.Advance(Budget);
 
             Assert.Null(await thumbnail.WaitAsync(Patience, TestContext.Current.CancellationToken));
             Assert.Equal([BlobTelemetryTagValues.ImageTimeoutReason], harness.FailureReasons);
+            Assert.Single(harness.EventNames, static name => name == "BlobImageRender");
 
-            // Once the call has returned, the read in flight completes and no new one starts.
-            int started = input.ReadsStarted;
-            input.Release.Set();
-            await Task.Delay(500, TestContext.Current.CancellationToken);
-            Assert.Equal(started, input.ReadsStarted);
+            blocker.Release.Set();
+            await holder.WaitAsync(Patience, TestContext.Current.CancellationToken);
         }
 
-        /// <summary>Starts a thumbnail of <paramref name="input" /> under the five-second budget.</summary>
-        /// <param name="harness">The harness.</param>
-        /// <param name="input">The stored bytes.</param>
-        /// <param name="contentType">The stored type.</param>
-        /// <returns>The call.</returns>
-        private static Task<byte[]?> ThumbnailAsync(ProcessorHarness harness, byte[] input, string contentType)
+        [Fact]
+        public async Task Normalisation_past_its_budget_is_refused_as_timeout_and_keeps_its_slot_until_the_decode_ends()
         {
-            var stream = new MemoryStream(input, writable: false);
+            var time = new FakeTimeProvider();
+            byte[] png = ImageFixtures.Noise(512, 512, SKEncodedImageFormat.Png);
+            using var input = new BlockingStream(png, blockAfter: 16 * 1024);
+            using var harness = new ProcessorHarness(time, concurrency: 2, openInput: _ => input);
+
+            Task<ProcessedImage> processed = harness.Processor.ProcessAsync(
+                ProcessorHarness.Kind, png, BlobKindPolicy.Photo.Image!, null, Budget, TestContext.Current.CancellationToken);
+            Assert.True(input.Blocked.Wait(Patience, TestContext.Current.CancellationToken));
+            Assert.Equal(1, harness.Processor.FreeImageSlots);
+
+            Task advanced = AdvanceElsewhere(time);
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+            input.Release.Set();
+            await advanced.WaitAsync(Patience, TestContext.Current.CancellationToken);
+
+            ImageRejectedException rejection = await Assert.ThrowsAsync<ImageRejectedException>(
+                () => processed.WaitAsync(Patience, TestContext.Current.CancellationToken));
+            Assert.Equal(ImageRejectedException.TimeoutReason, rejection.Reason);
+            Assert.Equal([BlobTelemetryTagValues.ImageTimeoutReason], harness.FailureReasons);
+
+            // The slot comes back only when the abandoned decode has really ended.
+            await WaitUntilAsync(() => harness.Processor.FreeImageSlots == 2);
+        }
+
+        [Fact]
+        public async Task An_upload_that_finds_every_slot_busy_for_its_budget_is_refused_as_busy_and_never_starts()
+        {
+            var time = new FakeTimeProvider();
+            byte[] png = ImageFixtures.Noise(512, 512, SKEncodedImageFormat.Png);
+            using var input = new BlockingStream(png, blockAfter: 16 * 1024);
+            using var harness = new ProcessorHarness(time, concurrency: 1, openInput: _ => input);
+
+            Task<ProcessedImage> first = harness.Processor.ProcessAsync(
+                ProcessorHarness.Kind, png, BlobKindPolicy.Photo.Image!, null, Timeout.InfiniteTimeSpan, TestContext.Current.CancellationToken);
+            Assert.True(input.Blocked.Wait(Patience, TestContext.Current.CancellationToken));
+            Task<ProcessedImage> second = harness.Processor.ProcessAsync(
+                ProcessorHarness.Kind, png, BlobKindPolicy.Photo.Image!, null, Budget, TestContext.Current.CancellationToken);
+
+            time.Advance(Budget);
+
+            ImageProcessingBusyException busy = await Assert.ThrowsAsync<ImageProcessingBusyException>(
+                () => second.WaitAsync(Patience, TestContext.Current.CancellationToken));
+            Assert.Equal(Budget, busy.RetryAfter);
+            Assert.Single(harness.EventNames, static name => name == "BlobImageRender");
+            Assert.Contains("BlobImageBusy", harness.EventNames);
+            Assert.Empty(harness.FailureReasons);
+
+            input.Release.Set();
+            await first.WaitAsync(Patience, TestContext.Current.CancellationToken);
+        }
+
+        [Fact]
+        public async Task A_cancelled_upload_stops_its_decode_and_counts_no_failure()
+        {
+            byte[] png = ImageFixtures.Noise(512, 512, SKEncodedImageFormat.Png);
+            using var input = new BlockingStream(png, blockAfter: 16 * 1024);
+            using var harness = new ProcessorHarness(openInput: _ => input);
+            using var cancellation = new CancellationTokenSource();
+
+            Task<ProcessedImage> processed = harness.Processor.ProcessAsync(
+                ProcessorHarness.Kind, png, BlobKindPolicy.Photo.Image!, null, ProcessorHarness.Generous, cancellation.Token);
+            Assert.True(input.Blocked.Wait(Patience, TestContext.Current.CancellationToken));
+
+            // The cancellation's callbacks wait for the read in flight, so they finish only once
+            // the read is released.
+            Task cancelled = cancellation.CancelAsync();
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+            input.Release.Set();
+            await cancelled.WaitAsync(Patience, TestContext.Current.CancellationToken);
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => processed.WaitAsync(Patience, TestContext.Current.CancellationToken));
+            Assert.Empty(harness.FailureReasons);
+            await WaitUntilAsync(() => harness.Processor.FreeImageSlots == 4);
+        }
+
+        /// <summary>
+        ///     Advances the fake clock by the budget on a pool thread: a budget's cancellation runs the
+        ///     call's continuation inline, which may wait for a read the suite has yet to release.
+        /// </summary>
+        /// <param name="time">The clock.</param>
+        /// <returns>The advance, complete once every continuation it ran has finished.</returns>
+        private static Task AdvanceElsewhere(FakeTimeProvider time)
+        {
+            return Task.Run(() => time.Advance(Budget), TestContext.Current.CancellationToken);
+        }
+
+        /// <summary>Starts a PDF thumbnail under the five-second budget.</summary>
+        /// <param name="harness">The harness.</param>
+        /// <returns>The call.</returns>
+        private static Task<byte[]?> PdfThumbnailAsync(ProcessorHarness harness)
+        {
+            var stream = new MemoryStream(DocumentFixtures.HalfBlackPage(100, 100), writable: false);
             return harness.Processor.ThumbnailAsync(
-                ProcessorHarness.Kind, stream, contentType, new ThumbnailPolicy(64), Budget, TestContext.Current.CancellationToken);
+                ProcessorHarness.Kind, stream, BlobContentTypes.Pdf, new ThumbnailPolicy(64), Budget, TestContext.Current.CancellationToken);
         }
 
         /// <summary>Polls until <paramref name="condition" /> holds, failing after the patience runs out.</summary>
@@ -219,51 +340,6 @@ namespace Tellma.Core.Imaging.Tests.Thumbnails
                 Release.Set();
                 Entered.Dispose();
                 Release.Dispose();
-            }
-        }
-
-        /// <summary>A seekable stream whose first read past a threshold blocks until released.</summary>
-        private sealed class BlockingStream(byte[] bytes, int blockAfter) : MemoryStream(bytes, writable: false)
-        {
-            private int _readsStarted;
-            private int _blockedOnce;
-
-            /// <summary>Set when a read is blocked.</summary>
-            public ManualResetEventSlim Blocked { get; } = new();
-
-            /// <summary>Set by the suite to let the blocked read finish.</summary>
-            public ManualResetEventSlim Release { get; } = new();
-
-            /// <summary>How many reads started.</summary>
-            public int ReadsStarted => Volatile.Read(ref _readsStarted);
-
-            // Only the array overload is overridden: a derived memory stream's span overload already
-            // routes through it, and overriding both would make each call the other.
-
-            /// <inheritdoc />
-            public override int Read(byte[] buffer, int offset, int count)
-            {
-                Interlocked.Increment(ref _readsStarted);
-                if (Position >= blockAfter && Interlocked.Exchange(ref _blockedOnce, 1) == 0)
-                {
-                    Blocked.Set();
-                    Release.Wait(Patience);
-                }
-
-                return base.Read(buffer, offset, count);
-            }
-
-            /// <inheritdoc />
-            protected override void Dispose(bool disposing)
-            {
-                if (disposing)
-                {
-                    Release.Set();
-                    Blocked.Dispose();
-                    Release.Dispose();
-                }
-
-                base.Dispose(disposing);
             }
         }
     }

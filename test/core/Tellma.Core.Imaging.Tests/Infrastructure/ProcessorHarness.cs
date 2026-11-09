@@ -22,10 +22,16 @@ namespace Tellma.Core.Imaging.Tests.Infrastructure
 
         private readonly ServiceProvider _services;
 
+        /// <summary>A budget generous enough never to fire in a suite that does not test budgets.</summary>
+        public static readonly TimeSpan Generous = TimeSpan.FromSeconds(60);
+
         /// <summary>Creates the harness.</summary>
         /// <param name="timeProvider">The clock; the system's when null.</param>
         /// <param name="pdf">The PDF rasterizer; PDFium when null.</param>
-        public ProcessorHarness(TimeProvider? timeProvider = null, IPdfRasterizer? pdf = null)
+        /// <param name="concurrency">The image slots; four when null.</param>
+        /// <param name="openInput">Opens an upload's bytes for the decoder; an in-memory stream when null.</param>
+        public ProcessorHarness(
+            TimeProvider? timeProvider = null, IPdfRasterizer? pdf = null, int? concurrency = null, Func<byte[], Stream>? openInput = null)
         {
             _services = new ServiceCollection().AddMetrics().BuildServiceProvider();
             IMeterFactory meterFactory = _services.GetRequiredService<IMeterFactory>();
@@ -33,7 +39,9 @@ namespace Tellma.Core.Imaging.Tests.Infrastructure
             Logger = new FakeLogger<SkiaImageProcessor>();
             Duration = new MetricCollector<double>(meterFactory, BlobTelemetryNames.MeterName, BlobTelemetryNames.ImageDuration);
             Failures = new MetricCollector<long>(meterFactory, BlobTelemetryNames.MeterName, BlobTelemetryNames.ImageFailures);
-            Processor = new SkiaImageProcessor(Logger, meterFactory, timeProvider ?? TimeProvider.System, pdf ?? PdfiumRasterizer.Instance);
+            var options = new SkiaImageProcessorOptions { ImageConcurrency = concurrency ?? 4 };
+            Processor = new SkiaImageProcessor(
+                Logger, meterFactory, timeProvider ?? TimeProvider.System, options, pdf ?? PdfiumRasterizer.Instance, openInput);
         }
 
         /// <summary>The processor.</summary>
@@ -63,7 +71,7 @@ namespace Tellma.Core.Imaging.Tests.Infrastructure
         /// <returns>The processed image.</returns>
         public Task<ProcessedImage> ProcessAsync(byte[] input, ImagePolicy policy, ThumbnailPolicy? thumbnail = null)
         {
-            return Processor.ProcessAsync(Kind, input, policy, thumbnail, TestContext.Current.CancellationToken);
+            return Processor.ProcessAsync(Kind, input, policy, thumbnail, Generous, TestContext.Current.CancellationToken);
         }
 
         /// <summary>Renders a thumbnail of <paramref name="input" />.</summary>
@@ -76,7 +84,7 @@ namespace Tellma.Core.Imaging.Tests.Infrastructure
         {
             using var stream = new MemoryStream(input, writable: false);
             return await Processor.ThumbnailAsync(
-                Kind, stream, contentType, new ThumbnailPolicy(size, format), TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+                Kind, stream, contentType, new ThumbnailPolicy(size, format), Generous, TestContext.Current.CancellationToken);
         }
 
         /// <inheritdoc />

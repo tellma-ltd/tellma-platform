@@ -33,17 +33,28 @@ namespace Tellma.Core.Abstractions.Blobs
         ///     Normalises an uploaded image per <paramref name="policy" /> and, when
         ///     <paramref name="thumbnail" /> is set, renders its thumbnail from the normalised image.
         /// </summary>
+        /// <remarks>
+        ///     The work runs behind a bounded number of concurrent image operations, because a native
+        ///     decode cannot be stopped mid-call. <paramref name="timeout" /> bounds the wait for a slot
+        ///     and, separately, the work once it has one: a slot not obtained in time means the server
+        ///     is busy (<see cref="ImageProcessingBusyException" />); work that runs out of time means
+        ///     the input is at fault (<see cref="ImageRejectedException.TimeoutReason" />). Either way
+        ///     the slot is released only when the native work has really ended.
+        /// </remarks>
         /// <param name="kind">The blob kind the image is uploaded as; tags the telemetry.</param>
         /// <param name="input">The uploaded bytes; at most the kind's size limit.</param>
         /// <param name="policy">How the image is normalised.</param>
         /// <param name="thumbnail">The thumbnail to render, or null for none.</param>
+        /// <param name="timeout">How long the call may wait for a slot, and how long the work may then
+        ///     take; positive, or <see cref="Timeout.InfiniteTimeSpan" /> for no limit.</param>
         /// <param name="cancellationToken">Cancels the call.</param>
         /// <returns>The bytes to store, their dimensions and media type, and the thumbnail.</returns>
         /// <exception cref="ImageRejectedException">The input is not an accepted image, declares too
-        ///     many pixels, or cannot be decoded.</exception>
+        ///     many pixels, cannot be decoded, or took longer than <paramref name="timeout" />.</exception>
+        /// <exception cref="ImageProcessingBusyException">No slot became free within <paramref name="timeout" />.</exception>
         /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
         Task<ProcessedImage> ProcessAsync(
-            string kind, byte[] input, ImagePolicy policy, ThumbnailPolicy? thumbnail, CancellationToken cancellationToken);
+            string kind, byte[] input, ImagePolicy policy, ThumbnailPolicy? thumbnail, TimeSpan timeout, CancellationToken cancellationToken);
 
         /// <summary>
         ///     Renders a thumbnail of a stored file that was not normalised: one of the four image
@@ -52,9 +63,9 @@ namespace Tellma.Core.Abstractions.Blobs
         ///     render that exceeds <paramref name="timeout" />. Null is never a rejection of the file.
         /// </summary>
         /// <remarks>
-        ///     Once the call returns, no new read of <paramref name="input" /> starts, even when a
-        ///     render that exceeded its time budget is still unwinding; the caller may dispose the
-        ///     stream.
+        ///     Once the call returns, the processor no longer touches <paramref name="input" />, even
+        ///     when a render that exceeded its time budget is still unwinding: the caller may rewind,
+        ///     read or dispose the stream.
         /// </remarks>
         /// <param name="kind">The blob kind the file is stored as; tags the telemetry.</param>
         /// <param name="input">The stored bytes, readable and seekable, positioned at the file's start.</param>

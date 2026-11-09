@@ -5,6 +5,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Composition;
 
@@ -15,8 +16,9 @@ namespace Tellma.Core.Imaging
     {
         /// <summary>
         ///     Registers <see cref="SkiaImageProcessor" /> as the process's one
-        ///     <see cref="IImageProcessor" />, and the <c>core.imaging</c> startup check that loads its
-        ///     native libraries before the host serves traffic.
+        ///     <see cref="IImageProcessor" />, its options bound from <c>Tellma:Blobs</c>
+        ///     (<see cref="SkiaImageProcessorOptions.ImageConcurrency" />), and the <c>core.imaging</c>
+        ///     startup check that loads its native libraries before the host serves traffic.
         /// </summary>
         /// <remarks>
         ///     A process runs on at most one image processor, so no other processor is registered
@@ -41,6 +43,9 @@ namespace Tellma.Core.Imaging
             // created from; the clock is the system's unless the host registered its own.
             services.AddMetrics();
             services.TryAddSingleton(TimeProvider.System);
+            services.AddOptions<SkiaImageProcessorOptions>().BindConfiguration(SkiaImageProcessorOptions.SectionName);
+            services.TryAddEnumerable(
+                ServiceDescriptor.Singleton<IValidateOptions<SkiaImageProcessorOptions>, SkiaImageProcessorOptionsValidator>());
             services.AddSingleton<IImageProcessor, SkiaImageProcessor>();
             services.TryAddEnumerable(ServiceDescriptor.Singleton<IStartupCheck, ImagingStartupCheck>());
         }
