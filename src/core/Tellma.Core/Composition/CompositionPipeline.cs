@@ -454,6 +454,7 @@ namespace Tellma.Core.Composition
                 new TaxonomyCheck(_record),
                 new EntityShapesCheck(_record),
                 new ModelContributorsCheck(_record),
+                new EntityMetadataCheck(),
             ]);
 
             foreach (IStartupCheck check in _record.BuiltInChecks)

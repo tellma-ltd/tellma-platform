@@ -31,5 +31,8 @@ namespace Tellma.Core.Composition.Checks
 
         /// <summary>Every model configuration Core contributes is an entity type configuration the model can apply.</summary>
         public const string ModelContributors = "core.model-contributors";
+
+        /// <summary>The tenant model builds, and every entity leaf in it satisfies the entity contract.</summary>
+        public const string EntityMetadata = "core.entity-metadata";
     }
 }

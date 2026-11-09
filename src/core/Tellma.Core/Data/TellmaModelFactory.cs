@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Composition;
+using Tellma.Core.Data.Metadata;
 using Tellma.Core.Data.TableTypes;
 
 namespace Tellma.Core.Data
@@ -43,7 +44,8 @@ namespace Tellma.Core.Data
 
         /// <summary>
         ///     Registers the composition's model: its definition, this factory, the model as a singleton
-        ///     <see cref="IModel" /> built on first use, and the table-type binder over it.
+        ///     <see cref="IModel" /> built on first use, the table-type binder over it, and the entity
+        ///     metadata, which the startup gate builds and validates before the host serves traffic.
         /// </summary>
         /// <param name="services">The host's services.</param>
         /// <param name="record">The realised composition.</param>
@@ -56,6 +58,10 @@ namespace Tellma.Core.Data
             _ = services.AddSingleton<TellmaModelFactory>();
             _ = services.AddSingleton(static provider => provider.GetRequiredService<TellmaModelFactory>().BuildModel());
             _ = services.AddSingleton<TableTypeBinder>();
+            _ = services.AddSingleton(static provider => new EntityMetadataSource(
+                provider.GetRequiredService<IModel>,
+                provider.GetRequiredService<TellmaModelDefinition>()));
+            _ = services.AddSingleton(static provider => provider.GetRequiredService<EntityMetadataSource>().Provider);
         }
     }
 }
