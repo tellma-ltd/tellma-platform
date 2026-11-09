@@ -43,7 +43,7 @@ namespace Tellma.Identity.Services.Provisioning
     /// </remarks>
     /// <param name="applicationManager">The OpenIddict application manager of this scope.</param>
     /// <param name="scopeManager">The OpenIddict scope manager of this scope.</param>
-    /// <param name="options">The engine options (the issuer origin).</param>
+    /// <param name="options">The engine options.</param>
     /// <param name="scopeFactory">Creates the fresh scope each attempt runs in.</param>
     /// <param name="logger">Logs lost writes and their retries.</param>
     public sealed class ClientRegistrationConverger(
@@ -79,7 +79,6 @@ namespace Tellma.Identity.Services.Provisioning
         {
             ArgumentNullException.ThrowIfNull(registration);
 
-            string issuerOrigin = options.Value.Issuer!.GetLeftPart(UriPartial.Authority);
             string originValue = registration.Origin.GetLeftPart(UriPartial.Authority);
 
             // Each write point converges, and retries, on its own (see the remarks), so a lost
@@ -98,7 +97,6 @@ namespace Tellma.Identity.Services.Provisioning
                     ClientDescriptorFactory.DistributionService(
                         registration.Slug,
                         registration.Origin,
-                        issuerOrigin,
                         registration.ServiceClientSecret,
                         registration.AllowTokenExchange),
                     adjust: null,
@@ -152,24 +150,31 @@ namespace Tellma.Identity.Services.Provisioning
         }
 
         /// <summary>
-        ///     Converges one scope: creates it with its display name and resources, or adds any of
-        ///     the resources it lacks. Resources already on the scope stay, since onboarding appends
-        ///     distribution audiences to it at runtime.
+        ///     Converges one scope: creates it with its display name and resources, or brings an
+        ///     existing one's resources in line. By default it only adds the resources the scope
+        ///     lacks, since onboarding appends distribution audiences to the distribution API scope
+        ///     at runtime; a scope whose audiences the platform alone fixes converges on exactly
+        ///     <paramref name="resources" />, so an audience it no longer grants is removed.
         /// </summary>
         /// <param name="name">The scope name.</param>
         /// <param name="displayName">The display name a new scope is created with.</param>
         /// <param name="resources">The resources the scope must hold.</param>
         /// <param name="cancellationToken">Aborts the operation.</param>
+        /// <param name="exact">Converge on exactly these resources, removing any other.</param>
         /// <returns>Whether anything was written.</returns>
         public async Task<bool> ConvergeScopeAsync(
-            string name, string displayName, IReadOnlyCollection<string> resources, CancellationToken cancellationToken)
+            string name,
+            string displayName,
+            IReadOnlyCollection<string> resources,
+            CancellationToken cancellationToken,
+            bool exact = false)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(name);
             ArgumentNullException.ThrowIfNull(resources);
 
             return await WithRetryAsync(
                 name,
-                converger => converger.ConvergeScopeOnceAsync(name, displayName, resources, cancellationToken),
+                converger => converger.ConvergeScopeOnceAsync(name, displayName, resources, exact, cancellationToken),
                 cancellationToken);
         }
 
@@ -280,7 +285,7 @@ namespace Tellma.Identity.Services.Provisioning
 
         /// <summary>One attempt at converging a scope.</summary>
         private async Task<bool> ConvergeScopeOnceAsync(
-            string name, string displayName, IReadOnlyCollection<string> resources, CancellationToken cancellationToken)
+            string name, string displayName, IReadOnlyCollection<string> resources, bool exact, CancellationToken cancellationToken)
         {
             object? scope = await scopeManager.FindByNameAsync(name, cancellationToken);
             if (scope is null)
@@ -293,9 +298,14 @@ namespace Tellma.Identity.Services.Provisioning
 
             OpenIddictScopeDescriptor existing = new();
             await scopeManager.PopulateAsync(existing, scope, cancellationToken);
-            if (resources.All(existing.Resources.Contains))
+            if (exact ? existing.Resources.SetEquals(resources) : resources.All(existing.Resources.Contains))
             {
                 return false;
+            }
+
+            if (exact)
+            {
+                existing.Resources.Clear();
             }
 
             existing.Resources.UnionWith(resources);

@@ -77,6 +77,13 @@ namespace Tellma.Identity.Services.Audit
         /// <summary>A token or grant was revoked.</summary>
         public const string TokenRevoked = "TokenRevoked";
 
+        /// <summary>
+        ///     A request named a <c>resource</c> its client does not hold, or one outside the grant
+        ///     it presented, and was answered <c>invalid_target</c>. The row names the client and
+        ///     the refused resource.
+        /// </summary>
+        public const string ResourceRefused = "ResourceRefused";
+
         /// <summary>An SSO session was established.</summary>
         public const string SessionCreated = "SessionCreated";
 

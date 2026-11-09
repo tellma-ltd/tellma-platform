@@ -219,10 +219,13 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
         }
 
         /// <summary>
-        ///     Derives token audiences: explicit <c>resource</c> parameters win (already
-        ///     validated against the client's permissions); a browser client's distribution
-        ///     audience derives from its registered origin; fixed platform audiences come from
-        ///     the scope registry.
+        ///     Derives token audiences. Explicit <c>resource</c> parameters — already validated
+        ///     against the client's grants by the engine's resource check, per-tenant resources and
+        ///     combinations included — are the whole audience. Without one, a browser client's
+        ///     distribution audience derives from its registered origin and is likewise the whole
+        ///     audience; otherwise the token carries its scopes' fixed platform audiences. A
+        ///     distribution's audience is never combined with a platform one, so a token handed to
+        ///     a distribution is never also a credential at the identity server's own APIs.
         /// </summary>
         private async Task<string?> SetAudiencesAsync(
             ClaimsIdentity identity, GrantRequest grant, object application, CancellationToken cancellationToken)
@@ -238,19 +241,28 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                     return "The tellma_api scope requires an explicit 'resource' parameter for this client.";
                 }
 
+                // The derived audience is a distribution's, so the management scope cannot ride
+                // with it; the resource check refuses the explicit form of the same request.
+                if (identity.HasScope(TellmaIdentityConstants.IdentityScope))
+                {
+                    return "A distribution audience cannot be combined with the tellma_identity scope; request two tokens.";
+                }
+
                 resources.Add(origin);
             }
 
-            // Platform-scope audiences are unioned in unconditionally: a token granted
-            // tellma_identity or tellma_control_plane must carry that audience even when an
-            // explicit resource was also named, or the platform API would reject it.
-            ImmutableArray<string> platformScopes =
-                [.. identity.GetScopes().Where(static scope => scope != TellmaIdentityConstants.ApiScope)];
-            await foreach (string resource in scopeManager.ListResourcesAsync(platformScopes, cancellationToken))
+            // Without a distribution audience, the token is for the platform's own APIs: the
+            // audiences of its management and operator scopes.
+            if (resources.Count == 0)
             {
-                if (!resources.Contains(resource, StringComparer.Ordinal))
+                ImmutableArray<string> platformScopes =
+                    [.. identity.GetScopes().Where(static scope => scope != TellmaIdentityConstants.ApiScope)];
+                await foreach (string resource in scopeManager.ListResourcesAsync(platformScopes, cancellationToken))
                 {
-                    resources.Add(resource);
+                    if (!resources.Contains(resource, StringComparer.Ordinal))
+                    {
+                        resources.Add(resource);
+                    }
                 }
             }
 

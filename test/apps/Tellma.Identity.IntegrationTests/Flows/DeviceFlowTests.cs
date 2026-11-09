@@ -164,7 +164,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         }
 
         /// <summary>Signs the user in and approves the device user code in the browser.</summary>
-        private static async Task ApproveUserCodeAsync(OidcFlowClient flow, string userCode, string email)
+        internal static async Task ApproveUserCodeAsync(OidcFlowClient flow, string userCode, string email)
         {
             // Opening the verification URI requires a login; the device page is [Authorize].
             string verifyUrl = "/connect/verify?user_code=" + Uri.EscapeDataString(userCode);

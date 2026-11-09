@@ -221,7 +221,111 @@ Format, one entry per ruling:
   - StaleContextException (0013 §2.9) joins the closed exception set.
 - **Spec error for Ahmad:** Appendix A's prose rule ("12 September in the year before a Gregorian leap year") is wrong for 2099. 1 Meskerem 2092 falls on 2099-09-12 (ICU agrees with the code). The code follows the arithmetic, not the prose.
 - Addendum (PC-016 Review 1): array setting values are ImmutableArray<T> rather than T[], a deviation from 0013 §5.3. A tenant snapshot is then shared safely without copying. The client's Umm al-Qura fallback outside the table is islamic-tbla, which equals .NET's HijriCalendar with adjustment 0.
+- Addendum (PC-016 fix 1): the server's Umm al-Qura calendar is UmAlQuraExtendedCalendar. It is the .NET table, plus the tabular calendar (adjustment 0) outside AH 1318-1500, and it is valid from AD 622-07-18. Muharram 1501 begins 2077-11-17 and has 29 days, so the table wins the one overlap. A date before a calendar's epoch renders as "yyyy-MM-dd gc", which TryParse refuses.
+- Addendum (PC-F09): CI's ubuntu-latest is now ubuntu-26.04 with libicu 78.2. From ICU 78, ar-SA's default calendar is Gregorian, with Umm al-Qura only optional. Other CLDR data moved too: en-GB's full date has its comma again, and ti-ET's short date is M/d/yyyy. Calendar tests therefore build their culture clones explicitly and never rely on host defaults. Local Linux checks use mcr.microsoft.com/dotnet/sdk:10.0-resolute (ICU 78) as well as sdk:10.0 (ICU 74). PC-019's pinned culture data must be chosen independently of either ICU.
 - Revisit if: the client must convert dates outside .NET's Umm al-Qura range (AH 1318-1500).
+
+### D-030 (PC-053 + orchestrator, 2026-11-08): imaging rulings
+- Spec: 0017 §1.1, §3.5, §3.6, §9 and §10.
+- Accepted from the implementer:
+  - IImageProcessor takes `kind` on both methods and a `timeout` on ThumbnailAsync. The processor records tellma.blobs.image.* and BlobImageRender itself, so PC-083's BlobService passes the kind and BlobOptions.ThumbnailTimeout and does not record those instruments again.
+  - CoverSquare never upscales: side = min(MaxDimension, shorter side). The spec says "scales to MaxDimension", but upscaling only adds bytes and blur.
+  - A `core.imaging` startup check confirms that Skia and PDFium load.
+  - The imaging instruments live on the Tellma.Core meter, as an exception to naming meters by package.
+- Orchestrator rulings:
+  - ProcessAsync (normalisation) gets a time budget like ThumbnailAsync. Native decode cannot be stopped mid-call, so image work also runs behind a bounded concurrency limit: a hostile file within the pixel cap can then waste one slot but never starve the host.
+  - Native .pdb files from SkiaSharp's Win32 package (about 100 MB per Windows RID) are excluded from build and publish output.
+  - PDFium exposure is bounded: render page 1 only, and cap page size and decoded raster size before rendering.
+- Licences: SkiaSharp and PDFtoImage are MIT, and the PDFium builds are Apache-2.0. No AGPL or GPL dependency is used.
+- Addendum (PC-053 Review 1, which escalated it to Review 2):
+  - New options: BlobOptions.ImageProcessTimeout (default 15 s) and ImageConcurrency (default max(1, ProcessorCount/2)).
+  - Processing over its budget raises ImageRejectedException (reason timeout, Blob.ImageRejected).
+  - A busy gate that cannot be entered in time is a distinct 503 with Retry-After.
+  - The gate is released only when native work truly ends.
+  - PDFium's page 1 is pre-walked: image dimensions (JPX and JBIG2 included), object count, page size (14,400 pt) and input length are capped, and it fails fast while an abandoned render holds the gate.
+  - The processor never reads the caller's stream after it returns.
+  - **Residual risk:** memory used by PDFium's non-image content and PDFium bugs stay unbounded until out-of-process rendering.
+- Addendum 2 (PC-053 Review 2, R2-1): form-XObject fan-out expands inside FPDF_LoadPage, before the object cap is checked. So a small PDF can still grow memory exponentially in-process, and the input cap does not bound that parse. A failed or refused thumbnail never fails the upload. **Out-of-process PDF rendering (PC-F08) is required before the MVP gate (PC-140).** Until then this is recorded residual risk, limited by the fact that only an authenticated user with upload rights can trigger it.
+- Evidence (PC-053 fix 2): a 1.4 KB FormFanOut(depth 6, breadth 10) file expands to about 210k objects inside the uninterruptible FPDF_LoadPage. That costs 3-11 s of single-threaded CPU in mcr.microsoft.com/dotnet/sdk:10.0 against about 1 s on Windows, holding the PDF gate throughout. The pushback on a "finishes inside 5 s" assertion is accepted. The test asserts refusal (decode-failed, never timeout) and reports the cost. PC-F08 is promoted to the next fix-slot item after the current stop-the-line fix.
+- Addendum 3 (PC-F08):
+  - PDF thumbnails render in a per-request worker (`dotnet exec`, the host's runtimeconfig and deps.json), killed at 5 s.
+  - Memory is capped by the OS: a Windows Job Object, and Linux prlimit RLIMIT_DATA, because RLIMIT_AS does not cap the managed heap. The cap is Tellma:Blobs:PdfWorkerMemoryLimit (256 MiB).
+  - Linux workers are denied network by seccomp.
+  - Hosts must run framework-dependent; core.imaging refuses single-file and self-contained hosts.
+  - New package Tellma.Core.Imaging.PdfWorker, which the release pipeline publishes with Tellma.Core.Imaging.
+  - **Residual risk:**
+    - No filesystem confinement (no Landlock or AppContainer), so a PDFium code-execution exploit could read what the host user can read and leak it through pixels.
+    - No network block on Windows, which has no unprivileged mechanism for it.
+    - Ruling: Linux is the supported production host for PDF thumbnails. Filesystem confinement is PC-F11, tracked for before general availability, not the MVP.
+  - D-030 addendum 1's fail-fast on an abandoned render no longer applies, because the worker is killed.
+- Revisit if: out-of-process rendering becomes necessary (a hostile-PDF memory exhaustion seen in the wild).
+
+### D-031 (orchestrator, 2026-11-09): bundle ceilings at their limit
+- Situation: after PC-011, three ceilings are almost full:
+  - ./popover at 4087/4096 B;
+  - ./grid at 38909/38912 B;
+  - ./image at 10187/10240 B.
+  Any further feature on those entry points will cross its ceiling. Size ceilings exist to catch accidental bloat, not to block spec'd features.
+- Ruling: a checkpoint whose spec'd additions cross a ceiling may raise it, by at most what it adds rounded up to the next 0.5 KB, under three conditions:
+  - it first looks for and takes honest savings in code it touches;
+  - it adds a budgetNotes entry naming the feature, the bytes it adds and the savings it took;
+  - its reviewer checks the measurement.
+  A raise that only absorbs accidental growth (a new dependency, a duplicate) is never allowed.
+- First use: PC-011's review 1 fixes (popover clamp against classic scrollbars, and a stale height cap on scroll or resize) may raise ./popover under this rule. Its ruling on disabled reasons: a reason on a button that has tmTooltip shows the tooltip text first and then the reason, never replacing the only visible label of an icon-only button.
+- Revisit if: a ceiling rises three times; then re-split the entry point instead.
+
+### D-032 (PC-065, 2026-11-09): client commands after the workspace moves to the repo root
+- Takes effect once PC-065 integrates. Every client command then runs from the slot root, as `cd <slot> && …`; the old `cd <slot>/client && pnpm run <gate>` still works.
+  - Install: `pnpm install --frozen-lockfile`.
+  - Gates: `pnpm run lint|typecheck|lint:test|tokens:check|build|test|api:check|docs:build|size:check|build:showcase`.
+  - Tokens CSS after a branch switch: `pnpm run tokens:build-css`. API goldens: `pnpm run api:approve`.
+  - Browsers: `pnpm --dir client exec playwright install chromium`.
+  - PR-tier e2e: `node client/scripts/e2e.mjs --project chromium --project touch --grep-invert "@nightly|@perf|@quarantine"`.
+- The lockfile is /pnpm-lock.yaml. Dependency versions live in the root pnpm-workspace.yaml `catalog` (`catalogMode: strict`) and are referenced as `catalog:`. A lane that merges across the move resolves a modify/delete conflict on client/pnpm-lock.yaml by taking the delete and running `pnpm install` at the root.
+- CI gains a `client-windows` job that runs every client gate except e2e (spec 0024 §12), and all-checks-passed requires it.
+- The @tellma/core entry-point graph is data in core-tools (src/eslint/core-entry-points.ts) and is checked for cycles. Later owners add their lazy-to-lazy edges to that table.
+- Briefs after PC-065 use these commands. PROCESS.md §11 already anticipates the move.
+
+### D-033 (PC-018 + orchestrator, 2026-11-09): entity-model rulings
+- Spec: 0012 §1.3, §1.4, §4.1, §4.2 and §6.4; 0011 §3.5, §6.1 and §6.4.
+- datetimeoffset(3): every non-audit DateTimeOffset column, on entities and on standalone table types, maps to datetimeoffset(3) through a convention. The exceptions are the audit pair, IdStampList at (7) and the datetime2(7) periods.
+- EF's ForeignKeyIndexConvention is removed globally, so indexes exist only where the spec declares them. The audit FKs (CreatedById/ModifiedById) carry no index. This matches §4.2/§1.3, and 0014 §3.9 limits user deletes to New users. A Core configuration's FK gets an index only if the configuration declares one.
+- PK and FK constraint names are deterministic for explicit configuration too, so §6.4's 547-by-name mapping always matches.
+- Every table type grants EXECUTE to tellma_app with no guard, as 0011 §3.5 and §6.4 say.
+- **Spec contradiction for Ahmad:** 0011 §6.1 says the design-time `dotnet ef database update` database "has no tellma_app". The grant then fails there with Msg 15151, reproduced on LocalDB. PC-034's design-time factory creates the role first (planner note). §6.1 should say so.
+- Revisit if: a query plan shows the missing audit-FK indexes hurting a real workload.
+
+### D-034 (PC-009 + orchestrator, 2026-11-09): resource grants and seeds
+- Spec: 0010 §A.2, §A.4 and §A.5; D-000b.
+- Accepted from the implementer:
+  - One decision point, ResourceGrantValidator over IResourceGrantEvaluator, with OpenIddict's built-in resource checks turned off.
+  - A refused resource answers invalid_target, as §A.2 says.
+  - Token exchange without a resource no longer issues an audience covering every distribution (a cross-distribution bug, fixed).
+  - Narrowing applies to the access token only; the rotated refresh token keeps the original grant (RFC 8707).
+  - Device flow resources are validated and carried.
+  - The control plane keeps its two exact platform rsrc permissions and is recognized by scp:tellma_control_plane.
+- Pre-existing gap fixed: an authorization request that OpenIddict refused still reached Authorize and Accept and started a sign-in. Both now re-raise the refusal.
+- Orchestrator rulings:
+  - EndSessionController follows the same rule: a refused end-session request never signs the user out.
+  - §A.4's interim agent seeds ship, as D-000b says. They use a key-addressed form, never index-merged Seed:Clients array entries, so no deployment's entries are corrupted. Their redirects are RFC 8252 loopback (127.0.0.1, any port) with a documented default path that a deployment can override.
+- Addendum (PC-009 Review 1), stricter than the spec and stated as deviations:
+  - A machine token that names a distribution origin together with any other resource (more distributions, the control-plane audience or the issuer) is refused with invalid_target.
+  - On the interactive path, an explicit distribution resource is the whole aud, and tellma_identity together with a distribution resource is refused. A client that needs both asks for two tokens.
+  - This keeps §A.5's "one token, one place" property and closes the replay of a CLI token against the management API.
+  - The seeds ship as TellmaIdentitySeedOptions.InterimClients, keyed by client id with an Enabled flag. Each is Native, RequireConsent and ThirdParty, with redirect http://127.0.0.1/callback (any port).
+- Addendum 2 (PC-009 Review 2):
+  - Interactive grants naming resources from more than one distribution origin are refused with invalid_target; same-origin combinations stay allowed.
+  - The identity management API's audience is `urn:tellma:identity` in every mode, standalone and in-proc, so it never equals a distribution origin. This deviates from §A.5's "issuer origin".
+  - The resource check runs after OpenIddict's PKCE, presenter and redirect checks.
+  - A disabled interim seed whose client exists logs a startup Warning.
+  - An end-session request without an id_token_hint shows a confirmation page, so a bare GET cannot log a user out (CSRF).
+  - **Spec clarifications for Ahmad:** 0010 §A.5 (the management audience) and 0003 (end-session confirmation).
+- Revisit if: Ahmad supplies the agents' real callback paths (they then replace the default).
+
+### D-035 (orchestrator, 2026-11-09): a second fix slot
+- Situation: PC-065's integration turned CI red while the fix slot pc-f held PC-F08, a long out-of-process rendering fix, and all four checkpoint slots were busy. D-014's revisit condition, the fix slot holding more than one fix, was met.
+- Ruling: `WT/pc-f2` (ports 4360/7160/4260, DB_SUFFIX pcf2) serves stop-the-line fixes whenever pc-f is busy. PC-F10 is its first use. The D-028 heavy-agent cap of 5 still applies; a stop-the-line fix may exceed it by one, because the line is stopped.
+- Revisit if: both fix slots are ever busy at once.
 
 ### D-006 (Ahmad, 2026-11-08): review levers
 - Ruling: Review 2 runs only for the PROCESS.md §3 two-review list (security-bound or complex, 44 checkpoints) and for escalations (§4.4); every other checkpoint gets Review 1 and one fix round. Cross-checkpoint batch reviews run once per phase instead of per group.
