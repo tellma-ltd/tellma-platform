@@ -73,26 +73,28 @@ namespace Tellma.Core.Abstractions.Data
         /// <summary>The rows the connect prologue found visible to the caller.</summary>
         public const string Visible = "@tm_visible";
 
-        /// <summary>Every reserved prefix: <see cref="EnginePrefix" />, <see cref="StatementPrefix" /> and the bare <c>@tm</c> of <see cref="BatchPrefix" />.</summary>
-        public static IReadOnlyList<string> Prefixes { get; } = [EnginePrefix, StatementPrefix, BatchPrefix[..^1]];
+        /// <summary>
+        ///     The three reserved prefixes. <see cref="EnginePrefix" /> and <see cref="StatementPrefix" />
+        ///     reserve a name only when a batch ordinal and <c>_</c> follow them (<c>@qx0_</c>,
+        ///     <c>@tb12_</c>); <see cref="BatchPrefix" /> reserves every name it begins.
+        /// </summary>
+        public static IReadOnlyList<string> Prefixes { get; } = [EnginePrefix, StatementPrefix, BatchPrefix];
 
-        /// <summary>Whether a parameter or table-variable name falls in a reserved namespace, ignoring case.</summary>
+        /// <summary>
+        ///     Whether a parameter or table-variable name falls in a reserved namespace, ignoring case:
+        ///     it begins with <c>@tm_</c>, or with <c>@qx</c> or <c>@tb</c> followed by one or more
+        ///     digits and <c>_</c>. Names such as <c>@tmp</c>, <c>@tbl</c> or <c>@qxRate</c> stay free.
+        /// </summary>
         /// <param name="name">The name, with its leading <c>@</c>.</param>
-        /// <returns>True when the name starts with a reserved prefix.</returns>
+        /// <returns>True when the name is in a reserved namespace.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="name" /> is null.</exception>
         public static bool IsReserved(string name)
         {
             ArgumentNullException.ThrowIfNull(name);
 
-            foreach (string prefix in Prefixes)
-            {
-                if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return name.StartsWith(BatchPrefix, StringComparison.OrdinalIgnoreCase)
+                || HasOrdinalPrefix(name, EnginePrefix)
+                || HasOrdinalPrefix(name, StatementPrefix);
         }
 
         /// <summary>Forms a per-statement name, <c>@tb{b}_{name}</c>.</summary>
@@ -107,6 +109,26 @@ namespace Tellma.Core.Abstractions.Data
             ArgumentException.ThrowIfNullOrEmpty(name);
 
             return string.Create(CultureInfo.InvariantCulture, $"{StatementPrefix}{batchOrdinal}_{name}");
+        }
+
+        /// <summary>Whether a name is <paramref name="prefix" />, one or more ASCII digits and <c>_</c>, then anything.</summary>
+        /// <param name="name">The name.</param>
+        /// <param name="prefix">The prefix.</param>
+        /// <returns>True when it is.</returns>
+        private static bool HasOrdinalPrefix(string name, string prefix)
+        {
+            if (!name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            int index = prefix.Length;
+            while (index < name.Length && char.IsAsciiDigit(name[index]))
+            {
+                index++;
+            }
+
+            return index > prefix.Length && index < name.Length && name[index] == '_';
         }
 
         /// <summary>

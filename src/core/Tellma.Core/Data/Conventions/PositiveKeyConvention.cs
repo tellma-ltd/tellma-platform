@@ -35,10 +35,10 @@ namespace Tellma.Core.Data.Conventions
                     continue;
                 }
 
-                string column = ConventionModel.Column(entityType.FindProperty(nameof(Entity<>.Id))!);
+                string column = ConventionModel.Column(ConventionModel.RequireProperty(entityType, nameof(Entity<>.Id), "the key of"));
                 _ = entityType.Builder.HasCheckConstraint(
                     ConstraintNames.Check(ConventionModel.Table(entityType), ConstraintName),
-                    $"[{column}] > 0",
+                    $"{ConventionModel.Delimit(column)} > 0",
                     fromDataAnnotation: true);
             }
         }

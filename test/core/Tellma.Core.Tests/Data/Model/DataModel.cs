@@ -103,6 +103,8 @@ namespace Tellma.Core.Tests.Data.Model
                 .Entity<Center>()
                 .Entity<Node>()
                 .Entity<Shipment>()
+                .Entity<Configured>()
+                .Model<ConfiguredConfiguration>()
                 .TableType<CollatedKeyRow>()
                 .Model(typeof(TestUserConfiguration<>));
         }

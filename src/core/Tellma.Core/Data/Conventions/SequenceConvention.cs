@@ -45,7 +45,7 @@ namespace Tellma.Core.Data.Conventions
                 }
 
                 // --- No database-generated key, sibling or not ---
-                IConventionProperty id = entityType.FindProperty(nameof(Entity<>.Id))!;
+                IConventionProperty id = ConventionModel.RequireProperty(entityType, nameof(Entity<>.Id), "the key of");
                 _ = id.Builder.ValueGenerated(ValueGenerated.Never, fromDataAnnotation: true);
 
                 if (SiblingConvention.IsSibling(entityType))

@@ -25,8 +25,10 @@ namespace Tellma.Core.Data.Conventions
     {
         /// <summary>
         ///     The conventions, in the order they run. Each reads only what the ones before it settled:
-        ///     enum sizing reads the string conversion, the table type reads every exclusion the tree and
-        ///     temporal conventions add, and uniqueness reads the parent key pairing.
+        ///     enum sizing reads the string conversion, the audit timestamps override the timestamp
+        ///     precision, the table type reads every exclusion the tree and temporal conventions add,
+        ///     uniqueness reads the parent key pairing, and the constraint names come last, over every
+        ///     key the others added.
         /// </summary>
         /// <returns>A fresh instance of each convention.</returns>
         public static IReadOnlyList<IModelFinalizingConvention> Conventions()
@@ -36,6 +38,7 @@ namespace Tellma.Core.Data.Conventions
                 new EnumStringConvention(),
                 new EnumStringLengthConvention(),
                 new JsonColumnConvention(),
+                new TimestampConvention(),
                 new AuditConvention(),
                 new CollationConvention(),
                 new TableTypeConvention(),
@@ -52,6 +55,7 @@ namespace Tellma.Core.Data.Conventions
                 new SequenceConvention(),
                 new PositiveKeyConvention(),
                 new MultilingualConvention(),
+                new ConstraintNameConvention(),
             ];
         }
 

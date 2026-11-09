@@ -114,6 +114,66 @@ namespace Tellma.Core.Tests.Data
             Assert.Equal(["FK_Users_CreatedById", "FK_Users_ModifiedById"], users.GetForeignKeys().Select(static fk => fk.GetConstraintName()).Order());
         }
 
+        // --- Timestamps ---
+
+        [Fact]
+        public void Every_other_timestamp_carries_three_fractional_digits_in_the_column_and_the_row_image()
+        {
+            IEntityType widget = model.Entity<Widget>();
+
+            Assert.Equal("datetimeoffset(3)", widget.FindProperty(nameof(Widget.DueAt))!.GetColumnType());
+            Assert.Equal("datetimeoffset(3)", widget.GetTableType()!.Columns.Single(static column => column.Name == nameof(Widget.DueAt)).StoreType);
+            Assert.Equal("datetimeoffset(7)", widget.FindProperty(nameof(Widget.CreatedAt))!.GetColumnType());
+            Assert.Equal("datetimeoffset(3)", model.Table("dbo", "__TellmaSchema").FindProperty("AppliedAt")!.GetColumnType());
+        }
+
+        [Fact]
+        public void A_declared_column_type_keeps_its_precision()
+        {
+            Assert.Equal("datetimeoffset(7)", model.Entity<Widget>().FindProperty(nameof(Widget.PreciseAt))!.GetColumnType());
+        }
+
+        [Fact]
+        public void A_standalone_timestamp_is_datetimeoffset_3_unless_the_class_declares_its_type()
+        {
+            TableTypeDefinition list = model.DesignModel.GetTableTypes().Single(static type => type.Name == "CollatedKeyList");
+            TableTypeDefinition stamps = model.DesignModel.GetTableTypes().Single(static type => type.Name == "IdStampList");
+
+            Assert.Equal("datetimeoffset(3)", list.Columns.Single(static column => column.Name == nameof(CollatedKeyRow.At)).StoreType);
+            Assert.Equal("datetimeoffset(7)", stamps.Columns.Single(static column => column.Name == "ModifiedAt").StoreType);
+        }
+
+        // --- Constraint names ---
+
+        [Fact]
+        public void Every_primary_key_is_named_by_its_table()
+        {
+            Assert.All(model.DesignModel.GetEntityTypes(), static entityType => Assert.Equal($"PK_{entityType.GetTableName()}", entityType.FindPrimaryKey()!.GetName()));
+            Assert.Contains("CONSTRAINT [PK_Widgets] PRIMARY KEY ([Id])", model.Sql, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void A_foreign_key_a_core_configuration_leaves_unnamed_is_named_by_its_table_and_column()
+        {
+            IForeignKey attachment = Assert.Single(model.Entity<Configured>().FindProperty(nameof(Configured.AttachmentRef))!.GetContainingForeignKeys());
+
+            Assert.Equal("FK_Configured_AttachmentRef", attachment.GetConstraintName());
+        }
+
+        // --- Explicit configuration wins ---
+
+        [Fact]
+        public void A_core_configurations_foreign_key_conversion_and_table_type_opt_out_survive_the_conventions()
+        {
+            IEntityType configured = model.Entity<Configured>();
+            IForeignKey job = Assert.Single(configured.FindProperty(nameof(Configured.JobId))!.GetContainingForeignKeys());
+
+            Assert.Equal(("FK_Configured_OwnJob", DeleteBehavior.Cascade), (job.GetConstraintName(), job.DeleteBehavior));
+            Assert.Equal(typeof(int), configured.FindProperty(nameof(Configured.Kind))!.GetProviderClrType());
+            Assert.Equal("int", configured.FindProperty(nameof(Configured.Kind))!.GetColumnType());
+            Assert.Null(configured.GetTableType());
+        }
+
         // --- Collations ---
 
         [Fact]

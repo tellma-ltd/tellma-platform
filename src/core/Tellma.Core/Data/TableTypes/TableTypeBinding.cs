@@ -7,6 +7,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Data.SqlClient.Server;
 using System.Data;
 using Tellma.Core.Abstractions.Entities;
+using Tellma.Core.Data.Conventions;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
 
 namespace Tellma.Core.Data.TableTypes
@@ -35,8 +36,8 @@ namespace Tellma.Core.Data.TableTypes
 
         /// <summary>The bracket-delimited, schema-qualified physical name the parameter's type is declared by.</summary>
         public string TypeName { get; } = definition.Schema is null
-            ? $"[{definition.PhysicalName}]"
-            : $"[{definition.Schema}].[{definition.PhysicalName}]";
+            ? ConventionModel.Delimit(definition.PhysicalName)
+            : $"{ConventionModel.Delimit(definition.Schema)}.{ConventionModel.Delimit(definition.PhysicalName)}";
 
         /// <summary>The columns' metadata, in the definition's order.</summary>
         public IReadOnlyList<SqlMetaData> Metadata => _metadata;

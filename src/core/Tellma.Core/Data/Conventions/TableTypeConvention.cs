@@ -37,8 +37,9 @@ namespace Tellma.Core.Data.Conventions
     ///         A standalone class is registered by <see cref="AddStandalone" /> while the model is
     ///         built: in schema <c>dbo</c> under its class name unless its attribute says otherwise,
     ///         with its <see cref="CollationAttribute" /> columns collated, its excluded properties left
-    ///         out and its enum properties stored by name as sized <c>varchar</c> columns, exactly as an
-    ///         entity's would be.
+    ///         out, its enum properties stored by name as sized <c>varchar</c> columns and its timestamps
+    ///         as <c>datetimeoffset(3)</c> unless it declares a column type, exactly as an entity's
+    ///         would be.
     ///     </para>
     /// </remarks>
     internal sealed class TableTypeConvention : IModelFinalizingConvention
@@ -120,6 +121,13 @@ namespace Tellma.Core.Data.Conventions
                         {
                             int length = EnumStringLengthConvention.LengthOf(enumType);
                             _ = table.HasColumnType(property.Name, $"varchar({length})", maxLength: length);
+                        }
+
+                        // Timestamps are datetimeoffset(3), like an entity's, unless the class declares the type.
+                        if ((Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType) == typeof(DateTimeOffset)
+                            && EntityShapes.GetAttribute<ColumnAttribute>(property)?.TypeName is null)
+                        {
+                            _ = table.HasColumnType(property.Name, TimestampConvention.StoreType, precision: TimestampConvention.Precision);
                         }
 
                         if (EntityShapes.GetAttribute<CollationAttribute>(property) is { } collation)

@@ -44,7 +44,7 @@ namespace Tellma.Core.Tests.Data
                 [
                     "core.Blobs", "core.Jobs", "core.Users",
                     "dbo.__TellmaProvisioning", "dbo.__TellmaSchema",
-                    "fixture.Links", "fixture.Nodes", "fixture.Shipments", "fixture.WidgetExtras",
+                    "fixture.Configured", "fixture.Links", "fixture.Nodes", "fixture.Shipments", "fixture.WidgetExtras",
                     "fixture.WidgetPartNotes", "fixture.WidgetParts", "fixture.Widgets",
                     "gl.Centers",
                 ],
@@ -94,7 +94,7 @@ namespace Tellma.Core.Tests.Data
             TableTypeDefinition list = model.DesignModel.GetTableTypes().Single(static type => type.Name == "CollatedKeyList");
 
             Assert.Equal(
-                [("Key", "nvarchar(64)"), ("Status", "varchar(29)"), ("OptionalKind", "varchar(8)"), ("On", "date")],
+                [("Key", "nvarchar(64)"), ("Status", "varchar(29)"), ("OptionalKind", "varchar(8)"), ("On", "date"), ("At", "datetimeoffset(3)")],
                 list.Columns.Select(static column => (column.Name, column.StoreType)));
             Assert.True(list.Columns.Single(static column => column.Name == "OptionalKind").IsNullable);
         }

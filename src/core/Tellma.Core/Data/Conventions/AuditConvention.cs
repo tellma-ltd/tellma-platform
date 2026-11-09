@@ -14,7 +14,7 @@ namespace Tellma.Core.Data.Conventions
     /// <summary>
     ///     Shapes the four audit columns of every <see cref="TopLevelEntity{TKey}" />: the two user
     ///     columns become foreign keys to <c>core.Users</c> with no cascade, and the two timestamps
-    ///     <c>datetimeoffset(7)</c>.
+    ///     <c>datetimeoffset(7)</c>, overriding the <c>datetimeoffset(3)</c> of every other timestamp.
     /// </summary>
     /// <remarks>
     ///     The audit columns carry no index: <c>ModifiedById</c> changes on every save, so an index
@@ -41,14 +41,15 @@ namespace Tellma.Core.Data.Conventions
 
                 foreach (string column in (string[])[nameof(TopLevelEntity.CreatedById), nameof(TopLevelEntity.ModifiedById)])
                 {
-                    IConventionProperty property = entityType.FindProperty(column)!;
+                    IConventionProperty property = ConventionModel.RequireProperty(entityType, column, "the audit columns of");
                     _ = ConventionModel.AddForeignKey(entityType, property, users, DeleteBehavior.NoAction, unique: false, $"The audit column {entityType.DisplayName()}.{column}");
                 }
 
                 // --- The timestamps: seven fractional digits ---
                 foreach (string column in (string[])[nameof(TopLevelEntity.CreatedAt), nameof(TopLevelEntity.ModifiedAt)])
                 {
-                    _ = entityType.FindProperty(column)!.Builder.HasPrecision(TimestampPrecision, fromDataAnnotation: true);
+                    _ = ConventionModel.RequireProperty(entityType, column, "the audit columns of").Builder
+                        .HasPrecision(TimestampPrecision, fromDataAnnotation: true);
                 }
             }
         }

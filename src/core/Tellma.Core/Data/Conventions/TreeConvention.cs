@@ -36,7 +36,7 @@ namespace Tellma.Core.Data.Conventions
                 string table = ConventionModel.Table(entityType);
 
                 // --- ParentId: a self reference with no navigation ---
-                IConventionProperty parentId = entityType.FindProperty(nameof(TreeEntity.ParentId))!;
+                IConventionProperty parentId = ConventionModel.RequireProperty(entityType, nameof(TreeEntity.ParentId), "the tree of");
                 _ = ConventionModel.AddForeignKey(entityType, parentId, entityType, DeleteBehavior.NoAction, unique: false, $"The tree column {entityType.DisplayName()}.ParentId");
                 _ = ConventionModel.AddIndex(entityType, [parentId], ConstraintNames.Index(table, [ConventionModel.Column(parentId)]), unique: false, filter: null);
 

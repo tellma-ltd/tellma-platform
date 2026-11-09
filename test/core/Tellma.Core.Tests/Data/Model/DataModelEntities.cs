@@ -8,6 +8,9 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Tellma.Core.Abstractions.Entities;
+using Tellma.Core.EntityFrameworkCore.TableTypes;
+using ExcludeFromTableTypeAttribute = Tellma.Core.Abstractions.Entities.ExcludeFromTableTypeAttribute;
+using TableTypeAttribute = Tellma.Core.Abstractions.Entities.TableTypeAttribute;
 
 namespace Tellma.Core.Tests.Data.Model
 {
@@ -146,6 +149,11 @@ namespace Tellma.Core.Tests.Data.Model
 
         public bool IsActive { get; set; } = true;
 
+        public DateTimeOffset? DueAt { get; set; }
+
+        [Column(TypeName = "datetimeoffset(7)")]
+        public DateTimeOffset? PreciseAt { get; set; }
+
         [NotMapped]
         public List<WidgetPart>? Parts { get; set; }
     }
@@ -277,5 +285,36 @@ namespace Tellma.Core.Tests.Data.Model
         public string? Scratch { get; set; }
 
         public DateOnly? On { get; set; }
+
+        public DateTimeOffset At { get; set; }
+    }
+
+    /// <summary>An entity a closed Core configuration shapes against the conventions.</summary>
+    [Table("Configured", Schema = "fixture")]
+    [TableType]
+    public class Configured : TopLevelEntity, IJobEntity
+    {
+        public WidgetKind Kind { get; set; }
+
+        public int? JobId { get; set; }
+
+        public int? AttachmentRef { get; set; }
+    }
+
+    /// <summary>
+    ///     A closed Core configuration whose explicit choices the conventions must keep: a foreign key
+    ///     with its own name and delete behaviour, an enum stored as a number, and a table-type opt-out;
+    ///     and a foreign key it leaves unnamed, which the conventions name.
+    /// </summary>
+    public sealed class ConfiguredConfiguration : IEntityTypeConfiguration<Configured>
+    {
+        public void Configure(EntityTypeBuilder<Configured> builder)
+        {
+            _ = builder.Property(static configured => configured.Kind).HasConversion<int>();
+            _ = builder.HasOne<TestJob>().WithMany().HasForeignKey(static configured => configured.JobId)
+                .HasConstraintName("FK_Configured_OwnJob").OnDelete(DeleteBehavior.Cascade);
+            _ = builder.HasOne<TestBlob>().WithMany().HasForeignKey(static configured => configured.AttachmentRef);
+            _ = builder.HasNoTableType();
+        }
     }
 }

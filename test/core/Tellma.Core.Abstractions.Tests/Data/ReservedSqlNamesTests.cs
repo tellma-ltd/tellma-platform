@@ -13,7 +13,7 @@ namespace Tellma.Core.Abstractions.Tests.Data
         [Fact]
         public void The_three_prefixes_are_reserved()
         {
-            Assert.Equal(["@qx", "@tb", "@tm"], ReservedSqlNames.Prefixes);
+            Assert.Equal(["@qx", "@tb", "@tm_"], ReservedSqlNames.Prefixes);
             Assert.Equal(("@qx", "@tb", "@tm_"), (ReservedSqlNames.EnginePrefix, ReservedSqlNames.StatementPrefix, ReservedSqlNames.BatchPrefix));
         }
 
@@ -24,7 +24,14 @@ namespace Tellma.Core.Abstractions.Tests.Data
         [InlineData("@TB2_now", true)]
         [InlineData("@tm_schema", true)]
         [InlineData("@tm_userIds_UserId", true)]
-        [InlineData("@tmx", true)]
+        [InlineData("@tb12_x", true)]
+        [InlineData("@tmx", false)]
+        [InlineData("@tmp", false)]
+        [InlineData("@tbl", false)]
+        [InlineData("@tbOrders", false)]
+        [InlineData("@qxRate", false)]
+        [InlineData("@qx_", false)]
+        [InlineData("@tb3", false)]
         [InlineData("@total", false)]
         [InlineData("@t", false)]
         [InlineData("@ids", false)]

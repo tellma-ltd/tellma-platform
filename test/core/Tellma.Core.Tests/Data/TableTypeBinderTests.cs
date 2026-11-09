@@ -163,10 +163,28 @@ namespace Tellma.Core.Tests.Data
 
             SqlDataRecord record = Assert.Single(Binder.Records([row]));
 
-            Assert.Equal(4, record.FieldCount);
+            Assert.Equal(5, record.FieldCount);
             Assert.Equal(("k", "Active", "Plain"), (record["Key"], record["Status"], record["OptionalKind"]));
             Assert.Equal(new DateTime(2026, 11, 8), record["On"]);
             Assert.Equal(SqlDbType.Date, Binder.Binding(typeof(CollatedKeyRow)).Metadata.Single(static metadata => metadata.Name == "On").SqlDbType);
+        }
+
+        [Fact]
+        public void A_timestamp_binds_with_three_digits_unless_declared_otherwise()
+        {
+            TableTypeBinding widgets = Binder.Binding(typeof(Widget));
+
+            Assert.Equal((byte)3, widgets.Metadata.Single(static metadata => metadata.Name == nameof(Widget.DueAt)).Scale);
+            Assert.Equal((byte)7, widgets.Metadata.Single(static metadata => metadata.Name == nameof(Widget.PreciseAt)).Scale);
+            Assert.Equal((byte)3, Binder.Binding(typeof(CollatedKeyRow)).Metadata.Single(static metadata => metadata.Name == nameof(CollatedKeyRow.At)).Scale);
+        }
+
+        [Fact]
+        public void A_type_name_doubles_a_closing_bracket()
+        {
+            TableTypeBinding binding = new(typeof(IdList), new TableTypeDefinition { Name = "Odd]List", Schema = "a]b" }, [], []);
+
+            Assert.StartsWith("[a]]b].[Odd]]List_", binding.TypeName, StringComparison.Ordinal);
         }
 
         [Fact]

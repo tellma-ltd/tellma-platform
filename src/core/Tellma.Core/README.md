@@ -88,6 +88,9 @@ from a context with no connection, beside the `TableTypeBinder` over it.
   `GuidList`, `StringList`, `DateList`, `IdStampList` and `VersionTagList`.
 - **The platform collation** (`DatabaseCollations.Platform`) and named default constraints.
 
+Standalone types follow the entity rules: enums by name, timestamps `datetimeoffset(3)` unless
+the class declares a column type.
+
 `UseTellmaSqlServer(connectionString, deployment, sweepScope)` is the one place provider options
 are applied: `UseSqlServer` with `UseHierarchyId()` and compatibility level 160 (so a JSON column
 never turns into the native `json` type), the table-type extension under the sweep scope
@@ -110,6 +113,7 @@ only where a convention or Core's configuration declares it, under the platform'
 | `EnumStringConvention` | every enum or nullable enum property stored by member name |
 | `EnumStringLengthConvention` | `varchar(n)`, `n = max(8, longest value)` (a flags enum's longest value joins every flag), unless a length, unicode or column type is declared; no `CHECK` |
 | `JsonColumnConvention` | `[JsonColumn]` → `nvarchar(max)` |
+| `TimestampConvention` | every `DateTimeOffset` property `datetimeoffset(3)`, unless a precision or column type is declared |
 | `AuditConvention` | `CreatedById`/`ModifiedById` → `FK_<Table>_<Column>` to `core.Users`, no cascade, no index; both timestamps `datetimeoffset(7)` |
 | `CollationConvention` | `[Collation]` → the column's collation, which the row image copies |
 | `TableTypeConvention` | `[TableType]` → the extension's opt-in, granted to `tellma_app`; `[ExcludeFromTableType]` → the column's exclusion; standalone classes registered with their collations, exclusions and enums by name |
@@ -126,10 +130,11 @@ only where a convention or Core's configuration declares it, under the platform'
 | `SequenceConvention` | every keyed table's key never database-generated, and every one but a sibling's sequence `<schema>.sq_<Table>`, `int` or `bigint` like the key, `START WITH 1000 INCREMENT BY 1 NO CYCLE` |
 | `PositiveKeyConvention` | every keyed table → `CK_<Table>_Id CHECK ([Id] > 0)` |
 | `MultilingualConvention` | the `P2`/`P3` twins of a `[Multilingual]` anchor take its length and unicode, unless they declare their own, and are nullable |
+| `ConstraintNameConvention` | every primary key `PK_<Table>`, and every foreign key a Core configuration leaves unnamed `FK_<Table>_<Columns>` |
 
 A declaration the model cannot be built with (a reference to an entity absent from the model or
-mapped twice, an index over a property the class lacks, a key neither `int` nor `long`, a missing
-`core.Users`, `core.Jobs` or `core.Blobs`) fails the model with the class and the declaration named.
+mapped twice, an index over a property the class lacks, a key neither `int` nor `long`, a
+capability column ignored or hidden, a missing `core.Users`, `core.Jobs` or `core.Blobs`) fails the model with the class and the declaration named.
 
 ### The table-type binder
 

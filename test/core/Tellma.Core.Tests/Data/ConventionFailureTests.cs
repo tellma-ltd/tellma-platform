@@ -3,9 +3,13 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Tellma.Core.Abstractions.Entities;
+using Tellma.Core.Data;
 using Tellma.Core.Tests.Data.Model;
 
 namespace Tellma.Core.Tests.Data
@@ -92,6 +96,43 @@ namespace Tellma.Core.Tests.Data
                 () => TestModels.DesignModel(TestModels.Definition([typeof(TestUser), typeof(TptRoot), typeof(TptLeaf)])));
 
             Assert.Contains("table-per-type", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void An_ignored_capability_column_is_refused_with_the_entity_and_the_column_named()
+        {
+            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => TestModels.DesignModel(TellmaModelDefinition.Create(
+                [typeof(TestUser), typeof(Target)], [], [typeof(IgnoreModifiedBy)], static type => type)));
+
+            Assert.Contains("Target does not map ModifiedById, which the audit columns of its table needs", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void A_column_name_with_a_closing_bracket_is_delimited_in_the_generated_sql()
+        {
+            IModel built = TestModels.DesignModel(typeof(Bracketed));
+            IEntityType bracketed = built.FindEntityType(typeof(Bracketed))!;
+
+            Assert.Equal("[Code]]x] IS NOT NULL", Assert.Single(bracketed.GetIndexes()).GetFilter());
+        }
+
+        /// <summary>Ignores an audit column.</summary>
+        public sealed class IgnoreModifiedBy : IEntityTypeConfiguration<Target>
+        {
+            public void Configure(EntityTypeBuilder<Target> builder)
+            {
+                _ = builder.Ignore(static target => target.ModifiedById);
+            }
+        }
+
+        /// <summary>A unique column whose name holds a closing bracket.</summary>
+        [Table("Bracketed", Schema = "probe")]
+        public sealed class Bracketed : TopLevelEntity
+        {
+            [Column("Code]x")]
+            [MaxLength(10)]
+            [Unique]
+            public string? Code { get; set; }
         }
 
         /// <summary>A plain referenced entity.</summary>

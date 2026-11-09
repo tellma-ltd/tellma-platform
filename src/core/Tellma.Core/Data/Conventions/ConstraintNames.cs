@@ -7,7 +7,7 @@ namespace Tellma.Core.Data.Conventions
 {
     /// <summary>
     ///     The names the conventions give every constraint, index, default and sequence:
-    ///     <c>FK_&lt;Table&gt;_&lt;Column&gt;</c>, <c>IX_&lt;Table&gt;_&lt;Columns&gt;</c>,
+    ///     <c>PK_&lt;Table&gt;</c>, <c>FK_&lt;Table&gt;_&lt;Column&gt;</c>, <c>IX_&lt;Table&gt;_&lt;Columns&gt;</c>,
     ///     <c>UX_&lt;Table&gt;_&lt;Columns&gt;</c>, <c>CK_&lt;Table&gt;_&lt;Name&gt;</c>,
     ///     <c>DF_&lt;Table&gt;_&lt;Column&gt;</c> and <c>sq_&lt;Table&gt;</c>. A distribution never names
     ///     one, and nothing relies on the provider's implicit naming, which can shift across releases.
@@ -17,6 +17,14 @@ namespace Tellma.Core.Data.Conventions
         /// <summary>SQL Server's identifier length limit.</summary>
         private const int MaxIdentifierLength = 128;
 
+        /// <summary>A primary key's name.</summary>
+        /// <param name="table">The table.</param>
+        /// <returns>The name.</returns>
+        public static string PrimaryKey(string table)
+        {
+            return Checked($"PK_{table}");
+        }
+
         /// <summary>A foreign key's name.</summary>
         /// <param name="table">The dependent table.</param>
         /// <param name="column">The foreign-key column.</param>
@@ -24,6 +32,15 @@ namespace Tellma.Core.Data.Conventions
         public static string ForeignKey(string table, string column)
         {
             return Checked($"FK_{table}_{column}");
+        }
+
+        /// <summary>A composite foreign key's name, its columns joined in key order.</summary>
+        /// <param name="table">The dependent table.</param>
+        /// <param name="columns">The foreign-key columns, in key order.</param>
+        /// <returns>The name.</returns>
+        public static string ForeignKey(string table, IEnumerable<string> columns)
+        {
+            return Checked($"FK_{table}_{string.Join('_', columns)}");
         }
 
         /// <summary>A non-unique index's name.</summary>

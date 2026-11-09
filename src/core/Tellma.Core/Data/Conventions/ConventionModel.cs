@@ -194,7 +194,7 @@ namespace Tellma.Core.Data.Conventions
         /// <param name="value">The default value.</param>
         public static void SetDefault(IConventionEntityType entityType, string propertyName, object value)
         {
-            IConventionProperty property = entityType.FindProperty(propertyName)!;
+            IConventionProperty property = RequireProperty(entityType, propertyName, "the default of");
             string name = ConstraintNames.Default(Table(entityType), Column(property));
             _ = property.Builder.HasDefaultValue(value, name, fromDataAnnotation: true);
         }
@@ -204,7 +204,32 @@ namespace Tellma.Core.Data.Conventions
         /// <returns>The filter.</returns>
         public static string NotNullFilter(string column)
         {
-            return $"[{column}] IS NOT NULL";
+            return $"{Delimit(column)} IS NOT NULL";
+        }
+
+        /// <summary>A SQL Server identifier delimited in brackets, any <c>]</c> in it doubled.</summary>
+        /// <param name="identifier">The identifier.</param>
+        /// <returns>The delimited identifier.</returns>
+        public static string Delimit(string identifier)
+        {
+            return $"[{identifier.Replace("]", "]]", StringComparison.Ordinal)}]";
+        }
+
+        /// <summary>
+        ///     A property a platform base or capability interface declares, which must be mapped: a
+        ///     model configuration's <c>Ignore</c> or a <c>[NotMapped]</c> member hiding it fails the
+        ///     model with the entity and the column named.
+        /// </summary>
+        /// <param name="entityType">The entity type.</param>
+        /// <param name="propertyName">The property.</param>
+        /// <param name="purpose">What needs the column, for the message: "the audit column", "the key of".</param>
+        /// <returns>The property.</returns>
+        /// <exception cref="InvalidOperationException">The property is not mapped.</exception>
+        public static IConventionProperty RequireProperty(IConventionEntityType entityType, string propertyName, string purpose)
+        {
+            return entityType.FindProperty(propertyName)
+                ?? throw new InvalidOperationException(
+                    $"The entity {TypeDisplay.Qualified(entityType.ClrType)} does not map {propertyName}, which {purpose} its table needs. A column a platform base or capability interface declares cannot be ignored or hidden; remove the Ignore() or [NotMapped].");
         }
 
         /// <summary>A description of a declaration on a property, for messages: <c>[References] on Widget.OwnerId</c>.</summary>
