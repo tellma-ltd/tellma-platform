@@ -51,7 +51,8 @@ describe('tellma-client', () => {
     }
   });
 
-  it('runs through its bin script with the same exit codes', () => {
+  // Starts two Node processes, which takes seconds on a busy or small machine.
+  it('runs through its bin script with the same exit codes', { timeout: 60_000 }, () => {
     const bin = join(packageDir, 'bin', 'tellma-client.js');
     expect(execFileSync(process.execPath, [bin, '--version'], { encoding: 'utf8' })).toBe(`${version}\n`);
     expect(() => execFileSync(process.execPath, [bin, 'deploy'], { stdio: 'pipe' })).toThrow(

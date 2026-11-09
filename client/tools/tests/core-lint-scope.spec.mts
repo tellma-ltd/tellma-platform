@@ -10,6 +10,12 @@ import { describe, expect, it } from 'vitest';
 // @tellma/core packages, the decimal rules with type information. The texts
 // below are linted as if they were the named source files, which places them
 // in those files' TypeScript projects.
+//
+// Under CI=true, typescript-eslint infers a one-shot CLI run and builds each
+// TypeScript program from the files on disk, without the text lintText
+// supplies, so a type-aware rule would judge the file's committed contents
+// instead of the text under test. The tests therefore opt out of that
+// inference, as an editor session does.
 
 /** The rule ids the workspace config reports for `code` at `filePath`. */
 async function ruleIds(eslint: ESLint, code: string, filePath: string): Promise<string[]> {
@@ -20,7 +26,10 @@ async function ruleIds(eslint: ESLint, code: string, filePath: string): Promise<
 // The first lint loads the whole workspace config and a TypeScript program,
 // which takes several seconds on a busy machine.
 describe('the @tellma/core lint scope', { timeout: 120_000 }, () => {
-  const eslint = new ESLint({ cwd: process.cwd() });
+  const eslint = new ESLint({
+    cwd: process.cwd(),
+    overrideConfig: { languageOptions: { parserOptions: { disallowAutomaticSingleRunInference: true } } },
+  });
   const decimals = 'projects/core/tellma-core/src/json/tm-decimals.ts';
 
   it('refuses text arithmetic on a TmDecimal in the primary entry point', async () => {
