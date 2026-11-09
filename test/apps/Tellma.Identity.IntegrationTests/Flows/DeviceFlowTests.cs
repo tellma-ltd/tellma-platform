@@ -64,6 +64,9 @@ namespace Tellma.Identity.IntegrationTests.Flows
             string accessToken = tokens.RootElement.GetProperty("access_token").GetString()!;
             using JsonDocument payload = ClientCredentialsTests.DecodeJwtPayload(accessToken);
             Assert.Equal("frank@example.com", payload.RootElement.GetProperty("email").GetString());
+
+            // A device-code token speaks for the person who approved the code.
+            Assert.Equal("individual", payload.RootElement.GetProperty("tellma_kind").GetString());
         }
 
         /// <summary>Posts a device-authorization request for the seeded CLI client.</summary>

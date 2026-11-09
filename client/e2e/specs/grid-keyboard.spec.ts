@@ -8,8 +8,8 @@ import { expect, test, type Page } from '@playwright/test';
 import {
   activeCell,
   cell,
-  cellText,
   clientHeightOf,
+  expectCellText,
   gotoGrid,
   gridScroller,
   rowHeader,
@@ -275,8 +275,8 @@ test.describe('tab stop and mid-grid exit', () => {
 
 test.describe('display text sanity (what motion asserts against)', () => {
   test('the deterministic dataset embeds the row index in text cells', async ({ page }) => {
-    expect(await cellText(page, 0, 0)).toBe('PRD-0');
-    expect(await cellText(page, 5, 0)).toBe('PRD-5');
-    expect(await cellText(page, 5, 1)).toContain('Item 5');
+    await expectCellText(page, 0, 0, 'PRD-0');
+    await expectCellText(page, 5, 0, 'PRD-5');
+    await expect(cell(page, 5, 1)).toContainText('Item 5', { useInnerText: true });
   });
 });

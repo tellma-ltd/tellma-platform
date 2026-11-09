@@ -13,6 +13,7 @@ import {
   activeCell,
   cell,
   cellText,
+  expectCellText,
   gotoGrid,
   gridScroller,
   liveRegion,
@@ -23,6 +24,8 @@ import {
   setScrollTop,
   syntheticCut,
 } from '../support/grid';
+import { holdResponses, releaseResponses } from '../support/held-responses';
+import { appStable } from '../support/settle';
 
 /**
  * The tree grid (spec 0004 §13) against the accounts-tree story: DFS
@@ -80,11 +83,11 @@ test.describe('rendering & ARIA', () => {
     await expect(scroller).toHaveAttribute('aria-rowcount', '60');
 
     // Depth-first flattening: parents immediately followed by their kids.
-    expect(await cellText(page, 0, 0)).toBe('Assets');
-    expect(await cellText(page, 1, 0)).toBe('Current assets');
-    expect(await cellText(page, 2, 0)).toBe('Cash and equivalents');
-    expect(await cellText(page, 3, 0)).toBe('Petty cash');
-    expect(await cellText(page, 13, 0)).toBe('Non-current assets');
+    await expectCellText(page, 0, 0, 'Assets');
+    await expectCellText(page, 1, 0, 'Current assets');
+    await expectCellText(page, 2, 0, 'Cash and equivalents');
+    await expectCellText(page, 3, 0, 'Petty cash');
+    await expectCellText(page, 13, 0, 'Non-current assets');
 
     // aria-level is 1-based depth; posinset/setsize count SIBLINGS.
     await expect(row(page, 0)).toHaveAttribute('aria-level', '1');
@@ -132,6 +135,7 @@ test.describe('rendering & ARIA', () => {
 
   test('@cross-engine virtualization stays windowed over the expanded tree', async ({ page }) => {
     await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '60');
+    await appStable(page); // the window is counted, not asserted: let it settle
     const rendered = await renderedRows(page).count();
     expect(rendered).toBeGreaterThan(10);
     expect(rendered).toBeLessThan(30); // the window, never the model
@@ -155,7 +159,7 @@ test.describe('expand & collapse', () => {
   }) => {
     await expander(page, 0).click(); // collapse Assets (20-row subtree)
     await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '40');
-    expect(await cellText(page, 1, 0)).toBe('Liabilities');
+    await expectCellText(page, 1, 0, 'Liabilities');
     await expect(row(page, 0)).toHaveAttribute('aria-expanded', 'false');
 
     // The expander press activated the row's hierarchy cell — Alt+Arrows
@@ -204,7 +208,9 @@ test.describe('lazy loading (§13.3)', () => {
     page,
   }) => {
     await selectDepthZero(page);
-    await page.getByTestId('lazy-delay').fill('800');
+    // The load is held open until released: the in-flight state is asserted
+    // while it provably lasts, never against a delay.
+    await holdResponses(page, 'loader');
 
     const textSpan = cell(page, 5, 0).locator('.tm-grid__text');
     const before = await textSpan.boundingBox();
@@ -219,10 +225,11 @@ test.describe('lazy loading (§13.3)', () => {
     await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '10');
 
     // The load lands: children render, expanded, spinner gone.
+    await releaseResponses(page, 'loader');
     await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '13');
     await expect(row(page, 5)).toHaveAttribute('aria-expanded', 'true');
     await expect(childSpinner(page, 5)).toHaveCount(0);
-    expect(await cellText(page, 6, 0)).toBe('Lazy child one');
+    await expectCellText(page, 6, 0, 'Lazy child one');
     await expect(row(page, 6)).toHaveAttribute('aria-level', '2');
     expect(await textSpan.boundingBox()).toEqual(before);
   });
@@ -231,11 +238,12 @@ test.describe('lazy loading (§13.3)', () => {
     page,
   }) => {
     await selectDepthZero(page);
-    await page.getByTestId('lazy-delay').fill('600');
+    await holdResponses(page, 'loader'); // the load stays in flight until released
 
     await expander(page, 5).click(); // expand → load starts
     await expect(childSpinner(page, 5)).toBeVisible();
     await expander(page, 5).click(); // re-collapse while loading
+    await releaseResponses(page, 'loader');
 
     // The load continues and lands in the model…
     await expect
@@ -251,7 +259,7 @@ test.describe('lazy loading (§13.3)', () => {
     // Children are loaded now — expanding again renders them instantly.
     await expander(page, 5).click();
     await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '13');
-    expect(await cellText(page, 6, 0)).toBe('Lazy child one');
+    await expectCellText(page, 6, 0, 'Lazy child one');
   });
 
   test('@cross-engine a failed load announces and restores the collapsed state', async ({

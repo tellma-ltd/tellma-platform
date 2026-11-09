@@ -278,7 +278,7 @@ echo '{"users":[{"email":"newbie@localhost","displayName":"New Bie","locale":"en
 ```
 
 ```bash
-curl -sk -X POST https://localhost:7051/api/identity/invitations -H "Authorization: Bearer PASTE_ACCESS_TOKEN" -H "Content-Type: application/json" --data-binary @invite.json
+curl -sk -X POST https://localhost:7051/api/identity/v1/invitations -H "Authorization: Bearer PASTE_ACCESS_TOKEN" -H "Content-Type: application/json" --data-binary @invite.json
 ```
 
 30. The invitation link appears in the terminal a moment later (delivery is queued, not inline).
@@ -292,7 +292,7 @@ curl -sk -X POST https://localhost:7051/connect/token -d "grant_type=client_cred
 ```
 
 ```bash
-curl -sk -X POST "https://localhost:7051/api/identity/users/00000000-0000-0000-0000-000000000001/temporary-access-passes" -H "Authorization: Bearer PASTE_ACCESS_TOKEN"
+curl -sk -X POST "https://localhost:7051/api/identity/v1/users/00000000-0000-0000-0000-000000000001/temporary-access-passes" -H "Authorization: Bearer PASTE_ACCESS_TOKEN"
 ```
 
 31. Enter the returned pass plus `admin@localhost` on `/Identity/Account/Tap`. It redirects into

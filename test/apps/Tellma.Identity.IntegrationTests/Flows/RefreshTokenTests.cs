@@ -35,6 +35,11 @@ namespace Tellma.Identity.IntegrationTests.Flows
             string secondRefreshToken = rotated.RootElement.GetProperty("refresh_token").GetString()!;
             Assert.NotEqual(context.RefreshToken, secondRefreshToken);
 
+            // A refresh inherits the principal kind of the grant it descends from.
+            using JsonDocument rotatedAccess = ClientCredentialsTests.DecodeJwtPayload(
+                rotated.RootElement.GetProperty("access_token").GetString()!);
+            Assert.Equal("individual", rotatedAccess.RootElement.GetProperty("tellma_kind").GetString());
+
             // Reusing the now-redeemed first token is replay: it revokes the whole family, so even
             // the legitimately rotated second token stops working.
             string? reuseError = await RefreshExpectingErrorAsync(context, context.RefreshToken);

@@ -145,6 +145,11 @@ namespace Tellma.Identity.Hosting
                     server.AddEventHandler(Handlers.AuditTokenResponseHandler.Descriptor);
                     server.AddEventHandler(Handlers.AuditRevocationResponseHandler.Descriptor);
 
+                    // The principal kind (individual or service) is written into every access
+                    // token from the grant type, in one place, after OpenIddict has built each
+                    // token's principal and before any token is signed.
+                    server.AddEventHandler(Handlers.TellmaKindClaimHandler.Descriptor);
+
                     // Pass-through: the engine's controllers shape every interactive protocol
                     // response while OpenIddict handles the wire format. The device-authorization
                     // endpoint itself has no pass-through (and needs none) — only the end-user

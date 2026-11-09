@@ -108,6 +108,13 @@ namespace Tellma.Identity.IntegrationTests.Flows
             {
                 Assert.False(claims.TryGetProperty(serverSideOnly, out _), $"{serverSideOnly} leaked into a token.");
             }
+
+            // The access token names the principal kind; the id token, which is for the client
+            // rather than a resource server, does not carry it.
+            Assert.Equal("individual", claims.GetProperty("tellma_kind").GetString());
+            using JsonDocument idToken = ClientCredentialsTests.DecodeJwtPayload(
+                tokens.RootElement.GetProperty("id_token").GetString()!);
+            Assert.False(idToken.RootElement.TryGetProperty("tellma_kind", out _), "tellma_kind leaked into the id token.");
         }
     }
 }

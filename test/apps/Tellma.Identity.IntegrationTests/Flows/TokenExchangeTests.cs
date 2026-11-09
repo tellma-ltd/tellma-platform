@@ -63,6 +63,9 @@ namespace Tellma.Identity.IntegrationTests.Flows
             string[] scopes = payload.RootElement.GetProperty("scope").GetString()!.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             Assert.Contains("tellma_api", scopes);
             Assert.DoesNotContain("tellma_identity", scopes);
+
+            // The exchanged token is the backend's own, so it stays a machine token.
+            Assert.Equal("service", payload.RootElement.GetProperty("tellma_kind").GetString());
         }
 
         [Fact]
