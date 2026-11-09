@@ -88,20 +88,21 @@ jobs:
     if: github.ref == 'refs/heads/platform-core'
     timeout-minutes: 120
     runs-on: ubuntu-latest
+    # The client's own scripts run from client/, where their path arguments (the report and
+    # output folders below) resolve; the install step alone runs at the workspace root.
     defaults:
       run:
         working-directory: client
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6 # version from client/package.json packageManager
-        with:
-          package_json_file: client/package.json
+      - uses: pnpm/action-setup@v6 # version from the root package.json packageManager
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: client/pnpm-lock.yaml
+      # The one pnpm workspace is rooted at the repository root.
       - run: pnpm install --frozen-lockfile
+        working-directory: .
       - name: Install browsers
         timeout-minutes: 15
         run: pnpm exec playwright install chromium firefox webkit --with-deps
@@ -132,6 +133,8 @@ jobs:
     continue-on-error: true
     timeout-minutes: 60
     runs-on: ubuntu-latest
+    # The client's own scripts run from client/, where their path arguments (the report and
+    # output folders below) resolve; the install step alone runs at the workspace root.
     defaults:
       run:
         working-directory: client
@@ -143,15 +146,14 @@ jobs:
       PLAYWRIGHT_HTML_OPEN: never
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6 # version from client/package.json packageManager
-        with:
-          package_json_file: client/package.json
+      - uses: pnpm/action-setup@v6 # version from the root package.json packageManager
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: client/pnpm-lock.yaml
+      # The one pnpm workspace is rooted at the repository root.
       - run: pnpm install --frozen-lockfile
+        working-directory: .
       - name: Install browsers
         timeout-minutes: 15
         run: pnpm exec playwright install chromium firefox webkit --with-deps

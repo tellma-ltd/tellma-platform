@@ -28,5 +28,8 @@ namespace Tellma.Core.Composition.Checks
 
         /// <summary>Every leaf carries the shapes other features require of its entity.</summary>
         public const string EntityShapes = "core.entity-shapes";
+
+        /// <summary>Every model configuration Core contributes is an entity type configuration the model can apply.</summary>
+        public const string ModelContributors = "core.model-contributors";
     }
 }

@@ -180,6 +180,7 @@ namespace Tellma.Core.Tests.Composition
                 ["core.public-origin"] = true,
                 ["core.taxonomy"] = false,
                 ["core.entity-shapes"] = false,
+                ["core.model-contributors"] = false,
             };
 
             Assert.Equal(expected, checks);

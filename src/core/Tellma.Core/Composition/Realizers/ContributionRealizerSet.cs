@@ -26,7 +26,8 @@ namespace Tellma.Core.Composition.Realizers
                 .Add(new TableTypeContributionRealizer())
                 .Add(new ShapeRequirementContributionRealizer())
                 .Add(new ModelContributionRealizer())
-                .Add(new CalendarContributionRealizer());
+                .Add(new CalendarContributionRealizer())
+                .Add(new StackContributionRealizer());
         }
 
         /// <summary>Adds the realizer of <typeparamref name="TItem" />.</summary>

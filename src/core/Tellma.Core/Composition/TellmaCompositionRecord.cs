@@ -6,6 +6,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Crud;
 
 namespace Tellma.Core.Composition
 {
@@ -36,6 +37,9 @@ namespace Tellma.Core.Composition
 
         /// <summary>The leaf substitutions: each replaced default entity type and the leaf that replaces it.</summary>
         public IReadOnlyDictionary<Type, Type> Leaves => _leaves;
+
+        /// <summary>The entities the features contributed, in realisation order, before leaf substitution.</summary>
+        public List<ContributedEntity> Entities { get; } = [];
 
         /// <summary>The EF model configurations Core's features contributed, in realisation order.</summary>
         public List<ContributedType> ModelConfigurations { get; } = [];
@@ -80,6 +84,13 @@ namespace Tellma.Core.Composition
     /// <param name="Type">The contributed type.</param>
     /// <param name="Owner">The feature that contributed it.</param>
     internal sealed record ContributedType(Type Type, ITellmaFeature Owner);
+
+    /// <summary>An entity a feature contributed, with its stack's service and operations.</summary>
+    /// <param name="EntityType">The entity, before leaf substitution.</param>
+    /// <param name="ServiceType">The service class of its stack, or <see langword="null" /> for the default.</param>
+    /// <param name="Operations">The operations overriding the entity's declaration, or <see langword="null" />.</param>
+    /// <param name="Owner">The feature that contributed it.</param>
+    internal sealed record ContributedEntity(Type EntityType, Type? ServiceType, StackOperations? Operations, ITellmaFeature Owner);
 
     /// <summary>A shape a feature requires of another feature's entity.</summary>
     /// <param name="EntityType">The entity whose leaf must carry the shape.</param>
