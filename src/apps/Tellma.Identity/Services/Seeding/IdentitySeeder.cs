@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenIddict.Abstractions;
 using System.Text.Json;
 using Tellma.Identity.Data;
 using Tellma.Identity.Options;
@@ -29,6 +30,7 @@ namespace Tellma.Identity.Services.Seeding
     ///     clients and scopes all converge through, safe against instances starting together.
     /// </param>
     /// <param name="userManager">The Identity user manager.</param>
+    /// <param name="applicationManager">Reads the store's clients, to name disabled entries that still have one.</param>
     /// <param name="options">The engine options.</param>
     /// <param name="environment">The host environment (gates the dev admin).</param>
     /// <param name="auditLogger">Audit emission.</param>
@@ -39,6 +41,7 @@ namespace Tellma.Identity.Services.Seeding
         IdentityStoreCheck storeCheck,
         ClientRegistrationConverger converger,
         UserManager<TellmaIdentityUser> userManager,
+        IOpenIddictApplicationManager applicationManager,
         IOptions<TellmaIdentityOptions> options,
         IHostEnvironment environment,
         IAuditLogger auditLogger,
@@ -59,10 +62,13 @@ namespace Tellma.Identity.Services.Seeding
 
             await EnsureScopesAsync(engineOptions, cancellationToken);
 
-            // Platform clients first, distributions after: a distribution grants its origin to
-            // the seeded clients that call distribution APIs, so those must exist by then, in
-            // whatever order the configuration lists the entries.
-            foreach (TellmaIdentitySeedClientOptions client in engineOptions.Seed.Clients)
+            // Platform clients first — the client list's and the interim agent clients — and
+            // distributions after: a distribution grants its origin to the seeded clients that
+            // call distribution APIs, so those must exist by then, in whatever order the
+            // configuration lists the entries. A disabled entry is skipped, never deleted.
+            TellmaIdentitySeedClientOptions[] enabled =
+                [.. engineOptions.Seed.ListEntries().Select(static entry => entry.Client).Where(static client => client.Enabled)];
+            foreach (TellmaIdentitySeedClientOptions client in enabled)
             {
                 if (client.Kind != TellmaIdentitySeedClientKind.Distribution)
                 {
@@ -70,7 +76,7 @@ namespace Tellma.Identity.Services.Seeding
                 }
             }
 
-            foreach (TellmaIdentitySeedClientOptions client in engineOptions.Seed.Clients)
+            foreach (TellmaIdentitySeedClientOptions client in enabled)
             {
                 if (client.Kind == TellmaIdentitySeedClientKind.Distribution)
                 {
@@ -78,8 +84,39 @@ namespace Tellma.Identity.Services.Seeding
                 }
             }
 
+            await WarnOfDisabledClientsStillRegisteredAsync(engineOptions.Seed, cancellationToken);
+
             await EnsureDevAdminAsync(engineOptions, cancellationToken);
             await EnsureBootstrapAdminAsync(engineOptions, cancellationToken);
+        }
+
+        /// <summary>
+        ///     Warns of every disabled entry whose client is still in the store. Disabling an entry
+        ///     only stops seeding it — the seeder never deletes an application — so the client still
+        ///     authenticates and, when it calls distribution APIs, still receives every new
+        ///     distribution's origin, until an operator deletes it.
+        /// </summary>
+        private async Task WarnOfDisabledClientsStillRegisteredAsync(
+            TellmaIdentitySeedOptions seed, CancellationToken cancellationToken)
+        {
+            foreach ((string path, TellmaIdentitySeedClientOptions client, _) in seed.ListEntries())
+            {
+                if (client.Enabled || string.IsNullOrWhiteSpace(client.ClientId))
+                {
+                    continue;
+                }
+
+                IEnumerable<string> clientIds = client.Kind == TellmaIdentitySeedClientKind.Distribution
+                    ? [client.ClientId, client.ClientId + DistributionClientRegistration.ServiceClientIdSuffix]
+                    : [client.ClientId];
+                foreach (string clientId in clientIds)
+                {
+                    if (await applicationManager.FindByClientIdAsync(clientId, cancellationToken) is not null)
+                    {
+                        IdentitySeederLog.DisabledClientStillRegistered(logger, path, clientId);
+                    }
+                }
+            }
         }
 
         /// <summary>Seeds the fixed scope catalog and its platform audiences.</summary>
@@ -92,8 +129,16 @@ namespace Tellma.Identity.Services.Seeding
             // provisioning.
             string[] apiResources = engineOptions.Mode == TellmaIdentityDeploymentMode.InProc ? [issuerOrigin] : [];
 
-            await EnsureScopeAsync(TellmaIdentityConstants.ApiScope, "Call a distribution API", apiResources, cancellationToken);
-            await EnsureScopeAsync(TellmaIdentityConstants.IdentityScope, "Call the identity server management API", [issuerOrigin], cancellationToken);
+            await EnsureScopeAsync(TellmaIdentityConstants.ApiScope, "Call a distribution API", apiResources, exact: false, cancellationToken);
+
+            // The platform scopes' audiences are fixed URNs, never an origin, so in neither mode can
+            // one equal a distribution's origin; they converge exactly, dropping a retired value.
+            await EnsureScopeAsync(
+                TellmaIdentityConstants.IdentityScope,
+                "Call the identity server management API",
+                [TellmaIdentityConstants.IdentityAudience],
+                exact: true,
+                cancellationToken);
 
             // The control-plane scope and its audience exist only in standalone mode, where the
             // operator surface lives; in-proc deployments never advertise or grant it.
@@ -103,16 +148,19 @@ namespace Tellma.Identity.Services.Seeding
                     TellmaIdentityConstants.ControlPlaneScope,
                     "Call the control-plane admin surface",
                     [TellmaIdentityConstants.ControlPlaneAudience],
+                    exact: true,
                     cancellationToken);
             }
         }
 
-        /// <summary>Creates a scope or unions the given resources into an existing one.</summary>
+        /// <summary>
+        ///     Creates a scope, or converges an existing one's resources: unioned (resources
+        ///     appended at runtime, the per-distribution audiences, are preserved) or exact.
+        /// </summary>
         private async Task EnsureScopeAsync(
-            string name, string displayName, IReadOnlyList<string> resources, CancellationToken cancellationToken)
+            string name, string displayName, IReadOnlyList<string> resources, bool exact, CancellationToken cancellationToken)
         {
-            // Resources appended at runtime (per-distribution audiences) are preserved.
-            await converger.ConvergeScopeAsync(name, displayName, resources, cancellationToken);
+            await converger.ConvergeScopeAsync(name, displayName, resources, cancellationToken, exact);
         }
 
         /// <summary>Creates or refreshes one seeded platform client, keeping the audiences onboarding granted it.</summary>
@@ -274,6 +322,15 @@ namespace Tellma.Identity.Services.Seeding
             Message = "Applied distribution seed {Slug} at {Origin}: client {ClientOutcome}, service client {ServiceClientOutcome}.")]
         public static partial void DistributionApplied(
             ILogger logger, string slug, string origin, ClientConvergence clientOutcome, ClientConvergence serviceClientOutcome);
+
+        /// <summary>A disabled seed entry's client is still registered, and still works.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="path">The entry's configuration path.</param>
+        /// <param name="clientId">The client still in the store.</param>
+        [LoggerMessage(
+            Level = LogLevel.Warning,
+            Message = "Seed entry {Path} is disabled, but client {ClientId} is still registered: it still signs in and still receives every new distribution's origin. Delete the application from the identity store to retire it.")]
+        public static partial void DisabledClientStillRegistered(ILogger logger, string path, string clientId);
 
         /// <summary>A distribution entry was already converged.</summary>
         /// <param name="logger">The logger.</param>
