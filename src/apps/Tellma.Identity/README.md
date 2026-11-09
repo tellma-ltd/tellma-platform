@@ -174,15 +174,27 @@ against a stored grant narrows the access token alone (`NarrowAccessTokenAudienc
 rotated refresh token keeps the grant, so every refresh is evaluated against the original
 authorization.
 
-A machine token's audience (`MachineTokenAudiences`, for `client_credentials` and token exchange)
-is exactly its named resources; without one, it is the requested scopes' platform audiences
-(`urn:tellma:control-plane`, the issuer's origin), and `tellma_api` always needs a resource. The
-control plane therefore asks for one token per distribution, naming its origin, and one without a
-resource for the identity server's own APIs.
+A token's audience is exactly its named resources — for a machine token (`MachineTokenAudiences`,
+for `client_credentials` and token exchange) and an interactive one (`TellmaPrincipalFactory`)
+alike; without one, a BFF's token carries its origin, and any other token its scopes' platform
+audiences (`urn:tellma:control-plane`, the issuer's origin). A machine token with `tellma_api`
+always needs a resource. One token for a distribution is valid in one place: a machine request that
+names a distribution's resource (an origin of the list, or a tenant resource under one) may name no
+other resource, and an interactive request naming one may not also ask for `tellma_identity`; both
+are `invalid_target`. The control plane therefore asks for one token per distribution, naming its
+origin, and one without a resource for the identity server's own APIs.
 
 A `Native` seed entry with `ThirdParty` is third-party software, such as a coding agent: it carries
 no `tellma:first_party` marker, so no first-party treatment applies to it, and its consent is always
-explicit.
+explicit. `Seed:InterimClients` holds such entries keyed by client id (each must be a third-party
+`Native` entry whose client id is its key); they seed beside `Seed:Clients`, and any entry of either
+with `Enabled=false` is neither validated nor seeded.
+
+Every interactive endpoint with error pass-through (authorization, end session) first asks
+`ProtocolRefusal` (`Find` re-raises the refusal at authorization; `FindAtEndSession` answers a bare
+`400`, since end session takes no challenge, and the error page renders the refusal): a request OpenIddict refused while validating it still reaches the action,
+which then only re-raises the refusal for the error page — it never starts an interaction, signs in
+or out, or writes state.
 
 ## The store check and seeding
 

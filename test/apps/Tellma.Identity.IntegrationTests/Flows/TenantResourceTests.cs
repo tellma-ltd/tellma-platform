@@ -176,6 +176,27 @@ namespace Tellma.Identity.IntegrationTests.Flows
             Assert.Equal([resource], await RefusedResourcesAsync(factory));
         }
 
+        [Theory]
+        [InlineData(Tenant17)]
+        [InlineData(Origin)]
+        public async Task An_authorization_naming_a_distribution_cannot_also_ask_for_the_management_scope(string resource)
+        {
+            // The CLI holds both, but one token carrying them would be a credential at the
+            // management API sitting in a distribution's host; it asks for two tokens instead.
+            using StandaloneFactory factory = await CreateFactoryAsync("idtenantmgmt");
+            using OidcFlowClient flow = new(factory);
+            (_, string challenge) = OidcFlowClient.CreatePkcePair();
+
+            using HttpResponseMessage response = await flow.Browser.GetAsync(
+                new Uri(AuthorizeUrl(challenge, resource, "openid offline_access tellma_api tellma_identity"), UriKind.Relative),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Null(response.Headers.Location);
+            Assert.Contains("invalid_target", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken), StringComparison.Ordinal);
+            Assert.Equal([resource], await RefusedResourcesAsync(factory));
+        }
+
         [Fact]
         public async Task A_pushed_authorization_request_is_held_to_the_clients_grants()
         {
@@ -208,6 +229,19 @@ namespace Tellma.Identity.IntegrationTests.Flows
             string userCode = device.RootElement.GetProperty("body").GetProperty("user_code").GetString()!;
 
             await DeviceFlowTests.ApproveUserCodeAsync(flow, userCode, "devi@example.com");
+
+            // Redeeming the device code for more than was approved is refused and audited, and
+            // redeems nothing: the same code then succeeds within its grant.
+            Assert.Equal(
+                "invalid_target",
+                await flow.ExchangeExpectingErrorAsync(new Dictionary<string, string>
+                {
+                    ["grant_type"] = "urn:ietf:params:oauth:grant-type:device_code",
+                    ["client_id"] = ClientId,
+                    ["device_code"] = deviceCode,
+                    ["resource"] = Origin,
+                }));
+            Assert.Equal([Origin], await RefusedResourcesAsync(factory));
 
             using JsonDocument tokens = await flow.ExchangeAsync(new Dictionary<string, string>
             {
@@ -262,15 +296,15 @@ namespace Tellma.Identity.IntegrationTests.Flows
                 TestContext.Current.CancellationToken);
         }
 
-        /// <summary>The CLI's authorization URL, naming one resource.</summary>
-        private static string AuthorizeUrl(string challenge, string resource)
+        /// <summary>The CLI's authorization URL, naming one resource and the given scopes.</summary>
+        private static string AuthorizeUrl(string challenge, string resource, string scope = "openid offline_access tellma_api")
         {
             return QueryHelpers.AddQueryString("/connect/authorize", new Dictionary<string, string?>
             {
                 ["client_id"] = ClientId,
                 ["redirect_uri"] = RedirectUri,
                 ["response_type"] = "code",
-                ["scope"] = "openid offline_access tellma_api",
+                ["scope"] = scope,
                 ["code_challenge"] = challenge,
                 ["code_challenge_method"] = "S256",
                 ["state"] = "state-1",

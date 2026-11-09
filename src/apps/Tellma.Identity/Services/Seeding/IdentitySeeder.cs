@@ -59,10 +59,13 @@ namespace Tellma.Identity.Services.Seeding
 
             await EnsureScopesAsync(engineOptions, cancellationToken);
 
-            // Platform clients first, distributions after: a distribution grants its origin to
-            // the seeded clients that call distribution APIs, so those must exist by then, in
-            // whatever order the configuration lists the entries.
-            foreach (TellmaIdentitySeedClientOptions client in engineOptions.Seed.Clients)
+            // Platform clients first — the client list's and the interim agent clients — and
+            // distributions after: a distribution grants its origin to the seeded clients that
+            // call distribution APIs, so those must exist by then, in whatever order the
+            // configuration lists the entries. A disabled entry is skipped, never deleted.
+            TellmaIdentitySeedClientOptions[] enabled =
+                [.. engineOptions.Seed.ListEntries().Select(static entry => entry.Client).Where(static client => client.Enabled)];
+            foreach (TellmaIdentitySeedClientOptions client in enabled)
             {
                 if (client.Kind != TellmaIdentitySeedClientKind.Distribution)
                 {
@@ -70,7 +73,7 @@ namespace Tellma.Identity.Services.Seeding
                 }
             }
 
-            foreach (TellmaIdentitySeedClientOptions client in engineOptions.Seed.Clients)
+            foreach (TellmaIdentitySeedClientOptions client in enabled)
             {
                 if (client.Kind == TellmaIdentitySeedClientKind.Distribution)
                 {

@@ -89,7 +89,7 @@ namespace Tellma.Identity.Controllers
             // resource the client does not hold — still reaches this action: error pass-through
             // hands it on so the error page can render the refusal. The interaction must never
             // begin for it.
-            if (RefusedByProtocol() is { } refusal)
+            if (ProtocolRefusal.Find(HttpContext) is { } refusal)
             {
                 return refusal;
             }
@@ -265,7 +265,7 @@ namespace Tellma.Identity.Controllers
 
             // The consent form posts the whole request back, which OpenIddict validates again: a
             // request refused this time is never granted, whatever the form says.
-            if (RefusedByProtocol() is { } refusal)
+            if (ProtocolRefusal.Find(HttpContext) is { } refusal)
             {
                 return refusal;
             }
@@ -427,18 +427,6 @@ namespace Tellma.Identity.Controllers
             }
 
             return Redirect(prefix + "/Identity/Account/Login" + query.ToQueryString());
-        }
-
-        /// <summary>
-        ///     The refusal of a request OpenIddict already refused while validating it, re-raised
-        ///     through the protocol pipeline so the error page renders it, or null when the request
-        ///     passed validation.
-        /// </summary>
-        private ForbidResult? RefusedByProtocol()
-        {
-            return HttpContext.GetOpenIddictServerResponse() is { Error: { Length: > 0 } error } response
-                ? ForbidProtocol(error, response.ErrorDescription ?? string.Empty)
-                : null;
         }
 
         /// <summary>Returns a protocol error through the OpenIddict response pipeline.</summary>

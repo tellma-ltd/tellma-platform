@@ -40,32 +40,27 @@ This host references `Tellma.Identity.Migrations` only so Development can migrat
 
 ## Seeded clients
 
-`TellmaIdentity:Seed:Clients` is deployment configuration: `appsettings.json` lists no client,
+`TellmaIdentity:Seed:Clients` is deployment configuration: `appsettings.json` lists no entry there,
 because configuration binds an array by index, and an entry shipped here would merge field by field
-with whatever entry a deployment (or a test host) puts at the same index. A deployment lists its own
-entries in its own configuration.
+with whatever entry a deployment (or a test host) puts at the same index.
 
-The interim clients for coding agents are `Native` entries with `RequireConsent` and `ThirdParty`
-set: public, PKCE, the `tellma_api` scope, explicit consent, and no first-party treatment.
-Onboarding grants each distribution's origin to them, as to every seeded client that calls
-distribution APIs, so they hold the distribution-origin list. One entry per agent, with the
-redirect URIs the agent actually registers — a port-less loopback URI accepts any port at runtime:
+The interim clients for coding agents ship here instead, under the keyed section
+`TellmaIdentity:Seed:InterimClients`: `claude-code`, `codex` and `cursor`. Each is a `Native`
+entry with `RequireConsent` and `ThirdParty` set — public, PKCE, the `tellma_api` scope, explicit
+consent, and no first-party treatment — and onboarding grants each distribution's origin to it, as
+to every seeded client that calls distribution APIs, so it holds the distribution-origin list. The
+key is the client id. Each registers the port-less loopback redirect `http://127.0.0.1/callback`,
+which accepts any port at runtime (RFC 8252 §7.3); `/callback` is the default path, and a
+deployment whose agent uses another overrides it by key, for example
+`TellmaIdentity:Seed:InterimClients:claude-code:RedirectUris:0`. A deployment turns an entry off with
+`TellmaIdentity:Seed:InterimClients:<key>:Enabled=false`: configuration layering can override an
+entry but never remove it. Turning one off stops seeding it; it does not delete its application.
 
-```json
-{
-  "ClientId": "claude-code",
-  "DisplayName": "Claude Code",
-  "Kind": "Native",
-  "RequireConsent": true,
-  "ThirdParty": true,
-  "RedirectUris": [ "http://127.0.0.1/<the agent's callback path>" ]
-}
-```
-
-The hosted agents' web clients (`claude-web`, `codex-web`) take the vendors' published callback
-URIs in `RedirectUris` the same way. These entries leave the configuration once client ID metadata
-documents have served production traffic for one release; the seeder never deletes an application,
-so an operator then deletes the applications from the store.
+The hosted agents' web clients (`claude-web`, `codex-web`) are not shipped: they need the vendors'
+published callback URIs, which a deployment adds as interim clients of its own in the same shape.
+The interim entries leave this file once client ID metadata documents have served production
+traffic for one release; the seeder never deletes an application, so an operator then deletes the
+applications from the store.
 
 ## Email
 

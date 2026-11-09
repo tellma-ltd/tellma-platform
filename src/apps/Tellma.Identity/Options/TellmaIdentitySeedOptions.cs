@@ -35,12 +35,67 @@ namespace Tellma.Identity.Options
         /// </summary>
         public IList<TellmaIdentitySeedClientOptions> Clients { get; } = [];
 
+        /// <summary>
+        ///     The interim clients for third-party coding agents, keyed by client id: each a
+        ///     <see cref="TellmaIdentitySeedClientKind.Native" /> entry with
+        ///     <see cref="TellmaIdentitySeedClientOptions.ThirdParty" /> set, seeded beside
+        ///     <see cref="Clients" />. Keyed rather than listed so that configuration layers address
+        ///     an entry by name: a deployment overrides one entry's redirect URIs, or turns it off
+        ///     with <see cref="TellmaIdentitySeedClientOptions.Enabled" />, without disturbing the
+        ///     others (an array binds by index, so a layered entry would merge into whichever entry
+        ///     shares its position). An entry's <see cref="TellmaIdentitySeedClientOptions.ClientId" />
+        ///     defaults to its key and, when set, must equal it.
+        /// </summary>
+        public IDictionary<string, TellmaIdentitySeedClientOptions> InterimClients { get; } =
+            new Dictionary<string, TellmaIdentitySeedClientOptions>(StringComparer.OrdinalIgnoreCase);
+
         /// <summary>Development-only seeded admin identity.</summary>
         public TellmaIdentityDevAdminOptions DevAdmin { get; } = new TellmaIdentityDevAdminOptions();
 
         /// <summary>Deployed-instance break-glass administrator bootstrap.</summary>
         public TellmaIdentityBootstrapOptions Bootstrap { get; } = new TellmaIdentityBootstrapOptions();
+
+        /// <summary>
+        ///     Gives every interim client without a <see cref="TellmaIdentitySeedClientOptions.ClientId" />
+        ///     its key as client id. The engine applies it when it binds its options, before they are
+        ///     validated, so every reader of an entry sees its client id.
+        /// </summary>
+        public void ApplyInterimClientIds()
+        {
+            foreach ((string key, TellmaIdentitySeedClientOptions client) in InterimClients)
+            {
+                client.ClientId ??= key;
+            }
+        }
+
+        /// <summary>
+        ///     Every seed entry with the configuration path that names it: the entries of
+        ///     <see cref="Clients" /> in order, then those of <see cref="InterimClients" />. Disabled
+        ///     entries are included; readers decide what a disabled entry means to them.
+        /// </summary>
+        /// <returns>The entries and their paths.</returns>
+        public IReadOnlyList<TellmaIdentitySeedEntry> ListEntries()
+        {
+            List<TellmaIdentitySeedEntry> entries = [];
+            for (int index = 0; index < Clients.Count; index++)
+            {
+                entries.Add(new TellmaIdentitySeedEntry($"TellmaIdentity:Seed:Clients:{index}", Clients[index], InterimKey: null));
+            }
+
+            foreach ((string key, TellmaIdentitySeedClientOptions client) in InterimClients)
+            {
+                entries.Add(new TellmaIdentitySeedEntry($"TellmaIdentity:Seed:InterimClients:{key}", client, key));
+            }
+
+            return entries;
+        }
     }
+
+    /// <summary>One seed entry and the configuration path that names it.</summary>
+    /// <param name="Path">The entry's configuration path, quoted by validation failures.</param>
+    /// <param name="Client">The entry.</param>
+    /// <param name="InterimKey">The entry's key among the interim clients; null for an entry of the client list.</param>
+    public sealed record TellmaIdentitySeedEntry(string Path, TellmaIdentitySeedClientOptions Client, string? InterimKey);
 
     /// <summary>The archetype of a seeded platform client.</summary>
     public enum TellmaIdentitySeedClientKind
@@ -85,6 +140,14 @@ namespace Tellma.Identity.Options
         ///     <see cref="MaxDistributionSlugLength" /> characters.
         /// </summary>
         public string? ClientId { get; set; }
+
+        /// <summary>
+        ///     Whether the entry is seeded. On by default; a deployment turns an entry it inherits
+        ///     from a lower configuration layer off here, since layering can override a value but
+        ///     never remove an entry. A disabled entry is neither validated nor seeded, and the
+        ///     seeder never deletes an application it seeded before.
+        /// </summary>
+        public bool Enabled { get; set; } = true;
 
         /// <summary>
         ///     Human-readable display name shown on consent and device pages. Ignored for a

@@ -53,6 +53,7 @@ namespace Tellma.Identity.Hosting
             // misconfigured host fails at startup with the full failure list.
             TellmaIdentityOptions snapshot = new();
             configure(snapshot);
+            snapshot.Seed.ApplyInterimClientIds();
 
             ValidateOptionsResult validation = new TellmaIdentityOptionsValidator().Validate(Microsoft.Extensions.Options.Options.DefaultName, snapshot);
             if (validation.Failed)
@@ -61,7 +62,12 @@ namespace Tellma.Identity.Hosting
                     "Tellma Identity configuration is invalid: " + string.Join(" ", validation.Failures ?? []));
             }
 
-            services.AddOptions<TellmaIdentityOptions>().Configure(configure).ValidateOnStart();
+            // An interim client's key is its client id; filled in before validation, so every
+            // reader of an entry sees it.
+            services.AddOptions<TellmaIdentityOptions>()
+                .Configure(configure)
+                .PostConfigure(static options => options.Seed.ApplyInterimClientIds())
+                .ValidateOnStart();
             services.AddSingleton<IValidateOptions<TellmaIdentityOptions>>(
                 static provider => new TellmaIdentityOptionsValidator(
                     provider.GetService<Microsoft.Extensions.Hosting.IHostEnvironment>()));

@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using OpenIddict.Server.AspNetCore;
 using Tellma.Identity.Data;
+using Tellma.Identity.Infrastructure;
 using Tellma.Identity.Services.Audit;
 using Tellma.Identity.Services.AuthenticationPolicy;
 using Tellma.Identity.Services.BackchannelLogout;
@@ -36,6 +37,16 @@ namespace Tellma.Identity.Controllers
         [IgnoreAntiforgeryToken]
         public async Task<IActionResult> EndSession()
         {
+            // A request OpenIddict refused while validating it — an unregistered post-logout
+            // redirect URI, an unknown client, a mismatched id_token_hint — still reaches this
+            // action through error pass-through. It never signs anyone out, never terminates a
+            // session and writes no audit row: it only renders the refusal, so no page can end a
+            // user's sessions by navigating them to a request the server refuses.
+            if (ProtocolRefusal.FindAtEndSession(HttpContext) is { } refusal)
+            {
+                return refusal;
+            }
+
             // The end-session request principal (from id_token_hint) is available, but the SSO
             // session identity is the source of truth for what to terminate.
             AuthenticateResult cookie = await HttpContext.AuthenticateAsync(IdentityConstants.ApplicationScheme);

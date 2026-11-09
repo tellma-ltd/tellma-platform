@@ -150,8 +150,10 @@ namespace Tellma.Identity.Options
         }
 
         /// <summary>
-        ///     Validates the seeded clients: every client id they register is unique, and each
-        ///     distribution entry is well formed. Every failure names its entry.
+        ///     Validates the enabled seed entries — the client list and the interim clients alike:
+        ///     every client id they register is unique, each distribution entry is well formed, the
+        ///     third-party flag sits on native entries only, and each interim client is a
+        ///     third-party native entry whose client id is its key. Every failure names its entry.
         /// </summary>
         private static void ValidateSeedClients(
             TellmaIdentitySeedOptions seed, IHostEnvironment environment, List<string> failures)
@@ -161,14 +163,19 @@ namespace Tellma.Identity.Options
             // ignoring case, as the store's unique index on the client id is under the platform's
             // case-insensitive collation: "ACME-svc" and "acme-svc" are one row there.
             Dictionary<string, string> claimed = new(StringComparer.OrdinalIgnoreCase);
-            for (int index = 0; index < seed.Clients.Count; index++)
+            foreach ((string path, TellmaIdentitySeedClientOptions client, string? interimKey) in seed.ListEntries())
             {
-                TellmaIdentitySeedClientOptions client = seed.Clients[index];
-                string entry = $"TellmaIdentity:Seed:Clients:{index} ('{client.ClientId}')";
+                // A disabled entry seeds nothing, so nothing about it can go wrong at a start.
+                if (!client.Enabled)
+                {
+                    continue;
+                }
+
+                string entry = $"{path} ('{client.ClientId}')";
 
                 if (string.IsNullOrWhiteSpace(client.ClientId))
                 {
-                    failures.Add($"TellmaIdentity:Seed:Clients:{index}: ClientId is required.");
+                    failures.Add($"{path}: ClientId is required.");
                     continue;
                 }
 
@@ -194,6 +201,21 @@ namespace Tellma.Identity.Options
                 if (client.ThirdParty && client.Kind != TellmaIdentitySeedClientKind.Native)
                 {
                     failures.Add($"{entry}: ThirdParty is accepted on Native entries only.");
+                }
+
+                // The interim section exists for third-party agents alone: an entry there that is
+                // not one would be a first-party client seeded under the agents' name.
+                if (interimKey is not null)
+                {
+                    if (!string.Equals(client.ClientId, interimKey, StringComparison.Ordinal))
+                    {
+                        failures.Add($"{entry}: an interim client's ClientId must equal its key '{interimKey}'.");
+                    }
+
+                    if (client.Kind != TellmaIdentitySeedClientKind.Native || !client.ThirdParty)
+                    {
+                        failures.Add($"{entry}: an interim client must be a Native entry with ThirdParty set.");
+                    }
                 }
             }
         }

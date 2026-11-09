@@ -165,6 +165,67 @@ namespace Tellma.Identity.Tests.Services
                     CliId, [OtherOrigin], [TellmaIdentityConstants.ControlPlaneScope], GrantTypes.ClientCredentials, null)));
         }
 
+        [Theory]
+        [InlineData(OtherOrigin)]
+        [InlineData(TellmaIdentityConstants.ControlPlaneAudience)]
+        [InlineData(Issuer)]
+        public async Task A_control_plane_token_naming_a_distribution_names_nothing_else(string other)
+        {
+            // One token for a distribution is valid in one place: not at a second distribution,
+            // and not at the identity server's own APIs.
+            Assert.Equal(other, await FindRefusedAsync(ControlPlane([Origin, other])));
+
+            // In either order; the refusal names a resource the distribution's cannot ride with.
+            Assert.NotNull(await FindRefusedAsync(ControlPlane([other, Origin])));
+            Assert.Equal(2, Audits.Count);
+            Assert.All(Audits, static audit => Assert.Equal(ControlPlaneId, audit.ClientId));
+        }
+
+        [Fact]
+        public async Task A_control_plane_token_may_name_both_platform_audiences()
+        {
+            Assert.Null(await FindRefusedAsync(ControlPlane([TellmaIdentityConstants.ControlPlaneAudience, Issuer])));
+        }
+
+        [Theory]
+        [InlineData(GrantTypes.ClientCredentials)]
+        [InlineData(GrantTypes.TokenExchange)]
+        public async Task A_machine_token_naming_a_distribution_names_no_other_resource(string grantType)
+        {
+            // The CLI holds the origin, so each resource is granted on its own; together they
+            // would be one token valid at the origin and at a tenant's endpoint.
+            Assert.Equal(
+                Origin + "/17/mcp",
+                await FindRefusedAsync(new ResourceGrantRequest(
+                    CliId, [Origin, Origin + "/17/mcp"], [TellmaIdentityConstants.ApiScope], grantType, null)));
+            Assert.Null(await FindRefusedAsync(new ResourceGrantRequest(
+                CliId, [Origin + "/17/mcp"], [TellmaIdentityConstants.ApiScope], grantType, null)));
+        }
+
+        [Theory]
+        [InlineData(Origin)]
+        [InlineData(Origin + "/17/mcp")]
+        public async Task An_interactive_grant_naming_a_distribution_never_also_asks_for_the_management_scope(string resource)
+        {
+            Assert.Equal(
+                resource,
+                await FindRefusedAsync(new ResourceGrantRequest(
+                    CliId, [resource], [Scopes.OpenId, TellmaIdentityConstants.ApiScope, TellmaIdentityConstants.IdentityScope], null, null)));
+
+            // Without the management scope the same request stands, and so does one naming several
+            // of the client's distribution resources: the combination rule binds machine tokens.
+            Assert.Null(await FindRefusedAsync(Client(CliId, [resource])));
+            Assert.Null(await FindRefusedAsync(Client(CliId, [Origin, Origin + "/17/mcp"])));
+        }
+
+        [Fact]
+        public async Task A_stored_grant_request_is_never_refused_for_its_combination()
+        {
+            // The combination was decided when the grant was made; a later request only narrows it.
+            Assert.Null(await FindRefusedAsync(new ResourceGrantRequest(
+                CliId, [Origin, Origin + "/17/mcp"], [TellmaIdentityConstants.IdentityScope], GrantTypes.RefreshToken, [Origin])));
+        }
+
         [Fact]
         public async Task A_stored_tenant_grant_narrows_to_itself_and_never_widens()
         {

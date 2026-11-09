@@ -176,6 +176,48 @@ namespace Tellma.Identity.IntegrationTests
             }
         }
 
+        [Fact]
+        public async Task The_shipped_interim_agent_clients_are_seeded_overridable_by_key_and_granted_each_origin()
+        {
+            // The host's own configuration ships claude-code, codex and cursor; a deployment layer
+            // moves one entry's redirect and turns another off, by key, leaving the third alone.
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
+                fixture,
+                "idseedinterim",
+                new Dictionary<string, string?>
+                {
+                    ["TellmaIdentity:Seed:InterimClients:claude-code:RedirectUris:0"] = "http://127.0.0.1/oauth/callback",
+                    ["TellmaIdentity:Seed:InterimClients:cursor:Enabled"] = "false",
+                });
+            CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+            using (factory.CreateClient())
+            {
+                await TestData.ProvisionDistributionAsync(factory, "acme");
+
+                using IServiceScope scope = factory.Services.CreateScope();
+                IOpenIddictApplicationManager applications = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+
+                foreach ((string clientId, string redirectUri) in (ValueTuple<string, string>[])
+                    [("claude-code", "http://127.0.0.1/oauth/callback"), ("codex", "http://127.0.0.1/callback")])
+                {
+                    object client = (await applications.FindByClientIdAsync(clientId, cancellationToken))!;
+                    Assert.Equal(ConsentTypes.Explicit, await applications.GetConsentTypeAsync(client, cancellationToken));
+                    Assert.Equal(ClientTypes.Public, await applications.GetClientTypeAsync(client, cancellationToken));
+                    Assert.Equal([redirectUri], await applications.GetRedirectUrisAsync(client, cancellationToken));
+                    Assert.False((await applications.GetPropertiesAsync(client, cancellationToken))
+                        .ContainsKey(TellmaClientProperties.FirstParty));
+
+                    // Onboarding grants the new distribution's origin to it, as to every seeded
+                    // client that calls distribution APIs.
+                    Assert.True(await applications.HasPermissionAsync(
+                        client, Permissions.Prefixes.Resource + "https://acme.app.tellma.com", cancellationToken));
+                }
+
+                Assert.Null(await applications.FindByClientIdAsync("cursor", cancellationToken));
+            }
+        }
+
         /// <summary>A second host over the same store and configuration.</summary>
         private static StandaloneFactory Reboot(StandaloneFactory factory)
         {

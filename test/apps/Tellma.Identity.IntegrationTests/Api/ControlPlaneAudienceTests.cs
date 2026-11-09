@@ -114,6 +114,46 @@ namespace Tellma.Identity.IntegrationTests.Api
             Assert.Equal(resource, details.RootElement.GetProperty("requested").GetString());
         }
 
+        [Theory]
+        [InlineData("https://globex.app.tellma.com")]
+        [InlineData("urn:tellma:control-plane")]
+        [InlineData("http://localhost")]
+        public async Task A_control_plane_token_naming_a_distribution_names_nothing_else(string other)
+        {
+            // Each resource is granted on its own; together they would be one token valid at two
+            // distributions, or at a distribution and the identity server's own APIs.
+            using StandaloneFactory factory = await CreateFactoryAsync("idcpcombo");
+
+            Assert.Equal(
+                "invalid_target",
+                await RequestTokenErrorAsync(factory, ControlPlaneScopes, [Acme, other]));
+        }
+
+        [Fact]
+        public async Task A_distribution_backend_token_naming_its_origin_cannot_also_name_the_issuer()
+        {
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idsvccombo");
+            DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory, "acme");
+
+            using HttpClient client = factory.CreateClient();
+            using HttpResponseMessage response = await client.PostAsync(
+                new Uri("/connect/token", UriKind.Relative),
+                new FormUrlEncodedContent(
+                [
+                    new("grant_type", "client_credentials"),
+                    new("client_id", distribution.ServiceClientId),
+                    new("client_secret", distribution.ServiceClientSecret),
+                    new("scope", "tellma_identity tellma_api"),
+                    new("resource", Acme),
+                    new("resource", "http://localhost"),
+                ]),
+                TestContext.Current.CancellationToken);
+
+            Assert.False(response.IsSuccessStatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            Assert.Equal("invalid_target", document.RootElement.GetProperty("error").GetString());
+        }
+
         [Fact]
         public async Task A_control_plane_request_names_a_distribution_only_with_the_control_plane_scope()
         {
@@ -178,28 +218,37 @@ namespace Tellma.Identity.IntegrationTests.Api
         }
 
         /// <summary>Requests a control-plane client-credentials token, expecting an error, and returns its code.</summary>
-        private static async Task<string?> RequestTokenErrorAsync(StandaloneFactory factory, string scope, string resource)
+        private static Task<string?> RequestTokenErrorAsync(StandaloneFactory factory, string scope, string resource)
         {
-            using HttpResponseMessage response = await PostTokenRequestAsync(factory, scope, resource);
+            return RequestTokenErrorAsync(factory, scope, [resource]);
+        }
+
+        /// <summary>Requests a control-plane client-credentials token naming several resources, expecting an error.</summary>
+        private static async Task<string?> RequestTokenErrorAsync(StandaloneFactory factory, string scope, string[] resources)
+        {
+            using HttpResponseMessage response = await PostTokenRequestAsync(factory, scope, resources);
             Assert.False(response.IsSuccessStatusCode);
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             return document.RootElement.GetProperty("error").GetString();
         }
 
-        /// <summary>Posts a control-plane client-credentials request.</summary>
-        private static async Task<HttpResponseMessage> PostTokenRequestAsync(StandaloneFactory factory, string scope, string? resource)
+        /// <summary>Posts a control-plane client-credentials request naming at most one resource.</summary>
+        private static Task<HttpResponseMessage> PostTokenRequestAsync(StandaloneFactory factory, string scope, string? resource)
         {
-            Dictionary<string, string> parameters = new()
-            {
-                ["grant_type"] = "client_credentials",
-                ["client_id"] = ControlPlaneId,
-                ["client_secret"] = ControlPlaneSecret,
-                ["scope"] = scope,
-            };
-            if (resource is not null)
-            {
-                parameters["resource"] = resource;
-            }
+            return PostTokenRequestAsync(factory, scope, resource is null ? [] : [resource]);
+        }
+
+        /// <summary>Posts a control-plane client-credentials request, one <c>resource</c> parameter per resource.</summary>
+        private static async Task<HttpResponseMessage> PostTokenRequestAsync(StandaloneFactory factory, string scope, string[] resources)
+        {
+            List<KeyValuePair<string, string>> parameters =
+            [
+                new("grant_type", "client_credentials"),
+                new("client_id", ControlPlaneId),
+                new("client_secret", ControlPlaneSecret),
+                new("scope", scope),
+            ];
+            parameters.AddRange(resources.Select(static resource => new KeyValuePair<string, string>("resource", resource)));
 
             using HttpClient client = factory.CreateClient();
             return await client.PostAsync(
