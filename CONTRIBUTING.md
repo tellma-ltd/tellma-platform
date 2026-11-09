@@ -74,7 +74,8 @@ the clock:
 
 Run these from the repository root before opening or updating a pull request. CI runs the same
 commands with `-c Release`, the unit suites on Linux and Windows, and the integration suites in a
-single solution-wide run.
+single solution-wide run. The client gates run on Linux and Windows too; the client e2e suite runs
+on Linux.
 
 ```bash
 dotnet build Tellma.slnx
@@ -102,9 +103,21 @@ The identity browser scenarios need Playwright's Chromium for .NET, installed on
 dotnet test test/apps/Tellma.Identity.E2E --no-build --filter "Category=E2E&Category!=Nightly"
 ```
 
-The client gates run from `client/` after `pnpm install --frozen-lockfile`. Run
-`pnpm run tokens:build-css` first after switching branches: the tokens CSS is generated, not
-committed.
+The client gates run from the repository root, which is the root of the one pnpm workspace:
+`pnpm-workspace.yaml` lists `client/` (the Angular workspace of every `@tellma/*` package), the
+Node packages inside it and every distribution's Client project, and one lockfile
+(`pnpm-lock.yaml`) resolves them all, with a single copy of Angular. Install once at the root, with
+the lockfile as committed:
+
+```bash
+pnpm install --frozen-lockfile
+```
+
+Change a dependency only through the `catalog` in `pnpm-workspace.yaml` (a package names it with
+the specifier `catalog:`), then run `pnpm install` at the root and commit the regenerated
+`pnpm-lock.yaml`; never edit the lockfile by hand. The root `package.json` scripts forward to
+`client/`, so each gate below works from either folder. Run `pnpm run tokens:build-css` first after
+switching branches: the tokens CSS is generated, not committed.
 
 ```bash
 pnpm run lint
@@ -120,10 +133,13 @@ pnpm run build:showcase
 ```
 
 The PR-tier end-to-end suite runs on the Chromium engine only, desktop and touch, with the
-nightly-tier tags excluded. Install the browser once with `pnpm exec playwright install chromium`.
+nightly-tier tags excluded. Install the browser once with
+`pnpm --dir client exec playwright install chromium`. Call the script directly, so the grep
+pattern reaches Playwright without a second round of shell parsing; it runs from any folder, and
+relative path arguments resolve against `client/`.
 
 ```bash
-node scripts/e2e.mjs --project chromium --project touch --grep-invert "@nightly|@perf|@quarantine"
+node client/scripts/e2e.mjs --project chromium --project touch --grep-invert "@nightly|@perf|@quarantine"
 ```
 
 ### Nightly tier
@@ -143,16 +159,17 @@ nor E2E tests, as the PR tier does for the unit suites:
 dotnet test Tellma.slnx --filter "Category=Nightly&Category!=Integration&Category!=E2E&Live!=true"
 ```
 
-From `client/`, with all three browsers installed (`pnpm exec playwright install chromium firefox webkit`):
+From the repository root, with all three browsers installed
+(`pnpm --dir client exec playwright install chromium firefox webkit`):
 
 ```bash
-node scripts/e2e.mjs --grep "@nightly|@cross-engine|@perf" --grep-invert "@quarantine" --pass-with-no-tests
+node client/scripts/e2e.mjs --grep "@nightly|@cross-engine|@perf" --grep-invert "@quarantine" --pass-with-no-tests
 ```
 
 The quarantined tests, ten runs each:
 
 ```bash
-node scripts/e2e.mjs --grep "@quarantine" --repeat-each 10 --pass-with-no-tests
+node client/scripts/e2e.mjs --grep "@quarantine" --repeat-each 10 --pass-with-no-tests
 ```
 
 ## Contributor License Agreement

@@ -149,35 +149,31 @@ jobs:
           path: test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright-traces
           if-no-files-found: ignore
 
-  # The Angular workspace (spec 0002): lint (incl. the tm- rules), token
-  # gates (schema + missing-ref), build, the full unit suite, API
-  # goldens, docs/MCP generation + validation, bundle budgets, and the
-  # Playwright behavioral/a11y/RTL suite (incl. axe contrast) — all
-  # port-free (§1.3). The e2e step runs the PR tier on the Chromium engine
+  # The client (spec 0002, spec 0024 §12): lint (incl. the tm- rules, the
+  # @tellma/core boundary rule and the decimal rules), token gates (schema +
+  # missing-ref), build, the full unit suite, API goldens, docs/MCP generation
+  # + validation, bundle budgets, and the Playwright behavioral/a11y/RTL suite
+  # (incl. axe contrast) — all port-free (§1.3). Every step runs from the
+  # repository root, the root of the one pnpm workspace; the root scripts
+  # forward to client/. The e2e step runs the PR tier on the Chromium engine
   # only: the desktop battery and the touch battery. Firefox and WebKit, and
   # tests tagged @nightly, @perf or @quarantine, run in nightly-tier.yml.
   client:
     if: ${{ !github.event.pull_request.draft }}
     timeout-minutes: 45
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: client
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6 # version from client/package.json packageManager
-        with:
-          package_json_file: client/package.json
+      - uses: pnpm/action-setup@v6 # version from the root package.json packageManager
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: client/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       # The unit suites (vitest browser mode) and the PR-tier e2e both run on Chromium alone.
       - name: Install Chromium
         timeout-minutes: 15
-        run: pnpm exec playwright install chromium --with-deps
+        run: pnpm --dir client exec playwright install chromium --with-deps
       - run: pnpm run lint
       - run: pnpm run typecheck
       - run: pnpm run lint:test
@@ -194,7 +190,7 @@ jobs:
       # generate already exists: the build step above writes it. No --pass-with-no-tests here: a
       # pattern that matched nothing would be a broken gate, and must fail.
       - name: PR-tier e2e (Chromium, nightly-tier tags excluded)
-        run: node scripts/e2e.mjs --project chromium --project touch --grep-invert "@nightly|@perf|@quarantine"
+        run: node client/scripts/e2e.mjs --project chromium --project touch --grep-invert "@nightly|@perf|@quarantine"
       - name: Upload the Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -203,6 +199,36 @@ jobs:
           path: client/.artifacts/e2e
           if-no-files-found: ignore
 
+  # The client packages build, lint, test and match their goldens on Windows too (spec 0024 §12):
+  # every gate of the job above except the e2e suite, whose Linux run covers the browser
+  # behaviour. Path separators, line endings and shell differences surface here first.
+  client-windows:
+    if: ${{ !github.event.pull_request.draft }}
+    timeout-minutes: 45
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6 # version from the root package.json packageManager
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The unit suites run in real Chromium (vitest browser mode).
+      - name: Install Chromium
+        timeout-minutes: 15
+        run: pnpm --dir client exec playwright install chromium
+      - run: pnpm run lint
+      - run: pnpm run typecheck
+      - run: pnpm run lint:test
+      - run: pnpm run tokens:check
+      - run: pnpm run build
+      - run: pnpm run test
+      - run: pnpm run api:check
+      - run: pnpm run docs:build
+      - run: pnpm run size:check
+      - run: pnpm run build:showcase
+
   # PR merge gate: the single status check required by branch protection. It fails if any job
   # below did not succeed, without making any individual job a required check (which would couple
   # branch protection to job names / the OS matrix).
@@ -210,7 +236,7 @@ jobs:
     if: ${{ !cancelled() && !github.event.pull_request.draft }}
     # Include all required job in this list — a job missing here is NOT gated.
     # Branch protection must require THIS job only.
-    needs: [build-test, format, integration, design-e2e, client, identity-e2e]
+    needs: [build-test, format, integration, design-e2e, client, client-windows, identity-e2e]
     timeout-minutes: 5
     runs-on: ubuntu-latest
     steps:

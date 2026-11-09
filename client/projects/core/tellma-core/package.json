@@ -1,0 +1,28 @@
+{
+  "name": "@tellma/core",
+  "version": "0.1.0",
+  "description": "The Tellma app framework: the runtime a distribution's single-page app imports, split into entry points along its lazy-loading lines.",
+  "license": "Apache-2.0",
+  "peerDependencies": {
+    "@angular/core": "^22.0.0"
+  },
+  "dependencies": {
+    "tslib": "^2.3.0"
+  },
+  "sideEffects": false,
+  "type": "module",
+  "tellma": {
+    "budgetsInKb": {
+      ".": 1.5,
+      "./private": 0.5
+    },
+    "budgetNotes": {
+      ".": "Interim ceiling at the package's birth: the exact decimal helpers and the quiet telemetry and request-log seams measure 1.26 KB. The primary's ceiling grows towards the sum of its shares as each owner lands, each raise with its note here.",
+      "./private": "Empty at birth: the slot for shared wiring between this package's own entry points.",
+      "_": "Ceilings are ratchets. Any raise belongs here with its reason; a raise with no note is a bug."
+    },
+    "apiGoldens": {
+      "exclude": ["./private"]
+    }
+  }
+}
