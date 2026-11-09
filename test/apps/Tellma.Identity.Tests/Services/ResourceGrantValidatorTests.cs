@@ -151,7 +151,7 @@ namespace Tellma.Identity.Tests.Services
         public async Task The_control_plane_holds_its_platform_audiences_exactly()
         {
             Assert.Null(await FindRefusedAsync(ControlPlane([TellmaIdentityConstants.ControlPlaneAudience])));
-            Assert.Null(await FindRefusedAsync(ControlPlane([Issuer])));
+            Assert.Null(await FindRefusedAsync(ControlPlane([TellmaIdentityConstants.IdentityAudience])));
         }
 
         [Fact]
@@ -168,7 +168,7 @@ namespace Tellma.Identity.Tests.Services
         [Theory]
         [InlineData(OtherOrigin)]
         [InlineData(TellmaIdentityConstants.ControlPlaneAudience)]
-        [InlineData(Issuer)]
+        [InlineData(TellmaIdentityConstants.IdentityAudience)]
         public async Task A_control_plane_token_naming_a_distribution_names_nothing_else(string other)
         {
             // One token for a distribution is valid in one place: not at a second distribution,
@@ -184,7 +184,7 @@ namespace Tellma.Identity.Tests.Services
         [Fact]
         public async Task A_control_plane_token_may_name_both_platform_audiences()
         {
-            Assert.Null(await FindRefusedAsync(ControlPlane([TellmaIdentityConstants.ControlPlaneAudience, Issuer])));
+            Assert.Null(await FindRefusedAsync(ControlPlane([TellmaIdentityConstants.ControlPlaneAudience, TellmaIdentityConstants.IdentityAudience])));
         }
 
         [Theory]
@@ -213,9 +213,32 @@ namespace Tellma.Identity.Tests.Services
                     CliId, [resource], [Scopes.OpenId, TellmaIdentityConstants.ApiScope, TellmaIdentityConstants.IdentityScope], null, null)));
 
             // Without the management scope the same request stands, and so does one naming several
-            // of the client's distribution resources: the combination rule binds machine tokens.
+            // resources of the one distribution: they are one place.
             Assert.Null(await FindRefusedAsync(Client(CliId, [resource])));
             Assert.Null(await FindRefusedAsync(Client(CliId, [Origin, Origin + "/17/mcp"])));
+        }
+
+        [Theory]
+        [InlineData(Origin, OtherOrigin)]
+        [InlineData(OtherOrigin, Origin)]
+        [InlineData(Origin + "/17/mcp", OtherOrigin + "/17/mcp")]
+        [InlineData(OtherOrigin + "/17/mcp", Origin + "/17/mcp")]
+        [InlineData(Origin, OtherOrigin + "/18/mcp")]
+        public async Task An_interactive_grant_never_names_two_distributions(string first, string second)
+        {
+            // The document client holds both origins, so each resource is granted on its own; one
+            // user token valid at both distributions is refused, naming the second distribution's.
+            Assert.Equal(second, await FindRefusedAsync(Client(DocumentClientId, [first, second])));
+            Assert.Equal(DocumentClientId, Assert.Single(Audits).ClientId);
+        }
+
+        [Theory]
+        [InlineData(Origin, Origin + "/17/mcp")]
+        [InlineData(Origin + "/17/mcp", Origin + "/18/mcp")]
+        [InlineData(OtherOrigin + "/1/mcp", OtherOrigin)]
+        public async Task An_interactive_grant_may_combine_resources_of_one_distribution(string first, string second)
+        {
+            Assert.Null(await FindRefusedAsync(Client(DocumentClientId, [first, second])));
         }
 
         [Fact]

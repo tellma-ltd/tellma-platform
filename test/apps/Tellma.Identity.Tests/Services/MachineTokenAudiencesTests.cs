@@ -17,7 +17,7 @@ namespace Tellma.Identity.Tests.Services
     /// </summary>
     public sealed class MachineTokenAudiencesTests : IAsyncLifetime
     {
-        private const string IssuerOrigin = "https://identity.tellma.com";
+        private const string IdentityAudience = TellmaIdentityConstants.IdentityAudience;
         private const string Origin = "https://acme.example.com";
 
         private readonly ServiceProvider _services = BuildServices();
@@ -49,11 +49,11 @@ namespace Tellma.Identity.Tests.Services
                 [TellmaIdentityConstants.ControlPlaneScope, TellmaIdentityConstants.IdentityScope], []);
             Assert.Null(controlPlane.Error);
             Assert.Equal(
-                [IssuerOrigin, TellmaIdentityConstants.ControlPlaneAudience],
+                [TellmaIdentityConstants.ControlPlaneAudience, IdentityAudience],
                 controlPlane.Audiences.Order(StringComparer.Ordinal));
 
             MachineAudienceResult identity = await ResolveAsync([TellmaIdentityConstants.IdentityScope], []);
-            Assert.Equal([IssuerOrigin], identity.Audiences);
+            Assert.Equal([IdentityAudience], identity.Audiences);
         }
 
         [Fact]
@@ -78,7 +78,7 @@ namespace Tellma.Identity.Tests.Services
             foreach ((string name, string[] resources) in (ValueTuple<string, string[]>[])
                 [
                     (TellmaIdentityConstants.ApiScope, [Origin, "https://globex.example.com"]),
-                    (TellmaIdentityConstants.IdentityScope, [IssuerOrigin]),
+                    (TellmaIdentityConstants.IdentityScope, [IdentityAudience]),
                     (TellmaIdentityConstants.ControlPlaneScope, [TellmaIdentityConstants.ControlPlaneAudience]),
                 ])
             {

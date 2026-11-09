@@ -83,7 +83,7 @@ namespace Tellma.Identity.IntegrationTests.Api
             {
                 string[] audiences = ClientCredentialsTests.ReadSingleOrArray(payload.RootElement, "aud");
                 Assert.Contains("urn:tellma:control-plane", audiences);
-                Assert.Contains("http://localhost", audiences);
+                Assert.Contains("urn:tellma:identity", audiences);
                 Assert.DoesNotContain(Acme, audiences);
             }
 
@@ -117,7 +117,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Theory]
         [InlineData("https://globex.app.tellma.com")]
         [InlineData("urn:tellma:control-plane")]
-        [InlineData("http://localhost")]
+        [InlineData("urn:tellma:identity")]
         public async Task A_control_plane_token_naming_a_distribution_names_nothing_else(string other)
         {
             // Each resource is granted on its own; together they would be one token valid at two
@@ -145,7 +145,7 @@ namespace Tellma.Identity.IntegrationTests.Api
                     new("client_secret", distribution.ServiceClientSecret),
                     new("scope", "tellma_identity tellma_api"),
                     new("resource", Acme),
-                    new("resource", "http://localhost"),
+                    new("resource", "urn:tellma:identity"),
                 ]),
                 TestContext.Current.CancellationToken);
 
@@ -165,7 +165,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task A_distribution_backend_token_naming_its_origin_is_refused_by_the_management_api()
         {
-            // The backend holds both its origin and the issuer origin; naming its origin makes that
+            // The backend holds both its origin and the management audience; naming its origin makes that
             // the whole audience, so the same token is no credential at the management API.
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idsvcaud");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory, "acme");

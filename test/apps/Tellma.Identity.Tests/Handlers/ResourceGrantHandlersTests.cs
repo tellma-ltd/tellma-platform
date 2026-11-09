@@ -166,8 +166,22 @@ namespace Tellma.Identity.Tests.Handlers
                 > OpenIddictServerHandlers.Device.ValidateDeviceAuthentication.Descriptor.Order);
             Assert.True(ValidateTokenResourcesHandler.Descriptor.Order
                 > OpenIddictServerHandlers.Exchange.ValidateAuthentication.Descriptor.Order);
-            Assert.True(ValidateTokenResourcesHandler.Descriptor.Order
-                > OpenIddictServerHandlers.Exchange.ValidateScopePermissions.Descriptor.Order);
+            // The presented grant is fully verified first — PKCE, presenter, redirect URI,
+            // verifier, granted scopes — so a stolen code or token cannot probe its resources.
+            foreach (OpenIddictServerHandlerDescriptor before in (OpenIddictServerHandlerDescriptor[])
+                [
+                    OpenIddictServerHandlers.Exchange.ValidateScopePermissions.Descriptor,
+                    OpenIddictServerHandlers.Exchange.ValidateProofKeyForCodeExchangeRequirement.Descriptor,
+                    OpenIddictServerHandlers.Exchange.ValidateAuthorizedParty.Descriptor,
+                    OpenIddictServerHandlers.Exchange.ValidateRedirectUri.Descriptor,
+                    OpenIddictServerHandlers.Exchange.ValidateCodeVerifier.Descriptor,
+                    OpenIddictServerHandlers.Exchange.ValidateGrantedScopes.Descriptor,
+                ])
+            {
+                Assert.True(
+                    ValidateTokenResourcesHandler.Descriptor.Order > before.Order,
+                    $"The token check runs before {before.ServiceDescriptor.ServiceType.Name}.");
+            }
         }
 
         [Fact]

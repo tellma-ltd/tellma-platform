@@ -111,13 +111,16 @@ segment. Version 1 is:
 
 | Routes | Scope | Audience |
 |---|---|---|
-| `POST invitations`, `POST invitations/delivery-status` | `tellma_identity` | the issuer's origin |
-| `POST service-accounts`; `GET`, `DELETE service-accounts/{clientId}` | `tellma_identity` | the issuer's origin |
+| `POST invitations`, `POST invitations/delivery-status` | `tellma_identity` | `urn:tellma:identity` |
+| `POST service-accounts`; `GET`, `DELETE service-accounts/{clientId}` | `tellma_identity` | `urn:tellma:identity` |
 | `GET users/{sub}`; `POST users/{sub}/temporary-access-passes` | `tellma_control_plane`, standalone only | `urn:tellma:control-plane` |
 
 Each policy in `ApiPolicies` requires its scope **and** its audience (`ApiPolicies.HasAudience`
 beside `HasScope`), so a token minted for a distribution — whose only audience is that
-distribution's origin — answers `403` at both APIs whatever its scopes. A caller reads and deletes
+distribution's origin — answers `403` at both APIs whatever its scopes. Both audiences are fixed
+URNs, never an origin: in-proc the issuer shares the distribution's origin, and an origin-valued
+management audience would make one token valid at both. The two platform scopes converge on exactly
+their URN at every start. A caller reads and deletes
 every service account only with control-plane authority (`ApiPolicies.HasControlPlaneAuthority`:
 the control-plane scope and the control-plane audience).
 
@@ -177,11 +180,13 @@ authorization.
 A token's audience is exactly its named resources — for a machine token (`MachineTokenAudiences`,
 for `client_credentials` and token exchange) and an interactive one (`TellmaPrincipalFactory`)
 alike; without one, a BFF's token carries its origin, and any other token its scopes' platform
-audiences (`urn:tellma:control-plane`, the issuer's origin). A machine token with `tellma_api`
+audiences (`urn:tellma:control-plane`, `urn:tellma:identity`). A machine token with `tellma_api`
 always needs a resource. One token for a distribution is valid in one place: a machine request that
 names a distribution's resource (an origin of the list, or a tenant resource under one) may name no
-other resource, and an interactive request naming one may not also ask for `tellma_identity`; both
-are `invalid_target`. The control plane therefore asks for one token per distribution, naming its
+other resource, and an interactive request naming one may neither ask for `tellma_identity` nor
+name a resource of a second distribution (resources of one distribution combine freely); all are
+`invalid_target`. The token endpoint checks resources only after OpenIddict has verified the
+presented grant (PKCE, presenter, redirect URI), so a stolen code cannot probe its resources. The control plane therefore asks for one token per distribution, naming its
 origin, and one without a resource for the identity server's own APIs.
 
 A `Native` seed entry with `ThirdParty` is third-party software, such as a coding agent: it carries
@@ -189,6 +194,10 @@ no `tellma:first_party` marker, so no first-party treatment applies to it, and i
 explicit. `Seed:InterimClients` holds such entries keyed by client id (each must be a third-party
 `Native` entry whose client id is its key); they seed beside `Seed:Clients`, and any entry of either
 with `Enabled=false` is neither validated nor seeded.
+
+End session asks the user to confirm unless its `id_token_hint` names the signed-in session (the
+confirmation posts back with an anti-forgery token), so no page can force a global logout. A
+disabled seed entry whose client is still in the store is logged as a Warning at every start.
 
 Every interactive endpoint with error pass-through (authorization, end session) first asks
 `ProtocolRefusal` (`Find` re-raises the refusal at authorization; `FindAtEndSession` answers a bare

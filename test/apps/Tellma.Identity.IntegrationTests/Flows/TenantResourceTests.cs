@@ -198,6 +198,56 @@ namespace Tellma.Identity.IntegrationTests.Flows
         }
 
         [Fact]
+        public async Task An_authorization_naming_two_distributions_is_refused_with_invalid_target()
+        {
+            // The CLI holds both origins once both are onboarded; one user token valid at both
+            // would carry acme's grant into globex, so the request is refused before any interaction.
+            using StandaloneFactory factory = await CreateFactoryAsync("idtenanttwo");
+            await TestData.ProvisionDistributionAsync(factory, "globex");
+            using OidcFlowClient flow = new(factory);
+            (_, string challenge) = OidcFlowClient.CreatePkcePair();
+
+            string url = AuthorizeUrl(challenge, Origin) + "&resource=" + Uri.EscapeDataString("https://globex.app.tellma.com");
+            using HttpResponseMessage response = await flow.Browser.GetAsync(
+                new Uri(url, UriKind.Relative), TestContext.Current.CancellationToken);
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Null(response.Headers.Location);
+            Assert.Contains("invalid_target", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken), StringComparison.Ordinal);
+            Assert.Equal(["https://globex.app.tellma.com"], await RefusedResourcesAsync(factory));
+        }
+
+        [Fact]
+        public async Task A_code_presented_without_its_verifier_is_refused_before_its_resources_are_read()
+        {
+            // Someone holding an intercepted code but not its verifier learns nothing from the
+            // resource they name: the request is invalid_grant whatever it asks for, and nothing is
+            // audited as a refused resource under the client's name.
+            using StandaloneFactory factory = await CreateFactoryAsync("idtenantprobe");
+            using OidcFlowClient flow = new(factory);
+            (string code, string verifier) = await AuthorizeAsync(factory, flow, "pete@example.com", Tenant17);
+            (string wrongVerifier, _) = OidcFlowClient.CreatePkcePair();
+
+            foreach (string probe in (string[])[Tenant18, Origin, Tenant17])
+            {
+                Assert.Equal(
+                    "invalid_grant",
+                    await flow.ExchangeExpectingErrorAsync(new Dictionary<string, string>
+                    {
+                        ["grant_type"] = "authorization_code",
+                        ["client_id"] = ClientId,
+                        ["code"] = code,
+                        ["redirect_uri"] = RedirectUri,
+                        ["code_verifier"] = wrongVerifier,
+                        ["resource"] = probe,
+                    }));
+            }
+
+            Assert.Empty(await RefusedResourcesAsync(factory));
+            Assert.NotEqual(verifier, wrongVerifier);
+        }
+
+        [Fact]
         public async Task A_pushed_authorization_request_is_held_to_the_clients_grants()
         {
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idtenantpar", CliSeed);

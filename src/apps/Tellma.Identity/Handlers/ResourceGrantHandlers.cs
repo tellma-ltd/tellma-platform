@@ -181,13 +181,17 @@ namespace Tellma.Identity.Handlers
         : IOpenIddictServerHandler<ValidateTokenRequestContext>
     {
         /// <summary>
-        ///     The handler registration: in the slot of OpenIddict's resource-permission check, after
-        ///     the client is authenticated and the presented grant is validated.
+        ///     The handler registration: after OpenIddict's last token-request check
+        ///     (<c>ValidateGrantedScopes</c>), so the presented grant's PKCE verifier, presenter
+        ///     and redirect URI are verified first. A request that fails any of them is
+        ///     <c>invalid_grant</c> before its resources are looked at, so a stolen code or token
+        ///     cannot be used to probe what it was granted for, nor write a refusal under its
+        ///     client's name.
         /// </summary>
         public static OpenIddictServerHandlerDescriptor Descriptor { get; }
             = OpenIddictServerHandlerDescriptor.CreateBuilder<ValidateTokenRequestContext>()
                 .UseScopedHandler<ValidateTokenResourcesHandler>()
-                .SetOrder(OpenIddictServerHandlers.Exchange.ValidateResourcePermissions.Descriptor.Order + 500)
+                .SetOrder(OpenIddictServerHandlers.Exchange.ValidateGrantedScopes.Descriptor.Order + 500)
                 .Build();
 
         /// <inheritdoc />

@@ -54,7 +54,10 @@ which accepts any port at runtime (RFC 8252 §7.3); `/callback` is the default p
 deployment whose agent uses another overrides it by key, for example
 `TellmaIdentity:Seed:InterimClients:claude-code:RedirectUris:0`. A deployment turns an entry off with
 `TellmaIdentity:Seed:InterimClients:<key>:Enabled=false`: configuration layering can override an
-entry but never remove it. Turning one off stops seeding it; it does not delete its application.
+entry but never remove it. Turning one off stops seeding it; it does not delete its application,
+which still signs in and still receives every new distribution's origin. Each start logs a Warning
+naming such a client until an operator deletes its application from the identity store, which is the
+step that actually retires it.
 
 The hosted agents' web clients (`claude-web`, `codex-web`) are not shipped: they need the vendors'
 published callback URIs, which a deployment adds as interim clients of its own in the same shape.

@@ -45,5 +45,13 @@ namespace Tellma.Identity
 
         /// <summary>The fixed audience of tokens minted for the control-plane admin surface.</summary>
         public const string ControlPlaneAudience = "urn:tellma:control-plane";
+
+        /// <summary>
+        ///     The fixed audience of tokens minted for the identity server's management API. A URN,
+        ///     never an origin, so it can equal no distribution's origin in any mode: in-proc, the
+        ///     issuer shares the distribution's origin, and an origin-valued audience would make one
+        ///     token valid at both.
+        /// </summary>
+        public const string IdentityAudience = "urn:tellma:identity";
     }
 }

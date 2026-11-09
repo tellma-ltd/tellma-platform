@@ -269,7 +269,7 @@ namespace Tellma.Identity.IntegrationTests.Api
                     ["client_id"] = distribution.ServiceClientId,
                     ["client_secret"] = distribution.ServiceClientSecret,
                     ["scope"] = "tellma_identity",
-                    ["resource"] = "http://localhost",
+                    ["resource"] = "urn:tellma:identity",
                 }),
                 TestContext.Current.CancellationToken);
 

@@ -65,7 +65,8 @@ namespace Tellma.Identity.Services
     ///         <item>
     ///             One token for a distribution is valid in one place: a machine request naming a
     ///             distribution's resource names no other resource, and an interactive request
-    ///             naming one does not also ask for the management scope.
+    ///             naming one neither asks for the management scope nor names a second
+    ///             distribution's resource.
     ///         </item>
     ///     </list>
     /// </remarks>
@@ -187,9 +188,11 @@ namespace Tellma.Identity.Services
         ///     Refuses the combinations that would make one token valid in more than one place. A
         ///     machine token (client credentials, token exchange) that names a distribution's
         ///     resource names nothing else: not a second distribution, not the control-plane
-        ///     audience, not the issuer. An interactive grant that names a distribution's resource
-        ///     never also asks for the management scope, whose audience would otherwise ride along
-        ///     to the distribution. A client that needs both asks for two tokens.
+        ///     audience, not the management one. An interactive grant that names a distribution's
+        ///     resource never also asks for the management scope, and never names a resource of a
+        ///     second distribution; resources of the one distribution (its origin, its tenants'
+        ///     endpoints) may be combined, since they are one place. A client that needs more asks
+        ///     for more tokens.
         /// </summary>
         /// <returns>The resource that completes a refused combination, or null.</returns>
         private async Task<string?> FindRefusedCombinationAsync(ResourceGrantRequest request, CancellationToken cancellationToken)
@@ -197,36 +200,50 @@ namespace Tellma.Identity.Services
             bool machine = string.Equals(request.GrantType, GrantTypes.ClientCredentials, StringComparison.Ordinal)
                 || string.Equals(request.GrantType, GrantTypes.TokenExchange, StringComparison.Ordinal);
             bool interactive = request.GrantType is null;
+            bool several = request.RequestedResources.Count > 1;
             bool asksForManagement = request.Scopes.Contains(TellmaIdentityConstants.IdentityScope, StringComparer.Ordinal);
-            if (!(machine && request.RequestedResources.Count > 1) && !(interactive && asksForManagement))
+            if (!(machine && several) && !(interactive && (several || asksForManagement)))
             {
                 return null;
             }
 
             HashSet<string> origins = await ListDistributionOriginsAsync(cancellationToken);
             string? distribution = request.RequestedResources
-                .FirstOrDefault(resource => IsDistributionResource(resource, origins));
+                .FirstOrDefault(resource => DistributionOf(resource, origins) is not null);
             if (distribution is null)
             {
                 return null;
             }
 
-            // Report the resource that cannot be combined with the distribution's: the other one
-            // a machine token names, or the distribution's own when the management scope is asked.
-            return machine
-                ? request.RequestedResources.First(resource => !string.Equals(resource, distribution, StringComparison.Ordinal))
-                : distribution;
+            // A machine token: report the other resource the distribution's cannot ride with.
+            if (machine)
+            {
+                return request.RequestedResources.First(resource => !string.Equals(resource, distribution, StringComparison.Ordinal));
+            }
+
+            // An interactive grant asking for the management scope: the distribution's own.
+            if (asksForManagement)
+            {
+                return distribution;
+            }
+
+            // An interactive grant naming several resources: the first under another distribution.
+            string place = DistributionOf(distribution, origins)!;
+            return request.RequestedResources.FirstOrDefault(resource =>
+                DistributionOf(resource, origins) is { } other && !string.Equals(other, place, StringComparison.Ordinal));
         }
 
         /// <summary>
-        ///     Whether a resource belongs to a distribution: an origin of the distribution-origin
-        ///     list, or one tenant's resource under such an origin.
+        ///     The distribution a resource belongs to — the origin of the distribution-origin list it
+        ///     is, or the one its tenant resource sits under — or null when it belongs to none.
         /// </summary>
-        private static bool IsDistributionResource(string resource, HashSet<string> distributionOrigins)
+        private static string? DistributionOf(string resource, HashSet<string> distributionOrigins)
         {
             return distributionOrigins.Contains(resource)
-                || (ResourceGrantEvaluator.TryParseTenantResource(resource, out string origin, out _)
-                    && distributionOrigins.Contains(origin));
+                ? resource
+                : ResourceGrantEvaluator.TryParseTenantResource(resource, out string origin, out _) && distributionOrigins.Contains(origin)
+                    ? origin
+                    : null;
         }
 
         /// <summary>The client's resource permissions, without their <c>rsrc:</c> prefix.</summary>

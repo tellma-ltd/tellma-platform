@@ -142,7 +142,7 @@ namespace Tellma.Identity.IntegrationTests.Api
             using (HttpClient narrowedClient = factory.CreateClient())
             {
                 narrowedClient.DefaultRequestHeaders.Authorization =
-                    new AuthenticationHeaderValue("Bearer", await GetControlPlaneTokenAsync(factory, resource: "http://localhost"));
+                    new AuthenticationHeaderValue("Bearer", await GetControlPlaneTokenAsync(factory, resource: "urn:tellma:identity"));
                 using HttpResponseMessage narrowedGet = await narrowedClient.GetAsync(
                     new Uri($"/api/identity/v1/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
                 Assert.Equal(HttpStatusCode.NotFound, narrowedGet.StatusCode);
@@ -223,7 +223,7 @@ namespace Tellma.Identity.IntegrationTests.Api
                     ["client_id"] = distribution.ServiceClientId,
                     ["client_secret"] = distribution.ServiceClientSecret,
                     ["scope"] = "tellma_identity",
-                    ["resource"] = "http://localhost",
+                    ["resource"] = "urn:tellma:identity",
                 }),
                 TestContext.Current.CancellationToken);
 

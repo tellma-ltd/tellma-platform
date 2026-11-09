@@ -218,6 +218,40 @@ namespace Tellma.Identity.IntegrationTests
             }
         }
 
+        [Fact]
+        public async Task Disabling_a_seeded_interim_client_warns_that_it_still_works_until_deleted()
+        {
+            // The first start seeds every shipped entry, cursor included.
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idseeddisabled");
+            using (factory.CreateClient())
+            {
+            }
+
+            // The next start has cursor disabled. The seeder never deletes, so the row stays and
+            // still authenticates; the start says so, naming the client and the remedy.
+            CapturingLogSink logs = new();
+            using StandaloneFactory disabled = Reboot(factory);
+            disabled.ConfigurationOverrides["TellmaIdentity:Seed:InterimClients:cursor:Enabled"] = "false";
+            disabled.ServiceOverrides.Add(services => services.AddSingleton<Serilog.Core.ILogEventSink>(logs));
+            using (disabled.CreateClient())
+            {
+                using IServiceScope scope = disabled.Services.CreateScope();
+                IOpenIddictApplicationManager applications = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+                Assert.NotNull(await applications.FindByClientIdAsync("cursor", TestContext.Current.CancellationToken));
+            }
+
+            string warning = Assert.Single(
+                logs.Messages(Serilog.Events.LogEventLevel.Warning),
+                static message => message.Contains("TellmaIdentity:Seed:InterimClients:cursor", StringComparison.Ordinal));
+            Assert.Contains("cursor", warning, StringComparison.Ordinal);
+            Assert.Contains("Delete the application", warning, StringComparison.Ordinal);
+
+            // The enabled entries draw no such warning.
+            Assert.DoesNotContain(
+                logs.Messages(Serilog.Events.LogEventLevel.Warning),
+                static message => message.Contains("InterimClients:codex", StringComparison.Ordinal));
+        }
+
         /// <summary>A second host over the same store and configuration.</summary>
         private static StandaloneFactory Reboot(StandaloneFactory factory)
         {
@@ -259,7 +293,7 @@ namespace Tellma.Identity.IntegrationTests
             object? identityScope = await scopeManager.FindByNameAsync("tellma_identity", cancellationToken);
             OpenIddictScopeDescriptor identityScopeDescriptor = new();
             await scopeManager.PopulateAsync(identityScopeDescriptor, identityScope!, cancellationToken);
-            Assert.Contains("http://localhost", identityScopeDescriptor.Resources);
+            Assert.Equal(["urn:tellma:identity"], identityScopeDescriptor.Resources);
 
             // The CLI: public, native (portless loopback), PKCE-required, device-grant capable.
             object? cli = await applicationManager.FindByClientIdAsync("tellma-cli", cancellationToken);

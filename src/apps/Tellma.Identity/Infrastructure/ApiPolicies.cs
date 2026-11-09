@@ -21,7 +21,7 @@ namespace Tellma.Identity.Infrastructure
     {
         /// <summary>
         ///     The distribution-facing management surface (bulk invite, service accounts): the
-        ///     management scope, and the issuer's origin among the token's audiences.
+        ///     management scope, and the management audience among the token's audiences.
         /// </summary>
         public const string IdentityScope = "TellmaIdentityScope";
 
@@ -33,22 +33,17 @@ namespace Tellma.Identity.Infrastructure
 
         /// <summary>Registers the management-API authorization policies.</summary>
         /// <param name="options">The authorization options.</param>
-        /// <param name="issuerOrigin">
-        ///     The issuer's origin: the management API's audience, which the engine grants with the
-        ///     management scope.
-        /// </param>
-        public static void Configure(AuthorizationOptions options, string issuerOrigin)
+        public static void Configure(AuthorizationOptions options)
         {
             ArgumentNullException.ThrowIfNull(options);
-            ArgumentException.ThrowIfNullOrWhiteSpace(issuerOrigin);
 
             options.AddPolicy(IdentityScope, policy =>
             {
                 policy.AddAuthenticationSchemes(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
                 policy.RequireAuthenticatedUser();
-                policy.RequireAssertion(context =>
+                policy.RequireAssertion(static context =>
                     HasScope(context.User, TellmaIdentityConstants.IdentityScope)
-                    && HasAudience(context.User, issuerOrigin));
+                    && HasAudience(context.User, TellmaIdentityConstants.IdentityAudience));
             });
 
             options.AddPolicy(ControlPlaneScope, policy =>

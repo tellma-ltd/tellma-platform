@@ -12,34 +12,34 @@ namespace Tellma.Identity.Tests.Infrastructure
 {
     /// <summary>
     ///     The identity server's own APIs check their audience as well as their scope: the
-    ///     management API needs the issuer's origin, the operator API the control-plane audience,
+    ///     management API needs the management audience, the operator API the control-plane audience,
     ///     so a token minted for a distribution is refused at both whatever scopes it carries.
     /// </summary>
     public sealed class ApiPoliciesTests : IDisposable
     {
-        private const string IssuerOrigin = "https://identity.tellma.com";
+        private const string ManagementAudience = TellmaIdentityConstants.IdentityAudience;
         private const string DistributionOrigin = "https://acme.example.com";
 
         private readonly ServiceProvider _services = BuildServices();
 
         [Fact]
-        public async Task The_management_policy_accepts_its_scope_with_the_issuer_origin_audience()
+        public async Task The_management_policy_accepts_its_scope_with_the_management_audience()
         {
             Assert.True(await AuthorizeAsync(
-                ApiPolicies.IdentityScope, Principal("tellma_identity", IssuerOrigin)));
+                ApiPolicies.IdentityScope, Principal("tellma_identity", ManagementAudience)));
             Assert.True(await AuthorizeAsync(
-                ApiPolicies.IdentityScope, Principal("tellma_control_plane tellma_identity", TellmaIdentityConstants.ControlPlaneAudience, IssuerOrigin)));
+                ApiPolicies.IdentityScope, Principal("tellma_control_plane tellma_identity", TellmaIdentityConstants.ControlPlaneAudience, ManagementAudience)));
         }
 
         [Theory]
         [InlineData(DistributionOrigin)]
         [InlineData(DistributionOrigin + "/17/mcp")]
         [InlineData(TellmaIdentityConstants.ControlPlaneAudience)]
-        [InlineData("https://identity.tellma.com/")]
-        [InlineData("HTTPS://IDENTITY.TELLMA.COM")]
-        [InlineData("https://identity.tellma.com:443")]
-        [InlineData("https://identity.tellma.com.evil.example")]
-        public async Task The_management_policy_refuses_a_principal_whose_audience_lacks_the_issuer_origin(string audience)
+        [InlineData("https://identity.tellma.com")]
+        [InlineData("urn:tellma:identity:x")]
+        [InlineData("URN:TELLMA:IDENTITY")]
+        [InlineData("urn:tellma:identity ")]
+        public async Task The_management_policy_refuses_a_principal_whose_audience_lacks_the_management_audience(string audience)
         {
             Assert.False(await AuthorizeAsync(ApiPolicies.IdentityScope, Principal("tellma_identity", audience)));
         }
@@ -48,7 +48,7 @@ namespace Tellma.Identity.Tests.Infrastructure
         public async Task The_management_policy_refuses_a_principal_with_no_audience_or_without_its_scope()
         {
             Assert.False(await AuthorizeAsync(ApiPolicies.IdentityScope, Principal("tellma_identity")));
-            Assert.False(await AuthorizeAsync(ApiPolicies.IdentityScope, Principal("tellma_api", IssuerOrigin)));
+            Assert.False(await AuthorizeAsync(ApiPolicies.IdentityScope, Principal("tellma_api", ManagementAudience)));
         }
 
         [Fact]
@@ -56,12 +56,12 @@ namespace Tellma.Identity.Tests.Infrastructure
         {
             Assert.True(await AuthorizeAsync(
                 ApiPolicies.ControlPlaneScope,
-                Principal("tellma_control_plane tellma_identity", TellmaIdentityConstants.ControlPlaneAudience, IssuerOrigin)));
+                Principal("tellma_control_plane tellma_identity", TellmaIdentityConstants.ControlPlaneAudience, ManagementAudience)));
         }
 
         [Theory]
         [InlineData(DistributionOrigin)]
-        [InlineData(IssuerOrigin)]
+        [InlineData(ManagementAudience)]
         [InlineData("urn:tellma:control-plane:x")]
         [InlineData("URN:TELLMA:CONTROL-PLANE")]
         public async Task The_operator_policy_refuses_a_principal_whose_audience_lacks_the_control_plane_audience(string audience)
@@ -83,7 +83,7 @@ namespace Tellma.Identity.Tests.Infrastructure
             ClaimsPrincipal anonymous = new(new ClaimsIdentity(
                 [new Claim("scope", "tellma_control_plane tellma_identity"),
                  new Claim("aud", TellmaIdentityConstants.ControlPlaneAudience),
-                 new Claim("aud", IssuerOrigin)]));
+                 new Claim("aud", ManagementAudience)]));
 
             Assert.False(await AuthorizeAsync(ApiPolicies.IdentityScope, anonymous));
             Assert.False(await AuthorizeAsync(ApiPolicies.ControlPlaneScope, anonymous));
@@ -92,15 +92,15 @@ namespace Tellma.Identity.Tests.Infrastructure
         [Fact]
         public void HasAudience_reads_every_aud_claim_ordinally_and_never_splits_one()
         {
-            ClaimsPrincipal principal = Principal("tellma_identity", DistributionOrigin, IssuerOrigin);
-            Assert.True(ApiPolicies.HasAudience(principal, IssuerOrigin));
+            ClaimsPrincipal principal = Principal("tellma_identity", DistributionOrigin, ManagementAudience);
+            Assert.True(ApiPolicies.HasAudience(principal, ManagementAudience));
             Assert.True(ApiPolicies.HasAudience(principal, DistributionOrigin));
             Assert.False(ApiPolicies.HasAudience(principal, "https://ACME.example.com"));
             Assert.False(ApiPolicies.HasAudience(principal, string.Empty));
 
             // One claim holding two values separated by a space names neither of them.
-            ClaimsPrincipal joined = Principal("tellma_identity", DistributionOrigin + " " + IssuerOrigin);
-            Assert.False(ApiPolicies.HasAudience(joined, IssuerOrigin));
+            ClaimsPrincipal joined = Principal("tellma_identity", DistributionOrigin + " " + ManagementAudience);
+            Assert.False(ApiPolicies.HasAudience(joined, ManagementAudience));
         }
 
         [Fact]
@@ -109,7 +109,7 @@ namespace Tellma.Identity.Tests.Infrastructure
             Assert.True(ApiPolicies.HasControlPlaneAuthority(
                 Principal("tellma_control_plane", TellmaIdentityConstants.ControlPlaneAudience)));
             Assert.False(ApiPolicies.HasControlPlaneAuthority(Principal("tellma_control_plane", DistributionOrigin)));
-            Assert.False(ApiPolicies.HasControlPlaneAuthority(Principal("tellma_control_plane tellma_identity", IssuerOrigin)));
+            Assert.False(ApiPolicies.HasControlPlaneAuthority(Principal("tellma_control_plane tellma_identity", ManagementAudience)));
             Assert.False(ApiPolicies.HasControlPlaneAuthority(
                 Principal("tellma_identity", TellmaIdentityConstants.ControlPlaneAudience)));
         }
@@ -128,13 +128,13 @@ namespace Tellma.Identity.Tests.Infrastructure
             return new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType: "Bearer"));
         }
 
-        /// <summary>Registers authorization with the engine's policies for a fixed issuer.</summary>
+        /// <summary>Registers authorization with the engine's policies.</summary>
         private static ServiceProvider BuildServices()
         {
             ServiceCollection services = new();
             services.AddLogging();
             services.AddAuthorization();
-            services.Configure<AuthorizationOptions>(static options => ApiPolicies.Configure(options, IssuerOrigin));
+            services.Configure<AuthorizationOptions>(ApiPolicies.Configure);
             return services.BuildServiceProvider();
         }
 

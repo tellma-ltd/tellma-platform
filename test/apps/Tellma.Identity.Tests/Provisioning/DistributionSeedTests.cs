@@ -85,7 +85,7 @@ namespace Tellma.Identity.Tests.Provisioning
             await ConvergeAsync(Entry());
 
             InMemoryApplication service = Applications.Find("acme-svc")!;
-            Assert.Contains(Permissions.Prefixes.Resource + Issuer, service.Permissions);
+            Assert.Contains(Permissions.Prefixes.Resource + TellmaIdentityConstants.IdentityAudience, service.Permissions);
             Assert.Contains(Permissions.Prefixes.Resource + Origin, service.Permissions);
             Assert.Contains(Permissions.GrantTypes.ClientCredentials, service.Permissions);
             Assert.DoesNotContain(Permissions.GrantTypes.TokenExchange, service.Permissions);

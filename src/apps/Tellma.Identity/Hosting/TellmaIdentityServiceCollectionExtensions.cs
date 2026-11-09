@@ -139,12 +139,9 @@ namespace Tellma.Identity.Hosting
             services.AddSingleton<IdentityMetrics>();
 
             // Management-API authorization policies (tellma_identity, tellma_control_plane), each
-            // requiring its scope and its own audience. The management audience is the issuer's
-            // origin, read from the final options rather than the registration-time snapshot.
+            // requiring its scope and its own fixed audience.
             services.AddAuthorization();
-            services.AddOptions<Microsoft.AspNetCore.Authorization.AuthorizationOptions>()
-                .Configure<IOptions<TellmaIdentityOptions>>(static (authorization, engine) =>
-                    ApiPolicies.Configure(authorization, engine.Value.Issuer!.GetLeftPart(UriPartial.Authority)));
+            services.Configure<Microsoft.AspNetCore.Authorization.AuthorizationOptions>(ApiPolicies.Configure);
 
             // Every management-API call is counted and logged: an authorized one by the
             // controllers' own filter, a refused one by the decorated authorization result

@@ -60,9 +60,8 @@ namespace Tellma.Identity.Services
                 return new MachineAudienceResult([], ResourceRequiredDescription);
             }
 
-            // Without one, the platform audiences of the requested scopes: the identity server's
-            // own origin for the management scope, the control-plane audience for the operator
-            // scope.
+            // Without one, the platform audiences of the requested scopes: the management audience
+            // for the management scope, the control-plane audience for the operator scope.
             List<string> audiences = [];
             ImmutableArray<string> names = [.. scopes];
             await foreach (string resource in scopeManager.ListResourcesAsync(names, cancellationToken))

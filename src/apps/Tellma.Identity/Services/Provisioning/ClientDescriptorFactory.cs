@@ -80,12 +80,11 @@ namespace Tellma.Identity.Services.Provisioning
         /// </summary>
         /// <param name="slug">The distribution slug.</param>
         /// <param name="origin">The distribution's browser origin.</param>
-        /// <param name="issuerOrigin">The authority's own origin (the management API audience).</param>
         /// <param name="secret">The generated client secret.</param>
         /// <param name="allowTokenExchange">Grant the token-exchange grant type.</param>
         /// <returns>The descriptor.</returns>
         public static OpenIddictApplicationDescriptor DistributionService(
-            string slug, Uri origin, string issuerOrigin, string secret, bool allowTokenExchange)
+            string slug, Uri origin, string secret, bool allowTokenExchange)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(slug);
             ArgumentNullException.ThrowIfNull(origin);
@@ -106,7 +105,7 @@ namespace Tellma.Identity.Services.Provisioning
                     Permissions.Prefixes.Scope + TellmaIdentityConstants.ApiScope,
                     Permissions.Prefixes.Scope + TellmaIdentityConstants.IdentityScope,
                     Permissions.Prefixes.Resource + originValue,
-                    Permissions.Prefixes.Resource + issuerOrigin,
+                    Permissions.Prefixes.Resource + TellmaIdentityConstants.IdentityAudience,
                 },
             };
 
@@ -174,7 +173,7 @@ namespace Tellma.Identity.Services.Provisioning
         }
 
         /// <summary>Builds the descriptor for one seeded platform client.</summary>
-        /// <param name="options">The engine options (issuer origin, mode).</param>
+        /// <param name="options">The engine options.</param>
         /// <param name="seed">The seed definition.</param>
         /// <returns>The descriptor.</returns>
         public static OpenIddictApplicationDescriptor SeededClient(
@@ -184,12 +183,11 @@ namespace Tellma.Identity.Services.Provisioning
             ArgumentNullException.ThrowIfNull(seed);
             ArgumentException.ThrowIfNullOrWhiteSpace(seed.ClientId);
 
-            string issuerOrigin = options.Issuer!.GetLeftPart(UriPartial.Authority);
             OpenIddictApplicationDescriptor descriptor = seed.Kind switch
             {
                 TellmaIdentitySeedClientKind.Cli => PublicNativeClient(seed, includeIdentityScope: true),
                 TellmaIdentitySeedClientKind.Native => PublicNativeClient(seed, includeIdentityScope: false),
-                TellmaIdentitySeedClientKind.ControlPlane => ControlPlane(seed, issuerOrigin),
+                TellmaIdentitySeedClientKind.ControlPlane => ControlPlane(seed),
                 TellmaIdentitySeedClientKind.Distribution => throw new ArgumentException(
                     $"Seed client '{seed.ClientId}' is a Distribution entry, which registers two clients; build it with SeededDistribution.",
                     nameof(seed)),
@@ -323,7 +321,7 @@ namespace Tellma.Identity.Services.Provisioning
         ///     distribution-origin list when a request names it.
         /// </summary>
         private static OpenIddictApplicationDescriptor ControlPlane(
-            TellmaIdentitySeedClientOptions seed, string issuerOrigin)
+            TellmaIdentitySeedClientOptions seed)
         {
             return string.IsNullOrWhiteSpace(seed.ClientSecret)
                 ? throw new InvalidOperationException(
@@ -343,7 +341,7 @@ namespace Tellma.Identity.Services.Provisioning
                     Permissions.Prefixes.Scope + TellmaIdentityConstants.ControlPlaneScope,
                     Permissions.Prefixes.Scope + TellmaIdentityConstants.IdentityScope,
                     Permissions.Prefixes.Resource + TellmaIdentityConstants.ControlPlaneAudience,
-                    Permissions.Prefixes.Resource + issuerOrigin,
+                    Permissions.Prefixes.Resource + TellmaIdentityConstants.IdentityAudience,
                 },
                 };
         }
