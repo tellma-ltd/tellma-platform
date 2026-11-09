@@ -39,9 +39,11 @@ export type TmTabSelectionMode = 'follow' | 'explicit';
  * Only the active tab's content is in the DOM: a panel's content
  * instantiates on first activation and is destroyed on deactivation —
  * unless the tab opts into `preserveContent`, which keeps the activated
- * panel's DOM alive (hidden + inert). The tab strip scrolls on overflow
- * (momentum scroll, no pagination buttons); the group is a pure UI
- * container (router-driven tabs are out of scope).
+ * panel's DOM alive (hidden + inert). {@link instantiate} renders
+ * unselected tabs' content on request (hidden + inert as well), for a
+ * caller that must reach fields no tab has rendered yet. The tab strip
+ * scrolls on overflow (momentum scroll, no pagination buttons); the group
+ * is a pure UI container (router-driven tabs are out of scope).
  *
  * `selectedId` defaults to the first enabled tab at display level — the
  * model is never mutated by the defaulting, so a bound id pointing at a
@@ -89,12 +91,25 @@ export type TmTabSelectionMode = 'follow' | 'explicit';
         <div
           ngTabPanel
           class="tm-tab-group__panel"
+          [attr.data-tm-tab]="tab.id()"
           [value]="tab.id()"
           [preserveContent]="tab.preserveContent()"
         >
-          <ng-template ngTabContent>
+          <!-- An instantiated tab's content, rendered by the group itself:
+               aria's deferred content shows only the selected panel's, so
+               this is what lets an unselected panel hold its content (hidden
+               and inert with the panel) and keep the same instance once the
+               tab is selected. -->
+          @if (instantiatedIds().has(tab.id())) {
             @if (tab.content(); as content) {
               <ng-container [ngTemplateOutlet]="content.template" />
+            }
+          }
+          <ng-template ngTabContent>
+            @if (!instantiatedIds().has(tab.id())) {
+              @if (tab.content(); as content) {
+                <ng-container [ngTemplateOutlet]="content.template" />
+              }
             }
           </ng-template>
         </div>
@@ -129,7 +144,39 @@ export class TmTabGroup {
     return (target ?? tabs.find((tab) => !tab.disabled()))?.id();
   });
 
+  /** The tabs whose content the group renders itself (see {@link instantiate}). */
+  protected readonly instantiatedIds = signal<ReadonlySet<string>>(new Set());
+  /**
+   * The `preserveContent` tabs that have been selected: aria keeps their
+   * content alive, so {@link instantiate} leaves them alone.
+   */
+  private readonly preservedIds = new Set<string>();
+
   constructor() {
+    // Tracks which tabs aria keeps content for: the selected one, and every
+    // preserveContent tab selected before (forgotten when it stops
+    // preserving, since aria then destroys its hidden content). Ids of
+    // removed tabs leave the instantiated set, so a tab added later under
+    // the same id renders only on request again. After the render, so every
+    // projected tab's inputs (its required id included) are bound.
+    afterRenderEffect(() => {
+      const tabs = this.tabs();
+      const selected = this.effectiveSelectedId();
+      for (const tab of tabs) {
+        const id = tab.id();
+        if (!tab.preserveContent()) {
+          this.preservedIds.delete(id);
+        } else if (id === selected) {
+          this.preservedIds.add(id);
+        }
+      }
+      const present = new Set(tabs.map((tab) => tab.id()));
+      const instantiated = untracked(this.instantiatedIds);
+      if ([...instantiated].some((id) => !present.has(id))) {
+        this.instantiatedIds.set(new Set([...instantiated].filter((id) => present.has(id))));
+      }
+    });
+
     // The promise has to be right on the FIRST paint too: a strip that fits
     // must never render faded, and one that overflows must say so before
     // anybody has scrolled it. Re-runs when the tab set changes.
@@ -154,6 +201,37 @@ export class TmTabGroup {
       observer.observe(strip);
       onCleanup(() => observer.disconnect());
     });
+  }
+
+  /**
+   * Renders the content of tabs that have none yet, without selecting them:
+   * each named tab (every tab when `ids` is omitted) renders its content in
+   * its unselected panel — hidden and inert — and keeps it from then on, as
+   * a `preserveContent` tab keeps a visited panel. Selecting the tab later
+   * shows that same instance. The selected tab and a visited
+   * `preserveContent` tab already have content and are left as they are,
+   * so no state inside them is recreated; unknown ids are ignored.
+   * Selection, focus and the order of the panels do not change. The
+   * content exists after the next render (`afterNextRender`).
+   *
+   * Rendering a tab costs what selecting it would, so call this only when
+   * the content must exist — for example, to show and focus a field error
+   * on a tab the user never opened.
+   */
+  instantiate(ids?: readonly string[]): void {
+    const tabs = untracked(this.tabs);
+    const selected = untracked(this.effectiveSelectedId);
+    const current = untracked(this.instantiatedIds);
+    const next = new Set(current);
+    for (const id of ids ?? tabs.map((tab) => tab.id())) {
+      if (id === selected || this.preservedIds.has(id) || !tabs.some((tab) => tab.id() === id)) {
+        continue;
+      }
+      next.add(id);
+    }
+    if (next.size !== current.size) {
+      this.instantiatedIds.set(next);
+    }
   }
 
   /** User selections write back into the model. */

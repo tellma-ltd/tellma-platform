@@ -20,9 +20,29 @@ const stack: Array<() => void> = [];
 let listener: ((event: KeyboardEvent) => void) | null = null;
 
 /**
- * Pushes a dismissal handler onto the stack; returns its idempotent
- * release. Push on open/show, release on close/hide — the last pushed
- * layer is the one a single Escape dismisses.
+ * Pushes a dismissal handler onto the shared Escape stack and returns its
+ * idempotent release. Push on open or show, release on close or hide: the
+ * most recently pushed layer is the one a single Escape dismisses, and the
+ * key press is consumed (`preventDefault` and `stopPropagation`).
+ *
+ * Every surface that closes on Escape goes through this stack rather than
+ * adding a `document` listener of its own: capture listeners on one node
+ * all run for the same key press, so a second listener would let one
+ * Escape close two layers at once.
+ *
+ * @example
+ * ```ts
+ * private release: (() => void) | null = null;
+ *
+ * open(): void {
+ *   this.release ??= tmPushEscapeDismissal(() => this.close());
+ * }
+ *
+ * close(): void {
+ *   this.release?.();
+ *   this.release = null;
+ * }
+ * ```
  */
 export function tmPushEscapeDismissal(onEscape: () => void): () => void {
   if (listener === null) {

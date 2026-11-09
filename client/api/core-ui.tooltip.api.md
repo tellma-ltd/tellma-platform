@@ -4,20 +4,20 @@
 
 ```ts
 
-import * as i0 from '@angular/core';
+import * as _angular_core from '@angular/core';
+import { AriaDescriber } from '@angular/cdk/a11y';
 import { OnDestroy } from '@angular/core';
+import { ViewContainerRef } from '@angular/core';
 
 // @public
 export class TmTooltip implements OnDestroy {
     constructor();
     ngOnDestroy(): void;
-    protected onBlur(): void;
-    protected onFocus(): void;
-    protected onPointerEnter(event: PointerEvent): void;
-    protected onPointerLeave(event: PointerEvent): void;
-    readonly text: i0.InputSignal<string>;
-    static ɵdir: i0.ɵɵDirectiveDeclaration<TmTooltip, "[tmTooltip]", never, { "text": { "alias": "tmTooltip"; "required": true; "isSignal": true; }; }, {}, never, never, true, never>;
-    static ɵfac: i0.ɵɵFactoryDeclaration<TmTooltip, never>;
+    readonly text: _angular_core.InputSignal<string>;
+    static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmTooltip, "[tmTooltip]", never, { "text": { "alias": "tmTooltip"; "required": true; "isSignal": true; }; "\u0275showOnTap": { "alias": "\u0275showOnTap"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmTooltip, never>;
+    // @internal
+    // @internal
 }
 
 ```

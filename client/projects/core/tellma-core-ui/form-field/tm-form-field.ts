@@ -31,7 +31,8 @@ import {
   ɵtmControlSize,
   type TmControlSize,
 } from '@tellma/core-ui';
-import { tmCreateAnchoredOverlay, tmLogicalPositions, ɵTmErrorPopover } from '@tellma/core-ui/private';
+import { tmCreateAnchoredOverlay, tmLogicalPositions } from '@tellma/core-ui/overlay';
+import { ɵTmErrorPopover } from '@tellma/core-ui/private';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
 /**

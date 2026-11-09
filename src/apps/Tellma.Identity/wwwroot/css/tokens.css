@@ -248,6 +248,9 @@
     --modal-width-md: 640px;
     --modal-margin: 16px;
     --modal-lg-margin: 48px;
+    --modal-drawer-width-sm: 360px;
+    --modal-drawer-width-md: 480px;
+    --modal-drawer-width-lg: 720px;
     --modal-radius: var(--radius-md);
     --modal-padding-x: 16px;
     --modal-header-padding-y: 11px;
@@ -270,7 +273,11 @@
     --preview-footer-bg: var(--surface-subtle);
     --popover-padding: 12px;
     --popover-radius: var(--radius-md);
-    --popover-max-inline-size: 320px;
+    --popover-max-inline-size: 346px;
+    --popover-width-sm: 320px;
+    --popover-width-md: 440px;
+    --popover-width-lg: 640px;
+    --popover-viewport-margin: 8px;
     --tabs-height: 34px;
     --tabs-vertical-height: 30px;
     --tabs-indicator-thickness: 2px;

@@ -570,6 +570,12 @@ export const tmTokensDefault: TmTokens = {
       widthMd: '640px',
       margin: '16px',
       lgMargin: '48px',
+      // The drawer (placement 'end') widths: a side sheet narrow enough to
+      // leave the page beside it readable at sm, wide enough for a form at
+      // lg. Below the sm breakpoint every drawer takes the full width.
+      drawerWidthSm: '360px',
+      drawerWidthMd: '480px',
+      drawerWidthLg: '720px',
       radius: '{radius.md}',
       paddingX: '16px',
       headerPaddingY: '11px',
@@ -605,7 +611,17 @@ export const tmTokensDefault: TmTokens = {
     popover: {
       padding: '12px',
       radius: '{radius.md}',
-      maxInlineSize: '320px',
+      // The 'auto' size: the content's width, up to this whole-panel cap
+      // (a 320px content box plus the padding and border).
+      maxInlineSize: '346px',
+      // The fixed sizes: panels of one kind read alike and never resize
+      // while their content loads.
+      widthSm: '320px',
+      widthMd: '440px',
+      widthLg: '640px',
+      // The gap every popover keeps from the viewport edges, so a lg panel
+      // on a phone is full width less this on each side.
+      viewportMargin: '8px',
     },
     // tm-tab-group: strip geometry; the active indicator draws inside the
     // tab box so activation never reflows. A vertical strip is a nav list

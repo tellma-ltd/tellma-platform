@@ -10,16 +10,49 @@
    encapsulation scope still applies. */
 
 .tm-popover__panel {
+  /* Border-box, so a fixed size is the panel's whole width and the block
+     cap its whole height. */
+  box-sizing: border-box;
   background: var(--surface-card);
   color: var(--text-body);
   border: var(--border-width) solid var(--border-default);
   border-radius: var(--popover-radius);
   box-shadow: var(--shadow-md);
   padding: var(--popover-padding);
-  max-inline-size: var(--popover-max-inline-size);
+  /* Every size stays inside the viewport less its margin on each side;
+     'auto' takes the content's width up to the token as well. */
+  --tm-popover-max-inline-size: calc(100vw - 2 * var(--popover-viewport-margin));
+  max-inline-size: min(var(--popover-max-inline-size), var(--tm-popover-max-inline-size));
+  /* The room the chosen side offers, written by the component once the
+     overlay is placed; the content scrolls inside. */
+  max-block-size: var(--tm-popover-block-cap, none);
+  overflow: auto;
+  overscroll-behavior: contain;
   font-family: var(--font-ui);
   font-size: var(--text-sm);
   animation: tm-popover-enter var(--duration-fast) var(--ease-out);
+}
+
+/* The fixed sizes: one width per kind of panel, whatever the content, so a
+   panel never resizes while its content loads. A phone caps every size at
+   the viewport less the margin on each side, so a lg panel is full width
+   there. */
+.tm-popover__panel--sm {
+  inline-size: var(--popover-width-sm);
+}
+
+.tm-popover__panel--md {
+  inline-size: var(--popover-width-md);
+}
+
+.tm-popover__panel--lg {
+  inline-size: var(--popover-width-lg);
+}
+
+.tm-popover__panel--sm,
+.tm-popover__panel--md,
+.tm-popover__panel--lg {
+  max-inline-size: var(--tm-popover-max-inline-size);
 }
 
 .tm-popover__panel:focus-visible {

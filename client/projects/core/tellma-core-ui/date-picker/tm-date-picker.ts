@@ -46,7 +46,7 @@ import {
   tmCreateAnchoredOverlay,
   tmLogicalPositions,
   type TmOverlaySide,
-} from '@tellma/core-ui/private';
+} from '@tellma/core-ui/overlay';
 
 import { ɵTmDatePopup } from './internal/tm-date-popup';
 

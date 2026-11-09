@@ -182,6 +182,7 @@ export interface ɵTmModalShellPayload {
   readonly template: TemplateRef<unknown> | null;
   readonly title: string | undefined;
   readonly titleId: string;
+  readonly placement: 'center' | 'end';
   readonly showClose: boolean;
   readonly data: unknown;
   readonly ref: TmModalRef<unknown>;

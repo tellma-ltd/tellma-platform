@@ -24,7 +24,7 @@ import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
 import type { ConnectedPosition } from '@angular/cdk/overlay';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
-import { tmCreateAnchoredOverlay, tmPushEscapeDismissal } from '@tellma/core-ui/private';
+import { tmCreateAnchoredOverlay, tmPushEscapeDismissal } from '@tellma/core-ui/overlay';
 
 /** One actionable menu item. */
 export interface TmMenuItem {
@@ -69,7 +69,7 @@ export interface TmMenuOpenOptions {
 /**
  * Open menus, most-recently-opened last — the front-most gate for the
  * outside-POINTERDOWN dismissal (Escape rides the shared cross-component
- * dismissal stack in `@tellma/core-ui/private` instead, so a tooltip
+ * dismissal stack in `@tellma/core-ui/overlay` instead, so a tooltip
  * showing over an open menu never makes one Escape close both).
  */
 const openMenuStack: TmMenu[] = [];

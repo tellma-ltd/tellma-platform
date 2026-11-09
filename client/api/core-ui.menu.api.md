@@ -25,7 +25,7 @@ export class TmContextMenuTrigger {
 // @public
 export class TmMenu {
     constructor();
-    protected readonly anchored: _tellma_core_ui_private.TmAnchoredOverlay;
+    protected readonly anchored: _tellma_core_ui_overlay.TmAnchoredOverlay;
     readonly ariaLabel: _angular_core.InputSignal<string | null>;
     close(options?: {
         restoreFocus?: boolean;

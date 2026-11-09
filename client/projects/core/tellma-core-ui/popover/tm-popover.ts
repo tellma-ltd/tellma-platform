@@ -7,11 +7,12 @@ import { NgTemplateOutlet } from '@angular/common';
 import {
   afterRenderEffect,
   Component,
+  computed,
   contentChild,
   Directive,
   DestroyRef,
   effect,
-  type ElementRef,
+  ElementRef,
   inject,
   input,
   isDevMode,
@@ -22,17 +23,34 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
+import { Directionality } from '@angular/cdk/bidi';
+import {
+  CdkConnectedOverlay,
+  type ConnectedOverlayPositionChange,
+  type ConnectionPositionPair,
+  OverlayModule,
+} from '@angular/cdk/overlay';
 
 import {
   tmCreateAnchoredOverlay,
   tmLogicalPositions,
   type TmOverlayAlign,
   type TmOverlaySide,
-} from '@tellma/core-ui/private';
+} from '@tellma/core-ui/overlay';
+
+import { tmPopoverBlockRoom, tmPopoverInlineShift, tmTokenPx } from './internal/fit';
 
 /** Where a popover opens: an element or a rectangle. */
 export type TmPopoverAnchor = Element | DOMRect;
+
+/**
+ * The width of a popover panel. `'auto'` takes the content's width, up to
+ * `--popover-max-inline-size`. The fixed sizes (`--popover-width-sm|md|lg`)
+ * never change while the panel is open, whatever its content loads, so the
+ * panels of one kind read alike. Every size is capped at the viewport width
+ * less `--popover-viewport-margin` on each side.
+ */
+export type TmPopoverSize = 'auto' | 'sm' | 'md' | 'lg';
 
 /**
  * Marks the `ng-template` holding a popover's content. A template (rather
@@ -87,12 +105,14 @@ const FOCUSABLE =
       (attach)="anchored.handleAttach()"
       (detach)="anchored.handleDetach()"
       (overlayOutsideClick)="anchored.handleOutsideClick($event)"
+      (positionChange)="onPositionChange($event)"
     >
+      <!-- The size class fixes the width; panelClass is the consumer's hatch. -->
       <div
         #panel
-        class="tm-popover__panel"
         role="dialog"
         tabindex="-1"
+        [class]="panelClasses()"
         [attr.aria-label]="ariaLabel()"
         (keydown)="onPanelKeydown($event)"
         (focusout)="onPanelFocusOut($event)"
@@ -116,6 +136,20 @@ export class TmPopover {
   readonly position = input<TmOverlaySide>('block-end');
   /** How the panel aligns along the chosen side's axis. */
   readonly align = input<TmOverlayAlign>('start');
+  /**
+   * The panel's width: `'auto'` (the default) for the content's width, or a
+   * fixed `'sm'`, `'md'` or `'lg'` that never changes while open. The panel's
+   * height is capped at the room the chosen side offers, and the content
+   * scrolls inside.
+   */
+  readonly size = input<TmPopoverSize>('auto');
+  /**
+   * Extra CSS class on the panel — the escape hatch for the rare panel the
+   * sizes do not fit. The panel renders in the top layer, outside this
+   * component's styles, so the class must be reachable from a global
+   * stylesheet.
+   */
+  readonly panelClass = input<string | undefined>(undefined);
   /** Accessible name of the dialog panel. */
   readonly ariaLabel = input<string | null>(null, { alias: 'aria-label' });
 
@@ -138,6 +172,23 @@ export class TmPopover {
   protected readonly expanded = signal(false);
   /** Where the overlay anchors. */
   protected readonly overlayOrigin = signal<TmPopoverAnchor | null>(null);
+
+  /** The panel's classes: the base, the size, and the consumer's hatch. */
+  protected readonly panelClasses = computed(() => {
+    const size = this.size();
+    const extra = this.panelClass();
+    return `tm-popover__panel tm-popover__panel--${size} ${extra ?? ''}`;
+  });
+
+  /**
+   * The physical inline offset that keeps a fixed-size panel inside the
+   * viewport margins on a block side (see `fitInline`).
+   */
+  private readonly inlineShift = signal(0);
+  /** The side the CDK last placed the panel on, for re-fitting the height. */
+  private placedPair: ConnectionPositionPair | null = null;
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+  private readonly direction = inject(Directionality);
 
   private readonly overlay = viewChild(CdkConnectedOverlay);
   private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
@@ -162,7 +213,15 @@ export class TmPopover {
   protected readonly anchored = tmCreateAnchoredOverlay({
     overlay: () => this.overlay(),
     origin: () => this.overlayOrigin(),
-    positions: () => tmLogicalPositions(this.position(), this.align()),
+    // The inline shift rides every position as its offset, so the CDK's own
+    // fit and flip decisions already see the panel where it will sit.
+    positions: () => {
+      const offsetX = this.inlineShift();
+      return tmLogicalPositions(this.position(), this.align()).map((pair) => ({
+        ...pair,
+        offsetX,
+      }));
+    },
     remeasure: 'macrotask',
     onAttach: () => this.opened.emit(),
     onDetach: () => this.onOverlayDetach(),
@@ -229,11 +288,14 @@ export class TmPopover {
     }
     this.overlayOrigin.set(anchor);
     this.focusedOnOpen = false;
+    this.fitInline();
 
     // Re-anchor rather than (re)open whenever the overlay is still live (a
     // genuine open-while-open): the CDK `open` binding never toggles, so
     // the overlay neither re-attaches nor re-applies its object-form
-    // origin — drive the re-measure explicitly.
+    // origin — drive the re-measure explicitly. The re-measure is a
+    // macrotask queued after the change detection the new origin and
+    // offsets schedule, so it measures against them.
     if (untracked(this.expanded) || (this.overlay()?.overlayRef?.hasAttached() ?? false)) {
       this.expanded.set(true);
       this.anchored.reanchor();
@@ -275,6 +337,74 @@ export class TmPopover {
   }
 
   // ---- internals ----
+
+  /**
+   * The CDK placed the panel (on open, on a flip, or after the offsets
+   * changed): cap its height to the room on that side.
+   */
+  protected onPositionChange(change: ConnectedOverlayPositionChange): void {
+    this.placedPair = change.connectionPair;
+    this.fitBlock();
+  }
+
+  /** The anchor's viewport rectangle, or null while there is none. */
+  private anchorRect(): DOMRect | null {
+    const anchor = untracked(this.overlayOrigin);
+    return anchor instanceof Element ? anchor.getBoundingClientRect() : anchor;
+  }
+
+  /**
+   * Keeps a fixed-size panel on a block side inside the viewport margins.
+   * Its width is known before it renders (the size token, clamped to the
+   * viewport as the stylesheet clamps it), so the offset is worked out
+   * from the anchor alone and handed to the CDK with the positions: a `lg`
+   * panel on a phone then sits full width with the margin on both sides,
+   * instead of hanging off the edge its anchor is near. `'auto'` panels
+   * and inline sides keep their anchor alignment.
+   */
+  private fitInline(): void {
+    const size = untracked(this.size);
+    const anchor = this.anchorRect();
+    let shift = 0;
+    if (size !== 'auto' && anchor !== null && !untracked(this.position).startsWith('inline')) {
+      const margin = tmTokenPx(this.host, '--popover-viewport-margin');
+      shift = tmPopoverInlineShift(
+        anchor,
+        // `100vw` in the stylesheet counts a classic scrollbar; the visible
+        // width the panel must stay inside does not.
+        Math.min(tmTokenPx(this.host, `--popover-width-${size}`), window.innerWidth - 2 * margin),
+        untracked(this.align),
+        this.direction.value === 'rtl',
+        document.documentElement.clientWidth,
+        margin,
+      );
+    }
+    this.inlineShift.set(shift);
+  }
+
+  /**
+   * Caps the panel's height at the room the side it was placed on offers,
+   * less the viewport margin, so a tall panel scrolls inside instead of
+   * running off screen, and a panel whose content loads later grows only up
+   * to that cap — it never flips while open. A panel the CDK placed at its
+   * full height because no side had room for it keeps the edge it is
+   * anchored by (its top below the anchor, its bottom above it) as it
+   * shrinks to the cap.
+   */
+  private fitBlock(): void {
+    const panel = this.panel()?.nativeElement;
+    const anchor = this.anchorRect();
+    if (panel === undefined || this.placedPair === null || anchor === null) {
+      return;
+    }
+    const room = tmPopoverBlockRoom(
+      anchor,
+      this.placedPair,
+      document.documentElement.clientHeight,
+      tmTokenPx(this.host, '--popover-viewport-margin'),
+    );
+    panel.style.setProperty('--tm-popover-block-cap', `${room}px`);
+  }
 
   /** Escape closes (unless an inner overlay already consumed it). */
   protected onPanelKeydown(event: KeyboardEvent): void {
@@ -348,6 +478,7 @@ export class TmPopover {
 
   /** Keeps `expanded` honest when the overlay detaches out-of-band. */
   private onOverlayDetach(): void {
+    this.placedPair = null;
     if (untracked(this.expanded)) {
       this.expanded.set(false);
     }

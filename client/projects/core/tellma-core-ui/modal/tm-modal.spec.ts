@@ -6,6 +6,7 @@
 import { Component, inject, TemplateRef, viewChild } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
+import { Dialog, type DialogConfig } from '@angular/cdk/dialog';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 import { TmModalHarness } from '@tellma/core-ui-testing';
@@ -29,6 +30,13 @@ class ContentProbe {
   protected readonly data = inject(TM_MODAL_DATA);
   protected readonly ref = inject(TmModalRef) as TmModalRef<string>;
 }
+
+/** Alert-dialog content: the message element the dialog is described by. */
+@Component({
+  selector: 'tm-test-alert-content',
+  template: `<p id="probe-message">Unsaved changes will be lost.</p>`,
+})
+class AlertProbe {}
 
 @Component({
   template: `
@@ -307,6 +315,107 @@ describe('TmModal', () => {
     }
   });
 
+  it('passes no direction to the CDK, and the role and description when given', async () => {
+    const { fixture, modal } = await setup();
+    const open = vi.spyOn(TestBed.inject(Dialog), 'open');
+    modal.open(AlertProbe, { title: 'Discard?', role: 'alertdialog', describedBy: 'probe-message' });
+    await fixture.whenStable();
+    const config = open.mock.calls[0][1] as DialogConfig;
+    expect('direction' in config).toBe(false);
+    expect(config.role).toBe('alertdialog');
+    expect(config.ariaDescribedBy).toBe('probe-message');
+
+    // …and they reach the dialog element: the message describes the dialog.
+    const dialog = container();
+    expect(dialog.getAttribute('role')).toBe('alertdialog');
+    expect(dialog.getAttribute('aria-describedby')).toBe('probe-message');
+    expect(document.getElementById('probe-message')?.textContent).toBe(
+      'Unsaved changes will be lost.',
+    );
+  });
+
+  it('defaults to role=dialog with no description', async () => {
+    const { fixture, modal } = await setup();
+    const open = vi.spyOn(TestBed.inject(Dialog), 'open');
+    modal.open(ContentProbe, { title: 'Plain' });
+    await fixture.whenStable();
+    const config = open.mock.calls[0][1] as DialogConfig;
+    expect(config.role).toBe('dialog');
+    expect(config.ariaDescribedBy).toBeNull();
+    expect(container().hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  it('warns in dev mode for an alert dialog without a description', async () => {
+    const { fixture, modal } = await setup();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      modal.open(AlertProbe, { title: 'Discard?', role: 'alertdialog' });
+      await fixture.whenStable();
+      expect(warn.mock.calls.some(([message]) => String(message).includes('describedBy'))).toBe(
+        true,
+      );
+
+      warn.mockClear();
+      modal.open(AlertProbe, { title: 'Discard?', role: 'alertdialog', describedBy: 'x' });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('a drawer carries the placement and size classes, centered modals the size only', async () => {
+    const { fixture, modal } = await setup();
+    modal.open(ContentProbe, { title: 'Centered', size: 'lg' });
+    await fixture.whenStable();
+    const centered = document.querySelector('.tm-modal-panel') as HTMLElement;
+    expect(centered.classList.contains('tm-modal-panel--lg')).toBe(true);
+    expect(centered.classList.contains('tm-modal-panel--end')).toBe(false);
+    expect(document.querySelector('.tm-modal-backdrop--end')).toBeNull();
+    TestBed.inject(Dialog).closeAll();
+    await fixture.whenStable();
+
+    modal.open(ContentProbe, { title: 'Drawer', placement: 'end', size: 'sm' });
+    await fixture.whenStable();
+    const drawer = document.querySelector('.tm-modal-panel') as HTMLElement;
+    expect(drawer.classList.contains('tm-modal-panel--end')).toBe(true);
+    expect(drawer.classList.contains('tm-modal-panel--sm')).toBe(true);
+    expect(document.querySelector('.tm-modal-backdrop--end')).not.toBeNull();
+    expect(shell()?.classList.contains('tm-modal--end')).toBe(true);
+  });
+
+  it('docks a drawer to the inline-end edge at full height, with no entrance motion', async () => {
+    const { fixture, modal } = await setup();
+    modal.open(ContentProbe, { title: 'Drawer', placement: 'end' });
+    await fixture.whenStable();
+    const pane = document.querySelector('.tm-modal-panel') as HTMLElement;
+    const rect = pane.getBoundingClientRect();
+    expect(Math.abs(rect.right - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+    expect(Math.abs(rect.top)).toBeLessThanOrEqual(1);
+    expect(Math.abs(rect.height - window.innerHeight)).toBeLessThanOrEqual(1);
+    expect(getComputedStyle(container()).animationName).toBe('none');
+  });
+
+  it('moves an open drawer to the other edge when the document direction flips', async () => {
+    const { fixture, modal } = await setup();
+    const ref = modal.open(ContentProbe, { title: 'Drawer', placement: 'end' });
+    await fixture.whenStable();
+    const pane = document.querySelector('.tm-modal-panel') as HTMLElement;
+    try {
+      document.documentElement.dir = 'rtl';
+      // The live root Directionality observes the attribute in a microtask.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(Math.abs(pane.getBoundingClientRect().left)).toBeLessThanOrEqual(1);
+
+      document.documentElement.dir = 'ltr';
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const right = pane.getBoundingClientRect().right;
+      expect(Math.abs(right - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+    } finally {
+      document.documentElement.removeAttribute('dir');
+      ref.close();
+    }
+  });
+
   it('marks footer content with the shell footer class', async () => {
     const { fixture, modal } = await setup();
     modal.open(ContentProbe, { title: 'Footer' });
@@ -360,7 +469,20 @@ describe('TmModal', () => {
     expect(await harness.getTitle()).toBe('Harnessed');
     expect(await harness.getBodyText()).toContain('Hello you');
     expect(await harness.hasCloseButton()).toBe(true);
+    expect(await harness.getPlacement()).toBe('center');
     await harness.close();
     expect(await ref.closed).toEqual({ via: 'close-button' });
+  });
+});
+
+describe('TmModalHarness placement', () => {
+  it('reports the drawer placement', async () => {
+    const { fixture, modal } = await setup();
+    const ref = modal.open(ContentProbe, { title: 'Drawer', placement: 'end' });
+    await fixture.whenStable();
+    const loader = TestbedHarnessEnvironment.documentRootLoader(fixture);
+    const harness = await loader.getHarness(TmModalHarness);
+    expect(await harness.getPlacement()).toBe('end');
+    ref.close();
   });
 });

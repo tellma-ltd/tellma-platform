@@ -24,7 +24,8 @@ import { CdkScrollable } from '@angular/cdk/scrolling';
 import type { ConnectedOverlayPositionChange, ConnectedPosition } from '@angular/cdk/overlay';
 
 import { TmMenu } from '@tellma/core-ui/menu';
-import { tmCreateAnchoredOverlay, ɵTmErrorPopover } from '@tellma/core-ui/private';
+import { tmCreateAnchoredOverlay } from '@tellma/core-ui/overlay';
+import { ɵTmErrorPopover } from '@tellma/core-ui/private';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
 import { ɵTmGridFindBar } from './find-bar';
@@ -447,11 +448,17 @@ export class ɵTmGridView {
    */
   private readonly errorOverlay = viewChild(CdkConnectedOverlay);
 
+  /**
+   * The view's host element — the box the loading/empty overlay is inset
+   * against, and the error popover's top-layer host.
+   */
+  private readonly hostElement = inject(ElementRef).nativeElement as HTMLElement;
+
   protected readonly errorAnchored = tmCreateAnchoredOverlay({
     overlay: () => this.errorOverlay(),
     origin: () => this.core().errorAnchor(),
     positions: this.errorPositions,
-    popoverHost: { type: 'parent', element: inject(ElementRef).nativeElement as Element },
+    popoverHost: { type: 'parent', element: this.hostElement },
     // The anchor is written from an afterRender effect and only reaches
     // CDK on the NEXT change detection, so the re-measure has to cross a
     // pass boundary — measuring in the same pass reads the old origin.
@@ -462,9 +469,6 @@ export class ɵTmGridView {
   private readonly editorOutlet = viewChild('editorOutlet', { read: ViewContainerRef });
   private readonly menu = viewChild(TmMenu);
   private readonly icons = viewChild(ɵTmGridIcons);
-  private readonly direction = inject(Directionality);
-  /** The view's host element — the box the loading/empty overlay is inset against. */
-  private readonly hostElement = inject(ElementRef).nativeElement as HTMLElement;
 
   /**
    * Measures the loading/empty overlay's trailing insets, only while a
@@ -559,7 +563,7 @@ export class ɵTmGridView {
     // A live direction flip re-lays the grid, but an already-open overlay
     // keeps the inline offset the CDK measured against the OLD side, so the
     // cell's error bubble stays on the edge it opened against.
-    const directionChange = this.direction.change.subscribe(() =>
+    const directionChange = inject(Directionality).change.subscribe(() =>
       this.errorAnchored.reanchor(),
     );
     inject(DestroyRef).onDestroy(() => directionChange.unsubscribe());

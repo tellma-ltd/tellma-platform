@@ -320,3 +320,137 @@ describe('tm-popover + tmPopoverTriggerFor', () => {
     expect(await harness.isFocused()).toBe(true);
   });
 });
+
+/**
+ * Popovers of each size, anchored to triggers with controllable placement.
+ * The unit page loads no token stylesheet, so the wrapper supplies the
+ * popover's size tokens at the preset's values.
+ */
+@Component({
+  imports: [TmPopover, TmPopoverContent, TmPopoverTrigger],
+  template: `
+    <div
+      class="tokens"
+      style="--popover-width-sm: 320px; --popover-width-md: 440px; --popover-width-lg: 640px; --popover-viewport-margin: 8px; --popover-max-inline-size: 346px"
+    >
+    <div class="bar" [style.padding-inline-start.px]="inset()">
+      <button class="sized-trigger" [tmPopoverTriggerFor]="sized">Open</button>
+    </div>
+    <tm-popover #sized aria-label="Sized" [size]="size()" [panelClass]="extraClass()">
+      <ng-template tmPopoverContent>
+        <p class="sized-content">Short</p>
+        @for (line of lines(); track $index) {
+          <p class="sized-line">A longer line of content that loads later {{ line }}</p>
+        }
+      </ng-template>
+    </tm-popover>
+    </div>
+  `,
+})
+class SizedHost {
+  readonly size = signal<'auto' | 'sm' | 'md' | 'lg'>('md');
+  readonly extraClass = signal<string | undefined>(undefined);
+  readonly inset = signal(16);
+  readonly lines = signal<readonly number[]>([]);
+}
+
+describe('tm-popover sizes', () => {
+  /** Opens the sized popover and returns its panel. */
+  async function openSized(fixture: ComponentFixture<SizedHost>): Promise<HTMLElement> {
+    (fixture.nativeElement.querySelector('.sized-trigger') as HTMLButtonElement).click();
+    await settle(fixture);
+    return panel() as HTMLElement;
+  }
+
+  /** A size token as the test host supplies it, in px. */
+  function token(name: string): number {
+    const tokens = document.querySelector('.tokens') as HTMLElement;
+    return Number.parseFloat(getComputedStyle(tokens).getPropertyValue(name));
+  }
+
+  /** The viewport margin token, in px. */
+  function margin(): number {
+    return token('--popover-viewport-margin');
+  }
+
+  it('a fixed size carries its class and the token width, capped by the viewport', async () => {
+    const { fixture, host } = await setup(SizedHost);
+    for (const size of ['sm', 'md', 'lg'] as const) {
+      host.size.set(size);
+      await settle(fixture);
+      const surface = await openSized(fixture);
+      expect(surface.classList.contains(`tm-popover__panel--${size}`)).toBe(true);
+      const expected = Math.min(token(`--popover-width-${size}`), window.innerWidth - 2 * margin());
+      expect(Math.abs(surface.getBoundingClientRect().width - expected)).toBeLessThanOrEqual(1);
+      (fixture.nativeElement.querySelector('.sized-trigger') as HTMLButtonElement).click();
+      await settle(fixture);
+    }
+  });
+
+  it("'auto' keeps the content width up to the cap, with no fixed-size class", async () => {
+    const { fixture, host } = await setup(SizedHost);
+    host.size.set('auto');
+    await settle(fixture);
+    const surface = await openSized(fixture);
+    for (const size of ['sm', 'md', 'lg']) {
+      expect(surface.classList.contains(`tm-popover__panel--${size}`)).toBe(false);
+    }
+    // "Short" is far narrower than any fixed size.
+    expect(surface.getBoundingClientRect().width).toBeLessThan(200);
+  });
+
+  it('a fixed size never changes width while its content grows', async () => {
+    const { fixture, host } = await setup(SizedHost);
+    host.size.set('sm');
+    const surface = await openSized(fixture);
+    const before = surface.getBoundingClientRect().width;
+    host.lines.set([1, 2, 3]);
+    await settle(fixture);
+    expect(surface.querySelectorAll('.sized-line')).toHaveLength(3);
+    expect(surface.getBoundingClientRect().width).toBe(before);
+  });
+
+  it('caps the height at the room below the anchor; the content scrolls inside', async () => {
+    const { fixture, host } = await setup(SizedHost);
+    host.lines.set(Array.from({ length: 80 }, (_, index) => index));
+    const surface = await openSized(fixture);
+    const anchor = (fixture.nativeElement.querySelector('.sized-trigger') as HTMLElement)
+      .getBoundingClientRect();
+    const box = surface.getBoundingClientRect();
+    // Placed below the trigger (more room there), and inside the viewport margin.
+    expect(box.top).toBeGreaterThanOrEqual(anchor.bottom - 1);
+    expect(box.bottom).toBeLessThanOrEqual(document.documentElement.clientHeight - margin() + 1);
+    expect(surface.scrollHeight).toBeGreaterThan(surface.clientHeight);
+  });
+
+  it('keeps a fixed-size panel inside the viewport margins near the inline-end edge', async () => {
+    const { fixture, host } = await setup(SizedHost);
+    host.size.set('lg');
+    // Push the trigger to the far end: a start-aligned panel would hang off.
+    host.inset.set(document.documentElement.clientWidth - 80);
+    await settle(fixture);
+    const box = (await openSized(fixture)).getBoundingClientRect();
+    expect(box.left).toBeGreaterThanOrEqual(margin() - 1);
+    expect(box.right).toBeLessThanOrEqual(document.documentElement.clientWidth - margin() + 1);
+  });
+
+  it('applies panelClass to the panel', async () => {
+    const { fixture, host } = await setup(SizedHost);
+    host.extraClass.set('custom-panel');
+    await settle(fixture);
+    const surface = await openSized(fixture);
+    expect(surface.classList.contains('custom-panel')).toBe(true);
+    expect(surface.classList.contains('tm-popover__panel')).toBe(true);
+  });
+
+  it('reports the size through TmPopoverHarness', async () => {
+    const { fixture, host } = await setup(SizedHost);
+    host.size.set('lg');
+    await settle(fixture);
+    await openSized(fixture);
+    const harness = await TestbedHarnessEnvironment.documentRootLoader(fixture).getHarness(
+      TmPopoverHarness,
+    );
+    expect(await harness.getSize()).toBe('lg');
+  });
+});

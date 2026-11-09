@@ -30,7 +30,12 @@ import type { ɵTmModalShellPayload } from '../tm-modal-ref';
   imports: [NgComponentOutlet, NgTemplateOutlet],
   encapsulation: ViewEncapsulation.None,
   styleUrl: './tm-modal-shell.css',
-  host: { class: 'tm-modal' },
+  host: {
+    class: 'tm-modal',
+    // The placement, readable from the shell itself (the pane carrying the
+    // geometry classes is an ancestor that harnesses cannot query).
+    '[class.tm-modal--end]': 'payload.placement === "end"',
+  },
   template: `
     @if (payload.title !== undefined || payload.showClose) {
       <div class="tm-modal__header">

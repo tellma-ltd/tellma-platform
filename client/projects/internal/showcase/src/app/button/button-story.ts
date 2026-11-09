@@ -6,14 +6,18 @@
 import { Component, signal } from '@angular/core';
 
 import { TmButton } from '@tellma/core-ui/button';
+import { TmIcon } from '@tellma/core-ui/icon';
+import { TmTooltip } from '@tellma/core-ui/tooltip';
 
 /**
  * tmButton demo host — variants × sizes, the pending state (with a click
- * counter proving activation suppression), icon usage, and the in-form
- * type-default behavior. Drives the Playwright battery.
+ * counter proving activation suppression), icon usage (inline SVG and
+ * `tm-icon` children at every size), link buttons, buttons disabled with a
+ * reason, and the in-form type-default behavior. Drives the Playwright
+ * battery.
  */
 @Component({
-  imports: [TmButton],
+  imports: [TmButton, TmIcon, TmTooltip],
   template: `
     <h2>Button</h2>
 
@@ -54,6 +58,67 @@ import { TmButton } from '@tellma/core-ui/button';
             <path d="m21 21-4.3-4.3" />
           </svg>
         </button>
+      </div>
+    </section>
+
+    <section>
+      <h3>tm-icon children</h3>
+      <!-- One row per size, so the geometry test can compare each icon box
+           with the size's icon token; the last button toggles pending. -->
+      <div class="row" data-testid="tm-icon-row">
+        <button tmButton size="sm" data-testid="tm-icon-sm"><tm-icon name="plus" /> Small</button>
+        <button tmButton size="md" data-testid="tm-icon-md"><tm-icon name="plus" /> Medium</button>
+        <button tmButton size="lg" data-testid="tm-icon-lg"><tm-icon name="plus" /> Large</button>
+        <button
+          tmButton
+          size="md"
+          aria-label="Search"
+          data-testid="tm-icon-pending"
+          [pending]="iconPending()"
+        >
+          <tm-icon name="search" />
+        </button>
+        <button tmButton data-testid="tm-icon-pending-toggle" (click)="iconPending.set(!iconPending())">
+          Toggle icon pending
+        </button>
+      </div>
+    </section>
+
+    <section>
+      <h3>Links</h3>
+      <div class="row">
+        <a tmButton variant="primary" href="#new-record" data-testid="link-primary">New record</a>
+        <a tmButton href="#records" size="sm" data-testid="link-secondary">All records</a>
+      </div>
+    </section>
+
+    <section>
+      <h3>Disabled with a reason</h3>
+      <!-- A reason keeps the button focusable and explains it on hover,
+           keyboard focus and tap; native disabled stays for transient
+           states. -->
+      <div class="row">
+        <button
+          tmButton
+          variant="primary"
+          data-testid="reason-btn"
+          [disabledReason]="reason()"
+          (click)="reasonClicks.set(reasonClicks() + 1)"
+        >
+          Edit
+        </button>
+        <button
+          tmButton
+          variant="ghost"
+          aria-label="Delete"
+          tmTooltip="Delete"
+          data-testid="reason-icon-btn"
+          [disabledReason]="reason()"
+        >
+          <tm-icon name="x" />
+        </button>
+        <button tmButton data-testid="reason-toggle" (click)="toggleReason()">Toggle reason</button>
+        <output data-testid="reason-click-count">{{ reasonClicks() }}</output>
       </div>
     </section>
 
@@ -112,6 +177,15 @@ export class ButtonStory {
   readonly pending = signal(false);
   readonly clicks = signal(0);
   readonly submits = signal(0);
+  readonly iconPending = signal(false);
+  readonly reason = signal<string | null>('Needs the “Customers: Create and edit” permission.');
+  readonly reasonClicks = signal(0);
+
+  toggleReason(): void {
+    this.reason.set(
+      this.reason() === null ? 'Needs the “Customers: Create and edit” permission.' : null,
+    );
+  }
 
   onSubmit(event: Event): void {
     event.preventDefault();

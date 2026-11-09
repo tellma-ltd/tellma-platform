@@ -40,7 +40,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
     protected readonly actionEdit: symbol;
     protected readonly advancedRowLabel: Signal<string>;
     readonly advancedSearch: _angular_core.InputSignal<TmEntityPickerPage | undefined>;
-    protected readonly anchored: _tellma_core_ui_private.TmAnchoredOverlay;
+    protected readonly anchored: _tellma_core_ui_overlay.TmAnchoredOverlay;
     readonly ariaDescribedby: _angular_core.InputSignal<string | null>;
     readonly ariaLabel: _angular_core.InputSignal<string | null>;
     cancel(): void;
