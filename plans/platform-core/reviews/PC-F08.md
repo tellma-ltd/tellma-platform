@@ -508,7 +508,7 @@ development.
 This round was started by one implementer and finished by a second, who reviewed the half-done work,
 kept what was right, corrected what was wrong, and verified the whole on both operating systems.
 
-- R1-1: fixed in the review 1 fixes commit. One part of fix step 1 falls short of what the finding
+- R1-1: fixed in 7ea007f. One part of fix step 1 falls short of what the finding
   hoped for; it is stated under "What the address-space limit still leaves" and goes to the
   orchestrator.
   - **Filter** (steps 2 and 3; `SeccompFilter.Build(x64, processId)`).
@@ -589,7 +589,7 @@ kept what was right, corrected what was wrong, and verified the whole on both op
     `truncate`, `unlink` and `rename`, which I did not add unruled because a native library that
     opens a scratch file would then break.
 
-- R1-2: fixed in the review 1 fixes commit, by fix 1, with the rule of fix 2 on top, as D-030
+- R1-2: fixed in 7ea007f, by fix 1, with the rule of fix 2 on top, as D-030
   addendum 5 rules.
   - **Token.** A Windows worker is created on a restricted, low-integrity copy of the host's token:
     `CreateRestrictedToken(DISABLE_MAX_PRIVILEGE)`, `SetTokenInformation(TokenIntegrityLevel,
@@ -613,7 +613,7 @@ kept what was right, corrected what was wrong, and verified the whole on both op
   - **Not verified:** the token under IIS or App Service. Windows production hosts render no PDF
     thumbnails, so nothing depends on it.
 
-- R1-3: fixed in the review 1 fixes commit. `Tellma:Blobs:PdfWorkerConcurrency`, default
+- R1-3: fixed in 7ea007f. `Tellma:Blobs:PdfWorkerConcurrency`, default
   max(1, `ProcessorCount` / 4) as D-030 addendum 4 rules, bounds PDF workers with slots of their
   own, taken instead of an image slot. A PDF that finds every slot taken waits within its own
   budget and gets no thumbnail when that runs out (counted `timeout`); it never fails an upload.
@@ -624,7 +624,7 @@ kept what was right, corrected what was wrong, and verified the whole on both op
   `Concurrent_pdf_thumbnails_run_in_separate_workers_bounded_by_the_slots`, and the binding, default
   and validation cases in `ImagingCompositionTests`.
 
-- R1-4: fixed in the review 1 fixes commit, both cases, and case 2 by more than a rewording.
+- R1-4: fixed in 7ea007f, both cases, and case 2 by more than a rewording.
   - **Case 1.** Every worker has a CPU limit: the budget plus a second, at most 60 s, and 60 s for
     a call without a budget (`SkiaImageProcessor.CpuLimit`; `WorkerLimits.CpuTime` is no longer
     nullable). Tests: `A_worker_always_has_a_cpu_limit_of_its_budget_and_a_second_at_most_a_minute`,
@@ -643,7 +643,7 @@ kept what was right, corrected what was wrong, and verified the whole on both op
     tests that start a worker themselves were made synchronous for the same reason; one of them
     had failed once in a full Linux run (the worker killed after 0.03 s).
 
-- R1-5: fixed in the review 1 fixes commit, by the first option. The host's pipe ends are
+- R1-5: fixed in 7ea007f, by the first option. The host's pipe ends are
   overlapped, and every read and write on them goes through `KillableStream`, which a kill cancels.
   A call therefore ends with its worker even while another process holds the worker's output open.
   `A_killed_worker_ends_its_call_even_while_another_process_holds_its_output_open` duplicates the
@@ -651,7 +651,7 @@ kept what was right, corrected what was wrong, and verified the whole on both op
   end at the kill. The window itself remains (the child's pipe ends must be inheritable for
   `CreateProcess`); what it costs now is one late answer, never a held slot.
 
-- R1-6: fixed in the review 1 fixes commit. The stand-in's `early-thread` mode starts a thread
+- R1-6: fixed in 7ea007f. The stand-in's `early-thread` mode starts a thread
   before `WorkerSandbox.Enter` and runs the socket and process probes on it once the filter is in
   place; `The_filter_covers_threads_that_existed_before_it_on_linux` asserts both refused. The
   finding's mutation, checked in sdk:10.0: with the thread-synchronising flag set to 0, the early
