@@ -5,12 +5,14 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Composition;
 using Tellma.Core.Composition.Realizers;
+using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Tests.Infrastructure
 {
@@ -24,7 +26,44 @@ namespace Tellma.Core.Tests.Infrastructure
         public static readonly IReadOnlyDictionary<string, string?> SoundConfiguration = new Dictionary<string, string?>
         {
             ["Tellma:PublicOrigin"] = "https://acme.app.tellma.com",
+            ["Tellma:Catalog:ConnectionString"] = "Data Source=sql01.database.windows.net;Initial Catalog=tellma-acme-catalog;Authentication=Active Directory Managed Identity;Encrypt=True;Max Pool Size=10",
+            ["Tellma:Sql:Profiles:default"] = "Authentication=Active Directory Managed Identity;Encrypt=True;Max Pool Size=20",
+            ["Tellma:Sql:AllowedServers:0"] = ".database.windows.net",
         };
+
+        /// <summary>The sound configuration with some values added, replaced or removed (a null value removes the key).</summary>
+        /// <param name="changes">The changes.</param>
+        /// <returns>The configuration's values.</returns>
+        public static IReadOnlyDictionary<string, string?> Sound(params (string Key, string? Value)[] changes)
+        {
+            Dictionary<string, string?> values = new(SoundConfiguration, StringComparer.OrdinalIgnoreCase);
+            foreach ((string key, string? value) in changes)
+            {
+                if (value is null)
+                {
+                    _ = values.Remove(key);
+                }
+                else
+                {
+                    values[key] = value;
+                }
+            }
+
+            return values;
+        }
+
+        /// <summary>
+        ///     Replaces the catalog the composed registry reads with an in-memory one, so a host the
+        ///     suite starts never reaches for a SQL Server.
+        /// </summary>
+        /// <param name="services">The composed services.</param>
+        /// <param name="catalog">The catalog; an empty, migrated one when null.</param>
+        /// <returns>The services, for chaining.</returns>
+        public static IServiceCollection UseFakeCatalog(this IServiceCollection services, FakeCatalogReader? catalog = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            return services.Replace(ServiceDescriptor.Singleton<ICatalogReader>(catalog ?? new FakeCatalogReader()));
+        }
 
         /// <summary>Builds configuration from key-value pairs.</summary>
         /// <param name="values">The values.</param>
@@ -63,7 +102,8 @@ namespace Tellma.Core.Tests.Infrastructure
                 environment ?? new TestEnvironment(),
                 compose,
                 realizers ?? ContributionRealizerSet.CreateBuiltIn(),
-                icuProbe ?? (static () => true));
+                icuProbe ?? (static () => true))
+                .UseFakeCatalog();
         }
 
         /// <summary>Composes, expecting the composition root to throw, and returns the problems.</summary>

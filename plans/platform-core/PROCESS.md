@@ -442,6 +442,55 @@ a manual or promotional reset happened, compare the new `resetsAt` with the prev
 recompute the forecast, and notify Ahmad. Then recover per §10 if anything was
 interrupted, and schedule per §5.
 
+### 7.4 Fable-only reset (one-time)
+
+Ahmad's ruling of 2026-11-10 (D-039). Anthropic released Fable 5.2 and granted this account one
+manual Fable-only reset in the window starting Tue Nov 10. It wipes the weekly Fable meter, whose
+100% is half the weekly all-models budget, and (as Ahmad understands it) also removes that Fable
+spend from the all-models meter. Other models' usage is untouched. It is single-use and only Ahmad
+can press it. LEDGER.md §Run tracks it in two rows: `Fable phase` (active/done) and `Fable reset`
+(pending/applied). While the Fable phase is active, these rules override the model choices in §1
+and §3, nothing else.
+
+1. **Models.** Every newly spawned agent uses model `fable`: implementers, Reviewers 1 and 2,
+   fixers, verification agents, and the batch-review finders and fixer. Each role keeps its effort.
+   The orchestrator stays on Opus. Agents resumed via SendMessage keep the model they were spawned
+   with.
+2. **Scheduling** stays per §5. Between otherwise equal ready choices, prefer checkpoints on the
+   two-review list (§3) and batch reviews that are due; they gain most from Fable. Keep every slot
+   busy, and add a fifth slot if ready work allows (D-028's cap of five heavy agents still holds).
+3. **Fable gate**, on top of §6.3:
+   - `RF = (100 − Fable%) / 2`, in all-models points. Check the `/2` in the first hours: with
+     nearly all spend on Fable, ΔFable% should be about 2 × ΔU. Use the measured ratio if it
+     differs.
+   - Cost Fable work at `1.8 × p` until measured. `F_fable` is the remaining step shares of
+     in-flight Fable work at that cost.
+   - Spawn a new Fable checkpoint only if `RF − F_fable − 1.8·p_new ≥ 3`.
+   - Start a Fable step of started work only if `RF ≥ 2 + its cost`.
+   - When neither fits, new work follows the normal process (§1, §3). Do not drain or park for
+     this.
+4. **Model check.** From the first Fable agent's transcript, record in LEDGER.md §Run which model
+   the `fable` alias resolves to. If it is not Fable 5.2, email Ahmad and start no further Fable
+   agent until he answers; other work continues on the normal process.
+5. **End of the phase.** The phase ends when no new Fable agent fits. Set `Fable phase = done`
+   and notify Ahmad (§9):
+   `Platform-core: Fable phase done (Fable F%, all U%). Apply the Fable-only reset now; the run continues on Opus meanwhile.`
+   Keep running normally. If U reaches 85 before he presses it, remind him once.
+6. **Detecting the reset.** At each usage read after the phase, a Fable% near 0, with U down by
+   about the Fable spend, means Ahmad applied it. Then set `Fable reset = applied`, log a §Usage
+   row "Fable reset", restart the `ρ` window as for an unexpected reset (§7.2), and email Ahmad the
+   before/after numbers. If U did not drop, say so plainly in the email and in DECISIONS.md. After
+   the reset, everything reverts to the normal process, including the Fable-meter rule for
+   Reviewer 2 (§3) and the batch finders.
+7. **Calibration.** Keep Fable-phase cycles out of the Opus `k` EMA. Record them as a separate
+   `k_fable` row in LEDGER.md §Calibration with the measured Fable cost factor, and republish the
+   forecast after the Fable reset.
+8. **Full reset.** The one-time full reset (§7.2) is unchanged and comes after the Fable-only
+   reset; its deadline is Sat Nov 14 20:00 UTC. If the §7.2 step-4 park notice fires while the
+   Fable reset is still pending, it tells Ahmad to press the Fable reset first. A one-shot cron at
+   Sat Nov 14 12:00 UTC (in local time) emails Ahmad to apply the full reset before 20:00 whatever
+   U is, if it has not been applied by then; re-arm it after a restart, like the parking crons.
+
 ## 8. Failure handling
 
 ### 8.1 Blocked implementer

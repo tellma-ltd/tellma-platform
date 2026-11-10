@@ -258,6 +258,15 @@ Format, one entry per ruling:
     - No network block on Windows, which has no unprivileged mechanism for it.
     - Ruling: Linux is the supported production host for PDF thumbnails. Filesystem confinement is PC-F11, tracked for before general availability, not the MVP.
   - D-030 addendum 1's fail-fast on an abandoned render no longer applies, because the worker is killed.
+- Addendum 4 (PC-F08 Review 1): the worker must contain exploit code, not just PDFium's ordinary behaviour.
+  - Linux: RLIMIT_AS becomes a real cap (a smaller GC reservation). Seccomp denies SysV IPC, tkill and the pidfd calls, and allows kill, tgkill and prlimit64 only on the worker's own pid. Capabilities are dropped with no_new_privs set.
+  - Windows: workers run under a restricted, low-integrity token, so they cannot OpenProcess the host. If that proves infeasible, Windows PDF thumbnails are disabled outside Development.
+  - PDF workers get their own bound, Tellma:Blobs:PdfWorkerConcurrency (default max(1, ProcessorCount/4)), so image uploads never wait behind them.
+- Addendum 5 (PC-F08 fix 1, blocked and ruled):
+  - Windows workers run under a restricted low-integrity token, so they can no longer read, write or inject into the host. They can still terminate it, and same-user low-integrity workers may open each other. **PDF thumbnails are therefore disabled on Windows hosts outside Development.**
+  - The GC heap hard limit is set on Linux only, because the Windows Job Object already caps memory.
+  - Linux RLIMIT_AS = VmSize + limit + measured slack.
+  - core.imaging warns when Yama ptrace_scope is 0, and disables PDF thumbnails on musl. Production Linux hosts are glibc.
 - Revisit if: out-of-process rendering becomes necessary (a hostile-PDF memory exhaustion seen in the wild).
 
 ### D-031 (orchestrator, 2026-11-09): bundle ceilings at their limit
@@ -326,6 +335,36 @@ Format, one entry per ruling:
 - Situation: PC-065's integration turned CI red while the fix slot pc-f held PC-F08, a long out-of-process rendering fix, and all four checkpoint slots were busy. D-014's revisit condition, the fix slot holding more than one fix, was met.
 - Ruling: `WT/pc-f2` (ports 4360/7160/4260, DB_SUFFIX pcf2) serves stop-the-line fixes whenever pc-f is busy. PC-F10 is its first use. The D-028 heavy-agent cap of 5 still applies; a stop-the-line fix may exceed it by one, because the line is stopped.
 - Revisit if: both fix slots are ever busy at once.
+
+### D-036 (PC-024 + PC-060, 2026-11-09): spec errors found during implementation
+- **For Ahmad, spec corrections needed:**
+  - 0011 §7.5: the registration statement cannot run, because SQL Server does not allow NEXT VALUE FOR inside COALESCE. The code draws the id in its own statement and computes the default `<prefix>.<id>` name in SQL.
+  - 0011 §3.8 and 0014: subjects must be printable ASCII without spaces, because SQL Server ignores trailing spaces when comparing, even under BIN2.
+  - 0010 §B.4: an unmatched tm-select value shows the placeholder (spec 0002 §3.4), not String(value) with a dev warning. String(value) applies to tm-multi-select only.
+- Also from PC-024:
+  - Outside Development, error 4060 at startup leaves the host started but not ready, rather than failing it.
+  - core.sql-profiles also governs the catalog connection.
+  - ITenantRegistry.IsAvailable is added; a stale or never-loaded snapshot makes Find and Get throw catalog-unavailable.
+- Revisit if: the specs are corrected (then drop this entry's for-Ahmad list).
+
+### D-037 (PC-021 + orchestrator, 2026-11-09): entity-metadata rulings
+- ResetServerOwned never resets the key, so temporary ids (Id<0) survive preprocessing (0015 §6.3-§6.4). **Spec contradiction for Ahmad:** 0012 §3.1 says "every ServerOwned property", and Id is ServerOwned by derivation.
+- EF entity inheritance mapping (TPH/TPT) is unsupported, and the startup gate refuses it. No spec in 0010-0035 relies on it, because extension is plain CLR inheritance plus UseEntity. The ARCHITECTURE.md "Document (TPT root)" bullet is replaced.
+- Every entity declares [Table] in a schema other than dbo (0012 §4.1/§2.2/§2.8). **Binding on later checkpoints:** the entities of 0017 (Blob), 0019 (Export/Import), 0020 (Job/Schedule), 0022 (OutgoingEmail) and 0026 (SupportRequest), whose specs state the table only in a comment, must add [Table(..., Schema = "core")] or their spec's schema.
+- Revisit if: a spec adds entity inheritance mapping.
+
+### D-038 (PC-060, 2026-11-09): shared component bases
+- Ruling: a base class that carries public inputs shared by public components (TmSelectBase) is public and marked @sealed, not ɵ-prefixed. The API-golden filter drops ɵ members, which would hide the inherited input surface. ɵ stays for internal-only bases.
+- Known gap: ɵTmGridBase's inherited inputs are missing from the ./grid golden. The next grid checkpoint should switch it to the public @sealed form.
+- Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
+- **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
+
+### D-039 (Ahmad, 2026-11-10): Fable phase and the Fable-only reset
+- Ruling: Anthropic released Fable 5.2 and granted one manual Fable-only reset in the window starting Tue Nov 10. Until no new Fable agent fits, every newly spawned agent runs on `fable` at its role's effort, gated on the Fable meter as well as the all-models gates. Ahmad then presses the Fable-only reset, and the run reverts to the normal model lists. Rules: PROCESS.md §7.4.
+- Why: the Fable meter is a separate half-budget that the normal process leaves mostly unused (Fable was 31% when the last window closed at 100% all-models), and the reset makes it spendable twice in one week.
+- Assumptions to verify: the Fable meter's 100% equals 50 all-models points (checked from ΔFable% ≈ 2 × ΔU in the first hours), and the reset also removes the Fable spend from the all-models meter. If U does not drop at the reset, record it here.
+- Applied at the resume of 2026-11-10 20:10 UTC, after the scheduled weekly rollover (all 0%, Fable 0%, resets 2026-11-17 20:00). The one-time full reset (§7.2) is unchanged and still pending, deadline Sat Nov 14 20:00 UTC; a one-shot cron at Sat Nov 14 12:00 UTC reminds Ahmad.
+- Revisit if: the `fable` alias does not resolve to Fable 5.2, or the measured Fable cost factor differs a lot from 1.8.
 
 ### D-006 (Ahmad, 2026-11-08): review levers
 - Ruling: Review 2 runs only for the PROCESS.md §3 two-review list (security-bound or complex, 44 checkpoints) and for escalations (§4.4); every other checkpoint gets Review 1 and one fix round. Cross-checkpoint batch reviews run once per phase instead of per group.

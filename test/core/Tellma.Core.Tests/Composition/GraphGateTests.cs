@@ -165,7 +165,7 @@ namespace Tellma.Core.Tests.Composition
                 .AddFeature(new TestFeature<Tag.A>("gl", declare: d => d.Options<SampleOptions>("Tellma:Gl")))
                 .AddFeature(new TestFeature<Tag.B>("acme", declare: d => d.Options<SampleOptions>("Tellma:Gl"))));
 
-            Assert.Single(Record(services).BoundOptions);
+            Assert.Single(Record(services).BoundOptions, static bound => bound.OptionsType == typeof(SampleOptions));
         }
 
         [Theory]

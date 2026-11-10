@@ -269,6 +269,7 @@ namespace Tellma.Identity.E2E.Infrastructure
                     OpenIddictConstants.Permissions.GrantTypes.AuthorizationCode,
                     OpenIddictConstants.Permissions.ResponseTypes.Code,
                     OpenIddictConstants.Permissions.Scopes.Profile,
+                    OpenIddictConstants.Permissions.Scopes.Email,
                 },
                 Requirements = { OpenIddictConstants.Requirements.Features.ProofKeyForCodeExchange },
             });
