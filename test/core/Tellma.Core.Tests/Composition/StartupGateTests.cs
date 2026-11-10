@@ -184,6 +184,7 @@ namespace Tellma.Core.Tests.Composition
                 ["core.taxonomy"] = false,
                 ["core.entity-shapes"] = false,
                 ["core.model-contributors"] = false,
+                ["core.entity-metadata"] = false,
             };
 
             Assert.Equal(expected, checks);

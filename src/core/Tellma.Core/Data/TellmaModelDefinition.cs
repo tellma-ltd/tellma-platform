@@ -33,16 +33,37 @@ namespace Tellma.Core.Data
     /// <param name="entityTypes">The leaf entity classes, children included, in model order.</param>
     /// <param name="tableTypes">The standalone table-type classes.</param>
     /// <param name="configurations">The closed model configuration classes, in the order they apply.</param>
-    internal sealed class TellmaModelDefinition(IReadOnlyList<Type> entityTypes, IReadOnlyList<Type> tableTypes, IReadOnlyList<Type> configurations)
+    /// <param name="leaves">The leaf substitutions: each replaced default and the leaf that replaces it.</param>
+    internal sealed class TellmaModelDefinition(
+        IReadOnlyList<Type> entityTypes,
+        IReadOnlyList<Type> tableTypes,
+        IReadOnlyList<Type> configurations,
+        IReadOnlyDictionary<Type, Type> leaves)
     {
         /// <summary>The leaf entity classes, children included, in model order.</summary>
         public IReadOnlyList<Type> EntityTypes { get; } = [.. entityTypes];
+
+        /// <summary>
+        ///     The leaf substitutions: each default a <c>UseEntity&lt;TDefault, TLeaf&gt;()</c> replaced and
+        ///     the leaf that replaces it. A replaced default is absent from the model, and its leaf keeps the
+        ///     default's entity name.
+        /// </summary>
+        public IReadOnlyDictionary<Type, Type> Leaves { get; } = new Dictionary<Type, Type>(leaves);
 
         /// <summary>The standalone table-type classes.</summary>
         public IReadOnlyList<Type> TableTypes { get; } = [.. tableTypes];
 
         /// <summary>The closed model configuration classes, in the order they apply.</summary>
         public IReadOnlyList<Type> Configurations { get; } = [.. configurations];
+
+        /// <summary>The leaf registered for an entity class: its substitute, else the class itself.</summary>
+        /// <param name="entityType">The entity class.</param>
+        /// <returns>The leaf.</returns>
+        public Type LeafOf(Type entityType)
+        {
+            ArgumentNullException.ThrowIfNull(entityType);
+            return Leaves.TryGetValue(entityType, out Type? leaf) ? leaf : entityType;
+        }
 
         /// <summary>The definition of a realised composition.</summary>
         /// <param name="record">The realised composition.</param>
@@ -55,45 +76,50 @@ namespace Tellma.Core.Data
                 record.Entities.Select(static entity => entity.EntityType),
                 record.TableTypes.Select(static tableType => tableType.Type),
                 record.ModelConfigurations.Select(static configuration => configuration.Type),
-                record.LeafOf);
+                record.Leaves);
         }
 
-        /// <summary>A definition from contributed parts and a leaf resolver.</summary>
+        /// <summary>A definition from contributed parts and the leaf substitutions.</summary>
         /// <param name="entities">The contributed entities, before leaf substitution.</param>
         /// <param name="tableTypes">The contributed standalone table-type classes.</param>
         /// <param name="configurations">The contributed model configurations, closed or open.</param>
-        /// <param name="leafOf">Resolves an entity to the leaf registered for it, else itself.</param>
+        /// <param name="leaves">The leaf substitutions: each replaced default and the leaf that replaces it.</param>
         /// <returns>The definition.</returns>
         public static TellmaModelDefinition Create(
             IEnumerable<Type> entities,
             IEnumerable<Type> tableTypes,
             IEnumerable<Type> configurations,
-            Func<Type, Type> leafOf)
+            IReadOnlyDictionary<Type, Type> leaves)
         {
             ArgumentNullException.ThrowIfNull(entities);
             ArgumentNullException.ThrowIfNull(tableTypes);
             ArgumentNullException.ThrowIfNull(configurations);
-            ArgumentNullException.ThrowIfNull(leafOf);
+            ArgumentNullException.ThrowIfNull(leaves);
+
+            Type LeafOf(Type entity)
+            {
+                return leaves.TryGetValue(entity, out Type? leaf) ? leaf : entity;
+            }
 
             // --- Entities, each followed by the children its collections carry, depth first ---
             List<Type> entityTypes = [];
             HashSet<Type> seen = [];
             foreach (Type entity in entities)
             {
-                AddWithChildren(leafOf(entity), entityTypes, seen, leafOf);
+                AddWithChildren(LeafOf(entity), entityTypes, seen, LeafOf);
             }
 
             // --- Configurations, closed over the leaves ---
             List<Type> closed = [];
             foreach (Type configuration in configurations)
             {
-                if (Close(configuration, leafOf) is Type closedConfiguration && !closed.Contains(closedConfiguration))
+                if (Close(configuration, LeafOf) is Type closedConfiguration && !closed.Contains(closedConfiguration))
                 {
                     closed.Add(closedConfiguration);
                 }
             }
 
-            return new TellmaModelDefinition(entityTypes, [.. tableTypes.Distinct()], closed);
+            return new TellmaModelDefinition(entityTypes, [.. tableTypes.Distinct()], closed, leaves);
         }
 
         /// <summary>

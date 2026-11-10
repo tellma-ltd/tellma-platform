@@ -141,7 +141,7 @@ namespace Tellma.Core.Tests.Data
                 [typeof(Widget), typeof(Node)],
                 [],
                 [],
-                static type => type == typeof(Link) ? typeof(LinkLeaf) : type);
+                new Dictionary<Type, Type> { [typeof(Link)] = typeof(LinkLeaf) });
 
             Assert.Equal([typeof(Widget), typeof(WidgetPart), typeof(WidgetPartNote), typeof(Node), typeof(LinkLeaf)], definition.EntityTypes);
         }
@@ -153,7 +153,7 @@ namespace Tellma.Core.Tests.Data
                 [typeof(TestUser), typeof(Node)],
                 [],
                 [],
-                static type => type == typeof(Link) ? typeof(LinkLeaf) : type);
+                new Dictionary<Type, Type> { [typeof(Link)] = typeof(LinkLeaf) });
             IModel built = TestModels.DesignModel(definition);
 
             Assert.Null(built.FindEntityType(typeof(Link)));
@@ -165,7 +165,7 @@ namespace Tellma.Core.Tests.Data
         public void A_model_with_no_entity_holds_the_platform_tables_and_types()
         {
             IModel built = TestModels.DesignModel(TellmaModelDefinition.Create(
-                [], [typeof(IdList)], [typeof(TellmaSchemaRowConfiguration), typeof(TellmaProvisioningRowConfiguration)], static type => type));
+                [], [typeof(IdList)], [typeof(TellmaSchemaRowConfiguration), typeof(TellmaProvisioningRowConfiguration)], new Dictionary<Type, Type>()));
 
             Assert.Equal(2, built.GetEntityTypes().Count());
             Assert.Equal("IdList", Assert.Single(built.GetTableTypes()).Name);
