@@ -58,10 +58,9 @@ namespace Tellma.Core.Tests.Composition.Checks
 
         private static Task<IReadOnlyList<CompositionProblem>> CheckAsync(Dictionary<string, string?> values)
         {
-            values["Tellma:PublicOrigin"] = "https://acme.app.tellma.com";
             return TestComposition.CheckAsync(
                 static tellma => tellma.AddFeature(new TestFeature<Tag.A>("acme", declare: static d => d.Options<SampleOptions>("Tellma:Acme"))),
-                TestComposition.Configuration(values));
+                TestComposition.Configuration(TestComposition.Sound([.. values.Select(static pair => (pair.Key, pair.Value))])));
         }
     }
 }

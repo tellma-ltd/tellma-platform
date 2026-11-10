@@ -6,6 +6,9 @@
          file-system store. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
     <ProjectReference Include="..\..\shared\Tellma.Testing.Support\Tellma.Testing.Support.csproj" />
+    <!-- The platform-owned catalog migrations and their design-time factory, which the collation
+         and latest-migration pins and the catalog model's column pin read. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Migrator\Tellma.Core.Migrator.csproj" />
     <!-- The tenant model's migration is scaffolded the way a distribution's migrator scaffolds it:
          with the table-type design-time services, the EF Design package and Roslyn to compile
          the scaffolded code back in. The Design package is developmentDependency=true, so it is
@@ -21,9 +24,17 @@
     <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
     <!-- A real generic host, so the startup gate runs the way a deployment starts it. -->
     <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <!-- FakeTimeProvider, so the registry's refresh timer, staleness bound and first-load bound run
+         on a clock the suite moves. -->
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The launch-landing vectors the client's launch redirect reads too: one rule, one file. -->
+    <None Include="../../../client/projects/core/tellma-core/src/launch/launch-landing-vectors.json" Link="Tenancy\launch-landing-vectors.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

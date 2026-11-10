@@ -20,6 +20,9 @@ namespace Tellma.Core.Composition.Checks
         /// <summary>No configuration value under <c>Tellma:</c> is an unresolved Key Vault reference.</summary>
         public const string KeyVaultLiterals = "core.key-vault-literals";
 
+        /// <summary>The credential profiles and the catalog connection follow the connection rules, and the allowed servers are set.</summary>
+        public const string SqlProfiles = "core.sql-profiles";
+
         /// <summary><c>Tellma:PublicOrigin</c> is an absolute, path-less origin, https outside Development.</summary>
         public const string PublicOrigin = "core.public-origin";
 

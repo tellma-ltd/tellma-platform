@@ -88,10 +88,12 @@ namespace Tellma.Core.Tests.Composition
             TellmaCompositionException exception = await Assert.ThrowsAsync<TellmaCompositionException>(
                 () => host.StartAsync(TestContext.Current.CancellationToken));
 
-            Assert.Equal(2, exception.Problems.Count);
             Assert.Contains("could not be created, so only the built-in ones ran", exception.Problems[0].Problem, StringComparison.Ordinal);
             Assert.Contains("ArgumentException", exception.Problems[0].Problem, StringComparison.Ordinal);
-            Assert.Equal("core.public-origin", exception.Problems[1].Source);
+
+            // The empty configuration then fails the built-in checks that read configuration.
+            string[] builtIn = ["core.options", "core.sql-profiles", "core.sql-profiles", "core.public-origin"];
+            Assert.Equal(builtIn, exception.Problems.Skip(1).Select(static p => p.Source));
         }
 
         [Fact]
@@ -105,7 +107,7 @@ namespace Tellma.Core.Tests.Composition
             TellmaCompositionException exception = await Assert.ThrowsAsync<TellmaCompositionException>(
                 () => host.StartAsync(TestContext.Current.CancellationToken));
 
-            string[] expected = ["core.deployment-identity", "core.public-origin", "test.failing"];
+            string[] expected = ["core.options", "core.deployment-identity", "core.sql-profiles", "core.sql-profiles", "core.public-origin", "test.failing"];
             Assert.Equal(expected, exception.Problems.Select(static p => p.Source));
         }
 
@@ -177,6 +179,7 @@ namespace Tellma.Core.Tests.Composition
                 ["core.deployment-identity"] = false,
                 ["core.globalization"] = false,
                 ["core.key-vault-literals"] = true,
+                ["core.sql-profiles"] = true,
                 ["core.public-origin"] = true,
                 ["core.taxonomy"] = false,
                 ["core.entity-shapes"] = false,
@@ -201,7 +204,7 @@ namespace Tellma.Core.Tests.Composition
             builder.Configuration.AddInMemoryCollection(configuration ?? TestComposition.SoundConfiguration);
             builder.Services.AddSingleton(SandboxContext.Never);
             configureServices(builder.Services);
-            builder.Services.AddTellma(TestComposition.Slug, builder.Configuration, builder.Environment, compose);
+            builder.Services.AddTellma(TestComposition.Slug, builder.Configuration, builder.Environment, compose).UseFakeCatalog();
             return builder.Build();
         }
     }
